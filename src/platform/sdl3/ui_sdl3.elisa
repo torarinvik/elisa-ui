@@ -19,6 +19,7 @@ extern SDL_PollEvent(event: void&) -> bool
 extern SDL_SetRenderDrawColor(renderer: void&, r: u8, g: u8, b: u8, a: u8) -> bool
 extern SDL_RenderClear(renderer: void&) -> bool
 extern SDL_RenderFillRect(renderer: void&, rect: void&) -> bool
+extern SDL_RenderLine(renderer: void&, x1: f32, y1: f32, x2: f32, y2: f32) -> bool
 extern SDL_RenderPresent(renderer: void&) -> bool
 extern SDL_DestroyRenderer(renderer: void&) -> void
 extern SDL_DestroyWindow(window: void&) -> void
@@ -37,15 +38,31 @@ def ui_sdl_ren() -> void&:
         return renderer
     return zeroed
 
-def ui_clear(r: u8, g: u8, b: u8, a: u8) -> void:
-    _ = SDL_SetRenderDrawColor(ui_sdl_ren(), r, g, b, a)
-    _ = SDL_RenderClear(ui_sdl_ren())
-
-def ui_fill_rect(x: f32, y: f32, w: f32, h: f32, r: u8, g: u8, b: u8, a: u8) -> void:
-    rect: mutable array[f32, 4] = [x, y, w, h]
-    _ = SDL_SetRenderDrawColor(ui_sdl_ren(), r, g, b, a)
+def ui_sdl_rect(x: f32, y: f32, width: f32, height: f32, color: UiColor) -> void:
+    rect: mutable array[f32, 4] = [x, y, width, height]
+    _ = SDL_SetRenderDrawColor(ui_sdl_ren(), color.r, color.g, color.b, color.a)
     rect_pointer: void& = (&rect[0]).cast[void&] can Unsafe.PointerCast
     _ = SDL_RenderFillRect(ui_sdl_ren(), rect_pointer)
+
+# SDL3's 2D renderer has no filled-circle or filled-triangle primitive, so the
+# batch's curved and triangular commands are approximated with their bounding
+# geometry for now. Both are honoured exactly by WasmBrowser, which is why the
+# core keeps them as first-class commands rather than lowering them here.
+def ui_sdl_replay() -> void:
+    for index in 0..<ui_command_count:
+        match ui_command_buffer[index]:
+            UiCommand.Clear(color):
+                _ = SDL_SetRenderDrawColor(ui_sdl_ren(), color.r, color.g, color.b, color.a)
+                _ = SDL_RenderClear(ui_sdl_ren())
+            UiCommand.FillRect(rectangle):
+                ui_sdl_rect(rectangle.x, rectangle.y, rectangle.width, rectangle.height, rectangle.color)
+            UiCommand.FillCircle(circle):
+                ui_sdl_rect(circle.x - circle.radius, circle.y - circle.radius, circle.radius * 2.0, circle.radius * 2.0, circle.color)
+            UiCommand.FillTriangle(triangle):
+                ui_sdl_rect(triangle.ax, triangle.ay, triangle.bx - triangle.ax, triangle.cy - triangle.ay, triangle.color)
+            UiCommand.FillLine(line):
+                _ = SDL_SetRenderDrawColor(ui_sdl_ren(), line.color.r, line.color.g, line.color.b, line.color.a)
+                _ = SDL_RenderLine(ui_sdl_ren(), line.ax, line.ay, line.bx, line.by)
 
 def ui_sdl_event_type() -> u32:
     type_ref: mutable u32& = (&ui_sdl_event_buffer[0]).cast[u32&] can Unsafe.PointerCast
@@ -69,6 +86,8 @@ def ui_sdl_next_event(out_event: mutable UiEvent&) -> bool:
     out_event.kind <- UI_EVENT_NONE
     out_event.x <- 0.0
     out_event.y <- 0.0
+    out_event.dx <- 0.0
+    out_event.dy <- 0.0
     out_event.code <- 0
     if event_type == SDL_EVENT_QUIT:
         out_event.kind <- UI_EVENT_QUIT
@@ -108,15 +127,21 @@ def ui_run(title: cstr, width: i32, height: i32, max_frames: i64) -> i64:
             SDL_Quit()
             return 1
         ui_sdl_renderer <- renderer_opt
+    ui_viewport_width <- width.f32()
+    ui_viewport_height <- height.f32()
     app_init()
     running: mutable bool = true
     frames: mutable i64 = 0
     while running |frames|:
-        event: mutable UiEvent = UiEvent{kind: UI_EVENT_NONE, x: 0.0, y: 0.0, code: 0}
+        event: mutable UiEvent = UiEvent{kind: UI_EVENT_NONE, x: 0.0, y: 0.0, dx: 0.0, dy: 0.0, code: 0}
         while ui_sdl_next_event(event) |event, running|:
             running <- false if event.kind == UI_EVENT_QUIT
             app_event(event)
+        # Same retained contract as the component backend: the app fills a
+        # command batch, then the backend consumes it. SDL3 replays immediately.
+        ui_begin_frame()
         app_frame()
+        ui_sdl_replay()
         _ = SDL_RenderPresent(ui_sdl_ren())
         frames <- frames + 1
         running <- false if max_frames > 0 and frames >= max_frames

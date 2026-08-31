@@ -1,0 +1,166 @@
+# elisa-ui WasmBrowser backend: a Wasm component against wasmbrowser:window@0.1.0.
+#
+# WasmBrowser is a Wasmtime component host and loads .wapp packages whose only
+# payload is manifest.json plus this component. There is deliberately no
+# JavaScript, ESM loader, or TypeScript facade anywhere in this path.
+#
+# The host drives the loop: it calls the exported guest lifecycle and input
+# functions, and this file translates them onto the app contract. Unlike the
+# SDL3 backend there is no ui_run here.
+#
+# Canonical-ABI encoding is confined to this file. `present-commands` takes a
+# list<render-command>, lowered as a pointer/count pair over 32-byte elements:
+# a u32 discriminant at byte 0 followed by the payload from byte 4, sized for
+# the largest case (triangle).
+
+include "../../core/ui_core.elisa"
+
+@wasm_import_module("wasmbrowser:window/host@0.1.0")
+@link_name("present-commands")
+extern host_present_commands(width: u32, height: u32, commands: void&, count: u32) -> void
+
+const UI_WIRE_STRIDE: usize = 32
+const UI_WIRE_CAPACITY: usize = UI_MAX_COMMANDS * UI_WIRE_STRIDE
+
+global mutable ui_wire_buffer: u8[UI_WIRE_CAPACITY] = zeroed
+
+# Host pointer-kind ordinals (wit enum pointer-kind { down, up, move, leave }).
+const UI_HOST_POINTER_DOWN: i32 = 0
+const UI_HOST_POINTER_UP: i32 = 1
+const UI_HOST_POINTER_MOVE: i32 = 2
+const UI_HOST_POINTER_LEAVE: i32 = 3
+
+def ui_wire_f32(base: usize, offset: usize, value: f32) -> void:
+    trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic, Unsafe.UncheckedIndex]:
+        slot: mutable f32& = (&ui_wire_buffer[base + offset]).cast[mutable f32&]
+        slot[0] <- value
+
+def ui_wire_color(base: usize, offset: usize, color: UiColor) -> void:
+    ui_wire_buffer[base + offset] <- color.r
+    ui_wire_buffer[base + offset + 1] <- color.g
+    ui_wire_buffer[base + offset + 2] <- color.b
+    ui_wire_buffer[base + offset + 3] <- color.a
+
+def ui_wire_discriminant(base: usize, value: u8) -> void:
+    ui_wire_buffer[base] <- value
+    ui_wire_buffer[base + 1] <- 0
+    ui_wire_buffer[base + 2] <- 0
+    ui_wire_buffer[base + 3] <- 0
+
+def ui_encode_command(command: UiCommand, base: usize) -> void:
+    match command:
+        UiCommand.Clear(color):
+            ui_wire_discriminant(base, 0)
+            ui_wire_color(base, 4, color)
+        UiCommand.FillRect(rectangle):
+            ui_wire_discriminant(base, 1)
+            ui_wire_f32(base, 4, rectangle.x)
+            ui_wire_f32(base, 8, rectangle.y)
+            ui_wire_f32(base, 12, rectangle.width)
+            ui_wire_f32(base, 16, rectangle.height)
+            ui_wire_color(base, 20, rectangle.color)
+        UiCommand.FillCircle(circle):
+            ui_wire_discriminant(base, 2)
+            ui_wire_f32(base, 4, circle.x)
+            ui_wire_f32(base, 8, circle.y)
+            ui_wire_f32(base, 12, circle.radius)
+            ui_wire_color(base, 16, circle.color)
+        UiCommand.FillTriangle(triangle):
+            ui_wire_discriminant(base, 3)
+            ui_wire_f32(base, 4, triangle.ax)
+            ui_wire_f32(base, 8, triangle.ay)
+            ui_wire_f32(base, 12, triangle.bx)
+            ui_wire_f32(base, 16, triangle.by)
+            ui_wire_f32(base, 20, triangle.cx)
+            ui_wire_f32(base, 24, triangle.cy)
+            ui_wire_color(base, 28, triangle.color)
+        UiCommand.FillLine(line):
+            ui_wire_discriminant(base, 4)
+            ui_wire_f32(base, 4, line.ax)
+            ui_wire_f32(base, 8, line.ay)
+            ui_wire_f32(base, 12, line.bx)
+            ui_wire_f32(base, 16, line.by)
+            ui_wire_color(base, 20, line.color)
+
+def ui_present() -> void:
+    return if ui_command_count == 0
+    for index in 0..<ui_command_count:
+        ui_encode_command(ui_command_buffer[index], index * UI_WIRE_STRIDE)
+    commands: void& = (&ui_wire_buffer[0]).cast[void&] can Unsafe.PointerCast
+    host_present_commands(ui_viewport_width.u32(), ui_viewport_height.u32(), commands, ui_command_count.u32())
+
+def ui_dispatch(kind: i32, x: f32, y: f32, code: i32) -> void:
+    event: mutable UiEvent = UiEvent{kind: kind, x: x, y: y, dx: 0.0, dy: 0.0, code: code}
+    app_event(event)
+
+def ui_dispatch_delta(kind: i32, x: f32, y: f32, dx: f32, dy: f32, code: i32) -> void:
+    event: mutable UiEvent = UiEvent{kind: kind, x: x, y: y, dx: dx, dy: dy, code: code}
+    app_event(event)
+
+def guest_start(width: u32, height: u32) -> void:
+    ui_viewport_width <- width.f32()
+    ui_viewport_height <- height.f32()
+    app_init()
+
+def guest_resize(width: u32, height: u32) -> void:
+    ui_viewport_width <- width.f32()
+    ui_viewport_height <- height.f32()
+    ui_dispatch(UI_EVENT_RESIZE, width.f32(), height.f32(), 0)
+
+def guest_frame(dt: f64) -> void:
+    ui_begin_frame()
+    app_frame()
+    ui_present()
+
+def guest_pointer(x: f32, y: f32, kind: i32) -> void:
+    ui_kind: mutable i32 = UI_EVENT_NONE
+    ui_kind <- UI_EVENT_POINTER_DOWN if kind == UI_HOST_POINTER_DOWN
+    ui_kind <- UI_EVENT_POINTER_UP if kind == UI_HOST_POINTER_UP
+    ui_kind <- UI_EVENT_POINTER_MOVE if kind == UI_HOST_POINTER_MOVE
+    ui_kind <- UI_EVENT_POINTER_LEAVE if kind == UI_HOST_POINTER_LEAVE
+    return if ui_kind == UI_EVENT_NONE
+    ui_dispatch(ui_kind, x, y, 0)
+
+def guest_key(code: i32, pressed: bool) -> void:
+    ui_dispatch(UI_EVENT_KEY_DOWN if pressed else UI_EVENT_KEY_UP, 0.0, 0.0, code)
+
+def guest_pointer_button_input(x: f32, y: f32, button: i32, pressed: bool) -> void:
+    ui_dispatch(UI_EVENT_POINTER_DOWN if pressed else UI_EVENT_POINTER_UP, x, y, button)
+
+def guest_scroll_input(x: f32, y: f32, delta_x: f32, delta_y: f32) -> void:
+    ui_dispatch_delta(UI_EVENT_SCROLL, x, y, delta_x, delta_y, 0)
+
+def guest_gamepad_button_input(index: u32, button: i32, value: f32) -> void:
+    ui_dispatch_delta(UI_EVENT_GAMEPAD_BUTTON, 0.0, 0.0, value, 0.0, button)
+
+def guest_gamepad_axis_input(index: u32, axis: i32, value: f32) -> void:
+    ui_dispatch_delta(UI_EVENT_GAMEPAD_AXIS, 0.0, 0.0, value, 0.0, axis)
+
+def guest_suspend() -> void:
+    pass
+
+def guest_resume() -> void:
+    pass
+
+@link_name("wasmbrowser:window/guest@0.1.0#start")
+export fn start(width: u32, height: u32) -> void = guest_start
+@link_name("wasmbrowser:window/guest@0.1.0#resize")
+export fn resize(width: u32, height: u32) -> void = guest_resize
+@link_name("wasmbrowser:window/guest@0.1.0#frame")
+export fn frame(dt: f64) -> void = guest_frame
+@link_name("wasmbrowser:window/guest@0.1.0#suspend")
+export fn suspend() -> void = guest_suspend
+@link_name("wasmbrowser:window/guest@0.1.0#resume")
+export fn resume() -> void = guest_resume
+@link_name("wasmbrowser:window/guest@0.1.0#key")
+export fn key(code: i32, pressed: bool) -> void = guest_key
+@link_name("wasmbrowser:window/guest@0.1.0#pointer")
+export fn pointer(x: f32, y: f32, kind: i32) -> void = guest_pointer
+@link_name("wasmbrowser:window/guest@0.1.0#pointer-button-input")
+export fn pointer_button_input(x: f32, y: f32, button: i32, pressed: bool) -> void = guest_pointer_button_input
+@link_name("wasmbrowser:window/guest@0.1.0#scroll-input")
+export fn scroll_input(x: f32, y: f32, delta_x: f32, delta_y: f32) -> void = guest_scroll_input
+@link_name("wasmbrowser:window/guest@0.1.0#gamepad-button-input")
+export fn gamepad_button_input(index: u32, button: i32, value: f32) -> void = guest_gamepad_button_input
+@link_name("wasmbrowser:window/guest@0.1.0#gamepad-axis-input")
+export fn gamepad_axis_input(index: u32, axis: i32, value: f32) -> void = guest_gamepad_axis_input

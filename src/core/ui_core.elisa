@@ -1,22 +1,121 @@
-# elisa-ui core: platform-independent types shared by every backend.
+# elisa-ui core: the platform-independent model every backend shares.
 #
-# The platform contract (implemented by exactly one included backend per binary):
-#   ui_clear(r, g, b, a)                      paint the whole surface
-#   ui_fill_rect(x, y, w, h, r, g, b, a)      filled rectangle in surface pixels
-# The app contract (implemented by the application, called by the backend):
-#   app_init()                                once, after the surface exists
-#   app_event(event)                          per translated input event
-#   app_frame()                               once per frame; issues draw calls
+# Drawing is RETAINED, not immediate. An app's frame appends commands to a
+# buffer; the backend consumes the whole batch at the end of the frame. That is
+# the shape wasmbrowser:window/host@0.1.0 requires (`present-commands` takes one
+# list per frame, and the manifest's `hybrid` execution mode depends on it), and
+# an immediate-mode backend like SDL3 loses nothing by replaying the batch.
+#
+# The geometry records mirror the WIT records field-for-field so the component
+# backend can lower them without reshaping. Canonical-ABI encoding stays in that
+# backend; nothing here knows about the wire format.
+#
+# App contract, implemented by the application:
+#   app_init()            once, after the surface exists
+#   app_event(event)      per translated input event
+#   app_frame()           once per frame; issues draw calls
 
+struct UiColor:
+    r: u8
+    g: u8
+    b: u8
+    a: u8
+
+struct UiRect:
+    x: f32
+    y: f32
+    width: f32
+    height: f32
+    color: UiColor
+
+struct UiCircle:
+    x: f32
+    y: f32
+    radius: f32
+    color: UiColor
+
+struct UiTriangle:
+    ax: f32
+    ay: f32
+    bx: f32
+    by: f32
+    cx: f32
+    cy: f32
+    color: UiColor
+
+struct UiLine:
+    ax: f32
+    ay: f32
+    bx: f32
+    by: f32
+    color: UiColor
+
+enum UiCommand:
+    Clear(color: UiColor)
+    FillRect(rectangle: UiRect)
+    FillCircle(circle: UiCircle)
+    FillTriangle(triangle: UiTriangle)
+    FillLine(line: UiLine)
+
+# Event kinds. Pointer and key values carry the host's own encoding: the
+# component backend receives wasmbrowser's pointer-kind/key-code ordinals and
+# the SDL3 backend translates its events into the same space.
 const UI_EVENT_NONE: i32 = 0
 const UI_EVENT_QUIT: i32 = 1
 const UI_EVENT_POINTER_MOVE: i32 = 2
 const UI_EVENT_POINTER_DOWN: i32 = 3
 const UI_EVENT_POINTER_UP: i32 = 4
-const UI_EVENT_KEY_DOWN: i32 = 5
+const UI_EVENT_POINTER_LEAVE: i32 = 5
+const UI_EVENT_KEY_DOWN: i32 = 6
+const UI_EVENT_KEY_UP: i32 = 7
+const UI_EVENT_RESIZE: i32 = 8
+const UI_EVENT_SCROLL: i32 = 9
+const UI_EVENT_GAMEPAD_BUTTON: i32 = 10
+const UI_EVENT_GAMEPAD_AXIS: i32 = 11
 
+# `code` carries the host's discrete selector (key code, pointer button, gamepad
+# button/axis). `dx`/`dy` carry continuous deltas: scroll distance, or a gamepad
+# axis/button value in dx. `x`/`y` stay the pointer position throughout.
 struct UiEvent:
     kind: mutable i32
     x: mutable f32
     y: mutable f32
+    dx: mutable f32
+    dy: mutable f32
     code: mutable i32
+
+# A fixed buffer keeps the frame path allocation-free, which matters most on the
+# component side: the freestanding cabi_realloc is monotonic, so a per-frame
+# growing list would never return memory to the instance.
+const UI_MAX_COMMANDS: usize = 1024
+
+global mutable ui_command_buffer: UiCommand[UI_MAX_COMMANDS] = zeroed
+global mutable ui_command_count: usize = 0
+global mutable ui_viewport_width: f32 = 0.0
+global mutable ui_viewport_height: f32 = 0.0
+
+def ui_begin_frame() -> void:
+    ui_command_count <- 0
+
+# Commands past the buffer's capacity are dropped rather than growing it. A
+# frame that overflows is a bug in the app, and silently reallocating would hide
+# it while making the component's monotonic heap grow without bound.
+def ui_push_command(command: UiCommand) -> void:
+    return if ui_command_count >= UI_MAX_COMMANDS
+    ui_command_buffer[ui_command_count] <- command
+    ui_command_count <- ui_command_count + 1
+
+def ui_clear(r: u8, g: u8, b: u8, a: u8) -> void:
+    ui_push_command(UiCommand.Clear(UiColor{r: r, g: g, b: b, a: a}))
+
+def ui_fill_rect(x: f32, y: f32, width: f32, height: f32, r: u8, g: u8, b: u8, a: u8) -> void:
+    ui_push_command(UiCommand.FillRect(UiRect{x: x, y: y, width: width, height: height, color: UiColor{r: r, g: g, b: b, a: a}}))
+
+def ui_fill_circle(x: f32, y: f32, radius: f32, r: u8, g: u8, b: u8, a: u8) -> void:
+    ui_push_command(UiCommand.FillCircle(UiCircle{x: x, y: y, radius: radius, color: UiColor{r: r, g: g, b: b, a: a}}))
+
+def ui_fill_triangle(ax: f32, ay: f32, bx: f32, by: f32, cx: f32, cy: f32, r: u8, g: u8, b: u8, a: u8) -> void:
+    ui_push_command(UiCommand.FillTriangle(UiTriangle{ax: ax, ay: ay, bx: bx, by: by, cx: cx, cy: cy, color: UiColor{r: r, g: g, b: b, a: a}}))
+
+def ui_fill_line(ax: f32, ay: f32, bx: f32, by: f32, r: u8, g: u8, b: u8, a: u8) -> void:
+    ui_push_command(UiCommand.FillLine(UiLine{ax: ax, ay: ay, bx: bx, by: by, color: UiColor{r: r, g: g, b: b, a: a}}))
