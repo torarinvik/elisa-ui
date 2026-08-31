@@ -27,7 +27,14 @@ logic with local presentation. SDL3 loses nothing by replaying the batch.
   [wasmbrowser](src/platform/wasmbrowser/ui_wasmbrowser.elisa) (a component
   implementing `world app`; the host drives the loop through the exported guest
   interface, and canonical-ABI encoding is confined to this file).
-- **Apps** implement `app_init` / `app_event(UiEvent)` / `app_frame`.
+- **Widgets** ([src/widgets/ui_widget.elisa](src/widgets/ui_widget.elisa)) — a
+  retained tree in one fixed array linked by index, box layout, hit testing, and
+  hover/press state. Layout is wxWidgets' sizer idea reduced to its load-bearing
+  parts: a container distributes its inner box along one axis, each child
+  contributes a minimum, and leftover space is shared out by `grow` weight.
+  Measure runs bottom-up, arrange top-down.
+- **Apps** implement `app_init` / `app_event(UiEvent)` / `app_frame`, plus
+  `app_widget_event(widget, event)` when using the widget layer.
 
 Backend selection is by include: each example has a `native_main.elisa` and a
 `wapp_main.elisa` entry that include the same `app.elisa`.
@@ -43,6 +50,7 @@ with `ELISA_UI_STAGE1`):
 ```sh
 scripts/build_native.sh   # -> build/hello_native (needs brew's sdl3)
 scripts/build_wapp.sh     # -> build/hello.wapp (+ build/hello.wasm)
+scripts/run_tests.sh      # builds and runs test/*_test.elisa
 ```
 
 The `.wapp` build needs `wasm-component-ld` (ships with Rust's `wasm32-wasip2`

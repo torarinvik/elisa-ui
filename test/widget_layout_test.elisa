@@ -1,0 +1,83 @@
+# Widget layout and hit-testing checks. Needs no backend: the widget layer only
+# depends on the core, so the sizer maths and pointer state machine can be
+# exercised without a window.
+
+include "../src/core/ui_core.elisa"
+include "../src/widgets/ui_widget.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable test_last_click: usize = UI_WIDGET_NONE
+global mutable test_failures: i32 = 0
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    test_last_click <- widget if event == UI_WIDGET_EVENT_CLICK
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    test_failures <- test_failures + 1
+    _ = puts(name)
+
+def near(actual: f32, expected: f32) -> bool:
+    delta: f32 = actual - expected
+    return delta > -0.01 and delta < 0.01
+
+def rect_is(index: usize, x: f32, y: f32, width: f32, height: f32) -> bool:
+    return near(ui_widgets[index].x, x) and near(ui_widgets[index].y, y) and near(ui_widgets[index].width, width) and near(ui_widgets[index].height, height)
+
+def build_tree() -> void:
+    ui_widget_reset()
+    root: usize = ui_panel(UI_WIDGET_NONE, UI_AXIS_COLUMN, 10.0, 10.0, UiColor{r: 10, g: 10, b: 10, a: 255})
+    fixed: usize = ui_button(root, 100.0, 40.0, UiColor{r: 1, g: 1, b: 1, a: 255}, UiColor{r: 2, g: 2, b: 2, a: 255}, UiColor{r: 3, g: 3, b: 3, a: 255})
+    ui_widget_set_grow(fixed, 0.0)
+    stretchy: usize = ui_button(root, 100.0, 40.0, UiColor{r: 4, g: 4, b: 4, a: 255}, UiColor{r: 5, g: 5, b: 5, a: 255}, UiColor{r: 6, g: 6, b: 6, a: 255})
+    ui_widget_set_grow(stretchy, 1.0)
+    ui_layout(800.0, 600.0)
+
+def main() -> i64:
+    build_tree()
+
+    # Column of two: inner box is 780x580 after 10px padding, one 10px gap.
+    # The fixed child keeps its 40px minimum; the growing child takes the rest.
+    check("root rect", rect_is(0, 0.0, 0.0, 800.0, 600.0))
+    check("fixed child keeps its minimum", rect_is(1, 10.0, 10.0, 780.0, 40.0))
+    check("growing child absorbs free space", rect_is(2, 10.0, 60.0, 780.0, 530.0))
+
+    # A container's minimum is derived bottom-up: 40 + 40 + 10 gap + 20 padding.
+    check("container minimum height", near(ui_widgets[0].min_height, 110.0))
+
+    check("hit finds the top child", ui_widget_hit(400.0, 20.0) == 1)
+    check("hit finds the bottom child", ui_widget_hit(400.0, 300.0) == 2)
+    check("non-interactive panel is not hit", ui_widget_hit(5.0, 5.0) == UI_WIDGET_NONE)
+
+    ui_widget_pointer(UI_EVENT_POINTER_MOVE, 400.0, 20.0)
+    check("hover marks the widget under the pointer", ui_widgets[1].hovered)
+    check("hover clears elsewhere", not ui_widgets[2].hovered)
+
+    test_last_click <- UI_WIDGET_NONE
+    ui_widget_pointer(UI_EVENT_POINTER_DOWN, 400.0, 20.0)
+    check("press marks the widget active", ui_widgets[1].pressed)
+    ui_widget_pointer(UI_EVENT_POINTER_UP, 400.0, 20.0)
+    check("release on the same widget clicks", test_last_click == 1)
+    check("release clears the pressed state", not ui_widgets[1].pressed)
+
+    # Pressing one widget and releasing over another must not click either.
+    test_last_click <- UI_WIDGET_NONE
+    ui_widget_pointer(UI_EVENT_POINTER_DOWN, 400.0, 20.0)
+    ui_widget_pointer(UI_EVENT_POINTER_UP, 400.0, 300.0)
+    check("release elsewhere cancels the click", test_last_click == UI_WIDGET_NONE)
+
+    # Relayout must be idempotent for the same viewport.
+    ui_layout(800.0, 600.0)
+    check("relayout is stable", rect_is(2, 10.0, 60.0, 780.0, 530.0))
+
+    # A narrower viewport still respects minimums and re-splits the remainder.
+    ui_layout(400.0, 300.0)
+    check("reflow keeps the fixed minimum", rect_is(1, 10.0, 10.0, 380.0, 40.0))
+    check("reflow shrinks the growing child", rect_is(2, 10.0, 60.0, 380.0, 230.0))
+
+    if test_failures == 0:
+        _ = puts("widget layout: all checks passed")
+        return 0
+    _ = puts("widget layout: FAILURES above")
+    return 1

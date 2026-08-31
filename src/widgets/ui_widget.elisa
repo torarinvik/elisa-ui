@@ -1,0 +1,264 @@
+# elisa-ui widgets: a retained widget tree, box layout, and hit testing.
+#
+# The layout model is wxWidgets' sizer idea reduced to its load-bearing parts: a
+# container distributes its inner box along one axis, each child contributes a
+# minimum size, and leftover space is shared out in proportion to each child's
+# `grow` weight. Two passes -- measure bottom-up, then arrange top-down -- so a
+# container's size never depends on the order its children were added.
+#
+# The tree lives in one fixed array of nodes linked by index. Nothing here
+# allocates: a frame that lays out, hit-tests, and paints touches only this
+# array and the core's command batch, which is what lets the same code run on
+# the component backend's monotonic heap.
+#
+# Apps implement `app_widget_event(widget, event)` to receive clicks.
+
+const UI_MAX_WIDGETS: usize = 256
+# One past the last valid slot, so it can never collide with a real index.
+const UI_WIDGET_NONE: usize = 256
+
+const UI_AXIS_COLUMN: i32 = 0
+const UI_AXIS_ROW: i32 = 1
+
+const UI_WIDGET_PANEL: i32 = 0
+const UI_WIDGET_BUTTON: i32 = 1
+
+const UI_WIDGET_EVENT_CLICK: i32 = 0
+
+struct UiWidget:
+    kind: mutable i32
+    parent: mutable usize
+    first_child: mutable usize
+    next_sibling: mutable usize
+    axis: mutable i32
+    padding: mutable f32
+    spacing: mutable f32
+    min_width: mutable f32
+    min_height: mutable f32
+    grow: mutable f32
+    x: mutable f32
+    y: mutable f32
+    width: mutable f32
+    height: mutable f32
+    color: mutable UiColor
+    hover_color: mutable UiColor
+    press_color: mutable UiColor
+    interactive: mutable bool
+    hovered: mutable bool
+    pressed: mutable bool
+
+global mutable ui_widgets: UiWidget[UI_MAX_WIDGETS] = zeroed
+global mutable ui_widget_count: usize = 0
+# The widget under the pointer, and the one holding a press. A click only fires
+# when both agree on release, so dragging off a button cancels it.
+global mutable ui_widget_hot: usize = UI_WIDGET_NONE
+global mutable ui_widget_active: usize = UI_WIDGET_NONE
+
+def ui_widget_reset() -> void:
+    ui_widget_count <- 0
+    ui_widget_hot <- UI_WIDGET_NONE
+    ui_widget_active <- UI_WIDGET_NONE
+
+def ui_widget_link(parent: usize, child: usize) -> void:
+    return if parent >= ui_widget_count
+    if ui_widgets[parent].first_child == UI_WIDGET_NONE:
+        ui_widgets[parent].first_child <- child
+        return
+    cursor: mutable usize = ui_widgets[parent].first_child
+    while ui_widgets[cursor].next_sibling != UI_WIDGET_NONE |cursor|:
+        cursor <- ui_widgets[cursor].next_sibling
+    ui_widgets[cursor].next_sibling <- child
+
+# Returns UI_WIDGET_NONE when the arena is full; callers may pass that on as a
+# parent, and every traversal treats it as absent, so overflow degrades to
+# missing widgets rather than corrupting the tree.
+def ui_widget_new(parent: usize, kind: i32) -> usize:
+    return UI_WIDGET_NONE if ui_widget_count >= UI_MAX_WIDGETS
+    index: usize = ui_widget_count
+    ui_widget_count <- ui_widget_count + 1
+    ui_widgets[index].kind <- kind
+    ui_widgets[index].parent <- parent
+    ui_widgets[index].first_child <- UI_WIDGET_NONE
+    ui_widgets[index].next_sibling <- UI_WIDGET_NONE
+    ui_widgets[index].axis <- UI_AXIS_COLUMN
+    ui_widgets[index].padding <- 0.0
+    ui_widgets[index].spacing <- 0.0
+    ui_widgets[index].min_width <- 0.0
+    ui_widgets[index].min_height <- 0.0
+    ui_widgets[index].grow <- 0.0
+    ui_widgets[index].x <- 0.0
+    ui_widgets[index].y <- 0.0
+    ui_widgets[index].width <- 0.0
+    ui_widgets[index].height <- 0.0
+    ui_widgets[index].interactive <- false
+    ui_widgets[index].hovered <- false
+    ui_widgets[index].pressed <- false
+    ui_widget_link(parent, index)
+    return index
+
+def ui_panel(parent: usize, axis: i32, padding: f32, spacing: f32, color: UiColor) -> usize:
+    index: usize = ui_widget_new(parent, UI_WIDGET_PANEL)
+    return index if index == UI_WIDGET_NONE
+    ui_widgets[index].axis <- axis
+    ui_widgets[index].padding <- padding
+    ui_widgets[index].spacing <- spacing
+    ui_widgets[index].color <- color
+    ui_widgets[index].hover_color <- color
+    ui_widgets[index].press_color <- color
+    return index
+
+def ui_button(parent: usize, min_width: f32, min_height: f32, color: UiColor, hover_color: UiColor, press_color: UiColor) -> usize:
+    index: usize = ui_widget_new(parent, UI_WIDGET_BUTTON)
+    return index if index == UI_WIDGET_NONE
+    ui_widgets[index].min_width <- min_width
+    ui_widgets[index].min_height <- min_height
+    ui_widgets[index].color <- color
+    ui_widgets[index].hover_color <- hover_color
+    ui_widgets[index].press_color <- press_color
+    ui_widgets[index].interactive <- true
+    return index
+
+def ui_widget_set_grow(index: usize, grow: f32) -> void:
+    return if index >= ui_widget_count
+    ui_widgets[index].grow <- grow
+
+def ui_widget_child_count(index: usize) -> usize:
+    count: mutable usize = 0
+    cursor: mutable usize = ui_widgets[index].first_child
+    while cursor != UI_WIDGET_NONE |cursor, count|:
+        count <- count + 1
+        cursor <- ui_widgets[cursor].next_sibling
+    return count
+
+# Bottom-up pass: a container's minimum is its children's minima summed along
+# its axis (plus spacing and padding) and maximised across it. A declared
+# minimum still wins if it is larger.
+def ui_widget_measure(index: usize) -> void:
+    return if index >= ui_widget_count
+    cursor: mutable usize = ui_widgets[index].first_child
+    return if cursor == UI_WIDGET_NONE
+    along: mutable f32 = 0.0
+    across: mutable f32 = 0.0
+    children: mutable f32 = 0.0
+    while cursor != UI_WIDGET_NONE |cursor, along, across, children|:
+        ui_widget_measure(cursor)
+        child_along: f32 = ui_widgets[cursor].min_width if ui_widgets[index].axis == UI_AXIS_ROW else ui_widgets[cursor].min_height
+        child_across: f32 = ui_widgets[cursor].min_height if ui_widgets[index].axis == UI_AXIS_ROW else ui_widgets[cursor].min_width
+        along <- along + child_along
+        across <- child_across if child_across > across else across
+        children <- children + 1.0
+        cursor <- ui_widgets[cursor].next_sibling
+    gaps: f32 = ui_widgets[index].spacing * (children - 1.0) if children > 1.0 else 0.0
+    pad: f32 = ui_widgets[index].padding * 2.0
+    content_width: f32 = along + gaps + pad if ui_widgets[index].axis == UI_AXIS_ROW else across + pad
+    content_height: f32 = across + pad if ui_widgets[index].axis == UI_AXIS_ROW else along + gaps + pad
+    ui_widgets[index].min_width <- content_width if content_width > ui_widgets[index].min_width else ui_widgets[index].min_width
+    ui_widgets[index].min_height <- content_height if content_height > ui_widgets[index].min_height else ui_widgets[index].min_height
+
+# Top-down pass: give every child its minimum along the axis, then share the
+# leftover in proportion to `grow`. Children stretch to fill the cross axis.
+def ui_widget_arrange(index: usize, x: f32, y: f32, width: f32, height: f32) -> void:
+    return if index >= ui_widget_count
+    ui_widgets[index].x <- x
+    ui_widgets[index].y <- y
+    ui_widgets[index].width <- width
+    ui_widgets[index].height <- height
+    first: usize = ui_widgets[index].first_child
+    return if first == UI_WIDGET_NONE
+
+    pad: f32 = ui_widgets[index].padding
+    inner_x: f32 = x + pad
+    inner_y: f32 = y + pad
+    inner_width: f32 = width - pad * 2.0
+    inner_height: f32 = height - pad * 2.0
+    row: bool = ui_widgets[index].axis == UI_AXIS_ROW
+
+    children: f32 = ui_widget_child_count(index).f32()
+    gaps: f32 = ui_widgets[index].spacing * (children - 1.0) if children > 1.0 else 0.0
+    inner_along: f32 = inner_width if row else inner_height
+
+    demand: mutable f32 = 0.0
+    weight: mutable f32 = 0.0
+    cursor: mutable usize = first
+    while cursor != UI_WIDGET_NONE |cursor, demand, weight|:
+        demand <- demand + (ui_widgets[cursor].min_width if row else ui_widgets[cursor].min_height)
+        weight <- weight + ui_widgets[cursor].grow
+        cursor <- ui_widgets[cursor].next_sibling
+
+    free: f32 = inner_along - gaps - demand
+    share: f32 = free / weight if weight > 0.0 and free > 0.0 else 0.0
+
+    offset: mutable f32 = 0.0
+    walk: mutable usize = first
+    while walk != UI_WIDGET_NONE |walk, offset|:
+        base: f32 = ui_widgets[walk].min_width if row else ui_widgets[walk].min_height
+        extent: f32 = base + share * ui_widgets[walk].grow
+        if row:
+            ui_widget_arrange(walk, inner_x + offset, inner_y, extent, inner_height)
+        else:
+            ui_widget_arrange(walk, inner_x, inner_y + offset, inner_width, extent)
+        offset <- offset + extent + ui_widgets[index].spacing
+        walk <- ui_widgets[walk].next_sibling
+
+def ui_layout(width: f32, height: f32) -> void:
+    return if ui_widget_count == 0
+    ui_widget_measure(0)
+    ui_widget_arrange(0, 0.0, 0.0, width, height)
+
+def ui_widget_contains(index: usize, x: f32, y: f32) -> bool:
+    return x >= ui_widgets[index].x and y >= ui_widgets[index].y and x < ui_widgets[index].x + ui_widgets[index].width and y < ui_widgets[index].y + ui_widgets[index].height
+
+# Later widgets are drawn over earlier ones, so scanning backwards finds the
+# topmost interactive widget under the pointer.
+def ui_widget_hit(x: f32, y: f32) -> usize:
+    return UI_WIDGET_NONE if ui_widget_count == 0
+    scan: mutable usize = ui_widget_count
+    while scan > 0 |scan|:
+        scan <- scan - 1
+        return scan if ui_widgets[scan].interactive and ui_widget_contains(scan, x, y)
+    return UI_WIDGET_NONE
+
+def ui_widget_clear_hover() -> void:
+    for index in 0..<ui_widget_count:
+        ui_widgets[index].hovered <- false
+
+def ui_widget_pointer(kind: i32, x: f32, y: f32) -> void:
+    hit: usize = ui_widget_hit(x, y)
+    ui_widget_clear_hover()
+    ui_widget_hot <- hit
+    if hit != UI_WIDGET_NONE:
+        ui_widgets[hit].hovered <- true
+
+    if kind == UI_EVENT_POINTER_DOWN and hit != UI_WIDGET_NONE:
+        ui_widget_active <- hit
+        ui_widgets[hit].pressed <- true
+        return
+
+    if kind == UI_EVENT_POINTER_UP:
+        active: usize = ui_widget_active
+        ui_widget_active <- UI_WIDGET_NONE
+        return if active == UI_WIDGET_NONE
+        ui_widgets[active].pressed <- false
+        if active == hit:
+            app_widget_event(active, UI_WIDGET_EVENT_CLICK)
+        return
+
+    if kind == UI_EVENT_POINTER_LEAVE:
+        released: usize = ui_widget_active
+        ui_widget_active <- UI_WIDGET_NONE
+        ui_widget_hot <- UI_WIDGET_NONE
+        return if released == UI_WIDGET_NONE
+        ui_widgets[released].pressed <- false
+
+def ui_widget_color(index: usize) -> UiColor:
+    return ui_widgets[index].press_color if ui_widgets[index].pressed
+    return ui_widgets[index].hover_color if ui_widgets[index].hovered
+    return ui_widgets[index].color
+
+# Pre-order emission gives painter's-algorithm ordering for free: a parent's
+# background is laid down before any of its children.
+def ui_widget_paint() -> void:
+    for index in 0..<ui_widget_count:
+        color: UiColor = ui_widget_color(index)
+        continue if color.a == 0
+        ui_fill_rect(ui_widgets[index].x, ui_widgets[index].y, ui_widgets[index].width, ui_widgets[index].height, color.r, color.g, color.b, color.a)
