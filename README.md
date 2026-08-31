@@ -26,7 +26,8 @@ logic with local presentation. SDL3 loses nothing by replaying the batch.
   libSDL3; `ui_run` drives the loop) and
   [wasmbrowser](src/platform/wasmbrowser/ui_wasmbrowser.elisa) (a component
   implementing `world app`; the host drives the loop through the exported guest
-  interface, and canonical-ABI encoding is confined to this file).
+  interface, and canonical-ABI encoding is confined to this file). Both render
+  real text: WasmBrowser through its host font, SDL3 through SDL_ttf.
 - **Widgets** ([src/widgets/ui_widget.elisa](src/widgets/ui_widget.elisa)) — a
   retained tree in one fixed array linked by index, box layout, hit testing, and
   hover/press state. Layout is wxWidgets' sizer idea reduced to its load-bearing
@@ -48,7 +49,7 @@ Both scripts use the compiler worktrees in `../elisa-ui-worktrees/` (override
 with `ELISA_UI_STAGE1`):
 
 ```sh
-scripts/build_native.sh   # -> build/hello_native (needs brew's sdl3)
+scripts/build_native.sh   # -> build/hello_native (needs brew's sdl3 and sdl3_ttf)
 scripts/build_wapp.sh     # -> build/hello.wapp (+ build/hello.wasm)
 scripts/run_tests.sh      # builds and runs test/*_test.elisa
 ```
@@ -61,6 +62,10 @@ world at `../WasmBrowser/wit/wasmbrowser.wit` (override with `ELISA_UI_WIT`).
 Run native: `./build/hello_native`; headless check with
 `SDL_VIDEODRIVER=dummy ELISA_UI_SMOKE_FRAMES=1 ./build/hello_native`. Inspect the
 package with `wasm-browser inspect build/hello.wapp`.
+
+The native backend loads a font with SDL_ttf; set `ELISA_UI_FONT` to override
+the default. Text still measures through the platform contract on both
+backends, so layout agrees even though the rasterizers differ.
 
 ### Elisascript ports (not yet runnable)
 

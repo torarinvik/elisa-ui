@@ -25,7 +25,23 @@ extern SDL_DestroyRenderer(renderer: void&) -> void
 extern SDL_DestroyWindow(window: void&) -> void
 extern SDL_Quit() -> void
 extern SDL_GetError() -> cstr
+extern SDL_CreateTextureFromSurface(renderer: void&, surface: void&) -> void&?
+extern SDL_RenderTexture(renderer: void&, texture: void&, source: void&?, destination: void&) -> bool
+extern SDL_DestroySurface(surface: void&) -> void
+extern SDL_DestroyTexture(texture: void&) -> void
 extern puts(text: cstr) -> i64
+extern getenv(name: cstr) -> cstr?
+
+# SDL_ttf 3.x. Lengths are byte counts, and a zero length means "NUL-terminated";
+# every call here passes an explicit length so an sview needs no terminator.
+extern TTF_Init() -> bool
+extern TTF_Quit() -> void
+extern TTF_OpenFont(file: cstr, size: f32) -> void&?
+extern TTF_CloseFont(font: void&) -> void
+extern TTF_GetStringSize(font: void&, text: cstr, length: usize, width: mutable i32&, height: mutable i32&) -> bool
+extern TTF_GetFontHeight(font: void&) -> i32
+extern TTF_GetFontAscent(font: void&) -> i32
+extern TTF_RenderText_Blended(font: void&, text: cstr, length: usize, color: u32) -> void&?
 
 global mutable ui_sdl_window: void&? = null
 global mutable ui_sdl_renderer: void&? = null
@@ -38,24 +54,93 @@ def ui_sdl_ren() -> void&:
         return renderer
     return zeroed
 
-# Without SDL_ttf there is no font to consult, so these are a proportional
-# approximation rather than real metrics. Text will not line up with
-# WasmBrowser's rendering pixel for pixel; that is the known cost of the native
-# backend having no glyph support yet.
-const UI_SDL_ADVANCE_RATIO: f32 = 0.5
-const UI_SDL_LINE_RATIO: f32 = 1.25
+# Text comes from SDL_ttf. A TTF_Font is tied to one point size, so fonts are
+# opened on demand and kept in a small table keyed by size; ui_sdl_fonts_close
+# releases them at shutdown.
+#
+# Resources here are paired explicitly rather than through a `__drop__`
+# destructor: stage1 accepts a destructor but never emits the call, so RAII
+# would silently leak every surface and texture. Revisit once stage1 lowers
+# drops.
+const UI_SDL_MAX_FONTS: usize = 8
+const UI_SDL_DEFAULT_FONT: cstr = "/System/Library/Fonts/Supplemental/Arial.ttf"
+
+global mutable ui_sdl_font_handles: (void&?)[UI_SDL_MAX_FONTS] = zeroed
+global mutable ui_sdl_font_sizes: f32[UI_SDL_MAX_FONTS] = zeroed
+global mutable ui_sdl_font_count: usize = 0
+# An optional override rather than a mutable cstr global: a global initialized
+# from a const cstr does not carry the literal's address through stage1, so the
+# path is resolved in a function instead.
+global mutable ui_sdl_font_override: cstr? = null
+
+def ui_sdl_font_path() -> cstr:
+    if ui_sdl_font_override is override:
+        return override
+    return UI_SDL_DEFAULT_FONT
+
+def ui_sdl_font_for(size: f32) -> void&?:
+    for index in 0..<ui_sdl_font_count:
+        return ui_sdl_font_handles[index] if ui_sdl_font_sizes[index] == size
+    return null if ui_sdl_font_count >= UI_SDL_MAX_FONTS
+    opened: void&? = TTF_OpenFont(ui_sdl_font_path(), size)
+    return null if opened == null
+    ui_sdl_font_handles[ui_sdl_font_count] <- opened
+    ui_sdl_font_sizes[ui_sdl_font_count] <- size
+    ui_sdl_font_count <- ui_sdl_font_count + 1
+    return opened
+
+def ui_sdl_fonts_close() -> void:
+    for index in 0..<ui_sdl_font_count:
+        if ui_sdl_font_handles[index] is handle:
+            TTF_CloseFont(handle)
+        ui_sdl_font_handles[index] <- null
+    ui_sdl_font_count <- 0
 
 def ui_measure_text_width(text: sview, size: f32) -> f32:
-    return text.len.f32() * size * UI_SDL_ADVANCE_RATIO
+    return 0.0 if text.len == 0
+    if ui_sdl_font_for(size) is font:
+        measured_width: mutable i32 = 0
+        measured_height: mutable i32 = 0
+        pointer: cstr = text.data.cast[cstr] can Unsafe.PointerCast
+        if TTF_GetStringSize(font, pointer, text.len, &measured_width, &measured_height):
+            return measured_width.f32()
+    return 0.0
 
 def ui_measure_text_height(text: sview, size: f32) -> f32:
-    return size * UI_SDL_LINE_RATIO
+    return ui_text_line_height(size)
 
 def ui_font_ascent(size: f32) -> f32:
+    if ui_sdl_font_for(size) is font:
+        return TTF_GetFontAscent(font).f32()
     return size
 
 def ui_text_line_height(size: f32) -> f32:
-    return size * UI_SDL_LINE_RATIO
+    if ui_sdl_font_for(size) is font:
+        return TTF_GetFontHeight(font).f32()
+    return size
+
+# SDL_Color is four bytes and travels in a single register, so it crosses as a
+# packed little-endian u32 rather than a by-value struct.
+def ui_sdl_packed_color(color: UiColor) -> u32:
+    return color.r.u32() | (color.g.u32() << 8) | (color.b.u32() << 16) | (color.a.u32() << 24)
+
+def ui_sdl_draw_text(run: UiTextRun) -> void:
+    return if run.text.len == 0
+    if ui_sdl_font_for(run.size) is font:
+        pointer: cstr = run.text.data.cast[cstr] can Unsafe.PointerCast
+        surface_opt: void&? = TTF_RenderText_Blended(font, pointer, run.text.len, ui_sdl_packed_color(run.color))
+        if surface_opt is surface:
+            texture_opt: void&? = SDL_CreateTextureFromSurface(ui_sdl_ren(), surface)
+            # The surface is finished with as soon as the texture exists, even
+            # if creating the texture failed.
+            SDL_DestroySurface(surface)
+            if texture_opt is texture:
+                width: f32 = ui_measure_text_width(run.text, run.size)
+                height: f32 = ui_text_line_height(run.size)
+                destination: mutable array[f32, 4] = [run.x, run.y, width, height]
+                destination_pointer: void& = (&destination[0]).cast[void&] can Unsafe.PointerCast
+                _ = SDL_RenderTexture(ui_sdl_ren(), texture, null, destination_pointer)
+                SDL_DestroyTexture(texture)
 
 def ui_sdl_rect(x: f32, y: f32, width: f32, height: f32, color: UiColor) -> void:
     rect: mutable array[f32, 4] = [x, y, width, height]
@@ -83,11 +168,7 @@ def ui_sdl_replay() -> void:
                 _ = SDL_SetRenderDrawColor(ui_sdl_ren(), line.color.r, line.color.g, line.color.b, line.color.a)
                 _ = SDL_RenderLine(ui_sdl_ren(), line.ax, line.ay, line.bx, line.by)
             UiCommand.DrawText(run):
-                # SDL3's renderer has no glyph support without SDL_ttf, so a run
-                # is drawn as a dim bar occupying the space the text would fill.
-                # Layout still matches WasmBrowser because both sides measure
-                # through ui_measure_text_width; only the pixels differ.
-                ui_sdl_rect(run.x, run.y, ui_measure_text_width(run.text, run.size), ui_text_line_height(run.size), UiColor{r: run.color.r, g: run.color.g, b: run.color.b, a: run.color.a / 3})
+                ui_sdl_draw_text(run)
 
 def ui_sdl_event_type() -> u32:
     type_ref: mutable u32& = (&ui_sdl_event_buffer[0]).cast[u32&] can Unsafe.PointerCast
@@ -152,6 +233,13 @@ def ui_run(title: cstr, width: i32, height: i32, max_frames: i64) -> i64:
             SDL_Quit()
             return 1
         ui_sdl_renderer <- renderer_opt
+    # Text is optional: a host without the font still runs, it just measures
+    # every run as zero-width.
+    if not TTF_Init():
+        _ = puts(SDL_GetError())
+    path_override: cstr? = getenv("ELISA_UI_FONT")
+    if path_override is override:
+        ui_sdl_font_override <- override
     ui_viewport_width <- width.f32()
     ui_viewport_height <- height.f32()
     app_init()
@@ -170,6 +258,8 @@ def ui_run(title: cstr, width: i32, height: i32, max_frames: i64) -> i64:
         _ = SDL_RenderPresent(ui_sdl_ren())
         frames <- frames + 1
         running <- false if max_frames > 0 and frames >= max_frames
+    ui_sdl_fonts_close()
+    TTF_Quit()
     if ui_sdl_renderer is done_renderer:
         SDL_DestroyRenderer(done_renderer)
     if ui_sdl_window is done_window:

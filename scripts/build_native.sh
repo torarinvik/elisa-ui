@@ -12,5 +12,5 @@ SDL_LIB="${ELISA_UI_SDL_LIB:-/opt/homebrew/lib}"
 
 mkdir -p "$ROOT/build"
 bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ROOT/build/hello_native.o" "$ROOT/examples/hello/native_main.elisa"
-clang -Wl,-dead_strip -o "$ROOT/build/hello_native" "$ROOT/build/hello_native.o" "$RUNTIME" -L"$SDL_LIB" -lSDL3 -Wl,-rpath,"$SDL_LIB"
+clang -Wl,-dead_strip -o "$ROOT/build/hello_native" "$ROOT/build/hello_native.o" "$RUNTIME" -L"$SDL_LIB" -lSDL3 -lSDL3_ttf -Wl,-rpath,"$SDL_LIB"
 echo "built $ROOT/build/hello_native"

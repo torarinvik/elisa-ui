@@ -7,6 +7,7 @@ set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 STAGE1="${ELISA_UI_STAGE1:-$ROOT/../elisa-ui-worktrees/stage1}"
 RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
+SDL_LIB="${ELISA_UI_SDL_LIB:-/opt/homebrew/lib}"
 
 [[ -x "$STAGE1/bin/elisac-stage1" ]] || { echo "no stage1 product at $STAGE1/bin/elisac-stage1" >&2; exit 2; }
 [[ -f "$RUNTIME" ]] || { echo "no runtime object at $RUNTIME" >&2; exit 2; }
@@ -17,7 +18,9 @@ status=0
 for source in "$ROOT"/test/*_test.elisa; do
   name="$(basename "$source" .elisa)"
   bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ROOT/build/$name.o" "$source"
-  clang -Wl,-dead_strip -o "$ROOT/build/$name" "$ROOT/build/$name.o" "$RUNTIME"
+  # Link SDL for tests that exercise the native backend; the others simply
+  # do not reference these symbols.
+  clang -Wl,-dead_strip -o "$ROOT/build/$name" "$ROOT/build/$name.o" "$RUNTIME" -L"$SDL_LIB" -lSDL3 -lSDL3_ttf -Wl,-rpath,"$SDL_LIB"
   if "$ROOT/build/$name"; then
     echo "PASS $name"
   else

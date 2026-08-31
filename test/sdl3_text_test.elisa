@@ -1,0 +1,65 @@
+# SDL_ttf measurement checks for the native backend. These assert that a real
+# font is opened and consulted, rather than that the program merely links: a
+# missing font would silently measure everything as zero, which layout would
+# accept while producing collapsed widgets.
+
+include "../src/platform/sdl3/ui_sdl3.elisa"
+include "../src/widgets/ui_widget.elisa"
+
+global mutable text_failures: i32 = 0
+
+# The backend calls into the app contract; a measurement test has no app.
+def app_init() -> void:
+    pass
+
+def app_event(event: mutable UiEvent&) -> void:
+    pass
+
+def app_frame() -> void:
+    pass
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    text_failures <- text_failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    if not TTF_Init():
+        _ = puts(SDL_GetError())
+        return 2
+
+    narrow: f32 = ui_measure_text_width("i", 20.0)
+    wide: f32 = ui_measure_text_width("MMMMMMMMMM", 20.0)
+    check("a font opened and measured a non-zero width", narrow > 0.0)
+    check("wider text measures wider", wide > narrow)
+
+    # A proportional font is the point of using SDL_ttf: ten Ms must be much
+    # more than ten times an i would be under a monospace approximation.
+    check("measurement is proportional, not monospace", wide > narrow * 10.0)
+
+    small: f32 = ui_measure_text_width("Save", 12.0)
+    large: f32 = ui_measure_text_width("Save", 24.0)
+    check("larger point size measures wider", large > small)
+
+    check("line height is positive", ui_text_line_height(20.0) > 0.0)
+    check("line height grows with size", ui_text_line_height(32.0) > ui_text_line_height(12.0))
+    check("ascent is positive and within the line", ui_font_ascent(20.0) > 0.0 and ui_font_ascent(20.0) <= ui_text_line_height(20.0))
+    check("empty text measures zero", ui_measure_text_width("", 20.0) == 0.0)
+
+    # The size table must reuse an already-open font rather than growing.
+    before: usize = ui_sdl_font_count
+    _ = ui_measure_text_width("again", 20.0)
+    check("repeat sizes reuse the cached font", ui_sdl_font_count == before)
+
+    ui_sdl_fonts_close()
+    check("closing releases every cached font", ui_sdl_font_count == 0)
+    TTF_Quit()
+
+    if text_failures == 0:
+        _ = puts("sdl3 text: all checks passed")
+        return 0
+    _ = puts("sdl3 text: FAILURES above")
+    return 1
