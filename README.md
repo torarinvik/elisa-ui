@@ -53,3 +53,11 @@ world at `../WasmBrowser/wit/wasmbrowser.wit` (override with `ELISA_UI_WIT`).
 Run native: `./build/hello_native`; headless check with
 `SDL_VIDEODRIVER=dummy ELISA_UI_SMOKE_FRAMES=1 ./build/hello_native`. Inspect the
 package with `wasm-browser inspect build/hello.wapp`.
+
+### Elisascript ports (not yet runnable)
+
+`build_native.elisascript` and `build_wapp.elisascript` are ports of the two
+shell scripts to [Elisascript](../elisa-script), intended to replace them. They
+are **unvalidated**: the Elisascript toolchain does not currently build against
+the present Elisa compiler, so nothing has lowered or run them yet. The `.sh`
+scripts remain the working path until then.

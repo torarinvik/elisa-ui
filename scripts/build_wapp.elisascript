@@ -1,0 +1,86 @@
+# elisa-ui WasmBrowser package build, written in Elisascript.
+#
+# Replaces build_wapp.sh. Two steps, mirroring WasmBrowser's own SDK recipe:
+# compile the Elisa sources into a Wasm component against the WIT world, then
+# pack manifest.json + the component into a .wapp. No JavaScript, ESM loader, or
+# TypeScript facade is produced at any point -- --component-type implies
+# --wasm-only.
+#
+# Run from the repository root, or point ELISA_UI_ROOT at it.
+
+const DEFAULT_STAGE1: sview = "../elisa-ui-worktrees/stage1"
+const DEFAULT_WASMBROWSER: sview = "../WasmBrowser"
+const EXAMPLE: sview = "hello"
+
+def resolve(base: Path, override: sview, fallback: sview) -> Path:
+    return path_join(base, fallback) if override == "" else path_join(base, override)
+
+# The CLI may be on PATH, named by the environment, or sitting in a cargo target
+# directory. Prefer an explicit setting, then the two conventional build
+# locations; an empty result means "packing is unavailable", not an error.
+def find_pack_cli(wasmbrowser: Path) -> sview:
+    explicit: sview = getenv_or("WASM_BROWSER_CLI", "")
+    return explicit if explicit != ""
+    debug_cli: Path = path_join(wasmbrowser, "target/debug/wasm-browser")
+    return f"{debug_cli}" if is_executable(debug_cli)
+    release_cli: Path = path_join(wasmbrowser, "target/release/wasm-browser")
+    return f"{release_cli}" if is_executable(release_cli)
+    return ""
+
+def main(arguments: darray[sview]) -> i64:
+    root: Path = resolve(current_directory(), getenv_or("ELISA_UI_ROOT", ""), ".")
+    stage1: Path = resolve(root, getenv_or("ELISA_UI_STAGE1", ""), DEFAULT_STAGE1)
+    wasmbrowser: Path = resolve(root, getenv_or("ELISA_UI_WASMBROWSER", ""), DEFAULT_WASMBROWSER)
+    wit: Path = resolve(wasmbrowser, getenv_or("ELISA_UI_WIT", ""), "wit/wasmbrowser.wit")
+
+    product: Path = path_join(stage1, "bin/elisac-stage1")
+    compiler: Path = path_join(stage1, "scripts/elisac_stage1.sh")
+    source: Path = path_join(root, f"examples/{EXAMPLE}/wapp_main.elisa")
+    manifest: Path = path_join(root, f"examples/{EXAMPLE}/manifest.json")
+
+    if not is_file(product):
+        eprint(f"no stage1 product at {product} (run scripts/elisac_stage1.sh --seed there)")
+        return 2
+    if not is_file(wit):
+        eprint(f"missing WasmBrowser WIT: {wit} (set ELISA_UI_WIT or ELISA_UI_WASMBROWSER)")
+        return 2
+    if not is_file(source):
+        eprint(f"no component entry: {source}")
+        return 2
+
+    build: Path = path_join(root, "build")
+    _ = try mkdir_p(build) else false
+
+    # Stage the package outside the source tree so generated binaries never
+    # become source files; the only payload is manifest.json and main.wasm.
+    package_dir: Path = try mkdtemp() else path_join(build, "wapp-stage")
+    staged_manifest: Path = path_join(package_dir, "manifest.json")
+    staged_component: Path = path_join(package_dir, "main.wasm")
+    _ = try copy_path(manifest, staged_manifest) else false
+
+    build_status: i64 = try run_process(exe"bash", [f"{compiler}", "-emit", "wasm", "--wasm-only", "--component-type", f"{wit}", "-o", f"{staged_component}", f"{source}"]) else 1
+    if build_status != 0:
+        eprint("elisa-ui: building the WasmBrowser component failed")
+        _ = try remove_tree(package_dir) else false
+        return build_status
+
+    # Keep the raw component beside the package for inspection and smoke checks.
+    component: Path = path_join(build, f"{EXAMPLE}.wasm")
+    _ = try copy_path(staged_component, component) else false
+
+    pack_cli: sview = find_pack_cli(wasmbrowser)
+    if pack_cli == "":
+        println(f"built component {component}")
+        eprint(f"WasmBrowser CLI not found; set WASM_BROWSER_CLI or run 'cargo build -p wb-cli' in {wasmbrowser} to pack the .wapp")
+        _ = try remove_tree(package_dir) else false
+        return 3
+
+    package: Path = path_join(build, f"{EXAMPLE}.wapp")
+    pack_status: i64 = try run_process(try executable(pack_cli) else exe"false", ["pack", f"{package_dir}", "-o", f"{package}"]) else 1
+    _ = try remove_tree(package_dir) else false
+    if pack_status != 0:
+        eprint("elisa-ui: packing the .wapp failed")
+        return pack_status
+
+    println(f"built {package}")
+    return 0

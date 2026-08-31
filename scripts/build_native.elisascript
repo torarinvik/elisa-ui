@@ -1,0 +1,52 @@
+# elisa-ui native build (SDL3), written in Elisascript.
+#
+# Replaces build_native.sh. Run from the repository root, or point ELISA_UI_ROOT
+# at it. Every process call is shell-free: the argv vector is explicit, so no
+# quoting, word-splitting, or glob-expansion rules apply to any argument -- the
+# reason a path containing spaces needed no care here, unlike in the shell
+# version this replaces.
+
+const DEFAULT_STAGE1: sview = "../elisa-ui-worktrees/stage1"
+const DEFAULT_SDL_LIB: sview = "/opt/homebrew/lib"
+const EXAMPLE: sview = "hello"
+
+# An absolute override replaces the base, so one helper covers both the
+# "relative to the repository" and "absolute path from the environment" cases.
+def resolve(base: Path, override: sview, fallback: sview) -> Path:
+    return path_join(base, fallback) if override == "" else path_join(base, override)
+
+def main(arguments: darray[sview]) -> i64:
+    root: Path = resolve(current_directory(), getenv_or("ELISA_UI_ROOT", ""), ".")
+    stage1: Path = resolve(root, getenv_or("ELISA_UI_STAGE1", ""), DEFAULT_STAGE1)
+    sdl_lib: sview = getenv_or("ELISA_UI_SDL_LIB", DEFAULT_SDL_LIB)
+
+    product: Path = path_join(stage1, "bin/elisac-stage1")
+    runtime: Path = path_join(stage1, "build/runtime/elisacore_runtime.o")
+    compiler: Path = path_join(stage1, "scripts/elisac_stage1.sh")
+
+    if not is_file(product):
+        eprint(f"no stage1 product at {product} (run scripts/elisac_stage1.sh --seed there)")
+        return 2
+    if not is_file(runtime):
+        eprint(f"no runtime object at {runtime} (run scripts/build_runtime_object.sh there)")
+        return 2
+
+    build: Path = path_join(root, "build")
+    _ = try mkdir_p(build) else false
+
+    source: Path = path_join(root, f"examples/{EXAMPLE}/native_main.elisa")
+    object_file: Path = path_join(build, f"{EXAMPLE}_native.o")
+    binary: Path = path_join(build, f"{EXAMPLE}_native")
+
+    compile_status: i64 = try run_process(exe"bash", [f"{compiler}", "-O0", "-o", f"{object_file}", f"{source}"]) else 1
+    if compile_status != 0:
+        eprint("elisa-ui: compiling native_main.elisa failed")
+        return compile_status
+
+    link_status: i64 = try run_process(exe"clang", ["-Wl,-dead_strip", "-o", f"{binary}", f"{object_file}", f"{runtime}", f"-L{sdl_lib}", "-lSDL3", f"-Wl,-rpath,{sdl_lib}"]) else 1
+    if link_status != 0:
+        eprint("elisa-ui: linking the native binary failed")
+        return link_status
+
+    println(f"built {binary}")
+    return 0
