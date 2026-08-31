@@ -19,6 +19,41 @@ include "../../core/ui_core.elisa"
 @link_name("present-commands")
 extern host_present_commands(width: u32, height: u32, commands: void&, count: u32) -> void
 
+# Canonical strings cross as a pointer/length pair. These are the measurement
+# side of the text contract: layout must know a run's extent before anything is
+# drawn, and the host answers from the same font it rasterizes with.
+@wasm_import_module("wasmbrowser:window/host@0.1.0")
+@link_name("measure-text-width")
+extern host_measure_text_width(text: cstr, length: u32, size: f32) -> f32
+
+@wasm_import_module("wasmbrowser:window/host@0.1.0")
+@link_name("measure-text-height")
+extern host_measure_text_height(text: cstr, length: u32, size: f32) -> f32
+
+@wasm_import_module("wasmbrowser:window/host@0.1.0")
+@link_name("font-ascent")
+extern host_font_ascent(size: f32) -> f32
+
+@wasm_import_module("wasmbrowser:window/host@0.1.0")
+@link_name("font-line-height")
+extern host_font_line_height(size: f32) -> f32
+
+def ui_measure_text_width(text: sview, size: f32) -> f32:
+    return 0.0 if text.len == 0
+    pointer: cstr = text.data.cast[cstr] can Unsafe.PointerCast
+    return host_measure_text_width(pointer, text.len.u32(), size)
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return 0.0 if text.len == 0
+    pointer: cstr = text.data.cast[cstr] can Unsafe.PointerCast
+    return host_measure_text_height(pointer, text.len.u32(), size)
+
+def ui_font_ascent(size: f32) -> f32:
+    return host_font_ascent(size)
+
+def ui_text_line_height(size: f32) -> f32:
+    return host_font_line_height(size)
+
 const UI_WIRE_STRIDE: usize = 32
 const UI_WIRE_CAPACITY: usize = UI_MAX_COMMANDS * UI_WIRE_STRIDE
 
@@ -40,6 +75,11 @@ def ui_wire_color(base: usize, offset: usize, color: UiColor) -> void:
     ui_wire_buffer[base + offset + 1] <- color.g
     ui_wire_buffer[base + offset + 2] <- color.b
     ui_wire_buffer[base + offset + 3] <- color.a
+
+def ui_wire_u32(base: usize, offset: usize, value: uintptr) -> void:
+    trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic, Unsafe.UncheckedIndex]:
+        slot: mutable u32& = (&ui_wire_buffer[base + offset]).cast[mutable u32&]
+        slot[0] <- value.u32()
 
 def ui_wire_discriminant(base: usize, value: u8) -> void:
     ui_wire_buffer[base] <- value
@@ -81,6 +121,18 @@ def ui_encode_command(command: UiCommand, base: usize) -> void:
             ui_wire_f32(base, 12, line.bx)
             ui_wire_f32(base, 16, line.by)
             ui_wire_color(base, 20, line.color)
+        UiCommand.DrawText(run):
+            # text-run lowers to x, y, size, color, then the string's pointer
+            # and length: 24 payload bytes, which still fits the 28 the
+            # largest case (triangle) already reserves.
+            ui_wire_discriminant(base, 5)
+            ui_wire_f32(base, 4, run.x)
+            ui_wire_f32(base, 8, run.y)
+            ui_wire_f32(base, 12, run.size)
+            ui_wire_color(base, 16, run.color)
+            text_pointer: uintptr = run.text.data.cast[uintptr] can Unsafe.PointerCast
+            ui_wire_u32(base, 20, text_pointer)
+            ui_wire_u32(base, 24, run.text.len.u32().uintptr())
 
 def ui_present() -> void:
     return if ui_command_count == 0

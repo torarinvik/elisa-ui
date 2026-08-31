@@ -50,12 +50,25 @@ struct UiLine:
     by: f32
     color: UiColor
 
+# `x`/`y` are the run's top-left, not its baseline, so a caller that knows only
+# a layout box can place text without consulting font metrics. The text is a
+# view, not a copy: it must outlive the frame, which is why the label widget
+# takes static text rather than building strings per frame -- the component
+# backend's allocator is monotonic and would never reclaim them.
+struct UiTextRun:
+    x: f32
+    y: f32
+    size: f32
+    color: UiColor
+    text: sview
+
 enum UiCommand:
     Clear(color: UiColor)
     FillRect(rectangle: UiRect)
     FillCircle(circle: UiCircle)
     FillTriangle(triangle: UiTriangle)
     FillLine(line: UiLine)
+    DrawText(run: UiTextRun)
 
 # Event kinds. Pointer and key values carry the host's own encoding: the
 # component backend receives wasmbrowser's pointer-kind/key-code ordinals and
@@ -119,3 +132,6 @@ def ui_fill_triangle(ax: f32, ay: f32, bx: f32, by: f32, cx: f32, cy: f32, r: u8
 
 def ui_fill_line(ax: f32, ay: f32, bx: f32, by: f32, r: u8, g: u8, b: u8, a: u8) -> void:
     ui_push_command(UiCommand.FillLine(UiLine{ax: ax, ay: ay, bx: bx, by: by, color: UiColor{r: r, g: g, b: b, a: a}}))
+
+def ui_text(x: f32, y: f32, size: f32, text: sview, r: u8, g: u8, b: u8, a: u8) -> void:
+    ui_push_command(UiCommand.DrawText(UiTextRun{x: x, y: y, size: size, color: UiColor{r: r, g: g, b: b, a: a}, text: text}))

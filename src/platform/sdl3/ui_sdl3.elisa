@@ -38,6 +38,25 @@ def ui_sdl_ren() -> void&:
         return renderer
     return zeroed
 
+# Without SDL_ttf there is no font to consult, so these are a proportional
+# approximation rather than real metrics. Text will not line up with
+# WasmBrowser's rendering pixel for pixel; that is the known cost of the native
+# backend having no glyph support yet.
+const UI_SDL_ADVANCE_RATIO: f32 = 0.5
+const UI_SDL_LINE_RATIO: f32 = 1.25
+
+def ui_measure_text_width(text: sview, size: f32) -> f32:
+    return text.len.f32() * size * UI_SDL_ADVANCE_RATIO
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size * UI_SDL_LINE_RATIO
+
+def ui_font_ascent(size: f32) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size * UI_SDL_LINE_RATIO
+
 def ui_sdl_rect(x: f32, y: f32, width: f32, height: f32, color: UiColor) -> void:
     rect: mutable array[f32, 4] = [x, y, width, height]
     _ = SDL_SetRenderDrawColor(ui_sdl_ren(), color.r, color.g, color.b, color.a)
@@ -63,6 +82,12 @@ def ui_sdl_replay() -> void:
             UiCommand.FillLine(line):
                 _ = SDL_SetRenderDrawColor(ui_sdl_ren(), line.color.r, line.color.g, line.color.b, line.color.a)
                 _ = SDL_RenderLine(ui_sdl_ren(), line.ax, line.ay, line.bx, line.by)
+            UiCommand.DrawText(run):
+                # SDL3's renderer has no glyph support without SDL_ttf, so a run
+                # is drawn as a dim bar occupying the space the text would fill.
+                # Layout still matches WasmBrowser because both sides measure
+                # through ui_measure_text_width; only the pixels differ.
+                ui_sdl_rect(run.x, run.y, ui_measure_text_width(run.text, run.size), ui_text_line_height(run.size), UiColor{r: run.color.r, g: run.color.g, b: run.color.b, a: run.color.a / 3})
 
 def ui_sdl_event_type() -> u32:
     type_ref: mutable u32& = (&ui_sdl_event_buffer[0]).cast[u32&] can Unsafe.PointerCast

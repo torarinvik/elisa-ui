@@ -10,6 +10,21 @@ extern puts(text: cstr) -> i64
 global mutable test_last_click: usize = UI_WIDGET_NONE
 global mutable test_failures: i32 = 0
 
+# Text measurement is part of the platform contract, so a test with no backend
+# supplies it. Deterministic ratios keep the label assertions exact instead of
+# depending on whichever font a host happens to load.
+def ui_measure_text_width(text: sview, size: f32) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size
+
+def ui_font_ascent(size: f32) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
 def app_widget_event(widget: usize, event: i32) -> void:
     test_last_click <- widget if event == UI_WIDGET_EVENT_CLICK
 
@@ -75,6 +90,28 @@ def main() -> i64:
     ui_layout(400.0, 300.0)
     check("reflow keeps the fixed minimum", rect_is(1, 10.0, 10.0, 380.0, 40.0))
     check("reflow shrinks the growing child", rect_is(2, 10.0, 60.0, 380.0, 230.0))
+
+    # A label's minimum comes from its measured text, so it sizes a container
+    # that would otherwise collapse. "Save" at size 20 measures 4 * 20 * 0.5 = 40
+    # wide and 20 tall under the stub above.
+    ui_widget_reset()
+    row: usize = ui_panel(UI_WIDGET_NONE, UI_AXIS_ROW, 4.0, 0.0, UiColor{r: 1, g: 1, b: 1, a: 255})
+    label: usize = ui_label(row, "Save", 20.0, UiColor{r: 255, g: 255, b: 255, a: 255})
+    ui_layout(200.0, 100.0)
+    check("label takes its measured width", near(ui_widgets[label].min_width, 40.0))
+    check("label takes its line height", near(ui_widgets[label].min_height, 20.0))
+    check("label container grows to fit text", near(ui_widgets[row].min_width, 48.0))
+    check("label is not interactive", not ui_widgets[label].interactive)
+
+    # Painting a label must emit a text command; an empty label must not.
+    ui_begin_frame()
+    ui_widget_paint()
+    check("painting a label emits a text command", ui_command_count == 2)
+    blank: usize = ui_label(row, "", 20.0, UiColor{r: 255, g: 255, b: 255, a: 255})
+    ui_layout(200.0, 100.0)
+    ui_begin_frame()
+    ui_widget_paint()
+    check("an empty label emits no text", ui_command_count == 2)
 
     if test_failures == 0:
         _ = puts("widget layout: all checks passed")

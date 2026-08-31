@@ -22,6 +22,7 @@ const UI_AXIS_ROW: i32 = 1
 
 const UI_WIDGET_PANEL: i32 = 0
 const UI_WIDGET_BUTTON: i32 = 1
+const UI_WIDGET_LABEL: i32 = 2
 
 const UI_WIDGET_EVENT_CLICK: i32 = 0
 
@@ -43,6 +44,9 @@ struct UiWidget:
     color: mutable UiColor
     hover_color: mutable UiColor
     press_color: mutable UiColor
+    text: mutable sview
+    text_size: mutable f32
+    text_color: mutable UiColor
     interactive: mutable bool
     hovered: mutable bool
     pressed: mutable bool
@@ -90,6 +94,8 @@ def ui_widget_new(parent: usize, kind: i32) -> usize:
     ui_widgets[index].y <- 0.0
     ui_widgets[index].width <- 0.0
     ui_widgets[index].height <- 0.0
+    ui_widgets[index].text <- ""
+    ui_widgets[index].text_size <- 0.0
     ui_widgets[index].interactive <- false
     ui_widgets[index].hovered <- false
     ui_widgets[index].pressed <- false
@@ -116,6 +122,23 @@ def ui_button(parent: usize, min_width: f32, min_height: f32, color: UiColor, ho
     ui_widgets[index].hover_color <- hover_color
     ui_widgets[index].press_color <- press_color
     ui_widgets[index].interactive <- true
+    return index
+
+# A label's minimum is the measured extent of its text, so it participates in
+# layout like any other child. Measurement happens once here rather than every
+# frame: the text is a view that does not change, and the platform's measure
+# call may cross into the host.
+def ui_label(parent: usize, text: sview, size: f32, color: UiColor) -> usize:
+    index: usize = ui_widget_new(parent, UI_WIDGET_LABEL)
+    return index if index == UI_WIDGET_NONE
+    ui_widgets[index].text <- text
+    ui_widgets[index].text_size <- size
+    ui_widgets[index].text_color <- color
+    ui_widgets[index].color <- UiColor{r: 0, g: 0, b: 0, a: 0}
+    ui_widgets[index].hover_color <- UiColor{r: 0, g: 0, b: 0, a: 0}
+    ui_widgets[index].press_color <- UiColor{r: 0, g: 0, b: 0, a: 0}
+    ui_widgets[index].min_width <- ui_measure_text_width(text, size)
+    ui_widgets[index].min_height <- ui_text_line_height(size)
     return index
 
 def ui_widget_set_grow(index: usize, grow: f32) -> void:
@@ -260,5 +283,10 @@ def ui_widget_color(index: usize) -> UiColor:
 def ui_widget_paint() -> void:
     for index in 0..<ui_widget_count:
         color: UiColor = ui_widget_color(index)
-        continue if color.a == 0
-        ui_fill_rect(ui_widgets[index].x, ui_widgets[index].y, ui_widgets[index].width, ui_widgets[index].height, color.r, color.g, color.b, color.a)
+        if color.a != 0:
+            ui_fill_rect(ui_widgets[index].x, ui_widgets[index].y, ui_widgets[index].width, ui_widgets[index].height, color.r, color.g, color.b, color.a)
+        continue if ui_widgets[index].text_size <= 0.0 or ui_widgets[index].text.len == 0
+        # Centre the run vertically in the widget's box; horizontal placement
+        # stays at the leading edge until an alignment control exists.
+        text_y: f32 = ui_widgets[index].y + (ui_widgets[index].height - ui_text_line_height(ui_widgets[index].text_size)) / 2.0
+        ui_text(ui_widgets[index].x, text_y, ui_widgets[index].text_size, ui_widgets[index].text, ui_widgets[index].text_color.r, ui_widgets[index].text_color.g, ui_widgets[index].text_color.b, ui_widgets[index].text_color.a)
