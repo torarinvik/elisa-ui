@@ -1,0 +1,72 @@
+# RAII checks for the pattern the SDL3 backend uses for glyph surfaces and
+# textures: a handle wrapper whose __drop__ releases it, declared inside nested
+# conditionals with early returns. Asserting the release actually happens is the
+# point -- a destructor that silently never runs still compiles, links, and
+# appears to work, which is exactly how the leak would hide.
+
+include "../src/core/ui_core.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable released: i64 = 0
+global mutable failures: i32 = 0
+
+struct Handle:
+    id: i64
+
+def __drop__(self: Handle) -> void:
+    released <- released * 10 + self.id
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+# The backend's shape: acquire, nest, use, fall out of scope.
+def nested(acquire_inner: bool) -> void:
+    outer: Handle = Handle{id: 1}
+    if acquire_inner:
+        inner: Handle = Handle{id: 2}
+        _ = inner.id
+    _ = outer.id
+
+def early(bail: bool) -> i64:
+    h: Handle = Handle{id: 3}
+    return 1 if bail
+    return 0
+
+def consume(h: Handle) -> i64:
+    return h.id
+
+def moved() -> i64:
+    h: Handle = Handle{id: 4}
+    return consume(move h)
+
+def main() -> i64:
+    released <- 0
+    nested(true)
+    # Inner drops before outer: reverse declaration order.
+    check("nested scopes release inner-first", released == 21)
+
+    released <- 0
+    nested(false)
+    check("a skipped scope releases nothing extra", released == 1)
+
+    released <- 0
+    _ = early(true)
+    check("early return still releases", released == 3)
+
+    # `move` suppresses the declaring scope's release. stage1 does not yet run
+    # drops for by-value parameters, so the obligation currently stops here: the
+    # handle is leaked rather than double-freed. Asserting the present behaviour
+    # keeps this honest, and the compiler's own differential suite carries the
+    # xfail that will flag the day it changes.
+    released <- 0
+    n: i64 = moved()
+    check("a moved handle is not released by the declaring scope", n == 4 and released == 0)
+
+    if failures == 0:
+        _ = puts("drop raii: all checks passed")
+        return 0
+    _ = puts("drop raii: FAILURES above")
+    return 1

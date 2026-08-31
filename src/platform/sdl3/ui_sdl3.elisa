@@ -58,10 +58,8 @@ def ui_sdl_ren() -> void&:
 # opened on demand and kept in a small table keyed by size; ui_sdl_fonts_close
 # releases them at shutdown.
 #
-# Resources here are paired explicitly rather than through a `__drop__`
-# destructor: stage1 accepts a destructor but never emits the call, so RAII
-# would silently leak every surface and texture. Revisit once stage1 lowers
-# drops.
+# Fonts are released explicitly here because the table outlives any one scope;
+# per-frame glyph surfaces and textures use `__drop__` instead (below).
 const UI_SDL_MAX_FONTS: usize = 8
 const UI_SDL_DEFAULT_FONT: cstr = "/System/Library/Fonts/Supplemental/Arial.ttf"
 
@@ -120,6 +118,23 @@ def ui_text_line_height(size: f32) -> f32:
         return TTF_GetFontHeight(font).f32()
     return size
 
+# A rendered glyph surface and its texture are released by destructors rather
+# than by hand. Declaring __drop__ induces affinity on the type, so the compiler
+# both inserts the release on every exit path and stops the handle being used
+# twice -- the early-return paths below used to be where a hand-written release
+# was easiest to forget.
+struct SdlSurface:
+    handle: void&
+
+def __drop__(self: SdlSurface) -> void:
+    SDL_DestroySurface(self.handle)
+
+struct SdlTexture:
+    handle: void&
+
+def __drop__(self: SdlTexture) -> void:
+    SDL_DestroyTexture(self.handle)
+
 # SDL_Color is four bytes and travels in a single register, so it crosses as a
 # packed little-endian u32 rather than a by-value struct.
 def ui_sdl_packed_color(color: UiColor) -> u32:
@@ -130,18 +145,16 @@ def ui_sdl_draw_text(run: UiTextRun) -> void:
     if ui_sdl_font_for(run.size) is font:
         pointer: cstr = run.text.data.cast[cstr] can Unsafe.PointerCast
         surface_opt: void&? = TTF_RenderText_Blended(font, pointer, run.text.len, ui_sdl_packed_color(run.color))
-        if surface_opt is surface:
-            texture_opt: void&? = SDL_CreateTextureFromSurface(ui_sdl_ren(), surface)
-            # The surface is finished with as soon as the texture exists, even
-            # if creating the texture failed.
-            SDL_DestroySurface(surface)
-            if texture_opt is texture:
+        if surface_opt is surface_handle:
+            surface: SdlSurface = SdlSurface{handle: surface_handle}
+            texture_opt: void&? = SDL_CreateTextureFromSurface(ui_sdl_ren(), surface.handle)
+            if texture_opt is texture_handle:
+                texture: SdlTexture = SdlTexture{handle: texture_handle}
                 width: f32 = ui_measure_text_width(run.text, run.size)
                 height: f32 = ui_text_line_height(run.size)
                 destination: mutable array[f32, 4] = [run.x, run.y, width, height]
                 destination_pointer: void& = (&destination[0]).cast[void&] can Unsafe.PointerCast
-                _ = SDL_RenderTexture(ui_sdl_ren(), texture, null, destination_pointer)
-                SDL_DestroyTexture(texture)
+                _ = SDL_RenderTexture(ui_sdl_ren(), texture.handle, null, destination_pointer)
 
 def ui_sdl_rect(x: f32, y: f32, width: f32, height: f32, color: UiColor) -> void:
     rect: mutable array[f32, 4] = [x, y, width, height]
