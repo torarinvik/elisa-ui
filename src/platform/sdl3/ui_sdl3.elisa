@@ -1,0 +1,128 @@
+# elisa-ui native backend: SDL3 (system libSDL3 via extern declarations).
+# Implements the platform contract from ui_core.elisa and owns the main loop:
+# ui_run() polls SDL events, translates them to UiEvent, and drives the app
+# contract (app_init / app_event / app_frame).
+
+include "../../core/ui_core.elisa"
+
+const SDL_INIT_VIDEO: u32 = 0x20
+const SDL_EVENT_QUIT: u32 = 0x100
+const SDL_EVENT_KEY_DOWN: u32 = 0x300
+const SDL_EVENT_MOUSE_MOTION: u32 = 0x400
+const SDL_EVENT_MOUSE_BUTTON_DOWN: u32 = 0x401
+const SDL_EVENT_MOUSE_BUTTON_UP: u32 = 0x402
+
+extern SDL_Init(flags: u32) -> bool
+extern SDL_CreateWindow(title: cstr, w: i32, h: i32, flags: u64) -> void&?
+extern SDL_CreateRenderer(window: void&, name: void&?) -> void&?
+extern SDL_PollEvent(event: void&) -> bool
+extern SDL_SetRenderDrawColor(renderer: void&, r: u8, g: u8, b: u8, a: u8) -> bool
+extern SDL_RenderClear(renderer: void&) -> bool
+extern SDL_RenderFillRect(renderer: void&, rect: void&) -> bool
+extern SDL_RenderPresent(renderer: void&) -> bool
+extern SDL_DestroyRenderer(renderer: void&) -> void
+extern SDL_DestroyWindow(window: void&) -> void
+extern SDL_Quit() -> void
+extern SDL_GetError() -> cstr
+extern puts(text: cstr) -> i64
+
+global mutable ui_sdl_window: void&? = null
+global mutable ui_sdl_renderer: void&? = null
+# SDL_Event is a 128-byte union; poll into this buffer and read typed fields
+# at their SDL3 offsets (type@0; pointer events keep x@28 and y@32 as f32).
+global mutable ui_sdl_event_buffer: u8[128] = zeroed
+
+def ui_sdl_ren() -> void&:
+    if ui_sdl_renderer is renderer:
+        return renderer
+    return zeroed
+
+def ui_clear(r: u8, g: u8, b: u8, a: u8) -> void:
+    _ = SDL_SetRenderDrawColor(ui_sdl_ren(), r, g, b, a)
+    _ = SDL_RenderClear(ui_sdl_ren())
+
+def ui_fill_rect(x: f32, y: f32, w: f32, h: f32, r: u8, g: u8, b: u8, a: u8) -> void:
+    rect: mutable array[f32, 4] = [x, y, w, h]
+    _ = SDL_SetRenderDrawColor(ui_sdl_ren(), r, g, b, a)
+    rect_pointer: void& = (&rect[0]).cast[void&] can Unsafe.PointerCast
+    _ = SDL_RenderFillRect(ui_sdl_ren(), rect_pointer)
+
+def ui_sdl_event_type() -> u32:
+    type_ref: mutable u32& = (&ui_sdl_event_buffer[0]).cast[u32&] can Unsafe.PointerCast
+    return type_ref[0]
+
+def ui_sdl_event_x() -> f32:
+    x_ref: mutable f32& = (&ui_sdl_event_buffer[28]).cast[f32&] can Unsafe.PointerCast
+    return x_ref[0]
+
+def ui_sdl_event_y() -> f32:
+    y_ref: mutable f32& = (&ui_sdl_event_buffer[32]).cast[f32&] can Unsafe.PointerCast
+    return y_ref[0]
+
+# Poll one SDL event and translate it. Returns false when the queue is empty;
+# events outside the modeled set come back as UI_EVENT_NONE for the app to skip.
+def ui_sdl_next_event(out_event: mutable UiEvent&) -> bool:
+    buffer_pointer: void& = (&ui_sdl_event_buffer[0]).cast[void&] can Unsafe.PointerCast
+    has_event: bool = SDL_PollEvent(buffer_pointer)
+    return false if not has_event
+    event_type: u32 = ui_sdl_event_type()
+    out_event.kind <- UI_EVENT_NONE
+    out_event.x <- 0.0
+    out_event.y <- 0.0
+    out_event.code <- 0
+    if event_type == SDL_EVENT_QUIT:
+        out_event.kind <- UI_EVENT_QUIT
+    elif event_type == SDL_EVENT_MOUSE_MOTION:
+        out_event.kind <- UI_EVENT_POINTER_MOVE
+        out_event.x <- ui_sdl_event_x()
+        out_event.y <- ui_sdl_event_y()
+    elif event_type == SDL_EVENT_MOUSE_BUTTON_DOWN:
+        out_event.kind <- UI_EVENT_POINTER_DOWN
+        out_event.x <- ui_sdl_event_x()
+        out_event.y <- ui_sdl_event_y()
+    elif event_type == SDL_EVENT_MOUSE_BUTTON_UP:
+        out_event.kind <- UI_EVENT_POINTER_UP
+        out_event.x <- ui_sdl_event_x()
+        out_event.y <- ui_sdl_event_y()
+    elif event_type == SDL_EVENT_KEY_DOWN:
+        out_event.kind <- UI_EVENT_KEY_DOWN
+    return true
+
+# max_frames <= 0 runs until quit; a positive value exits after that many frames
+# (headless smoke runs use it together with SDL_VIDEODRIVER=dummy).
+def ui_run(title: cstr, width: i32, height: i32, max_frames: i64) -> i64:
+    if not SDL_Init(SDL_INIT_VIDEO):
+        _ = puts(SDL_GetError())
+        return 1
+    window_opt: void&? = SDL_CreateWindow(title, width, height, 0)
+    if window_opt == null:
+        _ = puts(SDL_GetError())
+        SDL_Quit()
+        return 1
+    ui_sdl_window <- window_opt
+    if ui_sdl_window is window:
+        renderer_opt: void&? = SDL_CreateRenderer(window, null)
+        if renderer_opt == null:
+            _ = puts(SDL_GetError())
+            SDL_DestroyWindow(window)
+            SDL_Quit()
+            return 1
+        ui_sdl_renderer <- renderer_opt
+    app_init()
+    running: mutable bool = true
+    frames: mutable i64 = 0
+    while running |frames|:
+        event: mutable UiEvent = UiEvent{kind: UI_EVENT_NONE, x: 0.0, y: 0.0, code: 0}
+        while ui_sdl_next_event(event) |event, running|:
+            running <- false if event.kind == UI_EVENT_QUIT
+            app_event(event)
+        app_frame()
+        _ = SDL_RenderPresent(ui_sdl_ren())
+        frames <- frames + 1
+        running <- false if max_frames > 0 and frames >= max_frames
+    if ui_sdl_renderer is done_renderer:
+        SDL_DestroyRenderer(done_renderer)
+    if ui_sdl_window is done_window:
+        SDL_DestroyWindow(done_window)
+    SDL_Quit()
+    return 0

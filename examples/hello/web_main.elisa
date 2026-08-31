@@ -1,0 +1,23 @@
+# Web entry: web backend + shared app, exported for the JS host loop.
+# The export boundary sticks to i32 (per docs/wasm.md's scalar ABI); pointer
+# coordinates cross as pixels and convert to f32 inside.
+
+include "../../src/platform/web/ui_web.elisa"
+include "app.elisa"
+
+def web_init() -> i32:
+    app_init()
+    return 1
+
+def web_frame() -> i32:
+    app_frame()
+    return 0
+
+def web_pointer(kind: i32, x: i32, y: i32) -> i32:
+    event: mutable UiEvent = UiEvent{kind: kind, x: x.f32(), y: y.f32(), code: 0}
+    app_event(event)
+    return 0
+
+export fn ui_init() -> i32 = web_init
+export fn ui_frame() -> i32 = web_frame
+export fn ui_pointer(kind: i32, x: i32, y: i32) -> i32 = web_pointer

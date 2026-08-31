@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Elisa UI - hello</title>
+<style>
+  body { margin: 0; background: #111; display: grid; place-items: center; height: 100vh; }
+  canvas { box-shadow: 0 0 24px #000; }
+</style>
+</head>
+<body>
+<canvas id="surface" width="800" height="600"></canvas>
+<script type="module">
+  import loadWasm from "../../build/hello_web.mjs";
+
+  const canvas = document.getElementById("surface");
+  const g = canvas.getContext("2d");
+  const css = (r, gg, b, a) => `rgba(${r},${gg},${b},${a / 255})`;
+
+  const ui = await loadWasm("../../build/hello_web.wasm", {
+    env: {
+      ui_host_clear: (r, gg, b, a) => {
+        g.fillStyle = css(r, gg, b, a);
+        g.fillRect(0, 0, canvas.width, canvas.height);
+      },
+      ui_host_fill_rect: (x, y, w, h, r, gg, b, a) => {
+        g.fillStyle = css(r, gg, b, a);
+        g.fillRect(x, y, w, h);
+      },
+    },
+  });
+
+  // UiEvent kinds from src/core/ui_core.elisa
+  const POINTER_MOVE = 2, POINTER_DOWN = 3, POINTER_UP = 4;
+  const at = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    return [Math.round(e.clientX - rect.left), Math.round(e.clientY - rect.top)];
+  };
+  canvas.addEventListener("pointermove", (e) => ui.ui_pointer(POINTER_MOVE, ...at(e)));
+  canvas.addEventListener("pointerdown", (e) => ui.ui_pointer(POINTER_DOWN, ...at(e)));
+  canvas.addEventListener("pointerup",   (e) => ui.ui_pointer(POINTER_UP, ...at(e)));
+
+  ui.ui_init();
+  const frame = () => { ui.ui_frame(); requestAnimationFrame(frame); };
+  frame();
+</script>
+</body>
+</html>
