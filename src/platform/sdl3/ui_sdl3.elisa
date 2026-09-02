@@ -167,11 +167,11 @@ module UiSdl3:
         def packed_color(color: UiCore::Color) -> u32:
             return color.r.u32() | (color.g.u32() << 8) | (color.b.u32() << 16) | (color.a.u32() << 24)
 
-        def blit_text(run: UiCore::TextRun) -> void:
+        def blit_text(run: UiCore::TextRun, color: UiCore::Color) -> void:
             return if run.text.len == 0
             if font_for(run.size) is font:
                 pointer: cstr = run.text.data.cast[cstr] can Unsafe.PointerCast
-                surface_opt: void&? = TTF_RenderText_Blended(font, pointer, run.text.len, packed_color(run.color))
+                surface_opt: void&? = TTF_RenderText_Blended(font, pointer, run.text.len, packed_color(color))
                 if surface_opt is surface_handle:
                     surface: Surface = Surface{handle: surface_handle}
                     texture_opt: void&? = SDL_CreateTextureFromSurface(ren(), surface.handle)
@@ -179,12 +179,12 @@ module UiSdl3:
                         texture: Texture = Texture{handle: texture_handle}
                         width: f32 = measure_text_width(run.text, run.size)
                         height: f32 = text_line_height(run.size)
-                        destination: mutable array[f32, 4] = [run.x, run.y, width, height]
+                        destination: mutable array[f32, 4] = [run.origin.x, run.origin.y, width, height]
                         destination_pointer: void& = (&destination[0]).cast[void&] can Unsafe.PointerCast
                         _ = SDL_RenderTexture(ren(), texture.handle, null, destination_pointer)
 
-        def rect(x: f32, y: f32, width: f32, height: f32, color: UiCore::Color) -> void:
-            box: mutable array[f32, 4] = [x, y, width, height]
+        def paint_rect(box_rect: UiCore::Rect, color: UiCore::Color) -> void:
+            box: mutable array[f32, 4] = [box_rect.origin.x, box_rect.origin.y, box_rect.size.width, box_rect.size.height]
             _ = SDL_SetRenderDrawColor(ren(), color.r, color.g, color.b, color.a)
             rect_pointer: void& = (&box[0]).cast[void&] can Unsafe.PointerCast
             _ = SDL_RenderFillRect(ren(), rect_pointer)
@@ -200,17 +200,17 @@ module UiSdl3:
                     UiCore::Command.Clear(color):
                         _ = SDL_SetRenderDrawColor(ren(), color.r, color.g, color.b, color.a)
                         _ = SDL_RenderClear(ren())
-                    UiCore::Command.FillRect(rectangle):
-                        rect(rectangle.x, rectangle.y, rectangle.width, rectangle.height, rectangle.color)
-                    UiCore::Command.FillCircle(circle):
-                        rect(circle.x - circle.radius, circle.y - circle.radius, circle.radius * 2.0, circle.radius * 2.0, circle.color)
-                    UiCore::Command.FillTriangle(triangle):
-                        rect(triangle.ax, triangle.ay, triangle.bx - triangle.ax, triangle.cy - triangle.ay, triangle.color)
-                    UiCore::Command.FillLine(line):
-                        _ = SDL_SetRenderDrawColor(ren(), line.color.r, line.color.g, line.color.b, line.color.a)
-                        _ = SDL_RenderLine(ren(), line.ax, line.ay, line.bx, line.by)
-                    UiCore::Command.DrawText(run):
-                        blit_text(run)
+                    UiCore::Command.FillRect(box, color):
+                        paint_rect(box, color)
+                    UiCore::Command.FillCircle(disc, color):
+                        paint_rect(UiCore::rect(disc.center.x - disc.radius, disc.center.y - disc.radius, disc.radius * 2.0, disc.radius * 2.0), color)
+                    UiCore::Command.FillTriangle(tri, color):
+                        paint_rect(UiCore::rect(tri.a.x, tri.a.y, tri.b.x - tri.a.x, tri.c.y - tri.a.y), color)
+                    UiCore::Command.FillLine(segment, color):
+                        _ = SDL_SetRenderDrawColor(ren(), color.r, color.g, color.b, color.a)
+                        _ = SDL_RenderLine(ren(), segment.from_point.x, segment.from_point.y, segment.to_point.x, segment.to_point.y)
+                    UiCore::Command.DrawText(run, color):
+                        blit_text(run, color)
 
         def event_type() -> u32:
             type_ref: mutable u32& = (&event_buffer[0]).cast[u32&] can Unsafe.PointerCast

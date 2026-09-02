@@ -298,6 +298,11 @@ extend UiWidgets:
     # Painting
     # ------------------------------------------------------------------
 
+    public:
+        # The widget's resolved box, as one value.
+        def box_of(w: Widget) -> UiCore::Rect:
+            return UiCore::rect(w.x, w.y, w.width, w.height)
+
     private:
         # The surface colour a widget draws right now. A pressable widget
         # reports its press or hover colour when the pointer says so.
@@ -347,6 +352,7 @@ extend UiWidgets:
             box_y: f32 = w.y
             box_width: f32 = w.width
             box_height: f32 = w.height
+            box: UiCore::Rect = box_of(w)
             match w:
                 Window.Top(title, resizable):
                     pass
@@ -360,39 +366,39 @@ extend UiWidgets:
                     pass
                 Control.Label(text, size, ink):
                     text_y: f32 = box_y + (box_height - ui_text_line_height(size)) / 2.0
-                    UiCore::draw_text(box_x, text_y, size, text, ink.r, ink.g, ink.b, ink.a)
+                    UiCore::draw(UiCore::text_run(UiCore::vec2(box_x, text_y), size, text), ink)
                 Control.Gauge(fraction, track, bar):
                     filled: f32 = box_width * fraction
-                    UiCore::fill_rect(box_x, box_y, filled, box_height, bar.r, bar.g, bar.b, bar.a) if filled > 0.0
+                    UiCore::fill(UiCore::rect(box_x, box_y, filled, box_height), bar) if filled > 0.0
                 Control.Slider(value, low, high, track, knob):
                     span: f32 = high - low
                     ratio: f32 = (value - low) / span if span > 0.0 else 0.0
                     knob_x: f32 = box_x + (box_width - box_height) * ratio
-                    UiCore::fill_rect(knob_x, box_y, box_height, box_height, knob.r, knob.g, knob.b, knob.a)
+                    UiCore::fill(UiCore::rect(knob_x, box_y, box_height, box_height), knob)
                 Control.TextBox(text, caret, size, ink, fill):
                     text_y: f32 = box_y + (box_height - ui_text_line_height(size)) / 2.0
-                    UiCore::draw_text(box_x, text_y, size, text, ink.r, ink.g, ink.b, ink.a)
+                    UiCore::draw(UiCore::text_run(UiCore::vec2(box_x, text_y), size, text), ink)
                 Button.Push(label, rest, hover, press):
                     label_y: f32 = box_y + (box_height - ui_text_line_height(14.0)) / 2.0
-                    UiCore::draw_text(box_x, label_y, 14.0, label, 255, 255, 255, 255) if label.len != 0
+                    UiCore::draw(UiCore::text_run(UiCore::vec2(box_x, label_y), 14.0, label), UiCore::rgb(255, 255, 255)) if label.len != 0
                 Button.Toggle(label, on, rest, hover, press):
                     label_y: f32 = box_y + (box_height - ui_text_line_height(14.0)) / 2.0
-                    UiCore::draw_text(box_x, label_y, 14.0, label, 255, 255, 255, 255) if label.len != 0
+                    UiCore::draw(UiCore::text_run(UiCore::vec2(box_x, label_y), 14.0, label), UiCore::rgb(255, 255, 255)) if label.len != 0
                 Button.Check(label, checked, rest, hover, press):
                     label_y: f32 = box_y + (box_height - ui_text_line_height(14.0)) / 2.0
-                    UiCore::draw_text(box_x, label_y, 14.0, label, 255, 255, 255, 255) if label.len != 0
+                    UiCore::draw(UiCore::text_run(UiCore::vec2(box_x, label_y), 14.0, label), UiCore::rgb(255, 255, 255)) if label.len != 0
                 Button.Radio(label, group, selected, rest, hover, press):
                     label_y: f32 = box_y + (box_height - ui_text_line_height(14.0)) / 2.0
-                    UiCore::draw_text(box_x, label_y, 14.0, label, 255, 255, 255, 255) if label.len != 0
+                    UiCore::draw(UiCore::text_run(UiCore::vec2(box_x, label_y), 14.0, label), UiCore::rgb(255, 255, 255)) if label.len != 0
 
     public:
         # Emit one widget's own drawing, then recurse into its children.
         # Pre-order gives painter's-algorithm ordering for free: a parent's
         # background is laid down before anything it contains.
         def paint(w: Widget) -> void:
-            fill: UiCore::Color = fill_of(w)
-            if fill.a != 0:
-                UiCore::fill_rect(w.x, w.y, w.width, w.height, fill.r, fill.g, fill.b, fill.a)
+            surface: UiCore::Color = fill_of(w)
+            if surface.a != 0:
+                UiCore::fill(box_of(w), surface)
             paint_content(w)
             cursor: mutable Widget? = w.first_child
             while cursor is node |cursor|:
