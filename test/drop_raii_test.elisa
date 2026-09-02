@@ -56,14 +56,13 @@ def main() -> i64:
     _ = early(true)
     check("early return still releases", released == 3)
 
-    # `move` suppresses the declaring scope's release. stage1 does not yet run
-    # drops for by-value parameters, so the obligation currently stops here: the
-    # handle is leaked rather than double-freed. Asserting the present behaviour
-    # keeps this honest, and the compiler's own differential suite carries the
-    # xfail that will flag the day it changes.
+    # `move` suppresses the declaring scope's release and hands the obligation to
+    # the receiver, so exactly one release runs -- in `consume`, not in `moved`.
+    # stage1 only armed cleanups for locals until 1f6db0c0, which leaked the
+    # handle here; this check is what catches a regression back to that.
     released <- 0
     n: i64 = moved()
-    check("a moved handle is not released by the declaring scope", n == 4 and released == 0)
+    check("a moved handle is released exactly once, by the receiver", n == 4 and released == 4)
 
     if failures == 0:
         _ = puts("drop raii: all checks passed")
