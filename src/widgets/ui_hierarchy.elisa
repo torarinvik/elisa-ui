@@ -18,30 +18,24 @@
 #   wxControl                   -> Control           (a leaf the user drives)
 #   wxAnyButton -> wxButton     -> Button is Control (the three-level chain)
 #
-# GEOMETRY LIVES IN A DENSE SIDE ARRAY, NOT IN THE NODE. wxWindow and QWidget put
-# the resolved box on their base class, and docs/76's `common:` is the direct
-# equivalent. Geometry COULD live there -- common fields are writable when
-# declared `mutable` -- so this is a measured choice.
+# GEOMETRY AND LINKS LIVE IN THE ROOT'S `common:` BLOCK. wxWindow and QWidget
+# put the resolved box and the child list on the base class; docs/76's
+# `common:` is the direct equivalent, and `mutable` commons are writable
+# through any handle, so the layout passes write straight into the node.
+# Variants carry only what distinguishes a kind. Two consequences:
 #
-# Measured twice, because the first measurement was worthless: stage1 was
-# creating every user program's store at the compiler's own 132-byte AST row
-# stride (fixed in stage1 0b291a60), so both layouts ran on identically padded
-# rows and the comparison could not see the layout at all. On real-width rows,
-# a matched pair (identical tree, identical measure/arrange/hit passes,
-# geometry the only difference), 20,401 widgets over 3000 frames, user-CPU time
-# because another compiler build shared the machine:
+#   - There is no widget cap and no `id`: a handle IS the node.
+#   - Attaching a child or a sibling is one field write, not a rebuilt node.
 #
-#   geometry in side array   2.14s   48-byte widget rows
-#   geometry in `common:`    2.36s   96-byte widget rows   (~10% slower)
-#
-# The difference IS row width here: a common takes a full i64 slot regardless
-# of declared type (stage1 packed_row_llvm_type pushes an i64 per common), so
-# seven f32 fields double the row, and every pass walks the tree through links
-# that live in that row. That flips if commons are ever laid out at declared
-# width -- stage0 already does (48 and 80 bytes for the same enums).
-#
-# The side array's remaining costs are functional: the UI_MAX_WIDGETS cap, an
-# `id` field in every variant, and a parallel structure to keep in step.
+# Every common is `@storage(inline)`. The default for a hierarchy common is a
+# side table, which cannot be written through a handle and costs a full word
+# per field regardless of type; inline commons sit in the row at their declared
+# width. An earlier measurement that found this layout ~10% slower was taken
+# against the side-table default plus a stage1 bug that reserved a side word
+# per common even when every common was inline (fixed in stage1 8713592c), so
+# it compared a 48-byte row against a 96-byte one. With inline commons the row
+# is the geometry plus the widest payload, and the tree walk touches one row
+# per node instead of a row and a parallel array.
 
 # NOTE: declared at file scope, not inside `module Ui:`. stage1's hierarchy
 # exhaustiveness check does not yet recognise MODULE-QUALIFIED variant paths
@@ -59,97 +53,75 @@ const UI_AXIS_ROW: i32 = 1
 const UI_WIDGET_EVENT_CLICK: i32 = 0
 
 
-# The box a widget occupies plus the inputs that decided it. Split out so the
-# layout passes take `UiGeo&` and never care which variant they came from.
-struct UiGeo:
-    # Layout INPUT: the widget's own minimum, and its share of leftover space
-    # along the parent's axis (wxSizer's proportion / Qt's stretch factor).
-    min_width: mutable f32
-    min_height: mutable f32
-    grow: mutable f32
-    # Layout OUTPUT: the box `ui_arrange` resolved.
-    x: mutable f32
-    y: mutable f32
-    width: mutable f32
-    height: mutable f32
-    # Interaction state, mirroring wxWindow's hover/press tracking.
-    hovered: mutable bool
-    pressed: mutable bool
-
-
-def ui_geo(min_width: f32, min_height: f32, grow: f32) -> UiGeo:
-    return UiGeo{min_width: min_width, min_height: min_height, grow: grow, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false}
-
-
-# The geometry side array, indexed by a node's `id`. One row per widget in
-# creation order, so the layout passes walk it linearly instead of chasing the
-# tree twice.
-# A FIXED array, not a darray: the layout passes index it on every node of every
-# frame, and a fixed global needs no region threading, so measure and arrange
-# stay allocation-free -- the property that lets the same code run on the
-# component backend's monotonic heap.
-const UI_MAX_WIDGETS: usize = 256
-
-# The id no widget can have: one past the last row, so it can never collide with
-# a real one and every traversal can treat it as absent.
-const UI_NO_WIDGET: usize = UI_MAX_WIDGETS
-
-global mutable ui_geometry: UiGeo[UI_MAX_WIDGETS] = zeroed
-global mutable ui_geometry_count: usize = 0
-
-# Allocate the geometry row for a new node and return its id. Every constructor
-# takes that id, so a node and its box are always created together. Returns the
-# last row when full, which degrades to overlapping widgets rather than
-# corrupting memory.
-def ui_new_geo(min_width: f32, min_height: f32, grow: f32) -> usize:
-    new_id: usize = ui_geometry_count if ui_geometry_count < UI_MAX_WIDGETS else UI_MAX_WIDGETS - 1
-    ui_geometry_count <- new_id + 1
-    ui_geometry[new_id] <- ui_geo(min_width, min_height, grow)
-    return new_id
-
-
-# Drop every geometry row. Called when a frame rebuilds its tree.
-def ui_geometry_reset() -> void:
-    ui_geometry_count <- 0
-
-
 # The sealed root: the whole widget universe in ONE region-backed store. A
 # `Widget` value is an opaque u32 handle into it, so a tree is contiguous and
 # a reference costs four bytes.
+#
+# Constructors name every common first, in this order, then the variant's own
+# fields. Application code goes through ui_build.elisa, which fills them in.
 enum Widget:
+    common:
+        # Layout INPUT: the widget's own minimum, and its share of leftover
+        # space along the parent's axis (wxSizer's proportion / Qt's stretch).
+        @storage(inline)
+        min_width: mutable f32
+        @storage(inline)
+        min_height: mutable f32
+        @storage(inline)
+        grow: mutable f32
+        # Layout OUTPUT: the box `widget_arrange` resolved.
+        @storage(inline)
+        x: mutable f32
+        @storage(inline)
+        y: mutable f32
+        @storage(inline)
+        width: mutable f32
+        @storage(inline)
+        height: mutable f32
+        # Interaction state, mirroring wxWindow's hover/press tracking.
+        @storage(inline)
+        hovered: mutable bool
+        @storage(inline)
+        pressed: mutable bool
+        # The tree. A leaf's `first_child` stays null; only containers and
+        # windows nest, which ui_children enforces.
+        @storage(inline)
+        first_child: mutable Widget?
+        @storage(inline)
+        next_sibling: mutable Widget?
     pass
 
 
 # A top-level surface. wxTopLevelWindow's distinguishing state is its title
 # and decoration flags; the rest it inherits.
 enum Window is Widget:
-    Top(id: usize, title: sview, resizable: bool, first_child: Widget?, next_sibling: Widget?)
+    Top(title: sview, resizable: bool)
     # wxMiniFrame / a tool palette: a real window that floats above its owner.
-    Floating(id: usize, title: sview, first_child: Widget?, next_sibling: Widget?)
+    Floating(title: sview)
 
 
 # Arranges children. The model is wxWidgets' sizer, not Qt's layout objects: a
 # container IS its layout, so there is no second tree to keep in sync.
 enum Container is Widget:
     # wxBoxSizer. `axis` is UI_AXIS_ROW or UI_AXIS_COLUMN.
-    Box(id: usize, axis: i32, padding: f32, spacing: f32, fill: UiColor, first_child: Widget?, next_sibling: Widget?)
+    Box(axis: i32, padding: f32, spacing: f32, fill: UiColor)
     # wxGridSizer: fixed column count, uniform cells.
-    Grid(id: usize, columns: i32, padding: f32, spacing: f32, fill: UiColor, first_child: Widget?, next_sibling: Widget?)
+    Grid(columns: i32, padding: f32, spacing: f32, fill: UiColor)
     # wxScrolledWindow / QAbstractScrollArea. `offset` is subtracted from the
     # children's positions during arrange, so scrolling is one subtraction.
-    Scroll(id: usize, axis: i32, offset: f32, fill: UiColor, first_child: Widget?, next_sibling: Widget?)
+    Scroll(axis: i32, offset: f32, fill: UiColor)
 
 
 # A leaf the user reads or drives -- wxControl's descendants.
 enum Control is Widget:
     # wxStaticText.
-    Label(id: usize, text: sview, size: f32, ink: UiColor, next_sibling: Widget?)
+    Label(text: sview, size: f32, ink: UiColor)
     # wxGauge / QProgressBar. `fraction` is 0.0..1.0.
-    Gauge(id: usize, fraction: f32, track: UiColor, bar: UiColor, next_sibling: Widget?)
+    Gauge(fraction: f32, track: UiColor, bar: UiColor)
     # wxSlider / QAbstractSlider.
-    Slider(id: usize, value: f32, low: f32, high: f32, track: UiColor, knob: UiColor, next_sibling: Widget?)
+    Slider(value: f32, low: f32, high: f32, track: UiColor, knob: UiColor)
     # wxTextCtrl / QLineEdit. `caret` is a byte offset into `text`.
-    TextBox(id: usize, text: sview, caret: usize, size: f32, ink: UiColor, fill: UiColor, next_sibling: Widget?)
+    TextBox(text: sview, caret: usize, size: f32, ink: UiColor, fill: UiColor)
 
 
 # wxAnyButton's family. Every button carries a label and the three colours a
@@ -157,10 +129,10 @@ enum Control is Widget:
 # exactly what a sum type should encode.
 enum Button is Control:
     # wxButton: fires once per click.
-    Push(id: usize, label: sview, rest: UiColor, hover: UiColor, press: UiColor, next_sibling: Widget?)
+    Push(label: sview, rest: UiColor, hover: UiColor, press: UiColor)
     # wxToggleButton: latches.
-    Toggle(id: usize, label: sview, on: bool, rest: UiColor, hover: UiColor, press: UiColor, next_sibling: Widget?)
+    Toggle(label: sview, on: bool, rest: UiColor, hover: UiColor, press: UiColor)
     # wxCheckBox.
-    Check(id: usize, label: sview, checked: bool, rest: UiColor, hover: UiColor, press: UiColor, next_sibling: Widget?)
+    Check(label: sview, checked: bool, rest: UiColor, hover: UiColor, press: UiColor)
     # wxRadioButton: `group` names the mutually exclusive set.
-    Radio(id: usize, label: sview, group: i32, selected: bool, rest: UiColor, hover: UiColor, press: UiColor, next_sibling: Widget?)
+    Radio(label: sview, group: i32, selected: bool, rest: UiColor, hover: UiColor, press: UiColor)

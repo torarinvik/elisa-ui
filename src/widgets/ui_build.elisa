@@ -1,15 +1,15 @@
 # elisa-ui construction helpers.
 #
-# The enum constructors take every field by name, which is right for the data
-# model and wrong for application code: an app that writes out nine arguments to
-# place a button will get them wrong. These helpers give each widget kind the
-# short spelling wxWidgets and Qt give their constructors -- sensible defaults,
-# only the interesting arguments -- and allocate the geometry row at the same
-# time, so a node and its box can never get out of step.
+# The enum constructors take every field by name -- the eleven commons first,
+# then the variant's own -- which is right for the data model and wrong for
+# application code: an app that writes out fifteen arguments to place a button
+# will get them wrong. These helpers give each widget kind the short spelling
+# wxWidgets and Qt give their constructors: sensible defaults, only the
+# interesting arguments.
 #
-# Children are linked with `ui_child`, which appends to a parent's list. That
-# keeps construction bottom-up (build a child, then attach it) rather than
-# requiring the parent's whole child chain up front.
+# Children are attached with `ui_children` and chained with `ui_sibling`. Both
+# are one field write on a mutable common, so a tree can be built in either
+# order -- parent first or children first -- as wxWidgets allows.
 
 def ui_rgba(r: u8, g: u8, b: u8, a: u8) -> UiColor:
     return UiColor{r: r, g: g, b: b, a: a}
@@ -21,11 +21,11 @@ def ui_rgb(r: u8, g: u8, b: u8) -> UiColor:
 # parent gives it exactly the space its children need.
 def ui_column(padding: f32, spacing: f32, fill: UiColor) -> Widget:
     can Memory.Allocate, Abort.Panic:
-        return Container.Box(id: ui_new_geo(0.0, 0.0, 0.0), axis: UI_AXIS_COLUMN, padding: padding, spacing: spacing, fill: fill, first_child: null, next_sibling: null)
+        return Container.Box(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, axis: UI_AXIS_COLUMN, padding: padding, spacing: spacing, fill: fill)
 
 def ui_row(padding: f32, spacing: f32, fill: UiColor) -> Widget:
     can Memory.Allocate, Abort.Panic:
-        return Container.Box(id: ui_new_geo(0.0, 0.0, 0.0), axis: UI_AXIS_ROW, padding: padding, spacing: spacing, fill: fill, first_child: null, next_sibling: null)
+        return Container.Box(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, axis: UI_AXIS_ROW, padding: padding, spacing: spacing, fill: fill)
 
 # A label's minimum is the measured extent of its text, so it takes part in
 # layout like any other child. Measured once here rather than every frame: the
@@ -33,30 +33,27 @@ def ui_row(padding: f32, spacing: f32, fill: UiColor) -> Widget:
 # into the host.
 def ui_label(text: sview, size: f32, ink: UiColor) -> Widget:
     can Memory.Allocate, Abort.Panic:
-        geo: usize = ui_new_geo(ui_measure_text_width(text, size), ui_text_line_height(size), 0.0)
-        return Control.Label(id: geo, text: text, size: size, ink: ink, next_sibling: null)
+        return Control.Label(min_width: ui_measure_text_width(text, size), min_height: ui_text_line_height(size), grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, text: text, size: size, ink: ink)
 
 # A push button sized to its label plus padding, with the three surface colours
 # derived from one base so a caller needs only pick the base.
 def ui_button(label: sview, base: UiColor) -> Widget:
     can Memory.Allocate, Abort.Panic:
         text_width: f32 = ui_measure_text_width(label, 14.0)
-        geo: usize = ui_new_geo(text_width + 20.0, ui_text_line_height(14.0) + 12.0, 0.0)
-        return Button.Push(id: geo, label: label, rest: base, hover: ui_lighten(base, 30), press: ui_darken(base, 30), next_sibling: null)
+        return Button.Push(min_width: text_width + 20.0, min_height: ui_text_line_height(14.0) + 12.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: label, rest: base, hover: ui_lighten(base, 30), press: ui_darken(base, 30))
 
 def ui_checkbox(label: sview, checked: bool, base: UiColor) -> Widget:
     can Memory.Allocate, Abort.Panic:
         text_width: f32 = ui_measure_text_width(label, 14.0)
-        geo: usize = ui_new_geo(text_width + 28.0, ui_text_line_height(14.0) + 8.0, 0.0)
-        return Button.Check(id: geo, label: label, checked: checked, rest: base, hover: ui_lighten(base, 30), press: ui_darken(base, 30), next_sibling: null)
+        return Button.Check(min_width: text_width + 28.0, min_height: ui_text_line_height(14.0) + 8.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: label, checked: checked, rest: base, hover: ui_lighten(base, 30), press: ui_darken(base, 30))
 
 def ui_gauge(fraction: f32, track: UiColor, bar: UiColor) -> Widget:
     can Memory.Allocate, Abort.Panic:
-        return Control.Gauge(id: ui_new_geo(80.0, 12.0, 0.0), fraction: fraction, track: track, bar: bar, next_sibling: null)
+        return Control.Gauge(min_width: 80.0, min_height: 12.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, fraction: fraction, track: track, bar: bar)
 
 def ui_slider(value: f32, low: f32, high: f32, track: UiColor, knob: UiColor) -> Widget:
     can Memory.Allocate, Abort.Panic:
-        return Control.Slider(id: ui_new_geo(120.0, 16.0, 0.0), value: value, low: low, high: high, track: track, knob: knob, next_sibling: null)
+        return Control.Slider(min_width: 120.0, min_height: 16.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, value: value, low: low, high: high, track: track, knob: knob)
 
 # Saturating channel arithmetic, so a base colour near either end still yields
 # distinguishable hover and press surfaces.
@@ -73,9 +70,9 @@ def ui_darken(c: UiColor, amount: u8) -> UiColor:
     return UiColor{r: r, g: g, b: b, a: c.a}
 
 # Give a widget a share of its parent's leftover space. Returns the widget so it
-# can be written inline: `ui_child(row, ui_grow(ui_button("OK", blue), 1.0))`.
+# can be written inline: `ui_children(row, ui_grow(ui_button("OK", blue), 1.0))`.
 def ui_grow(w: Widget, weight: f32) -> Widget:
-    ui_geometry[widget_id(w)].grow <- weight
+    w.grow <- weight
     return w
 
 
@@ -83,72 +80,18 @@ def ui_grow(w: Widget, weight: f32) -> Widget:
 # Composition
 # ------------------------------------------------------------------
 #
-# A node in the store is immutable, so attaching a child returns a NEW handle
-# rather than mutating in place. Application code therefore builds bottom-up --
-# make the children, chain them, then hand the chain to the parent -- which is
-# the same order wxWidgets' sizers are populated in, minus the mutation.
+# The links are mutable commons, so composition mutates in place and returns
+# the same handle for chaining. This is wxWidgets' order of operations: make a
+# widget, then add it to a sizer.
 
 # `w` with `sibling` as the node that follows it in its parent's child list.
 def ui_sibling(w: Widget, sibling: Widget?) -> Widget:
-    can Memory.Allocate, Abort.Panic:
-        match w:
-            Window.Top(id, title, resizable, first_child, next_sibling):
-                return Window.Top(id: id, title: title, resizable: resizable, first_child: first_child, next_sibling: sibling)
-            Window.Floating(id, title, first_child, next_sibling):
-                return Window.Floating(id: id, title: title, first_child: first_child, next_sibling: sibling)
-            Container.Box(id, axis, padding, spacing, fill, first_child, next_sibling):
-                return Container.Box(id: id, axis: axis, padding: padding, spacing: spacing, fill: fill, first_child: first_child, next_sibling: sibling)
-            Container.Grid(id, columns, padding, spacing, fill, first_child, next_sibling):
-                return Container.Grid(id: id, columns: columns, padding: padding, spacing: spacing, fill: fill, first_child: first_child, next_sibling: sibling)
-            Container.Scroll(id, axis, offset, fill, first_child, next_sibling):
-                return Container.Scroll(id: id, axis: axis, offset: offset, fill: fill, first_child: first_child, next_sibling: sibling)
-            Control.Label(id, text, size, ink, next_sibling):
-                return Control.Label(id: id, text: text, size: size, ink: ink, next_sibling: sibling)
-            Control.Gauge(id, fraction, track, bar, next_sibling):
-                return Control.Gauge(id: id, fraction: fraction, track: track, bar: bar, next_sibling: sibling)
-            Control.Slider(id, value, low, high, track, knob, next_sibling):
-                return Control.Slider(id: id, value: value, low: low, high: high, track: track, knob: knob, next_sibling: sibling)
-            Control.TextBox(id, text, caret, size, ink, fill, next_sibling):
-                return Control.TextBox(id: id, text: text, caret: caret, size: size, ink: ink, fill: fill, next_sibling: sibling)
-            Button.Push(id, label, rest, hover, press, next_sibling):
-                return Button.Push(id: id, label: label, rest: rest, hover: hover, press: press, next_sibling: sibling)
-            Button.Toggle(id, label, on, rest, hover, press, next_sibling):
-                return Button.Toggle(id: id, label: label, on: on, rest: rest, hover: hover, press: press, next_sibling: sibling)
-            Button.Check(id, label, checked, rest, hover, press, next_sibling):
-                return Button.Check(id: id, label: label, checked: checked, rest: rest, hover: hover, press: press, next_sibling: sibling)
-            Button.Radio(id, label, group, selected, rest, hover, press, next_sibling):
-                return Button.Radio(id: id, label: label, group: group, selected: selected, rest: rest, hover: hover, press: press, next_sibling: sibling)
-
+    w.next_sibling <- sibling
+    return w
 
 # `parent` with `child` as the head of its child list. Only containers and
 # windows nest; handing a child to a leaf returns the leaf unchanged, which
 # keeps the builder total instead of failing at a call site that cannot react.
 def ui_children(parent: Widget, child: Widget?) -> Widget:
-    can Memory.Allocate, Abort.Panic:
-        match parent:
-            Window.Top(id, title, resizable, first_child, next_sibling):
-                return Window.Top(id: id, title: title, resizable: resizable, first_child: child, next_sibling: next_sibling)
-            Window.Floating(id, title, first_child, next_sibling):
-                return Window.Floating(id: id, title: title, first_child: child, next_sibling: next_sibling)
-            Container.Box(id, axis, padding, spacing, fill, first_child, next_sibling):
-                return Container.Box(id: id, axis: axis, padding: padding, spacing: spacing, fill: fill, first_child: child, next_sibling: next_sibling)
-            Container.Grid(id, columns, padding, spacing, fill, first_child, next_sibling):
-                return Container.Grid(id: id, columns: columns, padding: padding, spacing: spacing, fill: fill, first_child: child, next_sibling: next_sibling)
-            Container.Scroll(id, axis, offset, fill, first_child, next_sibling):
-                return Container.Scroll(id: id, axis: axis, offset: offset, fill: fill, first_child: child, next_sibling: next_sibling)
-            Control.Label(id, text, size, ink, next_sibling):
-                return parent
-            Control.Gauge(id, fraction, track, bar, next_sibling):
-                return parent
-            Control.Slider(id, value, low, high, track, knob, next_sibling):
-                return parent
-            Control.TextBox(id, text, caret, size, ink, fill, next_sibling):
-                return parent
-            Button.Push(id, label, rest, hover, press, next_sibling):
-                return parent
-            Button.Toggle(id, label, on, rest, hover, press, next_sibling):
-                return parent
-            Button.Check(id, label, checked, rest, hover, press, next_sibling):
-                return parent
-            Button.Radio(id, label, group, selected, rest, hover, press, next_sibling):
-                return parent
+    parent.first_child <- child if widget_can_nest(parent)
+    return parent

@@ -20,7 +20,7 @@ def ui_font_ascent(size: f32) -> f32:
 def ui_text_line_height(size: f32) -> f32:
     return size
 
-def app_widget_event(widget: usize, event: i32) -> void:
+def app_widget_event(widget: Widget, event: i32) -> void:
     clicks <- clicks + 1 if event == UI_WIDGET_EVENT_CLICK
 
 def fail(name: cstr) -> void:
@@ -49,28 +49,25 @@ def main() -> i64:
         bar: Widget = ui_children(ui_row(8.0, 6.0, panel), title_linked)
         ui_layout(bar, 400.0, 48.0)
 
-        bar_box: UiGeo = ui_geometry[widget_id(bar)]
-        if not near(bar_box.width, 400.0):
+        if not near(bar.width, 400.0):
             fail("toolbar width")
 
         # The title grows, so it absorbs the slack and the buttons keep their
         # natural widths. Buttons are label * 7 + 20 wide: Save 48, Quit 48.
-        first: Widget? = widget_first_child(bar)
+        first: Widget? = bar.first_child
         if first is title_node:
-            title_box: UiGeo = ui_geometry[widget_id(title_node)]
-            if not near(title_box.x, 8.0):
+            if not near(title_node.x, 8.0):
                 fail("title x")
             # 400 - 16 padding - 12 spacing - 48 - 48 = 276
-            if not near(title_box.width, 276.0):
+            if not near(title_node.width, 276.0):
                 fail("title absorbs slack")
         else:
             fail("toolbar has no children")
 
         # Clicking the Save button reports one click; clicking the inert title
         # reports none.
-        save_box: UiGeo = ui_geometry[widget_id(save)]
-        ui_pointer(bar, UI_EVENT_POINTER_DOWN, save_box.x + 4.0, save_box.y + 4.0)
-        ui_pointer(bar, UI_EVENT_POINTER_UP, save_box.x + 4.0, save_box.y + 4.0)
+        ui_pointer(bar, UI_EVENT_POINTER_DOWN, save.x + 4.0, save.y + 4.0)
+        ui_pointer(bar, UI_EVENT_POINTER_UP, save.x + 4.0, save.y + 4.0)
         if clicks != 1:
             fail("save click")
 
