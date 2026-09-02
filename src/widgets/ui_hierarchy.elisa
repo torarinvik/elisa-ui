@@ -20,24 +20,30 @@
 #
 # GEOMETRY LIVES IN A DENSE SIDE ARRAY, NOT IN THE NODE. wxWindow and QWidget put
 # the resolved box on their base class, and docs/76's `common:` is the direct
-# equivalent for data fixed at construction -- and it CANNOT carry geometry, for a
-# reason worth writing down:
+# equivalent. Geometry COULD live there -- common fields are now writable when
+# declared `mutable` -- so this is a measured choice, not a limitation. Both
+# shapes were built as a matched pair of benchmarks (identical tree, identical
+# passes, geometry the only difference) and timed:
 #
-#   A store node is immutable. `common:` fields are set by the constructor and
-#   never assigned again -- stage0 rejects `w.x <- 5.0` with "field x is
-#   immutable", and declaring the field `mutable` is refused outright: "packed
-#   enum common field cannot be mutable in v1". Layout REWRITES every box each
-#   frame, so its output cannot live there.
+#   20,401 widgets, 3000 frames of measure + arrange + hit-test, best of 3:
+#     geometry in `common:`   2.13s
+#     geometry in side array  1.82s   (~15% faster)
 #
-# So geometry lives in `ui_geometry`, a dense array indexed by each node's `id`.
-# That is required, not a workaround -- and it also happens to be the better
-# layout: two passes rewrite every box while touching nothing else, so the hot
-# data stays uniformly shaped and contiguous instead of striding over label text
-# and colours. It is the same split Qt makes between QWidget and its layout item.
+# The reason is row width. A common occupies a full i64 slot in the store row
+# regardless of its declared type (packed_row_llvm_type pushes an i64 per common;
+# packed_row_bytes charges 8), so seven f32 fields cost 56 bytes of row where the
+# packed struct costs 28. Every pass walks the tree through `first_child` /
+# `next_sibling`, which live in that row, so a wider row is paid on every node of
+# every pass -- and it buys nothing here, because the box is read on exactly the
+# passes that were touching the row anyway.
 #
-# (`common:` itself is now fully supported -- stage1 gained common fields of any
-# type this session. It is the right home for per-widget data that never changes
-# after construction; it is simply the wrong home for a layout result.)
+# That trade would flip if commons were laid out at their declared width; until
+# then the side array is both faster and tighter. Note this is NOT the usual
+# "hot data stays contiguous" argument -- the tree walk touches each node's row
+# regardless, so the side array's win is the narrower row, not better locality.
+#
+# `common:` remains the right home for per-widget data that is genuinely shared
+# across every variant and NOT re-read on the hot path.
 
 # NOTE: declared at file scope, not inside `module Ui:`. stage1's hierarchy
 # exhaustiveness check does not yet recognise MODULE-QUALIFIED variant paths
