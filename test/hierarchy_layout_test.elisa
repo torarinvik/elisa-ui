@@ -1,0 +1,116 @@
+# Widget hierarchy: layout, hit testing, and sub-category typing.
+#
+# Needs no backend -- the widget layer depends only on the core, so the sizer
+# maths and the pointer state machine run without a window. Text measurement is
+# part of the platform contract, so this file supplies deterministic stubs
+# rather than depending on whichever font a host loads.
+
+include "../src/core/ui_core.elisa"
+include "../src/widgets/ui_hierarchy.elisa"
+include "../src/widgets/ui_ops.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable test_failures: i32 = 0
+global mutable test_last_click: usize = 0
+global mutable test_click_count: i32 = 0
+
+# The application contract: the widget layer calls this when a press and its
+# release land on the same widget.
+def app_widget_event(widget: usize, event: i32) -> void:
+    return if event != UI_WIDGET_EVENT_CLICK
+    test_last_click <- widget
+    test_click_count <- test_click_count + 1
+
+def ui_measure_text_width(text: sview, size: f32) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size
+
+def ui_font_ascent(size: f32) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def check(name: cstr, actual: f32, expected: f32) -> void:
+    delta: f32 = actual - expected if actual > expected else expected - actual
+    return if delta < 0.01
+    test_failures <- test_failures + 1
+    _ = puts(name)
+
+def grey(v: u8) -> UiColor:
+    return UiColor{r: v, g: v, b: v, a: 255}
+
+# A row of two buttons inside a padded panel:
+#
+#   Box(row, padding 10, spacing 5)
+#     +-- Push "ok"     min 40 wide, grow 0
+#     +-- Push "cancel" min 60 wide, grow 1   <- takes all the slack
+#
+# Surface is 200 wide, so inner width is 180, gaps 5, demand 100, slack 75.
+def build() -> Widget:
+    can Memory.Allocate, Abort.Panic:
+        ok: Widget = Button.Push(id: ui_new_geo(40.0, 20.0, 0.0), label: "ok", rest: grey(60), hover: grey(90), press: grey(30), next_sibling: null)
+        cancel: Widget = Button.Push(id: ui_new_geo(60.0, 20.0, 1.0), label: "cancel", rest: grey(60), hover: grey(90), press: grey(30), next_sibling: null)
+        row: Widget = Container.Box(id: ui_new_geo(0.0, 0.0, 0.0), axis: UI_AXIS_ROW, padding: 10.0, spacing: 5.0, fill: grey(20), first_child: ok, next_sibling: null)
+        return row
+
+def main() -> i64:
+    can Memory.Allocate, Abort.Panic:
+        root: Widget = build()
+        ui_layout(root, 200.0, 60.0)
+
+        root_box: UiGeo = ui_geometry[widget_id(root)]
+        check("root width", root_box.width, 200.0)
+        check("root height", root_box.height, 60.0)
+
+        first: Widget? = widget_first_child(root)
+        if first is ok_node:
+            ok_box: UiGeo = ui_geometry[widget_id(ok_node)]
+            # No grow: keeps its minimum, placed at the padding edge.
+            check("ok x", ok_box.x, 10.0)
+            check("ok width", ok_box.width, 40.0)
+            # Cross axis: stretched to the inner height (60 - 2*10).
+            check("ok height", ok_box.height, 40.0)
+
+        # A button is a Control is a Widget: all three types accept it, which is
+        # the whole point of the sealed split.
+        interactive: bool = widget_is_interactive(root)
+        test_failures <- test_failures + 1 if interactive
+
+        # The panel is inert, so a click inside it falls through to the button.
+        hit: Widget? = widget_hit(root, 20.0, 30.0)
+        if hit is hit_node:
+            hit_box: UiGeo = ui_geometry[widget_id(hit_node)]
+            check("hit x", hit_box.x, 10.0)
+        else:
+            test_failures <- test_failures + 1
+            _ = puts("no hit")
+
+        # A click outside every widget hits nothing.
+        miss: Widget? = widget_hit(root, 500.0, 500.0)
+        test_failures <- test_failures + 1 if miss != null
+
+        # Press then release on the same widget is a click.
+        ui_pointer(root, UI_EVENT_POINTER_DOWN, 20.0, 30.0)
+        ui_pointer(root, UI_EVENT_POINTER_UP, 20.0, 30.0)
+        test_failures <- test_failures + 1 if test_click_count != 1
+        if test_click_count != 1:
+            _ = puts("click not delivered")
+
+        # Press, then release somewhere else: cancelled, no second click.
+        ui_pointer(root, UI_EVENT_POINTER_DOWN, 20.0, 30.0)
+        ui_pointer(root, UI_EVENT_POINTER_UP, 500.0, 500.0)
+        test_failures <- test_failures + 1 if test_click_count != 1
+        if test_click_count != 1:
+            _ = puts("drag-off should cancel")
+
+        # Hover state follows the pointer and clears when it leaves.
+        ui_pointer(root, UI_EVENT_POINTER_MOVE, 20.0, 30.0)
+        test_failures <- test_failures + 1 if ui_hot == UI_NO_WIDGET
+        ui_pointer(root, UI_EVENT_POINTER_LEAVE, 0.0, 0.0)
+        test_failures <- test_failures + 1 if ui_hot != UI_NO_WIDGET
+
+        return test_failures.i64()
