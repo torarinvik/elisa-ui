@@ -21,27 +21,27 @@
 # GEOMETRY LIVES IN A DENSE SIDE ARRAY, NOT IN THE NODE. wxWindow and QWidget put
 # the resolved box on their base class, and docs/76's `common:` is the direct
 # equivalent. Geometry COULD live there -- common fields are writable when
-# declared `mutable` -- so this is a choice, and it is NOT a performance one.
+# declared `mutable` -- so this is a measured choice.
 #
-# It was measured. A matched pair of programs (identical tree, identical
-# measure/arrange/hit passes, geometry the only difference), 20,401 widgets over
-# 3000 frames, compared on user-CPU time because another compiler build was
-# sharing the machine:
+# Measured twice, because the first measurement was worthless: stage1 was
+# creating every user program's store at the compiler's own 132-byte AST row
+# stride (fixed in stage1 0b291a60), so both layouts ran on identically padded
+# rows and the comparison could not see the layout at all. On real-width rows,
+# a matched pair (identical tree, identical measure/arrange/hit passes,
+# geometry the only difference), 20,401 widgets over 3000 frames, user-CPU time
+# because another compiler build shared the machine:
 #
-#   geometry in side array  1.38s
-#   geometry in `common:`   1.44s      (~4%, inside the run-to-run noise)
+#   geometry in side array   2.14s   48-byte widget rows
+#   geometry in `common:`    2.36s   96-byte widget rows   (~10% slower)
 #
-# A first pass had reported the side array 15% faster on wall-clock time; that
-# was contention from the other build, not the layout, and is withdrawn. The
-# one structural difference -- the commons variant emits ~2x the store decodes,
-# since each field access re-resolves the handle where the side array decodes
-# once per node and then indexes -- does not show up in the timing either.
+# The difference IS row width here: a common takes a full i64 slot regardless
+# of declared type (stage1 packed_row_llvm_type pushes an i64 per common), so
+# seven f32 fields double the row, and every pass walks the tree through links
+# that live in that row. That flips if commons are ever laid out at declared
+# width -- stage0 already does (48 and 80 bytes for the same enums).
 #
-# So the placement is free, and the side array stays for now only because it is
-# already written. Its real costs are functional, not speed: a fixed
-# UI_MAX_WIDGETS cap, an `id` field in every variant, and a parallel structure
-# to keep in step. Moving geometry into `common:` removes all three; that
-# migration is unblocked and is the natural next step.
+# The side array's remaining costs are functional: the UI_MAX_WIDGETS cap, an
+# `id` field in every variant, and a parallel structure to keep in step.
 
 # NOTE: declared at file scope, not inside `module Ui:`. stage1's hierarchy
 # exhaustiveness check does not yet recognise MODULE-QUALIFIED variant paths
