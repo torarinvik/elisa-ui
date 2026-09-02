@@ -1,5 +1,5 @@
 # elisa-ui widget operations: layout, hit testing, and painting over the sealed
-# widget hierarchy.
+# widget hierarchy. Extends `UiWidgets` (types in ui_hierarchy.elisa).
 #
 # The algorithm is wxWidgets' sizer reduced to its load-bearing parts: measure
 # bottom-up so every node knows its minimum, then arrange top-down handing each
@@ -14,432 +14,446 @@
 # that must handle it rather than a silently missed case -- which is the entire
 # reason for splitting `Widget` into sealed sub-categories instead of writing
 # one flat enum.
-
-
-# The axis a container distributes its children along. A leaf has no axis;
-# UI_AXIS_COLUMN is returned so callers need no special case.
-
-def widget_axis(w: Widget) -> i32:
-    match w:
-        Window.Top(title, resizable):
-            return UI_AXIS_COLUMN
-        Window.Floating(title):
-            return UI_AXIS_COLUMN
-        Container.Box(axis, padding, spacing, fill):
-            return axis
-        Container.Grid(columns, padding, spacing, fill):
-            return UI_AXIS_COLUMN
-        Container.Scroll(axis, offset, fill):
-            return axis
-        Control.Label(text, size, ink):
-            return UI_AXIS_COLUMN
-        Control.Gauge(fraction, track, bar):
-            return UI_AXIS_COLUMN
-        Control.Slider(value, low, high, track, knob):
-            return UI_AXIS_COLUMN
-        Control.TextBox(text, caret, size, ink, fill):
-            return UI_AXIS_COLUMN
-        Button.Push(label, rest, hover, press):
-            return UI_AXIS_COLUMN
-        Button.Toggle(label, on, rest, hover, press):
-            return UI_AXIS_COLUMN
-        Button.Check(label, checked, rest, hover, press):
-            return UI_AXIS_COLUMN
-        Button.Radio(label, group, selected, rest, hover, press):
-            return UI_AXIS_COLUMN
-
-
-# Inner margin a container reserves on every side.
-
-def widget_padding(w: Widget) -> f32:
-    match w:
-        Window.Top(title, resizable):
-            return 0.0
-        Window.Floating(title):
-            return 0.0
-        Container.Box(axis, padding, spacing, fill):
-            return padding
-        Container.Grid(columns, padding, spacing, fill):
-            return padding
-        Container.Scroll(axis, offset, fill):
-            return 0.0
-        Control.Label(text, size, ink):
-            return 0.0
-        Control.Gauge(fraction, track, bar):
-            return 0.0
-        Control.Slider(value, low, high, track, knob):
-            return 0.0
-        Control.TextBox(text, caret, size, ink, fill):
-            return 0.0
-        Button.Push(label, rest, hover, press):
-            return 0.0
-        Button.Toggle(label, on, rest, hover, press):
-            return 0.0
-        Button.Check(label, checked, rest, hover, press):
-            return 0.0
-        Button.Radio(label, group, selected, rest, hover, press):
-            return 0.0
-
-
-# Gap a container leaves between adjacent children.
-
-def widget_spacing(w: Widget) -> f32:
-    match w:
-        Window.Top(title, resizable):
-            return 0.0
-        Window.Floating(title):
-            return 0.0
-        Container.Box(axis, padding, spacing, fill):
-            return spacing
-        Container.Grid(columns, padding, spacing, fill):
-            return spacing
-        Container.Scroll(axis, offset, fill):
-            return 0.0
-        Control.Label(text, size, ink):
-            return 0.0
-        Control.Gauge(fraction, track, bar):
-            return 0.0
-        Control.Slider(value, low, high, track, knob):
-            return 0.0
-        Control.TextBox(text, caret, size, ink, fill):
-            return 0.0
-        Button.Push(label, rest, hover, press):
-            return 0.0
-        Button.Toggle(label, on, rest, hover, press):
-            return 0.0
-        Button.Check(label, checked, rest, hover, press):
-            return 0.0
-        Button.Radio(label, group, selected, rest, hover, press):
-            return 0.0
-
-
-# Whether the widget can hold children. Only containers and windows nest;
-# ui_children uses this to leave a leaf's `first_child` null.
-
-def widget_can_nest(w: Widget) -> bool:
-    match w:
-        Window.Top(title, resizable):
-            return true
-        Window.Floating(title):
-            return true
-        Container.Box(axis, padding, spacing, fill):
-            return true
-        Container.Grid(columns, padding, spacing, fill):
-            return true
-        Container.Scroll(axis, offset, fill):
-            return true
-        Control.Label(text, size, ink):
-            return false
-        Control.Gauge(fraction, track, bar):
-            return false
-        Control.Slider(value, low, high, track, knob):
-            return false
-        Control.TextBox(text, caret, size, ink, fill):
-            return false
-        Button.Push(label, rest, hover, press):
-            return false
-        Button.Toggle(label, on, rest, hover, press):
-            return false
-        Button.Check(label, checked, rest, hover, press):
-            return false
-        Button.Radio(label, group, selected, rest, hover, press):
-            return false
-
-
-# Whether the widget takes pointer input. Buttons, sliders and text boxes do;
-# labels, gauges and containers are inert, so a click falls through them.
-
-def widget_is_interactive(w: Widget) -> bool:
-    match w:
-        Window.Top(title, resizable):
-            return false
-        Window.Floating(title):
-            return false
-        Container.Box(axis, padding, spacing, fill):
-            return false
-        Container.Grid(columns, padding, spacing, fill):
-            return false
-        Container.Scroll(axis, offset, fill):
-            return false
-        Control.Label(text, size, ink):
-            return false
-        Control.Gauge(fraction, track, bar):
-            return false
-        Control.Slider(value, low, high, track, knob):
-            return true
-        Control.TextBox(text, caret, size, ink, fill):
-            return true
-        Button.Push(label, rest, hover, press):
-            return true
-        Button.Toggle(label, on, rest, hover, press):
-            return true
-        Button.Check(label, checked, rest, hover, press):
-            return true
-        Button.Radio(label, group, selected, rest, hover, press):
-            return true
-
-# ------------------------------------------------------------------
-# Layout: measure bottom-up, then arrange top-down.
-# ------------------------------------------------------------------
-
-# How many children a node has. Walks the sibling chain rather than storing a
-# count, so adding or removing a child needs no bookkeeping.
-def widget_child_count(w: Widget) -> f32:
-    total: mutable f32 = 0.0
-    cursor: mutable Widget? = w.first_child
-    while cursor is node |total, cursor|:
-        total <- total + 1.0
-        cursor <- node.next_sibling
-    return total
-
-# Bottom-up pass. A container's minimum is its children's minima summed along
-# its axis (plus spacing and padding) and maximised across it. A declared
-# minimum still wins when it is larger, which is how a button reserves its
-# clickable area even with a short label.
-def widget_measure(w: Widget) -> void:
-    child: Widget? = w.first_child
-    return if child == null
-    row: bool = widget_axis(w) == UI_AXIS_ROW
-    along: mutable f32 = 0.0
-    across: mutable f32 = 0.0
-    count: mutable f32 = 0.0
-    cursor: mutable Widget? = child
-    while cursor is node |along, across, count, cursor, row|:
-        widget_measure(node)
-        child_along: f32 = node.min_width if row else node.min_height
-        child_across: f32 = node.min_height if row else node.min_width
-        along <- along + child_along
-        across <- child_across if child_across > across else across
-        count <- count + 1.0
-        cursor <- node.next_sibling
-    gaps: f32 = widget_spacing(w) * (count - 1.0) if count > 1.0 else 0.0
-    pad: f32 = widget_padding(w) * 2.0
-    content_width: f32 = along + gaps + pad if row else across + pad
-    content_height: f32 = across + pad if row else along + gaps + pad
-    w.min_width <- content_width if content_width > w.min_width
-    w.min_height <- content_height if content_height > w.min_height
-
-# Top-down pass. Every child gets its minimum along the axis, then the leftover
-# is shared in proportion to `grow`; children stretch to fill the cross axis.
-# A container with no growing child simply leaves the slack unused, which is
-# wxSizer's behaviour when no item has a non-zero proportion.
-def widget_arrange(w: Widget, x: f32, y: f32, width: f32, height: f32) -> void:
-    w with { x, y, width, height }
-    first: Widget? = w.first_child
-    return if first == null
-
-    row: bool = widget_axis(w) == UI_AXIS_ROW
-    pad: f32 = widget_padding(w)
-    inner_x: f32 = x + pad
-    inner_y: f32 = y + pad
-    inner_width: f32 = width - pad * 2.0
-    inner_height: f32 = height - pad * 2.0
-    count: f32 = widget_child_count(w)
-    gaps: f32 = widget_spacing(w) * (count - 1.0) if count > 1.0 else 0.0
-    inner_along: f32 = inner_width if row else inner_height
-
-    # First walk: what the children demand, and how much weight wants the rest.
-    demand: mutable f32 = 0.0
-    weight: mutable f32 = 0.0
-    scan: mutable Widget? = first
-    while scan is node |demand, weight, scan, row|:
-        demand <- demand + (node.min_width if row else node.min_height)
-        weight <- weight + node.grow
-        scan <- node.next_sibling
-
-    free: f32 = inner_along - gaps - demand
-    share: f32 = free / weight if weight > 0.0 and free > 0.0 else 0.0
-
-    # Second walk: place each child at the running offset.
-    offset: mutable f32 = 0.0
-    walk: mutable Widget? = first
-    while walk is node |offset, walk, row, inner_x, inner_y, inner_width, inner_height, share|:
-        base: f32 = node.min_width if row else node.min_height
-        extent: f32 = base + share * node.grow
-        if row:
-            widget_arrange(node, inner_x + offset, inner_y, extent, inner_height)
-        else:
-            widget_arrange(node, inner_x, inner_y + offset, inner_width, extent)
-        offset <- offset + extent + widget_spacing(w)
-        walk <- node.next_sibling
-
-# Lay out a whole tree into a surface of the given size.
-def ui_layout(root: Widget, width: f32, height: f32) -> void:
-    widget_measure(root)
-    widget_arrange(root, 0.0, 0.0, width, height)
-
-# ------------------------------------------------------------------
-# Hit testing
-# ------------------------------------------------------------------
-
-def widget_contains(w: Widget, x: f32, y: f32) -> bool:
-    return x >= w.x and y >= w.y and x < w.x + w.width and y < w.y + w.height
-
-# The topmost interactive widget under the pointer. Children are painted after
-# their parent, so a depth-first walk that prefers the LAST matching descendant
-# returns what the user sees on top.
-def widget_hit(w: Widget, x: f32, y: f32) -> Widget?:
-    return null if not widget_contains(w, x, y)
-    found: mutable Widget? = null
-    cursor: mutable Widget? = w.first_child
-    while cursor is node |found, cursor, x, y|:
-        deeper: Widget? = widget_hit(node, x, y)
-        found <- deeper if deeper != null
-        cursor <- node.next_sibling
-    return found if found != null
-    return w if widget_is_interactive(w)
-    return null
-
-# ------------------------------------------------------------------
-# Painting
-# ------------------------------------------------------------------
-
-# The surface colour a widget draws right now. A pressable widget reports its
-# press or hover colour when the pointer says so.
-def widget_fill(w: Widget) -> UiColor:
-    pressed: bool = w.pressed
-    hovered: bool = w.hovered
-    match w:
-        Window.Top(title, resizable):
-            return UiColor{r: 0, g: 0, b: 0, a: 0}
-        Window.Floating(title):
-            return UiColor{r: 0, g: 0, b: 0, a: 0}
-        Container.Box(axis, padding, spacing, fill):
-            return fill
-        Container.Grid(columns, padding, spacing, fill):
-            return fill
-        Container.Scroll(axis, offset, fill):
-            return fill
-        Control.Label(text, size, ink):
-            return UiColor{r: 0, g: 0, b: 0, a: 0}
-        Control.Gauge(fraction, track, bar):
-            return track
-        Control.Slider(value, low, high, track, knob):
-            return track
-        Control.TextBox(text, caret, size, ink, fill):
-            return fill
-        Button.Push(label, rest, hover, press):
-            return press if pressed
-            return hover if hovered
-            return rest
-        Button.Toggle(label, on, rest, hover, press):
-            return press if pressed
-            return hover if hovered
-            return rest
-        Button.Check(label, checked, rest, hover, press):
-            return press if pressed
-            return hover if hovered
-            return rest
-        Button.Radio(label, group, selected, rest, hover, press):
-            return press if pressed
-            return hover if hovered
-            return rest
-
-# Emit one widget's own drawing, then recurse into its children. Pre-order gives
-# painter's-algorithm ordering for free: a parent's background is laid down
-# before anything it contains.
-def widget_paint(w: Widget) -> void:
-    fill: UiColor = widget_fill(w)
-    if fill.a != 0:
-        ui_fill_rect(w.x, w.y, w.width, w.height, fill.r, fill.g, fill.b, fill.a)
-    widget_paint_content(w)
-    cursor: mutable Widget? = w.first_child
-    while cursor is node |cursor|:
-        widget_paint(node)
-        cursor <- node.next_sibling
-
-
-# The parts that are not just a filled box: text runs and the moving pieces of
-# gauges and sliders.
-def widget_paint_content(w: Widget) -> void:
-    box_x: f32 = w.x
-    box_y: f32 = w.y
-    box_width: f32 = w.width
-    box_height: f32 = w.height
-    match w:
-        Window.Top(title, resizable):
-            pass
-        Window.Floating(title):
-            pass
-        Container.Box(axis, padding, spacing, fill):
-            pass
-        Container.Grid(columns, padding, spacing, fill):
-            pass
-        Container.Scroll(axis, offset, fill):
-            pass
-        Control.Label(text, size, ink):
-            text_y: f32 = box_y + (box_height - ui_text_line_height(size)) / 2.0
-            ui_text(box_x, text_y, size, text, ink.r, ink.g, ink.b, ink.a)
-        Control.Gauge(fraction, track, bar):
-            filled: f32 = box_width * fraction
-            ui_fill_rect(box_x, box_y, filled, box_height, bar.r, bar.g, bar.b, bar.a) if filled > 0.0
-        Control.Slider(value, low, high, track, knob):
-            span: f32 = high - low
-            ratio: f32 = (value - low) / span if span > 0.0 else 0.0
-            knob_x: f32 = box_x + (box_width - box_height) * ratio
-            ui_fill_rect(knob_x, box_y, box_height, box_height, knob.r, knob.g, knob.b, knob.a)
-        Control.TextBox(text, caret, size, ink, fill):
-            text_y: f32 = box_y + (box_height - ui_text_line_height(size)) / 2.0
-            ui_text(box_x, text_y, size, text, ink.r, ink.g, ink.b, ink.a)
-        Button.Push(label, rest, hover, press):
-            label_y: f32 = box_y + (box_height - ui_text_line_height(14.0)) / 2.0
-            ui_text(box_x, label_y, 14.0, label, 255, 255, 255, 255) if label.len != 0
-        Button.Toggle(label, on, rest, hover, press):
-            label_y: f32 = box_y + (box_height - ui_text_line_height(14.0)) / 2.0
-            ui_text(box_x, label_y, 14.0, label, 255, 255, 255, 255) if label.len != 0
-        Button.Check(label, checked, rest, hover, press):
-            label_y: f32 = box_y + (box_height - ui_text_line_height(14.0)) / 2.0
-            ui_text(box_x, label_y, 14.0, label, 255, 255, 255, 255) if label.len != 0
-        Button.Radio(label, group, selected, rest, hover, press):
-            label_y: f32 = box_y + (box_height - ui_text_line_height(14.0)) / 2.0
-            ui_text(box_x, label_y, 14.0, label, 255, 255, 255, 255) if label.len != 0
-
-# ------------------------------------------------------------------
-# Pointer state machine
-# ------------------------------------------------------------------
 #
-# A click is press-then-release on the SAME widget, which is what every desktop
-# toolkit means by a click: dragging off a button before releasing cancels it.
-# The hot/active pair is wxWidgets' capture model reduced to what a retained
-# tree needs -- `hot` is what the pointer is over, `active` is what holds the
-# press. Only the active widget ever has `pressed` set, so "released on the
-# widget that was pressed" is "the hit widget is pressed" and needs no handle
-# comparison.
+# Public: the per-kind queries, `layout`, `hit`, `paint`, `pointer`, and the
+# `hot`/`active` readers. Private: the passes and the pointer state.
 
-global mutable ui_hot: Widget? = null
-global mutable ui_active: Widget? = null
+include "./ui_hierarchy.elisa"
 
-# Feed one pointer event through the tree. `root` is the tree being tested,
-# `kind` one of the UI_EVENT_POINTER_* constants from the core.
-def ui_pointer(root: Widget, kind: i32, x: f32, y: f32) -> void:
-    hit: Widget? = widget_hit(root, x, y)
-    if ui_hot is previous:
-        previous.hovered <- false
-    ui_hot <- hit
-    if hit is over:
-        over.hovered <- true
+extend UiWidgets:
+    public:
+        # The axis a container distributes its children along. A leaf has no
+        # axis; UiAxis::COLUMN is returned so callers need no special case.
+        def axis_of(w: Widget) -> i32:
+            match w:
+                Window.Top(title, resizable):
+                    return UiAxis::COLUMN
+                Window.Floating(title):
+                    return UiAxis::COLUMN
+                Container.Box(axis, padding, spacing, fill):
+                    return axis
+                Container.Grid(columns, padding, spacing, fill):
+                    return UiAxis::COLUMN
+                Container.Scroll(axis, offset, fill):
+                    return axis
+                Control.Label(text, size, ink):
+                    return UiAxis::COLUMN
+                Control.Gauge(fraction, track, bar):
+                    return UiAxis::COLUMN
+                Control.Slider(value, low, high, track, knob):
+                    return UiAxis::COLUMN
+                Control.TextBox(text, caret, size, ink, fill):
+                    return UiAxis::COLUMN
+                Button.Push(label, rest, hover, press):
+                    return UiAxis::COLUMN
+                Button.Toggle(label, on, rest, hover, press):
+                    return UiAxis::COLUMN
+                Button.Check(label, checked, rest, hover, press):
+                    return UiAxis::COLUMN
+                Button.Radio(label, group, selected, rest, hover, press):
+                    return UiAxis::COLUMN
 
-    if kind == UI_EVENT_POINTER_DOWN:
-        if hit is target:
-            ui_active <- hit
-            target.pressed <- true
-        return
+        # Inner margin a container reserves on every side.
+        def padding_of(w: Widget) -> f32:
+            match w:
+                Window.Top(title, resizable):
+                    return 0.0
+                Window.Floating(title):
+                    return 0.0
+                Container.Box(axis, padding, spacing, fill):
+                    return padding
+                Container.Grid(columns, padding, spacing, fill):
+                    return padding
+                Container.Scroll(axis, offset, fill):
+                    return 0.0
+                Control.Label(text, size, ink):
+                    return 0.0
+                Control.Gauge(fraction, track, bar):
+                    return 0.0
+                Control.Slider(value, low, high, track, knob):
+                    return 0.0
+                Control.TextBox(text, caret, size, ink, fill):
+                    return 0.0
+                Button.Push(label, rest, hover, press):
+                    return 0.0
+                Button.Toggle(label, on, rest, hover, press):
+                    return 0.0
+                Button.Check(label, checked, rest, hover, press):
+                    return 0.0
+                Button.Radio(label, group, selected, rest, hover, press):
+                    return 0.0
 
-    if kind == UI_EVENT_POINTER_UP:
-        clicked: mutable bool = false
-        if hit is released_on:
-            clicked <- released_on.pressed
-        if ui_active is held:
-            held.pressed <- false
-        ui_active <- null
-        if clicked and hit is target:
-            app_widget_event(target, UI_WIDGET_EVENT_CLICK)
-        return
+        # Gap a container leaves between adjacent children.
+        def spacing_of(w: Widget) -> f32:
+            match w:
+                Window.Top(title, resizable):
+                    return 0.0
+                Window.Floating(title):
+                    return 0.0
+                Container.Box(axis, padding, spacing, fill):
+                    return spacing
+                Container.Grid(columns, padding, spacing, fill):
+                    return spacing
+                Container.Scroll(axis, offset, fill):
+                    return 0.0
+                Control.Label(text, size, ink):
+                    return 0.0
+                Control.Gauge(fraction, track, bar):
+                    return 0.0
+                Control.Slider(value, low, high, track, knob):
+                    return 0.0
+                Control.TextBox(text, caret, size, ink, fill):
+                    return 0.0
+                Button.Push(label, rest, hover, press):
+                    return 0.0
+                Button.Toggle(label, on, rest, hover, press):
+                    return 0.0
+                Button.Check(label, checked, rest, hover, press):
+                    return 0.0
+                Button.Radio(label, group, selected, rest, hover, press):
+                    return 0.0
 
-    if kind == UI_EVENT_POINTER_LEAVE:
-        if ui_active is held:
-            held.pressed <- false
-        ui_active <- null
-        if ui_hot is left:
-            left.hovered <- false
-        ui_hot <- null
+        # Whether the widget can hold children. Only containers and windows
+        # nest; `children` uses this to leave a leaf's `first_child` null.
+        def can_nest(w: Widget) -> bool:
+            match w:
+                Window.Top(title, resizable):
+                    return true
+                Window.Floating(title):
+                    return true
+                Container.Box(axis, padding, spacing, fill):
+                    return true
+                Container.Grid(columns, padding, spacing, fill):
+                    return true
+                Container.Scroll(axis, offset, fill):
+                    return true
+                Control.Label(text, size, ink):
+                    return false
+                Control.Gauge(fraction, track, bar):
+                    return false
+                Control.Slider(value, low, high, track, knob):
+                    return false
+                Control.TextBox(text, caret, size, ink, fill):
+                    return false
+                Button.Push(label, rest, hover, press):
+                    return false
+                Button.Toggle(label, on, rest, hover, press):
+                    return false
+                Button.Check(label, checked, rest, hover, press):
+                    return false
+                Button.Radio(label, group, selected, rest, hover, press):
+                    return false
+
+        # Whether the widget takes pointer input. Buttons, sliders and text
+        # boxes do; labels, gauges and containers are inert, so a click falls
+        # through them.
+        def is_interactive(w: Widget) -> bool:
+            match w:
+                Window.Top(title, resizable):
+                    return false
+                Window.Floating(title):
+                    return false
+                Container.Box(axis, padding, spacing, fill):
+                    return false
+                Container.Grid(columns, padding, spacing, fill):
+                    return false
+                Container.Scroll(axis, offset, fill):
+                    return false
+                Control.Label(text, size, ink):
+                    return false
+                Control.Gauge(fraction, track, bar):
+                    return false
+                Control.Slider(value, low, high, track, knob):
+                    return true
+                Control.TextBox(text, caret, size, ink, fill):
+                    return true
+                Button.Push(label, rest, hover, press):
+                    return true
+                Button.Toggle(label, on, rest, hover, press):
+                    return true
+                Button.Check(label, checked, rest, hover, press):
+                    return true
+                Button.Radio(label, group, selected, rest, hover, press):
+                    return true
+
+    # ------------------------------------------------------------------
+    # Layout: measure bottom-up, then arrange top-down.
+    # ------------------------------------------------------------------
+
+    private:
+        # How many children a node has. Walks the sibling chain rather than
+        # storing a count, so adding or removing a child needs no bookkeeping.
+        def child_count(w: Widget) -> f32:
+            total: mutable f32 = 0.0
+            cursor: mutable Widget? = w.first_child
+            while cursor is node |total, cursor|:
+                total <- total + 1.0
+                cursor <- node.next_sibling
+            return total
+
+        # Bottom-up pass. A container's minimum is its children's minima summed
+        # along its axis (plus spacing and padding) and maximised across it. A
+        # declared minimum still wins when it is larger, which is how a button
+        # reserves its clickable area even with a short label.
+        def measure(w: Widget) -> void:
+            child: Widget? = w.first_child
+            return if child == null
+            is_row: bool = axis_of(w) == UiAxis::ROW
+            along: mutable f32 = 0.0
+            across: mutable f32 = 0.0
+            count: mutable f32 = 0.0
+            cursor: mutable Widget? = child
+            while cursor is node |along, across, count, cursor, is_row|:
+                measure(node)
+                child_along: f32 = node.min_width if is_row else node.min_height
+                child_across: f32 = node.min_height if is_row else node.min_width
+                along <- along + child_along
+                across <- child_across if child_across > across else across
+                count <- count + 1.0
+                cursor <- node.next_sibling
+            gaps: f32 = spacing_of(w) * (count - 1.0) if count > 1.0 else 0.0
+            pad: f32 = padding_of(w) * 2.0
+            content_width: f32 = along + gaps + pad if is_row else across + pad
+            content_height: f32 = across + pad if is_row else along + gaps + pad
+            w.min_width <- content_width if content_width > w.min_width
+            w.min_height <- content_height if content_height > w.min_height
+
+        # Top-down pass. Every child gets its minimum along the axis, then the
+        # leftover is shared in proportion to `grow`; children stretch to fill
+        # the cross axis. A container with no growing child simply leaves the
+        # slack unused, which is wxSizer's behaviour when no item has a
+        # non-zero proportion.
+        def arrange(w: Widget, x: f32, y: f32, width: f32, height: f32) -> void:
+            w with { x, y, width, height }
+            first: Widget? = w.first_child
+            return if first == null
+
+            is_row: bool = axis_of(w) == UiAxis::ROW
+            pad: f32 = padding_of(w)
+            inner_x: f32 = x + pad
+            inner_y: f32 = y + pad
+            inner_width: f32 = width - pad * 2.0
+            inner_height: f32 = height - pad * 2.0
+            count: f32 = child_count(w)
+            gaps: f32 = spacing_of(w) * (count - 1.0) if count > 1.0 else 0.0
+            inner_along: f32 = inner_width if is_row else inner_height
+
+            # First walk: what the children demand, and how much weight wants
+            # the rest.
+            demand: mutable f32 = 0.0
+            weight: mutable f32 = 0.0
+            scan: mutable Widget? = first
+            while scan is node |demand, weight, scan, is_row|:
+                demand <- demand + (node.min_width if is_row else node.min_height)
+                weight <- weight + node.grow
+                scan <- node.next_sibling
+
+            free: f32 = inner_along - gaps - demand
+            share: f32 = free / weight if weight > 0.0 and free > 0.0 else 0.0
+
+            # Second walk: place each child at the running offset.
+            offset: mutable f32 = 0.0
+            walk: mutable Widget? = first
+            while walk is node |offset, walk, is_row, inner_x, inner_y, inner_width, inner_height, share|:
+                base: f32 = node.min_width if is_row else node.min_height
+                extent: f32 = base + share * node.grow
+                if is_row:
+                    arrange(node, inner_x + offset, inner_y, extent, inner_height)
+                else:
+                    arrange(node, inner_x, inner_y + offset, inner_width, extent)
+                offset <- offset + extent + spacing_of(w)
+                walk <- node.next_sibling
+
+    public:
+        # Lay out a whole tree into a surface of the given size.
+        def layout(root: Widget, width: f32, height: f32) -> void:
+            measure(root)
+            arrange(root, 0.0, 0.0, width, height)
+
+    # ------------------------------------------------------------------
+    # Hit testing
+    # ------------------------------------------------------------------
+
+    private:
+        def contains(w: Widget, x: f32, y: f32) -> bool:
+            return x >= w.x and y >= w.y and x < w.x + w.width and y < w.y + w.height
+
+    public:
+        # The topmost interactive widget under the pointer. Children are
+        # painted after their parent, so a depth-first walk that prefers the
+        # LAST matching descendant returns what the user sees on top.
+        def hit(w: Widget, x: f32, y: f32) -> Widget?:
+            return null if not contains(w, x, y)
+            found: mutable Widget? = null
+            cursor: mutable Widget? = w.first_child
+            while cursor is node |found, cursor, x, y|:
+                deeper: Widget? = hit(node, x, y)
+                found <- deeper if deeper != null
+                cursor <- node.next_sibling
+            return found if found != null
+            return w if is_interactive(w)
+            return null
+
+    # ------------------------------------------------------------------
+    # Painting
+    # ------------------------------------------------------------------
+
+    private:
+        # The surface colour a widget draws right now. A pressable widget
+        # reports its press or hover colour when the pointer says so.
+        def fill_of(w: Widget) -> UiCore::Color:
+            pressed: bool = w.pressed
+            hovered: bool = w.hovered
+            match w:
+                Window.Top(title, resizable):
+                    return UiCore::Color{r: 0, g: 0, b: 0, a: 0}
+                Window.Floating(title):
+                    return UiCore::Color{r: 0, g: 0, b: 0, a: 0}
+                Container.Box(axis, padding, spacing, fill):
+                    return fill
+                Container.Grid(columns, padding, spacing, fill):
+                    return fill
+                Container.Scroll(axis, offset, fill):
+                    return fill
+                Control.Label(text, size, ink):
+                    return UiCore::Color{r: 0, g: 0, b: 0, a: 0}
+                Control.Gauge(fraction, track, bar):
+                    return track
+                Control.Slider(value, low, high, track, knob):
+                    return track
+                Control.TextBox(text, caret, size, ink, fill):
+                    return fill
+                Button.Push(label, rest, hover, press):
+                    return press if pressed
+                    return hover if hovered
+                    return rest
+                Button.Toggle(label, on, rest, hover, press):
+                    return press if pressed
+                    return hover if hovered
+                    return rest
+                Button.Check(label, checked, rest, hover, press):
+                    return press if pressed
+                    return hover if hovered
+                    return rest
+                Button.Radio(label, group, selected, rest, hover, press):
+                    return press if pressed
+                    return hover if hovered
+                    return rest
+
+        # The parts that are not just a filled box: text runs and the moving
+        # pieces of gauges and sliders.
+        def paint_content(w: Widget) -> void:
+            box_x: f32 = w.x
+            box_y: f32 = w.y
+            box_width: f32 = w.width
+            box_height: f32 = w.height
+            match w:
+                Window.Top(title, resizable):
+                    pass
+                Window.Floating(title):
+                    pass
+                Container.Box(axis, padding, spacing, fill):
+                    pass
+                Container.Grid(columns, padding, spacing, fill):
+                    pass
+                Container.Scroll(axis, offset, fill):
+                    pass
+                Control.Label(text, size, ink):
+                    text_y: f32 = box_y + (box_height - ui_text_line_height(size)) / 2.0
+                    UiCore::draw_text(box_x, text_y, size, text, ink.r, ink.g, ink.b, ink.a)
+                Control.Gauge(fraction, track, bar):
+                    filled: f32 = box_width * fraction
+                    UiCore::fill_rect(box_x, box_y, filled, box_height, bar.r, bar.g, bar.b, bar.a) if filled > 0.0
+                Control.Slider(value, low, high, track, knob):
+                    span: f32 = high - low
+                    ratio: f32 = (value - low) / span if span > 0.0 else 0.0
+                    knob_x: f32 = box_x + (box_width - box_height) * ratio
+                    UiCore::fill_rect(knob_x, box_y, box_height, box_height, knob.r, knob.g, knob.b, knob.a)
+                Control.TextBox(text, caret, size, ink, fill):
+                    text_y: f32 = box_y + (box_height - ui_text_line_height(size)) / 2.0
+                    UiCore::draw_text(box_x, text_y, size, text, ink.r, ink.g, ink.b, ink.a)
+                Button.Push(label, rest, hover, press):
+                    label_y: f32 = box_y + (box_height - ui_text_line_height(14.0)) / 2.0
+                    UiCore::draw_text(box_x, label_y, 14.0, label, 255, 255, 255, 255) if label.len != 0
+                Button.Toggle(label, on, rest, hover, press):
+                    label_y: f32 = box_y + (box_height - ui_text_line_height(14.0)) / 2.0
+                    UiCore::draw_text(box_x, label_y, 14.0, label, 255, 255, 255, 255) if label.len != 0
+                Button.Check(label, checked, rest, hover, press):
+                    label_y: f32 = box_y + (box_height - ui_text_line_height(14.0)) / 2.0
+                    UiCore::draw_text(box_x, label_y, 14.0, label, 255, 255, 255, 255) if label.len != 0
+                Button.Radio(label, group, selected, rest, hover, press):
+                    label_y: f32 = box_y + (box_height - ui_text_line_height(14.0)) / 2.0
+                    UiCore::draw_text(box_x, label_y, 14.0, label, 255, 255, 255, 255) if label.len != 0
+
+    public:
+        # Emit one widget's own drawing, then recurse into its children.
+        # Pre-order gives painter's-algorithm ordering for free: a parent's
+        # background is laid down before anything it contains.
+        def paint(w: Widget) -> void:
+            fill: UiCore::Color = fill_of(w)
+            if fill.a != 0:
+                UiCore::fill_rect(w.x, w.y, w.width, w.height, fill.r, fill.g, fill.b, fill.a)
+            paint_content(w)
+            cursor: mutable Widget? = w.first_child
+            while cursor is node |cursor|:
+                paint(node)
+                cursor <- node.next_sibling
+
+    # ------------------------------------------------------------------
+    # Pointer state machine
+    # ------------------------------------------------------------------
+    #
+    # A click is press-then-release on the SAME widget, which is what every
+    # desktop toolkit means by a click: dragging off a button before releasing
+    # cancels it. The hot/active pair is wxWidgets' capture model reduced to
+    # what a retained tree needs -- `hot` is what the pointer is over, `active`
+    # is what holds the press. Only the active widget ever has `pressed` set,
+    # so "released on the widget that was pressed" is "the hit widget is
+    # pressed" and needs no handle comparison.
+
+    private:
+        global mutable hot_widget: Widget? = null
+        global mutable active_widget: Widget? = null
+
+    public:
+        # What the pointer is over, and what holds the press.
+        def hot() -> Widget?:
+            return hot_widget
+
+        def active() -> Widget?:
+            return active_widget
+
+        # Feed one pointer event through the tree. `root` is the tree being
+        # tested, `kind` one of the UiEvent pointer constants.
+        def pointer(root: Widget, kind: i32, x: f32, y: f32) -> void:
+            target: Widget? = hit(root, x, y)
+            if hot_widget is previous:
+                previous.hovered <- false
+            hot_widget <- target
+            if target is over:
+                over.hovered <- true
+
+            if kind == UiEvent::POINTER_DOWN:
+                if target is pressed_now:
+                    active_widget <- target
+                    pressed_now.pressed <- true
+                return
+
+            if kind == UiEvent::POINTER_UP:
+                clicked: mutable bool = false
+                if target is released_on:
+                    clicked <- released_on.pressed
+                if active_widget is held:
+                    held.pressed <- false
+                active_widget <- null
+                if clicked and target is clicked_widget:
+                    app_widget_event(clicked_widget, UiWidgetEvent::CLICK)
+                return
+
+            if kind == UiEvent::POINTER_LEAVE:
+                if active_widget is held:
+                    held.pressed <- false
+                active_widget <- null
+                if hot_widget is left:
+                    left.hovered <- false
+                hot_widget <- null

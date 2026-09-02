@@ -37,102 +37,104 @@
 # is the geometry plus the widest payload, and the tree walk touches one row
 # per node instead of a row and a parallel array.
 
-# NOTE: declared at file scope, not inside `module Ui:`. stage1's hierarchy
-# exhaustiveness check does not yet recognise MODULE-QUALIFIED variant paths
-# (`Ui::Button.Push`) as covering their sub-category, so a fully-covered match
-# read as non-exhaustive. Bare names match the rest of elisa-ui, which declares
-# its core structs at file scope too.
+# The tree is `module UiWidgets`. This file declares the types; ui_ops.elisa
+# and ui_build.elisa `extend` the same module with the passes and the
+# constructors, so an application sees one namespace: `UiWidgets::Widget`,
+# `UiWidgets::layout`, `UiWidgets::button`. Matching a widget outside the
+# module spells the variant `UiWidgets::Button.Push(...)`; both compilers
+# resolve that against the sealed hierarchy since stage0 4b6977e4 / stage1
+# f7a4bbd8.
 
-# Axis constants, shared with the layout passes. A container distributes its
-# children ALONG one axis and stretches them ACROSS the other -- wxBoxSizer's
-# orientation, spelled as a value rather than a class.
-const UI_AXIS_COLUMN: i32 = 0
-const UI_AXIS_ROW: i32 = 1
+include "../core/ui_core.elisa"
+include "./ui_const.elisa"
 
-# The click a button reports back to the application.
-const UI_WIDGET_EVENT_CLICK: i32 = 0
-
-
-# The sealed root: the whole widget universe in ONE region-backed store. A
-# `Widget` value is an opaque u32 handle into it, so a tree is contiguous and
-# a reference costs four bytes.
-#
-# Constructors name every common first, in this order, then the variant's own
-# fields. Application code goes through ui_build.elisa, which fills them in.
-enum Widget:
-    common:
-        # Layout INPUT: the widget's own minimum, and its share of leftover
-        # space along the parent's axis (wxSizer's proportion / Qt's stretch).
-        @storage(inline)
-        min_width: mutable f32
-        @storage(inline)
-        min_height: mutable f32
-        @storage(inline)
-        grow: mutable f32
-        # Layout OUTPUT: the box `widget_arrange` resolved.
-        @storage(inline)
-        x: mutable f32
-        @storage(inline)
-        y: mutable f32
-        @storage(inline)
-        width: mutable f32
-        @storage(inline)
-        height: mutable f32
-        # Interaction state, mirroring wxWindow's hover/press tracking.
-        @storage(inline)
-        hovered: mutable bool
-        @storage(inline)
-        pressed: mutable bool
-        # The tree. A leaf's `first_child` stays null; only containers and
-        # windows nest, which ui_children enforces.
-        @storage(inline)
-        first_child: mutable Widget?
-        @storage(inline)
-        next_sibling: mutable Widget?
-    pass
-
-
-# A top-level surface. wxTopLevelWindow's distinguishing state is its title
-# and decoration flags; the rest it inherits.
-enum Window is Widget:
-    Top(title: sview, resizable: bool)
-    # wxMiniFrame / a tool palette: a real window that floats above its owner.
-    Floating(title: sview)
+module UiWidgets:
+    public:
+        # The sealed root: the whole widget universe in ONE region-backed
+        # store. A `Widget` value is an opaque u32 handle into it, so a tree
+        # is contiguous and a reference costs four bytes.
+        #
+        # Constructors name every common first, in this order, then the
+        # variant's own fields. Application code goes through the helpers in
+        # ui_build.elisa, which fill them in.
+        enum Widget:
+            common:
+                # Layout INPUT: the widget's own minimum, and its share of
+                # leftover space along the parent's axis (wxSizer's proportion
+                # / Qt's stretch).
+                @storage(inline)
+                min_width: mutable f32
+                @storage(inline)
+                min_height: mutable f32
+                @storage(inline)
+                grow: mutable f32
+                # Layout OUTPUT: the box `arrange` resolved.
+                @storage(inline)
+                x: mutable f32
+                @storage(inline)
+                y: mutable f32
+                @storage(inline)
+                width: mutable f32
+                @storage(inline)
+                height: mutable f32
+                # Interaction state, mirroring wxWindow's hover/press tracking.
+                @storage(inline)
+                hovered: mutable bool
+                @storage(inline)
+                pressed: mutable bool
+                # The tree. A leaf's `first_child` stays null; only containers
+                # and windows nest, which `children` enforces.
+                @storage(inline)
+                first_child: mutable Widget?
+                @storage(inline)
+                next_sibling: mutable Widget?
+            pass
 
 
-# Arranges children. The model is wxWidgets' sizer, not Qt's layout objects: a
-# container IS its layout, so there is no second tree to keep in sync.
-enum Container is Widget:
-    # wxBoxSizer. `axis` is UI_AXIS_ROW or UI_AXIS_COLUMN.
-    Box(axis: i32, padding: f32, spacing: f32, fill: UiColor)
-    # wxGridSizer: fixed column count, uniform cells.
-    Grid(columns: i32, padding: f32, spacing: f32, fill: UiColor)
-    # wxScrolledWindow / QAbstractScrollArea. `offset` is subtracted from the
-    # children's positions during arrange, so scrolling is one subtraction.
-    Scroll(axis: i32, offset: f32, fill: UiColor)
+        # A top-level surface. wxTopLevelWindow's distinguishing state is its
+        # title and decoration flags; the rest it inherits.
+        enum Window is Widget:
+            Top(title: sview, resizable: bool)
+            # wxMiniFrame / a tool palette: a real window that floats above
+            # its owner.
+            Floating(title: sview)
 
 
-# A leaf the user reads or drives -- wxControl's descendants.
-enum Control is Widget:
-    # wxStaticText.
-    Label(text: sview, size: f32, ink: UiColor)
-    # wxGauge / QProgressBar. `fraction` is 0.0..1.0.
-    Gauge(fraction: f32, track: UiColor, bar: UiColor)
-    # wxSlider / QAbstractSlider.
-    Slider(value: f32, low: f32, high: f32, track: UiColor, knob: UiColor)
-    # wxTextCtrl / QLineEdit. `caret` is a byte offset into `text`.
-    TextBox(text: sview, caret: usize, size: f32, ink: UiColor, fill: UiColor)
+        # Arranges children. The model is wxWidgets' sizer, not Qt's layout
+        # objects: a container IS its layout, so there is no second tree to
+        # keep in sync.
+        enum Container is Widget:
+            # wxBoxSizer. `axis` is UiAxis::ROW or UiAxis::COLUMN.
+            Box(axis: i32, padding: f32, spacing: f32, fill: UiCore::Color)
+            # wxGridSizer: fixed column count, uniform cells.
+            Grid(columns: i32, padding: f32, spacing: f32, fill: UiCore::Color)
+            # wxScrolledWindow / QAbstractScrollArea. `offset` is subtracted
+            # from the children's positions during arrange, so scrolling is
+            # one subtraction.
+            Scroll(axis: i32, offset: f32, fill: UiCore::Color)
 
 
-# wxAnyButton's family. Every button carries a label and the three colours a
-# pressable surface needs; the variants differ in what a click MEANS, which is
-# exactly what a sum type should encode.
-enum Button is Control:
-    # wxButton: fires once per click.
-    Push(label: sview, rest: UiColor, hover: UiColor, press: UiColor)
-    # wxToggleButton: latches.
-    Toggle(label: sview, on: bool, rest: UiColor, hover: UiColor, press: UiColor)
-    # wxCheckBox.
-    Check(label: sview, checked: bool, rest: UiColor, hover: UiColor, press: UiColor)
-    # wxRadioButton: `group` names the mutually exclusive set.
-    Radio(label: sview, group: i32, selected: bool, rest: UiColor, hover: UiColor, press: UiColor)
+        # A leaf the user reads or drives -- wxControl's descendants.
+        enum Control is Widget:
+            # wxStaticText.
+            Label(text: sview, size: f32, ink: UiCore::Color)
+            # wxGauge / QProgressBar. `fraction` is 0.0..1.0.
+            Gauge(fraction: f32, track: UiCore::Color, bar: UiCore::Color)
+            # wxSlider / QAbstractSlider.
+            Slider(value: f32, low: f32, high: f32, track: UiCore::Color, knob: UiCore::Color)
+            # wxTextCtrl / QLineEdit. `caret` is a byte offset into `text`.
+            TextBox(text: sview, caret: usize, size: f32, ink: UiCore::Color, fill: UiCore::Color)
+
+
+        # wxAnyButton's family. Every button carries a label and the three
+        # colours a pressable surface needs; the variants differ in what a
+        # click MEANS, which is exactly what a sum type should encode.
+        enum Button is Control:
+            # wxButton: fires once per click.
+            Push(label: sview, rest: UiCore::Color, hover: UiCore::Color, press: UiCore::Color)
+            # wxToggleButton: latches.
+            Toggle(label: sview, on: bool, rest: UiCore::Color, hover: UiCore::Color, press: UiCore::Color)
+            # wxCheckBox.
+            Check(label: sview, checked: bool, rest: UiCore::Color, hover: UiCore::Color, press: UiCore::Color)
+            # wxRadioButton: `group` names the mutually exclusive set.
+            Radio(label: sview, group: i32, selected: bool, rest: UiCore::Color, hover: UiCore::Color, press: UiCore::Color)

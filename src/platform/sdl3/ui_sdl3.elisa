@@ -1,16 +1,15 @@
 # elisa-ui native backend: SDL3 (system libSDL3 via extern declarations).
-# Implements the platform contract from ui_core.elisa and owns the main loop:
-# ui_run() polls SDL events, translates them to UiEvent, and drives the app
-# contract (app_init / app_event / app_frame).
+# `module UiSdl3` implements the platform contract from ui_core.elisa and owns
+# the main loop: `UiSdl3::run` polls SDL events, translates them to
+# `UiCore::Event`, and drives the app contract (app_init / app_event /
+# app_frame).
+#
+# The extern declarations stay at file scope: they name C symbols, which are
+# global by nature, and a module prefix would only pretend otherwise. The four
+# text-metric hooks are the platform's half of the contract and are likewise
+# top-level by name; they delegate into the module.
 
 include "../../core/ui_core.elisa"
-
-const SDL_INIT_VIDEO: u32 = 0x20
-const SDL_EVENT_QUIT: u32 = 0x100
-const SDL_EVENT_KEY_DOWN: u32 = 0x300
-const SDL_EVENT_MOUSE_MOTION: u32 = 0x400
-const SDL_EVENT_MOUSE_BUTTON_DOWN: u32 = 0x401
-const SDL_EVENT_MOUSE_BUTTON_UP: u32 = 0x402
 
 extern SDL_Init(flags: u32) -> bool
 extern SDL_CreateWindow(title: cstr, w: i32, h: i32, flags: u64) -> void&?
@@ -43,240 +42,261 @@ extern TTF_GetFontHeight(font: void&) -> i32
 extern TTF_GetFontAscent(font: void&) -> i32
 extern TTF_RenderText_Blended(font: void&, text: cstr, length: usize, color: u32) -> void&?
 
-global mutable ui_sdl_window: void&? = null
-global mutable ui_sdl_renderer: void&? = null
-# SDL_Event is a 128-byte union; poll into this buffer and read typed fields
-# at their SDL3 offsets (type@0; pointer events keep x@28 and y@32 as f32).
-global mutable ui_sdl_event_buffer: u8[128] = zeroed
-
-def ui_sdl_ren() -> void&:
-    if ui_sdl_renderer is renderer:
-        return renderer
-    return zeroed
-
-# Text comes from SDL_ttf. A TTF_Font is tied to one point size, so fonts are
-# opened on demand and kept in a small table keyed by size; ui_sdl_fonts_close
-# releases them at shutdown.
-#
-# Fonts are released explicitly here because the table outlives any one scope;
-# per-frame glyph surfaces and textures use `__drop__` instead (below).
-const UI_SDL_MAX_FONTS: usize = 8
-const UI_SDL_DEFAULT_FONT: cstr = "/System/Library/Fonts/Supplemental/Arial.ttf"
-
-global mutable ui_sdl_font_handles: (void&?)[UI_SDL_MAX_FONTS] = zeroed
-global mutable ui_sdl_font_sizes: f32[UI_SDL_MAX_FONTS] = zeroed
-global mutable ui_sdl_font_count: usize = 0
-# An optional override rather than a mutable cstr global holding the default.
-# (stage1 used to drop a text global's initializer entirely, which made every
-# measurement silently return zero; fixed in the compiler, but resolving the
-# default in a function is clearer anyway.)
-global mutable ui_sdl_font_override: cstr? = null
-
-def ui_sdl_font_path() -> cstr:
-    if ui_sdl_font_override is override:
-        return override
-    return UI_SDL_DEFAULT_FONT
-
-def ui_sdl_font_for(size: f32) -> void&?:
-    for index in 0..<ui_sdl_font_count:
-        return ui_sdl_font_handles[index] if ui_sdl_font_sizes[index] == size
-    return null if ui_sdl_font_count >= UI_SDL_MAX_FONTS
-    opened: void&? = TTF_OpenFont(ui_sdl_font_path(), size)
-    return null if opened == null
-    ui_sdl_font_handles[ui_sdl_font_count] <- opened
-    ui_sdl_font_sizes[ui_sdl_font_count] <- size
-    ui_sdl_font_count <- ui_sdl_font_count + 1
-    return opened
-
-def ui_sdl_fonts_close() -> void:
-    for index in 0..<ui_sdl_font_count:
-        if ui_sdl_font_handles[index] is handle:
-            TTF_CloseFont(handle)
-        ui_sdl_font_handles[index] <- null
-    ui_sdl_font_count <- 0
-
+# The platform half of the contract: text metrics from the font SDL_ttf
+# rasterizes with.
 def ui_measure_text_width(text: sview, size: f32) -> f32:
-    return 0.0 if text.len == 0
-    if ui_sdl_font_for(size) is font:
-        measured_width: mutable i32 = 0
-        measured_height: mutable i32 = 0
-        pointer: cstr = text.data.cast[cstr] can Unsafe.PointerCast
-        if TTF_GetStringSize(font, pointer, text.len, &measured_width, &measured_height):
-            return measured_width.f32()
-    return 0.0
+    return UiSdl3::measure_text_width(text, size)
 
 def ui_measure_text_height(text: sview, size: f32) -> f32:
-    return ui_text_line_height(size)
+    return UiSdl3::text_line_height(size)
 
 def ui_font_ascent(size: f32) -> f32:
-    if ui_sdl_font_for(size) is font:
-        return TTF_GetFontAscent(font).f32()
-    return size
+    return UiSdl3::font_ascent(size)
 
 def ui_text_line_height(size: f32) -> f32:
-    if ui_sdl_font_for(size) is font:
-        return TTF_GetFontHeight(font).f32()
-    return size
+    return UiSdl3::text_line_height(size)
 
-# A rendered glyph surface and its texture are released by destructors rather
-# than by hand. Declaring __drop__ induces affinity on the type, so the compiler
-# both inserts the release on every exit path and stops the handle being used
-# twice -- the early-return paths below used to be where a hand-written release
-# was easiest to forget.
-struct SdlSurface:
-    handle: void&
 
-def __drop__(self: SdlSurface) -> void:
-    SDL_DestroySurface(self.handle)
+module UiSdl3:
+    private:
+        const INIT_VIDEO: u32 = 0x20
+        const EVENT_QUIT: u32 = 0x100
+        const EVENT_KEY_DOWN: u32 = 0x300
+        const EVENT_MOUSE_MOTION: u32 = 0x400
+        const EVENT_MOUSE_BUTTON_DOWN: u32 = 0x401
+        const EVENT_MOUSE_BUTTON_UP: u32 = 0x402
 
-struct SdlTexture:
-    handle: void&
+        global mutable window: void&? = null
+        global mutable renderer: void&? = null
+        # SDL_Event is a 128-byte union; poll into this buffer and read typed
+        # fields at their SDL3 offsets (type@0; pointer events keep x@28 and
+        # y@32 as f32).
+        global mutable event_buffer: u8[128] = zeroed
 
-def __drop__(self: SdlTexture) -> void:
-    SDL_DestroyTexture(self.handle)
+        def ren() -> void&:
+            if renderer is active_renderer:
+                return active_renderer
+            return zeroed
 
-# SDL_Color is four bytes and travels in a single register, so it crosses as a
-# packed little-endian u32 rather than a by-value struct.
-def ui_sdl_packed_color(color: UiColor) -> u32:
-    return color.r.u32() | (color.g.u32() << 8) | (color.b.u32() << 16) | (color.a.u32() << 24)
+        # Text comes from SDL_ttf. A TTF_Font is tied to one point size, so
+        # fonts are opened on demand and kept in a small table keyed by size;
+        # `fonts_close` releases them at shutdown.
+        #
+        # Fonts are released explicitly here because the table outlives any
+        # one scope; per-frame glyph surfaces and textures use `__drop__`
+        # instead (below).
+        const MAX_FONTS: usize = 8
+        const DEFAULT_FONT: cstr = "/System/Library/Fonts/Supplemental/Arial.ttf"
 
-def ui_sdl_draw_text(run: UiTextRun) -> void:
-    return if run.text.len == 0
-    if ui_sdl_font_for(run.size) is font:
-        pointer: cstr = run.text.data.cast[cstr] can Unsafe.PointerCast
-        surface_opt: void&? = TTF_RenderText_Blended(font, pointer, run.text.len, ui_sdl_packed_color(run.color))
-        if surface_opt is surface_handle:
-            surface: SdlSurface = SdlSurface{handle: surface_handle}
-            texture_opt: void&? = SDL_CreateTextureFromSurface(ui_sdl_ren(), surface.handle)
-            if texture_opt is texture_handle:
-                texture: SdlTexture = SdlTexture{handle: texture_handle}
-                width: f32 = ui_measure_text_width(run.text, run.size)
-                height: f32 = ui_text_line_height(run.size)
-                destination: mutable array[f32, 4] = [run.x, run.y, width, height]
-                destination_pointer: void& = (&destination[0]).cast[void&] can Unsafe.PointerCast
-                _ = SDL_RenderTexture(ui_sdl_ren(), texture.handle, null, destination_pointer)
+        global mutable font_handles: (void&?)[MAX_FONTS] = zeroed
+        global mutable font_sizes: f32[MAX_FONTS] = zeroed
+        global mutable font_total: usize = 0
+        # An optional override rather than a mutable cstr global holding the
+        # default: resolving the default in a function is clearer.
+        global mutable font_override: cstr? = null
 
-def ui_sdl_rect(x: f32, y: f32, width: f32, height: f32, color: UiColor) -> void:
-    rect: mutable array[f32, 4] = [x, y, width, height]
-    _ = SDL_SetRenderDrawColor(ui_sdl_ren(), color.r, color.g, color.b, color.a)
-    rect_pointer: void& = (&rect[0]).cast[void&] can Unsafe.PointerCast
-    _ = SDL_RenderFillRect(ui_sdl_ren(), rect_pointer)
+        def font_path() -> cstr:
+            if font_override is override:
+                return override
+            return DEFAULT_FONT
 
-# SDL3's 2D renderer has no filled-circle or filled-triangle primitive, so the
-# batch's curved and triangular commands are approximated with their bounding
-# geometry for now. Both are honoured exactly by WasmBrowser, which is why the
-# core keeps them as first-class commands rather than lowering them here.
-def ui_sdl_replay() -> void:
-    for index in 0..<ui_command_count:
-        match ui_command_buffer[index]:
-            UiCommand.Clear(color):
-                _ = SDL_SetRenderDrawColor(ui_sdl_ren(), color.r, color.g, color.b, color.a)
-                _ = SDL_RenderClear(ui_sdl_ren())
-            UiCommand.FillRect(rectangle):
-                ui_sdl_rect(rectangle.x, rectangle.y, rectangle.width, rectangle.height, rectangle.color)
-            UiCommand.FillCircle(circle):
-                ui_sdl_rect(circle.x - circle.radius, circle.y - circle.radius, circle.radius * 2.0, circle.radius * 2.0, circle.color)
-            UiCommand.FillTriangle(triangle):
-                ui_sdl_rect(triangle.ax, triangle.ay, triangle.bx - triangle.ax, triangle.cy - triangle.ay, triangle.color)
-            UiCommand.FillLine(line):
-                _ = SDL_SetRenderDrawColor(ui_sdl_ren(), line.color.r, line.color.g, line.color.b, line.color.a)
-                _ = SDL_RenderLine(ui_sdl_ren(), line.ax, line.ay, line.bx, line.by)
-            UiCommand.DrawText(run):
-                ui_sdl_draw_text(run)
+        def font_for(size: f32) -> void&?:
+            for index in 0..<font_total:
+                return font_handles[index] if font_sizes[index] == size
+            return null if font_total >= MAX_FONTS
+            opened: void&? = TTF_OpenFont(font_path(), size)
+            return null if opened == null
+            font_handles[font_total] <- opened
+            font_sizes[font_total] <- size
+            font_total <- font_total + 1
+            return opened
 
-def ui_sdl_event_type() -> u32:
-    type_ref: mutable u32& = (&ui_sdl_event_buffer[0]).cast[u32&] can Unsafe.PointerCast
-    return type_ref[0]
+    public:
+        # How many fonts the size table holds; a test checks that repeat sizes
+        # reuse an entry rather than growing it.
+        def font_count() -> usize:
+            return font_total
 
-def ui_sdl_event_x() -> f32:
-    x_ref: mutable f32& = (&ui_sdl_event_buffer[28]).cast[f32&] can Unsafe.PointerCast
-    return x_ref[0]
+        def fonts_close() -> void:
+            for index in 0..<font_total:
+                if font_handles[index] is handle:
+                    TTF_CloseFont(handle)
+                font_handles[index] <- null
+            font_total <- 0
 
-def ui_sdl_event_y() -> f32:
-    y_ref: mutable f32& = (&ui_sdl_event_buffer[32]).cast[f32&] can Unsafe.PointerCast
-    return y_ref[0]
+        def measure_text_width(text: sview, size: f32) -> f32:
+            return 0.0 if text.len == 0
+            if font_for(size) is font:
+                measured_width: mutable i32 = 0
+                measured_height: mutable i32 = 0
+                pointer: cstr = text.data.cast[cstr] can Unsafe.PointerCast
+                if TTF_GetStringSize(font, pointer, text.len, &measured_width, &measured_height):
+                    return measured_width.f32()
+            return 0.0
 
-# Poll one SDL event and translate it. Returns false when the queue is empty;
-# events outside the modeled set come back as UI_EVENT_NONE for the app to skip.
-def ui_sdl_next_event(out_event: mutable UiEvent&) -> bool:
-    buffer_pointer: void& = (&ui_sdl_event_buffer[0]).cast[void&] can Unsafe.PointerCast
-    has_event: bool = SDL_PollEvent(buffer_pointer)
-    return false if not has_event
-    event_type: u32 = ui_sdl_event_type()
-    out_event.kind <- UI_EVENT_NONE
-    out_event.x <- 0.0
-    out_event.y <- 0.0
-    out_event.dx <- 0.0
-    out_event.dy <- 0.0
-    out_event.code <- 0
-    if event_type == SDL_EVENT_QUIT:
-        out_event.kind <- UI_EVENT_QUIT
-    elif event_type == SDL_EVENT_MOUSE_MOTION:
-        out_event.kind <- UI_EVENT_POINTER_MOVE
-        out_event.x <- ui_sdl_event_x()
-        out_event.y <- ui_sdl_event_y()
-    elif event_type == SDL_EVENT_MOUSE_BUTTON_DOWN:
-        out_event.kind <- UI_EVENT_POINTER_DOWN
-        out_event.x <- ui_sdl_event_x()
-        out_event.y <- ui_sdl_event_y()
-    elif event_type == SDL_EVENT_MOUSE_BUTTON_UP:
-        out_event.kind <- UI_EVENT_POINTER_UP
-        out_event.x <- ui_sdl_event_x()
-        out_event.y <- ui_sdl_event_y()
-    elif event_type == SDL_EVENT_KEY_DOWN:
-        out_event.kind <- UI_EVENT_KEY_DOWN
-    return true
+        def font_ascent(size: f32) -> f32:
+            if font_for(size) is font:
+                return TTF_GetFontAscent(font).f32()
+            return size
 
-# max_frames <= 0 runs until quit; a positive value exits after that many frames
-# (headless smoke runs use it together with SDL_VIDEODRIVER=dummy).
-def ui_run(title: cstr, width: i32, height: i32, max_frames: i64) -> i64:
-    if not SDL_Init(SDL_INIT_VIDEO):
-        _ = puts(SDL_GetError())
-        return 1
-    window_opt: void&? = SDL_CreateWindow(title, width, height, 0)
-    if window_opt == null:
-        _ = puts(SDL_GetError())
-        SDL_Quit()
-        return 1
-    ui_sdl_window <- window_opt
-    if ui_sdl_window is window:
-        renderer_opt: void&? = SDL_CreateRenderer(window, null)
-        if renderer_opt == null:
-            _ = puts(SDL_GetError())
-            SDL_DestroyWindow(window)
+        def text_line_height(size: f32) -> f32:
+            if font_for(size) is font:
+                return TTF_GetFontHeight(font).f32()
+            return size
+
+    private:
+        # A rendered glyph surface and its texture are released by destructors
+        # rather than by hand. Declaring __drop__ induces affinity on the type,
+        # so the compiler both inserts the release on every exit path and stops
+        # the handle being used twice -- the early-return paths below used to
+        # be where a hand-written release was easiest to forget.
+        struct Surface:
+            handle: void&
+
+        def __drop__(self: Surface) -> void:
+            SDL_DestroySurface(self.handle)
+
+        struct Texture:
+            handle: void&
+
+        def __drop__(self: Texture) -> void:
+            SDL_DestroyTexture(self.handle)
+
+        # SDL_Color is four bytes and travels in a single register, so it
+        # crosses as a packed little-endian u32 rather than a by-value struct.
+        def packed_color(color: UiCore::Color) -> u32:
+            return color.r.u32() | (color.g.u32() << 8) | (color.b.u32() << 16) | (color.a.u32() << 24)
+
+        def blit_text(run: UiCore::TextRun) -> void:
+            return if run.text.len == 0
+            if font_for(run.size) is font:
+                pointer: cstr = run.text.data.cast[cstr] can Unsafe.PointerCast
+                surface_opt: void&? = TTF_RenderText_Blended(font, pointer, run.text.len, packed_color(run.color))
+                if surface_opt is surface_handle:
+                    surface: Surface = Surface{handle: surface_handle}
+                    texture_opt: void&? = SDL_CreateTextureFromSurface(ren(), surface.handle)
+                    if texture_opt is texture_handle:
+                        texture: Texture = Texture{handle: texture_handle}
+                        width: f32 = measure_text_width(run.text, run.size)
+                        height: f32 = text_line_height(run.size)
+                        destination: mutable array[f32, 4] = [run.x, run.y, width, height]
+                        destination_pointer: void& = (&destination[0]).cast[void&] can Unsafe.PointerCast
+                        _ = SDL_RenderTexture(ren(), texture.handle, null, destination_pointer)
+
+        def rect(x: f32, y: f32, width: f32, height: f32, color: UiCore::Color) -> void:
+            box: mutable array[f32, 4] = [x, y, width, height]
+            _ = SDL_SetRenderDrawColor(ren(), color.r, color.g, color.b, color.a)
+            rect_pointer: void& = (&box[0]).cast[void&] can Unsafe.PointerCast
+            _ = SDL_RenderFillRect(ren(), rect_pointer)
+
+        # SDL3's 2D renderer has no filled-circle or filled-triangle primitive,
+        # so the batch's curved and triangular commands are approximated with
+        # their bounding geometry for now. Both are honoured exactly by
+        # WasmBrowser, which is why the core keeps them as first-class commands
+        # rather than lowering them here.
+        def replay() -> void:
+            for index in 0..<UiCore::command_count():
+                match UiCore::command_at(index):
+                    UiCore::Command.Clear(color):
+                        _ = SDL_SetRenderDrawColor(ren(), color.r, color.g, color.b, color.a)
+                        _ = SDL_RenderClear(ren())
+                    UiCore::Command.FillRect(rectangle):
+                        rect(rectangle.x, rectangle.y, rectangle.width, rectangle.height, rectangle.color)
+                    UiCore::Command.FillCircle(circle):
+                        rect(circle.x - circle.radius, circle.y - circle.radius, circle.radius * 2.0, circle.radius * 2.0, circle.color)
+                    UiCore::Command.FillTriangle(triangle):
+                        rect(triangle.ax, triangle.ay, triangle.bx - triangle.ax, triangle.cy - triangle.ay, triangle.color)
+                    UiCore::Command.FillLine(line):
+                        _ = SDL_SetRenderDrawColor(ren(), line.color.r, line.color.g, line.color.b, line.color.a)
+                        _ = SDL_RenderLine(ren(), line.ax, line.ay, line.bx, line.by)
+                    UiCore::Command.DrawText(run):
+                        blit_text(run)
+
+        def event_type() -> u32:
+            type_ref: mutable u32& = (&event_buffer[0]).cast[u32&] can Unsafe.PointerCast
+            return type_ref[0]
+
+        def event_x() -> f32:
+            x_ref: mutable f32& = (&event_buffer[28]).cast[f32&] can Unsafe.PointerCast
+            return x_ref[0]
+
+        def event_y() -> f32:
+            y_ref: mutable f32& = (&event_buffer[32]).cast[f32&] can Unsafe.PointerCast
+            return y_ref[0]
+
+        # Poll one SDL event and translate it. Returns false when the queue is
+        # empty; events outside the modeled set come back as UiEvent::NONE for
+        # the app to skip.
+        def next_event(out_event: mutable UiCore::Event&) -> bool:
+            buffer_pointer: void& = (&event_buffer[0]).cast[void&] can Unsafe.PointerCast
+            has_event: bool = SDL_PollEvent(buffer_pointer)
+            return false if not has_event
+            kind: u32 = event_type()
+            out_event with { kind <- UiEvent::NONE, x <- 0.0, y <- 0.0, dx <- 0.0, dy <- 0.0, code <- 0 }
+            if kind == EVENT_QUIT:
+                out_event.kind <- UiEvent::QUIT
+            elif kind == EVENT_MOUSE_MOTION:
+                out_event with { kind <- UiEvent::POINTER_MOVE, x <- event_x(), y <- event_y() }
+            elif kind == EVENT_MOUSE_BUTTON_DOWN:
+                out_event with { kind <- UiEvent::POINTER_DOWN, x <- event_x(), y <- event_y() }
+            elif kind == EVENT_MOUSE_BUTTON_UP:
+                out_event with { kind <- UiEvent::POINTER_UP, x <- event_x(), y <- event_y() }
+            elif kind == EVENT_KEY_DOWN:
+                out_event.kind <- UiEvent::KEY_DOWN
+            return true
+
+    public:
+        # max_frames <= 0 runs until quit; a positive value exits after that
+        # many frames (headless smoke runs use it together with
+        # SDL_VIDEODRIVER=dummy).
+        def run(title: cstr, width: i32, height: i32, max_frames: i64) -> i64:
+            if not SDL_Init(INIT_VIDEO):
+                _ = puts(SDL_GetError())
+                return 1
+            window_opt: void&? = SDL_CreateWindow(title, width, height, 0)
+            if window_opt == null:
+                _ = puts(SDL_GetError())
+                SDL_Quit()
+                return 1
+            window <- window_opt
+            if window is created_window:
+                renderer_opt: void&? = SDL_CreateRenderer(created_window, null)
+                if renderer_opt == null:
+                    _ = puts(SDL_GetError())
+                    SDL_DestroyWindow(created_window)
+                    SDL_Quit()
+                    return 1
+                renderer <- renderer_opt
+            # Text is optional: a host without the font still runs, it just
+            # measures every run as zero-width.
+            if not TTF_Init():
+                _ = puts(SDL_GetError())
+            path_override: cstr? = getenv("ELISA_UI_FONT")
+            if path_override is override:
+                font_override <- override
+            UiCore::set_viewport(width.f32(), height.f32())
+            app_init()
+            running: mutable bool = true
+            frames: mutable i64 = 0
+            while running |frames|:
+                event: mutable UiCore::Event = UiCore::Event{kind: UiEvent::NONE, x: 0.0, y: 0.0, dx: 0.0, dy: 0.0, code: 0}
+                while next_event(event) |event, running|:
+                    running <- false if event.kind == UiEvent::QUIT
+                    app_event(event)
+                # Same retained contract as the component backend: the app
+                # fills a command batch, then the backend consumes it. SDL3
+                # replays immediately.
+                UiCore::begin_frame()
+                app_frame()
+                replay()
+                _ = SDL_RenderPresent(ren())
+                frames <- frames + 1
+                running <- false if max_frames > 0 and frames >= max_frames
+            fonts_close()
+            TTF_Quit()
+            if renderer is done_renderer:
+                SDL_DestroyRenderer(done_renderer)
+            if window is done_window:
+                SDL_DestroyWindow(done_window)
             SDL_Quit()
-            return 1
-        ui_sdl_renderer <- renderer_opt
-    # Text is optional: a host without the font still runs, it just measures
-    # every run as zero-width.
-    if not TTF_Init():
-        _ = puts(SDL_GetError())
-    path_override: cstr? = getenv("ELISA_UI_FONT")
-    if path_override is override:
-        ui_sdl_font_override <- override
-    ui_viewport_width <- width.f32()
-    ui_viewport_height <- height.f32()
-    app_init()
-    running: mutable bool = true
-    frames: mutable i64 = 0
-    while running |frames|:
-        event: mutable UiEvent = UiEvent{kind: UI_EVENT_NONE, x: 0.0, y: 0.0, dx: 0.0, dy: 0.0, code: 0}
-        while ui_sdl_next_event(event) |event, running|:
-            running <- false if event.kind == UI_EVENT_QUIT
-            app_event(event)
-        # Same retained contract as the component backend: the app fills a
-        # command batch, then the backend consumes it. SDL3 replays immediately.
-        ui_begin_frame()
-        app_frame()
-        ui_sdl_replay()
-        _ = SDL_RenderPresent(ui_sdl_ren())
-        frames <- frames + 1
-        running <- false if max_frames > 0 and frames >= max_frames
-    ui_sdl_fonts_close()
-    TTF_Quit()
-    if ui_sdl_renderer is done_renderer:
-        SDL_DestroyRenderer(done_renderer)
-    if ui_sdl_window is done_window:
-        SDL_DestroyWindow(done_window)
-    SDL_Quit()
-    return 0
+            return 0

@@ -1,10 +1,9 @@
 # The construction API as an application would use it: build children, chain
 # them, hand the chain to a parent, lay out, click.
 
-include "../src/core/ui_core.elisa"
-include "../src/widgets/ui_hierarchy.elisa"
-include "../src/widgets/ui_ops.elisa"
 include "../src/widgets/ui_build.elisa"
+
+using UiWidgets
 
 extern puts(text: cstr) -> i64
 
@@ -20,8 +19,8 @@ def ui_font_ascent(size: f32) -> f32:
 def ui_text_line_height(size: f32) -> f32:
     return size
 
-def app_widget_event(widget: Widget, event: i32) -> void:
-    clicks <- clicks + 1 if event == UI_WIDGET_EVENT_CLICK
+def app_widget_event(widget: UiWidgets::Widget, event: i32) -> void:
+    clicks <- clicks + 1 if event == UiWidgetEvent::CLICK
 
 def fail(name: cstr) -> void:
     failures <- failures + 1
@@ -33,21 +32,21 @@ def near(actual: f32, expected: f32) -> bool:
 
 def main() -> i64:
     can Memory.Allocate, Abort.Panic:
-        panel: UiColor = ui_rgb(30, 30, 34)
-        accent: UiColor = ui_rgb(60, 110, 190)
+        panel: UiCore::Color = rgb(30, 30, 34)
+        accent: UiCore::Color = rgb(60, 110, 190)
 
         # A toolbar: label on the left, a growing spacer, two buttons right.
-        title: Widget = ui_label("Document", 14.0, ui_rgb(230, 230, 230))
-        save: Widget = ui_button("Save", accent)
-        quit: Widget = ui_button("Quit", accent)
+        title: Widget = label("Document", 14.0, rgb(230, 230, 230))
+        save: Widget = button("Save", accent)
+        quit: Widget = button("Quit", accent)
 
         # Chain them: title -> save -> quit.
-        quit_linked: Widget = ui_sibling(quit, null)
-        save_linked: Widget = ui_sibling(save, quit_linked)
-        title_linked: Widget = ui_grow(ui_sibling(title, save_linked), 1.0)
+        quit_linked: Widget = sibling(quit, null)
+        save_linked: Widget = sibling(save, quit_linked)
+        title_linked: Widget = grow(sibling(title, save_linked), 1.0)
 
-        bar: Widget = ui_children(ui_row(8.0, 6.0, panel), title_linked)
-        ui_layout(bar, 400.0, 48.0)
+        bar: Widget = children(row(8.0, 6.0, panel), title_linked)
+        layout(bar, 400.0, 48.0)
 
         if not near(bar.width, 400.0):
             fail("toolbar width")
@@ -66,13 +65,13 @@ def main() -> i64:
 
         # Clicking the Save button reports one click; clicking the inert title
         # reports none.
-        ui_pointer(bar, UI_EVENT_POINTER_DOWN, save.x + 4.0, save.y + 4.0)
-        ui_pointer(bar, UI_EVENT_POINTER_UP, save.x + 4.0, save.y + 4.0)
+        pointer(bar, UiEvent::POINTER_DOWN, save.x + 4.0, save.y + 4.0)
+        pointer(bar, UiEvent::POINTER_UP, save.x + 4.0, save.y + 4.0)
         if clicks != 1:
             fail("save click")
 
-        ui_pointer(bar, UI_EVENT_POINTER_DOWN, 12.0, 24.0)
-        ui_pointer(bar, UI_EVENT_POINTER_UP, 12.0, 24.0)
+        pointer(bar, UiEvent::POINTER_DOWN, 12.0, 24.0)
+        pointer(bar, UiEvent::POINTER_UP, 12.0, 24.0)
         if clicks != 1:
             fail("label should not click")
 

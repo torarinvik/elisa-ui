@@ -5,13 +5,17 @@
 # JavaScript, ESM loader, or TypeScript facade anywhere in this path.
 #
 # The host drives the loop: it calls the exported guest lifecycle and input
-# functions, and this file translates them onto the app contract. Unlike the
-# SDL3 backend there is no ui_run here.
+# functions, and `module UiWasmBrowser` translates them onto the app contract.
+# Unlike the SDL3 backend there is no run loop here.
 #
-# Canonical-ABI encoding is confined to this file. `present-commands` takes a
+# Canonical-ABI encoding is confined to this module. `present-commands` takes a
 # list<render-command>, lowered as a pointer/count pair over 32-byte elements:
 # a u32 discriminant at byte 0 followed by the payload from byte 4, sized for
 # the largest case (triangle).
+#
+# The host imports, the platform half of the contract, and the guest exports
+# stay at file scope: they are the component's boundary, named by the WIT
+# world, and a module prefix would only pretend otherwise.
 
 include "../../core/ui_core.elisa"
 
@@ -54,145 +58,185 @@ def ui_font_ascent(size: f32) -> f32:
 def ui_text_line_height(size: f32) -> f32:
     return host_font_line_height(size)
 
-const UI_WIRE_STRIDE: usize = 32
-const UI_WIRE_CAPACITY: usize = UI_MAX_COMMANDS * UI_WIRE_STRIDE
 
-global mutable ui_wire_buffer: u8[UI_WIRE_CAPACITY] = zeroed
+module UiWasmBrowser:
+    private:
+        const WIRE_STRIDE: usize = 32
+        const WIRE_CAPACITY: usize = UiCore::MAX_COMMANDS * WIRE_STRIDE
 
-# Host pointer-kind ordinals (wit enum pointer-kind { down, up, move, leave }).
-const UI_HOST_POINTER_DOWN: i32 = 0
-const UI_HOST_POINTER_UP: i32 = 1
-const UI_HOST_POINTER_MOVE: i32 = 2
-const UI_HOST_POINTER_LEAVE: i32 = 3
+        global mutable wire_buffer: u8[WIRE_CAPACITY] = zeroed
 
-def ui_wire_f32(base: usize, offset: usize, value: f32) -> void:
-    trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic, Unsafe.UncheckedIndex]:
-        slot: mutable f32& = (&ui_wire_buffer[base + offset]).cast[mutable f32&]
-        slot[0] <- value
+        # Host pointer-kind ordinals (wit enum pointer-kind { down, up, move, leave }).
+        const HOST_POINTER_DOWN: i32 = 0
+        const HOST_POINTER_UP: i32 = 1
+        const HOST_POINTER_MOVE: i32 = 2
+        const HOST_POINTER_LEAVE: i32 = 3
 
-def ui_wire_color(base: usize, offset: usize, color: UiColor) -> void:
-    ui_wire_buffer[base + offset] <- color.r
-    ui_wire_buffer[base + offset + 1] <- color.g
-    ui_wire_buffer[base + offset + 2] <- color.b
-    ui_wire_buffer[base + offset + 3] <- color.a
+        def wire_f32(base: usize, offset: usize, value: f32) -> void:
+            trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic, Unsafe.UncheckedIndex]:
+                slot: mutable f32& = (&wire_buffer[base + offset]).cast[mutable f32&]
+                slot[0] <- value
 
-def ui_wire_u32(base: usize, offset: usize, value: uintptr) -> void:
-    trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic, Unsafe.UncheckedIndex]:
-        slot: mutable u32& = (&ui_wire_buffer[base + offset]).cast[mutable u32&]
-        slot[0] <- value.u32()
+        def wire_color(base: usize, offset: usize, color: UiCore::Color) -> void:
+            wire_buffer[base + offset] <- color.r
+            wire_buffer[base + offset + 1] <- color.g
+            wire_buffer[base + offset + 2] <- color.b
+            wire_buffer[base + offset + 3] <- color.a
 
-def ui_wire_discriminant(base: usize, value: u8) -> void:
-    ui_wire_buffer[base] <- value
-    ui_wire_buffer[base + 1] <- 0
-    ui_wire_buffer[base + 2] <- 0
-    ui_wire_buffer[base + 3] <- 0
+        def wire_u32(base: usize, offset: usize, value: uintptr) -> void:
+            trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic, Unsafe.UncheckedIndex]:
+                slot: mutable u32& = (&wire_buffer[base + offset]).cast[mutable u32&]
+                slot[0] <- value.u32()
 
-def ui_encode_command(command: UiCommand, base: usize) -> void:
-    match command:
-        UiCommand.Clear(color):
-            ui_wire_discriminant(base, 0)
-            ui_wire_color(base, 4, color)
-        UiCommand.FillRect(rectangle):
-            ui_wire_discriminant(base, 1)
-            ui_wire_f32(base, 4, rectangle.x)
-            ui_wire_f32(base, 8, rectangle.y)
-            ui_wire_f32(base, 12, rectangle.width)
-            ui_wire_f32(base, 16, rectangle.height)
-            ui_wire_color(base, 20, rectangle.color)
-        UiCommand.FillCircle(circle):
-            ui_wire_discriminant(base, 2)
-            ui_wire_f32(base, 4, circle.x)
-            ui_wire_f32(base, 8, circle.y)
-            ui_wire_f32(base, 12, circle.radius)
-            ui_wire_color(base, 16, circle.color)
-        UiCommand.FillTriangle(triangle):
-            ui_wire_discriminant(base, 3)
-            ui_wire_f32(base, 4, triangle.ax)
-            ui_wire_f32(base, 8, triangle.ay)
-            ui_wire_f32(base, 12, triangle.bx)
-            ui_wire_f32(base, 16, triangle.by)
-            ui_wire_f32(base, 20, triangle.cx)
-            ui_wire_f32(base, 24, triangle.cy)
-            ui_wire_color(base, 28, triangle.color)
-        UiCommand.FillLine(line):
-            ui_wire_discriminant(base, 4)
-            ui_wire_f32(base, 4, line.ax)
-            ui_wire_f32(base, 8, line.ay)
-            ui_wire_f32(base, 12, line.bx)
-            ui_wire_f32(base, 16, line.by)
-            ui_wire_color(base, 20, line.color)
-        UiCommand.DrawText(run):
-            # text-run lowers to x, y, size, color, then the string's pointer
-            # and length: 24 payload bytes, which still fits the 28 the
-            # largest case (triangle) already reserves.
-            ui_wire_discriminant(base, 5)
-            ui_wire_f32(base, 4, run.x)
-            ui_wire_f32(base, 8, run.y)
-            ui_wire_f32(base, 12, run.size)
-            ui_wire_color(base, 16, run.color)
-            text_pointer: uintptr = run.text.data.cast[uintptr] can Unsafe.PointerCast
-            ui_wire_u32(base, 20, text_pointer)
-            ui_wire_u32(base, 24, run.text.len.u32().uintptr())
+        def wire_discriminant(base: usize, value: u8) -> void:
+            wire_buffer[base] <- value
+            wire_buffer[base + 1] <- 0
+            wire_buffer[base + 2] <- 0
+            wire_buffer[base + 3] <- 0
 
-def ui_present() -> void:
-    return if ui_command_count == 0
-    for index in 0..<ui_command_count:
-        ui_encode_command(ui_command_buffer[index], index * UI_WIRE_STRIDE)
-    commands: void& = (&ui_wire_buffer[0]).cast[void&] can Unsafe.PointerCast
-    host_present_commands(ui_viewport_width.u32(), ui_viewport_height.u32(), commands, ui_command_count.u32())
+        def encode_command(command: UiCore::Command, base: usize) -> void:
+            match command:
+                UiCore::Command.Clear(color):
+                    wire_discriminant(base, 0)
+                    wire_color(base, 4, color)
+                UiCore::Command.FillRect(rectangle):
+                    wire_discriminant(base, 1)
+                    wire_f32(base, 4, rectangle.x)
+                    wire_f32(base, 8, rectangle.y)
+                    wire_f32(base, 12, rectangle.width)
+                    wire_f32(base, 16, rectangle.height)
+                    wire_color(base, 20, rectangle.color)
+                UiCore::Command.FillCircle(circle):
+                    wire_discriminant(base, 2)
+                    wire_f32(base, 4, circle.x)
+                    wire_f32(base, 8, circle.y)
+                    wire_f32(base, 12, circle.radius)
+                    wire_color(base, 16, circle.color)
+                UiCore::Command.FillTriangle(triangle):
+                    wire_discriminant(base, 3)
+                    wire_f32(base, 4, triangle.ax)
+                    wire_f32(base, 8, triangle.ay)
+                    wire_f32(base, 12, triangle.bx)
+                    wire_f32(base, 16, triangle.by)
+                    wire_f32(base, 20, triangle.cx)
+                    wire_f32(base, 24, triangle.cy)
+                    wire_color(base, 28, triangle.color)
+                UiCore::Command.FillLine(line):
+                    wire_discriminant(base, 4)
+                    wire_f32(base, 4, line.ax)
+                    wire_f32(base, 8, line.ay)
+                    wire_f32(base, 12, line.bx)
+                    wire_f32(base, 16, line.by)
+                    wire_color(base, 20, line.color)
+                UiCore::Command.DrawText(run):
+                    # text-run lowers to x, y, size, color, then the string's
+                    # pointer and length: 24 payload bytes, which still fits
+                    # the 28 the largest case (triangle) already reserves.
+                    wire_discriminant(base, 5)
+                    wire_f32(base, 4, run.x)
+                    wire_f32(base, 8, run.y)
+                    wire_f32(base, 12, run.size)
+                    wire_color(base, 16, run.color)
+                    text_pointer: uintptr = run.text.data.cast[uintptr] can Unsafe.PointerCast
+                    wire_u32(base, 20, text_pointer)
+                    wire_u32(base, 24, run.text.len.u32().uintptr())
 
-def ui_dispatch(kind: i32, x: f32, y: f32, code: i32) -> void:
-    event: mutable UiEvent = UiEvent{kind: kind, x: x, y: y, dx: 0.0, dy: 0.0, code: code}
-    app_event(event)
+        def present() -> void:
+            total: usize = UiCore::command_count()
+            return if total == 0
+            for index in 0..<total:
+                encode_command(UiCore::command_at(index), index * WIRE_STRIDE)
+            commands: void& = (&wire_buffer[0]).cast[void&] can Unsafe.PointerCast
+            host_present_commands(UiCore::viewport_width().u32(), UiCore::viewport_height().u32(), commands, total.u32())
 
-def ui_dispatch_delta(kind: i32, x: f32, y: f32, dx: f32, dy: f32, code: i32) -> void:
-    event: mutable UiEvent = UiEvent{kind: kind, x: x, y: y, dx: dx, dy: dy, code: code}
-    app_event(event)
+        def dispatch(kind: i32, x: f32, y: f32, code: i32) -> void:
+            event: mutable UiCore::Event = UiCore::Event{kind: kind, x: x, y: y, dx: 0.0, dy: 0.0, code: code}
+            app_event(event)
 
+        def dispatch_delta(kind: i32, x: f32, y: f32, dx: f32, dy: f32, code: i32) -> void:
+            event: mutable UiCore::Event = UiCore::Event{kind: kind, x: x, y: y, dx: dx, dy: dy, code: code}
+            app_event(event)
+
+    public:
+        # The guest lifecycle, one function per WIT export.
+        def start(width: u32, height: u32) -> void:
+            UiCore::set_viewport(width.f32(), height.f32())
+            app_init()
+
+        def resize(width: u32, height: u32) -> void:
+            UiCore::set_viewport(width.f32(), height.f32())
+            dispatch(UiEvent::RESIZE, width.f32(), height.f32(), 0)
+
+        def frame(dt: f64) -> void:
+            UiCore::begin_frame()
+            app_frame()
+            present()
+
+        def pointer(x: f32, y: f32, kind: i32) -> void:
+            ui_kind: mutable i32 = UiEvent::NONE
+            ui_kind <- UiEvent::POINTER_DOWN if kind == HOST_POINTER_DOWN
+            ui_kind <- UiEvent::POINTER_UP if kind == HOST_POINTER_UP
+            ui_kind <- UiEvent::POINTER_MOVE if kind == HOST_POINTER_MOVE
+            ui_kind <- UiEvent::POINTER_LEAVE if kind == HOST_POINTER_LEAVE
+            return if ui_kind == UiEvent::NONE
+            dispatch(ui_kind, x, y, 0)
+
+        def key(code: i32, pressed: bool) -> void:
+            dispatch(UiEvent::KEY_DOWN if pressed else UiEvent::KEY_UP, 0.0, 0.0, code)
+
+        def pointer_button_input(x: f32, y: f32, button: i32, pressed: bool) -> void:
+            dispatch(UiEvent::POINTER_DOWN if pressed else UiEvent::POINTER_UP, x, y, button)
+
+        def scroll_input(x: f32, y: f32, delta_x: f32, delta_y: f32) -> void:
+            dispatch_delta(UiEvent::SCROLL, x, y, delta_x, delta_y, 0)
+
+        def gamepad_button_input(index: u32, button: i32, value: f32) -> void:
+            dispatch_delta(UiEvent::GAMEPAD_BUTTON, 0.0, 0.0, value, 0.0, button)
+
+        def gamepad_axis_input(index: u32, axis: i32, value: f32) -> void:
+            dispatch_delta(UiEvent::GAMEPAD_AXIS, 0.0, 0.0, value, 0.0, axis)
+
+        def suspend() -> void:
+            pass
+
+        def resume() -> void:
+            pass
+
+
+# The component boundary: one top-level function per WIT export, forwarding
+# into the module.
 def guest_start(width: u32, height: u32) -> void:
-    ui_viewport_width <- width.f32()
-    ui_viewport_height <- height.f32()
-    app_init()
+    UiWasmBrowser::start(width, height)
 
 def guest_resize(width: u32, height: u32) -> void:
-    ui_viewport_width <- width.f32()
-    ui_viewport_height <- height.f32()
-    ui_dispatch(UI_EVENT_RESIZE, width.f32(), height.f32(), 0)
+    UiWasmBrowser::resize(width, height)
 
 def guest_frame(dt: f64) -> void:
-    ui_begin_frame()
-    app_frame()
-    ui_present()
+    UiWasmBrowser::frame(dt)
 
 def guest_pointer(x: f32, y: f32, kind: i32) -> void:
-    ui_kind: mutable i32 = UI_EVENT_NONE
-    ui_kind <- UI_EVENT_POINTER_DOWN if kind == UI_HOST_POINTER_DOWN
-    ui_kind <- UI_EVENT_POINTER_UP if kind == UI_HOST_POINTER_UP
-    ui_kind <- UI_EVENT_POINTER_MOVE if kind == UI_HOST_POINTER_MOVE
-    ui_kind <- UI_EVENT_POINTER_LEAVE if kind == UI_HOST_POINTER_LEAVE
-    return if ui_kind == UI_EVENT_NONE
-    ui_dispatch(ui_kind, x, y, 0)
+    UiWasmBrowser::pointer(x, y, kind)
 
 def guest_key(code: i32, pressed: bool) -> void:
-    ui_dispatch(UI_EVENT_KEY_DOWN if pressed else UI_EVENT_KEY_UP, 0.0, 0.0, code)
+    UiWasmBrowser::key(code, pressed)
 
 def guest_pointer_button_input(x: f32, y: f32, button: i32, pressed: bool) -> void:
-    ui_dispatch(UI_EVENT_POINTER_DOWN if pressed else UI_EVENT_POINTER_UP, x, y, button)
+    UiWasmBrowser::pointer_button_input(x, y, button, pressed)
 
 def guest_scroll_input(x: f32, y: f32, delta_x: f32, delta_y: f32) -> void:
-    ui_dispatch_delta(UI_EVENT_SCROLL, x, y, delta_x, delta_y, 0)
+    UiWasmBrowser::scroll_input(x, y, delta_x, delta_y)
 
 def guest_gamepad_button_input(index: u32, button: i32, value: f32) -> void:
-    ui_dispatch_delta(UI_EVENT_GAMEPAD_BUTTON, 0.0, 0.0, value, 0.0, button)
+    UiWasmBrowser::gamepad_button_input(index, button, value)
 
 def guest_gamepad_axis_input(index: u32, axis: i32, value: f32) -> void:
-    ui_dispatch_delta(UI_EVENT_GAMEPAD_AXIS, 0.0, 0.0, value, 0.0, axis)
+    UiWasmBrowser::gamepad_axis_input(index, axis, value)
 
 def guest_suspend() -> void:
-    pass
+    UiWasmBrowser::suspend()
 
 def guest_resume() -> void:
-    pass
+    UiWasmBrowser::resume()
 
 @link_name("wasmbrowser:window/guest@0.1.0#start")
 export fn start(width: u32, height: u32) -> void = guest_start

@@ -10,128 +10,169 @@
 # backend can lower them without reshaping. Canonical-ABI encoding stays in that
 # backend; nothing here knows about the wire format.
 #
-# App contract, implemented by the application:
-#   app_init()            once, after the surface exists
-#   app_event(event)      per translated input event
-#   app_frame()           once per frame; issues draw calls
-
-struct UiColor:
-    r: u8
-    g: u8
-    b: u8
-    a: u8
-
-struct UiRect:
-    x: f32
-    y: f32
-    width: f32
-    height: f32
-    color: UiColor
-
-struct UiCircle:
-    x: f32
-    y: f32
-    radius: f32
-    color: UiColor
-
-struct UiTriangle:
-    ax: f32
-    ay: f32
-    bx: f32
-    by: f32
-    cx: f32
-    cy: f32
-    color: UiColor
-
-struct UiLine:
-    ax: f32
-    ay: f32
-    bx: f32
-    by: f32
-    color: UiColor
-
-# `x`/`y` are the run's top-left, not its baseline, so a caller that knows only
-# a layout box can place text without consulting font metrics. The text is a
-# view, not a copy: it must outlive the frame, which is why the label widget
-# takes static text rather than building strings per frame -- the component
-# backend's allocator is monotonic and would never reclaim them.
-struct UiTextRun:
-    x: f32
-    y: f32
-    size: f32
-    color: UiColor
-    text: sview
-
-enum UiCommand:
-    Clear(color: UiColor)
-    FillRect(rectangle: UiRect)
-    FillCircle(circle: UiCircle)
-    FillTriangle(triangle: UiTriangle)
-    FillLine(line: UiLine)
-    DrawText(run: UiTextRun)
+# NAMESPACES. Everything lives in a module and is reached as `Module::name`;
+# the module gives the prefix, so names inside drop the `ui_` they used to
+# carry. Constants that form a closed set get a module of their own (`UiEvent`)
+# so a kind reads as `UiEvent::POINTER_DOWN`. State is private and reached
+# through functions, which is what lets a backend live in its own module.
+#
+# THE CONTRACT. Two sets of top-level functions are declared by name only and
+# implemented outside this library, which is why they are not in a module:
+#
+#   platform (text metrics, from the font the backend rasterizes with):
+#     ui_measure_text_width(text, size)   ui_measure_text_height(text, size)
+#     ui_font_ascent(size)                ui_text_line_height(size)
+#   application:
+#     app_init()            once, after the surface exists
+#     app_event(event)      per translated input event (`mutable UiCore::Event&`)
+#     app_frame()           once per frame; issues draw calls
+#     app_widget_event(widget, event)   a widget layer's click report
 
 # Event kinds. Pointer and key values carry the host's own encoding: the
 # component backend receives wasmbrowser's pointer-kind/key-code ordinals and
 # the SDL3 backend translates its events into the same space.
-const UI_EVENT_NONE: i32 = 0
-const UI_EVENT_QUIT: i32 = 1
-const UI_EVENT_POINTER_MOVE: i32 = 2
-const UI_EVENT_POINTER_DOWN: i32 = 3
-const UI_EVENT_POINTER_UP: i32 = 4
-const UI_EVENT_POINTER_LEAVE: i32 = 5
-const UI_EVENT_KEY_DOWN: i32 = 6
-const UI_EVENT_KEY_UP: i32 = 7
-const UI_EVENT_RESIZE: i32 = 8
-const UI_EVENT_SCROLL: i32 = 9
-const UI_EVENT_GAMEPAD_BUTTON: i32 = 10
-const UI_EVENT_GAMEPAD_AXIS: i32 = 11
+module UiEvent:
+    public:
+        const NONE: i32 = 0
+        const QUIT: i32 = 1
+        const POINTER_MOVE: i32 = 2
+        const POINTER_DOWN: i32 = 3
+        const POINTER_UP: i32 = 4
+        const POINTER_LEAVE: i32 = 5
+        const KEY_DOWN: i32 = 6
+        const KEY_UP: i32 = 7
+        const RESIZE: i32 = 8
+        const SCROLL: i32 = 9
+        const GAMEPAD_BUTTON: i32 = 10
+        const GAMEPAD_AXIS: i32 = 11
 
-# `code` carries the host's discrete selector (key code, pointer button, gamepad
-# button/axis). `dx`/`dy` carry continuous deltas: scroll distance, or a gamepad
-# axis/button value in dx. `x`/`y` stay the pointer position throughout.
-struct UiEvent:
-    kind: mutable i32
-    x: mutable f32
-    y: mutable f32
-    dx: mutable f32
-    dy: mutable f32
-    code: mutable i32
 
-# A fixed buffer keeps the frame path allocation-free, which matters most on the
-# component side: the freestanding cabi_realloc is monotonic, so a per-frame
-# growing list would never return memory to the instance.
-const UI_MAX_COMMANDS: usize = 1024
+module UiCore:
+    public:
+        struct Color:
+            r: u8
+            g: u8
+            b: u8
+            a: u8
 
-global mutable ui_command_buffer: UiCommand[UI_MAX_COMMANDS] = zeroed
-global mutable ui_command_count: usize = 0
-global mutable ui_viewport_width: f32 = 0.0
-global mutable ui_viewport_height: f32 = 0.0
+        struct Rect:
+            x: f32
+            y: f32
+            width: f32
+            height: f32
+            color: Color
 
-def ui_begin_frame() -> void:
-    ui_command_count <- 0
+        struct Circle:
+            x: f32
+            y: f32
+            radius: f32
+            color: Color
 
-# Commands past the buffer's capacity are dropped rather than growing it. A
-# frame that overflows is a bug in the app, and silently reallocating would hide
-# it while making the component's monotonic heap grow without bound.
-def ui_push_command(command: UiCommand) -> void:
-    return if ui_command_count >= UI_MAX_COMMANDS
-    ui_command_buffer[ui_command_count] <- command
-    ui_command_count <- ui_command_count + 1
+        struct Triangle:
+            ax: f32
+            ay: f32
+            bx: f32
+            by: f32
+            cx: f32
+            cy: f32
+            color: Color
 
-def ui_clear(r: u8, g: u8, b: u8, a: u8) -> void:
-    ui_push_command(UiCommand.Clear(UiColor{r: r, g: g, b: b, a: a}))
+        struct Line:
+            ax: f32
+            ay: f32
+            bx: f32
+            by: f32
+            color: Color
 
-def ui_fill_rect(x: f32, y: f32, width: f32, height: f32, r: u8, g: u8, b: u8, a: u8) -> void:
-    ui_push_command(UiCommand.FillRect(UiRect{x: x, y: y, width: width, height: height, color: UiColor{r: r, g: g, b: b, a: a}}))
+        # `x`/`y` are the run's top-left, not its baseline, so a caller that
+        # knows only a layout box can place text without consulting font
+        # metrics. The text is a view, not a copy: it must outlive the frame,
+        # which is why the label widget takes static text rather than building
+        # strings per frame -- the component backend's allocator is monotonic
+        # and would never reclaim them.
+        struct TextRun:
+            x: f32
+            y: f32
+            size: f32
+            color: Color
+            text: sview
 
-def ui_fill_circle(x: f32, y: f32, radius: f32, r: u8, g: u8, b: u8, a: u8) -> void:
-    ui_push_command(UiCommand.FillCircle(UiCircle{x: x, y: y, radius: radius, color: UiColor{r: r, g: g, b: b, a: a}}))
+        enum Command:
+            Clear(color: Color)
+            FillRect(rectangle: Rect)
+            FillCircle(circle: Circle)
+            FillTriangle(triangle: Triangle)
+            FillLine(line: Line)
+            DrawText(run: TextRun)
 
-def ui_fill_triangle(ax: f32, ay: f32, bx: f32, by: f32, cx: f32, cy: f32, r: u8, g: u8, b: u8, a: u8) -> void:
-    ui_push_command(UiCommand.FillTriangle(UiTriangle{ax: ax, ay: ay, bx: bx, by: by, cx: cx, cy: cy, color: UiColor{r: r, g: g, b: b, a: a}}))
+        # `code` carries the host's discrete selector (key code, pointer button,
+        # gamepad button/axis). `dx`/`dy` carry continuous deltas: scroll
+        # distance, or a gamepad axis/button value in dx. `x`/`y` stay the
+        # pointer position throughout.
+        struct Event:
+            kind: mutable i32
+            x: mutable f32
+            y: mutable f32
+            dx: mutable f32
+            dy: mutable f32
+            code: mutable i32
 
-def ui_fill_line(ax: f32, ay: f32, bx: f32, by: f32, r: u8, g: u8, b: u8, a: u8) -> void:
-    ui_push_command(UiCommand.FillLine(UiLine{ax: ax, ay: ay, bx: bx, by: by, color: UiColor{r: r, g: g, b: b, a: a}}))
+        # A fixed buffer keeps the frame path allocation-free, which matters
+        # most on the component side: the freestanding cabi_realloc is
+        # monotonic, so a per-frame growing list would never return memory to
+        # the instance.
+        const MAX_COMMANDS: usize = 1024
 
-def ui_text(x: f32, y: f32, size: f32, text: sview, r: u8, g: u8, b: u8, a: u8) -> void:
-    ui_push_command(UiCommand.DrawText(UiTextRun{x: x, y: y, size: size, color: UiColor{r: r, g: g, b: b, a: a}, text: text}))
+    private:
+        global mutable command_buffer: Command[MAX_COMMANDS] = zeroed
+        global mutable command_total: usize = 0
+        global mutable viewport_w: f32 = 0.0
+        global mutable viewport_h: f32 = 0.0
+
+    public:
+        def begin_frame() -> void:
+            command_total <- 0
+
+        # Commands past the buffer's capacity are dropped rather than growing
+        # it. A frame that overflows draws incompletely, which is visible and
+        # fixable; the alternative is growing the buffer while making the
+        # component's monotonic heap grow without bound.
+        def push_command(command: Command) -> void:
+            return if command_total >= MAX_COMMANDS
+            command_buffer[command_total] <- command
+            command_total <- command_total + 1
+
+        # The batch a backend consumes at frame end.
+        def command_count() -> usize:
+            return command_total
+
+        def command_at(index: usize) -> Command:
+            return command_buffer[index]
+
+        def set_viewport(width: f32, height: f32) -> void:
+            viewport_w <- width
+            viewport_h <- height
+
+        def viewport_width() -> f32:
+            return viewport_w
+
+        def viewport_height() -> f32:
+            return viewport_h
+
+        def clear(r: u8, g: u8, b: u8, a: u8) -> void:
+            push_command(Command.Clear(Color{r: r, g: g, b: b, a: a}))
+
+        def fill_rect(x: f32, y: f32, width: f32, height: f32, r: u8, g: u8, b: u8, a: u8) -> void:
+            push_command(Command.FillRect(Rect{x: x, y: y, width: width, height: height, color: Color{r: r, g: g, b: b, a: a}}))
+
+        def fill_circle(x: f32, y: f32, radius: f32, r: u8, g: u8, b: u8, a: u8) -> void:
+            push_command(Command.FillCircle(Circle{x: x, y: y, radius: radius, color: Color{r: r, g: g, b: b, a: a}}))
+
+        def fill_triangle(ax: f32, ay: f32, bx: f32, by: f32, cx: f32, cy: f32, r: u8, g: u8, b: u8, a: u8) -> void:
+            push_command(Command.FillTriangle(Triangle{ax: ax, ay: ay, bx: bx, by: by, cx: cx, cy: cy, color: Color{r: r, g: g, b: b, a: a}}))
+
+        def fill_line(ax: f32, ay: f32, bx: f32, by: f32, r: u8, g: u8, b: u8, a: u8) -> void:
+            push_command(Command.FillLine(Line{ax: ax, ay: ay, bx: bx, by: by, color: Color{r: r, g: g, b: b, a: a}}))
+
+        def draw_text(x: f32, y: f32, size: f32, run_text: sview, r: u8, g: u8, b: u8, a: u8) -> void:
+            push_command(Command.DrawText(TextRun{x: x, y: y, size: size, color: Color{r: r, g: g, b: b, a: a}, text: run_text}))

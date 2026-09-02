@@ -5,20 +5,20 @@
 # part of the platform contract, so this file supplies deterministic stubs
 # rather than depending on whichever font a host loads.
 
-include "../src/core/ui_core.elisa"
-include "../src/widgets/ui_hierarchy.elisa"
 include "../src/widgets/ui_ops.elisa"
+
+using UiWidgets
 
 extern puts(text: cstr) -> i64
 
 global mutable test_failures: i32 = 0
-global mutable test_last_click: Widget? = null
+global mutable test_last_click: UiWidgets::Widget? = null
 global mutable test_click_count: i32 = 0
 
 # The application contract: the widget layer calls this when a press and its
 # release land on the same widget.
-def app_widget_event(widget: Widget, event: i32) -> void:
-    return if event != UI_WIDGET_EVENT_CLICK
+def app_widget_event(widget: UiWidgets::Widget, event: i32) -> void:
+    return if event != UiWidgetEvent::CLICK
     test_last_click <- widget
     test_click_count <- test_click_count + 1
 
@@ -40,8 +40,8 @@ def check(name: cstr, actual: f32, expected: f32) -> void:
     test_failures <- test_failures + 1
     _ = puts(name)
 
-def grey(v: u8) -> UiColor:
-    return UiColor{r: v, g: v, b: v, a: 255}
+def grey(v: u8) -> UiCore::Color:
+    return UiCore::Color{r: v, g: v, b: v, a: 255}
 
 # A row of two buttons inside a padded panel:
 #
@@ -55,14 +55,14 @@ def build() -> Widget:
         # The raw constructor form: every common by name, then the variant's own.
         ok: Widget = Button.Push(min_width: 40.0, min_height: 20.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "ok", rest: grey(60), hover: grey(90), press: grey(30))
         cancel: Widget = Button.Push(min_width: 60.0, min_height: 20.0, grow: 1.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "cancel", rest: grey(60), hover: grey(90), press: grey(30))
-        row: Widget = Container.Box(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: ok, next_sibling: null, axis: UI_AXIS_ROW, padding: 10.0, spacing: 5.0, fill: grey(20))
+        row: Widget = Container.Box(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: ok, next_sibling: null, axis: UiAxis::ROW, padding: 10.0, spacing: 5.0, fill: grey(20))
         ok.next_sibling <- cancel
         return row
 
 def main() -> i64:
     can Memory.Allocate, Abort.Panic:
         root: Widget = build()
-        ui_layout(root, 200.0, 60.0)
+        layout(root, 200.0, 60.0)
 
         check("root width", root.width, 200.0)
         check("root height", root.height, 60.0)
@@ -84,39 +84,39 @@ def main() -> i64:
 
         # A button is a Control is a Widget: all three types accept it, which is
         # the whole point of the sealed split.
-        interactive: bool = widget_is_interactive(root)
+        interactive: bool = is_interactive(root)
         test_failures <- test_failures + 1 if interactive
 
         # The panel is inert, so a click inside it falls through to the button.
-        hit: Widget? = widget_hit(root, 20.0, 30.0)
-        if hit is hit_node:
+        hit_widget: Widget? = hit(root, 20.0, 30.0)
+        if hit_widget is hit_node:
             check("hit x", hit_node.x, 10.0)
         else:
             test_failures <- test_failures + 1
             _ = puts("no hit")
 
         # A click outside every widget hits nothing.
-        miss: Widget? = widget_hit(root, 500.0, 500.0)
+        miss: Widget? = hit(root, 500.0, 500.0)
         test_failures <- test_failures + 1 if miss != null
 
         # Press then release on the same widget is a click.
-        ui_pointer(root, UI_EVENT_POINTER_DOWN, 20.0, 30.0)
-        ui_pointer(root, UI_EVENT_POINTER_UP, 20.0, 30.0)
+        pointer(root, UiEvent::POINTER_DOWN, 20.0, 30.0)
+        pointer(root, UiEvent::POINTER_UP, 20.0, 30.0)
         test_failures <- test_failures + 1 if test_click_count != 1
         if test_click_count != 1:
             _ = puts("click not delivered")
 
         # Press, then release somewhere else: cancelled, no second click.
-        ui_pointer(root, UI_EVENT_POINTER_DOWN, 20.0, 30.0)
-        ui_pointer(root, UI_EVENT_POINTER_UP, 500.0, 500.0)
+        pointer(root, UiEvent::POINTER_DOWN, 20.0, 30.0)
+        pointer(root, UiEvent::POINTER_UP, 500.0, 500.0)
         test_failures <- test_failures + 1 if test_click_count != 1
         if test_click_count != 1:
             _ = puts("drag-off should cancel")
 
         # Hover state follows the pointer and clears when it leaves.
-        ui_pointer(root, UI_EVENT_POINTER_MOVE, 20.0, 30.0)
-        test_failures <- test_failures + 1 if ui_hot == null
-        ui_pointer(root, UI_EVENT_POINTER_LEAVE, 0.0, 0.0)
-        test_failures <- test_failures + 1 if ui_hot != null
+        pointer(root, UiEvent::POINTER_MOVE, 20.0, 30.0)
+        test_failures <- test_failures + 1 if hot() == null
+        pointer(root, UiEvent::POINTER_LEAVE, 0.0, 0.0)
+        test_failures <- test_failures + 1 if hot() != null
 
         return test_failures.i64()
