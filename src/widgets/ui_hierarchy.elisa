@@ -20,19 +20,24 @@
 #
 # GEOMETRY LIVES IN A DENSE SIDE ARRAY, NOT IN THE NODE. wxWindow and QWidget put
 # the resolved box on their base class, and docs/76's `common:` is the direct
-# equivalent. Two things rule it out here, and the second is the better reason:
+# equivalent for data fixed at construction -- and it CANNOT carry geometry, for a
+# reason worth writing down:
 #
-#   * stage1 currently refuses `common:` on a hierarchy MEMBER (it reads the
-#     field at the member's own offset while the value lives in the root's
-#     shared row; see the compiler's hierarchy_common_fields_wrong_answer repro);
-#   * geometry is written every frame by two passes that touch NOTHING else,
-#     while a node's identity and payload are written once at build time. Keeping
-#     the hot, uniformly-shaped data in `ui_geometry` -- a dense darray indexed by
-#     each node's `id` -- means measure and arrange stream a packed f32 array
-#     instead of striding over label text and colours. That is the same split
-#     Qt makes between QWidget and its layout item, for the same reason.
+#   A store node is immutable. `common:` fields are set by the constructor and
+#   never assigned again -- stage0 rejects `w.x <- 5.0` with "field x is
+#   immutable", and declaring the field `mutable` is refused outright: "packed
+#   enum common field cannot be mutable in v1". Layout REWRITES every box each
+#   frame, so its output cannot live there.
 #
-# So a node carries `id: usize` and its own payload; the box lives beside it.
+# So geometry lives in `ui_geometry`, a dense array indexed by each node's `id`.
+# That is required, not a workaround -- and it also happens to be the better
+# layout: two passes rewrite every box while touching nothing else, so the hot
+# data stays uniformly shaped and contiguous instead of striding over label text
+# and colours. It is the same split Qt makes between QWidget and its layout item.
+#
+# (`common:` itself is now fully supported -- stage1 gained common fields of any
+# type this session. It is the right home for per-widget data that never changes
+# after construction; it is simply the wrong home for a layout result.)
 
 # NOTE: declared at file scope, not inside `module Ui:`. stage1's hierarchy
 # exhaustiveness check does not yet recognise MODULE-QUALIFIED variant paths
