@@ -421,20 +421,10 @@ extend UiWidgets:
         global mutable hot_widget: Widget? = null
         global mutable active_widget: Widget? = null
 
-        # Every `is` binding below lives in a plain function body ON PURPOSE: a
-        # `common:` write through an `is` binding does not survive into a SECOND
-        # match arm, so one function per arm keeps each binding in a scope of its
-        # own. The shared logic was duplicated anyway.
-        #
-        # `root` is unused here and NOT decoration. Reaching a widget only through
-        # the global gives the body no store context, and the handle in
-        # `active_widget` cannot be decoded without one -- stage0 says so outright
-        # ("packed enum Widget decode requires store context"); stage1 accepts it and
-        # segfaults. A Widget parameter is what puts the store in scope.
-        def release_active(root: Widget) -> void:
-            if active_widget is held:
-                held.pressed <- false
-            active_widget <- null
+        # One function per pointer kind. `root` is a real parameter in each: a body
+        # reaching the widget store only through a global has no store to decode a
+        # handle against, which stage0 rejects outright and stage1 now declines
+        # (43a08c31). Every one of them uses it for the hit test anyway.
 
         # Move the hover to whatever is under `at`, and report it.
         def hover_at(root: Widget, at: UiCore::Vec2) -> Widget?:
@@ -459,13 +449,17 @@ extend UiWidgets:
             clicked: mutable bool = false
             if target is released_on:
                 clicked <- released_on.pressed
-            release_active(root)
+            if active_widget is held:
+                held.pressed <- false
+            active_widget <- null
             if clicked and target is clicked_widget:
                 app_widget_event(clicked_widget, UiWidgetEvent::CLICK)
 
         def leave_all(root: Widget) -> void:
             _ = hover_at(root, UiCore::Vec2(0.0, 0.0))
-            release_active(root)
+            if active_widget is held:
+                held.pressed <- false
+            active_widget <- null
             if hot_widget is left:
                 left.hovered <- false
             hot_widget <- null
