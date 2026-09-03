@@ -15,6 +15,14 @@ SDL_LIB="${ELISA_UI_SDL_LIB:-/opt/homebrew/lib}"
 mkdir -p "$ROOT/build"
 status=0
 
+# The C boundary is checked by building a real C program against the library --
+# the header and the Elisa side are two hand-written descriptions of one ABI, and
+# nothing in the Elisa suite sees the header.
+if ! bash "$ROOT/scripts/check_capi.sh"; then
+  echo "FAIL capi"
+  status=1
+fi
+
 for source in "$ROOT"/test/*_test.elisa; do
   name="$(basename "$source" .elisa)"
   bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ROOT/build/$name.o" "$source"

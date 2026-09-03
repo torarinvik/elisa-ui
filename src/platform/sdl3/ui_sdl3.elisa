@@ -62,6 +62,21 @@ module UiSdl3:
         const INIT_VIDEO: u32 = 0x20
         const EVENT_QUIT: u32 = 0x100
         const EVENT_KEY_DOWN: u32 = 0x300
+        const EVENT_KEY_UP: u32 = 0x301
+
+        # SDL spells every non-ASCII key as (1 << 30) | <USB HID scancode>.
+        const SDL_SCANCODE_MASK: i32 = 1073741824
+        # The scancodes this backend names, in SDL's (USB HID) numbering.
+        const SDL_SCAN_F1: i32 = 58
+        const SDL_SCAN_F12: i32 = 69
+        const SDL_SCAN_INSERT: i32 = 73
+        const SDL_SCAN_HOME: i32 = 74
+        const SDL_SCAN_PAGE_UP: i32 = 75
+        const SDL_SCAN_DELETE: i32 = 76
+        const SDL_SCAN_END: i32 = 77
+        const SDL_SCAN_PAGE_DOWN: i32 = 78
+        const SDL_SCAN_RIGHT: i32 = 79
+        const SDL_SCAN_UP: i32 = 82
         const EVENT_MOUSE_MOTION: u32 = 0x400
         const EVENT_MOUSE_BUTTON_DOWN: u32 = 0x401
         const EVENT_MOUSE_BUTTON_UP: u32 = 0x402
@@ -224,13 +239,56 @@ module UiSdl3:
             y_ref: mutable f32& = (&event_buffer[32]).cast[f32&] can Unsafe.PointerCast
             return y_ref[0]
 
+        # SDL_KeyboardEvent: type 0, reserved 4, timestamp 8, windowID 16,
+        # which 20, scancode 24, key 28. The KEYCODE is what carries the layout,
+        # so that is what translates into the UiKey space.
+        def event_keycode() -> i32:
+            key_ref: mutable i32& = (&event_buffer[28]).cast[i32&] can Unsafe.PointerCast
+            return key_ref[0]
+
+    public:
+        # SDL's keycode -> the UiKey space, which is GLFW's numbering (Escape 256,
+        # Enter 257, F1 290) and NOT SDL's. The two agree on printable ASCII and
+        # disagree on everything else, so this is a translation, not a cast.
+        #
+        # Public so it can be tested directly: a headless run never produces a key
+        # event, and a table nothing exercises is a table that rots.
+        def key_from_sdl(code: i32) -> i32:
+            # SDL reports the LOWERCASE keycode for an unshifted letter; UiKey names
+            # the uppercase one, as GLFW does.
+            return code - 32 if code >= 97 and code <= 122
+            # The rest of printable ASCII is shared. A code in this range that UiKey
+            # does not name still passes through: it is an i32 underneath, and a
+            # caller comparing against UiKey members simply matches none of them.
+            return code if code >= 32 and code <= 96
+            # The control codes SDL uses where GLFW uses its own high numbers.
+            return UiKey.Backspace.i32() if code == 8
+            return UiKey.Tab.i32() if code == 9
+            return UiKey.Enter.i32() if code == 13
+            return UiKey.Escape.i32() if code == 27
+            return UiKey.Delete.i32() if code == 127
+            # Everything else is (1 << 30) | scancode.
+            return 0 if code < SDL_SCANCODE_MASK
+            scancode: i32 = code - SDL_SCANCODE_MASK
+            # Both runs are contiguous in both numberings, so they translate by offset
+            # rather than key by key: F1..F12, and Right/Left/Down/Up.
+            return UiKey.F1.i32() + (scancode - SDL_SCAN_F1) if scancode >= SDL_SCAN_F1 and scancode <= SDL_SCAN_F12
+            return UiKey.Right.i32() + (scancode - SDL_SCAN_RIGHT) if scancode >= SDL_SCAN_RIGHT and scancode <= SDL_SCAN_UP
+            return UiKey.Insert.i32() if scancode == SDL_SCAN_INSERT
+            return UiKey.Home.i32() if scancode == SDL_SCAN_HOME
+            return UiKey.PageUp.i32() if scancode == SDL_SCAN_PAGE_UP
+            return UiKey.Delete.i32() if scancode == SDL_SCAN_DELETE
+            return UiKey.End.i32() if scancode == SDL_SCAN_END
+            return UiKey.PageDown.i32() if scancode == SDL_SCAN_PAGE_DOWN
+            # A key this backend does not model. 0 is not a UiKey member, so an app
+            # comparing against one matches nothing -- the same outcome as before,
+            # now stated rather than implied.
+            return 0
+
+    private:
         # Poll one SDL event and translate it. Returns false when the queue is
         # empty; events outside the modeled set come back as `Event.None` for the
         # app to skip.
-        #
-        # SDL's key events are reported without their code for now, so a KeyEvent
-        # carries 0 -- the same gap the flat form had, made visible by having to
-        # name the field.
         def next_event(out_event: mutable UiCore::Event&) -> bool:
             buffer_pointer: void& = (&event_buffer[0]).cast[void&] can Unsafe.PointerCast
             has_event: bool = SDL_PollEvent(buffer_pointer)
@@ -246,7 +304,9 @@ module UiSdl3:
             elif kind == EVENT_MOUSE_BUTTON_UP:
                 out_event <- (UiCore::PointerEvent.Up(at: UiCore::Vec2(event_x(), event_y()), button: 0))
             elif kind == EVENT_KEY_DOWN:
-                out_event <- (UiCore::KeyEvent.Down(code: 0))
+                out_event <- (UiCore::KeyEvent.Down(code: key_from_sdl(event_keycode()).UiKey()))
+            elif kind == EVENT_KEY_UP:
+                out_event <- (UiCore::KeyEvent.Up(code: key_from_sdl(event_keycode()).UiKey()))
             return true
 
     public:

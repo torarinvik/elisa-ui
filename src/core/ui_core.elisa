@@ -27,10 +27,13 @@
 #     app_frame()           once per frame; issues draw calls
 #     app_widget_event(widget, event)   a widget layer's click report
 
-# Keyboard scancodes, as the host reports them. A closed set of named values,
-# so an app writes `UiKey::Escape` instead of a bare 27 and the compiler catches
-# a typo. `of i32` keeps them the same width as `UiCore::Event.code`, and
-# `.i32()` converts when a raw code is needed.
+# Key codes, in GLFW's numbering -- which is what the wasmbrowser host reports.
+# A closed set of named values, so an app writes `UiKey.Escape` instead of a bare
+# 256 and the compiler catches a typo. A const enum is its BACKING, so `.i32()`
+# converts out and `raw.UiKey()` converts in; the SDL3 backend, whose keycodes are
+# a different space entirely, translates in key_from_sdl rather than casting.
+#
+# The member separator is `.`, not `::`: a const enum is a type, not a module.
 const enum UiKey of i32:
     Space = 32
     Apostrophe = 39
@@ -229,13 +232,16 @@ module UiCore:
             Leave
             Scroll(at: Vec2, delta: Vec2)
 
+        # The codes are NAMED types, not bare i32. A const enum is its backing, so
+        # this costs nothing at runtime and makes `key.code == UiKey.Escape` a
+        # comparison the compiler can check -- against a UiPad, say, it cannot.
         enum KeyEvent is InputEvent:
-            Down(code: i32)
-            Up(code: i32)
+            Down(code: UiKey)
+            Up(code: UiKey)
 
         enum GamepadEvent is InputEvent:
-            Button(button: i32, value: f32)
-            Axis(axis: i32, value: f32)
+            Button(button: UiPad, value: f32)
+            Axis(axis: UiPadAxis, value: f32)
 
         # The FLAT form, for the two boundaries that cannot carry a variant: the WIT
         # host hands the guest loose scalars, and a C caller wants a POD struct. The
@@ -409,13 +415,13 @@ module UiCore:
                 PointerEvent.Scroll(at, delta):
                     record with { x <- at.x, y <- at.y, dx <- delta.x, dy <- delta.y }
                 KeyEvent.Down(code):
-                    record.code <- code
+                    record.code <- code.i32()
                 KeyEvent.Up(code):
-                    record.code <- code
+                    record.code <- code.i32()
                 GamepadEvent.Button(button, value):
-                    record with { dx <- value, code <- button }
+                    record with { dx <- value, code <- button.i32() }
                 GamepadEvent.Axis(axis, value):
-                    record with { dx <- value, code <- axis }
+                    record with { dx <- value, code <- axis.i32() }
                 Event.None:
                     pass
                 Event.Quit:
@@ -435,8 +441,8 @@ module UiCore:
             return (PointerEvent.Up(at: at, button: record.code)) if record.kind == WIRE_POINTER_UP
             return (PointerEvent.Leave) if record.kind == WIRE_POINTER_LEAVE
             return (PointerEvent.Scroll(at: at, delta: Vec2(record.dx, record.dy))) if record.kind == WIRE_SCROLL
-            return (KeyEvent.Down(code: record.code)) if record.kind == WIRE_KEY_DOWN
-            return (KeyEvent.Up(code: record.code)) if record.kind == WIRE_KEY_UP
-            return (GamepadEvent.Button(button: record.code, value: record.dx)) if record.kind == WIRE_GAMEPAD_BUTTON
-            return (GamepadEvent.Axis(axis: record.code, value: record.dx)) if record.kind == WIRE_GAMEPAD_AXIS
+            return (KeyEvent.Down(code: record.code.UiKey())) if record.kind == WIRE_KEY_DOWN
+            return (KeyEvent.Up(code: record.code.UiKey())) if record.kind == WIRE_KEY_UP
+            return (GamepadEvent.Button(button: record.code.UiPad(), value: record.dx)) if record.kind == WIRE_GAMEPAD_BUTTON
+            return (GamepadEvent.Axis(axis: record.code.UiPadAxis(), value: record.dx)) if record.kind == WIRE_GAMEPAD_AXIS
             return (Event.None)
