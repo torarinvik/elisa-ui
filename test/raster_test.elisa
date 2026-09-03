@@ -1,0 +1,65 @@
+# The scanline arithmetic, with no window, renderer or display.
+#
+# This is the layer that used to not exist: SDL3 approximated circles and
+# triangles with their bounding boxes while WasmBrowser drew them exactly, and
+# nothing could have caught it, because the geometry was buried inside calls to a
+# renderer no test can make. Pure functions over floats can be asserted.
+
+include "../src/core/ui_raster.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable test_failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    test_failures <- test_failures + 1
+    _ = puts(name)
+
+def close_enough(actual: f32, expected: f32) -> bool:
+    difference: f32 = actual - expected
+    return difference > -0.001 and difference < 0.001
+
+def main() -> i64:
+    # A unit disc is widest across its centre row and narrows to nothing at the poles.
+    check("centre row spans the diameter", close_enough(UiRaster::circle_half_width(10.0, 0.0), 10.0))
+    check("a row off centre is narrower", close_enough(UiRaster::circle_half_width(5.0, 3.0), 4.0))
+    check("a row level with the pole is empty", UiRaster::circle_half_width(5.0, 5.0) == 0.0)
+    check("a row past the pole is empty", UiRaster::circle_half_width(5.0, 7.5) == 0.0)
+
+    # The straddle test is HALF-OPEN, which is what keeps a shared vertex from
+    # being counted twice. An edge from y=0 to y=10 owns the scanlines it spans...
+    check("an edge owns a scanline it spans", UiRaster::edge_straddles(0.0, 10.0, 5.0))
+    check("direction does not matter", UiRaster::edge_straddles(10.0, 0.0, 5.0))
+    check("an edge disowns a scanline above it", not UiRaster::edge_straddles(0.0, 10.0, 20.0))
+    check("an edge disowns a scanline below it", not UiRaster::edge_straddles(0.0, 10.0, -1.0))
+    check("a horizontal edge owns nothing", not UiRaster::edge_straddles(4.0, 4.0, 4.0))
+
+    # ...and the two edges meeting at a shared vertex own DIFFERENT sides of it, so
+    # a scanline through the vertex gets exactly two crossings from the triangle,
+    # never one (a seam) and never three (a smear). Vertex at y=10, edges to y=0
+    # and y=20: at sample 10 the upper edge is done and the lower edge has begun.
+    upper: bool = UiRaster::edge_straddles(0.0, 10.0, 10.0)
+    lower: bool = UiRaster::edge_straddles(10.0, 20.0, 10.0)
+    check("a shared vertex belongs to exactly one edge", upper != lower)
+
+    # A crossing interpolates along the edge.
+    check("crossing at the midpoint", close_enough(UiRaster::edge_crossing(0.0, 0.0, 10.0, 10.0, 5.0), 5.0))
+    check("crossing on a vertical edge", close_enough(UiRaster::edge_crossing(3.0, 0.0, 3.0, 10.0, 7.0), 3.0))
+    check("crossing near the far end", close_enough(UiRaster::edge_crossing(0.0, 0.0, 100.0, 10.0, 9.0), 90.0))
+    # An edge that does NOT start at y=0. Every case above begins at ay=0, where
+    # (by - ay) and (by + ay) agree -- so they all passed against a denominator of
+    # `by + ay`, and none of them pinned the interpolation at all. Found by
+    # mutating the divisor and watching the suite stay green.
+    check("crossing on an edge starting below the origin", close_enough(UiRaster::edge_crossing(0.0, 4.0, 10.0, 14.0, 9.0), 5.0))
+    check("crossing on a downward edge off the origin", close_enough(UiRaster::edge_crossing(2.0, 20.0, 12.0, 10.0, 15.0), 7.0))
+
+    # Scanline bounds cover the shape: a span from 2.3 to 5.8 touches rows 2..6.
+    check("first scanline floors", close_enough(UiRaster::first_scanline(2.3), 2.0))
+    check("last scanline ceils", close_enough(UiRaster::last_scanline(5.8), 6.0))
+    check("a row is sampled at its centre", close_enough(UiRaster::scanline_centre(4.0), 4.5))
+
+    if test_failures == 0:
+        _ = puts("raster: all checks passed")
+        return 0
+    return 1

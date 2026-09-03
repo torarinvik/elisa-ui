@@ -1,0 +1,58 @@
+# Scanline rasterization: turning a filled shape into horizontal spans.
+#
+# The arithmetic lives here, apart from any backend, for two reasons. It is the
+# part that is easy to get subtly wrong -- a shared triangle vertex counted twice
+# leaves a seam, counted zero times leaves a hole -- and it is the part no
+# renderer API can check for you. Pure functions over floats can be tested with
+# no window, no renderer and no display, which is what test/raster_test.elisa
+# does.
+#
+# It is also shared ground. SDL3's 2D renderer has no filled-circle or
+# filled-triangle primitive, and neither will a framebuffer backend on an
+# embedded target; both need exactly this and should not each reinvent it. The
+# gap this closed was real: SDL3 drew circles and triangles as their BOUNDING
+# BOXES while WasmBrowser drew them exactly, so one command list produced two
+# different pictures.
+
+include "./ui_core.elisa"
+
+extern sqrtf(x: f32) -> f32
+extern floorf(x: f32) -> f32
+extern ceilf(x: f32) -> f32
+
+module UiRaster:
+    public:
+        # Half the disc's width at a scanline whose centre sits `offset` above or
+        # below the centre row. Zero when the row misses the disc, so a caller
+        # tests the result rather than repeating the containment condition.
+        def circle_half_width(radius: f32, offset: f32) -> f32:
+            inside: f32 = radius * radius - offset * offset
+            return 0.0 if inside <= 0.0 else sqrtf(inside)
+
+        # Does the edge from `ay` to `by` cross the scanline at `sample`?
+        #
+        # HALF-OPEN on purpose. An endpoint exactly on the scanline belongs to
+        # exactly one of the two edges meeting there, so a shared vertex produces
+        # two crossings and never one or three -- and the division in
+        # edge_crossing can never be by zero, because a straddling edge has
+        # by != ay by construction.
+        def edge_straddles(ay: f32, by: f32, sample: f32) -> bool:
+            return (ay > sample) != (by > sample)
+
+        # Where that edge meets the scanline. Meaningful only when the edge
+        # straddles it.
+        def edge_crossing(ax: f32, ay: f32, bx: f32, by: f32, sample: f32) -> f32:
+            return ax + (bx - ax) * (sample - ay) / (by - ay)
+
+        # The first and last scanline a shape between `top` and `bottom` touches.
+        # Spans are emitted for each integer row in [first, last].
+        def first_scanline(top: f32) -> f32:
+            return floorf(top)
+
+        def last_scanline(bottom: f32) -> f32:
+            return ceilf(bottom)
+
+        # A scanline is sampled at its CENTRE, so a row is filled when the pixels
+        # it covers are inside the shape -- not when its top edge merely touches.
+        def scanline_centre(y: f32) -> f32:
+            return y + 0.5

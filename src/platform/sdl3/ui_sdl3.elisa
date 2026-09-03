@@ -10,6 +10,7 @@
 # top-level by name; they delegate into the module.
 
 include "../../core/ui_core.elisa"
+include "../../core/ui_raster.elisa"
 
 extern SDL_Init(flags: u32) -> bool
 extern SDL_CreateWindow(title: cstr, w: i32, h: i32, flags: u64) -> void&?
@@ -204,11 +205,67 @@ module UiSdl3:
             rect_pointer: void& = (&box[0]).cast[void&] can Unsafe.PointerCast
             _ = SDL_RenderFillRect(ren(), rect_pointer)
 
-        # SDL3's 2D renderer has no filled-circle or filled-triangle primitive,
-        # so the batch's curved and triangular commands are approximated with
-        # their bounding geometry for now. Both are honoured exactly by
-        # WasmBrowser, which is why the core keeps them as first-class commands
-        # rather than lowering them here.
+        # SDL3's 2D renderer has no filled-circle or filled-triangle primitive, so
+        # both are rasterized here as horizontal spans -- one 1px-tall FillRect per
+        # scanline, with the draw colour set once by the caller.
+        #
+        # They used to be approximated by their BOUNDING BOX, so a circle was a square
+        # on desktop while WasmBrowser drew a real circle from the same command list:
+        # the two backends disagreed about what one frame looked like, which is the
+        # thing a shared command list exists to prevent. Spans move the disagreement
+        # down to anti-aliasing, where it belongs.
+        def fill_span(x0: f32, x1: f32, y: f32) -> void:
+            return if x1 <= x0
+            span: mutable array[f32, 4] = [x0, y, x1 - x0, 1.0]
+            span_pointer: void& = (&span[0]).cast[void&] can Unsafe.PointerCast
+            _ = SDL_RenderFillRect(ren(), span_pointer)
+
+        def paint_circle(disc: UiCore::Circle, color: UiCore::Color) -> void:
+            return if disc.radius <= 0.0
+            _ = SDL_SetRenderDrawColor(ren(), color.r, color.g, color.b, color.a)
+            last: f32 = UiRaster::last_scanline(disc.center.y + disc.radius)
+            y: mutable f32 = UiRaster::first_scanline(disc.center.y - disc.radius)
+            while y <= last:
+                offset: f32 = UiRaster::scanline_centre(y) - disc.center.y
+                half: f32 = UiRaster::circle_half_width(disc.radius, offset)
+                fill_span(disc.center.x - half, disc.center.x + half, y) if half > 0.0
+                y <- y + 1.0
+
+        def paint_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> void:
+            _ = SDL_SetRenderDrawColor(ren(), color.r, color.g, color.b, color.a)
+            xs: array[f32, 3] = [tri.a.x, tri.b.x, tri.c.x]
+            ys: array[f32, 3] = [tri.a.y, tri.b.y, tri.c.y]
+            # The vertical extent, through NAMED locals: an index expression in the
+            # else-branch of a value-`if` does not parse (both compilers agree --
+            # stage0 says "expected else, got NEWLINE"), so `ys[0] if … else ys[1]`
+            # is not available here.
+            ay: f32 = tri.a.y
+            by: f32 = tri.b.y
+            cy: f32 = tri.c.y
+            lowest: f32 = ay if ay < by else by
+            highest: f32 = ay if ay > by else by
+            top: f32 = lowest if lowest < cy else cy
+            bottom: f32 = highest if highest > cy else cy
+            last: f32 = UiRaster::last_scanline(bottom)
+            y: mutable f32 = UiRaster::first_scanline(top)
+            while y <= last:
+                sample: f32 = UiRaster::scanline_centre(y)
+                span_lo: mutable f32 = 0.0
+                span_hi: mutable f32 = 0.0
+                crossings: mutable i32 = 0
+                for edge in 0..<3:
+                    # `tail` and `stack` are RESERVED words, so the second endpoint is
+                    # `next_corner`; a local named `tail` fails to parse at its colon.
+                    corner: usize = edge
+                    next_corner: usize = (edge + 1) % 3
+                    continue if not UiRaster::edge_straddles(ys[corner], ys[next_corner], sample)
+                    crossed: f32 = UiRaster::edge_crossing(xs[corner], ys[corner], xs[next_corner], ys[next_corner], sample)
+                    span_lo <- crossed if crossings == 0 or crossed < span_lo else span_lo
+                    span_hi <- crossed if crossings == 0 or crossed > span_hi else span_hi
+                    crossings <- crossings + 1
+                fill_span(span_lo, span_hi, y) if crossings > 0
+                y <- y + 1.0
+
         def replay() -> void:
             for index in 0..<UiCore::command_count():
                 match UiCore::command_at(index):
@@ -218,9 +275,9 @@ module UiSdl3:
                     UiCore::Command.FillRect(box, color):
                         paint_rect(box, color)
                     UiCore::Command.FillCircle(disc, color):
-                        paint_rect(UiCore::Rect(disc.center.x - disc.radius, disc.center.y - disc.radius, disc.radius * 2.0, disc.radius * 2.0), color)
+                        paint_circle(disc, color)
                     UiCore::Command.FillTriangle(tri, color):
-                        paint_rect(UiCore::Rect(tri.a.x, tri.a.y, tri.b.x - tri.a.x, tri.c.y - tri.a.y), color)
+                        paint_triangle(tri, color)
                     UiCore::Command.FillLine(segment, color):
                         _ = SDL_SetRenderDrawColor(ren(), color.r, color.g, color.b, color.a)
                         _ = SDL_RenderLine(ren(), segment.from_point.x, segment.from_point.y, segment.to_point.x, segment.to_point.y)
