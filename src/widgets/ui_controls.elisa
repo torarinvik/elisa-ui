@@ -1,0 +1,206 @@
+# elisa-ui native controls: turning the widget tree into real OS controls.
+#
+# THE OTHER HALF OF THE FRAMEWORK. ui_paint.elisa's Painter consumes the COMMAND
+# LIST and owns every pixel. This consumes the WIDGET TREE and owns none of them:
+# it creates NSViews, HWNDs, GtkWidgets, UIViews or android.view.Views and lets
+# the platform draw, lay out text, handle IME, mirror right-to-left and speak to
+# a screen reader. Those are the things you cannot get by drawing rectangles, and
+# they are the reason to want native controls at all.
+#
+# The two backends therefore share no interface, and forcing them to would give
+# one where half the methods are meaningless on each side -- `fill_triangle`
+# means nothing to AppKit, `create` means nothing to a rasterizer. What they DO
+# share is the widget tree above them, which is the portable boundary.
+#
+# ABSOLUTE PLACEMENT. Every control is positioned at the box `UiWidgets::layout`
+# already computed, so ui_ops.elisa stays the single layout implementation and
+# both presentation modes agree about where things are. The cost is the platform
+# behaviour that comes from letting the platform lay out -- Dynamic Type, RTL
+# mirroring, platform-correct focus order. Delegating to Auto Layout,
+# ConstraintLayout or a GtkBox is a per-backend upgrade this shape leaves open,
+# not a rewrite.
+#
+# A CONTROL LIST, mirroring the command list. The tree walk emits flat records;
+# the backend consumes them. That split is not decoration -- a generic function
+# that takes a hierarchy handle is not correctly compiled today (stage1 declines
+# some shapes and SEGFAULTS on others; stage0 rejects the same probe for a
+# different reason), so the walk that touches widget handles is deliberately not
+# generic, and the generic that talks to the backend never sees a handle.
+#
+# It is also the better shape independently, and for the same reasons the command
+# list is: the control list is plain data, so it can be asserted in a test with no
+# OS control in sight, logged, diffed between runs, or shipped to a host across a
+# boundary that no widget handle could cross.
+#
+# A backend keeps its own index -> native handle table rather than the protocol
+# carrying an associated Handle type. Every real toolkit keeps that table anyway,
+# and it costs one array instead of a generic container of an associated type.
+#
+# TOP-LEVEL declarations, like the painter: stage1 declines a call to a generic
+# declared inside `module M:` and registers no members for an `impl` written
+# there. See ui_paint.elisa.
+
+include "./ui_hierarchy.elisa"
+# ui_ops `extend`s UiWidgets with the passes; box_of lives there, not in the
+# type declarations.
+include "./ui_ops.elisa"
+include "../core/ui_paint.elisa"
+
+# The control vocabulary every target actually has. Not a copy of the widget
+# taxonomy -- several widget variants collapse onto one OS control, which is the
+# point of the mapping being explicit and in one place:
+#
+#   Window       NSWindow    HWND               GtkWindow          UIWindow
+#   Panel        NSView      HWND (child)       GtkBox             UIView
+#   ScrollView   NSScrollView                   GtkScrolledWindow  UIScrollView
+#   Label        NSTextField STATIC             GtkLabel           UILabel
+#   PushButton   NSButton    BUTTON             GtkButton          UIButton
+#   ToggleButton NSButton    BS_AUTOCHECKBOX    GtkToggleButton    UISwitch
+#   CheckBox     NSButton    BS_CHECKBOX        GtkCheckButton     UISwitch
+#   RadioButton  NSButton    BS_RADIOBUTTON     GtkCheckButton     UISegmented
+#   TextField    NSTextField EDIT               GtkEntry           UITextField
+#   Slider       NSSlider    TRACKBAR           GtkScale           UISlider
+#   ProgressBar  NSProgress  msctls_progress32  GtkProgressBar     UIProgressView
+const enum UiControlKind of i32:
+    Window = 0
+    Panel = 1
+    ScrollView = 2
+    Label = 3
+    PushButton = 4
+    ToggleButton = 5
+    CheckBox = 6
+    RadioButton = 7
+    TextField = 8
+    Slider = 9
+    ProgressBar = 10
+
+# What a native backend must provide.
+#
+# `index` is the control's position in the list and its identity: a backend maps
+# it to its own NSView*, HWND or jobject. `parent` is another index, or
+# UI_NO_PARENT for the root -- and because the list is emitted parent-first, a
+# parent has always been created before any child names it.
+protocol Controls:
+    def create(index: i32, kind: UiControlKind, parent: i32) -> void can[Ui.Controls]
+    # Absolute placement, at the box UiWidgets::layout computed.
+    def set_frame(index: i32, box: UiCore::Rect) -> void can[Ui.Controls]
+    # The control's own text: a label, a button's caption, a window's title.
+    def set_text(index: i32, text: sview) -> void can[Ui.Controls]
+
+# The root's parent.
+const UI_NO_PARENT: i32 = -1
+
+module UiControlList:
+    private:
+        const CAPACITY: usize = 256
+
+        struct ControlOp:
+            kind: mutable UiControlKind
+            parent: mutable i32
+            box: mutable UiCore::Rect
+            text: mutable sview
+
+        global mutable ops: ControlOp[CAPACITY] = zeroed
+        global mutable total: usize = 0
+
+    public:
+        def reset() -> void:
+            total <- 0
+
+        def count() -> usize:
+            return total
+
+        def kind_at(index: usize) -> UiControlKind:
+            return ops[index].kind
+
+        def parent_at(index: usize) -> i32:
+            return ops[index].parent
+
+        def box_at(index: usize) -> UiCore::Rect:
+            return ops[index].box
+
+        def text_at(index: usize) -> sview:
+            return ops[index].text
+
+        # Walk one widget and its subtree, PARENT FIRST, so the OS tree comes out
+        # with the widget tree's shape and a child's parent already exists.
+        #
+        # Returns the index it was given for this node, so a caller can thread it
+        # to the children. Past CAPACITY a subtree is dropped rather than
+        # overwriting a live record: a missing control is visible and fixable, a
+        # corrupted one is neither.
+        def realize(w: UiWidgets::Widget, parent: i32) -> void:
+            return if total >= CAPACITY
+            index: usize = total
+            total <- total + 1
+            ops[index].kind <- ui_control_kind_of(w)
+            ops[index].parent <- parent
+            ops[index].box <- UiWidgets::box_of(w)
+            ops[index].text <- ui_control_text_of(w)
+            cursor: mutable UiWidgets::Widget? = w.first_child
+            while cursor is node |cursor, index|:
+                realize(node, index.i32())
+                cursor <- node.next_sibling
+
+# Hand the list to a backend, in order. The only generic here, and it never
+# touches a widget handle.
+def ui_apply_controls[C: Controls]() -> void can[Ui.Controls]:
+    for index in 0..<UiControlList::count():
+        slot: i32 = index.i32()
+        C.create(slot, UiControlList::kind_at(index), UiControlList::parent_at(index))
+        C.set_frame(slot, UiControlList::box_at(index))
+        C.set_text(slot, UiControlList::text_at(index))
+
+# Which OS control realizes this widget. Exhaustive on purpose: a widget kind
+# added without a control is a compile error here, not a silently invisible node.
+def ui_control_kind_of(w: UiWidgets::Widget) -> UiControlKind:
+    match w:
+        UiWidgets::Window.Top(title, resizable):
+            return UiControlKind.Window
+        UiWidgets::Window.Floating(title):
+            return UiControlKind.Window
+        UiWidgets::Container.Box(axis, padding, spacing, fill):
+            return UiControlKind.Panel
+        UiWidgets::Container.Grid(columns, padding, spacing, fill):
+            return UiControlKind.Panel
+        UiWidgets::Container.Scroll(axis, offset, fill):
+            return UiControlKind.ScrollView
+        UiWidgets::Control.Label(text, size, ink):
+            return UiControlKind.Label
+        UiWidgets::Control.Gauge(fraction, track, bar):
+            return UiControlKind.ProgressBar
+        UiWidgets::Control.Slider(value, low, high, track, knob):
+            return UiControlKind.Slider
+        UiWidgets::Control.TextBox(text, caret, size, ink, fill):
+            return UiControlKind.TextField
+        UiWidgets::Button.Push(label, rest, hover, press):
+            return UiControlKind.PushButton
+        UiWidgets::Button.Toggle(label, on, rest, hover, press):
+            return UiControlKind.ToggleButton
+        UiWidgets::Button.Check(label, checked, rest, hover, press):
+            return UiControlKind.CheckBox
+        UiWidgets::Button.Radio(label, group, selected, rest, hover, press):
+            return UiControlKind.RadioButton
+
+# The text a control shows. Empty for anything that carries none, so a backend
+# can set it unconditionally.
+def ui_control_text_of(w: UiWidgets::Widget) -> sview:
+    match w:
+        UiWidgets::Window.Top(title, resizable):
+            return title
+        UiWidgets::Window.Floating(title):
+            return title
+        UiWidgets::Control.Label(text, size, ink):
+            return text
+        UiWidgets::Control.TextBox(text, caret, size, ink, fill):
+            return text
+        UiWidgets::Button.Push(label, rest, hover, press):
+            return label
+        UiWidgets::Button.Toggle(label, on, rest, hover, press):
+            return label
+        UiWidgets::Button.Check(label, checked, rest, hover, press):
+            return label
+        UiWidgets::Button.Radio(label, group, selected, rest, hover, press):
+            return label
+        _:
+            return ""

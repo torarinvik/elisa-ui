@@ -1,0 +1,145 @@
+# The native-controls seam, with no window, no OS control and no platform.
+#
+# A RECORDING Controls backend stands in for AppKit or Win32: it hands out
+# integer handles and writes down every create, frame and text it is asked for.
+# That is enough to assert the things a native backend must get right and that
+# no screenshot would tell you -- that the OS tree has the same SHAPE as the
+# widget tree, that every control is placed at the box layout computed, and that
+# each widget kind maps to the control a platform actually has.
+#
+# Text measurement is part of the platform contract, so this supplies
+# deterministic stubs rather than depending on a host's fonts.
+
+include "../src/widgets/ui_controls.elisa"
+
+using UiWidgets
+
+extern puts(text: cstr) -> i64
+
+global mutable test_failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    test_failures <- test_failures + 1
+    _ = puts(name)
+
+def app_widget_event(widget: UiWidgets::Widget, event: i32) -> void:
+    pass
+
+def ui_measure_text_width(text: sview, size: f32) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size
+
+def ui_font_ascent(size: f32) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+# ---------------------------------------------------------------- the recorder
+
+const LOG_CAP: usize = 64
+
+global mutable log_kind: i32[LOG_CAP] = zeroed
+global mutable log_parent: i32[LOG_CAP] = zeroed
+global mutable log_x: f32[LOG_CAP] = zeroed
+global mutable log_y: f32[LOG_CAP] = zeroed
+global mutable log_w: f32[LOG_CAP] = zeroed
+global mutable log_h: f32[LOG_CAP] = zeroed
+global mutable log_total: usize = 0
+global mutable frame_calls: usize = 0
+global mutable text_calls: usize = 0
+
+# A backend keeps its own index -> handle table; this one keeps a log instead,
+# which is the same thing with the native part left out.
+struct RecordingControls:
+    unused: i32
+
+impl Controls for RecordingControls:
+    def create(index: i32, kind: UiControlKind, parent: i32) -> void can[Ui.Controls]:
+        return if index < 0 or index.usize() >= LOG_CAP
+        row: usize = index.usize()
+        log_total <- log_total + 1
+        log_kind[row] <- kind.i32()
+        log_parent[row] <- parent
+
+    def set_frame(index: i32, box: UiCore::Rect) -> void can[Ui.Controls]:
+        frame_calls <- frame_calls + 1
+        return if index < 0 or index.usize() >= LOG_CAP
+        row: usize = index.usize()
+        log_x[row] <- box.origin.x
+        log_y[row] <- box.origin.y
+        log_w[row] <- box.size.width
+        log_h[row] <- box.size.height
+
+    def set_text(index: i32, text: sview) -> void can[Ui.Controls]:
+        text_calls <- text_calls + 1
+
+def kind_at(row: usize) -> i32:
+    return log_kind[row]
+
+def grey(v: u8) -> UiCore::Color:
+    return UiCore::Color{r: v, g: v, b: v, a: 255}
+
+# A window over a row of two buttons, plus a caption:
+#
+#   Window.Top "Demo"
+#     +-- Container.Box (row)
+#     |     +-- Button.Push "Left"
+#     |     +-- Button.Push "Right"
+#     +-- Control.Label "Caption"
+#
+# Parent-first depth-first realization must therefore produce handles
+# 0..4 as root, bar, Left, Right, caption.
+def build() -> Widget:
+    can Memory.Allocate, Abort.Panic:
+        left: Widget = Button.Push(min_width: 40.0, min_height: 20.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "Left", rest: grey(60), hover: grey(90), press: grey(30))
+        right: Widget = Button.Push(min_width: 60.0, min_height: 20.0, grow: 1.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "Right", rest: grey(60), hover: grey(90), press: grey(30))
+        left.next_sibling <- right
+        bar: Widget = Container.Box(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: left, next_sibling: null, axis: UiAxis.Row, padding: 0.0, spacing: 0.0, fill: grey(20))
+        caption: Widget = Control.Label(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, text: "Caption", size: 12.0, ink: grey(200))
+        bar.next_sibling <- caption
+        root: Widget = Window.Top(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: bar, next_sibling: null, title: "Demo", resizable: true)
+        return root
+
+def main() -> i64:
+    can Ui.Controls, Abort.Panic, Memory.Allocate, Unsafe.PointerCast:
+        root: Widget = build()
+        layout(root, 200.0, 100.0)
+        UiControlList::reset()
+        UiControlList::realize(root, UI_NO_PARENT)
+        ui_apply_controls[RecordingControls]()
+
+        # One control per widget, every one placed and captioned.
+        check("a control per widget", log_total == 5)
+        check("every control is framed", frame_calls == 5)
+        check("every control is given its text", text_calls == 5)
+
+        # PARENT FIRST, and the OS tree has the widget tree's shape.
+        check("the root has no parent", log_parent[0] == UI_NO_PARENT)
+        check("the bar hangs off the root", log_parent[1] == 0)
+        check("the left button hangs off the bar", log_parent[2] == 1)
+        check("the right button hangs off the bar", log_parent[3] == 1)
+        check("the caption hangs off the root", log_parent[4] == 0)
+
+        # Each widget kind became a control a platform actually has.
+        check("a window realizes a Window", kind_at(0) == UiControlKind.Window.i32())
+        check("a box realizes a Panel", kind_at(1) == UiControlKind.Panel.i32())
+        check("a push button realizes a PushButton", kind_at(2) == UiControlKind.PushButton.i32())
+        check("a label realizes a Label", kind_at(4) == UiControlKind.Label.i32())
+
+        # ABSOLUTE PLACEMENT: a control sits at the box layout computed for its
+        # widget, not somewhere the backend invented.
+        root_box: UiCore::Rect = box_of(root)
+        check("the root control matches its laid-out box", log_x[0] == root_box.origin.x and log_w[0] == root_box.size.width)
+        check("the root fills the viewport width", log_w[0] == 200.0)
+        left_box: UiCore::Rect = box_of(root)
+        check("the two buttons are laid out side by side", log_x[3] > log_x[2])
+        check("both buttons share the row's top", log_y[2] == log_y[3])
+
+        if test_failures == 0:
+            _ = puts("controls: all checks passed")
+            return 0
+        return 1
