@@ -245,8 +245,7 @@ module UiCore:
     private:
         global mutable command_buffer: Command[MAX_COMMANDS] = zeroed
         global mutable command_total: usize = 0
-        global mutable viewport_w: f32 = 0.0
-        global mutable viewport_h: f32 = 0.0
+        global mutable viewport_size: Size = Size{width: 0.0, height: 0.0}
 
     public:
         def begin_frame() -> void:
@@ -269,24 +268,25 @@ module UiCore:
             return command_buffer[index]
 
         def set_viewport(width: f32, height: f32) -> void:
-            viewport_w <- width
-            viewport_h <- height
+            viewport_size <- Size{width: width, height: height}
 
         def viewport_width() -> f32:
-            return viewport_w
+            return viewport_size.width
 
         def viewport_height() -> f32:
-            return viewport_h
+            return viewport_size.height
 
-        # Short constructors, so a call site reads as geometry rather than as a
-        # list of floats.
-        def vec2(x: f32, y: f32) -> Vec2:
+        # Short constructors named for the type they build, so a call site reads as
+        # geometry rather than as a list of floats. `rgb`/`rgba` keep their own names:
+        # they are two constructors for ONE type, and the channel set is the whole
+        # distinction between them, which a pair of `Color` overloads would throw away.
+        def Vec2(x: f32, y: f32) -> Vec2:
             return Vec2{x: x, y: y}
 
-        def size(width: f32, height: f32) -> Size:
+        def Size(width: f32, height: f32) -> Size:
             return Size{width: width, height: height}
 
-        def rect(x: f32, y: f32, width: f32, height: f32) -> Rect:
+        def Rect(x: f32, y: f32, width: f32, height: f32) -> Rect:
             return Rect{origin: Vec2{x: x, y: y}, size: Size{width: width, height: height}}
 
         def rgba(r: u8, g: u8, b: u8, a: u8) -> Color:
@@ -326,5 +326,5 @@ module UiCore:
         def draw(run: TextRun, color: Color) -> void:
             push_command(Command.DrawText(run, color))
 
-        def text_run(origin: Vec2, size: f32, body: sview) -> TextRun:
+        def TextRun(origin: Vec2, size: f32, body: sview) -> TextRun:
             return TextRun{origin: origin, size: size, text: body}
