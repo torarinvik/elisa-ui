@@ -18,6 +18,7 @@
 # world, and a module prefix would only pretend otherwise.
 
 include "../../core/ui_core.elisa"
+include "../../core/ui_paint.elisa"
 
 @wasm_import_module("wasmbrowser:window/host@0.1.0")
 @link_name("present-commands")
@@ -65,6 +66,10 @@ module UiWasmBrowser:
         const WIRE_CAPACITY: usize = UiCore::MAX_COMMANDS * WIRE_STRIDE
 
         global mutable wire_buffer: u8[WIRE_CAPACITY] = zeroed
+        # Where the next command is written. Advanced by wire_take_slot, reset by
+        # present(): a protocol painter method receives no index, so the position
+        # has to be backend state.
+        global mutable wire_cursor: usize = 0
 
         # Host pointer-kind ordinals (wit enum pointer-kind { down, up, move, leave }).
         const HOST_POINTER_DOWN: i32 = 0
@@ -94,58 +99,85 @@ module UiWasmBrowser:
             wire_buffer[base + 2] <- 0
             wire_buffer[base + 3] <- 0
 
-        def encode_command(command: UiCore::Command, base: usize) -> void:
-            match command:
-                UiCore::Command.Clear(color):
-                    wire_discriminant(base, 0)
-                    wire_color(base, 4, color)
-                UiCore::Command.FillRect(box, color):
-                    wire_discriminant(base, 1)
-                    wire_f32(base, 4, box.origin.x)
-                    wire_f32(base, 8, box.origin.y)
-                    wire_f32(base, 12, box.size.width)
-                    wire_f32(base, 16, box.size.height)
-                    wire_color(base, 20, color)
-                UiCore::Command.FillCircle(disc, color):
-                    wire_discriminant(base, 2)
-                    wire_f32(base, 4, disc.center.x)
-                    wire_f32(base, 8, disc.center.y)
-                    wire_f32(base, 12, disc.radius)
-                    wire_color(base, 16, color)
-                UiCore::Command.FillTriangle(tri, color):
-                    wire_discriminant(base, 3)
-                    wire_f32(base, 4, tri.a.x)
-                    wire_f32(base, 8, tri.a.y)
-                    wire_f32(base, 12, tri.b.x)
-                    wire_f32(base, 16, tri.b.y)
-                    wire_f32(base, 20, tri.c.x)
-                    wire_f32(base, 24, tri.c.y)
-                    wire_color(base, 28, color)
-                UiCore::Command.FillLine(segment, color):
-                    wire_discriminant(base, 4)
-                    wire_f32(base, 4, segment.from_point.x)
-                    wire_f32(base, 8, segment.from_point.y)
-                    wire_f32(base, 12, segment.to_point.x)
-                    wire_f32(base, 16, segment.to_point.y)
-                    wire_color(base, 20, color)
-                UiCore::Command.DrawText(run, color):
-                    # text-run lowers to x, y, size, color, then the string's
-                    # pointer and length: 24 payload bytes, which still fits
-                    # the 28 the largest case (triangle) already reserves.
-                    wire_discriminant(base, 5)
-                    wire_f32(base, 4, run.origin.x)
-                    wire_f32(base, 8, run.origin.y)
-                    wire_f32(base, 12, run.size)
-                    wire_color(base, 16, color)
-                    text_pointer: uintptr = run.text.data.cast[uintptr] can Unsafe.PointerCast
-                    wire_u32(base, 20, text_pointer)
-                    wire_u32(base, 24, run.text.len.u32().uintptr())
+    public:
+        # One public operation per drawing command, each writing the next wire slot.
+        # The MATCH that used to live here is now ui_paint.elisa's single
+        # ui_replay_commands, shared with SDL3 -- the two backends read the command
+        # list through the same code, so they cannot disagree about it again.
+        #
+        # `base` used to come from the loop index. A protocol method is not handed
+        # one, so the cursor is backend state now, reset by present() before the
+        # replay -- the same shape as SDL3's renderer handle.
+        def wire_reset() -> void:
+            wire_cursor <- 0
+
+        def wire_take_slot() -> usize:
+            base: usize = wire_cursor
+            wire_cursor <- wire_cursor + WIRE_STRIDE
+            return base
+
+        # One encoder per command, each writing one fixed-stride wire record.
+        #
+        # These used to be the arms of a single match over the command enum. Through
+        # the protocol that cost a round trip -- ui_replay_commands destructured the
+        # command, the painter rebuilt it, and the encoder destructured it again --
+        # so the arms became functions and the match went away entirely. The BYTE
+        # LAYOUT is unchanged; the host reads the same records at the same offsets.
+        def encode_clear(base: usize, color: UiCore::Color) -> void:
+            wire_discriminant(base, 0)
+            wire_color(base, 4, color)
+
+        def encode_fill_rect(base: usize, box: UiCore::Rect, color: UiCore::Color) -> void:
+            wire_discriminant(base, 1)
+            wire_f32(base, 4, box.origin.x)
+            wire_f32(base, 8, box.origin.y)
+            wire_f32(base, 12, box.size.width)
+            wire_f32(base, 16, box.size.height)
+            wire_color(base, 20, color)
+
+        def encode_fill_circle(base: usize, disc: UiCore::Circle, color: UiCore::Color) -> void:
+            wire_discriminant(base, 2)
+            wire_f32(base, 4, disc.center.x)
+            wire_f32(base, 8, disc.center.y)
+            wire_f32(base, 12, disc.radius)
+            wire_color(base, 16, color)
+
+        def encode_fill_triangle(base: usize, tri: UiCore::Triangle, color: UiCore::Color) -> void:
+            wire_discriminant(base, 3)
+            wire_f32(base, 4, tri.a.x)
+            wire_f32(base, 8, tri.a.y)
+            wire_f32(base, 12, tri.b.x)
+            wire_f32(base, 16, tri.b.y)
+            wire_f32(base, 20, tri.c.x)
+            wire_f32(base, 24, tri.c.y)
+            wire_color(base, 28, color)
+
+        def encode_fill_line(base: usize, segment: UiCore::Line, color: UiCore::Color) -> void:
+            wire_discriminant(base, 4)
+            wire_f32(base, 4, segment.from_point.x)
+            wire_f32(base, 8, segment.from_point.y)
+            wire_f32(base, 12, segment.to_point.x)
+            wire_f32(base, 16, segment.to_point.y)
+            wire_color(base, 20, color)
+
+        def encode_draw_text(base: usize, run: UiCore::TextRun, color: UiCore::Color) -> void:
+            # text-run lowers to x, y, size, color, then the string's pointer and
+            # length: 24 payload bytes, which still fits the 28 the largest case
+            # (triangle) already reserves.
+            wire_discriminant(base, 5)
+            wire_f32(base, 4, run.origin.x)
+            wire_f32(base, 8, run.origin.y)
+            wire_f32(base, 12, run.size)
+            wire_color(base, 16, color)
+            text_pointer: uintptr = run.text.data.cast[uintptr] can Unsafe.PointerCast
+            wire_u32(base, 20, text_pointer)
+            wire_u32(base, 24, run.text.len.u32().uintptr())
 
         def present() -> void:
             total: usize = UiCore::command_count()
             return if total == 0
-            for index in 0..<total:
-                encode_command(UiCore::command_at(index), index * WIRE_STRIDE)
+            wire_reset()
+            ui_replay_commands[WasmPainter]()
             commands: void& = (&wire_buffer[0]).cast[void&] can Unsafe.PointerCast
             host_present_commands(UiCore::viewport_width().u32(), UiCore::viewport_height().u32(), commands, total.u32())
 
@@ -273,3 +305,31 @@ export fn scroll_input(x: f32, y: f32, delta_x: f32, delta_y: f32) -> void = gue
 export fn gamepad_button_input(index: u32, button: i32, value: f32) -> void = guest_gamepad_button_input
 @link_name("wasmbrowser:window/guest@0.1.0#gamepad-axis-input")
 export fn gamepad_axis_input(index: u32, axis: i32, value: f32) -> void = guest_gamepad_axis_input
+
+
+# The component painter. Where SDL3 rasterizes, this ENCODES: each command becomes
+# one fixed-stride wire record for the host to draw. Two backends with nothing in
+# common but this protocol is the test of whether the abstraction is real -- one
+# puts pixels on a renderer, the other serializes for a host that has never heard
+# of Elisa.
+struct WasmPainter:
+    unused: i32
+
+impl Painter for WasmPainter:
+    def clear(color: UiCore::Color) -> void can[Ui.Draw]:
+        UiWasmBrowser::encode_clear(UiWasmBrowser::wire_take_slot(), color)
+
+    def fill_rect(box: UiCore::Rect, color: UiCore::Color) -> void can[Ui.Draw]:
+        UiWasmBrowser::encode_fill_rect(UiWasmBrowser::wire_take_slot(), box, color)
+
+    def fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> void can[Ui.Draw]:
+        UiWasmBrowser::encode_fill_circle(UiWasmBrowser::wire_take_slot(), disc, color)
+
+    def fill_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]:
+        UiWasmBrowser::encode_fill_triangle(UiWasmBrowser::wire_take_slot(), tri, color)
+
+    def fill_line(segment: UiCore::Line, color: UiCore::Color) -> void can[Ui.Draw]:
+        UiWasmBrowser::encode_fill_line(UiWasmBrowser::wire_take_slot(), segment, color)
+
+    def draw_text(run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
+        UiWasmBrowser::encode_draw_text(UiWasmBrowser::wire_take_slot(), run, color)

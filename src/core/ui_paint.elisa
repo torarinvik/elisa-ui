@@ -1,0 +1,80 @@
+# elisa-ui painting contract: what a backend must provide to turn the core's
+# command list into pixels.
+#
+# WHY A PROTOCOL AND NOT A FUNCTION TABLE. Elisa protocols resolve at COMPILE
+# TIME and lower through specialization -- there is no vtable carrier, so
+# `replay[Sdl3Painter]()` costs exactly what the hand-written match cost, with no
+# indirect call on the per-command path. That matters here: this is the hot loop
+# of every frame. The price is that a binary paints through one painter, chosen
+# when it is built, which is how a UI toolkit is used anyway -- you ship a macOS
+# app or a wasm component, not a binary that might be either.
+#
+# WHY THE COMMANDS AND NOT THE WIDGETS. Both widget layers -- UiFlat's array and
+# UiWidgets' sealed hierarchy -- emit the same UiCore::Command list, so the
+# painting contract sits BELOW both and neither leaks into a backend. A native
+# controls backend is a different contract entirely (it consumes the widget tree,
+# not the command list) and will be its own protocol.
+#
+# The replay loop below used to be copied into every backend: SDL3 matched the
+# six commands to paint them, WasmBrowser matched the same six to encode them.
+# Two copies drifted -- SDL3 approximated circles and triangles with their
+# bounding boxes while WasmBrowser drew them exactly, so one command list meant
+# two different pictures. One loop, six protocol methods, no place to drift.
+
+include "./ui_core.elisa"
+
+# The authority a UI needs, split so a function can be honest about which part it
+# uses. The prize is the NEGATIVE space: layout and the widget passes touch none
+# of these, so their `can` rows stay empty and the compiler proves a layout pass
+# cannot draw, poll, or open a window. That is what makes the passes reusable by
+# every backend and testable with no backend at all.
+permission Ui:
+    # Create, size and destroy windows.
+    Window
+    # Put pixels on a surface.
+    Draw
+    # Measure or shape text -- separated from Draw because layout MEASURES
+    # without drawing, and a headless layout test wants the one without the other.
+    Text
+    # Pump the host's event queue.
+    Input
+    # Create and mutate native OS controls. Unused by a painting backend; declared
+    # here so the native backend's row is drawn from the same family.
+    Controls
+
+# One command, one method. A painter is a TYPE, not a value: its state is the
+# backend's own (SDL3's renderer handle, the component's wire cursor), so the
+# methods are static and the specialization inlines them.
+protocol Painter:
+    def clear(color: UiCore::Color) -> void can[Ui.Draw]
+    def fill_rect(box: UiCore::Rect, color: UiCore::Color) -> void can[Ui.Draw]
+    def fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> void can[Ui.Draw]
+    def fill_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]
+    def fill_line(segment: UiCore::Line, color: UiCore::Color) -> void can[Ui.Draw]
+    # Text needs both: it rasterizes (Draw) through font metrics (Text).
+    def draw_text(run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]
+
+# Replay this frame's commands through one painter: the only place the command
+# enum is matched for painting.
+#
+# TOP LEVEL, not inside a module, and that is forced rather than chosen. stage1
+# declines every call to a generic declared inside a `module M:` -- with an
+# explicit type argument or an inferred one -- while stage0 compiles and runs
+# both. Measured, not guessed. When that gap closes this belongs in `module
+# UiPaint:` with the rest of the painting vocabulary; until then the `ui_` prefix
+# does the namespacing a module would.
+def ui_replay_commands[P: Painter]() -> void can[Ui.Draw, Ui.Text]:
+    for index in 0..<UiCore::command_count():
+        match UiCore::command_at(index):
+            UiCore::Command.Clear(color):
+                P.clear(color)
+            UiCore::Command.FillRect(box, color):
+                P.fill_rect(box, color)
+            UiCore::Command.FillCircle(disc, color):
+                P.fill_circle(disc, color)
+            UiCore::Command.FillTriangle(tri, color):
+                P.fill_triangle(tri, color)
+            UiCore::Command.FillLine(segment, color):
+                P.fill_line(segment, color)
+            UiCore::Command.DrawText(run, color):
+                P.draw_text(run, color)
