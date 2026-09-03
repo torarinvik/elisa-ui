@@ -248,7 +248,7 @@ module UiCore:
         # field meanings are the ones the flat `Event` used to carry, and `kind` keeps
         # the same wire ordinals, so neither boundary shifts.
         struct EventRecord:
-            kind: mutable i32
+            kind: mutable WireKind
             x: mutable f32
             y: mutable f32
             dx: mutable f32
@@ -256,19 +256,27 @@ module UiCore:
             code: mutable i32
 
         # Wire ordinals. Named so the mapping is stated once and both directions of
-        # the conversion below read against it.
-        const WIRE_NONE: i32 = 0
-        const WIRE_QUIT: i32 = 1
-        const WIRE_POINTER_MOVE: i32 = 2
-        const WIRE_POINTER_DOWN: i32 = 3
-        const WIRE_POINTER_UP: i32 = 4
-        const WIRE_POINTER_LEAVE: i32 = 5
-        const WIRE_KEY_DOWN: i32 = 6
-        const WIRE_KEY_UP: i32 = 7
-        const WIRE_RESIZE: i32 = 8
-        const WIRE_SCROLL: i32 = 9
-        const WIRE_GAMEPAD_BUTTON: i32 = 10
-        const WIRE_GAMEPAD_AXIS: i32 = 11
+        # the conversion below read against it. A const enum rather than loose
+        # constants, for the same reason UiKey and UiPad are one: a match arm reads
+        # `WireKind.Quit`, and a dotted path cannot be mistaken for a fresh binding
+        # the way a bare constant name can -- that spelling bound the scrutinee and
+        # matched everything, so every event decoded as the first arm. A typo is now
+        # a compile error rather than a catch-all. This mirrors elisa_ui_event_kind
+        # in include/elisa_ui.h ordinal for ordinal; a const enum IS its backing, so
+        # both boundaries still see a plain i32 and nothing shifts.
+        const enum WireKind of i32:
+            None = 0
+            Quit = 1
+            PointerMove = 2
+            PointerDown = 3
+            PointerUp = 4
+            PointerLeave = 5
+            KeyDown = 6
+            KeyUp = 7
+            Resize = 8
+            Scroll = 9
+            GamepadButton = 10
+            GamepadAxis = 11
 
         # A fixed buffer keeps the frame path allocation-free, which matters
         # most on the component side: the freestanding cabi_realloc is
@@ -372,32 +380,32 @@ module UiCore:
 
         # The ordinal a kind travels as. Exhaustive on purpose: adding a leaf without
         # giving it a number is a compile error, not a silent zero.
-        def wire_kind(event: Event) -> i32:
+        def wire_kind(event: Event) -> WireKind:
             match event:
                 Event.None:
-                    return WIRE_NONE
+                    return WireKind.None
                 Event.Quit:
-                    return WIRE_QUIT
+                    return WireKind.Quit
                 Event.Resize(size):
-                    return WIRE_RESIZE
+                    return WireKind.Resize
                 PointerEvent.Move(at):
-                    return WIRE_POINTER_MOVE
+                    return WireKind.PointerMove
                 PointerEvent.Down(at, button):
-                    return WIRE_POINTER_DOWN
+                    return WireKind.PointerDown
                 PointerEvent.Up(at, button):
-                    return WIRE_POINTER_UP
+                    return WireKind.PointerUp
                 PointerEvent.Leave:
-                    return WIRE_POINTER_LEAVE
+                    return WireKind.PointerLeave
                 PointerEvent.Scroll(at, delta):
-                    return WIRE_SCROLL
+                    return WireKind.Scroll
                 KeyEvent.Down(code):
-                    return WIRE_KEY_DOWN
+                    return WireKind.KeyDown
                 KeyEvent.Up(code):
-                    return WIRE_KEY_UP
+                    return WireKind.KeyUp
                 GamepadEvent.Button(button, value):
-                    return WIRE_GAMEPAD_BUTTON
+                    return WireKind.GamepadButton
                 GamepadEvent.Axis(axis, value):
-                    return WIRE_GAMEPAD_AXIS
+                    return WireKind.GamepadAxis
 
         # Flatten. Fields a kind does not use stay zero, which is what the flat
         # record always meant.
@@ -434,15 +442,28 @@ module UiCore:
         # free to grow its event set faster than this library does.
         def from_record(record: EventRecord) -> Event:
             at: Vec2 = Vec2(record.x, record.y)
-            return (Event.Quit) if record.kind == WIRE_QUIT
-            return (Event.Resize(size: Size(record.x, record.y))) if record.kind == WIRE_RESIZE
-            return (PointerEvent.Move(at: at)) if record.kind == WIRE_POINTER_MOVE
-            return (PointerEvent.Down(at: at, button: record.code)) if record.kind == WIRE_POINTER_DOWN
-            return (PointerEvent.Up(at: at, button: record.code)) if record.kind == WIRE_POINTER_UP
-            return (PointerEvent.Leave) if record.kind == WIRE_POINTER_LEAVE
-            return (PointerEvent.Scroll(at: at, delta: Vec2(record.dx, record.dy))) if record.kind == WIRE_SCROLL
-            return (KeyEvent.Down(code: record.code.UiKey())) if record.kind == WIRE_KEY_DOWN
-            return (KeyEvent.Up(code: record.code.UiKey())) if record.kind == WIRE_KEY_UP
-            return (GamepadEvent.Button(button: record.code.UiPad(), value: record.dx)) if record.kind == WIRE_GAMEPAD_BUTTON
-            return (GamepadEvent.Axis(axis: record.code.UiPadAxis(), value: record.dx)) if record.kind == WIRE_GAMEPAD_AXIS
-            return (Event.None)
+            return match record.kind:
+                WireKind.Quit:
+                    Event.Quit
+                WireKind.Resize:
+                    Event.Resize(size: Size(record.x, record.y))
+                WireKind.PointerMove:
+                    PointerEvent.Move(at: at)
+                WireKind.PointerDown:
+                    PointerEvent.Down(at: at, button: record.code)
+                WireKind.PointerUp:
+                    PointerEvent.Up(at: at, button: record.code)
+                WireKind.PointerLeave:
+                    PointerEvent.Leave
+                WireKind.Scroll:
+                    PointerEvent.Scroll(at: at, delta: Vec2(record.dx, record.dy))
+                WireKind.KeyDown:
+                    KeyEvent.Down(code: record.code.UiKey())
+                WireKind.KeyUp:
+                    KeyEvent.Up(code: record.code.UiKey())
+                WireKind.GamepadButton:
+                    GamepadEvent.Button(button: record.code.UiPad(), value: record.dx)
+                WireKind.GamepadAxis:
+                    GamepadEvent.Axis(axis: record.code.UiPadAxis(), value: record.dx)
+                _:
+                    Event.None
