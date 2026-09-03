@@ -27,17 +27,12 @@ module UiFlat:
         # One past the last valid slot, so it can never collide with a real index.
         const NONE: usize = 256
 
-        # Widget kinds.
-        const PANEL: i32 = 0
-        const BUTTON: i32 = 1
-        const LABEL: i32 = 2
-
         struct Widget:
-            kind: mutable i32
+            kind: mutable UiWidgetKind
             parent: mutable usize
             first_child: mutable usize
             next_sibling: mutable usize
-            axis: mutable i32
+            axis: mutable UiAxis
             padding: mutable f32
             spacing: mutable f32
             min_width: mutable f32
@@ -79,7 +74,7 @@ module UiFlat:
         # Returns NONE when the arena is full; callers may pass that on as a
         # parent, and every traversal treats it as absent, so overflow degrades
         # to missing widgets rather than corrupting the tree.
-        def new_widget(parent: usize, kind: i32) -> usize:
+        def new_widget(parent: usize, kind: UiWidgetKind) -> usize:
             return NONE if widget_count >= MAX_WIDGETS
             index: usize = widget_count
             widget_count <- widget_count + 1
@@ -89,7 +84,7 @@ module UiFlat:
             widgets[index] <- Widget{
                 kind, parent,
                 first_child: NONE, next_sibling: NONE,
-                axis: UiAxis::COLUMN, padding: 0.0, spacing: 0.0,
+                axis: UiAxis.Column, padding: 0.0, spacing: 0.0,
                 min_width: 0.0, min_height: 0.0, grow: 0.0,
                 x: 0.0, y: 0.0, width: 0.0, height: 0.0,
                 color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, hover_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, press_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0},
@@ -127,14 +122,14 @@ module UiFlat:
             hot_widget <- NONE
             active_widget <- NONE
 
-        def panel(parent: usize, axis: i32, padding: f32, spacing: f32, color: UiCore::Color) -> usize:
-            index: usize = new_widget(parent, PANEL)
+        def panel(parent: usize, axis: UiAxis, padding: f32, spacing: f32, color: UiCore::Color) -> usize:
+            index: usize = new_widget(parent, UiWidgetKind.Panel)
             return index if index == NONE
             widgets[index] with { axis, padding, spacing, color, hover_color <- color, press_color <- color }
             return index
 
         def button(parent: usize, min_width: f32, min_height: f32, color: UiCore::Color, hover_color: UiCore::Color, press_color: UiCore::Color) -> usize:
-            index: usize = new_widget(parent, BUTTON)
+            index: usize = new_widget(parent, UiWidgetKind.Button)
             return index if index == NONE
             widgets[index] with { min_width, min_height, color, hover_color, press_color, interactive <- true }
             return index
@@ -144,7 +139,7 @@ module UiFlat:
         # once here rather than every frame: the text is a view that does not
         # change, and the platform's measure call may cross into the host.
         def label(parent: usize, text: sview, size: f32, color: UiCore::Color) -> usize:
-            index: usize = new_widget(parent, LABEL)
+            index: usize = new_widget(parent, UiWidgetKind.Label)
             return index if index == NONE
             widgets[index] with {
                 text, text_size <- size, text_color <- color,
@@ -168,7 +163,7 @@ module UiFlat:
             return if index >= widget_count
             cursor: mutable usize = widgets[index].first_child
             return if cursor == NONE
-            is_row: bool = widgets[index].axis == UiAxis::ROW
+            is_row: bool = widgets[index].axis == UiAxis.Row
             along: mutable f32 = 0.0
             across: mutable f32 = 0.0
             children: mutable f32 = 0.0
@@ -201,7 +196,7 @@ module UiFlat:
             inner_y: f32 = y + pad
             inner_width: f32 = width - pad * 2.0
             inner_height: f32 = height - pad * 2.0
-            is_row: bool = widgets[index].axis == UiAxis::ROW
+            is_row: bool = widgets[index].axis == UiAxis.Row
 
             children: f32 = child_count(index).f32()
             gaps: f32 = widgets[index].spacing * (children - 1.0) if children > 1.0 else 0.0
@@ -292,7 +287,7 @@ module UiFlat:
                     return if held == NONE
                     widgets[held].pressed <- false
                     if held == target:
-                        app_widget_event(held, UiWidgetEvent::CLICK)
+                        app_widget_event(held, UiWidgetEvent.Click.i32())
                 UiCore::PointerEvent.Leave:
                     released: usize = active_widget
                     active_widget <- NONE

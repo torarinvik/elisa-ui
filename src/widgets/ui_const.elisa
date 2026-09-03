@@ -1,17 +1,33 @@
-# elisa-ui widget constants, shared by both widget layers. Each closed set is
-# its own module so a value reads as `UiAxis::ROW` rather than a prefixed
-# global, and adding a set means adding a module, not a naming convention.
+# elisa-ui widget constants, shared by both widget layers. Each closed set is a
+# CONST ENUM rather than a module of constants: a value reads `UiAxis.Row`, the
+# member separator is `.` because a const enum is a type and not a module, and a
+# typo is a compile error ("enum has no variant") instead of an undefined name or
+# -- where a bare constant is used as a match arm -- a binding that silently
+# matches everything. A const enum IS its backing, so every ordinal and every
+# boundary is unchanged.
 
 # A container distributes its children ALONG one axis and stretches them
 # ACROSS the other -- wxBoxSizer's orientation, spelled as a value rather
 # than a class.
-module UiAxis:
-    public:
-        const COLUMN: i32 = 0
-        const ROW: i32 = 1
+const enum UiAxis of i32:
+    Column = 0
+    Row = 1
 
-# What a widget layer reports back to the application through
-# app_widget_event.
-module UiWidgetEvent:
-    public:
-        const CLICK: i32 = 0
+# What a widget layer reports back to the application through app_widget_event.
+#
+# That callback keeps taking a plain `i32`: it is the APP CONTRACT, forwarded to
+# C as elisa_ui_on_widget_event, and every application and test implements it.
+# So the ordinal converts at the call, exactly as the wire kinds do at the C
+# boundary -- the named set lives here, the boundary stays an integer.
+const enum UiWidgetEvent of i32:
+    Click = 0
+
+# What a flat-layer widget IS. The sealed hierarchy in ui_hierarchy.elisa carries
+# this in its type instead, which is the better answer; the flat layer needs a
+# tag, and a named one keeps `new_widget(parent, UiWidgetKind.Button)` from being
+# a bare 1. It is also what a native controls backend will switch on to decide
+# which OS control to create, so it wants to be a closed set the compiler checks.
+const enum UiWidgetKind of i32:
+    Panel = 0
+    Button = 1
+    Label = 2
