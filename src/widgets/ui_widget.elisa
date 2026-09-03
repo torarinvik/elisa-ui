@@ -258,33 +258,49 @@ module UiFlat:
                 return scan if widgets[scan].interactive and contains(scan, x, y)
             return NONE
 
-        def pointer(kind: i32, x: f32, y: f32) -> void:
-            target: usize = hit(x, y)
+        # Feed one event through the flat tree. Anything that is not a pointer event
+        # is ignored here, so an app can hand the whole stream over without sorting
+        # it first.
+        def pointer(event: UiCore::Event) -> void:
+            at: mutable UiCore::Vec2 = UiCore::Vec2(0.0, 0.0)
+            match event:
+                UiCore::PointerEvent.Move(move_at):
+                    at <- move_at
+                UiCore::PointerEvent.Down(down_at, down_button):
+                    at <- down_at
+                UiCore::PointerEvent.Up(up_at, up_button):
+                    at <- up_at
+                UiCore::PointerEvent.Leave:
+                    pass
+                _:
+                    return
+
+            target: usize = hit(at.x, at.y)
             clear_hover()
             hot_widget <- target
             if target != NONE:
                 widgets[target].hovered <- true
 
-            if kind == UiEvent::POINTER_DOWN and target != NONE:
-                active_widget <- target
-                widgets[target].pressed <- true
-                return
-
-            if kind == UiEvent::POINTER_UP:
-                held: usize = active_widget
-                active_widget <- NONE
-                return if held == NONE
-                widgets[held].pressed <- false
-                if held == target:
-                    app_widget_event(held, UiWidgetEvent::CLICK)
-                return
-
-            if kind == UiEvent::POINTER_LEAVE:
-                released: usize = active_widget
-                active_widget <- NONE
-                hot_widget <- NONE
-                return if released == NONE
-                widgets[released].pressed <- false
+            match event:
+                UiCore::PointerEvent.Down(press_at, press_button):
+                    return if target == NONE
+                    active_widget <- target
+                    widgets[target].pressed <- true
+                UiCore::PointerEvent.Up(release_at, release_button):
+                    held: usize = active_widget
+                    active_widget <- NONE
+                    return if held == NONE
+                    widgets[held].pressed <- false
+                    if held == target:
+                        app_widget_event(held, UiWidgetEvent::CLICK)
+                UiCore::PointerEvent.Leave:
+                    released: usize = active_widget
+                    active_widget <- NONE
+                    hot_widget <- NONE
+                    return if released == NONE
+                    widgets[released].pressed <- false
+                _:
+                    pass
 
         # Pre-order emission gives painter's-algorithm ordering for free: a
         # parent's background is laid down before any of its children.

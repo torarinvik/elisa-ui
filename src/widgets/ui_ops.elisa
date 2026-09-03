@@ -421,6 +421,55 @@ extend UiWidgets:
         global mutable hot_widget: Widget? = null
         global mutable active_widget: Widget? = null
 
+        # Every `is` binding below lives in a plain function body ON PURPOSE: a
+        # `common:` write through an `is` binding does not survive into a SECOND
+        # match arm, so one function per arm keeps each binding in a scope of its
+        # own. The shared logic was duplicated anyway.
+        #
+        # `root` is unused here and NOT decoration. Reaching a widget only through
+        # the global gives the body no store context, and the handle in
+        # `active_widget` cannot be decoded without one -- stage0 says so outright
+        # ("packed enum Widget decode requires store context"); stage1 accepts it and
+        # segfaults. A Widget parameter is what puts the store in scope.
+        def release_active(root: Widget) -> void:
+            if active_widget is held:
+                held.pressed <- false
+            active_widget <- null
+
+        # Move the hover to whatever is under `at`, and report it.
+        def hover_at(root: Widget, at: UiCore::Vec2) -> Widget?:
+            target: Widget? = hit(root, at.x, at.y)
+            if hot_widget is previous:
+                previous.hovered <- false
+            hot_widget <- target
+            if target is over:
+                over.hovered <- true
+            return target
+
+        def press_at(root: Widget, at: UiCore::Vec2) -> void:
+            target: Widget? = hover_at(root, at)
+            if target is pressed_now:
+                active_widget <- target
+                pressed_now.pressed <- true
+
+        # A click is a release ON the widget that holds the press, which is exactly
+        # "the widget under the pointer is pressed" -- only the active one ever is.
+        def release_at(root: Widget, at: UiCore::Vec2) -> void:
+            target: Widget? = hover_at(root, at)
+            clicked: mutable bool = false
+            if target is released_on:
+                clicked <- released_on.pressed
+            release_active(root)
+            if clicked and target is clicked_widget:
+                app_widget_event(clicked_widget, UiWidgetEvent::CLICK)
+
+        def leave_all(root: Widget) -> void:
+            _ = hover_at(root, UiCore::Vec2(0.0, 0.0))
+            release_active(root)
+            if hot_widget is left:
+                left.hovered <- false
+            hot_widget <- null
+
     public:
         # What the pointer is over, and what holds the press.
         def hot() -> Widget?:
@@ -429,37 +478,18 @@ extend UiWidgets:
         def active() -> Widget?:
             return active_widget
 
-        # Feed one pointer event through the tree. `root` is the tree being
-        # tested, `kind` one of the UiEvent pointer constants.
-        def pointer(root: Widget, kind: i32, x: f32, y: f32) -> void:
-            target: Widget? = hit(root, x, y)
-            if hot_widget is previous:
-                previous.hovered <- false
-            hot_widget <- target
-            if target is over:
-                over.hovered <- true
-
-            if kind == UiEvent::POINTER_DOWN:
-                if target is pressed_now:
-                    active_widget <- target
-                    pressed_now.pressed <- true
-                return
-
-            if kind == UiEvent::POINTER_UP:
-                clicked: mutable bool = false
-                if target is released_on:
-                    clicked <- released_on.pressed
-                if active_widget is held:
-                    held.pressed <- false
-                active_widget <- null
-                if clicked and target is clicked_widget:
-                    app_widget_event(clicked_widget, UiWidgetEvent::CLICK)
-                return
-
-            if kind == UiEvent::POINTER_LEAVE:
-                if active_widget is held:
-                    held.pressed <- false
-                active_widget <- null
-                if hot_widget is left:
-                    left.hovered <- false
-                hot_widget <- null
+        # Feed one event through the tree. `root` is the tree being tested. Anything
+        # that is not a pointer event is ignored, so an app can hand the whole stream
+        # over without sorting it first.
+        def pointer(root: Widget, event: UiCore::Event) -> void:
+            match event:
+                UiCore::PointerEvent.Move(move_at):
+                    _ = hover_at(root, move_at)
+                UiCore::PointerEvent.Down(down_at, down_button):
+                    press_at(root, down_at)
+                UiCore::PointerEvent.Up(up_at, up_button):
+                    release_at(root, up_at)
+                UiCore::PointerEvent.Leave:
+                    leave_all(root)
+                _:
+                    pass

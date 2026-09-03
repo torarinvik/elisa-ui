@@ -1,0 +1,48 @@
+# The C bridge is real code, so it is compiled and exercised rather than left to
+# rot: a C host's six scalars must arrive at `app_event` as the right variant.
+#
+# It also pins the direction the round-trip test cannot: `elisa_ui_dispatch_event`
+# is what a C caller actually invokes, and it must not require the caller to know
+# anything but the ordinal.
+
+include "../src/capi/ui_capi.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable seen_kind: i32 = -1
+global mutable seen_x: f32 = 0.0
+global mutable seen_code: i32 = 0
+global mutable test_failures: i32 = 0
+
+def app_event(event: UiCore::Event) -> void:
+    seen_kind <- UiCore::wire_kind(event)
+    record: UiCore::EventRecord = UiCore::to_record(event)
+    seen_x <- record.x
+    seen_code <- record.code
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    test_failures <- test_failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    elisa_ui_dispatch_event(3, 12.0, 34.0, 0.0, 0.0, 2)
+    check("a C pointer-down arrives as kind 3", seen_kind == 3)
+    check("a C pointer-down keeps its position", seen_x == 12.0)
+    check("a C pointer-down keeps its button", seen_code == 2)
+
+    elisa_ui_dispatch_event(6, 0.0, 0.0, 0.0, 0.0, 65)
+    check("a C key-down arrives as kind 6", seen_kind == 6)
+    check("a C key-down keeps its code", seen_code == 65)
+
+    elisa_ui_dispatch_event(99, 0.0, 0.0, 0.0, 0.0, 0)
+    check("an unmodelled ordinal arrives as None", seen_kind == 0)
+
+    elisa_ui_set_viewport(640.0, 480.0)
+    check("the viewport crosses the boundary", elisa_ui_viewport_width() == 640.0 and elisa_ui_viewport_height() == 480.0)
+
+    if test_failures == 0:
+        _ = puts("capi bridge: all checks passed")
+        return 0
+    _ = puts("capi bridge: FAILURES above")
+    return 1

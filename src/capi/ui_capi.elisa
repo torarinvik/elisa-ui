@@ -1,0 +1,39 @@
+# The C boundary.
+#
+# C has no variants, so a C host meets the library at `UiCore::EventRecord` -- a
+# POD struct of six scalars whose `kind` is the published wire ordinal. These
+# entry points are TOP-LEVEL on purpose: a module member's symbol carries its
+# module, while a bare `def` is the plain C name a header can declare.
+#
+# Nothing here is a second event model. It is one call each way over the
+# conversions in UiCore, so the ordinal encoding stays written down in exactly
+# one place and a kind added to the hierarchy reaches C without touching this
+# file.
+#
+# A C header for this is:
+#
+#   typedef struct { int32_t kind; float x, y, dx, dy; int32_t code; } elisa_ui_event;
+#   void elisa_ui_dispatch_event(int32_t kind, float x, float y,
+#                                float dx, float dy, int32_t code);
+#   void elisa_ui_set_viewport(float width, float height);
+#   float elisa_ui_viewport_width(void);
+#   float elisa_ui_viewport_height(void);
+
+include "../core/ui_core.elisa"
+
+# Deliver one event from a C host. The scalars are the EventRecord fields; an
+# ordinal this library does not model arrives as `Event.None`, which an app
+# ignores, rather than as a trap.
+def elisa_ui_dispatch_event(kind: i32, x: f32, y: f32, dx: f32, dy: f32, code: i32) -> void:
+    record: UiCore::EventRecord = UiCore::EventRecord{kind: kind, x: x, y: y, dx: dx, dy: dy, code: code}
+    app_event(UiCore::from_record(record))
+
+# The viewport, for a C host that owns the window.
+def elisa_ui_set_viewport(width: f32, height: f32) -> void:
+    UiCore::set_viewport(width, height)
+
+def elisa_ui_viewport_width() -> f32:
+    return UiCore::viewport_width()
+
+def elisa_ui_viewport_height() -> f32:
+    return UiCore::viewport_height()

@@ -1,0 +1,67 @@
+# The flat boundary. Every kind must survive Event -> EventRecord -> Event with
+# its ordinal and its payload intact, because that round trip is what the WIT
+# host and a C caller see: neither can carry a variant, so both meet the library
+# at EventRecord.
+#
+# The ordinals are asserted as LITERALS, not against the WIRE_* constants. They
+# are a published encoding the host also hard-codes, so a test that reads them
+# from the same constants it is checking would agree with any renumbering.
+
+include "../src/core/ui_core.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable test_failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    test_failures <- test_failures + 1
+    _ = puts(name)
+
+# One round trip: flatten, rebuild, flatten again. The two records must agree.
+def round_trips(event: UiCore::Event, expected_kind: i32) -> bool:
+    once: UiCore::EventRecord = UiCore::to_record(event)
+    return false if once.kind != expected_kind
+    return false if UiCore::wire_kind(event) != expected_kind
+    twice: UiCore::EventRecord = UiCore::to_record(UiCore::from_record(once))
+    return false if twice.kind != once.kind
+    return false if twice.x != once.x or twice.y != once.y
+    return false if twice.dx != once.dx or twice.dy != once.dy
+    return false if twice.code != once.code
+    return true
+
+def main() -> i64:
+    check("None round-trips", round_trips((UiCore::Event.None), 0))
+    check("Quit round-trips", round_trips((UiCore::Event.Quit), 1))
+    check("Move round-trips", round_trips((UiCore::PointerEvent.Move(at: UiCore::Vec2(3.0, 4.0))), 2))
+    check("Down round-trips", round_trips((UiCore::PointerEvent.Down(at: UiCore::Vec2(3.0, 4.0), button: 2)), 3))
+    check("Up round-trips", round_trips((UiCore::PointerEvent.Up(at: UiCore::Vec2(5.0, 6.0), button: 1)), 4))
+    check("Leave round-trips", round_trips((UiCore::PointerEvent.Leave), 5))
+    check("KeyDown round-trips", round_trips((UiCore::KeyEvent.Down(code: 65)), 6))
+    check("KeyUp round-trips", round_trips((UiCore::KeyEvent.Up(code: 27)), 7))
+    check("Resize round-trips", round_trips((UiCore::Event.Resize(size: UiCore::Size(800.0, 600.0))), 8))
+    check("Scroll round-trips", round_trips((UiCore::PointerEvent.Scroll(at: UiCore::Vec2(1.0, 2.0), delta: UiCore::Vec2(0.0, -3.0))), 9))
+    check("GamepadButton round-trips", round_trips((UiCore::GamepadEvent.Button(button: 4, value: 1.0)), 10))
+    check("GamepadAxis round-trips", round_trips((UiCore::GamepadEvent.Axis(axis: 1, value: -0.5)), 11))
+
+    # The payload, not just the tag: a scroll must keep its position AND delta.
+    scroll: UiCore::EventRecord = UiCore::to_record((UiCore::PointerEvent.Scroll(at: UiCore::Vec2(7.0, 8.0), delta: UiCore::Vec2(9.0, 10.0))))
+    check("scroll keeps position", scroll.x == 7.0 and scroll.y == 8.0)
+    check("scroll keeps delta", scroll.dx == 9.0 and scroll.dy == 10.0)
+
+    down: UiCore::EventRecord = UiCore::to_record((UiCore::PointerEvent.Down(at: UiCore::Vec2(1.0, 2.0), button: 3)))
+    check("pointer down keeps its button", down.code == 3)
+
+    resize: UiCore::EventRecord = UiCore::to_record((UiCore::Event.Resize(size: UiCore::Size(1024.0, 768.0))))
+    check("resize carries width and height", resize.x == 1024.0 and resize.y == 768.0)
+
+    # An ordinal this library does not model is None, not a crash: the host is
+    # free to grow its event set first.
+    unknown: UiCore::EventRecord = UiCore::EventRecord{kind: 99, x: 0.0, y: 0.0, dx: 0.0, dy: 0.0, code: 0}
+    check("an unknown ordinal decodes to None", UiCore::wire_kind(UiCore::from_record(unknown)) == 0)
+
+    if test_failures == 0:
+        _ = puts("event wire: all checks passed")
+        return 0
+    _ = puts("event wire: FAILURES above")
+    return 1

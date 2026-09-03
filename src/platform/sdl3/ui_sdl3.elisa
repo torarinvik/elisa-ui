@@ -225,24 +225,28 @@ module UiSdl3:
             return y_ref[0]
 
         # Poll one SDL event and translate it. Returns false when the queue is
-        # empty; events outside the modeled set come back as UiEvent::NONE for
-        # the app to skip.
+        # empty; events outside the modeled set come back as `Event.None` for the
+        # app to skip.
+        #
+        # SDL's key events are reported without their code for now, so a KeyEvent
+        # carries 0 -- the same gap the flat form had, made visible by having to
+        # name the field.
         def next_event(out_event: mutable UiCore::Event&) -> bool:
             buffer_pointer: void& = (&event_buffer[0]).cast[void&] can Unsafe.PointerCast
             has_event: bool = SDL_PollEvent(buffer_pointer)
             return false if not has_event
             kind: u32 = event_type()
-            out_event with { kind <- UiEvent::NONE, x <- 0.0, y <- 0.0, dx <- 0.0, dy <- 0.0, code <- 0 }
+            out_event <- (UiCore::Event.None)
             if kind == EVENT_QUIT:
-                out_event.kind <- UiEvent::QUIT
+                out_event <- (UiCore::Event.Quit)
             elif kind == EVENT_MOUSE_MOTION:
-                out_event with { kind <- UiEvent::POINTER_MOVE, x <- event_x(), y <- event_y() }
+                out_event <- (UiCore::PointerEvent.Move(at: UiCore::Vec2(event_x(), event_y())))
             elif kind == EVENT_MOUSE_BUTTON_DOWN:
-                out_event with { kind <- UiEvent::POINTER_DOWN, x <- event_x(), y <- event_y() }
+                out_event <- (UiCore::PointerEvent.Down(at: UiCore::Vec2(event_x(), event_y()), button: 0))
             elif kind == EVENT_MOUSE_BUTTON_UP:
-                out_event with { kind <- UiEvent::POINTER_UP, x <- event_x(), y <- event_y() }
+                out_event <- (UiCore::PointerEvent.Up(at: UiCore::Vec2(event_x(), event_y()), button: 0))
             elif kind == EVENT_KEY_DOWN:
-                out_event.kind <- UiEvent::KEY_DOWN
+                out_event <- (UiCore::KeyEvent.Down(code: 0))
             return true
 
     public:
@@ -279,9 +283,13 @@ module UiSdl3:
             running: mutable bool = true
             frames: mutable i64 = 0
             while running |frames|:
-                event: mutable UiCore::Event = UiCore::Event{kind: UiEvent::NONE, x: 0.0, y: 0.0, dx: 0.0, dy: 0.0, code: 0}
+                event: mutable UiCore::Event = (UiCore::Event.None)
                 while next_event(event) |event, running|:
-                    running <- false if event.kind == UiEvent::QUIT
+                    match event:
+                        UiCore::Event.Quit:
+                            running <- false
+                        _:
+                            pass
                     app_event(event)
                 # Same retained contract as the component backend: the app
                 # fills a command batch, then the backend consumes it. SDL3
