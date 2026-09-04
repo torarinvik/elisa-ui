@@ -605,8 +605,6 @@ void elisa_appkit_canvas_stop(void) {
 }
 void elisa_appkit_canvas_redraw(void) { [elisa_canvas_view setNeedsDisplay:YES]; }
 void elisa_appkit_canvas_close(void) {
-    [elisa_canvas_animation_timer invalidate];
-    elisa_canvas_animation_timer = nil;
     [elisa_canvas_window performClose:nil];
 }
 void elisa_appkit_canvas_accessibility_reset(void) {

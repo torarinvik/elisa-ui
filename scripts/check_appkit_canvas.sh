@@ -134,6 +134,10 @@ if grep -Eq '\[NSApp stop:nil\]' "$ROOT/src/platform/appkit/appkit_canvas_shim.m
   echo "appkit canvas: close lifecycle policy leaked back into Objective-C" >&2
   exit 1
 fi
+if awk '/void elisa_appkit_canvas_close\(\)/ { inside=1 } inside && /elisa_canvas_animation_timer/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: close timer policy leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'if \(centered\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: window centering policy leaked back into Objective-C" >&2
   exit 1
