@@ -39,7 +39,9 @@ typedef enum {
     ELISA_UI_EVENT_RESIZE         = 8,
     ELISA_UI_EVENT_SCROLL         = 9,
     ELISA_UI_EVENT_GAMEPAD_BUTTON = 10,
-    ELISA_UI_EVENT_GAMEPAD_AXIS   = 11
+    ELISA_UI_EVENT_GAMEPAD_AXIS   = 11,
+    ELISA_UI_EVENT_FOCUS_GAINED   = 12,
+    ELISA_UI_EVENT_FOCUS_LOST     = 13
 } elisa_ui_event_kind;
 
 /* Mirrors UiCore::EventRecord field for field.
@@ -51,6 +53,7 @@ typedef enum {
  *   KEY_*               code  = key, in GLFW's numbering (see UiCore::Key)
  *   RESIZE              x, y  = width, height
  *   GAMEPAD_BUTTON/AXIS dx    = value, code = button or axis
+ *   FOCUS_GAINED/LOST   no payload
  * Everything else is zero. */
 typedef struct {
     int32_t kind;
@@ -67,6 +70,7 @@ typedef struct {
  * which an app ignores, rather than as a trap. */
 void elisa_ui_dispatch_event(int32_t kind, float x, float y,
                              float dx, float dy, int32_t code);
+void elisa_ui_dispatch_text_input(const char *text, size_t length);
 
 void  elisa_ui_set_viewport(float width, float height);
 float elisa_ui_viewport_width(void);
@@ -78,6 +82,13 @@ float elisa_ui_viewport_height(void);
  * forwards to them, flattening each event on the way. */
 void elisa_ui_on_init(void);
 void elisa_ui_on_event(const elisa_ui_event *event);
+/* Committed UTF-8 text is variable-length and intentionally separate from the
+ * fixed-size key event record. The pointer is borrowed for this callback. */
+void elisa_ui_on_text_input(const char *text, size_t length);
+/* Live IME composition. Selection offsets are Unicode-scalar counts inside
+ * text, matching SDL's portable text-editing contract. */
+void elisa_ui_on_text_editing(const char *text, size_t length,
+                              int32_t selected_start, int32_t selected_length);
 void elisa_ui_on_frame(void);
 void elisa_ui_on_widget_event(size_t widget, int32_t event);
 

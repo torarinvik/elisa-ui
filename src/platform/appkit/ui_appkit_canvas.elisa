@@ -1,0 +1,597 @@
+# AppKit window/event host for elisa-ui's custom-painted command backend.
+
+include "../../core/ui_paint.elisa"
+using UiPaint
+
+extern getenv(name: cstr) -> cstr?
+extern strcmp(left: cstr, right: cstr) -> i32
+extern elisa_appkit_canvas_open(title: cstr, length: usize, width: f32, height: f32, style: i32, tabbing: i32, restorable: i32, centered: i32, headless: i32) -> i32
+extern elisa_appkit_canvas_menus_begin(title: cstr, length: usize) -> void
+extern elisa_appkit_canvas_menu_add(title: cstr, length: usize, windows_menu: i32) -> i32
+extern elisa_appkit_canvas_menu_add_item(menu: i32, title: cstr, length: usize, append_app_name: i32, action: i32, key: i32, modifiers: i32) -> void
+extern elisa_appkit_canvas_menu_add_separator(menu: i32) -> void
+extern elisa_appkit_canvas_menus_commit() -> void
+extern elisa_appkit_canvas_set_snapshot_path(path: cstr) -> void
+extern elisa_appkit_canvas_monotonic_time() -> f64
+extern elisa_appkit_canvas_schedule_redraw(delay: f32) -> void
+extern elisa_appkit_canvas_present(activate: i32) -> i32
+extern elisa_appkit_canvas_present_headless() -> i32
+extern elisa_appkit_canvas_run() -> void
+extern elisa_appkit_canvas_set_min_size(width: f32, height: f32) -> void
+extern elisa_appkit_canvas_redraw() -> void
+extern elisa_appkit_canvas_close() -> void
+extern elisa_appkit_canvas_set_shadow(context: usize, x: f32, y: f32, blur: f32, alpha: f32) -> void
+extern elisa_appkit_canvas_text(x: f32, y: f32, size: f32, semibold: i32, text: cstr, length: usize, r: f32, g: f32, b: f32, a: f32) -> void
+extern elisa_appkit_canvas_text_width(text: cstr, length: usize, size: f32, semibold: i32) -> f32
+extern elisa_appkit_canvas_line_height(size: f32) -> f32
+extern elisa_appkit_canvas_ascent(size: f32) -> f32
+extern elisa_appkit_canvas_accessibility_reset() -> void
+extern elisa_appkit_canvas_accessibility_add(id: usize, action: usize, role: i32, tooltip: i32, value_kind: i32, cursor: i32, notifications: i32, label: cstr, length: usize, help: cstr, help_length: usize, text_value: cstr, text_length: usize, selected_text: cstr, selected_text_length: usize, x: f32, y: f32, width: f32, height: f32, enabled: i32, focused: i32, selected: i32, value: f32, selection_location: usize, selection_length: usize) -> void
+extern elisa_appkit_canvas_accessibility_commit(layout_changed: i32) -> void
+extern elisa_appkit_canvas_clipboard_has_text() -> i32
+extern elisa_appkit_canvas_clipboard_write(text: u8&, length: usize) -> i32
+extern elisa_appkit_canvas_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize
+extern CGContextSetRGBFillColor(context: usize, r: f64, g: f64, b: f64, a: f64) -> void
+extern CGContextSetRGBStrokeColor(context: usize, r: f64, g: f64, b: f64, a: f64) -> void
+extern CGContextSetShouldAntialias(context: usize, enabled: bool) -> void
+extern CGContextSetShouldSmoothFonts(context: usize, enabled: bool) -> void
+extern CGContextBeginPath(context: usize) -> void
+extern CGContextSaveGState(context: usize) -> void
+extern CGContextRestoreGState(context: usize) -> void
+extern CGContextMoveToPoint(context: usize, x: f64, y: f64) -> void
+extern CGContextAddLineToPoint(context: usize, x: f64, y: f64) -> void
+extern CGContextAddArc(context: usize, x: f64, y: f64, radius: f64, start_angle: f64, end_angle: f64, clockwise: i32) -> void
+extern CGContextAddArcToPoint(context: usize, x1: f64, y1: f64, x2: f64, y2: f64, radius: f64) -> void
+extern CGContextClosePath(context: usize) -> void
+extern CGContextFillPath(context: usize) -> void
+extern CGContextStrokePath(context: usize) -> void
+extern CGContextSetLineWidth(context: usize, width: f64) -> void
+
+def ui_measure_text_width(text: sview, size: f32) -> f32:
+    return 0.0 if text.len == 0
+    pointer: cstr = text.data.cast[cstr] can Unsafe.PointerCast
+    semibold: i32 = 1 if size >= 19.0 else 0
+    return elisa_appkit_canvas_text_width(pointer, text.len, size, semibold)
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return elisa_appkit_canvas_line_height(size)
+def ui_font_ascent(size: f32) -> f32:
+    return elisa_appkit_canvas_ascent(size)
+def ui_text_line_height(size: f32) -> f32:
+    return elisa_appkit_canvas_line_height(size)
+
+module UiAppKitCanvas:
+    public:
+        struct WindowOptions:
+            width: f32
+            height: f32
+            min_width: f32
+            min_height: f32
+            titled: bool
+            closable: bool
+            minimizable: bool
+            resizable: bool
+            tabbing: bool
+            restorable: bool
+            centered: bool
+            activate: bool
+
+        struct AccessibilityState:
+            role: mutable i32
+            action: mutable usize
+            interaction: mutable i32
+            value_kind: mutable i32
+            cursor: mutable i32
+            enabled: mutable bool
+            focused: mutable bool
+            selected: mutable bool
+            value: mutable f32
+            text_revision: mutable usize
+            selection_location: mutable usize
+            selection_length: mutable usize
+            label: mutable sview
+            help: mutable sview
+            x: mutable f32
+            y: mutable f32
+            width: mutable f32
+            height: mutable f32
+
+    private:
+        const enum MenuAction of i32:
+            About = 1
+            Hide = 2
+            HideOthers = 3
+            ShowAll = 4
+            Quit = 5
+            Undo = 6
+            Redo = 7
+            Cut = 8
+            Copy = 9
+            Paste = 10
+            SelectAll = 11
+            Minimize = 12
+            Zoom = 13
+            BringAllToFront = 14
+
+        const enum MenuModifiers of i32:
+            None = 0
+            Command = 1
+            CommandShift = 3
+            CommandOption = 5
+
+        global mutable accessibility_previous_ids: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable accessibility_previous: AccessibilityState[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable accessibility_next_ids: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable accessibility_next: AccessibilityState[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable accessibility_previous_count: usize = 0
+        global mutable accessibility_force_layout: bool = true
+        global mutable headless_session: bool = false
+        global mutable frame_context: usize = 0
+
+        def previous_accessibility_index(id: usize) -> usize:
+            for index in 0..<accessibility_previous_count:
+                return index if accessibility_previous_ids[index] == id
+            return UiCore::MAX_ACCESSIBILITY_NODES
+
+        def reset_accessibility_history() -> void:
+            accessibility_previous_count <- 0
+            accessibility_force_layout <- true
+
+        def color_component(value: u8) -> f32:
+            return value.f32() / 255.0
+
+        def set_fill_color(context: usize, color: UiCore::Color) -> void:
+            CGContextSetRGBFillColor(context, color_component(color.r).f64(), color_component(color.g).f64(), color_component(color.b).f64(), color_component(color.a).f64())
+
+        def set_stroke_color(context: usize, color: UiCore::Color) -> void:
+            CGContextSetRGBStrokeColor(context, color_component(color.r).f64(), color_component(color.g).f64(), color_component(color.b).f64(), color_component(color.a).f64())
+
+        def current_context() -> usize:
+            return frame_context
+
+        def rounded_path(context: usize, box: UiCore::Rect, radius: f32) -> void:
+            left: f64 = box.origin.x.f64()
+            top: f64 = box.origin.y.f64()
+            right: f64 = (box.origin.x + box.size.width).f64()
+            bottom: f64 = (box.origin.y + box.size.height).f64()
+            curve: f64 = radius.f64()
+            CGContextBeginPath(context)
+            CGContextMoveToPoint(context, left + curve, top)
+            CGContextAddLineToPoint(context, right - curve, top)
+            CGContextAddArcToPoint(context, right, top, right, top + curve, curve)
+            CGContextAddLineToPoint(context, right, bottom - curve)
+            CGContextAddArcToPoint(context, right, bottom, right - curve, bottom, curve)
+            CGContextAddLineToPoint(context, left + curve, bottom)
+            CGContextAddArcToPoint(context, left, bottom, left, bottom - curve, curve)
+            CGContextAddLineToPoint(context, left, top + curve)
+            CGContextAddArcToPoint(context, left, top, left + curve, top, curve)
+            CGContextClosePath(context)
+
+        def window_style(options: WindowOptions) -> i32:
+            style: mutable i32 = 0
+            style <- style + 1 if options.titled
+            style <- style + 2 if options.closable
+            style <- style + 4 if options.minimizable
+            style <- style + 8 if options.resizable
+            return style
+
+        def smoke_mode() -> bool:
+            value_opt: cstr? = getenv("ELISA_UI_SMOKE_FRAMES")
+            if value_opt is value:
+                return strcmp(value, "0") != 0
+            return false
+
+        def menu_key(key: UiCore::Key) -> i32:
+            # Cocoa menu equivalents use lowercase scalar values; UiCore's
+            # named alphabet keys intentionally use GLFW's uppercase values.
+            return key.i32() + 32
+
+        # Menu layout, labels, shortcuts and modifier policy belong to Elisa.
+        # Objective-C maps these action tokens to Cocoa selectors and creates
+        # the required NSMenu objects.
+        def install_standard_menus(title: cstr, length: usize) -> void:
+            elisa_appkit_canvas_menus_begin(title, length)
+            application: i32 = elisa_appkit_canvas_menu_add(title, length, 0)
+            elisa_appkit_canvas_menu_add_item(application, "About ", 6, 1, MenuAction.About.i32(), 0, MenuModifiers.None.i32())
+            elisa_appkit_canvas_menu_add_separator(application)
+            elisa_appkit_canvas_menu_add_item(application, "Hide ", 5, 1, MenuAction.Hide.i32(), menu_key(UiCore::Key.H), MenuModifiers.Command.i32())
+            elisa_appkit_canvas_menu_add_item(application, "Hide Others", 11, 0, MenuAction.HideOthers.i32(), menu_key(UiCore::Key.H), MenuModifiers.CommandOption.i32())
+            elisa_appkit_canvas_menu_add_item(application, "Show All", 8, 0, MenuAction.ShowAll.i32(), 0, MenuModifiers.None.i32())
+            elisa_appkit_canvas_menu_add_separator(application)
+            elisa_appkit_canvas_menu_add_item(application, "Quit ", 5, 1, MenuAction.Quit.i32(), menu_key(UiCore::Key.Q), MenuModifiers.Command.i32())
+
+            edit: i32 = elisa_appkit_canvas_menu_add("Edit", 4, 0)
+            elisa_appkit_canvas_menu_add_item(edit, "Undo", 4, 0, MenuAction.Undo.i32(), menu_key(UiCore::Key.Z), MenuModifiers.Command.i32())
+            elisa_appkit_canvas_menu_add_item(edit, "Redo", 4, 0, MenuAction.Redo.i32(), menu_key(UiCore::Key.Z), MenuModifiers.CommandShift.i32())
+            elisa_appkit_canvas_menu_add_separator(edit)
+            elisa_appkit_canvas_menu_add_item(edit, "Cut", 3, 0, MenuAction.Cut.i32(), menu_key(UiCore::Key.X), MenuModifiers.Command.i32())
+            elisa_appkit_canvas_menu_add_item(edit, "Copy", 4, 0, MenuAction.Copy.i32(), menu_key(UiCore::Key.C), MenuModifiers.Command.i32())
+            elisa_appkit_canvas_menu_add_item(edit, "Paste", 5, 0, MenuAction.Paste.i32(), menu_key(UiCore::Key.V), MenuModifiers.Command.i32())
+            elisa_appkit_canvas_menu_add_separator(edit)
+            elisa_appkit_canvas_menu_add_item(edit, "Select All", 10, 0, MenuAction.SelectAll.i32(), menu_key(UiCore::Key.A), MenuModifiers.Command.i32())
+
+            window: i32 = elisa_appkit_canvas_menu_add("Window", 6, 1)
+            elisa_appkit_canvas_menu_add_item(window, "Minimize", 8, 0, MenuAction.Minimize.i32(), menu_key(UiCore::Key.M), MenuModifiers.Command.i32())
+            elisa_appkit_canvas_menu_add_item(window, "Zoom", 4, 0, MenuAction.Zoom.i32(), 0, MenuModifiers.None.i32())
+            elisa_appkit_canvas_menu_add_separator(window)
+            elisa_appkit_canvas_menu_add_item(window, "Bring All to Front", 18, 0, MenuAction.BringAllToFront.i32(), 0, MenuModifiers.None.i32())
+            elisa_appkit_canvas_menus_commit()
+
+    public:
+        # The native layer must translate roles into Cocoa role objects, but it
+        # does not need to understand our widget behavior. These compact ABI
+        # tokens keep action, value and cursor policy in Elisa.
+        def accessibility_interaction(role: UiCore::AccessibilityRole, enabled: bool) -> i32:
+            return 0 if not enabled
+            return 1 if role == UiCore::AccessibilityRole.Button or role == UiCore::AccessibilityRole.RadioButton or role == UiCore::AccessibilityRole.CheckBox
+            return 2 if role == UiCore::AccessibilityRole.Slider
+            return 3 if role == UiCore::AccessibilityRole.TextField or role == UiCore::AccessibilityRole.PasswordField
+            return 0
+
+        def accessibility_value_kind(role: UiCore::AccessibilityRole) -> i32:
+            return 1 if role == UiCore::AccessibilityRole.RadioButton or role == UiCore::AccessibilityRole.CheckBox
+            return 2 if role == UiCore::AccessibilityRole.Slider or role == UiCore::AccessibilityRole.ProgressBar
+            return 3 if role == UiCore::AccessibilityRole.TextField or role == UiCore::AccessibilityRole.PasswordField
+            return 0
+
+        def accessibility_cursor(role: UiCore::AccessibilityRole, enabled: bool) -> i32:
+            return 0 if not enabled
+            return 1 if accessibility_interaction(role, enabled) == 1
+            return 2 if role == UiCore::AccessibilityRole.TextField or role == UiCore::AccessibilityRole.PasswordField
+            return 0
+
+        # Notification bits: 1 value, 2 focus, 4 text selection. Structural
+        # layout invalidation is computed separately for the view as a whole.
+        # Keeping this diff in Elisa avoids teaching the native object bridge
+        # how framework roles and values evolve between frames.
+        def accessibility_notifications(existed: bool, before: AccessibilityState, after: AccessibilityState) -> i32:
+            return 0 if not existed
+            notifications: mutable i32 = 0
+            if before.value_kind == after.value_kind:
+                notifications <- notifications + 1 if after.value_kind == 1 and before.selected != after.selected
+                notifications <- notifications + 1 if after.value_kind == 2 and before.value != after.value
+                notifications <- notifications + 1 if after.value_kind == 3 and before.text_revision != after.text_revision
+            notifications <- notifications + 2 if after.focused and not before.focused
+            notifications <- notifications + 4 if after.value_kind == 3 and (before.selection_location != after.selection_location or before.selection_length != after.selection_length)
+            return notifications
+
+        def accessibility_layout_changed(existed: bool, before: AccessibilityState, after: AccessibilityState) -> bool:
+            return true if not existed
+            return true if before.role != after.role or before.action != after.action
+            return true if before.interaction != after.interaction or before.value_kind != after.value_kind or before.cursor != after.cursor
+            return true if before.enabled != after.enabled or before.label != after.label or before.help != after.help
+            return true if before.x != after.x or before.y != after.y or before.width != after.width or before.height != after.height
+            return false
+
+        # Window movement/backing changes alter screen-relative accessibility
+        # frames without changing local widget geometry. Native code reports
+        # only that environmental fact; Elisa owns the invalidation decision.
+        def accessibility_environment_changed() -> void:
+            accessibility_force_layout <- true
+
+        def schedule_next_frame(delay: f32) -> void:
+            elisa_appkit_canvas_schedule_redraw(delay) if not headless_session
+
+        def begin_native_frame(context: usize) -> void:
+            frame_context <- context
+
+        def end_native_frame() -> void:
+            frame_context <- 0
+
+        # AppKit reports hardware key codes plus a UTF-16 character. Translate
+        # that platform vocabulary here so the Objective-C host only forwards
+        # event facts across the FFI boundary.
+        def key_from_appkit(key_code: i32, character: i32) -> i32:
+            return character - 32 if character >= 97 and character <= 122
+            return character if character >= 32 and character <= 126
+            return UiCore::Key.Enter.i32() if key_code == 36
+            return UiCore::Key.Tab.i32() if key_code == 48
+            return UiCore::Key.Backspace.i32() if key_code == 51
+            return UiCore::Key.Escape.i32() if key_code == 53
+            return UiCore::Key.LeftShift.i32() if key_code == 56
+            return UiCore::Key.RightShift.i32() if key_code == 60
+            return UiCore::Key.LeftControl.i32() if key_code == 59
+            return UiCore::Key.RightControl.i32() if key_code == 62
+            return UiCore::Key.LeftAlt.i32() if key_code == 58
+            return UiCore::Key.RightAlt.i32() if key_code == 61
+            return UiCore::Key.LeftSuper.i32() if key_code == 55
+            return UiCore::Key.RightSuper.i32() if key_code == 54
+            return UiCore::Key.Delete.i32() if key_code == 117
+            return UiCore::Key.Right.i32() if key_code == 124
+            return UiCore::Key.Left.i32() if key_code == 123
+            return UiCore::Key.Down.i32() if key_code == 125
+            return UiCore::Key.Up.i32() if key_code == 126
+            return UiCore::Key.PageUp.i32() if key_code == 116
+            return UiCore::Key.PageDown.i32() if key_code == 121
+            return UiCore::Key.Home.i32() if key_code == 115
+            return UiCore::Key.End.i32() if key_code == 119
+            return UiCore::Key.F1.i32() if key_code == 122
+            return UiCore::Key.F2.i32() if key_code == 120
+            return UiCore::Key.F3.i32() if key_code == 99
+            return UiCore::Key.F4.i32() if key_code == 118
+            return UiCore::Key.F5.i32() if key_code == 96
+            return UiCore::Key.F6.i32() if key_code == 97
+            return UiCore::Key.F7.i32() if key_code == 98
+            return UiCore::Key.F8.i32() if key_code == 100
+            return UiCore::Key.F9.i32() if key_code == 101
+            return UiCore::Key.F10.i32() if key_code == 109
+            return UiCore::Key.F11.i32() if key_code == 103
+            return UiCore::Key.F12.i32() if key_code == 111
+            return 0
+
+        # Result is an FFI action token: 1 Select All, 2 Copy, 3 Cut, 4 Paste,
+        # 5 Undo, 6 Redo. Cocoa performs the native pasteboard/menu operation;
+        # Elisa owns which key chord requests it.
+        def shortcut_from_appkit(character: i32, shift: bool) -> i32:
+            normalized: i32 = character + 32 if character >= 65 and character <= 90 else character
+            return 1 if normalized == 97
+            return 2 if normalized == 99
+            return 3 if normalized == 120
+            return 4 if normalized == 118
+            return 6 if normalized == 122 and shift
+            return 5 if normalized == 122
+            return 0
+
+        # Key-down routing is framework policy too. The Cocoa view supplies
+        # modifier facts and performs the returned native operation, but does
+        # not decide which chords edit text or enter the text-input system.
+        # Result tokens: 0 raw key, 1 NSTextInput, 2..7 editing action 1..6.
+        def key_down_route(accepts_text: bool, character: i32, shift: bool, control: bool, alt: bool, super_key: bool) -> i32:
+            return 0 if not accepts_text
+            if super_key:
+                action: i32 = shortcut_from_appkit(character, shift)
+                return action + 1 if action != 0
+                return 0
+            return 0 if control
+            # Option-modified input still belongs to AppKit's text system: it
+            # is how many accented and alternate characters are composed.
+            return 1
+
+        # Cocoa selector identity is irreducibly native; its editor meaning is
+        # not. These functions translate the opaque selector token into the
+        # backend-neutral UiFlat command vocabulary and selection policy.
+        def text_selector_command(selector: i32) -> i32:
+            return 1 if selector == 1 or selector == 3
+            return 2 if selector == 2 or selector == 4
+            return 3 if selector == 5 or selector == 7
+            return 4 if selector == 6 or selector == 8
+            return selector - 4 if selector >= 9 and selector <= 15
+            return 10 if selector == 16
+            return 11 if selector == 17
+            return 12 if selector == 18
+            return 13 if selector == 19
+            return 0
+
+        def text_selector_modifies_selection(selector: i32) -> bool:
+            return selector == 3 or selector == 4 or selector == 7 or selector == 8 or selector == 16 or selector == 17
+
+        # Native menu validation supplies only current control facts. Elisa
+        # owns when each editing action is valid, including the rule that
+        # secure fields cannot enable Copy or Cut.
+        def text_action_enabled(action: i32, accepts_text: bool, allows_readback: bool, has_selection: bool, can_undo: bool, can_redo: bool, native_available: bool) -> bool:
+            return can_undo if action == 5
+            return can_redo if action == 6
+            return false if not accepts_text
+            return allows_readback and has_selection if action == 2 or action == 3
+            return true if action == 1
+            return native_available if action == 4
+            return false
+
+        # Called by the exported frame callback after the app has rebuilt the
+        # semantic nodes for this frame.
+        def sync_accessibility() -> void:
+            elisa_appkit_canvas_accessibility_reset()
+            next_count: usize = UiCore::accessibility_count()
+            layout_changed: mutable bool = accessibility_force_layout or next_count != accessibility_previous_count
+            for index in 0..<UiCore::accessibility_count():
+                node: UiCore::AccessibilityNode = UiCore::accessibility_at(index)
+                pointer: cstr = node.label.data.cast[cstr] can Unsafe.PointerCast
+                help_pointer: mutable cstr = pointer
+                help_pointer <- node.help.data.cast[cstr] can Unsafe.PointerCast if node.help.len > 0
+                value_pointer: mutable cstr = pointer
+                value_pointer <- node.text_value.data.cast[cstr] can Unsafe.PointerCast if node.text_value.len > 0
+                selected_pointer: mutable cstr = pointer
+                selected_pointer <- node.selected_text.data.cast[cstr] can Unsafe.PointerCast if node.selected_text.len > 0
+                enabled: i32 = 1 if node.enabled else 0
+                focused: i32 = 1 if node.focused else 0
+                selected: i32 = 1 if node.selected else 0
+                interaction: i32 = accessibility_interaction(node.role, node.enabled)
+                value_kind: i32 = accessibility_value_kind(node.role)
+                cursor: i32 = accessibility_cursor(node.role, node.enabled)
+                state: AccessibilityState = AccessibilityState{
+                    role: node.role.i32(), action: node.action, interaction, value_kind, cursor,
+                    enabled: node.enabled, focused: node.focused, selected: node.selected,
+                    value: node.value, text_revision: node.revision,
+                    selection_location: node.selection_location, selection_length: node.selection_length,
+                    label: node.label, help: node.help,
+                    x: node.frame.origin.x, y: node.frame.origin.y,
+                    width: node.frame.size.width, height: node.frame.size.height,
+                }
+                previous_index: usize = previous_accessibility_index(node.id)
+                existed: bool = previous_index < accessibility_previous_count
+                before: AccessibilityState = accessibility_previous[previous_index] if existed else state
+                notifications: i32 = accessibility_notifications(existed, before, state)
+                layout_changed <- true if accessibility_layout_changed(existed, before, state)
+                layout_changed <- true if index >= accessibility_previous_count or accessibility_previous_ids[index] != node.id
+                accessibility_next_ids[index] <- node.id
+                accessibility_next[index] <- state
+                tooltip: i32 = 1 if node.help.len > 0 and interaction != 0 else 0
+                elisa_appkit_canvas_accessibility_add(node.id, node.action, node.role.i32(), tooltip, value_kind, cursor, notifications, pointer, node.label.len, help_pointer, node.help.len, value_pointer, node.text_value.len, selected_pointer, node.selected_text.len, node.frame.origin.x, node.frame.origin.y, node.frame.size.width, node.frame.size.height, enabled, focused, selected, node.value, node.selection_location, node.selection_length)
+            accessibility_previous_count <- next_count
+            for index in 0..<accessibility_previous_count:
+                accessibility_previous_ids[index] <- accessibility_next_ids[index]
+                accessibility_previous[index] <- accessibility_next[index]
+            elisa_appkit_canvas_accessibility_commit(1 if layout_changed else 0)
+            accessibility_force_layout <- false
+
+        struct AppKitPainter:
+            unused: i32
+
+        impl Painter for AppKitPainter:
+            def clear(color: UiCore::Color) -> void can[Ui.Draw]:
+                context: usize = current_context()
+                set_fill_color(context, color)
+                CGContextBeginPath(context)
+                CGContextMoveToPoint(context, 0.0, 0.0)
+                CGContextAddLineToPoint(context, UiCore::viewport_width().f64(), 0.0)
+                CGContextAddLineToPoint(context, UiCore::viewport_width().f64(), UiCore::viewport_height().f64())
+                CGContextAddLineToPoint(context, 0.0, UiCore::viewport_height().f64())
+                CGContextClosePath(context)
+                CGContextFillPath(context)
+            def fill_rect(box: UiCore::Rect, color: UiCore::Color) -> void can[Ui.Draw]:
+                shortest: f32 = box.size.width if box.size.width < box.size.height else box.size.height
+                radius: mutable f32 = shortest * 0.22
+                radius <- 10.0 if radius > 10.0 else radius
+                elevated: bool = box.size.height <= 64.0 and box.size.width >= 72.0
+                shadow_alpha: f32 = 0.24 if elevated else 0.0
+                hairline_alpha: f32 = 0.13 if elevated else 0.055
+                context: usize = current_context()
+                CGContextSaveGState(context)
+                elisa_appkit_canvas_set_shadow(context, 0.0, 2.0, 5.0, shadow_alpha) if shadow_alpha > 0.0
+                set_fill_color(context, color)
+                rounded_path(context, box, radius)
+                CGContextFillPath(context)
+                CGContextRestoreGState(context)
+                CGContextSaveGState(context)
+                rounded_path(context, box, radius)
+                CGContextSetRGBStrokeColor(context, 1.0, 1.0, 1.0, hairline_alpha.f64())
+                CGContextSetLineWidth(context, 1.0)
+                CGContextStrokePath(context)
+                CGContextRestoreGState(context)
+            def fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> void can[Ui.Draw]:
+                context: usize = current_context()
+                set_fill_color(context, color)
+                CGContextBeginPath(context)
+                CGContextAddArc(context, disc.center.x.f64(), disc.center.y.f64(), disc.radius.f64(), 0.0, 6.283185307179586, 0)
+                CGContextFillPath(context)
+            def fill_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]:
+                context: usize = current_context()
+                set_fill_color(context, color)
+                CGContextBeginPath(context)
+                CGContextMoveToPoint(context, tri.a.x.f64(), tri.a.y.f64())
+                CGContextAddLineToPoint(context, tri.b.x.f64(), tri.b.y.f64())
+                CGContextAddLineToPoint(context, tri.c.x.f64(), tri.c.y.f64())
+                CGContextClosePath(context)
+                CGContextFillPath(context)
+            def fill_line(segment: UiCore::Line, color: UiCore::Color) -> void can[Ui.Draw]:
+                context: usize = current_context()
+                set_stroke_color(context, color)
+                CGContextSetLineWidth(context, 1.0)
+                CGContextBeginPath(context)
+                CGContextMoveToPoint(context, segment.from_point.x.f64(), segment.from_point.y.f64())
+                CGContextAddLineToPoint(context, segment.to_point.x.f64(), segment.to_point.y.f64())
+                CGContextStrokePath(context)
+            def draw_text(run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
+                return if run.text.len == 0
+                pointer: cstr = run.text.data.cast[cstr] can Unsafe.PointerCast
+                semibold: i32 = 1 if run.size >= 19.0 else 0
+                elisa_appkit_canvas_text(run.origin.x, run.origin.y, run.size, semibold, pointer, run.text.len, color_component(color.r), color_component(color.g), color_component(color.b), color_component(color.a))
+
+        def run_with_options(title: sview, options: WindowOptions) -> i64:
+            can Ui.Window, Ui.Draw, Ui.Text, Ui.Input, Unsafe.PointerCast:
+                return 1 if title.len == 0
+                pointer: cstr = title.data.cast[cstr] can Unsafe.PointerCast
+                style: i32 = window_style(options)
+                headless: bool = smoke_mode()
+                headless_session <- headless
+                opened: i32 = elisa_appkit_canvas_open(pointer, title.len, options.width, options.height, style, 1 if options.tabbing else 0, 1 if options.restorable else 0, 1 if options.centered else 0, 1 if headless else 0)
+                return 1 if opened == 0
+                install_standard_menus(pointer, title.len)
+                snapshot_opt: cstr? = getenv("ELISA_UI_SNAPSHOT")
+                if snapshot_opt is snapshot:
+                    elisa_appkit_canvas_set_snapshot_path(snapshot)
+                min_width: f32 = options.min_width if options.min_width > 0.0 else 0.0
+                min_height: f32 = options.min_height if options.min_height > 0.0 else 0.0
+                elisa_appkit_canvas_set_min_size(min_width, min_height)
+                UiCore::set_viewport(options.width, options.height)
+                reset_accessibility_history()
+                app_init()
+                if headless:
+                    return 2 if elisa_appkit_canvas_present_headless() == 0
+                    return 0
+                return 2 if elisa_appkit_canvas_present(1 if options.activate else 0) == 0
+                elisa_appkit_canvas_run()
+                return 0
+
+        def run_with_min_size(title: sview, width: f32, height: f32, min_width: f32, min_height: f32) -> i64:
+            can Ui.Window, Ui.Draw, Ui.Text, Ui.Input, Unsafe.PointerCast:
+                options: WindowOptions = WindowOptions{
+                    width, height, min_width, min_height,
+                    titled: true, closable: true, minimizable: true, resizable: true,
+                    tabbing: false, restorable: false, centered: true, activate: true,
+                }
+                return run_with_options(title, options)
+
+        def run(title: sview, width: f32, height: f32) -> i64:
+            can Ui.Window, Ui.Draw, Ui.Text, Ui.Input, Unsafe.PointerCast:
+                return run_with_min_size(title, width, height, 0.0, 0.0)
+
+        def close() -> void can[Ui.Window]:
+            elisa_appkit_canvas_close()
+
+# C callbacks from ElisaCanvasView. Top-level because the Objective-C ABI names them.
+def appkit_canvas_frame_callback(context: usize) -> void:
+    can Ui.Draw, Ui.Text:
+        UiAppKitCanvas::begin_native_frame(context)
+        UiCore::set_frame_time(elisa_appkit_canvas_monotonic_time())
+        CGContextSetShouldAntialias(context, true)
+        CGContextSetShouldSmoothFonts(context, true)
+        UiCore::begin_frame()
+        app_frame()
+        UiAppKitCanvas::sync_accessibility()
+        UiPaint::replay[UiAppKitCanvas::AppKitPainter]()
+        UiAppKitCanvas::end_native_frame()
+        UiAppKitCanvas::schedule_next_frame(UiCore::frame_delay())
+
+def appkit_canvas_resize_callback(width: f32, height: f32) -> void:
+    UiCore::set_viewport(width, height)
+    app_event(UiCore::Event.Resize(size: UiCore::Size(width, height)))
+    elisa_appkit_canvas_redraw()
+
+def appkit_canvas_pointer_callback(kind: i32, x: f32, y: f32, dx: f32, dy: f32, button: i32) -> void:
+    at: UiCore::Vec2 = UiCore::Vec2(x, y)
+    event: mutable UiCore::Event = (UiCore::PointerEvent.Move(at: at))
+    event <- (UiCore::PointerEvent.Down(at: at, button: button)) if kind == 1
+    event <- (UiCore::PointerEvent.Up(at: at, button: button)) if kind == 2
+    event <- (UiCore::PointerEvent.Leave) if kind == 3
+    event <- (UiCore::PointerEvent.Scroll(at: at, delta: UiCore::Vec2(dx, dy))) if kind == 4
+    app_event(event)
+    elisa_appkit_canvas_redraw()
+
+def appkit_canvas_key_callback(down: i32, code: i32) -> void:
+    if down != 0 and code == UiCore::Key.Escape.i32():
+        elisa_appkit_canvas_close()
+        return
+    event: UiCore::Event = (UiCore::KeyEvent.Down(code: UiCore::Key(code))) if down != 0 else (UiCore::KeyEvent.Up(code: UiCore::Key(code)))
+    app_event(event)
+    elisa_appkit_canvas_redraw()
+
+def appkit_canvas_raw_key_callback(down: i32, key_code: i32, character: i32) -> void:
+    code: i32 = UiAppKitCanvas::key_from_appkit(key_code, character)
+    return if code == 0
+    appkit_canvas_key_callback(down, code)
+
+def appkit_canvas_raw_flags_callback(key_code: i32, shift: i32, control: i32, alt: i32, super_key: i32) -> void:
+    down: mutable i32 = 0
+    down <- shift if key_code == 56 or key_code == 60
+    down <- control if key_code == 59 or key_code == 62
+    down <- alt if key_code == 58 or key_code == 61
+    down <- super_key if key_code == 54 or key_code == 55
+    appkit_canvas_raw_key_callback(down, key_code, 0)
+
+def appkit_canvas_focus_changed_callback(focused: i32) -> void:
+    event: UiCore::Event = (UiCore::Event.FocusGained) if focused != 0 else (UiCore::Event.FocusLost)
+    app_event(event)
+    elisa_appkit_canvas_redraw()
+
+def appkit_canvas_accessibility_environment_changed_callback() -> void:
+    UiAppKitCanvas::accessibility_environment_changed()
+    elisa_appkit_canvas_redraw()
+
+export fn elisa_appkit_canvas_frame(context: usize) -> void = appkit_canvas_frame_callback
+export fn elisa_appkit_canvas_resize(width: f32, height: f32) -> void = appkit_canvas_resize_callback
+export fn elisa_appkit_canvas_pointer(kind: i32, x: f32, y: f32, dx: f32, dy: f32, button: i32) -> void = appkit_canvas_pointer_callback
+export fn elisa_appkit_canvas_key(down: i32, code: i32) -> void = appkit_canvas_key_callback
+export fn elisa_appkit_canvas_raw_key(down: i32, key_code: i32, character: i32) -> void = appkit_canvas_raw_key_callback
+export fn elisa_appkit_canvas_raw_flags(key_code: i32, shift: i32, control: i32, alt: i32, super_key: i32) -> void = appkit_canvas_raw_flags_callback
+export fn elisa_appkit_canvas_focus_changed(focused: i32) -> void = appkit_canvas_focus_changed_callback
+export fn elisa_appkit_canvas_accessibility_environment_changed() -> void = appkit_canvas_accessibility_environment_changed_callback

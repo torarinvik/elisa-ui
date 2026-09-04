@@ -1,0 +1,114 @@
+# AppKit reports hardware key codes that are unrelated to UiCore's GLFW-style
+# key vocabulary. Keep the translation in Elisa and pin it independently of a
+# foreground event loop.
+
+include "../src/platform/appkit/ui_appkit_canvas.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable keymap_failures: i32 = 0
+
+def app_init() -> void:
+    pass
+
+def app_frame() -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    pass
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def check(name: cstr, got: i32, want: i32) -> void:
+    return if got == want
+    keymap_failures <- keymap_failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    check("lowercase letter", UiAppKitCanvas::key_from_appkit(0, 97), UiCore::Key.A.i32())
+    check("printable punctuation", UiAppKitCanvas::key_from_appkit(24, 61), UiCore::Key.Equal.i32())
+    check("Return", UiAppKitCanvas::key_from_appkit(36, 0), UiCore::Key.Enter.i32())
+    check("Escape", UiAppKitCanvas::key_from_appkit(53, 0), UiCore::Key.Escape.i32())
+    check("left Shift", UiAppKitCanvas::key_from_appkit(56, 0), UiCore::Key.LeftShift.i32())
+    check("right Command", UiAppKitCanvas::key_from_appkit(54, 0), UiCore::Key.RightSuper.i32())
+    check("left arrow", UiAppKitCanvas::key_from_appkit(123, 0), UiCore::Key.Left.i32())
+    check("Page Down", UiAppKitCanvas::key_from_appkit(121, 0), UiCore::Key.PageDown.i32())
+    check("F1", UiAppKitCanvas::key_from_appkit(122, 0), UiCore::Key.F1.i32())
+    check("F12", UiAppKitCanvas::key_from_appkit(111, 0), UiCore::Key.F12.i32())
+    check("unknown key", UiAppKitCanvas::key_from_appkit(200, 0), 0)
+    check("Command-A action", UiAppKitCanvas::shortcut_from_appkit(97, false), 1)
+    check("Command-Z action", UiAppKitCanvas::shortcut_from_appkit(122, false), 5)
+    check("Command-Shift-Z action", UiAppKitCanvas::shortcut_from_appkit(122, true), 6)
+    check("unknown shortcut", UiAppKitCanvas::shortcut_from_appkit(113, false), 0)
+    check("plain editable key enters native text input", UiAppKitCanvas::key_down_route(true, 97, false, false, false, false), 1)
+    check("Option-modified editable key enters native text input", UiAppKitCanvas::key_down_route(true, 101, false, false, true, false), 1)
+    check("Command-C routes to Copy", UiAppKitCanvas::key_down_route(true, 99, false, false, false, true), 3)
+    check("Command-Shift-Z routes to Redo", UiAppKitCanvas::key_down_route(true, 122, true, false, false, true), 7)
+    check("unknown Command chord stays raw", UiAppKitCanvas::key_down_route(true, 113, false, false, false, true), 0)
+    check("Control chord stays raw", UiAppKitCanvas::key_down_route(true, 97, false, true, false, false), 0)
+    check("non-text focus always stays raw", UiAppKitCanvas::key_down_route(false, 97, false, false, false, false), 0)
+    check("modified left selector maps in Elisa", UiAppKitCanvas::text_selector_command(3), 1)
+    check("modified left selector extends in Elisa", 1 if UiAppKitCanvas::text_selector_modifies_selection(3) else 0, 1)
+    check("word-right selector maps in Elisa", UiAppKitCanvas::text_selector_command(15), 11)
+    check("modified word-right selector maps in Elisa", UiAppKitCanvas::text_selector_command(17), 11)
+    check("modified word-right extends in Elisa", 1 if UiAppKitCanvas::text_selector_modifies_selection(17) else 0, 1)
+    check("word-delete selector maps in Elisa", UiAppKitCanvas::text_selector_command(18), 12)
+    check("unknown selector is ignored in Elisa", UiAppKitCanvas::text_selector_command(99), 0)
+    check("Copy requires a readable selection", 1 if UiAppKitCanvas::text_action_enabled(2, true, true, true, false, false, true) else 0, 1)
+    check("Copy rejects secure text", 1 if UiAppKitCanvas::text_action_enabled(2, true, false, true, false, false, true) else 0, 0)
+    check("Cut requires a selection", 1 if UiAppKitCanvas::text_action_enabled(3, true, true, false, false, false, true) else 0, 0)
+    check("Paste requires editable focus", 1 if UiAppKitCanvas::text_action_enabled(4, false, true, false, false, false, true) else 0, 0)
+    check("Paste requires native clipboard content", 1 if UiAppKitCanvas::text_action_enabled(4, true, true, false, false, false, false) else 0, 0)
+    check("Undo follows Elisa history", 1 if UiAppKitCanvas::text_action_enabled(5, false, false, false, true, false, true) else 0, 1)
+    check("button interaction", UiAppKitCanvas::accessibility_interaction(UiCore::AccessibilityRole.Button, true), 1)
+    check("slider interaction", UiAppKitCanvas::accessibility_interaction(UiCore::AccessibilityRole.Slider, true), 2)
+    check("text interaction", UiAppKitCanvas::accessibility_interaction(UiCore::AccessibilityRole.TextField, true), 3)
+    check("secure text interaction", UiAppKitCanvas::accessibility_interaction(UiCore::AccessibilityRole.PasswordField, true), 3)
+    check("label interaction", UiAppKitCanvas::accessibility_interaction(UiCore::AccessibilityRole.Label, true), 0)
+    check("disabled controls expose no actions", UiAppKitCanvas::accessibility_interaction(UiCore::AccessibilityRole.Button, false), 0)
+    check("choice value kind", UiAppKitCanvas::accessibility_value_kind(UiCore::AccessibilityRole.CheckBox), 1)
+    check("progress value kind", UiAppKitCanvas::accessibility_value_kind(UiCore::AccessibilityRole.ProgressBar), 2)
+    check("text value kind", UiAppKitCanvas::accessibility_value_kind(UiCore::AccessibilityRole.TextField), 3)
+    check("secure text value kind", UiAppKitCanvas::accessibility_value_kind(UiCore::AccessibilityRole.PasswordField), 3)
+    check("enabled button cursor", UiAppKitCanvas::accessibility_cursor(UiCore::AccessibilityRole.Button, true), 1)
+    check("enabled text cursor", UiAppKitCanvas::accessibility_cursor(UiCore::AccessibilityRole.TextField, true), 2)
+    check("enabled secure-text cursor", UiAppKitCanvas::accessibility_cursor(UiCore::AccessibilityRole.PasswordField, true), 2)
+    check("disabled cursor", UiAppKitCanvas::accessibility_cursor(UiCore::AccessibilityRole.Button, false), 0)
+
+    before: UiAppKitCanvas::AccessibilityState = UiAppKitCanvas::AccessibilityState{
+        role: UiCore::AccessibilityRole.TextField.i32(), action: 4, interaction: 3,
+        value_kind: 3, cursor: 2, enabled: true, focused: false, selected: false,
+        value: 0.0, text_revision: 10, selection_location: 0, selection_length: 0,
+        label: "Name", help: "Edit name", x: 10.0, y: 20.0, width: 100.0, height: 32.0,
+    }
+    after: mutable UiAppKitCanvas::AccessibilityState = before
+    check("new accessibility nodes stay quiet", UiAppKitCanvas::accessibility_notifications(false, before, after), 0)
+    after.focused <- true
+    check("accessibility focus uses its own notification", UiAppKitCanvas::accessibility_notifications(true, before, after), 2)
+    after.focused <- false
+    after.selection_length <- 2
+    check("text selection uses its own notification", UiAppKitCanvas::accessibility_notifications(true, before, after), 4)
+    after.selection_length <- 0
+    after.text_revision <- 11
+    check("text edits report value changes", UiAppKitCanvas::accessibility_notifications(true, before, after), 1)
+    after.text_revision <- 10
+    after.enabled <- false
+    check("enabled-state changes do not masquerade as value notifications", UiAppKitCanvas::accessibility_notifications(true, before, after), 0)
+    check("enabled-state changes invalidate semantic layout", 1 if UiAppKitCanvas::accessibility_layout_changed(true, before, after) else 0, 1)
+    after.enabled <- true
+    after.value_kind <- 2
+    check("value-kind changes invalidate semantic layout", 1 if UiAppKitCanvas::accessibility_layout_changed(true, before, after) else 0, 1)
+    after.value_kind <- 3
+    after.x <- 11.0
+    check("frame changes invalidate semantic layout", 1 if UiAppKitCanvas::accessibility_layout_changed(true, before, after) else 0, 1)
+    after.x <- 10.0
+    after.label <- "Other"
+    check("label changes invalidate semantic layout", 1 if UiAppKitCanvas::accessibility_layout_changed(true, before, after) else 0, 1)
+    check("new semantic nodes invalidate layout", 1 if UiAppKitCanvas::accessibility_layout_changed(false, before, before) else 0, 1)
+
+    if keymap_failures == 0:
+        _ = puts("appkit canvas keymap: all checks passed")
+        return 0
+    _ = puts("appkit canvas keymap: FAILURES above")
+    return 1

@@ -30,11 +30,18 @@ cat > "$WORK/host.c" <<'EOF'
 
 static elisa_ui_event seen;
 static int events;
+static int text_events;
 
 void elisa_ui_on_init(void) {}
 void elisa_ui_on_frame(void) {}
 void elisa_ui_on_widget_event(size_t widget, int32_t event) { (void)widget; (void)event; }
 void elisa_ui_on_event(const elisa_ui_event *event) { seen = *event; events++; }
+void elisa_ui_on_text_input(const char *text, size_t length) {
+    if (length == strlen("Hé 👋") && memcmp(text, "Hé 👋", length) == 0) text_events++;
+}
+void elisa_ui_on_text_editing(const char *text, size_t length, int32_t selected_start, int32_t selected_length) {
+    (void)text; (void)length; (void)selected_start; (void)selected_length;
+}
 
 int main(void) {
     int failures = 0;
@@ -53,6 +60,9 @@ int main(void) {
     /* GLFW's Escape, which is what UiCore::Key names. */
     elisa_ui_dispatch_event(ELISA_UI_EVENT_KEY_UP, 0.0f, 0.0f, 0.0f, 0.0f, 256);
     if (seen.kind != ELISA_UI_EVENT_KEY_UP || seen.code != 256) { puts("key did not survive"); failures++; }
+
+    elisa_ui_dispatch_text_input("Hé 👋", strlen("Hé 👋"));
+    if (text_events != 1) { puts("UTF-8 text did not survive"); failures++; }
 
     /* An ordinal the library does not model is NONE, not a trap. */
     elisa_ui_dispatch_event(99, 0.0f, 0.0f, 0.0f, 0.0f, 0);

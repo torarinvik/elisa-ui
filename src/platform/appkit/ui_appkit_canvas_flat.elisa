@@ -1,0 +1,224 @@
+# Ready-to-use AppKit canvas adapter for the allocation-free UiFlat layer.
+#
+# The generic canvas host deliberately knows only UiCore. These three exported
+# callbacks connect its native accessibility/lifecycle actions to UiFlat, so an
+# application entry point needs one include instead of repeating ABI glue.
+
+include "./ui_appkit_canvas.elisa"
+include "../../widgets/ui_widget.elisa"
+
+global mutable appkit_flat_clipboard_buffer: u8[UiFlat::TEXT_CAPACITY] = zeroed
+
+def appkit_flat_accessibility_activate(index: usize) -> i32:
+    activated: bool = UiFlat::activate(index)
+    elisa_appkit_canvas_redraw() if activated
+    return 1 if activated else 0
+
+def appkit_flat_accessibility_adjust(index: usize, direction: i32) -> i32:
+    adjusted: bool = UiFlat::adjust(index, 0.05 if direction > 0 else -0.05)
+    elisa_appkit_canvas_redraw() if adjusted
+    return 1 if adjusted else 0
+
+def appkit_flat_cancel_interaction() -> void:
+    UiFlat::cancel_interaction()
+
+def appkit_flat_accepts_text() -> i32:
+    return 1 if UiFlat::accepts_text() else 0
+
+def appkit_flat_key_down_route(character: i32, shift: i32, control: i32, alt: i32, super_key: i32) -> i32:
+    return UiAppKitCanvas::key_down_route(UiFlat::accepts_text(), character, shift != 0, control != 0, alt != 0, super_key != 0)
+
+def appkit_flat_key_up(key_code: i32, character: i32) -> void:
+    return if UiFlat::accepts_text()
+    appkit_canvas_raw_key_callback(0, key_code, character)
+
+def appkit_flat_allows_text_readback() -> i32:
+    return 1 if UiFlat::allows_text_readback() else 0
+
+def appkit_flat_cursor_at(x: f32, y: f32) -> i32:
+    return UiFlat::cursor_at(x, y)
+
+def appkit_flat_text_click(kind: i32, x: f32, button: i32, click_count: i32) -> void:
+    return if kind != 1
+    UiFlat::select_text_click_at(x, button, click_count)
+
+def appkit_flat_set_text(index: usize, text: cstr, length: usize) -> void:
+    UiFlat::replace_text(index, sview(text, 0, length.i64()))
+    elisa_appkit_canvas_redraw()
+
+def appkit_flat_selection_location() -> usize:
+    return 0 if not UiFlat::accepts_text()
+    return UiFlat::selection_utf16_location(UiFlat::focused())
+
+def appkit_flat_selection_length() -> usize:
+    return 0 if not UiFlat::accepts_text()
+    return UiFlat::selection_utf16_length(UiFlat::focused())
+
+def appkit_flat_set_selected_range(index: usize, location: usize, length: usize) -> void:
+    UiFlat::set_selection_utf16(index, location, length)
+    elisa_appkit_canvas_redraw()
+
+def appkit_flat_marked_location() -> usize:
+    return 0 if not UiFlat::accepts_text()
+    return UiFlat::marked_utf16_location(UiFlat::focused())
+
+def appkit_flat_marked_length() -> usize:
+    return 0 if not UiFlat::accepts_text()
+    return UiFlat::marked_utf16_length(UiFlat::focused())
+
+def appkit_flat_commit_text(text: cstr, length: usize, replacement_location: usize, replacement_length: usize, has_replacement: i32) -> void:
+    UiFlat::commit_text(sview(text, 0, length.i64()), replacement_location, replacement_length, has_replacement != 0)
+    elisa_appkit_canvas_redraw()
+
+def appkit_flat_update_marked_text(text: cstr, length: usize, selected_location: usize, selected_length: usize, replacement_location: usize, replacement_length: usize, has_replacement: i32) -> void:
+    UiFlat::update_marked_text(sview(text, 0, length.i64()), selected_location, selected_length, replacement_location, replacement_length, has_replacement != 0)
+    elisa_appkit_canvas_redraw()
+
+def appkit_flat_unmark_text() -> void:
+    UiFlat::unmark_text()
+    elisa_appkit_canvas_redraw()
+
+def appkit_flat_select_all() -> void:
+    return if not UiFlat::accepts_text()
+    index: usize = UiFlat::focused()
+    UiFlat::set_selection(index, 0, UiFlat::text_value(index).len)
+
+# NSTextInputClient selectors are reduced to this small FFI vocabulary. Elisa
+# owns the UiCore key mapping and modifier sequencing.
+def appkit_flat_text_command(command: i32, modify_selection: i32) -> void:
+    if command == 10:
+        UiFlat::move_word_left(modify_selection != 0)
+        return
+    if command == 11:
+        UiFlat::move_word_right(modify_selection != 0)
+        return
+    if command == 12:
+        UiFlat::delete_word_backward()
+        return
+    if command == 13:
+        UiFlat::delete_word_forward()
+        return
+    key: mutable UiCore::Key = UiCore::Key.Escape
+    key <- UiCore::Key.Left if command == 1
+    key <- UiCore::Key.Right if command == 2
+    key <- UiCore::Key.Home if command == 3
+    key <- UiCore::Key.End if command == 4
+    key <- UiCore::Key.Backspace if command == 5
+    key <- UiCore::Key.Delete if command == 6
+    key <- UiCore::Key.Enter if command == 7
+    key <- UiCore::Key.Tab if command == 8 or command == 9
+    return if command < 1 or command > 9
+    shifted: bool = modify_selection != 0 or command == 9
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.LeftShift))) if shifted
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: key)))
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: key)))
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.LeftShift))) if shifted
+
+def appkit_flat_text_selector(selector: i32) -> void:
+    command: i32 = UiAppKitCanvas::text_selector_command(selector)
+    return if command == 0
+    appkit_flat_text_command(command, 1 if UiAppKitCanvas::text_selector_modifies_selection(selector) else 0)
+    elisa_appkit_canvas_redraw()
+
+def appkit_flat_text_action_enabled(action: i32) -> i32:
+    enabled: bool = UiAppKitCanvas::text_action_enabled(
+        action,
+        UiFlat::accepts_text(),
+        UiFlat::allows_text_readback(),
+        UiFlat::selected_text_length(UiFlat::focused()) > 0 if UiFlat::accepts_text() else false,
+        UiFlat::can_undo_text(),
+        UiFlat::can_redo_text(),
+        elisa_appkit_canvas_clipboard_has_text() != 0,
+    )
+    return 1 if enabled else 0
+
+def appkit_flat_perform_text_action(action: i32) -> i32:
+    return 0 if appkit_flat_text_action_enabled(action) == 0
+    if action == 1:
+        appkit_flat_select_all()
+        elisa_appkit_canvas_redraw()
+        return 1
+    if action == 2 or action == 3:
+        index: usize = UiFlat::focused()
+        length: usize = UiFlat::selected_text_length(index)
+        return 0 if length == 0
+        written: i32 = elisa_appkit_canvas_clipboard_write(UiFlat::selected_text_pointer(index), length)
+        return 0 if written == 0
+        if action == 3:
+            UiFlat::insert_text("")
+            elisa_appkit_canvas_redraw()
+            return 1
+        return 0
+    if action == 4:
+        length: usize = elisa_appkit_canvas_clipboard_read(&appkit_flat_clipboard_buffer[0], UiFlat::TEXT_CAPACITY)
+        return 0 if length == 0
+        UiFlat::insert_text(sview(&appkit_flat_clipboard_buffer[0], 0, length.i64()))
+        elisa_appkit_canvas_redraw()
+        return 1
+    changed: mutable bool = false
+    changed <- UiFlat::undo_text() if action == 5
+    changed <- UiFlat::redo_text() if action == 6
+    elisa_appkit_canvas_redraw() if changed
+    return 1 if changed else 0
+
+def appkit_flat_character_x(location: usize) -> f32:
+    return 0.0 if not UiFlat::accepts_text()
+    return UiFlat::text_character_x(UiFlat::focused(), location)
+
+def appkit_flat_caret_y() -> f32:
+    return 0.0 if not UiFlat::accepts_text()
+    return UiFlat::text_caret_y(UiFlat::focused())
+
+def appkit_flat_caret_height() -> f32:
+    return 0.0 if not UiFlat::accepts_text()
+    return UiFlat::text_caret_height(UiFlat::focused())
+
+def appkit_flat_character_at_x(x: f32) -> usize:
+    return 0 if not UiFlat::accepts_text()
+    index: usize = UiFlat::focused()
+    return UiFlat::text_utf16_offset(index, UiFlat::text_position_at(index, x))
+
+def appkit_flat_range_location(location: usize) -> usize:
+    return 0 if not UiFlat::accepts_text()
+    return UiFlat::text_range_location(UiFlat::focused(), location)
+
+def appkit_flat_range_length(location: usize, length: usize) -> usize:
+    return 0 if not UiFlat::accepts_text()
+    return UiFlat::text_range_length(UiFlat::focused(), location, length)
+
+def appkit_flat_range_pointer(location: usize) -> u8&:
+    return UiFlat::text_range_pointer(UiFlat::focused(), location)
+
+def appkit_flat_range_byte_length(location: usize, length: usize) -> usize:
+    return 0 if not UiFlat::accepts_text()
+    return UiFlat::text_range_byte_length(UiFlat::focused(), location, length)
+
+export fn elisa_appkit_canvas_accessibility_activate(index: usize) -> i32 = appkit_flat_accessibility_activate
+export fn elisa_appkit_canvas_accessibility_adjust(index: usize, direction: i32) -> i32 = appkit_flat_accessibility_adjust
+export fn elisa_appkit_canvas_cancel_interaction() -> void = appkit_flat_cancel_interaction
+export fn elisa_appkit_canvas_accepts_text() -> i32 = appkit_flat_accepts_text
+export fn elisa_appkit_canvas_key_down_route(character: i32, shift: i32, control: i32, alt: i32, super_key: i32) -> i32 = appkit_flat_key_down_route
+export fn elisa_appkit_canvas_key_up(key_code: i32, character: i32) -> void = appkit_flat_key_up
+export fn elisa_appkit_canvas_allows_text_readback() -> i32 = appkit_flat_allows_text_readback
+export fn elisa_appkit_canvas_cursor_at(x: f32, y: f32) -> i32 = appkit_flat_cursor_at
+export fn elisa_appkit_canvas_text_click(kind: i32, x: f32, button: i32, click_count: i32) -> void = appkit_flat_text_click
+export fn elisa_appkit_canvas_set_text(index: usize, text: cstr, length: usize) -> void = appkit_flat_set_text
+export fn elisa_appkit_canvas_selection_location() -> usize = appkit_flat_selection_location
+export fn elisa_appkit_canvas_selection_length() -> usize = appkit_flat_selection_length
+export fn elisa_appkit_canvas_set_selected_range(index: usize, location: usize, length: usize) -> void = appkit_flat_set_selected_range
+export fn elisa_appkit_canvas_marked_location() -> usize = appkit_flat_marked_location
+export fn elisa_appkit_canvas_marked_length() -> usize = appkit_flat_marked_length
+export fn elisa_appkit_canvas_commit_text(text: cstr, length: usize, replacement_location: usize, replacement_length: usize, has_replacement: i32) -> void = appkit_flat_commit_text
+export fn elisa_appkit_canvas_update_marked_text(text: cstr, length: usize, selected_location: usize, selected_length: usize, replacement_location: usize, replacement_length: usize, has_replacement: i32) -> void = appkit_flat_update_marked_text
+export fn elisa_appkit_canvas_unmark_text() -> void = appkit_flat_unmark_text
+export fn elisa_appkit_canvas_text_selector(selector: i32) -> void = appkit_flat_text_selector
+export fn elisa_appkit_canvas_text_action_enabled(action: i32) -> i32 = appkit_flat_text_action_enabled
+export fn elisa_appkit_canvas_perform_text_action(action: i32) -> i32 = appkit_flat_perform_text_action
+export fn elisa_appkit_canvas_character_x(location: usize) -> f32 = appkit_flat_character_x
+export fn elisa_appkit_canvas_caret_y() -> f32 = appkit_flat_caret_y
+export fn elisa_appkit_canvas_caret_height() -> f32 = appkit_flat_caret_height
+export fn elisa_appkit_canvas_character_at_x(x: f32) -> usize = appkit_flat_character_at_x
+export fn elisa_appkit_canvas_range_location(location: usize) -> usize = appkit_flat_range_location
+export fn elisa_appkit_canvas_range_length(location: usize, length: usize) -> usize = appkit_flat_range_length
+export fn elisa_appkit_canvas_range_pointer(location: usize) -> u8& = appkit_flat_range_pointer
+export fn elisa_appkit_canvas_range_byte_length(location: usize, length: usize) -> usize = appkit_flat_range_byte_length

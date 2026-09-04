@@ -30,6 +30,13 @@ if ! bash "$ROOT/scripts/check_appkit.sh"; then
   status=1
 fi
 
+# The custom AppKit renderer is a separate architecture from native controls:
+# validate its Elisa/Objective-C callback boundary and packaged .app as well.
+if ! bash "$ROOT/scripts/check_appkit_canvas.sh"; then
+  echo "FAIL appkit canvas"
+  status=1
+fi
+
 for source in "$ROOT"/test/*_test.elisa; do
   name="$(basename "$source" .elisa)"
   bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ROOT/build/$name.o" "$source"

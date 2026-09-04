@@ -22,6 +22,8 @@ include "../core/ui_core.elisa"
 # The C app's half. `EventRecord&` is a borrow, so C sees `const elisa_ui_event *`.
 extern elisa_ui_on_init() -> void
 extern elisa_ui_on_event(event: UiCore::EventRecord&) -> void
+extern elisa_ui_on_text_input(text: cstr, length: usize) -> void
+extern elisa_ui_on_text_editing(text: cstr, length: usize, selected_start: i32, selected_length: i32) -> void
 extern elisa_ui_on_frame() -> void
 extern elisa_ui_on_widget_event(widget: usize, event: i32) -> void
 
@@ -41,6 +43,14 @@ module UiCapiApp:
             record: mutable UiCore::EventRecord = UiCore::to_record(event)
             elisa_ui_on_event(record)
 
+        def on_text_input(text: sview) -> void:
+            pointer: cstr = text.data.cast[cstr] can Unsafe.PointerCast
+            elisa_ui_on_text_input(pointer, text.len)
+
+        def on_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+            pointer: cstr = text.data.cast[cstr] can Unsafe.PointerCast
+            elisa_ui_on_text_editing(pointer, text.len, selected_start, selected_length)
+
         def on_frame() -> void:
             elisa_ui_on_frame()
 
@@ -54,6 +64,12 @@ def app_init() -> void:
 
 def app_event(event: UiCore::Event) -> void:
     UiCapiApp::on_event(event)
+
+def app_text_input(text: sview) -> void:
+    UiCapiApp::on_text_input(text)
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    UiCapiApp::on_text_editing(text, selected_start, selected_length)
 
 def app_frame() -> void:
     UiCapiApp::on_frame()

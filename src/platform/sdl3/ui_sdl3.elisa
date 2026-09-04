@@ -1,8 +1,7 @@
 # elisa-ui native backend: SDL3 (system libSDL3 via extern declarations).
 # `module UiSdl3` implements the platform contract from ui_core.elisa and owns
 # the main loop: `UiSdl3::run` polls SDL events, translates them to
-# `UiCore::Event`, and drives the app contract (app_init / app_event /
-# app_frame).
+# `UiCore::Event` or committed UTF-8, and drives the application contract.
 #
 # The extern declarations stay at file scope: they name C symbols, which are
 # global by nature, and a module prefix would only pretend otherwise. The four
@@ -22,6 +21,8 @@ extern SDL_Init(flags: u32) -> bool
 extern SDL_CreateWindow(title: cstr, w: i32, h: i32, flags: u64) -> void&?
 extern SDL_CreateRenderer(window: void&, name: void&?) -> void&?
 extern SDL_PollEvent(event: void&) -> bool
+extern SDL_StartTextInput(window: void&) -> bool
+extern SDL_StopTextInput(window: void&) -> bool
 extern SDL_SetRenderDrawColor(renderer: void&, r: u8, g: u8, b: u8, a: u8) -> bool
 extern SDL_RenderClear(renderer: void&) -> bool
 extern SDL_RenderFillRect(renderer: void&, rect: void&) -> bool
@@ -37,6 +38,7 @@ extern SDL_DestroySurface(surface: void&) -> void
 extern SDL_DestroyTexture(texture: void&) -> void
 extern puts(text: cstr) -> i64
 extern getenv(name: cstr) -> cstr?
+extern strlen(text: cstr) -> usize
 
 # SDL_ttf 3.x. Lengths are byte counts, and a zero length means "NUL-terminated";
 # every call here passes an explicit length so an sview needs no terminator.
@@ -67,9 +69,16 @@ def ui_text_line_height(size: f32) -> f32:
 module UiSdl3:
     private:
         const INIT_VIDEO: u32 = 0x20
+        const WINDOW_RESIZABLE: u64 = 0x20
         const EVENT_QUIT: u32 = 0x100
+        const EVENT_WINDOW_RESIZED: u32 = 0x206
+        const EVENT_WINDOW_MOUSE_LEAVE: u32 = 0x20d
+        const EVENT_WINDOW_FOCUS_GAINED: u32 = 0x20e
+        const EVENT_WINDOW_FOCUS_LOST: u32 = 0x20f
         const EVENT_KEY_DOWN: u32 = 0x300
         const EVENT_KEY_UP: u32 = 0x301
+        const EVENT_TEXT_EDITING: u32 = 0x302
+        const EVENT_TEXT_INPUT: u32 = 0x303
 
         # SDL spells every non-ASCII key as (1 << 30) | <USB HID scancode>.
         const SDL_SCANCODE_MASK: i32 = 1073741824
@@ -84,9 +93,18 @@ module UiSdl3:
         const SDL_SCAN_PAGE_DOWN: i32 = 78
         const SDL_SCAN_RIGHT: i32 = 79
         const SDL_SCAN_UP: i32 = 82
+        const SDL_SCAN_LEFT_CONTROL: i32 = 224
+        const SDL_SCAN_LEFT_SHIFT: i32 = 225
+        const SDL_SCAN_LEFT_ALT: i32 = 226
+        const SDL_SCAN_LEFT_SUPER: i32 = 227
+        const SDL_SCAN_RIGHT_CONTROL: i32 = 228
+        const SDL_SCAN_RIGHT_SHIFT: i32 = 229
+        const SDL_SCAN_RIGHT_ALT: i32 = 230
+        const SDL_SCAN_RIGHT_SUPER: i32 = 231
         const EVENT_MOUSE_MOTION: u32 = 0x400
         const EVENT_MOUSE_BUTTON_DOWN: u32 = 0x401
         const EVENT_MOUSE_BUTTON_UP: u32 = 0x402
+        const EVENT_MOUSE_WHEEL: u32 = 0x403
 
         global mutable window: void&? = null
         global mutable renderer: void&? = null
@@ -94,6 +112,9 @@ module UiSdl3:
         # fields at their SDL3 offsets (type@0; pointer events keep x@28 and
         # y@32 as f32).
         global mutable event_buffer: u8[128] = zeroed
+
+        def event_button() -> i32:
+            return event_buffer[24].i32()
 
         def ren() -> void&:
             if renderer is active_renderer:
@@ -304,12 +325,50 @@ module UiSdl3:
             y_ref: mutable f32& = (&event_buffer[32]).cast[f32&] can Unsafe.PointerCast
             return y_ref[0]
 
+        def event_window_data1() -> i32:
+            value_ref: mutable i32& = (&event_buffer[20]).cast[i32&] can Unsafe.PointerCast
+            return value_ref[0]
+
+        def event_window_data2() -> i32:
+            value_ref: mutable i32& = (&event_buffer[24]).cast[i32&] can Unsafe.PointerCast
+            return value_ref[0]
+
+        # SDL_MouseWheelEvent has a different layout from mouse motion:
+        # delta at 24/28 and the pointer position at 36/40.
+        def event_wheel_x() -> f32:
+            value_ref: mutable f32& = (&event_buffer[24]).cast[f32&] can Unsafe.PointerCast
+            return value_ref[0]
+
+        def event_wheel_y() -> f32:
+            value_ref: mutable f32& = (&event_buffer[28]).cast[f32&] can Unsafe.PointerCast
+            return value_ref[0]
+
+        def event_wheel_mouse_x() -> f32:
+            value_ref: mutable f32& = (&event_buffer[36]).cast[f32&] can Unsafe.PointerCast
+            return value_ref[0]
+
+        def event_wheel_mouse_y() -> f32:
+            value_ref: mutable f32& = (&event_buffer[40]).cast[f32&] can Unsafe.PointerCast
+            return value_ref[0]
+
         # SDL_KeyboardEvent: type 0, reserved 4, timestamp 8, windowID 16,
         # which 20, scancode 24, key 28. The KEYCODE is what carries the layout,
         # so that is what translates into the UiCore::Key space.
         def event_keycode() -> i32:
             key_ref: mutable i32& = (&event_buffer[28]).cast[i32&] can Unsafe.PointerCast
             return key_ref[0]
+
+        def event_text_pointer() -> cstr:
+            text_ref: mutable cstr& = (&event_buffer[24]).cast[mutable cstr&] can Unsafe.PointerCast
+            return text_ref[0]
+
+        def event_text_editing_start() -> i32:
+            value_ref: mutable i32& = (&event_buffer[32]).cast[i32&] can Unsafe.PointerCast
+            return value_ref[0]
+
+        def event_text_editing_length() -> i32:
+            value_ref: mutable i32& = (&event_buffer[36]).cast[i32&] can Unsafe.PointerCast
+            return value_ref[0]
 
     public:
         # SDL's keycode -> the UiCore::Key space, which is GLFW's numbering (Escape 256,
@@ -345,10 +404,35 @@ module UiSdl3:
             return UiCore::Key.Delete.i32() if scancode == SDL_SCAN_DELETE
             return UiCore::Key.End.i32() if scancode == SDL_SCAN_END
             return UiCore::Key.PageDown.i32() if scancode == SDL_SCAN_PAGE_DOWN
+            return UiCore::Key.LeftControl.i32() if scancode == SDL_SCAN_LEFT_CONTROL
+            return UiCore::Key.LeftShift.i32() if scancode == SDL_SCAN_LEFT_SHIFT
+            return UiCore::Key.LeftAlt.i32() if scancode == SDL_SCAN_LEFT_ALT
+            return UiCore::Key.LeftSuper.i32() if scancode == SDL_SCAN_LEFT_SUPER
+            return UiCore::Key.RightControl.i32() if scancode == SDL_SCAN_RIGHT_CONTROL
+            return UiCore::Key.RightShift.i32() if scancode == SDL_SCAN_RIGHT_SHIFT
+            return UiCore::Key.RightAlt.i32() if scancode == SDL_SCAN_RIGHT_ALT
+            return UiCore::Key.RightSuper.i32() if scancode == SDL_SCAN_RIGHT_SUPER
             # A key this backend does not model. 0 is not a UiCore::Key member, so an app
             # comparing against one matches nothing -- the same outcome as before,
             # now stated rather than implied.
             return 0
+
+        # SDL button constants are 1-based (left=1); UiCore uses zero for the
+        # portable primary button, matching AppKit and browser events.
+        def button_from_sdl(button: i32) -> i32:
+            return button - 1 if button > 0 else -1
+
+        # SDL supplies committed input as a NUL-terminated UTF-8 string. Keep
+        # key events and text separate: key codes express navigation/shortcuts,
+        # while this path preserves composed and non-ASCII text verbatim.
+        def text_input(text: cstr) -> void:
+            length: usize = strlen(text)
+            return if length == 0
+            app_text_input(sview(text, 0, length.i64()))
+
+        def text_editing(text: cstr, selected_start: i32, selected_length: i32) -> void:
+            length: usize = strlen(text)
+            app_text_editing(sview(text, 0, length.i64()), selected_start, selected_length)
 
     private:
         # Poll one SDL event and translate it. Returns false when the queue is
@@ -362,12 +446,22 @@ module UiSdl3:
             out_event <- (UiCore::Event.None)
             if kind == EVENT_QUIT:
                 out_event <- (UiCore::Event.Quit)
+            elif kind == EVENT_WINDOW_RESIZED:
+                out_event <- (UiCore::Event.Resize(size: UiCore::Size(event_window_data1().f32(), event_window_data2().f32())))
+            elif kind == EVENT_WINDOW_MOUSE_LEAVE:
+                out_event <- (UiCore::PointerEvent.Leave)
+            elif kind == EVENT_WINDOW_FOCUS_GAINED:
+                out_event <- (UiCore::Event.FocusGained)
+            elif kind == EVENT_WINDOW_FOCUS_LOST:
+                out_event <- (UiCore::Event.FocusLost)
             elif kind == EVENT_MOUSE_MOTION:
                 out_event <- (UiCore::PointerEvent.Move(at: UiCore::Vec2(event_x(), event_y())))
             elif kind == EVENT_MOUSE_BUTTON_DOWN:
-                out_event <- (UiCore::PointerEvent.Down(at: UiCore::Vec2(event_x(), event_y()), button: 0))
+                out_event <- (UiCore::PointerEvent.Down(at: UiCore::Vec2(event_x(), event_y()), button: button_from_sdl(event_button())))
             elif kind == EVENT_MOUSE_BUTTON_UP:
-                out_event <- (UiCore::PointerEvent.Up(at: UiCore::Vec2(event_x(), event_y()), button: 0))
+                out_event <- (UiCore::PointerEvent.Up(at: UiCore::Vec2(event_x(), event_y()), button: button_from_sdl(event_button())))
+            elif kind == EVENT_MOUSE_WHEEL:
+                out_event <- (UiCore::PointerEvent.Scroll(at: UiCore::Vec2(event_wheel_mouse_x(), event_wheel_mouse_y()), delta: UiCore::Vec2(event_wheel_x(), event_wheel_y())))
             elif kind == EVENT_KEY_DOWN:
                 out_event <- (UiCore::KeyEvent.Down(code: UiCore::Key(key_from_sdl(event_keycode()))))
             elif kind == EVENT_KEY_UP:
@@ -382,7 +476,7 @@ module UiSdl3:
             if not SDL_Init(INIT_VIDEO):
                 _ = puts(SDL_GetError())
                 return 1
-            window_opt: void&? = SDL_CreateWindow(title, width, height, 0)
+            window_opt: void&? = SDL_CreateWindow(title, width, height, WINDOW_RESIZABLE)
             if window_opt == null:
                 _ = puts(SDL_GetError())
                 SDL_Quit()
@@ -405,17 +499,27 @@ module UiSdl3:
                 font_override <- override
             UiCore::set_viewport(width.f32(), height.f32())
             app_init()
+            if window is text_window:
+                if not SDL_StartTextInput(text_window):
+                    _ = puts(SDL_GetError())
             running: mutable bool = true
             frames: mutable i64 = 0
             while running |frames|:
                 event: mutable UiCore::Event = (UiCore::Event.None)
                 while next_event(event) |event, running|:
-                    match event:
-                        UiCore::Event.Quit:
-                            running <- false
-                        _:
-                            pass
-                    app_event(event)
+                    if event_type() == EVENT_TEXT_INPUT:
+                        text_input(event_text_pointer())
+                    elif event_type() == EVENT_TEXT_EDITING:
+                        text_editing(event_text_pointer(), event_text_editing_start(), event_text_editing_length())
+                    else:
+                        match event:
+                            UiCore::Event.Quit:
+                                running <- false
+                            UiCore::Event.Resize(size):
+                                UiCore::set_viewport(size.width, size.height)
+                            _:
+                                pass
+                        app_event(event)
                 # Same retained contract as the component backend: the app
                 # fills a command batch, then the backend consumes it. SDL3
                 # replays immediately.
@@ -427,6 +531,8 @@ module UiSdl3:
                 running <- false if max_frames > 0 and frames >= max_frames
             fonts_close()
             TTF_Quit()
+            if window is text_window:
+                _ = SDL_StopTextInput(text_window)
             if renderer is done_renderer:
                 SDL_DestroyRenderer(done_renderer)
             if window is done_window:

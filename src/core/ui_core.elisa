@@ -24,6 +24,8 @@
 #   application:
 #     app_init()            once, after the surface exists
 #     app_event(event)      per translated input event (`UiCore::Event`, by value)
+#     app_text_input(text)  committed UTF-8 text (separate from physical keys)
+#     app_text_editing(text, start, length)  live IME composition
 #     app_frame()           once per frame; issues draw calls
 #     app_widget_event(widget, event)   a widget layer's click report
 
@@ -83,6 +85,36 @@ module UiCore:
             FillTriangle(triangle: Triangle, color: Color)
             FillLine(line: Line, color: Color)
             DrawText(run: TextRun, color: Color)
+
+        # A semantic tree travels beside the visual command list. Custom-painted
+        # controls are otherwise invisible to VoiceOver and browser accessibility
+        # APIs because pixels carry no role, label, bounds, or action target.
+        const enum AccessibilityRole of i32:
+            Label = 0
+            Button = 1
+            RadioButton = 2
+            CheckBox = 3
+            Slider = 4
+            ProgressBar = 5
+            TextField = 6
+            PasswordField = 7
+
+        struct AccessibilityNode:
+            role: AccessibilityRole
+            label: sview
+            help: sview
+            frame: Rect
+            id: usize
+            action: usize
+            enabled: bool
+            focused: bool
+            selected: bool
+            value: f32
+            text_value: sview
+            selected_text: sview
+            revision: usize
+            selection_location: usize
+            selection_length: usize
 
         # Key codes, in GLFW's numbering -- which is what the wasmbrowser host reports.
         # A closed set of named values, so an app writes `Key.Escape` instead of a bare
@@ -225,6 +257,8 @@ module UiCore:
             None
             Quit
             Resize(size: Size)
+            FocusGained
+            FocusLost
 
         enum InputEvent is Event:
             pass
@@ -281,28 +315,60 @@ module UiCore:
             Scroll = 9
             GamepadButton = 10
             GamepadAxis = 11
+            FocusGained = 12
+            FocusLost = 13
 
         # A fixed buffer keeps the frame path allocation-free, which matters
         # most on the component side: the freestanding cabi_realloc is
         # monotonic, so a per-frame growing list would never return memory to
         # the instance.
         const MAX_COMMANDS: usize = 1024
+        const MAX_ACCESSIBILITY_NODES: usize = 256
 
     private:
         global mutable command_buffer: Command[MAX_COMMANDS] = zeroed
         global mutable command_total: usize = 0
+        global mutable command_dropped: bool = false
+        global mutable accessibility_nodes: AccessibilityNode[MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable accessibility_total: usize = 0
+        global mutable accessibility_dropped: bool = false
         global mutable viewport_size: Size = Size{width: 0.0, height: 0.0}
+        global mutable current_frame_time: f64 = 0.0
+        global mutable requested_frame_delay: f32 = 0.0
 
     public:
         def begin_frame() -> void:
             command_total <- 0
+            command_dropped <- false
+            accessibility_total <- 0
+            accessibility_dropped <- false
+            requested_frame_delay <- 0.0
+
+        def accessibility(role: AccessibilityRole, label: sview, help: sview, frame: Rect, id: usize, action: usize, enabled: bool, focused: bool, selected: bool, value: f32, text_value: sview, selected_text: sview, revision: usize, selection_location: usize, selection_length: usize) -> void:
+            return if label.len == 0
+            if accessibility_total >= MAX_ACCESSIBILITY_NODES:
+                accessibility_dropped <- true
+                return
+            accessibility_nodes[accessibility_total] <- AccessibilityNode{role, label, help, frame, id, action, enabled, focused, selected, value, text_value, selected_text, revision, selection_location, selection_length}
+            accessibility_total <- accessibility_total + 1
+
+        def accessibility_count() -> usize:
+            return accessibility_total
+
+        def accessibility_at(index: usize) -> AccessibilityNode:
+            return accessibility_nodes[index]
+
+        def accessibility_overflowed() -> bool:
+            return accessibility_dropped
 
         # Commands past the buffer's capacity are dropped rather than growing
         # it. A frame that overflows draws incompletely, which is visible and
         # fixable; the alternative is growing the buffer while making the
         # component's monotonic heap grow without bound.
         def push_command(command: Command) -> void:
-            return if command_total >= MAX_COMMANDS
+            if command_total >= MAX_COMMANDS:
+                command_dropped <- true
+                return
             command_buffer[command_total] <- command
             command_total <- command_total + 1
 
@@ -313,6 +379,9 @@ module UiCore:
         def command_at(index: usize) -> Command:
             return command_buffer[index]
 
+        def command_overflowed() -> bool:
+            return command_dropped
+
         def set_viewport(width: f32, height: f32) -> void:
             viewport_size <- Size{width: width, height: height}
 
@@ -321,6 +390,25 @@ module UiCore:
 
         def viewport_height() -> f32:
             return viewport_size.height
+
+        # Backends provide a monotonic clock at frame start. Keeping time in
+        # core makes animation policy deterministic and directly testable;
+        # platforms that do not animate may leave the default at zero.
+        def set_frame_time(seconds: f64) -> void:
+            current_frame_time <- seconds if seconds >= 0.0 else 0.0
+
+        def frame_time() -> f64:
+            return current_frame_time
+
+        # Animation remains backend-neutral: painting code requests the next
+        # frame, while each host decides how to schedule it. Zero means idle.
+        # Multiple animated controls coalesce onto the earliest requested wake.
+        def request_frame_after(seconds: f32) -> void:
+            return if seconds <= 0.0
+            requested_frame_delay <- seconds if requested_frame_delay <= 0.0 or seconds < requested_frame_delay
+
+        def frame_delay() -> f32:
+            return requested_frame_delay
 
         # Short constructors named for the type they build, so a call site reads as
         # geometry rather than as a list of floats. `rgb`/`rgba` keep their own names:
@@ -409,6 +497,10 @@ module UiCore:
                     return WireKind.Quit
                 Event.Resize(size):
                     return WireKind.Resize
+                Event.FocusGained:
+                    return WireKind.FocusGained
+                Event.FocusLost:
+                    return WireKind.FocusLost
                 PointerEvent.Move(at):
                     return WireKind.PointerMove
                 PointerEvent.Down(at, button):
@@ -455,6 +547,10 @@ module UiCore:
                     pass
                 Event.Quit:
                     pass
+                Event.FocusGained:
+                    pass
+                Event.FocusLost:
+                    pass
                 PointerEvent.Leave:
                     pass
             return record
@@ -468,6 +564,10 @@ module UiCore:
                     Event.Quit
                 WireKind.Resize:
                     Event.Resize(size: Size(record.x, record.y))
+                WireKind.FocusGained:
+                    Event.FocusGained
+                WireKind.FocusLost:
+                    Event.FocusLost
                 WireKind.PointerMove:
                     PointerEvent.Move(at: at)
                 WireKind.PointerDown:

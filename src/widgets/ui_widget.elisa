@@ -27,6 +27,12 @@ module UiFlat:
         # has no cap because a handle IS the node there. new_widget degrades to
         # NONE past this rather than corrupting the tree.
         const MAX_WIDGETS: usize = 256
+        const TEXT_CAPACITY: usize = 128
+        const TEXT_STORAGE_SIZE: usize = MAX_WIDGETS * TEXT_CAPACITY
+        const SECURE_TEXT_CAPACITY: usize = TEXT_CAPACITY * 3
+        const SECURE_TEXT_STORAGE_SIZE: usize = MAX_WIDGETS * SECURE_TEXT_CAPACITY
+        const TEXT_HISTORY_CAPACITY: usize = 32
+        const TEXT_HISTORY_STORAGE_SIZE: usize = TEXT_HISTORY_CAPACITY * TEXT_CAPACITY
         # One past the last valid slot, so it can never collide with a real index.
         # DERIVED, not a second literal: as `= 256` beside `MAX_WIDGETS = 256` it
         # was one edit away from becoming a valid index, which would have made the
@@ -52,20 +58,142 @@ module UiFlat:
             hover_color: mutable UiCore::Color
             press_color: mutable UiCore::Color
             text: mutable sview
+            placeholder: mutable sview
+            help: mutable sview
             text_size: mutable f32
             text_color: mutable UiCore::Color
+            secure: mutable bool
             interactive: mutable bool
+            enabled: mutable bool
             hovered: mutable bool
             pressed: mutable bool
+            focused: mutable bool
+            selected: mutable bool
+            value: mutable f32
+            input_length: mutable usize
+            caret: mutable usize
+            selection_anchor: mutable usize
+            marked_start: mutable usize
+            marked_end: mutable usize
+            text_revision: mutable usize
+            text_truncated: mutable bool
+
+        # Shared visual tokens for details that are common to every widget.
+        # Per-control surface and text colors remain on Widget so applications
+        # can still build palettes without cloning the framework painter.
+        struct Theme:
+            focus_ring: mutable UiCore::Color
+            selection: mutable UiCore::Color
+            control_mark: mutable UiCore::Color
+            control_mark_strong: mutable UiCore::Color
+            focus_inset: mutable f32
+            text_horizontal_padding: mutable f32
+            text_vertical_padding: mutable f32
+            selection_vertical_inset: mutable f32
+            marked_underline_inset: mutable f32
+            slider_horizontal_inset: mutable f32
+            slider_track_height: mutable f32
+            slider_thumb_radius: mutable f32
+            choice_center_x: mutable f32
+            radio_outer_radius: mutable f32
+            radio_inner_radius: mutable f32
+            checkbox_size: mutable f32
+            choice_text_space: mutable f32
+            # One visible or hidden half-cycle. Zero keeps the caret steadily
+            # visible and requests no animation, useful for reduced motion.
+            caret_blink_interval: mutable f32
 
     private:
         global mutable widgets: Widget[MAX_WIDGETS] = zeroed
+        global mutable text_storage: u8[TEXT_STORAGE_SIZE] = zeroed
+        global mutable secure_text_storage: u8[SECURE_TEXT_STORAGE_SIZE] = zeroed
         global mutable widget_count: usize = 0
+        global mutable widget_dropped: bool = false
         # The widget under the pointer, and the one holding a press. A click
         # only fires when both agree on release, so dragging off a button
         # cancels it.
         global mutable hot_widget: usize = NONE
         global mutable active_widget: usize = NONE
+        global mutable active_pointer_button: i32 = -1
+        global mutable active_key: i32 = -1
+        global mutable focused_widget: usize = NONE
+        global mutable shift_down: bool = false
+        # Text history is global so edits across fields undo in chronological
+        # order. Each bounded entry stores complete before/after field states;
+        # 32 * 2 * 128 bytes keeps behavior deterministic and allocation-free.
+        global mutable history_widget: usize[TEXT_HISTORY_CAPACITY] = zeroed
+        global mutable history_before_text: u8[TEXT_HISTORY_STORAGE_SIZE] = zeroed
+        global mutable history_after_text: u8[TEXT_HISTORY_STORAGE_SIZE] = zeroed
+        global mutable history_before_length: usize[TEXT_HISTORY_CAPACITY] = zeroed
+        global mutable history_after_length: usize[TEXT_HISTORY_CAPACITY] = zeroed
+        global mutable history_before_caret: usize[TEXT_HISTORY_CAPACITY] = zeroed
+        global mutable history_after_caret: usize[TEXT_HISTORY_CAPACITY] = zeroed
+        global mutable history_before_anchor: usize[TEXT_HISTORY_CAPACITY] = zeroed
+        global mutable history_after_anchor: usize[TEXT_HISTORY_CAPACITY] = zeroed
+        global mutable history_before_marked_start: usize[TEXT_HISTORY_CAPACITY] = zeroed
+        global mutable history_before_marked_end: usize[TEXT_HISTORY_CAPACITY] = zeroed
+        global mutable history_after_marked_start: usize[TEXT_HISTORY_CAPACITY] = zeroed
+        global mutable history_after_marked_end: usize[TEXT_HISTORY_CAPACITY] = zeroed
+        global mutable history_count: usize = 0
+        global mutable history_cursor: usize = 0
+        global mutable history_active: bool = false
+        global mutable history_suppressed: bool = false
+        global mutable composition_history_slot: usize = TEXT_HISTORY_CAPACITY
+        global mutable caret_blink_started: f64 = 0.0
+        global mutable current_theme: Theme = Theme{
+            focus_ring: UiCore::Color{r: 94, g: 158, b: 255, a: 245},
+            selection: UiCore::Color{r: 55, g: 112, b: 214, a: 210},
+            control_mark: UiCore::Color{r: 255, g: 255, b: 255, a: 185},
+            control_mark_strong: UiCore::Color{r: 255, g: 255, b: 255, a: 255},
+            focus_inset: 2.0,
+            text_horizontal_padding: 12.0,
+            text_vertical_padding: 8.0,
+            selection_vertical_inset: 6.0,
+            marked_underline_inset: 7.0,
+            slider_horizontal_inset: 8.0,
+            slider_track_height: 6.0,
+            slider_thumb_radius: 8.0,
+            choice_center_x: 17.0,
+            radio_outer_radius: 5.5,
+            radio_inner_radius: 2.8,
+            checkbox_size: 11.0,
+            choice_text_space: 28.0,
+            caret_blink_interval: 0.5,
+        }
+
+        def nonnegative(value: f32) -> f32:
+            return value if value > 0.0 else 0.0
+
+        # TextField is deliberately single-line. Native text input normally
+        # routes Return to Submit, but paste and programmatic replacement can
+        # still contain control or Unicode line separators. Replace every byte
+        # of such a sequence with ASCII space so storage length and offsets stay
+        # stable while no backend can interpret the value as multiple lines.
+        def single_line_byte(text: sview, position: usize) -> u8:
+            byte: u8 = text.data[position]
+            return 32 if byte < 32 or byte == 127
+            return 32 if byte == 194 and position + 1 < text.len and text.data[position + 1] == 133
+            return 32 if byte == 133 and position > 0 and text.data[position - 1] == 194
+            return 32 if byte == 226 and position + 2 < text.len and text.data[position + 1] == 128 and (text.data[position + 2] == 168 or text.data[position + 2] == 169)
+            return 32 if byte == 128 and position > 0 and position + 1 < text.len and text.data[position - 1] == 226 and (text.data[position + 1] == 168 or text.data[position + 1] == 169)
+            return 32 if (byte == 168 or byte == 169) and position > 1 and text.data[position - 1] == 128 and text.data[position - 2] == 226
+            return byte
+
+        def clamped_inset(value: f32, extent: f32) -> f32:
+            safe: f32 = nonnegative(value)
+            half: f32 = nonnegative(extent) / 2.0
+            return safe if safe < half else half
+
+        def restart_caret_blink() -> void:
+            caret_blink_started <- UiCore::frame_time()
+
+        def caret_is_visible() -> bool:
+            interval: f32 = current_theme.caret_blink_interval
+            return true if interval <= 0.0
+            UiCore::request_frame_after(interval)
+            elapsed: f64 = UiCore::frame_time() - caret_blink_started
+            return true if elapsed <= 0.0
+            return ((elapsed / interval.f64()).i64() % 2) == 0
 
         def link(parent: usize, child: usize) -> void:
             return if parent >= widget_count
@@ -81,7 +209,9 @@ module UiFlat:
         # parent, and every traversal treats it as absent, so overflow degrades
         # to missing widgets rather than corrupting the tree.
         def new_widget(parent: usize, kind: UiConst::WidgetKind) -> usize:
-            return NONE if widget_count >= MAX_WIDGETS
+            if widget_count >= MAX_WIDGETS:
+                widget_dropped <- true
+                return NONE
             index: usize = widget_count
             widget_count <- widget_count + 1
             # A whole-record reset, not a `with` block: a literal must name
@@ -94,8 +224,9 @@ module UiFlat:
                 min_width: 0.0, min_height: 0.0, grow: 0.0,
                 x: 0.0, y: 0.0, width: 0.0, height: 0.0,
                 color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, hover_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, press_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0},
-                text: "", text_size: 0.0, text_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0},
-                interactive: false, hovered: false, pressed: false,
+                text: "", placeholder: "", help: "", text_size: 0.0, text_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, secure: false,
+                interactive: false, enabled: true, hovered: false, pressed: false, focused: false, selected: false, value: 0.0,
+                input_length: 0, caret: 0, selection_anchor: 0, marked_start: 0, marked_end: 0, text_revision: 0, text_truncated: false,
             }
             link(parent, index)
             return index
@@ -115,18 +246,119 @@ module UiFlat:
         def active() -> usize:
             return active_widget
 
+        def focused() -> usize:
+            return focused_widget
+
+        def overflowed() -> bool:
+            return widget_dropped
+
         def set_color(index: usize, color: UiCore::Color) -> void:
             return if index >= widget_count
             widgets[index].color <- color
+
+        def theme() -> Theme:
+            return current_theme
+
+        def set_theme(next: Theme) -> void:
+            normalized: mutable Theme = next
+            normalized.focus_inset <- nonnegative(next.focus_inset)
+            normalized.text_horizontal_padding <- nonnegative(next.text_horizontal_padding)
+            normalized.text_vertical_padding <- nonnegative(next.text_vertical_padding)
+            normalized.selection_vertical_inset <- nonnegative(next.selection_vertical_inset)
+            normalized.marked_underline_inset <- nonnegative(next.marked_underline_inset)
+            normalized.slider_horizontal_inset <- nonnegative(next.slider_horizontal_inset)
+            normalized.slider_track_height <- nonnegative(next.slider_track_height)
+            normalized.slider_thumb_radius <- nonnegative(next.slider_thumb_radius)
+            normalized.choice_center_x <- nonnegative(next.choice_center_x)
+            normalized.radio_outer_radius <- nonnegative(next.radio_outer_radius)
+            normalized.radio_inner_radius <- nonnegative(next.radio_inner_radius)
+            normalized.checkbox_size <- nonnegative(next.checkbox_size)
+            normalized.choice_text_space <- nonnegative(next.choice_text_space)
+            normalized.caret_blink_interval <- nonnegative(next.caret_blink_interval)
+            current_theme <- normalized
+
+        def set_colors(index: usize, color: UiCore::Color, hover: UiCore::Color, press: UiCore::Color) -> void:
+            return if index >= widget_count
+            widgets[index] with { color, hover_color <- hover, press_color <- press }
 
         def set_grow(index: usize, grow: f32) -> void:
             return if index >= widget_count
             widgets[index].grow <- grow
 
+        def set_enabled(index: usize, enabled: bool) -> void:
+            return if index >= widget_count
+            widgets[index].enabled <- enabled
+            if not enabled:
+                widgets[index].hovered <- false
+                widgets[index].pressed <- false
+                if active_widget == index:
+                    active_widget <- NONE
+                    active_pointer_button <- -1
+                    active_key <- -1
+                hot_widget <- NONE if hot_widget == index
+                focus(NONE) if focused_widget == index
+
+        # Give any painted widget a caption. Buttons keep their declared minimum
+        # hit target; labels still use `label`, which derives its minimum from text.
+        def set_text(index: usize, text: sview, size: f32, color: UiCore::Color) -> void:
+            return if index >= widget_count
+            widgets[index] with { text, text_size <- size, text_color <- color }
+
+        def set_help(index: usize, help: sview) -> void:
+            return if index >= widget_count
+            widgets[index].help <- help
+
+        def set_secure(index: usize, secure: bool) -> void:
+            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            widgets[index].secure <- secure
+
+        # Selection is independent from focus and press state. Applications own
+        # group policy, so a radio group can span containers without hidden state.
+        def set_selected(index: usize, selected: bool) -> void:
+            return if index >= widget_count
+            return if widgets[index].kind != UiConst::WidgetKind.RadioButton and widgets[index].kind != UiConst::WidgetKind.CheckBox
+            widgets[index].selected <- selected
+
+        def set_value(index: usize, value: f32) -> void:
+            return if index >= widget_count
+            return if widgets[index].kind != UiConst::WidgetKind.Slider and widgets[index].kind != UiConst::WidgetKind.ProgressBar
+            widgets[index].value <- 0.0 if value < 0.0 else (1.0 if value > 1.0 else value)
+
+        def text_value(index: usize) -> sview:
+            return "" if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            offset: usize = index * TEXT_CAPACITY
+            return sview(&text_storage[offset], 0, widgets[index].input_length.i64())
+
+        # Whether the most recent input operation retained only a prefix due
+        # to malformed UTF-8 or fixed-capacity exhaustion.
+        def text_was_truncated(index: usize) -> bool:
+            return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            return widgets[index].text_truncated
+
         def reset() -> void:
+            # Fixed buffers are reused, so reset must erase content rather than
+            # merely dropping lengths. This also scrubs secure values retained
+            # by undo/redo snapshots.
+            for byte_index in 0..<TEXT_STORAGE_SIZE:
+                text_storage[byte_index] <- 0
+            for byte_index in 0..<SECURE_TEXT_STORAGE_SIZE:
+                secure_text_storage[byte_index] <- 0
+            for byte_index in 0..<TEXT_HISTORY_STORAGE_SIZE:
+                history_before_text[byte_index] <- 0
+                history_after_text[byte_index] <- 0
             widget_count <- 0
+            widget_dropped <- false
             hot_widget <- NONE
             active_widget <- NONE
+            active_pointer_button <- -1
+            active_key <- -1
+            focused_widget <- NONE
+            shift_down <- false
+            history_count <- 0
+            history_cursor <- 0
+            history_active <- false
+            history_suppressed <- false
+            composition_history_slot <- TEXT_HISTORY_CAPACITY
 
         def panel(parent: usize, axis: UiConst::Axis, padding: f32, spacing: f32, color: UiCore::Color) -> usize:
             index: usize = new_widget(parent, UiConst::WidgetKind.Panel)
@@ -138,6 +370,66 @@ module UiFlat:
             index: usize = new_widget(parent, UiConst::WidgetKind.Button)
             return index if index == NONE
             widgets[index] with { min_width, min_height, color, hover_color, press_color, interactive <- true }
+            return index
+
+        def radio_button(parent: usize, min_width: f32, min_height: f32, color: UiCore::Color, hover_color: UiCore::Color, press_color: UiCore::Color) -> usize:
+            index: usize = new_widget(parent, UiConst::WidgetKind.RadioButton)
+            return index if index == NONE
+            widgets[index] with { min_width, min_height, color, hover_color, press_color, interactive <- true }
+            return index
+
+        def check_box(parent: usize, min_width: f32, min_height: f32, color: UiCore::Color, hover_color: UiCore::Color, press_color: UiCore::Color) -> usize:
+            index: usize = new_widget(parent, UiConst::WidgetKind.CheckBox)
+            return index if index == NONE
+            widgets[index] with { min_width, min_height, color, hover_color, press_color, interactive <- true }
+            return index
+
+        # A slider stores a normalized value. Its three colors are the track,
+        # filled range and thumb, keeping the fixed widget record compact.
+        def slider(parent: usize, label: sview, min_width: f32, min_height: f32, value: f32, track_color: UiCore::Color, fill_color: UiCore::Color, thumb_color: UiCore::Color) -> usize:
+            index: usize = new_widget(parent, UiConst::WidgetKind.Slider)
+            return index if index == NONE
+            widgets[index] with {
+                min_width, min_height, text <- label, value,
+                color <- track_color, hover_color <- fill_color, press_color <- thumb_color,
+                interactive <- true,
+            }
+            set_value(index, value)
+            return index
+
+        def progress_bar(parent: usize, label: sview, min_width: f32, min_height: f32, value: f32, track_color: UiCore::Color, fill_color: UiCore::Color) -> usize:
+            index: usize = new_widget(parent, UiConst::WidgetKind.ProgressBar)
+            return index if index == NONE
+            widgets[index] with {
+                min_width, min_height, text <- label, value,
+                color <- track_color, hover_color <- fill_color,
+            }
+            set_value(index, value)
+            return index
+
+        def text_field(parent: usize, label: sview, placeholder: sview, initial: sview, min_width: f32, min_height: f32, size: f32, ink: UiCore::Color, fill: UiCore::Color) -> usize:
+            index: usize = new_widget(parent, UiConst::WidgetKind.TextField)
+            return index if index == NONE
+            widgets[index] with {
+                min_width, min_height, text <- label, placeholder,
+                text_size <- size, text_color <- ink, color <- fill,
+                hover_color <- fill, press_color <- fill, interactive <- true,
+            }
+            byte_limit: usize = initial.len if initial.len < TEXT_CAPACITY - 1 else TEXT_CAPACITY - 1
+            limit: usize = grapheme_prefix_length(initial, valid_utf8_prefix(initial, byte_limit))
+            widgets[index].text_truncated <- limit < initial.len
+            offset: usize = index * TEXT_CAPACITY
+            for byte_index in 0..<limit:
+                text_storage[offset + byte_index] <- single_line_byte(initial, byte_index)
+            widgets[index].input_length <- limit
+            widgets[index].caret <- limit
+            widgets[index].selection_anchor <- limit
+            widgets[index] with { marked_start <- 0, marked_end <- 0 }
+            return index
+
+        def secure_text_field(parent: usize, label: sview, placeholder: sview, initial: sview, min_width: f32, min_height: f32, size: f32, ink: UiCore::Color, fill: UiCore::Color) -> usize:
+            index: usize = text_field(parent, label, placeholder, initial, min_width, min_height, size, ink, fill)
+            set_secure(index, true)
             return index
 
         # A label's minimum is the measured extent of its text, so it
@@ -200,8 +492,10 @@ module UiFlat:
             pad: f32 = widgets[index].padding
             inner_x: f32 = x + pad
             inner_y: f32 = y + pad
-            inner_width: f32 = width - pad * 2.0
-            inner_height: f32 = height - pad * 2.0
+            raw_inner_width: f32 = width - pad * 2.0
+            raw_inner_height: f32 = height - pad * 2.0
+            inner_width: f32 = raw_inner_width if raw_inner_width > 0.0 else 0.0
+            inner_height: f32 = raw_inner_height if raw_inner_height > 0.0 else 0.0
             is_row: bool = widgets[index].axis == UiConst::Axis.Row
 
             children: f32 = child_count(index).f32()
@@ -216,19 +510,21 @@ module UiFlat:
                 weight <- weight + widgets[cursor].grow
                 cursor <- widgets[cursor].next_sibling
 
-            free: f32 = inner_along - gaps - demand
+            required: f32 = demand + gaps
+            scale: f32 = inner_along / required if required > inner_along and required > 0.0 else 1.0
+            free: f32 = inner_along - demand - gaps
             share: f32 = free / weight if weight > 0.0 and free > 0.0 else 0.0
 
             offset: mutable f32 = 0.0
             walk: mutable usize = first
             while walk != NONE |walk, offset, is_row, inner_x, inner_y, inner_width, inner_height, share|:
                 base: f32 = widgets[walk].min_width if is_row else widgets[walk].min_height
-                extent: f32 = base + share * widgets[walk].grow
+                extent: f32 = base * scale + share * widgets[walk].grow
                 if is_row:
                     arrange(walk, inner_x + offset, inner_y, extent, inner_height)
                 else:
                     arrange(walk, inner_x, inner_y + offset, inner_width, extent)
-                offset <- offset + extent + widgets[index].spacing
+                offset <- offset + extent + widgets[index].spacing * scale
                 walk <- widgets[walk].next_sibling
 
         def contains(index: usize, x: f32, y: f32) -> bool:
@@ -238,16 +534,865 @@ module UiFlat:
             for index in 0..<widget_count:
                 widgets[index].hovered <- false
 
+        def release_active_press() -> void:
+            if active_widget < widget_count:
+                widgets[active_widget].pressed <- false
+            active_widget <- NONE
+            active_pointer_button <- -1
+            active_key <- -1
+
+        def focus(index: usize) -> void:
+            release_active_press() if index != focused_widget
+            if focused_widget < widget_count:
+                widgets[focused_widget].focused <- false
+            focused_widget <- index
+            if focused_widget < widget_count:
+                widgets[focused_widget].focused <- true
+                restart_caret_blink() if widgets[focused_widget].kind == UiConst::WidgetKind.TextField
+
+        def focus_next() -> void:
+            return if widget_count == 0
+            start: usize = focused_widget + 1 if focused_widget < widget_count else 0
+            examined: mutable usize = 0
+            while examined < widget_count |examined|:
+                candidate: usize = (start + examined) % widget_count
+                if widgets[candidate].interactive and widgets[candidate].enabled:
+                    focus(candidate)
+                    return
+                examined <- examined + 1
+
+        def focus_previous() -> void:
+            return if widget_count == 0
+            start: usize = focused_widget if focused_widget < widget_count else 0
+            examined: mutable usize = 0
+            while examined < widget_count |examined|:
+                # Add widget_count before subtracting so unsigned indices wrap
+                # deliberately instead of underflowing.
+                candidate: usize = (start + widget_count - examined - 1) % widget_count
+                if widgets[candidate].interactive and widgets[candidate].enabled:
+                    focus(candidate)
+                    return
+                examined <- examined + 1
+
         def color_of(index: usize) -> UiCore::Color:
+            if not widgets[index].enabled:
+                base: UiCore::Color = widgets[index].color
+                return UiCore::Color{r: base.r / 2, g: base.g / 2, b: base.b / 2, a: base.a}
             return widgets[index].press_color if widgets[index].pressed
             return widgets[index].hover_color if widgets[index].hovered
             return widgets[index].color
+
+        def update_slider(index: usize, pointer_x: f32) -> void:
+            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider
+            inset: f32 = clamped_inset(current_theme.slider_horizontal_inset, widgets[index].width)
+            travel: f32 = widgets[index].width - inset * 2.0
+            return if travel <= 0.0
+            next: mutable f32 = (pointer_x - widgets[index].x - inset) / travel
+            next <- 0.0 if next < 0.0 else (1.0 if next > 1.0 else next)
+            return if next == widgets[index].value
+            widgets[index].value <- next
+            app_widget_event(index, UiConst::WidgetEvent.Change.i32())
+
+        def is_utf8_continuation(byte: u8) -> bool:
+            return (byte.u32() & 192) == 128
+
+        def utf8_scalar_bytes(text: sview, position: usize) -> usize:
+            return 0 if position >= text.len
+            byte: u32 = text.data[position].u32()
+            return 1 if byte < 128
+            return 2 if byte < 224 and position + 1 < text.len
+            return 3 if byte < 240 and position + 2 < text.len
+            return 4 if byte < 248 and position + 3 < text.len
+            return 1
+
+        def utf8_scalar_value(text: sview, position: usize) -> u32:
+            return 0 if position >= text.len
+            first: u32 = text.data[position].u32()
+            bytes: usize = utf8_scalar_bytes(text, position)
+            return first if bytes == 1
+            second: u32 = text.data[position + 1].u32() & 63
+            return ((first & 31) << 6) | second if bytes == 2
+            third: u32 = text.data[position + 2].u32() & 63
+            return ((first & 15) << 12) | (second << 6) | third if bytes == 3
+            fourth: u32 = text.data[position + 3].u32() & 63
+            return ((first & 7) << 18) | (second << 12) | (third << 6) | fourth
+
+        # Return the longest well-formed UTF-8 prefix that fits byte_limit.
+        # Invalid, overlong, surrogate and out-of-range sequences terminate the
+        # prefix, keeping stored values safe for painters and native strings.
+        def valid_utf8_prefix(text: sview, byte_limit: usize) -> usize:
+            limit: usize = byte_limit if byte_limit < text.len else text.len
+            cursor: mutable usize = 0
+            while cursor < limit |cursor, limit|:
+                first: u32 = text.data[cursor].u32()
+                if first <= 127:
+                    cursor <- cursor + 1
+                    continue
+                if first >= 194 and first <= 223:
+                    return cursor if cursor + 1 >= limit or not is_utf8_continuation(text.data[cursor + 1])
+                    cursor <- cursor + 2
+                    continue
+                if first >= 224 and first <= 239:
+                    return cursor if cursor + 2 >= limit
+                    second: u32 = text.data[cursor + 1].u32()
+                    return cursor if not is_utf8_continuation(text.data[cursor + 1]) or not is_utf8_continuation(text.data[cursor + 2])
+                    return cursor if first == 224 and second < 160
+                    return cursor if first == 237 and second > 159
+                    cursor <- cursor + 3
+                    continue
+                if first >= 240 and first <= 244:
+                    return cursor if cursor + 3 >= limit
+                    second: u32 = text.data[cursor + 1].u32()
+                    return cursor if not is_utf8_continuation(text.data[cursor + 1]) or not is_utf8_continuation(text.data[cursor + 2]) or not is_utf8_continuation(text.data[cursor + 3])
+                    return cursor if first == 240 and second < 144
+                    return cursor if first == 244 and second > 143
+                    cursor <- cursor + 4
+                    continue
+                return cursor
+            return cursor
+
+        # The ranges that most often extend a user-perceived character: Unicode
+        # combining marks, variation selectors, emoji skin tones and emoji tag
+        # characters. ZWJ and regional-indicator pairing are handled separately.
+        def extends_grapheme(scalar: u32) -> bool:
+            return true if scalar >= 768 and scalar <= 879
+            return true if scalar >= 6832 and scalar <= 6911
+            return true if scalar >= 7616 and scalar <= 7679
+            return true if scalar >= 8400 and scalar <= 8447
+            return true if scalar >= 65024 and scalar <= 65039
+            return true if scalar >= 127995 and scalar <= 127999
+            return true if scalar >= 917536 and scalar <= 917631
+            return scalar >= 65056 and scalar <= 65071
+
+        def regional_indicator(scalar: u32) -> bool:
+            return scalar >= 127462 and scalar <= 127487
+
+        def next_grapheme(text: sview, position: usize) -> usize:
+            return text.len if position >= text.len
+            first: u32 = utf8_scalar_value(text, position)
+            cursor: mutable usize = position + utf8_scalar_bytes(text, position)
+            if first == 13 and cursor < text.len and utf8_scalar_value(text, cursor) == 10:
+                return cursor + 1
+            if regional_indicator(first) and cursor < text.len and regional_indicator(utf8_scalar_value(text, cursor)):
+                cursor <- cursor + utf8_scalar_bytes(text, cursor)
+            while cursor < text.len |cursor|:
+                scalar: u32 = utf8_scalar_value(text, cursor)
+                if extends_grapheme(scalar):
+                    cursor <- cursor + utf8_scalar_bytes(text, cursor)
+                elif scalar == 8205:
+                    cursor <- cursor + utf8_scalar_bytes(text, cursor)
+                    cursor <- cursor + utf8_scalar_bytes(text, cursor) if cursor < text.len
+                else:
+                    break
+            return cursor
+
+        def grapheme_prefix_length(text: sview, byte_limit: usize) -> usize:
+            limit: usize = byte_limit if byte_limit < text.len else text.len
+            cursor: mutable usize = 0
+            while cursor < limit |cursor, limit|:
+                after: usize = next_grapheme(text, cursor)
+                return cursor if after > limit
+                cursor <- after
+            return cursor
+
+        def utf16_units_for_prefix(text: sview, byte_stop: usize) -> usize:
+            stop: usize = byte_stop if byte_stop < text.len else text.len
+            cursor: mutable usize = 0
+            units: mutable usize = 0
+            while cursor < stop |cursor, units, stop|:
+                scalar_bytes: usize = utf8_scalar_bytes(text, cursor)
+                units <- units + (2 if scalar_bytes == 4 else 1)
+                cursor <- cursor + scalar_bytes
+            return units
+
+        def byte_offset_for_utf16(text: sview, unit_stop: usize) -> usize:
+            cursor: mutable usize = 0
+            units: mutable usize = 0
+            while cursor < text.len |cursor, units, unit_stop|:
+                scalar_bytes: usize = utf8_scalar_bytes(text, cursor)
+                scalar_units: usize = 2 if scalar_bytes == 4 else 1
+                return cursor if units + scalar_units > unit_stop
+                units <- units + scalar_units
+                cursor <- cursor + scalar_bytes
+                return cursor if units == unit_stop
+            return text.len
+
+        def previous_character(index: usize, position: usize) -> usize:
+            return 0 if position == 0
+            cursor: mutable usize = 0
+            previous: mutable usize = 0
+            while cursor < position |cursor, previous, position|:
+                previous <- cursor
+                after: usize = next_character(index, cursor)
+                return previous if after >= position
+                cursor <- after
+            return previous
+
+        def next_character(index: usize, position: usize) -> usize:
+            value: sview = text_value(index)
+            return next_grapheme(value, position)
+
+        def grapheme_boundary_at_or_before(index: usize, position: usize) -> usize:
+            cursor: mutable usize = 0
+            while cursor < position |cursor, position|:
+                after: usize = next_character(index, cursor)
+                return cursor if after > position
+                cursor <- after
+            return cursor
+
+        def secure_display_offset(index: usize, byte_position: usize) -> usize:
+            cursor: mutable usize = 0
+            output: mutable usize = 0
+            stop: usize = byte_position if byte_position < widgets[index].input_length else widgets[index].input_length
+            while cursor < stop |cursor, output, stop|:
+                cursor <- next_character(index, cursor)
+                output <- output + 3
+            return output
+
+        def secure_display_value(index: usize) -> sview:
+            output_base: usize = index * SECURE_TEXT_CAPACITY
+            cursor: mutable usize = 0
+            output: mutable usize = 0
+            while cursor < widgets[index].input_length |cursor, output, output_base|:
+                # U+2022 BULLET in UTF-8. The mask reveals scalar count but
+                # never the original bytes or grapheme widths.
+                secure_text_storage[output_base + output] <- 226
+                secure_text_storage[output_base + output + 1] <- 128
+                secure_text_storage[output_base + output + 2] <- 162
+                output <- output + 3
+                cursor <- next_character(index, cursor)
+            return sview(&secure_text_storage[output_base], 0, output.i64())
+
+        def display_range(index: usize, start: usize, stop: usize) -> sview:
+            value: sview = text_value(index)
+            return sview(value.data + start, 0, (stop - start).i64()) if not widgets[index].secure
+            masked: sview = secure_display_value(index)
+            masked_start: usize = secure_display_offset(index, start)
+            masked_stop: usize = secure_display_offset(index, stop)
+            return sview(masked.data + masked_start, 0, (masked_stop - masked_start).i64())
+
+        def measure_text_range(index: usize, start: usize, stop: usize) -> f32:
+            return ui_measure_text_width(display_range(index, start, stop), widgets[index].text_size)
+
+        # Word navigation is intentionally Unicode-safe without pretending to
+        # implement locale-specific tokenization: ASCII letters, digits and
+        # underscore form words, while every non-ASCII scalar stays intact and
+        # participates as a word character.
+        def is_word_character(index: usize, position: usize) -> bool:
+            return false if position >= widgets[index].input_length
+            byte: u32 = text_storage[index * TEXT_CAPACITY + position].u32()
+            return true if byte >= 128
+            return true if byte >= 48 and byte <= 57
+            return true if byte >= 65 and byte <= 90
+            return true if byte >= 97 and byte <= 122
+            return byte == 95
+
+        def previous_word(index: usize, position: usize) -> usize:
+            return 0 if position == 0
+            cursor: mutable usize = previous_character(index, position)
+            while cursor > 0 and not is_word_character(index, cursor) |cursor|:
+                cursor <- previous_character(index, cursor)
+            while cursor > 0 |cursor|:
+                before: usize = previous_character(index, cursor)
+                return cursor if not is_word_character(index, before)
+                cursor <- before
+            return 0
+
+        def next_word(index: usize, position: usize) -> usize:
+            length: usize = widgets[index].input_length
+            cursor: mutable usize = position if position < length else length
+            while cursor < length and not is_word_character(index, cursor) |cursor, length|:
+                cursor <- next_character(index, cursor)
+            while cursor < length and is_word_character(index, cursor) |cursor, length|:
+                cursor <- next_character(index, cursor)
+            return cursor
+
+        def visible_text_start(index: usize, available_width: f32) -> usize:
+            visible_start: mutable usize = 0
+            return visible_start if widgets[index].caret == 0
+            while visible_start < widgets[index].caret |visible_start, available_width|:
+                return visible_start if measure_text_range(index, visible_start, widgets[index].caret) <= available_width
+                visible_start <- next_character(index, visible_start)
+            return visible_start
+
+        def caret_from_pointer(index: usize, pointer_x: f32) -> usize:
+            inset: f32 = clamped_inset(current_theme.text_horizontal_padding, widgets[index].width)
+            local_x: f32 = pointer_x - widgets[index].x - inset
+            available_width: mutable f32 = widgets[index].width - inset * 2.0
+            available_width <- 0.0 if available_width < 0.0 else available_width
+            visible_start: usize = visible_text_start(index, available_width)
+            return visible_start if local_x <= 0.0 or widgets[index].input_length == 0
+            cursor: mutable usize = visible_start
+            previous_width: mutable f32 = 0.0
+            while cursor < widgets[index].input_length |cursor, previous_width, local_x|:
+                after: usize = next_character(index, cursor)
+                width: f32 = measure_text_range(index, visible_start, after)
+                return cursor if local_x < (previous_width + width) * 0.5
+                previous_width <- width
+                cursor <- after
+            return widgets[index].input_length
+
+        def clear_history_slot(slot: usize) -> void:
+            offset: usize = slot * TEXT_CAPACITY
+            for byte_index in 0..<TEXT_CAPACITY:
+                history_before_text[offset + byte_index] <- 0
+                history_after_text[offset + byte_index] <- 0
+            history_before_length[slot] <- 0
+            history_after_length[slot] <- 0
+            history_before_caret[slot] <- 0
+            history_after_caret[slot] <- 0
+            history_before_anchor[slot] <- 0
+            history_after_anchor[slot] <- 0
+            history_before_marked_start[slot] <- 0
+            history_before_marked_end[slot] <- 0
+            history_after_marked_start[slot] <- 0
+            history_after_marked_end[slot] <- 0
+
+        def copy_history_slot(source: usize, target: usize) -> void:
+            history_widget[target] <- history_widget[source]
+            history_before_length[target] <- history_before_length[source]
+            history_after_length[target] <- history_after_length[source]
+            history_before_caret[target] <- history_before_caret[source]
+            history_after_caret[target] <- history_after_caret[source]
+            history_before_anchor[target] <- history_before_anchor[source]
+            history_after_anchor[target] <- history_after_anchor[source]
+            history_before_marked_start[target] <- history_before_marked_start[source]
+            history_before_marked_end[target] <- history_before_marked_end[source]
+            history_after_marked_start[target] <- history_after_marked_start[source]
+            history_after_marked_end[target] <- history_after_marked_end[source]
+            source_offset: usize = source * TEXT_CAPACITY
+            target_offset: usize = target * TEXT_CAPACITY
+            for byte_index in 0..<TEXT_CAPACITY:
+                history_before_text[target_offset + byte_index] <- history_before_text[source_offset + byte_index]
+                history_after_text[target_offset + byte_index] <- history_after_text[source_offset + byte_index]
+
+        def store_history_state(slot: usize, index: usize, after: bool) -> void:
+            source_offset: usize = index * TEXT_CAPACITY
+            target_offset: usize = slot * TEXT_CAPACITY
+            for byte_index in 0..<TEXT_CAPACITY:
+                if after:
+                    history_after_text[target_offset + byte_index] <- 0
+                else:
+                    history_before_text[target_offset + byte_index] <- 0
+            for byte_index in 0..<widgets[index].input_length:
+                if after:
+                    history_after_text[target_offset + byte_index] <- text_storage[source_offset + byte_index]
+                else:
+                    history_before_text[target_offset + byte_index] <- text_storage[source_offset + byte_index]
+            if after:
+                history_after_length[slot] <- widgets[index].input_length
+                history_after_caret[slot] <- widgets[index].caret
+                history_after_anchor[slot] <- widgets[index].selection_anchor
+                history_after_marked_start[slot] <- widgets[index].marked_start
+                history_after_marked_end[slot] <- widgets[index].marked_end
+            else:
+                history_before_length[slot] <- widgets[index].input_length
+                history_before_caret[slot] <- widgets[index].caret
+                history_before_anchor[slot] <- widgets[index].selection_anchor
+                history_before_marked_start[slot] <- widgets[index].marked_start
+                history_before_marked_end[slot] <- widgets[index].marked_end
+
+        def history_text_changed(slot: usize) -> bool:
+            return true if history_before_length[slot] != history_after_length[slot]
+            offset: usize = slot * TEXT_CAPACITY
+            for byte_index in 0..<history_before_length[slot]:
+                return true if history_before_text[offset + byte_index] != history_after_text[offset + byte_index]
+            return false
+
+        def begin_text_history(index: usize) -> usize:
+            return TEXT_HISTORY_CAPACITY if history_suppressed or history_active
+            discarded_count: usize = history_count
+            history_count <- history_cursor
+            for discarded in history_count..<discarded_count:
+                clear_history_slot(discarded)
+            if history_count == TEXT_HISTORY_CAPACITY:
+                for slot in 1..<TEXT_HISTORY_CAPACITY:
+                    copy_history_slot(slot, slot - 1)
+                history_count <- TEXT_HISTORY_CAPACITY - 1
+                history_cursor <- history_count
+            slot: usize = history_count
+            clear_history_slot(slot)
+            history_widget[slot] <- index
+            store_history_state(slot, index, false)
+            history_active <- true
+            composition_history_slot <- TEXT_HISTORY_CAPACITY
+            return slot
+
+        def finish_text_history(slot: usize, index: usize) -> void:
+            return if slot >= TEXT_HISTORY_CAPACITY
+            store_history_state(slot, index, true)
+            if history_text_changed(slot):
+                history_count <- slot + 1
+                history_cursor <- history_count
+            else:
+                clear_history_slot(slot)
+            history_active <- false
+
+        def restore_history_state(slot: usize, after: bool) -> void:
+            index: usize = history_widget[slot]
+            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            length: usize = history_after_length[slot] if after else history_before_length[slot]
+            source_offset: usize = slot * TEXT_CAPACITY
+            target_offset: usize = index * TEXT_CAPACITY
+            for byte_index in 0..<TEXT_CAPACITY:
+                text_storage[target_offset + byte_index] <- 0
+            for byte_index in 0..<length:
+                text_storage[target_offset + byte_index] <- history_after_text[source_offset + byte_index] if after else history_before_text[source_offset + byte_index]
+            if after:
+                widgets[index] with {
+                    input_length <- length, caret <- history_after_caret[slot], selection_anchor <- history_after_anchor[slot],
+                    marked_start <- history_after_marked_start[slot], marked_end <- history_after_marked_end[slot],
+                }
+            else:
+                widgets[index] with {
+                    input_length <- length, caret <- history_before_caret[slot], selection_anchor <- history_before_anchor[slot],
+                    marked_start <- history_before_marked_start[slot], marked_end <- history_before_marked_end[slot],
+                }
+            widgets[index].text_revision <- widgets[index].text_revision + 1
+            widgets[index].text_truncated <- false
+            focus(index)
+            app_widget_event(index, UiConst::WidgetEvent.Change.i32())
+
+        def remove_text(index: usize, start: usize, stop: usize) -> void:
+            return if stop <= start or stop > widgets[index].input_length
+            widgets[index].text_truncated <- false
+            history_slot: usize = begin_text_history(index)
+            offset: usize = index * TEXT_CAPACITY
+            old_length: usize = widgets[index].input_length
+            removed: usize = stop - start
+            cursor: mutable usize = stop
+            while cursor < widgets[index].input_length |cursor, offset, removed|:
+                text_storage[offset + cursor - removed] <- text_storage[offset + cursor]
+                cursor <- cursor + 1
+            widgets[index].input_length <- widgets[index].input_length - removed
+            for byte_index in widgets[index].input_length..<old_length:
+                text_storage[offset + byte_index] <- 0
+            widgets[index].text_revision <- widgets[index].text_revision + 1
+            widgets[index].caret <- start
+            widgets[index].selection_anchor <- start
+            widgets[index] with { marked_start <- 0, marked_end <- 0 }
+            restart_caret_blink() if index == focused_widget
+            app_widget_event(index, UiConst::WidgetEvent.Change.i32())
+            finish_text_history(history_slot, index)
 
     public:
         def layout(width: f32, height: f32) -> void:
             return if widget_count == 0
             measure(0)
             arrange(0, 0.0, 0.0, width, height)
+
+        # Window deactivation, modal interruption and capture loss must not
+        # leave a control visually held or a modifier latched.
+        def cancel_interaction() -> void:
+            release_active_press()
+            hot_widget <- NONE
+            shift_down <- false
+            clear_hover()
+
+        # Portable window lifecycle handling. Backends report focus changes as
+        # UiCore events; the widget layer owns the state that must be released
+        # when the application can no longer receive the matching key/mouse-up.
+        def lifecycle(event: UiCore::Event) -> void:
+            match event:
+                UiCore::Event.FocusLost:
+                    cancel_interaction()
+                _:
+                    pass
+
+        def accepts_text() -> bool:
+            return focused_widget < widget_count and widgets[focused_widget].kind == UiConst::WidgetKind.TextField and widgets[focused_widget].enabled
+
+        def allows_text_readback() -> bool:
+            return accepts_text() and not widgets[focused_widget].secure
+
+        def selection_start(index: usize) -> usize:
+            return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            return widgets[index].selection_anchor if widgets[index].selection_anchor < widgets[index].caret else widgets[index].caret
+
+        def selection_end(index: usize) -> usize:
+            return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            return widgets[index].caret if widgets[index].caret > widgets[index].selection_anchor else widgets[index].selection_anchor
+
+        def selected_text_pointer(index: usize) -> u8&:
+            return &text_storage[0] if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            return &text_storage[index * TEXT_CAPACITY + selection_start(index)]
+
+        def selected_text_length(index: usize) -> usize:
+            return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField or widgets[index].secure
+            return selection_end(index) - selection_start(index)
+
+        def selected_text_value(index: usize) -> sview:
+            length: usize = selected_text_length(index)
+            return "" if length == 0
+            return sview(&text_storage[index * TEXT_CAPACITY + selection_start(index)], 0, length.i64())
+
+        def selection_utf16_location(index: usize) -> usize:
+            return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            return utf16_units_for_prefix(text_value(index), selection_start(index))
+
+        def selection_utf16_length(index: usize) -> usize:
+            return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            return utf16_units_for_prefix(text_value(index), selection_end(index)) - selection_utf16_location(index)
+
+        def text_utf16_offset(index: usize, byte_offset: usize) -> usize:
+            return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            return utf16_units_for_prefix(text_value(index), byte_offset)
+
+        def text_utf16_length(index: usize) -> usize:
+            return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            value: sview = text_value(index)
+            return utf16_units_for_prefix(value, value.len)
+
+        def text_range_location(index: usize, requested_location: usize) -> usize:
+            total: usize = text_utf16_length(index)
+            return requested_location if requested_location < total else total
+
+        def text_range_length(index: usize, requested_location: usize, requested_length: usize) -> usize:
+            location: usize = text_range_location(index, requested_location)
+            remaining: usize = text_utf16_length(index) - location
+            return requested_length if requested_length < remaining else remaining
+
+        def text_range_pointer(index: usize, location: usize) -> u8&:
+            return &text_storage[0] if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            byte_start: usize = byte_offset_for_utf16(text_value(index), text_range_location(index, location))
+            return &text_storage[index * TEXT_CAPACITY + byte_start]
+
+        def text_range_byte_length(index: usize, location: usize, length: usize) -> usize:
+            return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            value: sview = text_value(index)
+            safe_location: usize = text_range_location(index, location)
+            safe_length: usize = text_range_length(index, location, length)
+            start: usize = byte_offset_for_utf16(value, safe_location)
+            stop: usize = byte_offset_for_utf16(value, safe_location + safe_length)
+            return stop - start
+
+        # Selection positions are UTF-8 byte offsets. Platform adapters convert
+        # from their native indexing convention and only pass scalar boundaries.
+        def set_selection(index: usize, anchor: usize, caret: usize) -> void:
+            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            length: usize = widgets[index].input_length
+            next_anchor: mutable usize = anchor if anchor < length else length
+            next_caret: mutable usize = caret if caret < length else length
+            offset: usize = index * TEXT_CAPACITY
+            while next_anchor > 0 and next_anchor < length and is_utf8_continuation(text_storage[offset + next_anchor]) |next_anchor, offset, length|:
+                next_anchor <- next_anchor - 1
+            while next_caret > 0 and next_caret < length and is_utf8_continuation(text_storage[offset + next_caret]) |next_caret, offset, length|:
+                next_caret <- next_caret - 1
+            next_anchor <- grapheme_boundary_at_or_before(index, next_anchor)
+            next_caret <- grapheme_boundary_at_or_before(index, next_caret)
+            widgets[index] with { selection_anchor <- next_anchor, caret <- next_caret }
+            restart_caret_blink() if index == focused_widget
+
+        def set_selection_utf16(index: usize, location: usize, length: usize) -> void:
+            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            value: sview = text_value(index)
+            total_units: usize = utf16_units_for_prefix(value, value.len)
+            safe_location: usize = location if location < total_units else total_units
+            remaining_units: usize = total_units - safe_location
+            safe_length: usize = length if length < remaining_units else remaining_units
+            start: usize = byte_offset_for_utf16(value, safe_location)
+            stop: usize = byte_offset_for_utf16(value, safe_location + safe_length)
+            set_selection(index, start, stop)
+
+        def set_marked(index: usize, start: usize, stop: usize) -> void:
+            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            length: usize = widgets[index].input_length
+            widgets[index].marked_start <- start if start < length else length
+            widgets[index].marked_end <- stop if stop < length else length
+            if widgets[index].marked_end < widgets[index].marked_start:
+                swap: usize = widgets[index].marked_start
+                widgets[index].marked_start <- widgets[index].marked_end
+                widgets[index].marked_end <- swap
+
+        def marked_utf16_location(index: usize) -> usize:
+            return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            return utf16_units_for_prefix(text_value(index), widgets[index].marked_start)
+
+        def marked_utf16_length(index: usize) -> usize:
+            return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            return utf16_units_for_prefix(text_value(index), widgets[index].marked_end) - marked_utf16_location(index)
+
+        def text_caret_x(index: usize) -> f32:
+            return 0.0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            inset: f32 = clamped_inset(current_theme.text_horizontal_padding, widgets[index].width)
+            available_width: mutable f32 = widgets[index].width - inset * 2.0
+            available_width <- 0.0 if available_width < 0.0 else available_width
+            visible_start: usize = visible_text_start(index, available_width)
+            return widgets[index].x + inset + measure_text_range(index, visible_start, widgets[index].caret)
+
+        def text_character_x(index: usize, utf16_location: usize) -> f32:
+            return 0.0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            inset: f32 = clamped_inset(current_theme.text_horizontal_padding, widgets[index].width)
+            available_width: mutable f32 = widgets[index].width - inset * 2.0
+            available_width <- 0.0 if available_width < 0.0 else available_width
+            visible_start: usize = visible_text_start(index, available_width)
+            position: mutable usize = byte_offset_for_utf16(text_value(index), text_range_location(index, utf16_location))
+            position <- visible_start if position < visible_start else position
+            width: mutable f32 = measure_text_range(index, visible_start, position)
+            width <- available_width if width > available_width else width
+            return widgets[index].x + inset + width
+
+        def text_caret_y(index: usize) -> f32:
+            return 0.0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            inset: f32 = clamped_inset(current_theme.text_vertical_padding, widgets[index].height)
+            return widgets[index].y + inset
+
+        def text_caret_height(index: usize) -> f32:
+            return 0.0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            inset: f32 = clamped_inset(current_theme.text_vertical_padding, widgets[index].height)
+            inner: f32 = widgets[index].height - inset * 2.0
+            return inner if inner > 0.0 else 0.0
+
+        def text_position_at(index: usize, x: f32) -> usize:
+            return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            return caret_from_pointer(index, x)
+
+        # Desktop-native multi-click behavior without exposing byte indexing to
+        # the host. Double-click selects the word or separator run under the
+        # pointer; triple-click selects the complete single-line field.
+        def select_text_at(x: f32, click_count: i32) -> void:
+            return if click_count < 2 or not accepts_text()
+            index: usize = focused_widget
+            if click_count >= 3:
+                set_selection(index, 0, widgets[index].input_length)
+                return
+            length: usize = widgets[index].input_length
+            if length == 0:
+                set_selection(index, 0, 0)
+                return
+            position: mutable usize = caret_from_pointer(index, x)
+            position <- previous_character(index, position) if position == length
+            word: bool = is_word_character(index, position)
+            start: mutable usize = position
+            while start > 0 |start, word|:
+                before: usize = previous_character(index, start)
+                break if is_word_character(index, before) != word
+                start <- before
+            stop: mutable usize = next_character(index, position)
+            while stop < length and is_word_character(index, stop) == word |stop, length, word|:
+                stop <- next_character(index, stop)
+            set_selection(index, start, stop)
+
+        # Platform adapters should use this raw-click entry point. Keeping the
+        # primary-button rule beside the editing engine prevents each native
+        # host from developing subtly different selection behavior.
+        def select_text_click_at(x: f32, button: i32, click_count: i32) -> void:
+            return if button != 0
+            select_text_at(x, click_count)
+
+        def move_word_left(extend_selection: bool) -> void:
+            return if not accepts_text()
+            index: usize = focused_widget
+            if not extend_selection and selection_start(index) != selection_end(index):
+                widgets[index].caret <- selection_start(index)
+            else:
+                widgets[index].caret <- previous_word(index, widgets[index].caret)
+            widgets[index].selection_anchor <- widgets[index].caret if not extend_selection
+            restart_caret_blink()
+
+        def move_word_right(extend_selection: bool) -> void:
+            return if not accepts_text()
+            index: usize = focused_widget
+            if not extend_selection and selection_start(index) != selection_end(index):
+                widgets[index].caret <- selection_end(index)
+            else:
+                widgets[index].caret <- next_word(index, widgets[index].caret)
+            widgets[index].selection_anchor <- widgets[index].caret if not extend_selection
+            restart_caret_blink()
+
+        def delete_word_backward() -> void:
+            return if not accepts_text()
+            index: usize = focused_widget
+            if selection_start(index) != selection_end(index):
+                remove_text(index, selection_start(index), selection_end(index))
+                return
+            remove_text(index, previous_word(index, widgets[index].caret), widgets[index].caret)
+
+        def delete_word_forward() -> void:
+            return if not accepts_text()
+            index: usize = focused_widget
+            if selection_start(index) != selection_end(index):
+                remove_text(index, selection_start(index), selection_end(index))
+                return
+            remove_text(index, widgets[index].caret, next_word(index, widgets[index].caret))
+
+        # Insert committed UTF-8 at the focused field's caret. The AppKit text
+        # input manager calls this with whole composed strings, never key codes.
+        def insert_text(text: sview) -> void:
+            return if not accepts_text()
+            index: usize = focused_widget
+            widgets[index].text_truncated <- false
+            start: usize = selection_start(index)
+            stop: usize = selection_end(index)
+            if text.len == 0:
+                remove_text(index, start, stop)
+                return
+            removed: usize = stop - start
+            remaining: usize = widgets[index].input_length - removed
+            available: usize = TEXT_CAPACITY - 1 - remaining
+            byte_limit: usize = text.len if text.len < available else available
+            take: usize = grapheme_prefix_length(text, valid_utf8_prefix(text, byte_limit))
+            widgets[index].text_truncated <- take < text.len
+            return if take == 0
+            history_slot: usize = begin_text_history(index)
+            offset: usize = index * TEXT_CAPACITY
+            old_length: usize = widgets[index].input_length
+            tail_length: usize = widgets[index].input_length - stop
+            cursor: mutable usize = 0
+            if start + take > stop:
+                cursor <- tail_length
+                while cursor > 0 |cursor, offset, start, stop, take|:
+                    cursor <- cursor - 1
+                    text_storage[offset + start + take + cursor] <- text_storage[offset + stop + cursor]
+            else:
+                while cursor < tail_length |cursor, offset, start, stop, take, tail_length|:
+                    text_storage[offset + start + take + cursor] <- text_storage[offset + stop + cursor]
+                    cursor <- cursor + 1
+            for byte_index in 0..<take:
+                text_storage[offset + start + byte_index] <- single_line_byte(text, byte_index)
+            widgets[index].caret <- start + take
+            widgets[index].selection_anchor <- widgets[index].caret
+            widgets[index].input_length <- remaining + take
+            for byte_index in widgets[index].input_length..<old_length:
+                text_storage[offset + byte_index] <- 0
+            widgets[index].text_revision <- widgets[index].text_revision + 1
+            widgets[index] with { marked_start <- 0, marked_end <- 0 }
+            restart_caret_blink()
+            app_widget_event(index, UiConst::WidgetEvent.Change.i32())
+            finish_text_history(history_slot, index)
+
+        def replace_text(index: usize, text: sview) -> void:
+            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField or not widgets[index].enabled
+            byte_limit: usize = text.len if text.len < TEXT_CAPACITY - 1 else TEXT_CAPACITY - 1
+            take: usize = grapheme_prefix_length(text, valid_utf8_prefix(text, byte_limit))
+            widgets[index].text_truncated <- take < text.len
+
+            offset: usize = index * TEXT_CAPACITY
+            old_length: usize = widgets[index].input_length
+            changed: mutable bool = widgets[index].input_length != take
+            compare: mutable usize = 0
+            while not changed and compare < take |compare, changed, offset|:
+                changed <- true if text_storage[offset + compare] != single_line_byte(text, compare)
+                compare <- compare + 1
+
+            history_slot: usize = begin_text_history(index) if changed else TEXT_HISTORY_CAPACITY
+            for byte_index in 0..<take:
+                text_storage[offset + byte_index] <- single_line_byte(text, byte_index)
+            for byte_index in take..<old_length:
+                text_storage[offset + byte_index] <- 0
+            widgets[index] with { input_length <- take, caret <- take, selection_anchor <- take, marked_start <- 0, marked_end <- 0 }
+            widgets[index].text_revision <- widgets[index].text_revision + 1 if changed
+            restart_caret_blink() if changed and index == focused_widget
+            app_widget_event(index, UiConst::WidgetEvent.Change.i32()) if changed
+            finish_text_history(history_slot, index)
+
+        # Platform text systems describe ranges in UTF-16 code units. Keeping
+        # this conversion and all replacement policy in Elisa leaves native
+        # adapters responsible only for forwarding protocol calls.
+        def commit_text(text: sview, replacement_location: usize, replacement_length: usize, has_replacement: bool) -> void:
+            return if not accepts_text()
+            index: usize = focused_widget
+            if composition_history_slot < TEXT_HISTORY_CAPACITY and widgets[index].marked_end > widgets[index].marked_start:
+                history_suppressed <- true
+                set_selection(index, widgets[index].marked_start, widgets[index].marked_end)
+                insert_text(text)
+                history_suppressed <- false
+                store_history_state(composition_history_slot, index, true)
+                composition_history_slot <- TEXT_HISTORY_CAPACITY
+                return
+            history_slot: usize = begin_text_history(index) if has_replacement else TEXT_HISTORY_CAPACITY
+            if has_replacement:
+                set_selection_utf16(index, replacement_location, replacement_length)
+            elif widgets[index].marked_end > widgets[index].marked_start:
+                set_selection(index, widgets[index].marked_start, widgets[index].marked_end)
+            insert_text(text)
+            finish_text_history(history_slot, index)
+
+        def update_marked_text(text: sview, selected_location: usize, selected_length: usize, replacement_location: usize, replacement_length: usize, has_replacement: bool) -> void:
+            return if not accepts_text()
+            index: usize = focused_widget
+            continuing_slot: usize = composition_history_slot
+            history_slot: mutable usize = TEXT_HISTORY_CAPACITY
+            if continuing_slot < TEXT_HISTORY_CAPACITY:
+                history_suppressed <- true
+            else:
+                history_slot <- begin_text_history(index)
+            if has_replacement:
+                set_selection_utf16(index, replacement_location, replacement_length)
+            elif widgets[index].marked_end > widgets[index].marked_start:
+                set_selection(index, widgets[index].marked_start, widgets[index].marked_end)
+            marked_start: usize = selection_start(index)
+            insert_text(text)
+            marked_stop: usize = widgets[index].caret
+            set_marked(index, marked_start, marked_stop)
+            total_units: usize = utf16_units_for_prefix(text, text.len)
+            safe_location: usize = selected_location if selected_location < total_units else total_units
+            remaining_units: usize = total_units - safe_location
+            safe_length: usize = selected_length if selected_length < remaining_units else remaining_units
+            relative_start: mutable usize = byte_offset_for_utf16(text, safe_location)
+            relative_stop: mutable usize = byte_offset_for_utf16(text, safe_location + safe_length)
+            inserted_length: usize = marked_stop - marked_start
+            relative_start <- inserted_length if relative_start > inserted_length
+            relative_stop <- inserted_length if relative_stop > inserted_length
+            set_selection(index, marked_start + relative_start, marked_start + relative_stop)
+            if continuing_slot < TEXT_HISTORY_CAPACITY:
+                history_suppressed <- false
+                store_history_state(continuing_slot, index, true)
+            else:
+                finish_text_history(history_slot, index)
+                composition_history_slot <- history_slot if history_slot < TEXT_HISTORY_CAPACITY and history_text_changed(history_slot) else TEXT_HISTORY_CAPACITY
+
+        # SDL describes the selection inside marked text in Unicode scalar
+        # counts, whereas AppKit uses UTF-16 units. Normalize both at this
+        # framework boundary so the editing engine has one internal protocol.
+        def update_marked_text_utf8_characters(text: sview, selected_start: i32, selected_length: i32) -> void:
+            start_count: usize = selected_start.usize() if selected_start > 0 else 0
+            length_count: usize = selected_length.usize() if selected_length > 0 else 0
+            cursor: mutable usize = 0
+            scalars: mutable usize = 0
+            while cursor < text.len and scalars < start_count |cursor, scalars, start_count|:
+                cursor <- cursor + utf8_scalar_bytes(text, cursor)
+                scalars <- scalars + 1
+            selection_location: usize = utf16_units_for_prefix(text, cursor)
+            stop: mutable usize = cursor
+            scalars <- 0
+            while stop < text.len and scalars < length_count |stop, scalars, length_count|:
+                stop <- stop + utf8_scalar_bytes(text, stop)
+                scalars <- scalars + 1
+            selection_length_units: usize = utf16_units_for_prefix(text, stop) - selection_location
+            update_marked_text(text, selection_location, selection_length_units, 0, 0, false)
+            unmark_text() if text.len == 0
+
+        def unmark_text() -> void:
+            return if not accepts_text()
+            widgets[focused_widget] with { marked_start <- 0, marked_end <- 0 }
+            if composition_history_slot < TEXT_HISTORY_CAPACITY:
+                store_history_state(composition_history_slot, focused_widget, true)
+            composition_history_slot <- TEXT_HISTORY_CAPACITY
+
+        def can_undo_text() -> bool:
+            return history_cursor > 0
+
+        def can_redo_text() -> bool:
+            return history_cursor < history_count
+
+        def undo_text() -> bool:
+            return false if history_cursor == 0
+            composition_history_slot <- TEXT_HISTORY_CAPACITY
+            history_cursor <- history_cursor - 1
+            history_suppressed <- true
+            restore_history_state(history_cursor, false)
+            history_suppressed <- false
+            return true
+
+        def redo_text() -> bool:
+            return false if history_cursor >= history_count
+            composition_history_slot <- TEXT_HISTORY_CAPACITY
+            history_suppressed <- true
+            restore_history_state(history_cursor, true)
+            history_suppressed <- false
+            history_cursor <- history_cursor + 1
+            return true
 
         # Later widgets are drawn over earlier ones, so scanning backwards finds
         # the topmost interactive widget under the pointer.
@@ -256,8 +1401,17 @@ module UiFlat:
             scan: mutable usize = widget_count
             while scan > 0 |scan|:
                 scan <- scan - 1
-                return scan if widgets[scan].interactive and contains(scan, x, y)
+                return scan if widgets[scan].interactive and widgets[scan].enabled and contains(scan, x, y)
             return NONE
+
+        # Native hosts need only choose the system cursor; widget semantics and
+        # hit ordering remain owned by Elisa. 0=arrow, 1=pointing hand, 2=I-beam.
+        def cursor_at(x: f32, y: f32) -> i32:
+            target: usize = hit(x, y)
+            return 0 if target == NONE
+            return 2 if widgets[target].kind == UiConst::WidgetKind.TextField
+            return 1 if widgets[target].kind == UiConst::WidgetKind.Button or widgets[target].kind == UiConst::WidgetKind.RadioButton or widgets[target].kind == UiConst::WidgetKind.CheckBox
+            return 0
 
         # Feed one event through the flat tree. Anything that is not a pointer event
         # is ignored here, so an app can hand the whole stream over without sorting
@@ -284,35 +1438,272 @@ module UiFlat:
 
             match event:
                 UiCore::PointerEvent.Down(press_at, press_button):
+                    return if press_button != 0
                     return if target == NONE
+                    focus(target)
                     active_widget <- target
+                    active_pointer_button <- press_button
                     widgets[target].pressed <- true
+                    if widgets[target].kind == UiConst::WidgetKind.TextField:
+                        widgets[target].caret <- caret_from_pointer(target, press_at.x)
+                        widgets[target].selection_anchor <- widgets[target].caret if not shift_down
+                        restart_caret_blink()
+                    update_slider(target, press_at.x)
+                UiCore::PointerEvent.Move(move_at):
+                    if active_pointer_button >= 0 and active_widget < widget_count:
+                        if widgets[active_widget].kind == UiConst::WidgetKind.Slider:
+                            widgets[active_widget].pressed <- true
+                            update_slider(active_widget, move_at.x)
+                        elif widgets[active_widget].kind == UiConst::WidgetKind.TextField:
+                            widgets[active_widget].pressed <- true
+                            widgets[active_widget].caret <- caret_from_pointer(active_widget, move_at.x)
+                            restart_caret_blink()
+                        else:
+                            widgets[active_widget].pressed <- target == active_widget
                 UiCore::PointerEvent.Up(release_at, release_button):
+                    return if active_pointer_button < 0 or active_widget == NONE or release_button != active_pointer_button
                     held: usize = active_widget
                     active_widget <- NONE
-                    return if held == NONE
+                    active_pointer_button <- -1
+                    active_key <- -1
                     widgets[held].pressed <- false
-                    if held == target:
+                    if widgets[held].kind == UiConst::WidgetKind.Slider:
+                        update_slider(held, release_at.x)
+                    elif widgets[held].kind == UiConst::WidgetKind.TextField:
+                        pass
+                    elif held == target:
                         app_widget_event(held, UiConst::WidgetEvent.Click.i32())
                 UiCore::PointerEvent.Leave:
-                    released: usize = active_widget
-                    active_widget <- NONE
                     hot_widget <- NONE
-                    return if released == NONE
-                    widgets[released].pressed <- false
+                    return if active_pointer_button < 0 or active_widget == NONE
+                    # Keep capture until mouse-up. Sliders continue to receive
+                    # clamped drag updates outside the view; buttons can regain
+                    # their pressed appearance if the pointer comes back.
+                    widgets[active_widget].pressed <- widgets[active_widget].kind == UiConst::WidgetKind.Slider
                 _:
                     pass
+
+        # Keyboard interaction mirrors desktop controls: Tab moves focus, while
+        # Space/Enter press and release the focused control. Activation happens
+        # on release, matching pointer clicks and allowing the pressed state to paint.
+        def keyboard(event: UiCore::Event) -> void:
+            match event:
+                UiCore::KeyEvent.Down(code):
+                    if code == UiCore::Key.LeftShift or code == UiCore::Key.RightShift:
+                        shift_down <- true
+                        return
+                    if code == UiCore::Key.Tab:
+                        focus_previous() if shift_down else focus_next()
+                        return
+                    if focused_widget < widget_count and widgets[focused_widget].kind == UiConst::WidgetKind.TextField:
+                        field: usize = focused_widget
+                        if code == UiCore::Key.Left:
+                            if not shift_down and selection_start(field) != selection_end(field):
+                                widgets[field].caret <- selection_start(field)
+                            else:
+                                widgets[field].caret <- previous_character(field, widgets[field].caret)
+                            widgets[field].selection_anchor <- widgets[field].caret if not shift_down
+                            restart_caret_blink()
+                            return
+                        if code == UiCore::Key.Right:
+                            if not shift_down and selection_start(field) != selection_end(field):
+                                widgets[field].caret <- selection_end(field)
+                            else:
+                                widgets[field].caret <- next_character(field, widgets[field].caret)
+                            widgets[field].selection_anchor <- widgets[field].caret if not shift_down
+                            restart_caret_blink()
+                            return
+                        if code == UiCore::Key.Home:
+                            widgets[field].caret <- 0
+                            widgets[field].selection_anchor <- widgets[field].caret if not shift_down
+                            restart_caret_blink()
+                            return
+                        if code == UiCore::Key.End:
+                            widgets[field].caret <- widgets[field].input_length
+                            widgets[field].selection_anchor <- widgets[field].caret if not shift_down
+                            restart_caret_blink()
+                            return
+                        if code == UiCore::Key.Backspace and selection_start(field) != selection_end(field):
+                            remove_text(field, selection_start(field), selection_end(field))
+                            return
+                        if code == UiCore::Key.Backspace and widgets[field].caret > 0:
+                            remove_text(field, previous_character(field, widgets[field].caret), widgets[field].caret)
+                            return
+                        if code == UiCore::Key.Delete and selection_start(field) != selection_end(field):
+                            remove_text(field, selection_start(field), selection_end(field))
+                            return
+                        if code == UiCore::Key.Delete and widgets[field].caret < widgets[field].input_length:
+                            remove_text(field, widgets[field].caret, next_character(field, widgets[field].caret))
+                            return
+                        if code == UiCore::Key.Enter:
+                            app_widget_event(field, UiConst::WidgetEvent.Submit.i32())
+                            return
+                    if focused_widget < widget_count and widgets[focused_widget].kind == UiConst::WidgetKind.Slider:
+                        adjust(focused_widget, -0.05) if code == UiCore::Key.Left or code == UiCore::Key.Down
+                        adjust(focused_widget, 0.05) if code == UiCore::Key.Right or code == UiCore::Key.Up
+                        return if code == UiCore::Key.Left or code == UiCore::Key.Down or code == UiCore::Key.Right or code == UiCore::Key.Up
+                    if (code == UiCore::Key.Space or code == UiCore::Key.Enter) and focused_widget < widget_count and widgets[focused_widget].kind != UiConst::WidgetKind.Slider and widgets[focused_widget].kind != UiConst::WidgetKind.TextField:
+                        return if active_key >= 0 or active_pointer_button >= 0
+                        active_widget <- focused_widget
+                        active_key <- code.i32()
+                        widgets[focused_widget].pressed <- true
+                UiCore::KeyEvent.Up(code):
+                    if code == UiCore::Key.LeftShift or code == UiCore::Key.RightShift:
+                        shift_down <- false
+                        return
+                    if (code == UiCore::Key.Space or code == UiCore::Key.Enter) and focused_widget < widget_count and widgets[focused_widget].kind != UiConst::WidgetKind.Slider and widgets[focused_widget].kind != UiConst::WidgetKind.TextField:
+                        return if active_key != code.i32() or active_widget >= widget_count
+                        activated: usize = active_widget
+                        active_widget <- NONE
+                        active_key <- -1
+                        widgets[activated].pressed <- false
+                        app_widget_event(activated, UiConst::WidgetEvent.Click.i32()) if activated == focused_widget and widgets[activated].enabled
+                _:
+                    pass
+
+        # One activation path for accessibility adapters and future automation.
+        # It deliberately mirrors a completed pointer/keyboard click.
+        def activate(index: usize) -> bool:
+            return false if index >= widget_count or not widgets[index].interactive or not widgets[index].enabled or widgets[index].kind == UiConst::WidgetKind.Slider or widgets[index].kind == UiConst::WidgetKind.TextField
+            release_active_press()
+            focus(index)
+            app_widget_event(index, UiConst::WidgetEvent.Click.i32())
+            return true
+
+        # Accessibility adapters use the same normalized adjustment path as
+        # arrow keys, so assistive actions update app state identically.
+        def adjust(index: usize, delta: f32) -> bool:
+            return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider or not widgets[index].enabled
+            before: f32 = widgets[index].value
+            set_value(index, before + delta)
+            return false if widgets[index].value == before
+            focus(index)
+            app_widget_event(index, UiConst::WidgetEvent.Change.i32())
+            return true
 
         # Pre-order emission gives painter's-algorithm ordering for free: a
         # parent's background is laid down before any of its children.
         def paint() -> void:
             for index in 0..<widget_count:
                 color: UiCore::Color = color_of(index)
-                if color.a != 0:
-                    UiCore::fill(UiCore::Rect(widgets[index].x, widgets[index].y, widgets[index].width, widgets[index].height), color)
+                frame: UiCore::Rect = UiCore::Rect(widgets[index].x, widgets[index].y, widgets[index].width, widgets[index].height)
+                if widgets[index].kind == UiConst::WidgetKind.Button:
+                    UiCore::accessibility(UiCore::AccessibilityRole.Button, widgets[index].text, widgets[index].help, frame, index, index, widgets[index].enabled, widgets[index].focused, false, 0.0, "", "", 0, 0, 0)
+                elif widgets[index].kind == UiConst::WidgetKind.RadioButton:
+                    UiCore::accessibility(UiCore::AccessibilityRole.RadioButton, widgets[index].text, widgets[index].help, frame, index, index, widgets[index].enabled, widgets[index].focused, widgets[index].selected, 0.0, "", "", 0, 0, 0)
+                elif widgets[index].kind == UiConst::WidgetKind.CheckBox:
+                    UiCore::accessibility(UiCore::AccessibilityRole.CheckBox, widgets[index].text, widgets[index].help, frame, index, index, widgets[index].enabled, widgets[index].focused, widgets[index].selected, 0.0, "", "", 0, 0, 0)
+                elif widgets[index].kind == UiConst::WidgetKind.Slider:
+                    UiCore::accessibility(UiCore::AccessibilityRole.Slider, widgets[index].text, widgets[index].help, frame, index, index, widgets[index].enabled, widgets[index].focused, false, widgets[index].value, "", "", 0, 0, 0)
+                elif widgets[index].kind == UiConst::WidgetKind.ProgressBar:
+                    UiCore::accessibility(UiCore::AccessibilityRole.ProgressBar, widgets[index].text, widgets[index].help, frame, index, NONE, widgets[index].enabled, false, false, widgets[index].value, "", "", 0, 0, 0)
+                elif widgets[index].kind == UiConst::WidgetKind.TextField:
+                    semantic_role: UiCore::AccessibilityRole = UiCore::AccessibilityRole.PasswordField if widgets[index].secure else UiCore::AccessibilityRole.TextField
+                    semantic_value: sview = secure_display_value(index) if widgets[index].secure else text_value(index)
+                    semantic_revision: usize = widgets[index].text_revision
+                    UiCore::accessibility(semantic_role, widgets[index].text, widgets[index].help, frame, index, index, widgets[index].enabled, widgets[index].focused, false, 0.0, semantic_value, selected_text_value(index), semantic_revision, selection_utf16_location(index), selection_utf16_length(index))
+                elif widgets[index].kind == UiConst::WidgetKind.Label:
+                    UiCore::accessibility(UiCore::AccessibilityRole.Label, widgets[index].text, widgets[index].help, frame, index, NONE, true, false, false, 0.0, "", "", 0, 0, 0)
+                if widgets[index].kind == UiConst::WidgetKind.Slider:
+                    slider_inset: f32 = clamped_inset(current_theme.slider_horizontal_inset, widgets[index].width)
+                    track_height: f32 = current_theme.slider_track_height if current_theme.slider_track_height < widgets[index].height else widgets[index].height
+                    track_y: f32 = widgets[index].y + widgets[index].height / 2.0 - track_height / 2.0
+                    track_x: f32 = widgets[index].x + slider_inset
+                    track_width: f32 = widgets[index].width - slider_inset * 2.0
+                    UiCore::fill(UiCore::Rect(track_x, track_y, track_width, track_height), widgets[index].color)
+                    UiCore::fill(UiCore::Rect(track_x, track_y, track_width * widgets[index].value, track_height), widgets[index].hover_color)
+                    thumb_x: f32 = track_x + track_width * widgets[index].value
+                    thumb: mutable UiCore::Color = widgets[index].press_color
+                    thumb <- current_theme.control_mark_strong if widgets[index].pressed
+                    UiCore::fill(UiCore::Circle{center: UiCore::Vec2(thumb_x, track_y + track_height / 2.0), radius: current_theme.slider_thumb_radius}, thumb)
+                elif widgets[index].kind == UiConst::WidgetKind.ProgressBar:
+                    progress_height: f32 = current_theme.slider_track_height if current_theme.slider_track_height < widgets[index].height else widgets[index].height
+                    progress_y: f32 = widgets[index].y + widgets[index].height / 2.0 - progress_height / 2.0
+                    UiCore::fill(UiCore::Rect(widgets[index].x, progress_y, widgets[index].width, progress_height), widgets[index].color)
+                    UiCore::fill(UiCore::Rect(widgets[index].x, progress_y, widgets[index].width * widgets[index].value, progress_height), widgets[index].hover_color)
+                elif color.a != 0:
+                    UiCore::fill(frame, color)
+                if widgets[index].kind == UiConst::WidgetKind.RadioButton:
+                    mark_x: f32 = widgets[index].x + current_theme.choice_center_x
+                    mark_y: f32 = widgets[index].y + widgets[index].height / 2.0
+                    UiCore::fill(UiCore::Circle{center: UiCore::Vec2(mark_x, mark_y), radius: current_theme.radio_outer_radius}, current_theme.control_mark)
+                    inner: UiCore::Color = current_theme.control_mark_strong if widgets[index].selected else color
+                    UiCore::fill(UiCore::Circle{center: UiCore::Vec2(mark_x, mark_y), radius: current_theme.radio_inner_radius}, inner)
+                elif widgets[index].kind == UiConst::WidgetKind.CheckBox:
+                    box_x: f32 = widgets[index].x + current_theme.choice_center_x - current_theme.checkbox_size / 2.0
+                    box_y: f32 = widgets[index].y + widgets[index].height / 2.0 - current_theme.checkbox_size / 2.0
+                    UiCore::fill(UiCore::Rect(box_x, box_y, current_theme.checkbox_size, current_theme.checkbox_size), current_theme.control_mark)
+                    UiCore::fill(UiCore::Rect(box_x + 2.0, box_y + 2.0, 7.0, 7.0), color)
+                    if widgets[index].selected:
+                        check_ink: UiCore::Color = current_theme.control_mark_strong
+                        UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(box_x + 2.5, box_y + 5.5), to_point: UiCore::Vec2(box_x + 4.8, box_y + 8.0)}, check_ink)
+                        UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(box_x + 4.8, box_y + 8.0), to_point: UiCore::Vec2(box_x + 9.0, box_y + 3.0)}, check_ink)
+                if widgets[index].focused:
+                    focus_x: f32 = clamped_inset(current_theme.focus_inset, widgets[index].width)
+                    focus_y: f32 = clamped_inset(current_theme.focus_inset, widgets[index].height)
+                    left: f32 = widgets[index].x + focus_x
+                    top: f32 = widgets[index].y + focus_y
+                    right: f32 = widgets[index].x + widgets[index].width - focus_x
+                    bottom: f32 = widgets[index].y + widgets[index].height - focus_y
+                    UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(left, top), to_point: UiCore::Vec2(right, top)}, current_theme.focus_ring)
+                    UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(right, top), to_point: UiCore::Vec2(right, bottom)}, current_theme.focus_ring)
+                    UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(right, bottom), to_point: UiCore::Vec2(left, bottom)}, current_theme.focus_ring)
+                    UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(left, bottom), to_point: UiCore::Vec2(left, top)}, current_theme.focus_ring)
+                if widgets[index].kind == UiConst::WidgetKind.TextField:
+                    field_value: sview = text_value(index)
+                    text_inset: f32 = clamped_inset(current_theme.text_horizontal_padding, widgets[index].width)
+                    available_width: mutable f32 = widgets[index].width - text_inset * 2.0
+                    available_width <- 0.0 if available_width < 0.0 else available_width
+                    visible_start: mutable usize = 0
+                    visible_start <- visible_text_start(index, available_width) if widgets[index].focused
+                    visible_stop: mutable usize = visible_start
+                    scan: mutable usize = visible_start
+                    while scan < widgets[index].input_length |scan, visible_stop, visible_start, available_width|:
+                        after: usize = next_character(index, scan)
+                        break if measure_text_range(index, visible_start, after) > available_width
+                        visible_stop <- after
+                        scan <- after
+                    visible_value: sview = display_range(index, visible_start, visible_stop)
+                    display_text: sview = visible_value if field_value.len > 0 else widgets[index].placeholder
+                    field_ink: mutable UiCore::Color = widgets[index].text_color
+                    if field_value.len == 0:
+                        field_ink <- UiCore::Color{r: field_ink.r / 2, g: field_ink.g / 2, b: field_ink.b / 2, a: field_ink.a}
+                    field_y: f32 = widgets[index].y + (widgets[index].height - ui_text_line_height(widgets[index].text_size)) / 2.0
+                    selected_start: mutable usize = selection_start(index)
+                    selected_stop: mutable usize = selection_end(index)
+                    selected_start <- visible_start if selected_start < visible_start else selected_start
+                    selected_stop <- visible_stop if selected_stop > visible_stop else selected_stop
+                    if selected_stop > selected_start:
+                        selection_x: f32 = widgets[index].x + text_inset + measure_text_range(index, visible_start, selected_start)
+                        selection_width: f32 = measure_text_range(index, selected_start, selected_stop)
+                        selection_inset: f32 = clamped_inset(current_theme.selection_vertical_inset, widgets[index].height)
+                        UiCore::fill(UiCore::Rect(selection_x, widgets[index].y + selection_inset, selection_width, widgets[index].height - selection_inset * 2.0), current_theme.selection)
+                    UiCore::draw(UiCore::TextRun(UiCore::Vec2(widgets[index].x + text_inset, field_y), widgets[index].text_size, display_text), field_ink)
+                    marked_start: mutable usize = widgets[index].marked_start
+                    marked_stop: mutable usize = widgets[index].marked_end
+                    marked_start <- visible_start if marked_start < visible_start else marked_start
+                    marked_stop <- visible_stop if marked_stop > visible_stop else marked_stop
+                    if marked_stop > marked_start:
+                        marked_x: f32 = widgets[index].x + text_inset + measure_text_range(index, visible_start, marked_start)
+                        marked_width: f32 = measure_text_range(index, marked_start, marked_stop)
+                        marked_y: f32 = widgets[index].y + widgets[index].height - current_theme.marked_underline_inset
+                        UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(marked_x, marked_y), to_point: UiCore::Vec2(marked_x + marked_width, marked_y)}, widgets[index].text_color)
+                    if widgets[index].focused and selection_start(index) == selection_end(index) and caret_is_visible():
+                        caret_x: f32 = widgets[index].x + text_inset + measure_text_range(index, visible_start, widgets[index].caret)
+                        caret_inset: f32 = clamped_inset(current_theme.text_vertical_padding, widgets[index].height)
+                        UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(caret_x, widgets[index].y + caret_inset), to_point: UiCore::Vec2(caret_x, widgets[index].y + widgets[index].height - caret_inset)}, widgets[index].text_color)
+                    continue
                 continue if widgets[index].text_size <= 0.0 or widgets[index].text.len == 0
-                # Centre the run vertically in the widget's box; horizontal
-                # placement stays at the leading edge until an alignment
-                # control exists.
+                # Button captions are centered in their hit target. Ordinary labels
+                # remain leading-aligned, which is the useful default for content.
                 text_y: f32 = widgets[index].y + (widgets[index].height - ui_text_line_height(widgets[index].text_size)) / 2.0
-                UiCore::draw(UiCore::TextRun(UiCore::Vec2(widgets[index].x, text_y), widgets[index].text_size, widgets[index].text), widgets[index].text_color)
+                text_x: mutable f32 = widgets[index].x
+                text_width: f32 = ui_measure_text_width(widgets[index].text, widgets[index].text_size)
+                if widgets[index].kind == UiConst::WidgetKind.Button:
+                    text_x <- widgets[index].x + (widgets[index].width - text_width) / 2.0
+                elif widgets[index].kind == UiConst::WidgetKind.RadioButton or widgets[index].kind == UiConst::WidgetKind.CheckBox:
+                    marker_space: f32 = current_theme.choice_text_space
+                    text_x <- widgets[index].x + marker_space + (widgets[index].width - marker_space - text_width) / 2.0
+                ink: mutable UiCore::Color = widgets[index].text_color
+                ink <- UiCore::Color{r: ink.r / 2, g: ink.g / 2, b: ink.b / 2, a: ink.a} if not widgets[index].enabled
+                UiCore::draw(UiCore::TextRun(UiCore::Vec2(text_x, text_y), widgets[index].text_size, widgets[index].text), ink)

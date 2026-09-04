@@ -7,7 +7,9 @@ include "../src/widgets/ui_widget.elisa"
 extern puts(text: cstr) -> i64
 
 global mutable test_last_click: usize = UiFlat::NONE
+global mutable test_last_event: i32 = -1
 global mutable test_failures: i32 = 0
+global mutable invalid_utf8: u8[8] = zeroed
 
 # Text measurement is part of the platform contract, so a test with no backend
 # supplies it. Deterministic ratios keep the label assertions exact instead of
@@ -25,6 +27,7 @@ def ui_text_line_height(size: f32) -> f32:
     return size
 
 def app_widget_event(widget: usize, event: i32) -> void:
+    test_last_event <- event
     test_last_click <- widget if event == UiConst::WidgetEvent.Click.i32()
 
 def check(name: cstr, ok: bool) -> void:
@@ -39,6 +42,15 @@ def near(actual: f32, expected: f32) -> bool:
 def rect_is(index: usize, x: f32, y: f32, width: f32, height: f32) -> bool:
     w: UiFlat::Widget = UiFlat::widget(index)
     return near(w.x, x) and near(w.y, y) and near(w.width, width) and near(w.height, height)
+
+def frame_contains_text(text: sview) -> bool:
+    for index in 0..<UiCore::command_count():
+        match UiCore::command_at(index):
+            UiCore::Command.DrawText(run, color):
+                return true if run.text == text
+            _:
+                pass
+    return false
 
 def build_tree() -> void:
     UiFlat::reset()
@@ -64,6 +76,7 @@ def main() -> i64:
     check("hit finds the top child", UiFlat::hit(400.0, 20.0) == 1)
     check("hit finds the bottom child", UiFlat::hit(400.0, 300.0) == 2)
     check("non-interactive panel is not hit", UiFlat::hit(5.0, 5.0) == UiFlat::NONE)
+    check("button cursor policy lives in Elisa", UiFlat::cursor_at(400.0, 20.0) == 1)
 
     UiFlat::pointer((UiCore::PointerEvent.Move(at: UiCore::Vec2(400.0, 20.0))))
     check("hover marks the widget under the pointer", UiFlat::widget(1).hovered)
@@ -76,11 +89,99 @@ def main() -> i64:
     check("release on the same widget clicks", test_last_click == 1)
     check("release clears the pressed state", not UiFlat::widget(1).pressed)
 
+    test_last_click <- UiFlat::NONE
+    prior_focus: usize = UiFlat::focused()
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(400.0, 20.0), button: 2)))
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(400.0, 20.0), button: 2)))
+    check("non-primary buttons do not activate controls", UiFlat::active() == UiFlat::NONE and test_last_click == UiFlat::NONE)
+    check("non-primary buttons do not steal focus", UiFlat::focused() == prior_focus)
+
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(400.0, 20.0), button: 0)))
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(400.0, 20.0), button: 2)))
+    check("an unrelated button release preserves primary capture", UiFlat::active() == 1 and UiFlat::widget(1).pressed)
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(400.0, 20.0), button: 0)))
+    check("the matching primary release completes capture", UiFlat::active() == UiFlat::NONE and test_last_click == 1)
+
+    # Keyboard focus is portable widget behavior, not an AppKit special case.
+    check("pointer press transfers keyboard focus", UiFlat::focused() == 1)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Tab)))
+    check("Tab advances from pointer focus", UiFlat::focused() == 2)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Enter)))
+    check("Enter paints the focused widget pressed", UiFlat::widget(2).pressed)
+    test_last_click <- UiFlat::NONE
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.Enter)))
+    check("Enter release activates the focused widget", test_last_click == 2)
+    check("Enter release clears pressed state", not UiFlat::widget(2).pressed)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Tab)))
+    check("Tab wraps through interactive widgets", UiFlat::focused() == 1)
+
+    test_last_click <- UiFlat::NONE
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Enter)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Tab)))
+    check("focus traversal cancels a held keyboard press", UiFlat::focused() == 2 and UiFlat::active() == UiFlat::NONE and not UiFlat::widget(1).pressed)
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.Enter)))
+    check("a canceled key release cannot activate the new focus", test_last_click == UiFlat::NONE)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Tab)))
+
+    test_last_click <- UiFlat::NONE
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Space)))
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.Enter)))
+    check("an unrelated key release preserves keyboard capture", UiFlat::active() == 1 and UiFlat::widget(1).pressed and test_last_click == UiFlat::NONE)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Space)))
+    check("key repeat does not replace keyboard capture", UiFlat::active() == 1)
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.Space)))
+    check("the matching key release activates its original widget", UiFlat::active() == UiFlat::NONE and test_last_click == 1)
+
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.LeftShift)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Tab)))
+    check("Shift-Tab traverses focus backwards", UiFlat::focused() == 2)
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.LeftShift)))
+
+    UiFlat::set_enabled(2, false)
+    check("disabling focus clears it", UiFlat::focused() == UiFlat::NONE)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.LeftShift)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Tab)))
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.LeftShift)))
+    check("Shift-Tab skips disabled controls", UiFlat::focused() == 1)
+    test_last_click <- UiFlat::NONE
+    UiFlat::activate(2)
+    check("programmatic activation rejects disabled controls", test_last_click == UiFlat::NONE)
+    UiFlat::set_enabled(2, true)
+    UiFlat::activate(2)
+    check("programmatic activation uses the click path", test_last_click == 2)
+    check("programmatic activation transfers focus", UiFlat::focused() == 2)
+
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(400.0, 300.0), button: 0)))
+    UiFlat::set_enabled(2, false)
+    check("disabling a pressed control releases capture", UiFlat::active() == UiFlat::NONE)
+    check("disabling a hovered control clears hot state", UiFlat::hot() == UiFlat::NONE)
+    UiFlat::set_enabled(2, true)
+
     # Pressing one widget and releasing over another must not click either.
     test_last_click <- UiFlat::NONE
     UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(400.0, 20.0), button: 0)))
     UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(400.0, 300.0), button: 0)))
     check("release elsewhere cancels the click", test_last_click == UiFlat::NONE)
+
+    test_last_click <- UiFlat::NONE
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(400.0, 20.0), button: 0)))
+    UiFlat::pointer((UiCore::PointerEvent.Leave))
+    check("leaving preserves pointer capture", UiFlat::active() == 1)
+    check("button loses pressed appearance outside", not UiFlat::widget(1).pressed)
+    UiFlat::pointer((UiCore::PointerEvent.Move(at: UiCore::Vec2(400.0, 20.0))))
+    check("button regains pressed appearance on re-entry", UiFlat::widget(1).pressed)
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(400.0, 20.0), button: 0)))
+    check("captured button clicks after re-entry", test_last_click == 1)
+
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(400.0, 20.0), button: 0)))
+    UiFlat::lifecycle((UiCore::Event.FocusLost))
+    check("window focus loss cancels pointer capture", UiFlat::active() == UiFlat::NONE and not UiFlat::widget(1).pressed)
+
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(400.0, 20.0), button: 0)))
+    UiFlat::cancel_interaction()
+    check("interaction cancellation releases capture", UiFlat::active() == UiFlat::NONE)
+    check("interaction cancellation clears pressed state", not UiFlat::widget(1).pressed)
+    check("interaction cancellation clears hover state", UiFlat::hot() == UiFlat::NONE)
 
     # Relayout must be idempotent for the same viewport.
     UiFlat::layout(800.0, 600.0)
@@ -90,6 +191,24 @@ def main() -> i64:
     UiFlat::layout(400.0, 300.0)
     check("reflow keeps the fixed minimum", rect_is(1, 10.0, 10.0, 380.0, 40.0))
     check("reflow shrinks the growing child", rect_is(2, 10.0, 60.0, 380.0, 230.0))
+
+    # Below the declared minimum, compress children and their gap together so
+    # the last child still ends exactly at the container edge.
+    UiFlat::reset()
+    tight_row: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Row, 0.0, 10.0, UiCore::rgb(0, 0, 0))
+    tight_a: usize = UiFlat::button(tight_row, 100.0, 30.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    tight_b: usize = UiFlat::button(tight_row, 100.0, 30.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    UiFlat::layout(110.0, 30.0)
+    tight_end: f32 = UiFlat::widget(tight_b).x + UiFlat::widget(tight_b).width
+    check("undersized rows remain inside their container", near(tight_end, 110.0))
+    check("undersized rows preserve child proportions", near(UiFlat::widget(tight_a).width, UiFlat::widget(tight_b).width))
+
+    UiFlat::reset()
+    padded: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 20.0, 0.0, UiCore::rgb(0, 0, 0))
+    padded_child: usize = UiFlat::button(padded, 10.0, 10.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    UiFlat::layout(10.0, 10.0)
+    check("padding cannot produce negative child width", UiFlat::widget(padded_child).width >= 0.0)
+    check("padding cannot produce negative child height", UiFlat::widget(padded_child).height >= 0.0)
 
     # A label's minimum comes from its measured text, so it sizes a container
     # that would otherwise collapse. "Save" at size 20 measures 4 * 20 * 0.5 = 40
@@ -104,14 +223,373 @@ def main() -> i64:
     check("label is not interactive", not UiFlat::widget(label).interactive)
 
     # Painting a label must emit a text command; an empty label must not.
+    UiFlat::set_help(label, "A compact save status")
     UiCore::begin_frame()
     UiFlat::paint()
     check("painting a label emits a text command", UiCore::command_count() == 2)
+    check("painting builds one semantic accessibility node", UiCore::accessibility_count() == 1)
+    accessible: UiCore::AccessibilityNode = UiCore::accessibility_at(0)
+    check("semantic node keeps the visible label", accessible.label == "Save")
+    check("semantic node keeps its help text", accessible.help == "A compact save status")
+    check("semantic node exposes static-text role", accessible.role == UiCore::AccessibilityRole.Label)
+
     blank: usize = UiFlat::label(row, "", 20.0, UiCore::Color{r: 255, g: 255, b: 255, a: 255})
     UiFlat::layout(200.0, 100.0)
     UiCore::begin_frame()
     UiFlat::paint()
     check("an empty label emits no text", UiCore::command_count() == 2)
+
+    UiFlat::reset()
+    choice: usize = UiFlat::radio_button(UiFlat::NONE, 120.0, 40.0, UiCore::rgb(20, 40, 80), UiCore::rgb(30, 50, 90), UiCore::rgb(10, 20, 40))
+    UiFlat::set_text(choice, "Ocean", 16.0, UiCore::rgb(255, 255, 255))
+    UiFlat::set_selected(choice, true)
+    UiFlat::layout(120.0, 40.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    choice_node: UiCore::AccessibilityNode = UiCore::accessibility_at(0)
+    check("radio button exposes its semantic role", choice_node.role == UiCore::AccessibilityRole.RadioButton)
+    check("radio button exposes selected state", choice_node.selected)
+    check("radio button remains interactive", UiFlat::hit(60.0, 20.0) == choice)
+
+    UiFlat::reset()
+    toggle: usize = UiFlat::check_box(UiFlat::NONE, 120.0, 40.0, UiCore::rgb(30, 30, 40), UiCore::rgb(40, 40, 50), UiCore::rgb(20, 20, 30))
+    UiFlat::set_text(toggle, "Dark mode", 16.0, UiCore::rgb(255, 255, 255))
+    UiFlat::set_selected(toggle, true)
+    UiFlat::layout(120.0, 40.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    toggle_node: UiCore::AccessibilityNode = UiCore::accessibility_at(0)
+    check("check box exposes its semantic role", toggle_node.role == UiCore::AccessibilityRole.CheckBox)
+    check("check box exposes checked state", toggle_node.selected)
+
+    UiFlat::reset()
+    slider: usize = UiFlat::slider(UiFlat::NONE, "Intensity", 200.0, 24.0, 0.25, UiCore::rgb(30, 30, 40), UiCore::rgb(60, 110, 220), UiCore::rgb(255, 255, 255))
+    UiFlat::layout(200.0, 24.0)
+    test_last_event <- -1
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(100.0, 12.0), button: 0)))
+    check("slider pointer maps into its normalized range", near(UiFlat::widget(slider).value, 0.5))
+    check("slider drag reports a value change", test_last_event == UiConst::WidgetEvent.Change.i32())
+    UiFlat::pointer((UiCore::PointerEvent.Move(at: UiCore::Vec2(192.0, 12.0))))
+    check("slider drag reaches its upper bound", near(UiFlat::widget(slider).value, 1.0))
+    UiFlat::pointer((UiCore::PointerEvent.Leave))
+    check("slider retains capture outside the view", UiFlat::active() == slider)
+    UiFlat::pointer((UiCore::PointerEvent.Move(at: UiCore::Vec2(-20.0, 12.0))))
+    check("captured slider clamps beyond the lower edge", near(UiFlat::widget(slider).value, 0.0))
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(-20.0, 12.0), button: 0)))
+    UiFlat::set_value(slider, 1.0)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Left)))
+    check("slider arrows adjust by one step", near(UiFlat::widget(slider).value, 0.95))
+    UiFlat::adjust(slider, -2.0)
+    check("slider accessibility adjustment clamps", near(UiFlat::widget(slider).value, 0.0))
+    UiCore::begin_frame()
+    UiFlat::paint()
+    slider_node: UiCore::AccessibilityNode = UiCore::accessibility_at(0)
+    check("slider exposes its semantic role", slider_node.role == UiCore::AccessibilityRole.Slider)
+    check("slider exposes its normalized value", near(slider_node.value, 0.0))
+    base_theme: UiFlat::Theme = UiFlat::theme()
+    custom_theme: mutable UiFlat::Theme = base_theme
+    custom_theme.slider_horizontal_inset <- 20.0
+    custom_theme.focus_ring <- UiCore::rgb(1, 2, 3)
+    UiFlat::set_theme(custom_theme)
+    check("theme exposes application-defined visual tokens", UiFlat::theme().focus_ring.r == 1 and near(UiFlat::theme().slider_horizontal_inset, 20.0))
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(20.0, 12.0), button: 0)))
+    check("slider hit geometry follows the active theme", near(UiFlat::widget(slider).value, 0.0))
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(20.0, 12.0), button: 0)))
+    UiFlat::set_theme(base_theme)
+
+    UiFlat::reset()
+    progress: usize = UiFlat::progress_bar(UiFlat::NONE, "Upload progress", 200.0, 12.0, 1.5, UiCore::rgb(30, 30, 40), UiCore::rgb(60, 110, 220))
+    UiFlat::layout(200.0, 12.0)
+    check("progress values clamp at construction", near(UiFlat::widget(progress).value, 1.0))
+    check("progress indicators are not interactive", UiFlat::hit(100.0, 6.0) == UiFlat::NONE)
+    UiFlat::set_value(progress, 0.4)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    progress_node: UiCore::AccessibilityNode = UiCore::accessibility_at(0)
+    check("progress exposes its semantic role", progress_node.role == UiCore::AccessibilityRole.ProgressBar)
+    check("progress exposes its normalized value", near(progress_node.value, 0.4))
+
+    UiFlat::reset()
+    field: usize = UiFlat::text_field(UiFlat::NONE, "Project name", "Type a name", "Hi", 220.0, 36.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
+    UiFlat::layout(220.0, 36.0)
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(100.0, 18.0), button: 0)))
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(100.0, 18.0), button: 0)))
+    check("focused text field accepts committed input", UiFlat::accepts_text())
+    check("text field requests an I-beam cursor", UiFlat::cursor_at(100.0, 18.0) == 2)
+    UiFlat::insert_text("!")
+    check("text field inserts at its caret", UiFlat::text_value(field) == "Hi!")
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Left)))
+    UiFlat::insert_text("?")
+    check("text field supports insertion in the middle", UiFlat::text_value(field) == "Hi?!")
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Backspace)))
+    check("Backspace removes the preceding character", UiFlat::text_value(field) == "Hi!")
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.End)))
+    UiFlat::insert_text("é")
+    check("text field stores committed UTF-8", UiFlat::text_value(field) == "Hi!é")
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Backspace)))
+    check("Backspace removes one UTF-8 scalar", UiFlat::text_value(field) == "Hi!")
+    UiFlat::replace_text(field, "éx")
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Left)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Left)))
+    check("caret navigation keeps combining marks with their base", UiFlat::selection_start(field) == 0)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Right)))
+    check("right navigation advances over a complete grapheme", UiFlat::selection_start(field) == 3)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Backspace)))
+    check("Backspace removes a combining sequence as one character", UiFlat::text_value(field) == "x")
+    UiFlat::replace_text(field, "👩‍💻!")
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Home)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Right)))
+    check("joined emoji form one navigation unit", UiFlat::selection_start(field) == 11)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Backspace)))
+    check("Backspace removes a joined emoji atomically", UiFlat::text_value(field) == "!")
+    UiFlat::replace_text(field, "🇳🇴x")
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Home)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Right)))
+    check("flag pairs form one navigation unit", UiFlat::selection_start(field) == 8)
+    invalid_utf8[0] <- 65
+    invalid_utf8[1] <- 255
+    invalid_utf8[2] <- 66
+    UiFlat::replace_text(field, sview(&invalid_utf8[0], 0, 3))
+    check("malformed UTF-8 is rejected at the first invalid sequence", UiFlat::text_value(field) == "A")
+    check("malformed input reports truncation", UiFlat::text_was_truncated(field))
+    invalid_utf8[0] <- 224
+    invalid_utf8[1] <- 128
+    invalid_utf8[2] <- 128
+    UiFlat::replace_text(field, sview(&invalid_utf8[0], 0, 3))
+    check("overlong UTF-8 is rejected", UiFlat::text_value(field).len == 0)
+    invalid_utf8[0] <- 237
+    invalid_utf8[1] <- 160
+    invalid_utf8[2] <- 128
+    UiFlat::replace_text(field, sview(&invalid_utf8[0], 0, 3))
+    check("UTF-8 surrogate encodings are rejected", UiFlat::text_value(field).len == 0)
+    invalid_utf8[0] <- 244
+    invalid_utf8[1] <- 144
+    invalid_utf8[2] <- 128
+    invalid_utf8[3] <- 128
+    UiFlat::replace_text(field, sview(&invalid_utf8[0], 0, 4))
+    check("UTF-8 beyond Unicode's maximum is rejected", UiFlat::text_value(field).len == 0)
+    invalid_utf8[0] <- 240
+    invalid_utf8[1] <- 159
+    UiFlat::replace_text(field, sview(&invalid_utf8[0], 0, 2))
+    check("truncated UTF-8 is rejected", UiFlat::text_value(field).len == 0)
+    UiFlat::replace_text(field, "Hi!")
+    check("valid replacement clears truncation status", not UiFlat::text_was_truncated(field))
+    UiFlat::replace_text(field, "first\nsecond\rthird")
+    check("single-line replacement normalizes line endings", UiFlat::text_value(field) == "first second third")
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.End)))
+    UiFlat::insert_text("\nlast")
+    check("single-line insertion normalizes pasted line endings", UiFlat::text_value(field) == "first second third last")
+    UiFlat::replace_text(field, "tab\therethere there done")
+    check("single-line fields normalize control and Unicode separators", UiFlat::text_value(field) == "tab here  there   there   done")
+    UiFlat::replace_text(field, "Hi!")
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Home)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Delete)))
+    check("Delete removes the following character", UiFlat::text_value(field) == "i!")
+    test_last_event <- -1
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Enter)))
+    check("Enter submits a text field", test_last_event == UiConst::WidgetEvent.Submit.i32())
+    UiCore::begin_frame()
+    UiFlat::paint()
+    field_node: UiCore::AccessibilityNode = UiCore::accessibility_at(0)
+    check("text field exposes its semantic role", field_node.role == UiCore::AccessibilityRole.TextField)
+    check("text field exposes its editable value", field_node.text_value == "i!")
+    check("text field exposes an explicit edit revision", field_node.revision > 0)
+    check("text field exposes its native selection range", field_node.selection_location == 0 and field_node.selection_length == 0)
+    UiFlat::replace_text(field, "ABC")
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(13.0, 18.0), button: 0)))
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(13.0, 18.0), button: 0)))
+    UiFlat::insert_text("X")
+    check("pointer placement moves the text caret", UiFlat::text_value(field) == "XABC")
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Home)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.LeftShift)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Right)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Right)))
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.LeftShift)))
+    check("Shift-arrow creates a text selection", UiFlat::selection_start(field) == 0 and UiFlat::selection_end(field) == 2)
+    UiFlat::insert_text("Z")
+    check("typing replaces the selected text", UiFlat::text_value(field) == "ZBC")
+    check("insertion collapses the selection", UiFlat::selection_start(field) == 1 and UiFlat::selection_end(field) == 1)
+    UiFlat::set_selection(field, 1, 3)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Backspace)))
+    check("Backspace removes the selected range", UiFlat::text_value(field) == "Z")
+    UiFlat::replace_text(field, "A😀éB")
+    UiFlat::set_selection_utf16(field, 1, 2)
+    check("UTF-16 selection maps a supplementary scalar to UTF-8", UiFlat::selection_start(field) == 1 and UiFlat::selection_end(field) == 5)
+    check("selection exposes native UTF-16 units", UiFlat::selection_utf16_location(field) == 1 and UiFlat::selection_utf16_length(field) == 2)
+    check("UTF-16 substring slicing retains a supplementary scalar", UiFlat::text_range_byte_length(field, 1, 2) == 4)
+    check("substring ranges clamp in Elisa", UiFlat::text_range_location(field, 999999) == 5 and UiFlat::text_range_length(field, 999999, 999999) == 0)
+    UiFlat::set_selection_utf16(field, 999999, 999999)
+    check("oversized native ranges clamp without overflow", UiFlat::selection_start(field) == UiFlat::text_value(field).len and UiFlat::selection_end(field) == UiFlat::text_value(field).len)
+    UiFlat::set_selection_utf16(field, 1, 2)
+    UiFlat::commit_text("X", 0, 0, false)
+    check("committed text replaces a UTF-16-selected scalar", UiFlat::text_value(field) == "AXéB")
+    UiFlat::replace_text(field, "Cafe")
+    UiFlat::update_marked_text("é", 1, 0, 0, 0, false)
+    check("text fields retain an IME marked range", UiFlat::text_value(field) == "Cafeé" and UiFlat::widget(field).marked_start == 4 and UiFlat::widget(field).marked_end == 6)
+    check("marked ranges expose UTF-16 units", UiFlat::marked_utf16_location(field) == 4 and UiFlat::marked_utf16_length(field) == 1)
+    UiFlat::update_marked_text("ø", 1, 0, 0, 0, false)
+    check("composition updates replace the prior marked range", UiFlat::text_value(field) == "Cafeø")
+    UiFlat::commit_text("å", 0, 0, false)
+    check("committed input replaces and clears marked text", UiFlat::text_value(field) == "Cafeå" and UiFlat::widget(field).marked_start == 0 and UiFlat::widget(field).marked_end == 0)
+    check("text history becomes undoable", UiFlat::can_undo_text())
+    check("one undo reverts a whole IME composition", UiFlat::undo_text() and UiFlat::text_value(field) == "Cafe")
+    check("text history becomes redoable", UiFlat::can_redo_text())
+    check("redo reapplies the committed composition", UiFlat::redo_text() and UiFlat::text_value(field) == "Cafeå")
+    _ = UiFlat::undo_text()
+    UiFlat::insert_text("!")
+    check("a new edit invalidates redo history", UiFlat::text_value(field) == "Cafe!" and not UiFlat::can_redo_text())
+    UiFlat::update_marked_text_utf8_characters("a😀b", 1, 1)
+    check("SDL scalar selection maps supplementary text to UTF-16", UiFlat::selection_utf16_length(field) == 2)
+    UiFlat::update_marked_text_utf8_characters("", -1, -1)
+    check("empty SDL composition removes and unmarks provisional text", UiFlat::widget(field).marked_start == 0 and UiFlat::widget(field).marked_end == 0)
+
+    UiFlat::replace_text(field, "alpha beta")
+    UiFlat::set_selection(field, 10, 10)
+    UiFlat::move_word_left(false)
+    check("word-left moves to the previous word boundary", UiFlat::selection_start(field) == 6 and UiFlat::selection_end(field) == 6)
+    UiFlat::move_word_left(true)
+    check("word-left can extend the selection", UiFlat::selection_start(field) == 0 and UiFlat::selection_end(field) == 6)
+    UiFlat::move_word_right(false)
+    check("word movement collapses an existing selection", UiFlat::selection_start(field) == 6 and UiFlat::selection_end(field) == 6)
+    UiFlat::move_word_right(false)
+    check("word-right moves to the current word end", UiFlat::selection_start(field) == 10 and UiFlat::selection_end(field) == 10)
+    UiFlat::delete_word_backward()
+    check("word-backspace deletes one word", UiFlat::text_value(field) == "alpha ")
+    check("word deletion participates in undo", UiFlat::undo_text() and UiFlat::text_value(field) == "alpha beta")
+    UiFlat::set_selection(field, 0, 0)
+    UiFlat::delete_word_forward()
+    check("forward word deletion deletes through the word end", UiFlat::text_value(field) == " beta")
+    UiFlat::replace_text(field, "café noir")
+    UiFlat::set_selection(field, UiFlat::text_value(field).len, UiFlat::text_value(field).len)
+    UiFlat::move_word_left(false)
+    check("word navigation preserves UTF-8 scalar boundaries", UiFlat::selection_start(field) == 6)
+    UiFlat::replace_text(field, "alpha beta")
+    UiFlat::select_text_at(64.0, 2)
+    check("double-click selects the word under the pointer", UiFlat::selection_start(field) == 6 and UiFlat::selection_end(field) == 10)
+    UiFlat::select_text_at(51.0, 2)
+    check("double-click selects a separator run", UiFlat::selection_start(field) == 5 and UiFlat::selection_end(field) == 6)
+    UiFlat::select_text_at(20.0, 3)
+    check("triple-click selects the complete field", UiFlat::selection_start(field) == 0 and UiFlat::selection_end(field) == 10)
+    UiFlat::select_text_click_at(64.0, 1, 2)
+    check("non-primary multi-click leaves text selection alone", UiFlat::selection_start(field) == 0 and UiFlat::selection_end(field) == 10)
+    UiFlat::set_selection(field, 0, 0)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.LeftShift)))
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(64.0, 18.0), button: 0)))
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(64.0, 18.0), button: 0)))
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.LeftShift)))
+    check("Shift-click extends from the existing anchor", UiFlat::selection_start(field) == 0 and UiFlat::selection_end(field) == 7)
+
+    long_field: usize = UiFlat::text_field(UiFlat::NONE, "Bounded", "", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaé", 220.0, 36.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
+    check("bounded initial text ends at a UTF-8 boundary", UiFlat::widget(long_field).input_length == 126)
+    check("bounded initial text reports truncation", UiFlat::text_was_truncated(long_field))
+    cluster_bound_field: usize = UiFlat::text_field(UiFlat::NONE, "Cluster bounded", "", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaé", 220.0, 36.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
+    check("bounded initial text never truncates inside a grapheme", UiFlat::widget(cluster_bound_field).input_length == 126)
+
+    UiFlat::reset()
+    secret: usize = UiFlat::secure_text_field(UiFlat::NONE, "Password", "Enter password", "s3crét", 220.0, 36.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
+    UiFlat::layout(220.0, 36.0)
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(20.0, 18.0), button: 0)))
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(20.0, 18.0), button: 0)))
+    UiFlat::set_selection(secret, 0, UiFlat::text_value(secret).len)
+    check("secure fields retain their private application value", UiFlat::text_value(secret) == "s3crét")
+    check("secure fields disable selected-text export", UiFlat::selected_text_length(secret) == 0)
+    check("secure fields deny native substring readback", not UiFlat::allows_text_readback())
+    UiCore::begin_frame()
+    UiFlat::paint()
+    secret_node: UiCore::AccessibilityNode = UiCore::accessibility_at(0)
+    check("secure fields expose their semantic role", secret_node.role == UiCore::AccessibilityRole.PasswordField)
+    check("secure accessibility values are masked", secret_node.text_value == "••••••")
+    check("secure semantic selections contain no private text", secret_node.selected_text.len == 0)
+    check("secure paint commands never retain the password", not frame_contains_text("s3crét"))
+    check("secure paint commands contain only the mask", frame_contains_text("••••••"))
+    before_revision: usize = secret_node.revision
+    UiFlat::replace_text(secret, "abcdef")
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("same-length secure edits advance semantic revision", UiCore::accessibility_at(0).revision > before_revision)
+
+    UiFlat::reset()
+    check("reset discards secure undo history", not UiFlat::can_undo_text())
+
+    UiCore::set_frame_time(100.0)
+    blink_field: usize = UiFlat::text_field(UiFlat::NONE, "Blink", "", "A", 220.0, 36.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
+    UiFlat::layout(220.0, 36.0)
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(20.0, 18.0), button: 0)))
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(20.0, 18.0), button: 0)))
+    UiCore::begin_frame()
+    UiFlat::paint()
+    caret_visible_commands: usize = UiCore::command_count()
+    check("a focused caret requests its themed animation interval", UiCore::frame_delay() == 0.5)
+    UiCore::set_frame_time(100.6)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    caret_hidden_commands: usize = UiCore::command_count()
+    check("focused text carets blink on monotonic frame time", caret_visible_commands == caret_hidden_commands + 1)
+    UiCore::set_frame_time(100.7)
+    UiFlat::set_selection(blink_field, 0, 0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("selection changes restart the caret blink", UiCore::command_count() == caret_visible_commands)
+    blink_theme: mutable UiFlat::Theme = UiFlat::theme()
+    blink_theme.caret_blink_interval <- -1.0
+    UiFlat::set_theme(blink_theme)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("zero blink timing disables animation without hiding the caret", UiCore::frame_delay() == 0.0 and UiCore::command_count() == caret_visible_commands)
+    UiFlat::set_theme(base_theme)
+    UiCore::set_frame_time(0.0)
+
+    UiFlat::reset()
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("an idle widget tree requests no animation frames", UiCore::frame_delay() == 0.0)
+    history_field: usize = UiFlat::text_field(UiFlat::NONE, "History", "", "", 220.0, 36.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
+    UiFlat::layout(220.0, 36.0)
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(20.0, 18.0), button: 0)))
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(20.0, 18.0), button: 0)))
+    for edit in 0..<40:
+        UiFlat::insert_text("x")
+    check("history stress setup applies every edit", UiFlat::text_value(history_field).len == 40)
+    for edit in 0..<32:
+        _ = UiFlat::undo_text()
+    check("bounded history retains the newest 32 edits", UiFlat::text_value(history_field).len == 8 and not UiFlat::can_undo_text())
+    for edit in 0..<32:
+        _ = UiFlat::redo_text()
+    check("bounded history redoes every retained edit", UiFlat::text_value(history_field).len == 40 and not UiFlat::can_redo_text())
+
+    UiFlat::reset()
+    history_root: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 0.0, 0.0, UiCore::rgb(0, 0, 0))
+    first_field: usize = UiFlat::text_field(history_root, "First", "", "", 220.0, 36.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
+    second_field: usize = UiFlat::text_field(history_root, "Second", "", "", 220.0, 36.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
+    UiFlat::layout(220.0, 72.0)
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(20.0, 18.0), button: 0)))
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(20.0, 18.0), button: 0)))
+    UiFlat::insert_text("A")
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(20.0, 54.0), button: 0)))
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(20.0, 54.0), button: 0)))
+    UiFlat::insert_text("B")
+    _ = UiFlat::undo_text()
+    check("global history undoes the newest field first", UiFlat::text_value(first_field) == "A" and UiFlat::text_value(second_field) == "" and UiFlat::focused() == second_field)
+    _ = UiFlat::undo_text()
+    check("global history continues into the previous field", UiFlat::text_value(first_field) == "" and UiFlat::focused() == first_field)
+
+    UiFlat::reset()
+    for index in 0..<257:
+        _ = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 0.0, 0.0, UiCore::rgb(0, 0, 0))
+    check("widget arena reports overflow", UiFlat::overflowed())
+    check("widget arena never exceeds capacity", UiFlat::count() == UiFlat::MAX_WIDGETS)
+
+    UiCore::begin_frame()
+    for index in 0..<1025:
+        UiCore::clear(UiCore::rgb(0, 0, 0))
+    check("command buffer reports overflow", UiCore::command_overflowed())
+    check("command buffer remains bounded", UiCore::command_count() == 1024)
+
+    UiCore::begin_frame()
+    for index in 0..<257:
+        UiCore::accessibility(UiCore::AccessibilityRole.Label, "node", "", UiCore::Rect(0.0, 0.0, 1.0, 1.0), index, UiFlat::NONE, true, false, false, 0.0, "", "", 0, 0, 0)
+    check("semantic buffer reports overflow", UiCore::accessibility_overflowed())
+    check("semantic buffer remains bounded", UiCore::accessibility_count() == 256)
 
     if test_failures == 0:
         _ = puts("widget layout: all checks passed")

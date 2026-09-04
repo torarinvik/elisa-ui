@@ -12,6 +12,7 @@ extern puts(text: cstr) -> i64
 global mutable seen_kind: i32 = -1
 global mutable seen_x: f32 = 0.0
 global mutable seen_code: i32 = 0
+global mutable seen_text: bool = false
 global mutable test_failures: i32 = 0
 
 def app_event(event: UiCore::Event) -> void:
@@ -19,6 +20,9 @@ def app_event(event: UiCore::Event) -> void:
     record: UiCore::EventRecord = UiCore::to_record(event)
     seen_x <- record.x
     seen_code <- record.code
+
+def app_text_input(text: sview) -> void:
+    seen_text <- text == "Hé 👋"
 
 def check(name: cstr, ok: bool) -> void:
     return if ok
@@ -34,6 +38,12 @@ def main() -> i64:
     elisa_ui_dispatch_event(6, 0.0, 0.0, 0.0, 0.0, 65)
     check("a C key-down arrives as kind 6", seen_kind == 6)
     check("a C key-down keeps its code", seen_code == 65)
+
+    elisa_ui_dispatch_event(13, 0.0, 0.0, 0.0, 0.0, 0)
+    check("a C focus-loss event arrives as kind 13", seen_kind == 13)
+
+    elisa_ui_dispatch_text_input("Hé 👋", "Hé 👋".len)
+    check("C committed UTF-8 reaches the Elisa application intact", seen_text)
 
     elisa_ui_dispatch_event(99, 0.0, 0.0, 0.0, 0.0, 0)
     check("an unmodelled ordinal arrives as None", seen_kind == 0)

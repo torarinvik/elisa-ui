@@ -33,23 +33,53 @@ because a module member's symbol carries its module and those names cannot move.
 - **Backends** implement the platform side and own the frame loop:
   [sdl3](src/platform/sdl3/ui_sdl3.elisa) (native; externs against system
   libSDL3; `UiSdl3::run` drives the loop) and
+  [AppKit canvas](src/platform/appkit/ui_appkit_canvas.elisa) (a custom-painted
+  macOS `NSView`; AppKit supplies the window, events, CoreGraphics context and
+  accessibility objects and byte-oriented pasteboard primitives through a thin
+  Objective-C FFI shim while Elisa owns event translation, visual policy, edit
+  command execution, text editing and every rendered control), plus
   [wasmbrowser](src/platform/wasmbrowser/ui_wasmbrowser.elisa) (a component
   implementing `world app`; the host drives the loop through the exported guest
   interface, and canonical-ABI encoding is confined to this file). Both render
   real text: WasmBrowser through its host font, SDL3 through SDL_ttf.
 - **Widgets** ([src/widgets/ui_widget.elisa](src/widgets/ui_widget.elisa)) — a
   retained tree in one fixed array linked by index, box layout, hit testing, and
-  hover/press state. Layout is wxWidgets' sizer idea reduced to its load-bearing
+  hover/press/focus/disabled/selected state. Buttons, radio buttons, check boxes,
+  normalized sliders, progress indicators and editable text fields share value
+  and accessibility behavior; sliders support dragging, arrow keys and assistive
+  increment/decrement actions. Text fields support Unicode input, caret and range
+  selection, marked IME composition, 32-step undo/redo, clipboard commands and
+  assistive editing.
+  Tab and Shift-Tab traverse enabled controls, while Enter/Space activate them.
+  SDL and AppKit both preserve left/right Shift, Control, Alt and Super key
+  identity, so selection and shortcut state are portable.
+  Portable focus lifecycle events release transient capture state when a window
+  deactivates without discarding the application’s logical keyboard focus.
+  Layout is wxWidgets'
+  sizer idea reduced to its load-bearing
   parts: a container distributes its inner box along one axis, each child
   contributes a minimum, and leftover space is shared out by `grow` weight.
   Measure runs bottom-up, arrange top-down.
-- **Apps** implement `app_init` / `app_event(UiCore::Event)` / `app_frame`,
-  plus `app_widget_event(widget, event)` when using the widget layer. These
+  Fixed arenas expose overflow flags, so capacity mistakes are diagnosable
+  rather than silently indistinguishable from missing UI.
+- **Apps** implement `app_init` / `app_event(UiCore::Event)` /
+  `app_text_input(sview)` / `app_text_editing(sview, i32, i32)` / `app_frame`, plus
+  `app_widget_event(widget, event)` when using the widget layer. Physical keys
+  and committed UTF-8 text are deliberately separate so layouts and IMEs are
+  not reconstructed from key codes. These
   four are top-level by name; an app's own state and helpers belong in its
   own module, as [examples/hello/app.elisa](examples/hello/app.elisa) shows.
 
 Backend selection is by include: each example has a `native_main.elisa` and a
 `wapp_main.elisa` entry that include the same `app.elisa`.
+
+See [docs/custom-appkit-canvas.md](docs/custom-appkit-canvas.md) for the
+custom-painted AppKit API, application contract, controls and off-screen test
+workflow. The flat widget layer also exposes a persistent `UiFlat::Theme` for
+shared focus, selection, indicator and control-metric tokens; individual widget
+surface and text colors remain independently configurable. Its text controls
+include a secure-field variant whose value stays masked across painting,
+accessibility and clipboard export.
 
 wxWidgets serves as an architectural reference (widget hierarchy, sizers, event
 routing) — studied, not ported.
@@ -61,6 +91,7 @@ with `ELISA_UI_STAGE1`):
 
 ```sh
 scripts/build_native.sh   # -> build/hello_native (needs brew's sdl3 and sdl3_ttf)
+scripts/build_appkit_canvas.sh # -> build/hello_appkit_canvas.app (macOS)
 scripts/build_wapp.sh     # -> build/hello.wapp (+ build/hello.wasm)
 scripts/run_tests.sh      # builds and runs test/*_test.elisa
 ```
@@ -73,6 +104,20 @@ world at `../WasmBrowser/wit/wasmbrowser.wit` (override with `ELISA_UI_WIT`).
 Run native: `./build/hello_native`; headless check with
 `SDL_VIDEODRIVER=dummy ELISA_UI_SMOKE_FRAMES=1 ./build/hello_native`. Inspect the
 package with `wasm-browser inspect build/hello.wapp`.
+
+Run the custom macOS renderer with `open build/hello_appkit_canvas.app`. It is
+packaged and ad-hoc signed as a Retina-capable application with standard macOS
+menus. Its custom-drawn labels and controls are mirrored into a semantic tree,
+so VoiceOver sees roles, labels, help text, enabled/focused/selected state and
+actionable controls rather than one opaque canvas. The same semantics also
+drive native pointing-hand cursors and AppKit tooltips.
+
+For a non-interrupting runtime check, run
+`ELISA_UI_SMOKE_FRAMES=1 ./build/hello_appkit_canvas`. This constructs the real
+AppKit view and renders one frame off-screen without showing or activating a
+window; `scripts/check_appkit_canvas.sh` uses this mode automatically. Add
+`ELISA_UI_SNAPSHOT=/absolute/path/frame.png` to save that frame for visual
+regression inspection without foregrounding the application.
 
 The native backend loads a font with SDL_ttf; set `ELISA_UI_FONT` to override
 the default. Text still measures through the platform contract on both

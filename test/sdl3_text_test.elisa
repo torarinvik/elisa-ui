@@ -7,6 +7,8 @@ include "../src/platform/sdl3/ui_sdl3.elisa"
 include "../src/widgets/ui_widget.elisa"
 
 global mutable text_failures: i32 = 0
+global mutable committed_text_seen: bool = false
+global mutable editing_text_seen: bool = false
 
 # The backend calls into the app contract; a measurement test has no app.
 def app_init() -> void:
@@ -14,6 +16,12 @@ def app_init() -> void:
 
 def app_event(event: mutable UiCore::Event&) -> void:
     pass
+
+def app_text_input(text: sview) -> void:
+    committed_text_seen <- text == "Grüße 👋"
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    editing_text_seen <- text == "にほん" and selected_start == 1 and selected_length == 2
 
 def app_frame() -> void:
     pass
@@ -48,6 +56,11 @@ def main() -> i64:
     check("line height grows with size", ui_text_line_height(32.0) > ui_text_line_height(12.0))
     check("ascent is positive and within the line", ui_font_ascent(20.0) > 0.0 and ui_font_ascent(20.0) <= ui_text_line_height(20.0))
     check("empty text measures zero", ui_measure_text_width("", 20.0) == 0.0)
+
+    UiSdl3::text_input("Grüße 👋")
+    check("SDL committed UTF-8 reaches the application intact", committed_text_seen)
+    UiSdl3::text_editing("にほん", 1, 2)
+    check("SDL marked UTF-8 and selection reach the application intact", editing_text_seen)
 
     # The size table must reuse an already-open font rather than growing.
     before: usize = UiSdl3::font_count()
