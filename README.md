@@ -69,6 +69,8 @@ because a module member's symbol carries its module and those names cannot move.
   Keyboard focus order is configurable in Elisa and remains stable by creation
   order when multiple controls share the same rank. The same order drives the
   native accessibility navigation sequence without backend-specific sorting.
+  Public retained handles have validity checks and an optional safe lookup for
+  data arriving from application or FFI boundaries.
   Measure runs bottom-up, arrange top-down.
   Dynamic label text and typography changes are remeasured before the next
   layout, so localization and live status content cannot retain stale bounds.
