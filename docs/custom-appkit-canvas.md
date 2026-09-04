@@ -196,6 +196,12 @@ CoreFoundation FFI. Widget state, command policy, layout,
 interaction, editing, accessibility diffing, headless orchestration, all
 CoreGraphics path construction and CoreText text rendering now live in Elisa.
 
+The canvas keeps one native strong reference to its root `NSWindow` on purpose.
+An unpresented headless window is not reliably retained by its content view, and
+AppKit can deliver deferred accessibility or close callbacks after the visible
+close action. Moving that final owner into Elisa would permit use-after-free;
+all window policy and operations still cross the boundary as explicit FFI facts.
+
 Text fields are currently single-line and deliberately bounded to 1023 UTF-8
 bytes per widget so the flat layer remains allocation-free. Truncation preserves
 UTF-8 and grapheme boundaries and is observable through `text_was_truncated`.
