@@ -101,8 +101,8 @@ animation frames, supporting reduced-motion configurations.
 
 Tab and Shift-Tab traverse enabled interactive controls. Enter and Space
 activate discrete controls. Losing window focus cancels active pointer and key
-state so a control cannot remain visually pressed. Pointer button zero is the
-portable primary button; other buttons neither activate controls nor disturb an
+state so a control cannot remain visually pressed. `UiCore::PointerButton.Primary`
+(zero) is the portable primary button; other buttons neither activate controls nor disturb an
 existing primary-button capture. AppKit forwards left, right and auxiliary
 button presses, releases and drags with their native button identity; Elisa
 alone decides that text multi-click selection is a primary-button operation.
