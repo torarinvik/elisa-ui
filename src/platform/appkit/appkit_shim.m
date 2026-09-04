@@ -299,31 +299,29 @@ void elisa_appkit_set_scroll_document_frame(int index, float width, float height
     }
 }
 
-static NSString *elisa_appkit_string(const char *text, size_t length) {
-    if (text == NULL) return nil;
-    return [[NSString alloc] initWithBytes:text length:length encoding:NSUTF8StringEncoding];
-}
-
-void elisa_appkit_set_window_title(int index, const char *text, size_t length) {
+// Elisa creates the counted CFString through CoreFoundation FFI. The shim only
+// borrows that opaque object long enough to assign it to the live Cocoa control;
+// no UTF-8 policy or byte-to-string conversion remains in this bridge.
+void elisa_appkit_set_window_title(int index, size_t text) {
     @autoreleasepool {
         if (index < 0 || index >= elisa_count) return;
-        NSString *value = elisa_appkit_string(text, length);
+        NSString *value = (__bridge NSString *)(void *)text;
         if (value != nil) [(NSWindow *)elisa_objects[index] setTitle:value];
     }
 }
 
-void elisa_appkit_set_button_title(int index, const char *text, size_t length) {
+void elisa_appkit_set_button_title(int index, size_t text) {
     @autoreleasepool {
         if (index < 0 || index >= elisa_count) return;
-        NSString *value = elisa_appkit_string(text, length);
+        NSString *value = (__bridge NSString *)(void *)text;
         if (value != nil) [(NSButton *)elisa_objects[index] setTitle:value];
     }
 }
 
-void elisa_appkit_set_field_text(int index, const char *text, size_t length) {
+void elisa_appkit_set_field_text(int index, size_t text) {
     @autoreleasepool {
         if (index < 0 || index >= elisa_count) return;
-        NSString *value = elisa_appkit_string(text, length);
+        NSString *value = (__bridge NSString *)(void *)text;
         if (value != nil) [(NSTextField *)elisa_objects[index] setStringValue:value];
     }
 }

@@ -54,15 +54,17 @@ extern elisa_appkit_attach_to_view(index: i32, parent: i32) -> void
 extern elisa_appkit_set_window_frame(index: i32, width: f32, height: f32) -> void
 extern elisa_appkit_set_view_frame(index: i32, x: f32, y: f32, width: f32, height: f32) -> void
 extern elisa_appkit_set_scroll_document_frame(index: i32, width: f32, height: f32) -> void
-extern elisa_appkit_set_window_title(index: i32, text: cstr, length: usize) -> void
-extern elisa_appkit_set_button_title(index: i32, text: cstr, length: usize) -> void
-extern elisa_appkit_set_field_text(index: i32, text: cstr, length: usize) -> void
+extern elisa_appkit_set_window_title(index: i32, text: usize) -> void
+extern elisa_appkit_set_button_title(index: i32, text: usize) -> void
+extern elisa_appkit_set_field_text(index: i32, text: usize) -> void
 extern elisa_appkit_set_button_state(index: i32, state: i32) -> void
 extern elisa_appkit_set_slider_state(index: i32, low: f32, high: f32, value: f32) -> void
 extern elisa_appkit_set_progress_value(index: i32, value: f32) -> void
 extern elisa_appkit_present() -> void
 extern elisa_appkit_activate() -> void
 extern elisa_appkit_run() -> void
+extern CFStringCreateWithBytes(allocator: usize, bytes: cstr, length: i64, encoding: u32, external: bool) -> usize
+extern CFRelease(value: usize) -> void
 
 # The retained widget model uses top-left coordinates on every backend. Keep
 # that convention in Elisa; the native view merely adapts Cocoa's protocol
@@ -97,6 +99,16 @@ module UiAppKit:
         const STANDARD_WINDOW_HEIGHT: f32 = 480.0
         const FLOATING_PANEL_WIDTH: f32 = 480.0
         const FLOATING_PANEL_HEIGHT: f32 = 320.0
+        const UTF8_ENCODING: u32 = 0x08000100
+
+        # Build counted native strings in Elisa. The Objective-C shim borrows
+        # the opaque CFString only long enough to assign it to a control, so
+        # byte-to-string conversion and its policy stay outside the bridge.
+        def native_string(text: sview) -> usize can Unsafe.PointerCast:
+            empty: cstr = ""
+            pointer: mutable cstr = empty
+            pointer <- text.data.cast[cstr] can Unsafe.PointerCast if text.len > 0
+            return CFStringCreateWithBytes(0, pointer, text.len.i64(), UTF8_ENCODING, false)
 
         # AppKit's enum values cross the FFI as opaque facts. The decoration
         # policy itself stays in Elisa, where the widget's WindowMode is already
@@ -197,22 +209,18 @@ module UiAppKit:
                         elisa_appkit_set_scroll_document_frame(index, box.size.width, box.size.height)
 
             def set_text(index: i32, kind: UiControls::Kind, text: sview) -> void:
-                # A `sview` is a pointer and a length, which is exactly what the
-                # shim's NSString initializer wants -- so no NUL-terminated copy is
-                # made, and a label's text may contain one. Use a stable empty
-                # literal for zero-length views so clearing a native control is
-                # observable instead of being mistaken for a no-op.
-                empty: cstr = ""
-                pointer: mutable cstr = empty
-                pointer <- text.data.cast[cstr] can Unsafe.PointerCast if text.len > 0
+                # Native controls copy this borrowed CoreFoundation string in
+                # their Cocoa setter. The bridge therefore performs only the
+                # object assignment, not framework-side text conversion.
+                value: usize = native_string(text)
+                return if value == 0
                 if kind == UiControls::Kind.Window:
-                    elisa_appkit_set_window_title(index, pointer, text.len)
-                    return
+                    elisa_appkit_set_window_title(index, value)
                 if kind == UiControls::Kind.PushButton or kind == UiControls::Kind.ToggleButton or kind == UiControls::Kind.CheckBox or kind == UiControls::Kind.RadioButton:
-                    elisa_appkit_set_button_title(index, pointer, text.len)
-                    return
+                    elisa_appkit_set_button_title(index, value)
                 if kind == UiControls::Kind.Label or kind == UiControls::Kind.TextField:
-                    elisa_appkit_set_field_text(index, pointer, text.len)
+                    elisa_appkit_set_field_text(index, value)
+                CFRelease(value)
 
             def set_state(index: i32, kind: UiControls::Kind, value: f32, low: f32, high: f32, selected: bool) -> void:
                 can Ui.Controls:
