@@ -50,6 +50,13 @@ include "./ui_const.elisa"
 
 module UiWidgets:
     public:
+        # Mutable scroll state lives outside the packed variant row. A
+        # reference keeps the offset writable through a hierarchy handle while
+        # preserving the compact immutable `Container.Scroll` form for callers
+        # that only need a fixed initial translation.
+        struct ScrollState:
+            offset: mutable f32
+
         # The sealed root: the whole widget universe in ONE region-backed
         # store. A `Widget` value is an opaque u32 handle into it, so a tree
         # is contiguous and a reference costs four bytes.
@@ -112,6 +119,9 @@ module UiWidgets:
             # from the children's positions during arrange, so scrolling is
             # one subtraction.
             Scroll(axis: UiConst::Axis, offset: f32, fill: UiCore::Color)
+            # A stateful viewport whose offset can be changed by wheel input.
+            # The referenced state must outlive the widget tree.
+            ScrollWithState(axis: UiConst::Axis, state: mutable ScrollState&, fill: UiCore::Color)
 
 
         # A leaf the user reads or drives -- wxControl's descendants.

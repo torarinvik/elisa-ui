@@ -36,6 +36,8 @@ extend UiWidgets:
                     return UiConst::Axis.Column
                 Container.Scroll(axis, offset, fill):
                     return axis
+                Container.ScrollWithState(axis, state, fill):
+                    return axis
                 Control.Label(text, size, ink):
                     return UiConst::Axis.Column
                 Control.Gauge(fraction, track, bar):
@@ -66,6 +68,8 @@ extend UiWidgets:
                     return padding
                 Container.Scroll(axis, offset, fill):
                     return 0.0
+                Container.ScrollWithState(axis, state, fill):
+                    return 0.0
                 Control.Label(text, size, ink):
                     return 0.0
                 Control.Gauge(fraction, track, bar):
@@ -90,6 +94,8 @@ extend UiWidgets:
             match w:
                 Container.Scroll(axis, offset, fill):
                     return UiCore::nonnegative_extent(offset)
+                Container.ScrollWithState(axis, state, fill):
+                    return UiCore::nonnegative_extent(state.offset)
                 _:
                     return 0.0
 
@@ -105,6 +111,8 @@ extend UiWidgets:
                 Container.Grid(columns, padding, spacing, fill):
                     return spacing
                 Container.Scroll(axis, offset, fill):
+                    return 0.0
+                Container.ScrollWithState(axis, state, fill):
                     return 0.0
                 Control.Label(text, size, ink):
                     return 0.0
@@ -136,6 +144,8 @@ extend UiWidgets:
                 Container.Grid(columns, padding, spacing, fill):
                     return true
                 Container.Scroll(axis, offset, fill):
+                    return true
+                Container.ScrollWithState(axis, state, fill):
                     return true
                 Control.Label(text, size, ink):
                     return false
@@ -169,6 +179,8 @@ extend UiWidgets:
                     return false
                 Container.Scroll(axis, offset, fill):
                     return false
+                Container.ScrollWithState(axis, state, fill):
+                    return false
                 Control.Label(text, size, ink):
                     return false
                 Control.Gauge(fraction, track, bar):
@@ -191,6 +203,22 @@ extend UiWidgets:
     # ------------------------------------------------------------------
 
     private:
+        # The amount of content that can be revealed by a stateful viewport.
+        # Child boxes already contain the current translation, so adding the
+        # current offset recovers their unscrolled extent without a second
+        # measurement pass or any backend-specific bookkeeping.
+        def scroll_content_extent(w: Widget) -> f32:
+            is_row: bool = axis_of(w) == UiConst::Axis.Row
+            translated: f32 = scroll_offset_of(w)
+            extent: mutable f32 = 0.0
+            cursor: mutable Widget? = w.first_child
+            while cursor is node |extent, cursor, is_row, translated, w|:
+                end: f32 = node.x - w.x + node.width + translated if is_row else node.y - w.y + node.height + translated
+                end <- 0.0 if end < 0.0
+                extent <- end if end > extent
+                cursor <- node.next_sibling
+            return extent
+
         # Value-bearing controls share the same normalized range contract as
         # UiControls and UiFlat. Keep direct hierarchy painting from drawing
         # past its box when an application supplies an out-of-range value.
@@ -386,6 +414,38 @@ extend UiWidgets:
             measure(root)
             arrange(root, 0.0, 0.0, UiCore::nonnegative_extent(width), UiCore::nonnegative_extent(height))
 
+        # Maximum legal offset, derived entirely from Elisa-owned geometry.
+        # Non-scroll widgets deliberately report zero, making this safe for
+        # callers that discover targets speculatively.
+        def scroll_limit(w: Widget) -> f32:
+            match w:
+                Container.Scroll(axis, offset, fill):
+                    viewport: f32 = UiCore::nonnegative_extent(w.width if axis == UiConst::Axis.Row else w.height)
+                    content: f32 = scroll_content_extent(w)
+                    return UiCore::nonnegative_extent(content - viewport)
+                Container.ScrollWithState(axis, state, fill):
+                    viewport: f32 = UiCore::nonnegative_extent(w.width if axis == UiConst::Axis.Row else w.height)
+                    content: f32 = scroll_content_extent(w)
+                    return UiCore::nonnegative_extent(content - viewport)
+                _:
+                    return 0.0
+
+        # Move a stateful viewport to a clamped offset. The immutable Scroll
+        # constructor remains useful for fixed initial translations, but cannot
+        # be mutated through a packed handle and therefore reports no change.
+        def scroll_to(w: Widget, requested: f32) -> bool:
+            match w:
+                Container.ScrollWithState(axis, state, fill):
+                    current: f32 = UiCore::nonnegative_extent(state.offset)
+                    limit: f32 = scroll_limit(w)
+                    wanted: f32 = UiCore::nonnegative_extent(UiCore::finite_or_zero(requested))
+                    next: f32 = limit if wanted > limit else wanted
+                    difference: f32 = next - current if next >= current else current - next
+                    state.offset <- next
+                    return difference >= 0.0001
+                _:
+                    return false
+
     # ------------------------------------------------------------------
     # Hit testing
     # ------------------------------------------------------------------
@@ -436,6 +496,8 @@ extend UiWidgets:
                     return fill
                 Container.Scroll(axis, offset, fill):
                     return fill
+                Container.ScrollWithState(axis, state, fill):
+                    return fill
                 Control.Label(text, size, ink):
                     return UiCore::Color{r: 0, g: 0, b: 0, a: 0}
                 Control.Gauge(fraction, track, bar):
@@ -479,6 +541,8 @@ extend UiWidgets:
                 Container.Grid(columns, padding, spacing, fill):
                     pass
                 Container.Scroll(axis, offset, fill):
+                    pass
+                Container.ScrollWithState(axis, state, fill):
                     pass
                 Control.Label(text, size, ink):
                     text_y: f32 = box_y + (box_height - ui_text_line_height(size)) / 2.0
@@ -535,6 +599,36 @@ extend UiWidgets:
     private:
         global mutable hot_widget: Widget? = null
         global mutable active_widget: Widget? = null
+
+        # Find the innermost viewport under a pointer. A child is searched
+        # first so nested scroll areas consume the wheel before an ancestor.
+        def scroll_target(w: Widget, x: f32, y: f32) -> Widget?:
+            return null if not contains(w, x, y)
+            cursor: mutable Widget? = w.first_child
+            while cursor is node |cursor, x, y|:
+                found: Widget? = scroll_target(node, x, y)
+                return found if found != null
+                cursor <- node.next_sibling
+            match w:
+                Container.Scroll(axis, offset, fill):
+                    return w
+                Container.ScrollWithState(axis, state, fill):
+                    return w
+                _:
+                    return null
+
+        # Route a wheel event to the viewport under the pointer. Native wheel
+        # deltas follow AppKit/SDL convention (negative means content moves
+        # down), hence subtracting the delta from the logical offset.
+        def scroll_pointer(root: Widget, at: UiCore::Vec2, delta: UiCore::Vec2) -> void:
+            target: Widget? = scroll_target(root, at.x, at.y)
+            return if target == null
+            if target is viewport:
+                axis: UiConst::Axis = axis_of(viewport)
+                amount: f32 = delta.x if axis == UiConst::Axis.Row else delta.y
+                current: f32 = scroll_offset_of(viewport)
+                changed: bool = scroll_to(viewport, current - amount)
+                layout(root, root.width, root.height) if changed
 
         # One function per pointer kind. `root` is a real parameter in each: a body
         # reaching the widget store only through a global has no store to decode a
@@ -600,6 +694,8 @@ extend UiWidgets:
                     press_at(root, down_at, down_button)
                 UiCore::PointerEvent.Up(up_at, up_button):
                     release_at(root, up_at, up_button)
+                UiCore::PointerEvent.Scroll(scroll_at, scroll_delta):
+                    scroll_pointer(root, scroll_at, scroll_delta)
                 UiCore::PointerEvent.Leave:
                     leave_all(root)
                 _:
