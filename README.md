@@ -52,6 +52,8 @@ because a module member's symbol carries its module and those names cannot move.
   assistive editing.
   Clipboard action validation, secure-field restrictions, and desktop shortcut
   routing live in Elisa; AppKit and SDL expose only their byte pasteboards.
+  Left and right modifiers are tracked independently, so releasing one key does
+  not cancel a still-held Shift, Control, or Command key.
   Tab and Shift-Tab traverse enabled controls, while Enter/Space activate them.
   SDL and AppKit both preserve left/right Shift, Control, Alt and Super key
   identity, so selection and shortcut state are portable.

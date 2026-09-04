@@ -136,9 +136,12 @@ module UiFlat:
         global mutable active_pointer_button: i32 = -1
         global mutable active_key: i32 = -1
         global mutable focused_widget: usize = NONE
-        global mutable shift_down: bool = false
-        global mutable control_down: bool = false
-        global mutable super_down: bool = false
+        global mutable left_shift_down: bool = false
+        global mutable right_shift_down: bool = false
+        global mutable left_control_down: bool = false
+        global mutable right_control_down: bool = false
+        global mutable left_super_down: bool = false
+        global mutable right_super_down: bool = false
         global mutable clipboard_buffer: u8[TEXT_CAPACITY] = zeroed
         # Text history is global so edits across fields undo in chronological
         # order. Each bounded entry stores complete before/after field states;
@@ -186,6 +189,15 @@ module UiFlat:
 
         def nonnegative(value: f32) -> f32:
             return value if value > 0.0 else 0.0
+
+        def shift_active() -> bool:
+            return left_shift_down or right_shift_down
+
+        def control_active() -> bool:
+            return left_control_down or right_control_down
+
+        def super_active() -> bool:
+            return left_super_down or right_super_down
 
         # TextField is deliberately single-line. Native text input normally
         # routes Return to Submit, but paste and programmatic replacement can
@@ -468,9 +480,12 @@ module UiFlat:
             active_pointer_button <- -1
             active_key <- -1
             focused_widget <- NONE
-            shift_down <- false
-            control_down <- false
-            super_down <- false
+            left_shift_down <- false
+            right_shift_down <- false
+            left_control_down <- false
+            right_control_down <- false
+            left_super_down <- false
+            right_super_down <- false
             history_count <- 0
             history_cursor <- 0
             history_active <- false
@@ -1258,9 +1273,12 @@ module UiFlat:
         def cancel_interaction() -> void:
             release_active_press()
             hot_widget <- NONE
-            shift_down <- false
-            control_down <- false
-            super_down <- false
+            left_shift_down <- false
+            right_shift_down <- false
+            left_control_down <- false
+            right_control_down <- false
+            left_super_down <- false
+            right_super_down <- false
             clear_hover()
 
         # Portable window lifecycle handling. Backends report focus changes as
@@ -1750,7 +1768,7 @@ module UiFlat:
                     widgets[target].pressed <- true
                     if widgets[target].kind == UiConst::WidgetKind.TextField:
                         widgets[target].caret <- caret_from_pointer(target, press_at.x)
-                        widgets[target].selection_anchor <- widgets[target].caret if not shift_down
+                        widgets[target].selection_anchor <- widgets[target].caret if not shift_active()
                         restart_caret_blink()
                     update_slider(target, press_at.x)
                 UiCore::PointerEvent.Move(move_at):
@@ -1793,55 +1811,64 @@ module UiFlat:
         def keyboard(event: UiCore::Event) -> void:
             match event:
                 UiCore::KeyEvent.Down(code):
-                    if code == UiCore::Key.LeftShift or code == UiCore::Key.RightShift:
-                        shift_down <- true
+                    if code == UiCore::Key.LeftShift:
+                        left_shift_down <- true
                         return
-                    if code == UiCore::Key.LeftControl or code == UiCore::Key.RightControl:
-                        control_down <- true
+                    if code == UiCore::Key.RightShift:
+                        right_shift_down <- true
                         return
-                    if code == UiCore::Key.LeftSuper or code == UiCore::Key.RightSuper:
-                        super_down <- true
+                    if code == UiCore::Key.LeftControl:
+                        left_control_down <- true
                         return
-                    if accepts_text() and (control_down or super_down):
+                    if code == UiCore::Key.RightControl:
+                        right_control_down <- true
+                        return
+                    if code == UiCore::Key.LeftSuper:
+                        left_super_down <- true
+                        return
+                    if code == UiCore::Key.RightSuper:
+                        right_super_down <- true
+                        return
+                    if accepts_text() and (control_active() or super_active()):
                         action: mutable i32 = 0
                         action <- 1 if code == UiCore::Key.A
                         action <- 2 if code == UiCore::Key.C
                         action <- 3 if code == UiCore::Key.X
                         action <- 4 if code == UiCore::Key.V
-                        action <- 6 if code == UiCore::Key.Z and shift_down
-                        action <- 5 if code == UiCore::Key.Z and not shift_down
+                        action <- 6 if code == UiCore::Key.Z and shift_active()
+                        action <- 5 if code == UiCore::Key.Z and not shift_active()
                         if action != 0:
                             _ = perform_text_action(action)
                             return
                     if code == UiCore::Key.Tab:
-                        focus_previous() if shift_down else focus_next()
+                        focus_previous() if shift_active() else focus_next()
                         return
                     if focused_widget < widget_count and widgets[focused_widget].kind == UiConst::WidgetKind.TextField:
                         field: usize = focused_widget
                         if code == UiCore::Key.Left:
-                            if not shift_down and selection_start(field) != selection_end(field):
+                            if not shift_active() and selection_start(field) != selection_end(field):
                                 widgets[field].caret <- selection_start(field)
                             else:
                                 widgets[field].caret <- previous_character(field, widgets[field].caret)
-                            widgets[field].selection_anchor <- widgets[field].caret if not shift_down
+                            widgets[field].selection_anchor <- widgets[field].caret if not shift_active()
                             restart_caret_blink()
                             return
                         if code == UiCore::Key.Right:
-                            if not shift_down and selection_start(field) != selection_end(field):
+                            if not shift_active() and selection_start(field) != selection_end(field):
                                 widgets[field].caret <- selection_end(field)
                             else:
                                 widgets[field].caret <- next_character(field, widgets[field].caret)
-                            widgets[field].selection_anchor <- widgets[field].caret if not shift_down
+                            widgets[field].selection_anchor <- widgets[field].caret if not shift_active()
                             restart_caret_blink()
                             return
                         if code == UiCore::Key.Home:
                             widgets[field].caret <- 0
-                            widgets[field].selection_anchor <- widgets[field].caret if not shift_down
+                            widgets[field].selection_anchor <- widgets[field].caret if not shift_active()
                             restart_caret_blink()
                             return
                         if code == UiCore::Key.End:
                             widgets[field].caret <- widgets[field].input_length
-                            widgets[field].selection_anchor <- widgets[field].caret if not shift_down
+                            widgets[field].selection_anchor <- widgets[field].caret if not shift_active()
                             restart_caret_blink()
                             return
                         if code == UiCore::Key.Backspace and selection_start(field) != selection_end(field):
@@ -1873,14 +1900,23 @@ module UiFlat:
                         active_key <- code.i32()
                         widgets[focused_widget].pressed <- true
                 UiCore::KeyEvent.Up(code):
-                    if code == UiCore::Key.LeftShift or code == UiCore::Key.RightShift:
-                        shift_down <- false
+                    if code == UiCore::Key.LeftShift:
+                        left_shift_down <- false
                         return
-                    if code == UiCore::Key.LeftControl or code == UiCore::Key.RightControl:
-                        control_down <- false
+                    if code == UiCore::Key.RightShift:
+                        right_shift_down <- false
                         return
-                    if code == UiCore::Key.LeftSuper or code == UiCore::Key.RightSuper:
-                        super_down <- false
+                    if code == UiCore::Key.LeftControl:
+                        left_control_down <- false
+                        return
+                    if code == UiCore::Key.RightControl:
+                        right_control_down <- false
+                        return
+                    if code == UiCore::Key.LeftSuper:
+                        left_super_down <- false
+                        return
+                    if code == UiCore::Key.RightSuper:
+                        right_super_down <- false
                         return
                     if (code == UiCore::Key.Space or code == UiCore::Key.Enter) and focused_widget < widget_count and widgets[focused_widget].kind != UiConst::WidgetKind.Slider and widgets[focused_widget].kind != UiConst::WidgetKind.TextField:
                         return if active_key != code.i32() or active_widget >= widget_count
