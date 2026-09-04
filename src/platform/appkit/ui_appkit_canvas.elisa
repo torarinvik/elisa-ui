@@ -19,8 +19,6 @@ extern elisa_appkit_canvas_run() -> void
 extern elisa_appkit_canvas_set_min_size(width: f32, height: f32) -> void
 extern elisa_appkit_canvas_redraw() -> void
 extern elisa_appkit_canvas_close() -> void
-extern elisa_appkit_canvas_text(x: f32, y: f32, size: f32, semibold: i32, text: cstr, length: usize, r: f32, g: f32, b: f32, a: f32) -> void
-extern elisa_appkit_canvas_text_width(text: cstr, length: usize, size: f32, semibold: i32) -> f32
 extern elisa_appkit_canvas_accessibility_reset() -> void
 extern elisa_appkit_canvas_accessibility_add(id: usize, action: usize, role: i32, tooltip: i32, value_kind: i32, cursor: i32, notifications: i32, label: cstr, length: usize, help: cstr, help_length: usize, text_value: cstr, text_length: usize, selected_text: cstr, selected_text_length: usize, x: f32, y: f32, width: f32, height: f32, enabled: i32, focused: i32, selected: i32, value: f32, selection_location: usize, selection_length: usize) -> void
 extern elisa_appkit_canvas_accessibility_commit(layout_changed: i32) -> void
@@ -32,12 +30,23 @@ extern CTFontCreateUIFontForLanguage(ui_type: i32, size: f64, language: usize) -
 extern CTFontGetAscent(font: usize) -> f64
 extern CTFontGetDescent(font: usize) -> f64
 extern CTFontGetLeading(font: usize) -> f64
+extern CTFontCreateCopyWithSymbolicTraits(font: usize, size: f64, matrix: usize, traits: u32, mask: u32) -> usize
+extern kCTFontAttributeName: usize
+extern kCTForegroundColorAttributeName: usize
+extern CFStringCreateWithBytes(allocator: usize, bytes: cstr, length: i64, encoding: u32, external: bool) -> usize
+extern CFDictionaryCreate(allocator: usize, keys: usize&, values: usize&, count: i64, key_callbacks: usize, value_callbacks: usize) -> usize
+extern CFAttributedStringCreate(allocator: usize, text: usize, attributes: usize) -> usize
+extern CTLineCreateWithAttributedString(text: usize) -> usize
+extern CTLineGetTypographicBounds(line: usize, ascent: mutable f64&, descent: mutable f64&, leading: mutable f64&) -> f64
+extern CTLineDraw(line: usize, context: usize) -> void
 extern CFRelease(value: usize) -> void
-extern CGColorCreateGenericGray(gray: f64, alpha: f64) -> usize
-extern CGColorRelease(color: usize) -> void
+extern CGContextSetTextPosition(context: usize, x: f64, y: f64) -> void
 struct NativeSize:
     width: f64
     height: f64
+extern CGColorCreateGenericRGB(r: f64, g: f64, b: f64, a: f64) -> usize
+extern CGColorCreateGenericGray(gray: f64, alpha: f64) -> usize
+extern CGColorRelease(color: usize) -> void
 extern CGContextSetShadowWithColor(context: usize, offset: NativeSize, blur: f64, color: usize) -> void
 extern CGContextSetRGBFillColor(context: usize, r: f64, g: f64, b: f64, a: f64) -> void
 extern CGContextSetRGBStrokeColor(context: usize, r: f64, g: f64, b: f64, a: f64) -> void
@@ -54,12 +63,14 @@ extern CGContextClosePath(context: usize) -> void
 extern CGContextFillPath(context: usize) -> void
 extern CGContextStrokePath(context: usize) -> void
 extern CGContextSetLineWidth(context: usize, width: f64) -> void
+extern CGContextTranslateCTM(context: usize, x: f64, y: f64) -> void
+extern CGContextScaleCTM(context: usize, x: f64, y: f64) -> void
 
 def ui_measure_text_width(text: sview, size: f32) -> f32:
     return 0.0 if text.len == 0
     pointer: cstr = text.data.cast[cstr] can Unsafe.PointerCast
     semibold: i32 = 1 if size >= 19.0 else 0
-    return elisa_appkit_canvas_text_width(pointer, text.len, size, semibold)
+    return UiAppKitCanvas::text_width(pointer, text.len, size, semibold)
 def ui_measure_text_height(text: sview, size: f32) -> f32:
     return UiAppKitCanvas::font_line_height(size)
 def ui_font_ascent(size: f32) -> f32:
@@ -90,6 +101,89 @@ module UiAppKitCanvas:
             height: f32 = (CTFontGetAscent(font) + CTFontGetDescent(font) + CTFontGetLeading(font)).f32()
             CFRelease(font)
             return height
+
+        const UTF8_ENCODING: u32 = 0x08000100
+        const BOLD_TRAIT: u32 = 2
+
+        # CoreText owns the glyph shaping and rasterization path. The only
+        # Objective-C work left in the canvas shim is object/protocol plumbing;
+        # text runs are UTF-8 bytes and CF references all the way down here.
+        def text_font(size: f32, semibold: i32) -> usize:
+            regular: usize = CTFontCreateUIFontForLanguage(SYSTEM_UI_FONT, size.f64(), 0)
+            return 0 if regular == 0
+            return regular if semibold == 0
+            emphasized: usize = CTFontCreateCopyWithSymbolicTraits(regular, size.f64(), 0, BOLD_TRAIT, BOLD_TRAIT)
+            return regular if emphasized == 0
+            CFRelease(regular)
+            return emphasized
+
+        def text_attributes(font: usize, color: usize) -> usize:
+            keys: usize[2] = [kCTFontAttributeName, kCTForegroundColorAttributeName]
+            values: usize[2] = [font, color]
+            key_pointer: usize& = (&keys[0]).cast[usize&] can Unsafe.PointerCast
+            value_pointer: usize& = (&values[0]).cast[usize&] can Unsafe.PointerCast
+            count: i64 = 2 if color != 0 else 1
+            return CFDictionaryCreate(0, key_pointer, value_pointer, count, 0, 0)
+
+        def text_line(text: cstr, length: usize, size: f32, semibold: i32, color: usize) -> usize:
+            font: usize = text_font(size, semibold)
+            return 0 if font == 0
+            string: usize = CFStringCreateWithBytes(0, text, length.i64(), UTF8_ENCODING, false)
+            if string == 0:
+                CFRelease(font)
+                return 0
+            attributes: usize = text_attributes(font, color)
+            if attributes == 0:
+                CFRelease(string)
+                CFRelease(font)
+                return 0
+            attributed: usize = CFAttributedStringCreate(0, string, attributes)
+            if attributed == 0:
+                CFRelease(attributes)
+                CFRelease(string)
+                CFRelease(font)
+                return 0
+            line: usize = CTLineCreateWithAttributedString(attributed)
+            CFRelease(attributed)
+            CFRelease(attributes)
+            CFRelease(string)
+            CFRelease(font)
+            return line if line != 0 else 0
+
+        # Draw and measure each create their own short-lived CF graph. This is
+        # intentionally explicit instead of relying on an autorelease pool: the
+        # same path is used by the off-screen AppKit smoke renderer.
+        def text_width(text: cstr, length: usize, size: f32, semibold: i32) -> f32:
+            return 0.0 if length == 0
+            line: usize = text_line(text, length, size, semibold, 0)
+            return 0.0 if line == 0
+            ascent: mutable f64 = 0.0
+            descent: mutable f64 = 0.0
+            leading: mutable f64 = 0.0
+            width: f32 = CTLineGetTypographicBounds(line, &ascent, &descent, &leading).f32()
+            CFRelease(line)
+            return width
+
+        def draw_text_line(text: cstr, length: usize, size: f32, semibold: i32, x: f32, y: f32, color: UiCore::Color) -> void:
+            return if length == 0
+            color_ref: usize = CGColorCreateGenericRGB(color_component(color.r).f64(), color_component(color.g).f64(), color_component(color.b).f64(), color_component(color.a).f64())
+            return if color_ref == 0
+            line: usize = text_line(text, length, size, semibold, color_ref)
+            if line != 0:
+                context: usize = current_context()
+                CGContextSaveGState(context)
+                # AppKit's flipped view supplies a y-down CTM while CoreText
+                # lays glyphs out in y-up coordinates. Reflect the drawing
+                # space around the view's bottom edge, then mirror the
+                # baseline so the rest of Elisa can stay y-down.
+                view_height: f64 = UiCore::viewport_height().f64()
+                CGContextTranslateCTM(context, 0.0, view_height)
+                CGContextScaleCTM(context, 1.0, -1.0)
+                CGContextSetTextPosition(context, x.f64(), view_height - y.f64())
+                CTLineDraw(line, context)
+                CGContextRestoreGState(context)
+                CFRelease(line)
+            CGColorRelease(color_ref)
 
         struct WindowOptions:
             width: f32
@@ -508,7 +602,7 @@ module UiAppKitCanvas:
                 return if run.text.len == 0
                 pointer: cstr = run.text.data.cast[cstr] can Unsafe.PointerCast
                 semibold: i32 = 1 if run.size >= 19.0 else 0
-                elisa_appkit_canvas_text(run.origin.x, run.origin.y, run.size, semibold, pointer, run.text.len, color_component(color.r), color_component(color.g), color_component(color.b), color_component(color.a))
+                draw_text_line(pointer, run.text.len, run.size, semibold, run.origin.x, run.origin.y, color)
 
         def run_with_options(title: sview, options: WindowOptions) -> i64:
             can Ui.Window, Ui.Draw, Ui.Text, Ui.Input, Unsafe.PointerCast:

@@ -550,23 +550,6 @@ void elisa_appkit_canvas_close(void) {
     elisa_canvas_animation_timer = nil;
     [elisa_canvas_window performClose:nil];
 }
-void elisa_appkit_canvas_text(float x,float y,float size,int semibold,const char *bytes,size_t length,float r,float g,float b,float a) {
-    if (bytes == NULL || length == 0) return;
-    NSString *text=[[NSString alloc] initWithBytes:bytes length:length encoding:NSUTF8StringEncoding];
-    if (text == nil) return;
-    NSFont *font = semibold ? [NSFont systemFontOfSize:size weight:NSFontWeightSemibold]
-                            : [NSFont systemFontOfSize:size];
-    NSDictionary *attrs=@{NSFontAttributeName:font,
-                          NSForegroundColorAttributeName:[NSColor colorWithSRGBRed:r green:g blue:b alpha:a]};
-    [text drawAtPoint:NSMakePoint(x,y) withAttributes:attrs];
-}
-float elisa_appkit_canvas_text_width(const char *bytes,size_t length,float size,int semibold) {
-    if (bytes == NULL || length == 0) return 0;
-    NSString *text=[[NSString alloc] initWithBytes:bytes length:length encoding:NSUTF8StringEncoding];
-    NSFont *font = semibold ? [NSFont systemFontOfSize:size weight:NSFontWeightSemibold]
-                            : [NSFont systemFontOfSize:size];
-    return text == nil ? 0 : [text sizeWithAttributes:@{NSFontAttributeName:font}].width;
-}
 void elisa_appkit_canvas_accessibility_reset(void) {
     [elisa_accessibility_next removeAllObjects];
     [elisa_canvas_view removeAllToolTips];

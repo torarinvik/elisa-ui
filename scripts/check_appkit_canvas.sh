@@ -29,6 +29,10 @@ if grep -Eq 'elisa_appkit_canvas_(clear|rect|circle|triangle|line|render_options
   echo "appkit canvas: CoreGraphics path rendering leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'elisa_appkit_canvas_text(_width)?\b' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: CoreText text rendering leaked back into Objective-C" >&2
+  exit 1
+fi
 
 # These callbacks cross the Objective-C/Elisa boundary and must survive dead
 # stripping in the packaged product.
@@ -70,6 +74,10 @@ if nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_\(monotonic_time\|set_shadow\
 fi
 nm -g "$BIN" | grep -q ' U _CTFontCreateUIFontForLanguage$'
 nm -g "$BIN" | grep -q ' U _CTFontGetAscent$'
+nm -g "$BIN" | grep -q ' U _CTLineDraw$'
+nm -g "$BIN" | grep -q ' U _CTLineGetTypographicBounds$'
+nm -g "$BIN" | grep -q ' U _CFStringCreateWithBytes$'
+nm -g "$BIN" | grep -q ' U _CGColorCreateGenericRGB$'
 if nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_\(line_height\|ascent\)$'; then
   echo "appkit canvas: font metrics leaked back into Objective-C" >&2
   exit 1
