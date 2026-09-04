@@ -27,7 +27,10 @@ module UiFlat:
         # has no cap because a handle IS the node there. new_widget degrades to
         # NONE past this rather than corrupting the tree.
         const MAX_WIDGETS: usize = 256
-        const TEXT_CAPACITY: usize = 128
+        # One KiB per field keeps the flat layer deterministic and allocation-
+        # free without imposing the old 127-byte ceiling on ordinary desktop
+        # input. One byte remains reserved by the storage contract.
+        const TEXT_CAPACITY: usize = 1024
         const TEXT_STORAGE_SIZE: usize = MAX_WIDGETS * TEXT_CAPACITY
         const SECURE_TEXT_CAPACITY: usize = TEXT_CAPACITY * 3
         const SECURE_TEXT_STORAGE_SIZE: usize = MAX_WIDGETS * SECURE_TEXT_CAPACITY
@@ -120,7 +123,8 @@ module UiFlat:
         global mutable shift_down: bool = false
         # Text history is global so edits across fields undo in chronological
         # order. Each bounded entry stores complete before/after field states;
-        # 32 * 2 * 128 bytes keeps behavior deterministic and allocation-free.
+        # Complete before/after snapshots keep behavior deterministic and
+        # allocation-free; capacity constants derive the exact storage cost.
         global mutable history_widget: usize[TEXT_HISTORY_CAPACITY] = zeroed
         global mutable history_before_text: u8[TEXT_HISTORY_STORAGE_SIZE] = zeroed
         global mutable history_after_text: u8[TEXT_HISTORY_STORAGE_SIZE] = zeroed

@@ -10,6 +10,7 @@ global mutable test_last_click: usize = UiFlat::NONE
 global mutable test_last_event: i32 = -1
 global mutable test_failures: i32 = 0
 global mutable invalid_utf8: u8[8] = zeroed
+global mutable long_text: u8[1100] = zeroed
 
 # Text measurement is part of the platform contract, so a test with no backend
 # supplies it. Deterministic ratios keep the label assertions exact instead of
@@ -479,11 +480,20 @@ def main() -> i64:
     UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.LeftShift)))
     check("Shift-click extends from the existing anchor", UiFlat::selection_start(field) == 0 and UiFlat::selection_end(field) == 7)
 
-    long_field: usize = UiFlat::text_field(UiFlat::NONE, "Bounded", "", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaé", 220.0, 36.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
-    check("bounded initial text ends at a UTF-8 boundary", UiFlat::widget(long_field).input_length == 126)
+    expanded_field: usize = UiFlat::text_field(UiFlat::NONE, "Expanded", "", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaé", 220.0, 36.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
+    check("text beyond the former 127-byte ceiling is retained", UiFlat::text_value(expanded_field).len == 128 and not UiFlat::text_was_truncated(expanded_field))
+    for index in 0..<1100:
+        long_text[index] <- 97
+    long_text[1022] <- 195
+    long_text[1023] <- 169
+    long_field: usize = UiFlat::text_field(UiFlat::NONE, "Bounded", "", sview(&long_text[0], 0, 1024), 220.0, 36.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
+    check("bounded initial text ends at a UTF-8 boundary", UiFlat::widget(long_field).input_length == 1022)
     check("bounded initial text reports truncation", UiFlat::text_was_truncated(long_field))
-    cluster_bound_field: usize = UiFlat::text_field(UiFlat::NONE, "Cluster bounded", "", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaé", 220.0, 36.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
-    check("bounded initial text never truncates inside a grapheme", UiFlat::widget(cluster_bound_field).input_length == 126)
+    long_text[1021] <- 101
+    long_text[1022] <- 204
+    long_text[1023] <- 129
+    cluster_bound_field: usize = UiFlat::text_field(UiFlat::NONE, "Cluster bounded", "", sview(&long_text[0], 0, 1024), 220.0, 36.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
+    check("bounded initial text never truncates inside a grapheme", UiFlat::widget(cluster_bound_field).input_length == 1021)
 
     UiFlat::reset()
     secret: usize = UiFlat::secure_text_field(UiFlat::NONE, "Password", "Enter password", "s3crét", 220.0, 36.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))

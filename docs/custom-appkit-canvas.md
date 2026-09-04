@@ -183,8 +183,10 @@ Cocoa protocol implementations. Widget state, command policy, layout,
 interaction, editing, accessibility diffing, headless orchestration and all
 CoreGraphics path construction now live in Elisa.
 
-Text fields are currently single-line and deliberately bounded to 127 UTF-8
-bytes per widget so the flat layer remains allocation-free. Multiline editing
+Text fields are currently single-line and deliberately bounded to 1023 UTF-8
+bytes per widget so the flat layer remains allocation-free. Truncation preserves
+UTF-8 and grapheme boundaries and is observable through `text_was_truncated`.
+Multiline editing
 is not yet part of this compact control; the separate native-controls AppKit
 backend remains available when an application needs the complete native text
 editor.
