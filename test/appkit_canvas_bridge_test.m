@@ -302,6 +302,8 @@ int main(void) {
         if (require(NSEqualRanges(elisa_canvas_view.selectedRange, NSMakeRange(0, 6)), @"Select All did not cover the field")) return 1;
         [elisa_canvas_view copy:nil];
         if (require([[[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString] isEqualToString:@"Worldé"], @"Copy did not write selected Unicode text")) return 1;
+        if (require(elisa_appkit_canvas_clipboard_write((const unsigned char *)"", 0), @"empty clipboard write failed")) return 1;
+        if (require([[[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString] isEqualToString:@""], @"empty clipboard write did not clear the pasteboard")) return 1;
         [elisa_canvas_view insertText:@"Next" replacementRange:NSMakeRange(NSNotFound, 0)];
         if (require(strcmp(test_text, "Next") == 0, @"typing did not replace the selection")) return 1;
 

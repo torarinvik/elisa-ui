@@ -471,7 +471,7 @@ void elisa_appkit_canvas_set_snapshot_path(const char *path) {
 }
 
 int elisa_appkit_canvas_clipboard_write(const unsigned char *bytes, size_t length) {
-    if (bytes == NULL || length == 0) return 0;
+    if (bytes == NULL) return 0;
     NSString *text = [[NSString alloc] initWithBytes:bytes length:length encoding:NSUTF8StringEncoding];
     if (text == nil) return 0;
     NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
