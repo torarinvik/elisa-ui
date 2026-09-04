@@ -183,7 +183,7 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
 }
 - (void)setFrameSize:(NSSize)size {
     [super setFrameSize:size];
-    if (elisa_canvas_window != nil) elisa_appkit_canvas_resize(size.width, size.height);
+    elisa_appkit_canvas_resize(size.width, size.height);
 }
 - (NSPoint)eventPoint:(NSEvent *)event {
     return [self convertPoint:[event locationInWindow] fromView:nil];
