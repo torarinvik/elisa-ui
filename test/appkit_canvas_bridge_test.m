@@ -364,6 +364,8 @@ int main(void) {
         if (require(![elisa_canvas_view isAccessibilityElement], @"canvas semantic-root policy was not supplied by Elisa")) return 1;
         NSObject *invalidEvent = [NSObject new];
         elisa_appkit_canvas_interpret_key_event((size_t)(__bridge void *)invalidEvent);
+        NSObject *invalidTimer = [NSObject new];
+        elisa_appkit_canvas_cancel_redraw((size_t)(__bridge void *)invalidTimer);
         elisa_appkit_canvas_center();
     size_t menuBar = elisa_appkit_canvas_menus_begin();
     NSObject *invalidMenuString = [NSObject new];

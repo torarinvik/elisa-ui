@@ -611,6 +611,8 @@ size_t elisa_appkit_canvas_schedule_redraw(float delay, size_t run_loop_mode) {
 
 void elisa_appkit_canvas_cancel_redraw(size_t handle) {
     if (handle == 0) return;
+    id object = (__bridge id)(void *)handle;
+    if (![object isKindOfClass:[NSTimer class]]) return;
     NSTimer *timer = (__bridge_transfer NSTimer *)(void *)handle;
     [timer invalidate];
 }
