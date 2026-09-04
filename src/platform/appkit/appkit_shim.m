@@ -128,6 +128,18 @@ int elisa_appkit_window_style_utility(void) {
     return (int)NSWindowStyleMaskUtilityWindow;
 }
 
+int elisa_appkit_bezel_style_rounded(void) {
+    return (int)NSBezelStyleRounded;
+}
+
+int elisa_appkit_button_type_push_on_push_off(void) {
+    return (int)NSButtonTypePushOnPushOff;
+}
+
+int elisa_appkit_progress_style_bar(void) {
+    return (int)NSProgressIndicatorStyleBar;
+}
+
 void elisa_appkit_create_window_with_style(int index, int style) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index, ELISA_APPKIT_WINDOW)) return;
@@ -195,20 +207,20 @@ void elisa_appkit_create_label(int index) {
     }
 }
 
-void elisa_appkit_create_push_button(int index) {
+void elisa_appkit_create_push_button(int index, int bezel_style) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index, ELISA_APPKIT_PUSHBUTTON)) return;
         NSButton *button = [NSButton buttonWithTitle:@"" target:nil action:nil];
-        [button setBezelStyle:NSBezelStyleRounded];
+        [button setBezelStyle:(NSBezelStyle)bezel_style];
         elisa_appkit_store_view(index, button);
     }
 }
 
-void elisa_appkit_create_toggle_button(int index) {
+void elisa_appkit_create_toggle_button(int index, int button_type) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index, ELISA_APPKIT_TOGGLEBUTTON)) return;
         NSButton *button = [NSButton buttonWithTitle:@"" target:nil action:nil];
-        [button setButtonType:NSButtonTypePushOnPushOff];
+        [button setButtonType:(NSButtonType)button_type];
         elisa_appkit_store_view(index, button);
     }
 }
@@ -241,12 +253,12 @@ void elisa_appkit_create_slider(int index) {
     }
 }
 
-void elisa_appkit_create_progress_bar(int index) {
+void elisa_appkit_create_progress_bar(int index, int progress_style, int indeterminate) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index, ELISA_APPKIT_PROGRESSBAR)) return;
         NSProgressIndicator *bar = [[NSProgressIndicator alloc] initWithFrame:NSZeroRect];
-        [bar setStyle:NSProgressIndicatorStyleBar];
-        [bar setIndeterminate:NO];
+        [bar setStyle:(NSProgressIndicatorStyle)progress_style];
+        [bar setIndeterminate:indeterminate != 0];
         elisa_appkit_store_view(index, bar);
     }
 }
@@ -378,6 +390,22 @@ int elisa_appkit_button_is_on(int index) {
     return [(NSButton *)elisa_objects[index] state] == NSControlStateValueOn ? 1 : 0;
 }
 
+int elisa_appkit_button_bezel_style(int index) {
+    if (index < 0 || index >= elisa_count) return -1;
+    return (int)[(NSButton *)elisa_objects[index] bezelStyle];
+}
+
+int elisa_appkit_button_toggles(int index) {
+    if (index < 0 || index >= elisa_count) return -1;
+    NSButton *button = (NSButton *)elisa_objects[index];
+    NSControlStateValue before = button.state;
+    [button setState:NSControlStateValueOff];
+    [button performClick:nil];
+    BOOL toggles = button.state == NSControlStateValueOn;
+    [button setState:before];
+    return toggles ? 1 : 0;
+}
+
 int elisa_appkit_scroll_has_vertical(int index) {
     if (index < 0 || index >= elisa_count || elisa_kinds[index] != ELISA_APPKIT_SCROLLVIEW) return 0;
     return [(NSScrollView *)elisa_objects[index] hasVerticalScroller] ? 1 : 0;
@@ -415,4 +443,14 @@ float elisa_appkit_frame_x(int index) {
     if (index < 0 || index >= elisa_count) return -1.0f;
     if (elisa_kinds[index] == ELISA_APPKIT_WINDOW) return 0.0f;
     return (float)[(NSView *)elisa_objects[index] frame].origin.x;
+}
+
+int elisa_appkit_progress_is_indeterminate(int index) {
+    if (index < 0 || index >= elisa_count) return -1;
+    return [(NSProgressIndicator *)elisa_objects[index] isIndeterminate] ? 1 : 0;
+}
+
+int elisa_appkit_progress_style(int index) {
+    if (index < 0 || index >= elisa_count) return -1;
+    return (int)[(NSProgressIndicator *)elisa_objects[index] style];
 }

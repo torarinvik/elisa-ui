@@ -17,6 +17,10 @@ if grep -Eq 'elisa_appkit_(create|set_(text|frame))\b' "$ROOT/src/platform/appki
   echo "appkit: generic control dispatch leaked back into the native boundary" >&2
   exit 1
 fi
+if grep -Eq 'styleMask:[[:space:]]*\(NSWindowStyleMask(Titled|Closable|Miniaturizable|Resizable|UtilityWindow)|setBezelStyle:NSBezelStyleRounded|setButtonType:NSButtonTypePushOnPushOff|setStyle:NSProgressIndicatorStyleBar' "$ROOT/src/platform/appkit/appkit_shim.m"; then
+  echo "appkit: native control style policy leaked back into Objective-C" >&2
+  exit 1
+fi
 clang -c -fobjc-arc -o "$ROOT/build/appkit_shim.o" "$ROOT/src/platform/appkit/appkit_shim.m"
 bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ROOT/build/appkit_check.o" "$ROOT/src/platform/appkit/appkit_check.elisa"
 clang -Wl,-dead_strip -o "$ROOT/build/appkit_check" \
@@ -31,6 +35,9 @@ nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_window_style_closab
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_window_style_miniaturizable$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_window_style_resizable$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_window_style_utility$'
+nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_bezel_style_rounded$'
+nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_button_type_push_on_push_off$'
+nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_progress_style_bar$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_create_window_with_style$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_create_floating_panel$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_create_vertical_scroll_view$'
@@ -42,6 +49,10 @@ nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_attach_to_view$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_button_state$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_slider_state$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_progress_value$'
+nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_button_bezel_style$'
+nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_button_toggles$'
+nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_progress_style$'
+nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_progress_is_indeterminate$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_scroll_has_vertical$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_scroll_has_horizontal$'
 if nm -g "$ROOT/build/appkit_check" | grep -Eq ' T _elisa_appkit_(create|set_(text|frame))$'; then
