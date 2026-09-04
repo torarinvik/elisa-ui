@@ -10,7 +10,6 @@ extern void elisa_appkit_canvas_frame(size_t context);
 extern void elisa_appkit_canvas_resize(float width, float height);
 extern void elisa_appkit_canvas_pointer(int kind, float x, float y,
                                         float dx, float dy, int button);
-extern void elisa_appkit_canvas_key(int down, int code);
 extern void elisa_appkit_canvas_raw_key(int down, int keyCode, int character);
 extern void elisa_appkit_canvas_raw_flags(int keyCode, int shift, int control, int alt, int superKey);
 extern void elisa_appkit_canvas_focus_changed(int focused);

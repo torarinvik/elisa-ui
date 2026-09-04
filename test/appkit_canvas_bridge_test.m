@@ -52,7 +52,6 @@ void elisa_appkit_canvas_pointer(int kind, float x, float y, float dx, float dy,
     test_pointer_kind = kind;
     test_pointer_button = button;
 }
-void elisa_appkit_canvas_key(int down, int code) { (void)down; (void)code; }
 void elisa_appkit_canvas_raw_key(int down, int keyCode, int character) { (void)down; (void)keyCode; (void)character; }
 void elisa_appkit_canvas_key_up(int keyCode, int character) { (void)keyCode; (void)character; }
 void elisa_appkit_canvas_raw_flags(int keyCode, int shift, int control, int alt, int superKey) {
