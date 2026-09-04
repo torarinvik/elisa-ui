@@ -685,12 +685,13 @@ void elisa_appkit_canvas_accessibility_set_text(size_t identifier,
                                                  size_t selectionLocation, size_t selectionLength) {
     ElisaAccessibilityElement *element = elisa_appkit_canvas_pending_element(identifier);
     if (element == nil) return;
-    NSString *value = textValue == 0 ? @"" : (__bridge NSString *)(void *)textValue;
-    NSString *selected = selectedTextValue == 0 ? @"" : (__bridge NSString *)(void *)selectedTextValue;
+    NSString *value = (__bridge NSString *)(void *)textValue;
+    NSString *selected = (__bridge NSString *)(void *)selectedTextValue;
+    if (value == nil || selected == nil) return;
     element.elisaSynchronizing = YES;
-    element.accessibilityValue = value ?: @"";
+    element.accessibilityValue = value;
     element.accessibilitySelectedTextRange = NSMakeRange(selectionLocation, selectionLength);
-    element.accessibilitySelectedText = selected ?: @"";
+    element.accessibilitySelectedText = selected;
     element.accessibilityMinValue = nil;
     element.accessibilityMaxValue = nil;
     element.elisaSynchronizing = NO;
