@@ -130,6 +130,9 @@ int elisa_appkit_canvas_text_action_enabled(int action) {
     }
     return action == 1;
 }
+int elisa_appkit_canvas_text_action_valid(int action) {
+    return action == 0 || elisa_appkit_canvas_text_action_enabled(action);
+}
 int elisa_appkit_canvas_perform_text_action(int action) {
     if (!elisa_appkit_canvas_text_action_enabled(action)) return 0;
     if (action == 1) {

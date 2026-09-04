@@ -45,6 +45,7 @@ extern void elisa_appkit_canvas_unmark_text(void);
 extern void elisa_appkit_canvas_text_selector(const char *selectorName);
 extern int elisa_appkit_canvas_text_action(const char *selectorName);
 extern int elisa_appkit_canvas_text_action_enabled(int action);
+extern int elisa_appkit_canvas_text_action_valid(int action);
 extern int elisa_appkit_canvas_perform_text_action(int action);
 extern float elisa_appkit_canvas_character_x(size_t location);
 extern float elisa_appkit_canvas_caret_y(void);
@@ -255,8 +256,7 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
 }
 - (BOOL)validateUserInterfaceItem:(id<NSValidatedUserInterfaceItem>)item {
     int action = elisa_appkit_canvas_text_action(sel_getName(item.action));
-    if (action != 0) return elisa_appkit_canvas_text_action_enabled(action) != 0;
-    return YES;
+    return elisa_appkit_canvas_text_action_valid(action) != 0;
 }
 - (void)copy:(id)sender {
     (void)sender;
