@@ -13,8 +13,8 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
 fi
 
 mkdir -p "$ROOT/build"
-if grep -Eq 'elisa_appkit_set_(text|frame)\b' "$ROOT/src/platform/appkit/appkit_shim.m" "$ROOT/src/platform/appkit/ui_appkit.elisa"; then
-  echo "appkit: generic text/frame dispatch leaked back into the native boundary" >&2
+if grep -Eq 'elisa_appkit_(create|set_(text|frame))\b' "$ROOT/src/platform/appkit/appkit_shim.m" "$ROOT/src/platform/appkit/ui_appkit.elisa"; then
+  echo "appkit: generic control dispatch leaked back into the native boundary" >&2
   exit 1
 fi
 clang -c -fobjc-arc -o "$ROOT/build/appkit_shim.o" "$ROOT/src/platform/appkit/appkit_shim.m"
@@ -26,8 +26,8 @@ nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_button_title$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_field_text$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_window_frame$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_view_frame$'
-if nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_\(text\|frame\)$'; then
-  echo "appkit: obsolete generic setter survived the link" >&2
+if nm -g "$ROOT/build/appkit_check" | grep -Eq ' T _elisa_appkit_(create|set_(text|frame))$'; then
+  echo "appkit: obsolete generic entry point survived the link" >&2
   exit 1
 fi
 "$ROOT/build/appkit_check"
