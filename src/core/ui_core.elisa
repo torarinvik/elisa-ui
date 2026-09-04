@@ -465,7 +465,7 @@ module UiCore:
             return Size{width: nonnegative_extent(width), height: nonnegative_extent(height)}
 
         def Rect(x: f32, y: f32, width: f32, height: f32) -> Rect:
-            return Rect{origin: Vec2{x: x, y: y}, size: Size(width, height)}
+            return Rect{origin: Vec2(x, y), size: Size(width, height)}
 
         def rgba(r: u8, g: u8, b: u8, a: u8) -> Color:
             return Color{r: r, g: g, b: b, a: a}
@@ -490,19 +490,24 @@ module UiCore:
         # call by its first argument's type, so `fill` needs no protocol and no
         # per-shape suffix; adding a shape means adding one overload.
         def fill(box: Rect, color: Color) -> void:
-            push_command(Command.FillRect(box, color))
+            safe_box: Rect = Rect(box.origin.x, box.origin.y, box.size.width, box.size.height)
+            push_command(Command.FillRect(safe_box, color))
 
         def fill(disc: Circle, color: Color) -> void:
-            push_command(Command.FillCircle(disc, color))
+            safe_disc: Circle = Circle{center: Vec2(disc.center.x, disc.center.y), radius: nonnegative_extent(disc.radius)}
+            push_command(Command.FillCircle(safe_disc, color))
 
         def fill(tri: Triangle, color: Color) -> void:
-            push_command(Command.FillTriangle(tri, color))
+            safe_tri: Triangle = Triangle{a: Vec2(tri.a.x, tri.a.y), b: Vec2(tri.b.x, tri.b.y), c: Vec2(tri.c.x, tri.c.y)}
+            push_command(Command.FillTriangle(safe_tri, color))
 
         def fill(segment: Line, color: Color) -> void:
-            push_command(Command.FillLine(segment, color))
+            safe_segment: Line = Line{from_point: Vec2(segment.from_point.x, segment.from_point.y), to_point: Vec2(segment.to_point.x, segment.to_point.y)}
+            push_command(Command.FillLine(safe_segment, color))
 
         def draw(run: TextRun, color: Color) -> void:
-            push_command(Command.DrawText(run, color))
+            safe_run: TextRun = TextRun(run.origin, run.size, run.text)
+            push_command(Command.DrawText(safe_run, color))
 
         def TextRun(origin: Vec2, size: f32, body: sview) -> TextRun:
             return TextRun{origin: origin, size: nonnegative_extent(size), text: body}

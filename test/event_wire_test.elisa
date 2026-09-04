@@ -69,6 +69,19 @@ def main() -> i64:
     check("infinite frame times are ignored", UiCore::frame_time() == 0.0)
     text_run: UiCore::TextRun = UiCore::TextRun(UiCore::Vec2(0.0, 0.0), -4.0, "text")
     check("TextRun constructor normalizes font size", text_run.size == 0.0)
+    UiCore::begin_frame()
+    UiCore::fill(UiCore::Rect{origin: UiCore::Vec2{ x: nan, y: infinity }, size: UiCore::Size{width: nan, height: infinity}}, UiCore::rgb(1, 2, 3))
+    match UiCore::command_at(0):
+        UiCore::Command.FillRect(rect, color):
+            check("fill sanitizes rectangle geometry", rect.origin.x == 0.0 and rect.origin.y == 0.0 and rect.size.width == 0.0 and rect.size.height == 0.0)
+        _:
+            check("fill records a rectangle command", false)
+    UiCore::fill(UiCore::Circle{center: UiCore::Vec2{ x: infinity, y: nan }, radius: infinity}, UiCore::rgb(1, 2, 3))
+    match UiCore::command_at(1):
+        UiCore::Command.FillCircle(circle, color):
+            check("fill sanitizes circle geometry", circle.center.x == 0.0 and circle.center.y == 0.0 and circle.radius == 0.0)
+        _:
+            check("fill records a circle command", false)
     check("Scroll round-trips", round_trips((UiCore::PointerEvent.Scroll(at: UiCore::Vec2(1.0, 2.0), delta: UiCore::Vec2(0.0, -3.0))), 9))
     check("GamepadButton round-trips", round_trips((UiCore::GamepadEvent.Button(button: UiCore::Pad.LeftBumper, value: 1.0)), 10))
     check("GamepadAxis round-trips", round_trips((UiCore::GamepadEvent.Axis(axis: UiCore::PadAxis.LeftY, value: -0.5)), 11))
