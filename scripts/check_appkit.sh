@@ -37,6 +37,10 @@ if grep -Eq 'NSMakeRect\(0, 0, (640, 480|480, 320)\)' "$ROOT/src/platform/appkit
   echo "appkit: bootstrap window sizing policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq '\- \(BOOL\)isFlipped \{ return YES; \}' "$ROOT/src/platform/appkit/appkit_shim.m"; then
+  echo "appkit: coordinate orientation policy leaked back into Objective-C" >&2
+  exit 1
+fi
 if awk '/void elisa_appkit_present\(void\)/ { inside=1 } inside && /activateIgnoringOtherApps:YES/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_shim.m"; then
   echo "appkit: visible activation policy leaked back into Objective-C" >&2
   exit 1
@@ -66,6 +70,7 @@ nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_activation_poli
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_create_window_with_style$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_create_panel_window$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_create_scroll_view$'
+nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_view_is_flipped$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_scroll_document_frame$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_attach_to_window$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_attach_to_scroll_view$'

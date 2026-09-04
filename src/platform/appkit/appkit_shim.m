@@ -18,6 +18,10 @@
 
 #import <Cocoa/Cocoa.h>
 
+// Coordinate policy belongs to the widget framework. Objective-C only adapts
+// the Cocoa protocol method to the value Elisa selected.
+extern int elisa_appkit_view_is_flipped(void);
+
 enum {
     ELISA_APPKIT_WINDOW = 0,
     ELISA_APPKIT_PANEL = 1,
@@ -38,7 +42,7 @@ enum {
 @interface ElisaFlippedView : NSView
 @end
 @implementation ElisaFlippedView
-- (BOOL)isFlipped { return YES; }
+- (BOOL)isFlipped { return elisa_appkit_view_is_flipped() != 0; }
 @end
 
 static NSWindow *elisa_window = nil;
