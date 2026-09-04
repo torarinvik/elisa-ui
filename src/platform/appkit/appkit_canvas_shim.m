@@ -571,8 +571,10 @@ int elisa_appkit_canvas_present(void) {
 void elisa_appkit_canvas_activate(void) {
     [NSApp activateIgnoringOtherApps:YES];
 }
+// Snapshot paths are borrowed opaque CFStrings created by Elisa. The native
+// side only asks Cocoa to encode the bitmap and write it to that path.
 int elisa_appkit_canvas_present_headless(size_t color_space, int image_type,
-                                         const char *snapshotBytes, size_t snapshotLength) {
+                                         size_t snapshot) {
     // Exercise the real frame, painter and semantic bridge without ordering
     // a window onscreen or stealing focus from the user's current app.
     NSUInteger before = elisa_canvas_frame_count;
@@ -587,10 +589,8 @@ int elisa_appkit_canvas_present_headless(size_t color_space, int image_type,
     NSGraphicsContext *graphics = [NSGraphicsContext graphicsContextWithBitmapImageRep:bitmap];
     [elisa_canvas_view displayRectIgnoringOpacity:bounds inContext:graphics];
     if (elisa_canvas_frame_count <= before) return 0;
-    if (snapshotBytes != NULL && snapshotLength > 0) {
-        NSString *snapshotPath = [[NSString alloc] initWithBytes:snapshotBytes
-                                                            length:snapshotLength
-                                                          encoding:NSUTF8StringEncoding];
+    if (snapshot != 0) {
+        NSString *snapshotPath = (__bridge NSString *)(void *)snapshot;
         if (snapshotPath == nil) return 0;
         NSData *png = [bitmap representationUsingType:(NSBitmapImageFileType)image_type properties:@{}];
         if (png == nil || ![png writeToFile:snapshotPath atomically:YES]) return 0;
