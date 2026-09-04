@@ -12,7 +12,6 @@ extern elisa_appkit_canvas_menu_add_item(menu: i32, title: cstr, length: usize, 
 extern elisa_appkit_canvas_menu_add_separator(menu: i32) -> void
 extern elisa_appkit_canvas_menus_commit() -> void
 extern elisa_appkit_canvas_set_snapshot_path(path: cstr) -> void
-extern elisa_appkit_canvas_monotonic_time() -> f64
 extern elisa_appkit_canvas_schedule_redraw(delay: f32) -> void
 extern elisa_appkit_canvas_present(activate: i32) -> i32
 extern elisa_appkit_canvas_present_headless() -> i32
@@ -20,7 +19,6 @@ extern elisa_appkit_canvas_run() -> void
 extern elisa_appkit_canvas_set_min_size(width: f32, height: f32) -> void
 extern elisa_appkit_canvas_redraw() -> void
 extern elisa_appkit_canvas_close() -> void
-extern elisa_appkit_canvas_set_shadow(context: usize, x: f32, y: f32, blur: f32, alpha: f32) -> void
 extern elisa_appkit_canvas_text(x: f32, y: f32, size: f32, semibold: i32, text: cstr, length: usize, r: f32, g: f32, b: f32, a: f32) -> void
 extern elisa_appkit_canvas_text_width(text: cstr, length: usize, size: f32, semibold: i32) -> f32
 extern elisa_appkit_canvas_line_height(size: f32) -> f32
@@ -31,6 +29,13 @@ extern elisa_appkit_canvas_accessibility_commit(layout_changed: i32) -> void
 extern elisa_appkit_canvas_clipboard_has_text() -> i32
 extern elisa_appkit_canvas_clipboard_write(text: u8&, length: usize) -> i32
 extern elisa_appkit_canvas_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize
+extern clock_gettime_nsec_np(clock_id: i32) -> u64
+extern CGColorCreateGenericGray(gray: f64, alpha: f64) -> usize
+extern CGColorRelease(color: usize) -> void
+struct NativeSize:
+    width: f64
+    height: f64
+extern CGContextSetShadowWithColor(context: usize, offset: NativeSize, blur: f64, color: usize) -> void
 extern CGContextSetRGBFillColor(context: usize, r: f64, g: f64, b: f64, a: f64) -> void
 extern CGContextSetRGBStrokeColor(context: usize, r: f64, g: f64, b: f64, a: f64) -> void
 extern CGContextSetShouldAntialias(context: usize, enabled: bool) -> void
@@ -61,6 +66,13 @@ def ui_text_line_height(size: f32) -> f32:
 
 module UiAppKitCanvas:
     public:
+        # Darwin's CLOCK_MONOTONIC value. Calling libSystem directly keeps
+        # timing policy and unit conversion in Elisa rather than the Cocoa shim.
+        const CLOCK_MONOTONIC: i32 = 6
+
+        def monotonic_time() -> f64:
+            return clock_gettime_nsec_np(CLOCK_MONOTONIC).f64() / 1000000000.0
+
         struct WindowOptions:
             width: f32
             height: f32
@@ -144,6 +156,12 @@ module UiAppKitCanvas:
 
         def set_stroke_color(context: usize, color: UiCore::Color) -> void:
             CGContextSetRGBStrokeColor(context, color_component(color.r).f64(), color_component(color.g).f64(), color_component(color.b).f64(), color_component(color.a).f64())
+
+        def set_shadow(context: usize, x: f32, y: f32, blur: f32, alpha: f32) -> void:
+            color: usize = CGColorCreateGenericGray(0.0, alpha.f64())
+            return if color == 0
+            CGContextSetShadowWithColor(context, NativeSize{width: x.f64(), height: y.f64()}, blur.f64(), color)
+            CGColorRelease(color)
 
         def current_context() -> usize:
             return frame_context
@@ -446,7 +464,7 @@ module UiAppKitCanvas:
                 hairline_alpha: f32 = 0.13 if elevated else 0.055
                 context: usize = current_context()
                 CGContextSaveGState(context)
-                elisa_appkit_canvas_set_shadow(context, 0.0, 2.0, 5.0, shadow_alpha) if shadow_alpha > 0.0
+                set_shadow(context, 0.0, 2.0, 5.0, shadow_alpha) if shadow_alpha > 0.0
                 set_fill_color(context, color)
                 rounded_path(context, box, radius)
                 CGContextFillPath(context)
@@ -532,7 +550,7 @@ module UiAppKitCanvas:
 def appkit_canvas_frame_callback(context: usize) -> void:
     can Ui.Draw, Ui.Text:
         UiAppKitCanvas::begin_native_frame(context)
-        UiCore::set_frame_time(elisa_appkit_canvas_monotonic_time())
+        UiCore::set_frame_time(UiAppKitCanvas::monotonic_time())
         CGContextSetShouldAntialias(context, true)
         CGContextSetShouldSmoothFonts(context, true)
         UiCore::begin_frame()

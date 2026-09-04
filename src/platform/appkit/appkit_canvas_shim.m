@@ -499,10 +499,6 @@ size_t elisa_appkit_canvas_clipboard_read(unsigned char *buffer, size_t capacity
     return take;
 }
 
-double elisa_appkit_canvas_monotonic_time(void) {
-    return NSProcessInfo.processInfo.systemUptime;
-}
-
 void elisa_appkit_canvas_schedule_redraw(float delay) {
     [elisa_canvas_animation_timer invalidate];
     elisa_canvas_animation_timer = nil;
@@ -553,10 +549,6 @@ void elisa_appkit_canvas_close(void) {
     [elisa_canvas_animation_timer invalidate];
     elisa_canvas_animation_timer = nil;
     [elisa_canvas_window performClose:nil];
-}
-void elisa_appkit_canvas_set_shadow(size_t context, float x, float y, float blur, float alpha) {
-    CGContextSetShadowWithColor((CGContextRef)context, CGSizeMake(x, y), blur,
-        [[NSColor colorWithWhite:0 alpha:alpha] CGColor]);
 }
 void elisa_appkit_canvas_text(float x,float y,float size,int semibold,const char *bytes,size_t length,float r,float g,float b,float a) {
     if (bytes == NULL || length == 0) return;
