@@ -33,6 +33,10 @@ if grep -Eq 'backing:NSBackingStoreBuffered' "$ROOT/src/platform/appkit/appkit_s
   echo "appkit: backing-store policy leaked back into Objective-C constructors" >&2
   exit 1
 fi
+if grep -Eq 'NSMakeRect\(0, 0, (640, 480|480, 320)\)' "$ROOT/src/platform/appkit/appkit_shim.m"; then
+  echo "appkit: bootstrap window sizing policy leaked back into Objective-C" >&2
+  exit 1
+fi
 if awk '/void elisa_appkit_present\(void\)/ { inside=1 } inside && /activateIgnoringOtherApps:YES/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_shim.m"; then
   echo "appkit: visible activation policy leaked back into Objective-C" >&2
   exit 1

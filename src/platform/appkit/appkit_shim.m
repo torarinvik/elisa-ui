@@ -156,10 +156,11 @@ int elisa_appkit_backing_store_buffered(void) {
     return (int)NSBackingStoreBuffered;
 }
 
-void elisa_appkit_create_window_with_style(int index, int style, int backing) {
+void elisa_appkit_create_window_with_style(int index, int style, int backing,
+                                           float width, float height) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index, ELISA_APPKIT_WINDOW)) return;
-        NSRect content = NSMakeRect(0, 0, 640, 480);
+        NSRect content = NSMakeRect(0, 0, width, height);
         NSWindow *window = [[NSWindow alloc]
             initWithContentRect:content
                       styleMask:(NSWindowStyleMask)style
@@ -173,10 +174,11 @@ void elisa_appkit_create_window_with_style(int index, int style, int backing) {
 }
 
 void elisa_appkit_create_panel_window(int index, int style, int backing,
-                                      int floating, int becomes_key_only) {
+                                      int floating, int becomes_key_only,
+                                      float width, float height) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index, ELISA_APPKIT_WINDOW)) return;
-        NSRect content = NSMakeRect(0, 0, 480, 320);
+        NSRect content = NSMakeRect(0, 0, width, height);
         NSPanel *panel = [[NSPanel alloc]
             initWithContentRect:content
                       styleMask:(NSWindowStyleMask)style
