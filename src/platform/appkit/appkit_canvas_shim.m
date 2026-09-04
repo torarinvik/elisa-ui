@@ -140,6 +140,16 @@ static NSCursor *elisa_appkit_canvas_cursor(size_t handle) {
     return [object isKindOfClass:[NSCursor class]] ? object : nil;
 }
 
+// Key interpretation receives a borrowed NSEvent handle from the view's
+// callback. Validate it before placing it in an NSArray and handing it back to
+// AppKit; malformed cross-boundary data must be a no-op, never an Objective-C
+// message to an arbitrary object.
+static NSEvent *elisa_appkit_canvas_event(size_t handle) {
+    if (handle == 0) return nil;
+    id object = (__bridge id)(void *)handle;
+    return [object isKindOfClass:[NSEvent class]] ? object : nil;
+}
+
 @interface ElisaCanvasDelegate : NSObject <NSWindowDelegate>
 @end
 @implementation ElisaCanvasDelegate
@@ -167,8 +177,8 @@ static NSCursor *elisa_appkit_canvas_cursor(size_t handle) {
 static ElisaCanvasDelegate *elisa_canvas_delegate;
 
 void elisa_appkit_canvas_interpret_key_event(size_t event) {
-    NSEvent *nativeEvent = (__bridge NSEvent *)(void *)event;
-    if (nativeEvent != nil) [elisa_canvas_view interpretKeyEvents:@[nativeEvent]];
+    NSEvent *nativeEvent = elisa_appkit_canvas_event(event);
+    if (nativeEvent != nil && elisa_canvas_view != nil) [elisa_canvas_view interpretKeyEvents:@[nativeEvent]];
 }
 
 @implementation ElisaCanvasView
