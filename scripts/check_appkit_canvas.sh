@@ -49,6 +49,10 @@ if grep -Eq 'notifications[[:space:]]*&[[:space:]]*[124]' "$ROOT/src/platform/ap
   echo "appkit canvas: accessibility notification policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq '\bappendApplicationName\b' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: menu title policy leaked back into Objective-C" >&2
+  exit 1
+fi
 
 # These callbacks cross the Objective-C/Elisa boundary and must survive dead
 # stripping in the packaged product.
@@ -62,6 +66,7 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_environment_change
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_text_selector$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_menus_begin$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_menu_add_item$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_menu_add_application_item$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_menus_commit$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_activate$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_adjust$'

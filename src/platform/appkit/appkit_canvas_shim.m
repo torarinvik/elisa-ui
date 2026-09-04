@@ -447,13 +447,10 @@ void elisa_appkit_canvas_menu_set_windows(int menuIndex) {
     [NSApp setWindowsMenu:elisa_canvas_menus[menuIndex]];
 }
 
-void elisa_appkit_canvas_menu_add_item(int menuIndex, const char *bytes, size_t length,
-                                        int appendApplicationName, int action, int key,
-                                        size_t modifiers) {
+static void elisa_appkit_canvas_menu_add_item_title(int menuIndex, NSString *title,
+                                                     int action, int key, size_t modifiers) {
     if (menuIndex < 0 || (NSUInteger)menuIndex >= elisa_canvas_menus.count) return;
-    NSString *title = [[NSString alloc] initWithBytes:bytes length:length encoding:NSUTF8StringEncoding];
     if (title == nil) return;
-    if (appendApplicationName) title = [title stringByAppendingString:elisa_canvas_application_name];
     NSString *equivalent = @"";
     if (key > 0 && key <= UINT16_MAX) {
         unichar character = (unichar)key;
@@ -462,6 +459,19 @@ void elisa_appkit_canvas_menu_add_item(int menuIndex, const char *bytes, size_t 
     NSMenuItem *item = [elisa_canvas_menus[menuIndex]
         addItemWithTitle:title action:elisa_menu_action(action) keyEquivalent:equivalent];
     item.keyEquivalentModifierMask = (NSEventModifierFlags)modifiers;
+}
+
+void elisa_appkit_canvas_menu_add_item(int menuIndex, const char *bytes, size_t length,
+                                        int action, int key, size_t modifiers) {
+    NSString *title = [[NSString alloc] initWithBytes:bytes length:length encoding:NSUTF8StringEncoding];
+    elisa_appkit_canvas_menu_add_item_title(menuIndex, title, action, key, modifiers);
+}
+
+void elisa_appkit_canvas_menu_add_application_item(int menuIndex, const char *bytes, size_t length,
+                                                    int action, int key, size_t modifiers) {
+    NSString *title = [[NSString alloc] initWithBytes:bytes length:length encoding:NSUTF8StringEncoding];
+    if (title != nil) title = [title stringByAppendingString:elisa_canvas_application_name];
+    elisa_appkit_canvas_menu_add_item_title(menuIndex, title, action, key, modifiers);
 }
 
 size_t elisa_appkit_canvas_modifier_command(void) { return NSEventModifierFlagCommand; }

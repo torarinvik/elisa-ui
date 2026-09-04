@@ -218,12 +218,12 @@ int main(void) {
         if (!elisa_appkit_canvas_open("test", 4, 200, 100, 15, 0, 0, 1, 1)) return 1;
         elisa_appkit_canvas_menus_begin("test", 4);
         int applicationMenu = elisa_appkit_canvas_menu_add("test", 4);
-        elisa_appkit_canvas_menu_add_item(applicationMenu, "About ", 6, 1, 1, 0, 0);
+        elisa_appkit_canvas_menu_add_application_item(applicationMenu, "About ", 6, 1, 0, 0);
         elisa_appkit_canvas_menu_add_separator(applicationMenu);
-        elisa_appkit_canvas_menu_add_item(applicationMenu, "Quit ", 5, 1, 5, 'q', NSEventModifierFlagCommand);
+        elisa_appkit_canvas_menu_add_application_item(applicationMenu, "Quit ", 5, 5, 'q', NSEventModifierFlagCommand);
         int windowMenu = elisa_appkit_canvas_menu_add("Window", 6);
         elisa_appkit_canvas_menu_set_windows(windowMenu);
-        elisa_appkit_canvas_menu_add_item(windowMenu, "Minimize", 8, 0, 12, 'm', NSEventModifierFlagCommand);
+        elisa_appkit_canvas_menu_add_item(windowMenu, "Minimize", 8, 12, 'm', NSEventModifierFlagCommand);
         elisa_appkit_canvas_menus_commit();
         if (require(NSApp.mainMenu.numberOfItems == 2, @"declarative menu roots missing")) return 1;
         NSMenu *applicationSubmenu = [NSApp.mainMenu itemAtIndex:0].submenu;
