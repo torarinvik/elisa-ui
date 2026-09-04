@@ -28,7 +28,7 @@ extern elisa_appkit_canvas_accessibility_add(id: usize, action: usize, role: usi
 extern elisa_appkit_canvas_accessibility_set_boolean(id: usize, selected: i32) -> void
 extern elisa_appkit_canvas_accessibility_set_range(id: usize, value: f32) -> void
 extern elisa_appkit_canvas_accessibility_set_text(id: usize, text_value: cstr, text_length: usize, selected_text: cstr, selected_text_length: usize, selection_location: usize, selection_length: usize) -> void
-extern elisa_appkit_canvas_accessibility_notify(id: usize, notifications: i32) -> void
+extern elisa_appkit_canvas_accessibility_notify(id: usize, notification: usize) -> void
 extern elisa_appkit_canvas_arrow_cursor() -> usize
 extern elisa_appkit_canvas_pointing_hand_cursor() -> usize
 extern elisa_appkit_canvas_ibeam_cursor() -> usize
@@ -49,6 +49,9 @@ extern NSAccessibilityProgressIndicatorRole: usize
 extern NSAccessibilityTextFieldRole: usize
 extern NSAccessibilityStaticTextRole: usize
 extern NSAccessibilitySecureTextFieldSubrole: usize
+extern NSAccessibilityValueChangedNotification: usize
+extern NSAccessibilityFocusedUIElementChangedNotification: usize
+extern NSAccessibilitySelectedTextChangedNotification: usize
 extern kCTFontAttributeName: usize
 extern kCTForegroundColorAttributeName: usize
 extern CFStringCreateWithBytes(allocator: usize, bytes: cstr, length: i64, encoding: u32, external: bool) -> usize
@@ -404,6 +407,11 @@ module UiAppKitCanvas:
             return elisa_appkit_canvas_ibeam_cursor() if cursor == 2
             return elisa_appkit_canvas_arrow_cursor()
 
+        def accessibility_notify(id: usize, notifications: i32) -> void:
+            elisa_appkit_canvas_accessibility_notify(id, NSAccessibilityValueChangedNotification) if notifications & 1 != 0
+            elisa_appkit_canvas_accessibility_notify(id, NSAccessibilityFocusedUIElementChangedNotification) if notifications & 2 != 0
+            elisa_appkit_canvas_accessibility_notify(id, NSAccessibilitySelectedTextChangedNotification) if notifications & 4 != 0
+
         # Cocoa role identity is an exported NSString constant. Resolve it in
         # Elisa from the framework-neutral semantic role, then pass the native
         # pointer through FFI; Objective-C no longer owns this policy switch.
@@ -593,7 +601,7 @@ module UiAppKitCanvas:
                     elisa_appkit_canvas_accessibility_set_range(node.id, node.value)
                 if value_kind == 3:
                     elisa_appkit_canvas_accessibility_set_text(node.id, value_pointer, node.text_value.len, selected_pointer, node.selected_text.len, node.selection_location, node.selection_length)
-                elisa_appkit_canvas_accessibility_notify(node.id, notifications)
+                accessibility_notify(node.id, notifications)
             accessibility_previous_count <- next_count
             for index in 0..<accessibility_previous_count:
                 accessibility_previous_ids[index] <- accessibility_next_ids[index]

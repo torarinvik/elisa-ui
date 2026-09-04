@@ -658,12 +658,10 @@ void elisa_appkit_canvas_accessibility_set_text(size_t identifier,
     element.elisaSynchronizing = NO;
 }
 
-void elisa_appkit_canvas_accessibility_notify(size_t identifier, int notifications) {
+void elisa_appkit_canvas_accessibility_notify(size_t identifier, size_t notification) {
     ElisaAccessibilityElement *element = elisa_appkit_canvas_pending_element(identifier);
-    if (element == nil) return;
-    if (notifications & 1) NSAccessibilityPostNotification(element, NSAccessibilityValueChangedNotification);
-    if (notifications & 2) NSAccessibilityPostNotification(element, NSAccessibilityFocusedUIElementChangedNotification);
-    if (notifications & 4) NSAccessibilityPostNotification(element, NSAccessibilitySelectedTextChangedNotification);
+    if (element == nil || notification == 0) return;
+    NSAccessibilityPostNotification(element, (__bridge NSAccessibilityNotificationName)(void *)notification);
 }
 
 void elisa_appkit_canvas_accessibility_commit(int layoutChanged) {

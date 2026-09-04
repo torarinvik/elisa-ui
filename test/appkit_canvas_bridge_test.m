@@ -32,7 +32,6 @@ void elisa_appkit_canvas_frame(size_t context) {
         (size_t)(__bridge void *)[NSCursor pointingHandCursor],
         label, strlen(label), help, strlen(help), 10, 10, 180, 24, 1, 0);
     elisa_appkit_canvas_accessibility_set_range(7, test_slider_value);
-    elisa_appkit_canvas_accessibility_notify(7, 0);
     elisa_appkit_canvas_accessibility_add(8, 8, NSAccessibilityTextFieldRole, 0, 3,
         (size_t)(__bridge void *)[NSCursor IBeamCursor],
         "Project name", 12, "Edit the project name", 21,
@@ -40,13 +39,11 @@ void elisa_appkit_canvas_frame(size_t context) {
     elisa_appkit_canvas_accessibility_set_text(8, test_text, strlen(test_text),
         test_text + test_selection_start, test_selection_end - test_selection_start,
         elisa_appkit_canvas_selection_location(), elisa_appkit_canvas_selection_length());
-    elisa_appkit_canvas_accessibility_notify(8, 0);
     const char *masked = "••••";
     elisa_appkit_canvas_accessibility_add(9, 9, NSAccessibilityTextFieldRole, NSAccessibilitySecureTextFieldSubrole, 3,
         (size_t)(__bridge void *)[NSCursor IBeamCursor],
         "Password", 8, "Secure entry", 12, 10, 80, 180, 32, 1, 0);
     elisa_appkit_canvas_accessibility_set_text(9, masked, strlen(masked), "", 0, 0, 0);
-    elisa_appkit_canvas_accessibility_notify(9, 0);
     elisa_appkit_canvas_accessibility_commit(1);
 }
 
