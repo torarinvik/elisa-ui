@@ -125,6 +125,15 @@ static NSWindow *elisa_appkit_canvas_window(void) {
     return elisa_canvas_view == nil ? nil : [elisa_canvas_view window];
 }
 
+// FFI strings are borrowed opaque Objective-C objects. Validate their dynamic
+// type once at the boundary so a non-string handle cannot reach an NSString
+// initializer, menu setter, or pasteboard API.
+static NSString *elisa_appkit_canvas_string(size_t handle) {
+    if (handle == 0) return nil;
+    id object = (__bridge id)(void *)handle;
+    return [object isKindOfClass:[NSString class]] ? object : nil;
+}
+
 @interface ElisaCanvasDelegate : NSObject <NSWindowDelegate>
 @end
 @implementation ElisaCanvasDelegate
@@ -476,8 +485,8 @@ size_t elisa_appkit_canvas_menus_begin(void) {
 size_t elisa_appkit_canvas_menu_add(size_t menuBar, size_t title, size_t emptyKeyEquivalent) {
     NSMenu *bar = (__bridge NSMenu *)(void *)menuBar;
     if (![bar isKindOfClass:[NSMenu class]]) return 0;
-    NSString *value = (__bridge NSString *)(void *)title;
-    NSString *emptyKey = (__bridge NSString *)(void *)emptyKeyEquivalent;
+    NSString *value = elisa_appkit_canvas_string(title);
+    NSString *emptyKey = elisa_appkit_canvas_string(emptyKeyEquivalent);
     if (value == nil || emptyKey == nil) return 0;
     NSMenuItem *root = [[NSMenuItem alloc] initWithTitle:value action:NULL keyEquivalent:emptyKey];
     NSMenu *menu = [[NSMenu alloc] initWithTitle:value];
@@ -506,8 +515,8 @@ static void elisa_appkit_canvas_menu_add_item_title(size_t menu, NSString *title
 void elisa_appkit_canvas_menu_add_item(size_t menu, size_t title,
                                         size_t keyEquivalent, const char *actionName,
                                         size_t modifiers) {
-    NSString *value = (__bridge NSString *)(void *)title;
-    NSString *key = (__bridge NSString *)(void *)keyEquivalent;
+    NSString *value = elisa_appkit_canvas_string(title);
+    NSString *key = elisa_appkit_canvas_string(keyEquivalent);
     elisa_appkit_canvas_menu_add_item_title(menu, value, key, actionName, modifiers);
 }
 
@@ -540,8 +549,8 @@ void elisa_appkit_canvas_menus_commit(size_t menuBar) {
 // outbound framework text no longer performs UTF-8 decoding in Objective-C.
 int elisa_appkit_canvas_clipboard_write(size_t text, size_t pasteboard_type) {
     if (text == 0 || pasteboard_type == 0) return 0;
-    NSString *value = (__bridge NSString *)(void *)text;
-    NSString *type = (__bridge NSString *)(void *)pasteboard_type;
+    NSString *value = elisa_appkit_canvas_string(text);
+    NSString *type = elisa_appkit_canvas_string(pasteboard_type);
     // Validate both borrowed objects before mutating the pasteboard. A bad
     // FFI handle must fail closed without destroying a previously copied
     // value, and the native bridge must never message an arbitrary object as
@@ -557,8 +566,9 @@ int elisa_appkit_canvas_clipboard_write(size_t text, size_t pasteboard_type) {
 // bridge transfers object ownership rather than deciding byte truncation.
 size_t elisa_appkit_canvas_clipboard_read(size_t pasteboard_type) {
     if (pasteboard_type == 0) return 0;
-    NSString *type = (__bridge NSString *)(void *)pasteboard_type;
-    NSString *text = type == nil ? nil : [[NSPasteboard generalPasteboard] stringForType:type];
+    NSString *type = elisa_appkit_canvas_string(pasteboard_type);
+    if (type == nil) return 0;
+    NSString *text = [[NSPasteboard generalPasteboard] stringForType:type];
     if (text == nil) return 0;
     return (size_t)CFBridgingRetain(text);
 }

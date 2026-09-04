@@ -351,6 +351,11 @@ int main(void) {
         if (require(![elisa_canvas_view isAccessibilityElement], @"canvas semantic-root policy was not supplied by Elisa")) return 1;
         elisa_appkit_canvas_center();
     size_t menuBar = elisa_appkit_canvas_menus_begin();
+    NSObject *invalidMenuString = [NSObject new];
+    if (require(elisa_appkit_canvas_menu_add(
+                    menuBar, (size_t)(__bridge void *)invalidMenuString,
+                    (size_t)(__bridge void *)@"") == 0,
+                @"invalid menu string was accepted")) return 1;
     size_t applicationMenu = elisa_appkit_canvas_menu_add(menuBar, (size_t)(__bridge void *)@"test", (size_t)(__bridge void *)@"");
         elisa_appkit_canvas_menu_add_item(applicationMenu, (size_t)(__bridge void *)@"About test", (size_t)(__bridge void *)@"", "orderFrontStandardAboutPanel:", 0);
         elisa_appkit_canvas_menu_add_separator(applicationMenu);
@@ -473,6 +478,9 @@ int main(void) {
                     @"invalid clipboard type was accepted")) return 1;
         if (require([[[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString] isEqualToString:@"keep"],
                     @"invalid clipboard type destroyed existing contents")) return 1;
+        if (require(elisa_appkit_canvas_clipboard_read(
+                        (size_t)(__bridge void *)invalidPasteboardType) == 0,
+                    @"invalid clipboard type was readable")) return 1;
         if (require(elisa_appkit_canvas_clipboard_write(
                         (size_t)(__bridge void *)@"",
                         elisa_appkit_canvas_pasteboard_type_string()), @"empty clipboard write failed")) return 1;
