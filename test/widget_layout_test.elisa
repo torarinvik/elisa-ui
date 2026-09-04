@@ -11,6 +11,26 @@ global mutable test_last_event: i32 = -1
 global mutable test_failures: i32 = 0
 global mutable invalid_utf8: u8[8] = zeroed
 global mutable long_text: u8[1100] = zeroed
+global mutable test_clipboard: u8[UiFlat::TEXT_CAPACITY] = zeroed
+global mutable test_clipboard_length: usize = 0
+
+def ui_clipboard_has_text() -> bool:
+    return test_clipboard_length > 0
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    test_clipboard_length <- length if length < UiFlat::TEXT_CAPACITY else UiFlat::TEXT_CAPACITY
+    for index in 0..<test_clipboard_length:
+        test_clipboard[index] <- bytes[index]
+    return test_clipboard_length > 0
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    take: usize = test_clipboard_length if test_clipboard_length < capacity else capacity
+    for index in 0..<take:
+        buffer[index] <- test_clipboard[index]
+    return take
+
+def test_clipboard_value() -> sview:
+    return sview(&test_clipboard[0], 0, test_clipboard_length.i64())
 
 # Text measurement is part of the platform contract, so a test with no backend
 # supplies it. Deterministic ratios keep the label assertions exact instead of
@@ -805,6 +825,42 @@ def main() -> i64:
     check("global history undoes the newest field first", UiFlat::text_value(first_field) == "A" and UiFlat::text_value(second_field) == "" and UiFlat::focused() == second_field)
     _ = UiFlat::undo_text()
     check("global history continues into the previous field", UiFlat::text_value(first_field) == "" and UiFlat::focused() == first_field)
+
+    UiFlat::reset()
+    shortcut_field: usize = UiFlat::text_field(UiFlat::NONE, "Shortcuts", "", "copy me", 220.0, 36.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
+    UiFlat::request_focus(shortcut_field)
+    UiFlat::set_selection(shortcut_field, 0, 4)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.LeftControl)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.C)))
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.C)))
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.LeftControl)))
+    check("portable Control-C copies the selected UTF-8 bytes", test_clipboard_value() == "copy")
+    UiFlat::set_selection(shortcut_field, 5, 7)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.LeftSuper)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.X)))
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.X)))
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.LeftSuper)))
+    check("portable Command-X cuts through retained text history", UiFlat::text_value(shortcut_field) == "copy " and test_clipboard_value() == "me")
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.LeftControl)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.V)))
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.V)))
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.LeftControl)))
+    check("portable Control-V pastes through the normal insertion path", UiFlat::text_value(shortcut_field) == "copy me")
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.LeftControl)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Z)))
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.Z)))
+    check("portable Control-Z undoes clipboard edits", UiFlat::text_value(shortcut_field) == "copy ")
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.LeftShift)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Z)))
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.Z)))
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.LeftShift)))
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.LeftControl)))
+    check("portable Control-Shift-Z redoes clipboard edits", UiFlat::text_value(shortcut_field) == "copy me")
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.LeftControl)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.A)))
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.A)))
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.LeftControl)))
+    check("portable Control-A selects the complete field", UiFlat::selected_text_length(shortcut_field) == 7)
 
     UiFlat::reset()
     for index in 0..<257:

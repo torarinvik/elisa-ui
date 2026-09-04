@@ -7,7 +7,14 @@
 include "./ui_appkit_canvas.elisa"
 include "../../widgets/ui_widget.elisa"
 
-global mutable appkit_flat_clipboard_buffer: u8[UiFlat::TEXT_CAPACITY] = zeroed
+def ui_clipboard_has_text() -> bool:
+    return elisa_appkit_canvas_clipboard_has_text() != 0
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return elisa_appkit_canvas_clipboard_write(bytes, length) != 0
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return elisa_appkit_canvas_clipboard_read(buffer, capacity)
 
 def appkit_flat_accessibility_activate(index: usize) -> i32:
     activated: bool = UiFlat::activate(index)
@@ -79,11 +86,6 @@ def appkit_flat_unmark_text() -> void:
     UiFlat::unmark_text()
     elisa_appkit_canvas_redraw()
 
-def appkit_flat_select_all() -> void:
-    return if not UiFlat::accepts_text()
-    index: usize = UiFlat::focused()
-    UiFlat::set_selection(index, 0, UiFlat::text_value(index).len)
-
 # NSTextInputClient selectors are reduced to this small FFI vocabulary. Elisa
 # owns the UiCore key mapping and modifier sequencing.
 def appkit_flat_text_command(command: i32, modify_selection: i32) -> void:
@@ -122,43 +124,10 @@ def appkit_flat_text_selector(selector: i32) -> void:
     elisa_appkit_canvas_redraw()
 
 def appkit_flat_text_action_enabled(action: i32) -> i32:
-    enabled: bool = UiAppKitCanvas::text_action_enabled(
-        action,
-        UiFlat::accepts_text(),
-        UiFlat::allows_text_readback(),
-        UiFlat::selected_text_length(UiFlat::focused()) > 0 if UiFlat::accepts_text() else false,
-        UiFlat::can_undo_text(),
-        UiFlat::can_redo_text(),
-        elisa_appkit_canvas_clipboard_has_text() != 0,
-    )
-    return 1 if enabled else 0
+    return 1 if UiFlat::text_action_enabled(action) else 0
 
 def appkit_flat_perform_text_action(action: i32) -> i32:
-    return 0 if appkit_flat_text_action_enabled(action) == 0
-    if action == 1:
-        appkit_flat_select_all()
-        elisa_appkit_canvas_redraw()
-        return 1
-    if action == 2 or action == 3:
-        index: usize = UiFlat::focused()
-        length: usize = UiFlat::selected_text_length(index)
-        return 0 if length == 0
-        written: i32 = elisa_appkit_canvas_clipboard_write(UiFlat::selected_text_pointer(index), length)
-        return 0 if written == 0
-        if action == 3:
-            UiFlat::insert_text("")
-            elisa_appkit_canvas_redraw()
-            return 1
-        return 0
-    if action == 4:
-        length: usize = elisa_appkit_canvas_clipboard_read(&appkit_flat_clipboard_buffer[0], UiFlat::TEXT_CAPACITY)
-        return 0 if length == 0
-        UiFlat::insert_text(sview(&appkit_flat_clipboard_buffer[0], 0, length.i64()))
-        elisa_appkit_canvas_redraw()
-        return 1
-    changed: mutable bool = false
-    changed <- UiFlat::undo_text() if action == 5
-    changed <- UiFlat::redo_text() if action == 6
+    changed: bool = UiFlat::perform_text_action(action)
     elisa_appkit_canvas_redraw() if changed
     return 1 if changed else 0
 

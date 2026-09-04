@@ -137,6 +137,9 @@ module UiFlat:
         global mutable active_key: i32 = -1
         global mutable focused_widget: usize = NONE
         global mutable shift_down: bool = false
+        global mutable control_down: bool = false
+        global mutable super_down: bool = false
+        global mutable clipboard_buffer: u8[TEXT_CAPACITY] = zeroed
         # Text history is global so edits across fields undo in chronological
         # order. Each bounded entry stores complete before/after field states;
         # Complete before/after snapshots keep behavior deterministic and
@@ -466,6 +469,8 @@ module UiFlat:
             active_key <- -1
             focused_widget <- NONE
             shift_down <- false
+            control_down <- false
+            super_down <- false
             history_count <- 0
             history_cursor <- 0
             history_active <- false
@@ -1254,6 +1259,8 @@ module UiFlat:
             release_active_press()
             hot_widget <- NONE
             shift_down <- false
+            control_down <- false
+            super_down <- false
             clear_hover()
 
         # Portable window lifecycle handling. Backends report focus changes as
@@ -1661,6 +1668,36 @@ module UiFlat:
             history_cursor <- history_cursor + 1
             return true
 
+        # Backend hooks expose bytes only. Selection, security, history, and
+        # shortcut policy remain in Elisa's retained control implementation.
+        def text_action_enabled(action: i32) -> bool:
+            return can_undo_text() if action == 5
+            return can_redo_text() if action == 6
+            return false if not accepts_text()
+            return allows_text_readback() and selected_text_length(focused_widget) > 0 if action == 2 or action == 3
+            return true if action == 1
+            return ui_clipboard_has_text() if action == 4
+            return false
+
+        def perform_text_action(action: i32) -> bool:
+            return false if not text_action_enabled(action)
+            if action == 1:
+                set_selection(focused_widget, 0, widgets[focused_widget].input_length)
+                return true
+            if action == 2 or action == 3:
+                length: usize = selected_text_length(focused_widget)
+                return false if not ui_clipboard_write(selected_text_pointer(focused_widget), length)
+                insert_text("") if action == 3
+                return true
+            if action == 4:
+                length: usize = ui_clipboard_read(&clipboard_buffer[0], TEXT_CAPACITY)
+                return false if length == 0
+                insert_text(sview(&clipboard_buffer[0], 0, length.i64()))
+                return true
+            return undo_text() if action == 5
+            return redo_text() if action == 6
+            return false
+
         # Later widgets are drawn over earlier ones, so scanning backwards finds
         # the topmost interactive widget under the pointer.
         def hit(x: f32, y: f32) -> usize:
@@ -1759,6 +1796,23 @@ module UiFlat:
                     if code == UiCore::Key.LeftShift or code == UiCore::Key.RightShift:
                         shift_down <- true
                         return
+                    if code == UiCore::Key.LeftControl or code == UiCore::Key.RightControl:
+                        control_down <- true
+                        return
+                    if code == UiCore::Key.LeftSuper or code == UiCore::Key.RightSuper:
+                        super_down <- true
+                        return
+                    if accepts_text() and (control_down or super_down):
+                        action: mutable i32 = 0
+                        action <- 1 if code == UiCore::Key.A
+                        action <- 2 if code == UiCore::Key.C
+                        action <- 3 if code == UiCore::Key.X
+                        action <- 4 if code == UiCore::Key.V
+                        action <- 6 if code == UiCore::Key.Z and shift_down
+                        action <- 5 if code == UiCore::Key.Z and not shift_down
+                        if action != 0:
+                            _ = perform_text_action(action)
+                            return
                     if code == UiCore::Key.Tab:
                         focus_previous() if shift_down else focus_next()
                         return
@@ -1821,6 +1875,12 @@ module UiFlat:
                 UiCore::KeyEvent.Up(code):
                     if code == UiCore::Key.LeftShift or code == UiCore::Key.RightShift:
                         shift_down <- false
+                        return
+                    if code == UiCore::Key.LeftControl or code == UiCore::Key.RightControl:
+                        control_down <- false
+                        return
+                    if code == UiCore::Key.LeftSuper or code == UiCore::Key.RightSuper:
+                        super_down <- false
                         return
                     if (code == UiCore::Key.Space or code == UiCore::Key.Enter) and focused_widget < widget_count and widgets[focused_widget].kind != UiConst::WidgetKind.Slider and widgets[focused_widget].kind != UiConst::WidgetKind.TextField:
                         return if active_key != code.i32() or active_widget >= widget_count

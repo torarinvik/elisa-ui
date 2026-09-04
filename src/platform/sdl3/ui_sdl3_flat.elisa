@@ -1,0 +1,34 @@
+# Ready-to-use SDL3 adapter for UiFlat's platform byte services. SDL owns the
+# process clipboard allocation; Elisa owns shortcut and editing semantics.
+
+include "./ui_sdl3.elisa"
+include "../../widgets/ui_widget.elisa"
+
+extern SDL_HasClipboardText() -> bool
+extern SDL_SetClipboardText(text: cstr) -> bool
+extern SDL_GetClipboardText() -> cstr?
+extern SDL_free(memory: cstr) -> void
+
+global mutable sdl_flat_clipboard_write: u8[UiFlat::TEXT_CAPACITY + 1] = zeroed
+
+def ui_clipboard_has_text() -> bool:
+    return SDL_HasClipboardText()
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    take: usize = length if length < UiFlat::TEXT_CAPACITY else UiFlat::TEXT_CAPACITY
+    for index in 0..<take:
+        sdl_flat_clipboard_write[index] <- bytes[index]
+    sdl_flat_clipboard_write[take] <- 0
+    pointer: cstr = (&sdl_flat_clipboard_write[0]).cast[cstr] can Unsafe.PointerCast
+    return SDL_SetClipboardText(pointer)
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    text_opt: cstr? = SDL_GetClipboardText()
+    if text_opt is text:
+        length: usize = strlen(text)
+        take: usize = length if length < capacity else capacity
+        for index in 0..<take:
+            buffer[index] <- text[index]
+        SDL_free(text)
+        return take
+    return 0

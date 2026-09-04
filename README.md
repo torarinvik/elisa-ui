@@ -50,6 +50,8 @@ because a module member's symbol carries its module and those names cannot move.
   increment/decrement actions. Text fields support Unicode input, caret and range
   selection, marked IME composition, 32-step undo/redo, clipboard commands and
   assistive editing.
+  Clipboard action validation, secure-field restrictions, and desktop shortcut
+  routing live in Elisa; AppKit and SDL expose only their byte pasteboards.
   Tab and Shift-Tab traverse enabled controls, while Enter/Space activate them.
   SDL and AppKit both preserve left/right Shift, Control, Alt and Super key
   identity, so selection and shortcut state are portable.
