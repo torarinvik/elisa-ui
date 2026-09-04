@@ -167,10 +167,6 @@ static int elisa_text_action(SEL selector) {
     return 0;
 }
 
-static int elisa_text_action_is_enabled(int action) {
-    return elisa_appkit_canvas_text_action_enabled(action);
-}
-
 @implementation ElisaCanvasView
 - (BOOL)isFlipped { return YES; }
 - (BOOL)acceptsFirstResponder { return YES; }
@@ -306,7 +302,7 @@ static int elisa_text_action_is_enabled(int action) {
 }
 - (BOOL)validateUserInterfaceItem:(id<NSValidatedUserInterfaceItem>)item {
     int action = elisa_text_action(item.action);
-    if (action != 0) return elisa_text_action_is_enabled(action) != 0;
+    if (action != 0) return elisa_appkit_canvas_text_action_enabled(action) != 0;
     return YES;
 }
 - (void)copy:(id)sender {
