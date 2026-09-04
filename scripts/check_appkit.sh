@@ -50,6 +50,10 @@ if grep -Eq 'backing:NSBackingStoreBuffered' "$ROOT/src/platform/appkit/appkit_s
   echo "appkit: backing-store policy leaked back into Objective-C constructors" >&2
   exit 1
 fi
+if grep -Eq 'elisa_appkit_control_count' "$ROOT/src/platform/appkit/appkit_shim.m" "$ROOT/src/platform/appkit/ui_appkit.elisa" "$ROOT/src/platform/appkit/appkit_check.elisa"; then
+  echo "appkit: retained control count was duplicated in the native shim" >&2
+  exit 1
+fi
 if grep -Eq 'NSUTF8StringEncoding|initWithBytes:' "$ROOT/src/platform/appkit/appkit_shim.m"; then
   echo "appkit: control text conversion leaked back into Objective-C" >&2
   exit 1

@@ -398,11 +398,8 @@ void elisa_appkit_run(void) {
 // --- introspection, for the headless test -------------------------------------
 // What AppKit actually built, read back from the live objects rather than from
 // anything this file remembered: a test that trusts the shim's own bookkeeping
-// would pass even if no NSView were ever created.
-int elisa_appkit_control_count(void) {
-    return elisa_objects == nil ? 0 : (int)elisa_objects.count;
-}
-
+// would pass even if no NSView were ever created. Record counts stay in Elisa's
+// retained control arena; these queries are only facts that belong to Cocoa.
 int elisa_appkit_subview_count(int index) {
     NSView *container = elisa_container_for(index);
     return container == nil ? -1 : (int)[[container subviews] count];
