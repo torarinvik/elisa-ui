@@ -309,6 +309,11 @@ static int require(BOOL condition, NSString *message) {
 
 int main(void) {
     @autoreleasepool {
+        if (require(!elisa_appkit_canvas_present(), @"present succeeded before opening a canvas")) return 1;
+        if (require(!elisa_appkit_canvas_present_headless(
+                         elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(),
+                         elisa_appkit_canvas_bitmap_file_type_png(), 0, 200, 100, 8, 4, 1, 0),
+                    @"headless present succeeded before opening a canvas")) return 1;
         NSString *title = @"test";
         elisa_appkit_canvas_set_activation_policy(NSApplicationActivationPolicyProhibited);
         int opened = elisa_appkit_canvas_open((size_t)(__bridge void *)title,

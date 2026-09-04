@@ -579,6 +579,7 @@ void elisa_appkit_canvas_set_min_size(float width, float height) {
 }
 
 int elisa_appkit_canvas_present(void) {
+    if (elisa_canvas_window == nil || elisa_canvas_view == nil) return 0;
     [elisa_canvas_window makeKeyAndOrderFront:nil];
     return 1;
 }
@@ -595,6 +596,7 @@ int elisa_appkit_canvas_present_headless(size_t color_space, int image_type,
                                          int bitmap_format) {
     // Exercise the real frame, painter and semantic bridge without ordering
     // a window onscreen or stealing focus from the user's current app.
+    if (elisa_canvas_view == nil) return 0;
     NSRect bounds = elisa_canvas_view.bounds;
     if (pixels_width <= 0 || pixels_height <= 0) return 0;
     NSBitmapImageRep *bitmap = [[NSBitmapImageRep alloc]
