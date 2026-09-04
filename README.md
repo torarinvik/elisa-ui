@@ -129,6 +129,9 @@ regression inspection without foregrounding the application.
 The native backend loads a font with SDL_ttf; set `ELISA_UI_FONT` to override
 the default. Text still measures through the platform contract on both
 backends, so layout agrees even though the rasterizers differ.
+SDL supplies monotonic frame time and waits for either input or the earliest
+animation deadline requested by the retained tree, keeping idle windows from
+busy-spinning while preserving caret animation.
 
 ### Elisascript ports (not yet runnable)
 

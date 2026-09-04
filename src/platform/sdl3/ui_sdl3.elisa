@@ -21,6 +21,8 @@ extern SDL_Init(flags: u32) -> bool
 extern SDL_CreateWindow(title: cstr, w: i32, h: i32, flags: u64) -> void&?
 extern SDL_CreateRenderer(window: void&, name: void&?) -> void&?
 extern SDL_PollEvent(event: void&) -> bool
+extern SDL_WaitEventTimeout(event: void&?, timeout_ms: i32) -> bool
+extern SDL_GetTicks() -> u64
 extern SDL_StartTextInput(window: void&) -> bool
 extern SDL_StopTextInput(window: void&) -> bool
 extern SDL_SetRenderDrawColor(renderer: void&, r: u8, g: u8, b: u8, a: u8) -> bool
@@ -422,6 +424,15 @@ module UiSdl3:
         def button_from_sdl(button: i32) -> i32:
             return button - 1 if button > 0 else -1
 
+        def seconds_from_ticks(ticks: u64) -> f64:
+            return ticks.f64() / 1000.0
+
+        def animation_timeout(delay: f32) -> i32:
+            return -1 if delay <= 0.0
+            milliseconds: i32 = (delay * 1000.0).i32()
+            return 1 if milliseconds < 1
+            return milliseconds
+
         # SDL supplies committed input as a NUL-terminated UTF-8 string. Keep
         # key events and text separate: key codes express navigation/shortcuts,
         # while this path preserves composed and non-ASCII text verbatim.
@@ -523,12 +534,15 @@ module UiSdl3:
                 # Same retained contract as the component backend: the app
                 # fills a command batch, then the backend consumes it. SDL3
                 # replays immediately.
+                UiCore::set_frame_time(seconds_from_ticks(SDL_GetTicks()))
                 UiCore::begin_frame()
                 app_frame()
                 UiPaint::replay[Sdl3Painter]()
                 _ = SDL_RenderPresent(ren())
                 frames <- frames + 1
                 running <- false if max_frames > 0 and frames >= max_frames
+                if running and max_frames <= 0:
+                    _ = SDL_WaitEventTimeout(null, animation_timeout(UiCore::frame_delay()))
             fonts_close()
             TTF_Quit()
             if window is text_window:
