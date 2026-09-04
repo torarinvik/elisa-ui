@@ -69,6 +69,10 @@ if grep -Eq 'elisa_menu_action|elisa_text_action|int[[:space:]]+token[[:space:]]
   echo "appkit canvas: selector/action policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'elisa_appkit_canvas_perform_text_action\([[:space:]]*[1-6][[:space:]]*\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: text-action token policy leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'modifierFlags[[:space:]]*&|flags[[:space:]]*&' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: modifier decoding leaked back into Objective-C" >&2
   exit 1
