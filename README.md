@@ -74,6 +74,8 @@ because a module member's symbol carries its module and those names cannot move.
   Checkbox toggling and exclusive radio selection are framework semantics, with
   configurable radio groups shared by pointer, keyboard, accessibility, and
   programmatic activation paths.
+  Slider step size is configurable; arrows and accessibility use one step,
+  Page Up/Down use ten, and Home/End move to normalized bounds.
   Measure runs bottom-up, arrange top-down.
   Dynamic label text and typography changes are remeasured before the next
   layout, so localization and live status content cannot retain stale bounds.

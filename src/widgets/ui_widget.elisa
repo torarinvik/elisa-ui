@@ -83,6 +83,7 @@ module UiFlat:
             focused: mutable bool
             selected: mutable bool
             value: mutable f32
+            step: mutable f32
             input_length: mutable usize
             caret: mutable usize
             selection_anchor: mutable usize
@@ -248,7 +249,7 @@ module UiFlat:
                 x: 0.0, y: 0.0, width: 0.0, height: 0.0,
                 color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, hover_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, press_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0},
                 text: "", placeholder: "", help: "", text_size: 0.0, text_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, secure: false,
-                interactive: false, focus_order: index, selection_group: parent, visible: true, enabled: true, hovered: false, pressed: false, focused: false, selected: false, value: 0.0,
+                interactive: false, focus_order: index, selection_group: parent, visible: true, enabled: true, hovered: false, pressed: false, focused: false, selected: false, value: 0.0, step: 0.05,
                 input_length: 0, caret: 0, selection_anchor: 0, marked_start: 0, marked_end: 0, text_revision: 0, text_truncated: false,
             }
             link(parent, index)
@@ -430,6 +431,10 @@ module UiFlat:
             return if index >= widget_count
             return if widgets[index].kind != UiConst::WidgetKind.Slider and widgets[index].kind != UiConst::WidgetKind.ProgressBar
             widgets[index].value <- 0.0 if value < 0.0 else (1.0 if value > 1.0 else value)
+
+        def set_step(index: usize, step: f32) -> void:
+            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider
+            widgets[index].step <- nonnegative(step)
 
         def text_value(index: usize) -> sview:
             return "" if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
@@ -1801,9 +1806,13 @@ module UiFlat:
                             app_widget_event(field, UiConst::WidgetEvent.Submit.i32())
                             return
                     if focused_widget < widget_count and widgets[focused_widget].kind == UiConst::WidgetKind.Slider:
-                        adjust(focused_widget, -0.05) if code == UiCore::Key.Left or code == UiCore::Key.Down
-                        adjust(focused_widget, 0.05) if code == UiCore::Key.Right or code == UiCore::Key.Up
-                        return if code == UiCore::Key.Left or code == UiCore::Key.Down or code == UiCore::Key.Right or code == UiCore::Key.Up
+                        adjust_step(focused_widget, -1) if code == UiCore::Key.Left or code == UiCore::Key.Down
+                        adjust_step(focused_widget, 1) if code == UiCore::Key.Right or code == UiCore::Key.Up
+                        adjust(focused_widget, -widgets[focused_widget].step * 10.0) if code == UiCore::Key.PageDown
+                        adjust(focused_widget, widgets[focused_widget].step * 10.0) if code == UiCore::Key.PageUp
+                        adjust(focused_widget, -1.0) if code == UiCore::Key.Home
+                        adjust(focused_widget, 1.0) if code == UiCore::Key.End
+                        return if code == UiCore::Key.Left or code == UiCore::Key.Down or code == UiCore::Key.Right or code == UiCore::Key.Up or code == UiCore::Key.PageDown or code == UiCore::Key.PageUp or code == UiCore::Key.Home or code == UiCore::Key.End
                     if (code == UiCore::Key.Space or code == UiCore::Key.Enter) and focused_widget < widget_count and widgets[focused_widget].kind != UiConst::WidgetKind.Slider and widgets[focused_widget].kind != UiConst::WidgetKind.TextField:
                         return if active_key >= 0 or active_pointer_button >= 0
                         active_widget <- focused_widget
@@ -1842,6 +1851,11 @@ module UiFlat:
             focus(index)
             app_widget_event(index, UiConst::WidgetEvent.Change.i32())
             return true
+
+        def adjust_step(index: usize, direction: i32) -> bool:
+            return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider or direction == 0
+            delta: f32 = widgets[index].step if direction > 0 else -widgets[index].step
+            return adjust(index, delta)
 
         # Pre-order emission gives painter's-algorithm ordering for free: a
         # parent's background is laid down before any of its children.
