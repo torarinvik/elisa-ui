@@ -7,14 +7,34 @@
 include "./ui_appkit_canvas.elisa"
 include "../../widgets/ui_widget.elisa"
 
+global mutable appkit_clipboard_buffer: u8[UiFlat::TEXT_CAPACITY] = zeroed
+global mutable appkit_clipboard_length: usize = 0
+global mutable appkit_clipboard_cache_valid: bool = false
+
 def ui_clipboard_has_text() -> bool:
-    return elisa_appkit_canvas_clipboard_has_text() != 0
+    return appkit_clipboard_length > 0 if appkit_clipboard_cache_valid
+    # Read once and retain the bytes so UiFlat's enabled check and Paste action
+    # observe one native snapshot, matching the Wasm adapter's host cache.
+    appkit_clipboard_length <- elisa_appkit_canvas_clipboard_read(&appkit_clipboard_buffer[0], UiFlat::TEXT_CAPACITY)
+    appkit_clipboard_cache_valid <- true
+    return appkit_clipboard_length > 0
 
 def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
-    return elisa_appkit_canvas_clipboard_write(bytes, length) != 0
+    written: bool = elisa_appkit_canvas_clipboard_write(bytes, length) != 0
+    appkit_clipboard_cache_valid <- false
+    appkit_clipboard_length <- 0
+    return written
 
 def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
-    return elisa_appkit_canvas_clipboard_read(buffer, capacity)
+    available: mutable usize = appkit_clipboard_length if appkit_clipboard_cache_valid else 0
+    if not appkit_clipboard_cache_valid:
+        available <- elisa_appkit_canvas_clipboard_read(&appkit_clipboard_buffer[0], UiFlat::TEXT_CAPACITY)
+    take: usize = available if available < capacity else capacity
+    for index in 0..<take:
+        buffer[index] <- appkit_clipboard_buffer[index]
+    appkit_clipboard_cache_valid <- false
+    appkit_clipboard_length <- 0
+    return take
 
 def appkit_flat_accessibility_activate(index: usize) -> i32:
     activated: bool = UiFlat::activate(index)

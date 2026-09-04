@@ -83,7 +83,10 @@ int elisa_appkit_canvas_text_action_enabled(int action) {
     if (action == 2 || action == 3) {
         return test_allows_readback && test_selection_end > test_selection_start;
     }
-    if (action == 4) return elisa_appkit_canvas_clipboard_has_text();
+    if (action == 4) {
+        return [[NSPasteboard generalPasteboard]
+            availableTypeFromArray:@[NSPasteboardTypeString]] != nil;
+    }
     return action == 1;
 }
 int elisa_appkit_canvas_perform_text_action(int action) {
