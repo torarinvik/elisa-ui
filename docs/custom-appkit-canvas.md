@@ -12,7 +12,10 @@ Elisa calls CoreGraphics' C ABI directly for every path, including rounded
 rectangles, circles, triangles, lines, the canvas clear, colors and shadows. It
 also calls CoreText's C ABI directly for font metrics, shaping and text drawing.
 AppKit key-code translation, visual styling decisions, UTF-8/UTF-16 conversion,
-selection/replacement rules and IME composition state all live in Elisa.
+selection/replacement rules and IME composition state all live in Elisa. Elisa
+also creates every outbound `CFString` and decodes inbound Cocoa strings with
+CoreFoundation FFI; Objective-C only borrows those objects for Cocoa setters or
+protocol callbacks.
 Window minimums, cursor policy, accessibility adjustment steps, raster styling,
 color normalization, rendering-quality options, accessibility interaction/value
 kinds, the standard menu schema, shortcut and text-input routing, click-count
@@ -133,15 +136,15 @@ Each semantic text node carries its own selected substring; focus changes
 cannot leave stale native selection content, and secure nodes always carry an
 empty substring.
 
-The canvas view implements AppKit's text-input client protocol. It converts
-between Elisa's UTF-8 byte offsets and AppKit's UTF-16 ranges, supports marked
-IME composition with an underline, positions the system candidate window at
-the custom caret, and provides standard Cut, Copy, Paste and Select All commands
-through both shortcuts and the Edit menu. Command validation and execution are
-computed in Elisa from focus, selection, secure-readback and undo-history state.
-Objective-C forwards Cocoa selector names and raw modifier masks; Elisa maps
-them to opaque action tokens. The shim exposes three byte-oriented pasteboard
-primitives; it never reads, deletes or replaces a
+The canvas view implements AppKit's text-input client protocol. Cocoa forwards
+native strings and UTF-16 ranges while Elisa performs the UTF-8 conversion,
+selection/replacement rules and IME composition with an underline, positions the
+system candidate window at the custom caret, and provides standard Cut, Copy,
+Paste and Select All commands through both shortcuts and the Edit menu. Command
+validation and execution are computed in Elisa from focus, selection,
+secure-readback and undo-history state. Objective-C forwards Cocoa selector
+names and raw modifier masks; Elisa maps them to opaque action tokens. The shim
+exposes three byte-oriented pasteboard primitives; it never reads, deletes or replaces a
 widget's selection itself. Elisa also decides when those mutations invalidate
 the canvas; the native side only exposes the `setNeedsDisplay` primitive.
 Key-release ownership follows the same rule: Cocoa forwards its hardware facts,
@@ -179,9 +182,10 @@ collapsed text caret needs it, leaving an idle window timer-free.
 
 The remaining Objective-C is the actual Cocoa boundary: `NSWindow`/`NSView`
 and event-loop ownership, Objective-C selector identity, `NSTextInputClient`
-string/range conversion, AppKit menus, pasteboard and accessibility objects,
+protocol/range plumbing, AppKit menus, pasteboard and accessibility objects,
 bitmap snapshots and timers. These operations require Objective-C objects or
-Cocoa protocol implementations. Widget state, command policy, layout,
+Cocoa protocol implementations; all UTF-8 conversion now lives in Elisa through
+CoreFoundation FFI. Widget state, command policy, layout,
 interaction, editing, accessibility diffing, headless orchestration, all
 CoreGraphics path construction and CoreText text rendering now live in Elisa.
 
