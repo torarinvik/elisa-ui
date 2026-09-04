@@ -105,13 +105,36 @@ void elisa_appkit_attach_to_view(int index, int parent) {
     if (container != nil && view != nil) [container addSubview:view];
 }
 
-static void elisa_appkit_create_window_with_style(int index, NSWindowStyleMask style) {
+// Cocoa's style values are ABI facts, not framework policy. Elisa combines
+// these values into the requested decoration mask and passes the result back
+// to the shim; the native side only casts the already-resolved mask.
+int elisa_appkit_window_style_titled(void) {
+    return (int)NSWindowStyleMaskTitled;
+}
+
+int elisa_appkit_window_style_closable(void) {
+    return (int)NSWindowStyleMaskClosable;
+}
+
+int elisa_appkit_window_style_miniaturizable(void) {
+    return (int)NSWindowStyleMaskMiniaturizable;
+}
+
+int elisa_appkit_window_style_resizable(void) {
+    return (int)NSWindowStyleMaskResizable;
+}
+
+int elisa_appkit_window_style_utility(void) {
+    return (int)NSWindowStyleMaskUtilityWindow;
+}
+
+void elisa_appkit_create_window_with_style(int index, int style) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index, ELISA_APPKIT_WINDOW)) return;
         NSRect content = NSMakeRect(0, 0, 640, 480);
         NSWindow *window = [[NSWindow alloc]
             initWithContentRect:content
-                      styleMask:style
+                      styleMask:(NSWindowStyleMask)style
                         backing:NSBackingStoreBuffered
                           defer:NO];
         if (window == nil) return;
@@ -121,25 +144,13 @@ static void elisa_appkit_create_window_with_style(int index, NSWindowStyleMask s
     }
 }
 
-void elisa_appkit_create_fixed_window(int index) {
-    elisa_appkit_create_window_with_style(index,
-        NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable);
-}
-
-void elisa_appkit_create_resizable_window(int index) {
-    elisa_appkit_create_window_with_style(index,
-        NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable |
-        NSWindowStyleMaskResizable);
-}
-
-void elisa_appkit_create_floating_panel(int index) {
+void elisa_appkit_create_floating_panel(int index, int style) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index, ELISA_APPKIT_WINDOW)) return;
         NSRect content = NSMakeRect(0, 0, 480, 320);
         NSPanel *panel = [[NSPanel alloc]
             initWithContentRect:content
-                      styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
-                                 NSWindowStyleMaskUtilityWindow)
+                      styleMask:(NSWindowStyleMask)style
                         backing:NSBackingStoreBuffered
                           defer:NO];
         if (panel == nil) return;

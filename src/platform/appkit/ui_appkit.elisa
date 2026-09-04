@@ -23,9 +23,13 @@ include "../../widgets/ui_controls.elisa"
 using UiControls
 
 extern elisa_appkit_init() -> void
-extern elisa_appkit_create_fixed_window(index: i32) -> void
-extern elisa_appkit_create_resizable_window(index: i32) -> void
-extern elisa_appkit_create_floating_panel(index: i32) -> void
+extern elisa_appkit_window_style_titled() -> i32
+extern elisa_appkit_window_style_closable() -> i32
+extern elisa_appkit_window_style_miniaturizable() -> i32
+extern elisa_appkit_window_style_resizable() -> i32
+extern elisa_appkit_window_style_utility() -> i32
+extern elisa_appkit_create_window_with_style(index: i32, style: i32) -> void
+extern elisa_appkit_create_floating_panel(index: i32, style: i32) -> void
 extern elisa_appkit_create_panel(index: i32) -> void
 extern elisa_appkit_create_vertical_scroll_view(index: i32) -> void
 extern elisa_appkit_create_horizontal_scroll_view(index: i32) -> void
@@ -67,6 +71,23 @@ extern elisa_appkit_frame_y(index: i32) -> f32
 extern elisa_appkit_is_flipped(index: i32) -> i32
 
 module UiAppKit:
+    private:
+        # AppKit's enum values cross the FFI as opaque facts. The decoration
+        # policy itself stays in Elisa, where the widget's WindowMode is already
+        # resolved and can be tested without constructing an NSWindow.
+        def standard_window_style(resizable: bool) -> i32:
+            style: mutable i32 = elisa_appkit_window_style_titled()
+            style <- style | elisa_appkit_window_style_closable()
+            style <- style | elisa_appkit_window_style_miniaturizable()
+            style <- style | elisa_appkit_window_style_resizable() if resizable
+            return style
+
+        def floating_panel_style() -> i32:
+            style: mutable i32 = elisa_appkit_window_style_titled()
+            style <- style | elisa_appkit_window_style_closable()
+            style <- style | elisa_appkit_window_style_utility()
+            return style
+
     public:
         # The AppKit controls backend. A TYPE, not a value: every native handle
         # lives in the shim's index table, so the methods are static and the
@@ -94,12 +115,9 @@ module UiAppKit:
                         parent_kind <- UiControls::kind_at(parent.usize())
                     if kind == UiControls::Kind.Window:
                         if window_mode == UiControls::WindowMode.Floating:
-                            elisa_appkit_create_floating_panel(index)
+                            elisa_appkit_create_floating_panel(index, floating_panel_style())
                             return
-                        if window_mode == UiControls::WindowMode.Resizable:
-                            elisa_appkit_create_resizable_window(index)
-                            return
-                        elisa_appkit_create_fixed_window(index)
+                        elisa_appkit_create_window_with_style(index, standard_window_style(window_mode == UiControls::WindowMode.Resizable))
                         return
                     if kind == UiControls::Kind.Panel:
                         elisa_appkit_create_panel(index)
