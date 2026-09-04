@@ -301,7 +301,7 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
     return result;
 }
 - (NSUInteger)characterIndexForPoint:(NSPoint)point {
-    if (!elisa_appkit_canvas_accepts_text() || self.window == nil) return elisa_appkit_canvas_not_found();
+    if (self.window == nil) return elisa_appkit_canvas_not_found();
     NSPoint inWindow = [self.window convertPointFromScreen:point];
     NSPoint local = [self convertPoint:inWindow fromView:nil];
     return elisa_appkit_canvas_character_at_x(local.x);

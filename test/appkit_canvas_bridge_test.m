@@ -292,7 +292,10 @@ float elisa_appkit_canvas_character_x(size_t location) { return 10.0f + (float)l
 float elisa_appkit_canvas_caret_width(void) { return 1.0f; }
 float elisa_appkit_canvas_caret_y(void) { return 50.0f; }
 float elisa_appkit_canvas_caret_height(void) { return 16.0f; }
-size_t elisa_appkit_canvas_character_at_x(float x) { return x < 40.0f ? 0 : [NSString stringWithUTF8String:test_text].length; }
+size_t elisa_appkit_canvas_character_at_x(float x) {
+    if (!test_text_focused) return NSNotFound;
+    return x < 40.0f ? 0 : [NSString stringWithUTF8String:test_text].length;
+}
 size_t elisa_appkit_canvas_range_location(size_t location) {
     return MIN(location, [NSString stringWithUTF8String:test_text].length);
 }
@@ -420,6 +423,10 @@ int main(void) {
         if (require([substring.string isEqualToString:@"é"] && NSEqualRanges(actualRange, NSMakeRange(5, 1)), @"Unicode substring did not come from Elisa range slicing")) return 1;
         test_allows_readback = 0;
         if (require([elisa_canvas_view attributedSubstringForProposedRange:NSMakeRange(0, 1) actualRange:NULL] == nil, @"secure substring readback was not denied")) return 1;
+        test_text_focused = 0;
+        if (require([elisa_canvas_view characterIndexForPoint:NSMakePoint(40, 20)] == NSNotFound,
+                    @"unfocused character lookup did not stay in Elisa policy")) return 1;
+        test_text_focused = 1;
         strcpy(test_text, "secret");
         test_selection_start = 0;
         test_selection_end = 6;
