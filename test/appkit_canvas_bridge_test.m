@@ -357,12 +357,12 @@ int main(void) {
                     (size_t)(__bridge void *)@"") == 0,
                 @"invalid menu string was accepted")) return 1;
     size_t applicationMenu = elisa_appkit_canvas_menu_add(menuBar, (size_t)(__bridge void *)@"test", (size_t)(__bridge void *)@"");
-        elisa_appkit_canvas_menu_add_item(applicationMenu, (size_t)(__bridge void *)@"About test", (size_t)(__bridge void *)@"", "orderFrontStandardAboutPanel:", 0);
+        elisa_appkit_canvas_menu_add_item(applicationMenu, (size_t)(__bridge void *)@"About test", (size_t)(__bridge void *)@"", (size_t)(void *)sel_registerName("orderFrontStandardAboutPanel:"), 0);
         elisa_appkit_canvas_menu_add_separator(applicationMenu);
-        elisa_appkit_canvas_menu_add_item(applicationMenu, (size_t)(__bridge void *)@"Quit test", (size_t)(__bridge void *)@"q", "terminate:", NSEventModifierFlagCommand);
+        elisa_appkit_canvas_menu_add_item(applicationMenu, (size_t)(__bridge void *)@"Quit test", (size_t)(__bridge void *)@"q", (size_t)(void *)sel_registerName("terminate:"), NSEventModifierFlagCommand);
     size_t windowMenu = elisa_appkit_canvas_menu_add(menuBar, (size_t)(__bridge void *)@"Window", (size_t)(__bridge void *)@"");
         elisa_appkit_canvas_menu_set_windows(windowMenu);
-        elisa_appkit_canvas_menu_add_item(windowMenu, (size_t)(__bridge void *)@"Minimize", (size_t)(__bridge void *)@"m", "performMiniaturize:", NSEventModifierFlagCommand);
+        elisa_appkit_canvas_menu_add_item(windowMenu, (size_t)(__bridge void *)@"Minimize", (size_t)(__bridge void *)@"m", (size_t)(void *)sel_registerName("performMiniaturize:"), NSEventModifierFlagCommand);
     elisa_appkit_canvas_menus_commit(menuBar);
         if (require(NSApp.mainMenu.numberOfItems == 2, @"declarative menu roots missing")) return 1;
         NSMenu *applicationSubmenu = [NSApp.mainMenu itemAtIndex:0].submenu;

@@ -503,21 +503,25 @@ void elisa_appkit_canvas_menu_set_windows(size_t menu) {
 
 static void elisa_appkit_canvas_menu_add_item_title(size_t menu, NSString *title,
                                                      NSString *keyEquivalent,
-                                                     const char *actionName, size_t modifiers) {
+                                                     size_t actionHandle, size_t modifiers) {
     if (title == nil || keyEquivalent == nil) return;
     NSMenu *value = (__bridge NSMenu *)(void *)menu;
     if (![value isKindOfClass:[NSMenu class]]) return;
-    SEL action = actionName == NULL || actionName[0] == '\0' ? NULL : sel_registerName(actionName);
+    // Elisa resolves the selector name through the Objective-C runtime FFI.
+    // The bridge only casts the already-registered ABI token and assigns it to
+    // NSMenuItem; selector naming policy and registration stay out of native
+    // framework code.
+    SEL action = actionHandle == 0 ? NULL : (SEL)(void *)actionHandle;
     NSMenuItem *item = [value addItemWithTitle:title action:action keyEquivalent:keyEquivalent];
     item.keyEquivalentModifierMask = (NSEventModifierFlags)modifiers;
 }
 
 void elisa_appkit_canvas_menu_add_item(size_t menu, size_t title,
-                                        size_t keyEquivalent, const char *actionName,
+                                        size_t keyEquivalent, size_t actionHandle,
                                         size_t modifiers) {
     NSString *value = elisa_appkit_canvas_string(title);
     NSString *key = elisa_appkit_canvas_string(keyEquivalent);
-    elisa_appkit_canvas_menu_add_item_title(menu, value, key, actionName, modifiers);
+    elisa_appkit_canvas_menu_add_item_title(menu, value, key, actionHandle, modifiers);
 }
 
 size_t elisa_appkit_canvas_modifier_command(void) { return NSEventModifierFlagCommand; }

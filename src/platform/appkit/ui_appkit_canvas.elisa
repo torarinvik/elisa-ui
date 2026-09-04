@@ -32,7 +32,7 @@ extern elisa_appkit_canvas_set_restorable(restorable: i32) -> void
 extern elisa_appkit_canvas_menus_begin() -> usize
 extern elisa_appkit_canvas_menu_add(menu_bar: usize, title: usize, empty_key_equivalent: usize) -> usize
 extern elisa_appkit_canvas_menu_set_windows(menu: usize) -> void
-extern elisa_appkit_canvas_menu_add_item(menu: usize, title: usize, key: usize, action: cstr, modifiers: usize) -> void
+extern elisa_appkit_canvas_menu_add_item(menu: usize, title: usize, key: usize, action: usize, modifiers: usize) -> void
 extern elisa_appkit_canvas_menu_add_separator(menu: usize) -> void
 extern elisa_appkit_canvas_menus_commit(menu_bar: usize) -> void
 extern elisa_appkit_canvas_modifier_command() -> usize
@@ -98,6 +98,7 @@ extern CTLineCreateWithAttributedString(text: usize) -> usize
 extern CTLineGetTypographicBounds(line: usize, ascent: mutable f64&, descent: mutable f64&, leading: mutable f64&) -> f64
 extern CTLineDraw(line: usize, context: usize) -> void
 extern CFRelease(value: usize) -> void
+extern sel_registerName(name: cstr) -> usize
 extern ceilf(x: f32) -> f32
 extern CGContextSetTextPosition(context: usize, x: f64, y: f64) -> void
 struct NativeSize:
@@ -409,6 +410,13 @@ module UiAppKitCanvas:
             return "arrangeInFront:" if action == MenuAction.BringAllToFront
             return ""
 
+        # Register Cocoa selectors through the runtime C ABI from Elisa. The
+        # native shim receives only the opaque SEL token and never owns the
+        # framework's action-name mapping or registration branch.
+        def menu_action_selector(action: cstr) -> usize:
+            return 0 if action == ""
+            return sel_registerName(action)
+
         const enum MenuModifiers of i32:
             None = 0
             Command = 1
@@ -558,7 +566,7 @@ module UiAppKitCanvas:
                 if native_key == 0:
                     CFRelease(native_title)
                     return
-            elisa_appkit_canvas_menu_add_item(menu, native_title, native_key, action, modifiers)
+            elisa_appkit_canvas_menu_add_item(menu, native_title, native_key, menu_action_selector(action), modifiers)
             CFRelease(native_key) if native_key != 0
             CFRelease(native_title)
 
