@@ -23,7 +23,7 @@ extern elisa_appkit_canvas_tracking_mouse_entered_exited() -> usize
 extern elisa_appkit_canvas_tracking_active_in_key_window() -> usize
 extern elisa_appkit_canvas_tracking_in_visible_rect() -> usize
 extern elisa_appkit_canvas_run_loop_common_modes() -> usize
-extern elisa_appkit_canvas_open(title: cstr, length: usize, width: f32, height: f32, style: i32, backing: i32, tracking_options: usize, tabbing_mode: i32, restorable: i32, activation_policy: i32) -> i32
+extern elisa_appkit_canvas_open(title: cstr, length: usize, width: f32, height: f32, style: i32, backing: i32, tabbing_mode: i32, restorable: i32, activation_policy: i32) -> i32
 extern elisa_appkit_canvas_menus_begin() -> void
 extern elisa_appkit_canvas_menu_add(title: cstr, length: usize) -> i32
 extern elisa_appkit_canvas_menu_set_windows(menu: i32) -> void
@@ -123,6 +123,15 @@ def ui_font_ascent(size: f32) -> f32:
     return UiAppKitCanvas::font_ascent(size)
 def ui_text_line_height(size: f32) -> f32:
     return UiAppKitCanvas::font_line_height(size)
+
+def appkit_canvas_tracking_options() -> usize:
+    options: mutable usize = elisa_appkit_canvas_tracking_mouse_moved()
+    options <- options | elisa_appkit_canvas_tracking_mouse_entered_exited()
+    options <- options | elisa_appkit_canvas_tracking_active_in_key_window()
+    options <- options | elisa_appkit_canvas_tracking_in_visible_rect()
+    return options
+
+export fn elisa_appkit_canvas_tracking_options() -> usize = appkit_canvas_tracking_options
 
 # Cocoa asks these values through NSView's protocol methods. They describe
 # framework policy (coordinate orientation, keyboard focus, and the semantic
@@ -403,13 +412,6 @@ module UiAppKitCanvas:
 
         def tabbing_mode(enabled: bool) -> i32:
             return elisa_appkit_canvas_tabbing_mode_preferred() if enabled else elisa_appkit_canvas_tabbing_mode_disallowed()
-
-        def tracking_options() -> usize:
-            options: mutable usize = elisa_appkit_canvas_tracking_mouse_moved()
-            options <- options | elisa_appkit_canvas_tracking_mouse_entered_exited()
-            options <- options | elisa_appkit_canvas_tracking_active_in_key_window()
-            options <- options | elisa_appkit_canvas_tracking_in_visible_rect()
-            return options
 
         def smoke_mode() -> bool:
             value_opt: cstr? = getenv("ELISA_UI_SMOKE_FRAMES")
@@ -857,7 +859,7 @@ module UiAppKitCanvas:
                 style: i32 = window_style(options)
                 headless: bool = smoke_mode()
                 headless_session <- headless
-                opened: i32 = elisa_appkit_canvas_open(pointer, title.len, options.width, options.height, style, elisa_appkit_canvas_backing_store_buffered(), tracking_options(), tabbing_mode(options.tabbing), 1 if options.restorable else 0, activation_policy(headless))
+                opened: i32 = elisa_appkit_canvas_open(pointer, title.len, options.width, options.height, style, elisa_appkit_canvas_backing_store_buffered(), tabbing_mode(options.tabbing), 1 if options.restorable else 0, activation_policy(headless))
                 return 1 if opened == 0
                 elisa_appkit_canvas_center() if options.centered
                 install_standard_menus(pointer, title.len)

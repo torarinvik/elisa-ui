@@ -109,6 +109,10 @@ int elisa_appkit_canvas_accepts_text(void) { return 1; }
 int elisa_appkit_canvas_view_is_flipped(void) { return 1; }
 int elisa_appkit_canvas_view_accepts_first_responder(void) { return 1; }
 int elisa_appkit_canvas_view_is_accessibility_element(void) { return 0; }
+size_t elisa_appkit_canvas_tracking_options(void) {
+    return NSTrackingMouseMoved | NSTrackingMouseEnteredAndExited |
+           NSTrackingActiveInKeyWindow | NSTrackingInVisibleRect;
+}
 int elisa_appkit_canvas_allows_text_readback(void) { return test_allows_readback; }
 int elisa_appkit_canvas_text_action_enabled(int action) {
     if (action == 5 || action == 6) return 1;
@@ -270,10 +274,6 @@ int main(void) {
     @autoreleasepool {
         if (!elisa_appkit_canvas_open("test", 4, 200, 100, 15,
                                       elisa_appkit_canvas_backing_store_buffered(),
-                                      NSTrackingMouseMoved |
-                                      NSTrackingMouseEnteredAndExited |
-                                      NSTrackingActiveInKeyWindow |
-                                      NSTrackingInVisibleRect,
                                       NSWindowTabbingModeDisallowed, 0,
                                       NSApplicationActivationPolicyProhibited)) return 1;
         if (require([elisa_canvas_view isFlipped], @"canvas coordinate policy was not supplied by Elisa")) return 1;

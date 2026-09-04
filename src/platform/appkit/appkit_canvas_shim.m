@@ -57,6 +57,7 @@ extern size_t elisa_appkit_canvas_range_byte_length(size_t location, size_t leng
 extern int elisa_appkit_canvas_view_is_flipped(void);
 extern int elisa_appkit_canvas_view_accepts_first_responder(void);
 extern int elisa_appkit_canvas_view_is_accessibility_element(void);
+extern size_t elisa_appkit_canvas_tracking_options(void);
 
 @class ElisaCanvasView;
 @class ElisaAccessibilityElement;
@@ -69,7 +70,6 @@ static NSUInteger elisa_canvas_frame_count;
 static NSMenu *elisa_canvas_menu_bar;
 static NSMutableArray<NSMenu *> *elisa_canvas_menus;
 static NSTimer *elisa_canvas_animation_timer;
-static NSTrackingAreaOptions elisa_canvas_tracking_options;
 
 // Cursor objects are Cocoa singletons. Return opaque, non-owning pointers so
 // Elisa can select the native object while this shim only installs it.
@@ -169,7 +169,7 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
 - (NSArray *)accessibilityChildren { return elisa_accessibility_children ?: @[]; }
 - (NSArray *)accessibilityChildrenInNavigationOrder { return elisa_accessibility_children ?: @[]; }
 - (NSTrackingAreaOptions)trackingOptions {
-    return elisa_canvas_tracking_options;
+    return (NSTrackingAreaOptions)elisa_appkit_canvas_tracking_options();
 }
 - (void)updateTrackingAreas {
     for (NSTrackingArea *area in [self trackingAreas]) [self removeTrackingArea:area];
@@ -417,11 +417,10 @@ size_t elisa_appkit_canvas_accessibility_layout_changed_notification(void) {
 }
 
 int elisa_appkit_canvas_open(const char *title, size_t length, float width, float height,
-                             int style, int backing, size_t tracking_options, int tabbing_mode, int restorable,
+                             int style, int backing, int tabbing_mode, int restorable,
                              int activation_policy) {
     @autoreleasepool {
         elisa_canvas_frame_count = 0;
-        elisa_canvas_tracking_options = (NSTrackingAreaOptions)tracking_options;
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:(NSApplicationActivationPolicy)activation_policy];
         NSRect rect = NSMakeRect(0, 0, width, height);
