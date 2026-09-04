@@ -29,7 +29,6 @@ extern int elisa_appkit_view_is_flipped(void);
 - (BOOL)isFlipped { return elisa_appkit_view_is_flipped() != 0; }
 @end
 
-static NSWindow *elisa_window = nil;
 static NSMutableDictionary<NSNumber *, id> *elisa_objects = nil;
 
 static id elisa_appkit_object(int index) {
@@ -56,7 +55,6 @@ void elisa_appkit_init(void) {
     @autoreleasepool {
         [NSApplication sharedApplication];
         elisa_objects = [NSMutableDictionary new];
-        elisa_window = nil;
     }
 }
 
@@ -170,7 +168,6 @@ void elisa_appkit_create_window_with_style(int index, int style, int backing,
         if (window == nil) return;
         [window setContentView:[[ElisaFlippedView alloc] initWithFrame:content]];
         elisa_appkit_store_view(index, (NSView *)window);
-        elisa_window = window;
     }
 }
 
@@ -190,7 +187,6 @@ void elisa_appkit_create_panel_window(int index, int style, int backing,
         [panel setBecomesKeyOnlyIfNeeded:becomes_key_only != 0];
         [panel setContentView:[[ElisaFlippedView alloc] initWithFrame:content]];
         elisa_appkit_store_view(index, (NSView *)panel);
-        elisa_window = panel;
     }
 }
 
@@ -371,10 +367,11 @@ void elisa_appkit_set_progress_value(int index, float value) {
 
 // Show the window. Separated from the run loop so a headless check can realize a
 // tree, assert it, and exit without ever presenting anything.
-void elisa_appkit_present(void) {
+void elisa_appkit_present(int index) {
     @autoreleasepool {
-        if (elisa_window == nil) return;
-        [elisa_window makeKeyAndOrderFront:nil];
+        NSWindow *window = (NSWindow *)elisa_appkit_object(index);
+        if (![window isKindOfClass:[NSWindow class]]) return;
+        [window makeKeyAndOrderFront:nil];
     }
 }
 
