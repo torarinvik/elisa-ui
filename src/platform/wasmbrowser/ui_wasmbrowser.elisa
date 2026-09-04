@@ -126,7 +126,13 @@ def ui_wasm_fetch_clipboard() -> usize:
         return 0
     pointer: u32 = ui_wasm_read_wire_u32(result_wire, 4)
     length: u32 = ui_wasm_read_wire_u32(result_wire, 8)
-    return 0 if length == 0 or pointer == 0
+    if length == 0:
+        ui_wasm_release_clipboard_allocation(pointer, length)
+        ui_wasm_clipboard_cache_valid <- false
+        return 0
+    if pointer == 0:
+        ui_wasm_clipboard_cache_valid <- false
+        return 0
     if length > UI_WASM_HOST_MAX_ALLOCATION or not ui_wasm_host_memory_range_valid(pointer, length):
         ui_wasm_release_clipboard_allocation(pointer, length)
         ui_wasm_clipboard_cache_valid <- false
@@ -329,6 +335,8 @@ module UiWasmBrowser:
     public:
         # The guest lifecycle, one function per WIT export.
         def start(width: u32, height: u32) -> void:
+            ui_wasm_clipboard_cache_valid <- false
+            ui_wasm_clipboard_length <- 0
             UiCore::set_viewport(width.f32(), height.f32())
             app_init()
 
