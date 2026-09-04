@@ -79,6 +79,10 @@ void elisa_appkit_canvas_pointer_leave(void) {
     test_pointer_kind = 3;
     test_pointer_button = 0;
 }
+size_t elisa_appkit_canvas_pointer_leave_event(void) {
+    elisa_appkit_canvas_pointer_leave();
+    return (size_t)(__bridge void *)[NSCursor arrowCursor];
+}
 void elisa_appkit_canvas_pointer_scroll(float x, float y, float dx, float dy) {
     (void)x; (void)y; (void)dx; (void)dy;
     test_pointer_kind = 4;
