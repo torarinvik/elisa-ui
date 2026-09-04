@@ -325,6 +325,24 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
 }
 @end
 
+// Cocoa style masks are exported as facts so Elisa can assemble window policy
+// without copying SDK ordinals into the retained backend.
+int elisa_appkit_canvas_window_style_titled(void) {
+    return (int)NSWindowStyleMaskTitled;
+}
+
+int elisa_appkit_canvas_window_style_closable(void) {
+    return (int)NSWindowStyleMaskClosable;
+}
+
+int elisa_appkit_canvas_window_style_miniaturizable(void) {
+    return (int)NSWindowStyleMaskMiniaturizable;
+}
+
+int elisa_appkit_canvas_window_style_resizable(void) {
+    return (int)NSWindowStyleMaskResizable;
+}
+
 int elisa_appkit_canvas_open(const char *title, size_t length, float width, float height,
                              int style, int tabbing, int restorable, int centered, int headless) {
     @autoreleasepool {
