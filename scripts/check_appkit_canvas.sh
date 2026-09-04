@@ -140,7 +140,6 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_environment_change
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_text_selector$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_menus_begin$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_menu_add_item$'
-nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_menu_add_application_item$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_menus_commit$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_activate$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_adjust$'

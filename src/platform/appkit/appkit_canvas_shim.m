@@ -64,7 +64,6 @@ static NSMutableArray *elisa_accessibility_next;
 static NSMutableDictionary<NSNumber *, ElisaAccessibilityElement *> *elisa_accessibility_elements;
 static NSUInteger elisa_canvas_frame_count;
 static NSString *elisa_canvas_snapshot_path;
-static NSString *elisa_canvas_application_name;
 static NSMenu *elisa_canvas_menu_bar;
 static NSMutableArray<NSMenu *> *elisa_canvas_menus;
 static NSTimer *elisa_canvas_animation_timer;
@@ -452,9 +451,7 @@ void elisa_appkit_canvas_center(void) {
     if (elisa_canvas_window != nil) [elisa_canvas_window center];
 }
 
-void elisa_appkit_canvas_menus_begin(const char *title, size_t length) {
-    NSString *name = [[NSString alloc] initWithBytes:title length:length encoding:NSUTF8StringEncoding];
-    elisa_canvas_application_name = name ?: @"elisa-ui";
+void elisa_appkit_canvas_menus_begin(void) {
     elisa_canvas_menu_bar = [NSMenu new];
     elisa_canvas_menus = [NSMutableArray new];
 }
@@ -494,13 +491,6 @@ static void elisa_appkit_canvas_menu_add_item_title(int menuIndex, NSString *tit
 void elisa_appkit_canvas_menu_add_item(int menuIndex, const char *bytes, size_t length,
                                         const char *actionName, int key, size_t modifiers) {
     NSString *title = [[NSString alloc] initWithBytes:bytes length:length encoding:NSUTF8StringEncoding];
-    elisa_appkit_canvas_menu_add_item_title(menuIndex, title, actionName, key, modifiers);
-}
-
-void elisa_appkit_canvas_menu_add_application_item(int menuIndex, const char *bytes, size_t length,
-                                                    const char *actionName, int key, size_t modifiers) {
-    NSString *title = [[NSString alloc] initWithBytes:bytes length:length encoding:NSUTF8StringEncoding];
-    if (title != nil) title = [title stringByAppendingString:elisa_canvas_application_name];
     elisa_appkit_canvas_menu_add_item_title(menuIndex, title, actionName, key, modifiers);
 }
 

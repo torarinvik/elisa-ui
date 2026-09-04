@@ -274,11 +274,11 @@ int main(void) {
                                       NSWindowTabbingModeDisallowed, 0,
                                       NSApplicationActivationPolicyProhibited)) return 1;
         elisa_appkit_canvas_center();
-        elisa_appkit_canvas_menus_begin("test", 4);
+        elisa_appkit_canvas_menus_begin();
         int applicationMenu = elisa_appkit_canvas_menu_add("test", 4);
-        elisa_appkit_canvas_menu_add_application_item(applicationMenu, "About ", 6, "orderFrontStandardAboutPanel:", 0, 0);
+        elisa_appkit_canvas_menu_add_item(applicationMenu, "About test", 10, "orderFrontStandardAboutPanel:", 0, 0);
         elisa_appkit_canvas_menu_add_separator(applicationMenu);
-        elisa_appkit_canvas_menu_add_application_item(applicationMenu, "Quit ", 5, "terminate:", 'q', NSEventModifierFlagCommand);
+        elisa_appkit_canvas_menu_add_item(applicationMenu, "Quit test", 9, "terminate:", 'q', NSEventModifierFlagCommand);
         int windowMenu = elisa_appkit_canvas_menu_add("Window", 6);
         elisa_appkit_canvas_menu_set_windows(windowMenu);
         elisa_appkit_canvas_menu_add_item(windowMenu, "Minimize", 8, "performMiniaturize:", 'm', NSEventModifierFlagCommand);
