@@ -58,9 +58,12 @@ module UiAppKit:
             def set_text(index: i32, text: sview) -> void:
                 # A `sview` is a pointer and a length, which is exactly what the
                 # shim's NSString initializer wants -- so no NUL-terminated copy is
-                # made, and a label's text may contain one.
-                return if text.len == 0
-                pointer: cstr = text.data.cast[cstr] can Unsafe.PointerCast
+                # made, and a label's text may contain one. Use a stable empty
+                # literal for zero-length views so clearing a native control is
+                # observable instead of being mistaken for a no-op.
+                empty: cstr = ""
+                pointer: mutable cstr = empty
+                pointer <- text.data.cast[cstr] can Unsafe.PointerCast if text.len > 0
                 elisa_appkit_set_text(index, pointer, text.len)
 
         # Realize a laid-out widget tree as native controls. Run UiWidgets::layout
