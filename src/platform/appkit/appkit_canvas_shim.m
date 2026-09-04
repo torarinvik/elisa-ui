@@ -48,6 +48,7 @@ extern int elisa_appkit_canvas_text_action_enabled(int action);
 extern int elisa_appkit_canvas_text_action_valid(int action);
 extern int elisa_appkit_canvas_perform_text_action(int action);
 extern float elisa_appkit_canvas_character_x(size_t location);
+extern float elisa_appkit_canvas_caret_width(void);
 extern float elisa_appkit_canvas_caret_y(void);
 extern float elisa_appkit_canvas_caret_height(void);
 extern size_t elisa_appkit_canvas_character_at_x(float x);
@@ -318,7 +319,7 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
     size_t location = elisa_appkit_canvas_range_location(range.location);
     if (actualRange != NULL) *actualRange = NSMakeRange(location, 0);
     NSRect local = NSMakeRect(elisa_appkit_canvas_character_x(location), elisa_appkit_canvas_caret_y(),
-                              1.0, elisa_appkit_canvas_caret_height());
+                              elisa_appkit_canvas_caret_width(), elisa_appkit_canvas_caret_height());
     NSRect inWindow = [self convertRect:local toView:nil];
     return [self.window convertRectToScreen:inWindow];
 }

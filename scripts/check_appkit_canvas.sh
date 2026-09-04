@@ -109,6 +109,10 @@ if grep -Eq 'ceil\(|MAX\(' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; the
   echo "appkit canvas: bitmap extent policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'NSMakeRect\([^\n]*1\.0' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: caret geometry policy leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq '@""' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: empty framework text leaked back into Objective-C" >&2
   exit 1

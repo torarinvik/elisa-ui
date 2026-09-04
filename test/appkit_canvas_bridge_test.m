@@ -277,6 +277,7 @@ int elisa_appkit_canvas_text_action(const char *selectorName) {
     return 0;
 }
 float elisa_appkit_canvas_character_x(size_t location) { return 10.0f + (float)location * 5.0f; }
+float elisa_appkit_canvas_caret_width(void) { return 1.0f; }
 float elisa_appkit_canvas_caret_y(void) { return 50.0f; }
 float elisa_appkit_canvas_caret_height(void) { return 16.0f; }
 size_t elisa_appkit_canvas_character_at_x(float x) { return x < 40.0f ? 0 : [NSString stringWithUTF8String:test_text].length; }
