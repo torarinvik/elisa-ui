@@ -73,6 +73,10 @@ if grep -Eq '\bsel_registerName\b' "$ROOT/src/platform/appkit/appkit_canvas_shim
   echo "appkit canvas: selector registration leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq '\bsel_getName\b' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: selector decoding leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq '__bridge[[:space:]]+NSString|__bridge[[:space:]]+NSAccessibility' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: unchecked borrowed text handles remain in Objective-C" >&2
   exit 1
@@ -257,7 +261,8 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_raw_flags$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_key_up$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_focus_changed$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_environment_changed$'
-nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_text_selector$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_text_selector_handle$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_text_action_handle$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_menus_begin$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_menu_add_item$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_menus_commit$'
@@ -287,6 +292,7 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_character_at_x$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_range_string$'
 nm -g "$BIN" | grep -q ' U _clock_gettime_nsec_np$'
 nm -g "$BIN" | grep -q ' U _sel_registerName$'
+nm -g "$BIN" | grep -q ' U _sel_getName$'
 if nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_\(monotonic_time\|set_shadow\)$'; then
   echo "appkit canvas: time or shadow policy leaked back into Objective-C" >&2
   exit 1

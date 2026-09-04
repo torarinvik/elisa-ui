@@ -222,6 +222,17 @@ def appkit_flat_text_selector(selector: cstr) -> void:
 def appkit_flat_text_action(selector: cstr) -> i32:
     return UiAppKitCanvas::text_action_for_selector(selector)
 
+# Cocoa passes selector identity as an opaque SEL handle. Resolve its runtime
+# spelling through the Objective-C runtime C ABI here, so the native shim does
+# not perform selector-to-string conversion before crossing into Elisa.
+def appkit_flat_text_selector_handle(selector: usize) -> void:
+    return if selector == 0
+    appkit_flat_text_selector(sel_getName(selector))
+
+def appkit_flat_text_action_handle(selector: usize) -> i32:
+    return 0 if selector == 0
+    return appkit_flat_text_action(sel_getName(selector))
+
 def appkit_flat_text_action_enabled(action: i32) -> i32:
     return 1 if UiFlat::text_action_enabled(action) else 0
 
@@ -293,8 +304,8 @@ export fn elisa_appkit_canvas_has_marked_text() -> i32 = appkit_flat_has_marked_
 export fn elisa_appkit_canvas_commit_text(text: usize, replacement_location: usize, replacement_length: usize) -> void = appkit_flat_commit_text
 export fn elisa_appkit_canvas_update_marked_text(text: usize, selected_location: usize, selected_length: usize, replacement_location: usize, replacement_length: usize) -> void = appkit_flat_update_marked_text
 export fn elisa_appkit_canvas_unmark_text() -> void = appkit_flat_unmark_text
-export fn elisa_appkit_canvas_text_selector(selector: cstr) -> void = appkit_flat_text_selector
-export fn elisa_appkit_canvas_text_action(selector: cstr) -> i32 = appkit_flat_text_action
+export fn elisa_appkit_canvas_text_selector_handle(selector: usize) -> void = appkit_flat_text_selector_handle
+export fn elisa_appkit_canvas_text_action_handle(selector: usize) -> i32 = appkit_flat_text_action_handle
 export fn elisa_appkit_canvas_text_action_enabled(action: i32) -> i32 = appkit_flat_text_action_enabled
 export fn elisa_appkit_canvas_text_action_valid(action: i32) -> i32 = appkit_flat_text_action_valid
 export fn elisa_appkit_canvas_perform_text_action(action: i32) -> i32 = appkit_flat_perform_text_action

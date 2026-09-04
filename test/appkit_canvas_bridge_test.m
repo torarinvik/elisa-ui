@@ -300,6 +300,14 @@ int elisa_appkit_canvas_text_action(const char *selectorName) {
     if (strcmp(selectorName, "redo:") == 0) return 6;
     return 0;
 }
+void elisa_appkit_canvas_text_selector_handle(size_t selector) {
+    if (selector == 0) return;
+    elisa_appkit_canvas_text_selector(sel_getName((SEL)(void *)selector));
+}
+int elisa_appkit_canvas_text_action_handle(size_t selector) {
+    if (selector == 0) return 0;
+    return elisa_appkit_canvas_text_action(sel_getName((SEL)(void *)selector));
+}
 float elisa_appkit_canvas_character_x(size_t location) { return 10.0f + (float)location * 5.0f; }
 float elisa_appkit_canvas_caret_width(void) { return 1.0f; }
 float elisa_appkit_canvas_caret_y(void) { return 50.0f; }

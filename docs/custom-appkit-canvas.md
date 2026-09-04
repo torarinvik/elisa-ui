@@ -196,7 +196,8 @@ CoreFoundation FFI. Widget state, command policy, layout,
 interaction, editing, accessibility diffing, headless orchestration, all
 CoreGraphics path construction and CoreText text rendering now live in Elisa.
 Menu action names are registered through the Objective-C runtime's C ABI from
-Elisa; the shim receives only the resulting opaque `SEL` token.
+Elisa; text-input selector names are decoded there as well. The shim receives
+only opaque `SEL` tokens and forwards them across the FFI.
 
 The canvas keeps one native strong reference to its root `NSWindow` on purpose.
 An unpresented headless window is not reliably retained by its content view, and

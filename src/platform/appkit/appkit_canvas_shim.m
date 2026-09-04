@@ -41,8 +41,8 @@ extern void elisa_appkit_canvas_update_marked_text(size_t text,
                                                    size_t selectedLocation, size_t selectedLength,
                                                    size_t replacementLocation, size_t replacementLength);
 extern void elisa_appkit_canvas_unmark_text(void);
-extern void elisa_appkit_canvas_text_selector(const char *selectorName);
-extern int elisa_appkit_canvas_text_action(const char *selectorName);
+extern void elisa_appkit_canvas_text_selector_handle(size_t selector);
+extern int elisa_appkit_canvas_text_action_handle(size_t selector);
 extern int elisa_appkit_canvas_text_action_enabled(int action);
 extern int elisa_appkit_canvas_text_action_valid(int action);
 extern int elisa_appkit_canvas_perform_text_action(int action);
@@ -243,40 +243,40 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
                                     replacementRange.location, replacementRange.length);
 }
 - (void)doCommandBySelector:(SEL)selector {
-    elisa_appkit_canvas_text_selector(sel_getName(selector));
+    elisa_appkit_canvas_text_selector_handle((size_t)(void *)selector);
 }
 - (void)selectAll:(id)sender {
     (void)sender;
-    int action = elisa_appkit_canvas_text_action(sel_getName(_cmd));
+    int action = elisa_appkit_canvas_text_action_handle((size_t)(void *)_cmd);
     if (action != 0) (void)elisa_appkit_canvas_perform_text_action(action);
 }
 - (void)undo:(id)sender {
     (void)sender;
-    int action = elisa_appkit_canvas_text_action(sel_getName(_cmd));
+    int action = elisa_appkit_canvas_text_action_handle((size_t)(void *)_cmd);
     if (action != 0) (void)elisa_appkit_canvas_perform_text_action(action);
 }
 - (void)redo:(id)sender {
     (void)sender;
-    int action = elisa_appkit_canvas_text_action(sel_getName(_cmd));
+    int action = elisa_appkit_canvas_text_action_handle((size_t)(void *)_cmd);
     if (action != 0) (void)elisa_appkit_canvas_perform_text_action(action);
 }
 - (BOOL)validateUserInterfaceItem:(id<NSValidatedUserInterfaceItem>)item {
-    int action = elisa_appkit_canvas_text_action(sel_getName(item.action));
+    int action = elisa_appkit_canvas_text_action_handle((size_t)(void *)item.action);
     return elisa_appkit_canvas_text_action_valid(action) != 0;
 }
 - (void)copy:(id)sender {
     (void)sender;
-    int action = elisa_appkit_canvas_text_action(sel_getName(_cmd));
+    int action = elisa_appkit_canvas_text_action_handle((size_t)(void *)_cmd);
     if (action != 0) (void)elisa_appkit_canvas_perform_text_action(action);
 }
 - (void)cut:(id)sender {
     (void)sender;
-    int action = elisa_appkit_canvas_text_action(sel_getName(_cmd));
+    int action = elisa_appkit_canvas_text_action_handle((size_t)(void *)_cmd);
     if (action != 0) (void)elisa_appkit_canvas_perform_text_action(action);
 }
 - (void)paste:(id)sender {
     (void)sender;
-    int action = elisa_appkit_canvas_text_action(sel_getName(_cmd));
+    int action = elisa_appkit_canvas_text_action_handle((size_t)(void *)_cmd);
     if (action != 0) (void)elisa_appkit_canvas_perform_text_action(action);
 }
 - (BOOL)hasMarkedText { return elisa_appkit_canvas_has_marked_text() != 0; }
