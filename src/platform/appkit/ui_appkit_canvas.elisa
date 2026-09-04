@@ -20,7 +20,7 @@ extern elisa_appkit_canvas_set_min_size(width: f32, height: f32) -> void
 extern elisa_appkit_canvas_redraw() -> void
 extern elisa_appkit_canvas_close() -> void
 extern elisa_appkit_canvas_accessibility_reset() -> void
-extern elisa_appkit_canvas_accessibility_add(id: usize, action: usize, role: i32, tooltip: i32, value_kind: i32, cursor: i32, notifications: i32, label: cstr, length: usize, help: cstr, help_length: usize, text_value: cstr, text_length: usize, selected_text: cstr, selected_text_length: usize, x: f32, y: f32, width: f32, height: f32, enabled: i32, focused: i32, selected: i32, value: f32, selection_location: usize, selection_length: usize) -> void
+extern elisa_appkit_canvas_accessibility_add(id: usize, action: usize, role: usize, subrole: usize, tooltip: i32, value_kind: i32, cursor: i32, notifications: i32, label: cstr, length: usize, help: cstr, help_length: usize, text_value: cstr, text_length: usize, selected_text: cstr, selected_text_length: usize, x: f32, y: f32, width: f32, height: f32, enabled: i32, focused: i32, selected: i32, value: f32, selection_location: usize, selection_length: usize) -> void
 extern elisa_appkit_canvas_accessibility_commit(layout_changed: i32) -> void
 extern elisa_appkit_canvas_clipboard_write(text: u8&, length: usize) -> i32
 extern elisa_appkit_canvas_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize
@@ -30,6 +30,14 @@ extern CTFontGetAscent(font: usize) -> f64
 extern CTFontGetDescent(font: usize) -> f64
 extern CTFontGetLeading(font: usize) -> f64
 extern CTFontCreateCopyWithSymbolicTraits(font: usize, size: f64, matrix: usize, traits: u32, mask: u32) -> usize
+extern NSAccessibilityButtonRole: usize
+extern NSAccessibilityRadioButtonRole: usize
+extern NSAccessibilityCheckBoxRole: usize
+extern NSAccessibilitySliderRole: usize
+extern NSAccessibilityProgressIndicatorRole: usize
+extern NSAccessibilityTextFieldRole: usize
+extern NSAccessibilityStaticTextRole: usize
+extern NSAccessibilitySecureTextFieldSubrole: usize
 extern kCTFontAttributeName: usize
 extern kCTForegroundColorAttributeName: usize
 extern CFStringCreateWithBytes(allocator: usize, bytes: cstr, length: i64, encoding: u32, external: bool) -> usize
@@ -346,9 +354,9 @@ module UiAppKitCanvas:
             elisa_appkit_canvas_menus_commit()
 
     public:
-        # The native layer must translate roles into Cocoa role objects, but it
-        # does not need to understand our widget behavior. These compact ABI
-        # tokens keep action, value and cursor policy in Elisa.
+        # Elisa resolves interaction, role identity and value policy before the
+        # native bridge. These compact ABI tokens keep action, value and cursor
+        # policy in Elisa; only the Cocoa object assignment remains native.
         def accessibility_interaction(role: UiCore::AccessibilityRole, enabled: bool) -> i32:
             return 0 if not enabled
             return 1 if role == UiCore::AccessibilityRole.Button or role == UiCore::AccessibilityRole.RadioButton or role == UiCore::AccessibilityRole.CheckBox
@@ -366,6 +374,22 @@ module UiAppKitCanvas:
             return 0 if not enabled
             return 1 if accessibility_interaction(role, enabled) == 1
             return 2 if role == UiCore::AccessibilityRole.TextField or role == UiCore::AccessibilityRole.PasswordField
+            return 0
+
+        # Cocoa role identity is an exported NSString constant. Resolve it in
+        # Elisa from the framework-neutral semantic role, then pass the native
+        # pointer through FFI; Objective-C no longer owns this policy switch.
+        def accessibility_native_role(role: UiCore::AccessibilityRole) -> usize:
+            return NSAccessibilityButtonRole if role == UiCore::AccessibilityRole.Button
+            return NSAccessibilityRadioButtonRole if role == UiCore::AccessibilityRole.RadioButton
+            return NSAccessibilityCheckBoxRole if role == UiCore::AccessibilityRole.CheckBox
+            return NSAccessibilitySliderRole if role == UiCore::AccessibilityRole.Slider
+            return NSAccessibilityProgressIndicatorRole if role == UiCore::AccessibilityRole.ProgressBar
+            return NSAccessibilityTextFieldRole if role == UiCore::AccessibilityRole.TextField or role == UiCore::AccessibilityRole.PasswordField
+            return NSAccessibilityStaticTextRole
+
+        def accessibility_native_subrole(role: UiCore::AccessibilityRole) -> usize:
+            return NSAccessibilitySecureTextFieldSubrole if role == UiCore::AccessibilityRole.PasswordField
             return 0
 
         # Notification bits: 1 value, 2 focus, 4 text selection. Structural
@@ -514,6 +538,8 @@ module UiAppKitCanvas:
                 interaction: i32 = accessibility_interaction(node.role, node.enabled)
                 value_kind: i32 = accessibility_value_kind(node.role)
                 cursor: i32 = accessibility_cursor(node.role, node.enabled)
+                native_role: usize = accessibility_native_role(node.role)
+                native_subrole: usize = accessibility_native_subrole(node.role)
                 state: AccessibilityState = AccessibilityState{
                     role: node.role.i32(), action: node.action, interaction, value_kind, cursor,
                     enabled: node.enabled, focused: node.focused, selected: node.selected,
@@ -532,7 +558,7 @@ module UiAppKitCanvas:
                 accessibility_next_ids[index] <- node.id
                 accessibility_next[index] <- state
                 tooltip: i32 = 1 if node.help.len > 0 and interaction != 0 else 0
-                elisa_appkit_canvas_accessibility_add(node.id, node.action, node.role.i32(), tooltip, value_kind, cursor, notifications, pointer, node.label.len, help_pointer, node.help.len, value_pointer, node.text_value.len, selected_pointer, node.selected_text.len, node.frame.origin.x, node.frame.origin.y, node.frame.size.width, node.frame.size.height, enabled, focused, selected, node.value, node.selection_location, node.selection_length)
+                elisa_appkit_canvas_accessibility_add(node.id, node.action, native_role, native_subrole, tooltip, value_kind, cursor, notifications, pointer, node.label.len, help_pointer, node.help.len, value_pointer, node.text_value.len, selected_pointer, node.selected_text.len, node.frame.origin.x, node.frame.origin.y, node.frame.size.width, node.frame.size.height, enabled, focused, selected, node.value, node.selection_location, node.selection_length)
             accessibility_previous_count <- next_count
             for index in 0..<accessibility_previous_count:
                 accessibility_previous_ids[index] <- accessibility_next_ids[index]

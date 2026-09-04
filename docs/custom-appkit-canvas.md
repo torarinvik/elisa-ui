@@ -115,8 +115,8 @@ Each painted control produces a parallel semantic node containing its stable
 identifier, role, label, optional help, frame, enabled/focused/selected state and
 normalized value. The AppKit bridge reuses native accessibility objects between
 frames, exposes actions to VoiceOver, updates screen-relative frames after
-window moves, and applies interaction, tooltip and cursor tokens computed by
-Elisa from the same metadata. Elisa also diffs semantic state between frames;
+window moves, and applies the Cocoa role/subrole constants plus interaction,
+tooltip and cursor tokens computed by Elisa from the same metadata. Elisa also diffs semantic state between frames;
 AppKit receives explicit value, focus, text-selection and layout notification
 bits instead of inferring framework behavior from native objects. Text changes
 use explicit widget edit revisions rather than per-frame string hashing.

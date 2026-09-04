@@ -28,18 +28,18 @@ void elisa_appkit_canvas_frame(size_t context) {
     elisa_appkit_canvas_accessibility_reset();
     const char *label = "Intensity";
     const char *help = "Adjust preview intensity";
-    elisa_appkit_canvas_accessibility_add(7, 7, 4, 2, 2, 0, 0,
+    elisa_appkit_canvas_accessibility_add(7, 7, NSAccessibilitySliderRole, 0, 2, 2, 0, 0,
         label, strlen(label), help, strlen(help), "", 0,
         "", 0,
         10, 10, 180, 24, 1, 0, 0, test_slider_value, 0, 0);
-    elisa_appkit_canvas_accessibility_add(8, 8, 6, 3, 3, 2, 0,
+    elisa_appkit_canvas_accessibility_add(8, 8, NSAccessibilityTextFieldRole, 0, 3, 3, 2, 0,
         "Project name", 12, "Edit the project name", 21,
         test_text, strlen(test_text),
         test_text + test_selection_start, test_selection_end - test_selection_start,
         10, 44, 180, 32, 1, test_text_focused, 0, 0,
         elisa_appkit_canvas_selection_location(), elisa_appkit_canvas_selection_length());
     const char *masked = "••••";
-    elisa_appkit_canvas_accessibility_add(9, 9, 7, 3, 3, 2, 0,
+    elisa_appkit_canvas_accessibility_add(9, 9, NSAccessibilityTextFieldRole, NSAccessibilitySecureTextFieldSubrole, 3, 3, 2, 0,
         "Password", 8, "Secure entry", 12, masked, strlen(masked),
         "", 0,
         10, 80, 180, 32, 1, 0, 0, 0, 0, 0);

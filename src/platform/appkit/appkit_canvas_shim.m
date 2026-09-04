@@ -545,8 +545,8 @@ void elisa_appkit_canvas_accessibility_reset(void) {
     [elisa_canvas_view removeAllToolTips];
 }
 
-void elisa_appkit_canvas_accessibility_add(size_t identifier, size_t action, int role,
-                                            int tooltip, int valueKind, int cursor, int notifications,
+void elisa_appkit_canvas_accessibility_add(size_t identifier, size_t action, const void *role,
+                                            const void *subrole, int tooltip, int valueKind, int cursor, int notifications,
                                             const char *bytes, size_t length,
                                             const char *helpBytes, size_t helpLength,
                                             const char *textBytes, size_t textLength,
@@ -566,15 +566,8 @@ void elisa_appkit_canvas_accessibility_add(size_t identifier, size_t action, int
         element.elisaIdentifier = identifier;
     }
     NSRect local = NSMakeRect(x, y, width, height);
-    NSString *nextRole = role == 1 ? NSAccessibilityButtonRole :
-                         role == 2 ? NSAccessibilityRadioButtonRole :
-                         role == 3 ? NSAccessibilityCheckBoxRole :
-                         role == 4 ? NSAccessibilitySliderRole :
-                         role == 5 ? NSAccessibilityProgressIndicatorRole :
-                         (role == 6 || role == 7) ? NSAccessibilityTextFieldRole : NSAccessibilityStaticTextRole;
-    NSString *nextSubrole = role == 7 ? NSAccessibilitySecureTextFieldSubrole : nil;
-    element.accessibilityRole = nextRole;
-    element.accessibilitySubrole = nextSubrole;
+    element.accessibilityRole = (__bridge NSAccessibilityRole)role;
+    element.accessibilitySubrole = subrole == NULL ? nil : (__bridge NSAccessibilitySubrole)subrole;
     element.accessibilityLabel = label;
     if (helpBytes != NULL && helpLength > 0) {
         element.accessibilityHelp = [[NSString alloc] initWithBytes:helpBytes length:helpLength encoding:NSUTF8StringEncoding];
