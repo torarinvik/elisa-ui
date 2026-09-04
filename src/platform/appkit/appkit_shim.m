@@ -22,20 +22,6 @@
 // the Cocoa protocol method to the value Elisa selected.
 extern int elisa_appkit_view_is_flipped(void);
 
-enum {
-    ELISA_APPKIT_WINDOW = 0,
-    ELISA_APPKIT_PANEL = 1,
-    ELISA_APPKIT_SCROLLVIEW = 2,
-    ELISA_APPKIT_LABEL = 3,
-    ELISA_APPKIT_PUSHBUTTON = 4,
-    ELISA_APPKIT_TOGGLEBUTTON = 5,
-    ELISA_APPKIT_CHECKBOX = 6,
-    ELISA_APPKIT_RADIOBUTTON = 7,
-    ELISA_APPKIT_TEXTFIELD = 8,
-    ELISA_APPKIT_SLIDER = 9,
-    ELISA_APPKIT_PROGRESSBAR = 10
-};
-
 #define ELISA_APPKIT_MAX 256
 
 // A container whose origin is top-left, so a laid-out frame needs no conversion.
@@ -47,7 +33,6 @@ enum {
 
 static NSWindow *elisa_window = nil;
 static id elisa_objects[ELISA_APPKIT_MAX];
-static int elisa_kinds[ELISA_APPKIT_MAX];
 static int elisa_count = 0;
 
 // Resolve a recorded object for headless introspection. Production attachment
@@ -56,10 +41,10 @@ static int elisa_count = 0;
 static NSView *elisa_container_for(int index) {
     if (index < 0 || index >= elisa_count) return nil;
     id object = elisa_objects[index];
-    if (elisa_kinds[index] == ELISA_APPKIT_WINDOW) {
+    if ([object isKindOfClass:[NSWindow class]]) {
         return [(NSWindow *)object contentView];
     }
-    if (elisa_kinds[index] == ELISA_APPKIT_SCROLLVIEW) {
+    if ([object isKindOfClass:[NSScrollView class]]) {
         return [(NSScrollView *)object documentView];
     }
     return (NSView *)object;
@@ -89,10 +74,9 @@ void elisa_appkit_set_activation_policy(int policy) {
 // Elisa dispatches the typed control kind before crossing the boundary. The
 // shim therefore exposes one native constructor per kind instead of carrying a
 // second policy switch over the framework's enum.
-static BOOL elisa_appkit_prepare(int index, int kind) {
+static BOOL elisa_appkit_prepare(int index) {
     if (index < 0 || index >= ELISA_APPKIT_MAX) return NO;
     if (index >= elisa_count) elisa_count = index + 1;
-    elisa_kinds[index] = kind;
     return YES;
 }
 
@@ -171,7 +155,7 @@ int elisa_appkit_backing_store_buffered(void) {
 void elisa_appkit_create_window_with_style(int index, int style, int backing,
                                            float width, float height) {
     @autoreleasepool {
-        if (!elisa_appkit_prepare(index, ELISA_APPKIT_WINDOW)) return;
+        if (!elisa_appkit_prepare(index)) return;
         NSRect content = NSMakeRect(0, 0, width, height);
         NSWindow *window = [[NSWindow alloc]
             initWithContentRect:content
@@ -189,7 +173,7 @@ void elisa_appkit_create_panel_window(int index, int style, int backing,
                                       int floating, int becomes_key_only,
                                       float width, float height) {
     @autoreleasepool {
-        if (!elisa_appkit_prepare(index, ELISA_APPKIT_WINDOW)) return;
+        if (!elisa_appkit_prepare(index)) return;
         NSRect content = NSMakeRect(0, 0, width, height);
         NSPanel *panel = [[NSPanel alloc]
             initWithContentRect:content
@@ -207,7 +191,7 @@ void elisa_appkit_create_panel_window(int index, int style, int backing,
 
 void elisa_appkit_create_panel(int index) {
     @autoreleasepool {
-        if (!elisa_appkit_prepare(index, ELISA_APPKIT_PANEL)) return;
+        if (!elisa_appkit_prepare(index)) return;
         elisa_appkit_store_view(index, [[ElisaFlippedView alloc] initWithFrame:NSZeroRect]);
     }
 }
@@ -216,7 +200,7 @@ void elisa_appkit_create_panel(int index) {
 // side only constructs the NSScrollView and applies the already-resolved bits.
 void elisa_appkit_create_scroll_view(int index, int vertical, int horizontal) {
     @autoreleasepool {
-        if (!elisa_appkit_prepare(index, ELISA_APPKIT_SCROLLVIEW)) return;
+        if (!elisa_appkit_prepare(index)) return;
         NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSZeroRect];
         [scroll setHasVerticalScroller:vertical != 0];
         [scroll setHasHorizontalScroller:horizontal != 0];
@@ -227,14 +211,14 @@ void elisa_appkit_create_scroll_view(int index, int vertical, int horizontal) {
 
 void elisa_appkit_create_label(int index) {
     @autoreleasepool {
-        if (!elisa_appkit_prepare(index, ELISA_APPKIT_LABEL)) return;
+        if (!elisa_appkit_prepare(index)) return;
         elisa_appkit_store_view(index, [NSTextField labelWithString:@""]);
     }
 }
 
 void elisa_appkit_create_push_button(int index, int bezel_style) {
     @autoreleasepool {
-        if (!elisa_appkit_prepare(index, ELISA_APPKIT_PUSHBUTTON)) return;
+        if (!elisa_appkit_prepare(index)) return;
         NSButton *button = [NSButton buttonWithTitle:@"" target:nil action:nil];
         [button setBezelStyle:(NSBezelStyle)bezel_style];
         elisa_appkit_store_view(index, button);
@@ -243,7 +227,7 @@ void elisa_appkit_create_push_button(int index, int bezel_style) {
 
 void elisa_appkit_create_toggle_button(int index, int button_type) {
     @autoreleasepool {
-        if (!elisa_appkit_prepare(index, ELISA_APPKIT_TOGGLEBUTTON)) return;
+        if (!elisa_appkit_prepare(index)) return;
         NSButton *button = [NSButton buttonWithTitle:@"" target:nil action:nil];
         [button setButtonType:(NSButtonType)button_type];
         elisa_appkit_store_view(index, button);
@@ -252,35 +236,35 @@ void elisa_appkit_create_toggle_button(int index, int button_type) {
 
 void elisa_appkit_create_checkbox(int index) {
     @autoreleasepool {
-        if (!elisa_appkit_prepare(index, ELISA_APPKIT_CHECKBOX)) return;
+        if (!elisa_appkit_prepare(index)) return;
         elisa_appkit_store_view(index, [NSButton checkboxWithTitle:@"" target:nil action:nil]);
     }
 }
 
 void elisa_appkit_create_radio_button(int index) {
     @autoreleasepool {
-        if (!elisa_appkit_prepare(index, ELISA_APPKIT_RADIOBUTTON)) return;
+        if (!elisa_appkit_prepare(index)) return;
         elisa_appkit_store_view(index, [NSButton radioButtonWithTitle:@"" target:nil action:nil]);
     }
 }
 
 void elisa_appkit_create_text_field(int index) {
     @autoreleasepool {
-        if (!elisa_appkit_prepare(index, ELISA_APPKIT_TEXTFIELD)) return;
+        if (!elisa_appkit_prepare(index)) return;
         elisa_appkit_store_view(index, [NSTextField textFieldWithString:@""]);
     }
 }
 
 void elisa_appkit_create_slider(int index) {
     @autoreleasepool {
-        if (!elisa_appkit_prepare(index, ELISA_APPKIT_SLIDER)) return;
+        if (!elisa_appkit_prepare(index)) return;
         elisa_appkit_store_view(index, [NSSlider sliderWithValue:0 minValue:0 maxValue:1 target:nil action:nil]);
     }
 }
 
 void elisa_appkit_create_progress_bar(int index, int progress_style, int indeterminate) {
     @autoreleasepool {
-        if (!elisa_appkit_prepare(index, ELISA_APPKIT_PROGRESSBAR)) return;
+        if (!elisa_appkit_prepare(index)) return;
         NSProgressIndicator *bar = [[NSProgressIndicator alloc] initWithFrame:NSZeroRect];
         [bar setStyle:(NSProgressIndicatorStyle)progress_style];
         [bar setIndeterminate:indeterminate != 0];
@@ -405,18 +389,18 @@ int elisa_appkit_is_class(int index, const char *class_name) {
 }
 
 int elisa_appkit_window_is_resizable(int index) {
-    if (index < 0 || index >= elisa_count || elisa_kinds[index] != ELISA_APPKIT_WINDOW) return 0;
+    if (index < 0 || index >= elisa_count || ![elisa_objects[index] isKindOfClass:[NSWindow class]]) return 0;
     return ([(NSWindow *)elisa_objects[index] styleMask] & NSWindowStyleMaskResizable) != 0 ? 1 : 0;
 }
 
 int elisa_appkit_window_is_floating(int index) {
-    if (index < 0 || index >= elisa_count || elisa_kinds[index] != ELISA_APPKIT_WINDOW) return 0;
+    if (index < 0 || index >= elisa_count || ![elisa_objects[index] isKindOfClass:[NSWindow class]]) return 0;
     return [(NSWindow *)elisa_objects[index] isKindOfClass:[NSPanel class]] &&
            [(NSPanel *)elisa_objects[index] isFloatingPanel] ? 1 : 0;
 }
 
 int elisa_appkit_panel_becomes_key_only(int index) {
-    if (index < 0 || index >= elisa_count || elisa_kinds[index] != ELISA_APPKIT_WINDOW) return 0;
+    if (index < 0 || index >= elisa_count || ![elisa_objects[index] isKindOfClass:[NSWindow class]]) return 0;
     if (![elisa_objects[index] isKindOfClass:[NSPanel class]]) return 0;
     return [(NSPanel *)elisa_objects[index] becomesKeyOnlyIfNeeded] ? 1 : 0;
 }
@@ -443,18 +427,18 @@ int elisa_appkit_button_toggles(int index) {
 }
 
 int elisa_appkit_scroll_has_vertical(int index) {
-    if (index < 0 || index >= elisa_count || elisa_kinds[index] != ELISA_APPKIT_SCROLLVIEW) return 0;
+    if (index < 0 || index >= elisa_count || ![elisa_objects[index] isKindOfClass:[NSScrollView class]]) return 0;
     return [(NSScrollView *)elisa_objects[index] hasVerticalScroller] ? 1 : 0;
 }
 
 int elisa_appkit_scroll_has_horizontal(int index) {
-    if (index < 0 || index >= elisa_count || elisa_kinds[index] != ELISA_APPKIT_SCROLLVIEW) return 0;
+    if (index < 0 || index >= elisa_count || ![elisa_objects[index] isKindOfClass:[NSScrollView class]]) return 0;
     return [(NSScrollView *)elisa_objects[index] hasHorizontalScroller] ? 1 : 0;
 }
 
 float elisa_appkit_frame_width(int index) {
     if (index < 0 || index >= elisa_count) return -1.0f;
-    if (elisa_kinds[index] == ELISA_APPKIT_WINDOW) {
+    if ([elisa_objects[index] isKindOfClass:[NSWindow class]]) {
         return (float)[[(NSWindow *)elisa_objects[index] contentView] frame].size.width;
     }
     return (float)[(NSView *)elisa_objects[index] frame].size.width;
@@ -471,13 +455,13 @@ int elisa_appkit_is_flipped(int index) {
 
 float elisa_appkit_frame_y(int index) {
     if (index < 0 || index >= elisa_count) return -1.0f;
-    if (elisa_kinds[index] == ELISA_APPKIT_WINDOW) return 0.0f;
+    if ([elisa_objects[index] isKindOfClass:[NSWindow class]]) return 0.0f;
     return (float)[(NSView *)elisa_objects[index] frame].origin.y;
 }
 
 float elisa_appkit_frame_x(int index) {
     if (index < 0 || index >= elisa_count) return -1.0f;
-    if (elisa_kinds[index] == ELISA_APPKIT_WINDOW) return 0.0f;
+    if ([elisa_objects[index] isKindOfClass:[NSWindow class]]) return 0.0f;
     return (float)[(NSView *)elisa_objects[index] frame].origin.x;
 }
 
