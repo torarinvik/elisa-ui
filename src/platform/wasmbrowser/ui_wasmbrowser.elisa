@@ -214,6 +214,10 @@ module UiWasmBrowser:
         # present(): a protocol painter method receives no index, so the position
         # has to be backend state.
         global mutable wire_cursor: usize = 0
+        # WasmBrowser supplies a frame delta rather than an absolute clock.
+        # Accumulate it here so shared animation policy (caret blinking and
+        # future controls) sees the same monotonic seconds as native backends.
+        global mutable elapsed_time: f64 = 0.0
 
         # Host pointer-kind ordinals (wit enum pointer-kind { down, up, move, leave }).
         const HOST_POINTER_DOWN: i32 = 0
@@ -350,6 +354,8 @@ module UiWasmBrowser:
         def start(width: u32, height: u32) -> void:
             ui_wasm_clipboard_cache_valid <- false
             ui_wasm_clipboard_length <- 0
+            elapsed_time <- 0.0
+            UiCore::set_frame_time(0.0)
             UiCore::set_viewport(width.f32(), height.f32())
             app_init()
 
@@ -358,6 +364,8 @@ module UiWasmBrowser:
             dispatch((UiCore::Event.Resize(size: UiCore::Size(width.f32(), height.f32()))))
 
         def frame(dt: f64) -> void:
+            elapsed_time <- elapsed_time + dt if dt > 0.0
+            UiCore::set_frame_time(elapsed_time)
             UiCore::begin_frame()
             app_frame()
             present()
