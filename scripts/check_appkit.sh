@@ -30,6 +30,8 @@ nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_create_floating_pan
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_button_state$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_slider_state$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_progress_value$'
+nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_scroll_has_vertical$'
+nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_scroll_has_horizontal$'
 if nm -g "$ROOT/build/appkit_check" | grep -Eq ' T _elisa_appkit_(create|set_(text|frame))$'; then
   echo "appkit: obsolete generic entry point survived the link" >&2
   exit 1

@@ -136,11 +136,12 @@ void elisa_appkit_create_panel(int index, int parent, int parentIsWindow, int pa
     }
 }
 
-void elisa_appkit_create_scroll_view(int index, int parent, int parentIsWindow, int parentIsScrollView) {
+void elisa_appkit_create_scroll_view(int index, int parent, int parentIsWindow, int parentIsScrollView, int horizontal) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index, ELISA_APPKIT_SCROLLVIEW)) return;
         NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSZeroRect];
-        [scroll setHasVerticalScroller:YES];
+        [scroll setHasVerticalScroller:horizontal ? NO : YES];
+        [scroll setHasHorizontalScroller:horizontal ? YES : NO];
         [scroll setDocumentView:[[ElisaFlippedView alloc] initWithFrame:NSZeroRect]];
         elisa_appkit_attach(index, parent, parentIsWindow, parentIsScrollView, scroll);
     }
@@ -327,6 +328,16 @@ int elisa_appkit_window_is_floating(int index) {
 int elisa_appkit_button_is_on(int index) {
     if (index < 0 || index >= elisa_count) return 0;
     return [(NSButton *)elisa_objects[index] state] == NSControlStateValueOn ? 1 : 0;
+}
+
+int elisa_appkit_scroll_has_vertical(int index) {
+    if (index < 0 || index >= elisa_count || elisa_kinds[index] != ELISA_APPKIT_SCROLLVIEW) return 0;
+    return [(NSScrollView *)elisa_objects[index] hasVerticalScroller] ? 1 : 0;
+}
+
+int elisa_appkit_scroll_has_horizontal(int index) {
+    if (index < 0 || index >= elisa_count || elisa_kinds[index] != ELISA_APPKIT_SCROLLVIEW) return 0;
+    return [(NSScrollView *)elisa_objects[index] hasHorizontalScroller] ? 1 : 0;
 }
 
 float elisa_appkit_frame_width(int index) {

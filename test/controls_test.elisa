@@ -46,6 +46,7 @@ const LOG_CAP: usize = 64
 
 global mutable log_kind: i32[LOG_CAP] = zeroed
 global mutable log_window_mode: i32[LOG_CAP] = zeroed
+global mutable log_axis: i32[LOG_CAP] = zeroed
 global mutable log_state_value: f32[LOG_CAP] = zeroed
 global mutable log_state_low: f32[LOG_CAP] = zeroed
 global mutable log_state_high: f32[LOG_CAP] = zeroed
@@ -66,12 +67,13 @@ struct RecordingControls:
     unused: i32
 
 impl Controls for RecordingControls:
-    def create(index: i32, kind: UiControls::Kind, parent: i32, window_mode: UiControls::WindowMode) -> void can[Ui.Controls]:
+    def create(index: i32, kind: UiControls::Kind, parent: i32, window_mode: UiControls::WindowMode, axis: UiConst::Axis) -> void can[Ui.Controls]:
         return if index < 0 or index.usize() >= LOG_CAP
         row: usize = index.usize()
         log_total <- log_total + 1
         log_kind[row] <- kind.i32()
         log_window_mode[row] <- window_mode.i32()
+        log_axis[row] <- axis.i32()
         log_parent[row] <- parent
 
     def set_frame(index: i32, kind: UiControls::Kind, box: UiCore::Rect) -> void can[Ui.Controls]:
@@ -153,8 +155,10 @@ def main() -> i64:
         # Each widget kind became a control a platform actually has.
         check("a window realizes a Window", kind_at(0) == UiControls::Kind.Window.i32())
         check("a resizable top window carries its mode", log_window_mode[0] == UiControls::WindowMode.Resizable.i32())
+        check("the window carries its column axis", log_axis[0] == UiConst::Axis.Column.i32())
         check("a box realizes a Panel", kind_at(1) == UiControls::Kind.Panel.i32())
         check("non-window controls carry neutral window mode", log_window_mode[1] == UiControls::WindowMode.Fixed.i32())
+        check("the row carries its row axis", log_axis[1] == UiConst::Axis.Row.i32())
         check("a push button realizes a PushButton", kind_at(2) == UiControls::Kind.PushButton.i32())
         check("a checkbox carries its selected state", log_state_selected[3])
         check("a label realizes a Label", kind_at(4) == UiControls::Kind.Label.i32())

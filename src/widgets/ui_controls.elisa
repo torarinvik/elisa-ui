@@ -105,7 +105,7 @@ module UiControls:
         # or NO_PARENT for the root -- and because the list is emitted parent-first,
         # a parent has always been created before any child names it.
         protocol Controls:
-            def create(index: i32, kind: Kind, parent: i32, window_mode: WindowMode) -> void can[Ui.Controls]
+            def create(index: i32, kind: Kind, parent: i32, window_mode: WindowMode, axis: UiConst::Axis) -> void can[Ui.Controls]
             # Absolute placement, at the box UiWidgets::layout computed. The
             # kind crosses with it so a backend can select window-content versus
             # child-view placement in typed Elisa code.
@@ -136,6 +136,7 @@ module UiControls:
         struct ControlOp:
             kind: mutable Kind
             window_mode: mutable WindowMode
+            axis: mutable UiConst::Axis
             state_value: mutable f32
             state_low: mutable f32
             state_high: mutable f32
@@ -169,6 +170,9 @@ module UiControls:
         def window_mode_at(index: usize) -> WindowMode:
             return ops[index].window_mode
 
+        def axis_at(index: usize) -> UiConst::Axis:
+            return ops[index].axis
+
         def state_at(index: usize) -> ControlState:
             return ControlState{value: ops[index].state_value, low: ops[index].state_low, high: ops[index].state_high, selected: ops[index].state_selected}
 
@@ -194,6 +198,7 @@ module UiControls:
             total <- total + 1
             ops[index].kind <- kind_of(w)
             ops[index].window_mode <- window_mode_of(w)
+            ops[index].axis <- UiWidgets::axis_of(w)
             state: ControlState = state_of(w)
             # Write the compact state fields explicitly. Besides making the
             # record layout obvious, this avoids depending on aggregate
@@ -215,7 +220,7 @@ module UiControls:
         def apply[C: Controls]() -> void can[Ui.Controls]:
             for index in 0..<count():
                 slot: i32 = index.i32()
-                C.create(slot, kind_at(index), parent_at(index), window_mode_at(index))
+                C.create(slot, kind_at(index), parent_at(index), window_mode_at(index), axis_at(index))
                 C.set_frame(slot, kind_at(index), box_at(index))
                 C.set_text(slot, kind_at(index), text_at(index))
                 C.set_state(slot, kind_at(index), ops[index].state_value, ops[index].state_low, ops[index].state_high, ops[index].state_selected)
