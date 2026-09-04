@@ -146,17 +146,19 @@ void elisa_appkit_create(int index, int kind, int parent) {
     }
 }
 
-void elisa_appkit_set_frame(int index, float x, float y, float width, float height) {
+void elisa_appkit_set_window_frame(int index, float width, float height) {
     @autoreleasepool {
         if (index < 0 || index >= elisa_count) return;
-        NSRect frame = NSMakeRect(x, y, width, height);
-        if (elisa_kinds[index] == ELISA_APPKIT_WINDOW) {
-            // A window is positioned by the OS; only its content size is ours.
-            [(NSWindow *)elisa_objects[index] setContentSize:NSMakeSize(width, height)];
-            [[(NSWindow *)elisa_objects[index] contentView] setFrame:NSMakeRect(0, 0, width, height)];
-            return;
-        }
-        [(NSView *)elisa_objects[index] setFrame:frame];
+        // A window is positioned by the OS; only its content size is ours.
+        [(NSWindow *)elisa_objects[index] setContentSize:NSMakeSize(width, height)];
+        [[(NSWindow *)elisa_objects[index] contentView] setFrame:NSMakeRect(0, 0, width, height)];
+    }
+}
+
+void elisa_appkit_set_view_frame(int index, float x, float y, float width, float height) {
+    @autoreleasepool {
+        if (index < 0 || index >= elisa_count) return;
+        [(NSView *)elisa_objects[index] setFrame:NSMakeRect(x, y, width, height)];
     }
 }
 
