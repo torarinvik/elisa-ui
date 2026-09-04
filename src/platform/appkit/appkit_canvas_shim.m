@@ -520,11 +520,14 @@ void elisa_appkit_canvas_set_min_size(float width, float height) {
     [elisa_canvas_window setContentMinSize:NSMakeSize(width, height)];
 }
 
-int elisa_appkit_canvas_present(int activate) {
+int elisa_appkit_canvas_present(void) {
     [elisa_canvas_window makeKeyAndOrderFront:nil];
-    if (activate) [NSApp activateIgnoringOtherApps:YES];
     [elisa_canvas_view setNeedsDisplay:YES];
     return 1;
+}
+
+void elisa_appkit_canvas_activate(void) {
+    [NSApp activateIgnoringOtherApps:YES];
 }
 int elisa_appkit_canvas_present_headless(void) {
     // Exercise the real frame, painter and semantic bridge without ordering
