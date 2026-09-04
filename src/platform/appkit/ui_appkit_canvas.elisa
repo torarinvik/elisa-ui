@@ -52,7 +52,7 @@ extern elisa_appkit_canvas_set_min_size(width: f32, height: f32) -> void
 extern elisa_appkit_canvas_redraw() -> void
 extern elisa_appkit_canvas_close() -> void
 extern elisa_appkit_canvas_accessibility_reset() -> void
-extern elisa_appkit_canvas_accessibility_add(id: usize, identifier: usize, action: usize, role: usize, subrole: usize, cursor: usize, label: usize, help: usize, x: f32, y: f32, width: f32, height: f32, enabled: i32, focused: i32) -> usize
+extern elisa_appkit_canvas_accessibility_add(id: usize, previous_handle: usize, identifier: usize, action: usize, role: usize, subrole: usize, cursor: usize, label: usize, help: usize, x: f32, y: f32, width: f32, height: f32, enabled: i32, focused: i32) -> usize
 extern elisa_appkit_canvas_accessibility_add_tooltip(handle: usize) -> void
 extern elisa_appkit_canvas_accessibility_set_boolean(handle: usize, selected: i32) -> void
 extern elisa_appkit_canvas_accessibility_set_range(handle: usize, value: f32, minimum: f32, maximum: f32) -> void
@@ -425,6 +425,7 @@ module UiAppKitCanvas:
 
         global mutable accessibility_previous_ids: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
         global mutable accessibility_previous: AccessibilityState[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable accessibility_previous_handles: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
         global mutable accessibility_next_ids: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
         global mutable accessibility_next_handles: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
         global mutable accessibility_next: AccessibilityState[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
@@ -888,6 +889,7 @@ module UiAppKitCanvas:
                 }
                 previous_index: usize = previous_accessibility_index(node.id)
                 existed: bool = previous_index < accessibility_previous_count
+                previous_handle: usize = accessibility_previous_handles[previous_index] if existed else 0
                 before: AccessibilityState = accessibility_previous[previous_index] if existed else state
                 notifications: i32 = accessibility_notifications(existed, before, state)
                 layout_changed <- true if accessibility_layout_changed(existed, before, state)
@@ -895,7 +897,7 @@ module UiAppKitCanvas:
                 accessibility_next_ids[index] <- node.id
                 accessibility_next[index] <- state
                 tooltip: i32 = 1 if node.help.len > 0 and interaction != 0 else 0
-                handle: usize = elisa_appkit_canvas_accessibility_add(node.id, native_identifier, node.action, native_role, native_subrole, native_cursor(cursor), native_label, native_help, node.frame.origin.x, node.frame.origin.y, node.frame.size.width, node.frame.size.height, enabled, focused)
+                handle: usize = elisa_appkit_canvas_accessibility_add(node.id, previous_handle, native_identifier, node.action, native_role, native_subrole, native_cursor(cursor), native_label, native_help, node.frame.origin.x, node.frame.origin.y, node.frame.size.width, node.frame.size.height, enabled, focused)
                 accessibility_next_handles[index] <- handle
                 if handle != 0:
                     elisa_appkit_canvas_accessibility_add_tooltip(handle) if tooltip != 0
@@ -919,6 +921,7 @@ module UiAppKitCanvas:
             accessibility_previous_count <- next_count
             for index in 0..<accessibility_previous_count:
                 accessibility_previous_ids[index] <- accessibility_next_ids[index]
+                accessibility_previous_handles[index] <- accessibility_next_handles[index]
                 accessibility_previous[index] <- accessibility_next[index]
             elisa_appkit_canvas_accessibility_commit(&accessibility_next_handles[0], accessibility_previous_count)
             elisa_appkit_canvas_accessibility_post_layout_changed(elisa_appkit_canvas_accessibility_layout_changed_notification()) if layout_changed

@@ -29,13 +29,13 @@ void elisa_appkit_canvas_frame(size_t context) {
     (void)context;
     test_frame_count += 1;
     elisa_appkit_canvas_accessibility_reset();
-    size_t sliderElement = elisa_appkit_canvas_accessibility_add(7, (size_t)(__bridge void *)@"elisa-ui-7", 7, NSAccessibilitySliderRole, 0,
+    size_t sliderElement = elisa_appkit_canvas_accessibility_add(7, test_accessibility_handles[0], (size_t)(__bridge void *)@"elisa-ui-7", 7, NSAccessibilitySliderRole, 0,
         (size_t)(__bridge void *)[NSCursor pointingHandCursor],
         (size_t)(__bridge void *)@"Intensity", (size_t)(__bridge void *)@"Adjust preview intensity",
         10, 10, 180, 24, 1, 0);
     elisa_appkit_canvas_accessibility_add_tooltip(sliderElement);
     elisa_appkit_canvas_accessibility_set_range(sliderElement, test_slider_value, 0.0f, 1.0f);
-    size_t textElement = elisa_appkit_canvas_accessibility_add(8, (size_t)(__bridge void *)@"elisa-ui-8", 8, NSAccessibilityTextFieldRole, 0,
+    size_t textElement = elisa_appkit_canvas_accessibility_add(8, test_accessibility_handles[1], (size_t)(__bridge void *)@"elisa-ui-8", 8, NSAccessibilityTextFieldRole, 0,
         (size_t)(__bridge void *)[NSCursor IBeamCursor],
         (size_t)(__bridge void *)@"Project name", (size_t)(__bridge void *)@"Edit the project name",
         10, 44, 180, 32, 1, test_text_focused);
@@ -48,7 +48,7 @@ void elisa_appkit_canvas_frame(size_t context) {
         (size_t)(__bridge void *)selectedValue,
         elisa_appkit_canvas_selection_location(), elisa_appkit_canvas_selection_length());
     const char *masked = "••••";
-    size_t secureElement = elisa_appkit_canvas_accessibility_add(9, (size_t)(__bridge void *)@"elisa-ui-9", 9, NSAccessibilityTextFieldRole, NSAccessibilitySecureTextFieldSubrole,
+    size_t secureElement = elisa_appkit_canvas_accessibility_add(9, test_accessibility_handles[2], (size_t)(__bridge void *)@"elisa-ui-9", 9, NSAccessibilityTextFieldRole, NSAccessibilitySecureTextFieldSubrole,
         (size_t)(__bridge void *)[NSCursor IBeamCursor],
         (size_t)(__bridge void *)@"Password", (size_t)(__bridge void *)@"Secure entry",
         10, 80, 180, 32, 1, 0);

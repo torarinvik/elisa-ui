@@ -64,7 +64,6 @@ extern size_t elisa_appkit_canvas_tracking_options(void);
 static NSWindow *elisa_canvas_window;
 static ElisaCanvasView *elisa_canvas_view;
 static NSMutableArray *elisa_accessibility_children;
-static NSMutableDictionary<NSNumber *, ElisaAccessibilityElement *> *elisa_accessibility_elements;
 static NSMenu *elisa_canvas_menu_bar;
 static NSTimer *elisa_canvas_animation_timer;
 
@@ -422,7 +421,6 @@ int elisa_appkit_canvas_open(size_t title, float width, float height,
         // until app_init has completed.
         elisa_canvas_view = [[ElisaCanvasView alloc] initWithFrame:rect];
         elisa_accessibility_children = [NSMutableArray new];
-        elisa_accessibility_elements = [NSMutableDictionary new];
         elisa_canvas_window = window;
         elisa_canvas_delegate = [ElisaCanvasDelegate new];
         [window setDelegate:elisa_canvas_delegate];
@@ -629,7 +627,7 @@ static ElisaAccessibilityElement *elisa_appkit_canvas_element(size_t handle) {
     return [object isKindOfClass:[ElisaAccessibilityElement class]] ? object : nil;
 }
 
-size_t elisa_appkit_canvas_accessibility_add(size_t identifier,
+size_t elisa_appkit_canvas_accessibility_add(size_t identifier, size_t previousHandle,
                                             size_t identifierString, size_t action, const void *role,
                                             const void *subrole, size_t cursor,
                                             size_t label, size_t help,
@@ -638,8 +636,7 @@ size_t elisa_appkit_canvas_accessibility_add(size_t identifier,
     if (label == 0 || elisa_canvas_view == nil) return 0;
     NSString *labelValue = (__bridge NSString *)(void *)label;
     if (labelValue == nil) return 0;
-    NSNumber *key = @(identifier);
-    ElisaAccessibilityElement *element = elisa_accessibility_elements[key];
+    ElisaAccessibilityElement *element = elisa_appkit_canvas_element(previousHandle);
     BOOL isNew = element == nil;
     if (isNew) {
         element = [ElisaAccessibilityElement new];
@@ -669,10 +666,11 @@ size_t elisa_appkit_canvas_accessibility_add(size_t identifier,
     element.elisaLocalFrame = local;
     NSRect inWindow = [elisa_canvas_view convertRect:local toView:nil];
     element.accessibilityFrame = [elisa_canvas_window convertRectToScreen:inWindow];
-    // Retain a newly-created element immediately. Elisa supplies the ordered
-    // in-flight handle list at commit, after which the live dictionary is
-    // rebuilt to drop semantic nodes that disappeared from the frame.
-    elisa_accessibility_elements[key] = element;
+    // Retain a newly-created element until Elisa commits the ordered handle
+    // list. Existing elements are already retained by the active child array;
+    // identity/reuse itself is selected by Elisa from the previous-frame
+    // handles rather than by a native semantic-ID dictionary.
+    if (isNew) [elisa_accessibility_children addObject:element];
     return (size_t)(__bridge void *)element;
 }
 
@@ -732,15 +730,12 @@ void elisa_appkit_canvas_accessibility_notify(size_t handle, size_t notification
 
 void elisa_appkit_canvas_accessibility_commit(const size_t *handles, size_t count) {
     NSMutableArray *children = [NSMutableArray arrayWithCapacity:count];
-    NSMutableDictionary<NSNumber *, ElisaAccessibilityElement *> *live = [NSMutableDictionary new];
     for (size_t index = 0; index < count; index++) {
         ElisaAccessibilityElement *element = elisa_appkit_canvas_element(handles[index]);
         if (element == nil) continue;
         [children addObject:element];
-        live[@(element.elisaIdentifier)] = element;
     }
     elisa_accessibility_children = children;
-    elisa_accessibility_elements = live;
     [elisa_canvas_view setAccessibilityChildren:elisa_accessibility_children];
     [elisa_canvas_view setAccessibilityChildrenInNavigationOrder:elisa_accessibility_children];
     [[elisa_canvas_view window] invalidateCursorRectsForView:elisa_canvas_view];
