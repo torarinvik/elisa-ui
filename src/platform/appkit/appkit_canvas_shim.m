@@ -27,7 +27,6 @@ extern int elisa_appkit_canvas_pointer_button_secondary(void);
 extern int elisa_appkit_canvas_accessibility_increment_direction(void);
 extern int elisa_appkit_canvas_accessibility_decrement_direction(void);
 extern int elisa_appkit_canvas_accepts_text(void);
-extern int elisa_appkit_canvas_allows_text_readback(void);
 extern size_t elisa_appkit_canvas_not_found(void);
 extern int elisa_appkit_canvas_has_marked_text(void);
 extern size_t elisa_appkit_canvas_cursor_at(float x, float y);
@@ -291,7 +290,6 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
 - (void)unmarkText { elisa_appkit_canvas_unmark_text(); }
 - (NSArray<NSAttributedStringKey> *)validAttributesForMarkedText { return @[]; }
 - (NSAttributedString *)attributedSubstringForProposedRange:(NSRange)range actualRange:(NSRangePointer)actualRange {
-    if (!elisa_appkit_canvas_allows_text_readback()) return nil;
     size_t native = elisa_appkit_canvas_range_string(range.location, range.length);
     if (native == 0) return nil;
     NSRange safe = NSMakeRange(elisa_appkit_canvas_range_location(range.location),

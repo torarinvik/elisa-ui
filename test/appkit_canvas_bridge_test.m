@@ -302,6 +302,7 @@ size_t elisa_appkit_canvas_range_length(size_t location, size_t length) {
     return MIN(length, remaining);
 }
 size_t elisa_appkit_canvas_range_string(size_t location, size_t length) {
+    if (!test_allows_readback) return 0;
     NSString *value = [NSString stringWithUTF8String:test_text];
     NSUInteger safeLocation = MIN(location, value.length);
     NSUInteger safeLength = MIN(length, value.length - safeLocation);

@@ -231,7 +231,6 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_post_layout_change
 # Do not use grep -q here: with pipefail, a late match can make nm exit on
 # SIGPIPE after grep closes the pipe, masking a successful symbol check.
 nm -g "$BIN" | grep ' T _elisa_appkit_canvas_window_closed$' >/dev/null
-nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_allows_text_readback$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_cursor_at$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_set_text$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_selection_location$'
