@@ -40,8 +40,9 @@ because a module member's symbol carries its module and those names cannot move.
   command execution, text editing and every rendered control), plus
   [wasmbrowser](src/platform/wasmbrowser/ui_wasmbrowser.elisa) (a component
   implementing `world app`; the host drives the loop through the exported guest
-  interface, and canonical-ABI encoding is confined to this file). Both render
-  real text: WasmBrowser through its host font, SDL3 through SDL_ttf.
+  interface, and canonical-ABI encoding is confined to this file; its clipboard
+  bridge is also a byte-only Elisa adapter over the WIT host capability). Both
+  render real text: WasmBrowser through its host font, SDL3 through SDL_ttf.
 - **Widgets** ([src/widgets/ui_widget.elisa](src/widgets/ui_widget.elisa)) — a
   retained tree in one fixed array linked by index, box layout, hit testing, and
   hover/press/focus/disabled/selected state. Buttons, radio buttons, check boxes,
@@ -132,6 +133,10 @@ The `.wapp` build needs `wasm-component-ld` (ships with Rust's `wasm32-wasip2`
 target) and the `wasm-browser` CLI for the packing step; set `WASM_BROWSER_CLI`
 or run `cargo build -p wb-cli` in the WasmBrowser checkout. It finds the WIT
 world at `../WasmBrowser/wit/wasmbrowser.wit` (override with `ELISA_UI_WIT`).
+The retained text and edit-history buffers need a 2 MiB initial linear heap;
+`scripts/build_wapp.sh` passes that policy as `ELISA_WASM_INITIAL_PAGES` (default
+`32`) and `ELISA_WASM_MAX_PAGES` (default `32768`) to stage1. The hello manifest
+declares the corresponding `clipboard` capability.
 
 Run native: `./build/hello_native`; headless check with
 `SDL_VIDEODRIVER=dummy ELISA_UI_SMOKE_FRAMES=1 ./build/hello_native`. Inspect the
