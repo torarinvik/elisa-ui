@@ -26,27 +26,32 @@ void elisa_appkit_canvas_insert_text(const char *bytes, size_t length);
 void elisa_appkit_canvas_frame(size_t context) {
     (void)context;
     elisa_appkit_canvas_accessibility_reset();
-    const char *label = "Intensity";
-    const char *help = "Adjust preview intensity";
-    elisa_appkit_canvas_accessibility_add(7, "elisa-ui-7", 10, 7, NSAccessibilitySliderRole, 0,
+    elisa_appkit_canvas_accessibility_add(7, (size_t)(__bridge void *)@"elisa-ui-7", 7, NSAccessibilitySliderRole, 0,
         (size_t)(__bridge void *)[NSCursor pointingHandCursor],
-        label, strlen(label), help, strlen(help), 10, 10, 180, 24, 1, 0);
+        (size_t)(__bridge void *)@"Intensity", (size_t)(__bridge void *)@"Adjust preview intensity",
+        10, 10, 180, 24, 1, 0);
     elisa_appkit_canvas_accessibility_add_tooltip(7);
     elisa_appkit_canvas_accessibility_set_range(7, test_slider_value, 0.0f, 1.0f);
-    elisa_appkit_canvas_accessibility_add(8, "elisa-ui-8", 10, 8, NSAccessibilityTextFieldRole, 0,
+    elisa_appkit_canvas_accessibility_add(8, (size_t)(__bridge void *)@"elisa-ui-8", 8, NSAccessibilityTextFieldRole, 0,
         (size_t)(__bridge void *)[NSCursor IBeamCursor],
-        "Project name", 12, "Edit the project name", 21,
+        (size_t)(__bridge void *)@"Project name", (size_t)(__bridge void *)@"Edit the project name",
         10, 44, 180, 32, 1, test_text_focused);
     elisa_appkit_canvas_accessibility_add_tooltip(8);
-    elisa_appkit_canvas_accessibility_set_text(8, test_text, strlen(test_text),
-        test_text + test_selection_start, test_selection_end - test_selection_start,
+    NSString *textValue = [NSString stringWithUTF8String:test_text];
+    NSString *selectedValue = [[NSString alloc]
+        initWithBytes:test_text + test_selection_start
+               length:test_selection_end - test_selection_start encoding:NSUTF8StringEncoding];
+    elisa_appkit_canvas_accessibility_set_text(8, (size_t)(__bridge void *)textValue,
+        (size_t)(__bridge void *)selectedValue,
         elisa_appkit_canvas_selection_location(), elisa_appkit_canvas_selection_length());
     const char *masked = "••••";
-    elisa_appkit_canvas_accessibility_add(9, "elisa-ui-9", 10, 9, NSAccessibilityTextFieldRole, NSAccessibilitySecureTextFieldSubrole,
+    elisa_appkit_canvas_accessibility_add(9, (size_t)(__bridge void *)@"elisa-ui-9", 9, NSAccessibilityTextFieldRole, NSAccessibilitySecureTextFieldSubrole,
         (size_t)(__bridge void *)[NSCursor IBeamCursor],
-        "Password", 8, "Secure entry", 12, 10, 80, 180, 32, 1, 0);
+        (size_t)(__bridge void *)@"Password", (size_t)(__bridge void *)@"Secure entry",
+        10, 80, 180, 32, 1, 0);
     elisa_appkit_canvas_accessibility_add_tooltip(9);
-    elisa_appkit_canvas_accessibility_set_text(9, masked, strlen(masked), "", 0, 0, 0);
+    elisa_appkit_canvas_accessibility_set_text(9, (size_t)(__bridge void *)[NSString stringWithUTF8String:masked],
+        (size_t)(__bridge void *)@"", 0, 0);
     elisa_appkit_canvas_accessibility_commit();
     elisa_appkit_canvas_accessibility_post_layout_changed(
         elisa_appkit_canvas_accessibility_layout_changed_notification());

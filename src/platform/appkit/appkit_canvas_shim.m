@@ -619,16 +619,14 @@ static ElisaAccessibilityElement *elisa_appkit_canvas_pending_element(size_t ide
 }
 
 void elisa_appkit_canvas_accessibility_add(size_t identifier,
-                                            const char *identifierBytes, size_t identifierLength,
-                                            size_t action, const void *role,
+                                            size_t identifierString, size_t action, const void *role,
                                             const void *subrole, size_t cursor,
-                                            const char *bytes, size_t length,
-                                            const char *helpBytes, size_t helpLength,
+                                            size_t label, size_t help,
                                             float x, float y, float width, float height,
                                             int enabled, int focused) {
-    if (bytes == NULL || length == 0 || elisa_canvas_view == nil) return;
-    NSString *label = [[NSString alloc] initWithBytes:bytes length:length encoding:NSUTF8StringEncoding];
-    if (label == nil) return;
+    if (label == 0 || elisa_canvas_view == nil) return;
+    NSString *labelValue = (__bridge NSString *)(void *)label;
+    if (labelValue == nil) return;
     NSNumber *key = @(identifier);
     ElisaAccessibilityElement *element = elisa_accessibility_elements[key];
     BOOL isNew = element == nil;
@@ -640,15 +638,9 @@ void elisa_appkit_canvas_accessibility_add(size_t identifier,
     NSRect local = NSMakeRect(x, y, width, height);
     element.accessibilityRole = (__bridge NSAccessibilityRole)role;
     element.accessibilitySubrole = subrole == NULL ? nil : (__bridge NSAccessibilitySubrole)subrole;
-    element.accessibilityLabel = label;
-    if (helpBytes != NULL && helpLength > 0) {
-        element.accessibilityHelp = [[NSString alloc] initWithBytes:helpBytes length:helpLength encoding:NSUTF8StringEncoding];
-    } else {
-        element.accessibilityHelp = nil;
-    }
-    element.accessibilityIdentifier = identifierBytes != NULL && identifierLength > 0
-        ? [[NSString alloc] initWithBytes:identifierBytes length:identifierLength encoding:NSUTF8StringEncoding]
-        : nil;
+    element.accessibilityLabel = labelValue;
+    element.accessibilityHelp = help == 0 ? nil : (__bridge NSString *)(void *)help;
+    element.accessibilityIdentifier = identifierString == 0 ? nil : (__bridge NSString *)(void *)identifierString;
     element.accessibilityEnabled = enabled != 0;
     element.accessibilityFocused = focused != 0;
     // Values are assigned by typed FFI setters chosen in Elisa. Resetting all
@@ -701,21 +693,16 @@ void elisa_appkit_canvas_accessibility_set_range(size_t identifier, float value,
 }
 
 void elisa_appkit_canvas_accessibility_set_text(size_t identifier,
-                                                 const char *textBytes, size_t textLength,
-                                                 const char *selectedTextBytes, size_t selectedTextLength,
+                                                 size_t textValue, size_t selectedTextValue,
                                                  size_t selectionLocation, size_t selectionLength) {
     ElisaAccessibilityElement *element = elisa_appkit_canvas_pending_element(identifier);
     if (element == nil) return;
-    NSString *textValue = textBytes != NULL
-        ? [[NSString alloc] initWithBytes:textBytes length:textLength encoding:NSUTF8StringEncoding]
-        : @"";
-    NSString *selectedTextValue = selectedTextBytes != NULL
-        ? [[NSString alloc] initWithBytes:selectedTextBytes length:selectedTextLength encoding:NSUTF8StringEncoding]
-        : @"";
+    NSString *value = textValue == 0 ? @"" : (__bridge NSString *)(void *)textValue;
+    NSString *selected = selectedTextValue == 0 ? @"" : (__bridge NSString *)(void *)selectedTextValue;
     element.elisaSynchronizing = YES;
-    element.accessibilityValue = textValue ?: @"";
+    element.accessibilityValue = value ?: @"";
     element.accessibilitySelectedTextRange = NSMakeRange(selectionLocation, selectionLength);
-    element.accessibilitySelectedText = selectedTextValue ?: @"";
+    element.accessibilitySelectedText = selected ?: @"";
     element.accessibilityMinValue = nil;
     element.accessibilityMaxValue = nil;
     element.elisaSynchronizing = NO;

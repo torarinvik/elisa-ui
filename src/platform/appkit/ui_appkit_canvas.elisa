@@ -46,11 +46,11 @@ extern elisa_appkit_canvas_set_min_size(width: f32, height: f32) -> void
 extern elisa_appkit_canvas_redraw() -> void
 extern elisa_appkit_canvas_close() -> void
 extern elisa_appkit_canvas_accessibility_reset() -> void
-extern elisa_appkit_canvas_accessibility_add(id: usize, identifier: cstr, identifier_length: usize, action: usize, role: usize, subrole: usize, cursor: usize, label: cstr, length: usize, help: cstr, help_length: usize, x: f32, y: f32, width: f32, height: f32, enabled: i32, focused: i32) -> void
+extern elisa_appkit_canvas_accessibility_add(id: usize, identifier: usize, action: usize, role: usize, subrole: usize, cursor: usize, label: usize, help: usize, x: f32, y: f32, width: f32, height: f32, enabled: i32, focused: i32) -> void
 extern elisa_appkit_canvas_accessibility_add_tooltip(id: usize) -> void
 extern elisa_appkit_canvas_accessibility_set_boolean(id: usize, selected: i32) -> void
 extern elisa_appkit_canvas_accessibility_set_range(id: usize, value: f32, minimum: f32, maximum: f32) -> void
-extern elisa_appkit_canvas_accessibility_set_text(id: usize, text_value: cstr, text_length: usize, selected_text: cstr, selected_text_length: usize, selection_location: usize, selection_length: usize) -> void
+extern elisa_appkit_canvas_accessibility_set_text(id: usize, text_value: usize, selected_text: usize, selection_location: usize, selection_length: usize) -> void
 extern elisa_appkit_canvas_accessibility_notify(id: usize, notification: usize) -> void
 extern elisa_appkit_canvas_arrow_cursor() -> usize
 extern elisa_appkit_canvas_pointing_hand_cursor() -> usize
@@ -764,15 +764,11 @@ module UiAppKitCanvas:
             layout_changed: mutable bool = accessibility_force_layout or next_count != accessibility_previous_count
             for index in 0..<UiCore::accessibility_count():
                 node: UiCore::AccessibilityNode = UiCore::accessibility_at(index)
-                pointer: cstr = node.label.data.cast[cstr] can Unsafe.PointerCast
-                help_pointer: mutable cstr = pointer
-                help_pointer <- node.help.data.cast[cstr] can Unsafe.PointerCast if node.help.len > 0
-                value_pointer: mutable cstr = pointer
-                value_pointer <- node.text_value.data.cast[cstr] can Unsafe.PointerCast if node.text_value.len > 0
-                selected_pointer: mutable cstr = pointer
-                selected_pointer <- node.selected_text.data.cast[cstr] can Unsafe.PointerCast if node.selected_text.len > 0
                 identifier: sview = accessibility_identifier(node.id)
-                identifier_pointer: cstr = identifier.data.cast[cstr] can Unsafe.PointerCast
+                native_identifier: usize = native_string(identifier)
+                native_label: usize = native_string(node.label)
+                native_help: mutable usize = 0
+                native_help <- native_string(node.help) if node.help.len > 0
                 enabled: i32 = 1 if node.enabled else 0
                 focused: i32 = 1 if node.focused else 0
                 selected: i32 = 1 if node.selected else 0
@@ -799,15 +795,24 @@ module UiAppKitCanvas:
                 accessibility_next_ids[index] <- node.id
                 accessibility_next[index] <- state
                 tooltip: i32 = 1 if node.help.len > 0 and interaction != 0 else 0
-                elisa_appkit_canvas_accessibility_add(node.id, identifier_pointer, identifier.len, node.action, native_role, native_subrole, native_cursor(cursor), pointer, node.label.len, help_pointer, node.help.len, node.frame.origin.x, node.frame.origin.y, node.frame.size.width, node.frame.size.height, enabled, focused)
+                elisa_appkit_canvas_accessibility_add(node.id, native_identifier, node.action, native_role, native_subrole, native_cursor(cursor), native_label, native_help, node.frame.origin.x, node.frame.origin.y, node.frame.size.width, node.frame.size.height, enabled, focused)
                 elisa_appkit_canvas_accessibility_add_tooltip(node.id) if tooltip != 0
                 if value_kind == 1:
                     elisa_appkit_canvas_accessibility_set_boolean(node.id, selected)
                 if value_kind == 2:
                     elisa_appkit_canvas_accessibility_set_range(node.id, node.value, ACCESSIBILITY_RANGE_MINIMUM, ACCESSIBILITY_RANGE_MAXIMUM)
                 if value_kind == 3:
-                    elisa_appkit_canvas_accessibility_set_text(node.id, value_pointer, node.text_value.len, selected_pointer, node.selected_text.len, node.selection_location, node.selection_length)
+                    native_value: mutable usize = 0
+                    native_value <- native_string(node.text_value) if node.text_value.len > 0
+                    native_selected: mutable usize = 0
+                    native_selected <- native_string(node.selected_text) if node.selected_text.len > 0
+                    elisa_appkit_canvas_accessibility_set_text(node.id, native_value, native_selected, node.selection_location, node.selection_length)
+                    CFRelease(native_value) if native_value != 0
+                    CFRelease(native_selected) if native_selected != 0
                 accessibility_notify(node.id, notifications)
+                CFRelease(native_identifier) if native_identifier != 0
+                CFRelease(native_label) if native_label != 0
+                CFRelease(native_help) if native_help != 0
             accessibility_previous_count <- next_count
             for index in 0..<accessibility_previous_count:
                 accessibility_previous_ids[index] <- accessibility_next_ids[index]
