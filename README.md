@@ -59,6 +59,8 @@ because a module member's symbol carries its module and those names cannot move.
   sizer idea reduced to its load-bearing
   parts: a container distributes its inner box along one axis, each child
   contributes a minimum, and leftover space is shared out by `grow` weight.
+  Containers provide padding and sibling spacing; individual widgets can add
+  normalized margins that participate in both measurement and arrangement.
   Measure runs bottom-up, arrange top-down.
   Dynamic label text and typography changes are remeasured before the next
   layout, so localization and live status content cannot retain stale bounds.

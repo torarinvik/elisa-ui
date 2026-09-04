@@ -50,6 +50,7 @@ module UiFlat:
             axis: mutable UiConst::Axis
             padding: mutable f32
             spacing: mutable f32
+            margin: mutable f32
             declared_min_width: mutable f32
             declared_min_height: mutable f32
             min_width: mutable f32
@@ -227,7 +228,7 @@ module UiFlat:
             widgets[index] <- Widget{
                 kind, parent,
                 first_child: NONE, next_sibling: NONE,
-                axis: UiConst::Axis.Column, padding: 0.0, spacing: 0.0,
+                axis: UiConst::Axis.Column, padding: 0.0, spacing: 0.0, margin: 0.0,
                 declared_min_width: 0.0, declared_min_height: 0.0,
                 min_width: 0.0, min_height: 0.0, grow: 0.0,
                 x: 0.0, y: 0.0, width: 0.0, height: 0.0,
@@ -300,6 +301,10 @@ module UiFlat:
         def set_grow(index: usize, grow: f32) -> void:
             return if index >= widget_count
             widgets[index].grow <- nonnegative(grow)
+
+        def set_margin(index: usize, margin: f32) -> void:
+            return if index >= widget_count
+            widgets[index].margin <- nonnegative(margin)
 
         def set_enabled(index: usize, enabled: bool) -> void:
             return if index >= widget_count
@@ -562,8 +567,9 @@ module UiFlat:
             while cursor != NONE |cursor, along, across, children, is_row|:
                 if widgets[cursor].visible:
                     measure(cursor)
-                    child_along: f32 = widgets[cursor].min_width if is_row else widgets[cursor].min_height
-                    child_across: f32 = widgets[cursor].min_height if is_row else widgets[cursor].min_width
+                    child_margin: f32 = widgets[cursor].margin * 2.0
+                    child_along: f32 = (widgets[cursor].min_width if is_row else widgets[cursor].min_height) + child_margin
+                    child_across: f32 = (widgets[cursor].min_height if is_row else widgets[cursor].min_width) + child_margin
                     along <- along + child_along
                     across <- child_across if child_across > across else across
                     children <- children + 1.0
@@ -605,7 +611,7 @@ module UiFlat:
             cursor: mutable usize = first
             while cursor != NONE |cursor, demand, weight, is_row|:
                 if widgets[cursor].visible:
-                    demand <- demand + (widgets[cursor].min_width if is_row else widgets[cursor].min_height)
+                    demand <- demand + (widgets[cursor].min_width if is_row else widgets[cursor].min_height) + widgets[cursor].margin * 2.0
                     weight <- weight + widgets[cursor].grow
                 cursor <- widgets[cursor].next_sibling
 
@@ -618,13 +624,18 @@ module UiFlat:
             walk: mutable usize = first
             while walk != NONE |walk, offset, is_row, inner_x, inner_y, inner_width, inner_height, share|:
                 if widgets[walk].visible:
-                    base: f32 = widgets[walk].min_width if is_row else widgets[walk].min_height
-                    extent: f32 = base * scale + share * widgets[walk].grow
+                    margin: f32 = widgets[walk].margin
+                    base: f32 = (widgets[walk].min_width if is_row else widgets[walk].min_height) + margin * 2.0
+                    outer_extent: f32 = base * scale + share * widgets[walk].grow
+                    extent: f32 = outer_extent - margin * 2.0
+                    extent <- 0.0 if extent < 0.0 else extent
+                    cross_extent: f32 = (inner_height if is_row else inner_width) - margin * 2.0
+                    cross_extent <- 0.0 if cross_extent < 0.0 else cross_extent
                     if is_row:
-                        arrange(walk, inner_x + offset, inner_y, extent, inner_height)
+                        arrange(walk, inner_x + offset + margin, inner_y + margin, extent, cross_extent)
                     else:
-                        arrange(walk, inner_x, inner_y + offset, inner_width, extent)
-                    offset <- offset + extent + widgets[index].spacing * scale
+                        arrange(walk, inner_x + margin, inner_y + offset + margin, cross_extent, extent)
+                    offset <- offset + outer_extent + widgets[index].spacing * scale
                 else:
                     collapse(walk)
                 walk <- widgets[walk].next_sibling
