@@ -577,23 +577,23 @@ module UiCore:
             record: mutable EventRecord = EventRecord{kind: wire_kind(event), x: 0.0, y: 0.0, dx: 0.0, dy: 0.0, code: 0}
             match event:
                 Event.Resize(size):
-                    record with { x <- size.width, y <- size.height }
+                    record with { x <- nonnegative_extent(size.width), y <- nonnegative_extent(size.height) }
                 PointerEvent.Move(at):
-                    record with { x <- at.x, y <- at.y }
+                    record with { x <- finite_or_zero(at.x), y <- finite_or_zero(at.y) }
                 PointerEvent.Down(at, button):
-                    record with { x <- at.x, y <- at.y, code <- button }
+                    record with { x <- finite_or_zero(at.x), y <- finite_or_zero(at.y), code <- button }
                 PointerEvent.Up(at, button):
-                    record with { x <- at.x, y <- at.y, code <- button }
+                    record with { x <- finite_or_zero(at.x), y <- finite_or_zero(at.y), code <- button }
                 PointerEvent.Scroll(at, delta):
-                    record with { x <- at.x, y <- at.y, dx <- delta.x, dy <- delta.y }
+                    record with { x <- finite_or_zero(at.x), y <- finite_or_zero(at.y), dx <- finite_or_zero(delta.x), dy <- finite_or_zero(delta.y) }
                 KeyEvent.Down(code):
                     record.code <- code.i32()
                 KeyEvent.Up(code):
                     record.code <- code.i32()
                 GamepadEvent.Button(button, value):
-                    record with { dx <- value, code <- button.i32() }
+                    record with { dx <- finite_or_zero(value), code <- button.i32() }
                 GamepadEvent.Axis(axis, value):
-                    record with { dx <- value, code <- axis.i32() }
+                    record with { dx <- finite_or_zero(value), code <- axis.i32() }
                 Event.None:
                     pass
                 Event.Quit:
@@ -634,8 +634,8 @@ module UiCore:
                 WireKind.KeyUp:
                     KeyEvent.Up(code: record.code.Key())
                 WireKind.GamepadButton:
-                    GamepadEvent.Button(button: record.code.Pad(), value: record.dx)
+                    GamepadEvent.Button(button: record.code.Pad(), value: finite_or_zero(record.dx))
                 WireKind.GamepadAxis:
-                    GamepadEvent.Axis(axis: record.code.PadAxis(), value: record.dx)
+                    GamepadEvent.Axis(axis: record.code.PadAxis(), value: finite_or_zero(record.dx))
                 _:
                     Event.None
