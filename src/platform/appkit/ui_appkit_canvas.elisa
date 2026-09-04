@@ -16,6 +16,8 @@ extern elisa_appkit_canvas_menus_commit() -> void
 extern elisa_appkit_canvas_modifier_command() -> usize
 extern elisa_appkit_canvas_modifier_shift() -> usize
 extern elisa_appkit_canvas_modifier_option() -> usize
+extern elisa_appkit_canvas_modifier_control() -> usize
+extern elisa_appkit_canvas_modifier_device_independent_mask() -> usize
 extern elisa_appkit_canvas_set_snapshot_path(path: cstr) -> void
 extern elisa_appkit_canvas_schedule_redraw(delay: f32) -> void
 extern elisa_appkit_canvas_present(activate: i32) -> i32
@@ -604,6 +606,21 @@ module UiAppKitCanvas:
             return 6 if strcmp(selector, "redo:") == 0
             return 0
 
+        def native_modifier_flags(flags: usize) -> usize:
+            return flags & elisa_appkit_canvas_modifier_device_independent_mask()
+
+        def native_shift(flags: usize) -> bool:
+            return (native_modifier_flags(flags) & elisa_appkit_canvas_modifier_shift()) != 0
+
+        def native_control(flags: usize) -> bool:
+            return (native_modifier_flags(flags) & elisa_appkit_canvas_modifier_control()) != 0
+
+        def native_option(flags: usize) -> bool:
+            return (native_modifier_flags(flags) & elisa_appkit_canvas_modifier_option()) != 0
+
+        def native_command(flags: usize) -> bool:
+            return (native_modifier_flags(flags) & elisa_appkit_canvas_modifier_command()) != 0
+
         # Called by the exported frame callback after the app has rebuilt the
         # semantic nodes for this frame.
         def sync_accessibility() -> void:
@@ -807,7 +824,11 @@ def appkit_canvas_raw_key_callback(down: i32, key_code: i32, character: i32) -> 
     return if code == 0
     appkit_canvas_key_callback(down, code)
 
-def appkit_canvas_raw_flags_callback(key_code: i32, shift: i32, control: i32, alt: i32, super_key: i32) -> void:
+def appkit_canvas_raw_flags_callback(key_code: i32, modifiers: usize) -> void:
+    shift: i32 = 1 if UiAppKitCanvas::native_shift(modifiers) else 0
+    control: i32 = 1 if UiAppKitCanvas::native_control(modifiers) else 0
+    alt: i32 = 1 if UiAppKitCanvas::native_option(modifiers) else 0
+    super_key: i32 = 1 if UiAppKitCanvas::native_command(modifiers) else 0
     down: mutable i32 = 0
     down <- shift if key_code == 56 or key_code == 60
     down <- control if key_code == 59 or key_code == 62
@@ -828,6 +849,6 @@ export fn elisa_appkit_canvas_frame(context: usize) -> void = appkit_canvas_fram
 export fn elisa_appkit_canvas_resize(width: f32, height: f32) -> void = appkit_canvas_resize_callback
 export fn elisa_appkit_canvas_pointer(kind: i32, x: f32, y: f32, dx: f32, dy: f32, button: i32) -> void = appkit_canvas_pointer_callback
 export fn elisa_appkit_canvas_raw_key(down: i32, key_code: i32, character: i32) -> void = appkit_canvas_raw_key_callback
-export fn elisa_appkit_canvas_raw_flags(key_code: i32, shift: i32, control: i32, alt: i32, super_key: i32) -> void = appkit_canvas_raw_flags_callback
+export fn elisa_appkit_canvas_raw_flags(key_code: i32, modifiers: usize) -> void = appkit_canvas_raw_flags_callback
 export fn elisa_appkit_canvas_focus_changed(focused: i32) -> void = appkit_canvas_focus_changed_callback
 export fn elisa_appkit_canvas_accessibility_environment_changed() -> void = appkit_canvas_accessibility_environment_changed_callback

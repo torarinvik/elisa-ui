@@ -12,11 +12,10 @@ extern void elisa_appkit_canvas_resize(float width, float height);
 extern void elisa_appkit_canvas_pointer(int kind, float x, float y,
                                         float dx, float dy, int button);
 extern void elisa_appkit_canvas_raw_key(int down, int keyCode, int character);
-extern void elisa_appkit_canvas_raw_flags(int keyCode, int shift, int control, int alt, int superKey);
+extern void elisa_appkit_canvas_raw_flags(int keyCode, size_t modifiers);
 extern void elisa_appkit_canvas_focus_changed(int focused);
 extern void elisa_appkit_canvas_accessibility_environment_changed(void);
-extern int elisa_appkit_canvas_key_down_route(int character, int shift, int control,
-                                               int alt, int superKey);
+extern int elisa_appkit_canvas_key_down_route(int character, size_t modifiers);
 extern void elisa_appkit_canvas_key_up(int keyCode, int character);
 extern int elisa_appkit_canvas_accessibility_activate(size_t index);
 extern int elisa_appkit_canvas_accessibility_adjust(size_t index, int direction);
@@ -213,12 +212,8 @@ static int elisa_event_character(NSEvent *event) {
 - (void)mouseExited:(NSEvent *)event { (void)event; [(__bridge NSCursor *)(void *)elisa_appkit_canvas_arrow_cursor() set]; elisa_appkit_canvas_pointer(3,0,0,0,0,0); }
 - (void)scrollWheel:(NSEvent *)event { NSPoint p=[self eventPoint:event]; elisa_appkit_canvas_pointer(4,p.x,p.y,[event scrollingDeltaX],[event scrollingDeltaY],0); }
 - (void)keyDown:(NSEvent *)event {
-    NSEventModifierFlags flags = [event modifierFlags] & NSEventModifierFlagDeviceIndependentFlagsMask;
     int route = elisa_appkit_canvas_key_down_route(elisa_event_character(event),
-        (flags & NSEventModifierFlagShift) != 0,
-        (flags & NSEventModifierFlagControl) != 0,
-        (flags & NSEventModifierFlagOption) != 0,
-        (flags & NSEventModifierFlagCommand) != 0);
+                                                    (size_t)[event modifierFlags]);
     if (route >= 2) {
         (void)elisa_appkit_canvas_perform_text_action(route - 1);
         return;
@@ -330,12 +325,7 @@ static int elisa_event_character(NSEvent *event) {
     return [self.window convertRectToScreen:inWindow];
 }
 - (void)flagsChanged:(NSEvent *)event {
-    NSEventModifierFlags flags = [event modifierFlags] & NSEventModifierFlagDeviceIndependentFlagsMask;
-    elisa_appkit_canvas_raw_flags(event.keyCode,
-        (flags & NSEventModifierFlagShift) != 0,
-        (flags & NSEventModifierFlagControl) != 0,
-        (flags & NSEventModifierFlagOption) != 0,
-        (flags & NSEventModifierFlagCommand) != 0);
+    elisa_appkit_canvas_raw_flags(event.keyCode, (size_t)[event modifierFlags]);
 }
 @end
 
@@ -428,6 +418,10 @@ void elisa_appkit_canvas_menu_add_application_item(int menuIndex, const char *by
 size_t elisa_appkit_canvas_modifier_command(void) { return NSEventModifierFlagCommand; }
 size_t elisa_appkit_canvas_modifier_shift(void) { return NSEventModifierFlagShift; }
 size_t elisa_appkit_canvas_modifier_option(void) { return NSEventModifierFlagOption; }
+size_t elisa_appkit_canvas_modifier_control(void) { return NSEventModifierFlagControl; }
+size_t elisa_appkit_canvas_modifier_device_independent_mask(void) {
+    return NSEventModifierFlagDeviceIndependentFlagsMask;
+}
 
 void elisa_appkit_canvas_menu_add_separator(int menuIndex) {
     if (menuIndex < 0 || (NSUInteger)menuIndex >= elisa_canvas_menus.count) return;

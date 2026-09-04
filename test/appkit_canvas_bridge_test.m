@@ -55,13 +55,14 @@ void elisa_appkit_canvas_pointer(int kind, float x, float y, float dx, float dy,
 }
 void elisa_appkit_canvas_raw_key(int down, int keyCode, int character) { (void)down; (void)keyCode; (void)character; }
 void elisa_appkit_canvas_key_up(int keyCode, int character) { (void)keyCode; (void)character; }
-void elisa_appkit_canvas_raw_flags(int keyCode, int shift, int control, int alt, int superKey) {
-    (void)keyCode; (void)shift; (void)control; (void)alt; (void)superKey;
+void elisa_appkit_canvas_raw_flags(int keyCode, size_t modifiers) {
+    (void)keyCode; (void)modifiers;
 }
 void elisa_appkit_canvas_focus_changed(int focused) { test_window_focused = focused; }
 void elisa_appkit_canvas_accessibility_environment_changed(void) {}
-int elisa_appkit_canvas_key_down_route(int character, int shift, int control, int alt, int superKey) {
-    (void)control; (void)alt;
+int elisa_appkit_canvas_key_down_route(int character, size_t modifiers) {
+    BOOL shift = (modifiers & NSEventModifierFlagShift) != 0;
+    BOOL superKey = (modifiers & NSEventModifierFlagCommand) != 0;
     if (!superKey) return test_text_focused ? 1 : 0;
     if (character == 'a') return 2;
     if (character == 'c') return 3;

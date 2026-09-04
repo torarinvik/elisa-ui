@@ -57,6 +57,10 @@ if grep -Eq 'elisa_menu_action|elisa_text_action|int[[:space:]]+token[[:space:]]
   echo "appkit canvas: selector/action policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'modifierFlags[[:space:]]*&|flags[[:space:]]*&' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: modifier decoding leaked back into Objective-C" >&2
+  exit 1
+fi
 
 # These callbacks cross the Objective-C/Elisa boundary and must survive dead
 # stripping in the packaged product.
