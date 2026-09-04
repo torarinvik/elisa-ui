@@ -223,10 +223,17 @@ void elisa_appkit_set_view_frame(int index, float x, float y, float width, float
     @autoreleasepool {
         if (index < 0 || index >= elisa_count) return;
         [(NSView *)elisa_objects[index] setFrame:NSMakeRect(x, y, width, height)];
-        if (elisa_kinds[index] == ELISA_APPKIT_SCROLLVIEW) {
-            NSScrollView *scroll = (NSScrollView *)elisa_objects[index];
-            [[scroll documentView] setFrame:NSMakeRect(0, 0, width, height)];
-        }
+    }
+}
+
+// Elisa dispatches this only for a ScrollView. Keeping the document sizing as
+// its own typed entry point removes a production policy branch over the
+// framework enum from the native object bridge.
+void elisa_appkit_set_scroll_document_frame(int index, float width, float height) {
+    @autoreleasepool {
+        if (index < 0 || index >= elisa_count) return;
+        NSScrollView *scroll = (NSScrollView *)elisa_objects[index];
+        [[scroll documentView] setFrame:NSMakeRect(0, 0, width, height)];
     }
 }
 
