@@ -75,6 +75,10 @@ global mutable ui_wasm_clipboard_buffer: u8[UiFlat::TEXT_CAPACITY] = zeroed
 global mutable ui_wasm_clipboard_length: usize = 0
 global mutable ui_wasm_clipboard_cache_valid: bool = false
 
+def ui_wasm_scrub_clipboard_buffer() -> void:
+    for index in 0..<UiFlat::TEXT_CAPACITY:
+        ui_wasm_clipboard_buffer[index] <- 0
+
 def ui_wasm_read_wire_u32(wire: mutable u8[UI_WASM_CLIPBOARD_WIRE_SIZE]&, offset: usize) -> u32:
     trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic, Unsafe.UncheckedIndex]:
         slot: u32& = (&wire[offset]).cast[u32&]
@@ -112,6 +116,7 @@ def ui_wasm_release_clipboard_allocation(pointer: u32, length: u32) -> void:
 # UiFlat's enabled check and paste operation share one host read without
 # changing its byte-oriented API.
 def ui_wasm_fetch_clipboard() -> usize:
+    ui_wasm_scrub_clipboard_buffer()
     result_wire: mutable u8[UI_WASM_CLIPBOARD_WIRE_SIZE] = zeroed
     ui_wasm_clipboard_length <- 0
     ui_wasm_clipboard_cache_valid <- true
@@ -173,6 +178,7 @@ def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
         buffer[index] <- ui_wasm_clipboard_buffer[index]
     ui_wasm_clipboard_cache_valid <- false
     ui_wasm_clipboard_length <- 0
+    ui_wasm_scrub_clipboard_buffer()
     return take
 
 def ui_measure_text_width(text: sview, size: f32) -> f32:
@@ -354,6 +360,7 @@ module UiWasmBrowser:
         def start(width: u32, height: u32) -> void:
             ui_wasm_clipboard_cache_valid <- false
             ui_wasm_clipboard_length <- 0
+            ui_wasm_scrub_clipboard_buffer()
             elapsed_time <- 0.0
             UiCore::set_frame_time(0.0)
             UiCore::set_viewport(width.f32(), height.f32())

@@ -13,8 +13,13 @@ global mutable sdl_flat_clipboard_read: u8[UiFlat::TEXT_CAPACITY] = zeroed
 global mutable sdl_flat_clipboard_length: usize = 0
 global mutable sdl_flat_clipboard_cache_valid: bool = false
 
+def sdl_flat_scrub_buffer(buffer: mutable u8&, capacity: usize) -> void:
+    for index in 0..<capacity:
+        buffer[index] <- 0
+
 def sdl_flat_fetch_clipboard() -> usize:
     text_opt: cstr? = SDL_GetClipboardText()
+    sdl_flat_scrub_buffer(&sdl_flat_clipboard_read[0], UiFlat::TEXT_CAPACITY)
     sdl_flat_clipboard_length <- 0
     sdl_flat_clipboard_cache_valid <- true
     if text_opt is text:
@@ -37,6 +42,7 @@ def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
     sdl_flat_clipboard_write[take] <- 0
     pointer: cstr = (&sdl_flat_clipboard_write[0]).cast[cstr] can Unsafe.PointerCast
     written: bool = SDL_SetClipboardText(pointer)
+    sdl_flat_scrub_buffer(&sdl_flat_clipboard_write[0], UiFlat::TEXT_CAPACITY + 1)
     sdl_flat_clipboard_cache_valid <- false
     sdl_flat_clipboard_length <- 0
     return written
@@ -50,4 +56,5 @@ def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
         buffer[index] <- sdl_flat_clipboard_read[index]
     sdl_flat_clipboard_cache_valid <- false
     sdl_flat_clipboard_length <- 0
+    sdl_flat_scrub_buffer(&sdl_flat_clipboard_read[0], UiFlat::TEXT_CAPACITY)
     return take
