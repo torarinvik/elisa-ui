@@ -69,6 +69,10 @@ if grep -Eq 'setActivationPolicy:.*\?|setTabbingMode:.*\?' "$ROOT/src/platform/a
   echo "appkit canvas: activation or tabbing policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'if \(layoutChanged\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: accessibility layout-notification policy leaked back into Objective-C" >&2
+  exit 1
+fi
 
 # These callbacks cross the Objective-C/Elisa boundary and must survive dead
 # stripping in the packaged product.
@@ -98,6 +102,8 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_menus_commit$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_activate$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_adjust$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_add_tooltip$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_commit$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_post_layout_changed$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_cancel_interaction$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_allows_text_readback$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_cursor_at$'

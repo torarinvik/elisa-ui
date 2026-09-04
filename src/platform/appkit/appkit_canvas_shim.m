@@ -668,7 +668,7 @@ void elisa_appkit_canvas_accessibility_notify(size_t identifier, size_t notifica
     NSAccessibilityPostNotification(element, (__bridge NSAccessibilityNotificationName)(void *)notification);
 }
 
-void elisa_appkit_canvas_accessibility_commit(int layoutChanged) {
+void elisa_appkit_canvas_accessibility_commit(void) {
     elisa_accessibility_children = [elisa_accessibility_next mutableCopy];
     NSMutableDictionary<NSNumber *, ElisaAccessibilityElement *> *live = [NSMutableDictionary new];
     for (ElisaAccessibilityElement *element in elisa_accessibility_children) {
@@ -678,7 +678,9 @@ void elisa_appkit_canvas_accessibility_commit(int layoutChanged) {
     [elisa_canvas_view setAccessibilityChildren:elisa_accessibility_children];
     [elisa_canvas_view setAccessibilityChildrenInNavigationOrder:elisa_accessibility_children];
     [[elisa_canvas_view window] invalidateCursorRectsForView:elisa_canvas_view];
-    if (layoutChanged) {
-        NSAccessibilityPostNotification(elisa_canvas_view, NSAccessibilityLayoutChangedNotification);
-    }
+}
+
+void elisa_appkit_canvas_accessibility_post_layout_changed(void) {
+    if (elisa_canvas_view == nil) return;
+    NSAccessibilityPostNotification(elisa_canvas_view, NSAccessibilityLayoutChangedNotification);
 }

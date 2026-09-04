@@ -47,7 +47,8 @@ void elisa_appkit_canvas_frame(size_t context) {
         "Password", 8, "Secure entry", 12, 10, 80, 180, 32, 1, 0);
     elisa_appkit_canvas_accessibility_add_tooltip(9);
     elisa_appkit_canvas_accessibility_set_text(9, masked, strlen(masked), "", 0, 0, 0);
-    elisa_appkit_canvas_accessibility_commit(1);
+    elisa_appkit_canvas_accessibility_commit();
+    elisa_appkit_canvas_accessibility_post_layout_changed();
 }
 
 void elisa_appkit_canvas_resize(float width, float height) { (void)width; (void)height; }
