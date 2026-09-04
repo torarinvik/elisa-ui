@@ -19,6 +19,16 @@ include "./ui_ops.elisa"
 
 extend UiWidgets:
     public:
+        # Top-level surfaces. These keep the raw common fields out of
+        # application code while preserving the hierarchy's decoration modes.
+        def window(title: sview, resizable: bool) -> Widget:
+            can Memory.Allocate, Abort.Panic:
+                return Window.Top(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, title: title, resizable: resizable)
+
+        def floating_window(title: sview) -> Widget:
+            can Memory.Allocate, Abort.Panic:
+                return Window.Floating(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, title: title)
+
         # A vertical stack. The default a container wants: no growth of its
         # own, so a parent gives it exactly the space its children need.
         def column(padding: f32, spacing: f32, fill: UiCore::Color) -> Widget:
@@ -28,6 +38,18 @@ extend UiWidgets:
         def row(padding: f32, spacing: f32, fill: UiCore::Color) -> Widget:
             can Memory.Allocate, Abort.Panic:
                 return Container.Box(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, axis: UiConst::Axis.Row, padding: padding, spacing: spacing, fill: fill)
+
+        # Fixed-column and scrolling containers mirror the corresponding
+        # hierarchy variants, including the axis and content offset that the
+        # shared arrange pass consumes.
+        def grid(columns: i32, padding: f32, spacing: f32, fill: UiCore::Color) -> Widget:
+            can Memory.Allocate, Abort.Panic:
+                safe_columns: i32 = columns if columns > 0 else 1
+                return Container.Grid(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, columns: safe_columns, padding: padding, spacing: spacing, fill: fill)
+
+        def scroll(axis: UiConst::Axis, offset: f32, fill: UiCore::Color) -> Widget:
+            can Memory.Allocate, Abort.Panic:
+                return Container.Scroll(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, axis: axis, offset: offset, fill: fill)
 
         # A label's minimum is the measured extent of its text, so it takes
         # part in layout like any other child. Measured once here rather than
