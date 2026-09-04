@@ -97,6 +97,10 @@ if grep -Eq 'forType:NSPasteboardTypeString|stringForType:NSPasteboardTypeString
   echo "appkit canvas: pasteboard or snapshot encoding policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'elisa_canvas_empty_menu_key|keyEquivalent[[:space:]]*=[^=]' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: menu key fallback policy leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'ceil\(|MAX\(' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: bitmap extent policy leaked back into Objective-C" >&2
   exit 1

@@ -317,7 +317,7 @@ int main(void) {
         elisa_appkit_canvas_center();
         elisa_appkit_canvas_menus_begin();
         int applicationMenu = elisa_appkit_canvas_menu_add((size_t)(__bridge void *)@"test", (size_t)(__bridge void *)@"");
-        elisa_appkit_canvas_menu_add_item(applicationMenu, (size_t)(__bridge void *)@"About test", 0, "orderFrontStandardAboutPanel:", 0);
+        elisa_appkit_canvas_menu_add_item(applicationMenu, (size_t)(__bridge void *)@"About test", (size_t)(__bridge void *)@"", "orderFrontStandardAboutPanel:", 0);
         elisa_appkit_canvas_menu_add_separator(applicationMenu);
         elisa_appkit_canvas_menu_add_item(applicationMenu, (size_t)(__bridge void *)@"Quit test", (size_t)(__bridge void *)@"q", "terminate:", NSEventModifierFlagCommand);
         int windowMenu = elisa_appkit_canvas_menu_add((size_t)(__bridge void *)@"Window", (size_t)(__bridge void *)@"");
