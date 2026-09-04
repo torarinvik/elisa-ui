@@ -392,6 +392,13 @@ size_t elisa_appkit_canvas_run_loop_common_modes(void) {
     return (size_t)(__bridge void *)NSRunLoopCommonModes;
 }
 
+// The notification name is an exported Cocoa object, not framework policy.
+// Elisa decides when a layout changed and passes this opaque identity back
+// through the FFI so the bridge only performs NSAccessibilityPostNotification.
+size_t elisa_appkit_canvas_accessibility_layout_changed_notification(void) {
+    return (size_t)(__bridge void *)NSAccessibilityLayoutChangedNotification;
+}
+
 int elisa_appkit_canvas_open(const char *title, size_t length, float width, float height,
                              int style, size_t tracking_options, int tabbing_mode, int restorable,
                              int activation_policy) {
@@ -708,7 +715,9 @@ void elisa_appkit_canvas_accessibility_commit(void) {
     [[elisa_canvas_view window] invalidateCursorRectsForView:elisa_canvas_view];
 }
 
-void elisa_appkit_canvas_accessibility_post_layout_changed(void) {
+void elisa_appkit_canvas_accessibility_post_layout_changed(size_t notification) {
     if (elisa_canvas_view == nil) return;
-    NSAccessibilityPostNotification(elisa_canvas_view, NSAccessibilityLayoutChangedNotification);
+    if (notification == 0) return;
+    NSAccessibilityPostNotification(elisa_canvas_view,
+                                    (__bridge NSAccessibilityNotificationName)(void *)notification);
 }

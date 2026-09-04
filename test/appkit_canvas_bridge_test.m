@@ -48,7 +48,8 @@ void elisa_appkit_canvas_frame(size_t context) {
     elisa_appkit_canvas_accessibility_add_tooltip(9);
     elisa_appkit_canvas_accessibility_set_text(9, masked, strlen(masked), "", 0, 0, 0);
     elisa_appkit_canvas_accessibility_commit();
-    elisa_appkit_canvas_accessibility_post_layout_changed();
+    elisa_appkit_canvas_accessibility_post_layout_changed(
+        elisa_appkit_canvas_accessibility_layout_changed_notification());
 }
 
 void elisa_appkit_canvas_resize(float width, float height) { (void)width; (void)height; }
