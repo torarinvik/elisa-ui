@@ -306,6 +306,27 @@ def main() -> i64:
     UiFlat::layout(40.0, 100.0)
     check("main-axis distribution follows a column vertically", rect_is(justified_column_child, 0.0, 80.0, 40.0, 20.0))
 
+    UiFlat::reset()
+    focus_row: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Row, 0.0, 0.0, UiCore::rgb(0, 0, 0))
+    focus_late: usize = UiFlat::button(focus_row, 20.0, 20.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    focus_first: usize = UiFlat::button(focus_row, 20.0, 20.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    focus_middle: usize = UiFlat::button(focus_row, 20.0, 20.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    UiFlat::set_focus_order(focus_late, 30)
+    UiFlat::set_focus_order(focus_first, 10)
+    UiFlat::set_focus_order(focus_middle, 20)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Tab)))
+    check("Tab starts at the lowest explicit focus order", UiFlat::focused() == focus_first)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Tab)))
+    check("Tab advances through explicit focus order", UiFlat::focused() == focus_middle)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Tab)))
+    check("Tab reaches the highest explicit focus order", UiFlat::focused() == focus_late)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Tab)))
+    check("explicit focus order wraps", UiFlat::focused() == focus_first)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.LeftShift)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Tab)))
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.LeftShift)))
+    check("Shift-Tab traverses explicit focus order backwards", UiFlat::focused() == focus_late)
+
     # A label's minimum comes from its measured text, so it sizes a container
     # that would otherwise collapse. "Save" at size 20 measures 4 * 20 * 0.5 = 40
     # wide and 20 tall under the stub above.

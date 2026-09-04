@@ -66,6 +66,8 @@ because a module member's symbol carries its module and those names cannot move.
   is redistributed among uncapped siblings rather than leaving accidental gaps.
   Containers can distribute remaining main-axis room at the start, center, end,
   or between children.
+  Keyboard focus order is configurable in Elisa and remains stable by creation
+  order when multiple controls share the same rank.
   Measure runs bottom-up, arrange top-down.
   Dynamic label text and typography changes are remeasured before the next
   layout, so localization and live status content cannot retain stale bounds.

@@ -74,6 +74,7 @@ module UiFlat:
             text_color: mutable UiCore::Color
             secure: mutable bool
             interactive: mutable bool
+            focus_order: mutable usize
             visible: mutable bool
             enabled: mutable bool
             hovered: mutable bool
@@ -245,7 +246,7 @@ module UiFlat:
                 x: 0.0, y: 0.0, width: 0.0, height: 0.0,
                 color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, hover_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, press_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0},
                 text: "", placeholder: "", help: "", text_size: 0.0, text_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, secure: false,
-                interactive: false, visible: true, enabled: true, hovered: false, pressed: false, focused: false, selected: false, value: 0.0,
+                interactive: false, focus_order: index, visible: true, enabled: true, hovered: false, pressed: false, focused: false, selected: false, value: 0.0,
                 input_length: 0, caret: 0, selection_anchor: 0, marked_start: 0, marked_end: 0, text_revision: 0, text_truncated: false,
             }
             link(parent, index)
@@ -331,6 +332,10 @@ module UiFlat:
         def set_main_alignment(index: usize, alignment: UiConst::MainAlignment) -> void:
             return if index >= widget_count
             widgets[index].main_alignment <- alignment
+
+        def set_focus_order(index: usize, order: usize) -> void:
+            return if index >= widget_count
+            widgets[index].focus_order <- order
 
         def set_enabled(index: usize, enabled: bool) -> void:
             return if index >= widget_count
@@ -750,27 +755,35 @@ module UiFlat:
 
         def focus_next() -> void:
             return if widget_count == 0
-            start: usize = focused_widget + 1 if focused_widget < widget_count else 0
-            examined: mutable usize = 0
-            while examined < widget_count |examined|:
-                candidate: usize = (start + examined) % widget_count
-                if widgets[candidate].interactive and effectively_enabled(candidate) and effectively_visible(candidate):
-                    focus(candidate)
-                    return
-                examined <- examined + 1
+            next: mutable usize = NONE
+            current_order: usize = widgets[focused_widget].focus_order if focused_widget < widget_count else 0
+            for candidate in 0..<widget_count:
+                eligible: bool = widgets[candidate].interactive and effectively_enabled(candidate) and effectively_visible(candidate)
+                follows: bool = focused_widget >= widget_count or widgets[candidate].focus_order > current_order or (widgets[candidate].focus_order == current_order and candidate > focused_widget)
+                if eligible and follows:
+                    next <- candidate if next >= widget_count or widgets[candidate].focus_order < widgets[next].focus_order or (widgets[candidate].focus_order == widgets[next].focus_order and candidate < next) else next
+            if next >= widget_count:
+                for candidate in 0..<widget_count:
+                    eligible: bool = widgets[candidate].interactive and effectively_enabled(candidate) and effectively_visible(candidate)
+                    if eligible:
+                        next <- candidate if next >= widget_count or widgets[candidate].focus_order < widgets[next].focus_order or (widgets[candidate].focus_order == widgets[next].focus_order and candidate < next) else next
+            focus(next) if next < widget_count
 
         def focus_previous() -> void:
             return if widget_count == 0
-            start: usize = focused_widget if focused_widget < widget_count else 0
-            examined: mutable usize = 0
-            while examined < widget_count |examined|:
-                # Add widget_count before subtracting so unsigned indices wrap
-                # deliberately instead of underflowing.
-                candidate: usize = (start + widget_count - examined - 1) % widget_count
-                if widgets[candidate].interactive and effectively_enabled(candidate) and effectively_visible(candidate):
-                    focus(candidate)
-                    return
-                examined <- examined + 1
+            previous: mutable usize = NONE
+            current_order: usize = widgets[focused_widget].focus_order if focused_widget < widget_count else 0
+            for candidate in 0..<widget_count:
+                eligible: bool = widgets[candidate].interactive and effectively_enabled(candidate) and effectively_visible(candidate)
+                precedes: bool = focused_widget < widget_count and (widgets[candidate].focus_order < current_order or (widgets[candidate].focus_order == current_order and candidate < focused_widget))
+                if eligible and precedes:
+                    previous <- candidate if previous >= widget_count or widgets[candidate].focus_order > widgets[previous].focus_order or (widgets[candidate].focus_order == widgets[previous].focus_order and candidate > previous) else previous
+            if previous >= widget_count:
+                for candidate in 0..<widget_count:
+                    eligible: bool = widgets[candidate].interactive and effectively_enabled(candidate) and effectively_visible(candidate)
+                    if eligible:
+                        previous <- candidate if previous >= widget_count or widgets[candidate].focus_order > widgets[previous].focus_order or (widgets[candidate].focus_order == widgets[previous].focus_order and candidate > previous) else previous
+            focus(previous) if previous < widget_count
 
         def color_of(index: usize) -> UiCore::Color:
             if not effectively_enabled(index):
