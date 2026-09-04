@@ -64,6 +64,7 @@ static NSString *elisa_canvas_application_name;
 static NSMenu *elisa_canvas_menu_bar;
 static NSMutableArray<NSMenu *> *elisa_canvas_menus;
 static NSTimer *elisa_canvas_animation_timer;
+static NSTrackingAreaOptions elisa_canvas_tracking_options;
 
 // Cursor objects are Cocoa singletons. Return opaque, non-owning pointers so
 // Elisa can select the native object while this shim only installs it.
@@ -163,8 +164,7 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
 - (NSArray *)accessibilityChildren { return elisa_accessibility_children ?: @[]; }
 - (NSArray *)accessibilityChildrenInNavigationOrder { return elisa_accessibility_children ?: @[]; }
 - (NSTrackingAreaOptions)trackingOptions {
-    return NSTrackingMouseMoved | NSTrackingMouseEnteredAndExited |
-           NSTrackingActiveInKeyWindow | NSTrackingInVisibleRect;
+    return elisa_canvas_tracking_options;
 }
 - (void)updateTrackingAreas {
     for (NSTrackingArea *area in [self trackingAreas]) [self removeTrackingArea:area];
@@ -359,11 +359,28 @@ int elisa_appkit_canvas_tabbing_mode_disallowed(void) {
     return (int)NSWindowTabbingModeDisallowed;
 }
 
+size_t elisa_appkit_canvas_tracking_mouse_moved(void) {
+    return (size_t)NSTrackingMouseMoved;
+}
+
+size_t elisa_appkit_canvas_tracking_mouse_entered_exited(void) {
+    return (size_t)NSTrackingMouseEnteredAndExited;
+}
+
+size_t elisa_appkit_canvas_tracking_active_in_key_window(void) {
+    return (size_t)NSTrackingActiveInKeyWindow;
+}
+
+size_t elisa_appkit_canvas_tracking_in_visible_rect(void) {
+    return (size_t)NSTrackingInVisibleRect;
+}
+
 int elisa_appkit_canvas_open(const char *title, size_t length, float width, float height,
-                             int style, int tabbing_mode, int restorable, int centered,
+                             int style, size_t tracking_options, int tabbing_mode, int restorable, int centered,
                              int activation_policy) {
     @autoreleasepool {
         elisa_canvas_frame_count = 0;
+        elisa_canvas_tracking_options = (NSTrackingAreaOptions)tracking_options;
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:(NSApplicationActivationPolicy)activation_policy];
         NSRect rect = NSMakeRect(0, 0, width, height);

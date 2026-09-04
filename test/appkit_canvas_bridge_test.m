@@ -241,6 +241,10 @@ static int require(BOOL condition, NSString *message) {
 int main(void) {
     @autoreleasepool {
         if (!elisa_appkit_canvas_open("test", 4, 200, 100, 15,
+                                      NSTrackingMouseMoved |
+                                      NSTrackingMouseEnteredAndExited |
+                                      NSTrackingActiveInKeyWindow |
+                                      NSTrackingInVisibleRect,
                                       NSWindowTabbingModeDisallowed, 0, 1,
                                       NSApplicationActivationPolicyProhibited)) return 1;
         elisa_appkit_canvas_menus_begin("test", 4);
