@@ -206,6 +206,38 @@ extend UiWidgets:
         # declared minimum still wins when it is larger, which is how a button
         # reserves its clickable area even with a short label.
         def measure(w: Widget) -> void:
+            # Grid is the one container whose main-axis demand is not a simple
+            # sibling sum. Measure a uniform cell from the largest child, then
+            # derive the number of rows from the fixed column count.
+            match w:
+                Container.Grid(columns, padding, spacing, fill):
+                    child: Widget? = w.first_child
+                    return if child == null
+                    columns_count: f32 = columns.i64().f32() if columns > 0 else 1.0
+                    widest: mutable f32 = 0.0
+                    tallest: mutable f32 = 0.0
+                    count: mutable f32 = 0.0
+                    cursor: mutable Widget? = child
+                    while cursor is node |widest, tallest, count, cursor|:
+                        measure(node)
+                        widest <- node.min_width if node.min_width > widest else widest
+                        tallest <- node.min_height if node.min_height > tallest else tallest
+                        count <- count + 1.0
+                        cursor <- node.next_sibling
+                    rows: mutable f32 = 0.0
+                    remaining: mutable f32 = count
+                    while remaining > 0.0 |rows, remaining, columns_count|:
+                        rows <- rows + 1.0
+                        remaining <- remaining - columns_count
+                    gaps_x: f32 = spacing * (columns_count - 1.0) if columns_count > 1.0 else 0.0
+                    gaps_y: f32 = spacing * (rows - 1.0) if rows > 1.0 else 0.0
+                    content_width: f32 = widest * columns_count + gaps_x + padding * 2.0
+                    content_height: f32 = tallest * rows + gaps_y + padding * 2.0
+                    w.min_width <- content_width if content_width > w.min_width
+                    w.min_height <- content_height if content_height > w.min_height
+                    return
+                _:
+                    pass
             child: Widget? = w.first_child
             return if child == null
             is_row: bool = axis_of(w) == UiConst::Axis.Row
@@ -237,6 +269,50 @@ extend UiWidgets:
             w with { x, y, width, height }
             first: Widget? = w.first_child
             return if first == null
+
+            # Fixed-column grid placement. Cells are uniform so a row remains
+            # aligned even when its children have different intrinsic minima.
+            match w:
+                Container.Grid(columns, padding, spacing, fill):
+                    columns_count: f32 = columns.i64().f32() if columns > 0 else 1.0
+                    widest: mutable f32 = 0.0
+                    tallest: mutable f32 = 0.0
+                    count: mutable f32 = 0.0
+                    scan: mutable Widget? = first
+                    while scan is node |widest, tallest, count, scan|:
+                        widest <- node.min_width if node.min_width > widest else widest
+                        tallest <- node.min_height if node.min_height > tallest else tallest
+                        count <- count + 1.0
+                        scan <- node.next_sibling
+                    rows: mutable f32 = 0.0
+                    remaining: mutable f32 = count
+                    while remaining > 0.0 |rows, remaining, columns_count|:
+                        rows <- rows + 1.0
+                        remaining <- remaining - columns_count
+                    pad: f32 = padding
+                    inner_x: f32 = x + pad
+                    inner_y: f32 = y + pad
+                    inner_width: f32 = width - pad * 2.0
+                    inner_height: f32 = height - pad * 2.0
+                    gaps_x: f32 = spacing * (columns_count - 1.0) if columns_count > 1.0 else 0.0
+                    gaps_y: f32 = spacing * (rows - 1.0) if rows > 1.0 else 0.0
+                    cell_width: mutable f32 = (inner_width - gaps_x) / columns_count
+                    cell_height: mutable f32 = (inner_height - gaps_y) / rows
+                    cell_width <- widest if cell_width < widest else cell_width
+                    cell_height <- tallest if cell_height < tallest else cell_height
+                    column: mutable f32 = 0.0
+                    row: mutable f32 = 0.0
+                    walk: mutable Widget? = first
+                    while walk is node |column, row, walk, inner_x, inner_y, cell_width, cell_height, spacing, columns_count|:
+                        arrange(node, inner_x + column * (cell_width + spacing), inner_y + row * (cell_height + spacing), cell_width, cell_height)
+                        column <- column + 1.0
+                        if column >= columns_count:
+                            column <- 0.0
+                            row <- row + 1.0
+                        walk <- node.next_sibling
+                    return
+                _:
+                    pass
 
             is_row: bool = axis_of(w) == UiConst::Axis.Row
             pad: f32 = padding_of(w)
