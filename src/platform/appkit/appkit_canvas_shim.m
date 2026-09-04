@@ -460,12 +460,14 @@ void elisa_appkit_canvas_menus_begin(void) {
     elisa_canvas_menus = [NSMutableArray new];
 }
 
-int elisa_appkit_canvas_menu_add(const char *bytes, size_t length) {
+// Menu labels arrive as borrowed opaque CFStrings created by Elisa. Cocoa
+// retains them while creating the menu item; the bridge does not decode UTF-8.
+int elisa_appkit_canvas_menu_add(size_t title) {
     if (elisa_canvas_menu_bar == nil || elisa_canvas_menus == nil) return -1;
-    NSString *title = [[NSString alloc] initWithBytes:bytes length:length encoding:NSUTF8StringEncoding];
-    if (title == nil) return -1;
-    NSMenuItem *root = [[NSMenuItem alloc] initWithTitle:title action:NULL keyEquivalent:@""];
-    NSMenu *menu = [[NSMenu alloc] initWithTitle:title];
+    NSString *value = (__bridge NSString *)(void *)title;
+    if (value == nil) return -1;
+    NSMenuItem *root = [[NSMenuItem alloc] initWithTitle:value action:NULL keyEquivalent:@""];
+    NSMenu *menu = [[NSMenu alloc] initWithTitle:value];
     [root setSubmenu:menu];
     [elisa_canvas_menu_bar addItem:root];
     [elisa_canvas_menus addObject:menu];
@@ -492,10 +494,10 @@ static void elisa_appkit_canvas_menu_add_item_title(int menuIndex, NSString *tit
     item.keyEquivalentModifierMask = (NSEventModifierFlags)modifiers;
 }
 
-void elisa_appkit_canvas_menu_add_item(int menuIndex, const char *bytes, size_t length,
+void elisa_appkit_canvas_menu_add_item(int menuIndex, size_t title,
                                         const char *actionName, int key, size_t modifiers) {
-    NSString *title = [[NSString alloc] initWithBytes:bytes length:length encoding:NSUTF8StringEncoding];
-    elisa_appkit_canvas_menu_add_item_title(menuIndex, title, actionName, key, modifiers);
+    NSString *value = (__bridge NSString *)(void *)title;
+    elisa_appkit_canvas_menu_add_item_title(menuIndex, value, actionName, key, modifiers);
 }
 
 size_t elisa_appkit_canvas_modifier_command(void) { return NSEventModifierFlagCommand; }
