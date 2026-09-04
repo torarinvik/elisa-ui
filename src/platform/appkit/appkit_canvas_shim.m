@@ -84,7 +84,6 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
 
 @interface ElisaAccessibilityElement : NSAccessibilityElement
 @property(nonatomic) size_t elisaIndex;
-@property(nonatomic) size_t elisaIdentifier;
 @property(nonatomic, strong) NSCursor *elisaCursor;
 @property(nonatomic) BOOL elisaSynchronizing;
 @property(nonatomic) NSRect elisaLocalFrame;
@@ -702,7 +701,7 @@ static ElisaAccessibilityElement *elisa_appkit_canvas_element(size_t handle) {
     return [object isKindOfClass:[ElisaAccessibilityElement class]] ? object : nil;
 }
 
-size_t elisa_appkit_canvas_accessibility_add(size_t identifier, size_t previousHandle,
+size_t elisa_appkit_canvas_accessibility_add(size_t previousHandle,
                                             size_t identifierString, size_t action, const void *role,
                                             const void *subrole, size_t cursor,
                                             size_t label, size_t help,
@@ -724,7 +723,6 @@ size_t elisa_appkit_canvas_accessibility_add(size_t identifier, size_t previousH
     if (isNew) {
         element = [ElisaAccessibilityElement new];
         element.accessibilityParent = elisa_canvas_view;
-        element.elisaIdentifier = identifier;
     }
     NSRect local = NSMakeRect(x, y, width, height);
     element.accessibilityRole = roleValue;
