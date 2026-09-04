@@ -338,6 +338,11 @@ int main(void) {
                          elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(),
                          elisa_appkit_canvas_bitmap_file_type_png(), 0, 200, 100, 8, 4, 1, 0),
                     @"headless present succeeded before opening a canvas")) return 1;
+        NSObject *invalidTitle = [NSObject new];
+        if (require(!elisa_appkit_canvas_open((size_t)(__bridge void *)invalidTitle,
+                                              200, 100, 15,
+                                              elisa_appkit_canvas_backing_store_buffered()),
+                    @"invalid window title was accepted")) return 1;
         NSString *title = @"test";
         elisa_appkit_canvas_set_activation_policy(NSApplicationActivationPolicyProhibited);
         int opened = elisa_appkit_canvas_open((size_t)(__bridge void *)title,
@@ -356,6 +361,19 @@ int main(void) {
                     menuBar, (size_t)(__bridge void *)invalidMenuString,
                     (size_t)(__bridge void *)@"") == 0,
                 @"invalid menu string was accepted")) return 1;
+    NSObject *invalidNativeString = [NSObject new];
+    if (require(!elisa_appkit_canvas_schedule_redraw(
+                    0.1f, (size_t)(__bridge void *)invalidNativeString),
+                @"invalid run-loop mode was accepted")) return 1;
+    if (require(!elisa_appkit_canvas_present_headless(
+                    (size_t)(__bridge void *)invalidNativeString,
+                    elisa_appkit_canvas_bitmap_file_type_png(), 0, 200, 100, 8, 4, 1, 0),
+                @"invalid bitmap color-space handle was accepted")) return 1;
+    if (require(elisa_appkit_canvas_accessibility_add(
+                    99, 0, 0, 0, NSAccessibilityButtonRole, NULL, 0,
+                    (size_t)(__bridge void *)invalidNativeString, 0,
+                    0, 0, 10, 10, 1, 0) == 0,
+                @"invalid accessibility label was accepted")) return 1;
     size_t applicationMenu = elisa_appkit_canvas_menu_add(menuBar, (size_t)(__bridge void *)@"test", (size_t)(__bridge void *)@"");
         elisa_appkit_canvas_menu_add_item(applicationMenu, (size_t)(__bridge void *)@"About test", (size_t)(__bridge void *)@"", (size_t)(void *)sel_registerName("orderFrontStandardAboutPanel:"), 0);
         elisa_appkit_canvas_menu_add_separator(applicationMenu);

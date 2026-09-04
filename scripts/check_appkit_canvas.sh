@@ -73,6 +73,10 @@ if grep -Eq '\bsel_registerName\b' "$ROOT/src/platform/appkit/appkit_canvas_shim
   echo "appkit canvas: selector registration leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq '__bridge[[:space:]]+NSString|__bridge[[:space:]]+NSAccessibility' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: unchecked borrowed text handles remain in Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'elisa_canvas_menus' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: menu-index bookkeeping leaked into Objective-C" >&2
   exit 1

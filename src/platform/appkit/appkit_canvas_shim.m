@@ -303,8 +303,9 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
     NSRange safe = NSMakeRange(elisa_appkit_canvas_range_location(range.location),
                                elisa_appkit_canvas_range_length(range.location, range.length));
     if (actualRange != NULL) *actualRange = safe;
-    NSString *text = (__bridge NSString *)(void *)native;
-    NSAttributedString *result = text == nil ? nil : [[NSAttributedString alloc] initWithString:text];
+    NSString *text = elisa_appkit_canvas_string(native);
+    if (text == nil) return nil;
+    NSAttributedString *result = [[NSAttributedString alloc] initWithString:text];
     CFRelease((CFTypeRef)(void *)native);
     return result;
 }
@@ -428,7 +429,8 @@ int elisa_appkit_canvas_open(size_t title, float width, float height,
             styleMask:styleMask
             backing:(NSBackingStoreType)backing defer:NO];
         if (window == nil) return 0;
-        NSString *name = (__bridge NSString *)(void *)title;
+        NSString *name = title == 0 ? nil : elisa_appkit_canvas_string(title);
+        if (title != 0 && name == nil) return 0;
         if (name != nil) [window setTitle:name];
         // View construction may synchronously report its initial frame. The
         // Elisa adapter owns the readiness guard and filters that callback
@@ -578,7 +580,7 @@ size_t elisa_appkit_canvas_clipboard_read(size_t pasteboard_type) {
 }
 
 size_t elisa_appkit_canvas_schedule_redraw(float delay, size_t run_loop_mode) {
-    NSString *mode = (__bridge NSString *)(void *)run_loop_mode;
+    NSString *mode = elisa_appkit_canvas_string(run_loop_mode);
     if (mode == nil) return 0;
     NSTimer *timer = [NSTimer timerWithTimeInterval:delay repeats:NO block:^(NSTimer *fired) {
         (void)fired;
@@ -624,6 +626,8 @@ int elisa_appkit_canvas_present_headless(size_t color_space, int image_type,
     if (elisa_canvas_view == nil) return 0;
     NSRect bounds = elisa_canvas_view.bounds;
     if (pixels_width <= 0 || pixels_height <= 0) return 0;
+    NSString *colorSpace = elisa_appkit_canvas_string(color_space);
+    if (colorSpace == nil) return 0;
     NSBitmapImageRep *bitmap = [[NSBitmapImageRep alloc]
         initWithBitmapDataPlanes:NULL
         pixelsWide:(NSUInteger)pixels_width
@@ -631,12 +635,14 @@ int elisa_appkit_canvas_present_headless(size_t color_space, int image_type,
         bitsPerSample:(NSInteger)bits_per_sample
         samplesPerPixel:(NSInteger)samples_per_pixel
         hasAlpha:has_alpha != 0 isPlanar:NO
-        colorSpaceName:(__bridge NSString *)(void *)color_space
+        colorSpaceName:colorSpace
         bitmapFormat:(NSBitmapFormat)bitmap_format bytesPerRow:0 bitsPerPixel:0];
+    if (bitmap == nil) return 0;
     NSGraphicsContext *graphics = [NSGraphicsContext graphicsContextWithBitmapImageRep:bitmap];
+    if (graphics == nil) return 0;
     [elisa_canvas_view displayRectIgnoringOpacity:bounds inContext:graphics];
     if (snapshot != 0) {
-        NSString *snapshotPath = (__bridge NSString *)(void *)snapshot;
+        NSString *snapshotPath = elisa_appkit_canvas_string(snapshot);
         if (snapshotPath == nil) return 0;
         NSData *png = [bitmap representationUsingType:(NSBitmapImageFileType)image_type properties:@{}];
         if (png == nil || ![png writeToFile:snapshotPath atomically:YES]) return 0;
@@ -675,8 +681,16 @@ size_t elisa_appkit_canvas_accessibility_add(size_t identifier, size_t previousH
                                             float x, float y, float width, float height,
                                             int enabled, int focused) {
     if (label == 0 || elisa_canvas_view == nil) return 0;
-    NSString *labelValue = (__bridge NSString *)(void *)label;
+    NSString *labelValue = elisa_appkit_canvas_string(label);
     if (labelValue == nil) return 0;
+    NSString *helpValue = help == 0 ? nil : elisa_appkit_canvas_string(help);
+    NSString *identifierValue = identifierString == 0 ? nil : elisa_appkit_canvas_string(identifierString);
+    NSAccessibilityRole roleValue = role == NULL ? nil : (NSAccessibilityRole)elisa_appkit_canvas_string((size_t)role);
+    NSAccessibilitySubrole subroleValue = subrole == NULL ? nil : (NSAccessibilitySubrole)elisa_appkit_canvas_string((size_t)subrole);
+    if (role != NULL && roleValue == nil) return 0;
+    if (subrole != NULL && subroleValue == nil) return 0;
+    if (help != 0 && helpValue == nil) return 0;
+    if (identifierString != 0 && identifierValue == nil) return 0;
     ElisaAccessibilityElement *element = elisa_appkit_canvas_element(previousHandle);
     BOOL isNew = element == nil;
     if (isNew) {
@@ -685,11 +699,11 @@ size_t elisa_appkit_canvas_accessibility_add(size_t identifier, size_t previousH
         element.elisaIdentifier = identifier;
     }
     NSRect local = NSMakeRect(x, y, width, height);
-    element.accessibilityRole = (__bridge NSAccessibilityRole)role;
-    element.accessibilitySubrole = subrole == NULL ? nil : (__bridge NSAccessibilitySubrole)subrole;
+    element.accessibilityRole = roleValue;
+    element.accessibilitySubrole = subroleValue;
     element.accessibilityLabel = labelValue;
-    element.accessibilityHelp = help == 0 ? nil : (__bridge NSString *)(void *)help;
-    element.accessibilityIdentifier = identifierString == 0 ? nil : (__bridge NSString *)(void *)identifierString;
+    element.accessibilityHelp = helpValue;
+    element.accessibilityIdentifier = identifierValue;
     element.accessibilityEnabled = enabled != 0;
     element.accessibilityFocused = focused != 0;
     // Values are assigned by typed FFI setters chosen in Elisa. Resetting all
@@ -703,7 +717,8 @@ size_t elisa_appkit_canvas_accessibility_add(size_t identifier, size_t previousH
     element.accessibilityMaxValue = nil;
     element.elisaSynchronizing = NO;
     element.elisaIndex = action;
-    element.elisaCursor = (__bridge NSCursor *)(void *)cursor;
+    id cursorObject = cursor == 0 ? nil : (__bridge id)(void *)cursor;
+    element.elisaCursor = [cursorObject isKindOfClass:[NSCursor class]] ? cursorObject : nil;
     element.elisaLocalFrame = local;
     NSRect inWindow = [elisa_canvas_view convertRect:local toView:nil];
     NSWindow *window = elisa_appkit_canvas_window();
@@ -753,8 +768,8 @@ void elisa_appkit_canvas_accessibility_set_text(size_t handle,
                                                  size_t selectionLocation, size_t selectionLength) {
     ElisaAccessibilityElement *element = elisa_appkit_canvas_element(handle);
     if (element == nil) return;
-    NSString *value = (__bridge NSString *)(void *)textValue;
-    NSString *selected = (__bridge NSString *)(void *)selectedTextValue;
+    NSString *value = elisa_appkit_canvas_string(textValue);
+    NSString *selected = elisa_appkit_canvas_string(selectedTextValue);
     if (value == nil || selected == nil) return;
     element.elisaSynchronizing = YES;
     element.accessibilityValue = value;
@@ -768,7 +783,9 @@ void elisa_appkit_canvas_accessibility_set_text(size_t handle,
 void elisa_appkit_canvas_accessibility_notify(size_t handle, size_t notification) {
     ElisaAccessibilityElement *element = elisa_appkit_canvas_element(handle);
     if (element == nil || notification == 0) return;
-    NSAccessibilityPostNotification(element, (__bridge NSAccessibilityNotificationName)(void *)notification);
+    NSString *name = elisa_appkit_canvas_string(notification);
+    if (name == nil) return;
+    NSAccessibilityPostNotification(element, (NSAccessibilityNotificationName)name);
 }
 
 void elisa_appkit_canvas_accessibility_commit(const size_t *handles, size_t count) {
@@ -787,6 +804,7 @@ void elisa_appkit_canvas_accessibility_commit(const size_t *handles, size_t coun
 void elisa_appkit_canvas_accessibility_post_layout_changed(size_t notification) {
     if (elisa_canvas_view == nil) return;
     if (notification == 0) return;
-    NSAccessibilityPostNotification(elisa_canvas_view,
-                                    (__bridge NSAccessibilityNotificationName)(void *)notification);
+    NSString *name = elisa_appkit_canvas_string(notification);
+    if (name == nil) return;
+    NSAccessibilityPostNotification(elisa_canvas_view, (NSAccessibilityNotificationName)name);
 }
