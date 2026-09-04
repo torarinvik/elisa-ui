@@ -29,6 +29,10 @@ if grep -Eq 'ELISA_APPKIT_MAX|static id elisa_objects\[' "$ROOT/src/platform/app
   echo "appkit: native object-table capacity was duplicated in Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'static NSWindow \*elisa_window' "$ROOT/src/platform/appkit/appkit_shim.m"; then
+  echo "appkit: root-window state was duplicated outside the Elisa control table" >&2
+  exit 1
+fi
 if ! grep -Eq 'void elisa_appkit_init\(void\)' "$ROOT/src/platform/appkit/appkit_shim.m" || \
    ! grep -Eq 'elisa_appkit_init\(\)' "$ROOT/src/platform/appkit/ui_appkit.elisa"; then
   echo "appkit: native object-table reset did not remain a narrow FFI primitive" >&2
