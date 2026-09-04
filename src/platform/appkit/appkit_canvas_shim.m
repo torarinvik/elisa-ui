@@ -61,6 +61,8 @@ extern size_t elisa_appkit_canvas_tracking_options(void);
 
 @class ElisaCanvasView;
 @class ElisaAccessibilityElement;
+// An unpresented headless window is not reliably retained by its content view;
+// keep this owning reference until Cocoa takes over the visible window.
 static NSWindow *elisa_canvas_window;
 static ElisaCanvasView *elisa_canvas_view;
 static NSMutableArray *elisa_accessibility_children;
@@ -117,6 +119,11 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
 
 @interface ElisaCanvasView : NSView <NSTextInputClient, NSUserInterfaceValidations>
 @end
+
+static NSWindow *elisa_appkit_canvas_window(void) {
+    if (elisa_canvas_window != nil) return elisa_canvas_window;
+    return elisa_canvas_view == nil ? nil : [elisa_canvas_view window];
+}
 
 @interface ElisaCanvasDelegate : NSObject <NSWindowDelegate>
 @end
@@ -435,25 +442,29 @@ void elisa_appkit_canvas_set_activation_policy(int policy) {
 }
 
 void elisa_appkit_canvas_focus(void) {
-    if (elisa_canvas_window != nil && elisa_canvas_view != nil) {
-        [elisa_canvas_window makeFirstResponder:elisa_canvas_view];
+    NSWindow *window = elisa_appkit_canvas_window();
+    if (window != nil && elisa_canvas_view != nil) {
+        [window makeFirstResponder:elisa_canvas_view];
     }
 }
 
 void elisa_appkit_canvas_set_tabbing_mode(int mode) {
-    if (elisa_canvas_window != nil) {
-        [elisa_canvas_window setTabbingMode:(NSWindowTabbingMode)mode];
+    NSWindow *window = elisa_appkit_canvas_window();
+    if (window != nil) {
+        [window setTabbingMode:(NSWindowTabbingMode)mode];
     }
 }
 
 void elisa_appkit_canvas_set_restorable(int restorable) {
-    if (elisa_canvas_window != nil) {
-        [elisa_canvas_window setRestorable:restorable != 0];
+    NSWindow *window = elisa_appkit_canvas_window();
+    if (window != nil) {
+        [window setRestorable:restorable != 0];
     }
 }
 
 void elisa_appkit_canvas_center(void) {
-    if (elisa_canvas_window != nil) [elisa_canvas_window center];
+    NSWindow *window = elisa_appkit_canvas_window();
+    if (window != nil) [window center];
 }
 
 size_t elisa_appkit_canvas_menus_begin(void) {
@@ -569,12 +580,14 @@ void elisa_appkit_canvas_cancel_redraw(size_t handle) {
 }
 
 void elisa_appkit_canvas_set_min_size(float width, float height) {
-    [elisa_canvas_window setContentMinSize:NSMakeSize(width, height)];
+    NSWindow *window = elisa_appkit_canvas_window();
+    if (window != nil) [window setContentMinSize:NSMakeSize(width, height)];
 }
 
 int elisa_appkit_canvas_present(void) {
-    if (elisa_canvas_window == nil || elisa_canvas_view == nil) return 0;
-    [elisa_canvas_window makeKeyAndOrderFront:nil];
+    NSWindow *window = elisa_appkit_canvas_window();
+    if (window == nil || elisa_canvas_view == nil) return 0;
+    [window makeKeyAndOrderFront:nil];
     return 1;
 }
 
@@ -620,7 +633,8 @@ void elisa_appkit_canvas_stop(void) {
 }
 void elisa_appkit_canvas_redraw(void) { [elisa_canvas_view setNeedsDisplay:YES]; }
 void elisa_appkit_canvas_close(void) {
-    [elisa_canvas_window performClose:nil];
+    NSWindow *window = elisa_appkit_canvas_window();
+    if (window != nil) [window performClose:nil];
 }
 void elisa_appkit_canvas_accessibility_reset(void) {
     [elisa_canvas_view removeAllToolTips];
@@ -674,7 +688,9 @@ size_t elisa_appkit_canvas_accessibility_add(size_t identifier, size_t previousH
     element.elisaCursor = (__bridge NSCursor *)(void *)cursor;
     element.elisaLocalFrame = local;
     NSRect inWindow = [elisa_canvas_view convertRect:local toView:nil];
-    element.accessibilityFrame = [elisa_canvas_window convertRectToScreen:inWindow];
+    NSWindow *window = elisa_appkit_canvas_window();
+    if (window == nil) return 0;
+    element.accessibilityFrame = [window convertRectToScreen:inWindow];
     // Retain a newly-created element until Elisa commits the ordered handle
     // list. Existing elements are already retained by the active child array;
     // identity/reuse itself is selected by Elisa from the previous-frame

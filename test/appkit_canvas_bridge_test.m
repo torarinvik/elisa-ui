@@ -370,7 +370,7 @@ int main(void) {
                         elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(),
                         elisa_appkit_canvas_bitmap_file_type_png(), 0, 200, 100, 8, 4, 1, 0), @"off-screen presentation failed")) return 1;
         if (require(test_frame_count > 0, @"off-screen frame did not draw")) return 1;
-        NSNotification *focusNotification = [NSNotification notificationWithName:NSWindowDidResignKeyNotification object:elisa_canvas_window];
+        NSNotification *focusNotification = [NSNotification notificationWithName:NSWindowDidResignKeyNotification object:elisa_appkit_canvas_window()];
         [elisa_canvas_delegate windowDidResignKey:focusNotification];
         if (require(test_window_focused == 0, @"window focus loss did not reach Elisa")) return 1;
         [elisa_canvas_delegate windowDidBecomeKey:focusNotification];
@@ -381,25 +381,25 @@ int main(void) {
                          (size_t)(__bridge void *)@"/elisa-ui-missing-directory/frame.png", 200, 100, 8, 4, 1, 0), @"snapshot failure did not cross the FFI boundary")) return 1;
         NSEvent *move = [NSEvent mouseEventWithType:NSEventTypeMouseMoved
             location:NSMakePoint(40, 20) modifierFlags:0 timestamp:0
-            windowNumber:elisa_canvas_window.windowNumber context:nil eventNumber:0
+            windowNumber:[elisa_appkit_canvas_window() windowNumber] context:nil eventNumber:0
             clickCount:0 pressure:0.0];
         [elisa_canvas_view mouseMoved:move];
         if (require(test_pointer_kind == 0, @"pointer motion did not cross the Elisa event path")) return 1;
         NSEvent *singleClick = [NSEvent mouseEventWithType:NSEventTypeLeftMouseDown
             location:NSMakePoint(40, 20) modifierFlags:0 timestamp:0
-            windowNumber:elisa_canvas_window.windowNumber context:nil eventNumber:1
+            windowNumber:[elisa_appkit_canvas_window() windowNumber] context:nil eventNumber:1
             clickCount:1 pressure:1.0];
         [elisa_canvas_view mouseDown:singleClick];
         if (require(test_click_button == 0 && test_click_count == 1, @"single click facts did not reach Elisa")) return 1;
         NSEvent *doubleClick = [NSEvent mouseEventWithType:NSEventTypeLeftMouseDown
             location:NSMakePoint(40, 20) modifierFlags:0 timestamp:0
-            windowNumber:elisa_canvas_window.windowNumber context:nil eventNumber:2
+            windowNumber:[elisa_appkit_canvas_window() windowNumber] context:nil eventNumber:2
             clickCount:2 pressure:1.0];
         [elisa_canvas_view mouseDown:doubleClick];
         if (require(test_click_button == 0 && test_click_count == 2, @"native click facts did not reach Elisa")) return 1;
         NSEvent *rightClick = [NSEvent mouseEventWithType:NSEventTypeRightMouseDown
             location:NSMakePoint(40, 20) modifierFlags:0 timestamp:0
-            windowNumber:elisa_canvas_window.windowNumber context:nil eventNumber:3
+            windowNumber:[elisa_appkit_canvas_window() windowNumber] context:nil eventNumber:3
             clickCount:2 pressure:1.0];
         [elisa_canvas_view rightMouseDown:rightClick];
         if (require(test_pointer_kind == 1 && test_pointer_button == 1,
@@ -408,14 +408,14 @@ int main(void) {
                     @"right-button click facts did not reach Elisa")) return 1;
         NSEvent *rightRelease = [NSEvent mouseEventWithType:NSEventTypeRightMouseUp
             location:NSMakePoint(40, 20) modifierFlags:0 timestamp:0
-            windowNumber:elisa_canvas_window.windowNumber context:nil eventNumber:4
+            windowNumber:[elisa_appkit_canvas_window() windowNumber] context:nil eventNumber:4
             clickCount:2 pressure:0.0];
         [elisa_canvas_view rightMouseUp:rightRelease];
         if (require(test_pointer_kind == 2 && test_pointer_button == 1,
                     @"right-button release did not cross the pointer FFI")) return 1;
         NSEvent *exit = [NSEvent mouseEventWithType:NSEventTypeMouseMoved
             location:NSMakePoint(40, 20) modifierFlags:0 timestamp:0
-            windowNumber:elisa_canvas_window.windowNumber context:nil eventNumber:5
+            windowNumber:[elisa_appkit_canvas_window() windowNumber] context:nil eventNumber:5
             clickCount:0 pressure:0.0];
         [elisa_canvas_view mouseExited:exit];
         if (require(test_pointer_kind == 3 && test_pointer_button == 0,
@@ -510,7 +510,7 @@ int main(void) {
 
         if (require([second accessibilityPerformIncrement], @"increment action was rejected")) return 1;
         if (require(fabs(test_slider_value - 0.80f) < 0.001f, @"increment action did not reach the app")) return 1;
-        [elisa_canvas_window close];
+        [elisa_appkit_canvas_window() close];
     }
     puts("appkit canvas bridge: all checks passed");
     return 0;
