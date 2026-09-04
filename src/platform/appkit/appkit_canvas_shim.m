@@ -26,6 +26,7 @@ extern void elisa_appkit_canvas_cancel_interaction(void);
 extern int elisa_appkit_canvas_accepts_text(void);
 extern int elisa_appkit_canvas_allows_text_readback(void);
 extern size_t elisa_appkit_canvas_cursor_at(float x, float y);
+extern size_t elisa_appkit_canvas_cursor_leave(void);
 extern void elisa_appkit_canvas_text_click(float x, int button, int clickCount);
 extern void elisa_appkit_canvas_set_text(size_t index, const char *bytes, size_t length);
 extern size_t elisa_appkit_canvas_selection_location(void);
@@ -221,7 +222,12 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
 - (void)mouseUp:(NSEvent *)event { [self forwardMouseButton:event down:NO button:0]; }
 - (void)rightMouseUp:(NSEvent *)event { [self forwardMouseButton:event down:NO button:1]; }
 - (void)otherMouseUp:(NSEvent *)event { [self forwardMouseButton:event down:NO button:(int)event.buttonNumber]; }
-- (void)mouseExited:(NSEvent *)event { (void)event; [(__bridge NSCursor *)(void *)elisa_appkit_canvas_arrow_cursor() set]; elisa_appkit_canvas_pointer_leave(); }
+- (void)mouseExited:(NSEvent *)event {
+    (void)event;
+    NSCursor *cursor = (__bridge NSCursor *)(void *)elisa_appkit_canvas_cursor_leave();
+    if (cursor != nil) [cursor set];
+    elisa_appkit_canvas_pointer_leave();
+}
 - (void)scrollWheel:(NSEvent *)event { NSPoint p=[self eventPoint:event]; elisa_appkit_canvas_pointer_scroll(p.x,p.y,[event scrollingDeltaX],[event scrollingDeltaY]); }
 - (void)keyDown:(NSEvent *)event {
     elisa_appkit_canvas_key_down_event((size_t)(__bridge void *)event, event.keyCode,

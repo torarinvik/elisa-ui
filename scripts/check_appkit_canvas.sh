@@ -93,6 +93,10 @@ if grep -Eq 'elisa_appkit_canvas_pointer\(' "$ROOT/src/platform/appkit/appkit_ca
   echo "appkit canvas: pointer event-kind policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'elisa_appkit_canvas_arrow_cursor\(\)[[:space:]]*set' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: leave-cursor policy leaked back into Objective-C" >&2
+  exit 1
+fi
 
 # These callbacks cross the Objective-C/Elisa boundary and must survive dead
 # stripping in the packaged product.
@@ -102,6 +106,7 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_down$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_up$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_leave$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_scroll$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_cursor_leave$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_window_style_titled$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_window_style_closable$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_window_style_miniaturizable$'

@@ -146,6 +146,9 @@ size_t elisa_appkit_canvas_cursor_at(float x, float y) {
     (void)x; (void)y;
     return (size_t)(__bridge void *)[NSCursor IBeamCursor];
 }
+size_t elisa_appkit_canvas_cursor_leave(void) {
+    return (size_t)(__bridge void *)[NSCursor arrowCursor];
+}
 void elisa_appkit_canvas_text_click(float x, int button, int clickCount) {
     (void)x;
     test_click_button = button;
