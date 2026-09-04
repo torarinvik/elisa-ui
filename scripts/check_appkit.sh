@@ -25,6 +25,10 @@ if grep -Eq 'setActivationPolicy:NSApplicationActivationPolicyRegular' "$ROOT/sr
   echo "appkit: activation policy leaked back into Objective-C initialization" >&2
   exit 1
 fi
+if grep -Eq 'setFloatingPanel:YES|setBecomesKeyOnlyIfNeeded:YES' "$ROOT/src/platform/appkit/appkit_shim.m"; then
+  echo "appkit: panel behavior policy leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'backing:NSBackingStoreBuffered' "$ROOT/src/platform/appkit/appkit_shim.m"; then
   echo "appkit: backing-store policy leaked back into Objective-C constructors" >&2
   exit 1
@@ -54,7 +58,7 @@ nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_backing_store_buffe
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_activation_policy_regular$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_activation_policy$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_create_window_with_style$'
-nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_create_floating_panel$'
+nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_create_panel_window$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_create_vertical_scroll_view$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_create_horizontal_scroll_view$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_scroll_document_frame$'
@@ -66,6 +70,7 @@ nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_slider_state$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_progress_value$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_button_bezel_style$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_button_toggles$'
+nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_panel_becomes_key_only$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_progress_style$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_progress_is_indeterminate$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_scroll_has_vertical$'

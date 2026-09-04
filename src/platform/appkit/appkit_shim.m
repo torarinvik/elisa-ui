@@ -172,7 +172,8 @@ void elisa_appkit_create_window_with_style(int index, int style, int backing) {
     }
 }
 
-void elisa_appkit_create_floating_panel(int index, int style, int backing) {
+void elisa_appkit_create_panel_window(int index, int style, int backing,
+                                      int floating, int becomes_key_only) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index, ELISA_APPKIT_WINDOW)) return;
         NSRect content = NSMakeRect(0, 0, 480, 320);
@@ -182,8 +183,8 @@ void elisa_appkit_create_floating_panel(int index, int style, int backing) {
                         backing:(NSBackingStoreType)backing
                           defer:NO];
         if (panel == nil) return;
-        [panel setFloatingPanel:YES];
-        [panel setBecomesKeyOnlyIfNeeded:YES];
+        [panel setFloatingPanel:floating != 0];
+        [panel setBecomesKeyOnlyIfNeeded:becomes_key_only != 0];
         [panel setContentView:[[ElisaFlippedView alloc] initWithFrame:content]];
         elisa_objects[index] = panel;
         elisa_window = panel;
@@ -404,6 +405,12 @@ int elisa_appkit_window_is_floating(int index) {
     if (index < 0 || index >= elisa_count || elisa_kinds[index] != ELISA_APPKIT_WINDOW) return 0;
     return [(NSWindow *)elisa_objects[index] isKindOfClass:[NSPanel class]] &&
            [(NSPanel *)elisa_objects[index] isFloatingPanel] ? 1 : 0;
+}
+
+int elisa_appkit_panel_becomes_key_only(int index) {
+    if (index < 0 || index >= elisa_count || elisa_kinds[index] != ELISA_APPKIT_WINDOW) return 0;
+    if (![elisa_objects[index] isKindOfClass:[NSPanel class]]) return 0;
+    return [(NSPanel *)elisa_objects[index] becomesKeyOnlyIfNeeded] ? 1 : 0;
 }
 
 int elisa_appkit_button_is_on(int index) {
