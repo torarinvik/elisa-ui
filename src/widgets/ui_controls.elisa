@@ -105,7 +105,10 @@ module UiControls:
         # or NO_PARENT for the root -- and because the list is emitted parent-first,
         # a parent has always been created before any child names it.
         protocol Controls:
-            def create(index: i32, kind: Kind, parent: i32, window_mode: WindowMode, axis: UiConst::Axis) -> void can[Ui.Controls]
+            # The normalized initial state is available during construction as
+            # well as in set_state, so a native control never exposes a
+            # backend-specific placeholder range between create and apply.
+            def create(index: i32, kind: Kind, parent: i32, window_mode: WindowMode, axis: UiConst::Axis, state: ControlState) -> void can[Ui.Controls]
             # Absolute placement, at the box UiWidgets::layout computed. The
             # kind crosses with it so a backend can select window-content versus
             # child-view placement in typed Elisa code.
@@ -237,10 +240,11 @@ module UiControls:
         def apply[C: Controls]() -> void can[Ui.Controls]:
             for index in 0..<count():
                 slot: i32 = index.i32()
-                C.create(slot, kind_at(index), parent_at(index), window_mode_at(index), axis_at(index))
+                state: ControlState = state_at(index)
+                C.create(slot, kind_at(index), parent_at(index), window_mode_at(index), axis_at(index), state)
                 C.set_frame(slot, kind_at(index), box_at(index))
                 C.set_text(slot, kind_at(index), text_at(index))
-                C.set_state(slot, kind_at(index), ops[index].state_value, ops[index].state_low, ops[index].state_high, ops[index].state_selected)
+                C.set_state(slot, kind_at(index), state.value, state.low, state.high, state.selected)
 
         # Which OS control realizes this widget. Exhaustive on purpose: a widget
         # kind added without a control is a compile error here, not a silently

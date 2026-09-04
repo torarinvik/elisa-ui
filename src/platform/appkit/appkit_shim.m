@@ -267,10 +267,10 @@ void elisa_appkit_create_text_field(int index, size_t text) {
     }
 }
 
-void elisa_appkit_create_slider(int index) {
+void elisa_appkit_create_slider(int index, float low, float high, float value) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index)) return;
-        elisa_appkit_store_view(index, [NSSlider sliderWithValue:0 minValue:0 maxValue:1 target:nil action:nil]);
+        elisa_appkit_store_view(index, [NSSlider sliderWithValue:value minValue:low maxValue:high target:nil action:nil]);
     }
 }
 

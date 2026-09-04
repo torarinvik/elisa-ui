@@ -25,6 +25,10 @@ if grep -Eq 'setActivationPolicy:NSApplicationActivationPolicyRegular' "$ROOT/sr
   echo "appkit: activation policy leaked back into Objective-C initialization" >&2
   exit 1
 fi
+if grep -Eq 'sliderWithValue:0 minValue:0 maxValue:1' "$ROOT/src/platform/appkit/appkit_shim.m"; then
+  echo "appkit: slider state defaults leaked back into Objective-C constructors" >&2
+  exit 1
+fi
 if grep -Eq 'setFloatingPanel:YES|setBecomesKeyOnlyIfNeeded:YES' "$ROOT/src/platform/appkit/appkit_shim.m"; then
   echo "appkit: panel behavior policy leaked back into Objective-C" >&2
   exit 1
