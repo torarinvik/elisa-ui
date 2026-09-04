@@ -545,15 +545,19 @@ void elisa_appkit_canvas_accessibility_reset(void) {
     [elisa_canvas_view removeAllToolTips];
 }
 
+static ElisaAccessibilityElement *elisa_appkit_canvas_pending_element(size_t identifier) {
+    for (ElisaAccessibilityElement *element in elisa_accessibility_next) {
+        if (element.elisaIdentifier == identifier) return element;
+    }
+    return nil;
+}
+
 void elisa_appkit_canvas_accessibility_add(size_t identifier, size_t action, const void *role,
-                                            const void *subrole, int tooltip, int valueKind, int cursor, int notifications,
+                                            const void *subrole, int tooltip, int cursor,
                                             const char *bytes, size_t length,
                                             const char *helpBytes, size_t helpLength,
-                                            const char *textBytes, size_t textLength,
-                                            const char *selectedTextBytes, size_t selectedTextLength,
                                             float x, float y, float width, float height,
-                                            int enabled, int focused, int selected, float value,
-                                            size_t selectionLocation, size_t selectionLength) {
+                                            int enabled, int focused) {
     if (bytes == NULL || length == 0 || elisa_canvas_view == nil) return;
     NSString *label = [[NSString alloc] initWithBytes:bytes length:length encoding:NSUTF8StringEncoding];
     if (label == nil) return;
@@ -577,38 +581,15 @@ void elisa_appkit_canvas_accessibility_add(size_t identifier, size_t action, con
     element.accessibilityIdentifier = [NSString stringWithFormat:@"elisa-ui-%zu", identifier];
     element.accessibilityEnabled = enabled != 0;
     element.accessibilityFocused = focused != 0;
+    // Values are assigned by typed FFI setters chosen in Elisa. Resetting all
+    // value slots here keeps reused semantic elements from retaining a stale
+    // value when their framework role changes between frames.
     element.elisaSynchronizing = YES;
-    if (valueKind == 1) {
-        element.accessibilityValue = @(selected != 0);
-        element.accessibilitySelectedText = nil;
-        element.accessibilitySelectedTextRange = NSMakeRange(NSNotFound, 0);
-        element.accessibilityMinValue = nil;
-        element.accessibilityMaxValue = nil;
-    } else if (valueKind == 2) {
-        element.accessibilityValue = @(value);
-        element.accessibilitySelectedText = nil;
-        element.accessibilitySelectedTextRange = NSMakeRange(NSNotFound, 0);
-        element.accessibilityMinValue = @0.0;
-        element.accessibilityMaxValue = @1.0;
-    } else if (valueKind == 3) {
-        NSString *textValue = textBytes != NULL
-            ? [[NSString alloc] initWithBytes:textBytes length:textLength encoding:NSUTF8StringEncoding]
-            : @"";
-        element.accessibilityValue = textValue ?: @"";
-        NSString *selectedTextValue = selectedTextBytes != NULL
-            ? [[NSString alloc] initWithBytes:selectedTextBytes length:selectedTextLength encoding:NSUTF8StringEncoding]
-            : @"";
-        element.accessibilitySelectedTextRange = NSMakeRange(selectionLocation, selectionLength);
-        element.accessibilitySelectedText = selectedTextValue ?: @"";
-        element.accessibilityMinValue = nil;
-        element.accessibilityMaxValue = nil;
-    } else {
-        element.accessibilityValue = nil;
-        element.accessibilitySelectedText = nil;
-        element.accessibilitySelectedTextRange = NSMakeRange(NSNotFound, 0);
-        element.accessibilityMinValue = nil;
-        element.accessibilityMaxValue = nil;
-    }
+    element.accessibilityValue = nil;
+    element.accessibilitySelectedText = nil;
+    element.accessibilitySelectedTextRange = NSMakeRange(NSNotFound, 0);
+    element.accessibilityMinValue = nil;
+    element.accessibilityMaxValue = nil;
     element.elisaSynchronizing = NO;
     element.elisaIndex = action;
     element.elisaCursor = cursor;
@@ -619,6 +600,56 @@ void elisa_appkit_canvas_accessibility_add(size_t identifier, size_t action, con
     if (tooltip) {
         [elisa_canvas_view addToolTipRect:local owner:element userData:NULL];
     }
+}
+
+void elisa_appkit_canvas_accessibility_set_boolean(size_t identifier, int selected) {
+    ElisaAccessibilityElement *element = elisa_appkit_canvas_pending_element(identifier);
+    if (element == nil) return;
+    element.elisaSynchronizing = YES;
+    element.accessibilityValue = @(selected != 0);
+    element.accessibilitySelectedText = nil;
+    element.accessibilitySelectedTextRange = NSMakeRange(NSNotFound, 0);
+    element.accessibilityMinValue = nil;
+    element.accessibilityMaxValue = nil;
+    element.elisaSynchronizing = NO;
+}
+
+void elisa_appkit_canvas_accessibility_set_range(size_t identifier, float value) {
+    ElisaAccessibilityElement *element = elisa_appkit_canvas_pending_element(identifier);
+    if (element == nil) return;
+    element.elisaSynchronizing = YES;
+    element.accessibilityValue = @(value);
+    element.accessibilitySelectedText = nil;
+    element.accessibilitySelectedTextRange = NSMakeRange(NSNotFound, 0);
+    element.accessibilityMinValue = @0.0;
+    element.accessibilityMaxValue = @1.0;
+    element.elisaSynchronizing = NO;
+}
+
+void elisa_appkit_canvas_accessibility_set_text(size_t identifier,
+                                                 const char *textBytes, size_t textLength,
+                                                 const char *selectedTextBytes, size_t selectedTextLength,
+                                                 size_t selectionLocation, size_t selectionLength) {
+    ElisaAccessibilityElement *element = elisa_appkit_canvas_pending_element(identifier);
+    if (element == nil) return;
+    NSString *textValue = textBytes != NULL
+        ? [[NSString alloc] initWithBytes:textBytes length:textLength encoding:NSUTF8StringEncoding]
+        : @"";
+    NSString *selectedTextValue = selectedTextBytes != NULL
+        ? [[NSString alloc] initWithBytes:selectedTextBytes length:selectedTextLength encoding:NSUTF8StringEncoding]
+        : @"";
+    element.elisaSynchronizing = YES;
+    element.accessibilityValue = textValue ?: @"";
+    element.accessibilitySelectedTextRange = NSMakeRange(selectionLocation, selectionLength);
+    element.accessibilitySelectedText = selectedTextValue ?: @"";
+    element.accessibilityMinValue = nil;
+    element.accessibilityMaxValue = nil;
+    element.elisaSynchronizing = NO;
+}
+
+void elisa_appkit_canvas_accessibility_notify(size_t identifier, int notifications) {
+    ElisaAccessibilityElement *element = elisa_appkit_canvas_pending_element(identifier);
+    if (element == nil) return;
     if (notifications & 1) NSAccessibilityPostNotification(element, NSAccessibilityValueChangedNotification);
     if (notifications & 2) NSAccessibilityPostNotification(element, NSAccessibilityFocusedUIElementChangedNotification);
     if (notifications & 4) NSAccessibilityPostNotification(element, NSAccessibilitySelectedTextChangedNotification);
