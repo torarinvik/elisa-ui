@@ -21,8 +21,6 @@ extern elisa_appkit_canvas_redraw() -> void
 extern elisa_appkit_canvas_close() -> void
 extern elisa_appkit_canvas_text(x: f32, y: f32, size: f32, semibold: i32, text: cstr, length: usize, r: f32, g: f32, b: f32, a: f32) -> void
 extern elisa_appkit_canvas_text_width(text: cstr, length: usize, size: f32, semibold: i32) -> f32
-extern elisa_appkit_canvas_line_height(size: f32) -> f32
-extern elisa_appkit_canvas_ascent(size: f32) -> f32
 extern elisa_appkit_canvas_accessibility_reset() -> void
 extern elisa_appkit_canvas_accessibility_add(id: usize, action: usize, role: i32, tooltip: i32, value_kind: i32, cursor: i32, notifications: i32, label: cstr, length: usize, help: cstr, help_length: usize, text_value: cstr, text_length: usize, selected_text: cstr, selected_text_length: usize, x: f32, y: f32, width: f32, height: f32, enabled: i32, focused: i32, selected: i32, value: f32, selection_location: usize, selection_length: usize) -> void
 extern elisa_appkit_canvas_accessibility_commit(layout_changed: i32) -> void
@@ -30,6 +28,11 @@ extern elisa_appkit_canvas_clipboard_has_text() -> i32
 extern elisa_appkit_canvas_clipboard_write(text: u8&, length: usize) -> i32
 extern elisa_appkit_canvas_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize
 extern clock_gettime_nsec_np(clock_id: i32) -> u64
+extern CTFontCreateUIFontForLanguage(ui_type: i32, size: f64, language: usize) -> usize
+extern CTFontGetAscent(font: usize) -> f64
+extern CTFontGetDescent(font: usize) -> f64
+extern CTFontGetLeading(font: usize) -> f64
+extern CFRelease(value: usize) -> void
 extern CGColorCreateGenericGray(gray: f64, alpha: f64) -> usize
 extern CGColorRelease(color: usize) -> void
 struct NativeSize:
@@ -58,20 +61,35 @@ def ui_measure_text_width(text: sview, size: f32) -> f32:
     semibold: i32 = 1 if size >= 19.0 else 0
     return elisa_appkit_canvas_text_width(pointer, text.len, size, semibold)
 def ui_measure_text_height(text: sview, size: f32) -> f32:
-    return elisa_appkit_canvas_line_height(size)
+    return UiAppKitCanvas::font_line_height(size)
 def ui_font_ascent(size: f32) -> f32:
-    return elisa_appkit_canvas_ascent(size)
+    return UiAppKitCanvas::font_ascent(size)
 def ui_text_line_height(size: f32) -> f32:
-    return elisa_appkit_canvas_line_height(size)
+    return UiAppKitCanvas::font_line_height(size)
 
 module UiAppKitCanvas:
     public:
         # Darwin's CLOCK_MONOTONIC value. Calling libSystem directly keeps
         # timing policy and unit conversion in Elisa rather than the Cocoa shim.
         const CLOCK_MONOTONIC: i32 = 6
+        const SYSTEM_UI_FONT: i32 = 2
 
         def monotonic_time() -> f64:
             return clock_gettime_nsec_np(CLOCK_MONOTONIC).f64() / 1000000000.0
+
+        def font_ascent(size: f32) -> f32:
+            font: usize = CTFontCreateUIFontForLanguage(SYSTEM_UI_FONT, size.f64(), 0)
+            return 0.0 if font == 0
+            ascent: f32 = CTFontGetAscent(font).f32()
+            CFRelease(font)
+            return ascent
+
+        def font_line_height(size: f32) -> f32:
+            font: usize = CTFontCreateUIFontForLanguage(SYSTEM_UI_FONT, size.f64(), 0)
+            return 0.0 if font == 0
+            height: f32 = (CTFontGetAscent(font) + CTFontGetDescent(font) + CTFontGetLeading(font)).f32()
+            CFRelease(font)
+            return height
 
         struct WindowOptions:
             width: f32

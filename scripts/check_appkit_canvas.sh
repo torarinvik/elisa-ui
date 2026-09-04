@@ -68,6 +68,12 @@ if nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_\(monotonic_time\|set_shadow\
   echo "appkit canvas: time or shadow policy leaked back into Objective-C" >&2
   exit 1
 fi
+nm -g "$BIN" | grep -q ' U _CTFontCreateUIFontForLanguage$'
+nm -g "$BIN" | grep -q ' U _CTFontGetAscent$'
+if nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_\(line_height\|ascent\)$'; then
+  echo "appkit canvas: font metrics leaked back into Objective-C" >&2
+  exit 1
+fi
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_schedule_redraw$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_present_headless$'
 plutil -lint "$APP/Contents/Info.plist" >/dev/null

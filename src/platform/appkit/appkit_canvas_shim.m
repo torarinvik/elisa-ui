@@ -567,9 +567,6 @@ float elisa_appkit_canvas_text_width(const char *bytes,size_t length,float size,
                             : [NSFont systemFontOfSize:size];
     return text == nil ? 0 : [text sizeWithAttributes:@{NSFontAttributeName:font}].width;
 }
-float elisa_appkit_canvas_line_height(float size) { return [NSFont systemFontOfSize:size].ascender - [NSFont systemFontOfSize:size].descender + [NSFont systemFontOfSize:size].leading; }
-float elisa_appkit_canvas_ascent(float size) { return [NSFont systemFontOfSize:size].ascender; }
-
 void elisa_appkit_canvas_accessibility_reset(void) {
     [elisa_accessibility_next removeAllObjects];
     [elisa_canvas_view removeAllToolTips];
