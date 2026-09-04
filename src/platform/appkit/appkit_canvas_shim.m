@@ -419,7 +419,7 @@ size_t elisa_appkit_canvas_accessibility_layout_changed_notification(void) {
 // Cocoa retains/copies it through -setTitle; the bridge does not perform any
 // UTF-8 decoding itself.
 int elisa_appkit_canvas_open(size_t title, float width, float height,
-                             int style, int backing, int tabbing_mode, int restorable) {
+                             int style, int backing) {
     @autoreleasepool {
         [NSApplication sharedApplication];
         NSRect rect = NSMakeRect(0, 0, width, height);
@@ -440,8 +440,6 @@ int elisa_appkit_canvas_open(size_t title, float width, float height,
         elisa_canvas_delegate = [ElisaCanvasDelegate new];
         [window setDelegate:elisa_canvas_delegate];
         [window setContentView:elisa_canvas_view];
-        [window setTabbingMode:(NSWindowTabbingMode)tabbing_mode];
-        [window setRestorable:restorable != 0];
         return 1;
     }
 }
@@ -456,6 +454,18 @@ void elisa_appkit_canvas_set_activation_policy(int policy) {
 void elisa_appkit_canvas_focus(void) {
     if (elisa_canvas_window != nil && elisa_canvas_view != nil) {
         [elisa_canvas_window makeFirstResponder:elisa_canvas_view];
+    }
+}
+
+void elisa_appkit_canvas_set_tabbing_mode(int mode) {
+    if (elisa_canvas_window != nil) {
+        [elisa_canvas_window setTabbingMode:(NSWindowTabbingMode)mode];
+    }
+}
+
+void elisa_appkit_canvas_set_restorable(int restorable) {
+    if (elisa_canvas_window != nil) {
+        [elisa_canvas_window setRestorable:restorable != 0];
     }
 }
 
