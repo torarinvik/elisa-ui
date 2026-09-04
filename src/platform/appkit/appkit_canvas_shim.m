@@ -25,6 +25,7 @@ extern int elisa_appkit_canvas_accessibility_adjust(size_t index, int direction)
 extern void elisa_appkit_canvas_cancel_interaction(void);
 extern int elisa_appkit_canvas_accepts_text(void);
 extern int elisa_appkit_canvas_allows_text_readback(void);
+extern size_t elisa_appkit_canvas_not_found(void);
 extern size_t elisa_appkit_canvas_cursor_at(float x, float y);
 extern size_t elisa_appkit_canvas_cursor_leave(void);
 extern void elisa_appkit_canvas_text_click(float x, int button, int clickCount);
@@ -35,12 +36,10 @@ extern void elisa_appkit_canvas_set_selected_range(size_t index, size_t location
 extern size_t elisa_appkit_canvas_marked_location(void);
 extern size_t elisa_appkit_canvas_marked_length(void);
 extern void elisa_appkit_canvas_commit_text(size_t text,
-                                            size_t replacementLocation, size_t replacementLength,
-                                            int hasReplacement);
+                                            size_t replacementLocation, size_t replacementLength);
 extern void elisa_appkit_canvas_update_marked_text(size_t text,
                                                    size_t selectedLocation, size_t selectedLength,
-                                                   size_t replacementLocation, size_t replacementLength,
-                                                   int hasReplacement);
+                                                   size_t replacementLocation, size_t replacementLength);
 extern void elisa_appkit_canvas_unmark_text(void);
 extern void elisa_appkit_canvas_text_selector(const char *selectorName);
 extern int elisa_appkit_canvas_text_action(const char *selectorName);
@@ -108,7 +107,7 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
 }
 - (void)setAccessibilitySelectedTextRange:(NSRange)value {
     [super setAccessibilitySelectedTextRange:value];
-    if (self.elisaSynchronizing || value.location == NSNotFound) return;
+    if (self.elisaSynchronizing) return;
     elisa_appkit_canvas_set_selected_range(self.elisaIndex, value.location, value.length);
 }
 - (NSString *)view:(NSView *)view stringForToolTip:(NSToolTipTag)tag
@@ -235,11 +234,8 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
 - (void)insertText:(id)input replacementRange:(NSRange)replacementRange {
     NSString *text = [input isKindOfClass:[NSAttributedString class]]
         ? [(NSAttributedString *)input string] : (NSString *)input;
-    BOOL hasReplacement = replacementRange.location != NSNotFound;
     elisa_appkit_canvas_commit_text((size_t)(__bridge void *)text,
-                                    hasReplacement ? replacementRange.location : 0,
-                                    hasReplacement ? replacementRange.length : 0,
-                                    hasReplacement);
+                                    replacementRange.location, replacementRange.length);
 }
 - (void)doCommandBySelector:(SEL)selector {
     elisa_appkit_canvas_text_selector(sel_getName(selector));
@@ -287,22 +283,19 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
 - (void)setMarkedText:(id)text selectedRange:(NSRange)selectedRange replacementRange:(NSRange)replacementRange {
     NSString *plain = [text isKindOfClass:[NSAttributedString class]]
         ? [(NSAttributedString *)text string] : (NSString *)text;
-    BOOL hasReplacement = replacementRange.location != NSNotFound;
     elisa_appkit_canvas_update_marked_text((size_t)(__bridge void *)plain,
                                            selectedRange.location, selectedRange.length,
-                                           hasReplacement ? replacementRange.location : 0,
-                                           hasReplacement ? replacementRange.length : 0,
-                                           hasReplacement);
+                                           replacementRange.location, replacementRange.length);
 }
 - (void)unmarkText { elisa_appkit_canvas_unmark_text(); }
 - (NSArray<NSAttributedStringKey> *)validAttributesForMarkedText { return @[]; }
 - (NSAttributedString *)attributedSubstringForProposedRange:(NSRange)range actualRange:(NSRangePointer)actualRange {
-    if (range.location == NSNotFound || !elisa_appkit_canvas_allows_text_readback()) return nil;
+    if (!elisa_appkit_canvas_allows_text_readback()) return nil;
+    size_t native = elisa_appkit_canvas_range_string(range.location, range.length);
+    if (native == 0) return nil;
     NSRange safe = NSMakeRange(elisa_appkit_canvas_range_location(range.location),
                                elisa_appkit_canvas_range_length(range.location, range.length));
     if (actualRange != NULL) *actualRange = safe;
-    size_t native = elisa_appkit_canvas_range_string(range.location, range.length);
-    if (native == 0) return nil;
     NSString *text = (__bridge NSString *)(void *)native;
     NSAttributedString *result = text == nil ? nil : [[NSAttributedString alloc] initWithString:text];
     CFRelease((CFTypeRef)(void *)native);
@@ -319,9 +312,7 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
         if (actualRange != NULL) *actualRange = NSMakeRange(NSNotFound, 0);
         return NSZeroRect;
     }
-    size_t location = range.location == NSNotFound
-        ? elisa_appkit_canvas_selection_location()
-        : elisa_appkit_canvas_range_location(range.location);
+    size_t location = elisa_appkit_canvas_range_location(range.location);
     if (actualRange != NULL) *actualRange = NSMakeRange(location, 0);
     NSRect local = NSMakeRect(elisa_appkit_canvas_character_x(location), elisa_appkit_canvas_caret_y(),
                               1.0, elisa_appkit_canvas_caret_height());
@@ -401,6 +392,13 @@ size_t elisa_appkit_canvas_tracking_in_visible_rect(void) {
 
 size_t elisa_appkit_canvas_run_loop_common_modes(void) {
     return (size_t)(__bridge void *)NSRunLoopCommonModes;
+}
+
+// NSNotFound is a platform sentinel used by NSTextInputClient. Export the
+// native value as a fact; Elisa owns every decision about how that sentinel
+// affects selection and text editing.
+size_t elisa_appkit_canvas_not_found(void) {
+    return NSNotFound;
 }
 
 // The notification name is an exported Cocoa object, not framework policy.

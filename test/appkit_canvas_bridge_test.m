@@ -219,10 +219,10 @@ void elisa_appkit_canvas_set_selected_range(size_t index, size_t location, size_
 }
 size_t elisa_appkit_canvas_marked_location(void) { return test_utf16_from_byte(test_marked_start); }
 size_t elisa_appkit_canvas_marked_length(void) { return test_utf16_from_byte(test_marked_end) - test_utf16_from_byte(test_marked_start); }
-void elisa_appkit_canvas_commit_text(size_t native, size_t replacementLocation, size_t replacementLength, int hasReplacement) {
+void elisa_appkit_canvas_commit_text(size_t native, size_t replacementLocation, size_t replacementLength) {
     char bytes[sizeof(test_text)];
     size_t length = test_native_text_bytes(native, bytes, sizeof(bytes));
-    if (hasReplacement) elisa_appkit_canvas_set_selected_range(8, replacementLocation, replacementLength);
+    if (replacementLocation != NSNotFound) elisa_appkit_canvas_set_selected_range(8, replacementLocation, replacementLength);
     else if (test_marked_end > test_marked_start) {
         test_selection_start = test_marked_start;
         test_selection_end = test_marked_end;
@@ -230,10 +230,10 @@ void elisa_appkit_canvas_commit_text(size_t native, size_t replacementLocation, 
     elisa_appkit_canvas_insert_text(bytes, length);
     test_marked_start = test_marked_end = 0;
 }
-void elisa_appkit_canvas_update_marked_text(size_t native, size_t selectedLocation, size_t selectedLength, size_t replacementLocation, size_t replacementLength, int hasReplacement) {
+void elisa_appkit_canvas_update_marked_text(size_t native, size_t selectedLocation, size_t selectedLength, size_t replacementLocation, size_t replacementLength) {
     char bytes[sizeof(test_text)];
     size_t length = test_native_text_bytes(native, bytes, sizeof(bytes));
-    if (hasReplacement) elisa_appkit_canvas_set_selected_range(8, replacementLocation, replacementLength);
+    if (replacementLocation != NSNotFound) elisa_appkit_canvas_set_selected_range(8, replacementLocation, replacementLength);
     else if (test_marked_end > test_marked_start) {
         test_selection_start = test_marked_start;
         test_selection_end = test_marked_end;

@@ -110,6 +110,7 @@ def appkit_flat_selection_length() -> usize:
     return UiFlat::selection_utf16_length(UiFlat::focused())
 
 def appkit_flat_set_selected_range(index: usize, location: usize, length: usize) -> void:
+    return if location == UiAppKitCanvas::not_found()
     return if not UiFlat::is_enabled(index) or not UiFlat::is_visible(index)
     UiFlat::set_selection_utf16(index, location, length)
     elisa_appkit_canvas_redraw()
@@ -122,16 +123,18 @@ def appkit_flat_marked_length() -> usize:
     return 0 if not UiFlat::accepts_text()
     return UiFlat::marked_utf16_length(UiFlat::focused())
 
-def appkit_flat_commit_text(text: usize, replacement_location: usize, replacement_length: usize, has_replacement: i32) -> void:
+def appkit_flat_commit_text(text: usize, replacement_location: usize, replacement_length: usize) -> void:
     return if text == 0
     length: usize = UiAppKitCanvas::copy_native_string(text, &appkit_native_text_buffer[0], UiFlat::TEXT_CAPACITY)
-    UiFlat::commit_text(sview(&appkit_native_text_buffer[0], 0, length.i64()), replacement_location, replacement_length, has_replacement != 0)
+    has_replacement: bool = replacement_location != UiAppKitCanvas::not_found()
+    UiFlat::commit_text(sview(&appkit_native_text_buffer[0], 0, length.i64()), replacement_location, replacement_length, has_replacement)
     elisa_appkit_canvas_redraw()
 
-def appkit_flat_update_marked_text(text: usize, selected_location: usize, selected_length: usize, replacement_location: usize, replacement_length: usize, has_replacement: i32) -> void:
+def appkit_flat_update_marked_text(text: usize, selected_location: usize, selected_length: usize, replacement_location: usize, replacement_length: usize) -> void:
     return if text == 0
     length: usize = UiAppKitCanvas::copy_native_string(text, &appkit_native_text_buffer[0], UiFlat::TEXT_CAPACITY)
-    UiFlat::update_marked_text(sview(&appkit_native_text_buffer[0], 0, length.i64()), selected_location, selected_length, replacement_location, replacement_length, has_replacement != 0)
+    has_replacement: bool = replacement_location != UiAppKitCanvas::not_found()
+    UiFlat::update_marked_text(sview(&appkit_native_text_buffer[0], 0, length.i64()), selected_location, selected_length, replacement_location, replacement_length, has_replacement)
     elisa_appkit_canvas_redraw()
 
 def appkit_flat_unmark_text() -> void:
@@ -206,14 +209,17 @@ def appkit_flat_character_at_x(x: f32) -> usize:
 
 def appkit_flat_range_location(location: usize) -> usize:
     return 0 if not UiFlat::accepts_text()
+    return UiFlat::selection_utf16_location(UiFlat::focused()) if location == UiAppKitCanvas::not_found()
     return UiFlat::text_range_location(UiFlat::focused(), location)
 
 def appkit_flat_range_length(location: usize, length: usize) -> usize:
     return 0 if not UiFlat::accepts_text()
+    return 0 if location == UiAppKitCanvas::not_found()
     return UiFlat::text_range_length(UiFlat::focused(), location, length)
 
 def appkit_flat_range_string(location: usize, length: usize) -> usize:
     return 0 if not UiFlat::accepts_text() or not UiFlat::allows_text_readback()
+    return 0 if location == UiAppKitCanvas::not_found()
     index: usize = UiFlat::focused()
     byte_length: usize = UiFlat::text_range_byte_length(index, location, length)
     pointer: u8& = UiFlat::text_range_pointer(index, location)
@@ -235,8 +241,8 @@ export fn elisa_appkit_canvas_selection_length() -> usize = appkit_flat_selectio
 export fn elisa_appkit_canvas_set_selected_range(index: usize, location: usize, length: usize) -> void = appkit_flat_set_selected_range
 export fn elisa_appkit_canvas_marked_location() -> usize = appkit_flat_marked_location
 export fn elisa_appkit_canvas_marked_length() -> usize = appkit_flat_marked_length
-export fn elisa_appkit_canvas_commit_text(text: usize, replacement_location: usize, replacement_length: usize, has_replacement: i32) -> void = appkit_flat_commit_text
-export fn elisa_appkit_canvas_update_marked_text(text: usize, selected_location: usize, selected_length: usize, replacement_location: usize, replacement_length: usize, has_replacement: i32) -> void = appkit_flat_update_marked_text
+export fn elisa_appkit_canvas_commit_text(text: usize, replacement_location: usize, replacement_length: usize) -> void = appkit_flat_commit_text
+export fn elisa_appkit_canvas_update_marked_text(text: usize, selected_location: usize, selected_length: usize, replacement_location: usize, replacement_length: usize) -> void = appkit_flat_update_marked_text
 export fn elisa_appkit_canvas_unmark_text() -> void = appkit_flat_unmark_text
 export fn elisa_appkit_canvas_text_selector(selector: cstr) -> void = appkit_flat_text_selector
 export fn elisa_appkit_canvas_text_action(selector: cstr) -> i32 = appkit_flat_text_action
