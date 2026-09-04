@@ -23,6 +23,13 @@ if ! bash "$ROOT/scripts/check_capi.sh"; then
   status=1
 fi
 
+# The AppKit backend builds REAL NSViews, so it needs Cocoa and its own link
+# line. Skips itself off macOS. It never shows a window.
+if ! bash "$ROOT/scripts/check_appkit.sh"; then
+  echo "FAIL appkit"
+  status=1
+fi
+
 for source in "$ROOT"/test/*_test.elisa; do
   name="$(basename "$source" .elisa)"
   bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ROOT/build/$name.o" "$source"

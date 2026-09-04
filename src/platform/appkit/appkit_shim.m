@@ -1,0 +1,238 @@
+// The Objective-C half of the AppKit backend.
+//
+// WHY A SHIM AND NOT objc_msgSend FROM ELISA. objc_msgSend has no single
+// signature -- on arm64 every call must be cast to the exact prototype of the
+// method being sent, and getting that wrong is a silent ABI mismatch rather than
+// a link error. That cast is a C-language operation. So the Objective-C lives
+// here and Elisa sees a flat, typed C API, exactly as it does for SDL3.
+//
+// This file also owns the index -> NSView* table. ui_controls.elisa's protocol
+// hands out dense indices precisely so a backend can keep its own mapping; every
+// real toolkit keeps one anyway.
+//
+// COORDINATES ARE FLIPPED HERE. elisa-ui lays out top-left origin, y growing
+// down, like every other UI toolkit and like the wasm canvas. AppKit's default
+// is bottom-left, y growing up. Rather than flip in the layout pass (which would
+// make every other backend wrong) each container view returns YES from
+// isFlipped, so a child's frame is used verbatim.
+
+#import <Cocoa/Cocoa.h>
+
+enum {
+    ELISA_APPKIT_WINDOW = 0,
+    ELISA_APPKIT_PANEL = 1,
+    ELISA_APPKIT_SCROLLVIEW = 2,
+    ELISA_APPKIT_LABEL = 3,
+    ELISA_APPKIT_PUSHBUTTON = 4,
+    ELISA_APPKIT_TOGGLEBUTTON = 5,
+    ELISA_APPKIT_CHECKBOX = 6,
+    ELISA_APPKIT_RADIOBUTTON = 7,
+    ELISA_APPKIT_TEXTFIELD = 8,
+    ELISA_APPKIT_SLIDER = 9,
+    ELISA_APPKIT_PROGRESSBAR = 10
+};
+
+#define ELISA_APPKIT_MAX 256
+
+// A container whose origin is top-left, so a laid-out frame needs no conversion.
+@interface ElisaFlippedView : NSView
+@end
+@implementation ElisaFlippedView
+- (BOOL)isFlipped { return YES; }
+@end
+
+static NSWindow *elisa_window = nil;
+static id elisa_objects[ELISA_APPKIT_MAX];
+static int elisa_kinds[ELISA_APPKIT_MAX];
+static int elisa_count = 0;
+
+// The view a child should be added to. For a window that is its flipped content
+// view; for a plain control it is the control itself.
+static NSView *elisa_container_for(int index) {
+    if (index < 0 || index >= elisa_count) return nil;
+    id object = elisa_objects[index];
+    if (elisa_kinds[index] == ELISA_APPKIT_WINDOW) {
+        return [(NSWindow *)object contentView];
+    }
+    return (NSView *)object;
+}
+
+void elisa_appkit_init(void) {
+    @autoreleasepool {
+        [NSApplication sharedApplication];
+        [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+        elisa_count = 0;
+        elisa_window = nil;
+    }
+}
+
+// Create one control. `parent` is another index, or -1 for the root.
+void elisa_appkit_create(int index, int kind, int parent) {
+    @autoreleasepool {
+        if (index < 0 || index >= ELISA_APPKIT_MAX) return;
+        if (index >= elisa_count) elisa_count = index + 1;
+        elisa_kinds[index] = kind;
+
+        if (kind == ELISA_APPKIT_WINDOW) {
+            NSRect content = NSMakeRect(0, 0, 640, 480);
+            NSWindow *window = [[NSWindow alloc]
+                initWithContentRect:content
+                          styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
+                                     NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable)
+                            backing:NSBackingStoreBuffered
+                              defer:NO];
+            [window setContentView:[[ElisaFlippedView alloc] initWithFrame:content]];
+            elisa_objects[index] = window;
+            elisa_window = window;
+            return;
+        }
+
+        NSView *view = nil;
+        switch (kind) {
+            case ELISA_APPKIT_PANEL:
+                view = [[ElisaFlippedView alloc] initWithFrame:NSZeroRect];
+                break;
+            case ELISA_APPKIT_SCROLLVIEW: {
+                NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSZeroRect];
+                [scroll setHasVerticalScroller:YES];
+                [scroll setDocumentView:[[ElisaFlippedView alloc] initWithFrame:NSZeroRect]];
+                view = scroll;
+                break;
+            }
+            case ELISA_APPKIT_LABEL: {
+                NSTextField *label = [NSTextField labelWithString:@""];
+                view = label;
+                break;
+            }
+            case ELISA_APPKIT_PUSHBUTTON: {
+                NSButton *button = [NSButton buttonWithTitle:@"" target:nil action:nil];
+                [button setBezelStyle:NSBezelStyleRounded];
+                view = button;
+                break;
+            }
+            case ELISA_APPKIT_TOGGLEBUTTON: {
+                NSButton *button = [NSButton buttonWithTitle:@"" target:nil action:nil];
+                [button setButtonType:NSButtonTypePushOnPushOff];
+                view = button;
+                break;
+            }
+            case ELISA_APPKIT_CHECKBOX:
+                view = [NSButton checkboxWithTitle:@"" target:nil action:nil];
+                break;
+            case ELISA_APPKIT_RADIOBUTTON:
+                view = [NSButton radioButtonWithTitle:@"" target:nil action:nil];
+                break;
+            case ELISA_APPKIT_TEXTFIELD:
+                view = [NSTextField textFieldWithString:@""];
+                break;
+            case ELISA_APPKIT_SLIDER:
+                view = [NSSlider sliderWithValue:0 minValue:0 maxValue:1 target:nil action:nil];
+                break;
+            case ELISA_APPKIT_PROGRESSBAR: {
+                NSProgressIndicator *bar = [[NSProgressIndicator alloc] initWithFrame:NSZeroRect];
+                [bar setStyle:NSProgressIndicatorStyleBar];
+                [bar setIndeterminate:NO];
+                view = bar;
+                break;
+            }
+            default:
+                view = [[ElisaFlippedView alloc] initWithFrame:NSZeroRect];
+                break;
+        }
+
+        elisa_objects[index] = view;
+        NSView *container = elisa_container_for(parent);
+        if (container != nil && view != nil) [container addSubview:view];
+    }
+}
+
+void elisa_appkit_set_frame(int index, float x, float y, float width, float height) {
+    @autoreleasepool {
+        if (index < 0 || index >= elisa_count) return;
+        NSRect frame = NSMakeRect(x, y, width, height);
+        if (elisa_kinds[index] == ELISA_APPKIT_WINDOW) {
+            // A window is positioned by the OS; only its content size is ours.
+            [(NSWindow *)elisa_objects[index] setContentSize:NSMakeSize(width, height)];
+            [[(NSWindow *)elisa_objects[index] contentView] setFrame:NSMakeRect(0, 0, width, height)];
+            return;
+        }
+        [(NSView *)elisa_objects[index] setFrame:frame];
+    }
+}
+
+void elisa_appkit_set_text(int index, const char *text, size_t length) {
+    @autoreleasepool {
+        if (index < 0 || index >= elisa_count || text == NULL) return;
+        NSString *value = [[NSString alloc] initWithBytes:text length:length encoding:NSUTF8StringEncoding];
+        if (value == nil) return;
+        id object = elisa_objects[index];
+        int kind = elisa_kinds[index];
+        if (kind == ELISA_APPKIT_WINDOW) {
+            [(NSWindow *)object setTitle:value];
+        } else if ([object isKindOfClass:[NSButton class]]) {
+            [(NSButton *)object setTitle:value];
+        } else if ([object isKindOfClass:[NSTextField class]]) {
+            [(NSTextField *)object setStringValue:value];
+        }
+    }
+}
+
+// Show the window. Separated from the run loop so a headless check can realize a
+// tree, assert it, and exit without ever presenting anything.
+void elisa_appkit_present(void) {
+    @autoreleasepool {
+        if (elisa_window == nil) return;
+        [elisa_window makeKeyAndOrderFront:nil];
+        [NSApp activateIgnoringOtherApps:YES];
+    }
+}
+
+void elisa_appkit_run(void) {
+    @autoreleasepool { [NSApp run]; }
+}
+
+// --- introspection, for the headless test -------------------------------------
+// What AppKit actually built, read back from the live objects rather than from
+// anything this file remembered: a test that trusts the shim's own bookkeeping
+// would pass even if no NSView were ever created.
+int elisa_appkit_control_count(void) { return elisa_count; }
+
+int elisa_appkit_subview_count(int index) {
+    NSView *container = elisa_container_for(index);
+    return container == nil ? -1 : (int)[[container subviews] count];
+}
+
+int elisa_appkit_is_class(int index, const char *class_name) {
+    if (index < 0 || index >= elisa_count || class_name == NULL) return 0;
+    Class wanted = NSClassFromString([NSString stringWithUTF8String:class_name]);
+    return (wanted != nil && [elisa_objects[index] isKindOfClass:wanted]) ? 1 : 0;
+}
+
+float elisa_appkit_frame_width(int index) {
+    if (index < 0 || index >= elisa_count) return -1.0f;
+    if (elisa_kinds[index] == ELISA_APPKIT_WINDOW) {
+        return (float)[[(NSWindow *)elisa_objects[index] contentView] frame].size.width;
+    }
+    return (float)[(NSView *)elisa_objects[index] frame].size.width;
+}
+
+// Is this control's container top-left origin? Asserted directly because
+// isFlipped changes how a frame is INTERPRETED, not the value stored in it -- no
+// frame comparison can see it, so a test that only checked frames passed happily
+// with the whole window upside down.
+int elisa_appkit_is_flipped(int index) {
+    NSView *container = elisa_container_for(index);
+    return (container != nil && [container isFlipped]) ? 1 : 0;
+}
+
+float elisa_appkit_frame_y(int index) {
+    if (index < 0 || index >= elisa_count) return -1.0f;
+    if (elisa_kinds[index] == ELISA_APPKIT_WINDOW) return 0.0f;
+    return (float)[(NSView *)elisa_objects[index] frame].origin.y;
+}
+
+float elisa_appkit_frame_x(int index) {
+    if (index < 0 || index >= elisa_count) return -1.0f;
+    if (elisa_kinds[index] == ELISA_APPKIT_WINDOW) return 0.0f;
+    return (float)[(NSView *)elisa_objects[index] frame].origin.x;
+}

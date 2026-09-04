@@ -1,0 +1,71 @@
+# elisa-ui AppKit backend: the widget tree as real macOS controls.
+#
+# The first NATIVE backend. SDL3 and WasmBrowser both draw -- they consume the
+# command list and own every pixel. This one owns none: it creates NSWindows,
+# NSButtons and NSTextFields and lets AppKit draw them, lay out their text,
+# handle the IME, mirror right-to-left and talk to VoiceOver. That is the whole
+# reason to want native controls, and none of it is reachable by drawing
+# rectangles.
+#
+# The Objective-C lives in appkit_shim.m, not here. objc_msgSend has no single
+# signature -- on arm64 each call must be cast to the exact prototype of the
+# method being sent, and a wrong cast is a silent ABI mismatch, not a link error.
+# That cast is a C operation, so Elisa sees a flat typed C API exactly as it does
+# for SDL3.
+#
+# The shim also owns the index -> NSView* table. UiControlList hands out dense
+# indices for precisely this reason; every real toolkit keeps such a table.
+
+include "../../widgets/ui_controls.elisa"
+
+extern elisa_appkit_init() -> void
+extern elisa_appkit_create(index: i32, kind: i32, parent: i32) -> void
+extern elisa_appkit_set_frame(index: i32, x: f32, y: f32, width: f32, height: f32) -> void
+extern elisa_appkit_set_text(index: i32, text: cstr, length: usize) -> void
+extern elisa_appkit_present() -> void
+extern elisa_appkit_run() -> void
+
+# Read back from the live AppKit objects, for the headless check.
+extern elisa_appkit_control_count() -> i32
+extern elisa_appkit_subview_count(index: i32) -> i32
+extern elisa_appkit_is_class(index: i32, class_name: cstr) -> i32
+extern elisa_appkit_frame_width(index: i32) -> f32
+extern elisa_appkit_frame_x(index: i32) -> f32
+extern elisa_appkit_frame_y(index: i32) -> f32
+extern elisa_appkit_is_flipped(index: i32) -> i32
+
+struct AppKitControls:
+    unused: i32
+
+impl Controls for AppKitControls:
+    def create(index: i32, kind: UiControlKind, parent: i32) -> void can[Ui.Controls]:
+        elisa_appkit_create(index, kind.i32(), parent)
+
+    def set_frame(index: i32, box: UiCore::Rect) -> void can[Ui.Controls]:
+        elisa_appkit_set_frame(index, box.origin.x, box.origin.y, box.size.width, box.size.height)
+
+    def set_text(index: i32, text: sview) -> void can[Ui.Controls]:
+        # A `sview` is a pointer and a length, which is exactly what the shim's
+        # NSString initializer wants -- so no NUL-terminated copy is made, and a
+        # label's text may contain one.
+        return if text.len == 0
+        pointer: cstr = text.data.cast[cstr] can Unsafe.PointerCast
+        elisa_appkit_set_text(index, pointer, text.len)
+
+module UiAppKit:
+    public:
+        # Realize a laid-out widget tree as native controls. Run UiWidgets::layout
+        # first: every control is placed at the box it computed.
+        def realize(root: UiWidgets::Widget) -> void can[Ui.Controls]:
+            UiControlList::reset()
+            UiControlList::realize(root, UI_NO_PARENT)
+            ui_apply_controls[AppKitControls]()
+
+        def start() -> void:
+            elisa_appkit_init()
+
+        def present() -> void:
+            elisa_appkit_present()
+
+        def run() -> void:
+            elisa_appkit_run()
