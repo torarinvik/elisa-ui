@@ -25,6 +25,10 @@ if grep -Eq 'setActivationPolicy:NSApplicationActivationPolicyRegular' "$ROOT/sr
   echo "appkit: activation policy leaked back into Objective-C initialization" >&2
   exit 1
 fi
+if grep -Eq 'backing:NSBackingStoreBuffered' "$ROOT/src/platform/appkit/appkit_shim.m"; then
+  echo "appkit: backing-store policy leaked back into Objective-C constructors" >&2
+  exit 1
+fi
 if awk '/void elisa_appkit_present\(void\)/ { inside=1 } inside && /activateIgnoringOtherApps:YES/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_shim.m"; then
   echo "appkit: visible activation policy leaked back into Objective-C" >&2
   exit 1
@@ -46,6 +50,7 @@ nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_window_style_utilit
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_bezel_style_rounded$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_button_type_push_on_push_off$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_progress_style_bar$'
+nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_backing_store_buffered$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_activation_policy_regular$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_activation_policy$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_create_window_with_style$'

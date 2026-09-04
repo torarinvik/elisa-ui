@@ -152,14 +152,18 @@ int elisa_appkit_progress_style_bar(void) {
     return (int)NSProgressIndicatorStyleBar;
 }
 
-void elisa_appkit_create_window_with_style(int index, int style) {
+int elisa_appkit_backing_store_buffered(void) {
+    return (int)NSBackingStoreBuffered;
+}
+
+void elisa_appkit_create_window_with_style(int index, int style, int backing) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index, ELISA_APPKIT_WINDOW)) return;
         NSRect content = NSMakeRect(0, 0, 640, 480);
         NSWindow *window = [[NSWindow alloc]
             initWithContentRect:content
                       styleMask:(NSWindowStyleMask)style
-                        backing:NSBackingStoreBuffered
+                        backing:(NSBackingStoreType)backing
                           defer:NO];
         if (window == nil) return;
         [window setContentView:[[ElisaFlippedView alloc] initWithFrame:content]];
@@ -168,14 +172,14 @@ void elisa_appkit_create_window_with_style(int index, int style) {
     }
 }
 
-void elisa_appkit_create_floating_panel(int index, int style) {
+void elisa_appkit_create_floating_panel(int index, int style, int backing) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index, ELISA_APPKIT_WINDOW)) return;
         NSRect content = NSMakeRect(0, 0, 480, 320);
         NSPanel *panel = [[NSPanel alloc]
             initWithContentRect:content
                       styleMask:(NSWindowStyleMask)style
-                        backing:NSBackingStoreBuffered
+                        backing:(NSBackingStoreType)backing
                           defer:NO];
         if (panel == nil) return;
         [panel setFloatingPanel:YES];

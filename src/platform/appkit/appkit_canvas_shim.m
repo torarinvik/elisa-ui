@@ -356,6 +356,10 @@ int elisa_appkit_canvas_window_style_resizable(void) {
     return (int)NSWindowStyleMaskResizable;
 }
 
+int elisa_appkit_canvas_backing_store_buffered(void) {
+    return (int)NSBackingStoreBuffered;
+}
+
 int elisa_appkit_canvas_activation_policy_regular(void) {
     return (int)NSApplicationActivationPolicyRegular;
 }
@@ -400,7 +404,7 @@ size_t elisa_appkit_canvas_accessibility_layout_changed_notification(void) {
 }
 
 int elisa_appkit_canvas_open(const char *title, size_t length, float width, float height,
-                             int style, size_t tracking_options, int tabbing_mode, int restorable,
+                             int style, int backing, size_t tracking_options, int tabbing_mode, int restorable,
                              int activation_policy) {
     @autoreleasepool {
         elisa_canvas_frame_count = 0;
@@ -411,7 +415,7 @@ int elisa_appkit_canvas_open(const char *title, size_t length, float width, floa
         NSWindowStyleMask styleMask = (NSWindowStyleMask)style;
         NSWindow *window = [[NSWindow alloc] initWithContentRect:rect
             styleMask:styleMask
-            backing:NSBackingStoreBuffered defer:NO];
+            backing:(NSBackingStoreType)backing defer:NO];
         if (window == nil) return 0;
         NSString *name = [[NSString alloc] initWithBytes:title length:length encoding:NSUTF8StringEncoding];
         if (name != nil) [window setTitle:name];

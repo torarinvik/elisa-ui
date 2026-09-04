@@ -264,6 +264,7 @@ static int require(BOOL condition, NSString *message) {
 int main(void) {
     @autoreleasepool {
         if (!elisa_appkit_canvas_open("test", 4, 200, 100, 15,
+                                      elisa_appkit_canvas_backing_store_buffered(),
                                       NSTrackingMouseMoved |
                                       NSTrackingMouseEnteredAndExited |
                                       NSTrackingActiveInKeyWindow |
