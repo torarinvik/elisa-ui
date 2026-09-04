@@ -81,6 +81,10 @@ if grep -Eq 'if \(activate\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; 
   echo "appkit canvas: visible activation policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'if \(centered\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: window centering policy leaked back into Objective-C" >&2
+  exit 1
+fi
 
 # These callbacks cross the Objective-C/Elisa boundary and must survive dead
 # stripping in the packaged product.
@@ -147,6 +151,7 @@ fi
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_schedule_redraw$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_cancel_redraw$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_activate$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_center$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_present_headless$'
 plutil -lint "$APP/Contents/Info.plist" >/dev/null
 codesign --verify --deep --strict "$APP"

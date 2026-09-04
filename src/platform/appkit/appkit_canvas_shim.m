@@ -376,7 +376,7 @@ size_t elisa_appkit_canvas_tracking_in_visible_rect(void) {
 }
 
 int elisa_appkit_canvas_open(const char *title, size_t length, float width, float height,
-                             int style, size_t tracking_options, int tabbing_mode, int restorable, int centered,
+                             int style, size_t tracking_options, int tabbing_mode, int restorable,
                              int activation_policy) {
     @autoreleasepool {
         elisa_canvas_frame_count = 0;
@@ -403,10 +403,13 @@ int elisa_appkit_canvas_open(const char *title, size_t length, float width, floa
         [window setContentView:elisa_canvas_view];
         [window setTabbingMode:(NSWindowTabbingMode)tabbing_mode];
         [window setRestorable:restorable != 0];
-        if (centered) [window center];
         [window makeFirstResponder:elisa_canvas_view];
         return 1;
     }
+}
+
+void elisa_appkit_canvas_center(void) {
+    if (elisa_canvas_window != nil) [elisa_canvas_window center];
 }
 
 void elisa_appkit_canvas_menus_begin(const char *title, size_t length) {

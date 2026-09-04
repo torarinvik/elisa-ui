@@ -246,8 +246,9 @@ int main(void) {
                                       NSTrackingMouseEnteredAndExited |
                                       NSTrackingActiveInKeyWindow |
                                       NSTrackingInVisibleRect,
-                                      NSWindowTabbingModeDisallowed, 0, 1,
+                                      NSWindowTabbingModeDisallowed, 0,
                                       NSApplicationActivationPolicyProhibited)) return 1;
+        elisa_appkit_canvas_center();
         elisa_appkit_canvas_menus_begin("test", 4);
         int applicationMenu = elisa_appkit_canvas_menu_add("test", 4);
         elisa_appkit_canvas_menu_add_application_item(applicationMenu, "About ", 6, "orderFrontStandardAboutPanel:", 0, 0);
