@@ -138,6 +138,10 @@ if awk '/void elisa_appkit_canvas_close\(\)/ { inside=1 } inside && /elisa_canva
   echo "appkit canvas: close timer policy leaked back into Objective-C" >&2
   exit 1
 fi
+if awk '/int elisa_appkit_canvas_present\(\)/ { inside=1 } inside && /setNeedsDisplay/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: initial redraw policy leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'if \(centered\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: window centering policy leaked back into Objective-C" >&2
   exit 1

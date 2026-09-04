@@ -560,7 +560,6 @@ void elisa_appkit_canvas_set_min_size(float width, float height) {
 
 int elisa_appkit_canvas_present(void) {
     [elisa_canvas_window makeKeyAndOrderFront:nil];
-    [elisa_canvas_view setNeedsDisplay:YES];
     return 1;
 }
 
