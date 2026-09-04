@@ -208,23 +208,17 @@ void elisa_appkit_create_panel(int index) {
     }
 }
 
-static void elisa_appkit_create_scroll_view_with_scrollers(int index, BOOL vertical, BOOL horizontal) {
+// The scrollbar policy is resolved by Elisa from the widget axis. The native
+// side only constructs the NSScrollView and applies the already-resolved bits.
+void elisa_appkit_create_scroll_view(int index, int vertical, int horizontal) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index, ELISA_APPKIT_SCROLLVIEW)) return;
         NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSZeroRect];
-        [scroll setHasVerticalScroller:vertical];
-        [scroll setHasHorizontalScroller:horizontal];
+        [scroll setHasVerticalScroller:vertical != 0];
+        [scroll setHasHorizontalScroller:horizontal != 0];
         [scroll setDocumentView:[[ElisaFlippedView alloc] initWithFrame:NSZeroRect]];
         elisa_appkit_store_view(index, scroll);
     }
-}
-
-void elisa_appkit_create_vertical_scroll_view(int index) {
-    elisa_appkit_create_scroll_view_with_scrollers(index, YES, NO);
-}
-
-void elisa_appkit_create_horizontal_scroll_view(int index) {
-    elisa_appkit_create_scroll_view_with_scrollers(index, NO, YES);
 }
 
 void elisa_appkit_create_label(int index) {

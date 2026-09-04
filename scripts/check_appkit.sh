@@ -65,8 +65,7 @@ nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_activation_policy_r
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_activation_policy$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_create_window_with_style$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_create_panel_window$'
-nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_create_vertical_scroll_view$'
-nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_create_horizontal_scroll_view$'
+nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_create_scroll_view$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_scroll_document_frame$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_attach_to_window$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_attach_to_scroll_view$'
@@ -85,8 +84,8 @@ if nm -g "$ROOT/build/appkit_check" | grep -Eq ' T _elisa_appkit_(create|set_(te
   echo "appkit: obsolete generic entry point survived the link" >&2
   exit 1
 fi
-if nm -g "$ROOT/build/appkit_check" | grep -Eq ' T _elisa_appkit_create_(fixed_window|resizable_window|window|scroll_view)$'; then
-  echo "appkit: undifferentiated window or scroll creation survived the link" >&2
+if nm -g "$ROOT/build/appkit_check" | grep -Eq ' T _elisa_appkit_create_(fixed_window|resizable_window|window)$'; then
+  echo "appkit: undifferentiated window creation survived the link" >&2
   exit 1
 fi
 "$ROOT/build/appkit_check"
