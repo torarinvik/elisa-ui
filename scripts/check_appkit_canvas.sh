@@ -81,6 +81,10 @@ if grep -Eq '__bridge[[:space:]]+NSString|__bridge[[:space:]]+NSAccessibility' "
   echo "appkit canvas: unchecked borrowed text handles remain in Objective-C" >&2
   exit 1
 fi
+if grep -Eq '__bridge[[:space:]]+NSCursor' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: unchecked cursor handles remain in Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'elisa_canvas_menus' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: menu-index bookkeeping leaked into Objective-C" >&2
   exit 1

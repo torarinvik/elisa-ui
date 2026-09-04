@@ -134,6 +134,12 @@ static NSString *elisa_appkit_canvas_string(size_t handle) {
     return [object isKindOfClass:[NSString class]] ? object : nil;
 }
 
+static NSCursor *elisa_appkit_canvas_cursor(size_t handle) {
+    if (handle == 0) return nil;
+    id object = (__bridge id)(void *)handle;
+    return [object isKindOfClass:[NSCursor class]] ? object : nil;
+}
+
 @interface ElisaCanvasDelegate : NSObject <NSWindowDelegate>
 @end
 @implementation ElisaCanvasDelegate
@@ -209,7 +215,7 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
 }
 - (void)mouseMoved:(NSEvent *)event {
     NSPoint p = [self eventPoint:event];
-    NSCursor *nativeCursor = (__bridge NSCursor *)(void *)elisa_appkit_canvas_pointer_move_event(p.x, p.y);
+    NSCursor *nativeCursor = elisa_appkit_canvas_cursor(elisa_appkit_canvas_pointer_move_event(p.x, p.y));
     if (nativeCursor != nil) [nativeCursor set];
 }
 - (void)mouseDragged:(NSEvent *)event { [self mouseMoved:event]; }
@@ -223,7 +229,7 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
 - (void)otherMouseUp:(NSEvent *)event { [self forwardMouseButton:event down:NO button:(int)event.buttonNumber]; }
 - (void)mouseExited:(NSEvent *)event {
     (void)event;
-    NSCursor *cursor = (__bridge NSCursor *)(void *)elisa_appkit_canvas_pointer_leave_event();
+    NSCursor *cursor = elisa_appkit_canvas_cursor(elisa_appkit_canvas_pointer_leave_event());
     if (cursor != nil) [cursor set];
 }
 - (void)scrollWheel:(NSEvent *)event { NSPoint p=[self eventPoint:event]; elisa_appkit_canvas_pointer_scroll(p.x,p.y,[event scrollingDeltaX],[event scrollingDeltaY]); }
@@ -717,8 +723,7 @@ size_t elisa_appkit_canvas_accessibility_add(size_t identifier, size_t previousH
     element.accessibilityMaxValue = nil;
     element.elisaSynchronizing = NO;
     element.elisaIndex = action;
-    id cursorObject = cursor == 0 ? nil : (__bridge id)(void *)cursor;
-    element.elisaCursor = [cursorObject isKindOfClass:[NSCursor class]] ? cursorObject : nil;
+    element.elisaCursor = elisa_appkit_canvas_cursor(cursor);
     element.elisaLocalFrame = local;
     NSRect inWindow = [elisa_canvas_view convertRect:local toView:nil];
     NSWindow *window = elisa_appkit_canvas_window();
