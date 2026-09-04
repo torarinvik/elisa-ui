@@ -13,8 +13,9 @@
 # That cast is a C operation, so Elisa sees a flat typed C API exactly as it does
 # for SDL3.
 #
-# The shim also owns the index -> NSView* table. UiControls hands out dense
-# indices for precisely this reason; every real toolkit keeps such a table.
+# The shim owns only the index -> NSView* object table. UiControls hands out
+# dense, capacity-checked indices; the native side does not duplicate that
+# framework arena or maintain a second limit.
 
 include "../../widgets/ui_controls.elisa"
 
@@ -22,7 +23,7 @@ include "../../widgets/ui_controls.elisa"
 # below names `Controls` unqualified and this is what resolves it.
 using UiControls
 
-extern elisa_appkit_init(capacity: i32) -> void
+extern elisa_appkit_init() -> void
 extern elisa_appkit_activation_policy_regular() -> i32
 extern elisa_appkit_set_activation_policy(policy: i32) -> void
 extern elisa_appkit_window_style_titled() -> i32
@@ -274,7 +275,9 @@ module UiAppKit:
                 UiControls::apply[AppKitControls]()
 
         def start() -> void:
-            elisa_appkit_init(UiControls::capacity().i32())
+            # UiControls owns the validated arena and dense index sequence.
+            # AppKit only resets its opaque object table for a new realization.
+            elisa_appkit_init()
             elisa_appkit_set_activation_policy(elisa_appkit_activation_policy_regular())
 
         def present() -> void:

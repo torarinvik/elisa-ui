@@ -31,11 +31,9 @@ extern int elisa_appkit_view_is_flipped(void);
 
 static NSWindow *elisa_window = nil;
 static NSMutableDictionary<NSNumber *, id> *elisa_objects = nil;
-static int elisa_count = 0;
-static int elisa_capacity = 0;
 
 static id elisa_appkit_object(int index) {
-    if (index < 0 || index >= elisa_count || elisa_objects == nil) return nil;
+    if (index < 0 || elisa_objects == nil) return nil;
     return elisa_objects[@(index)];
 }
 
@@ -54,12 +52,10 @@ static NSView *elisa_container_for(int index) {
     return (NSView *)object;
 }
 
-void elisa_appkit_init(int capacity) {
+void elisa_appkit_init(void) {
     @autoreleasepool {
         [NSApplication sharedApplication];
         elisa_objects = [NSMutableDictionary new];
-        elisa_count = 0;
-        elisa_capacity = capacity > 0 ? capacity : 0;
         elisa_window = nil;
     }
 }
@@ -81,9 +77,11 @@ void elisa_appkit_set_activation_policy(int policy) {
 // shim therefore exposes one native constructor per kind instead of carrying a
 // second policy switch over the framework's enum.
 static BOOL elisa_appkit_prepare(int index) {
-    if (index < 0 || index >= elisa_capacity || elisa_objects == nil) return NO;
-    if (index >= elisa_count) elisa_count = index + 1;
-    return YES;
+    // Elisa owns the dense index arena and never sends an index outside its
+    // validated capacity. The bridge therefore only needs to verify that the
+    // opaque object table exists; keeping a second native capacity would let
+    // framework state drift between the two layers.
+    return index >= 0 && elisa_objects != nil;
 }
 
 static void elisa_appkit_store_view(int index, NSView *view) {
@@ -92,23 +90,23 @@ static void elisa_appkit_store_view(int index, NSView *view) {
 }
 
 void elisa_appkit_attach_to_window(int index, int parent) {
-    if (index < 0 || index >= elisa_count || parent < 0 || parent >= elisa_count) return;
     NSView *view = (NSView *)elisa_appkit_object(index);
-    NSView *container = [(NSWindow *)elisa_appkit_object(parent) contentView];
+    id object = elisa_appkit_object(parent);
+    NSView *container = [object isKindOfClass:[NSWindow class]] ? [(NSWindow *)object contentView] : nil;
     if (container != nil && view != nil) [container addSubview:view];
 }
 
 void elisa_appkit_attach_to_scroll_view(int index, int parent) {
-    if (index < 0 || index >= elisa_count || parent < 0 || parent >= elisa_count) return;
     NSView *view = (NSView *)elisa_appkit_object(index);
-    NSView *container = [(NSScrollView *)elisa_appkit_object(parent) documentView];
+    id object = elisa_appkit_object(parent);
+    NSView *container = [object isKindOfClass:[NSScrollView class]] ? [(NSScrollView *)object documentView] : nil;
     if (container != nil && view != nil) [container addSubview:view];
 }
 
 void elisa_appkit_attach_to_view(int index, int parent) {
-    if (index < 0 || index >= elisa_count || parent < 0 || parent >= elisa_count) return;
     NSView *view = (NSView *)elisa_appkit_object(index);
-    NSView *container = (NSView *)elisa_appkit_object(parent);
+    id object = elisa_appkit_object(parent);
+    NSView *container = [object isKindOfClass:[NSView class]] ? (NSView *)object : nil;
     if (container != nil && view != nil) [container addSubview:view];
 }
 
@@ -293,9 +291,9 @@ void elisa_appkit_create_progress_bar(int index, int progress_style, int indeter
 
 void elisa_appkit_set_window_frame(int index, float width, float height) {
     @autoreleasepool {
-        if (index < 0 || index >= elisa_count) return;
         // A window is positioned by the OS; only its content size is ours.
         NSWindow *window = (NSWindow *)elisa_appkit_object(index);
+        if (![window isKindOfClass:[NSWindow class]]) return;
         [window setContentSize:NSMakeSize(width, height)];
         [[window contentView] setFrame:NSMakeRect(0, 0, width, height)];
     }
@@ -303,8 +301,9 @@ void elisa_appkit_set_window_frame(int index, float width, float height) {
 
 void elisa_appkit_set_view_frame(int index, float x, float y, float width, float height) {
     @autoreleasepool {
-        if (index < 0 || index >= elisa_count) return;
-        [(NSView *)elisa_appkit_object(index) setFrame:NSMakeRect(x, y, width, height)];
+        NSView *view = (NSView *)elisa_appkit_object(index);
+        if (![view isKindOfClass:[NSView class]]) return;
+        [view setFrame:NSMakeRect(x, y, width, height)];
     }
 }
 
@@ -313,8 +312,8 @@ void elisa_appkit_set_view_frame(int index, float x, float y, float width, float
 // framework enum from the native object bridge.
 void elisa_appkit_set_scroll_document_frame(int index, float width, float height) {
     @autoreleasepool {
-        if (index < 0 || index >= elisa_count) return;
         NSScrollView *scroll = (NSScrollView *)elisa_appkit_object(index);
+        if (![scroll isKindOfClass:[NSScrollView class]]) return;
         [[scroll documentView] setFrame:NSMakeRect(0, 0, width, height)];
     }
 }
@@ -324,39 +323,39 @@ void elisa_appkit_set_scroll_document_frame(int index, float width, float height
 // no UTF-8 policy or byte-to-string conversion remains in this bridge.
 void elisa_appkit_set_window_title(int index, size_t text) {
     @autoreleasepool {
-        if (index < 0 || index >= elisa_count) return;
         NSString *value = (__bridge NSString *)(void *)text;
-        if (value != nil) [(NSWindow *)elisa_appkit_object(index) setTitle:value];
+        NSWindow *window = (NSWindow *)elisa_appkit_object(index);
+        if (value != nil && [window isKindOfClass:[NSWindow class]]) [window setTitle:value];
     }
 }
 
 void elisa_appkit_set_button_title(int index, size_t text) {
     @autoreleasepool {
-        if (index < 0 || index >= elisa_count) return;
         NSString *value = (__bridge NSString *)(void *)text;
-        if (value != nil) [(NSButton *)elisa_appkit_object(index) setTitle:value];
+        NSButton *button = (NSButton *)elisa_appkit_object(index);
+        if (value != nil && [button isKindOfClass:[NSButton class]]) [button setTitle:value];
     }
 }
 
 void elisa_appkit_set_field_text(int index, size_t text) {
     @autoreleasepool {
-        if (index < 0 || index >= elisa_count) return;
         NSString *value = (__bridge NSString *)(void *)text;
-        if (value != nil) [(NSTextField *)elisa_appkit_object(index) setStringValue:value];
+        NSTextField *field = (NSTextField *)elisa_appkit_object(index);
+        if (value != nil && [field isKindOfClass:[NSTextField class]]) [field setStringValue:value];
     }
 }
 
 void elisa_appkit_set_button_state(int index, int state) {
     @autoreleasepool {
-        if (index < 0 || index >= elisa_count) return;
-        [(NSButton *)elisa_appkit_object(index) setState:(NSControlStateValue)state];
+        NSButton *button = (NSButton *)elisa_appkit_object(index);
+        if ([button isKindOfClass:[NSButton class]]) [button setState:(NSControlStateValue)state];
     }
 }
 
 void elisa_appkit_set_slider_state(int index, float low, float high, float value) {
     @autoreleasepool {
-        if (index < 0 || index >= elisa_count) return;
         NSSlider *slider = (NSSlider *)elisa_appkit_object(index);
+        if (![slider isKindOfClass:[NSSlider class]]) return;
         [slider setMinValue:low];
         [slider setMaxValue:high];
         [slider setDoubleValue:value];
@@ -365,8 +364,8 @@ void elisa_appkit_set_slider_state(int index, float low, float high, float value
 
 void elisa_appkit_set_progress_value(int index, float value) {
     @autoreleasepool {
-        if (index < 0 || index >= elisa_count) return;
-        [(NSProgressIndicator *)elisa_appkit_object(index) setDoubleValue:value];
+        NSProgressIndicator *bar = (NSProgressIndicator *)elisa_appkit_object(index);
+        if ([bar isKindOfClass:[NSProgressIndicator class]]) [bar setDoubleValue:value];
     }
 }
 
@@ -393,7 +392,9 @@ void elisa_appkit_run(void) {
 // What AppKit actually built, read back from the live objects rather than from
 // anything this file remembered: a test that trusts the shim's own bookkeeping
 // would pass even if no NSView were ever created.
-int elisa_appkit_control_count(void) { return elisa_count; }
+int elisa_appkit_control_count(void) {
+    return elisa_objects == nil ? 0 : (int)elisa_objects.count;
+}
 
 int elisa_appkit_subview_count(int index) {
     NSView *container = elisa_container_for(index);
@@ -401,7 +402,7 @@ int elisa_appkit_subview_count(int index) {
 }
 
 int elisa_appkit_is_class(int index, size_t class_name) {
-    if (index < 0 || index >= elisa_count || class_name == 0) return 0;
+    if (index < 0 || class_name == 0) return 0;
     NSString *name = (__bridge NSString *)(void *)class_name;
     Class wanted = NSClassFromString(name);
     return (wanted != nil && [elisa_appkit_object(index) isKindOfClass:wanted]) ? 1 : 0;
@@ -427,7 +428,8 @@ int elisa_appkit_panel_becomes_key_only(int index) {
 }
 
 int elisa_appkit_button_is_on(int index) {
-    return [(NSButton *)elisa_appkit_object(index) state] == NSControlStateValueOn ? 1 : 0;
+    NSButton *button = (NSButton *)elisa_appkit_object(index);
+    return [button isKindOfClass:[NSButton class]] && [button state] == NSControlStateValueOn ? 1 : 0;
 }
 
 int elisa_appkit_button_bezel_style(int index) {
