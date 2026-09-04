@@ -274,7 +274,7 @@ int main(void) {
     @autoreleasepool {
         if (!elisa_appkit_canvas_open("test", 4, 200, 100, 15,
                                       elisa_appkit_canvas_backing_store_buffered(),
-                                      NSWindowTabbingModeDisallowed, 0,
+                                      NSWindowTabbingModeDisallowed, 0, 1,
                                       NSApplicationActivationPolicyProhibited)) return 1;
         if (require([elisa_canvas_view isFlipped], @"canvas coordinate policy was not supplied by Elisa")) return 1;
         if (require([elisa_canvas_view acceptsFirstResponder], @"canvas focus policy was not supplied by Elisa")) return 1;

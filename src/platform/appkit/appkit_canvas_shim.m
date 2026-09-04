@@ -418,7 +418,7 @@ size_t elisa_appkit_canvas_accessibility_layout_changed_notification(void) {
 
 int elisa_appkit_canvas_open(const char *title, size_t length, float width, float height,
                              int style, int backing, int tabbing_mode, int restorable,
-                             int activation_policy) {
+                             int make_first_responder, int activation_policy) {
     @autoreleasepool {
         elisa_canvas_frame_count = 0;
         [NSApplication sharedApplication];
@@ -443,7 +443,7 @@ int elisa_appkit_canvas_open(const char *title, size_t length, float width, floa
         [window setContentView:elisa_canvas_view];
         [window setTabbingMode:(NSWindowTabbingMode)tabbing_mode];
         [window setRestorable:restorable != 0];
-        [window makeFirstResponder:elisa_canvas_view];
+        if (make_first_responder != 0) [window makeFirstResponder:elisa_canvas_view];
         return 1;
     }
 }
