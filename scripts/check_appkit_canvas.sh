@@ -146,6 +146,10 @@ if awk '/- \(void\)setFrameSize:/ { inside=1 } inside && /elisa_canvas_window/ {
   echo "appkit canvas: Elisa initialization policy leaked back into Objective-C" >&2
   exit 1
 fi
+if awk '/int elisa_appkit_canvas_open\(/ { inside=1 } inside && /make_first_responder/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: focus policy leaked back into Objective-C window creation" >&2
+  exit 1
+fi
 if grep -Eq 'if \(centered\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: window centering policy leaked back into Objective-C" >&2
   exit 1

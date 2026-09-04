@@ -420,7 +420,7 @@ size_t elisa_appkit_canvas_accessibility_layout_changed_notification(void) {
 // UTF-8 decoding itself.
 int elisa_appkit_canvas_open(size_t title, float width, float height,
                              int style, int backing, int tabbing_mode, int restorable,
-                             int make_first_responder, int activation_policy) {
+                             int activation_policy) {
     @autoreleasepool {
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:(NSApplicationActivationPolicy)activation_policy];
@@ -444,8 +444,13 @@ int elisa_appkit_canvas_open(size_t title, float width, float height,
         [window setContentView:elisa_canvas_view];
         [window setTabbingMode:(NSWindowTabbingMode)tabbing_mode];
         [window setRestorable:restorable != 0];
-        if (make_first_responder != 0) [window makeFirstResponder:elisa_canvas_view];
         return 1;
+    }
+}
+
+void elisa_appkit_canvas_focus(void) {
+    if (elisa_canvas_window != nil && elisa_canvas_view != nil) {
+        [elisa_canvas_window makeFirstResponder:elisa_canvas_view];
     }
 }
 

@@ -313,7 +313,7 @@ int main(void) {
         int opened = elisa_appkit_canvas_open((size_t)(__bridge void *)title,
                                               200, 100, 15,
                                               elisa_appkit_canvas_backing_store_buffered(),
-                                              NSWindowTabbingModeDisallowed, 0, 1,
+                                              NSWindowTabbingModeDisallowed, 0,
                                               NSApplicationActivationPolicyProhibited);
         if (!opened) return 1;
         if (require([elisa_canvas_view isFlipped], @"canvas coordinate policy was not supplied by Elisa")) return 1;
