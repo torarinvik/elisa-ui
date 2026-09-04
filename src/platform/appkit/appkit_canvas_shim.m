@@ -430,8 +430,9 @@ int elisa_appkit_canvas_open(size_t title, float width, float height,
         if (window == nil) return 0;
         NSString *name = (__bridge NSString *)(void *)title;
         if (name != nil) [window setTitle:name];
-        // Keep the global nil while NSView initialization calls setFrameSize:;
-        // resize events must not reach the Elisa app before app_init.
+        // View construction may synchronously report its initial frame. The
+        // Elisa adapter owns the readiness guard and filters that callback
+        // until app_init has completed.
         elisa_canvas_view = [[ElisaCanvasView alloc] initWithFrame:rect];
         elisa_accessibility_children = [NSMutableArray new];
         elisa_accessibility_next = [NSMutableArray new];
