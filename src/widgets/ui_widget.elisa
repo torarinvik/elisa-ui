@@ -50,6 +50,8 @@ module UiFlat:
             axis: mutable UiConst::Axis
             padding: mutable f32
             spacing: mutable f32
+            declared_min_width: mutable f32
+            declared_min_height: mutable f32
             min_width: mutable f32
             min_height: mutable f32
             grow: mutable f32
@@ -67,6 +69,7 @@ module UiFlat:
             text_color: mutable UiCore::Color
             secure: mutable bool
             interactive: mutable bool
+            visible: mutable bool
             enabled: mutable bool
             hovered: mutable bool
             pressed: mutable bool
@@ -225,11 +228,12 @@ module UiFlat:
                 kind, parent,
                 first_child: NONE, next_sibling: NONE,
                 axis: UiConst::Axis.Column, padding: 0.0, spacing: 0.0,
+                declared_min_width: 0.0, declared_min_height: 0.0,
                 min_width: 0.0, min_height: 0.0, grow: 0.0,
                 x: 0.0, y: 0.0, width: 0.0, height: 0.0,
                 color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, hover_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, press_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0},
                 text: "", placeholder: "", help: "", text_size: 0.0, text_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, secure: false,
-                interactive: false, enabled: true, hovered: false, pressed: false, focused: false, selected: false, value: 0.0,
+                interactive: false, visible: true, enabled: true, hovered: false, pressed: false, focused: false, selected: false, value: 0.0,
                 input_length: 0, caret: 0, selection_anchor: 0, marked_start: 0, marked_end: 0, text_revision: 0, text_truncated: false,
             }
             link(parent, index)
@@ -302,14 +306,36 @@ module UiFlat:
                 hot_widget <- NONE if hot_widget == index
                 focus(NONE) if focused_widget == index
 
+        # Hidden widgets remain in the retained tree but contribute no layout,
+        # painting, hit target, focus stop or accessibility node. Hiding a
+        # container applies transitively to its descendants.
+        def set_visible(index: usize, shown: bool) -> void:
+            return if index >= widget_count
+            widgets[index].visible <- shown
+            return if shown
+            for candidate in 0..<widget_count:
+                if not effectively_visible(candidate):
+                    widgets[candidate].hovered <- false
+                    widgets[candidate].pressed <- false
+            if active_widget < widget_count and not effectively_visible(active_widget):
+                active_widget <- NONE
+                active_pointer_button <- -1
+                active_key <- -1
+            hot_widget <- NONE if hot_widget < widget_count and not effectively_visible(hot_widget)
+            focus(NONE) if focused_widget < widget_count and not effectively_visible(focused_widget)
+
         # Give any painted widget a caption. Buttons keep their declared minimum
         # hit target; labels still use `label`, which derives its minimum from text.
         def set_text(index: usize, text: sview, size: f32, color: UiCore::Color) -> void:
             return if index >= widget_count
             widgets[index] with { text, text_size <- size, text_color <- color }
             if widgets[index].kind == UiConst::WidgetKind.Label:
-                widgets[index].min_width <- ui_measure_text_width(text, size)
-                widgets[index].min_height <- ui_text_line_height(size)
+                measured_width: f32 = ui_measure_text_width(text, size)
+                measured_height: f32 = ui_text_line_height(size)
+                widgets[index] with {
+                    declared_min_width <- measured_width, declared_min_height <- measured_height,
+                    min_width <- measured_width, min_height <- measured_height,
+                }
 
         def set_help(index: usize, help: sview) -> void:
             return if index >= widget_count
@@ -376,19 +402,19 @@ module UiFlat:
         def button(parent: usize, min_width: f32, min_height: f32, color: UiCore::Color, hover_color: UiCore::Color, press_color: UiCore::Color) -> usize:
             index: usize = new_widget(parent, UiConst::WidgetKind.Button)
             return index if index == NONE
-            widgets[index] with { min_width, min_height, color, hover_color, press_color, interactive <- true }
+            widgets[index] with { declared_min_width <- min_width, declared_min_height <- min_height, min_width, min_height, color, hover_color, press_color, interactive <- true }
             return index
 
         def radio_button(parent: usize, min_width: f32, min_height: f32, color: UiCore::Color, hover_color: UiCore::Color, press_color: UiCore::Color) -> usize:
             index: usize = new_widget(parent, UiConst::WidgetKind.RadioButton)
             return index if index == NONE
-            widgets[index] with { min_width, min_height, color, hover_color, press_color, interactive <- true }
+            widgets[index] with { declared_min_width <- min_width, declared_min_height <- min_height, min_width, min_height, color, hover_color, press_color, interactive <- true }
             return index
 
         def check_box(parent: usize, min_width: f32, min_height: f32, color: UiCore::Color, hover_color: UiCore::Color, press_color: UiCore::Color) -> usize:
             index: usize = new_widget(parent, UiConst::WidgetKind.CheckBox)
             return index if index == NONE
-            widgets[index] with { min_width, min_height, color, hover_color, press_color, interactive <- true }
+            widgets[index] with { declared_min_width <- min_width, declared_min_height <- min_height, min_width, min_height, color, hover_color, press_color, interactive <- true }
             return index
 
         # A slider stores a normalized value. Its three colors are the track,
@@ -397,7 +423,7 @@ module UiFlat:
             index: usize = new_widget(parent, UiConst::WidgetKind.Slider)
             return index if index == NONE
             widgets[index] with {
-                min_width, min_height, text <- label, value,
+                declared_min_width <- min_width, declared_min_height <- min_height, min_width, min_height, text <- label, value,
                 color <- track_color, hover_color <- fill_color, press_color <- thumb_color,
                 interactive <- true,
             }
@@ -408,7 +434,7 @@ module UiFlat:
             index: usize = new_widget(parent, UiConst::WidgetKind.ProgressBar)
             return index if index == NONE
             widgets[index] with {
-                min_width, min_height, text <- label, value,
+                declared_min_width <- min_width, declared_min_height <- min_height, min_width, min_height, text <- label, value,
                 color <- track_color, hover_color <- fill_color,
             }
             set_value(index, value)
@@ -418,7 +444,7 @@ module UiFlat:
             index: usize = new_widget(parent, UiConst::WidgetKind.TextField)
             return index if index == NONE
             widgets[index] with {
-                min_width, min_height, text <- label, placeholder,
+                declared_min_width <- min_width, declared_min_height <- min_height, min_width, min_height, text <- label, placeholder,
                 text_size <- size, text_color <- ink, color <- fill,
                 hover_color <- fill, press_color <- fill, interactive <- true,
             }
@@ -446,9 +472,12 @@ module UiFlat:
         def label(parent: usize, text: sview, size: f32, color: UiCore::Color) -> usize:
             index: usize = new_widget(parent, UiConst::WidgetKind.Label)
             return index if index == NONE
+            measured_width: f32 = ui_measure_text_width(text, size)
+            measured_height: f32 = ui_text_line_height(size)
             widgets[index] with {
                 text, text_size <- size, text_color <- color,
-                min_width <- ui_measure_text_width(text, size), min_height <- ui_text_line_height(size),
+                declared_min_width <- measured_width, declared_min_height <- measured_height,
+                min_width <- measured_width, min_height <- measured_height,
             }
             return index
 
@@ -457,15 +486,34 @@ module UiFlat:
             total: mutable usize = 0
             cursor: mutable usize = widgets[index].first_child
             while cursor != NONE |cursor, total|:
-                total <- total + 1
+                total <- total + 1 if widgets[cursor].visible
                 cursor <- widgets[cursor].next_sibling
             return total
+
+        def effectively_visible(index: usize) -> bool:
+            return false if index >= widget_count
+            cursor: mutable usize = index
+            while cursor < widget_count |cursor|:
+                return false if not widgets[cursor].visible
+                cursor <- widgets[cursor].parent
+            return true
+
+        def collapse(index: usize) -> void:
+            return if index >= widget_count
+            widgets[index] with { x <- 0.0, y <- 0.0, width <- 0.0, height <- 0.0 }
+            child: mutable usize = widgets[index].first_child
+            while child != NONE |child|:
+                collapse(child)
+                child <- widgets[child].next_sibling
 
         # Bottom-up pass: a container's minimum is its children's minima summed
         # along its axis (plus spacing and padding) and maximised across it. A
         # declared minimum still wins if it is larger.
         def measure(index: usize) -> void:
             return if index >= widget_count
+            widgets[index].min_width <- widgets[index].declared_min_width
+            widgets[index].min_height <- widgets[index].declared_min_height
+            return if not effectively_visible(index)
             cursor: mutable usize = widgets[index].first_child
             return if cursor == NONE
             is_row: bool = widgets[index].axis == UiConst::Axis.Row
@@ -473,12 +521,13 @@ module UiFlat:
             across: mutable f32 = 0.0
             children: mutable f32 = 0.0
             while cursor != NONE |cursor, along, across, children, is_row|:
-                measure(cursor)
-                child_along: f32 = widgets[cursor].min_width if is_row else widgets[cursor].min_height
-                child_across: f32 = widgets[cursor].min_height if is_row else widgets[cursor].min_width
-                along <- along + child_along
-                across <- child_across if child_across > across else across
-                children <- children + 1.0
+                if widgets[cursor].visible:
+                    measure(cursor)
+                    child_along: f32 = widgets[cursor].min_width if is_row else widgets[cursor].min_height
+                    child_across: f32 = widgets[cursor].min_height if is_row else widgets[cursor].min_width
+                    along <- along + child_along
+                    across <- child_across if child_across > across else across
+                    children <- children + 1.0
                 cursor <- widgets[cursor].next_sibling
             gaps: f32 = widgets[index].spacing * (children - 1.0) if children > 1.0 else 0.0
             pad: f32 = widgets[index].padding * 2.0
@@ -492,6 +541,9 @@ module UiFlat:
         # the cross axis.
         def arrange(index: usize, x: f32, y: f32, width: f32, height: f32) -> void:
             return if index >= widget_count
+            if not effectively_visible(index):
+                collapse(index)
+                return
             widgets[index] with { x, y, width, height }
             first: usize = widgets[index].first_child
             return if first == NONE
@@ -513,8 +565,9 @@ module UiFlat:
             weight: mutable f32 = 0.0
             cursor: mutable usize = first
             while cursor != NONE |cursor, demand, weight, is_row|:
-                demand <- demand + (widgets[cursor].min_width if is_row else widgets[cursor].min_height)
-                weight <- weight + widgets[cursor].grow
+                if widgets[cursor].visible:
+                    demand <- demand + (widgets[cursor].min_width if is_row else widgets[cursor].min_height)
+                    weight <- weight + widgets[cursor].grow
                 cursor <- widgets[cursor].next_sibling
 
             required: f32 = demand + gaps
@@ -525,13 +578,16 @@ module UiFlat:
             offset: mutable f32 = 0.0
             walk: mutable usize = first
             while walk != NONE |walk, offset, is_row, inner_x, inner_y, inner_width, inner_height, share|:
-                base: f32 = widgets[walk].min_width if is_row else widgets[walk].min_height
-                extent: f32 = base * scale + share * widgets[walk].grow
-                if is_row:
-                    arrange(walk, inner_x + offset, inner_y, extent, inner_height)
+                if widgets[walk].visible:
+                    base: f32 = widgets[walk].min_width if is_row else widgets[walk].min_height
+                    extent: f32 = base * scale + share * widgets[walk].grow
+                    if is_row:
+                        arrange(walk, inner_x + offset, inner_y, extent, inner_height)
+                    else:
+                        arrange(walk, inner_x, inner_y + offset, inner_width, extent)
+                    offset <- offset + extent + widgets[index].spacing * scale
                 else:
-                    arrange(walk, inner_x, inner_y + offset, inner_width, extent)
-                offset <- offset + extent + widgets[index].spacing * scale
+                    collapse(walk)
                 walk <- widgets[walk].next_sibling
 
         def contains(index: usize, x: f32, y: f32) -> bool:
@@ -549,10 +605,12 @@ module UiFlat:
             active_key <- -1
 
         def focus(index: usize) -> void:
-            release_active_press() if index != focused_widget
+            target: mutable usize = index
+            target <- NONE if target < widget_count and (not widgets[target].interactive or not widgets[target].enabled or not effectively_visible(target))
+            release_active_press() if target != focused_widget
             if focused_widget < widget_count:
                 widgets[focused_widget].focused <- false
-            focused_widget <- index
+            focused_widget <- target
             if focused_widget < widget_count:
                 widgets[focused_widget].focused <- true
                 restart_caret_blink() if widgets[focused_widget].kind == UiConst::WidgetKind.TextField
@@ -563,7 +621,7 @@ module UiFlat:
             examined: mutable usize = 0
             while examined < widget_count |examined|:
                 candidate: usize = (start + examined) % widget_count
-                if widgets[candidate].interactive and widgets[candidate].enabled:
+                if widgets[candidate].interactive and widgets[candidate].enabled and effectively_visible(candidate):
                     focus(candidate)
                     return
                 examined <- examined + 1
@@ -576,7 +634,7 @@ module UiFlat:
                 # Add widget_count before subtracting so unsigned indices wrap
                 # deliberately instead of underflowing.
                 candidate: usize = (start + widget_count - examined - 1) % widget_count
-                if widgets[candidate].interactive and widgets[candidate].enabled:
+                if widgets[candidate].interactive and widgets[candidate].enabled and effectively_visible(candidate):
                     focus(candidate)
                     return
                 examined <- examined + 1
@@ -1007,7 +1065,7 @@ module UiFlat:
                     pass
 
         def accepts_text() -> bool:
-            return focused_widget < widget_count and widgets[focused_widget].kind == UiConst::WidgetKind.TextField and widgets[focused_widget].enabled
+            return focused_widget < widget_count and widgets[focused_widget].kind == UiConst::WidgetKind.TextField and widgets[focused_widget].enabled and effectively_visible(focused_widget)
 
         def allows_text_readback() -> bool:
             return accepts_text() and not widgets[focused_widget].secure
@@ -1408,7 +1466,7 @@ module UiFlat:
             scan: mutable usize = widget_count
             while scan > 0 |scan|:
                 scan <- scan - 1
-                return scan if widgets[scan].interactive and widgets[scan].enabled and contains(scan, x, y)
+                return scan if widgets[scan].interactive and widgets[scan].enabled and effectively_visible(scan) and contains(scan, x, y)
             return NONE
 
         # Native hosts need only choose the system cursor; widget semantics and
@@ -1571,7 +1629,7 @@ module UiFlat:
         # One activation path for accessibility adapters and future automation.
         # It deliberately mirrors a completed pointer/keyboard click.
         def activate(index: usize) -> bool:
-            return false if index >= widget_count or not widgets[index].interactive or not widgets[index].enabled or widgets[index].kind == UiConst::WidgetKind.Slider or widgets[index].kind == UiConst::WidgetKind.TextField
+            return false if index >= widget_count or not widgets[index].interactive or not widgets[index].enabled or not effectively_visible(index) or widgets[index].kind == UiConst::WidgetKind.Slider or widgets[index].kind == UiConst::WidgetKind.TextField
             release_active_press()
             focus(index)
             app_widget_event(index, UiConst::WidgetEvent.Click.i32())
@@ -1580,7 +1638,7 @@ module UiFlat:
         # Accessibility adapters use the same normalized adjustment path as
         # arrow keys, so assistive actions update app state identically.
         def adjust(index: usize, delta: f32) -> bool:
-            return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider or not widgets[index].enabled
+            return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider or not widgets[index].enabled or not effectively_visible(index)
             before: f32 = widgets[index].value
             set_value(index, before + delta)
             return false if widgets[index].value == before
@@ -1592,6 +1650,7 @@ module UiFlat:
         # parent's background is laid down before any of its children.
         def paint() -> void:
             for index in 0..<widget_count:
+                continue if not effectively_visible(index)
                 color: UiCore::Color = color_of(index)
                 frame: UiCore::Rect = UiCore::Rect(widgets[index].x, widgets[index].y, widgets[index].width, widgets[index].height)
                 if widgets[index].kind == UiConst::WidgetKind.Button:

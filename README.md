@@ -62,6 +62,9 @@ because a module member's symbol carries its module and those names cannot move.
   Measure runs bottom-up, arrange top-down.
   Dynamic label text and typography changes are remeasured before the next
   layout, so localization and live status content cannot retain stale bounds.
+  Widgets can be hidden without rebuilding the tree; visibility collapses
+  layout space and applies transitively to painting, input, focus, tooltips and
+  accessibility.
   Fixed arenas expose overflow flags, so capacity mistakes are diagnosable
   rather than silently indistinguishable from missing UI.
 - **Apps** implement `app_init` / `app_event(UiCore::Event)` /
