@@ -209,49 +209,61 @@ void elisa_appkit_create_scroll_view(int index, int vertical, int horizontal) {
     }
 }
 
-void elisa_appkit_create_label(int index) {
+void elisa_appkit_create_label(int index, size_t text) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index)) return;
-        elisa_appkit_store_view(index, [NSTextField labelWithString:@""]);
+        NSString *value = (__bridge NSString *)(void *)text;
+        if (value == nil) return;
+        elisa_appkit_store_view(index, [NSTextField labelWithString:value]);
     }
 }
 
-void elisa_appkit_create_push_button(int index, int bezel_style) {
+void elisa_appkit_create_push_button(int index, int bezel_style, size_t text) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index)) return;
-        NSButton *button = [NSButton buttonWithTitle:@"" target:nil action:nil];
+        NSString *value = (__bridge NSString *)(void *)text;
+        if (value == nil) return;
+        NSButton *button = [NSButton buttonWithTitle:value target:nil action:nil];
         [button setBezelStyle:(NSBezelStyle)bezel_style];
         elisa_appkit_store_view(index, button);
     }
 }
 
-void elisa_appkit_create_toggle_button(int index, int button_type) {
+void elisa_appkit_create_toggle_button(int index, int button_type, size_t text) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index)) return;
-        NSButton *button = [NSButton buttonWithTitle:@"" target:nil action:nil];
+        NSString *value = (__bridge NSString *)(void *)text;
+        if (value == nil) return;
+        NSButton *button = [NSButton buttonWithTitle:value target:nil action:nil];
         [button setButtonType:(NSButtonType)button_type];
         elisa_appkit_store_view(index, button);
     }
 }
 
-void elisa_appkit_create_checkbox(int index) {
+void elisa_appkit_create_checkbox(int index, size_t text) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index)) return;
-        elisa_appkit_store_view(index, [NSButton checkboxWithTitle:@"" target:nil action:nil]);
+        NSString *value = (__bridge NSString *)(void *)text;
+        if (value == nil) return;
+        elisa_appkit_store_view(index, [NSButton checkboxWithTitle:value target:nil action:nil]);
     }
 }
 
-void elisa_appkit_create_radio_button(int index) {
+void elisa_appkit_create_radio_button(int index, size_t text) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index)) return;
-        elisa_appkit_store_view(index, [NSButton radioButtonWithTitle:@"" target:nil action:nil]);
+        NSString *value = (__bridge NSString *)(void *)text;
+        if (value == nil) return;
+        elisa_appkit_store_view(index, [NSButton radioButtonWithTitle:value target:nil action:nil]);
     }
 }
 
-void elisa_appkit_create_text_field(int index) {
+void elisa_appkit_create_text_field(int index, size_t text) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index)) return;
-        elisa_appkit_store_view(index, [NSTextField textFieldWithString:@""]);
+        NSString *value = (__bridge NSString *)(void *)text;
+        if (value == nil) return;
+        elisa_appkit_store_view(index, [NSTextField textFieldWithString:value]);
     }
 }
 

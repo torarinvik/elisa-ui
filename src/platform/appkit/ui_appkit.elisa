@@ -40,12 +40,12 @@ extern elisa_appkit_create_window_with_style(index: i32, style: i32, backing: i3
 extern elisa_appkit_create_panel_window(index: i32, style: i32, backing: i32, floating: i32, becomes_key_only: i32, width: f32, height: f32) -> void
 extern elisa_appkit_create_panel(index: i32) -> void
 extern elisa_appkit_create_scroll_view(index: i32, vertical: i32, horizontal: i32) -> void
-extern elisa_appkit_create_label(index: i32) -> void
-extern elisa_appkit_create_push_button(index: i32, bezel_style: i32) -> void
-extern elisa_appkit_create_toggle_button(index: i32, button_type: i32) -> void
-extern elisa_appkit_create_checkbox(index: i32) -> void
-extern elisa_appkit_create_radio_button(index: i32) -> void
-extern elisa_appkit_create_text_field(index: i32) -> void
+extern elisa_appkit_create_label(index: i32, text: usize) -> void
+extern elisa_appkit_create_push_button(index: i32, bezel_style: i32, text: usize) -> void
+extern elisa_appkit_create_toggle_button(index: i32, button_type: i32, text: usize) -> void
+extern elisa_appkit_create_checkbox(index: i32, text: usize) -> void
+extern elisa_appkit_create_radio_button(index: i32, text: usize) -> void
+extern elisa_appkit_create_text_field(index: i32, text: usize) -> void
 extern elisa_appkit_create_slider(index: i32) -> void
 extern elisa_appkit_create_progress_bar(index: i32, progress_style: i32, indeterminate: i32) -> void
 extern elisa_appkit_attach_to_window(index: i32, parent: i32) -> void
@@ -109,6 +109,10 @@ module UiAppKit:
             pointer: mutable cstr = empty
             pointer <- text.data.cast[cstr] can Unsafe.PointerCast if text.len > 0
             return CFStringCreateWithBytes(0, pointer, text.len.i64(), UTF8_ENCODING, false)
+
+        def empty_native_string() -> usize can Unsafe.PointerCast:
+            empty: cstr = ""
+            return native_string(sview(empty, 0, 0))
 
         # AppKit's enum values cross the FFI as opaque facts. The decoration
         # policy itself stays in Elisa, where the widget's WindowMode is already
@@ -178,27 +182,45 @@ module UiAppKit:
                         attach_created(index, parent, parent_kind)
                         return
                     if kind == UiControls::Kind.Label:
-                        elisa_appkit_create_label(index)
+                        empty: usize = empty_native_string()
+                        return if empty == 0
+                        elisa_appkit_create_label(index, empty)
+                        CFRelease(empty)
                         attach_created(index, parent, parent_kind)
                         return
                     if kind == UiControls::Kind.PushButton:
-                        elisa_appkit_create_push_button(index, elisa_appkit_bezel_style_rounded())
+                        empty: usize = empty_native_string()
+                        return if empty == 0
+                        elisa_appkit_create_push_button(index, elisa_appkit_bezel_style_rounded(), empty)
+                        CFRelease(empty)
                         attach_created(index, parent, parent_kind)
                         return
                     if kind == UiControls::Kind.ToggleButton:
-                        elisa_appkit_create_toggle_button(index, elisa_appkit_button_type_push_on_push_off())
+                        empty: usize = empty_native_string()
+                        return if empty == 0
+                        elisa_appkit_create_toggle_button(index, elisa_appkit_button_type_push_on_push_off(), empty)
+                        CFRelease(empty)
                         attach_created(index, parent, parent_kind)
                         return
                     if kind == UiControls::Kind.CheckBox:
-                        elisa_appkit_create_checkbox(index)
+                        empty: usize = empty_native_string()
+                        return if empty == 0
+                        elisa_appkit_create_checkbox(index, empty)
+                        CFRelease(empty)
                         attach_created(index, parent, parent_kind)
                         return
                     if kind == UiControls::Kind.RadioButton:
-                        elisa_appkit_create_radio_button(index)
+                        empty: usize = empty_native_string()
+                        return if empty == 0
+                        elisa_appkit_create_radio_button(index, empty)
+                        CFRelease(empty)
                         attach_created(index, parent, parent_kind)
                         return
                     if kind == UiControls::Kind.TextField:
-                        elisa_appkit_create_text_field(index)
+                        empty: usize = empty_native_string()
+                        return if empty == 0
+                        elisa_appkit_create_text_field(index, empty)
+                        CFRelease(empty)
                         attach_created(index, parent, parent_kind)
                         return
                     if kind == UiControls::Kind.Slider:
