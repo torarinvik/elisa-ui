@@ -77,7 +77,7 @@ export fn elisa_appkit_view_is_flipped() -> i32 = appkit_view_is_flipped
 # Read back from the live AppKit objects, for the headless check.
 extern elisa_appkit_control_count() -> i32
 extern elisa_appkit_subview_count(index: i32) -> i32
-extern elisa_appkit_is_class(index: i32, class_name: cstr) -> i32
+extern elisa_appkit_is_class(index: i32, class_name: usize) -> i32
 extern elisa_appkit_window_is_resizable(index: i32) -> i32
 extern elisa_appkit_window_is_floating(index: i32) -> i32
 extern elisa_appkit_panel_becomes_key_only(index: i32) -> i32
@@ -132,6 +132,16 @@ module UiAppKit:
         # specialization inlines straight through to the C entry points.
         struct AppKitControls:
             unused: i32
+
+        # Class names used by the headless read-back check are framework text
+        # too. Build them as counted CoreFoundation strings so the native shim
+        # only resolves an already-constructed NSString class identity.
+        def class_is(index: i32, name: sview) -> i32 can Unsafe.PointerCast:
+            native: usize = native_string(name)
+            return 0 if native == 0
+            result: i32 = elisa_appkit_is_class(index, native)
+            CFRelease(native)
+            return result
 
         def attach_created(index: i32, parent: i32, parent_kind: UiControls::Kind) -> void:
             return if parent < 0

@@ -380,9 +380,10 @@ int elisa_appkit_subview_count(int index) {
     return container == nil ? -1 : (int)[[container subviews] count];
 }
 
-int elisa_appkit_is_class(int index, const char *class_name) {
-    if (index < 0 || index >= elisa_count || class_name == NULL) return 0;
-    Class wanted = NSClassFromString([NSString stringWithUTF8String:class_name]);
+int elisa_appkit_is_class(int index, size_t class_name) {
+    if (index < 0 || index >= elisa_count || class_name == 0) return 0;
+    NSString *name = (__bridge NSString *)(void *)class_name;
+    Class wanted = NSClassFromString(name);
     return (wanted != nil && [elisa_objects[index] isKindOfClass:wanted]) ? 1 : 0;
 }
 
