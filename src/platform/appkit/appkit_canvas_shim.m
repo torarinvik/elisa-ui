@@ -541,11 +541,15 @@ void elisa_appkit_canvas_menus_commit(size_t menuBar) {
 int elisa_appkit_canvas_clipboard_write(size_t text, size_t pasteboard_type) {
     if (text == 0 || pasteboard_type == 0) return 0;
     NSString *value = (__bridge NSString *)(void *)text;
-    if (value == nil) return 0;
+    NSString *type = (__bridge NSString *)(void *)pasteboard_type;
+    // Validate both borrowed objects before mutating the pasteboard. A bad
+    // FFI handle must fail closed without destroying a previously copied
+    // value, and the native bridge must never message an arbitrary object as
+    // though it were an NSString.
+    if (![value isKindOfClass:[NSString class]] || ![type isKindOfClass:[NSString class]]) return 0;
     NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
     [pasteboard clearContents];
-    NSString *type = (__bridge NSString *)(void *)pasteboard_type;
-    return type == nil ? 0 : [pasteboard setString:value forType:type];
+    return [pasteboard setString:value forType:type];
 }
 
 // Return a retained native string for Elisa to encode through CoreFoundation.

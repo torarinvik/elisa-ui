@@ -464,6 +464,15 @@ int main(void) {
         if (require(NSEqualRanges(elisa_canvas_view.selectedRange, NSMakeRange(0, 6)), @"Select All did not cover the field")) return 1;
         [elisa_canvas_view copy:nil];
         if (require([[[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString] isEqualToString:@"Worldé"], @"Copy did not write selected Unicode text")) return 1;
+        [[NSPasteboard generalPasteboard] clearContents];
+        [[NSPasteboard generalPasteboard] setString:@"keep" forType:NSPasteboardTypeString];
+        NSObject *invalidPasteboardType = [NSObject new];
+        if (require(!elisa_appkit_canvas_clipboard_write(
+                        (size_t)(__bridge void *)@"discard-me",
+                        (size_t)(__bridge void *)invalidPasteboardType),
+                    @"invalid clipboard type was accepted")) return 1;
+        if (require([[[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString] isEqualToString:@"keep"],
+                    @"invalid clipboard type destroyed existing contents")) return 1;
         if (require(elisa_appkit_canvas_clipboard_write(
                         (size_t)(__bridge void *)@"",
                         elisa_appkit_canvas_pasteboard_type_string()), @"empty clipboard write failed")) return 1;
