@@ -463,6 +463,13 @@ module UiFlat:
             return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
             return widgets[index].text_truncated
 
+        def scrub_clipboard_buffer() -> void:
+            # Paste data is transient framework state. Erase the fixed scratch
+            # arena after use instead of leaving a copy alive until the next
+            # reset or process exit.
+            for byte_index in 0..<TEXT_CAPACITY:
+                clipboard_buffer[byte_index] <- 0
+
         def reset() -> void:
             # Fixed buffers are reused, so reset must erase content rather than
             # merely dropping lengths. This also scrubs secure values retained
@@ -474,6 +481,7 @@ module UiFlat:
             for byte_index in 0..<TEXT_HISTORY_STORAGE_SIZE:
                 history_before_text[byte_index] <- 0
                 history_after_text[byte_index] <- 0
+            scrub_clipboard_buffer()
             widget_count <- 0
             widget_dropped <- false
             hot_widget <- NONE
@@ -1712,6 +1720,7 @@ module UiFlat:
                 length: usize = ui_clipboard_read(&clipboard_buffer[0], TEXT_CAPACITY)
                 return false if length == 0
                 insert_text(sview(&clipboard_buffer[0], 0, length.i64()))
+                scrub_clipboard_buffer()
                 return true
             return undo_text() if action == 5
             return redo_text() if action == 6
