@@ -530,16 +530,15 @@ int elisa_appkit_canvas_clipboard_write(size_t text, size_t pasteboard_type) {
     return type == nil ? 0 : [pasteboard setString:value forType:type];
 }
 
-size_t elisa_appkit_canvas_clipboard_read(unsigned char *buffer, size_t capacity,
-                                          size_t pasteboard_type) {
-    if (buffer == NULL || capacity == 0 || pasteboard_type == 0) return 0;
+// Return a retained native string for Elisa to encode through CoreFoundation.
+// The read direction is the one place where Cocoa owns the source text, so the
+// bridge transfers object ownership rather than deciding byte truncation.
+size_t elisa_appkit_canvas_clipboard_read(size_t pasteboard_type) {
+    if (pasteboard_type == 0) return 0;
     NSString *type = (__bridge NSString *)(void *)pasteboard_type;
     NSString *text = type == nil ? nil : [[NSPasteboard generalPasteboard] stringForType:type];
     if (text == nil) return 0;
-    NSData *utf8 = [text dataUsingEncoding:NSUTF8StringEncoding];
-    size_t take = MIN((size_t)utf8.length, capacity);
-    if (take > 0) memcpy(buffer, utf8.bytes, take);
-    return take;
+    return (size_t)CFBridgingRetain(text);
 }
 
 void elisa_appkit_canvas_schedule_redraw(float delay, size_t run_loop_mode) {

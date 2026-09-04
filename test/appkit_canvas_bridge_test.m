@@ -149,9 +149,15 @@ int elisa_appkit_canvas_perform_text_action(int action) {
         return action == 3;
     }
     if (action == 4) {
+        size_t nativeText = elisa_appkit_canvas_clipboard_read(
+            elisa_appkit_canvas_pasteboard_type_string());
+        if (nativeText == 0) return 0;
+        NSString *clipboardText = (__bridge NSString *)(void *)nativeText;
+        NSData *utf8 = [clipboardText dataUsingEncoding:NSUTF8StringEncoding];
         unsigned char buffer[sizeof(test_text)];
-        size_t length = elisa_appkit_canvas_clipboard_read(buffer, sizeof(buffer),
-                                                           elisa_appkit_canvas_pasteboard_type_string());
+        size_t length = MIN((size_t)utf8.length, sizeof(buffer));
+        if (length > 0) memcpy(buffer, utf8.bytes, length);
+        CFRelease((CFTypeRef)(void *)nativeText);
         if (length == 0) return 0;
         elisa_appkit_canvas_insert_text((const char *)buffer, length);
         return 1;
