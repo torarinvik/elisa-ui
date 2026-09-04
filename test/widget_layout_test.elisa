@@ -258,6 +258,33 @@ def main() -> i64:
     UiFlat::layout(120.0, 40.0)
     check("column alignment uses the horizontal cross axis inside margins", rect_is(column_center, 40.0, 10.0, 40.0, 20.0))
 
+    UiFlat::reset()
+    capped_row: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Row, 0.0, 0.0, UiCore::rgb(0, 0, 0))
+    capped_child: usize = UiFlat::button(capped_row, 100.0, 20.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    uncapped_child: usize = UiFlat::button(capped_row, 100.0, 20.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    UiFlat::set_grow(capped_child, 1.0)
+    UiFlat::set_grow(uncapped_child, 1.0)
+    UiFlat::set_max_size(capped_child, 120.0, 30.0)
+    UiFlat::layout(400.0, 100.0)
+    check("maximum width caps a growing row child", rect_is(capped_child, 0.0, 0.0, 120.0, 30.0))
+    check("unused capped growth redistributes to flexible siblings", rect_is(uncapped_child, 120.0, 0.0, 280.0, 100.0))
+    UiFlat::set_max_size(capped_child, -10.0, -20.0)
+    check("negative maximum sizes normalize to unbounded", UiFlat::widget(capped_child).max_width == 0.0 and UiFlat::widget(capped_child).max_height == 0.0)
+
+    UiFlat::reset()
+    max_column: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 0.0, 0.0, UiCore::rgb(0, 0, 0))
+    max_column_child: usize = UiFlat::button(max_column, 40.0, 20.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    UiFlat::set_max_size(max_column_child, 60.0, 0.0)
+    UiFlat::layout(120.0, 20.0)
+    check("maximum width caps a stretched column child", rect_is(max_column_child, 0.0, 0.0, 60.0, 20.0))
+
+    UiFlat::reset()
+    contradictory_column: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 0.0, 0.0, UiCore::rgb(0, 0, 0))
+    contradictory_child: usize = UiFlat::button(contradictory_column, 80.0, 20.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    UiFlat::set_max_size(contradictory_child, 60.0, 0.0)
+    UiFlat::layout(120.0, 20.0)
+    check("required minimum wins over a contradictory maximum", rect_is(contradictory_child, 0.0, 0.0, 120.0, 20.0))
+
     # A label's minimum comes from its measured text, so it sizes a container
     # that would otherwise collapse. "Save" at size 20 measures 4 * 20 * 0.5 = 40
     # wide and 20 tall under the stub above.

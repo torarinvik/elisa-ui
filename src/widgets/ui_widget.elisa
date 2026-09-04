@@ -56,6 +56,8 @@ module UiFlat:
             declared_min_height: mutable f32
             min_width: mutable f32
             min_height: mutable f32
+            max_width: mutable f32
+            max_height: mutable f32
             grow: mutable f32
             x: mutable f32
             y: mutable f32
@@ -113,6 +115,10 @@ module UiFlat:
 
     private:
         global mutable widgets: Widget[MAX_WIDGETS] = zeroed
+        # Scratch allocation by widget index. Recursive layout is safe because
+        # each tree node has a unique slot and a child only rewrites descendants.
+        global mutable layout_extra: f32[MAX_WIDGETS] = zeroed
+        global mutable layout_capped: bool[MAX_WIDGETS] = zeroed
         global mutable text_storage: u8[TEXT_STORAGE_SIZE] = zeroed
         global mutable secure_text_storage: u8[SECURE_TEXT_STORAGE_SIZE] = zeroed
         global mutable widget_count: usize = 0
@@ -232,7 +238,8 @@ module UiFlat:
                 axis: UiConst::Axis.Column, padding: 0.0, spacing: 0.0, margin: 0.0,
                 cross_alignment: UiConst::CrossAlignment.Stretch,
                 declared_min_width: 0.0, declared_min_height: 0.0,
-                min_width: 0.0, min_height: 0.0, grow: 0.0,
+                min_width: 0.0, min_height: 0.0,
+                max_width: 0.0, max_height: 0.0, grow: 0.0,
                 x: 0.0, y: 0.0, width: 0.0, height: 0.0,
                 color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, hover_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, press_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0},
                 text: "", placeholder: "", help: "", text_size: 0.0, text_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, secure: false,
@@ -303,6 +310,13 @@ module UiFlat:
         def set_grow(index: usize, grow: f32) -> void:
             return if index >= widget_count
             widgets[index].grow <- nonnegative(grow)
+
+        # Zero means unbounded. A maximum below the measured minimum never
+        # clips required content; the minimum wins for that axis.
+        def set_max_size(index: usize, width: f32, height: f32) -> void:
+            return if index >= widget_count
+            widgets[index].max_width <- nonnegative(width)
+            widgets[index].max_height <- nonnegative(height)
 
         def set_margin(index: usize, margin: f32) -> void:
             return if index >= widget_count
@@ -618,6 +632,8 @@ module UiFlat:
             cursor: mutable usize = first
             while cursor != NONE |cursor, demand, weight, is_row|:
                 if widgets[cursor].visible:
+                    layout_extra[cursor] <- 0.0
+                    layout_capped[cursor] <- false
                     demand <- demand + (widgets[cursor].min_width if is_row else widgets[cursor].min_height) + widgets[cursor].margin * 2.0
                     weight <- weight + widgets[cursor].grow
                 cursor <- widgets[cursor].next_sibling
@@ -625,15 +641,45 @@ module UiFlat:
             required: f32 = demand + gaps
             scale: f32 = inner_along / required if required > inner_along and required > 0.0 else 1.0
             free: f32 = inner_along - demand - gaps
-            share: f32 = free / weight if weight > 0.0 and free > 0.0 else 0.0
+
+            # Iterative weighted distribution prevents a capped child from
+            # stranding free space that an uncapped sibling could use.
+            remaining: mutable f32 = free if free > 0.0 and scale == 1.0 else 0.0
+            remaining_weight: mutable f32 = weight
+            distributing: mutable bool = remaining > 0.0 and remaining_weight > 0.0
+            while distributing |remaining, remaining_weight, distributing, is_row|:
+                capped_any: mutable bool = false
+                candidate: mutable usize = first
+                while candidate != NONE |candidate, remaining, remaining_weight, capped_any, is_row|:
+                    child_weight: f32 = widgets[candidate].grow
+                    if widgets[candidate].visible and child_weight > 0.0 and not layout_capped[candidate]:
+                        maximum: f32 = widgets[candidate].max_width if is_row else widgets[candidate].max_height
+                        minimum: f32 = widgets[candidate].min_width if is_row else widgets[candidate].min_height
+                        capacity: f32 = maximum - minimum
+                        proposed: f32 = remaining * child_weight / remaining_weight
+                        if maximum > 0.0 and capacity >= 0.0 and proposed > capacity:
+                            layout_extra[candidate] <- capacity
+                            layout_capped[candidate] <- true
+                            remaining <- remaining - capacity
+                            remaining_weight <- remaining_weight - child_weight
+                            capped_any <- true
+                    candidate <- widgets[candidate].next_sibling
+                if not capped_any:
+                    candidate <- first
+                    while candidate != NONE |candidate, remaining, remaining_weight|:
+                        if widgets[candidate].visible and widgets[candidate].grow > 0.0 and not layout_capped[candidate]:
+                            layout_extra[candidate] <- remaining * widgets[candidate].grow / remaining_weight
+                        candidate <- widgets[candidate].next_sibling
+                    distributing <- false
+                distributing <- false if remaining <= 0.0 or remaining_weight <= 0.0
 
             offset: mutable f32 = 0.0
             walk: mutable usize = first
-            while walk != NONE |walk, offset, is_row, inner_x, inner_y, inner_width, inner_height, share|:
+            while walk != NONE |walk, offset, is_row, inner_x, inner_y, inner_width, inner_height|:
                 if widgets[walk].visible:
                     margin: f32 = widgets[walk].margin
                     base: f32 = (widgets[walk].min_width if is_row else widgets[walk].min_height) + margin * 2.0
-                    outer_extent: f32 = base * scale + share * widgets[walk].grow
+                    outer_extent: f32 = base * scale + layout_extra[walk]
                     extent: f32 = outer_extent - margin * 2.0
                     extent <- 0.0 if extent < 0.0 else extent
                     available_cross: f32 = (inner_height if is_row else inner_width) - margin * 2.0
@@ -641,8 +687,11 @@ module UiFlat:
                     cross_extent: f32 = available_cross
                     cross_offset: f32 = margin
                     alignment: UiConst::CrossAlignment = widgets[walk].cross_alignment
+                    minimum_cross: f32 = widgets[walk].min_height if is_row else widgets[walk].min_width
+                    maximum_cross: f32 = widgets[walk].max_height if is_row else widgets[walk].max_width
+                    cross_extent <- maximum_cross if maximum_cross > 0.0 and maximum_cross >= minimum_cross and cross_extent > maximum_cross else cross_extent
                     if alignment != UiConst::CrossAlignment.Stretch:
-                        desired_cross: f32 = widgets[walk].min_height if is_row else widgets[walk].min_width
+                        desired_cross: f32 = minimum_cross
                         cross_extent <- desired_cross if desired_cross < available_cross else available_cross
                         if alignment == UiConst::CrossAlignment.Center:
                             cross_offset <- margin + (available_cross - cross_extent) * 0.5
