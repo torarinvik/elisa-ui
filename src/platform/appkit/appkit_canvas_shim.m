@@ -9,8 +9,11 @@
 
 extern void elisa_appkit_canvas_frame(size_t context);
 extern void elisa_appkit_canvas_resize(float width, float height);
-extern void elisa_appkit_canvas_pointer(int kind, float x, float y,
-                                        float dx, float dy, int button);
+extern void elisa_appkit_canvas_pointer_move(float x, float y);
+extern void elisa_appkit_canvas_pointer_down(float x, float y, int button);
+extern void elisa_appkit_canvas_pointer_up(float x, float y, int button);
+extern void elisa_appkit_canvas_pointer_leave(void);
+extern void elisa_appkit_canvas_pointer_scroll(float x, float y, float dx, float dy);
 extern void elisa_appkit_canvas_raw_key(int down, int keyCode, int character);
 extern void elisa_appkit_canvas_raw_flags(int keyCode, size_t modifiers);
 extern void elisa_appkit_canvas_focus_changed(int focused);
@@ -23,7 +26,7 @@ extern void elisa_appkit_canvas_cancel_interaction(void);
 extern int elisa_appkit_canvas_accepts_text(void);
 extern int elisa_appkit_canvas_allows_text_readback(void);
 extern size_t elisa_appkit_canvas_cursor_at(float x, float y);
-extern void elisa_appkit_canvas_text_click(int kind, float x, int button, int clickCount);
+extern void elisa_appkit_canvas_text_click(float x, int button, int clickCount);
 extern void elisa_appkit_canvas_set_text(size_t index, const char *bytes, size_t length);
 extern size_t elisa_appkit_canvas_selection_location(void);
 extern size_t elisa_appkit_canvas_selection_length(void);
@@ -197,25 +200,29 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
         if (element.elisaCursor != nil) [self addCursorRect:element.elisaLocalFrame cursor:element.elisaCursor];
     }
 }
-- (void)forwardMouseButton:(NSEvent *)event kind:(int)kind button:(int)button {
+- (void)forwardMouseButton:(NSEvent *)event down:(BOOL)down button:(int)button {
     NSPoint p = [self eventPoint:event];
-    elisa_appkit_canvas_pointer(kind, p.x, p.y, 0, 0, button);
-    // Forward native facts unchanged. Elisa decides whether this phase,
-    // button and click count have meaning for the focused widget.
-    elisa_appkit_canvas_text_click(kind, p.x, button, (int)event.clickCount);
+    if (down) {
+        elisa_appkit_canvas_pointer_down(p.x, p.y, button);
+        // Text selection is a press-side operation. The callback is typed, so
+        // the native shim does not encode a framework phase integer.
+        elisa_appkit_canvas_text_click(p.x, button, (int)event.clickCount);
+    } else {
+        elisa_appkit_canvas_pointer_up(p.x, p.y, button);
+    }
 }
-- (void)mouseMoved:(NSEvent *)event { NSPoint p=[self eventPoint:event]; [self updatePointerCursor:p]; elisa_appkit_canvas_pointer(0,p.x,p.y,0,0,0); }
+- (void)mouseMoved:(NSEvent *)event { NSPoint p=[self eventPoint:event]; [self updatePointerCursor:p]; elisa_appkit_canvas_pointer_move(p.x,p.y); }
 - (void)mouseDragged:(NSEvent *)event { [self mouseMoved:event]; }
 - (void)rightMouseDragged:(NSEvent *)event { [self mouseMoved:event]; }
 - (void)otherMouseDragged:(NSEvent *)event { [self mouseMoved:event]; }
-- (void)mouseDown:(NSEvent *)event { [self forwardMouseButton:event kind:1 button:0]; }
-- (void)rightMouseDown:(NSEvent *)event { [self forwardMouseButton:event kind:1 button:1]; }
-- (void)otherMouseDown:(NSEvent *)event { [self forwardMouseButton:event kind:1 button:(int)event.buttonNumber]; }
-- (void)mouseUp:(NSEvent *)event { [self forwardMouseButton:event kind:2 button:0]; }
-- (void)rightMouseUp:(NSEvent *)event { [self forwardMouseButton:event kind:2 button:1]; }
-- (void)otherMouseUp:(NSEvent *)event { [self forwardMouseButton:event kind:2 button:(int)event.buttonNumber]; }
-- (void)mouseExited:(NSEvent *)event { (void)event; [(__bridge NSCursor *)(void *)elisa_appkit_canvas_arrow_cursor() set]; elisa_appkit_canvas_pointer(3,0,0,0,0,0); }
-- (void)scrollWheel:(NSEvent *)event { NSPoint p=[self eventPoint:event]; elisa_appkit_canvas_pointer(4,p.x,p.y,[event scrollingDeltaX],[event scrollingDeltaY],0); }
+- (void)mouseDown:(NSEvent *)event { [self forwardMouseButton:event down:YES button:0]; }
+- (void)rightMouseDown:(NSEvent *)event { [self forwardMouseButton:event down:YES button:1]; }
+- (void)otherMouseDown:(NSEvent *)event { [self forwardMouseButton:event down:YES button:(int)event.buttonNumber]; }
+- (void)mouseUp:(NSEvent *)event { [self forwardMouseButton:event down:NO button:0]; }
+- (void)rightMouseUp:(NSEvent *)event { [self forwardMouseButton:event down:NO button:1]; }
+- (void)otherMouseUp:(NSEvent *)event { [self forwardMouseButton:event down:NO button:(int)event.buttonNumber]; }
+- (void)mouseExited:(NSEvent *)event { (void)event; [(__bridge NSCursor *)(void *)elisa_appkit_canvas_arrow_cursor() set]; elisa_appkit_canvas_pointer_leave(); }
+- (void)scrollWheel:(NSEvent *)event { NSPoint p=[self eventPoint:event]; elisa_appkit_canvas_pointer_scroll(p.x,p.y,[event scrollingDeltaX],[event scrollingDeltaY]); }
 - (void)keyDown:(NSEvent *)event {
     elisa_appkit_canvas_key_down_event((size_t)(__bridge void *)event, event.keyCode,
                                        elisa_event_character(event), (size_t)[event modifierFlags]);

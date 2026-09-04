@@ -89,10 +89,19 @@ if grep -Eq 'if \(centered\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; 
   echo "appkit canvas: window centering policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'elisa_appkit_canvas_pointer\(' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: pointer event-kind policy leaked back into Objective-C" >&2
+  exit 1
+fi
 
 # These callbacks cross the Objective-C/Elisa boundary and must survive dead
 # stripping in the packaged product.
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_frame$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_move$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_down$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_up$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_leave$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_scroll$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_window_style_titled$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_window_style_closable$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_window_style_miniaturizable$'

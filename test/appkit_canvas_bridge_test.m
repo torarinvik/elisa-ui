@@ -52,10 +52,29 @@ void elisa_appkit_canvas_frame(size_t context) {
 }
 
 void elisa_appkit_canvas_resize(float width, float height) { (void)width; (void)height; }
-void elisa_appkit_canvas_pointer(int kind, float x, float y, float dx, float dy, int button) {
-    (void)x; (void)y; (void)dx; (void)dy;
-    test_pointer_kind = kind;
+void elisa_appkit_canvas_pointer_move(float x, float y) {
+    (void)x; (void)y;
+    test_pointer_kind = 0;
+    test_pointer_button = 0;
+}
+void elisa_appkit_canvas_pointer_down(float x, float y, int button) {
+    (void)x; (void)y;
+    test_pointer_kind = 1;
     test_pointer_button = button;
+}
+void elisa_appkit_canvas_pointer_up(float x, float y, int button) {
+    (void)x; (void)y;
+    test_pointer_kind = 2;
+    test_pointer_button = button;
+}
+void elisa_appkit_canvas_pointer_leave(void) {
+    test_pointer_kind = 3;
+    test_pointer_button = 0;
+}
+void elisa_appkit_canvas_pointer_scroll(float x, float y, float dx, float dy) {
+    (void)x; (void)y; (void)dx; (void)dy;
+    test_pointer_kind = 4;
+    test_pointer_button = 0;
 }
 void elisa_appkit_canvas_raw_key(int down, int keyCode, int character) { (void)down; (void)keyCode; (void)character; }
 void elisa_appkit_canvas_key_down_event(size_t event, int keyCode, int character, size_t modifiers) {
@@ -127,9 +146,8 @@ size_t elisa_appkit_canvas_cursor_at(float x, float y) {
     (void)x; (void)y;
     return (size_t)(__bridge void *)[NSCursor IBeamCursor];
 }
-void elisa_appkit_canvas_text_click(int kind, float x, int button, int clickCount) {
+void elisa_appkit_canvas_text_click(float x, int button, int clickCount) {
     (void)x;
-    if (kind != 1) return;
     test_click_button = button;
     test_click_count = clickCount;
 }
