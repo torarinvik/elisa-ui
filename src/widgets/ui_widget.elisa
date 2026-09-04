@@ -52,6 +52,7 @@ module UiFlat:
             spacing: mutable f32
             margin: mutable f32
             cross_alignment: mutable UiConst::CrossAlignment
+            main_alignment: mutable UiConst::MainAlignment
             declared_min_width: mutable f32
             declared_min_height: mutable f32
             min_width: mutable f32
@@ -237,6 +238,7 @@ module UiFlat:
                 first_child: NONE, next_sibling: NONE,
                 axis: UiConst::Axis.Column, padding: 0.0, spacing: 0.0, margin: 0.0,
                 cross_alignment: UiConst::CrossAlignment.Stretch,
+                main_alignment: UiConst::MainAlignment.Start,
                 declared_min_width: 0.0, declared_min_height: 0.0,
                 min_width: 0.0, min_height: 0.0,
                 max_width: 0.0, max_height: 0.0, grow: 0.0,
@@ -325,6 +327,10 @@ module UiFlat:
         def set_cross_alignment(index: usize, alignment: UiConst::CrossAlignment) -> void:
             return if index >= widget_count
             widgets[index].cross_alignment <- alignment
+
+        def set_main_alignment(index: usize, alignment: UiConst::MainAlignment) -> void:
+            return if index >= widget_count
+            widgets[index].main_alignment <- alignment
 
         def set_enabled(index: usize, enabled: bool) -> void:
             return if index >= widget_count
@@ -673,9 +679,19 @@ module UiFlat:
                     distributing <- false
                 distributing <- false if remaining <= 0.0 or remaining_weight <= 0.0
 
+            used_growth: mutable f32 = 0.0
+            growth_cursor: mutable usize = first
+            while growth_cursor != NONE |growth_cursor, used_growth|:
+                used_growth <- used_growth + layout_extra[growth_cursor] if widgets[growth_cursor].visible
+                growth_cursor <- widgets[growth_cursor].next_sibling
+            unused: f32 = free - used_growth if free > used_growth else 0.0
+            main_alignment: UiConst::MainAlignment = widgets[index].main_alignment
             offset: mutable f32 = 0.0
+            offset <- unused * 0.5 if main_alignment == UiConst::MainAlignment.Center
+            offset <- unused if main_alignment == UiConst::MainAlignment.End
+            gap_extra: f32 = unused / (children - 1.0) if main_alignment == UiConst::MainAlignment.SpaceBetween and children > 1.0 else 0.0
             walk: mutable usize = first
-            while walk != NONE |walk, offset, is_row, inner_x, inner_y, inner_width, inner_height|:
+            while walk != NONE |walk, offset, is_row, inner_x, inner_y, inner_width, inner_height, gap_extra|:
                 if widgets[walk].visible:
                     margin: f32 = widgets[walk].margin
                     base: f32 = (widgets[walk].min_width if is_row else widgets[walk].min_height) + margin * 2.0
@@ -702,7 +718,7 @@ module UiFlat:
                         arrange(walk, inner_x + offset + margin, inner_y + cross_offset, extent, cross_extent)
                     else:
                         arrange(walk, inner_x + cross_offset, inner_y + offset + margin, cross_extent, extent)
-                    offset <- offset + outer_extent + widgets[index].spacing * scale
+                    offset <- offset + outer_extent + widgets[index].spacing * scale + gap_extra
                 else:
                     collapse(walk)
                 walk <- widgets[walk].next_sibling

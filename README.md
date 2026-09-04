@@ -64,6 +64,8 @@ because a module member's symbol carries its module and those names cannot move.
   Per-widget cross-axis alignment supports start, center, end, and stretch.
   Optional maximum sizes cap both stretching and weighted growth; unused growth
   is redistributed among uncapped siblings rather than leaving accidental gaps.
+  Containers can distribute remaining main-axis room at the start, center, end,
+  or between children.
   Measure runs bottom-up, arrange top-down.
   Dynamic label text and typography changes are remeasured before the next
   layout, so localization and live status content cannot retain stale bounds.
