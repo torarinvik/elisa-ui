@@ -64,7 +64,6 @@ extern size_t elisa_appkit_canvas_tracking_options(void);
 static NSWindow *elisa_canvas_window;
 static ElisaCanvasView *elisa_canvas_view;
 static NSMutableArray *elisa_accessibility_children;
-static NSMenu *elisa_canvas_menu_bar;
 static NSTimer *elisa_canvas_animation_timer;
 
 // Cursor objects are Cocoa singletons. Return opaque, non-owning pointers so
@@ -458,21 +457,22 @@ void elisa_appkit_canvas_center(void) {
     if (elisa_canvas_window != nil) [elisa_canvas_window center];
 }
 
-void elisa_appkit_canvas_menus_begin(void) {
-    elisa_canvas_menu_bar = [NSMenu new];
+size_t elisa_appkit_canvas_menus_begin(void) {
+    return (size_t)(__bridge_retained void *)[NSMenu new];
 }
 
 // Menu labels arrive as borrowed opaque CFStrings created by Elisa. Cocoa
 // retains them while creating the menu item; the bridge does not decode UTF-8.
-size_t elisa_appkit_canvas_menu_add(size_t title, size_t emptyKeyEquivalent) {
-    if (elisa_canvas_menu_bar == nil) return 0;
+size_t elisa_appkit_canvas_menu_add(size_t menuBar, size_t title, size_t emptyKeyEquivalent) {
+    NSMenu *bar = (__bridge NSMenu *)(void *)menuBar;
+    if (![bar isKindOfClass:[NSMenu class]]) return 0;
     NSString *value = (__bridge NSString *)(void *)title;
     NSString *emptyKey = (__bridge NSString *)(void *)emptyKeyEquivalent;
     if (value == nil || emptyKey == nil) return 0;
     NSMenuItem *root = [[NSMenuItem alloc] initWithTitle:value action:NULL keyEquivalent:emptyKey];
     NSMenu *menu = [[NSMenu alloc] initWithTitle:value];
     [root setSubmenu:menu];
-    [elisa_canvas_menu_bar addItem:root];
+    [bar addItem:root];
     return (size_t)(__bridge void *)menu;
 }
 
@@ -515,8 +515,14 @@ void elisa_appkit_canvas_menu_add_separator(size_t menu) {
     [value addItem:[NSMenuItem separatorItem]];
 }
 
-void elisa_appkit_canvas_menus_commit(void) {
-    if (elisa_canvas_menu_bar != nil) [NSApp setMainMenu:elisa_canvas_menu_bar];
+void elisa_appkit_canvas_menus_commit(size_t menuBar) {
+    NSMenu *bar = (__bridge NSMenu *)(void *)menuBar;
+    if (![bar isKindOfClass:[NSMenu class]]) return;
+    // menus_begin transfers one retain to Elisa. Once AppKit owns the main
+    // menu, consume that retain at scope exit instead of keeping hidden global
+    // state in the bridge.
+    NSMenu *owned = (__bridge_transfer NSMenu *)(void *)menuBar;
+    [NSApp setMainMenu:owned];
 }
 
 // Clipboard writes arrive as a borrowed opaque CFString created by Elisa.
