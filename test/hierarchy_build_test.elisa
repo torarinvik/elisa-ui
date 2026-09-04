@@ -121,4 +121,39 @@ def main() -> i64:
             _:
                 fail("text box builder kind")
 
+        # Public builders normalize hostile inputs before they enter the
+        # retained hierarchy. This keeps application code on the same
+        # nonnegative/range-safe contract as the flat API and the layout pass.
+        invalid_row: Widget = row(-8.0, -3.0, panel)
+        match invalid_row:
+            Container.Box(axis, padding, spacing, fill):
+                if padding != 0.0 or spacing != 0.0:
+                    fail("row builder clamps geometry")
+            _:
+                fail("row builder kind")
+
+        invalid_grid: Widget = grid(0, -4.0, -2.0, panel)
+        match invalid_grid:
+            Container.Grid(columns, padding, spacing, fill):
+                if columns != 1 or padding != 0.0 or spacing != 0.0:
+                    fail("grid builder clamps geometry")
+            _:
+                fail("grid builder kind")
+
+        invalid_label: Widget = label("invalid", -10.0, panel)
+        match invalid_label:
+            Control.Label(text, size, ink):
+                if size != 0.0 or invalid_label.min_width != 0.0 or invalid_label.min_height != 0.0:
+                    fail("label builder clamps metrics")
+            _:
+                fail("label builder kind")
+
+        invalid_gauge: Widget = gauge(2.0, panel, accent)
+        match invalid_gauge:
+            Control.Gauge(fraction, track, bar):
+                if fraction != 1.0:
+                    fail("gauge builder clamps fraction")
+            _:
+                fail("gauge builder kind")
+
         return failures.i64()
