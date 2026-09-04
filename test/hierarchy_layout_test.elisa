@@ -43,6 +43,20 @@ def check(name: cstr, actual: f32, expected: f32) -> void:
 def grey(v: u8) -> UiCore::Color:
     return UiCore::Color{r: v, g: v, b: v, a: 255}
 
+def command_rect_width(index: usize) -> f32:
+    match UiCore::command_at(index):
+        UiCore::Command.FillRect(rect, color):
+            return rect.size.width
+        _:
+            return -1.0
+
+def command_rect_origin_x(index: usize) -> f32:
+    match UiCore::command_at(index):
+        UiCore::Command.FillRect(rect, color):
+            return rect.origin.x
+        _:
+            return -1.0
+
 # A row of two buttons inside a padded panel:
 #
 #   Box(row, padding 10, spacing 5)
@@ -162,5 +176,32 @@ def main() -> i64:
         # UiFlat::layout and keeping hit testing's box invariant total.
         layout(tight_grid, -5.0, -3.0)
         test_failures <- test_failures + 1 if tight_grid.width < 0.0 or tight_grid.height < 0.0
+
+        # Direct hierarchy painting follows the same normalized value contract
+        # as native controls and UiFlat: a gauge cannot fill past its frame.
+        gauge: Widget = Control.Gauge(min_width: 40.0, min_height: 10.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, fraction: 2.0, track: grey(20), bar: grey(200))
+        layout(gauge, 100.0, 20.0)
+        UiCore::begin_frame()
+        paint(gauge)
+        if UiCore::command_count() != 2:
+            test_failures <- test_failures + 1
+            _ = puts("gauge emits track and bar")
+        if UiCore::command_count() > 1:
+            bar_width: f32 = command_rect_width(1)
+            if bar_width > gauge.width:
+                test_failures <- test_failures + 1
+                _ = puts("gauge bar is clamped to its frame")
+
+        # Reversed slider ranges are normalized before the knob is positioned,
+        # so an invalid range cannot place the knob outside its track.
+        slider: Widget = Control.Slider(min_width: 40.0, min_height: 10.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, value: 5.0, low: 10.0, high: 0.0, track: grey(20), knob: grey(200))
+        layout(slider, 100.0, 20.0)
+        UiCore::begin_frame()
+        paint(slider)
+        if UiCore::command_count() > 1:
+            knob_x: f32 = command_rect_origin_x(1)
+            if knob_x < slider.x or knob_x + slider.height > slider.x + slider.width:
+                test_failures <- test_failures + 1
+                _ = puts("slider knob stays inside its frame")
 
         return test_failures.i64()

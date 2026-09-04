@@ -198,6 +198,24 @@ extend UiWidgets:
         def nonnegative(value: f32) -> f32:
             return value if value > 0.0 else 0.0
 
+        # Value-bearing controls share the same normalized range contract as
+        # UiControls and UiFlat. Keep direct hierarchy painting from drawing
+        # past its box when an application supplies an out-of-range value.
+        def normalized_fraction(value: f32) -> f32:
+            return 0.0 if value < 0.0 else (1.0 if value > 1.0 else value)
+
+        def normalized_slider_ratio(value: f32, low: f32, high: f32) -> f32:
+            lower: mutable f32 = low
+            upper: mutable f32 = high
+            if upper < lower:
+                swap: f32 = lower
+                lower <- upper
+                upper <- swap
+            span: f32 = upper - lower
+            return 0.0 if span <= 0.0
+            normalized: f32 = (value - lower) / span
+            return normalized_fraction(normalized)
+
         # How many children a node has. Walks the sibling chain rather than
         # storing a count, so adding or removing a child needs no bookkeeping.
         def child_count(w: Widget) -> f32:
@@ -470,11 +488,10 @@ extend UiWidgets:
                     text_y: f32 = box_y + (box_height - ui_text_line_height(size)) / 2.0
                     UiCore::draw(UiCore::TextRun(UiCore::Vec2(box_x, text_y), size, text), ink)
                 Control.Gauge(fraction, track, bar):
-                    filled: f32 = box_width * fraction
+                    filled: f32 = box_width * normalized_fraction(fraction)
                     UiCore::fill(UiCore::Rect(box_x, box_y, filled, box_height), bar) if filled > 0.0
                 Control.Slider(value, low, high, track, knob):
-                    span: f32 = high - low
-                    ratio: f32 = (value - low) / span if span > 0.0 else 0.0
+                    ratio: f32 = normalized_slider_ratio(value, low, high)
                     knob_x: f32 = box_x + (box_width - box_height) * ratio
                     UiCore::fill(UiCore::Rect(knob_x, box_y, box_height, box_height), knob)
                 Control.TextBox(text, caret, size, ink, fill):
