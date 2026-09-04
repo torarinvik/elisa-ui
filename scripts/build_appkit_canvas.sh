@@ -15,7 +15,7 @@ mkdir -p "$ROOT/build"
 clang -c -fobjc-arc -Wall -Wextra -Werror -o "$ROOT/build/appkit_canvas_shim.o" "$ROOT/src/platform/appkit/appkit_canvas_shim.m"
 bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ROOT/build/${EXAMPLE}_appkit_canvas.o" "$ENTRY"
 clang -Wl,-dead_strip -o "$ROOT/build/${EXAMPLE}_appkit_canvas" \
-  "$ROOT/build/${EXAMPLE}_appkit_canvas.o" "$ROOT/build/appkit_canvas_shim.o" "$RUNTIME" -framework Cocoa -framework CoreText
+  "$ROOT/build/${EXAMPLE}_appkit_canvas.o" "$ROOT/build/appkit_canvas_shim.o" "$RUNTIME" -framework Cocoa -framework CoreText -framework CoreGraphics
 
 # Package the same binary as a real macOS application. Keeping the raw binary
 # above is useful to tests and debuggers; the bundle supplies Finder/Dock identity,
