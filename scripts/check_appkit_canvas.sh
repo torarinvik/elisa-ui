@@ -85,6 +85,10 @@ if grep -Eq 'backing:NSBackingStoreBuffered' "$ROOT/src/platform/appkit/appkit_c
   echo "appkit canvas: backing-store policy leaked back into Objective-C constructors" >&2
   exit 1
 fi
+if grep -Eq 'forType:NSPasteboardTypeString|stringForType:NSPasteboardTypeString|colorSpaceName:NSCalibratedRGBColorSpace|representationUsingType:NSBitmapImageFileTypePNG' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: pasteboard or snapshot encoding policy leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'if \(activate\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: visible activation policy leaked back into Objective-C" >&2
   exit 1
@@ -116,6 +120,9 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_window_style_closable$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_window_style_miniaturizable$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_window_style_resizable$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_backing_store_buffered$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pasteboard_type_string$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_bitmap_color_space_calibrated_rgb$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_bitmap_file_type_png$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_activation_policy_regular$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_activation_policy_prohibited$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_tabbing_mode_preferred$'

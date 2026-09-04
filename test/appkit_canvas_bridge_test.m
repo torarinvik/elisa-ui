@@ -128,13 +128,15 @@ int elisa_appkit_canvas_perform_text_action(int action) {
     if (action == 2 || action == 3) {
         size_t length = test_selection_end - test_selection_start;
         if (!elisa_appkit_canvas_clipboard_write(
-                (const unsigned char *)test_text + test_selection_start, length)) return 0;
+                (const unsigned char *)test_text + test_selection_start, length,
+                elisa_appkit_canvas_pasteboard_type_string())) return 0;
         if (action == 3) elisa_appkit_canvas_insert_text("", 0);
         return action == 3;
     }
     if (action == 4) {
         unsigned char buffer[sizeof(test_text)];
-        size_t length = elisa_appkit_canvas_clipboard_read(buffer, sizeof(buffer));
+        size_t length = elisa_appkit_canvas_clipboard_read(buffer, sizeof(buffer),
+                                                           elisa_appkit_canvas_pasteboard_type_string());
         if (length == 0) return 0;
         elisa_appkit_canvas_insert_text((const char *)buffer, length);
         return 1;
@@ -288,7 +290,9 @@ int main(void) {
         if (require([[applicationSubmenu itemAtIndex:2].keyEquivalent isEqualToString:@"q"], @"menu key equivalent mapped incorrectly")) return 1;
         if (require([applicationSubmenu itemAtIndex:2].keyEquivalentModifierMask == NSEventModifierFlagCommand, @"native menu modifier mask was not preserved")) return 1;
         if (require(NSApp.windowsMenu == [NSApp.mainMenu itemAtIndex:1].submenu, @"window menu designation failed")) return 1;
-        if (require(elisa_appkit_canvas_present_headless(), @"off-screen presentation failed")) return 1;
+        if (require(elisa_appkit_canvas_present_headless(
+                        elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(),
+                        elisa_appkit_canvas_bitmap_file_type_png()), @"off-screen presentation failed")) return 1;
         if (require(elisa_canvas_frame_count > 0, @"off-screen frame did not draw")) return 1;
         NSNotification *focusNotification = [NSNotification notificationWithName:NSWindowDidResignKeyNotification object:elisa_canvas_window];
         [elisa_canvas_delegate windowDidResignKey:focusNotification];
@@ -296,7 +300,9 @@ int main(void) {
         [elisa_canvas_delegate windowDidBecomeKey:focusNotification];
         if (require(test_window_focused == 1, @"window focus gain did not reach Elisa")) return 1;
         elisa_appkit_canvas_set_snapshot_path("/elisa-ui-missing-directory/frame.png");
-        if (require(!elisa_appkit_canvas_present_headless(), @"snapshot failure did not cross the FFI boundary")) return 1;
+        if (require(!elisa_appkit_canvas_present_headless(
+                         elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(),
+                         elisa_appkit_canvas_bitmap_file_type_png()), @"snapshot failure did not cross the FFI boundary")) return 1;
         elisa_appkit_canvas_set_snapshot_path(NULL);
         NSEvent *singleClick = [NSEvent mouseEventWithType:NSEventTypeLeftMouseDown
             location:NSMakePoint(40, 20) modifierFlags:0 timestamp:0
@@ -365,7 +371,9 @@ int main(void) {
         if (require(NSEqualRanges(elisa_canvas_view.selectedRange, NSMakeRange(0, 6)), @"Select All did not cover the field")) return 1;
         [elisa_canvas_view copy:nil];
         if (require([[[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString] isEqualToString:@"Worldé"], @"Copy did not write selected Unicode text")) return 1;
-        if (require(elisa_appkit_canvas_clipboard_write((const unsigned char *)"", 0), @"empty clipboard write failed")) return 1;
+        if (require(elisa_appkit_canvas_clipboard_write(
+                        (const unsigned char *)"", 0,
+                        elisa_appkit_canvas_pasteboard_type_string()), @"empty clipboard write failed")) return 1;
         if (require([[[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString] isEqualToString:@""], @"empty clipboard write did not clear the pasteboard")) return 1;
         [elisa_canvas_view insertText:@"Next" replacementRange:NSMakeRange(NSNotFound, 0)];
         if (require(strcmp(test_text, "Next") == 0, @"typing did not replace the selection")) return 1;
@@ -395,7 +403,9 @@ int main(void) {
         test_slider_value = 0.75f;
         test_text_focused = 0;
         test_selection_start = test_selection_end = 0;
-        if (require(elisa_appkit_canvas_present_headless(), @"second off-screen presentation failed")) return 1;
+        if (require(elisa_appkit_canvas_present_headless(
+                        elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(),
+                        elisa_appkit_canvas_bitmap_file_type_png()), @"second off-screen presentation failed")) return 1;
         ElisaAccessibilityElement *second = elisa_accessibility_children[0];
         ElisaAccessibilityElement *secondTextField = elisa_accessibility_children[1];
         ElisaAccessibilityElement *secondSecureField = elisa_accessibility_children[2];

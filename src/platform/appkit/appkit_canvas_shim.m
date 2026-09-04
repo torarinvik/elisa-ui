@@ -360,6 +360,18 @@ int elisa_appkit_canvas_backing_store_buffered(void) {
     return (int)NSBackingStoreBuffered;
 }
 
+size_t elisa_appkit_canvas_pasteboard_type_string(void) {
+    return (size_t)(__bridge void *)NSPasteboardTypeString;
+}
+
+size_t elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(void) {
+    return (size_t)(__bridge void *)NSCalibratedRGBColorSpace;
+}
+
+int elisa_appkit_canvas_bitmap_file_type_png(void) {
+    return (int)NSBitmapImageFileTypePNG;
+}
+
 int elisa_appkit_canvas_activation_policy_regular(void) {
     return (int)NSApplicationActivationPolicyRegular;
 }
@@ -513,18 +525,22 @@ void elisa_appkit_canvas_set_snapshot_path(const char *path) {
     elisa_canvas_snapshot_path = path == NULL ? nil : [NSString stringWithUTF8String:path];
 }
 
-int elisa_appkit_canvas_clipboard_write(const unsigned char *bytes, size_t length) {
-    if (bytes == NULL) return 0;
+int elisa_appkit_canvas_clipboard_write(const unsigned char *bytes, size_t length,
+                                       size_t pasteboard_type) {
+    if (bytes == NULL || pasteboard_type == 0) return 0;
     NSString *text = [[NSString alloc] initWithBytes:bytes length:length encoding:NSUTF8StringEncoding];
     if (text == nil) return 0;
     NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
     [pasteboard clearContents];
-    return [pasteboard setString:text forType:NSPasteboardTypeString];
+    NSString *type = (__bridge NSString *)(void *)pasteboard_type;
+    return type == nil ? 0 : [pasteboard setString:text forType:type];
 }
 
-size_t elisa_appkit_canvas_clipboard_read(unsigned char *buffer, size_t capacity) {
-    if (buffer == NULL || capacity == 0) return 0;
-    NSString *text = [[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString];
+size_t elisa_appkit_canvas_clipboard_read(unsigned char *buffer, size_t capacity,
+                                          size_t pasteboard_type) {
+    if (buffer == NULL || capacity == 0 || pasteboard_type == 0) return 0;
+    NSString *type = (__bridge NSString *)(void *)pasteboard_type;
+    NSString *text = type == nil ? nil : [[NSPasteboard generalPasteboard] stringForType:type];
     if (text == nil) return 0;
     NSData *utf8 = [text dataUsingEncoding:NSUTF8StringEncoding];
     size_t take = MIN((size_t)utf8.length, capacity);
@@ -561,7 +577,7 @@ int elisa_appkit_canvas_present(void) {
 void elisa_appkit_canvas_activate(void) {
     [NSApp activateIgnoringOtherApps:YES];
 }
-int elisa_appkit_canvas_present_headless(void) {
+int elisa_appkit_canvas_present_headless(size_t color_space, int image_type) {
     // Exercise the real frame, painter and semantic bridge without ordering
     // a window onscreen or stealing focus from the user's current app.
     NSUInteger before = elisa_canvas_frame_count;
@@ -571,13 +587,13 @@ int elisa_appkit_canvas_present_headless(void) {
         pixelsWide:MAX(1, (NSInteger)ceil(bounds.size.width))
         pixelsHigh:MAX(1, (NSInteger)ceil(bounds.size.height))
         bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO
-        colorSpaceName:NSCalibratedRGBColorSpace
+        colorSpaceName:(__bridge NSString *)(void *)color_space
         bitmapFormat:0 bytesPerRow:0 bitsPerPixel:0];
     NSGraphicsContext *graphics = [NSGraphicsContext graphicsContextWithBitmapImageRep:bitmap];
     [elisa_canvas_view displayRectIgnoringOpacity:bounds inContext:graphics];
     if (elisa_canvas_frame_count <= before) return 0;
     if (elisa_canvas_snapshot_path.length > 0) {
-        NSData *png = [bitmap representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+        NSData *png = [bitmap representationUsingType:(NSBitmapImageFileType)image_type properties:@{}];
         if (png == nil || ![png writeToFile:elisa_canvas_snapshot_path atomically:YES]) return 0;
     }
     return 1;
