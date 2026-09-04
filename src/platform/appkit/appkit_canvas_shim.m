@@ -54,6 +54,9 @@ extern size_t elisa_appkit_canvas_range_location(size_t location);
 extern size_t elisa_appkit_canvas_range_length(size_t location, size_t length);
 extern const unsigned char *elisa_appkit_canvas_range_pointer(size_t location);
 extern size_t elisa_appkit_canvas_range_byte_length(size_t location, size_t length);
+extern int elisa_appkit_canvas_view_is_flipped(void);
+extern int elisa_appkit_canvas_view_accepts_first_responder(void);
+extern int elisa_appkit_canvas_view_is_accessibility_element(void);
 
 @class ElisaCanvasView;
 @class ElisaAccessibilityElement;
@@ -161,9 +164,9 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
 }
 
 @implementation ElisaCanvasView
-- (BOOL)isFlipped { return YES; }
-- (BOOL)acceptsFirstResponder { return YES; }
-- (BOOL)isAccessibilityElement { return NO; }
+- (BOOL)isFlipped { return elisa_appkit_canvas_view_is_flipped() != 0; }
+- (BOOL)acceptsFirstResponder { return elisa_appkit_canvas_view_accepts_first_responder() != 0; }
+- (BOOL)isAccessibilityElement { return elisa_appkit_canvas_view_is_accessibility_element() != 0; }
 - (NSArray *)accessibilityChildren { return elisa_accessibility_children ?: @[]; }
 - (NSArray *)accessibilityChildrenInNavigationOrder { return elisa_accessibility_children ?: @[]; }
 - (NSTrackingAreaOptions)trackingOptions {

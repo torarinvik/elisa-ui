@@ -113,6 +113,10 @@ if grep -Eq 'elisa_appkit_canvas_arrow_cursor\(\)[[:space:]]*set' "$ROOT/src/pla
   echo "appkit canvas: leave-cursor policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq '\- \(BOOL\)(isFlipped|acceptsFirstResponder|isAccessibilityElement) \{ return (YES|NO); \}' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: view contract policy leaked back into Objective-C" >&2
+  exit 1
+fi
 
 # These callbacks cross the Objective-C/Elisa boundary and must survive dead
 # stripping in the packaged product.
@@ -123,6 +127,9 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_up$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_leave$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_scroll$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_cursor_leave$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_view_is_flipped$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_view_accepts_first_responder$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_view_is_accessibility_element$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_window_style_titled$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_window_style_closable$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_window_style_miniaturizable$'

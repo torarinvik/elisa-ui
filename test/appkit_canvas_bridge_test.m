@@ -106,6 +106,9 @@ int elisa_appkit_canvas_accessibility_adjust(size_t index, int direction) {
 }
 void elisa_appkit_canvas_cancel_interaction(void) {}
 int elisa_appkit_canvas_accepts_text(void) { return 1; }
+int elisa_appkit_canvas_view_is_flipped(void) { return 1; }
+int elisa_appkit_canvas_view_accepts_first_responder(void) { return 1; }
+int elisa_appkit_canvas_view_is_accessibility_element(void) { return 0; }
 int elisa_appkit_canvas_allows_text_readback(void) { return test_allows_readback; }
 int elisa_appkit_canvas_text_action_enabled(int action) {
     if (action == 5 || action == 6) return 1;
@@ -273,6 +276,9 @@ int main(void) {
                                       NSTrackingInVisibleRect,
                                       NSWindowTabbingModeDisallowed, 0,
                                       NSApplicationActivationPolicyProhibited)) return 1;
+        if (require([elisa_canvas_view isFlipped], @"canvas coordinate policy was not supplied by Elisa")) return 1;
+        if (require([elisa_canvas_view acceptsFirstResponder], @"canvas focus policy was not supplied by Elisa")) return 1;
+        if (require(![elisa_canvas_view isAccessibilityElement], @"canvas semantic-root policy was not supplied by Elisa")) return 1;
         elisa_appkit_canvas_center();
         elisa_appkit_canvas_menus_begin();
         int applicationMenu = elisa_appkit_canvas_menu_add("test", 4);
