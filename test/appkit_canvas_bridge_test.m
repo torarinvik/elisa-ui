@@ -185,7 +185,25 @@ void elisa_appkit_canvas_update_marked_text(const char *bytes, size_t length, si
     test_selection_end = start + [[marked substringToIndex:relativeEnd] lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
 }
 void elisa_appkit_canvas_unmark_text(void) { test_marked_start = test_marked_end = 0; }
-void elisa_appkit_canvas_text_selector(int selectorToken) { test_text_selector = selectorToken; }
+static int test_selector_token(const char *name) {
+    if (strcmp(name, "moveLeft:") == 0) return 1;
+    if (strcmp(name, "moveRight:") == 0) return 2;
+    if (strcmp(name, "moveLeftAndModifySelection:") == 0) return 3;
+    if (strcmp(name, "moveRightAndModifySelection:") == 0) return 4;
+    if (strcmp(name, "moveWordRightAndModifySelection:") == 0) return 17;
+    if (strcmp(name, "deleteWordBackward:") == 0) return 18;
+    return 0;
+}
+void elisa_appkit_canvas_text_selector(const char *selectorName) { test_text_selector = test_selector_token(selectorName); }
+int elisa_appkit_canvas_text_action(const char *selectorName) {
+    if (strcmp(selectorName, "selectAll:") == 0) return 1;
+    if (strcmp(selectorName, "copy:") == 0) return 2;
+    if (strcmp(selectorName, "cut:") == 0) return 3;
+    if (strcmp(selectorName, "paste:") == 0) return 4;
+    if (strcmp(selectorName, "undo:") == 0) return 5;
+    if (strcmp(selectorName, "redo:") == 0) return 6;
+    return 0;
+}
 float elisa_appkit_canvas_character_x(size_t location) { return 10.0f + (float)location * 5.0f; }
 float elisa_appkit_canvas_caret_y(void) { return 50.0f; }
 float elisa_appkit_canvas_caret_height(void) { return 16.0f; }
@@ -218,12 +236,12 @@ int main(void) {
         if (!elisa_appkit_canvas_open("test", 4, 200, 100, 15, 0, 0, 1, 1)) return 1;
         elisa_appkit_canvas_menus_begin("test", 4);
         int applicationMenu = elisa_appkit_canvas_menu_add("test", 4);
-        elisa_appkit_canvas_menu_add_application_item(applicationMenu, "About ", 6, 1, 0, 0);
+        elisa_appkit_canvas_menu_add_application_item(applicationMenu, "About ", 6, "orderFrontStandardAboutPanel:", 0, 0);
         elisa_appkit_canvas_menu_add_separator(applicationMenu);
-        elisa_appkit_canvas_menu_add_application_item(applicationMenu, "Quit ", 5, 5, 'q', NSEventModifierFlagCommand);
+        elisa_appkit_canvas_menu_add_application_item(applicationMenu, "Quit ", 5, "terminate:", 'q', NSEventModifierFlagCommand);
         int windowMenu = elisa_appkit_canvas_menu_add("Window", 6);
         elisa_appkit_canvas_menu_set_windows(windowMenu);
-        elisa_appkit_canvas_menu_add_item(windowMenu, "Minimize", 8, 12, 'm', NSEventModifierFlagCommand);
+        elisa_appkit_canvas_menu_add_item(windowMenu, "Minimize", 8, "performMiniaturize:", 'm', NSEventModifierFlagCommand);
         elisa_appkit_canvas_menus_commit();
         if (require(NSApp.mainMenu.numberOfItems == 2, @"declarative menu roots missing")) return 1;
         NSMenu *applicationSubmenu = [NSApp.mainMenu itemAtIndex:0].submenu;

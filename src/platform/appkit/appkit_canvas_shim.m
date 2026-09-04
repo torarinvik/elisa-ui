@@ -5,6 +5,7 @@
 // to replay that command batch into the current context.
 
 #import <Cocoa/Cocoa.h>
+#import <objc/runtime.h>
 
 extern void elisa_appkit_canvas_frame(size_t context);
 extern void elisa_appkit_canvas_resize(float width, float height);
@@ -38,7 +39,8 @@ extern void elisa_appkit_canvas_update_marked_text(const char *bytes, size_t len
                                                    size_t replacementLocation, size_t replacementLength,
                                                    int hasReplacement);
 extern void elisa_appkit_canvas_unmark_text(void);
-extern void elisa_appkit_canvas_text_selector(int selectorToken);
+extern void elisa_appkit_canvas_text_selector(const char *selectorName);
+extern int elisa_appkit_canvas_text_action(const char *selectorName);
 extern int elisa_appkit_canvas_text_action_enabled(int action);
 extern int elisa_appkit_canvas_perform_text_action(int action);
 extern float elisa_appkit_canvas_character_x(size_t location);
@@ -145,39 +147,9 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
 @end
 static ElisaCanvasDelegate *elisa_canvas_delegate;
 
-static SEL elisa_menu_action(int action) {
-    switch (action) {
-        case 1: return @selector(orderFrontStandardAboutPanel:);
-        case 2: return @selector(hide:);
-        case 3: return @selector(hideOtherApplications:);
-        case 4: return @selector(unhideAllApplications:);
-        case 5: return @selector(terminate:);
-        case 6: return @selector(undo:);
-        case 7: return @selector(redo:);
-        case 8: return @selector(cut:);
-        case 9: return @selector(copy:);
-        case 10: return @selector(paste:);
-        case 11: return @selector(selectAll:);
-        case 12: return @selector(performMiniaturize:);
-        case 13: return @selector(performZoom:);
-        case 14: return @selector(arrangeInFront:);
-        default: return NULL;
-    }
-}
-
 static int elisa_event_character(NSEvent *event) {
     NSString *chars = [event charactersIgnoringModifiers];
     return chars.length == 1 ? [chars characterAtIndex:0] : 0;
-}
-
-static int elisa_text_action(SEL selector) {
-    if (selector == @selector(selectAll:)) return 1;
-    if (selector == @selector(copy:)) return 2;
-    if (selector == @selector(cut:)) return 3;
-    if (selector == @selector(paste:)) return 4;
-    if (selector == @selector(undo:)) return 5;
-    if (selector == @selector(redo:)) return 6;
-    return 0;
 }
 
 @implementation ElisaCanvasView
@@ -271,29 +243,7 @@ static int elisa_text_action(SEL selector) {
                                     hasReplacement);
 }
 - (void)doCommandBySelector:(SEL)selector {
-    int token = 0;
-    if (selector == @selector(moveLeft:)) token = 1;
-    else if (selector == @selector(moveRight:)) token = 2;
-    else if (selector == @selector(moveLeftAndModifySelection:)) token = 3;
-    else if (selector == @selector(moveRightAndModifySelection:)) token = 4;
-    else if (selector == @selector(moveToBeginningOfLine:)) token = 5;
-    else if (selector == @selector(moveToEndOfLine:)) token = 6;
-    else if (selector == @selector(moveToBeginningOfLineAndModifySelection:)) token = 7;
-    else if (selector == @selector(moveToEndOfLineAndModifySelection:)) token = 8;
-    else if (selector == @selector(deleteBackward:)) token = 9;
-    else if (selector == @selector(deleteForward:)) token = 10;
-    else if (selector == @selector(insertNewline:)) token = 11;
-    else if (selector == @selector(insertTab:)) token = 12;
-    else if (selector == @selector(insertBacktab:)) token = 13;
-    else if (selector == @selector(moveWordLeft:)) token = 14;
-    else if (selector == @selector(moveWordRight:)) token = 15;
-    else if (selector == @selector(moveWordLeftAndModifySelection:)) token = 16;
-    else if (selector == @selector(moveWordRightAndModifySelection:)) token = 17;
-    else if (selector == @selector(deleteWordBackward:)) token = 18;
-    else if (selector == @selector(deleteWordForward:)) token = 19;
-    if (token != 0) {
-        elisa_appkit_canvas_text_selector(token);
-    }
+    elisa_appkit_canvas_text_selector(sel_getName(selector));
 }
 - (void)selectAll:(id)sender {
     (void)sender;
@@ -308,7 +258,7 @@ static int elisa_text_action(SEL selector) {
     (void)elisa_appkit_canvas_perform_text_action(6);
 }
 - (BOOL)validateUserInterfaceItem:(id<NSValidatedUserInterfaceItem>)item {
-    int action = elisa_text_action(item.action);
+    int action = elisa_appkit_canvas_text_action(sel_getName(item.action));
     if (action != 0) return elisa_appkit_canvas_text_action_enabled(action) != 0;
     return YES;
 }
@@ -448,30 +398,31 @@ void elisa_appkit_canvas_menu_set_windows(int menuIndex) {
 }
 
 static void elisa_appkit_canvas_menu_add_item_title(int menuIndex, NSString *title,
-                                                     int action, int key, size_t modifiers) {
+                                                     const char *actionName, int key, size_t modifiers) {
     if (menuIndex < 0 || (NSUInteger)menuIndex >= elisa_canvas_menus.count) return;
     if (title == nil) return;
+    SEL action = actionName == NULL || actionName[0] == '\0' ? NULL : sel_registerName(actionName);
     NSString *equivalent = @"";
     if (key > 0 && key <= UINT16_MAX) {
         unichar character = (unichar)key;
         equivalent = [NSString stringWithCharacters:&character length:1];
     }
     NSMenuItem *item = [elisa_canvas_menus[menuIndex]
-        addItemWithTitle:title action:elisa_menu_action(action) keyEquivalent:equivalent];
+        addItemWithTitle:title action:action keyEquivalent:equivalent];
     item.keyEquivalentModifierMask = (NSEventModifierFlags)modifiers;
 }
 
 void elisa_appkit_canvas_menu_add_item(int menuIndex, const char *bytes, size_t length,
-                                        int action, int key, size_t modifiers) {
+                                        const char *actionName, int key, size_t modifiers) {
     NSString *title = [[NSString alloc] initWithBytes:bytes length:length encoding:NSUTF8StringEncoding];
-    elisa_appkit_canvas_menu_add_item_title(menuIndex, title, action, key, modifiers);
+    elisa_appkit_canvas_menu_add_item_title(menuIndex, title, actionName, key, modifiers);
 }
 
 void elisa_appkit_canvas_menu_add_application_item(int menuIndex, const char *bytes, size_t length,
-                                                    int action, int key, size_t modifiers) {
+                                                    const char *actionName, int key, size_t modifiers) {
     NSString *title = [[NSString alloc] initWithBytes:bytes length:length encoding:NSUTF8StringEncoding];
     if (title != nil) title = [title stringByAppendingString:elisa_canvas_application_name];
-    elisa_appkit_canvas_menu_add_item_title(menuIndex, title, action, key, modifiers);
+    elisa_appkit_canvas_menu_add_item_title(menuIndex, title, actionName, key, modifiers);
 }
 
 size_t elisa_appkit_canvas_modifier_command(void) { return NSEventModifierFlagCommand; }

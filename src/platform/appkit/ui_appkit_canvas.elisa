@@ -9,8 +9,8 @@ extern elisa_appkit_canvas_open(title: cstr, length: usize, width: f32, height: 
 extern elisa_appkit_canvas_menus_begin(title: cstr, length: usize) -> void
 extern elisa_appkit_canvas_menu_add(title: cstr, length: usize) -> i32
 extern elisa_appkit_canvas_menu_set_windows(menu: i32) -> void
-extern elisa_appkit_canvas_menu_add_item(menu: i32, title: cstr, length: usize, action: i32, key: i32, modifiers: usize) -> void
-extern elisa_appkit_canvas_menu_add_application_item(menu: i32, title: cstr, length: usize, action: i32, key: i32, modifiers: usize) -> void
+extern elisa_appkit_canvas_menu_add_item(menu: i32, title: cstr, length: usize, action: cstr, key: i32, modifiers: usize) -> void
+extern elisa_appkit_canvas_menu_add_application_item(menu: i32, title: cstr, length: usize, action: cstr, key: i32, modifiers: usize) -> void
 extern elisa_appkit_canvas_menu_add_separator(menu: i32) -> void
 extern elisa_appkit_canvas_menus_commit() -> void
 extern elisa_appkit_canvas_modifier_command() -> usize
@@ -258,6 +258,23 @@ module UiAppKitCanvas:
             Zoom = 13
             BringAllToFront = 14
 
+        def menu_action_name(action: MenuAction) -> cstr:
+            return "orderFrontStandardAboutPanel:" if action == MenuAction.About
+            return "hide:" if action == MenuAction.Hide
+            return "hideOtherApplications:" if action == MenuAction.HideOthers
+            return "unhideAllApplications:" if action == MenuAction.ShowAll
+            return "terminate:" if action == MenuAction.Quit
+            return "undo:" if action == MenuAction.Undo
+            return "redo:" if action == MenuAction.Redo
+            return "cut:" if action == MenuAction.Cut
+            return "copy:" if action == MenuAction.Copy
+            return "paste:" if action == MenuAction.Paste
+            return "selectAll:" if action == MenuAction.SelectAll
+            return "performMiniaturize:" if action == MenuAction.Minimize
+            return "performZoom:" if action == MenuAction.Zoom
+            return "arrangeInFront:" if action == MenuAction.BringAllToFront
+            return ""
+
         const enum MenuModifiers of i32:
             None = 0
             Command = 1
@@ -351,30 +368,30 @@ module UiAppKitCanvas:
         def install_standard_menus(title: cstr, length: usize) -> void:
             elisa_appkit_canvas_menus_begin(title, length)
             application: i32 = elisa_appkit_canvas_menu_add(title, length)
-            elisa_appkit_canvas_menu_add_application_item(application, "About ", 6, MenuAction.About.i32(), 0, menu_modifiers(MenuModifiers.None))
+            elisa_appkit_canvas_menu_add_application_item(application, "About ", 6, menu_action_name(MenuAction.About), 0, menu_modifiers(MenuModifiers.None))
             elisa_appkit_canvas_menu_add_separator(application)
-            elisa_appkit_canvas_menu_add_application_item(application, "Hide ", 5, MenuAction.Hide.i32(), menu_key(UiCore::Key.H), menu_modifiers(MenuModifiers.Command))
-            elisa_appkit_canvas_menu_add_item(application, "Hide Others", 11, MenuAction.HideOthers.i32(), menu_key(UiCore::Key.H), menu_modifiers(MenuModifiers.CommandOption))
-            elisa_appkit_canvas_menu_add_item(application, "Show All", 8, MenuAction.ShowAll.i32(), 0, menu_modifiers(MenuModifiers.None))
+            elisa_appkit_canvas_menu_add_application_item(application, "Hide ", 5, menu_action_name(MenuAction.Hide), menu_key(UiCore::Key.H), menu_modifiers(MenuModifiers.Command))
+            elisa_appkit_canvas_menu_add_item(application, "Hide Others", 11, menu_action_name(MenuAction.HideOthers), menu_key(UiCore::Key.H), menu_modifiers(MenuModifiers.CommandOption))
+            elisa_appkit_canvas_menu_add_item(application, "Show All", 8, menu_action_name(MenuAction.ShowAll), 0, menu_modifiers(MenuModifiers.None))
             elisa_appkit_canvas_menu_add_separator(application)
-            elisa_appkit_canvas_menu_add_application_item(application, "Quit ", 5, MenuAction.Quit.i32(), menu_key(UiCore::Key.Q), menu_modifiers(MenuModifiers.Command))
+            elisa_appkit_canvas_menu_add_application_item(application, "Quit ", 5, menu_action_name(MenuAction.Quit), menu_key(UiCore::Key.Q), menu_modifiers(MenuModifiers.Command))
 
             edit: i32 = elisa_appkit_canvas_menu_add("Edit", 4)
-            elisa_appkit_canvas_menu_add_item(edit, "Undo", 4, MenuAction.Undo.i32(), menu_key(UiCore::Key.Z), menu_modifiers(MenuModifiers.Command))
-            elisa_appkit_canvas_menu_add_item(edit, "Redo", 4, MenuAction.Redo.i32(), menu_key(UiCore::Key.Z), menu_modifiers(MenuModifiers.CommandShift))
+            elisa_appkit_canvas_menu_add_item(edit, "Undo", 4, menu_action_name(MenuAction.Undo), menu_key(UiCore::Key.Z), menu_modifiers(MenuModifiers.Command))
+            elisa_appkit_canvas_menu_add_item(edit, "Redo", 4, menu_action_name(MenuAction.Redo), menu_key(UiCore::Key.Z), menu_modifiers(MenuModifiers.CommandShift))
             elisa_appkit_canvas_menu_add_separator(edit)
-            elisa_appkit_canvas_menu_add_item(edit, "Cut", 3, MenuAction.Cut.i32(), menu_key(UiCore::Key.X), menu_modifiers(MenuModifiers.Command))
-            elisa_appkit_canvas_menu_add_item(edit, "Copy", 4, MenuAction.Copy.i32(), menu_key(UiCore::Key.C), menu_modifiers(MenuModifiers.Command))
-            elisa_appkit_canvas_menu_add_item(edit, "Paste", 5, MenuAction.Paste.i32(), menu_key(UiCore::Key.V), menu_modifiers(MenuModifiers.Command))
+            elisa_appkit_canvas_menu_add_item(edit, "Cut", 3, menu_action_name(MenuAction.Cut), menu_key(UiCore::Key.X), menu_modifiers(MenuModifiers.Command))
+            elisa_appkit_canvas_menu_add_item(edit, "Copy", 4, menu_action_name(MenuAction.Copy), menu_key(UiCore::Key.C), menu_modifiers(MenuModifiers.Command))
+            elisa_appkit_canvas_menu_add_item(edit, "Paste", 5, menu_action_name(MenuAction.Paste), menu_key(UiCore::Key.V), menu_modifiers(MenuModifiers.Command))
             elisa_appkit_canvas_menu_add_separator(edit)
-            elisa_appkit_canvas_menu_add_item(edit, "Select All", 10, MenuAction.SelectAll.i32(), menu_key(UiCore::Key.A), menu_modifiers(MenuModifiers.Command))
+            elisa_appkit_canvas_menu_add_item(edit, "Select All", 10, menu_action_name(MenuAction.SelectAll), menu_key(UiCore::Key.A), menu_modifiers(MenuModifiers.Command))
 
             window: i32 = elisa_appkit_canvas_menu_add("Window", 6)
             elisa_appkit_canvas_menu_set_windows(window)
-            elisa_appkit_canvas_menu_add_item(window, "Minimize", 8, MenuAction.Minimize.i32(), menu_key(UiCore::Key.M), menu_modifiers(MenuModifiers.Command))
-            elisa_appkit_canvas_menu_add_item(window, "Zoom", 4, MenuAction.Zoom.i32(), 0, menu_modifiers(MenuModifiers.None))
+            elisa_appkit_canvas_menu_add_item(window, "Minimize", 8, menu_action_name(MenuAction.Minimize), menu_key(UiCore::Key.M), menu_modifiers(MenuModifiers.Command))
+            elisa_appkit_canvas_menu_add_item(window, "Zoom", 4, menu_action_name(MenuAction.Zoom), 0, menu_modifiers(MenuModifiers.None))
             elisa_appkit_canvas_menu_add_separator(window)
-            elisa_appkit_canvas_menu_add_item(window, "Bring All to Front", 18, MenuAction.BringAllToFront.i32(), 0, menu_modifiers(MenuModifiers.None))
+            elisa_appkit_canvas_menu_add_item(window, "Bring All to Front", 18, menu_action_name(MenuAction.BringAllToFront), 0, menu_modifiers(MenuModifiers.None))
             elisa_appkit_canvas_menus_commit()
 
     public:
@@ -553,6 +570,39 @@ module UiAppKitCanvas:
 
         def text_selector_modifies_selection(selector: i32) -> bool:
             return selector == 3 or selector == 4 or selector == 7 or selector == 8 or selector == 16 or selector == 17
+
+        # Cocoa sends selector names as immutable runtime strings. The native
+        # shim forwards those names unchanged; Elisa owns their editor meaning.
+        def text_selector_token(selector: cstr) -> i32:
+            return 1 if strcmp(selector, "moveLeft:") == 0
+            return 2 if strcmp(selector, "moveRight:") == 0
+            return 3 if strcmp(selector, "moveLeftAndModifySelection:") == 0
+            return 4 if strcmp(selector, "moveRightAndModifySelection:") == 0
+            return 5 if strcmp(selector, "moveToBeginningOfLine:") == 0
+            return 6 if strcmp(selector, "moveToEndOfLine:") == 0
+            return 7 if strcmp(selector, "moveToBeginningOfLineAndModifySelection:") == 0
+            return 8 if strcmp(selector, "moveToEndOfLineAndModifySelection:") == 0
+            return 9 if strcmp(selector, "deleteBackward:") == 0
+            return 10 if strcmp(selector, "deleteForward:") == 0
+            return 11 if strcmp(selector, "insertNewline:") == 0
+            return 12 if strcmp(selector, "insertTab:") == 0
+            return 13 if strcmp(selector, "insertBacktab:") == 0
+            return 14 if strcmp(selector, "moveWordLeft:") == 0
+            return 15 if strcmp(selector, "moveWordRight:") == 0
+            return 16 if strcmp(selector, "moveWordLeftAndModifySelection:") == 0
+            return 17 if strcmp(selector, "moveWordRightAndModifySelection:") == 0
+            return 18 if strcmp(selector, "deleteWordBackward:") == 0
+            return 19 if strcmp(selector, "deleteWordForward:") == 0
+            return 0
+
+        def text_action_for_selector(selector: cstr) -> i32:
+            return 1 if strcmp(selector, "selectAll:") == 0
+            return 2 if strcmp(selector, "copy:") == 0
+            return 3 if strcmp(selector, "cut:") == 0
+            return 4 if strcmp(selector, "paste:") == 0
+            return 5 if strcmp(selector, "undo:") == 0
+            return 6 if strcmp(selector, "redo:") == 0
+            return 0
 
         # Called by the exported frame callback after the app has rebuilt the
         # semantic nodes for this frame.
