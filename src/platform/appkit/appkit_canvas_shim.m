@@ -134,6 +134,14 @@ static NSString *elisa_appkit_canvas_string(size_t handle) {
     return [object isKindOfClass:[NSString class]] ? object : nil;
 }
 
+// NSTextInputClient permits either NSString or NSAttributedString for edited
+// text. Keep that protocol adaptation typed here; an unrelated object must not
+// be reinterpreted as an NSString and sent across the FFI.
+static NSString *elisa_appkit_canvas_input_string(id input) {
+    if ([input isKindOfClass:[NSAttributedString class]]) return [(NSAttributedString *)input string];
+    return [input isKindOfClass:[NSString class]] ? input : nil;
+}
+
 static NSCursor *elisa_appkit_canvas_cursor(size_t handle) {
     if (handle == 0) return nil;
     id object = (__bridge id)(void *)handle;
@@ -253,8 +261,8 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
     elisa_appkit_canvas_key_up(event.keyCode, (size_t)(__bridge void *)chars);
 }
 - (void)insertText:(id)input replacementRange:(NSRange)replacementRange {
-    NSString *text = [input isKindOfClass:[NSAttributedString class]]
-        ? [(NSAttributedString *)input string] : (NSString *)input;
+    NSString *text = elisa_appkit_canvas_input_string(input);
+    if (text == nil) return;
     elisa_appkit_canvas_commit_text((size_t)(__bridge void *)text,
                                     replacementRange.location, replacementRange.length);
 }
@@ -305,8 +313,8 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
                        elisa_appkit_canvas_selection_length());
 }
 - (void)setMarkedText:(id)text selectedRange:(NSRange)selectedRange replacementRange:(NSRange)replacementRange {
-    NSString *plain = [text isKindOfClass:[NSAttributedString class]]
-        ? [(NSAttributedString *)text string] : (NSString *)text;
+    NSString *plain = elisa_appkit_canvas_input_string(text);
+    if (plain == nil) return;
     elisa_appkit_canvas_update_marked_text((size_t)(__bridge void *)plain,
                                            selectedRange.location, selectedRange.length,
                                            replacementRange.location, replacementRange.length);

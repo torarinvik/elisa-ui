@@ -475,6 +475,12 @@ int main(void) {
         textField.accessibilitySelectedTextRange = NSMakeRange(1, 3);
         if (require(test_selection_start == 1 && test_selection_end == 4, @"writable accessibility selection did not reach Elisa")) return 1;
         textField.accessibilitySelectedTextRange = NSMakeRange(5, 0);
+        NSObject *invalidInput = [NSObject new];
+        [elisa_canvas_view insertText:invalidInput replacementRange:NSMakeRange(NSNotFound, 0)];
+        if (require(strcmp(test_text, "World") == 0, @"invalid text input was not ignored")) return 1;
+        [elisa_canvas_view setMarkedText:invalidInput selectedRange:NSMakeRange(0, 0) replacementRange:NSMakeRange(NSNotFound, 0)];
+        if (require(strcmp(test_text, "World") == 0 && !elisa_canvas_view.hasMarkedText,
+                    @"invalid marked text input was not ignored")) return 1;
         [elisa_canvas_view insertText:@"é" replacementRange:NSMakeRange(NSNotFound, 0)];
         if (require(strcmp(test_text, "Worldé") == 0, @"Unicode text commit did not reach the app")) return 1;
         if (require(NSEqualRanges(elisa_canvas_view.selectedRange, NSMakeRange(6, 0)), @"UTF-8 caret did not convert to UTF-16")) return 1;
