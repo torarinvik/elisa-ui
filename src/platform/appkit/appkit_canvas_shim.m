@@ -10,8 +10,7 @@
 extern void elisa_appkit_canvas_frame(size_t context);
 extern void elisa_appkit_canvas_resize(float width, float height);
 extern void elisa_appkit_canvas_pointer_move(float x, float y);
-extern void elisa_appkit_canvas_pointer_down(float x, float y, int button);
-extern void elisa_appkit_canvas_pointer_up(float x, float y, int button);
+extern void elisa_appkit_canvas_pointer_button(float x, float y, int button, int down, int clickCount);
 extern void elisa_appkit_canvas_pointer_leave(void);
 extern void elisa_appkit_canvas_pointer_scroll(float x, float y, float dx, float dy);
 extern void elisa_appkit_canvas_raw_key(int down, int keyCode, int character);
@@ -33,7 +32,6 @@ extern size_t elisa_appkit_canvas_not_found(void);
 extern int elisa_appkit_canvas_has_marked_text(void);
 extern size_t elisa_appkit_canvas_cursor_at(float x, float y);
 extern size_t elisa_appkit_canvas_cursor_leave(void);
-extern void elisa_appkit_canvas_text_click(float x, int button, int clickCount);
 extern void elisa_appkit_canvas_set_text(size_t index, size_t text);
 extern size_t elisa_appkit_canvas_selection_location(void);
 extern size_t elisa_appkit_canvas_selection_length(void);
@@ -200,14 +198,10 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
 }
 - (void)forwardMouseButton:(NSEvent *)event down:(BOOL)down button:(int)button {
     NSPoint p = [self eventPoint:event];
-    if (down) {
-        elisa_appkit_canvas_pointer_down(p.x, p.y, button);
-        // Text selection is a press-side operation. The callback is typed, so
-        // the native shim does not encode a framework phase integer.
-        elisa_appkit_canvas_text_click(p.x, button, (int)event.clickCount);
-    } else {
-        elisa_appkit_canvas_pointer_up(p.x, p.y, button);
-    }
+    // The native view reports raw button facts. Elisa decides which framework
+    // events a press/release produces and preserves the press-side text-click
+    // ordering; this adapter only supplies Cocoa's coordinate and click data.
+    elisa_appkit_canvas_pointer_button(p.x, p.y, button, down, (int)event.clickCount);
 }
 - (void)mouseMoved:(NSEvent *)event { NSPoint p=[self eventPoint:event]; [self updatePointerCursor:p]; elisa_appkit_canvas_pointer_move(p.x,p.y); }
 - (void)mouseDragged:(NSEvent *)event { [self mouseMoved:event]; }

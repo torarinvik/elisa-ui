@@ -187,6 +187,14 @@ void elisa_appkit_canvas_text_click(float x, int button, int clickCount) {
     test_click_button = button;
     test_click_count = clickCount;
 }
+void elisa_appkit_canvas_pointer_button(float x, float y, int button, int down, int clickCount) {
+    if (down) {
+        elisa_appkit_canvas_pointer_down(x, y, button);
+        elisa_appkit_canvas_text_click(x, button, clickCount);
+        return;
+    }
+    elisa_appkit_canvas_pointer_up(x, y, button);
+}
 void elisa_appkit_canvas_insert_text(const char *bytes, size_t length) {
     size_t used = strlen(test_text);
     size_t start = MIN(test_selection_start, used);

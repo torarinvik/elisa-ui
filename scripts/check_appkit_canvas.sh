@@ -166,6 +166,10 @@ if grep -Eq 'elisa_appkit_canvas_pointer\(' "$ROOT/src/platform/appkit/appkit_ca
   echo "appkit canvas: pointer event-kind policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'elisa_appkit_canvas_pointer_(down|up)\(|elisa_appkit_canvas_text_click\(' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: pointer phase or text-click policy leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'elisa_appkit_canvas_arrow_cursor\(\)[[:space:]]*set' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: leave-cursor policy leaked back into Objective-C" >&2
   exit 1
@@ -179,8 +183,7 @@ fi
 # stripping in the packaged product.
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_frame$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_move$'
-nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_down$'
-nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_up$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_button$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_leave$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_scroll$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_cursor_leave$'
@@ -230,7 +233,6 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_post_layout_change
 nm -g "$BIN" | grep ' T _elisa_appkit_canvas_window_closed$' >/dev/null
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_allows_text_readback$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_cursor_at$'
-nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_text_click$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_set_text$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_selection_location$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_set_selected_range$'

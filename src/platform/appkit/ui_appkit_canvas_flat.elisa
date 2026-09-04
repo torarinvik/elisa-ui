@@ -94,6 +94,14 @@ def appkit_flat_cursor_at(x: f32, y: f32) -> usize:
 def appkit_flat_text_click(x: f32, button: i32, click_count: i32) -> void:
     UiFlat::select_text_click_at(x, button, click_count)
 
+def appkit_flat_pointer_button(x: f32, y: f32, button: i32, down: i32, click_count: i32) -> void:
+    # A press is both a pointer transition and a text-selection click. Keep
+    # that ordering in Elisa so every native host reports the same interaction;
+    # the Objective-C view only forwards Cocoa's raw button facts.
+    appkit_canvas_pointer_down_callback(x, y, button) if down != 0
+    appkit_flat_text_click(x, button, click_count) if down != 0
+    appkit_canvas_pointer_up_callback(x, y, button) if down == 0
+
 def appkit_canvas_text_click_callback(x: f32, button: i32, click_count: i32) -> void:
     appkit_flat_text_click(x, button, click_count)
 
@@ -241,6 +249,7 @@ def appkit_flat_range_string(location: usize, length: usize) -> usize:
 export fn elisa_appkit_canvas_accessibility_activate(index: usize) -> i32 = appkit_flat_accessibility_activate
 export fn elisa_appkit_canvas_accessibility_adjust(index: usize, direction: i32) -> i32 = appkit_flat_accessibility_adjust
 export fn elisa_appkit_canvas_window_closed() -> void = appkit_flat_window_closed
+export fn elisa_appkit_canvas_pointer_button(x: f32, y: f32, button: i32, down: i32, click_count: i32) -> void = appkit_flat_pointer_button
 export fn elisa_appkit_canvas_accepts_text() -> i32 = appkit_flat_accepts_text
 export fn elisa_appkit_canvas_key_down_route(character: i32, modifiers: usize) -> i32 = appkit_flat_key_down_route
 export fn elisa_appkit_canvas_key_down_event(event: usize, key_code: i32, character: i32, modifiers: usize) -> void = appkit_flat_key_down_event
