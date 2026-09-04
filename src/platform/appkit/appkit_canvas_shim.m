@@ -69,6 +69,7 @@ static NSMutableDictionary<NSNumber *, ElisaAccessibilityElement *> *elisa_acces
 static NSUInteger elisa_canvas_frame_count;
 static NSMenu *elisa_canvas_menu_bar;
 static NSMutableArray<NSMenu *> *elisa_canvas_menus;
+static NSString *elisa_canvas_empty_menu_key;
 static NSTimer *elisa_canvas_animation_timer;
 
 // Cursor objects are Cocoa singletons. Return opaque, non-owning pointers so
@@ -449,15 +450,18 @@ void elisa_appkit_canvas_center(void) {
 void elisa_appkit_canvas_menus_begin(void) {
     elisa_canvas_menu_bar = [NSMenu new];
     elisa_canvas_menus = [NSMutableArray new];
+    elisa_canvas_empty_menu_key = nil;
 }
 
 // Menu labels arrive as borrowed opaque CFStrings created by Elisa. Cocoa
 // retains them while creating the menu item; the bridge does not decode UTF-8.
-int elisa_appkit_canvas_menu_add(size_t title) {
+int elisa_appkit_canvas_menu_add(size_t title, size_t emptyKeyEquivalent) {
     if (elisa_canvas_menu_bar == nil || elisa_canvas_menus == nil) return -1;
     NSString *value = (__bridge NSString *)(void *)title;
-    if (value == nil) return -1;
-    NSMenuItem *root = [[NSMenuItem alloc] initWithTitle:value action:NULL keyEquivalent:@""];
+    NSString *emptyKey = (__bridge NSString *)(void *)emptyKeyEquivalent;
+    if (value == nil || emptyKey == nil) return -1;
+    elisa_canvas_empty_menu_key = emptyKey;
+    NSMenuItem *root = [[NSMenuItem alloc] initWithTitle:value action:NULL keyEquivalent:emptyKey];
     NSMenu *menu = [[NSMenu alloc] initWithTitle:value];
     [root setSubmenu:menu];
     [elisa_canvas_menu_bar addItem:root];
@@ -475,9 +479,11 @@ static void elisa_appkit_canvas_menu_add_item_title(int menuIndex, NSString *tit
                                                      const char *actionName, size_t modifiers) {
     if (menuIndex < 0 || (NSUInteger)menuIndex >= elisa_canvas_menus.count) return;
     if (title == nil) return;
+    if (keyEquivalent == nil) keyEquivalent = elisa_canvas_empty_menu_key;
+    if (keyEquivalent == nil) return;
     SEL action = actionName == NULL || actionName[0] == '\0' ? NULL : sel_registerName(actionName);
     NSMenuItem *item = [elisa_canvas_menus[menuIndex]
-        addItemWithTitle:title action:action keyEquivalent:keyEquivalent ?: @""];
+        addItemWithTitle:title action:action keyEquivalent:keyEquivalent];
     item.keyEquivalentModifierMask = (NSEventModifierFlags)modifiers;
 }
 

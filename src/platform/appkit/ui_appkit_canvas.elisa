@@ -26,7 +26,7 @@ extern elisa_appkit_canvas_run_loop_common_modes() -> usize
 extern elisa_appkit_canvas_not_found() -> usize
 extern elisa_appkit_canvas_open(title: usize, width: f32, height: f32, style: i32, backing: i32, tabbing_mode: i32, restorable: i32, make_first_responder: i32, activation_policy: i32) -> i32
 extern elisa_appkit_canvas_menus_begin() -> void
-extern elisa_appkit_canvas_menu_add(title: usize) -> i32
+extern elisa_appkit_canvas_menu_add(title: usize, empty_key_equivalent: usize) -> i32
 extern elisa_appkit_canvas_menu_set_windows(menu: i32) -> void
 extern elisa_appkit_canvas_menu_add_item(menu: i32, title: usize, key: usize, action: cstr, modifiers: usize) -> void
 extern elisa_appkit_canvas_menu_add_separator(menu: i32) -> void
@@ -487,18 +487,28 @@ module UiAppKitCanvas:
         def add_menu(title: sview) -> i32 can Unsafe.PointerCast:
             native_title: usize = native_string(title)
             return -1 if native_title == 0
-            menu: i32 = elisa_appkit_canvas_menu_add(native_title)
+            empty: sview = sview("", 0, 0)
+            native_empty: usize = native_string(empty)
+            if native_empty == 0:
+                CFRelease(native_title)
+                return -1
+            menu: i32 = elisa_appkit_canvas_menu_add(native_title, native_empty)
+            CFRelease(native_empty)
             CFRelease(native_title)
             return menu
 
         def add_menu_item(menu: i32, title: sview, action: cstr, key: i32, modifiers: usize) -> void can Unsafe.PointerCast:
             native_title: usize = native_string(title)
             return if native_title == 0
-            native_key: mutable usize = 0
+            empty: sview = sview("", 0, 0)
+            native_key: mutable usize = native_string(empty)
+            return if native_key == 0
             if key > 0 and key <= 255:
                 key_byte: mutable u8[1] = zeroed
                 key_byte[0] <- key.u8()
+                CFRelease(native_key)
                 native_key <- native_string_bytes(&key_byte[0], 1)
+                return if native_key == 0
             elisa_appkit_canvas_menu_add_item(menu, native_title, native_key, action, modifiers)
             CFRelease(native_key) if native_key != 0
             CFRelease(native_title)

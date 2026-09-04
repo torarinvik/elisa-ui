@@ -314,11 +314,11 @@ int main(void) {
         if (require(![elisa_canvas_view isAccessibilityElement], @"canvas semantic-root policy was not supplied by Elisa")) return 1;
         elisa_appkit_canvas_center();
         elisa_appkit_canvas_menus_begin();
-        int applicationMenu = elisa_appkit_canvas_menu_add((size_t)(__bridge void *)@"test");
+        int applicationMenu = elisa_appkit_canvas_menu_add((size_t)(__bridge void *)@"test", (size_t)(__bridge void *)@"");
         elisa_appkit_canvas_menu_add_item(applicationMenu, (size_t)(__bridge void *)@"About test", 0, "orderFrontStandardAboutPanel:", 0);
         elisa_appkit_canvas_menu_add_separator(applicationMenu);
         elisa_appkit_canvas_menu_add_item(applicationMenu, (size_t)(__bridge void *)@"Quit test", (size_t)(__bridge void *)@"q", "terminate:", NSEventModifierFlagCommand);
-        int windowMenu = elisa_appkit_canvas_menu_add((size_t)(__bridge void *)@"Window");
+        int windowMenu = elisa_appkit_canvas_menu_add((size_t)(__bridge void *)@"Window", (size_t)(__bridge void *)@"");
         elisa_appkit_canvas_menu_set_windows(windowMenu);
         elisa_appkit_canvas_menu_add_item(windowMenu, (size_t)(__bridge void *)@"Minimize", (size_t)(__bridge void *)@"m", "performMiniaturize:", NSEventModifierFlagCommand);
         elisa_appkit_canvas_menus_commit();
