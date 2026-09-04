@@ -77,6 +77,10 @@ if grep -Eq 'if \(delay <= 0\.0f\)' "$ROOT/src/platform/appkit/appkit_canvas_shi
   echo "appkit canvas: redraw cancellation policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'forMode:NSRunLoopCommonModes' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: run-loop mode policy leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'if \(activate\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: visible activation policy leaked back into Objective-C" >&2
   exit 1
@@ -101,6 +105,7 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_tracking_mouse_moved$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_tracking_mouse_entered_exited$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_tracking_active_in_key_window$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_tracking_in_visible_rect$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_run_loop_common_modes$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_key_down_event$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_raw_flags$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_key_up$'

@@ -375,6 +375,10 @@ size_t elisa_appkit_canvas_tracking_in_visible_rect(void) {
     return (size_t)NSTrackingInVisibleRect;
 }
 
+size_t elisa_appkit_canvas_run_loop_common_modes(void) {
+    return (size_t)(__bridge void *)NSRunLoopCommonModes;
+}
+
 int elisa_appkit_canvas_open(const char *title, size_t length, float width, float height,
                              int style, size_t tracking_options, int tabbing_mode, int restorable,
                              int activation_policy) {
@@ -504,14 +508,15 @@ size_t elisa_appkit_canvas_clipboard_read(unsigned char *buffer, size_t capacity
     return take;
 }
 
-void elisa_appkit_canvas_schedule_redraw(float delay) {
+void elisa_appkit_canvas_schedule_redraw(float delay, size_t run_loop_mode) {
     [elisa_canvas_animation_timer invalidate];
     elisa_canvas_animation_timer = nil;
     elisa_canvas_animation_timer = [NSTimer timerWithTimeInterval:delay repeats:NO block:^(NSTimer *timer) {
         (void)timer;
         [elisa_canvas_view setNeedsDisplay:YES];
     }];
-    [NSRunLoop.mainRunLoop addTimer:elisa_canvas_animation_timer forMode:NSRunLoopCommonModes];
+    NSString *mode = (__bridge NSString *)(void *)run_loop_mode;
+    [NSRunLoop.mainRunLoop addTimer:elisa_canvas_animation_timer forMode:mode];
 }
 
 void elisa_appkit_canvas_cancel_redraw(void) {
