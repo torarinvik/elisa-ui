@@ -15,7 +15,7 @@ extern void elisa_appkit_canvas_raw_key(int down, int keyCode, int character);
 extern void elisa_appkit_canvas_raw_flags(int keyCode, size_t modifiers);
 extern void elisa_appkit_canvas_focus_changed(int focused);
 extern void elisa_appkit_canvas_accessibility_environment_changed(void);
-extern int elisa_appkit_canvas_key_down_route(int character, size_t modifiers);
+extern void elisa_appkit_canvas_key_down_event(size_t event, int keyCode, int character, size_t modifiers);
 extern void elisa_appkit_canvas_key_up(int keyCode, int character);
 extern int elisa_appkit_canvas_accessibility_activate(size_t index);
 extern int elisa_appkit_canvas_accessibility_adjust(size_t index, int direction);
@@ -151,6 +151,11 @@ static int elisa_event_character(NSEvent *event) {
     return chars.length == 1 ? [chars characterAtIndex:0] : 0;
 }
 
+void elisa_appkit_canvas_interpret_key_event(size_t event) {
+    NSEvent *nativeEvent = (__bridge NSEvent *)(void *)event;
+    if (nativeEvent != nil) [elisa_canvas_view interpretKeyEvents:@[nativeEvent]];
+}
+
 @implementation ElisaCanvasView
 - (BOOL)isFlipped { return YES; }
 - (BOOL)acceptsFirstResponder { return YES; }
@@ -212,17 +217,8 @@ static int elisa_event_character(NSEvent *event) {
 - (void)mouseExited:(NSEvent *)event { (void)event; [(__bridge NSCursor *)(void *)elisa_appkit_canvas_arrow_cursor() set]; elisa_appkit_canvas_pointer(3,0,0,0,0,0); }
 - (void)scrollWheel:(NSEvent *)event { NSPoint p=[self eventPoint:event]; elisa_appkit_canvas_pointer(4,p.x,p.y,[event scrollingDeltaX],[event scrollingDeltaY],0); }
 - (void)keyDown:(NSEvent *)event {
-    int route = elisa_appkit_canvas_key_down_route(elisa_event_character(event),
-                                                    (size_t)[event modifierFlags]);
-    if (route >= 2) {
-        (void)elisa_appkit_canvas_perform_text_action(route - 1);
-        return;
-    }
-    if (route == 1) {
-        [self interpretKeyEvents:@[event]];
-        return;
-    }
-    elisa_appkit_canvas_raw_key(1, event.keyCode, elisa_event_character(event));
+    elisa_appkit_canvas_key_down_event((size_t)(__bridge void *)event, event.keyCode,
+                                       elisa_event_character(event), (size_t)[event modifierFlags]);
 }
 - (void)keyUp:(NSEvent *)event {
     elisa_appkit_canvas_key_up(event.keyCode, elisa_event_character(event));

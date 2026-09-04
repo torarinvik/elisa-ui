@@ -5,6 +5,8 @@
 # application entry point needs one include instead of repeating ABI glue.
 
 include "./ui_appkit_canvas.elisa"
+
+extern elisa_appkit_canvas_interpret_key_event(event: usize) -> void
 include "../../widgets/ui_widget.elisa"
 
 global mutable appkit_clipboard_buffer: u8[UiFlat::TEXT_CAPACITY] = zeroed
@@ -56,6 +58,16 @@ def appkit_flat_key_down_route(character: i32, modifiers: usize) -> i32:
     return UiAppKitCanvas::key_down_route(UiFlat::accepts_text(), character,
         UiAppKitCanvas::native_shift(modifiers), UiAppKitCanvas::native_control(modifiers),
         UiAppKitCanvas::native_option(modifiers), UiAppKitCanvas::native_command(modifiers))
+
+def appkit_flat_key_down_event(event: usize, key_code: i32, character: i32, modifiers: usize) -> void:
+    route: i32 = appkit_flat_key_down_route(character, modifiers)
+    if route >= 2:
+        _ = appkit_flat_perform_text_action(route - 1)
+        return
+    if route == 1:
+        elisa_appkit_canvas_interpret_key_event(event)
+        return
+    appkit_canvas_raw_key_callback(1, key_code, character)
 
 def appkit_flat_key_up(key_code: i32, character: i32) -> void:
     return if UiFlat::accepts_text()
@@ -194,6 +206,7 @@ export fn elisa_appkit_canvas_accessibility_adjust(index: usize, direction: i32)
 export fn elisa_appkit_canvas_cancel_interaction() -> void = appkit_flat_cancel_interaction
 export fn elisa_appkit_canvas_accepts_text() -> i32 = appkit_flat_accepts_text
 export fn elisa_appkit_canvas_key_down_route(character: i32, modifiers: usize) -> i32 = appkit_flat_key_down_route
+export fn elisa_appkit_canvas_key_down_event(event: usize, key_code: i32, character: i32, modifiers: usize) -> void = appkit_flat_key_down_event
 export fn elisa_appkit_canvas_key_up(key_code: i32, character: i32) -> void = appkit_flat_key_up
 export fn elisa_appkit_canvas_allows_text_readback() -> i32 = appkit_flat_allows_text_readback
 export fn elisa_appkit_canvas_cursor_at(x: f32, y: f32) -> usize = appkit_flat_cursor_at

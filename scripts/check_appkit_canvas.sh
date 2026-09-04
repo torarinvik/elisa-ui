@@ -65,9 +65,8 @@ fi
 # These callbacks cross the Objective-C/Elisa boundary and must survive dead
 # stripping in the packaged product.
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_frame$'
-nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_raw_key$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_key_down_event$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_raw_flags$'
-nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_key_down_route$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_key_up$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_focus_changed$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_environment_changed$'
