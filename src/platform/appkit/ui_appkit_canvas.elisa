@@ -46,7 +46,7 @@ extern elisa_appkit_canvas_set_min_size(width: f32, height: f32) -> void
 extern elisa_appkit_canvas_redraw() -> void
 extern elisa_appkit_canvas_close() -> void
 extern elisa_appkit_canvas_accessibility_reset() -> void
-extern elisa_appkit_canvas_accessibility_add(id: usize, action: usize, role: usize, subrole: usize, cursor: usize, label: cstr, length: usize, help: cstr, help_length: usize, x: f32, y: f32, width: f32, height: f32, enabled: i32, focused: i32) -> void
+extern elisa_appkit_canvas_accessibility_add(id: usize, identifier: cstr, identifier_length: usize, action: usize, role: usize, subrole: usize, cursor: usize, label: cstr, length: usize, help: cstr, help_length: usize, x: f32, y: f32, width: f32, height: f32, enabled: i32, focused: i32) -> void
 extern elisa_appkit_canvas_accessibility_add_tooltip(id: usize) -> void
 extern elisa_appkit_canvas_accessibility_set_boolean(id: usize, selected: i32) -> void
 extern elisa_appkit_canvas_accessibility_set_range(id: usize, value: f32) -> void
@@ -323,6 +323,8 @@ module UiAppKitCanvas:
         global mutable frame_context: usize = 0
         const MENU_APPLICATION_LABEL_CAPACITY: usize = 4096
         global mutable menu_application_label_storage: u8[MENU_APPLICATION_LABEL_CAPACITY] = zeroed
+        const ACCESSIBILITY_IDENTIFIER_CAPACITY: usize = 32
+        global mutable accessibility_identifier_storage: u8[ACCESSIBILITY_IDENTIFIER_CAPACITY] = zeroed
 
         def previous_accessibility_index(id: usize) -> usize:
             for index in 0..<accessibility_previous_count:
@@ -423,6 +425,27 @@ module UiAppKitCanvas:
             label: sview = application_menu_label(prefix, prefix_length, application, application_length)
             pointer: cstr = label.data.cast[cstr] can Unsafe.PointerCast
             elisa_appkit_canvas_menu_add_item(menu, pointer, label.len, action, key, modifiers)
+
+        # Accessibility identifiers are stable framework metadata. Generate
+        # their UTF-8 bytes here so the Objective-C bridge never invents a
+        # naming scheme or formats framework state on its own.
+        def accessibility_identifier(id: usize) -> sview:
+            prefix: sview = "elisa-ui-"
+            for index in 0..<prefix.len.usize():
+                accessibility_identifier_storage[index] <- prefix.data[index]
+            value: mutable usize = id
+            digits: mutable usize = 1
+            if value > 0:
+                digits <- 0
+                while value > 0:
+                    digits <- digits + 1
+                    value <- value / 10
+            value <- id
+            for index in 0..<digits:
+                position: usize = prefix.len.usize() + digits - 1 - index
+                accessibility_identifier_storage[position] <- (value % 10 + 48).u8()
+                value <- value / 10
+            return sview(&accessibility_identifier_storage[0], 0, (prefix.len.usize() + digits).i64())
 
         # Menu layout, labels, shortcuts and modifier policy belong to Elisa.
         # Objective-C maps these action tokens to Cocoa selectors and creates
@@ -687,7 +710,7 @@ module UiAppKitCanvas:
 
         # Called by the exported frame callback after the app has rebuilt the
         # semantic nodes for this frame.
-        def sync_accessibility() -> void:
+        def sync_accessibility() -> void can Unsafe.PointerCast:
             elisa_appkit_canvas_accessibility_reset()
             next_count: usize = UiCore::accessibility_count()
             layout_changed: mutable bool = accessibility_force_layout or next_count != accessibility_previous_count
@@ -700,6 +723,8 @@ module UiAppKitCanvas:
                 value_pointer <- node.text_value.data.cast[cstr] can Unsafe.PointerCast if node.text_value.len > 0
                 selected_pointer: mutable cstr = pointer
                 selected_pointer <- node.selected_text.data.cast[cstr] can Unsafe.PointerCast if node.selected_text.len > 0
+                identifier: sview = accessibility_identifier(node.id)
+                identifier_pointer: cstr = identifier.data.cast[cstr] can Unsafe.PointerCast
                 enabled: i32 = 1 if node.enabled else 0
                 focused: i32 = 1 if node.focused else 0
                 selected: i32 = 1 if node.selected else 0
@@ -726,7 +751,7 @@ module UiAppKitCanvas:
                 accessibility_next_ids[index] <- node.id
                 accessibility_next[index] <- state
                 tooltip: i32 = 1 if node.help.len > 0 and interaction != 0 else 0
-                elisa_appkit_canvas_accessibility_add(node.id, node.action, native_role, native_subrole, native_cursor(cursor), pointer, node.label.len, help_pointer, node.help.len, node.frame.origin.x, node.frame.origin.y, node.frame.size.width, node.frame.size.height, enabled, focused)
+                elisa_appkit_canvas_accessibility_add(node.id, identifier_pointer, identifier.len, node.action, native_role, native_subrole, native_cursor(cursor), pointer, node.label.len, help_pointer, node.help.len, node.frame.origin.x, node.frame.origin.y, node.frame.size.width, node.frame.size.height, enabled, focused)
                 elisa_appkit_canvas_accessibility_add_tooltip(node.id) if tooltip != 0
                 if value_kind == 1:
                     elisa_appkit_canvas_accessibility_set_boolean(node.id, selected)
@@ -852,7 +877,7 @@ module UiAppKitCanvas:
 
 # C callbacks from ElisaCanvasView. Top-level because the Objective-C ABI names them.
 def appkit_canvas_frame_callback(context: usize) -> void:
-    can Ui.Draw, Ui.Text:
+    can Ui.Draw, Ui.Text, Unsafe.PointerCast:
         UiAppKitCanvas::begin_native_frame(context)
         UiCore::set_frame_time(UiAppKitCanvas::monotonic_time())
         CGContextSetShouldAntialias(context, true)

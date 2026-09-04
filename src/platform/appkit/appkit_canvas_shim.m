@@ -609,7 +609,9 @@ static ElisaAccessibilityElement *elisa_appkit_canvas_pending_element(size_t ide
     return nil;
 }
 
-void elisa_appkit_canvas_accessibility_add(size_t identifier, size_t action, const void *role,
+void elisa_appkit_canvas_accessibility_add(size_t identifier,
+                                            const char *identifierBytes, size_t identifierLength,
+                                            size_t action, const void *role,
                                             const void *subrole, size_t cursor,
                                             const char *bytes, size_t length,
                                             const char *helpBytes, size_t helpLength,
@@ -635,7 +637,9 @@ void elisa_appkit_canvas_accessibility_add(size_t identifier, size_t action, con
     } else {
         element.accessibilityHelp = nil;
     }
-    element.accessibilityIdentifier = [NSString stringWithFormat:@"elisa-ui-%zu", identifier];
+    element.accessibilityIdentifier = identifierBytes != NULL && identifierLength > 0
+        ? [[NSString alloc] initWithBytes:identifierBytes length:identifierLength encoding:NSUTF8StringEncoding]
+        : nil;
     element.accessibilityEnabled = enabled != 0;
     element.accessibilityFocused = focused != 0;
     // Values are assigned by typed FFI setters chosen in Elisa. Resetting all

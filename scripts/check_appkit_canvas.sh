@@ -57,6 +57,10 @@ if grep -Eq '\bappendApplicationName\b' "$ROOT/src/platform/appkit/appkit_canvas
   echo "appkit canvas: menu title policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'stringWithFormat:@"elisa-ui-' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: accessibility identifier policy leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'elisa_menu_action|elisa_text_action|int[[:space:]]+token[[:space:]]*=' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: selector/action policy leaked back into Objective-C" >&2
   exit 1
