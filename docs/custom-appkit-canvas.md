@@ -176,6 +176,10 @@ Native window creation and presentation plus off-screen snapshot rendering
 return status through FFI. Elisa owns the process result, chooses the visible
 or headless sequence, and enters the native event loop only for a visible run.
 
+The native-controls AppKit backend receives its object-table capacity from
+`UiControls` over the FFI. There is no second platform-side control limit to
+drift from the retained control arena.
+
 Animation scheduling is demand-driven. Elisa coalesces future-frame requests
 and asks AppKit for a one-shot wake only while an animated element such as a
 collapsed text caret needs it, leaving an idle window timer-free.

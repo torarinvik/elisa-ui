@@ -22,8 +22,6 @@
 // the Cocoa protocol method to the value Elisa selected.
 extern int elisa_appkit_view_is_flipped(void);
 
-#define ELISA_APPKIT_MAX 256
-
 // A container whose origin is top-left, so a laid-out frame needs no conversion.
 @interface ElisaFlippedView : NSView
 @end
@@ -32,15 +30,21 @@ extern int elisa_appkit_view_is_flipped(void);
 @end
 
 static NSWindow *elisa_window = nil;
-static id elisa_objects[ELISA_APPKIT_MAX];
+static NSMutableDictionary<NSNumber *, id> *elisa_objects = nil;
 static int elisa_count = 0;
+static int elisa_capacity = 0;
+
+static id elisa_appkit_object(int index) {
+    if (index < 0 || index >= elisa_count || elisa_objects == nil) return nil;
+    return elisa_objects[@(index)];
+}
 
 // Resolve a recorded object for headless introspection. Production attachment
 // uses the explicit typed attach entry points below; this bookkeeping branch is
 // only for read-back checks.
 static NSView *elisa_container_for(int index) {
-    if (index < 0 || index >= elisa_count) return nil;
-    id object = elisa_objects[index];
+    id object = elisa_appkit_object(index);
+    if (object == nil) return nil;
     if ([object isKindOfClass:[NSWindow class]]) {
         return [(NSWindow *)object contentView];
     }
@@ -50,10 +54,12 @@ static NSView *elisa_container_for(int index) {
     return (NSView *)object;
 }
 
-void elisa_appkit_init(void) {
+void elisa_appkit_init(int capacity) {
     @autoreleasepool {
         [NSApplication sharedApplication];
+        elisa_objects = [NSMutableDictionary new];
         elisa_count = 0;
+        elisa_capacity = capacity > 0 ? capacity : 0;
         elisa_window = nil;
     }
 }
@@ -75,33 +81,34 @@ void elisa_appkit_set_activation_policy(int policy) {
 // shim therefore exposes one native constructor per kind instead of carrying a
 // second policy switch over the framework's enum.
 static BOOL elisa_appkit_prepare(int index) {
-    if (index < 0 || index >= ELISA_APPKIT_MAX) return NO;
+    if (index < 0 || index >= elisa_capacity || elisa_objects == nil) return NO;
     if (index >= elisa_count) elisa_count = index + 1;
     return YES;
 }
 
 static void elisa_appkit_store_view(int index, NSView *view) {
-    elisa_objects[index] = view;
+    if (elisa_objects == nil || view == nil) return;
+    elisa_objects[@(index)] = view;
 }
 
 void elisa_appkit_attach_to_window(int index, int parent) {
     if (index < 0 || index >= elisa_count || parent < 0 || parent >= elisa_count) return;
-    NSView *view = (NSView *)elisa_objects[index];
-    NSView *container = [(NSWindow *)elisa_objects[parent] contentView];
+    NSView *view = (NSView *)elisa_appkit_object(index);
+    NSView *container = [(NSWindow *)elisa_appkit_object(parent) contentView];
     if (container != nil && view != nil) [container addSubview:view];
 }
 
 void elisa_appkit_attach_to_scroll_view(int index, int parent) {
     if (index < 0 || index >= elisa_count || parent < 0 || parent >= elisa_count) return;
-    NSView *view = (NSView *)elisa_objects[index];
-    NSView *container = [(NSScrollView *)elisa_objects[parent] documentView];
+    NSView *view = (NSView *)elisa_appkit_object(index);
+    NSView *container = [(NSScrollView *)elisa_appkit_object(parent) documentView];
     if (container != nil && view != nil) [container addSubview:view];
 }
 
 void elisa_appkit_attach_to_view(int index, int parent) {
     if (index < 0 || index >= elisa_count || parent < 0 || parent >= elisa_count) return;
-    NSView *view = (NSView *)elisa_objects[index];
-    NSView *container = (NSView *)elisa_objects[parent];
+    NSView *view = (NSView *)elisa_appkit_object(index);
+    NSView *container = (NSView *)elisa_appkit_object(parent);
     if (container != nil && view != nil) [container addSubview:view];
 }
 
@@ -164,7 +171,7 @@ void elisa_appkit_create_window_with_style(int index, int style, int backing,
                           defer:NO];
         if (window == nil) return;
         [window setContentView:[[ElisaFlippedView alloc] initWithFrame:content]];
-        elisa_objects[index] = window;
+        elisa_appkit_store_view(index, (NSView *)window);
         elisa_window = window;
     }
 }
@@ -184,7 +191,7 @@ void elisa_appkit_create_panel_window(int index, int style, int backing,
         [panel setFloatingPanel:floating != 0];
         [panel setBecomesKeyOnlyIfNeeded:becomes_key_only != 0];
         [panel setContentView:[[ElisaFlippedView alloc] initWithFrame:content]];
-        elisa_objects[index] = panel;
+        elisa_appkit_store_view(index, (NSView *)panel);
         elisa_window = panel;
     }
 }
@@ -288,15 +295,16 @@ void elisa_appkit_set_window_frame(int index, float width, float height) {
     @autoreleasepool {
         if (index < 0 || index >= elisa_count) return;
         // A window is positioned by the OS; only its content size is ours.
-        [(NSWindow *)elisa_objects[index] setContentSize:NSMakeSize(width, height)];
-        [[(NSWindow *)elisa_objects[index] contentView] setFrame:NSMakeRect(0, 0, width, height)];
+        NSWindow *window = (NSWindow *)elisa_appkit_object(index);
+        [window setContentSize:NSMakeSize(width, height)];
+        [[window contentView] setFrame:NSMakeRect(0, 0, width, height)];
     }
 }
 
 void elisa_appkit_set_view_frame(int index, float x, float y, float width, float height) {
     @autoreleasepool {
         if (index < 0 || index >= elisa_count) return;
-        [(NSView *)elisa_objects[index] setFrame:NSMakeRect(x, y, width, height)];
+        [(NSView *)elisa_appkit_object(index) setFrame:NSMakeRect(x, y, width, height)];
     }
 }
 
@@ -306,7 +314,7 @@ void elisa_appkit_set_view_frame(int index, float x, float y, float width, float
 void elisa_appkit_set_scroll_document_frame(int index, float width, float height) {
     @autoreleasepool {
         if (index < 0 || index >= elisa_count) return;
-        NSScrollView *scroll = (NSScrollView *)elisa_objects[index];
+        NSScrollView *scroll = (NSScrollView *)elisa_appkit_object(index);
         [[scroll documentView] setFrame:NSMakeRect(0, 0, width, height)];
     }
 }
@@ -318,7 +326,7 @@ void elisa_appkit_set_window_title(int index, size_t text) {
     @autoreleasepool {
         if (index < 0 || index >= elisa_count) return;
         NSString *value = (__bridge NSString *)(void *)text;
-        if (value != nil) [(NSWindow *)elisa_objects[index] setTitle:value];
+        if (value != nil) [(NSWindow *)elisa_appkit_object(index) setTitle:value];
     }
 }
 
@@ -326,7 +334,7 @@ void elisa_appkit_set_button_title(int index, size_t text) {
     @autoreleasepool {
         if (index < 0 || index >= elisa_count) return;
         NSString *value = (__bridge NSString *)(void *)text;
-        if (value != nil) [(NSButton *)elisa_objects[index] setTitle:value];
+        if (value != nil) [(NSButton *)elisa_appkit_object(index) setTitle:value];
     }
 }
 
@@ -334,21 +342,21 @@ void elisa_appkit_set_field_text(int index, size_t text) {
     @autoreleasepool {
         if (index < 0 || index >= elisa_count) return;
         NSString *value = (__bridge NSString *)(void *)text;
-        if (value != nil) [(NSTextField *)elisa_objects[index] setStringValue:value];
+        if (value != nil) [(NSTextField *)elisa_appkit_object(index) setStringValue:value];
     }
 }
 
 void elisa_appkit_set_button_state(int index, int state) {
     @autoreleasepool {
         if (index < 0 || index >= elisa_count) return;
-        [(NSButton *)elisa_objects[index] setState:(NSControlStateValue)state];
+        [(NSButton *)elisa_appkit_object(index) setState:(NSControlStateValue)state];
     }
 }
 
 void elisa_appkit_set_slider_state(int index, float low, float high, float value) {
     @autoreleasepool {
         if (index < 0 || index >= elisa_count) return;
-        NSSlider *slider = (NSSlider *)elisa_objects[index];
+        NSSlider *slider = (NSSlider *)elisa_appkit_object(index);
         [slider setMinValue:low];
         [slider setMaxValue:high];
         [slider setDoubleValue:value];
@@ -358,7 +366,7 @@ void elisa_appkit_set_slider_state(int index, float low, float high, float value
 void elisa_appkit_set_progress_value(int index, float value) {
     @autoreleasepool {
         if (index < 0 || index >= elisa_count) return;
-        [(NSProgressIndicator *)elisa_objects[index] setDoubleValue:value];
+        [(NSProgressIndicator *)elisa_appkit_object(index) setDoubleValue:value];
     }
 }
 
@@ -396,39 +404,41 @@ int elisa_appkit_is_class(int index, size_t class_name) {
     if (index < 0 || index >= elisa_count || class_name == 0) return 0;
     NSString *name = (__bridge NSString *)(void *)class_name;
     Class wanted = NSClassFromString(name);
-    return (wanted != nil && [elisa_objects[index] isKindOfClass:wanted]) ? 1 : 0;
+    return (wanted != nil && [elisa_appkit_object(index) isKindOfClass:wanted]) ? 1 : 0;
 }
 
 int elisa_appkit_window_is_resizable(int index) {
-    if (index < 0 || index >= elisa_count || ![elisa_objects[index] isKindOfClass:[NSWindow class]]) return 0;
-    return ([(NSWindow *)elisa_objects[index] styleMask] & NSWindowStyleMaskResizable) != 0 ? 1 : 0;
+    id object = elisa_appkit_object(index);
+    if (![object isKindOfClass:[NSWindow class]]) return 0;
+    return ([(NSWindow *)object styleMask] & NSWindowStyleMaskResizable) != 0 ? 1 : 0;
 }
 
 int elisa_appkit_window_is_floating(int index) {
-    if (index < 0 || index >= elisa_count || ![elisa_objects[index] isKindOfClass:[NSWindow class]]) return 0;
-    return [(NSWindow *)elisa_objects[index] isKindOfClass:[NSPanel class]] &&
-           [(NSPanel *)elisa_objects[index] isFloatingPanel] ? 1 : 0;
+    id object = elisa_appkit_object(index);
+    if (![object isKindOfClass:[NSWindow class]]) return 0;
+    return [object isKindOfClass:[NSPanel class]] &&
+           [(NSPanel *)object isFloatingPanel] ? 1 : 0;
 }
 
 int elisa_appkit_panel_becomes_key_only(int index) {
-    if (index < 0 || index >= elisa_count || ![elisa_objects[index] isKindOfClass:[NSWindow class]]) return 0;
-    if (![elisa_objects[index] isKindOfClass:[NSPanel class]]) return 0;
-    return [(NSPanel *)elisa_objects[index] becomesKeyOnlyIfNeeded] ? 1 : 0;
+    id object = elisa_appkit_object(index);
+    if (![object isKindOfClass:[NSWindow class]] || ![object isKindOfClass:[NSPanel class]]) return 0;
+    return [(NSPanel *)object becomesKeyOnlyIfNeeded] ? 1 : 0;
 }
 
 int elisa_appkit_button_is_on(int index) {
-    if (index < 0 || index >= elisa_count) return 0;
-    return [(NSButton *)elisa_objects[index] state] == NSControlStateValueOn ? 1 : 0;
+    return [(NSButton *)elisa_appkit_object(index) state] == NSControlStateValueOn ? 1 : 0;
 }
 
 int elisa_appkit_button_bezel_style(int index) {
-    if (index < 0 || index >= elisa_count) return -1;
-    return (int)[(NSButton *)elisa_objects[index] bezelStyle];
+    id object = elisa_appkit_object(index);
+    if (![object isKindOfClass:[NSButton class]]) return -1;
+    return (int)[(NSButton *)object bezelStyle];
 }
 
 int elisa_appkit_button_toggles(int index) {
-    if (index < 0 || index >= elisa_count) return -1;
-    NSButton *button = (NSButton *)elisa_objects[index];
+    NSButton *button = (NSButton *)elisa_appkit_object(index);
+    if (![button isKindOfClass:[NSButton class]]) return -1;
     NSControlStateValue before = button.state;
     [button setState:NSControlStateValueOff];
     [button performClick:nil];
@@ -438,21 +448,24 @@ int elisa_appkit_button_toggles(int index) {
 }
 
 int elisa_appkit_scroll_has_vertical(int index) {
-    if (index < 0 || index >= elisa_count || ![elisa_objects[index] isKindOfClass:[NSScrollView class]]) return 0;
-    return [(NSScrollView *)elisa_objects[index] hasVerticalScroller] ? 1 : 0;
+    NSScrollView *scroll = (NSScrollView *)elisa_appkit_object(index);
+    if (![scroll isKindOfClass:[NSScrollView class]]) return 0;
+    return [scroll hasVerticalScroller] ? 1 : 0;
 }
 
 int elisa_appkit_scroll_has_horizontal(int index) {
-    if (index < 0 || index >= elisa_count || ![elisa_objects[index] isKindOfClass:[NSScrollView class]]) return 0;
-    return [(NSScrollView *)elisa_objects[index] hasHorizontalScroller] ? 1 : 0;
+    NSScrollView *scroll = (NSScrollView *)elisa_appkit_object(index);
+    if (![scroll isKindOfClass:[NSScrollView class]]) return 0;
+    return [scroll hasHorizontalScroller] ? 1 : 0;
 }
 
 float elisa_appkit_frame_width(int index) {
-    if (index < 0 || index >= elisa_count) return -1.0f;
-    if ([elisa_objects[index] isKindOfClass:[NSWindow class]]) {
-        return (float)[[(NSWindow *)elisa_objects[index] contentView] frame].size.width;
+    id object = elisa_appkit_object(index);
+    if (object == nil) return -1.0f;
+    if ([object isKindOfClass:[NSWindow class]]) {
+        return (float)[[(NSWindow *)object contentView] frame].size.width;
     }
-    return (float)[(NSView *)elisa_objects[index] frame].size.width;
+    return (float)[(NSView *)object frame].size.width;
 }
 
 // Is this control's container top-left origin? Asserted directly because
@@ -465,23 +478,27 @@ int elisa_appkit_is_flipped(int index) {
 }
 
 float elisa_appkit_frame_y(int index) {
-    if (index < 0 || index >= elisa_count) return -1.0f;
-    if ([elisa_objects[index] isKindOfClass:[NSWindow class]]) return 0.0f;
-    return (float)[(NSView *)elisa_objects[index] frame].origin.y;
+    id object = elisa_appkit_object(index);
+    if (object == nil) return -1.0f;
+    if ([object isKindOfClass:[NSWindow class]]) return 0.0f;
+    return (float)[(NSView *)object frame].origin.y;
 }
 
 float elisa_appkit_frame_x(int index) {
-    if (index < 0 || index >= elisa_count) return -1.0f;
-    if ([elisa_objects[index] isKindOfClass:[NSWindow class]]) return 0.0f;
-    return (float)[(NSView *)elisa_objects[index] frame].origin.x;
+    id object = elisa_appkit_object(index);
+    if (object == nil) return -1.0f;
+    if ([object isKindOfClass:[NSWindow class]]) return 0.0f;
+    return (float)[(NSView *)object frame].origin.x;
 }
 
 int elisa_appkit_progress_is_indeterminate(int index) {
-    if (index < 0 || index >= elisa_count) return -1;
-    return [(NSProgressIndicator *)elisa_objects[index] isIndeterminate] ? 1 : 0;
+    NSProgressIndicator *bar = (NSProgressIndicator *)elisa_appkit_object(index);
+    if (![bar isKindOfClass:[NSProgressIndicator class]]) return -1;
+    return [bar isIndeterminate] ? 1 : 0;
 }
 
 int elisa_appkit_progress_style(int index) {
-    if (index < 0 || index >= elisa_count) return -1;
-    return (int)[(NSProgressIndicator *)elisa_objects[index] style];
+    NSProgressIndicator *bar = (NSProgressIndicator *)elisa_appkit_object(index);
+    if (![bar isKindOfClass:[NSProgressIndicator class]]) return -1;
+    return (int)[bar style];
 }

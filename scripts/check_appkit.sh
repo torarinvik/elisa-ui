@@ -25,6 +25,15 @@ if grep -Eq 'setActivationPolicy:NSApplicationActivationPolicyRegular' "$ROOT/sr
   echo "appkit: activation policy leaked back into Objective-C initialization" >&2
   exit 1
 fi
+if grep -Eq 'ELISA_APPKIT_MAX|static id elisa_objects\[' "$ROOT/src/platform/appkit/appkit_shim.m"; then
+  echo "appkit: native object-table capacity was duplicated in Objective-C" >&2
+  exit 1
+fi
+if ! grep -Eq 'void elisa_appkit_init\(int capacity\)' "$ROOT/src/platform/appkit/appkit_shim.m" || \
+   ! grep -Eq 'elisa_appkit_init\(UiControls::capacity\(\)\.i32\(\)\)' "$ROOT/src/platform/appkit/ui_appkit.elisa"; then
+  echo "appkit: Elisa-owned object-table capacity did not cross the FFI explicitly" >&2
+  exit 1
+fi
 if grep -Eq 'sliderWithValue:0 minValue:0 maxValue:1' "$ROOT/src/platform/appkit/appkit_shim.m"; then
   echo "appkit: slider state defaults leaked back into Objective-C constructors" >&2
   exit 1
