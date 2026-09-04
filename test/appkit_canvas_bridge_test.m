@@ -409,6 +409,13 @@ int main(void) {
         [elisa_canvas_view rightMouseUp:rightRelease];
         if (require(test_pointer_kind == 2 && test_pointer_button == 1,
                     @"right-button release did not cross the pointer FFI")) return 1;
+        NSEvent *exit = [NSEvent mouseEventWithType:NSEventTypeMouseMoved
+            location:NSMakePoint(40, 20) modifierFlags:0 timestamp:0
+            windowNumber:elisa_canvas_window.windowNumber context:nil eventNumber:5
+            clickCount:0 pressure:0.0];
+        [elisa_canvas_view mouseExited:exit];
+        if (require(test_pointer_kind == 3 && test_pointer_button == 0,
+                    @"pointer exit did not cross the Elisa event path")) return 1;
         if (require(elisa_accessibility_children.count == 3, @"semantic children missing")) return 1;
 
         ElisaAccessibilityElement *first = elisa_accessibility_children[0];
