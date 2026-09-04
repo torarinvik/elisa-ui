@@ -13,6 +13,11 @@ include "../../core/ui_core.elisa"
 include "../../core/ui_raster.elisa"
 include "../../core/ui_paint.elisa"
 
+# `impl UiPaint::Painter for T:` is the one shape no compiler takes -- stage0's
+# parser wants a `:` where the `for` is -- so the impl at the foot of this module
+# names `Painter` unqualified and this is what makes that resolve.
+using UiPaint
+
 extern SDL_Init(flags: u32) -> bool
 extern SDL_CreateWindow(title: cstr, w: i32, h: i32, flags: u64) -> void&?
 extern SDL_CreateRenderer(window: void&, name: void&?) -> void&?
@@ -267,33 +272,24 @@ module UiSdl3:
                 fill_span(span_lo, span_hi, y) if crossings > 0
                 y <- y + 1.0
 
-    public:
-        # One public operation per drawing command. The MATCH that used to sit here
-        # now lives once in ui_paint.elisa's ui_replay_commands, so this backend and
-        # WasmBrowser can no longer drift in how they read the same command list --
-        # which they had: circles and triangles were bounding boxes here and exact
-        # there. These are public because the `impl Painter` below is a TOP-LEVEL
-        # declaration (stage1 declines an impl written inside a module), so it cannot
-        # reach module-private helpers.
-        def draw_clear(color: UiCore::Color) -> void:
+        # The two command bodies that are not already a raster helper. The MATCH
+        # that used to sit here lives once in ui_paint.elisa's UiPaint::replay, so
+        # this backend and WasmBrowser can no longer drift in how they read the same
+        # command list -- which they had: circles and triangles were bounding boxes
+        # here and exact there.
+        #
+        # Six public wrappers stood here until the `impl Painter` could live inside
+        # this module. Three of them only forwarded to the raster helpers and one to
+        # blit_text, so the impl calls those directly now; these two are the bodies
+        # that were really theirs. Nothing outside the backend ever called any of
+        # them.
+        def paint_clear(color: UiCore::Color) -> void:
             _ = SDL_SetRenderDrawColor(ren(), color.r, color.g, color.b, color.a)
             _ = SDL_RenderClear(ren())
 
-        def draw_rect(box: UiCore::Rect, color: UiCore::Color) -> void:
-            paint_rect(box, color)
-
-        def draw_circle(disc: UiCore::Circle, color: UiCore::Color) -> void:
-            paint_circle(disc, color)
-
-        def draw_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> void:
-            paint_triangle(tri, color)
-
-        def draw_line(segment: UiCore::Line, color: UiCore::Color) -> void:
+        def paint_line(segment: UiCore::Line, color: UiCore::Color) -> void:
             _ = SDL_SetRenderDrawColor(ren(), color.r, color.g, color.b, color.a)
             _ = SDL_RenderLine(ren(), segment.from_point.x, segment.from_point.y, segment.to_point.x, segment.to_point.y)
-
-        def draw_text(run: UiCore::TextRun, color: UiCore::Color) -> void:
-            blit_text(run, color)
 
     private:
         def event_type() -> u32:
@@ -425,7 +421,7 @@ module UiSdl3:
                 # replays immediately.
                 UiCore::begin_frame()
                 app_frame()
-                ui_replay_commands[Sdl3Painter]()
+                UiPaint::replay[Sdl3Painter]()
                 _ = SDL_RenderPresent(ren())
                 frames <- frames + 1
                 running <- false if max_frames > 0 and frames >= max_frames
@@ -439,27 +435,32 @@ module UiSdl3:
             return 0
 
 
-# The SDL3 painter. A TYPE, not a value: its state is the module's renderer handle,
-# so every method is static and the specialization inlines straight through to the
-# SDL calls -- no vtable, no indirect call on the per-command path.
-struct Sdl3Painter:
-    unused: i32
+    public:
+        # The SDL3 painter. A TYPE, not a value: its state is this module's renderer
+        # handle, so every method is static and the specialization inlines straight
+        # through to the SDL calls -- no vtable, no indirect call on the per-command
+        # path.
+        #
+        # It sits INSIDE the module now, which is the whole reason the wrappers
+        # above could go: an impl written here reaches module-private helpers.
+        struct Sdl3Painter:
+            unused: i32
 
-impl Painter for Sdl3Painter:
-    def clear(color: UiCore::Color) -> void can[Ui.Draw]:
-        UiSdl3::draw_clear(color)
+        impl Painter for Sdl3Painter:
+            def clear(color: UiCore::Color) -> void can[Ui.Draw]:
+                paint_clear(color)
 
-    def fill_rect(box: UiCore::Rect, color: UiCore::Color) -> void can[Ui.Draw]:
-        UiSdl3::draw_rect(box, color)
+            def fill_rect(box: UiCore::Rect, color: UiCore::Color) -> void can[Ui.Draw]:
+                paint_rect(box, color)
 
-    def fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> void can[Ui.Draw]:
-        UiSdl3::draw_circle(disc, color)
+            def fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> void can[Ui.Draw]:
+                paint_circle(disc, color)
 
-    def fill_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]:
-        UiSdl3::draw_triangle(tri, color)
+            def fill_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]:
+                paint_triangle(tri, color)
 
-    def fill_line(segment: UiCore::Line, color: UiCore::Color) -> void can[Ui.Draw]:
-        UiSdl3::draw_line(segment, color)
+            def fill_line(segment: UiCore::Line, color: UiCore::Color) -> void can[Ui.Draw]:
+                paint_line(segment, color)
 
-    def draw_text(run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
-        UiSdl3::draw_text(run, color)
+            def draw_text(run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
+                blit_text(run, color)

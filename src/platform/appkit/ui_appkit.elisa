@@ -13,10 +13,14 @@
 # That cast is a C operation, so Elisa sees a flat typed C API exactly as it does
 # for SDL3.
 #
-# The shim also owns the index -> NSView* table. UiControlList hands out dense
+# The shim also owns the index -> NSView* table. UiControls hands out dense
 # indices for precisely this reason; every real toolkit keeps such a table.
 
 include "../../widgets/ui_controls.elisa"
+
+# `impl UiControls::Controls for T:` is rejected by stage0's parser, so the impl
+# below names `Controls` unqualified and this is what resolves it.
+using UiControls
 
 extern elisa_appkit_init() -> void
 extern elisa_appkit_create(index: i32, kind: i32, parent: i32) -> void
@@ -34,32 +38,35 @@ extern elisa_appkit_frame_x(index: i32) -> f32
 extern elisa_appkit_frame_y(index: i32) -> f32
 extern elisa_appkit_is_flipped(index: i32) -> i32
 
-struct AppKitControls:
-    unused: i32
-
-impl Controls for AppKitControls:
-    def create(index: i32, kind: UiControlKind, parent: i32) -> void can[Ui.Controls]:
-        elisa_appkit_create(index, kind.i32(), parent)
-
-    def set_frame(index: i32, box: UiCore::Rect) -> void can[Ui.Controls]:
-        elisa_appkit_set_frame(index, box.origin.x, box.origin.y, box.size.width, box.size.height)
-
-    def set_text(index: i32, text: sview) -> void can[Ui.Controls]:
-        # A `sview` is a pointer and a length, which is exactly what the shim's
-        # NSString initializer wants -- so no NUL-terminated copy is made, and a
-        # label's text may contain one.
-        return if text.len == 0
-        pointer: cstr = text.data.cast[cstr] can Unsafe.PointerCast
-        elisa_appkit_set_text(index, pointer, text.len)
-
 module UiAppKit:
     public:
+        # The AppKit controls backend. A TYPE, not a value: every native handle
+        # lives in the shim's index table, so the methods are static and the
+        # specialization inlines straight through to the C entry points.
+        struct AppKitControls:
+            unused: i32
+
+        impl Controls for AppKitControls:
+            def create(index: i32, kind: UiControls::Kind, parent: i32) -> void can[Ui.Controls]:
+                elisa_appkit_create(index, kind.i32(), parent)
+
+            def set_frame(index: i32, box: UiCore::Rect) -> void can[Ui.Controls]:
+                elisa_appkit_set_frame(index, box.origin.x, box.origin.y, box.size.width, box.size.height)
+
+            def set_text(index: i32, text: sview) -> void can[Ui.Controls]:
+                # A `sview` is a pointer and a length, which is exactly what the
+                # shim's NSString initializer wants -- so no NUL-terminated copy is
+                # made, and a label's text may contain one.
+                return if text.len == 0
+                pointer: cstr = text.data.cast[cstr] can Unsafe.PointerCast
+                elisa_appkit_set_text(index, pointer, text.len)
+
         # Realize a laid-out widget tree as native controls. Run UiWidgets::layout
         # first: every control is placed at the box it computed.
         def realize(root: UiWidgets::Widget) -> void can[Ui.Controls]:
-            UiControlList::reset()
-            UiControlList::realize(root, UI_NO_PARENT)
-            ui_apply_controls[AppKitControls]()
+            UiControls::reset()
+            UiControls::realize(root, UiControls::NO_PARENT)
+            UiControls::apply[AppKitControls]()
 
         def start() -> void:
             elisa_appkit_init()

@@ -3,17 +3,17 @@
 #
 # WHY A PROTOCOL AND NOT A FUNCTION TABLE. Elisa protocols resolve at COMPILE
 # TIME and lower through specialization -- there is no vtable carrier, so
-# `replay[Sdl3Painter]()` costs exactly what the hand-written match cost, with no
-# indirect call on the per-command path. That matters here: this is the hot loop
-# of every frame. The price is that a binary paints through one painter, chosen
-# when it is built, which is how a UI toolkit is used anyway -- you ship a macOS
-# app or a wasm component, not a binary that might be either.
+# `UiPaint::replay[Sdl3Painter]()` costs exactly what the hand-written match
+# cost, with no indirect call on the per-command path. That matters here: this is
+# the hot loop of every frame. The price is that a binary paints through one
+# painter, chosen when it is built, which is how a UI toolkit is used anyway --
+# you ship a macOS app or a wasm component, not a binary that might be either.
 #
 # WHY THE COMMANDS AND NOT THE WIDGETS. Both widget layers -- UiFlat's array and
 # UiWidgets' sealed hierarchy -- emit the same UiCore::Command list, so the
 # painting contract sits BELOW both and neither leaks into a backend. A native
 # controls backend is a different contract entirely (it consumes the widget tree,
-# not the command list) and will be its own protocol.
+# not the command list) and is its own protocol, in ui_controls.elisa.
 #
 # The replay loop below used to be copied into every backend: SDL3 matched the
 # six commands to paint them, WasmBrowser matched the same six to encode them.
@@ -28,6 +28,11 @@ include "./ui_core.elisa"
 # of these, so their `can` rows stay empty and the compiler proves a layout pass
 # cannot draw, poll, or open a window. That is what makes the passes reusable by
 # every backend and testable with no backend at all.
+#
+# TOP LEVEL on purpose, unlike everything below it: `Ui.Draw` is spelled in the
+# `can` row of every backend function in the framework, and a permission is
+# vocabulary rather than a layer. Qualifying it would put a module name in every
+# effect row and buy nothing.
 permission Ui:
     # Create, size and destroy windows.
     Window
@@ -42,39 +47,44 @@ permission Ui:
     # here so the native backend's row is drawn from the same family.
     Controls
 
-# One command, one method. A painter is a TYPE, not a value: its state is the
-# backend's own (SDL3's renderer handle, the component's wire cursor), so the
-# methods are static and the specialization inlines them.
-protocol Painter:
-    def clear(color: UiCore::Color) -> void can[Ui.Draw]
-    def fill_rect(box: UiCore::Rect, color: UiCore::Color) -> void can[Ui.Draw]
-    def fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> void can[Ui.Draw]
-    def fill_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]
-    def fill_line(segment: UiCore::Line, color: UiCore::Color) -> void can[Ui.Draw]
-    # Text needs both: it rasterizes (Draw) through font metrics (Text).
-    def draw_text(run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]
-
-# Replay this frame's commands through one painter: the only place the command
-# enum is matched for painting.
+# The painting vocabulary: the contract and the one loop that drives it.
 #
-# TOP LEVEL, not inside a module, and that is forced rather than chosen. stage1
-# declines every call to a generic declared inside a `module M:` -- with an
-# explicit type argument or an inferred one -- while stage0 compiles and runs
-# both. Measured, not guessed. When that gap closes this belongs in `module
-# UiPaint:` with the rest of the painting vocabulary; until then the `ui_` prefix
-# does the namespacing a module would.
-def ui_replay_commands[P: Painter]() -> void can[Ui.Draw, Ui.Text]:
-    for index in 0..<UiCore::command_count():
-        match UiCore::command_at(index):
-            UiCore::Command.Clear(color):
-                P.clear(color)
-            UiCore::Command.FillRect(box, color):
-                P.fill_rect(box, color)
-            UiCore::Command.FillCircle(disc, color):
-                P.fill_circle(disc, color)
-            UiCore::Command.FillTriangle(tri, color):
-                P.fill_triangle(tri, color)
-            UiCore::Command.FillLine(segment, color):
-                P.fill_line(segment, color)
-            UiCore::Command.DrawText(run, color):
-                P.draw_text(run, color)
+# A backend names `Painter` UNQUALIFIED in its `impl` header, under `using
+# UiPaint`, because `impl UiPaint::Painter for T:` is the one shape here that no
+# compiler takes: stage0's parser wants a `:` where the `for` is, and stage1
+# accepts the parse but declines the specialized bodies. Measured 2026-09-04, not
+# guessed. Everything else this module needs -- a generic declared inside a
+# module, an `impl` written inside a platform module, a module-qualified call to
+# the generic -- compiles and runs identically on both compilers now, which is
+# why the contract lives in a module at all.
+module UiPaint:
+    public:
+        # One command, one method. A painter is a TYPE, not a value: its state is
+        # the backend's own (SDL3's renderer handle, the component's wire cursor),
+        # so the methods are static and the specialization inlines them.
+        protocol Painter:
+            def clear(color: UiCore::Color) -> void can[Ui.Draw]
+            def fill_rect(box: UiCore::Rect, color: UiCore::Color) -> void can[Ui.Draw]
+            def fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> void can[Ui.Draw]
+            def fill_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]
+            def fill_line(segment: UiCore::Line, color: UiCore::Color) -> void can[Ui.Draw]
+            # Text needs both: it rasterizes (Draw) through font metrics (Text).
+            def draw_text(run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]
+
+        # Replay this frame's commands through one painter: the only place the
+        # command enum is matched for painting.
+        def replay[P: Painter]() -> void can[Ui.Draw, Ui.Text]:
+            for index in 0..<UiCore::command_count():
+                match UiCore::command_at(index):
+                    UiCore::Command.Clear(color):
+                        P.clear(color)
+                    UiCore::Command.FillRect(box, color):
+                        P.fill_rect(box, color)
+                    UiCore::Command.FillCircle(disc, color):
+                        P.fill_circle(disc, color)
+                    UiCore::Command.FillTriangle(tri, color):
+                        P.fill_triangle(tri, color)
+                    UiCore::Command.FillLine(segment, color):
+                        P.fill_line(segment, color)
+                    UiCore::Command.DrawText(run, color):
+                        P.draw_text(run, color)

@@ -20,6 +20,11 @@
 include "../../core/ui_core.elisa"
 include "../../core/ui_paint.elisa"
 
+# The impl at the foot of this module names `Painter` unqualified: `impl
+# UiPaint::Painter for T:` is rejected by stage0's parser, and this is what makes
+# the bare name resolve.
+using UiPaint
+
 @wasm_import_module("wasmbrowser:window/host@0.1.0")
 @link_name("present-commands")
 extern host_present_commands(width: u32, height: u32, commands: void&, count: u32) -> void
@@ -99,11 +104,15 @@ module UiWasmBrowser:
             wire_buffer[base + 2] <- 0
             wire_buffer[base + 3] <- 0
 
-    public:
-        # One public operation per drawing command, each writing the next wire slot.
-        # The MATCH that used to live here is now ui_paint.elisa's single
-        # ui_replay_commands, shared with SDL3 -- the two backends read the command
+    private:
+        # One operation per drawing command, each writing the next wire slot. The
+        # MATCH that used to live here is now ui_paint.elisa's single
+        # UiPaint::replay, shared with SDL3 -- the two backends read the command
         # list through the same code, so they cannot disagree about it again.
+        #
+        # Private, because the only callers are present() and the impl below, and
+        # the impl now lives inside this module. The public surface of a component
+        # backend is the guest lifecycle further down, nothing else.
         #
         # `base` used to come from the loop index. A protocol method is not handed
         # one, so the cursor is backend state now, reset by present() before the
@@ -119,7 +128,7 @@ module UiWasmBrowser:
         # One encoder per command, each writing one fixed-stride wire record.
         #
         # These used to be the arms of a single match over the command enum. Through
-        # the protocol that cost a round trip -- ui_replay_commands destructured the
+        # the protocol that cost a round trip -- UiPaint::replay destructured the
         # command, the painter rebuilt it, and the encoder destructured it again --
         # so the arms became functions and the match went away entirely. The BYTE
         # LAYOUT is unchanged; the host reads the same records at the same offsets.
@@ -177,7 +186,7 @@ module UiWasmBrowser:
             total: usize = UiCore::command_count()
             return if total == 0
             wire_reset()
-            ui_replay_commands[WasmPainter]()
+            UiPaint::replay[WasmPainter]()
             commands: void& = (&wire_buffer[0]).cast[void&] can Unsafe.PointerCast
             host_present_commands(UiCore::viewport_width().u32(), UiCore::viewport_height().u32(), commands, total.u32())
 
@@ -247,6 +256,36 @@ module UiWasmBrowser:
         def resume() -> void:
             pass
 
+    public:
+        # The component painter. Where SDL3 rasterizes, this ENCODES: each command
+        # becomes one fixed-stride wire record for the host to draw. Two backends
+        # with nothing in common but this protocol is the test of whether the
+        # abstraction is real -- one puts pixels on a renderer, the other serializes
+        # for a host that has never heard of Elisa.
+        #
+        # Inside the module now, so the encoders it drives no longer have to be
+        # public for it to reach them.
+        struct WasmPainter:
+            unused: i32
+
+        impl Painter for WasmPainter:
+            def clear(color: UiCore::Color) -> void can[Ui.Draw]:
+                encode_clear(wire_take_slot(), color)
+
+            def fill_rect(box: UiCore::Rect, color: UiCore::Color) -> void can[Ui.Draw]:
+                encode_fill_rect(wire_take_slot(), box, color)
+
+            def fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> void can[Ui.Draw]:
+                encode_fill_circle(wire_take_slot(), disc, color)
+
+            def fill_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]:
+                encode_fill_triangle(wire_take_slot(), tri, color)
+
+            def fill_line(segment: UiCore::Line, color: UiCore::Color) -> void can[Ui.Draw]:
+                encode_fill_line(wire_take_slot(), segment, color)
+
+            def draw_text(run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
+                encode_draw_text(wire_take_slot(), run, color)
 
 # The component boundary: one top-level function per WIT export, forwarding
 # into the module.
@@ -305,31 +344,3 @@ export fn scroll_input(x: f32, y: f32, delta_x: f32, delta_y: f32) -> void = gue
 export fn gamepad_button_input(index: u32, button: i32, value: f32) -> void = guest_gamepad_button_input
 @link_name("wasmbrowser:window/guest@0.1.0#gamepad-axis-input")
 export fn gamepad_axis_input(index: u32, axis: i32, value: f32) -> void = guest_gamepad_axis_input
-
-
-# The component painter. Where SDL3 rasterizes, this ENCODES: each command becomes
-# one fixed-stride wire record for the host to draw. Two backends with nothing in
-# common but this protocol is the test of whether the abstraction is real -- one
-# puts pixels on a renderer, the other serializes for a host that has never heard
-# of Elisa.
-struct WasmPainter:
-    unused: i32
-
-impl Painter for WasmPainter:
-    def clear(color: UiCore::Color) -> void can[Ui.Draw]:
-        UiWasmBrowser::encode_clear(UiWasmBrowser::wire_take_slot(), color)
-
-    def fill_rect(box: UiCore::Rect, color: UiCore::Color) -> void can[Ui.Draw]:
-        UiWasmBrowser::encode_fill_rect(UiWasmBrowser::wire_take_slot(), box, color)
-
-    def fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> void can[Ui.Draw]:
-        UiWasmBrowser::encode_fill_circle(UiWasmBrowser::wire_take_slot(), disc, color)
-
-    def fill_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]:
-        UiWasmBrowser::encode_fill_triangle(UiWasmBrowser::wire_take_slot(), tri, color)
-
-    def fill_line(segment: UiCore::Line, color: UiCore::Color) -> void can[Ui.Draw]:
-        UiWasmBrowser::encode_fill_line(UiWasmBrowser::wire_take_slot(), segment, color)
-
-    def draw_text(run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
-        UiWasmBrowser::encode_draw_text(UiWasmBrowser::wire_take_slot(), run, color)

@@ -13,6 +13,8 @@
 include "../src/widgets/ui_controls.elisa"
 
 using UiWidgets
+# The impl header below names `Controls` unqualified, as every backend does.
+using UiControls
 
 extern puts(text: cstr) -> i64
 
@@ -58,7 +60,7 @@ struct RecordingControls:
     unused: i32
 
 impl Controls for RecordingControls:
-    def create(index: i32, kind: UiControlKind, parent: i32) -> void can[Ui.Controls]:
+    def create(index: i32, kind: UiControls::Kind, parent: i32) -> void can[Ui.Controls]:
         return if index < 0 or index.usize() >= LOG_CAP
         row: usize = index.usize()
         log_total <- log_total + 1
@@ -108,9 +110,9 @@ def main() -> i64:
     can Ui.Controls, Abort.Panic, Memory.Allocate, Unsafe.PointerCast:
         root: Widget = build()
         layout(root, 200.0, 100.0)
-        UiControlList::reset()
-        UiControlList::realize(root, UI_NO_PARENT)
-        ui_apply_controls[RecordingControls]()
+        UiControls::reset()
+        UiControls::realize(root, UiControls::NO_PARENT)
+        UiControls::apply[RecordingControls]()
 
         # One control per widget, every one placed and captioned.
         check("a control per widget", log_total == 5)
@@ -118,17 +120,17 @@ def main() -> i64:
         check("every control is given its text", text_calls == 5)
 
         # PARENT FIRST, and the OS tree has the widget tree's shape.
-        check("the root has no parent", log_parent[0] == UI_NO_PARENT)
+        check("the root has no parent", log_parent[0] == UiControls::NO_PARENT)
         check("the bar hangs off the root", log_parent[1] == 0)
         check("the left button hangs off the bar", log_parent[2] == 1)
         check("the right button hangs off the bar", log_parent[3] == 1)
         check("the caption hangs off the root", log_parent[4] == 0)
 
         # Each widget kind became a control a platform actually has.
-        check("a window realizes a Window", kind_at(0) == UiControlKind.Window.i32())
-        check("a box realizes a Panel", kind_at(1) == UiControlKind.Panel.i32())
-        check("a push button realizes a PushButton", kind_at(2) == UiControlKind.PushButton.i32())
-        check("a label realizes a Label", kind_at(4) == UiControlKind.Label.i32())
+        check("a window realizes a Window", kind_at(0) == UiControls::Kind.Window.i32())
+        check("a box realizes a Panel", kind_at(1) == UiControls::Kind.Panel.i32())
+        check("a push button realizes a PushButton", kind_at(2) == UiControls::Kind.PushButton.i32())
+        check("a label realizes a Label", kind_at(4) == UiControls::Kind.Label.i32())
 
         # ABSOLUTE PLACEMENT: a control sits at the box layout computed for its
         # widget, not somewhere the backend invented.
