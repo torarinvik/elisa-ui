@@ -217,8 +217,11 @@ void elisa_appkit_canvas_set_selected_range(size_t index, size_t location, size_
     test_selection_start = test_byte_from_utf16(location);
     test_selection_end = test_byte_from_utf16(location + length);
 }
-size_t elisa_appkit_canvas_marked_location(void) { return test_utf16_from_byte(test_marked_start); }
+size_t elisa_appkit_canvas_marked_location(void) {
+    return test_marked_end > test_marked_start ? test_utf16_from_byte(test_marked_start) : NSNotFound;
+}
 size_t elisa_appkit_canvas_marked_length(void) { return test_utf16_from_byte(test_marked_end) - test_utf16_from_byte(test_marked_start); }
+int elisa_appkit_canvas_has_marked_text(void) { return test_marked_end > test_marked_start; }
 void elisa_appkit_canvas_commit_text(size_t native, size_t replacementLocation, size_t replacementLength) {
     char bytes[sizeof(test_text)];
     size_t length = test_native_text_bytes(native, bytes, sizeof(bytes));

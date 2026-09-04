@@ -26,6 +26,7 @@ extern void elisa_appkit_canvas_cancel_interaction(void);
 extern int elisa_appkit_canvas_accepts_text(void);
 extern int elisa_appkit_canvas_allows_text_readback(void);
 extern size_t elisa_appkit_canvas_not_found(void);
+extern int elisa_appkit_canvas_has_marked_text(void);
 extern size_t elisa_appkit_canvas_cursor_at(float x, float y);
 extern size_t elisa_appkit_canvas_cursor_leave(void);
 extern void elisa_appkit_canvas_text_click(float x, int button, int clickCount);
@@ -269,16 +270,14 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
     (void)sender;
     (void)elisa_appkit_canvas_perform_text_action(4);
 }
-- (BOOL)hasMarkedText { return elisa_appkit_canvas_marked_length() > 0; }
+- (BOOL)hasMarkedText { return elisa_appkit_canvas_has_marked_text() != 0; }
 - (NSRange)markedRange {
-    return self.hasMarkedText ? NSMakeRange(elisa_appkit_canvas_marked_location(),
-                                            elisa_appkit_canvas_marked_length())
-                              : NSMakeRange(NSNotFound, 0);
+    return NSMakeRange(elisa_appkit_canvas_marked_location(),
+                       elisa_appkit_canvas_marked_length());
 }
 - (NSRange)selectedRange {
-    return elisa_appkit_canvas_accepts_text()
-        ? NSMakeRange(elisa_appkit_canvas_selection_location(), elisa_appkit_canvas_selection_length())
-        : NSMakeRange(NSNotFound, 0);
+    return NSMakeRange(elisa_appkit_canvas_selection_location(),
+                       elisa_appkit_canvas_selection_length());
 }
 - (void)setMarkedText:(id)text selectedRange:(NSRange)selectedRange replacementRange:(NSRange)replacementRange {
     NSString *plain = [text isKindOfClass:[NSAttributedString class]]
