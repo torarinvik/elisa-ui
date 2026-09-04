@@ -66,7 +66,6 @@ static ElisaCanvasView *elisa_canvas_view;
 static NSMutableArray *elisa_accessibility_children;
 static NSMutableArray *elisa_accessibility_next;
 static NSMutableDictionary<NSNumber *, ElisaAccessibilityElement *> *elisa_accessibility_elements;
-static NSUInteger elisa_canvas_frame_count;
 static NSMenu *elisa_canvas_menu_bar;
 static NSMutableArray<NSMenu *> *elisa_canvas_menus;
 static NSString *elisa_canvas_empty_menu_key;
@@ -174,7 +173,6 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
 }
 - (void)drawRect:(NSRect)dirtyRect {
     (void)dirtyRect;
-    elisa_canvas_frame_count += 1;
     CGContextRef context = [[NSGraphicsContext currentContext] CGContext];
     CGContextSaveGState(context);
     elisa_appkit_canvas_frame((size_t)context);
@@ -415,7 +413,6 @@ int elisa_appkit_canvas_open(size_t title, float width, float height,
                              int style, int backing, int tabbing_mode, int restorable,
                              int make_first_responder, int activation_policy) {
     @autoreleasepool {
-        elisa_canvas_frame_count = 0;
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:(NSApplicationActivationPolicy)activation_policy];
         NSRect rect = NSMakeRect(0, 0, width, height);
@@ -572,7 +569,6 @@ int elisa_appkit_canvas_present_headless(size_t color_space, int image_type,
                                          int pixels_height) {
     // Exercise the real frame, painter and semantic bridge without ordering
     // a window onscreen or stealing focus from the user's current app.
-    NSUInteger before = elisa_canvas_frame_count;
     NSRect bounds = elisa_canvas_view.bounds;
     if (pixels_width <= 0 || pixels_height <= 0) return 0;
     NSBitmapImageRep *bitmap = [[NSBitmapImageRep alloc]
@@ -584,7 +580,6 @@ int elisa_appkit_canvas_present_headless(size_t color_space, int image_type,
         bitmapFormat:0 bytesPerRow:0 bitsPerPixel:0];
     NSGraphicsContext *graphics = [NSGraphicsContext graphicsContextWithBitmapImageRep:bitmap];
     [elisa_canvas_view displayRectIgnoringOpacity:bounds inContext:graphics];
-    if (elisa_canvas_frame_count <= before) return 0;
     if (snapshot != 0) {
         NSString *snapshotPath = (__bridge NSString *)(void *)snapshot;
         if (snapshotPath == nil) return 0;

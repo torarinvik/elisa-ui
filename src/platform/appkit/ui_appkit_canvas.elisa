@@ -399,6 +399,7 @@ module UiAppKitCanvas:
         global mutable accessibility_previous_count: usize = 0
         global mutable accessibility_force_layout: bool = true
         global mutable headless_session: bool = false
+        global mutable frame_rendered: bool = false
         global mutable frame_context: usize = 0
         const MENU_APPLICATION_LABEL_CAPACITY: usize = 4096
         global mutable menu_application_label_storage: u8[MENU_APPLICATION_LABEL_CAPACITY] = zeroed
@@ -672,6 +673,13 @@ module UiAppKitCanvas:
 
         def begin_native_frame(context: usize) -> void:
             frame_context <- context
+            frame_rendered <- true
+
+        def reset_frame_state() -> void:
+            frame_rendered <- false
+
+        def frame_was_rendered() -> bool:
+            return frame_rendered
 
         def end_native_frame() -> void:
             frame_context <- 0
@@ -964,13 +972,14 @@ module UiAppKitCanvas:
                 elisa_appkit_canvas_set_min_size(min_width, min_height)
                 UiCore::set_viewport(options.width, options.height)
                 reset_accessibility_history()
+                reset_frame_state()
                 app_init()
                 if headless:
                     bitmap_width: i32 = bitmap_extent(options.width)
                     bitmap_height: i32 = bitmap_extent(options.height)
                     result: i32 = elisa_appkit_canvas_present_headless(elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(), elisa_appkit_canvas_bitmap_file_type_png(), snapshot_path, bitmap_width, bitmap_height)
                     CFRelease(snapshot_path) if snapshot_path != 0
-                    return 2 if result == 0
+                    return 2 if result == 0 or not frame_was_rendered()
                     return 0
                 return 2 if elisa_appkit_canvas_present() == 0
                 elisa_appkit_canvas_activate() if options.activate

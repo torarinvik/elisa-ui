@@ -18,6 +18,7 @@ static int test_click_button;
 static int test_pointer_kind;
 static int test_pointer_button;
 static int test_window_focused = -1;
+static NSUInteger test_frame_count;
 static int test_allows_readback = 1;
 static int test_text_focused = 1;
 
@@ -25,6 +26,7 @@ void elisa_appkit_canvas_insert_text(const char *bytes, size_t length);
 
 void elisa_appkit_canvas_frame(size_t context) {
     (void)context;
+    test_frame_count += 1;
     elisa_appkit_canvas_accessibility_reset();
     elisa_appkit_canvas_accessibility_add(7, (size_t)(__bridge void *)@"elisa-ui-7", 7, NSAccessibilitySliderRole, 0,
         (size_t)(__bridge void *)[NSCursor pointingHandCursor],
@@ -332,7 +334,7 @@ int main(void) {
         if (require(elisa_appkit_canvas_present_headless(
                         elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(),
                         elisa_appkit_canvas_bitmap_file_type_png(), 0, 200, 100), @"off-screen presentation failed")) return 1;
-        if (require(elisa_canvas_frame_count > 0, @"off-screen frame did not draw")) return 1;
+        if (require(test_frame_count > 0, @"off-screen frame did not draw")) return 1;
         NSNotification *focusNotification = [NSNotification notificationWithName:NSWindowDidResignKeyNotification object:elisa_canvas_window];
         [elisa_canvas_delegate windowDidResignKey:focusNotification];
         if (require(test_window_focused == 0, @"window focus loss did not reach Elisa")) return 1;
