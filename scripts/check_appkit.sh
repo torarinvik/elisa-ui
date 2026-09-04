@@ -57,6 +57,8 @@ nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_window_style_resiza
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_window_style_utility$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_bezel_style_rounded$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_button_type_push_on_push_off$'
+nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_control_state_on$'
+nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_control_state_off$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_progress_style_bar$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_backing_store_buffered$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_activation_policy_regular$'

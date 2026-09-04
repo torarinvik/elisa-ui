@@ -148,6 +148,14 @@ int elisa_appkit_button_type_push_on_push_off(void) {
     return (int)NSButtonTypePushOnPushOff;
 }
 
+int elisa_appkit_control_state_on(void) {
+    return (int)NSControlStateValueOn;
+}
+
+int elisa_appkit_control_state_off(void) {
+    return (int)NSControlStateValueOff;
+}
+
 int elisa_appkit_progress_style_bar(void) {
     return (int)NSProgressIndicatorStyleBar;
 }
