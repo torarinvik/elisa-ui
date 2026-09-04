@@ -52,12 +52,12 @@ extern elisa_appkit_canvas_set_min_size(width: f32, height: f32) -> void
 extern elisa_appkit_canvas_redraw() -> void
 extern elisa_appkit_canvas_close() -> void
 extern elisa_appkit_canvas_accessibility_reset() -> void
-extern elisa_appkit_canvas_accessibility_add(id: usize, identifier: usize, action: usize, role: usize, subrole: usize, cursor: usize, label: usize, help: usize, x: f32, y: f32, width: f32, height: f32, enabled: i32, focused: i32) -> void
-extern elisa_appkit_canvas_accessibility_add_tooltip(id: usize) -> void
-extern elisa_appkit_canvas_accessibility_set_boolean(id: usize, selected: i32) -> void
-extern elisa_appkit_canvas_accessibility_set_range(id: usize, value: f32, minimum: f32, maximum: f32) -> void
-extern elisa_appkit_canvas_accessibility_set_text(id: usize, text_value: usize, selected_text: usize, selection_location: usize, selection_length: usize) -> void
-extern elisa_appkit_canvas_accessibility_notify(id: usize, notification: usize) -> void
+extern elisa_appkit_canvas_accessibility_add(id: usize, identifier: usize, action: usize, role: usize, subrole: usize, cursor: usize, label: usize, help: usize, x: f32, y: f32, width: f32, height: f32, enabled: i32, focused: i32) -> usize
+extern elisa_appkit_canvas_accessibility_add_tooltip(handle: usize) -> void
+extern elisa_appkit_canvas_accessibility_set_boolean(handle: usize, selected: i32) -> void
+extern elisa_appkit_canvas_accessibility_set_range(handle: usize, value: f32, minimum: f32, maximum: f32) -> void
+extern elisa_appkit_canvas_accessibility_set_text(handle: usize, text_value: usize, selected_text: usize, selection_location: usize, selection_length: usize) -> void
+extern elisa_appkit_canvas_accessibility_notify(handle: usize, notification: usize) -> void
 extern elisa_appkit_canvas_arrow_cursor() -> usize
 extern elisa_appkit_canvas_pointing_hand_cursor() -> usize
 extern elisa_appkit_canvas_ibeam_cursor() -> usize
@@ -650,10 +650,10 @@ module UiAppKitCanvas:
             return elisa_appkit_canvas_ibeam_cursor() if cursor == 2
             return elisa_appkit_canvas_arrow_cursor()
 
-        def accessibility_notify(id: usize, notifications: i32) -> void:
-            elisa_appkit_canvas_accessibility_notify(id, NSAccessibilityValueChangedNotification) if notifications & 1 != 0
-            elisa_appkit_canvas_accessibility_notify(id, NSAccessibilityFocusedUIElementChangedNotification) if notifications & 2 != 0
-            elisa_appkit_canvas_accessibility_notify(id, NSAccessibilitySelectedTextChangedNotification) if notifications & 4 != 0
+        def accessibility_notify(handle: usize, notifications: i32) -> void:
+            elisa_appkit_canvas_accessibility_notify(handle, NSAccessibilityValueChangedNotification) if notifications & 1 != 0
+            elisa_appkit_canvas_accessibility_notify(handle, NSAccessibilityFocusedUIElementChangedNotification) if notifications & 2 != 0
+            elisa_appkit_canvas_accessibility_notify(handle, NSAccessibilitySelectedTextChangedNotification) if notifications & 4 != 0
 
         # Cocoa role identity is an exported NSString constant. Resolve it in
         # Elisa from the framework-neutral semantic role, then pass the native
@@ -894,22 +894,23 @@ module UiAppKitCanvas:
                 accessibility_next_ids[index] <- node.id
                 accessibility_next[index] <- state
                 tooltip: i32 = 1 if node.help.len > 0 and interaction != 0 else 0
-                elisa_appkit_canvas_accessibility_add(node.id, native_identifier, node.action, native_role, native_subrole, native_cursor(cursor), native_label, native_help, node.frame.origin.x, node.frame.origin.y, node.frame.size.width, node.frame.size.height, enabled, focused)
-                elisa_appkit_canvas_accessibility_add_tooltip(node.id) if tooltip != 0
-                if value_kind == 1:
-                    elisa_appkit_canvas_accessibility_set_boolean(node.id, selected)
-                if value_kind == 2:
-                    elisa_appkit_canvas_accessibility_set_range(node.id, node.value, ACCESSIBILITY_RANGE_MINIMUM, ACCESSIBILITY_RANGE_MAXIMUM)
-                if value_kind == 3:
+                handle: usize = elisa_appkit_canvas_accessibility_add(node.id, native_identifier, node.action, native_role, native_subrole, native_cursor(cursor), native_label, native_help, node.frame.origin.x, node.frame.origin.y, node.frame.size.width, node.frame.size.height, enabled, focused)
+                if handle != 0:
+                    elisa_appkit_canvas_accessibility_add_tooltip(handle) if tooltip != 0
+                if value_kind == 1 and handle != 0:
+                    elisa_appkit_canvas_accessibility_set_boolean(handle, selected)
+                if value_kind == 2 and handle != 0:
+                    elisa_appkit_canvas_accessibility_set_range(handle, node.value, ACCESSIBILITY_RANGE_MINIMUM, ACCESSIBILITY_RANGE_MAXIMUM)
+                if value_kind == 3 and handle != 0:
                     # Always pass counted strings, including empty values. The
                     # native bridge only assigns these objects and never
                     # manufactures an Objective-C empty-string fallback.
                     native_value: usize = native_string(node.text_value)
                     native_selected: usize = native_string(node.selected_text)
-                    elisa_appkit_canvas_accessibility_set_text(node.id, native_value, native_selected, node.selection_location, node.selection_length)
+                    elisa_appkit_canvas_accessibility_set_text(handle, native_value, native_selected, node.selection_location, node.selection_length)
                     CFRelease(native_value) if native_value != 0
                     CFRelease(native_selected) if native_selected != 0
-                accessibility_notify(node.id, notifications)
+                accessibility_notify(handle, notifications) if handle != 0
                 CFRelease(native_identifier) if native_identifier != 0
                 CFRelease(native_label) if native_label != 0
                 CFRelease(native_help) if native_help != 0

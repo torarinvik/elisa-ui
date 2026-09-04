@@ -622,22 +622,25 @@ void elisa_appkit_canvas_accessibility_reset(void) {
     [elisa_canvas_view removeAllToolTips];
 }
 
-static ElisaAccessibilityElement *elisa_appkit_canvas_pending_element(size_t identifier) {
-    for (ElisaAccessibilityElement *element in elisa_accessibility_next) {
-        if (element.elisaIdentifier == identifier) return element;
-    }
-    return nil;
+// Elisa owns semantic identity and calls the typed setters immediately after
+// adding a node. Return the retained native object as an opaque handle so the
+// bridge does not maintain a second identifier lookup table for the in-flight
+// frame. The live dictionary above still reuses objects across frames.
+static ElisaAccessibilityElement *elisa_appkit_canvas_element(size_t handle) {
+    if (handle == 0) return nil;
+    id object = (__bridge id)(void *)handle;
+    return [object isKindOfClass:[ElisaAccessibilityElement class]] ? object : nil;
 }
 
-void elisa_appkit_canvas_accessibility_add(size_t identifier,
+size_t elisa_appkit_canvas_accessibility_add(size_t identifier,
                                             size_t identifierString, size_t action, const void *role,
                                             const void *subrole, size_t cursor,
                                             size_t label, size_t help,
                                             float x, float y, float width, float height,
                                             int enabled, int focused) {
-    if (label == 0 || elisa_canvas_view == nil) return;
+    if (label == 0 || elisa_canvas_view == nil) return 0;
     NSString *labelValue = (__bridge NSString *)(void *)label;
-    if (labelValue == nil) return;
+    if (labelValue == nil) return 0;
     NSNumber *key = @(identifier);
     ElisaAccessibilityElement *element = elisa_accessibility_elements[key];
     BOOL isNew = element == nil;
@@ -670,16 +673,17 @@ void elisa_appkit_canvas_accessibility_add(size_t identifier,
     NSRect inWindow = [elisa_canvas_view convertRect:local toView:nil];
     element.accessibilityFrame = [elisa_canvas_window convertRectToScreen:inWindow];
     [elisa_accessibility_next addObject:element];
+    return (size_t)(__bridge void *)element;
 }
 
-void elisa_appkit_canvas_accessibility_add_tooltip(size_t identifier) {
-    ElisaAccessibilityElement *element = elisa_appkit_canvas_pending_element(identifier);
+void elisa_appkit_canvas_accessibility_add_tooltip(size_t handle) {
+    ElisaAccessibilityElement *element = elisa_appkit_canvas_element(handle);
     if (element == nil || elisa_canvas_view == nil) return;
     [elisa_canvas_view addToolTipRect:element.elisaLocalFrame owner:element userData:NULL];
 }
 
-void elisa_appkit_canvas_accessibility_set_boolean(size_t identifier, int selected) {
-    ElisaAccessibilityElement *element = elisa_appkit_canvas_pending_element(identifier);
+void elisa_appkit_canvas_accessibility_set_boolean(size_t handle, int selected) {
+    ElisaAccessibilityElement *element = elisa_appkit_canvas_element(handle);
     if (element == nil) return;
     element.elisaSynchronizing = YES;
     element.accessibilityValue = @(selected != 0);
@@ -690,9 +694,9 @@ void elisa_appkit_canvas_accessibility_set_boolean(size_t identifier, int select
     element.elisaSynchronizing = NO;
 }
 
-void elisa_appkit_canvas_accessibility_set_range(size_t identifier, float value,
+void elisa_appkit_canvas_accessibility_set_range(size_t handle, float value,
                                                  float minimum, float maximum) {
-    ElisaAccessibilityElement *element = elisa_appkit_canvas_pending_element(identifier);
+    ElisaAccessibilityElement *element = elisa_appkit_canvas_element(handle);
     if (element == nil) return;
     element.elisaSynchronizing = YES;
     element.accessibilityValue = @(value);
@@ -703,10 +707,10 @@ void elisa_appkit_canvas_accessibility_set_range(size_t identifier, float value,
     element.elisaSynchronizing = NO;
 }
 
-void elisa_appkit_canvas_accessibility_set_text(size_t identifier,
+void elisa_appkit_canvas_accessibility_set_text(size_t handle,
                                                  size_t textValue, size_t selectedTextValue,
                                                  size_t selectionLocation, size_t selectionLength) {
-    ElisaAccessibilityElement *element = elisa_appkit_canvas_pending_element(identifier);
+    ElisaAccessibilityElement *element = elisa_appkit_canvas_element(handle);
     if (element == nil) return;
     NSString *value = (__bridge NSString *)(void *)textValue;
     NSString *selected = (__bridge NSString *)(void *)selectedTextValue;
@@ -720,8 +724,8 @@ void elisa_appkit_canvas_accessibility_set_text(size_t identifier,
     element.elisaSynchronizing = NO;
 }
 
-void elisa_appkit_canvas_accessibility_notify(size_t identifier, size_t notification) {
-    ElisaAccessibilityElement *element = elisa_appkit_canvas_pending_element(identifier);
+void elisa_appkit_canvas_accessibility_notify(size_t handle, size_t notification) {
+    ElisaAccessibilityElement *element = elisa_appkit_canvas_element(handle);
     if (element == nil || notification == 0) return;
     NSAccessibilityPostNotification(element, (__bridge NSAccessibilityNotificationName)(void *)notification);
 }
