@@ -83,6 +83,16 @@ extend UiWidgets:
                 Button.Radio(label, group, selected, rest, hover, press):
                     return 0.0
 
+        # Scroll containers keep their viewport box while translating the
+        # arranged content along the declared axis. The offset is intentionally
+        # read here, in Elisa, so every backend sees identical child geometry.
+        def scroll_offset_of(w: Widget) -> f32:
+            match w:
+                Container.Scroll(axis, offset, fill):
+                    return offset
+                _:
+                    return 0.0
+
         # Gap a container leaves between adjacent children.
         def spacing_of(w: Widget) -> f32:
             match w:
@@ -237,6 +247,7 @@ extend UiWidgets:
             count: f32 = child_count(w)
             gaps: f32 = spacing_of(w) * (count - 1.0) if count > 1.0 else 0.0
             inner_along: f32 = inner_width if is_row else inner_height
+            scroll_offset: f32 = scroll_offset_of(w)
 
             # First walk: what the children demand, and how much weight wants
             # the rest.
@@ -254,13 +265,13 @@ extend UiWidgets:
             # Second walk: place each child at the running offset.
             offset: mutable f32 = 0.0
             walk: mutable Widget? = first
-            while walk is node |offset, walk, is_row, inner_x, inner_y, inner_width, inner_height, share|:
+            while walk is node |offset, walk, is_row, inner_x, inner_y, inner_width, inner_height, share, scroll_offset|:
                 base: f32 = node.min_width if is_row else node.min_height
                 extent: f32 = base + share * node.grow
                 if is_row:
-                    arrange(node, inner_x + offset, inner_y, extent, inner_height)
+                    arrange(node, inner_x + offset - scroll_offset, inner_y, extent, inner_height)
                 else:
-                    arrange(node, inner_x, inner_y + offset, inner_width, extent)
+                    arrange(node, inner_x, inner_y + offset - scroll_offset, inner_width, extent)
                 offset <- offset + extent + spacing_of(w)
                 walk <- node.next_sibling
 
