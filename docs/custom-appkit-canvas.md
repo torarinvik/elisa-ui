@@ -16,7 +16,8 @@ selection/replacement rules and IME composition state all live in Elisa. Elisa
 also creates every outbound `CFString` and decodes inbound Cocoa strings with
 CoreFoundation FFI; Objective-C only borrows those objects for Cocoa setters or
 protocol callbacks.
-Window minimums, cursor policy, bitmap extents, frame-observed headless validation,
+Window minimums, cursor policy, bitmap extents and pixel format, frame-observed
+headless validation,
 accessibility adjustment steps, raster styling,
 color normalization, rendering-quality options, accessibility interaction/value
 kinds, the standard menu schema, shortcut and text-input routing, click-count

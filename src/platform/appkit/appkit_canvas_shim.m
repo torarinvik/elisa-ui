@@ -568,7 +568,9 @@ void elisa_appkit_canvas_activate(void) {
 // side only asks Cocoa to encode the bitmap and write it to that path.
 int elisa_appkit_canvas_present_headless(size_t color_space, int image_type,
                                          size_t snapshot, int pixels_width,
-                                         int pixels_height) {
+                                         int pixels_height, int bits_per_sample,
+                                         int samples_per_pixel, int has_alpha,
+                                         int bitmap_format) {
     // Exercise the real frame, painter and semantic bridge without ordering
     // a window onscreen or stealing focus from the user's current app.
     NSRect bounds = elisa_canvas_view.bounds;
@@ -577,9 +579,11 @@ int elisa_appkit_canvas_present_headless(size_t color_space, int image_type,
         initWithBitmapDataPlanes:NULL
         pixelsWide:(NSUInteger)pixels_width
         pixelsHigh:(NSUInteger)pixels_height
-        bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO
+        bitsPerSample:(NSInteger)bits_per_sample
+        samplesPerPixel:(NSInteger)samples_per_pixel
+        hasAlpha:has_alpha != 0 isPlanar:NO
         colorSpaceName:(__bridge NSString *)(void *)color_space
-        bitmapFormat:0 bytesPerRow:0 bitsPerPixel:0];
+        bitmapFormat:(NSBitmapFormat)bitmap_format bytesPerRow:0 bitsPerPixel:0];
     NSGraphicsContext *graphics = [NSGraphicsContext graphicsContextWithBitmapImageRep:bitmap];
     [elisa_canvas_view displayRectIgnoringOpacity:bounds inContext:graphics];
     if (snapshot != 0) {
