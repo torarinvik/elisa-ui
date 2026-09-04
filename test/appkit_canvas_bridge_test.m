@@ -310,11 +310,11 @@ static int require(BOOL condition, NSString *message) {
 int main(void) {
     @autoreleasepool {
         NSString *title = @"test";
+        elisa_appkit_canvas_set_activation_policy(NSApplicationActivationPolicyProhibited);
         int opened = elisa_appkit_canvas_open((size_t)(__bridge void *)title,
                                               200, 100, 15,
                                               elisa_appkit_canvas_backing_store_buffered(),
-                                              NSWindowTabbingModeDisallowed, 0,
-                                              NSApplicationActivationPolicyProhibited);
+                                              NSWindowTabbingModeDisallowed, 0);
         if (!opened) return 1;
         if (require([elisa_canvas_view isFlipped], @"canvas coordinate policy was not supplied by Elisa")) return 1;
         if (require([elisa_canvas_view acceptsFirstResponder], @"canvas focus policy was not supplied by Elisa")) return 1;

@@ -419,11 +419,9 @@ size_t elisa_appkit_canvas_accessibility_layout_changed_notification(void) {
 // Cocoa retains/copies it through -setTitle; the bridge does not perform any
 // UTF-8 decoding itself.
 int elisa_appkit_canvas_open(size_t title, float width, float height,
-                             int style, int backing, int tabbing_mode, int restorable,
-                             int activation_policy) {
+                             int style, int backing, int tabbing_mode, int restorable) {
     @autoreleasepool {
         [NSApplication sharedApplication];
-        [NSApp setActivationPolicy:(NSApplicationActivationPolicy)activation_policy];
         NSRect rect = NSMakeRect(0, 0, width, height);
         NSWindowStyleMask styleMask = (NSWindowStyleMask)style;
         NSWindow *window = [[NSWindow alloc] initWithContentRect:rect
@@ -445,6 +443,13 @@ int elisa_appkit_canvas_open(size_t title, float width, float height,
         [window setTabbingMode:(NSWindowTabbingMode)tabbing_mode];
         [window setRestorable:restorable != 0];
         return 1;
+    }
+}
+
+void elisa_appkit_canvas_set_activation_policy(int policy) {
+    @autoreleasepool {
+        [NSApplication sharedApplication];
+        [NSApp setActivationPolicy:(NSApplicationActivationPolicy)policy];
     }
 }
 
