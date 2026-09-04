@@ -41,6 +41,10 @@ if grep -Eq '\bvalueKind\b|\bvalue_kind\b' "$ROOT/src/platform/appkit/appkit_can
   echo "appkit canvas: accessibility value-shape policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'modifiers[[:space:]]*&[[:space:]]*[1248]' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: menu modifier policy leaked back into Objective-C" >&2
+  exit 1
+fi
 
 # These callbacks cross the Objective-C/Elisa boundary and must survive dead
 # stripping in the packaged product.

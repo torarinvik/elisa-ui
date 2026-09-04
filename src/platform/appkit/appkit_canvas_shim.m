@@ -430,7 +430,7 @@ void elisa_appkit_canvas_menus_begin(const char *title, size_t length) {
     elisa_canvas_menus = [NSMutableArray new];
 }
 
-int elisa_appkit_canvas_menu_add(const char *bytes, size_t length, int windowsMenu) {
+int elisa_appkit_canvas_menu_add(const char *bytes, size_t length) {
     if (elisa_canvas_menu_bar == nil || elisa_canvas_menus == nil) return -1;
     NSString *title = [[NSString alloc] initWithBytes:bytes length:length encoding:NSUTF8StringEncoding];
     if (title == nil) return -1;
@@ -439,13 +439,17 @@ int elisa_appkit_canvas_menu_add(const char *bytes, size_t length, int windowsMe
     [root setSubmenu:menu];
     [elisa_canvas_menu_bar addItem:root];
     [elisa_canvas_menus addObject:menu];
-    if (windowsMenu) [NSApp setWindowsMenu:menu];
     return (int)elisa_canvas_menus.count - 1;
+}
+
+void elisa_appkit_canvas_menu_set_windows(int menuIndex) {
+    if (menuIndex < 0 || (NSUInteger)menuIndex >= elisa_canvas_menus.count) return;
+    [NSApp setWindowsMenu:elisa_canvas_menus[menuIndex]];
 }
 
 void elisa_appkit_canvas_menu_add_item(int menuIndex, const char *bytes, size_t length,
                                         int appendApplicationName, int action, int key,
-                                        int modifiers) {
+                                        size_t modifiers) {
     if (menuIndex < 0 || (NSUInteger)menuIndex >= elisa_canvas_menus.count) return;
     NSString *title = [[NSString alloc] initWithBytes:bytes length:length encoding:NSUTF8StringEncoding];
     if (title == nil) return;
@@ -457,13 +461,12 @@ void elisa_appkit_canvas_menu_add_item(int menuIndex, const char *bytes, size_t 
     }
     NSMenuItem *item = [elisa_canvas_menus[menuIndex]
         addItemWithTitle:title action:elisa_menu_action(action) keyEquivalent:equivalent];
-    NSEventModifierFlags mask = 0;
-    if (modifiers & 1) mask |= NSEventModifierFlagCommand;
-    if (modifiers & 2) mask |= NSEventModifierFlagShift;
-    if (modifiers & 4) mask |= NSEventModifierFlagOption;
-    if (modifiers & 8) mask |= NSEventModifierFlagControl;
-    item.keyEquivalentModifierMask = mask;
+    item.keyEquivalentModifierMask = (NSEventModifierFlags)modifiers;
 }
+
+size_t elisa_appkit_canvas_modifier_command(void) { return NSEventModifierFlagCommand; }
+size_t elisa_appkit_canvas_modifier_shift(void) { return NSEventModifierFlagShift; }
+size_t elisa_appkit_canvas_modifier_option(void) { return NSEventModifierFlagOption; }
 
 void elisa_appkit_canvas_menu_add_separator(int menuIndex) {
     if (menuIndex < 0 || (NSUInteger)menuIndex >= elisa_canvas_menus.count) return;

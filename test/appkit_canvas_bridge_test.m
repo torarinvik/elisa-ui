@@ -220,18 +220,20 @@ int main(void) {
     @autoreleasepool {
         if (!elisa_appkit_canvas_open("test", 4, 200, 100, 15, 0, 0, 1, 1)) return 1;
         elisa_appkit_canvas_menus_begin("test", 4);
-        int applicationMenu = elisa_appkit_canvas_menu_add("test", 4, 0);
+        int applicationMenu = elisa_appkit_canvas_menu_add("test", 4);
         elisa_appkit_canvas_menu_add_item(applicationMenu, "About ", 6, 1, 1, 0, 0);
         elisa_appkit_canvas_menu_add_separator(applicationMenu);
-        elisa_appkit_canvas_menu_add_item(applicationMenu, "Quit ", 5, 1, 5, 'q', 1);
-        int windowMenu = elisa_appkit_canvas_menu_add("Window", 6, 1);
-        elisa_appkit_canvas_menu_add_item(windowMenu, "Minimize", 8, 0, 12, 'm', 1);
+        elisa_appkit_canvas_menu_add_item(applicationMenu, "Quit ", 5, 1, 5, 'q', NSEventModifierFlagCommand);
+        int windowMenu = elisa_appkit_canvas_menu_add("Window", 6);
+        elisa_appkit_canvas_menu_set_windows(windowMenu);
+        elisa_appkit_canvas_menu_add_item(windowMenu, "Minimize", 8, 0, 12, 'm', NSEventModifierFlagCommand);
         elisa_appkit_canvas_menus_commit();
         if (require(NSApp.mainMenu.numberOfItems == 2, @"declarative menu roots missing")) return 1;
         NSMenu *applicationSubmenu = [NSApp.mainMenu itemAtIndex:0].submenu;
         if (require([[applicationSubmenu itemAtIndex:0].title isEqualToString:@"About test"], @"application-name menu expansion failed")) return 1;
         if (require([applicationSubmenu itemAtIndex:2].action == @selector(terminate:), @"menu action token mapped incorrectly")) return 1;
         if (require([[applicationSubmenu itemAtIndex:2].keyEquivalent isEqualToString:@"q"], @"menu key equivalent mapped incorrectly")) return 1;
+        if (require([applicationSubmenu itemAtIndex:2].keyEquivalentModifierMask == NSEventModifierFlagCommand, @"native menu modifier mask was not preserved")) return 1;
         if (require(NSApp.windowsMenu == [NSApp.mainMenu itemAtIndex:1].submenu, @"window menu designation failed")) return 1;
         if (require(elisa_appkit_canvas_present_headless(), @"off-screen presentation failed")) return 1;
         if (require(elisa_canvas_frame_count > 0, @"off-screen frame did not draw")) return 1;
