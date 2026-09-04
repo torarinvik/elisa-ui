@@ -119,6 +119,23 @@ module UiControls:
             def set_state(index: i32, kind: Kind, value: f32, low: f32, high: f32, selected: bool) -> void can[Ui.Controls]
 
     private:
+        # Native controls and the custom painter share the same value contract:
+        # gauges use a normalized fraction and sliders use an ordered range.
+        # Resolve that contract once while recording the control list so every
+        # backend receives identical, safe state instead of reimplementing it.
+        def normalized_fraction(value: f32) -> f32:
+            return 0.0 if value < 0.0 else (1.0 if value > 1.0 else value)
+
+        def normalized_slider(value: f32, low: f32, high: f32) -> ControlState:
+            lower: mutable f32 = low
+            upper: mutable f32 = high
+            if upper < lower:
+                swap: f32 = lower
+                lower <- upper
+                upper <- swap
+            safe_value: f32 = lower if value < lower else (upper if value > upper else value)
+            return ControlState{value: safe_value, low: lower, high: upper, selected: false}
+
         # The list itself. It sits after the vocabulary because that is the reading
         # order -- what a backend must implement first, then how the list is kept.
         #
@@ -273,9 +290,9 @@ module UiControls:
         def state_of(w: UiWidgets::Widget) -> ControlState:
             match w:
                 UiWidgets::Control.Gauge(fraction, track, bar):
-                    return ControlState{value: fraction, low: 0.0, high: 1.0, selected: false}
+                    return ControlState{value: normalized_fraction(fraction), low: 0.0, high: 1.0, selected: false}
                 UiWidgets::Control.Slider(value, low, high, track, knob):
-                    return ControlState{value: value, low: low, high: high, selected: false}
+                    return normalized_slider(value, low, high)
                 UiWidgets::Button.Toggle(label, on, rest, hover, press):
                     return ControlState{value: 0.0, low: 0.0, high: 1.0, selected: on}
                 UiWidgets::Button.Check(label, checked, rest, hover, press):
