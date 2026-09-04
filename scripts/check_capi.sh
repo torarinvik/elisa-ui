@@ -50,7 +50,7 @@ int main(void) {
     elisa_ui_dispatch_event(ELISA_UI_EVENT_SCROLL, 1.0f, 2.0f, 3.0f, -4.0f, 0);
     if (seen.dx != 3.0f || seen.dy != -4.0f)    { puts("scroll delta did not survive"); failures++; }
 
-    /* GLFW's Escape, which is what UiKey names. */
+    /* GLFW's Escape, which is what UiCore::Key names. */
     elisa_ui_dispatch_event(ELISA_UI_EVENT_KEY_UP, 0.0f, 0.0f, 0.0f, 0.0f, 256);
     if (seen.kind != ELISA_UI_EVENT_KEY_UP || seen.code != 256) { puts("key did not survive"); failures++; }
 

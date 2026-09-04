@@ -17,13 +17,22 @@ consumes the whole batch at frame end. That is what
 and it is also what the manifest's `hybrid` execution mode requires — remote app
 logic with local presentation. SDL3 loses nothing by replaying the batch.
 
+Every file in the library puts its names in a module and is reached as
+`Module::name`, so the module supplies the prefix the names used to carry
+themselves: `UiCore`, `UiPaint`, `UiRaster`, `UiConst`, `UiWidgets`, `UiFlat`,
+`UiControls`, `UiCapi`, and one per backend. The only top-level names anywhere
+are the ones something outside Elisa dictates — the `extern`s, the C entry
+points, the WIT guest exports, and the platform/application contract below —
+because a module member's symbol carries its module and those names cannot move.
+
 - **Core** ([src/core/ui_core.elisa](src/core/ui_core.elisa)) — colour/geometry
-  records mirroring the WIT records field-for-field, the `UiCommand` batch, the
-  drawing API that appends to it, and `UiEvent`. Knows nothing about any wire
+  records mirroring the WIT records field-for-field, the `UiCore::Command` batch,
+  the drawing API that appends to it, `UiCore::Event` and the input vocabulary
+  (`UiCore::Key`, `UiCore::Pad`, `UiCore::PadAxis`). Knows nothing about any wire
   format.
 - **Backends** implement the platform side and own the frame loop:
   [sdl3](src/platform/sdl3/ui_sdl3.elisa) (native; externs against system
-  libSDL3; `ui_run` drives the loop) and
+  libSDL3; `UiSdl3::run` drives the loop) and
   [wasmbrowser](src/platform/wasmbrowser/ui_wasmbrowser.elisa) (a component
   implementing `world app`; the host drives the loop through the exported guest
   interface, and canonical-ABI encoding is confined to this file). Both render
@@ -34,8 +43,10 @@ logic with local presentation. SDL3 loses nothing by replaying the batch.
   parts: a container distributes its inner box along one axis, each child
   contributes a minimum, and leftover space is shared out by `grow` weight.
   Measure runs bottom-up, arrange top-down.
-- **Apps** implement `app_init` / `app_event(UiEvent)` / `app_frame`, plus
-  `app_widget_event(widget, event)` when using the widget layer.
+- **Apps** implement `app_init` / `app_event(UiCore::Event)` / `app_frame`,
+  plus `app_widget_event(widget, event)` when using the widget layer. These
+  four are top-level by name; an app's own state and helpers belong in its
+  own module, as [examples/hello/app.elisa](examples/hello/app.elisa) shows.
 
 Backend selection is by include: each example has a `native_main.elisa` and a
 `wapp_main.elisa` entry that include the same `app.elisa`.

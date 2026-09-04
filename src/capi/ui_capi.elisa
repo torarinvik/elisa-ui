@@ -10,6 +10,13 @@
 # one place and a kind added to the hierarchy reaches C without touching this
 # file.
 #
+# NAMESPACES. Every name a C program links against is dictated, so the four
+# entry points below are the file's whole top level and `UiCapi` holds the one
+# of them with a body. The other three forward to `UiCore` and not through the
+# module, which is the point: a hop through `UiCapi::set_viewport` would only
+# rename `UiCore::set_viewport`, and the asymmetry says plainly that decoding an
+# event is the only work this file does.
+#
 # A C header for this is:
 #
 #   typedef struct { int32_t kind; float x, y, dx, dy; int32_t code; } elisa_ui_event;
@@ -21,14 +28,21 @@
 
 include "../core/ui_core.elisa"
 
-# Deliver one event from a C host. The scalars are the EventRecord fields; an
-# ordinal this library does not model arrives as `Event.None`, which an app
-# ignores, rather than as a trap.
-def elisa_ui_dispatch_event(kind: i32, x: f32, y: f32, dx: f32, dy: f32, code: i32) -> void:
-    record: UiCore::EventRecord = UiCore::EventRecord{kind: kind.WireKind(), x: x, y: y, dx: dx, dy: dy, code: code}
-    app_event(UiCore::from_record(record))
+module UiCapi:
+    public:
+        # Deliver one event from a C host. The scalars are the EventRecord fields;
+        # an ordinal this library does not model arrives as `Event.None`, which an
+        # app ignores, rather than as a trap.
+        def dispatch_event(kind: i32, x: f32, y: f32, dx: f32, dy: f32, code: i32) -> void:
+            record: UiCore::EventRecord = UiCore::EventRecord{kind: UiCore::WireKind(kind), x: x, y: y, dx: dx, dy: dy, code: code}
+            app_event(UiCore::from_record(record))
 
-# The viewport, for a C host that owns the window.
+# The C entry points. Top-level by name, each one a single call.
+def elisa_ui_dispatch_event(kind: i32, x: f32, y: f32, dx: f32, dy: f32, code: i32) -> void:
+    UiCapi::dispatch_event(kind, x, y, dx, dy, code)
+
+# The viewport, for a C host that owns the window. State lives in UiCore, so
+# these reach it directly.
 def elisa_ui_set_viewport(width: f32, height: f32) -> void:
     UiCore::set_viewport(width, height)
 

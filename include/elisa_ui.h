@@ -48,7 +48,7 @@ typedef enum {
  *   POINTER_*, SCROLL   x, y  = position
  *   SCROLL              dx, dy = wheel delta
  *   POINTER_DOWN/UP     code  = button
- *   KEY_*               code  = key, in GLFW's numbering (see UiKey)
+ *   KEY_*               code  = key, in GLFW's numbering (see UiCore::Key)
  *   RESIZE              x, y  = width, height
  *   GAMEPAD_BUTTON/AXIS dx    = value, code = button or axis
  * Everything else is zero. */

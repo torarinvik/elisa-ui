@@ -1,33 +1,45 @@
 # elisa-ui widget constants, shared by both widget layers. Each closed set is a
-# CONST ENUM rather than a module of constants: a value reads `UiAxis.Row`, the
+# CONST ENUM rather than a module of constants: a value reads `UiConst::Axis.Row`, the
 # member separator is `.` because a const enum is a type and not a module, and a
 # typo is a compile error ("enum has no variant") instead of an undefined name or
 # -- where a bare constant is used as a match arm -- a binding that silently
 # matches everything. A const enum IS its backing, so every ordinal and every
 # boundary is unchanged.
-
-# A container distributes its children ALONG one axis and stretches them
-# ACROSS the other -- wxBoxSizer's orientation, spelled as a value rather
-# than a class.
-const enum UiAxis of i32:
-    Column = 0
-    Row = 1
-
-# What a widget layer reports back to the application through app_widget_event.
 #
-# That callback keeps taking a plain `i32`: it is the APP CONTRACT, forwarded to
-# C as elisa_ui_on_widget_event, and every application and test implements it.
-# So the ordinal converts at the call, exactly as the wire kinds do at the C
-# boundary -- the named set lives here, the boundary stays an integer.
-const enum UiWidgetEvent of i32:
-    Click = 0
+# The sets live in `UiConst` rather than at file scope, which is what lets the
+# names drop the `Ui` they used to carry: the module supplies it, and both
+# widget layers reach them the same way (`UiConst::Axis.Row`). `WidgetEvent`
+# and `WidgetKind` keep their `Widget`, because `UiConst::Event` beside
+# `UiCore::Event` would read as the same thing scoped two ways, and they are
+# not the same thing at all -- one is a click report, the other is input.
+#
+# The separators differ: `::` reaches into the module, `.` names a variant of
+# the type it found there.
 
-# What a flat-layer widget IS. The sealed hierarchy in ui_hierarchy.elisa carries
-# this in its type instead, which is the better answer; the flat layer needs a
-# tag, and a named one keeps `new_widget(parent, UiWidgetKind.Button)` from being
-# a bare 1. It is also what a native controls backend will switch on to decide
-# which OS control to create, so it wants to be a closed set the compiler checks.
-const enum UiWidgetKind of i32:
-    Panel = 0
-    Button = 1
-    Label = 2
+module UiConst:
+    public:
+        # A container distributes its children ALONG one axis and stretches them
+        # ACROSS the other -- wxBoxSizer's orientation, spelled as a value rather
+        # than a class.
+        const enum Axis of i32:
+            Column = 0
+            Row = 1
+
+        # What a widget layer reports back to the application through app_widget_event.
+        #
+        # That callback keeps taking a plain `i32`: it is the APP CONTRACT, forwarded to
+        # C as elisa_ui_on_widget_event, and every application and test implements it.
+        # So the ordinal converts at the call, exactly as the wire kinds do at the C
+        # boundary -- the named set lives here, the boundary stays an integer.
+        const enum WidgetEvent of i32:
+            Click = 0
+
+        # What a flat-layer widget IS. The sealed hierarchy in ui_hierarchy.elisa carries
+        # this in its type instead, which is the better answer; the flat layer needs a
+        # tag, and a named one keeps `new_widget(parent, UiConst::WidgetKind.Button)` from being
+        # a bare 1. It is also what a native controls backend will switch on to decide
+        # which OS control to create, so it wants to be a closed set the compiler checks.
+        const enum WidgetKind of i32:
+            Panel = 0
+            Button = 1
+            Label = 2

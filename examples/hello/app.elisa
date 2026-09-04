@@ -3,58 +3,81 @@
 # A toolbar row of buttons above a content area. Clicking a swatch recolours the
 # content panel, which is the whole point of the example: the app never touches
 # geometry or hit testing, only the tree and its own state.
+#
+# NAMESPACES. The application is written the way the library is: its state and
+# helpers live in `HelloApp`, private, and the only top-level names are the four
+# `app_*` the contract in ui_core.elisa dictates. So the globals lose the `app_`
+# prefix they carried to keep out of everyone else's way -- the module keeps
+# them out now -- and nothing an entry file includes alongside this one can
+# collide with a swatch handle.
 
-global mutable app_swatch_red: usize = UiFlat::NONE
-global mutable app_swatch_green: usize = UiFlat::NONE
-global mutable app_swatch_blue: usize = UiFlat::NONE
-global mutable app_content: usize = UiFlat::NONE
-global mutable app_clicks: i32 = 0
+module HelloApp:
+    private:
+        global mutable swatch_red: usize = UiFlat::NONE
+        global mutable swatch_green: usize = UiFlat::NONE
+        global mutable swatch_blue: usize = UiFlat::NONE
+        global mutable content: usize = UiFlat::NONE
+        global mutable clicks: i32 = 0
 
-def app_color(r: u8, g: u8, b: u8) -> UiCore::Color:
-    return UiCore::rgb(r, g, b)
+        def color(r: u8, g: u8, b: u8) -> UiCore::Color:
+            return UiCore::rgb(r, g, b)
 
-def app_swatch(parent: usize, r: u8, g: u8, b: u8) -> usize:
-    index: usize = UiFlat::button(parent, 120.0, 44.0, app_color(r, g, b), app_color(r + 30, g + 30, b + 30), app_color(r / 2, g / 2, b / 2))
-    UiFlat::set_grow(index, 1.0)
-    return index
+        def swatch(parent: usize, r: u8, g: u8, b: u8) -> usize:
+            index: usize = UiFlat::button(parent, 120.0, 44.0, color(r, g, b), color(r + 30, g + 30, b + 30), color(r / 2, g / 2, b / 2))
+            UiFlat::set_grow(index, 1.0)
+            return index
 
+    public:
+        def init() -> void:
+            UiFlat::reset()
+            root: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 16.0, 16.0, color(24, 26, 32))
+
+            # Static text: the run is a view, and the component's allocator never
+            # reclaims, so labels must not build strings per frame.
+            _ = UiFlat::label(root, "elisa-ui", 22.0, color(235, 236, 240))
+
+            toolbar: usize = UiFlat::panel(root, UiConst::Axis.Row, 0.0, 12.0, UiCore::Color{r: 0, g: 0, b: 0, a: 0})
+            UiFlat::set_grow(toolbar, 0.0)
+            swatch_red <- swatch(toolbar, 200, 70, 70)
+            swatch_green <- swatch(toolbar, 80, 180, 100)
+            swatch_blue <- swatch(toolbar, 82, 130, 235)
+
+            content <- UiFlat::panel(root, UiConst::Axis.Column, 12.0, 0.0, color(44, 48, 60))
+            UiFlat::set_grow(content, 1.0)
+            _ = UiFlat::label(content, "Pick a colour above", 16.0, color(190, 194, 205))
+
+            UiFlat::layout(UiCore::viewport_width(), UiCore::viewport_height())
+
+        def widget_event(widget: usize, event: i32) -> void:
+            return if event != UiConst::WidgetEvent.Click.i32()
+            clicks <- clicks + 1
+            if widget == swatch_red:
+                UiFlat::set_color(content, color(120, 40, 40))
+            elif widget == swatch_green:
+                UiFlat::set_color(content, color(40, 110, 60))
+            elif widget == swatch_blue:
+                UiFlat::set_color(content, color(40, 70, 140))
+
+        def event(incoming: UiCore::Event) -> void:
+            match incoming:
+                UiCore::Event.Resize(size):
+                    UiFlat::layout(size.width, size.height)
+                _:
+                    UiFlat::pointer(incoming)
+
+        def frame() -> void:
+            UiCore::clear(UiCore::rgb(16, 17, 21))
+            UiFlat::paint()
+
+# The application half of the contract. Top-level by name; one call each.
 def app_init() -> void:
-    UiFlat::reset()
-    root: usize = UiFlat::panel(UiFlat::NONE, UiAxis.Column, 16.0, 16.0, app_color(24, 26, 32))
-
-    # Static text: the run is a view, and the component's allocator never
-    # reclaims, so labels must not build strings per frame.
-    _ = UiFlat::label(root, "elisa-ui", 22.0, app_color(235, 236, 240))
-
-    toolbar: usize = UiFlat::panel(root, UiAxis.Row, 0.0, 12.0, UiCore::Color{r: 0, g: 0, b: 0, a: 0})
-    UiFlat::set_grow(toolbar, 0.0)
-    app_swatch_red <- app_swatch(toolbar, 200, 70, 70)
-    app_swatch_green <- app_swatch(toolbar, 80, 180, 100)
-    app_swatch_blue <- app_swatch(toolbar, 82, 130, 235)
-
-    app_content <- UiFlat::panel(root, UiAxis.Column, 12.0, 0.0, app_color(44, 48, 60))
-    UiFlat::set_grow(app_content, 1.0)
-    _ = UiFlat::label(app_content, "Pick a colour above", 16.0, app_color(190, 194, 205))
-
-    UiFlat::layout(UiCore::viewport_width(), UiCore::viewport_height())
+    HelloApp::init()
 
 def app_widget_event(widget: usize, event: i32) -> void:
-    return if event != UiWidgetEvent.Click.i32()
-    app_clicks <- app_clicks + 1
-    if widget == app_swatch_red:
-        UiFlat::set_color(app_content, app_color(120, 40, 40))
-    elif widget == app_swatch_green:
-        UiFlat::set_color(app_content, app_color(40, 110, 60))
-    elif widget == app_swatch_blue:
-        UiFlat::set_color(app_content, app_color(40, 70, 140))
+    HelloApp::widget_event(widget, event)
 
 def app_event(event: UiCore::Event) -> void:
-    match event:
-        UiCore::Event.Resize(size):
-            UiFlat::layout(size.width, size.height)
-        _:
-            UiFlat::pointer(event)
+    HelloApp::event(event)
 
 def app_frame() -> void:
-    UiCore::clear(UiCore::rgb(16, 17, 21))
-    UiFlat::paint()
+    HelloApp::frame()
