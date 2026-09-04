@@ -58,6 +58,10 @@ if grep -Eq 'stringWithUTF8String:' "$ROOT/src/platform/appkit/appkit_shim.m"; t
   echo "appkit: class-name text conversion leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq '__bridge[[:space:]]+NSString' "$ROOT/src/platform/appkit/appkit_shim.m"; then
+  echo "appkit: unchecked borrowed NSString handles remain in Objective-C" >&2
+  exit 1
+fi
 if grep -Eq '@""' "$ROOT/src/platform/appkit/appkit_shim.m"; then
   echo "appkit: empty control text leaked back into Objective-C" >&2
   exit 1

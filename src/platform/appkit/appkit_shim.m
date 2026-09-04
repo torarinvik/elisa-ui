@@ -36,6 +36,16 @@ static id elisa_appkit_object(int index) {
     return elisa_objects[@(index)];
 }
 
+// Text values cross the FFI as borrowed opaque CoreFoundation objects created
+// by Elisa. Resolve and validate the dynamic type once at the native boundary;
+// every constructor, setter and introspection path can then treat the result as
+// an NSString without reopening an unchecked bridge cast.
+static NSString *elisa_appkit_string(size_t handle) {
+    if (handle == 0) return nil;
+    id object = (__bridge id)(void *)handle;
+    return [object isKindOfClass:[NSString class]] ? object : nil;
+}
+
 // Resolve a recorded object for headless introspection. Production attachment
 // uses the explicit typed attach entry points below; this bookkeeping branch is
 // only for read-back checks.
@@ -213,7 +223,7 @@ void elisa_appkit_create_scroll_view(int index, int vertical, int horizontal) {
 void elisa_appkit_create_label(int index, size_t text) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index)) return;
-        NSString *value = (__bridge NSString *)(void *)text;
+        NSString *value = elisa_appkit_string(text);
         if (value == nil) return;
         elisa_appkit_store_view(index, [NSTextField labelWithString:value]);
     }
@@ -222,7 +232,7 @@ void elisa_appkit_create_label(int index, size_t text) {
 void elisa_appkit_create_push_button(int index, int bezel_style, size_t text) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index)) return;
-        NSString *value = (__bridge NSString *)(void *)text;
+        NSString *value = elisa_appkit_string(text);
         if (value == nil) return;
         NSButton *button = [NSButton buttonWithTitle:value target:nil action:nil];
         [button setBezelStyle:(NSBezelStyle)bezel_style];
@@ -233,7 +243,7 @@ void elisa_appkit_create_push_button(int index, int bezel_style, size_t text) {
 void elisa_appkit_create_toggle_button(int index, int button_type, size_t text) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index)) return;
-        NSString *value = (__bridge NSString *)(void *)text;
+        NSString *value = elisa_appkit_string(text);
         if (value == nil) return;
         NSButton *button = [NSButton buttonWithTitle:value target:nil action:nil];
         [button setButtonType:(NSButtonType)button_type];
@@ -244,7 +254,7 @@ void elisa_appkit_create_toggle_button(int index, int button_type, size_t text) 
 void elisa_appkit_create_checkbox(int index, size_t text) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index)) return;
-        NSString *value = (__bridge NSString *)(void *)text;
+        NSString *value = elisa_appkit_string(text);
         if (value == nil) return;
         elisa_appkit_store_view(index, [NSButton checkboxWithTitle:value target:nil action:nil]);
     }
@@ -253,7 +263,7 @@ void elisa_appkit_create_checkbox(int index, size_t text) {
 void elisa_appkit_create_radio_button(int index, size_t text) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index)) return;
-        NSString *value = (__bridge NSString *)(void *)text;
+        NSString *value = elisa_appkit_string(text);
         if (value == nil) return;
         elisa_appkit_store_view(index, [NSButton radioButtonWithTitle:value target:nil action:nil]);
     }
@@ -262,7 +272,7 @@ void elisa_appkit_create_radio_button(int index, size_t text) {
 void elisa_appkit_create_text_field(int index, size_t text) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index)) return;
-        NSString *value = (__bridge NSString *)(void *)text;
+        NSString *value = elisa_appkit_string(text);
         if (value == nil) return;
         elisa_appkit_store_view(index, [NSTextField textFieldWithString:value]);
     }
@@ -319,7 +329,7 @@ void elisa_appkit_set_scroll_document_frame(int index, float width, float height
 // no UTF-8 policy or byte-to-string conversion remains in this bridge.
 void elisa_appkit_set_window_title(int index, size_t text) {
     @autoreleasepool {
-        NSString *value = (__bridge NSString *)(void *)text;
+        NSString *value = elisa_appkit_string(text);
         NSWindow *window = (NSWindow *)elisa_appkit_object(index);
         if (value != nil && [window isKindOfClass:[NSWindow class]]) [window setTitle:value];
     }
@@ -327,7 +337,7 @@ void elisa_appkit_set_window_title(int index, size_t text) {
 
 void elisa_appkit_set_button_title(int index, size_t text) {
     @autoreleasepool {
-        NSString *value = (__bridge NSString *)(void *)text;
+        NSString *value = elisa_appkit_string(text);
         NSButton *button = (NSButton *)elisa_appkit_object(index);
         if (value != nil && [button isKindOfClass:[NSButton class]]) [button setTitle:value];
     }
@@ -335,7 +345,7 @@ void elisa_appkit_set_button_title(int index, size_t text) {
 
 void elisa_appkit_set_field_text(int index, size_t text) {
     @autoreleasepool {
-        NSString *value = (__bridge NSString *)(void *)text;
+        NSString *value = elisa_appkit_string(text);
         NSTextField *field = (NSTextField *)elisa_appkit_object(index);
         if (value != nil && [field isKindOfClass:[NSTextField class]]) [field setStringValue:value];
     }
@@ -400,7 +410,8 @@ int elisa_appkit_subview_count(int index) {
 
 int elisa_appkit_is_class(int index, size_t class_name) {
     if (index < 0 || class_name == 0) return 0;
-    NSString *name = (__bridge NSString *)(void *)class_name;
+    NSString *name = elisa_appkit_string(class_name);
+    if (name == nil) return 0;
     Class wanted = NSClassFromString(name);
     return (wanted != nil && [elisa_appkit_object(index) isKindOfClass:wanted]) ? 1 : 0;
 }
