@@ -5,6 +5,7 @@ using UiPaint
 
 extern getenv(name: cstr) -> cstr?
 extern strcmp(left: cstr, right: cstr) -> i32
+extern strlen(text: cstr) -> usize
 extern elisa_appkit_canvas_window_style_titled() -> i32
 extern elisa_appkit_canvas_window_style_closable() -> i32
 extern elisa_appkit_canvas_window_style_miniaturizable() -> i32
@@ -34,13 +35,12 @@ extern elisa_appkit_canvas_modifier_shift() -> usize
 extern elisa_appkit_canvas_modifier_option() -> usize
 extern elisa_appkit_canvas_modifier_control() -> usize
 extern elisa_appkit_canvas_modifier_device_independent_mask() -> usize
-extern elisa_appkit_canvas_set_snapshot_path(path: cstr) -> void
 extern elisa_appkit_canvas_schedule_redraw(delay: f32, run_loop_mode: usize) -> void
 extern elisa_appkit_canvas_cancel_redraw() -> void
 extern elisa_appkit_canvas_present() -> i32
 extern elisa_appkit_canvas_activate() -> void
 extern elisa_appkit_canvas_center() -> void
-extern elisa_appkit_canvas_present_headless(color_space: usize, image_type: i32) -> i32
+extern elisa_appkit_canvas_present_headless(color_space: usize, image_type: i32, snapshot: cstr, snapshot_length: usize) -> i32
 extern elisa_appkit_canvas_run() -> void
 extern elisa_appkit_canvas_set_min_size(width: f32, height: f32) -> void
 extern elisa_appkit_canvas_redraw() -> void
@@ -861,9 +861,12 @@ module UiAppKitCanvas:
                 return 1 if opened == 0
                 elisa_appkit_canvas_center() if options.centered
                 install_standard_menus(pointer, title.len)
+                snapshot_path: mutable cstr = ""
+                snapshot_length: mutable usize = 0
                 snapshot_opt: cstr? = getenv("ELISA_UI_SNAPSHOT")
                 if snapshot_opt is snapshot:
-                    elisa_appkit_canvas_set_snapshot_path(snapshot)
+                    snapshot_path <- snapshot
+                    snapshot_length <- strlen(snapshot)
                 min_width: f32 = options.min_width if options.min_width > 0.0 else 0.0
                 min_height: f32 = options.min_height if options.min_height > 0.0 else 0.0
                 elisa_appkit_canvas_set_min_size(min_width, min_height)
@@ -871,7 +874,7 @@ module UiAppKitCanvas:
                 reset_accessibility_history()
                 app_init()
                 if headless:
-                    return 2 if elisa_appkit_canvas_present_headless(elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(), elisa_appkit_canvas_bitmap_file_type_png()) == 0
+                    return 2 if elisa_appkit_canvas_present_headless(elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(), elisa_appkit_canvas_bitmap_file_type_png(), snapshot_path, snapshot_length) == 0
                     return 0
                 return 2 if elisa_appkit_canvas_present() == 0
                 elisa_appkit_canvas_activate() if options.activate

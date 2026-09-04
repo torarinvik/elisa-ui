@@ -66,7 +66,6 @@ static NSMutableArray *elisa_accessibility_children;
 static NSMutableArray *elisa_accessibility_next;
 static NSMutableDictionary<NSNumber *, ElisaAccessibilityElement *> *elisa_accessibility_elements;
 static NSUInteger elisa_canvas_frame_count;
-static NSString *elisa_canvas_snapshot_path;
 static NSMenu *elisa_canvas_menu_bar;
 static NSMutableArray<NSMenu *> *elisa_canvas_menus;
 static NSTimer *elisa_canvas_animation_timer;
@@ -514,10 +513,6 @@ void elisa_appkit_canvas_menus_commit(void) {
     if (elisa_canvas_menu_bar != nil) [NSApp setMainMenu:elisa_canvas_menu_bar];
 }
 
-void elisa_appkit_canvas_set_snapshot_path(const char *path) {
-    elisa_canvas_snapshot_path = path == NULL ? nil : [NSString stringWithUTF8String:path];
-}
-
 int elisa_appkit_canvas_clipboard_write(const unsigned char *bytes, size_t length,
                                        size_t pasteboard_type) {
     if (bytes == NULL || pasteboard_type == 0) return 0;
@@ -570,7 +565,8 @@ int elisa_appkit_canvas_present(void) {
 void elisa_appkit_canvas_activate(void) {
     [NSApp activateIgnoringOtherApps:YES];
 }
-int elisa_appkit_canvas_present_headless(size_t color_space, int image_type) {
+int elisa_appkit_canvas_present_headless(size_t color_space, int image_type,
+                                         const char *snapshotBytes, size_t snapshotLength) {
     // Exercise the real frame, painter and semantic bridge without ordering
     // a window onscreen or stealing focus from the user's current app.
     NSUInteger before = elisa_canvas_frame_count;
@@ -585,9 +581,13 @@ int elisa_appkit_canvas_present_headless(size_t color_space, int image_type) {
     NSGraphicsContext *graphics = [NSGraphicsContext graphicsContextWithBitmapImageRep:bitmap];
     [elisa_canvas_view displayRectIgnoringOpacity:bounds inContext:graphics];
     if (elisa_canvas_frame_count <= before) return 0;
-    if (elisa_canvas_snapshot_path.length > 0) {
+    if (snapshotBytes != NULL && snapshotLength > 0) {
+        NSString *snapshotPath = [[NSString alloc] initWithBytes:snapshotBytes
+                                                            length:snapshotLength
+                                                          encoding:NSUTF8StringEncoding];
+        if (snapshotPath == nil) return 0;
         NSData *png = [bitmap representationUsingType:(NSBitmapImageFileType)image_type properties:@{}];
-        if (png == nil || ![png writeToFile:elisa_canvas_snapshot_path atomically:YES]) return 0;
+        if (png == nil || ![png writeToFile:snapshotPath atomically:YES]) return 0;
     }
     return 1;
 }
