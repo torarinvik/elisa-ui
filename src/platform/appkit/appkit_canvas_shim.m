@@ -9,7 +9,7 @@
 
 extern void elisa_appkit_canvas_frame(size_t context);
 extern void elisa_appkit_canvas_resize(float width, float height);
-extern void elisa_appkit_canvas_pointer_move(float x, float y);
+extern size_t elisa_appkit_canvas_pointer_move_event(float x, float y);
 extern void elisa_appkit_canvas_pointer_button(float x, float y, int button, int down, int clickCount);
 extern void elisa_appkit_canvas_pointer_scroll(float x, float y, float dx, float dy);
 extern void elisa_appkit_canvas_raw_key(int down, int keyCode, int character);
@@ -28,7 +28,6 @@ extern int elisa_appkit_canvas_accessibility_decrement_direction(void);
 extern int elisa_appkit_canvas_accepts_text(void);
 extern size_t elisa_appkit_canvas_not_found(void);
 extern int elisa_appkit_canvas_has_marked_text(void);
-extern size_t elisa_appkit_canvas_cursor_at(float x, float y);
 extern size_t elisa_appkit_canvas_pointer_leave_event(void);
 extern void elisa_appkit_canvas_set_text(size_t index, size_t text);
 extern size_t elisa_appkit_canvas_selection_location(void);
@@ -184,10 +183,6 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
 - (NSPoint)eventPoint:(NSEvent *)event {
     return [self convertPoint:[event locationInWindow] fromView:nil];
 }
-- (void)updatePointerCursor:(NSPoint)point {
-    NSCursor *nativeCursor = (__bridge NSCursor *)(void *)elisa_appkit_canvas_cursor_at(point.x, point.y);
-    if (nativeCursor != nil) [nativeCursor set];
-}
 - (void)resetCursorRects {
     [super resetCursorRects];
     for (ElisaAccessibilityElement *element in elisa_accessibility_children) {
@@ -201,7 +196,11 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
     // ordering; this adapter only supplies Cocoa's coordinate and click data.
     elisa_appkit_canvas_pointer_button(p.x, p.y, button, down, (int)event.clickCount);
 }
-- (void)mouseMoved:(NSEvent *)event { NSPoint p=[self eventPoint:event]; [self updatePointerCursor:p]; elisa_appkit_canvas_pointer_move(p.x,p.y); }
+- (void)mouseMoved:(NSEvent *)event {
+    NSPoint p = [self eventPoint:event];
+    NSCursor *nativeCursor = (__bridge NSCursor *)(void *)elisa_appkit_canvas_pointer_move_event(p.x, p.y);
+    if (nativeCursor != nil) [nativeCursor set];
+}
 - (void)mouseDragged:(NSEvent *)event { [self mouseMoved:event]; }
 - (void)rightMouseDragged:(NSEvent *)event { [self mouseMoved:event]; }
 - (void)otherMouseDragged:(NSEvent *)event { [self mouseMoved:event]; }

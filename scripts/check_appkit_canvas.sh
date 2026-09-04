@@ -174,6 +174,10 @@ if grep -Eq 'elisa_appkit_canvas_pointer_(down|up)\(|elisa_appkit_canvas_text_cl
   echo "appkit canvas: pointer phase or text-click policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'elisa_appkit_canvas_pointer_move\(|elisa_appkit_canvas_cursor_at\(' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: pointer-motion policy leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'elisa_appkit_canvas_(pointer_leave|cursor_leave)\(' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: pointer-exit sequencing leaked back into Objective-C" >&2
   exit 1
@@ -190,7 +194,7 @@ fi
 # These callbacks cross the Objective-C/Elisa boundary and must survive dead
 # stripping in the packaged product.
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_frame$'
-nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_move$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_move_event$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_button$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_leave_event$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_scroll$'
@@ -238,7 +242,6 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_post_layout_change
 # Do not use grep -q here: with pipefail, a late match can make nm exit on
 # SIGPIPE after grep closes the pipe, masking a successful symbol check.
 nm -g "$BIN" | grep ' T _elisa_appkit_canvas_window_closed$' >/dev/null
-nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_cursor_at$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_set_text$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_selection_location$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_set_selected_range$'

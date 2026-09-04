@@ -183,6 +183,10 @@ size_t elisa_appkit_canvas_cursor_at(float x, float y) {
     (void)x; (void)y;
     return (size_t)(__bridge void *)[NSCursor IBeamCursor];
 }
+size_t elisa_appkit_canvas_pointer_move_event(float x, float y) {
+    elisa_appkit_canvas_pointer_move(x, y);
+    return elisa_appkit_canvas_cursor_at(x, y);
+}
 size_t elisa_appkit_canvas_cursor_leave(void) {
     return (size_t)(__bridge void *)[NSCursor arrowCursor];
 }
@@ -371,6 +375,12 @@ int main(void) {
                          elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(),
                          elisa_appkit_canvas_bitmap_file_type_png(),
                          (size_t)(__bridge void *)@"/elisa-ui-missing-directory/frame.png", 200, 100, 8, 4, 1, 0), @"snapshot failure did not cross the FFI boundary")) return 1;
+        NSEvent *move = [NSEvent mouseEventWithType:NSEventTypeMouseMoved
+            location:NSMakePoint(40, 20) modifierFlags:0 timestamp:0
+            windowNumber:elisa_canvas_window.windowNumber context:nil eventNumber:0
+            clickCount:0 pressure:0.0];
+        [elisa_canvas_view mouseMoved:move];
+        if (require(test_pointer_kind == 0, @"pointer motion did not cross the Elisa event path")) return 1;
         NSEvent *singleClick = [NSEvent mouseEventWithType:NSEventTypeLeftMouseDown
             location:NSMakePoint(40, 20) modifierFlags:0 timestamp:0
             windowNumber:elisa_canvas_window.windowNumber context:nil eventNumber:1
