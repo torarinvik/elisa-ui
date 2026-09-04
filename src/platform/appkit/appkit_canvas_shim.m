@@ -477,24 +477,22 @@ void elisa_appkit_canvas_menu_set_windows(int menuIndex) {
 }
 
 static void elisa_appkit_canvas_menu_add_item_title(int menuIndex, NSString *title,
-                                                     const char *actionName, int key, size_t modifiers) {
+                                                     NSString *keyEquivalent,
+                                                     const char *actionName, size_t modifiers) {
     if (menuIndex < 0 || (NSUInteger)menuIndex >= elisa_canvas_menus.count) return;
     if (title == nil) return;
     SEL action = actionName == NULL || actionName[0] == '\0' ? NULL : sel_registerName(actionName);
-    NSString *equivalent = @"";
-    if (key > 0 && key <= UINT16_MAX) {
-        unichar character = (unichar)key;
-        equivalent = [NSString stringWithCharacters:&character length:1];
-    }
     NSMenuItem *item = [elisa_canvas_menus[menuIndex]
-        addItemWithTitle:title action:action keyEquivalent:equivalent];
+        addItemWithTitle:title action:action keyEquivalent:keyEquivalent ?: @""];
     item.keyEquivalentModifierMask = (NSEventModifierFlags)modifiers;
 }
 
 void elisa_appkit_canvas_menu_add_item(int menuIndex, size_t title,
-                                        const char *actionName, int key, size_t modifiers) {
+                                        size_t keyEquivalent, const char *actionName,
+                                        size_t modifiers) {
     NSString *value = (__bridge NSString *)(void *)title;
-    elisa_appkit_canvas_menu_add_item_title(menuIndex, value, actionName, key, modifiers);
+    NSString *key = (__bridge NSString *)(void *)keyEquivalent;
+    elisa_appkit_canvas_menu_add_item_title(menuIndex, value, key, actionName, modifiers);
 }
 
 size_t elisa_appkit_canvas_modifier_command(void) { return NSEventModifierFlagCommand; }
