@@ -504,12 +504,16 @@ size_t elisa_appkit_canvas_clipboard_read(unsigned char *buffer, size_t capacity
 void elisa_appkit_canvas_schedule_redraw(float delay) {
     [elisa_canvas_animation_timer invalidate];
     elisa_canvas_animation_timer = nil;
-    if (delay <= 0.0f) return;
     elisa_canvas_animation_timer = [NSTimer timerWithTimeInterval:delay repeats:NO block:^(NSTimer *timer) {
         (void)timer;
         [elisa_canvas_view setNeedsDisplay:YES];
     }];
     [NSRunLoop.mainRunLoop addTimer:elisa_canvas_animation_timer forMode:NSRunLoopCommonModes];
+}
+
+void elisa_appkit_canvas_cancel_redraw(void) {
+    [elisa_canvas_animation_timer invalidate];
+    elisa_canvas_animation_timer = nil;
 }
 
 void elisa_appkit_canvas_set_min_size(float width, float height) {

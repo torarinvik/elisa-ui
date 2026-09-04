@@ -32,6 +32,7 @@ extern elisa_appkit_canvas_modifier_control() -> usize
 extern elisa_appkit_canvas_modifier_device_independent_mask() -> usize
 extern elisa_appkit_canvas_set_snapshot_path(path: cstr) -> void
 extern elisa_appkit_canvas_schedule_redraw(delay: f32) -> void
+extern elisa_appkit_canvas_cancel_redraw() -> void
 extern elisa_appkit_canvas_present(activate: i32) -> i32
 extern elisa_appkit_canvas_present_headless() -> i32
 extern elisa_appkit_canvas_run() -> void
@@ -505,7 +506,11 @@ module UiAppKitCanvas:
             accessibility_force_layout <- true
 
         def schedule_next_frame(delay: f32) -> void:
-            elisa_appkit_canvas_schedule_redraw(delay) if not headless_session
+            return if headless_session
+            if delay <= 0.0:
+                elisa_appkit_canvas_cancel_redraw()
+                return
+            elisa_appkit_canvas_schedule_redraw(delay)
 
         def begin_native_frame(context: usize) -> void:
             frame_context <- context

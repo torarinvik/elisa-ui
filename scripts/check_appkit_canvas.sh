@@ -73,6 +73,10 @@ if grep -Eq 'if \(layoutChanged\)' "$ROOT/src/platform/appkit/appkit_canvas_shim
   echo "appkit canvas: accessibility layout-notification policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'if \(delay <= 0\.0f\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: redraw cancellation policy leaked back into Objective-C" >&2
+  exit 1
+fi
 
 # These callbacks cross the Objective-C/Elisa boundary and must survive dead
 # stripping in the packaged product.
@@ -137,6 +141,7 @@ if nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_\(line_height\|ascent\)$'; th
   exit 1
 fi
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_schedule_redraw$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_cancel_redraw$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_present_headless$'
 plutil -lint "$APP/Contents/Info.plist" >/dev/null
 codesign --verify --deep --strict "$APP"
