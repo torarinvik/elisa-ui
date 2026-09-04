@@ -21,6 +21,10 @@ if grep -Eq 'styleMask:[[:space:]]*\(NSWindowStyleMask(Titled|Closable|Miniaturi
   echo "appkit: native control style policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'setActivationPolicy:NSApplicationActivationPolicyRegular' "$ROOT/src/platform/appkit/appkit_shim.m"; then
+  echo "appkit: activation policy leaked back into Objective-C initialization" >&2
+  exit 1
+fi
 clang -c -fobjc-arc -o "$ROOT/build/appkit_shim.o" "$ROOT/src/platform/appkit/appkit_shim.m"
 bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ROOT/build/appkit_check.o" "$ROOT/src/platform/appkit/appkit_check.elisa"
 clang -Wl,-dead_strip -o "$ROOT/build/appkit_check" \
@@ -38,6 +42,8 @@ nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_window_style_utilit
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_bezel_style_rounded$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_button_type_push_on_push_off$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_progress_style_bar$'
+nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_activation_policy_regular$'
+nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_activation_policy$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_create_window_with_style$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_create_floating_panel$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_create_vertical_scroll_view$'

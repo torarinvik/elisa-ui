@@ -190,6 +190,13 @@ module UiFlat:
         def nonnegative(value: f32) -> f32:
             return value if value > 0.0 else 0.0
 
+        # Fractions are part of the public widget state and must never let an
+        # out-of-range value reach layout, paint, accessibility, or a native
+        # setter. The same helper is used by both direct setters and pointer
+        # interaction so the two paths cannot drift.
+        def normalized_fraction(value: f32) -> f32:
+            return 0.0 if value < 0.0 else (1.0 if value > 1.0 else value)
+
         def shift_active() -> bool:
             return left_shift_down or right_shift_down
 
@@ -445,7 +452,7 @@ module UiFlat:
         def set_value(index: usize, value: f32) -> void:
             return if index >= widget_count
             return if widgets[index].kind != UiConst::WidgetKind.Slider and widgets[index].kind != UiConst::WidgetKind.ProgressBar
-            widgets[index].value <- 0.0 if value < 0.0 else (1.0 if value > 1.0 else value)
+            widgets[index].value <- normalized_fraction(value)
 
         def set_step(index: usize, step: f32) -> void:
             return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider
@@ -867,9 +874,9 @@ module UiFlat:
             travel: f32 = widgets[index].width - inset * 2.0
             return if travel <= 0.0
             next: mutable f32 = (pointer_x - widgets[index].x - inset) / travel
-            next <- 0.0 if next < 0.0 else (1.0 if next > 1.0 else next)
-            return if next == widgets[index].value
-            widgets[index].value <- next
+            before: f32 = widgets[index].value
+            set_value(index, next)
+            return if widgets[index].value == before
             app_widget_event(index, UiConst::WidgetEvent.Change.i32())
 
         def dispatch_activation(index: usize) -> void:

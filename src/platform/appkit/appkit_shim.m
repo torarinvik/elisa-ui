@@ -64,9 +64,21 @@ static NSView *elisa_container_for(int index) {
 void elisa_appkit_init(void) {
     @autoreleasepool {
         [NSApplication sharedApplication];
-        [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
         elisa_count = 0;
         elisa_window = nil;
+    }
+}
+
+// AppKit's activation enum is an ABI fact. Elisa selects the policy and sends
+// the chosen value back through this setter, keeping application behavior out
+// of the Objective-C object bridge.
+int elisa_appkit_activation_policy_regular(void) {
+    return (int)NSApplicationActivationPolicyRegular;
+}
+
+void elisa_appkit_set_activation_policy(int policy) {
+    @autoreleasepool {
+        [NSApp setActivationPolicy:(NSApplicationActivationPolicy)policy];
     }
 }
 
