@@ -490,6 +490,9 @@ int main(void) {
         NSRange actualRange = NSMakeRange(NSNotFound, 0);
         NSAttributedString *substring = [elisa_canvas_view attributedSubstringForProposedRange:NSMakeRange(5, 1) actualRange:&actualRange];
         if (require([substring.string isEqualToString:@"é"] && NSEqualRanges(actualRange, NSMakeRange(5, 1)), @"Unicode substring did not come from Elisa range slicing")) return 1;
+        actualRange = NSMakeRange(NSNotFound, 0);
+        (void)[elisa_canvas_view firstRectForCharacterRange:NSMakeRange(4, 2) actualRange:&actualRange];
+        if (require(NSEqualRanges(actualRange, NSMakeRange(4, 2)), @"candidate rect range length did not come from Elisa range slicing")) return 1;
         test_allows_readback = 0;
         if (require([elisa_canvas_view attributedSubstringForProposedRange:NSMakeRange(0, 1) actualRange:NULL] == nil, @"secure substring readback was not denied")) return 1;
         test_text_focused = 0;

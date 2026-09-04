@@ -346,7 +346,8 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
         return NSZeroRect;
     }
     size_t location = elisa_appkit_canvas_range_location(range.location);
-    if (actualRange != NULL) *actualRange = NSMakeRange(location, 0);
+    size_t length = elisa_appkit_canvas_range_length(range.location, range.length);
+    if (actualRange != NULL) *actualRange = NSMakeRange(location, length);
     NSRect local = NSMakeRect(elisa_appkit_canvas_character_x(location), elisa_appkit_canvas_caret_y(),
                               elisa_appkit_canvas_caret_width(), elisa_appkit_canvas_caret_height());
     NSRect inWindow = [self convertRect:local toView:nil];

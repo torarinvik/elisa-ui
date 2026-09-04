@@ -190,6 +190,10 @@ if awk '/- \(NSUInteger\)characterIndexForPoint:/ { inside=1 } inside && /elisa_
   echo "appkit canvas: text availability policy leaked back into Objective-C character lookup" >&2
   exit 1
 fi
+if grep -Eq 'NSMakeRange\(location,[[:space:]]*0\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: text range length policy leaked back into Objective-C" >&2
+  exit 1
+fi
 if awk '/int elisa_appkit_canvas_open\(/ { inside=1 } inside && /make_first_responder/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: focus policy leaked back into Objective-C window creation" >&2
   exit 1
