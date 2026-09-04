@@ -27,26 +27,26 @@ using UiPaint
 
 @wasm_import_module("wasmbrowser:window/host@0.1.0")
 @link_name("present-commands")
-extern host_present_commands(width: u32, height: u32, commands: void&, count: u32) -> void
+extern host_present_commands(width: u32, height: u32, commands: void&, count: u32) -> void can[Host.Present]
 
 # Canonical strings cross as a pointer/length pair. These are the measurement
 # side of the text contract: layout must know a run's extent before anything is
 # drawn, and the host answers from the same font it rasterizes with.
 @wasm_import_module("wasmbrowser:window/host@0.1.0")
 @link_name("measure-text-width")
-extern host_measure_text_width(text: cstr, length: u32, size: f32) -> f32
+extern host_measure_text_width(text: cstr, length: u32, size: f32) -> f32 can[Host.Layout]
 
 @wasm_import_module("wasmbrowser:window/host@0.1.0")
 @link_name("measure-text-height")
-extern host_measure_text_height(text: cstr, length: u32, size: f32) -> f32
+extern host_measure_text_height(text: cstr, length: u32, size: f32) -> f32 can[Host.Layout]
 
 @wasm_import_module("wasmbrowser:window/host@0.1.0")
 @link_name("font-ascent")
-extern host_font_ascent(size: f32) -> f32
+extern host_font_ascent(size: f32) -> f32 can[Host.Layout]
 
 @wasm_import_module("wasmbrowser:window/host@0.1.0")
 @link_name("font-line-height")
-extern host_font_line_height(size: f32) -> f32
+extern host_font_line_height(size: f32) -> f32 can[Host.Layout]
 
 # Clipboard is the only platform service used directly by the shared flat
 # widget layer. Keep its WIT result area and ownership rules at this boundary:
@@ -178,18 +178,30 @@ def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
 def ui_measure_text_width(text: sview, size: f32) -> f32:
     return 0.0 if text.len == 0
     pointer: cstr = text.data.cast[cstr] can Unsafe.PointerCast
-    return host_measure_text_width(pointer, text.len.u32(), size)
+    measured: mutable f32 = 0.0
+    can Host.Layout:
+        measured <- host_measure_text_width(pointer, text.len.u32(), size)
+    return measured
 
 def ui_measure_text_height(text: sview, size: f32) -> f32:
     return 0.0 if text.len == 0
     pointer: cstr = text.data.cast[cstr] can Unsafe.PointerCast
-    return host_measure_text_height(pointer, text.len.u32(), size)
+    measured: mutable f32 = 0.0
+    can Host.Layout:
+        measured <- host_measure_text_height(pointer, text.len.u32(), size)
+    return measured
 
 def ui_font_ascent(size: f32) -> f32:
-    return host_font_ascent(size)
+    measured: mutable f32 = 0.0
+    can Host.Layout:
+        measured <- host_font_ascent(size)
+    return measured
 
 def ui_text_line_height(size: f32) -> f32:
-    return host_font_line_height(size)
+    measured: mutable f32 = 0.0
+    can Host.Layout:
+        measured <- host_font_line_height(size)
+    return measured
 
 
 module UiWasmBrowser:
@@ -315,7 +327,8 @@ module UiWasmBrowser:
             wire_reset()
             UiPaint::replay[WasmPainter]()
             commands: void& = (&wire_buffer[0]).cast[void&] can Unsafe.PointerCast
-            host_present_commands(UiCore::viewport_width().u32(), UiCore::viewport_height().u32(), commands, total.u32())
+            can Host.Present:
+                host_present_commands(UiCore::viewport_width().u32(), UiCore::viewport_height().u32(), commands, total.u32())
 
         # Each host callback below knows its own kind, so it builds the variant
         # directly and no ordinal round-trip happens on this path. The flat
