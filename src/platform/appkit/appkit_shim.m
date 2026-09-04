@@ -361,6 +361,11 @@ void elisa_appkit_present(void) {
     @autoreleasepool {
         if (elisa_window == nil) return;
         [elisa_window makeKeyAndOrderFront:nil];
+    }
+}
+
+void elisa_appkit_activate(void) {
+    @autoreleasepool {
         [NSApp activateIgnoringOtherApps:YES];
     }
 }

@@ -25,6 +25,10 @@ if grep -Eq 'setActivationPolicy:NSApplicationActivationPolicyRegular' "$ROOT/sr
   echo "appkit: activation policy leaked back into Objective-C initialization" >&2
   exit 1
 fi
+if awk '/void elisa_appkit_present\(void\)/ { inside=1 } inside && /activateIgnoringOtherApps:YES/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_shim.m"; then
+  echo "appkit: visible activation policy leaked back into Objective-C" >&2
+  exit 1
+fi
 clang -c -fobjc-arc -o "$ROOT/build/appkit_shim.o" "$ROOT/src/platform/appkit/appkit_shim.m"
 bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ROOT/build/appkit_check.o" "$ROOT/src/platform/appkit/appkit_check.elisa"
 clang -Wl,-dead_strip -o "$ROOT/build/appkit_check" \
