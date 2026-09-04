@@ -35,7 +35,7 @@ if grep -Eq 'static NSWindow \*elisa_window' "$ROOT/src/platform/appkit/appkit_s
 fi
 if ! grep -Eq 'void elisa_appkit_init\(void\)' "$ROOT/src/platform/appkit/appkit_shim.m" || \
    ! grep -Eq 'elisa_appkit_init\(\)' "$ROOT/src/platform/appkit/ui_appkit.elisa"; then
-  echo "appkit: native object-table reset did not remain a narrow FFI primitive" >&2
+  echo "appkit: native application initialization did not remain a narrow FFI primitive" >&2
   exit 1
 fi
 if grep -Eq 'sliderWithValue:0 minValue:0 maxValue:1' "$ROOT/src/platform/appkit/appkit_shim.m"; then

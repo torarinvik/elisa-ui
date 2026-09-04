@@ -695,7 +695,7 @@ void elisa_appkit_canvas_accessibility_reset(void) {
 // Elisa owns semantic identity and calls the typed setters immediately after
 // adding a node. Return the retained native object as an opaque handle so the
 // bridge does not maintain a second identifier lookup table for the in-flight
-// frame. The live dictionary above still reuses objects across frames.
+// frame. The active child array above still retains objects across frames.
 static ElisaAccessibilityElement *elisa_appkit_canvas_element(size_t handle) {
     if (handle == 0) return nil;
     id object = (__bridge id)(void *)handle;
