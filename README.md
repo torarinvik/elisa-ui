@@ -37,7 +37,8 @@ because a module member's symbol carries its module and those names cannot move.
   macOS `NSView`; AppKit supplies the window, events, CoreGraphics context and
   accessibility objects and byte-oriented pasteboard primitives through a thin
   Objective-C FFI shim while Elisa owns event translation, visual policy, edit
-  command execution, text editing and every rendered control), plus
+  command execution, CoreText text shaping, text editing and every rendered
+  control), plus
   [wasmbrowser](src/platform/wasmbrowser/ui_wasmbrowser.elisa) (a component
   implementing `world app`; the host drives the loop through the exported guest
   interface, and canonical-ABI encoding is confined to this file; its clipboard
