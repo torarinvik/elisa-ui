@@ -121,6 +121,7 @@ module UiFlat:
         # each tree node has a unique slot and a child only rewrites descendants.
         global mutable layout_extra: f32[MAX_WIDGETS] = zeroed
         global mutable layout_capped: bool[MAX_WIDGETS] = zeroed
+        global mutable semantic_emitted: bool[MAX_WIDGETS] = zeroed
         global mutable text_storage: u8[TEXT_STORAGE_SIZE] = zeroed
         global mutable secure_text_storage: u8[SECURE_TEXT_STORAGE_SIZE] = zeroed
         global mutable widget_count: usize = 0
@@ -794,6 +795,26 @@ module UiFlat:
 
         def muted_color(base: UiCore::Color) -> UiCore::Color:
             return UiCore::Color{r: base.r / 2, g: base.g / 2, b: base.b / 2, a: base.a}
+
+        def emit_accessibility(index: usize) -> void:
+            enabled: bool = effectively_enabled(index)
+            frame: UiCore::Rect = UiCore::Rect(widgets[index].x, widgets[index].y, widgets[index].width, widgets[index].height)
+            if widgets[index].kind == UiConst::WidgetKind.Button:
+                UiCore::accessibility(UiCore::AccessibilityRole.Button, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, false, 0.0, "", "", 0, 0, 0)
+            elif widgets[index].kind == UiConst::WidgetKind.RadioButton:
+                UiCore::accessibility(UiCore::AccessibilityRole.RadioButton, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, widgets[index].selected, 0.0, "", "", 0, 0, 0)
+            elif widgets[index].kind == UiConst::WidgetKind.CheckBox:
+                UiCore::accessibility(UiCore::AccessibilityRole.CheckBox, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, widgets[index].selected, 0.0, "", "", 0, 0, 0)
+            elif widgets[index].kind == UiConst::WidgetKind.Slider:
+                UiCore::accessibility(UiCore::AccessibilityRole.Slider, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, false, widgets[index].value, "", "", 0, 0, 0)
+            elif widgets[index].kind == UiConst::WidgetKind.ProgressBar:
+                UiCore::accessibility(UiCore::AccessibilityRole.ProgressBar, widgets[index].text, widgets[index].help, frame, index, NONE, enabled, false, false, widgets[index].value, "", "", 0, 0, 0)
+            elif widgets[index].kind == UiConst::WidgetKind.TextField:
+                semantic_role: UiCore::AccessibilityRole = UiCore::AccessibilityRole.PasswordField if widgets[index].secure else UiCore::AccessibilityRole.TextField
+                semantic_value: sview = secure_display_value(index) if widgets[index].secure else text_value(index)
+                UiCore::accessibility(semantic_role, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, false, 0.0, semantic_value, selected_text_value(index), widgets[index].text_revision, selection_utf16_location(index), selection_utf16_length(index))
+            elif widgets[index].kind == UiConst::WidgetKind.Label:
+                UiCore::accessibility(UiCore::AccessibilityRole.Label, widgets[index].text, widgets[index].help, frame, index, NONE, enabled, false, false, 0.0, "", "", 0, 0, 0)
 
         def update_slider(index: usize, pointer_x: f32) -> void:
             return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider
@@ -1798,27 +1819,20 @@ module UiFlat:
         # parent's background is laid down before any of its children.
         def paint() -> void:
             for index in 0..<widget_count:
+                semantic_emitted[index] <- not effectively_visible(index)
+            for emitted_count in 0..<widget_count:
+                next_semantic: mutable usize = NONE
+                for candidate in 0..<widget_count:
+                    if not semantic_emitted[candidate]:
+                        next_semantic <- candidate if next_semantic >= widget_count or widgets[candidate].focus_order < widgets[next_semantic].focus_order or (widgets[candidate].focus_order == widgets[next_semantic].focus_order and candidate < next_semantic) else next_semantic
+                if next_semantic < widget_count:
+                    emit_accessibility(next_semantic)
+                    semantic_emitted[next_semantic] <- true
+            for index in 0..<widget_count:
                 continue if not effectively_visible(index)
                 enabled: bool = effectively_enabled(index)
                 color: UiCore::Color = color_of(index)
                 frame: UiCore::Rect = UiCore::Rect(widgets[index].x, widgets[index].y, widgets[index].width, widgets[index].height)
-                if widgets[index].kind == UiConst::WidgetKind.Button:
-                    UiCore::accessibility(UiCore::AccessibilityRole.Button, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, false, 0.0, "", "", 0, 0, 0)
-                elif widgets[index].kind == UiConst::WidgetKind.RadioButton:
-                    UiCore::accessibility(UiCore::AccessibilityRole.RadioButton, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, widgets[index].selected, 0.0, "", "", 0, 0, 0)
-                elif widgets[index].kind == UiConst::WidgetKind.CheckBox:
-                    UiCore::accessibility(UiCore::AccessibilityRole.CheckBox, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, widgets[index].selected, 0.0, "", "", 0, 0, 0)
-                elif widgets[index].kind == UiConst::WidgetKind.Slider:
-                    UiCore::accessibility(UiCore::AccessibilityRole.Slider, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, false, widgets[index].value, "", "", 0, 0, 0)
-                elif widgets[index].kind == UiConst::WidgetKind.ProgressBar:
-                    UiCore::accessibility(UiCore::AccessibilityRole.ProgressBar, widgets[index].text, widgets[index].help, frame, index, NONE, enabled, false, false, widgets[index].value, "", "", 0, 0, 0)
-                elif widgets[index].kind == UiConst::WidgetKind.TextField:
-                    semantic_role: UiCore::AccessibilityRole = UiCore::AccessibilityRole.PasswordField if widgets[index].secure else UiCore::AccessibilityRole.TextField
-                    semantic_value: sview = secure_display_value(index) if widgets[index].secure else text_value(index)
-                    semantic_revision: usize = widgets[index].text_revision
-                    UiCore::accessibility(semantic_role, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, false, 0.0, semantic_value, selected_text_value(index), semantic_revision, selection_utf16_location(index), selection_utf16_length(index))
-                elif widgets[index].kind == UiConst::WidgetKind.Label:
-                    UiCore::accessibility(UiCore::AccessibilityRole.Label, widgets[index].text, widgets[index].help, frame, index, NONE, enabled, false, false, 0.0, "", "", 0, 0, 0)
                 if widgets[index].kind == UiConst::WidgetKind.Slider:
                     slider_inset: f32 = clamped_inset(current_theme.slider_horizontal_inset, widgets[index].width)
                     track_height: f32 = current_theme.slider_track_height if current_theme.slider_track_height < widgets[index].height else widgets[index].height
