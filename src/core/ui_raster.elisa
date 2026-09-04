@@ -26,33 +26,51 @@ module UiRaster:
         # below the centre row. Zero when the row misses the disc, so a caller
         # tests the result rather than repeating the containment condition.
         def circle_half_width(radius: f32, offset: f32) -> f32:
-            inside: f32 = radius * radius - offset * offset
-            return 0.0 if inside <= 0.0 else sqrtf(inside)
+            # Commands normally arrive here through UiCore::fill, but keeping
+            # the helper total makes it safe for every backend and for direct
+            # geometry tests too. In particular, a very large finite radius can
+            # overflow its square to infinity even after ordinary NaN cleanup.
+            safe_radius: f32 = UiCore::nonnegative_extent(radius)
+            safe_offset: f32 = UiCore::finite_or_zero(offset)
+            inside: f32 = UiCore::finite_or_zero(safe_radius * safe_radius - safe_offset * safe_offset)
+            return 0.0 if inside <= 0.0
+            return UiCore::finite_or_zero(sqrtf(inside))
 
         # Does the edge from `ay` to `by` cross the scanline at `sample`?
         #
         # HALF-OPEN on purpose. An endpoint exactly on the scanline belongs to
         # exactly one of the two edges meeting there, so a shared vertex produces
         # two crossings and never one or three -- and the division in
-        # edge_crossing can never be by zero, because a straddling edge has
-        # by != ay by construction.
+        # edge_crossing is guarded for the degenerate case even when a caller
+        # invokes that helper directly instead of following this predicate.
         def edge_straddles(ay: f32, by: f32, sample: f32) -> bool:
-            return (ay > sample) != (by > sample)
+            safe_ay: f32 = UiCore::finite_or_zero(ay)
+            safe_by: f32 = UiCore::finite_or_zero(by)
+            safe_sample: f32 = UiCore::finite_or_zero(sample)
+            return (safe_ay > safe_sample) != (safe_by > safe_sample)
 
         # Where that edge meets the scanline. Meaningful only when the edge
         # straddles it.
         def edge_crossing(ax: f32, ay: f32, bx: f32, by: f32, sample: f32) -> f32:
-            return ax + (bx - ax) * (sample - ay) / (by - ay)
+            safe_ax: f32 = UiCore::finite_or_zero(ax)
+            safe_ay: f32 = UiCore::finite_or_zero(ay)
+            safe_bx: f32 = UiCore::finite_or_zero(bx)
+            safe_by: f32 = UiCore::finite_or_zero(by)
+            safe_sample: f32 = UiCore::finite_or_zero(sample)
+            denominator: f32 = safe_by - safe_ay
+            return 0.0 if denominator == 0.0
+            crossing: f32 = safe_ax + (safe_bx - safe_ax) * (safe_sample - safe_ay) / denominator
+            return UiCore::finite_or_zero(crossing)
 
         # The first and last scanline a shape between `top` and `bottom` touches.
         # Spans are emitted for each integer row in [first, last].
         def first_scanline(top: f32) -> f32:
-            return floorf(top)
+            return UiCore::finite_or_zero(floorf(UiCore::finite_or_zero(top)))
 
         def last_scanline(bottom: f32) -> f32:
-            return ceilf(bottom)
+            return UiCore::finite_or_zero(ceilf(UiCore::finite_or_zero(bottom)))
 
         # A scanline is sampled at its CENTRE, so a row is filled when the pixels
         # it covers are inside the shape -- not when its top edge merely touches.
         def scanline_centre(y: f32) -> f32:
-            return y + 0.5
+            return UiCore::finite_or_zero(UiCore::finite_or_zero(y) + 0.5)
