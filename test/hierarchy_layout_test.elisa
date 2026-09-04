@@ -177,6 +177,16 @@ def main() -> i64:
         layout(tight_grid, -5.0, -3.0)
         test_failures <- test_failures + 1 if tight_grid.width < 0.0 or tight_grid.height < 0.0
 
+        # Raw hierarchy constructors may also carry malformed minimums. The
+        # measure pass sanitizes them before demand and arrangement math sees
+        # the values, keeping child boxes nonnegative end to end.
+        malformed_child: Widget = Button.Push(min_width: -12.0, min_height: -8.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "malformed", rest: grey(30), hover: grey(40), press: grey(20))
+        malformed_panel: Widget = Container.Box(min_width: -1.0, min_height: -1.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: malformed_child, next_sibling: null, axis: UiConst::Axis.Row, padding: 0.0, spacing: 0.0, fill: grey(15))
+        layout(malformed_panel, 20.0, 12.0)
+        test_failures <- test_failures + 1 if malformed_panel.min_width < 0.0 or malformed_panel.min_height < 0.0
+        test_failures <- test_failures + 1 if malformed_child.min_width < 0.0 or malformed_child.min_height < 0.0
+        test_failures <- test_failures + 1 if malformed_child.width < 0.0 or malformed_child.height < 0.0
+
         # Direct hierarchy painting follows the same normalized value contract
         # as native controls and UiFlat: a gauge cannot fill past its frame.
         gauge: Widget = Control.Gauge(min_width: 40.0, min_height: 10.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, fraction: 2.0, track: grey(20), bar: grey(200))

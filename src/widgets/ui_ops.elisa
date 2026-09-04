@@ -231,6 +231,8 @@ extend UiWidgets:
         # declared minimum still wins when it is larger, which is how a button
         # reserves its clickable area even with a short label.
         def measure(w: Widget) -> void:
+            w.min_width <- nonnegative(w.min_width)
+            w.min_height <- nonnegative(w.min_height)
             # Grid is the one container whose main-axis demand is not a simple
             # sibling sum. Measure a uniform cell from the largest child, then
             # derive the number of rows from the fixed column count.
@@ -245,8 +247,10 @@ extend UiWidgets:
                     cursor: mutable Widget? = child
                     while cursor is node |widest, tallest, count, cursor|:
                         measure(node)
-                        widest <- node.min_width if node.min_width > widest else widest
-                        tallest <- node.min_height if node.min_height > tallest else tallest
+                        child_width: f32 = nonnegative(node.min_width)
+                        child_height: f32 = nonnegative(node.min_height)
+                        widest <- child_width if child_width > widest else widest
+                        tallest <- child_height if child_height > tallest else tallest
                         count <- count + 1.0
                         cursor <- node.next_sibling
                     rows: mutable f32 = 0.0
@@ -272,8 +276,8 @@ extend UiWidgets:
             cursor: mutable Widget? = child
             while cursor is node |along, across, count, cursor, is_row|:
                 measure(node)
-                child_along: f32 = node.min_width if is_row else node.min_height
-                child_across: f32 = node.min_height if is_row else node.min_width
+                child_along: f32 = nonnegative(node.min_width if is_row else node.min_height)
+                child_across: f32 = nonnegative(node.min_height if is_row else node.min_width)
                 along <- along + child_along
                 across <- child_across if child_across > across else across
                 count <- count + 1.0
@@ -305,8 +309,10 @@ extend UiWidgets:
                     count: mutable f32 = 0.0
                     scan: mutable Widget? = first
                     while scan is node |widest, tallest, count, scan|:
-                        widest <- node.min_width if node.min_width > widest else widest
-                        tallest <- node.min_height if node.min_height > tallest else tallest
+                        child_width: f32 = nonnegative(node.min_width)
+                        child_height: f32 = nonnegative(node.min_height)
+                        widest <- child_width if child_width > widest else widest
+                        tallest <- child_height if child_height > tallest else tallest
                         count <- count + 1.0
                         scan <- node.next_sibling
                     rows: mutable f32 = 0.0
@@ -364,7 +370,7 @@ extend UiWidgets:
             weight: mutable f32 = 0.0
             scan: mutable Widget? = first
             while scan is node |demand, weight, scan, is_row|:
-                demand <- demand + (node.min_width if is_row else node.min_height)
+                demand <- demand + nonnegative(node.min_width if is_row else node.min_height)
                 weight <- weight + node.grow
                 scan <- node.next_sibling
 
@@ -375,7 +381,7 @@ extend UiWidgets:
             offset: mutable f32 = 0.0
             walk: mutable Widget? = first
             while walk is node |offset, walk, is_row, inner_x, inner_y, inner_width, inner_height, share, scroll_offset|:
-                base: f32 = node.min_width if is_row else node.min_height
+                base: f32 = nonnegative(node.min_width if is_row else node.min_height)
                 extent: f32 = base + share * node.grow
                 if is_row:
                     arrange(node, inner_x + offset - scroll_offset, inner_y, extent, inner_height)
