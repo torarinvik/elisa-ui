@@ -142,4 +142,25 @@ def main() -> i64:
         check("grid places the third item on the next row", grid_c.y, 41.0)
         check("grid cells use the largest child minimum", grid_a.width, 45.0)
 
+        # Tight surfaces must not leak negative geometry to descendants. This
+        # can happen when a raw hierarchy node's padding is larger than the
+        # viewport (the builder normally supplies ordinary positive values).
+        tight_child: Widget = Button.Push(min_width: 12.0, min_height: 8.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "tight", rest: grey(30), hover: grey(40), press: grey(20))
+        tight_panel: Widget = Container.Box(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: tight_child, next_sibling: null, axis: UiConst::Axis.Column, padding: 20.0, spacing: 4.0, fill: grey(15))
+        layout(tight_panel, 10.0, 8.0)
+        test_failures <- test_failures + 1 if tight_panel.width < 0.0 or tight_panel.height < 0.0
+        test_failures <- test_failures + 1 if tight_child.width < 0.0 or tight_child.height < 0.0
+
+        # Grid cells follow the same invariant even when inter-cell gaps are
+        # wider than the available content area and children have no minimum.
+        empty_cell: Widget = Button.Push(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "", rest: grey(30), hover: grey(40), press: grey(20))
+        tight_grid: Widget = Container.Grid(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: empty_cell, next_sibling: null, columns: 2, padding: 20.0, spacing: 100.0, fill: grey(15))
+        layout(tight_grid, 5.0, 5.0)
+        test_failures <- test_failures + 1 if empty_cell.width < 0.0 or empty_cell.height < 0.0
+
+        # The public entry point also normalizes an invalid viewport, matching
+        # UiFlat::layout and keeping hit testing's box invariant total.
+        layout(tight_grid, -5.0, -3.0)
+        test_failures <- test_failures + 1 if tight_grid.width < 0.0 or tight_grid.height < 0.0
+
         return test_failures.i64()

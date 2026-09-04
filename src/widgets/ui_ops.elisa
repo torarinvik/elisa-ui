@@ -191,6 +191,13 @@ extend UiWidgets:
     # ------------------------------------------------------------------
 
     private:
+        # Geometry must never become negative, even when a caller lays out a
+        # raw hierarchy node into a smaller surface than its padding requires.
+        # The flat retained layer applies the same invariant; keeping it here
+        # makes both widget models safe for headless and native backends.
+        def nonnegative(value: f32) -> f32:
+            return value if value > 0.0 else 0.0
+
         # How many children a node has. Walks the sibling chain rather than
         # storing a count, so adding or removing a child needs no bookkeeping.
         def child_count(w: Widget) -> f32:
@@ -253,8 +260,8 @@ extend UiWidgets:
                 across <- child_across if child_across > across else across
                 count <- count + 1.0
                 cursor <- node.next_sibling
-            gaps: f32 = spacing_of(w) * (count - 1.0) if count > 1.0 else 0.0
-            pad: f32 = padding_of(w) * 2.0
+            gaps: f32 = nonnegative(spacing_of(w)) * (count - 1.0) if count > 1.0 else 0.0
+            pad: f32 = nonnegative(padding_of(w)) * 2.0
             content_width: f32 = along + gaps + pad if is_row else across + pad
             content_height: f32 = across + pad if is_row else along + gaps + pad
             w.min_width <- content_width if content_width > w.min_width
@@ -289,22 +296,27 @@ extend UiWidgets:
                     while remaining > 0.0 |rows, remaining, columns_count|:
                         rows <- rows + 1.0
                         remaining <- remaining - columns_count
-                    pad: f32 = padding
+                    pad: f32 = nonnegative(padding)
+                    gap: f32 = nonnegative(spacing)
                     inner_x: f32 = x + pad
                     inner_y: f32 = y + pad
-                    inner_width: f32 = width - pad * 2.0
-                    inner_height: f32 = height - pad * 2.0
-                    gaps_x: f32 = spacing * (columns_count - 1.0) if columns_count > 1.0 else 0.0
-                    gaps_y: f32 = spacing * (rows - 1.0) if rows > 1.0 else 0.0
+                    raw_inner_width: f32 = width - pad * 2.0
+                    raw_inner_height: f32 = height - pad * 2.0
+                    inner_width: f32 = nonnegative(raw_inner_width)
+                    inner_height: f32 = nonnegative(raw_inner_height)
+                    gaps_x: f32 = gap * (columns_count - 1.0) if columns_count > 1.0 else 0.0
+                    gaps_y: f32 = gap * (rows - 1.0) if rows > 1.0 else 0.0
                     cell_width: mutable f32 = (inner_width - gaps_x) / columns_count
                     cell_height: mutable f32 = (inner_height - gaps_y) / rows
+                    cell_width <- 0.0 if cell_width < 0.0
+                    cell_height <- 0.0 if cell_height < 0.0
                     cell_width <- widest if cell_width < widest else cell_width
                     cell_height <- tallest if cell_height < tallest else cell_height
                     column: mutable f32 = 0.0
                     row: mutable f32 = 0.0
                     walk: mutable Widget? = first
-                    while walk is node |column, row, walk, inner_x, inner_y, cell_width, cell_height, spacing, columns_count|:
-                        arrange(node, inner_x + column * (cell_width + spacing), inner_y + row * (cell_height + spacing), cell_width, cell_height)
+                    while walk is node |column, row, walk, inner_x, inner_y, cell_width, cell_height, gap, columns_count|:
+                        arrange(node, inner_x + column * (cell_width + gap), inner_y + row * (cell_height + gap), cell_width, cell_height)
                         column <- column + 1.0
                         if column >= columns_count:
                             column <- 0.0
@@ -315,13 +327,16 @@ extend UiWidgets:
                     pass
 
             is_row: bool = axis_of(w) == UiConst::Axis.Row
-            pad: f32 = padding_of(w)
+            pad: f32 = nonnegative(padding_of(w))
+            gap: f32 = nonnegative(spacing_of(w))
             inner_x: f32 = x + pad
             inner_y: f32 = y + pad
-            inner_width: f32 = width - pad * 2.0
-            inner_height: f32 = height - pad * 2.0
+            raw_inner_width: f32 = width - pad * 2.0
+            raw_inner_height: f32 = height - pad * 2.0
+            inner_width: f32 = nonnegative(raw_inner_width)
+            inner_height: f32 = nonnegative(raw_inner_height)
             count: f32 = child_count(w)
-            gaps: f32 = spacing_of(w) * (count - 1.0) if count > 1.0 else 0.0
+            gaps: f32 = gap * (count - 1.0) if count > 1.0 else 0.0
             inner_along: f32 = inner_width if is_row else inner_height
             scroll_offset: f32 = scroll_offset_of(w)
 
@@ -348,14 +363,14 @@ extend UiWidgets:
                     arrange(node, inner_x + offset - scroll_offset, inner_y, extent, inner_height)
                 else:
                     arrange(node, inner_x, inner_y + offset - scroll_offset, inner_width, extent)
-                offset <- offset + extent + spacing_of(w)
+                offset <- offset + extent + gap
                 walk <- node.next_sibling
 
     public:
         # Lay out a whole tree into a surface of the given size.
         def layout(root: Widget, width: f32, height: f32) -> void:
             measure(root)
-            arrange(root, 0.0, 0.0, width, height)
+            arrange(root, 0.0, 0.0, nonnegative(width), nonnegative(height))
 
     # ------------------------------------------------------------------
     # Hit testing
