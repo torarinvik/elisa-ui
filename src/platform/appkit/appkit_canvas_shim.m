@@ -18,8 +18,8 @@ extern void elisa_appkit_canvas_raw_key(int down, int keyCode, int character);
 extern void elisa_appkit_canvas_raw_flags(int keyCode, size_t modifiers);
 extern void elisa_appkit_canvas_focus_changed(int focused);
 extern void elisa_appkit_canvas_accessibility_environment_changed(void);
-extern void elisa_appkit_canvas_key_down_event(size_t event, int keyCode, int character, size_t modifiers);
-extern void elisa_appkit_canvas_key_up(int keyCode, int character);
+extern void elisa_appkit_canvas_key_down_event(size_t event, int keyCode, size_t character, size_t modifiers);
+extern void elisa_appkit_canvas_key_up(int keyCode, size_t character);
 extern int elisa_appkit_canvas_accessibility_activate(size_t index);
 extern int elisa_appkit_canvas_accessibility_adjust(size_t index, int direction);
 extern void elisa_appkit_canvas_cancel_interaction(void);
@@ -150,11 +150,6 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
 @end
 static ElisaCanvasDelegate *elisa_canvas_delegate;
 
-static int elisa_event_character(NSEvent *event) {
-    NSString *chars = [event charactersIgnoringModifiers];
-    return chars.length == 1 ? [chars characterAtIndex:0] : 0;
-}
-
 void elisa_appkit_canvas_interpret_key_event(size_t event) {
     NSEvent *nativeEvent = (__bridge NSEvent *)(void *)event;
     if (nativeEvent != nil) [elisa_canvas_view interpretKeyEvents:@[nativeEvent]];
@@ -229,11 +224,13 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
 }
 - (void)scrollWheel:(NSEvent *)event { NSPoint p=[self eventPoint:event]; elisa_appkit_canvas_pointer_scroll(p.x,p.y,[event scrollingDeltaX],[event scrollingDeltaY]); }
 - (void)keyDown:(NSEvent *)event {
+    NSString *chars = [event charactersIgnoringModifiers];
     elisa_appkit_canvas_key_down_event((size_t)(__bridge void *)event, event.keyCode,
-                                       elisa_event_character(event), (size_t)[event modifierFlags]);
+                                       (size_t)(__bridge void *)chars, (size_t)[event modifierFlags]);
 }
 - (void)keyUp:(NSEvent *)event {
-    elisa_appkit_canvas_key_up(event.keyCode, elisa_event_character(event));
+    NSString *chars = [event charactersIgnoringModifiers];
+    elisa_appkit_canvas_key_up(event.keyCode, (size_t)(__bridge void *)chars);
 }
 - (void)insertText:(id)input replacementRange:(NSRange)replacementRange {
     NSString *text = [input isKindOfClass:[NSAttributedString class]]

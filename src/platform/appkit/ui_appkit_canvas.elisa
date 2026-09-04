@@ -86,6 +86,7 @@ extern CFStringCreateWithBytes(allocator: usize, bytes: cstr, length: i64, encod
 extern CFDictionaryCreate(allocator: usize, keys: usize&, values: usize&, count: i64, key_callbacks: usize, value_callbacks: usize) -> usize
 extern CFAttributedStringCreate(allocator: usize, text: usize, attributes: usize) -> usize
 extern CFStringGetLength(value: usize) -> i64
+extern CFStringGetCharacterAtIndex(value: usize, index: i64) -> i32
 extern CFStringGetBytes(value: usize, range: NativeRange, encoding: u32, loss_byte: u8, external: bool, buffer: mutable u8&, max_length: i64, used_length: mutable i64&) -> i64
 extern CTLineCreateWithAttributedString(text: usize) -> usize
 extern CTLineGetTypographicBounds(line: usize, ascent: mutable f64&, descent: mutable f64&, leading: mutable f64&) -> f64
@@ -205,6 +206,15 @@ module UiAppKitCanvas:
             used: mutable i64 = 0
             _ = CFStringGetBytes(value, NativeRange{location: 0, length: length}, UTF8_ENCODING, 0, false, buffer, capacity.i64(), &used)
             return used.usize() if used > 0 else 0
+
+        # Keyboard callbacks carry Cocoa's borrowed charactersIgnoringModifiers
+        # object across the FFI. Keep the native UTF-16 extraction here rather
+        # than teaching the Objective-C shim any text policy.
+        def native_event_character(value: usize) -> i32:
+            return 0 if value == 0
+            length: i64 = CFStringGetLength(value)
+            return 0 if length != 1
+            return CFStringGetCharacterAtIndex(value, 0)
 
         # CoreText owns the glyph shaping and rasterization path. The only
         # Objective-C work left in the canvas shim is object/protocol plumbing;
