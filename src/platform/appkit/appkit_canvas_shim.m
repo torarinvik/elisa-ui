@@ -517,15 +517,17 @@ void elisa_appkit_canvas_menus_commit(void) {
     if (elisa_canvas_menu_bar != nil) [NSApp setMainMenu:elisa_canvas_menu_bar];
 }
 
-int elisa_appkit_canvas_clipboard_write(const unsigned char *bytes, size_t length,
-                                       size_t pasteboard_type) {
-    if (bytes == NULL || pasteboard_type == 0) return 0;
-    NSString *text = [[NSString alloc] initWithBytes:bytes length:length encoding:NSUTF8StringEncoding];
-    if (text == nil) return 0;
+// Clipboard writes arrive as a borrowed opaque CFString created by Elisa.
+// Reading still converts Cocoa text back to bytes at the native boundary, but
+// outbound framework text no longer performs UTF-8 decoding in Objective-C.
+int elisa_appkit_canvas_clipboard_write(size_t text, size_t pasteboard_type) {
+    if (text == 0 || pasteboard_type == 0) return 0;
+    NSString *value = (__bridge NSString *)(void *)text;
+    if (value == nil) return 0;
     NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
     [pasteboard clearContents];
     NSString *type = (__bridge NSString *)(void *)pasteboard_type;
-    return type == nil ? 0 : [pasteboard setString:text forType:type];
+    return type == nil ? 0 : [pasteboard setString:value forType:type];
 }
 
 size_t elisa_appkit_canvas_clipboard_read(unsigned char *buffer, size_t capacity,

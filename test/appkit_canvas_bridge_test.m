@@ -134,8 +134,11 @@ int elisa_appkit_canvas_perform_text_action(int action) {
     }
     if (action == 2 || action == 3) {
         size_t length = test_selection_end - test_selection_start;
-        if (!elisa_appkit_canvas_clipboard_write(
-                (const unsigned char *)test_text + test_selection_start, length,
+        NSString *selected = [[NSString alloc]
+            initWithBytes:test_text + test_selection_start
+                   length:length encoding:NSUTF8StringEncoding];
+        if (selected == nil || !elisa_appkit_canvas_clipboard_write(
+                (size_t)(__bridge void *)selected,
                 elisa_appkit_canvas_pasteboard_type_string())) return 0;
         if (action == 3) elisa_appkit_canvas_insert_text("", 0);
         return action == 3;
@@ -382,7 +385,7 @@ int main(void) {
         [elisa_canvas_view copy:nil];
         if (require([[[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString] isEqualToString:@"Worldé"], @"Copy did not write selected Unicode text")) return 1;
         if (require(elisa_appkit_canvas_clipboard_write(
-                        (const unsigned char *)"", 0,
+                        (size_t)(__bridge void *)@"",
                         elisa_appkit_canvas_pasteboard_type_string()), @"empty clipboard write failed")) return 1;
         if (require([[[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString] isEqualToString:@""], @"empty clipboard write did not clear the pasteboard")) return 1;
         [elisa_canvas_view insertText:@"Next" replacementRange:NSMakeRange(NSNotFound, 0)];
