@@ -9,8 +9,8 @@ The Objective-C file is intentionally a thin FFI shim. It forwards raw pointer
 and keyboard facts, exposes the active graphics context, implements the methods
 required by `NSTextInputClient`, and owns objects that only Cocoa can create.
 Elisa calls CoreGraphics' C ABI directly for every path, including rounded
-rectangles, circles, triangles, lines and the canvas clear. Only native text
-drawing and the conversion of a shadow colour into a `CGColor` remain wrapped.
+rectangles, circles, triangles, lines, the canvas clear, colors and shadows. It
+also calls CoreText's C ABI directly for font metrics, shaping and text drawing.
 AppKit key-code translation, visual styling decisions, UTF-8/UTF-16 conversion,
 selection/replacement rules and IME composition state all live in Elisa.
 Window minimums, cursor policy, accessibility adjustment steps, raster styling,
@@ -177,11 +177,10 @@ collapsed text caret needs it, leaving an idle window timer-free.
 The remaining Objective-C is the actual Cocoa boundary: `NSWindow`/`NSView`
 and event-loop ownership, Objective-C selector identity, `NSTextInputClient`
 string/range conversion, AppKit menus, pasteboard and accessibility objects,
-native font measurement/drawing, bitmap snapshots, timers, and the conversion
-of a shadow color to `CGColor`. These operations require Objective-C objects or
+bitmap snapshots and timers. These operations require Objective-C objects or
 Cocoa protocol implementations. Widget state, command policy, layout,
-interaction, editing, accessibility diffing, headless orchestration and all
-CoreGraphics path construction now live in Elisa.
+interaction, editing, accessibility diffing, headless orchestration, all
+CoreGraphics path construction and CoreText text rendering now live in Elisa.
 
 Text fields are currently single-line and deliberately bounded to 1023 UTF-8
 bytes per widget so the flat layer remains allocation-free. Truncation preserves
