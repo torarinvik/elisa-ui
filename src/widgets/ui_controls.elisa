@@ -31,9 +31,10 @@
 # test with no OS control in sight, logged, diffed between runs, or shipped to a
 # host across a boundary that no widget handle could cross.
 #
-# A backend keeps its own index -> native handle table rather than the protocol
-# carrying an associated Handle type. Every real toolkit keeps that table anyway,
-# and it costs one array instead of a generic container of an associated type.
+# A backend receives an opaque handle through the protocol's create call and may
+# retain it in this record while it applies the realization. The shared arena is
+# the one index -> handle table, so a native backend does not need a second
+# capacity, count or lifetime table in C/Objective-C.
 
 include "./ui_hierarchy.elisa"
 # ui_ops `extend`s UiWidgets with the passes; box_of lives there, not in the
@@ -162,6 +163,9 @@ module UiControls:
             parent: mutable i32
             box: mutable UiCore::Rect
             text: mutable sview
+            # Backend-owned opaque identity. Elisa stores it here so the native
+            # side can remain a stateless object bridge. Zero means no handle.
+            native_handle: mutable usize
 
         global mutable ops: ControlOp[MAX_CONTROLS] = zeroed
         global mutable total: usize = 0
@@ -169,6 +173,8 @@ module UiControls:
 
     public:
         def reset() -> void:
+            for index in 0..<MAX_CONTROLS:
+                ops[index].native_handle <- 0
             total <- 0
             control_dropped <- false
 
@@ -209,6 +215,15 @@ module UiControls:
         def text_at(index: usize) -> sview:
             return ops[index].text
 
+        # A native backend records its retained opaque object here after create;
+        # later frame, text, state and attachment calls resolve through Elisa's
+        # arena instead of a duplicated platform-side index table.
+        def native_handle_at(index: usize) -> usize:
+            return ops[index].native_handle
+
+        def set_native_handle(index: usize, handle: usize) -> void:
+            ops[index].native_handle <- handle
+
         # Walk one widget and its subtree, PARENT FIRST, so the OS tree comes out
         # with the widget tree's shape and a child's parent already exists.
         #
@@ -234,6 +249,7 @@ module UiControls:
             ops[index].parent <- parent
             ops[index].box <- UiWidgets::box_of(w)
             ops[index].text <- text_of(w)
+            ops[index].native_handle <- 0
             cursor: mutable UiWidgets::Widget? = w.first_child
             while cursor is node |cursor, index|:
                 realize(node, index.i32())

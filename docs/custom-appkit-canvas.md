@@ -176,9 +176,10 @@ Native window creation and presentation plus off-screen snapshot rendering
 return status through FFI. Elisa owns the process result, chooses the visible
 or headless sequence, and enters the native event loop only for a visible run.
 
-The native-controls AppKit backend receives dense, capacity-checked indices
-from `UiControls` over the FFI. Its Objective-C half only keeps the opaque
-object table; there is no second platform-side control limit to drift from the
+The native-controls AppKit backend records each retained opaque Cocoa handle in
+the same `UiControls` arena that owns its dense, capacity-checked index. Its
+Objective-C half resolves those handles only at the FFI boundary; there is no
+index→object table, native count or second platform-side limit to drift from the
 retained control arena.
 
 Animation scheduling is demand-driven. Elisa coalesces future-frame requests

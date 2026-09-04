@@ -72,47 +72,48 @@ module AppKitCheck:
                 # many records the realization emitted. The native shim is only
                 # queried for facts that can exist solely on live AppKit objects.
                 check(failures, "Elisa emitted one control per widget", UiControls::count() == 7)
+                check(failures, "Elisa retained the root AppKit handle", UiControls::native_handle_at(0) != 0)
 
                 # ...and they are the REAL classes, not stand-ins.
                 check(failures, "the root is an NSWindow", UiAppKit::class_is(0, "NSWindow") == 1)
-                check(failures, "the top window keeps its resizable policy", elisa_appkit_window_is_resizable(0) == 1)
-                check(failures, "the top window is not floating", elisa_appkit_window_is_floating(0) == 0)
+                check(failures, "the top window keeps its resizable policy", UiAppKit::window_is_resizable(0) == 1)
+                check(failures, "the top window is not floating", UiAppKit::window_is_floating(0) == 0)
                 check(failures, "the container is an NSView", UiAppKit::class_is(1, "NSView") == 1)
                 check(failures, "the push button is an NSButton", UiAppKit::class_is(2, "NSButton") == 1)
-                check(failures, "Elisa-selected push button bezel reaches AppKit", elisa_appkit_button_bezel_style(2) == elisa_appkit_bezel_style_rounded())
+                check(failures, "Elisa-selected push button bezel reaches AppKit", UiAppKit::button_bezel_style(2) == elisa_appkit_bezel_style_rounded())
                 check(failures, "the checkbox is an NSButton", UiAppKit::class_is(3, "NSButton") == 1)
-                check(failures, "the checkbox keeps its selected state", elisa_appkit_button_is_on(3) == 1)
+                check(failures, "the checkbox keeps its selected state", UiAppKit::button_is_on(3) == 1)
                 check(failures, "the label is an NSTextField", UiAppKit::class_is(4, "NSTextField") == 1)
                 check(failures, "the scroll container is an NSScrollView", UiAppKit::class_is(5, "NSScrollView") == 1)
-                check(failures, "a column scroll view has a vertical scroller", elisa_appkit_scroll_has_vertical(5) == 1)
-                check(failures, "a column scroll view has no horizontal scroller", elisa_appkit_scroll_has_horizontal(5) == 0)
+                check(failures, "a column scroll view has a vertical scroller", UiAppKit::scroll_has_vertical(5) == 1)
+                check(failures, "a column scroll view has no horizontal scroller", UiAppKit::scroll_has_horizontal(5) == 0)
                 check(failures, "scroll content is an NSTextField", UiAppKit::class_is(6, "NSTextField") == 1)
 
                 # The OS view tree has the widget tree's shape: the window's content
                 # view holds the bar and the caption, and the bar holds the two buttons.
-                check(failures, "the window content holds three children", elisa_appkit_subview_count(0) == 3)
-                check(failures, "the bar holds two children", elisa_appkit_subview_count(1) == 2)
-                check(failures, "the push button holds none", elisa_appkit_subview_count(2) == 0)
-                check(failures, "the scroll document holds its child", elisa_appkit_subview_count(5) == 1)
+                check(failures, "the window content holds three children", UiAppKit::subview_count(0) == 3)
+                check(failures, "the bar holds two children", UiAppKit::subview_count(1) == 2)
+                check(failures, "the push button holds none", UiAppKit::subview_count(2) == 0)
+                check(failures, "the scroll document holds its child", UiAppKit::subview_count(5) == 1)
 
                 # ABSOLUTE PLACEMENT: AppKit's frames are the boxes layout computed.
-                check(failures, "the window content is the viewport width", elisa_appkit_frame_width(0) == 480.0)
-                check(failures, "the bar spans the window", elisa_appkit_frame_width(1) == 480.0)
+                check(failures, "the window content is the viewport width", UiAppKit::frame_width(0) == 480.0)
+                check(failures, "the bar spans the window", UiAppKit::frame_width(1) == 480.0)
                 # The second button sits to the right of the first, so the row really
                 # was laid out along its axis and the frames were not all zero.
-                check(failures, "the row runs left to right", elisa_appkit_frame_x(3) > elisa_appkit_frame_x(2))
-                check(failures, "a button is narrower than the row", elisa_appkit_frame_width(2) < 480.0)
+                check(failures, "the row runs left to right", UiAppKit::frame_x(3) > UiAppKit::frame_x(2))
+                check(failures, "a button is narrower than the row", UiAppKit::frame_width(2) < 480.0)
 
                 # TOP-LEFT ORIGIN. elisa-ui lays out y growing DOWN, like every other
                 # toolkit and like the wasm canvas; AppKit's default is y growing UP.
                 # Asserted directly rather than through a frame, because isFlipped changes
                 # how a frame is INTERPRETED and not the number stored in it -- every frame
                 # check above passes just as happily with the window upside down.
-                check(failures, "the window content is top-left origin", elisa_appkit_is_flipped(0) == 1)
-                check(failures, "a container is top-left origin", elisa_appkit_is_flipped(1) == 1)
-                check(failures, "a scroll document is top-left origin", elisa_appkit_is_flipped(5) == 1)
+                check(failures, "the window content is top-left origin", UiAppKit::is_flipped(0) == 1)
+                check(failures, "a container is top-left origin", UiAppKit::is_flipped(1) == 1)
+                check(failures, "a scroll document is top-left origin", UiAppKit::is_flipped(5) == 1)
                 # ...and with that, a child below another really has the larger y.
-                check(failures, "the caption sits below the bar", elisa_appkit_frame_y(4) > elisa_appkit_frame_y(1))
+                check(failures, "the caption sits below the bar", UiAppKit::frame_y(4) > UiAppKit::frame_y(1))
 
                 # The toggle's native button type and the progress indicator's
                 # style are also resolved in Elisa and supplied as ABI values.
@@ -120,14 +121,14 @@ module AppKitCheck:
                 toggle: Widget = Button.Toggle(min_width: 80.0, min_height: 24.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "Toggle", on: true, rest: grey(60), hover: grey(90), press: grey(30))
                 layout(toggle, 160.0, 32.0)
                 UiAppKit::realize(toggle)
-                check(failures, "Elisa-selected toggle behavior reaches AppKit", elisa_appkit_button_toggles(0) == 1)
+                check(failures, "Elisa-selected toggle behavior reaches AppKit", UiAppKit::button_toggles(0) == 1)
 
                 UiAppKit::start()
                 gauge: Widget = Control.Gauge(min_width: 80.0, min_height: 12.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, fraction: 0.5, track: grey(30), bar: grey(180))
                 layout(gauge, 160.0, 20.0)
                 UiAppKit::realize(gauge)
-                check(failures, "Elisa-selected progress style reaches AppKit", elisa_appkit_progress_style(0) == elisa_appkit_progress_style_bar())
-                check(failures, "progress bars are determinate", elisa_appkit_progress_is_indeterminate(0) == 0)
+                check(failures, "Elisa-selected progress style reaches AppKit", UiAppKit::progress_style(0) == elisa_appkit_progress_style_bar())
+                check(failures, "progress bars are determinate", UiAppKit::progress_is_indeterminate(0) == 0)
 
                 # Re-realize the two other decoration modes after resetting the
                 # native table. This exercises the style-mask constants that
@@ -137,14 +138,14 @@ module AppKitCheck:
                 fixed: Widget = Window.Top(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, title: "Fixed", resizable: false)
                 layout(fixed, 320.0, 200.0)
                 UiAppKit::realize(fixed)
-                check(failures, "Elisa-composed fixed style is not resizable", elisa_appkit_window_is_resizable(0) == 0)
+                check(failures, "Elisa-composed fixed style is not resizable", UiAppKit::window_is_resizable(0) == 0)
 
                 UiAppKit::start()
                 floating: Widget = Window.Floating(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, title: "Floating")
                 layout(floating, 320.0, 200.0)
                 UiAppKit::realize(floating)
-                check(failures, "Elisa-composed floating style creates a panel", elisa_appkit_window_is_floating(0) == 1)
-                check(failures, "Elisa-selected panel key behavior reaches AppKit", elisa_appkit_panel_becomes_key_only(0) == 1)
+                check(failures, "Elisa-composed floating style creates a panel", UiAppKit::window_is_floating(0) == 1)
+                check(failures, "Elisa-selected panel key behavior reaches AppKit", UiAppKit::panel_becomes_key_only(0) == 1)
 
                 if failures == 0:
                     _ = puts("appkit: all checks passed")

@@ -13,9 +13,8 @@
 # That cast is a C operation, so Elisa sees a flat typed C API exactly as it does
 # for SDL3.
 #
-# The shim owns only the index -> NSView* object table. UiControls hands out
-# dense, capacity-checked indices; the native side does not duplicate that
-# framework arena or maintain a second limit.
+# UiControls owns the index -> opaque handle table. The Objective-C shim resolves
+# handles only at the Cocoa boundary and does not duplicate the framework arena.
 
 include "../../widgets/ui_controls.elisa"
 
@@ -37,31 +36,31 @@ extern elisa_appkit_control_state_on() -> i32
 extern elisa_appkit_control_state_off() -> i32
 extern elisa_appkit_progress_style_bar() -> i32
 extern elisa_appkit_backing_store_buffered() -> i32
-extern elisa_appkit_create_window_with_style(index: i32, style: i32, backing: i32, width: f32, height: f32) -> void
-extern elisa_appkit_create_panel_window(index: i32, style: i32, backing: i32, floating: i32, becomes_key_only: i32, width: f32, height: f32) -> void
-extern elisa_appkit_create_panel(index: i32) -> void
-extern elisa_appkit_create_scroll_view(index: i32, vertical: i32, horizontal: i32) -> void
-extern elisa_appkit_create_label(index: i32, text: usize) -> void
-extern elisa_appkit_create_push_button(index: i32, bezel_style: i32, text: usize) -> void
-extern elisa_appkit_create_toggle_button(index: i32, button_type: i32, text: usize) -> void
-extern elisa_appkit_create_checkbox(index: i32, text: usize) -> void
-extern elisa_appkit_create_radio_button(index: i32, text: usize) -> void
-extern elisa_appkit_create_text_field(index: i32, text: usize) -> void
-extern elisa_appkit_create_slider(index: i32, low: f32, high: f32, value: f32) -> void
-extern elisa_appkit_create_progress_bar(index: i32, progress_style: i32, indeterminate: i32) -> void
-extern elisa_appkit_attach_to_window(index: i32, parent: i32) -> void
-extern elisa_appkit_attach_to_scroll_view(index: i32, parent: i32) -> void
-extern elisa_appkit_attach_to_view(index: i32, parent: i32) -> void
-extern elisa_appkit_set_window_frame(index: i32, width: f32, height: f32) -> void
-extern elisa_appkit_set_view_frame(index: i32, x: f32, y: f32, width: f32, height: f32) -> void
-extern elisa_appkit_set_scroll_document_frame(index: i32, width: f32, height: f32) -> void
-extern elisa_appkit_set_window_title(index: i32, text: usize) -> void
-extern elisa_appkit_set_button_title(index: i32, text: usize) -> void
-extern elisa_appkit_set_field_text(index: i32, text: usize) -> void
-extern elisa_appkit_set_button_state(index: i32, state: i32) -> void
-extern elisa_appkit_set_slider_state(index: i32, low: f32, high: f32, value: f32) -> void
-extern elisa_appkit_set_progress_value(index: i32, value: f32) -> void
-extern elisa_appkit_present(index: i32) -> void
+extern elisa_appkit_create_window_with_style(style: i32, backing: i32, width: f32, height: f32) -> usize
+extern elisa_appkit_create_panel_window(style: i32, backing: i32, floating: i32, becomes_key_only: i32, width: f32, height: f32) -> usize
+extern elisa_appkit_create_panel() -> usize
+extern elisa_appkit_create_scroll_view(vertical: i32, horizontal: i32) -> usize
+extern elisa_appkit_create_label(text: usize) -> usize
+extern elisa_appkit_create_push_button(bezel_style: i32, text: usize) -> usize
+extern elisa_appkit_create_toggle_button(button_type: i32, text: usize) -> usize
+extern elisa_appkit_create_checkbox(text: usize) -> usize
+extern elisa_appkit_create_radio_button(text: usize) -> usize
+extern elisa_appkit_create_text_field(text: usize) -> usize
+extern elisa_appkit_create_slider(low: f32, high: f32, value: f32) -> usize
+extern elisa_appkit_create_progress_bar(progress_style: i32, indeterminate: i32) -> usize
+extern elisa_appkit_attach_to_window(handle: usize, parent: usize) -> void
+extern elisa_appkit_attach_to_scroll_view(handle: usize, parent: usize) -> void
+extern elisa_appkit_attach_to_view(handle: usize, parent: usize) -> void
+extern elisa_appkit_set_window_frame(handle: usize, width: f32, height: f32) -> void
+extern elisa_appkit_set_view_frame(handle: usize, x: f32, y: f32, width: f32, height: f32) -> void
+extern elisa_appkit_set_scroll_document_frame(handle: usize, width: f32, height: f32) -> void
+extern elisa_appkit_set_window_title(handle: usize, text: usize) -> void
+extern elisa_appkit_set_button_title(handle: usize, text: usize) -> void
+extern elisa_appkit_set_field_text(handle: usize, text: usize) -> void
+extern elisa_appkit_set_button_state(handle: usize, state: i32) -> void
+extern elisa_appkit_set_slider_state(handle: usize, low: f32, high: f32, value: f32) -> void
+extern elisa_appkit_set_progress_value(handle: usize, value: f32) -> void
+extern elisa_appkit_present(handle: usize) -> void
 extern elisa_appkit_activate() -> void
 extern elisa_appkit_run() -> void
 extern CFStringCreateWithBytes(allocator: usize, bytes: cstr, length: i64, encoding: u32, external: bool) -> usize
@@ -76,22 +75,22 @@ def appkit_view_is_flipped() -> i32:
 export fn elisa_appkit_view_is_flipped() -> i32 = appkit_view_is_flipped
 
 # Read back from the live AppKit objects, for the headless check.
-extern elisa_appkit_subview_count(index: i32) -> i32
-extern elisa_appkit_is_class(index: i32, class_name: usize) -> i32
-extern elisa_appkit_window_is_resizable(index: i32) -> i32
-extern elisa_appkit_window_is_floating(index: i32) -> i32
-extern elisa_appkit_panel_becomes_key_only(index: i32) -> i32
-extern elisa_appkit_button_is_on(index: i32) -> i32
-extern elisa_appkit_button_bezel_style(index: i32) -> i32
-extern elisa_appkit_button_toggles(index: i32) -> i32
-extern elisa_appkit_scroll_has_vertical(index: i32) -> i32
-extern elisa_appkit_scroll_has_horizontal(index: i32) -> i32
-extern elisa_appkit_frame_width(index: i32) -> f32
-extern elisa_appkit_frame_x(index: i32) -> f32
-extern elisa_appkit_frame_y(index: i32) -> f32
-extern elisa_appkit_is_flipped(index: i32) -> i32
-extern elisa_appkit_progress_is_indeterminate(index: i32) -> i32
-extern elisa_appkit_progress_style(index: i32) -> i32
+extern elisa_appkit_subview_count(handle: usize) -> i32
+extern elisa_appkit_is_class(handle: usize, class_name: usize) -> i32
+extern elisa_appkit_window_is_resizable(handle: usize) -> i32
+extern elisa_appkit_window_is_floating(handle: usize) -> i32
+extern elisa_appkit_panel_becomes_key_only(handle: usize) -> i32
+extern elisa_appkit_button_is_on(handle: usize) -> i32
+extern elisa_appkit_button_bezel_style(handle: usize) -> i32
+extern elisa_appkit_button_toggles(handle: usize) -> i32
+extern elisa_appkit_scroll_has_vertical(handle: usize) -> i32
+extern elisa_appkit_scroll_has_horizontal(handle: usize) -> i32
+extern elisa_appkit_frame_width(handle: usize) -> f32
+extern elisa_appkit_frame_x(handle: usize) -> f32
+extern elisa_appkit_frame_y(handle: usize) -> f32
+extern elisa_appkit_is_flipped(handle: usize) -> i32
+extern elisa_appkit_progress_is_indeterminate(handle: usize) -> i32
+extern elisa_appkit_progress_style(handle: usize) -> i32
 
 module UiAppKit:
     private:
@@ -131,11 +130,33 @@ module UiAppKit:
             return style
 
     public:
-        # The AppKit controls backend. A TYPE, not a value: every native handle
-        # lives in the shim's index table, so the methods are static and the
-        # specialization inlines straight through to the C entry points.
+        # The AppKit controls backend. A TYPE, not a value: native handles live
+        # in UiControls' retained records, so methods are static and the
+        # specialization inlines straight through to typed C entry points.
         struct AppKitControls:
             unused: i32
+
+        def native_handle(index: i32) -> usize:
+            return 0 if index < 0
+            return UiControls::native_handle_at(index.usize())
+
+        # Keep the retained Cocoa identity in the same Elisa record that owns
+        # the control index. Children are attached only after their constructor
+        # has returned a non-zero handle and their parent was created earlier in
+        # the parent-first control walk.
+        def record_created(index: i32, handle: usize, parent: i32, parent_kind: UiControls::Kind) -> void:
+            return if index < 0
+            UiControls::set_native_handle(index.usize(), handle)
+            return if handle == 0 or parent < 0
+            parent_handle: usize = native_handle(parent)
+            return if parent_handle == 0
+            if parent_kind == UiControls::Kind.Window:
+                elisa_appkit_attach_to_window(handle, parent_handle)
+                return
+            if parent_kind == UiControls::Kind.ScrollView:
+                elisa_appkit_attach_to_scroll_view(handle, parent_handle)
+                return
+            elisa_appkit_attach_to_view(handle, parent_handle)
 
         # Class names used by the headless read-back check are framework text
         # too. Build them as counted CoreFoundation strings so the native shim
@@ -143,102 +164,144 @@ module UiAppKit:
         def class_is(index: i32, name: sview) -> i32 can Unsafe.PointerCast:
             native: usize = native_string(name)
             return 0 if native == 0
-            result: i32 = elisa_appkit_is_class(index, native)
+            result: i32 = elisa_appkit_is_class(native_handle(index), native)
             CFRelease(native)
             return result
 
-        def attach_created(index: i32, parent: i32, parent_kind: UiControls::Kind) -> void:
-            return if parent < 0
-            if parent_kind == UiControls::Kind.Window:
-                elisa_appkit_attach_to_window(index, parent)
-                return
-            if parent_kind == UiControls::Kind.ScrollView:
-                elisa_appkit_attach_to_scroll_view(index, parent)
-                return
-            elisa_appkit_attach_to_view(index, parent)
+        # Introspection also resolves through Elisa's handle table. Keeping the
+        # index-shaped helpers here lets headless checks talk about the retained
+        # control list without teaching the native shim anything about indices.
+        def subview_count(index: i32) -> i32:
+            return elisa_appkit_subview_count(native_handle(index))
+
+        def window_is_resizable(index: i32) -> i32:
+            return elisa_appkit_window_is_resizable(native_handle(index))
+
+        def window_is_floating(index: i32) -> i32:
+            return elisa_appkit_window_is_floating(native_handle(index))
+
+        def panel_becomes_key_only(index: i32) -> i32:
+            return elisa_appkit_panel_becomes_key_only(native_handle(index))
+
+        def button_is_on(index: i32) -> i32:
+            return elisa_appkit_button_is_on(native_handle(index))
+
+        def button_bezel_style(index: i32) -> i32:
+            return elisa_appkit_button_bezel_style(native_handle(index))
+
+        def button_toggles(index: i32) -> i32:
+            return elisa_appkit_button_toggles(native_handle(index))
+
+        def scroll_has_vertical(index: i32) -> i32:
+            return elisa_appkit_scroll_has_vertical(native_handle(index))
+
+        def scroll_has_horizontal(index: i32) -> i32:
+            return elisa_appkit_scroll_has_horizontal(native_handle(index))
+
+        def frame_width(index: i32) -> f32:
+            return elisa_appkit_frame_width(native_handle(index))
+
+        def frame_x(index: i32) -> f32:
+            return elisa_appkit_frame_x(native_handle(index))
+
+        def frame_y(index: i32) -> f32:
+            return elisa_appkit_frame_y(native_handle(index))
+
+        def is_flipped(index: i32) -> i32:
+            return elisa_appkit_is_flipped(native_handle(index))
+
+        def progress_is_indeterminate(index: i32) -> i32:
+            return elisa_appkit_progress_is_indeterminate(native_handle(index))
+
+        def progress_style(index: i32) -> i32:
+            return elisa_appkit_progress_style(native_handle(index))
 
         impl Controls for AppKitControls:
             def create(index: i32, kind: UiControls::Kind, parent: i32, window_mode: UiControls::WindowMode, axis: UiConst::Axis, state: UiControls::ControlState) -> void:
                 can Ui.Controls:
                     # Parent placement is decided from the Elisa control list;
-                    # native constructors only create and store their object.
+                    # native constructors return only a retained opaque object.
                     parent_kind: mutable UiControls::Kind = UiControls::Kind.Panel
                     if parent >= 0:
                         parent_kind <- UiControls::kind_at(parent.usize())
                     if kind == UiControls::Kind.Window:
                         if window_mode == UiControls::WindowMode.Floating:
-                            elisa_appkit_create_panel_window(index, floating_panel_style(), elisa_appkit_backing_store_buffered(), 1, 1, FLOATING_PANEL_WIDTH, FLOATING_PANEL_HEIGHT)
+                            handle: usize = elisa_appkit_create_panel_window(floating_panel_style(), elisa_appkit_backing_store_buffered(), 1, 1, FLOATING_PANEL_WIDTH, FLOATING_PANEL_HEIGHT)
+                            record_created(index, handle, parent, parent_kind)
                             return
-                        elisa_appkit_create_window_with_style(index, standard_window_style(window_mode == UiControls::WindowMode.Resizable), elisa_appkit_backing_store_buffered(), STANDARD_WINDOW_WIDTH, STANDARD_WINDOW_HEIGHT)
+                        handle: usize = elisa_appkit_create_window_with_style(standard_window_style(window_mode == UiControls::WindowMode.Resizable), elisa_appkit_backing_store_buffered(), STANDARD_WINDOW_WIDTH, STANDARD_WINDOW_HEIGHT)
+                        record_created(index, handle, parent, parent_kind)
                         return
                     if kind == UiControls::Kind.Panel:
-                        elisa_appkit_create_panel(index)
-                        attach_created(index, parent, parent_kind)
+                        handle: usize = elisa_appkit_create_panel()
+                        record_created(index, handle, parent, parent_kind)
                         return
                     if kind == UiControls::Kind.ScrollView:
                         vertical: i32 = 0 if axis == UiConst::Axis.Row else 1
                         horizontal: i32 = 1 if axis == UiConst::Axis.Row else 0
-                        elisa_appkit_create_scroll_view(index, vertical, horizontal)
-                        attach_created(index, parent, parent_kind)
+                        handle: usize = elisa_appkit_create_scroll_view(vertical, horizontal)
+                        record_created(index, handle, parent, parent_kind)
                         return
                     if kind == UiControls::Kind.Label:
                         empty: usize = empty_native_string()
                         return if empty == 0
-                        elisa_appkit_create_label(index, empty)
+                        handle: usize = elisa_appkit_create_label(empty)
                         CFRelease(empty)
-                        attach_created(index, parent, parent_kind)
+                        record_created(index, handle, parent, parent_kind)
                         return
                     if kind == UiControls::Kind.PushButton:
                         empty: usize = empty_native_string()
                         return if empty == 0
-                        elisa_appkit_create_push_button(index, elisa_appkit_bezel_style_rounded(), empty)
+                        handle: usize = elisa_appkit_create_push_button(elisa_appkit_bezel_style_rounded(), empty)
                         CFRelease(empty)
-                        attach_created(index, parent, parent_kind)
+                        record_created(index, handle, parent, parent_kind)
                         return
                     if kind == UiControls::Kind.ToggleButton:
                         empty: usize = empty_native_string()
                         return if empty == 0
-                        elisa_appkit_create_toggle_button(index, elisa_appkit_button_type_push_on_push_off(), empty)
+                        handle: usize = elisa_appkit_create_toggle_button(elisa_appkit_button_type_push_on_push_off(), empty)
                         CFRelease(empty)
-                        attach_created(index, parent, parent_kind)
+                        record_created(index, handle, parent, parent_kind)
                         return
                     if kind == UiControls::Kind.CheckBox:
                         empty: usize = empty_native_string()
                         return if empty == 0
-                        elisa_appkit_create_checkbox(index, empty)
+                        handle: usize = elisa_appkit_create_checkbox(empty)
                         CFRelease(empty)
-                        attach_created(index, parent, parent_kind)
+                        record_created(index, handle, parent, parent_kind)
                         return
                     if kind == UiControls::Kind.RadioButton:
                         empty: usize = empty_native_string()
                         return if empty == 0
-                        elisa_appkit_create_radio_button(index, empty)
+                        handle: usize = elisa_appkit_create_radio_button(empty)
                         CFRelease(empty)
-                        attach_created(index, parent, parent_kind)
+                        record_created(index, handle, parent, parent_kind)
                         return
                     if kind == UiControls::Kind.TextField:
                         empty: usize = empty_native_string()
                         return if empty == 0
-                        elisa_appkit_create_text_field(index, empty)
+                        handle: usize = elisa_appkit_create_text_field(empty)
                         CFRelease(empty)
-                        attach_created(index, parent, parent_kind)
+                        record_created(index, handle, parent, parent_kind)
                         return
                     if kind == UiControls::Kind.Slider:
-                        elisa_appkit_create_slider(index, state.low, state.high, state.value)
-                        attach_created(index, parent, parent_kind)
+                        handle: usize = elisa_appkit_create_slider(state.low, state.high, state.value)
+                        record_created(index, handle, parent, parent_kind)
                         return
                     if kind == UiControls::Kind.ProgressBar:
-                        elisa_appkit_create_progress_bar(index, elisa_appkit_progress_style_bar(), 0)
-                        attach_created(index, parent, parent_kind)
+                        handle: usize = elisa_appkit_create_progress_bar(elisa_appkit_progress_style_bar(), 0)
+                        record_created(index, handle, parent, parent_kind)
 
             def set_frame(index: i32, kind: UiControls::Kind, box: UiCore::Rect) -> void:
                 can Ui.Controls:
+                    handle: usize = native_handle(index)
+                    return if handle == 0
                     if kind == UiControls::Kind.Window:
-                        elisa_appkit_set_window_frame(index, box.size.width, box.size.height)
+                        elisa_appkit_set_window_frame(handle, box.size.width, box.size.height)
                         return
-                    elisa_appkit_set_view_frame(index, box.origin.x, box.origin.y, box.size.width, box.size.height)
+                    elisa_appkit_set_view_frame(handle, box.origin.x, box.origin.y, box.size.width, box.size.height)
                     if kind == UiControls::Kind.ScrollView:
-                        elisa_appkit_set_scroll_document_frame(index, box.size.width, box.size.height)
+                        elisa_appkit_set_scroll_document_frame(handle, box.size.width, box.size.height)
 
             def set_text(index: i32, kind: UiControls::Kind, text: sview) -> void:
                 # Native controls copy this borrowed CoreFoundation string in
@@ -246,43 +309,56 @@ module UiAppKit:
                 # object assignment, not framework-side text conversion.
                 value: usize = native_string(text)
                 return if value == 0
+                handle: usize = native_handle(index)
                 if kind == UiControls::Kind.Window:
-                    elisa_appkit_set_window_title(index, value)
+                    elisa_appkit_set_window_title(handle, value)
                 if kind == UiControls::Kind.PushButton or kind == UiControls::Kind.ToggleButton or kind == UiControls::Kind.CheckBox or kind == UiControls::Kind.RadioButton:
-                    elisa_appkit_set_button_title(index, value)
+                    elisa_appkit_set_button_title(handle, value)
                 if kind == UiControls::Kind.Label or kind == UiControls::Kind.TextField:
-                    elisa_appkit_set_field_text(index, value)
+                    elisa_appkit_set_field_text(handle, value)
                 CFRelease(value)
 
             def set_state(index: i32, kind: UiControls::Kind, value: f32, low: f32, high: f32, selected: bool) -> void:
                 can Ui.Controls:
+                    handle: usize = native_handle(index)
+                    return if handle == 0
                     if kind == UiControls::Kind.ToggleButton or kind == UiControls::Kind.CheckBox or kind == UiControls::Kind.RadioButton:
-                        elisa_appkit_set_button_state(index, elisa_appkit_control_state_on() if selected else elisa_appkit_control_state_off())
+                        elisa_appkit_set_button_state(handle, elisa_appkit_control_state_on() if selected else elisa_appkit_control_state_off())
                         return
                     if kind == UiControls::Kind.Slider:
-                        elisa_appkit_set_slider_state(index, low, high, value)
+                        elisa_appkit_set_slider_state(handle, low, high, value)
                         return
                     if kind == UiControls::Kind.ProgressBar:
-                        elisa_appkit_set_progress_value(index, value)
+                        elisa_appkit_set_progress_value(handle, value)
+
+        # Release the retained handles before the next realization. Child views
+        # may still be retained by their old parent, but releasing every Elisa
+        # ownership reference (including the root window) lets ARC tear down the
+        # old tree without leaving a second native lifetime table behind.
+        def release_native_handles() -> void:
+            for index in 0..<UiControls::count():
+                handle: usize = UiControls::native_handle_at(index)
+                CFRelease(handle) if handle != 0
 
         # Realize a laid-out widget tree as native controls. Run UiWidgets::layout
         # first: every control is placed at the box it computed.
         def realize(root: UiWidgets::Widget) -> void:
             can[Ui.Controls]:
+                release_native_handles()
                 UiControls::reset()
                 UiControls::realize(root, UiControls::NO_PARENT)
                 UiControls::apply[AppKitControls]()
 
         def start() -> void:
-            # UiControls owns the validated arena and dense index sequence.
-            # AppKit only resets its opaque object table for a new realization.
+            # UiControls owns the validated arena, dense index sequence and
+            # retained native identities. AppKit initialization only establishes
+            # the Cocoa application object.
             elisa_appkit_init()
             elisa_appkit_set_activation_policy(elisa_appkit_activation_policy_regular())
 
         def present() -> void:
-            # The retained realization always emits its root at index zero;
-            # presentation still crosses the boundary as an explicit handle.
-            elisa_appkit_present(0)
+            # The retained realization always emits its root at index zero.
+            elisa_appkit_present(native_handle(0))
             elisa_appkit_activate()
 
         def run() -> void:

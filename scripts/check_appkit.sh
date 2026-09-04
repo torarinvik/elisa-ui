@@ -25,8 +25,8 @@ if grep -Eq 'setActivationPolicy:NSApplicationActivationPolicyRegular' "$ROOT/sr
   echo "appkit: activation policy leaked back into Objective-C initialization" >&2
   exit 1
 fi
-if grep -Eq 'ELISA_APPKIT_MAX|static id elisa_objects\[' "$ROOT/src/platform/appkit/appkit_shim.m"; then
-  echo "appkit: native object-table capacity was duplicated in Objective-C" >&2
+if grep -Eq 'ELISA_APPKIT_MAX|NSMutableDictionary|elisa_objects|elisa_appkit_object\(int' "$ROOT/src/platform/appkit/appkit_shim.m"; then
+  echo "appkit: native index-to-object bookkeeping survived in Objective-C" >&2
   exit 1
 fi
 if grep -Eq 'static NSWindow \*elisa_window' "$ROOT/src/platform/appkit/appkit_shim.m"; then
