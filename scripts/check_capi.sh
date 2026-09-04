@@ -72,6 +72,10 @@ int main(void) {
     if (elisa_ui_viewport_width() != 800.0f || elisa_ui_viewport_height() != 600.0f) {
         puts("viewport did not survive"); failures++;
     }
+    elisa_ui_set_viewport(-10.0f, -20.0f);
+    if (elisa_ui_viewport_width() != 0.0f || elisa_ui_viewport_height() != 0.0f) {
+        puts("negative viewport was not normalized"); failures++;
+    }
 
     if (failures == 0) { puts("capi: all checks passed"); return 0; }
     puts("capi: FAILURES above");

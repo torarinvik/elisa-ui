@@ -382,8 +382,14 @@ module UiCore:
         def command_overflowed() -> bool:
             return command_dropped
 
+        # Surface dimensions are extents, never signed offsets. Normalize them
+        # at the core boundary so painters and backends cannot observe a
+        # negative or NaN-sized viewport from a host resize callback.
+        def nonnegative_extent(value: f32) -> f32:
+            return value if value > 0.0 else 0.0
+
         def set_viewport(width: f32, height: f32) -> void:
-            viewport_size <- Size{width: width, height: height}
+            viewport_size <- Size{width: nonnegative_extent(width), height: nonnegative_extent(height)}
 
         def viewport_width() -> f32:
             return viewport_size.width
@@ -418,7 +424,7 @@ module UiCore:
             return Vec2{x: x, y: y}
 
         def Size(width: f32, height: f32) -> Size:
-            return Size{width: width, height: height}
+            return Size{width: nonnegative_extent(width), height: nonnegative_extent(height)}
 
         def Rect(x: f32, y: f32, width: f32, height: f32) -> Rect:
             return Rect{origin: Vec2{x: x, y: y}, size: Size{width: width, height: height}}
