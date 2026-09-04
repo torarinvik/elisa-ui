@@ -61,6 +61,7 @@ because a module member's symbol carries its module and those names cannot move.
   contributes a minimum, and leftover space is shared out by `grow` weight.
   Containers provide padding and sibling spacing; individual widgets can add
   normalized margins that participate in both measurement and arrangement.
+  Per-widget cross-axis alignment supports start, center, end, and stretch.
   Measure runs bottom-up, arrange top-down.
   Dynamic label text and typography changes are remeasured before the next
   layout, so localization and live status content cannot retain stale bounds.

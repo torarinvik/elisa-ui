@@ -51,6 +51,7 @@ module UiFlat:
             padding: mutable f32
             spacing: mutable f32
             margin: mutable f32
+            cross_alignment: mutable UiConst::CrossAlignment
             declared_min_width: mutable f32
             declared_min_height: mutable f32
             min_width: mutable f32
@@ -229,6 +230,7 @@ module UiFlat:
                 kind, parent,
                 first_child: NONE, next_sibling: NONE,
                 axis: UiConst::Axis.Column, padding: 0.0, spacing: 0.0, margin: 0.0,
+                cross_alignment: UiConst::CrossAlignment.Stretch,
                 declared_min_width: 0.0, declared_min_height: 0.0,
                 min_width: 0.0, min_height: 0.0, grow: 0.0,
                 x: 0.0, y: 0.0, width: 0.0, height: 0.0,
@@ -305,6 +307,10 @@ module UiFlat:
         def set_margin(index: usize, margin: f32) -> void:
             return if index >= widget_count
             widgets[index].margin <- nonnegative(margin)
+
+        def set_cross_alignment(index: usize, alignment: UiConst::CrossAlignment) -> void:
+            return if index >= widget_count
+            widgets[index].cross_alignment <- alignment
 
         def set_enabled(index: usize, enabled: bool) -> void:
             return if index >= widget_count
@@ -582,8 +588,9 @@ module UiFlat:
             widgets[index].min_height <- content_height if content_height > widgets[index].min_height
 
         # Top-down pass: give every child its minimum along the axis, then
-        # share the leftover in proportion to `grow`. Children stretch to fill
-        # the cross axis.
+        # share the leftover in proportion to `grow`. Cross-axis alignment can
+        # stretch a child or place its measured extent at the start, center, or
+        # end of the remaining band.
         def arrange(index: usize, x: f32, y: f32, width: f32, height: f32) -> void:
             return if index >= widget_count
             if not effectively_visible(index):
@@ -629,12 +636,23 @@ module UiFlat:
                     outer_extent: f32 = base * scale + share * widgets[walk].grow
                     extent: f32 = outer_extent - margin * 2.0
                     extent <- 0.0 if extent < 0.0 else extent
-                    cross_extent: f32 = (inner_height if is_row else inner_width) - margin * 2.0
-                    cross_extent <- 0.0 if cross_extent < 0.0 else cross_extent
+                    available_cross: f32 = (inner_height if is_row else inner_width) - margin * 2.0
+                    available_cross <- 0.0 if available_cross < 0.0 else available_cross
+                    cross_extent: f32 = available_cross
+                    cross_offset: f32 = margin
+                    alignment: UiConst::CrossAlignment = widgets[walk].cross_alignment
+                    if alignment != UiConst::CrossAlignment.Stretch:
+                        desired_cross: f32 = widgets[walk].min_height if is_row else widgets[walk].min_width
+                        cross_extent <- desired_cross if desired_cross < available_cross else available_cross
+                        if alignment == UiConst::CrossAlignment.Center:
+                            cross_offset <- margin + (available_cross - cross_extent) * 0.5
+                        else:
+                            if alignment == UiConst::CrossAlignment.End:
+                                cross_offset <- margin + available_cross - cross_extent
                     if is_row:
-                        arrange(walk, inner_x + offset + margin, inner_y + margin, extent, cross_extent)
+                        arrange(walk, inner_x + offset + margin, inner_y + cross_offset, extent, cross_extent)
                     else:
-                        arrange(walk, inner_x + margin, inner_y + offset + margin, cross_extent, extent)
+                        arrange(walk, inner_x + cross_offset, inner_y + offset + margin, cross_extent, extent)
                     offset <- offset + outer_extent + widgets[index].spacing * scale
                 else:
                     collapse(walk)
