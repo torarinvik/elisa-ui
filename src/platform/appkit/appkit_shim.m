@@ -87,20 +87,41 @@ static void elisa_appkit_attach(int index, int parent, int parentIsWindow, NSVie
     if (container != nil && view != nil) [container addSubview:view];
 }
 
-void elisa_appkit_create_window(int index) {
+void elisa_appkit_create_window(int index, int resizable) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index, ELISA_APPKIT_WINDOW)) return;
         NSRect content = NSMakeRect(0, 0, 640, 480);
+        NSWindowStyleMask style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
+                                  NSWindowStyleMaskMiniaturizable;
+        if (resizable) style |= NSWindowStyleMaskResizable;
         NSWindow *window = [[NSWindow alloc]
             initWithContentRect:content
-                      styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
-                                 NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable)
+                      styleMask:style
                         backing:NSBackingStoreBuffered
                           defer:NO];
         if (window == nil) return;
         [window setContentView:[[ElisaFlippedView alloc] initWithFrame:content]];
         elisa_objects[index] = window;
         elisa_window = window;
+    }
+}
+
+void elisa_appkit_create_floating_panel(int index) {
+    @autoreleasepool {
+        if (!elisa_appkit_prepare(index, ELISA_APPKIT_WINDOW)) return;
+        NSRect content = NSMakeRect(0, 0, 480, 320);
+        NSPanel *panel = [[NSPanel alloc]
+            initWithContentRect:content
+                      styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
+                                 NSWindowStyleMaskUtilityWindow)
+                        backing:NSBackingStoreBuffered
+                          defer:NO];
+        if (panel == nil) return;
+        [panel setFloatingPanel:YES];
+        [panel setBecomesKeyOnlyIfNeeded:YES];
+        [panel setContentView:[[ElisaFlippedView alloc] initWithFrame:content]];
+        elisa_objects[index] = panel;
+        elisa_window = panel;
     }
 }
 
@@ -258,6 +279,17 @@ int elisa_appkit_is_class(int index, const char *class_name) {
     if (index < 0 || index >= elisa_count || class_name == NULL) return 0;
     Class wanted = NSClassFromString([NSString stringWithUTF8String:class_name]);
     return (wanted != nil && [elisa_objects[index] isKindOfClass:wanted]) ? 1 : 0;
+}
+
+int elisa_appkit_window_is_resizable(int index) {
+    if (index < 0 || index >= elisa_count || elisa_kinds[index] != ELISA_APPKIT_WINDOW) return 0;
+    return ([(NSWindow *)elisa_objects[index] styleMask] & NSWindowStyleMaskResizable) != 0 ? 1 : 0;
+}
+
+int elisa_appkit_window_is_floating(int index) {
+    if (index < 0 || index >= elisa_count || elisa_kinds[index] != ELISA_APPKIT_WINDOW) return 0;
+    return [(NSWindow *)elisa_objects[index] isKindOfClass:[NSPanel class]] &&
+           [(NSPanel *)elisa_objects[index] isFloatingPanel] ? 1 : 0;
 }
 
 float elisa_appkit_frame_width(int index) {

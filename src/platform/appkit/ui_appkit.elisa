@@ -23,7 +23,8 @@ include "../../widgets/ui_controls.elisa"
 using UiControls
 
 extern elisa_appkit_init() -> void
-extern elisa_appkit_create_window(index: i32) -> void
+extern elisa_appkit_create_window(index: i32, resizable: i32) -> void
+extern elisa_appkit_create_floating_panel(index: i32) -> void
 extern elisa_appkit_create_panel(index: i32, parent: i32, parent_is_window: i32) -> void
 extern elisa_appkit_create_scroll_view(index: i32, parent: i32, parent_is_window: i32) -> void
 extern elisa_appkit_create_label(index: i32, parent: i32, parent_is_window: i32) -> void
@@ -46,6 +47,8 @@ extern elisa_appkit_run() -> void
 extern elisa_appkit_control_count() -> i32
 extern elisa_appkit_subview_count(index: i32) -> i32
 extern elisa_appkit_is_class(index: i32, class_name: cstr) -> i32
+extern elisa_appkit_window_is_resizable(index: i32) -> i32
+extern elisa_appkit_window_is_floating(index: i32) -> i32
 extern elisa_appkit_frame_width(index: i32) -> f32
 extern elisa_appkit_frame_x(index: i32) -> f32
 extern elisa_appkit_frame_y(index: i32) -> f32
@@ -60,13 +63,16 @@ module UiAppKit:
             unused: i32
 
         impl Controls for AppKitControls:
-            def create(index: i32, kind: UiControls::Kind, parent: i32) -> void:
+            def create(index: i32, kind: UiControls::Kind, parent: i32, window_mode: UiControls::WindowMode) -> void:
                 can Ui.Controls:
                     parent_is_window: mutable i32 = 0
                     if parent >= 0:
                         parent_is_window <- 1 if UiControls::kind_at(parent.usize()) == UiControls::Kind.Window
                     if kind == UiControls::Kind.Window:
-                        elisa_appkit_create_window(index)
+                        if window_mode == UiControls::WindowMode.Floating:
+                            elisa_appkit_create_floating_panel(index)
+                        else:
+                            elisa_appkit_create_window(index, 1 if window_mode == UiControls::WindowMode.Resizable else 0)
                         return
                     if kind == UiControls::Kind.Panel:
                         elisa_appkit_create_panel(index, parent, parent_is_window)

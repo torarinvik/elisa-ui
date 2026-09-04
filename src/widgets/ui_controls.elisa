@@ -77,6 +77,15 @@ module UiControls:
             Slider = 9
             ProgressBar = 10
 
+        # Window decoration policy is part of the widget hierarchy, not a
+        # native toolkit default. Keeping it typed in the control list lets a
+        # backend choose the corresponding native surface without re-matching
+        # the hierarchy or silently treating every window as resizable.
+        const enum WindowMode of i32:
+            Fixed = 0
+            Resizable = 1
+            Floating = 2
+
         # The root's parent.
         const NO_PARENT: i32 = -1
 
@@ -87,7 +96,7 @@ module UiControls:
         # or NO_PARENT for the root -- and because the list is emitted parent-first,
         # a parent has always been created before any child names it.
         protocol Controls:
-            def create(index: i32, kind: Kind, parent: i32) -> void can[Ui.Controls]
+            def create(index: i32, kind: Kind, parent: i32, window_mode: WindowMode) -> void can[Ui.Controls]
             # Absolute placement, at the box UiWidgets::layout computed. The
             # kind crosses with it so a backend can select window-content versus
             # child-view placement in typed Elisa code.
@@ -114,6 +123,7 @@ module UiControls:
 
         struct ControlOp:
             kind: mutable Kind
+            window_mode: mutable WindowMode
             parent: mutable i32
             box: mutable UiCore::Rect
             text: mutable sview
@@ -140,6 +150,9 @@ module UiControls:
         def kind_at(index: usize) -> Kind:
             return ops[index].kind
 
+        def window_mode_at(index: usize) -> WindowMode:
+            return ops[index].window_mode
+
         def parent_at(index: usize) -> i32:
             return ops[index].parent
 
@@ -161,6 +174,7 @@ module UiControls:
             index: usize = total
             total <- total + 1
             ops[index].kind <- kind_of(w)
+            ops[index].window_mode <- window_mode_of(w)
             ops[index].parent <- parent
             ops[index].box <- UiWidgets::box_of(w)
             ops[index].text <- text_of(w)
@@ -174,7 +188,7 @@ module UiControls:
         def apply[C: Controls]() -> void can[Ui.Controls]:
             for index in 0..<count():
                 slot: i32 = index.i32()
-                C.create(slot, kind_at(index), parent_at(index))
+                C.create(slot, kind_at(index), parent_at(index), window_mode_at(index))
                 C.set_frame(slot, kind_at(index), box_at(index))
                 C.set_text(slot, kind_at(index), text_at(index))
 
@@ -209,6 +223,17 @@ module UiControls:
                     return Kind.CheckBox
                 UiWidgets::Button.Radio(label, group, selected, rest, hover, press):
                     return Kind.RadioButton
+
+        # The hierarchy's window variants carry the only decoration policy the
+        # controls seam needs. All non-window controls use the neutral value.
+        def window_mode_of(w: UiWidgets::Widget) -> WindowMode:
+            match w:
+                UiWidgets::Window.Top(title, resizable):
+                    return WindowMode.Resizable if resizable else WindowMode.Fixed
+                UiWidgets::Window.Floating(title):
+                    return WindowMode.Floating
+                _:
+                    return WindowMode.Fixed
 
         # The text a control shows. Empty for anything that carries none, so a
         # backend can set it unconditionally.

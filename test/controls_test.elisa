@@ -45,6 +45,7 @@ def ui_text_line_height(size: f32) -> f32:
 const LOG_CAP: usize = 64
 
 global mutable log_kind: i32[LOG_CAP] = zeroed
+global mutable log_window_mode: i32[LOG_CAP] = zeroed
 global mutable log_parent: i32[LOG_CAP] = zeroed
 global mutable log_x: f32[LOG_CAP] = zeroed
 global mutable log_y: f32[LOG_CAP] = zeroed
@@ -60,11 +61,12 @@ struct RecordingControls:
     unused: i32
 
 impl Controls for RecordingControls:
-    def create(index: i32, kind: UiControls::Kind, parent: i32) -> void can[Ui.Controls]:
+    def create(index: i32, kind: UiControls::Kind, parent: i32, window_mode: UiControls::WindowMode) -> void can[Ui.Controls]:
         return if index < 0 or index.usize() >= LOG_CAP
         row: usize = index.usize()
         log_total <- log_total + 1
         log_kind[row] <- kind.i32()
+        log_window_mode[row] <- window_mode.i32()
         log_parent[row] <- parent
 
     def set_frame(index: i32, kind: UiControls::Kind, box: UiCore::Rect) -> void can[Ui.Controls]:
@@ -109,6 +111,10 @@ def build() -> Widget:
 def main() -> i64:
     can Ui.Controls, Abort.Panic, Memory.Allocate, Unsafe.PointerCast:
         root: Widget = build()
+        floating: Widget = Window.Floating(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, title: "Palette")
+        fixed: Widget = Window.Top(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, title: "Fixed", resizable: false)
+        check("floating windows carry floating mode", UiControls::window_mode_of(floating) == UiControls::WindowMode.Floating)
+        check("fixed top windows carry fixed mode", UiControls::window_mode_of(fixed) == UiControls::WindowMode.Fixed)
         layout(root, 200.0, 100.0)
         UiControls::reset()
         UiControls::realize(root, UiControls::NO_PARENT)
@@ -129,7 +135,9 @@ def main() -> i64:
 
         # Each widget kind became a control a platform actually has.
         check("a window realizes a Window", kind_at(0) == UiControls::Kind.Window.i32())
+        check("a resizable top window carries its mode", log_window_mode[0] == UiControls::WindowMode.Resizable.i32())
         check("a box realizes a Panel", kind_at(1) == UiControls::Kind.Panel.i32())
+        check("non-window controls carry neutral window mode", log_window_mode[1] == UiControls::WindowMode.Fixed.i32())
         check("a push button realizes a PushButton", kind_at(2) == UiControls::Kind.PushButton.i32())
         check("a label realizes a Label", kind_at(4) == UiControls::Kind.Label.i32())
 
