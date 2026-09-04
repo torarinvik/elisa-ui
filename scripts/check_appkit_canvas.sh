@@ -65,6 +65,10 @@ if grep -Eq 'modifierFlags[[:space:]]*&|flags[[:space:]]*&' "$ROOT/src/platform/
   echo "appkit canvas: modifier decoding leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'setActivationPolicy:.*\?|setTabbingMode:.*\?' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: activation or tabbing policy leaked back into Objective-C" >&2
+  exit 1
+fi
 
 # These callbacks cross the Objective-C/Elisa boundary and must survive dead
 # stripping in the packaged product.
@@ -73,6 +77,10 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_window_style_titled$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_window_style_closable$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_window_style_miniaturizable$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_window_style_resizable$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_activation_policy_regular$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_activation_policy_prohibited$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_tabbing_mode_preferred$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_tabbing_mode_disallowed$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_key_down_event$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_raw_flags$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_key_up$'

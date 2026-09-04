@@ -9,7 +9,11 @@ extern elisa_appkit_canvas_window_style_titled() -> i32
 extern elisa_appkit_canvas_window_style_closable() -> i32
 extern elisa_appkit_canvas_window_style_miniaturizable() -> i32
 extern elisa_appkit_canvas_window_style_resizable() -> i32
-extern elisa_appkit_canvas_open(title: cstr, length: usize, width: f32, height: f32, style: i32, tabbing: i32, restorable: i32, centered: i32, headless: i32) -> i32
+extern elisa_appkit_canvas_activation_policy_regular() -> i32
+extern elisa_appkit_canvas_activation_policy_prohibited() -> i32
+extern elisa_appkit_canvas_tabbing_mode_preferred() -> i32
+extern elisa_appkit_canvas_tabbing_mode_disallowed() -> i32
+extern elisa_appkit_canvas_open(title: cstr, length: usize, width: f32, height: f32, style: i32, tabbing_mode: i32, restorable: i32, centered: i32, activation_policy: i32) -> i32
 extern elisa_appkit_canvas_menus_begin(title: cstr, length: usize) -> void
 extern elisa_appkit_canvas_menu_add(title: cstr, length: usize) -> i32
 extern elisa_appkit_canvas_menu_set_windows(menu: i32) -> void
@@ -357,6 +361,12 @@ module UiAppKitCanvas:
             style <- style | elisa_appkit_canvas_window_style_miniaturizable() if options.minimizable
             style <- style | elisa_appkit_canvas_window_style_resizable() if options.resizable
             return style
+
+        def activation_policy(headless: bool) -> i32:
+            return elisa_appkit_canvas_activation_policy_prohibited() if headless else elisa_appkit_canvas_activation_policy_regular()
+
+        def tabbing_mode(enabled: bool) -> i32:
+            return elisa_appkit_canvas_tabbing_mode_preferred() if enabled else elisa_appkit_canvas_tabbing_mode_disallowed()
 
         def smoke_mode() -> bool:
             value_opt: cstr? = getenv("ELISA_UI_SMOKE_FRAMES")
@@ -753,7 +763,7 @@ module UiAppKitCanvas:
                 style: i32 = window_style(options)
                 headless: bool = smoke_mode()
                 headless_session <- headless
-                opened: i32 = elisa_appkit_canvas_open(pointer, title.len, options.width, options.height, style, 1 if options.tabbing else 0, 1 if options.restorable else 0, 1 if options.centered else 0, 1 if headless else 0)
+                opened: i32 = elisa_appkit_canvas_open(pointer, title.len, options.width, options.height, style, tabbing_mode(options.tabbing), 1 if options.restorable else 0, 1 if options.centered else 0, activation_policy(headless))
                 return 1 if opened == 0
                 install_standard_menus(pointer, title.len)
                 snapshot_opt: cstr? = getenv("ELISA_UI_SNAPSHOT")

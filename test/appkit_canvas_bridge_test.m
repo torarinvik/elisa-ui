@@ -240,7 +240,9 @@ static int require(BOOL condition, NSString *message) {
 
 int main(void) {
     @autoreleasepool {
-        if (!elisa_appkit_canvas_open("test", 4, 200, 100, 15, 0, 0, 1, 1)) return 1;
+        if (!elisa_appkit_canvas_open("test", 4, 200, 100, 15,
+                                      NSWindowTabbingModeDisallowed, 0, 1,
+                                      NSApplicationActivationPolicyProhibited)) return 1;
         elisa_appkit_canvas_menus_begin("test", 4);
         int applicationMenu = elisa_appkit_canvas_menu_add("test", 4);
         elisa_appkit_canvas_menu_add_application_item(applicationMenu, "About ", 6, "orderFrontStandardAboutPanel:", 0, 0);

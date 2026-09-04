@@ -343,14 +343,29 @@ int elisa_appkit_canvas_window_style_resizable(void) {
     return (int)NSWindowStyleMaskResizable;
 }
 
+int elisa_appkit_canvas_activation_policy_regular(void) {
+    return (int)NSApplicationActivationPolicyRegular;
+}
+
+int elisa_appkit_canvas_activation_policy_prohibited(void) {
+    return (int)NSApplicationActivationPolicyProhibited;
+}
+
+int elisa_appkit_canvas_tabbing_mode_preferred(void) {
+    return (int)NSWindowTabbingModePreferred;
+}
+
+int elisa_appkit_canvas_tabbing_mode_disallowed(void) {
+    return (int)NSWindowTabbingModeDisallowed;
+}
+
 int elisa_appkit_canvas_open(const char *title, size_t length, float width, float height,
-                             int style, int tabbing, int restorable, int centered, int headless) {
+                             int style, int tabbing_mode, int restorable, int centered,
+                             int activation_policy) {
     @autoreleasepool {
         elisa_canvas_frame_count = 0;
         [NSApplication sharedApplication];
-        [NSApp setActivationPolicy:headless
-            ? NSApplicationActivationPolicyProhibited
-            : NSApplicationActivationPolicyRegular];
+        [NSApp setActivationPolicy:(NSApplicationActivationPolicy)activation_policy];
         NSRect rect = NSMakeRect(0, 0, width, height);
         NSWindowStyleMask styleMask = (NSWindowStyleMask)style;
         NSWindow *window = [[NSWindow alloc] initWithContentRect:rect
@@ -369,7 +384,7 @@ int elisa_appkit_canvas_open(const char *title, size_t length, float width, floa
         elisa_canvas_delegate = [ElisaCanvasDelegate new];
         [window setDelegate:elisa_canvas_delegate];
         [window setContentView:elisa_canvas_view];
-        [window setTabbingMode:tabbing ? NSWindowTabbingModePreferred : NSWindowTabbingModeDisallowed];
+        [window setTabbingMode:(NSWindowTabbingMode)tabbing_mode];
         [window setRestorable:restorable != 0];
         if (centered) [window center];
         [window makeFirstResponder:elisa_canvas_view];
