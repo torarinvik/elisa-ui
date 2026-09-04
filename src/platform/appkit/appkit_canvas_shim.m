@@ -416,7 +416,10 @@ size_t elisa_appkit_canvas_accessibility_layout_changed_notification(void) {
     return (size_t)(__bridge void *)NSAccessibilityLayoutChangedNotification;
 }
 
-int elisa_appkit_canvas_open(const char *title, size_t length, float width, float height,
+// The window title arrives as an opaque, counted CFString created by Elisa.
+// Cocoa retains/copies it through -setTitle; the bridge does not perform any
+// UTF-8 decoding itself.
+int elisa_appkit_canvas_open(size_t title, float width, float height,
                              int style, int backing, int tabbing_mode, int restorable,
                              int make_first_responder, int activation_policy) {
     @autoreleasepool {
@@ -429,7 +432,7 @@ int elisa_appkit_canvas_open(const char *title, size_t length, float width, floa
             styleMask:styleMask
             backing:(NSBackingStoreType)backing defer:NO];
         if (window == nil) return 0;
-        NSString *name = [[NSString alloc] initWithBytes:title length:length encoding:NSUTF8StringEncoding];
+        NSString *name = (__bridge NSString *)(void *)title;
         if (name != nil) [window setTitle:name];
         // Keep the global nil while NSView initialization calls setFrameSize:;
         // resize events must not reach the Elisa app before app_init.

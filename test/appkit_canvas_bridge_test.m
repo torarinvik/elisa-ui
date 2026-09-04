@@ -272,10 +272,13 @@ static int require(BOOL condition, NSString *message) {
 
 int main(void) {
     @autoreleasepool {
-        if (!elisa_appkit_canvas_open("test", 4, 200, 100, 15,
-                                      elisa_appkit_canvas_backing_store_buffered(),
-                                      NSWindowTabbingModeDisallowed, 0, 1,
-                                      NSApplicationActivationPolicyProhibited)) return 1;
+        NSString *title = @"test";
+        int opened = elisa_appkit_canvas_open((size_t)(__bridge void *)title,
+                                              200, 100, 15,
+                                              elisa_appkit_canvas_backing_store_buffered(),
+                                              NSWindowTabbingModeDisallowed, 0, 1,
+                                              NSApplicationActivationPolicyProhibited);
+        if (!opened) return 1;
         if (require([elisa_canvas_view isFlipped], @"canvas coordinate policy was not supplied by Elisa")) return 1;
         if (require([elisa_canvas_view acceptsFirstResponder], @"canvas focus policy was not supplied by Elisa")) return 1;
         if (require(![elisa_canvas_view isAccessibilityElement], @"canvas semantic-root policy was not supplied by Elisa")) return 1;
