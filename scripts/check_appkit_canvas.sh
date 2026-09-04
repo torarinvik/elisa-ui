@@ -49,6 +49,10 @@ if grep -Eq 'notifications[[:space:]]*&[[:space:]]*[124]' "$ROOT/src/platform/ap
   echo "appkit canvas: accessibility notification policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'accessibility(Min|Max)Value[[:space:]]*=[[:space:]]*@\((0\.0|1\.0)\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: accessibility range policy leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'if[[:space:]]*\([[:space:]]*tooltip[[:space:]]*\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: accessibility tooltip policy leaked back into Objective-C" >&2
   exit 1

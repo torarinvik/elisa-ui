@@ -678,15 +678,16 @@ void elisa_appkit_canvas_accessibility_set_boolean(size_t identifier, int select
     element.elisaSynchronizing = NO;
 }
 
-void elisa_appkit_canvas_accessibility_set_range(size_t identifier, float value) {
+void elisa_appkit_canvas_accessibility_set_range(size_t identifier, float value,
+                                                 float minimum, float maximum) {
     ElisaAccessibilityElement *element = elisa_appkit_canvas_pending_element(identifier);
     if (element == nil) return;
     element.elisaSynchronizing = YES;
     element.accessibilityValue = @(value);
     element.accessibilitySelectedText = nil;
     element.accessibilitySelectedTextRange = NSMakeRange(NSNotFound, 0);
-    element.accessibilityMinValue = @0.0;
-    element.accessibilityMaxValue = @1.0;
+    element.accessibilityMinValue = @(minimum);
+    element.accessibilityMaxValue = @(maximum);
     element.elisaSynchronizing = NO;
 }
 

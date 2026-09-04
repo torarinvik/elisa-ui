@@ -32,7 +32,7 @@ void elisa_appkit_canvas_frame(size_t context) {
         (size_t)(__bridge void *)[NSCursor pointingHandCursor],
         label, strlen(label), help, strlen(help), 10, 10, 180, 24, 1, 0);
     elisa_appkit_canvas_accessibility_add_tooltip(7);
-    elisa_appkit_canvas_accessibility_set_range(7, test_slider_value);
+    elisa_appkit_canvas_accessibility_set_range(7, test_slider_value, 0.0f, 1.0f);
     elisa_appkit_canvas_accessibility_add(8, "elisa-ui-8", 10, 8, NSAccessibilityTextFieldRole, 0,
         (size_t)(__bridge void *)[NSCursor IBeamCursor],
         "Project name", 12, "Edit the project name", 21,
