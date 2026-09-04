@@ -25,7 +25,9 @@ using UiControls
 extern elisa_appkit_init() -> void
 extern elisa_appkit_create(index: i32, kind: i32, parent: i32) -> void
 extern elisa_appkit_set_frame(index: i32, x: f32, y: f32, width: f32, height: f32) -> void
-extern elisa_appkit_set_text(index: i32, text: cstr, length: usize) -> void
+extern elisa_appkit_set_window_title(index: i32, text: cstr, length: usize) -> void
+extern elisa_appkit_set_button_title(index: i32, text: cstr, length: usize) -> void
+extern elisa_appkit_set_field_text(index: i32, text: cstr, length: usize) -> void
 extern elisa_appkit_present() -> void
 extern elisa_appkit_run() -> void
 
@@ -55,7 +57,7 @@ module UiAppKit:
                 can Ui.Controls:
                     elisa_appkit_set_frame(index, box.origin.x, box.origin.y, box.size.width, box.size.height)
 
-            def set_text(index: i32, text: sview) -> void:
+            def set_text(index: i32, kind: UiControls::Kind, text: sview) -> void:
                 # A `sview` is a pointer and a length, which is exactly what the
                 # shim's NSString initializer wants -- so no NUL-terminated copy is
                 # made, and a label's text may contain one. Use a stable empty
@@ -64,7 +66,14 @@ module UiAppKit:
                 empty: cstr = ""
                 pointer: mutable cstr = empty
                 pointer <- text.data.cast[cstr] can Unsafe.PointerCast if text.len > 0
-                elisa_appkit_set_text(index, pointer, text.len)
+                if kind == UiControls::Kind.Window:
+                    elisa_appkit_set_window_title(index, pointer, text.len)
+                    return
+                if kind == UiControls::Kind.PushButton or kind == UiControls::Kind.ToggleButton or kind == UiControls::Kind.CheckBox or kind == UiControls::Kind.RadioButton:
+                    elisa_appkit_set_button_title(index, pointer, text.len)
+                    return
+                if kind == UiControls::Kind.Label or kind == UiControls::Kind.TextField:
+                    elisa_appkit_set_field_text(index, pointer, text.len)
 
         # Realize a laid-out widget tree as native controls. Run UiWidgets::layout
         # first: every control is placed at the box it computed.

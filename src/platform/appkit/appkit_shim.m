@@ -160,20 +160,32 @@ void elisa_appkit_set_frame(int index, float x, float y, float width, float heig
     }
 }
 
-void elisa_appkit_set_text(int index, const char *text, size_t length) {
+static NSString *elisa_appkit_string(const char *text, size_t length) {
+    if (text == NULL) return nil;
+    return [[NSString alloc] initWithBytes:text length:length encoding:NSUTF8StringEncoding];
+}
+
+void elisa_appkit_set_window_title(int index, const char *text, size_t length) {
     @autoreleasepool {
-        if (index < 0 || index >= elisa_count || text == NULL) return;
-        NSString *value = [[NSString alloc] initWithBytes:text length:length encoding:NSUTF8StringEncoding];
-        if (value == nil) return;
-        id object = elisa_objects[index];
-        int kind = elisa_kinds[index];
-        if (kind == ELISA_APPKIT_WINDOW) {
-            [(NSWindow *)object setTitle:value];
-        } else if ([object isKindOfClass:[NSButton class]]) {
-            [(NSButton *)object setTitle:value];
-        } else if ([object isKindOfClass:[NSTextField class]]) {
-            [(NSTextField *)object setStringValue:value];
-        }
+        if (index < 0 || index >= elisa_count) return;
+        NSString *value = elisa_appkit_string(text, length);
+        if (value != nil) [(NSWindow *)elisa_objects[index] setTitle:value];
+    }
+}
+
+void elisa_appkit_set_button_title(int index, const char *text, size_t length) {
+    @autoreleasepool {
+        if (index < 0 || index >= elisa_count) return;
+        NSString *value = elisa_appkit_string(text, length);
+        if (value != nil) [(NSButton *)elisa_objects[index] setTitle:value];
+    }
+}
+
+void elisa_appkit_set_field_text(int index, const char *text, size_t length) {
+    @autoreleasepool {
+        if (index < 0 || index >= elisa_count) return;
+        NSString *value = elisa_appkit_string(text, length);
+        if (value != nil) [(NSTextField *)elisa_objects[index] setStringValue:value];
     }
 }
 
