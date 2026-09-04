@@ -18,6 +18,7 @@ extern void elisa_appkit_canvas_raw_key(int down, int keyCode, int character);
 extern void elisa_appkit_canvas_raw_flags(int keyCode, size_t modifiers);
 extern void elisa_appkit_canvas_focus_changed(int focused);
 extern void elisa_appkit_canvas_accessibility_environment_changed(void);
+extern void elisa_appkit_canvas_window_closed(void);
 extern void elisa_appkit_canvas_key_down_event(size_t event, int keyCode, size_t character, size_t modifiers);
 extern void elisa_appkit_canvas_key_up(int keyCode, size_t character);
 extern int elisa_appkit_canvas_accessibility_activate(size_t index);
@@ -26,7 +27,6 @@ extern int elisa_appkit_canvas_pointer_button_primary(void);
 extern int elisa_appkit_canvas_pointer_button_secondary(void);
 extern int elisa_appkit_canvas_accessibility_increment_direction(void);
 extern int elisa_appkit_canvas_accessibility_decrement_direction(void);
-extern void elisa_appkit_canvas_cancel_interaction(void);
 extern int elisa_appkit_canvas_accepts_text(void);
 extern int elisa_appkit_canvas_allows_text_readback(void);
 extern size_t elisa_appkit_canvas_not_found(void);
@@ -133,10 +133,7 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
 @implementation ElisaCanvasDelegate
 - (void)windowWillClose:(NSNotification *)notification {
     (void)notification;
-    [elisa_canvas_animation_timer invalidate];
-    elisa_canvas_animation_timer = nil;
-    elisa_appkit_canvas_cancel_interaction();
-    [NSApp stop:nil];
+    elisa_appkit_canvas_window_closed();
 }
 - (void)windowDidResignKey:(NSNotification *)notification {
     (void)notification;
@@ -602,6 +599,9 @@ int elisa_appkit_canvas_present_headless(size_t color_space, int image_type,
 }
 void elisa_appkit_canvas_run(void) {
     [NSApp run];
+}
+void elisa_appkit_canvas_stop(void) {
+    [NSApp stop:nil];
 }
 void elisa_appkit_canvas_redraw(void) { [elisa_canvas_view setNeedsDisplay:YES]; }
 void elisa_appkit_canvas_close(void) {

@@ -129,6 +129,11 @@ if grep -Eq 'if \(activate\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; 
   echo "appkit canvas: visible activation policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq '\[NSApp stop:nil\]' "$ROOT/src/platform/appkit/appkit_canvas_shim.m" && \
+   awk '/- \(void\)windowWillClose:/ { inside=1 } inside && /\[NSApp stop:nil\]/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: close lifecycle policy leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'if \(centered\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: window centering policy leaked back into Objective-C" >&2
   exit 1
@@ -196,7 +201,9 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_add_tooltip$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_commit$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_layout_changed_notification$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_post_layout_changed$'
-nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_cancel_interaction$'
+# Do not use grep -q here: with pipefail, a late match can make nm exit on
+# SIGPIPE after grep closes the pipe, masking a successful symbol check.
+nm -g "$BIN" | grep ' T _elisa_appkit_canvas_window_closed$' >/dev/null
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_allows_text_readback$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_cursor_at$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_text_click$'
