@@ -331,7 +331,7 @@ int main(void) {
         if (require(NSApp.windowsMenu == [NSApp.mainMenu itemAtIndex:1].submenu, @"window menu designation failed")) return 1;
         if (require(elisa_appkit_canvas_present_headless(
                         elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(),
-                        elisa_appkit_canvas_bitmap_file_type_png(), 0), @"off-screen presentation failed")) return 1;
+                        elisa_appkit_canvas_bitmap_file_type_png(), 0, 200, 100), @"off-screen presentation failed")) return 1;
         if (require(elisa_canvas_frame_count > 0, @"off-screen frame did not draw")) return 1;
         NSNotification *focusNotification = [NSNotification notificationWithName:NSWindowDidResignKeyNotification object:elisa_canvas_window];
         [elisa_canvas_delegate windowDidResignKey:focusNotification];
@@ -341,7 +341,7 @@ int main(void) {
         if (require(!elisa_appkit_canvas_present_headless(
                          elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(),
                          elisa_appkit_canvas_bitmap_file_type_png(),
-                         (size_t)(__bridge void *)@"/elisa-ui-missing-directory/frame.png"), @"snapshot failure did not cross the FFI boundary")) return 1;
+                         (size_t)(__bridge void *)@"/elisa-ui-missing-directory/frame.png", 200, 100), @"snapshot failure did not cross the FFI boundary")) return 1;
         NSEvent *singleClick = [NSEvent mouseEventWithType:NSEventTypeLeftMouseDown
             location:NSMakePoint(40, 20) modifierFlags:0 timestamp:0
             windowNumber:elisa_canvas_window.windowNumber context:nil eventNumber:1
@@ -444,7 +444,7 @@ int main(void) {
         test_selection_start = test_selection_end = 0;
         if (require(elisa_appkit_canvas_present_headless(
                         elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(),
-                        elisa_appkit_canvas_bitmap_file_type_png(), 0), @"second off-screen presentation failed")) return 1;
+                        elisa_appkit_canvas_bitmap_file_type_png(), 0, 200, 100), @"second off-screen presentation failed")) return 1;
         ElisaAccessibilityElement *second = elisa_accessibility_children[0];
         ElisaAccessibilityElement *secondTextField = elisa_accessibility_children[1];
         ElisaAccessibilityElement *secondSecureField = elisa_accessibility_children[2];

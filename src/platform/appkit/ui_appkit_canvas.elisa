@@ -41,7 +41,7 @@ extern elisa_appkit_canvas_cancel_redraw() -> void
 extern elisa_appkit_canvas_present() -> i32
 extern elisa_appkit_canvas_activate() -> void
 extern elisa_appkit_canvas_center() -> void
-extern elisa_appkit_canvas_present_headless(color_space: usize, image_type: i32, snapshot: usize) -> i32
+extern elisa_appkit_canvas_present_headless(color_space: usize, image_type: i32, snapshot: usize, pixels_width: i32, pixels_height: i32) -> i32
 extern elisa_appkit_canvas_run() -> void
 extern elisa_appkit_canvas_set_min_size(width: f32, height: f32) -> void
 extern elisa_appkit_canvas_redraw() -> void
@@ -93,6 +93,7 @@ extern CTLineCreateWithAttributedString(text: usize) -> usize
 extern CTLineGetTypographicBounds(line: usize, ascent: mutable f64&, descent: mutable f64&, leading: mutable f64&) -> f64
 extern CTLineDraw(line: usize, context: usize) -> void
 extern CFRelease(value: usize) -> void
+extern ceilf(x: f32) -> f32
 extern CGContextSetTextPosition(context: usize, x: f64, y: f64) -> void
 struct NativeSize:
     width: f64
@@ -186,6 +187,14 @@ module UiAppKitCanvas:
 
         def not_found() -> usize:
             return elisa_appkit_canvas_not_found()
+
+        # Bitmap dimensions are framework geometry, not a Cocoa default. Keep
+        # the conversion from logical points to whole pixels in Elisa so the
+        # native snapshot bridge only receives explicit, validated extents.
+        def bitmap_extent(value: f32) -> i32:
+            return 1 if value <= 0.0
+            rounded: f32 = ceilf(value)
+            return 1 if rounded < 1.0 else rounded.i32()
 
         # Window titles originate in Elisa as counted UTF-8 views. Construct
         # their native object here so the Objective-C host only assigns the
@@ -957,7 +966,9 @@ module UiAppKitCanvas:
                 reset_accessibility_history()
                 app_init()
                 if headless:
-                    result: i32 = elisa_appkit_canvas_present_headless(elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(), elisa_appkit_canvas_bitmap_file_type_png(), snapshot_path)
+                    bitmap_width: i32 = bitmap_extent(options.width)
+                    bitmap_height: i32 = bitmap_extent(options.height)
+                    result: i32 = elisa_appkit_canvas_present_headless(elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(), elisa_appkit_canvas_bitmap_file_type_png(), snapshot_path, bitmap_width, bitmap_height)
                     CFRelease(snapshot_path) if snapshot_path != 0
                     return 2 if result == 0
                     return 0
