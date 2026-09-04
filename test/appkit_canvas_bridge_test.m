@@ -100,6 +100,7 @@ void elisa_appkit_canvas_key_up(int keyCode, size_t character) { (void)keyCode; 
 void elisa_appkit_canvas_raw_flags(int keyCode, size_t modifiers) {
     (void)keyCode; (void)modifiers;
 }
+size_t elisa_appkit_canvas_accessibility_capacity(void) { return 256; }
 void elisa_appkit_canvas_focus_changed(int focused) { test_window_focused = focused; }
 void elisa_appkit_canvas_accessibility_environment_changed(void) {}
 int elisa_appkit_canvas_key_down_route(int character, size_t modifiers) {
@@ -367,6 +368,8 @@ int main(void) {
         NSObject *invalidTimer = [NSObject new];
         elisa_appkit_canvas_cancel_redraw((size_t)(__bridge void *)invalidTimer);
         elisa_appkit_canvas_center();
+        elisa_appkit_canvas_accessibility_commit(NULL, 1);
+        elisa_appkit_canvas_accessibility_commit(NULL, elisa_appkit_canvas_accessibility_capacity() + 1);
     size_t menuBar = elisa_appkit_canvas_menus_begin();
     NSObject *invalidMenuString = [NSObject new];
     if (require(elisa_appkit_canvas_menu_add(
