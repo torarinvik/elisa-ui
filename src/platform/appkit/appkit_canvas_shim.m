@@ -301,14 +301,14 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
     return result;
 }
 - (NSUInteger)characterIndexForPoint:(NSPoint)point {
-    if (!elisa_appkit_canvas_accepts_text() || self.window == nil) return NSNotFound;
+    if (!elisa_appkit_canvas_accepts_text() || self.window == nil) return elisa_appkit_canvas_not_found();
     NSPoint inWindow = [self.window convertPointFromScreen:point];
     NSPoint local = [self convertPoint:inWindow fromView:nil];
     return elisa_appkit_canvas_character_at_x(local.x);
 }
 - (NSRect)firstRectForCharacterRange:(NSRange)range actualRange:(NSRangePointer)actualRange {
     if (!elisa_appkit_canvas_accepts_text() || self.window == nil) {
-        if (actualRange != NULL) *actualRange = NSMakeRange(NSNotFound, 0);
+        if (actualRange != NULL) *actualRange = NSMakeRange(elisa_appkit_canvas_not_found(), 0);
         return NSZeroRect;
     }
     size_t location = elisa_appkit_canvas_range_location(range.location);
@@ -637,7 +637,7 @@ void elisa_appkit_canvas_accessibility_add(size_t identifier,
     element.elisaSynchronizing = YES;
     element.accessibilityValue = nil;
     element.accessibilitySelectedText = nil;
-    element.accessibilitySelectedTextRange = NSMakeRange(NSNotFound, 0);
+    element.accessibilitySelectedTextRange = NSMakeRange(elisa_appkit_canvas_not_found(), 0);
     element.accessibilityMinValue = nil;
     element.accessibilityMaxValue = nil;
     element.elisaSynchronizing = NO;
@@ -661,7 +661,7 @@ void elisa_appkit_canvas_accessibility_set_boolean(size_t identifier, int select
     element.elisaSynchronizing = YES;
     element.accessibilityValue = @(selected != 0);
     element.accessibilitySelectedText = nil;
-    element.accessibilitySelectedTextRange = NSMakeRange(NSNotFound, 0);
+    element.accessibilitySelectedTextRange = NSMakeRange(elisa_appkit_canvas_not_found(), 0);
     element.accessibilityMinValue = nil;
     element.accessibilityMaxValue = nil;
     element.elisaSynchronizing = NO;
@@ -674,7 +674,7 @@ void elisa_appkit_canvas_accessibility_set_range(size_t identifier, float value,
     element.elisaSynchronizing = YES;
     element.accessibilityValue = @(value);
     element.accessibilitySelectedText = nil;
-    element.accessibilitySelectedTextRange = NSMakeRange(NSNotFound, 0);
+    element.accessibilitySelectedTextRange = NSMakeRange(elisa_appkit_canvas_not_found(), 0);
     element.accessibilityMinValue = @(minimum);
     element.accessibilityMaxValue = @(maximum);
     element.elisaSynchronizing = NO;
