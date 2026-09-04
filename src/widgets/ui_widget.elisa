@@ -75,6 +75,7 @@ module UiFlat:
             secure: mutable bool
             interactive: mutable bool
             focus_order: mutable usize
+            selection_group: mutable usize
             visible: mutable bool
             enabled: mutable bool
             hovered: mutable bool
@@ -247,7 +248,7 @@ module UiFlat:
                 x: 0.0, y: 0.0, width: 0.0, height: 0.0,
                 color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, hover_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, press_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0},
                 text: "", placeholder: "", help: "", text_size: 0.0, text_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, secure: false,
-                interactive: false, focus_order: index, visible: true, enabled: true, hovered: false, pressed: false, focused: false, selected: false, value: 0.0,
+                interactive: false, focus_order: index, selection_group: parent, visible: true, enabled: true, hovered: false, pressed: false, focused: false, selected: false, value: 0.0,
                 input_length: 0, caret: 0, selection_anchor: 0, marked_start: 0, marked_end: 0, text_revision: 0, text_truncated: false,
             }
             link(parent, index)
@@ -347,6 +348,12 @@ module UiFlat:
             return if index >= widget_count
             widgets[index].focus_order <- order
 
+        # Radios default to one group per parent. An explicit group allows a
+        # logical choice set to span layout containers without native state.
+        def set_selection_group(index: usize, group: usize) -> void:
+            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.RadioButton
+            widgets[index].selection_group <- group
+
         def set_enabled(index: usize, enabled: bool) -> void:
             return if index >= widget_count
             widgets[index].enabled <- enabled
@@ -413,6 +420,10 @@ module UiFlat:
         def set_selected(index: usize, selected: bool) -> void:
             return if index >= widget_count
             return if widgets[index].kind != UiConst::WidgetKind.RadioButton and widgets[index].kind != UiConst::WidgetKind.CheckBox
+            if selected and widgets[index].kind == UiConst::WidgetKind.RadioButton:
+                for candidate in 0..<widget_count:
+                    if candidate != index and widgets[candidate].kind == UiConst::WidgetKind.RadioButton and widgets[candidate].selection_group == widgets[index].selection_group:
+                        widgets[candidate].selected <- false
             widgets[index].selected <- selected
 
         def set_value(index: usize, value: f32) -> void:
@@ -835,6 +846,14 @@ module UiFlat:
             return if next == widgets[index].value
             widgets[index].value <- next
             app_widget_event(index, UiConst::WidgetEvent.Change.i32())
+
+        def dispatch_activation(index: usize) -> void:
+            return if index >= widget_count
+            if widgets[index].kind == UiConst::WidgetKind.CheckBox:
+                set_selected(index, not widgets[index].selected)
+            elif widgets[index].kind == UiConst::WidgetKind.RadioButton:
+                set_selected(index, true)
+            app_widget_event(index, UiConst::WidgetEvent.Click.i32())
 
         def is_utf8_continuation(byte: u8) -> bool:
             return (byte.u32() & 192) == 128
@@ -1715,7 +1734,7 @@ module UiFlat:
                     elif widgets[held].kind == UiConst::WidgetKind.TextField:
                         pass
                     elif held == target:
-                        app_widget_event(held, UiConst::WidgetEvent.Click.i32())
+                        dispatch_activation(held)
                 UiCore::PointerEvent.Leave:
                     hot_widget <- NONE
                     return if active_pointer_button < 0 or active_widget == NONE
@@ -1800,7 +1819,7 @@ module UiFlat:
                         active_widget <- NONE
                         active_key <- -1
                         widgets[activated].pressed <- false
-                        app_widget_event(activated, UiConst::WidgetEvent.Click.i32()) if activated == focused_widget and widgets[activated].enabled
+                        dispatch_activation(activated) if activated == focused_widget and effectively_enabled(activated)
                 _:
                     pass
 
@@ -1810,7 +1829,7 @@ module UiFlat:
             return false if index >= widget_count or not widgets[index].interactive or not effectively_enabled(index) or not effectively_visible(index) or widgets[index].kind == UiConst::WidgetKind.Slider or widgets[index].kind == UiConst::WidgetKind.TextField
             release_active_press()
             focus(index)
-            app_widget_event(index, UiConst::WidgetEvent.Click.i32())
+            dispatch_activation(index)
             return true
 
         # Accessibility adapters use the same normalized adjustment path as

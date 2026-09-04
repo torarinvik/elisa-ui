@@ -71,6 +71,9 @@ because a module member's symbol carries its module and those names cannot move.
   native accessibility navigation sequence without backend-specific sorting.
   Public retained handles have validity checks and an optional safe lookup for
   data arriving from application or FFI boundaries.
+  Checkbox toggling and exclusive radio selection are framework semantics, with
+  configurable radio groups shared by pointer, keyboard, accessibility, and
+  programmatic activation paths.
   Measure runs bottom-up, arrange top-down.
   Dynamic label text and typography changes are remeasured before the next
   layout, so localization and live status content cannot retain stale bounds.
