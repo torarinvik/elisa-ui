@@ -176,6 +176,20 @@ def main() -> i64:
         reversed_state: UiControls::ControlState = UiControls::state_of(reversed_slider)
         check("slider state orders and clamps its range", reversed_state.low == -2.0 and reversed_state.high == 12.0 and reversed_state.value == 12.0)
 
+        # NaN is a valid IEEE-754 payload that can arrive through an FFI
+        # callback. Slider state must not let it escape into a native setter.
+        zero: f32 = 0.0
+        nan: f32 = zero / zero
+        infinity: f32 = 1.0 / zero
+        check("core finite helper catches NaN", UiCore::finite_or_zero(nan) == 0.0)
+        check("core finite helper catches infinity", UiCore::finite_or_zero(infinity) == 0.0)
+        check("core extent helper catches NaN", UiCore::nonnegative_extent(nan) == 0.0)
+        malformed_slider: Widget = Control.Slider(min_width: 1.0, min_height: 1.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, value: nan, low: nan, high: 10.0, track: grey(20), knob: grey(200))
+        malformed_state: UiControls::ControlState = UiControls::state_of(malformed_slider)
+        check("slider state sanitizes NaN low", malformed_state.low == 0.0)
+        check("slider state preserves finite high", malformed_state.high == 10.0)
+        check("slider state sanitizes NaN value", malformed_state.value == 0.0)
+
         # ABSOLUTE PLACEMENT: a control sits at the box layout computed for its
         # widget, not somewhere the backend invented.
         root_box: UiCore::Rect = box_of(root)
