@@ -28,16 +28,16 @@ extern int elisa_appkit_canvas_allows_text_readback(void);
 extern size_t elisa_appkit_canvas_cursor_at(float x, float y);
 extern size_t elisa_appkit_canvas_cursor_leave(void);
 extern void elisa_appkit_canvas_text_click(float x, int button, int clickCount);
-extern void elisa_appkit_canvas_set_text(size_t index, const char *bytes, size_t length);
+extern void elisa_appkit_canvas_set_text(size_t index, size_t text);
 extern size_t elisa_appkit_canvas_selection_location(void);
 extern size_t elisa_appkit_canvas_selection_length(void);
 extern void elisa_appkit_canvas_set_selected_range(size_t index, size_t location, size_t length);
 extern size_t elisa_appkit_canvas_marked_location(void);
 extern size_t elisa_appkit_canvas_marked_length(void);
-extern void elisa_appkit_canvas_commit_text(const char *bytes, size_t length,
+extern void elisa_appkit_canvas_commit_text(size_t text,
                                             size_t replacementLocation, size_t replacementLength,
                                             int hasReplacement);
-extern void elisa_appkit_canvas_update_marked_text(const char *bytes, size_t length,
+extern void elisa_appkit_canvas_update_marked_text(size_t text,
                                                    size_t selectedLocation, size_t selectedLength,
                                                    size_t replacementLocation, size_t replacementLength,
                                                    int hasReplacement);
@@ -105,8 +105,7 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
 - (void)setAccessibilityValue:(id)value {
     [super setAccessibilityValue:value];
     if (self.elisaSynchronizing || ![value isKindOfClass:[NSString class]]) return;
-    NSData *utf8 = [(NSString *)value dataUsingEncoding:NSUTF8StringEncoding];
-    elisa_appkit_canvas_set_text(self.elisaIndex, utf8.bytes, utf8.length);
+    elisa_appkit_canvas_set_text(self.elisaIndex, (size_t)(__bridge void *)value);
 }
 - (void)setAccessibilitySelectedTextRange:(NSRange)value {
     [super setAccessibilitySelectedTextRange:value];
@@ -240,9 +239,8 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
 - (void)insertText:(id)input replacementRange:(NSRange)replacementRange {
     NSString *text = [input isKindOfClass:[NSAttributedString class]]
         ? [(NSAttributedString *)input string] : (NSString *)input;
-    NSData *utf8 = [text dataUsingEncoding:NSUTF8StringEncoding];
     BOOL hasReplacement = replacementRange.location != NSNotFound;
-    elisa_appkit_canvas_commit_text(utf8.bytes, utf8.length,
+    elisa_appkit_canvas_commit_text((size_t)(__bridge void *)text,
                                     hasReplacement ? replacementRange.location : 0,
                                     hasReplacement ? replacementRange.length : 0,
                                     hasReplacement);
@@ -293,9 +291,8 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
 - (void)setMarkedText:(id)text selectedRange:(NSRange)selectedRange replacementRange:(NSRange)replacementRange {
     NSString *plain = [text isKindOfClass:[NSAttributedString class]]
         ? [(NSAttributedString *)text string] : (NSString *)text;
-    NSData *utf8 = [plain dataUsingEncoding:NSUTF8StringEncoding];
     BOOL hasReplacement = replacementRange.location != NSNotFound;
-    elisa_appkit_canvas_update_marked_text(utf8.bytes, utf8.length,
+    elisa_appkit_canvas_update_marked_text((size_t)(__bridge void *)plain,
                                            selectedRange.location, selectedRange.length,
                                            hasReplacement ? replacementRange.location : 0,
                                            hasReplacement ? replacementRange.length : 0,
