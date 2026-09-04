@@ -297,14 +297,22 @@ module UiFlat:
             return if index >= widget_count
             widgets[index].enabled <- enabled
             if not enabled:
-                widgets[index].hovered <- false
-                widgets[index].pressed <- false
-                if active_widget == index:
+                for candidate in 0..<widget_count:
+                    if not effectively_enabled(candidate):
+                        widgets[candidate].hovered <- false
+                        widgets[candidate].pressed <- false
+                if active_widget < widget_count and not effectively_enabled(active_widget):
                     active_widget <- NONE
                     active_pointer_button <- -1
                     active_key <- -1
-                hot_widget <- NONE if hot_widget == index
-                focus(NONE) if focused_widget == index
+                hot_widget <- NONE if hot_widget < widget_count and not effectively_enabled(hot_widget)
+                focus(NONE) if focused_widget < widget_count and not effectively_enabled(focused_widget)
+
+        def is_enabled(index: usize) -> bool:
+            return effectively_enabled(index)
+
+        def is_visible(index: usize) -> bool:
+            return effectively_visible(index)
 
         # Hidden widgets remain in the retained tree but contribute no layout,
         # painting, hit target, focus stop or accessibility node. Hiding a
@@ -498,6 +506,14 @@ module UiFlat:
                 cursor <- widgets[cursor].parent
             return true
 
+        def effectively_enabled(index: usize) -> bool:
+            return false if index >= widget_count
+            cursor: mutable usize = index
+            while cursor < widget_count |cursor|:
+                return false if not widgets[cursor].enabled
+                cursor <- widgets[cursor].parent
+            return true
+
         def collapse(index: usize) -> void:
             return if index >= widget_count
             widgets[index] with { x <- 0.0, y <- 0.0, width <- 0.0, height <- 0.0 }
@@ -606,7 +622,7 @@ module UiFlat:
 
         def focus(index: usize) -> void:
             target: mutable usize = index
-            target <- NONE if target < widget_count and (not widgets[target].interactive or not widgets[target].enabled or not effectively_visible(target))
+            target <- NONE if target < widget_count and (not widgets[target].interactive or not effectively_enabled(target) or not effectively_visible(target))
             release_active_press() if target != focused_widget
             if focused_widget < widget_count:
                 widgets[focused_widget].focused <- false
@@ -621,7 +637,7 @@ module UiFlat:
             examined: mutable usize = 0
             while examined < widget_count |examined|:
                 candidate: usize = (start + examined) % widget_count
-                if widgets[candidate].interactive and widgets[candidate].enabled and effectively_visible(candidate):
+                if widgets[candidate].interactive and effectively_enabled(candidate) and effectively_visible(candidate):
                     focus(candidate)
                     return
                 examined <- examined + 1
@@ -634,18 +650,20 @@ module UiFlat:
                 # Add widget_count before subtracting so unsigned indices wrap
                 # deliberately instead of underflowing.
                 candidate: usize = (start + widget_count - examined - 1) % widget_count
-                if widgets[candidate].interactive and widgets[candidate].enabled and effectively_visible(candidate):
+                if widgets[candidate].interactive and effectively_enabled(candidate) and effectively_visible(candidate):
                     focus(candidate)
                     return
                 examined <- examined + 1
 
         def color_of(index: usize) -> UiCore::Color:
-            if not widgets[index].enabled:
-                base: UiCore::Color = widgets[index].color
-                return UiCore::Color{r: base.r / 2, g: base.g / 2, b: base.b / 2, a: base.a}
+            if not effectively_enabled(index):
+                return muted_color(widgets[index].color)
             return widgets[index].press_color if widgets[index].pressed
             return widgets[index].hover_color if widgets[index].hovered
             return widgets[index].color
+
+        def muted_color(base: UiCore::Color) -> UiCore::Color:
+            return UiCore::Color{r: base.r / 2, g: base.g / 2, b: base.b / 2, a: base.a}
 
         def update_slider(index: usize, pointer_x: f32) -> void:
             return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider
@@ -1065,7 +1083,7 @@ module UiFlat:
                     pass
 
         def accepts_text() -> bool:
-            return focused_widget < widget_count and widgets[focused_widget].kind == UiConst::WidgetKind.TextField and widgets[focused_widget].enabled and effectively_visible(focused_widget)
+            return focused_widget < widget_count and widgets[focused_widget].kind == UiConst::WidgetKind.TextField and effectively_enabled(focused_widget) and effectively_visible(focused_widget)
 
         def allows_text_readback() -> bool:
             return accepts_text() and not widgets[focused_widget].secure
@@ -1327,7 +1345,7 @@ module UiFlat:
             finish_text_history(history_slot, index)
 
         def replace_text(index: usize, text: sview) -> void:
-            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField or not widgets[index].enabled
+            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField or not effectively_enabled(index) or not effectively_visible(index)
             byte_limit: usize = text.len if text.len < TEXT_CAPACITY - 1 else TEXT_CAPACITY - 1
             take: usize = grapheme_prefix_length(text, valid_utf8_prefix(text, byte_limit))
             widgets[index].text_truncated <- take < text.len
@@ -1466,7 +1484,7 @@ module UiFlat:
             scan: mutable usize = widget_count
             while scan > 0 |scan|:
                 scan <- scan - 1
-                return scan if widgets[scan].interactive and widgets[scan].enabled and effectively_visible(scan) and contains(scan, x, y)
+                return scan if widgets[scan].interactive and effectively_enabled(scan) and effectively_visible(scan) and contains(scan, x, y)
             return NONE
 
         # Native hosts need only choose the system cursor; widget semantics and
@@ -1629,7 +1647,7 @@ module UiFlat:
         # One activation path for accessibility adapters and future automation.
         # It deliberately mirrors a completed pointer/keyboard click.
         def activate(index: usize) -> bool:
-            return false if index >= widget_count or not widgets[index].interactive or not widgets[index].enabled or not effectively_visible(index) or widgets[index].kind == UiConst::WidgetKind.Slider or widgets[index].kind == UiConst::WidgetKind.TextField
+            return false if index >= widget_count or not widgets[index].interactive or not effectively_enabled(index) or not effectively_visible(index) or widgets[index].kind == UiConst::WidgetKind.Slider or widgets[index].kind == UiConst::WidgetKind.TextField
             release_active_press()
             focus(index)
             app_widget_event(index, UiConst::WidgetEvent.Click.i32())
@@ -1638,7 +1656,7 @@ module UiFlat:
         # Accessibility adapters use the same normalized adjustment path as
         # arrow keys, so assistive actions update app state identically.
         def adjust(index: usize, delta: f32) -> bool:
-            return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider or not widgets[index].enabled or not effectively_visible(index)
+            return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider or not effectively_enabled(index) or not effectively_visible(index)
             before: f32 = widgets[index].value
             set_value(index, before + delta)
             return false if widgets[index].value == before
@@ -1651,57 +1669,66 @@ module UiFlat:
         def paint() -> void:
             for index in 0..<widget_count:
                 continue if not effectively_visible(index)
+                enabled: bool = effectively_enabled(index)
                 color: UiCore::Color = color_of(index)
                 frame: UiCore::Rect = UiCore::Rect(widgets[index].x, widgets[index].y, widgets[index].width, widgets[index].height)
                 if widgets[index].kind == UiConst::WidgetKind.Button:
-                    UiCore::accessibility(UiCore::AccessibilityRole.Button, widgets[index].text, widgets[index].help, frame, index, index, widgets[index].enabled, widgets[index].focused, false, 0.0, "", "", 0, 0, 0)
+                    UiCore::accessibility(UiCore::AccessibilityRole.Button, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, false, 0.0, "", "", 0, 0, 0)
                 elif widgets[index].kind == UiConst::WidgetKind.RadioButton:
-                    UiCore::accessibility(UiCore::AccessibilityRole.RadioButton, widgets[index].text, widgets[index].help, frame, index, index, widgets[index].enabled, widgets[index].focused, widgets[index].selected, 0.0, "", "", 0, 0, 0)
+                    UiCore::accessibility(UiCore::AccessibilityRole.RadioButton, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, widgets[index].selected, 0.0, "", "", 0, 0, 0)
                 elif widgets[index].kind == UiConst::WidgetKind.CheckBox:
-                    UiCore::accessibility(UiCore::AccessibilityRole.CheckBox, widgets[index].text, widgets[index].help, frame, index, index, widgets[index].enabled, widgets[index].focused, widgets[index].selected, 0.0, "", "", 0, 0, 0)
+                    UiCore::accessibility(UiCore::AccessibilityRole.CheckBox, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, widgets[index].selected, 0.0, "", "", 0, 0, 0)
                 elif widgets[index].kind == UiConst::WidgetKind.Slider:
-                    UiCore::accessibility(UiCore::AccessibilityRole.Slider, widgets[index].text, widgets[index].help, frame, index, index, widgets[index].enabled, widgets[index].focused, false, widgets[index].value, "", "", 0, 0, 0)
+                    UiCore::accessibility(UiCore::AccessibilityRole.Slider, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, false, widgets[index].value, "", "", 0, 0, 0)
                 elif widgets[index].kind == UiConst::WidgetKind.ProgressBar:
-                    UiCore::accessibility(UiCore::AccessibilityRole.ProgressBar, widgets[index].text, widgets[index].help, frame, index, NONE, widgets[index].enabled, false, false, widgets[index].value, "", "", 0, 0, 0)
+                    UiCore::accessibility(UiCore::AccessibilityRole.ProgressBar, widgets[index].text, widgets[index].help, frame, index, NONE, enabled, false, false, widgets[index].value, "", "", 0, 0, 0)
                 elif widgets[index].kind == UiConst::WidgetKind.TextField:
                     semantic_role: UiCore::AccessibilityRole = UiCore::AccessibilityRole.PasswordField if widgets[index].secure else UiCore::AccessibilityRole.TextField
                     semantic_value: sview = secure_display_value(index) if widgets[index].secure else text_value(index)
                     semantic_revision: usize = widgets[index].text_revision
-                    UiCore::accessibility(semantic_role, widgets[index].text, widgets[index].help, frame, index, index, widgets[index].enabled, widgets[index].focused, false, 0.0, semantic_value, selected_text_value(index), semantic_revision, selection_utf16_location(index), selection_utf16_length(index))
+                    UiCore::accessibility(semantic_role, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, false, 0.0, semantic_value, selected_text_value(index), semantic_revision, selection_utf16_location(index), selection_utf16_length(index))
                 elif widgets[index].kind == UiConst::WidgetKind.Label:
-                    UiCore::accessibility(UiCore::AccessibilityRole.Label, widgets[index].text, widgets[index].help, frame, index, NONE, true, false, false, 0.0, "", "", 0, 0, 0)
+                    UiCore::accessibility(UiCore::AccessibilityRole.Label, widgets[index].text, widgets[index].help, frame, index, NONE, enabled, false, false, 0.0, "", "", 0, 0, 0)
                 if widgets[index].kind == UiConst::WidgetKind.Slider:
                     slider_inset: f32 = clamped_inset(current_theme.slider_horizontal_inset, widgets[index].width)
                     track_height: f32 = current_theme.slider_track_height if current_theme.slider_track_height < widgets[index].height else widgets[index].height
                     track_y: f32 = widgets[index].y + widgets[index].height / 2.0 - track_height / 2.0
                     track_x: f32 = widgets[index].x + slider_inset
                     track_width: f32 = widgets[index].width - slider_inset * 2.0
-                    UiCore::fill(UiCore::Rect(track_x, track_y, track_width, track_height), widgets[index].color)
-                    UiCore::fill(UiCore::Rect(track_x, track_y, track_width * widgets[index].value, track_height), widgets[index].hover_color)
+                    slider_track: UiCore::Color = widgets[index].color if enabled else muted_color(widgets[index].color)
+                    slider_fill: UiCore::Color = widgets[index].hover_color if enabled else muted_color(widgets[index].hover_color)
+                    UiCore::fill(UiCore::Rect(track_x, track_y, track_width, track_height), slider_track)
+                    UiCore::fill(UiCore::Rect(track_x, track_y, track_width * widgets[index].value, track_height), slider_fill)
                     thumb_x: f32 = track_x + track_width * widgets[index].value
-                    thumb: mutable UiCore::Color = widgets[index].press_color
+                    thumb: mutable UiCore::Color = widgets[index].press_color if enabled else muted_color(widgets[index].press_color)
                     thumb <- current_theme.control_mark_strong if widgets[index].pressed
                     UiCore::fill(UiCore::Circle{center: UiCore::Vec2(thumb_x, track_y + track_height / 2.0), radius: current_theme.slider_thumb_radius}, thumb)
                 elif widgets[index].kind == UiConst::WidgetKind.ProgressBar:
                     progress_height: f32 = current_theme.slider_track_height if current_theme.slider_track_height < widgets[index].height else widgets[index].height
                     progress_y: f32 = widgets[index].y + widgets[index].height / 2.0 - progress_height / 2.0
-                    UiCore::fill(UiCore::Rect(widgets[index].x, progress_y, widgets[index].width, progress_height), widgets[index].color)
-                    UiCore::fill(UiCore::Rect(widgets[index].x, progress_y, widgets[index].width * widgets[index].value, progress_height), widgets[index].hover_color)
+                    progress_track: UiCore::Color = widgets[index].color if enabled else muted_color(widgets[index].color)
+                    progress_fill: UiCore::Color = widgets[index].hover_color if enabled else muted_color(widgets[index].hover_color)
+                    UiCore::fill(UiCore::Rect(widgets[index].x, progress_y, widgets[index].width, progress_height), progress_track)
+                    UiCore::fill(UiCore::Rect(widgets[index].x, progress_y, widgets[index].width * widgets[index].value, progress_height), progress_fill)
                 elif color.a != 0:
                     UiCore::fill(frame, color)
                 if widgets[index].kind == UiConst::WidgetKind.RadioButton:
                     mark_x: f32 = widgets[index].x + current_theme.choice_center_x
                     mark_y: f32 = widgets[index].y + widgets[index].height / 2.0
-                    UiCore::fill(UiCore::Circle{center: UiCore::Vec2(mark_x, mark_y), radius: current_theme.radio_outer_radius}, current_theme.control_mark)
-                    inner: UiCore::Color = current_theme.control_mark_strong if widgets[index].selected else color
+                    outer: UiCore::Color = current_theme.control_mark if enabled else muted_color(current_theme.control_mark)
+                    UiCore::fill(UiCore::Circle{center: UiCore::Vec2(mark_x, mark_y), radius: current_theme.radio_outer_radius}, outer)
+                    inner: mutable UiCore::Color = color
+                    inner <- current_theme.control_mark_strong if widgets[index].selected and enabled
+                    inner <- muted_color(current_theme.control_mark_strong) if widgets[index].selected and not enabled
                     UiCore::fill(UiCore::Circle{center: UiCore::Vec2(mark_x, mark_y), radius: current_theme.radio_inner_radius}, inner)
                 elif widgets[index].kind == UiConst::WidgetKind.CheckBox:
                     box_x: f32 = widgets[index].x + current_theme.choice_center_x - current_theme.checkbox_size / 2.0
                     box_y: f32 = widgets[index].y + widgets[index].height / 2.0 - current_theme.checkbox_size / 2.0
-                    UiCore::fill(UiCore::Rect(box_x, box_y, current_theme.checkbox_size, current_theme.checkbox_size), current_theme.control_mark)
+                    box_color: UiCore::Color = current_theme.control_mark if enabled else muted_color(current_theme.control_mark)
+                    UiCore::fill(UiCore::Rect(box_x, box_y, current_theme.checkbox_size, current_theme.checkbox_size), box_color)
                     UiCore::fill(UiCore::Rect(box_x + 2.0, box_y + 2.0, 7.0, 7.0), color)
                     if widgets[index].selected:
-                        check_ink: UiCore::Color = current_theme.control_mark_strong
+                        check_ink: UiCore::Color = current_theme.control_mark_strong if enabled else muted_color(current_theme.control_mark_strong)
                         UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(box_x + 2.5, box_y + 5.5), to_point: UiCore::Vec2(box_x + 4.8, box_y + 8.0)}, check_ink)
                         UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(box_x + 4.8, box_y + 8.0), to_point: UiCore::Vec2(box_x + 9.0, box_y + 3.0)}, check_ink)
                 if widgets[index].focused:
@@ -1732,6 +1759,7 @@ module UiFlat:
                     visible_value: sview = display_range(index, visible_start, visible_stop)
                     display_text: sview = visible_value if field_value.len > 0 else widgets[index].placeholder
                     field_ink: mutable UiCore::Color = widgets[index].text_color
+                    field_ink <- muted_color(field_ink) if not enabled
                     if field_value.len == 0:
                         field_ink <- UiCore::Color{r: field_ink.r / 2, g: field_ink.g / 2, b: field_ink.b / 2, a: field_ink.a}
                     field_y: f32 = widgets[index].y + (widgets[index].height - ui_text_line_height(widgets[index].text_size)) / 2.0
@@ -1771,5 +1799,5 @@ module UiFlat:
                     marker_space: f32 = current_theme.choice_text_space
                     text_x <- widgets[index].x + marker_space + (widgets[index].width - marker_space - text_width) / 2.0
                 ink: mutable UiCore::Color = widgets[index].text_color
-                ink <- UiCore::Color{r: ink.r / 2, g: ink.g / 2, b: ink.b / 2, a: ink.a} if not widgets[index].enabled
+                ink <- muted_color(ink) if not enabled
                 UiCore::draw(UiCore::TextRun(UiCore::Vec2(text_x, text_y), widgets[index].text_size, widgets[index].text), ink)
