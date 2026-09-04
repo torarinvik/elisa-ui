@@ -21,6 +21,7 @@ static int test_window_focused = -1;
 static NSUInteger test_frame_count;
 static int test_allows_readback = 1;
 static int test_text_focused = 1;
+static size_t test_accessibility_handles[3];
 
 void elisa_appkit_canvas_insert_text(const char *bytes, size_t length);
 
@@ -54,7 +55,10 @@ void elisa_appkit_canvas_frame(size_t context) {
     elisa_appkit_canvas_accessibility_add_tooltip(secureElement);
     elisa_appkit_canvas_accessibility_set_text(secureElement, (size_t)(__bridge void *)[NSString stringWithUTF8String:masked],
         (size_t)(__bridge void *)@"", 0, 0);
-    elisa_appkit_canvas_accessibility_commit();
+    test_accessibility_handles[0] = sliderElement;
+    test_accessibility_handles[1] = textElement;
+    test_accessibility_handles[2] = secureElement;
+    elisa_appkit_canvas_accessibility_commit(test_accessibility_handles, 3);
     elisa_appkit_canvas_accessibility_post_layout_changed(
         elisa_appkit_canvas_accessibility_layout_changed_notification());
 }

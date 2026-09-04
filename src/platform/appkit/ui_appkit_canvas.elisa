@@ -61,7 +61,7 @@ extern elisa_appkit_canvas_accessibility_notify(handle: usize, notification: usi
 extern elisa_appkit_canvas_arrow_cursor() -> usize
 extern elisa_appkit_canvas_pointing_hand_cursor() -> usize
 extern elisa_appkit_canvas_ibeam_cursor() -> usize
-extern elisa_appkit_canvas_accessibility_commit() -> void
+extern elisa_appkit_canvas_accessibility_commit(handles: usize&, count: usize) -> void
 extern elisa_appkit_canvas_accessibility_layout_changed_notification() -> usize
 extern elisa_appkit_canvas_accessibility_post_layout_changed(notification: usize) -> void
 extern elisa_appkit_canvas_clipboard_write(text: usize, pasteboard_type: usize) -> i32
@@ -426,6 +426,7 @@ module UiAppKitCanvas:
         global mutable accessibility_previous_ids: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
         global mutable accessibility_previous: AccessibilityState[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
         global mutable accessibility_next_ids: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable accessibility_next_handles: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
         global mutable accessibility_next: AccessibilityState[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
         global mutable accessibility_previous_count: usize = 0
         global mutable accessibility_force_layout: bool = true
@@ -895,6 +896,7 @@ module UiAppKitCanvas:
                 accessibility_next[index] <- state
                 tooltip: i32 = 1 if node.help.len > 0 and interaction != 0 else 0
                 handle: usize = elisa_appkit_canvas_accessibility_add(node.id, native_identifier, node.action, native_role, native_subrole, native_cursor(cursor), native_label, native_help, node.frame.origin.x, node.frame.origin.y, node.frame.size.width, node.frame.size.height, enabled, focused)
+                accessibility_next_handles[index] <- handle
                 if handle != 0:
                     elisa_appkit_canvas_accessibility_add_tooltip(handle) if tooltip != 0
                 if value_kind == 1 and handle != 0:
@@ -918,7 +920,7 @@ module UiAppKitCanvas:
             for index in 0..<accessibility_previous_count:
                 accessibility_previous_ids[index] <- accessibility_next_ids[index]
                 accessibility_previous[index] <- accessibility_next[index]
-            elisa_appkit_canvas_accessibility_commit()
+            elisa_appkit_canvas_accessibility_commit(&accessibility_next_handles[0], accessibility_previous_count)
             elisa_appkit_canvas_accessibility_post_layout_changed(elisa_appkit_canvas_accessibility_layout_changed_notification()) if layout_changed
             accessibility_force_layout <- false
 
