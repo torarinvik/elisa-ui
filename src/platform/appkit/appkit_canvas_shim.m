@@ -64,7 +64,6 @@ extern size_t elisa_appkit_canvas_tracking_options(void);
 static NSWindow *elisa_canvas_window;
 static ElisaCanvasView *elisa_canvas_view;
 static NSMutableArray *elisa_accessibility_children;
-static NSTimer *elisa_canvas_animation_timer;
 
 // Cursor objects are Cocoa singletons. Return opaque, non-owning pointers so
 // Elisa can select the native object while this shim only installs it.
@@ -549,20 +548,24 @@ size_t elisa_appkit_canvas_clipboard_read(size_t pasteboard_type) {
     return (size_t)CFBridgingRetain(text);
 }
 
-void elisa_appkit_canvas_schedule_redraw(float delay, size_t run_loop_mode) {
-    [elisa_canvas_animation_timer invalidate];
-    elisa_canvas_animation_timer = nil;
-    elisa_canvas_animation_timer = [NSTimer timerWithTimeInterval:delay repeats:NO block:^(NSTimer *timer) {
-        (void)timer;
+size_t elisa_appkit_canvas_schedule_redraw(float delay, size_t run_loop_mode) {
+    NSString *mode = (__bridge NSString *)(void *)run_loop_mode;
+    if (mode == nil) return 0;
+    NSTimer *timer = [NSTimer timerWithTimeInterval:delay repeats:NO block:^(NSTimer *fired) {
+        (void)fired;
         [elisa_canvas_view setNeedsDisplay:YES];
     }];
-    NSString *mode = (__bridge NSString *)(void *)run_loop_mode;
-    [NSRunLoop.mainRunLoop addTimer:elisa_canvas_animation_timer forMode:mode];
+    [NSRunLoop.mainRunLoop addTimer:timer forMode:mode];
+    // Transfer one retain to Elisa, which releases it through the matching
+    // cancellation primitive after the frame is delivered or the window
+    // closes. No hidden native timer slot remains.
+    return (size_t)(__bridge_retained void *)timer;
 }
 
-void elisa_appkit_canvas_cancel_redraw(void) {
-    [elisa_canvas_animation_timer invalidate];
-    elisa_canvas_animation_timer = nil;
+void elisa_appkit_canvas_cancel_redraw(size_t handle) {
+    if (handle == 0) return;
+    NSTimer *timer = (__bridge_transfer NSTimer *)(void *)handle;
+    [timer invalidate];
 }
 
 void elisa_appkit_canvas_set_min_size(float width, float height) {
