@@ -55,6 +55,9 @@ static NSView *elisa_container_for(int index) {
     if (elisa_kinds[index] == ELISA_APPKIT_WINDOW) {
         return [(NSWindow *)object contentView];
     }
+    if (elisa_kinds[index] == ELISA_APPKIT_SCROLLVIEW) {
+        return [(NSScrollView *)object documentView];
+    }
     return (NSView *)object;
 }
 
@@ -77,12 +80,13 @@ static BOOL elisa_appkit_prepare(int index, int kind) {
     return YES;
 }
 
-static void elisa_appkit_attach(int index, int parent, int parentIsWindow, NSView *view) {
+static void elisa_appkit_attach(int index, int parent, int parentIsWindow, int parentIsScrollView, NSView *view) {
     elisa_objects[index] = view;
     NSView *container = nil;
     if (parent >= 0 && parent < elisa_count) {
         id object = elisa_objects[parent];
-        container = parentIsWindow ? [(NSWindow *)object contentView] : (NSView *)object;
+        container = parentIsWindow ? [(NSWindow *)object contentView] :
+                    (parentIsScrollView ? [(NSScrollView *)object documentView] : (NSView *)object);
     }
     if (container != nil && view != nil) [container addSubview:view];
 }
@@ -125,83 +129,83 @@ void elisa_appkit_create_floating_panel(int index) {
     }
 }
 
-void elisa_appkit_create_panel(int index, int parent, int parentIsWindow) {
+void elisa_appkit_create_panel(int index, int parent, int parentIsWindow, int parentIsScrollView) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index, ELISA_APPKIT_PANEL)) return;
-        elisa_appkit_attach(index, parent, parentIsWindow, [[ElisaFlippedView alloc] initWithFrame:NSZeroRect]);
+        elisa_appkit_attach(index, parent, parentIsWindow, parentIsScrollView, [[ElisaFlippedView alloc] initWithFrame:NSZeroRect]);
     }
 }
 
-void elisa_appkit_create_scroll_view(int index, int parent, int parentIsWindow) {
+void elisa_appkit_create_scroll_view(int index, int parent, int parentIsWindow, int parentIsScrollView) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index, ELISA_APPKIT_SCROLLVIEW)) return;
         NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSZeroRect];
         [scroll setHasVerticalScroller:YES];
         [scroll setDocumentView:[[ElisaFlippedView alloc] initWithFrame:NSZeroRect]];
-        elisa_appkit_attach(index, parent, parentIsWindow, scroll);
+        elisa_appkit_attach(index, parent, parentIsWindow, parentIsScrollView, scroll);
     }
 }
 
-void elisa_appkit_create_label(int index, int parent, int parentIsWindow) {
+void elisa_appkit_create_label(int index, int parent, int parentIsWindow, int parentIsScrollView) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index, ELISA_APPKIT_LABEL)) return;
-        elisa_appkit_attach(index, parent, parentIsWindow, [NSTextField labelWithString:@""]);
+        elisa_appkit_attach(index, parent, parentIsWindow, parentIsScrollView, [NSTextField labelWithString:@""]);
     }
 }
 
-void elisa_appkit_create_push_button(int index, int parent, int parentIsWindow) {
+void elisa_appkit_create_push_button(int index, int parent, int parentIsWindow, int parentIsScrollView) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index, ELISA_APPKIT_PUSHBUTTON)) return;
         NSButton *button = [NSButton buttonWithTitle:@"" target:nil action:nil];
         [button setBezelStyle:NSBezelStyleRounded];
-        elisa_appkit_attach(index, parent, parentIsWindow, button);
+        elisa_appkit_attach(index, parent, parentIsWindow, parentIsScrollView, button);
     }
 }
 
-void elisa_appkit_create_toggle_button(int index, int parent, int parentIsWindow) {
+void elisa_appkit_create_toggle_button(int index, int parent, int parentIsWindow, int parentIsScrollView) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index, ELISA_APPKIT_TOGGLEBUTTON)) return;
         NSButton *button = [NSButton buttonWithTitle:@"" target:nil action:nil];
         [button setButtonType:NSButtonTypePushOnPushOff];
-        elisa_appkit_attach(index, parent, parentIsWindow, button);
+        elisa_appkit_attach(index, parent, parentIsWindow, parentIsScrollView, button);
     }
 }
 
-void elisa_appkit_create_checkbox(int index, int parent, int parentIsWindow) {
+void elisa_appkit_create_checkbox(int index, int parent, int parentIsWindow, int parentIsScrollView) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index, ELISA_APPKIT_CHECKBOX)) return;
-        elisa_appkit_attach(index, parent, parentIsWindow, [NSButton checkboxWithTitle:@"" target:nil action:nil]);
+        elisa_appkit_attach(index, parent, parentIsWindow, parentIsScrollView, [NSButton checkboxWithTitle:@"" target:nil action:nil]);
     }
 }
 
-void elisa_appkit_create_radio_button(int index, int parent, int parentIsWindow) {
+void elisa_appkit_create_radio_button(int index, int parent, int parentIsWindow, int parentIsScrollView) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index, ELISA_APPKIT_RADIOBUTTON)) return;
-        elisa_appkit_attach(index, parent, parentIsWindow, [NSButton radioButtonWithTitle:@"" target:nil action:nil]);
+        elisa_appkit_attach(index, parent, parentIsWindow, parentIsScrollView, [NSButton radioButtonWithTitle:@"" target:nil action:nil]);
     }
 }
 
-void elisa_appkit_create_text_field(int index, int parent, int parentIsWindow) {
+void elisa_appkit_create_text_field(int index, int parent, int parentIsWindow, int parentIsScrollView) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index, ELISA_APPKIT_TEXTFIELD)) return;
-        elisa_appkit_attach(index, parent, parentIsWindow, [NSTextField textFieldWithString:@""]);
+        elisa_appkit_attach(index, parent, parentIsWindow, parentIsScrollView, [NSTextField textFieldWithString:@""]);
     }
 }
 
-void elisa_appkit_create_slider(int index, int parent, int parentIsWindow) {
+void elisa_appkit_create_slider(int index, int parent, int parentIsWindow, int parentIsScrollView) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index, ELISA_APPKIT_SLIDER)) return;
-        elisa_appkit_attach(index, parent, parentIsWindow, [NSSlider sliderWithValue:0 minValue:0 maxValue:1 target:nil action:nil]);
+        elisa_appkit_attach(index, parent, parentIsWindow, parentIsScrollView, [NSSlider sliderWithValue:0 minValue:0 maxValue:1 target:nil action:nil]);
     }
 }
 
-void elisa_appkit_create_progress_bar(int index, int parent, int parentIsWindow) {
+void elisa_appkit_create_progress_bar(int index, int parent, int parentIsWindow, int parentIsScrollView) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index, ELISA_APPKIT_PROGRESSBAR)) return;
         NSProgressIndicator *bar = [[NSProgressIndicator alloc] initWithFrame:NSZeroRect];
         [bar setStyle:NSProgressIndicatorStyleBar];
         [bar setIndeterminate:NO];
-        elisa_appkit_attach(index, parent, parentIsWindow, bar);
+        elisa_appkit_attach(index, parent, parentIsWindow, parentIsScrollView, bar);
     }
 }
 
@@ -218,6 +222,10 @@ void elisa_appkit_set_view_frame(int index, float x, float y, float width, float
     @autoreleasepool {
         if (index < 0 || index >= elisa_count) return;
         [(NSView *)elisa_objects[index] setFrame:NSMakeRect(x, y, width, height)];
+        if (elisa_kinds[index] == ELISA_APPKIT_SCROLLVIEW) {
+            NSScrollView *scroll = (NSScrollView *)elisa_objects[index];
+            [[scroll documentView] setFrame:NSMakeRect(0, 0, width, height)];
+        }
     }
 }
 

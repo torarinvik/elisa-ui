@@ -35,7 +35,8 @@ module AppKitCheck:
             failures <- failures + 1
             _ = puts(name)
 
-        # Window "elisa-ui" -> row -> [ Push "Open", Check "Wrap" ], plus a Label.
+        # Window "elisa-ui" -> row -> [ Push "Open", Check "Wrap" ], plus a
+        # Label and a real ScrollView containing another Label.
         def build() -> Widget:
             can Memory.Allocate, Abort.Panic:
                 open_button: Widget = Button.Push(min_width: 80.0, min_height: 24.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "Open", rest: grey(60), hover: grey(90), press: grey(30))
@@ -44,6 +45,9 @@ module AppKitCheck:
                 bar: Widget = Container.Box(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: open_button, next_sibling: null, axis: UiConst::Axis.Row, padding: 8.0, spacing: 8.0, fill: grey(20))
                 caption: Widget = Control.Label(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, text: "Ready", size: 13.0, ink: grey(200))
                 bar.next_sibling <- caption
+                scroll_label: Widget = Control.Label(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, text: "Scroll content", size: 12.0, ink: grey(180))
+                scroll_view: Widget = Container.Scroll(min_width: 0.0, min_height: 24.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: scroll_label, next_sibling: null, axis: UiConst::Axis.Column, offset: 0.0, fill: grey(18))
+                caption.next_sibling <- scroll_view
                 return Window.Top(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: bar, next_sibling: null, title: "elisa-ui", resizable: true)
 
     public:
@@ -64,8 +68,8 @@ module AppKitCheck:
                 layout(root, 480.0, 240.0)
                 UiAppKit::realize(root)
 
-                # Five widgets became five controls.
-                check(failures, "AppKit built one control per widget", elisa_appkit_control_count() == 5)
+                # Seven widgets became seven controls.
+                check(failures, "AppKit built one control per widget", elisa_appkit_control_count() == 7)
 
                 # ...and they are the REAL classes, not stand-ins.
                 check(failures, "the root is an NSWindow", elisa_appkit_is_class(0, "NSWindow") == 1)
@@ -76,12 +80,15 @@ module AppKitCheck:
                 check(failures, "the checkbox is an NSButton", elisa_appkit_is_class(3, "NSButton") == 1)
                 check(failures, "the checkbox keeps its selected state", elisa_appkit_button_is_on(3) == 1)
                 check(failures, "the label is an NSTextField", elisa_appkit_is_class(4, "NSTextField") == 1)
+                check(failures, "the scroll container is an NSScrollView", elisa_appkit_is_class(5, "NSScrollView") == 1)
+                check(failures, "scroll content is an NSTextField", elisa_appkit_is_class(6, "NSTextField") == 1)
 
                 # The OS view tree has the widget tree's shape: the window's content
                 # view holds the bar and the caption, and the bar holds the two buttons.
-                check(failures, "the window content holds two children", elisa_appkit_subview_count(0) == 2)
+                check(failures, "the window content holds three children", elisa_appkit_subview_count(0) == 3)
                 check(failures, "the bar holds two children", elisa_appkit_subview_count(1) == 2)
                 check(failures, "the push button holds none", elisa_appkit_subview_count(2) == 0)
+                check(failures, "the scroll document holds its child", elisa_appkit_subview_count(5) == 1)
 
                 # ABSOLUTE PLACEMENT: AppKit's frames are the boxes layout computed.
                 check(failures, "the window content is the viewport width", elisa_appkit_frame_width(0) == 480.0)
@@ -98,6 +105,7 @@ module AppKitCheck:
                 # check above passes just as happily with the window upside down.
                 check(failures, "the window content is top-left origin", elisa_appkit_is_flipped(0) == 1)
                 check(failures, "a container is top-left origin", elisa_appkit_is_flipped(1) == 1)
+                check(failures, "a scroll document is top-left origin", elisa_appkit_is_flipped(5) == 1)
                 # ...and with that, a child below another really has the larger y.
                 check(failures, "the caption sits below the bar", elisa_appkit_frame_y(4) > elisa_appkit_frame_y(1))
 

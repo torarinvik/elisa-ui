@@ -25,16 +25,16 @@ using UiControls
 extern elisa_appkit_init() -> void
 extern elisa_appkit_create_window(index: i32, resizable: i32) -> void
 extern elisa_appkit_create_floating_panel(index: i32) -> void
-extern elisa_appkit_create_panel(index: i32, parent: i32, parent_is_window: i32) -> void
-extern elisa_appkit_create_scroll_view(index: i32, parent: i32, parent_is_window: i32) -> void
-extern elisa_appkit_create_label(index: i32, parent: i32, parent_is_window: i32) -> void
-extern elisa_appkit_create_push_button(index: i32, parent: i32, parent_is_window: i32) -> void
-extern elisa_appkit_create_toggle_button(index: i32, parent: i32, parent_is_window: i32) -> void
-extern elisa_appkit_create_checkbox(index: i32, parent: i32, parent_is_window: i32) -> void
-extern elisa_appkit_create_radio_button(index: i32, parent: i32, parent_is_window: i32) -> void
-extern elisa_appkit_create_text_field(index: i32, parent: i32, parent_is_window: i32) -> void
-extern elisa_appkit_create_slider(index: i32, parent: i32, parent_is_window: i32) -> void
-extern elisa_appkit_create_progress_bar(index: i32, parent: i32, parent_is_window: i32) -> void
+extern elisa_appkit_create_panel(index: i32, parent: i32, parent_is_window: i32, parent_is_scroll_view: i32) -> void
+extern elisa_appkit_create_scroll_view(index: i32, parent: i32, parent_is_window: i32, parent_is_scroll_view: i32) -> void
+extern elisa_appkit_create_label(index: i32, parent: i32, parent_is_window: i32, parent_is_scroll_view: i32) -> void
+extern elisa_appkit_create_push_button(index: i32, parent: i32, parent_is_window: i32, parent_is_scroll_view: i32) -> void
+extern elisa_appkit_create_toggle_button(index: i32, parent: i32, parent_is_window: i32, parent_is_scroll_view: i32) -> void
+extern elisa_appkit_create_checkbox(index: i32, parent: i32, parent_is_window: i32, parent_is_scroll_view: i32) -> void
+extern elisa_appkit_create_radio_button(index: i32, parent: i32, parent_is_window: i32, parent_is_scroll_view: i32) -> void
+extern elisa_appkit_create_text_field(index: i32, parent: i32, parent_is_window: i32, parent_is_scroll_view: i32) -> void
+extern elisa_appkit_create_slider(index: i32, parent: i32, parent_is_window: i32, parent_is_scroll_view: i32) -> void
+extern elisa_appkit_create_progress_bar(index: i32, parent: i32, parent_is_window: i32, parent_is_scroll_view: i32) -> void
 extern elisa_appkit_set_window_frame(index: i32, width: f32, height: f32) -> void
 extern elisa_appkit_set_view_frame(index: i32, x: f32, y: f32, width: f32, height: f32) -> void
 extern elisa_appkit_set_window_title(index: i32, text: cstr, length: usize) -> void
@@ -69,9 +69,16 @@ module UiAppKit:
         impl Controls for AppKitControls:
             def create(index: i32, kind: UiControls::Kind, parent: i32, window_mode: UiControls::WindowMode) -> void:
                 can Ui.Controls:
+                    # Parent placement is decided from the Elisa control list:
+                    # NSWindow content and NSScrollView document views are both
+                    # native containers, but neither requires native kind
+                    # inspection in the production attach path.
                     parent_is_window: mutable i32 = 0
+                    parent_is_scroll_view: mutable i32 = 0
                     if parent >= 0:
-                        parent_is_window <- 1 if UiControls::kind_at(parent.usize()) == UiControls::Kind.Window
+                        parent_kind: UiControls::Kind = UiControls::kind_at(parent.usize())
+                        parent_is_window <- 1 if parent_kind == UiControls::Kind.Window
+                        parent_is_scroll_view <- 1 if parent_kind == UiControls::Kind.ScrollView
                     if kind == UiControls::Kind.Window:
                         if window_mode == UiControls::WindowMode.Floating:
                             elisa_appkit_create_floating_panel(index)
@@ -79,34 +86,34 @@ module UiAppKit:
                             elisa_appkit_create_window(index, 1 if window_mode == UiControls::WindowMode.Resizable else 0)
                         return
                     if kind == UiControls::Kind.Panel:
-                        elisa_appkit_create_panel(index, parent, parent_is_window)
+                        elisa_appkit_create_panel(index, parent, parent_is_window, parent_is_scroll_view)
                         return
                     if kind == UiControls::Kind.ScrollView:
-                        elisa_appkit_create_scroll_view(index, parent, parent_is_window)
+                        elisa_appkit_create_scroll_view(index, parent, parent_is_window, parent_is_scroll_view)
                         return
                     if kind == UiControls::Kind.Label:
-                        elisa_appkit_create_label(index, parent, parent_is_window)
+                        elisa_appkit_create_label(index, parent, parent_is_window, parent_is_scroll_view)
                         return
                     if kind == UiControls::Kind.PushButton:
-                        elisa_appkit_create_push_button(index, parent, parent_is_window)
+                        elisa_appkit_create_push_button(index, parent, parent_is_window, parent_is_scroll_view)
                         return
                     if kind == UiControls::Kind.ToggleButton:
-                        elisa_appkit_create_toggle_button(index, parent, parent_is_window)
+                        elisa_appkit_create_toggle_button(index, parent, parent_is_window, parent_is_scroll_view)
                         return
                     if kind == UiControls::Kind.CheckBox:
-                        elisa_appkit_create_checkbox(index, parent, parent_is_window)
+                        elisa_appkit_create_checkbox(index, parent, parent_is_window, parent_is_scroll_view)
                         return
                     if kind == UiControls::Kind.RadioButton:
-                        elisa_appkit_create_radio_button(index, parent, parent_is_window)
+                        elisa_appkit_create_radio_button(index, parent, parent_is_window, parent_is_scroll_view)
                         return
                     if kind == UiControls::Kind.TextField:
-                        elisa_appkit_create_text_field(index, parent, parent_is_window)
+                        elisa_appkit_create_text_field(index, parent, parent_is_window, parent_is_scroll_view)
                         return
                     if kind == UiControls::Kind.Slider:
-                        elisa_appkit_create_slider(index, parent, parent_is_window)
+                        elisa_appkit_create_slider(index, parent, parent_is_window, parent_is_scroll_view)
                         return
                     if kind == UiControls::Kind.ProgressBar:
-                        elisa_appkit_create_progress_bar(index, parent, parent_is_window)
+                        elisa_appkit_create_progress_bar(index, parent, parent_is_window, parent_is_scroll_view)
 
             def set_frame(index: i32, kind: UiControls::Kind, box: UiCore::Rect) -> void:
                 can Ui.Controls:
