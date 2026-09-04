@@ -4,15 +4,31 @@
 include "./ui_sdl3.elisa"
 include "../../widgets/ui_widget.elisa"
 
-extern SDL_HasClipboardText() -> bool
 extern SDL_SetClipboardText(text: cstr) -> bool
 extern SDL_GetClipboardText() -> cstr?
 extern SDL_free(memory: cstr) -> void
 
 global mutable sdl_flat_clipboard_write: u8[UiFlat::TEXT_CAPACITY + 1] = zeroed
+global mutable sdl_flat_clipboard_read: u8[UiFlat::TEXT_CAPACITY] = zeroed
+global mutable sdl_flat_clipboard_length: usize = 0
+global mutable sdl_flat_clipboard_cache_valid: bool = false
+
+def sdl_flat_fetch_clipboard() -> usize:
+    text_opt: cstr? = SDL_GetClipboardText()
+    sdl_flat_clipboard_length <- 0
+    sdl_flat_clipboard_cache_valid <- true
+    if text_opt is text:
+        length: usize = sdl_cstr_length(text)
+        take: usize = length if length < UiFlat::TEXT_CAPACITY else UiFlat::TEXT_CAPACITY
+        for index in 0..<take:
+            sdl_flat_clipboard_read[index] <- sdl_cstr_byte(text, index)
+        sdl_flat_clipboard_length <- take
+        SDL_free(text)
+    return sdl_flat_clipboard_length
 
 def ui_clipboard_has_text() -> bool:
-    return SDL_HasClipboardText()
+    return sdl_flat_clipboard_length > 0 if sdl_flat_clipboard_cache_valid
+    return sdl_flat_fetch_clipboard() > 0
 
 def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
     take: usize = length if length < UiFlat::TEXT_CAPACITY else UiFlat::TEXT_CAPACITY
@@ -20,15 +36,18 @@ def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
         sdl_flat_clipboard_write[index] <- bytes[index]
     sdl_flat_clipboard_write[take] <- 0
     pointer: cstr = (&sdl_flat_clipboard_write[0]).cast[cstr] can Unsafe.PointerCast
-    return SDL_SetClipboardText(pointer)
+    written: bool = SDL_SetClipboardText(pointer)
+    sdl_flat_clipboard_cache_valid <- false
+    sdl_flat_clipboard_length <- 0
+    return written
 
 def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
-    text_opt: cstr? = SDL_GetClipboardText()
-    if text_opt is text:
-        length: usize = sdl_cstr_length(text)
-        take: usize = length if length < capacity else capacity
-        for index in 0..<take:
-            buffer[index] <- sdl_cstr_byte(text, index)
-        SDL_free(text)
-        return take
-    return 0
+    available: mutable usize = sdl_flat_clipboard_length if sdl_flat_clipboard_cache_valid else 0
+    if not sdl_flat_clipboard_cache_valid:
+        available <- sdl_flat_fetch_clipboard()
+    take: usize = available if available < capacity else capacity
+    for index in 0..<take:
+        buffer[index] <- sdl_flat_clipboard_read[index]
+    sdl_flat_clipboard_cache_valid <- false
+    sdl_flat_clipboard_length <- 0
+    return take
