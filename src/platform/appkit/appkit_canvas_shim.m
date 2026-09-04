@@ -22,7 +22,7 @@ extern int elisa_appkit_canvas_accessibility_adjust(size_t index, int direction)
 extern void elisa_appkit_canvas_cancel_interaction(void);
 extern int elisa_appkit_canvas_accepts_text(void);
 extern int elisa_appkit_canvas_allows_text_readback(void);
-extern int elisa_appkit_canvas_cursor_at(float x, float y);
+extern size_t elisa_appkit_canvas_cursor_at(float x, float y);
 extern void elisa_appkit_canvas_text_click(int kind, float x, int button, int clickCount);
 extern void elisa_appkit_canvas_set_text(size_t index, const char *bytes, size_t length);
 extern size_t elisa_appkit_canvas_selection_location(void);
@@ -64,10 +64,24 @@ static NSMenu *elisa_canvas_menu_bar;
 static NSMutableArray<NSMenu *> *elisa_canvas_menus;
 static NSTimer *elisa_canvas_animation_timer;
 
+// Cursor objects are Cocoa singletons. Return opaque, non-owning pointers so
+// Elisa can select the native object while this shim only installs it.
+size_t elisa_appkit_canvas_arrow_cursor(void) {
+    return (size_t)(__bridge void *)[NSCursor arrowCursor];
+}
+
+size_t elisa_appkit_canvas_pointing_hand_cursor(void) {
+    return (size_t)(__bridge void *)[NSCursor pointingHandCursor];
+}
+
+size_t elisa_appkit_canvas_ibeam_cursor(void) {
+    return (size_t)(__bridge void *)[NSCursor IBeamCursor];
+}
+
 @interface ElisaAccessibilityElement : NSAccessibilityElement
 @property(nonatomic) size_t elisaIndex;
 @property(nonatomic) size_t elisaIdentifier;
-@property(nonatomic) int elisaCursor;
+@property(nonatomic, strong) NSCursor *elisaCursor;
 @property(nonatomic) BOOL elisaSynchronizing;
 @property(nonatomic) NSRect elisaLocalFrame;
 @end
@@ -198,19 +212,13 @@ static int elisa_text_action(SEL selector) {
     return [self convertPoint:[event locationInWindow] fromView:nil];
 }
 - (void)updatePointerCursor:(NSPoint)point {
-    int cursor = elisa_appkit_canvas_cursor_at(point.x, point.y);
-    NSCursor *nativeCursor = cursor == 1 ? NSCursor.pointingHandCursor :
-                             cursor == 2 ? NSCursor.IBeamCursor : NSCursor.arrowCursor;
-    [nativeCursor set];
+    NSCursor *nativeCursor = (__bridge NSCursor *)(void *)elisa_appkit_canvas_cursor_at(point.x, point.y);
+    if (nativeCursor != nil) [nativeCursor set];
 }
 - (void)resetCursorRects {
     [super resetCursorRects];
     for (ElisaAccessibilityElement *element in elisa_accessibility_children) {
-        if (element.elisaCursor == 1) {
-            [self addCursorRect:element.elisaLocalFrame cursor:[NSCursor pointingHandCursor]];
-        } else if (element.elisaCursor == 2) {
-            [self addCursorRect:element.elisaLocalFrame cursor:[NSCursor IBeamCursor]];
-        }
+        if (element.elisaCursor != nil) [self addCursorRect:element.elisaLocalFrame cursor:element.elisaCursor];
     }
 }
 - (void)forwardMouseButton:(NSEvent *)event kind:(int)kind button:(int)button {
@@ -230,7 +238,7 @@ static int elisa_text_action(SEL selector) {
 - (void)mouseUp:(NSEvent *)event { [self forwardMouseButton:event kind:2 button:0]; }
 - (void)rightMouseUp:(NSEvent *)event { [self forwardMouseButton:event kind:2 button:1]; }
 - (void)otherMouseUp:(NSEvent *)event { [self forwardMouseButton:event kind:2 button:(int)event.buttonNumber]; }
-- (void)mouseExited:(NSEvent *)event { (void)event; [[NSCursor arrowCursor] set]; elisa_appkit_canvas_pointer(3,0,0,0,0,0); }
+- (void)mouseExited:(NSEvent *)event { (void)event; [(__bridge NSCursor *)(void *)elisa_appkit_canvas_arrow_cursor() set]; elisa_appkit_canvas_pointer(3,0,0,0,0,0); }
 - (void)scrollWheel:(NSEvent *)event { NSPoint p=[self eventPoint:event]; elisa_appkit_canvas_pointer(4,p.x,p.y,[event scrollingDeltaX],[event scrollingDeltaY],0); }
 - (void)keyDown:(NSEvent *)event {
     NSEventModifierFlags flags = [event modifierFlags] & NSEventModifierFlagDeviceIndependentFlagsMask;
@@ -553,7 +561,7 @@ static ElisaAccessibilityElement *elisa_appkit_canvas_pending_element(size_t ide
 }
 
 void elisa_appkit_canvas_accessibility_add(size_t identifier, size_t action, const void *role,
-                                            const void *subrole, int tooltip, int cursor,
+                                            const void *subrole, int tooltip, size_t cursor,
                                             const char *bytes, size_t length,
                                             const char *helpBytes, size_t helpLength,
                                             float x, float y, float width, float height,
@@ -592,7 +600,7 @@ void elisa_appkit_canvas_accessibility_add(size_t identifier, size_t action, con
     element.accessibilityMaxValue = nil;
     element.elisaSynchronizing = NO;
     element.elisaIndex = action;
-    element.elisaCursor = cursor;
+    element.elisaCursor = (__bridge NSCursor *)(void *)cursor;
     element.elisaLocalFrame = local;
     NSRect inWindow = [elisa_canvas_view convertRect:local toView:nil];
     element.accessibilityFrame = [elisa_canvas_window convertRectToScreen:inWindow];

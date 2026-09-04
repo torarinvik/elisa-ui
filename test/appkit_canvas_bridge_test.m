@@ -28,11 +28,13 @@ void elisa_appkit_canvas_frame(size_t context) {
     elisa_appkit_canvas_accessibility_reset();
     const char *label = "Intensity";
     const char *help = "Adjust preview intensity";
-    elisa_appkit_canvas_accessibility_add(7, 7, NSAccessibilitySliderRole, 0, 2, 2,
+    elisa_appkit_canvas_accessibility_add(7, 7, NSAccessibilitySliderRole, 0, 2,
+        (size_t)(__bridge void *)[NSCursor pointingHandCursor],
         label, strlen(label), help, strlen(help), 10, 10, 180, 24, 1, 0);
     elisa_appkit_canvas_accessibility_set_range(7, test_slider_value);
     elisa_appkit_canvas_accessibility_notify(7, 0);
-    elisa_appkit_canvas_accessibility_add(8, 8, NSAccessibilityTextFieldRole, 0, 3, 2,
+    elisa_appkit_canvas_accessibility_add(8, 8, NSAccessibilityTextFieldRole, 0, 3,
+        (size_t)(__bridge void *)[NSCursor IBeamCursor],
         "Project name", 12, "Edit the project name", 21,
         10, 44, 180, 32, 1, test_text_focused);
     elisa_appkit_canvas_accessibility_set_text(8, test_text, strlen(test_text),
@@ -40,7 +42,8 @@ void elisa_appkit_canvas_frame(size_t context) {
         elisa_appkit_canvas_selection_location(), elisa_appkit_canvas_selection_length());
     elisa_appkit_canvas_accessibility_notify(8, 0);
     const char *masked = "••••";
-    elisa_appkit_canvas_accessibility_add(9, 9, NSAccessibilityTextFieldRole, NSAccessibilitySecureTextFieldSubrole, 3, 2,
+    elisa_appkit_canvas_accessibility_add(9, 9, NSAccessibilityTextFieldRole, NSAccessibilitySecureTextFieldSubrole, 3,
+        (size_t)(__bridge void *)[NSCursor IBeamCursor],
         "Password", 8, "Secure entry", 12, 10, 80, 180, 32, 1, 0);
     elisa_appkit_canvas_accessibility_set_text(9, masked, strlen(masked), "", 0, 0, 0);
     elisa_appkit_canvas_accessibility_notify(9, 0);
@@ -115,7 +118,10 @@ int elisa_appkit_canvas_perform_text_action(int action) {
     if (action == 6) { test_redo_calls += 1; return 1; }
     return 0;
 }
-int elisa_appkit_canvas_cursor_at(float x, float y) { (void)x; (void)y; return 2; }
+size_t elisa_appkit_canvas_cursor_at(float x, float y) {
+    (void)x; (void)y;
+    return (size_t)(__bridge void *)[NSCursor IBeamCursor];
+}
 void elisa_appkit_canvas_text_click(int kind, float x, int button, int clickCount) {
     (void)x;
     if (kind != 1) return;
@@ -269,6 +275,7 @@ int main(void) {
 
         ElisaAccessibilityElement *first = elisa_accessibility_children[0];
         if (require([first.accessibilityRole isEqualToString:NSAccessibilitySliderRole], @"wrong slider role")) return 1;
+        if (require(first.elisaCursor == [NSCursor pointingHandCursor], @"opaque cursor pointer was not installed")) return 1;
         if (require([first.accessibilityHelp isEqualToString:@"Adjust preview intensity"], @"help text missing")) return 1;
         if (require(fabs([first.accessibilityValue floatValue] - 0.25f) < 0.001f, @"wrong initial value")) return 1;
         ElisaAccessibilityElement *textField = elisa_accessibility_children[1];
