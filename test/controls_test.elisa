@@ -116,6 +116,7 @@ def main() -> i64:
 
         # One control per widget, every one placed and captioned.
         check("a control per widget", log_total == 5)
+        check("a complete tree does not report overflow", not UiControls::overflowed())
         check("every control is framed", frame_calls == 5)
         check("every control is given its text", text_calls == 5)
 
@@ -140,6 +141,21 @@ def main() -> i64:
         left_box: UiCore::Rect = box_of(root)
         check("the two buttons are laid out side by side", log_x[3] > log_x[2])
         check("both buttons share the row's top", log_y[2] == log_y[3])
+
+        # Capacity failure is explicit: a 300-sibling chain keeps the first
+        # MAX_CONTROLS records intact and reports that the remainder was dropped.
+        UiControls::reset()
+        overflow_root: Widget = Window.Top(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, title: "Overflow", resizable: true)
+        first: Widget = Control.Label(min_width: 1.0, min_height: 1.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, text: "x", size: 10.0, ink: grey(200))
+        last: mutable Widget = first
+        for index in 1..<300:
+            node: Widget = Control.Label(min_width: 1.0, min_height: 1.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, text: "x", size: 10.0, ink: grey(200))
+            last.next_sibling <- node
+            last <- node
+        overflow_root.first_child <- first
+        UiControls::realize(overflow_root, UiControls::NO_PARENT)
+        check("an overflowing tree reports dropped controls", UiControls::overflowed())
+        check("an overflowing tree keeps the arena bounded", UiControls::count() == 256)
 
         if test_failures == 0:
             _ = puts("controls: all checks passed")
