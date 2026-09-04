@@ -49,6 +49,10 @@ if grep -Eq 'notifications[[:space:]]*&[[:space:]]*[124]' "$ROOT/src/platform/ap
   echo "appkit canvas: accessibility notification policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'if[[:space:]]*\([[:space:]]*tooltip[[:space:]]*\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: accessibility tooltip policy leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq '\bappendApplicationName\b' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: menu title policy leaked back into Objective-C" >&2
   exit 1
@@ -77,6 +81,7 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_menu_add_application_item$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_menus_commit$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_activate$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_adjust$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_add_tooltip$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_cancel_interaction$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_allows_text_readback$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_cursor_at$'

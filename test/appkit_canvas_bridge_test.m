@@ -28,21 +28,24 @@ void elisa_appkit_canvas_frame(size_t context) {
     elisa_appkit_canvas_accessibility_reset();
     const char *label = "Intensity";
     const char *help = "Adjust preview intensity";
-    elisa_appkit_canvas_accessibility_add(7, 7, NSAccessibilitySliderRole, 0, 2,
+    elisa_appkit_canvas_accessibility_add(7, 7, NSAccessibilitySliderRole, 0,
         (size_t)(__bridge void *)[NSCursor pointingHandCursor],
         label, strlen(label), help, strlen(help), 10, 10, 180, 24, 1, 0);
+    elisa_appkit_canvas_accessibility_add_tooltip(7);
     elisa_appkit_canvas_accessibility_set_range(7, test_slider_value);
-    elisa_appkit_canvas_accessibility_add(8, 8, NSAccessibilityTextFieldRole, 0, 3,
+    elisa_appkit_canvas_accessibility_add(8, 8, NSAccessibilityTextFieldRole, 0,
         (size_t)(__bridge void *)[NSCursor IBeamCursor],
         "Project name", 12, "Edit the project name", 21,
         10, 44, 180, 32, 1, test_text_focused);
+    elisa_appkit_canvas_accessibility_add_tooltip(8);
     elisa_appkit_canvas_accessibility_set_text(8, test_text, strlen(test_text),
         test_text + test_selection_start, test_selection_end - test_selection_start,
         elisa_appkit_canvas_selection_location(), elisa_appkit_canvas_selection_length());
     const char *masked = "••••";
-    elisa_appkit_canvas_accessibility_add(9, 9, NSAccessibilityTextFieldRole, NSAccessibilitySecureTextFieldSubrole, 3,
+    elisa_appkit_canvas_accessibility_add(9, 9, NSAccessibilityTextFieldRole, NSAccessibilitySecureTextFieldSubrole,
         (size_t)(__bridge void *)[NSCursor IBeamCursor],
         "Password", 8, "Secure entry", 12, 10, 80, 180, 32, 1, 0);
+    elisa_appkit_canvas_accessibility_add_tooltip(9);
     elisa_appkit_canvas_accessibility_set_text(9, masked, strlen(masked), "", 0, 0, 0);
     elisa_appkit_canvas_accessibility_commit(1);
 }

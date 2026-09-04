@@ -515,7 +515,7 @@ static ElisaAccessibilityElement *elisa_appkit_canvas_pending_element(size_t ide
 }
 
 void elisa_appkit_canvas_accessibility_add(size_t identifier, size_t action, const void *role,
-                                            const void *subrole, int tooltip, size_t cursor,
+                                            const void *subrole, size_t cursor,
                                             const char *bytes, size_t length,
                                             const char *helpBytes, size_t helpLength,
                                             float x, float y, float width, float height,
@@ -559,9 +559,12 @@ void elisa_appkit_canvas_accessibility_add(size_t identifier, size_t action, con
     NSRect inWindow = [elisa_canvas_view convertRect:local toView:nil];
     element.accessibilityFrame = [elisa_canvas_window convertRectToScreen:inWindow];
     [elisa_accessibility_next addObject:element];
-    if (tooltip) {
-        [elisa_canvas_view addToolTipRect:local owner:element userData:NULL];
-    }
+}
+
+void elisa_appkit_canvas_accessibility_add_tooltip(size_t identifier) {
+    ElisaAccessibilityElement *element = elisa_appkit_canvas_pending_element(identifier);
+    if (element == nil || elisa_canvas_view == nil) return;
+    [elisa_canvas_view addToolTipRect:element.elisaLocalFrame owner:element userData:NULL];
 }
 
 void elisa_appkit_canvas_accessibility_set_boolean(size_t identifier, int selected) {
