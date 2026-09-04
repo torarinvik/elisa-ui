@@ -22,6 +22,10 @@ extern void elisa_appkit_canvas_key_down_event(size_t event, int keyCode, size_t
 extern void elisa_appkit_canvas_key_up(int keyCode, size_t character);
 extern int elisa_appkit_canvas_accessibility_activate(size_t index);
 extern int elisa_appkit_canvas_accessibility_adjust(size_t index, int direction);
+extern int elisa_appkit_canvas_pointer_button_primary(void);
+extern int elisa_appkit_canvas_pointer_button_secondary(void);
+extern int elisa_appkit_canvas_accessibility_increment_direction(void);
+extern int elisa_appkit_canvas_accessibility_decrement_direction(void);
 extern void elisa_appkit_canvas_cancel_interaction(void);
 extern int elisa_appkit_canvas_accepts_text(void);
 extern int elisa_appkit_canvas_allows_text_readback(void);
@@ -97,10 +101,12 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
     return elisa_appkit_canvas_accessibility_activate(self.elisaIndex) != 0;
 }
 - (BOOL)accessibilityPerformIncrement {
-    return elisa_appkit_canvas_accessibility_adjust(self.elisaIndex, 1) != 0;
+    return elisa_appkit_canvas_accessibility_adjust(self.elisaIndex,
+        elisa_appkit_canvas_accessibility_increment_direction()) != 0;
 }
 - (BOOL)accessibilityPerformDecrement {
-    return elisa_appkit_canvas_accessibility_adjust(self.elisaIndex, -1) != 0;
+    return elisa_appkit_canvas_accessibility_adjust(self.elisaIndex,
+        elisa_appkit_canvas_accessibility_decrement_direction()) != 0;
 }
 - (void)setAccessibilityValue:(id)value {
     [super setAccessibilityValue:value];
@@ -210,11 +216,11 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
 - (void)mouseDragged:(NSEvent *)event { [self mouseMoved:event]; }
 - (void)rightMouseDragged:(NSEvent *)event { [self mouseMoved:event]; }
 - (void)otherMouseDragged:(NSEvent *)event { [self mouseMoved:event]; }
-- (void)mouseDown:(NSEvent *)event { [self forwardMouseButton:event down:YES button:0]; }
-- (void)rightMouseDown:(NSEvent *)event { [self forwardMouseButton:event down:YES button:1]; }
+- (void)mouseDown:(NSEvent *)event { [self forwardMouseButton:event down:YES button:elisa_appkit_canvas_pointer_button_primary()]; }
+- (void)rightMouseDown:(NSEvent *)event { [self forwardMouseButton:event down:YES button:elisa_appkit_canvas_pointer_button_secondary()]; }
 - (void)otherMouseDown:(NSEvent *)event { [self forwardMouseButton:event down:YES button:(int)event.buttonNumber]; }
-- (void)mouseUp:(NSEvent *)event { [self forwardMouseButton:event down:NO button:0]; }
-- (void)rightMouseUp:(NSEvent *)event { [self forwardMouseButton:event down:NO button:1]; }
+- (void)mouseUp:(NSEvent *)event { [self forwardMouseButton:event down:NO button:elisa_appkit_canvas_pointer_button_primary()]; }
+- (void)rightMouseUp:(NSEvent *)event { [self forwardMouseButton:event down:NO button:elisa_appkit_canvas_pointer_button_secondary()]; }
 - (void)otherMouseUp:(NSEvent *)event { [self forwardMouseButton:event down:NO button:(int)event.buttonNumber]; }
 - (void)mouseExited:(NSEvent *)event {
     (void)event;

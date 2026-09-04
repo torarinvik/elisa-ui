@@ -106,6 +106,10 @@ int elisa_appkit_canvas_key_down_route(int character, size_t modifiers) {
     return 0;
 }
 int elisa_appkit_canvas_accessibility_activate(size_t index) { (void)index; return 0; }
+int elisa_appkit_canvas_pointer_button_primary(void) { return 0; }
+int elisa_appkit_canvas_pointer_button_secondary(void) { return 1; }
+int elisa_appkit_canvas_accessibility_increment_direction(void) { return 1; }
+int elisa_appkit_canvas_accessibility_decrement_direction(void) { return -1; }
 int elisa_appkit_canvas_accessibility_adjust(size_t index, int direction) {
     if (index != 7) return 0;
     test_slider_value += direction > 0 ? 0.05f : -0.05f;
