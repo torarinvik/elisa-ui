@@ -188,13 +188,15 @@ collapsed text caret needs it, leaving an idle window timer-free.
 ## Current boundary
 
 The remaining Objective-C is the actual Cocoa boundary: `NSWindow`/`NSView`
-and event-loop ownership, Objective-C selector identity, `NSTextInputClient`
+and event-loop ownership, Objective-C selector identity/casting, `NSTextInputClient`
 protocol/range plumbing, AppKit menus, pasteboard and accessibility objects,
 bitmap snapshots and timers. These operations require Objective-C objects or
 Cocoa protocol implementations; all UTF-8 conversion now lives in Elisa through
 CoreFoundation FFI. Widget state, command policy, layout,
 interaction, editing, accessibility diffing, headless orchestration, all
 CoreGraphics path construction and CoreText text rendering now live in Elisa.
+Menu action names are registered through the Objective-C runtime's C ABI from
+Elisa; the shim receives only the resulting opaque `SEL` token.
 
 The canvas keeps one native strong reference to its root `NSWindow` on purpose.
 An unpresented headless window is not reliably retained by its content view, and
