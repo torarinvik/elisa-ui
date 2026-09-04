@@ -179,7 +179,7 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_clipboard_write$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_clipboard_read$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_character_x$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_character_at_x$'
-nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_range_pointer$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_range_string$'
 nm -g "$BIN" | grep -q ' U _clock_gettime_nsec_np$'
 if nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_\(monotonic_time\|set_shadow\)$'; then
   echo "appkit canvas: time or shadow policy leaked back into Objective-C" >&2

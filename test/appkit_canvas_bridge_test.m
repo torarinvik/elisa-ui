@@ -280,13 +280,12 @@ size_t elisa_appkit_canvas_range_length(size_t location, size_t length) {
     size_t remaining = [NSString stringWithUTF8String:test_text].length - safeLocation;
     return MIN(length, remaining);
 }
-const unsigned char *elisa_appkit_canvas_range_pointer(size_t location) {
-    return (const unsigned char *)test_text + test_byte_from_utf16(elisa_appkit_canvas_range_location(location));
-}
-size_t elisa_appkit_canvas_range_byte_length(size_t location, size_t length) {
-    size_t safeLocation = elisa_appkit_canvas_range_location(location);
-    size_t safeLength = elisa_appkit_canvas_range_length(location, length);
-    return test_byte_from_utf16(safeLocation + safeLength) - test_byte_from_utf16(safeLocation);
+size_t elisa_appkit_canvas_range_string(size_t location, size_t length) {
+    NSString *value = [NSString stringWithUTF8String:test_text];
+    NSUInteger safeLocation = MIN(location, value.length);
+    NSUInteger safeLength = MIN(length, value.length - safeLocation);
+    NSString *substring = [value substringWithRange:NSMakeRange(safeLocation, safeLength)];
+    return (size_t)CFBridgingRetain(substring);
 }
 
 static int require(BOOL condition, NSString *message) {

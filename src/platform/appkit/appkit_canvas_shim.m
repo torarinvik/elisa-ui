@@ -52,8 +52,7 @@ extern float elisa_appkit_canvas_caret_height(void);
 extern size_t elisa_appkit_canvas_character_at_x(float x);
 extern size_t elisa_appkit_canvas_range_location(size_t location);
 extern size_t elisa_appkit_canvas_range_length(size_t location, size_t length);
-extern const unsigned char *elisa_appkit_canvas_range_pointer(size_t location);
-extern size_t elisa_appkit_canvas_range_byte_length(size_t location, size_t length);
+extern size_t elisa_appkit_canvas_range_string(size_t location, size_t length);
 extern int elisa_appkit_canvas_view_is_flipped(void);
 extern int elisa_appkit_canvas_view_accepts_first_responder(void);
 extern int elisa_appkit_canvas_view_is_accessibility_element(void);
@@ -305,11 +304,12 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
     NSRange safe = NSMakeRange(elisa_appkit_canvas_range_location(range.location),
                                elisa_appkit_canvas_range_length(range.location, range.length));
     if (actualRange != NULL) *actualRange = safe;
-    const unsigned char *bytes = elisa_appkit_canvas_range_pointer(range.location);
-    size_t length = elisa_appkit_canvas_range_byte_length(range.location, range.length);
-    NSString *text = length == 0 ? @"" :
-        [[NSString alloc] initWithBytes:bytes length:length encoding:NSUTF8StringEncoding];
-    return text == nil ? nil : [[NSAttributedString alloc] initWithString:text];
+    size_t native = elisa_appkit_canvas_range_string(range.location, range.length);
+    if (native == 0) return nil;
+    NSString *text = (__bridge NSString *)(void *)native;
+    NSAttributedString *result = text == nil ? nil : [[NSAttributedString alloc] initWithString:text];
+    CFRelease((CFTypeRef)(void *)native);
+    return result;
 }
 - (NSUInteger)characterIndexForPoint:(NSPoint)point {
     if (!elisa_appkit_canvas_accepts_text() || self.window == nil) return NSNotFound;
