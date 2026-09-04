@@ -46,6 +46,10 @@ const LOG_CAP: usize = 64
 
 global mutable log_kind: i32[LOG_CAP] = zeroed
 global mutable log_window_mode: i32[LOG_CAP] = zeroed
+global mutable log_state_value: f32[LOG_CAP] = zeroed
+global mutable log_state_low: f32[LOG_CAP] = zeroed
+global mutable log_state_high: f32[LOG_CAP] = zeroed
+global mutable log_state_selected: bool[LOG_CAP] = zeroed
 global mutable log_parent: i32[LOG_CAP] = zeroed
 global mutable log_x: f32[LOG_CAP] = zeroed
 global mutable log_y: f32[LOG_CAP] = zeroed
@@ -54,6 +58,7 @@ global mutable log_h: f32[LOG_CAP] = zeroed
 global mutable log_total: usize = 0
 global mutable frame_calls: usize = 0
 global mutable text_calls: usize = 0
+global mutable state_calls: usize = 0
 
 # A backend keeps its own index -> handle table; this one keeps a log instead,
 # which is the same thing with the native part left out.
@@ -81,6 +86,15 @@ impl Controls for RecordingControls:
     def set_text(index: i32, kind: UiControls::Kind, text: sview) -> void can[Ui.Controls]:
         text_calls <- text_calls + 1
 
+    def set_state(index: i32, kind: UiControls::Kind, value: f32, low: f32, high: f32, selected: bool) -> void can[Ui.Controls]:
+        state_calls <- state_calls + 1
+        return if index < 0 or index.usize() >= LOG_CAP
+        row: usize = index.usize()
+        log_state_value[row] <- value
+        log_state_low[row] <- low
+        log_state_high[row] <- high
+        log_state_selected[row] <- selected
+
 def kind_at(row: usize) -> i32:
     return log_kind[row]
 
@@ -100,7 +114,7 @@ def grey(v: u8) -> UiCore::Color:
 def build() -> Widget:
     can Memory.Allocate, Abort.Panic:
         left: Widget = Button.Push(min_width: 40.0, min_height: 20.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "Left", rest: grey(60), hover: grey(90), press: grey(30))
-        right: Widget = Button.Push(min_width: 60.0, min_height: 20.0, grow: 1.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "Right", rest: grey(60), hover: grey(90), press: grey(30))
+        right: Widget = Button.Check(min_width: 60.0, min_height: 20.0, grow: 1.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "Right", checked: true, rest: grey(60), hover: grey(90), press: grey(30))
         left.next_sibling <- right
         bar: Widget = Container.Box(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: left, next_sibling: null, axis: UiConst::Axis.Row, padding: 0.0, spacing: 0.0, fill: grey(20))
         caption: Widget = Control.Label(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, text: "Caption", size: 12.0, ink: grey(200))
@@ -113,8 +127,10 @@ def main() -> i64:
         root: Widget = build()
         floating: Widget = Window.Floating(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, title: "Palette")
         fixed: Widget = Window.Top(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, title: "Fixed", resizable: false)
+        checked_widget: Widget = Button.Check(min_width: 1.0, min_height: 1.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "Checked", checked: true, rest: grey(20), hover: grey(40), press: grey(10))
         check("floating windows carry floating mode", UiControls::window_mode_of(floating) == UiControls::WindowMode.Floating)
         check("fixed top windows carry fixed mode", UiControls::window_mode_of(fixed) == UiControls::WindowMode.Fixed)
+        check("checkbox state extraction keeps checked", UiControls::state_of(checked_widget).selected)
         layout(root, 200.0, 100.0)
         UiControls::reset()
         UiControls::realize(root, UiControls::NO_PARENT)
@@ -125,6 +141,7 @@ def main() -> i64:
         check("a complete tree does not report overflow", not UiControls::overflowed())
         check("every control is framed", frame_calls == 5)
         check("every control is given its text", text_calls == 5)
+        check("every control receives initial state", state_calls == 5)
 
         # PARENT FIRST, and the OS tree has the widget tree's shape.
         check("the root has no parent", log_parent[0] == UiControls::NO_PARENT)
@@ -139,7 +156,13 @@ def main() -> i64:
         check("a box realizes a Panel", kind_at(1) == UiControls::Kind.Panel.i32())
         check("non-window controls carry neutral window mode", log_window_mode[1] == UiControls::WindowMode.Fixed.i32())
         check("a push button realizes a PushButton", kind_at(2) == UiControls::Kind.PushButton.i32())
+        check("a checkbox carries its selected state", log_state_selected[3])
         check("a label realizes a Label", kind_at(4) == UiControls::Kind.Label.i32())
+
+        slider: Widget = Control.Slider(min_width: 1.0, min_height: 1.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, value: 7.0, low: -2.0, high: 12.0, track: grey(20), knob: grey(200))
+        slider_state: UiControls::ControlState = UiControls::state_of(slider)
+        check("slider state carries its value", slider_state.value == 7.0)
+        check("slider state carries its range", slider_state.low == -2.0 and slider_state.high == 12.0)
 
         # ABSOLUTE PLACEMENT: a control sits at the box layout computed for its
         # widget, not somewhere the backend invented.

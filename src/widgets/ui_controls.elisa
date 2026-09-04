@@ -86,6 +86,15 @@ module UiControls:
             Resizable = 1
             Floating = 2
 
+        # Initial value state carried by controls that expose one. The range
+        # fields are meaningful for sliders; `selected` covers toggle, check
+        # and radio buttons. Other kinds receive the neutral zero value.
+        struct ControlState:
+            value: f32
+            low: f32
+            high: f32
+            selected: bool
+
         # The root's parent.
         const NO_PARENT: i32 = -1
 
@@ -105,6 +114,9 @@ module UiControls:
             # The kind crosses with it so a backend can keep this semantic dispatch
             # in its typed Elisa implementation instead of inspecting native classes.
             def set_text(index: i32, kind: Kind, text: sview) -> void can[Ui.Controls]
+            # Initial value/range/selection state, kept separate from caption
+            # text so a backend can apply native state with typed setters.
+            def set_state(index: i32, kind: Kind, value: f32, low: f32, high: f32, selected: bool) -> void can[Ui.Controls]
 
     private:
         # The list itself. It sits after the vocabulary because that is the reading
@@ -124,6 +136,10 @@ module UiControls:
         struct ControlOp:
             kind: mutable Kind
             window_mode: mutable WindowMode
+            state_value: mutable f32
+            state_low: mutable f32
+            state_high: mutable f32
+            state_selected: mutable bool
             parent: mutable i32
             box: mutable UiCore::Rect
             text: mutable sview
@@ -153,6 +169,9 @@ module UiControls:
         def window_mode_at(index: usize) -> WindowMode:
             return ops[index].window_mode
 
+        def state_at(index: usize) -> ControlState:
+            return ControlState{value: ops[index].state_value, low: ops[index].state_low, high: ops[index].state_high, selected: ops[index].state_selected}
+
         def parent_at(index: usize) -> i32:
             return ops[index].parent
 
@@ -175,6 +194,14 @@ module UiControls:
             total <- total + 1
             ops[index].kind <- kind_of(w)
             ops[index].window_mode <- window_mode_of(w)
+            state: ControlState = state_of(w)
+            # Write the compact state fields explicitly. Besides making the
+            # record layout obvious, this avoids depending on aggregate
+            # assignment for a mixed float/bool payload in stage0.
+            ops[index].state_value <- state.value
+            ops[index].state_low <- state.low
+            ops[index].state_high <- state.high
+            ops[index].state_selected <- state.selected
             ops[index].parent <- parent
             ops[index].box <- UiWidgets::box_of(w)
             ops[index].text <- text_of(w)
@@ -191,6 +218,7 @@ module UiControls:
                 C.create(slot, kind_at(index), parent_at(index), window_mode_at(index))
                 C.set_frame(slot, kind_at(index), box_at(index))
                 C.set_text(slot, kind_at(index), text_at(index))
+                C.set_state(slot, kind_at(index), ops[index].state_value, ops[index].state_low, ops[index].state_high, ops[index].state_selected)
 
         # Which OS control realizes this widget. Exhaustive on purpose: a widget
         # kind added without a control is a compile error here, not a silently
@@ -234,6 +262,23 @@ module UiControls:
                     return WindowMode.Floating
                 _:
                     return WindowMode.Fixed
+
+        # Extract widget values once, in Elisa, before the native boundary.
+        # This keeps the platform adapter from inspecting hierarchy variants.
+        def state_of(w: UiWidgets::Widget) -> ControlState:
+            match w:
+                UiWidgets::Control.Gauge(fraction, track, bar):
+                    return ControlState{value: fraction, low: 0.0, high: 1.0, selected: false}
+                UiWidgets::Control.Slider(value, low, high, track, knob):
+                    return ControlState{value: value, low: low, high: high, selected: false}
+                UiWidgets::Button.Toggle(label, on, rest, hover, press):
+                    return ControlState{value: 0.0, low: 0.0, high: 1.0, selected: on}
+                UiWidgets::Button.Check(label, checked, rest, hover, press):
+                    return ControlState{value: 0.0, low: 0.0, high: 1.0, selected: checked}
+                UiWidgets::Button.Radio(label, group, selected, rest, hover, press):
+                    return ControlState{value: 0.0, low: 0.0, high: 1.0, selected: selected}
+                _:
+                    return ControlState{value: 0.0, low: 0.0, high: 1.0, selected: false}
 
         # The text a control shows. Empty for anything that carries none, so a
         # backend can set it unconditionally.

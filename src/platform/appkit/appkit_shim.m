@@ -250,6 +250,30 @@ void elisa_appkit_set_field_text(int index, const char *text, size_t length) {
     }
 }
 
+void elisa_appkit_set_button_state(int index, int selected) {
+    @autoreleasepool {
+        if (index < 0 || index >= elisa_count) return;
+        [(NSButton *)elisa_objects[index] setState:selected ? NSControlStateValueOn : NSControlStateValueOff];
+    }
+}
+
+void elisa_appkit_set_slider_state(int index, float low, float high, float value) {
+    @autoreleasepool {
+        if (index < 0 || index >= elisa_count) return;
+        NSSlider *slider = (NSSlider *)elisa_objects[index];
+        [slider setMinValue:low];
+        [slider setMaxValue:high];
+        [slider setDoubleValue:value];
+    }
+}
+
+void elisa_appkit_set_progress_value(int index, float value) {
+    @autoreleasepool {
+        if (index < 0 || index >= elisa_count) return;
+        [(NSProgressIndicator *)elisa_objects[index] setDoubleValue:value];
+    }
+}
+
 // Show the window. Separated from the run loop so a headless check can realize a
 // tree, assert it, and exit without ever presenting anything.
 void elisa_appkit_present(void) {
@@ -290,6 +314,11 @@ int elisa_appkit_window_is_floating(int index) {
     if (index < 0 || index >= elisa_count || elisa_kinds[index] != ELISA_APPKIT_WINDOW) return 0;
     return [(NSWindow *)elisa_objects[index] isKindOfClass:[NSPanel class]] &&
            [(NSPanel *)elisa_objects[index] isFloatingPanel] ? 1 : 0;
+}
+
+int elisa_appkit_button_is_on(int index) {
+    if (index < 0 || index >= elisa_count) return 0;
+    return [(NSButton *)elisa_objects[index] state] == NSControlStateValueOn ? 1 : 0;
 }
 
 float elisa_appkit_frame_width(int index) {
