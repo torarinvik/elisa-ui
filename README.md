@@ -69,6 +69,8 @@ because a module member's symbol carries its module and those names cannot move.
   visuals and semantics without overwriting each child's local enabled flag.
   Applications can request or clear focus directly for form validation and
   dialog workflows; ineligible hidden or disabled targets are rejected.
+  Public layout metrics are normalized at entry, preventing negative sizes,
+  padding, spacing, grow weights or typography from escaping into geometry.
   Fixed arenas expose overflow flags, so capacity mistakes are diagnosable
   rather than silently indistinguishable from missing UI.
 - **Apps** implement `app_init` / `app_event(UiCore::Event)` /

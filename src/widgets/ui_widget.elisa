@@ -299,7 +299,7 @@ module UiFlat:
 
         def set_grow(index: usize, grow: f32) -> void:
             return if index >= widget_count
-            widgets[index].grow <- grow
+            widgets[index].grow <- nonnegative(grow)
 
         def set_enabled(index: usize, enabled: bool) -> void:
             return if index >= widget_count
@@ -344,10 +344,11 @@ module UiFlat:
         # hit target; labels still use `label`, which derives its minimum from text.
         def set_text(index: usize, text: sview, size: f32, color: UiCore::Color) -> void:
             return if index >= widget_count
-            widgets[index] with { text, text_size <- size, text_color <- color }
+            safe_size: f32 = nonnegative(size)
+            widgets[index] with { text, text_size <- safe_size, text_color <- color }
             if widgets[index].kind == UiConst::WidgetKind.Label:
-                measured_width: f32 = ui_measure_text_width(text, size)
-                measured_height: f32 = ui_text_line_height(size)
+                measured_width: f32 = nonnegative(ui_measure_text_width(text, safe_size))
+                measured_height: f32 = nonnegative(ui_text_line_height(safe_size))
                 widgets[index] with {
                     declared_min_width <- measured_width, declared_min_height <- measured_height,
                     min_width <- measured_width, min_height <- measured_height,
@@ -412,25 +413,31 @@ module UiFlat:
         def panel(parent: usize, axis: UiConst::Axis, padding: f32, spacing: f32, color: UiCore::Color) -> usize:
             index: usize = new_widget(parent, UiConst::WidgetKind.Panel)
             return index if index == NONE
-            widgets[index] with { axis, padding, spacing, color, hover_color <- color, press_color <- color }
+            widgets[index] with { axis, padding <- nonnegative(padding), spacing <- nonnegative(spacing), color, hover_color <- color, press_color <- color }
             return index
 
         def button(parent: usize, min_width: f32, min_height: f32, color: UiCore::Color, hover_color: UiCore::Color, press_color: UiCore::Color) -> usize:
             index: usize = new_widget(parent, UiConst::WidgetKind.Button)
             return index if index == NONE
-            widgets[index] with { declared_min_width <- min_width, declared_min_height <- min_height, min_width, min_height, color, hover_color, press_color, interactive <- true }
+            safe_width: f32 = nonnegative(min_width)
+            safe_height: f32 = nonnegative(min_height)
+            widgets[index] with { declared_min_width <- safe_width, declared_min_height <- safe_height, min_width <- safe_width, min_height <- safe_height, color, hover_color, press_color, interactive <- true }
             return index
 
         def radio_button(parent: usize, min_width: f32, min_height: f32, color: UiCore::Color, hover_color: UiCore::Color, press_color: UiCore::Color) -> usize:
             index: usize = new_widget(parent, UiConst::WidgetKind.RadioButton)
             return index if index == NONE
-            widgets[index] with { declared_min_width <- min_width, declared_min_height <- min_height, min_width, min_height, color, hover_color, press_color, interactive <- true }
+            safe_width: f32 = nonnegative(min_width)
+            safe_height: f32 = nonnegative(min_height)
+            widgets[index] with { declared_min_width <- safe_width, declared_min_height <- safe_height, min_width <- safe_width, min_height <- safe_height, color, hover_color, press_color, interactive <- true }
             return index
 
         def check_box(parent: usize, min_width: f32, min_height: f32, color: UiCore::Color, hover_color: UiCore::Color, press_color: UiCore::Color) -> usize:
             index: usize = new_widget(parent, UiConst::WidgetKind.CheckBox)
             return index if index == NONE
-            widgets[index] with { declared_min_width <- min_width, declared_min_height <- min_height, min_width, min_height, color, hover_color, press_color, interactive <- true }
+            safe_width: f32 = nonnegative(min_width)
+            safe_height: f32 = nonnegative(min_height)
+            widgets[index] with { declared_min_width <- safe_width, declared_min_height <- safe_height, min_width <- safe_width, min_height <- safe_height, color, hover_color, press_color, interactive <- true }
             return index
 
         # A slider stores a normalized value. Its three colors are the track,
@@ -438,8 +445,10 @@ module UiFlat:
         def slider(parent: usize, label: sview, min_width: f32, min_height: f32, value: f32, track_color: UiCore::Color, fill_color: UiCore::Color, thumb_color: UiCore::Color) -> usize:
             index: usize = new_widget(parent, UiConst::WidgetKind.Slider)
             return index if index == NONE
+            safe_width: f32 = nonnegative(min_width)
+            safe_height: f32 = nonnegative(min_height)
             widgets[index] with {
-                declared_min_width <- min_width, declared_min_height <- min_height, min_width, min_height, text <- label, value,
+                declared_min_width <- safe_width, declared_min_height <- safe_height, min_width <- safe_width, min_height <- safe_height, text <- label, value,
                 color <- track_color, hover_color <- fill_color, press_color <- thumb_color,
                 interactive <- true,
             }
@@ -449,8 +458,10 @@ module UiFlat:
         def progress_bar(parent: usize, label: sview, min_width: f32, min_height: f32, value: f32, track_color: UiCore::Color, fill_color: UiCore::Color) -> usize:
             index: usize = new_widget(parent, UiConst::WidgetKind.ProgressBar)
             return index if index == NONE
+            safe_width: f32 = nonnegative(min_width)
+            safe_height: f32 = nonnegative(min_height)
             widgets[index] with {
-                declared_min_width <- min_width, declared_min_height <- min_height, min_width, min_height, text <- label, value,
+                declared_min_width <- safe_width, declared_min_height <- safe_height, min_width <- safe_width, min_height <- safe_height, text <- label, value,
                 color <- track_color, hover_color <- fill_color,
             }
             set_value(index, value)
@@ -459,9 +470,12 @@ module UiFlat:
         def text_field(parent: usize, label: sview, placeholder: sview, initial: sview, min_width: f32, min_height: f32, size: f32, ink: UiCore::Color, fill: UiCore::Color) -> usize:
             index: usize = new_widget(parent, UiConst::WidgetKind.TextField)
             return index if index == NONE
+            safe_width: f32 = nonnegative(min_width)
+            safe_height: f32 = nonnegative(min_height)
+            safe_size: f32 = nonnegative(size)
             widgets[index] with {
-                declared_min_width <- min_width, declared_min_height <- min_height, min_width, min_height, text <- label, placeholder,
-                text_size <- size, text_color <- ink, color <- fill,
+                declared_min_width <- safe_width, declared_min_height <- safe_height, min_width <- safe_width, min_height <- safe_height, text <- label, placeholder,
+                text_size <- safe_size, text_color <- ink, color <- fill,
                 hover_color <- fill, press_color <- fill, interactive <- true,
             }
             byte_limit: usize = initial.len if initial.len < TEXT_CAPACITY - 1 else TEXT_CAPACITY - 1
@@ -488,10 +502,11 @@ module UiFlat:
         def label(parent: usize, text: sview, size: f32, color: UiCore::Color) -> usize:
             index: usize = new_widget(parent, UiConst::WidgetKind.Label)
             return index if index == NONE
-            measured_width: f32 = ui_measure_text_width(text, size)
-            measured_height: f32 = ui_text_line_height(size)
+            safe_size: f32 = nonnegative(size)
+            measured_width: f32 = nonnegative(ui_measure_text_width(text, safe_size))
+            measured_height: f32 = nonnegative(ui_text_line_height(safe_size))
             widgets[index] with {
-                text, text_size <- size, text_color <- color,
+                text, text_size <- safe_size, text_color <- color,
                 declared_min_width <- measured_width, declared_min_height <- measured_height,
                 min_width <- measured_width, min_height <- measured_height,
             }
@@ -1070,7 +1085,7 @@ module UiFlat:
         def layout(width: f32, height: f32) -> void:
             return if widget_count == 0
             measure(0)
-            arrange(0, 0.0, 0.0, width, height)
+            arrange(0, 0.0, 0.0, nonnegative(width), nonnegative(height))
 
         # Window deactivation, modal interruption and capture loss must not
         # leave a control visually held or a modifier latched.
