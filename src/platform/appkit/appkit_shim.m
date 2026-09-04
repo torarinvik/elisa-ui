@@ -91,13 +91,10 @@ static void elisa_appkit_attach(int index, int parent, int parentIsWindow, int p
     if (container != nil && view != nil) [container addSubview:view];
 }
 
-void elisa_appkit_create_window(int index, int resizable) {
+static void elisa_appkit_create_window_with_style(int index, NSWindowStyleMask style) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index, ELISA_APPKIT_WINDOW)) return;
         NSRect content = NSMakeRect(0, 0, 640, 480);
-        NSWindowStyleMask style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
-                                  NSWindowStyleMaskMiniaturizable;
-        if (resizable) style |= NSWindowStyleMaskResizable;
         NSWindow *window = [[NSWindow alloc]
             initWithContentRect:content
                       styleMask:style
@@ -108,6 +105,17 @@ void elisa_appkit_create_window(int index, int resizable) {
         elisa_objects[index] = window;
         elisa_window = window;
     }
+}
+
+void elisa_appkit_create_fixed_window(int index) {
+    elisa_appkit_create_window_with_style(index,
+        NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable);
+}
+
+void elisa_appkit_create_resizable_window(int index) {
+    elisa_appkit_create_window_with_style(index,
+        NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable |
+        NSWindowStyleMaskResizable);
 }
 
 void elisa_appkit_create_floating_panel(int index) {
@@ -136,15 +144,25 @@ void elisa_appkit_create_panel(int index, int parent, int parentIsWindow, int pa
     }
 }
 
-void elisa_appkit_create_scroll_view(int index, int parent, int parentIsWindow, int parentIsScrollView, int horizontal) {
+static void elisa_appkit_create_scroll_view_with_scrollers(int index, int parent,
+                                                            int parentIsWindow, int parentIsScrollView,
+                                                            BOOL vertical, BOOL horizontal) {
     @autoreleasepool {
         if (!elisa_appkit_prepare(index, ELISA_APPKIT_SCROLLVIEW)) return;
         NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSZeroRect];
-        [scroll setHasVerticalScroller:horizontal ? NO : YES];
-        [scroll setHasHorizontalScroller:horizontal ? YES : NO];
+        [scroll setHasVerticalScroller:vertical];
+        [scroll setHasHorizontalScroller:horizontal];
         [scroll setDocumentView:[[ElisaFlippedView alloc] initWithFrame:NSZeroRect]];
         elisa_appkit_attach(index, parent, parentIsWindow, parentIsScrollView, scroll);
     }
+}
+
+void elisa_appkit_create_vertical_scroll_view(int index, int parent, int parentIsWindow, int parentIsScrollView) {
+    elisa_appkit_create_scroll_view_with_scrollers(index, parent, parentIsWindow, parentIsScrollView, YES, NO);
+}
+
+void elisa_appkit_create_horizontal_scroll_view(int index, int parent, int parentIsWindow, int parentIsScrollView) {
+    elisa_appkit_create_scroll_view_with_scrollers(index, parent, parentIsWindow, parentIsScrollView, NO, YES);
 }
 
 void elisa_appkit_create_label(int index, int parent, int parentIsWindow, int parentIsScrollView) {
@@ -266,10 +284,10 @@ void elisa_appkit_set_field_text(int index, const char *text, size_t length) {
     }
 }
 
-void elisa_appkit_set_button_state(int index, int selected) {
+void elisa_appkit_set_button_state(int index, int state) {
     @autoreleasepool {
         if (index < 0 || index >= elisa_count) return;
-        [(NSButton *)elisa_objects[index] setState:selected ? NSControlStateValueOn : NSControlStateValueOff];
+        [(NSButton *)elisa_objects[index] setState:(NSControlStateValue)state];
     }
 }
 
