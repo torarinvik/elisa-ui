@@ -67,7 +67,6 @@ static NSMutableArray *elisa_accessibility_children;
 static NSMutableArray *elisa_accessibility_next;
 static NSMutableDictionary<NSNumber *, ElisaAccessibilityElement *> *elisa_accessibility_elements;
 static NSMenu *elisa_canvas_menu_bar;
-static NSMutableArray<NSMenu *> *elisa_canvas_menus;
 static NSTimer *elisa_canvas_animation_timer;
 
 // Cursor objects are Cocoa singletons. Return opaque, non-owning pointers so
@@ -465,46 +464,45 @@ void elisa_appkit_canvas_center(void) {
 
 void elisa_appkit_canvas_menus_begin(void) {
     elisa_canvas_menu_bar = [NSMenu new];
-    elisa_canvas_menus = [NSMutableArray new];
 }
 
 // Menu labels arrive as borrowed opaque CFStrings created by Elisa. Cocoa
 // retains them while creating the menu item; the bridge does not decode UTF-8.
-int elisa_appkit_canvas_menu_add(size_t title, size_t emptyKeyEquivalent) {
-    if (elisa_canvas_menu_bar == nil || elisa_canvas_menus == nil) return -1;
+size_t elisa_appkit_canvas_menu_add(size_t title, size_t emptyKeyEquivalent) {
+    if (elisa_canvas_menu_bar == nil) return 0;
     NSString *value = (__bridge NSString *)(void *)title;
     NSString *emptyKey = (__bridge NSString *)(void *)emptyKeyEquivalent;
-    if (value == nil || emptyKey == nil) return -1;
+    if (value == nil || emptyKey == nil) return 0;
     NSMenuItem *root = [[NSMenuItem alloc] initWithTitle:value action:NULL keyEquivalent:emptyKey];
     NSMenu *menu = [[NSMenu alloc] initWithTitle:value];
     [root setSubmenu:menu];
     [elisa_canvas_menu_bar addItem:root];
-    [elisa_canvas_menus addObject:menu];
-    return (int)elisa_canvas_menus.count - 1;
+    return (size_t)(__bridge void *)menu;
 }
 
-void elisa_appkit_canvas_menu_set_windows(int menuIndex) {
-    if (menuIndex < 0 || (NSUInteger)menuIndex >= elisa_canvas_menus.count) return;
-    [NSApp setWindowsMenu:elisa_canvas_menus[menuIndex]];
+void elisa_appkit_canvas_menu_set_windows(size_t menu) {
+    NSMenu *value = (__bridge NSMenu *)(void *)menu;
+    if (![value isKindOfClass:[NSMenu class]]) return;
+    [NSApp setWindowsMenu:value];
 }
 
-static void elisa_appkit_canvas_menu_add_item_title(int menuIndex, NSString *title,
+static void elisa_appkit_canvas_menu_add_item_title(size_t menu, NSString *title,
                                                      NSString *keyEquivalent,
                                                      const char *actionName, size_t modifiers) {
-    if (menuIndex < 0 || (NSUInteger)menuIndex >= elisa_canvas_menus.count) return;
     if (title == nil || keyEquivalent == nil) return;
+    NSMenu *value = (__bridge NSMenu *)(void *)menu;
+    if (![value isKindOfClass:[NSMenu class]]) return;
     SEL action = actionName == NULL || actionName[0] == '\0' ? NULL : sel_registerName(actionName);
-    NSMenuItem *item = [elisa_canvas_menus[menuIndex]
-        addItemWithTitle:title action:action keyEquivalent:keyEquivalent];
+    NSMenuItem *item = [value addItemWithTitle:title action:action keyEquivalent:keyEquivalent];
     item.keyEquivalentModifierMask = (NSEventModifierFlags)modifiers;
 }
 
-void elisa_appkit_canvas_menu_add_item(int menuIndex, size_t title,
+void elisa_appkit_canvas_menu_add_item(size_t menu, size_t title,
                                         size_t keyEquivalent, const char *actionName,
                                         size_t modifiers) {
     NSString *value = (__bridge NSString *)(void *)title;
     NSString *key = (__bridge NSString *)(void *)keyEquivalent;
-    elisa_appkit_canvas_menu_add_item_title(menuIndex, value, key, actionName, modifiers);
+    elisa_appkit_canvas_menu_add_item_title(menu, value, key, actionName, modifiers);
 }
 
 size_t elisa_appkit_canvas_modifier_command(void) { return NSEventModifierFlagCommand; }
@@ -515,9 +513,10 @@ size_t elisa_appkit_canvas_modifier_device_independent_mask(void) {
     return NSEventModifierFlagDeviceIndependentFlagsMask;
 }
 
-void elisa_appkit_canvas_menu_add_separator(int menuIndex) {
-    if (menuIndex < 0 || (NSUInteger)menuIndex >= elisa_canvas_menus.count) return;
-    [elisa_canvas_menus[menuIndex] addItem:[NSMenuItem separatorItem]];
+void elisa_appkit_canvas_menu_add_separator(size_t menu) {
+    NSMenu *value = (__bridge NSMenu *)(void *)menu;
+    if (![value isKindOfClass:[NSMenu class]]) return;
+    [value addItem:[NSMenuItem separatorItem]];
 }
 
 void elisa_appkit_canvas_menus_commit(void) {

@@ -30,10 +30,10 @@ extern elisa_appkit_canvas_focus() -> void
 extern elisa_appkit_canvas_set_tabbing_mode(mode: i32) -> void
 extern elisa_appkit_canvas_set_restorable(restorable: i32) -> void
 extern elisa_appkit_canvas_menus_begin() -> void
-extern elisa_appkit_canvas_menu_add(title: usize, empty_key_equivalent: usize) -> i32
-extern elisa_appkit_canvas_menu_set_windows(menu: i32) -> void
-extern elisa_appkit_canvas_menu_add_item(menu: i32, title: usize, key: usize, action: cstr, modifiers: usize) -> void
-extern elisa_appkit_canvas_menu_add_separator(menu: i32) -> void
+extern elisa_appkit_canvas_menu_add(title: usize, empty_key_equivalent: usize) -> usize
+extern elisa_appkit_canvas_menu_set_windows(menu: usize) -> void
+extern elisa_appkit_canvas_menu_add_item(menu: usize, title: usize, key: usize, action: cstr, modifiers: usize) -> void
+extern elisa_appkit_canvas_menu_add_separator(menu: usize) -> void
 extern elisa_appkit_canvas_menus_commit() -> void
 extern elisa_appkit_canvas_modifier_command() -> usize
 extern elisa_appkit_canvas_modifier_shift() -> usize
@@ -526,20 +526,20 @@ module UiAppKitCanvas:
                 menu_application_label_storage[prefix_take + index] <- application_view.data[index]
             return sview(&menu_application_label_storage[0], 0, (prefix_take + application_take).i64())
 
-        def add_menu(title: sview) -> i32 can Unsafe.PointerCast:
+        def add_menu(title: sview) -> usize can Unsafe.PointerCast:
             native_title: usize = native_string(title)
-            return -1 if native_title == 0
+            return 0 if native_title == 0
             empty: sview = sview("", 0, 0)
             native_empty: usize = native_string(empty)
             if native_empty == 0:
                 CFRelease(native_title)
-                return -1
-            menu: i32 = elisa_appkit_canvas_menu_add(native_title, native_empty)
+                return 0
+            menu: usize = elisa_appkit_canvas_menu_add(native_title, native_empty)
             CFRelease(native_empty)
             CFRelease(native_title)
             return menu
 
-        def add_menu_item(menu: i32, title: sview, action: cstr, key: i32, modifiers: usize) -> void can Unsafe.PointerCast:
+        def add_menu_item(menu: usize, title: sview, action: cstr, key: i32, modifiers: usize) -> void can Unsafe.PointerCast:
             native_title: usize = native_string(title)
             return if native_title == 0
             empty: sview = sview("", 0, 0)
@@ -559,7 +559,7 @@ module UiAppKitCanvas:
             CFRelease(native_key) if native_key != 0
             CFRelease(native_title)
 
-        def add_application_menu_item(menu: i32, prefix: cstr, prefix_length: usize,
+        def add_application_menu_item(menu: usize, prefix: cstr, prefix_length: usize,
                                       application: cstr, application_length: usize,
                                       action: cstr, key: i32, modifiers: usize) -> void can Unsafe.PointerCast:
             label: sview = application_menu_label(prefix, prefix_length, application, application_length)
@@ -592,7 +592,7 @@ module UiAppKitCanvas:
         def install_standard_menus(title: cstr, length: usize) -> void can Unsafe.PointerCast:
             elisa_appkit_canvas_menus_begin()
             application_title: sview = sview(title, 0, length.i64())
-            application: i32 = add_menu(application_title)
+            application: usize = add_menu(application_title)
             add_application_menu_item(application, "About ", 6, title, length, menu_action_name(MenuAction.About), 0, menu_modifiers(MenuModifiers.None))
             elisa_appkit_canvas_menu_add_separator(application)
             add_application_menu_item(application, "Hide ", 5, title, length, menu_action_name(MenuAction.Hide), menu_key(UiCore::Key.H), menu_modifiers(MenuModifiers.Command))
@@ -601,7 +601,7 @@ module UiAppKitCanvas:
             elisa_appkit_canvas_menu_add_separator(application)
             add_application_menu_item(application, "Quit ", 5, title, length, menu_action_name(MenuAction.Quit), menu_key(UiCore::Key.Q), menu_modifiers(MenuModifiers.Command))
 
-            edit: i32 = add_menu("Edit")
+            edit: usize = add_menu("Edit")
             add_menu_item(edit, "Undo", menu_action_name(MenuAction.Undo), menu_key(UiCore::Key.Z), menu_modifiers(MenuModifiers.Command))
             add_menu_item(edit, "Redo", menu_action_name(MenuAction.Redo), menu_key(UiCore::Key.Z), menu_modifiers(MenuModifiers.CommandShift))
             elisa_appkit_canvas_menu_add_separator(edit)
@@ -611,7 +611,7 @@ module UiAppKitCanvas:
             elisa_appkit_canvas_menu_add_separator(edit)
             add_menu_item(edit, "Select All", menu_action_name(MenuAction.SelectAll), menu_key(UiCore::Key.A), menu_modifiers(MenuModifiers.Command))
 
-            window: i32 = add_menu("Window")
+            window: usize = add_menu("Window")
             elisa_appkit_canvas_menu_set_windows(window)
             add_menu_item(window, "Minimize", menu_action_name(MenuAction.Minimize), menu_key(UiCore::Key.M), menu_modifiers(MenuModifiers.Command))
             add_menu_item(window, "Zoom", menu_action_name(MenuAction.Zoom), 0, menu_modifiers(MenuModifiers.None))
