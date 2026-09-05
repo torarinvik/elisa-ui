@@ -222,6 +222,10 @@ if awk '/- \(NSUInteger\)characterIndexForPoint:/ { inside=1 } inside && /elisa_
   echo "appkit canvas: text availability policy leaked back into Objective-C character lookup" >&2
   exit 1
 fi
+if awk '/- \(NSRect\)firstRectForCharacterRange:/ { inside=1 } inside && /elisa_appkit_canvas_accepts_text/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: text availability policy leaked back into Objective-C candidate-rect lookup" >&2
+  exit 1
+fi
 if grep -Eq 'NSMakeRange\(location,[[:space:]]*0\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: text range length policy leaked back into Objective-C" >&2
   exit 1
@@ -283,7 +287,6 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_move_event$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_button$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_leave_event$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_scroll$'
-nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_caret_width$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_button_primary$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_button_secondary$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_increment_direction$'
@@ -341,9 +344,9 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_update_marked_text$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_not_found$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_clipboard_write$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_clipboard_read$'
-nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_character_x$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_character_at_x$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_range_string$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_first_rect$'
 nm -g "$BIN" | grep -q ' U _clock_gettime_nsec_np$'
 nm -g "$BIN" | grep -q ' U _sel_registerName$'
 nm -g "$BIN" | grep -q ' U _sel_getName$'

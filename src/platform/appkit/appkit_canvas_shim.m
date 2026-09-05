@@ -52,14 +52,13 @@ extern void elisa_appkit_canvas_unmark_text(void);
 extern void elisa_appkit_canvas_text_selector_handle(size_t selector);
 extern void elisa_appkit_canvas_text_action_selector(size_t selector);
 extern int elisa_appkit_canvas_text_action_valid_selector(size_t selector);
-extern float elisa_appkit_canvas_character_x(size_t location);
-extern float elisa_appkit_canvas_caret_width(void);
-extern float elisa_appkit_canvas_caret_y(void);
-extern float elisa_appkit_canvas_caret_height(void);
 extern size_t elisa_appkit_canvas_character_at_x(float x);
 extern size_t elisa_appkit_canvas_range_location(size_t location);
 extern size_t elisa_appkit_canvas_range_length(size_t location, size_t length);
 extern size_t elisa_appkit_canvas_range_string(size_t location, size_t length);
+extern int elisa_appkit_canvas_first_rect(size_t location, size_t length,
+                                          size_t *actualLocation, size_t *actualLength,
+                                          float *x, float *y, float *width, float *height);
 extern int elisa_appkit_canvas_view_is_flipped(void);
 extern int elisa_appkit_canvas_view_accepts_first_responder(void);
 extern int elisa_appkit_canvas_view_is_accessibility_element(void);
@@ -360,15 +359,23 @@ void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) 
     return elisa_appkit_canvas_character_at_x(local.x);
 }
 - (NSRect)firstRectForCharacterRange:(NSRange)range actualRange:(NSRangePointer)actualRange {
-    if (!elisa_appkit_canvas_accepts_text() || self.window == nil) {
+    if (self.window == nil) {
         if (actualRange != NULL) *actualRange = NSMakeRange(elisa_appkit_canvas_not_found(), 0);
         return NSZeroRect;
     }
-    size_t location = elisa_appkit_canvas_range_location(range.location);
-    size_t length = elisa_appkit_canvas_range_length(range.location, range.length);
+    size_t location = 0;
+    size_t length = 0;
+    float x = 0.0f;
+    float y = 0.0f;
+    float width = 0.0f;
+    float height = 0.0f;
+    if (!elisa_appkit_canvas_first_rect(range.location, range.length,
+                                        &location, &length, &x, &y, &width, &height)) {
+        if (actualRange != NULL) *actualRange = NSMakeRange(elisa_appkit_canvas_not_found(), 0);
+        return NSZeroRect;
+    }
     if (actualRange != NULL) *actualRange = NSMakeRange(location, length);
-    NSRect local = NSMakeRect(elisa_appkit_canvas_character_x(location), elisa_appkit_canvas_caret_y(),
-                              elisa_appkit_canvas_caret_width(), elisa_appkit_canvas_caret_height());
+    NSRect local = NSMakeRect(x, y, width, height);
     NSRect inWindow = [self convertRect:local toView:nil];
     return [self.window convertRectToScreen:inWindow];
 }

@@ -361,6 +361,18 @@ size_t elisa_appkit_canvas_range_length(size_t location, size_t length) {
     size_t remaining = [NSString stringWithUTF8String:test_text].length - safeLocation;
     return MIN(length, remaining);
 }
+int elisa_appkit_canvas_first_rect(size_t location, size_t length,
+                                   size_t *actualLocation, size_t *actualLength,
+                                   float *x, float *y, float *width, float *height) {
+    if (!test_text_focused) return 0;
+    if (actualLocation != NULL) *actualLocation = elisa_appkit_canvas_range_location(location);
+    if (actualLength != NULL) *actualLength = elisa_appkit_canvas_range_length(location, length);
+    if (x != NULL) *x = elisa_appkit_canvas_character_x(actualLocation == NULL ? location : *actualLocation);
+    if (y != NULL) *y = elisa_appkit_canvas_caret_y();
+    if (width != NULL) *width = elisa_appkit_canvas_caret_width();
+    if (height != NULL) *height = elisa_appkit_canvas_caret_height();
+    return 1;
+}
 size_t elisa_appkit_canvas_range_string(size_t location, size_t length) {
     if (!test_allows_readback) return 0;
     NSString *value = [NSString stringWithUTF8String:test_text];
@@ -552,6 +564,12 @@ int main(void) {
         test_text_focused = 0;
         if (require([elisa_appkit_canvas_view(opened) characterIndexForPoint:NSMakePoint(40, 20)] == NSNotFound,
                     @"unfocused character lookup did not stay in Elisa policy")) return 1;
+        test_text_focused = 1;
+        actualRange = NSMakeRange(NSNotFound, 0);
+        test_text_focused = 0;
+        if (require(NSEqualRects([elisa_appkit_canvas_view(opened) firstRectForCharacterRange:NSMakeRange(0, 1) actualRange:&actualRange], NSZeroRect) &&
+                        NSEqualRanges(actualRange, NSMakeRange(NSNotFound, 0)),
+                    @"unfocused candidate-rect lookup did not stay in Elisa policy")) return 1;
         test_text_focused = 1;
         strcpy(test_text, "secret");
         test_selection_start = 0;
