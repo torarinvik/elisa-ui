@@ -82,12 +82,17 @@ module UiVirtualList:
             layout: Metrics = metrics(item_extent, spacing)
             offset: f32 = UiCore::nonnegative_extent(scroll_offset)
             viewport: f32 = UiCore::nonnegative_extent(viewport_extent)
-            first: mutable i32 = (offset / layout.stride).i32()
-            first <- count - 1 if first >= count
+            stride: f64 = layout.item_extent.f64() + layout.spacing.f64()
+            first_ratio: f64 = offset.f64() / stride
+            first: mutable i32 = count - 1
+            first <- first_ratio.i32() if first_ratio < count.f64()
             budget: mutable i32 = max_visible if max_visible > 0 else 1
             budget <- count - first if budget > count - first
-            # Truncation is safe after the nonnegative normalization above.
-            finish: mutable i32 = ((offset + viewport) / layout.stride).i32() + 1
+            # Bound ratios before narrowing to i32; finite f32 dimensions can
+            # still exceed the integer range or overflow a f32 sum.
+            finish_ratio: f64 = (offset.f64() + viewport.f64()) / stride
+            finish: mutable i32 = count
+            finish <- finish_ratio.i32() + 1 if finish_ratio < count.f64()
             finish <- first + budget if finish > first + budget
             finish <- count if finish > count
             finish <- first + 1 if finish <= first
