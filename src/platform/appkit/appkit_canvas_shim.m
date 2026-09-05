@@ -211,9 +211,7 @@ void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) 
 - (void)drawRect:(NSRect)dirtyRect {
     (void)dirtyRect;
     CGContextRef context = [[NSGraphicsContext currentContext] CGContext];
-    CGContextSaveGState(context);
     elisa_appkit_canvas_frame((size_t)context);
-    CGContextRestoreGState(context);
 }
 - (void)setFrameSize:(NSSize)size {
     [super setFrameSize:size];

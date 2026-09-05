@@ -29,6 +29,10 @@ if grep -Eq 'elisa_appkit_canvas_(clear|rect|circle|triangle|line|render_options
   echo "appkit canvas: CoreGraphics path rendering leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'CGContext(Save|Restore)GState' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: frame graphics-state lifetime leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'elisa_appkit_canvas_text(_width)?\b' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: CoreText text rendering leaked back into Objective-C" >&2
   exit 1

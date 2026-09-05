@@ -1153,6 +1153,10 @@ module UiAppKitCanvas:
 # C callbacks from ElisaCanvasView. Top-level because the Objective-C ABI names them.
 def appkit_canvas_frame_callback(context: usize) -> void:
     can Ui.Draw, Ui.Text, Unsafe.PointerCast:
+        # Keep the AppKit graphics context balanced around the entire retained
+        # frame. The native view only supplies the context; frame-state policy
+        # and restoration now live with Elisa's painter replay.
+        CGContextSaveGState(context)
         UiAppKitCanvas::begin_native_frame(context)
         UiCore::set_frame_time(UiAppKitCanvas::monotonic_time())
         CGContextSetShouldAntialias(context, true)
@@ -1163,6 +1167,7 @@ def appkit_canvas_frame_callback(context: usize) -> void:
         UiPaint::replay[UiAppKitCanvas::AppKitPainter]()
         UiAppKitCanvas::end_native_frame()
         UiAppKitCanvas::schedule_next_frame(UiCore::frame_delay())
+        CGContextRestoreGState(context)
 
 def appkit_canvas_resize_callback(width: f32, height: f32) -> void:
     return if not UiAppKitCanvas::canvas_initialized
