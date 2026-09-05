@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `ffe5fb0` on branch `work` |
+| elisa-ui revision | `f8a0b56` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `1a44c1d1`; SHA-256 `a9573ad3779ae57f9daf68f79c53761c5ec54d0045a11c1387071ba0562678bc` |
@@ -228,8 +228,9 @@ separate host-enforced security boundary.
   coverage lives in `test/text_input_test.elisa`.
 - `UiIdentity` owns bounded keyed generation transactions for dynamic lists and
   forms, while `UiTheme`, `UiLocalization`, and `UiValidation` keep appearance,
-  RTL/plural policy, and revision-safe asynchronous field state in shared Elisa
-  modules. Each is opt-in and covered by its focused headless test.
+  RTL/plural policy, active-locale revision/invalidation, and revision-safe
+  asynchronous field state in shared Elisa modules. Each is opt-in and covered
+  by its focused headless test.
 - `UiInspector` is a read-only, allocation-free diagnostic projection of the
   retained tree and semantic buffer. It reports shared lifecycle phase,
   generation, surface/input/render/focus predicates, deferred layout/frame-
