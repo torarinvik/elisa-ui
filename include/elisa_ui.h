@@ -71,7 +71,8 @@ typedef struct {
 void elisa_ui_dispatch_event(int32_t kind, float x, float y,
                              float dx, float dy, int32_t code);
 /* Deliver committed UTF-8 text. The pointer is borrowed for the duration of
- * the call; a null pointer (with any length) is ignored. */
+ * the call; a null pointer or a length that cannot fit Elisa's signed view
+ * extent is ignored. */
 void elisa_ui_dispatch_text_input(const char *text, size_t length);
 
 void  elisa_ui_set_viewport(float width, float height);

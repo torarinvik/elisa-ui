@@ -44,7 +44,12 @@ module UiCapi:
             # constructing a view that application code could dereference.
             return if length == 0
             if text is value:
-                app_text_input(sview(value, 0, length.i64()))
+                # `sview` stores its extent as i64. Reject a size_t value that
+                # would wrap negative during the ABI conversion instead of
+                # handing application code an invalid view.
+                safe_length: i64 = length.i64()
+                return if safe_length < 0
+                app_text_input(sview(value, 0, safe_length))
 
 # The C entry points. Top-level by name, each one a single call.
 def elisa_ui_dispatch_event(kind: i32, x: f32, y: f32, dx: f32, dy: f32, code: i32) -> void:

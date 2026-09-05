@@ -65,6 +65,8 @@ int main(void) {
     if (text_events != 1) { puts("UTF-8 text did not survive"); failures++; }
     elisa_ui_dispatch_text_input(NULL, 4);
     if (text_events != 1) { puts("null text pointer was not ignored"); failures++; }
+    elisa_ui_dispatch_text_input("x", SIZE_MAX);
+    if (text_events != 1) { puts("oversized text length was not ignored"); failures++; }
 
     /* An ordinal the library does not model is NONE, not a trap. */
     elisa_ui_dispatch_event(99, 0.0f, 0.0f, 0.0f, 0.0f, 0);
