@@ -69,6 +69,7 @@ extern size_t elisa_appkit_canvas_tracking_options(void);
 @class ElisaCanvasView;
 @class ElisaAccessibilityElement;
 static NSString *elisa_appkit_canvas_string(size_t handle);
+static NSNumber *elisa_appkit_canvas_number(size_t handle);
 
 // Cursor objects are Cocoa singletons. Return opaque, non-owning pointers so
 // Elisa can select the native object while this shim only installs it.
@@ -113,7 +114,10 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
         if ([value isKindOfClass:[NSNumber class]] && index != elisa_appkit_canvas_not_found()) {
             float normalized = 0.0f;
             if (elisa_appkit_canvas_accessibility_set_numeric_value(index, [(NSNumber *)value floatValue], &normalized) != 0) {
-                [super setAccessibilityValue:@(normalized)];
+                size_t native = elisa_appkit_canvas_accessibility_float_value(normalized);
+                NSNumber *normalizedValue = elisa_appkit_canvas_number(native);
+                if (normalizedValue != nil) [super setAccessibilityValue:normalizedValue];
+                if (native != 0) CFRelease((CFTypeRef)(void *)native);
             }
         }
         return;

@@ -161,11 +161,12 @@ tooltip and cursor tokens computed by Elisa from the same metadata. Tooltip
 registrations are rebuilt only when Elisa's semantic layout diff requires it,
 so stable frames do not clear and re-add every native rectangle. Value shape
 (boolean, range, text, or empty) is selected in Elisa and sent through typed FFI
-setters. Boolean and range values are materialized as retained `CFNumber`
-objects by Elisa through CoreFoundation FFI; the native bridge only validates,
-assigns and releases those typed objects. Tooltip rectangles receive the node
-frame directly when a semantic layout rebuild is required; the native element
-does not cache a second frame or cursor identity. Elisa also
+setters. Boolean and range values, including normalized values accepted from
+assistive slider writes, are materialized as retained `CFNumber` objects by
+Elisa through CoreFoundation FFI; the native bridge only validates, assigns and
+releases those typed objects. Tooltip rectangles receive the node frame
+directly when a semantic layout rebuild is required; the native element does
+not cache a second frame or cursor identity. Elisa also
 diffs semantic state between frames;
 AppKit receives explicit value, focus, text-selection and layout notification
 bits instead of inferring framework behavior from native objects. Text changes
