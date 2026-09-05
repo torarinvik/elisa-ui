@@ -179,9 +179,11 @@ so stable frames do not clear and re-add every native rectangle. Value shape
 setters. Boolean and range values, including normalized values accepted from
 assistive slider writes, are materialized as retained `CFNumber` objects by
 Elisa through CoreFoundation FFI; the native bridge only validates and assigns
-those typed objects. Elisa releases each temporary boxed value after the typed
-setter returns, so the native accessibility layer has no value-allocation or
-ownership branch. Tooltip rectangles receive the node frame
+those typed objects. Elisa releases each frame-sync temporary boxed value after
+the typed setter returns, and the writable-slider callback returns its own
+retained normalized number for Cocoa to mirror and release, so the native
+accessibility layer has no value-allocation or policy branch. Tooltip rectangles
+receive the node frame
 directly when a semantic layout rebuild is required; the native element does
 not cache a second frame or cursor identity. Elisa also
 diffs semantic state between frames;

@@ -75,17 +75,18 @@ def appkit_flat_accessibility_adjust_handle(handle: usize, direction: i32) -> i3
     return 0 if index == UiAppKitCanvas::not_found()
     return appkit_flat_accessibility_adjust(index, direction)
 
-def appkit_flat_accessibility_set_numeric_value(index: usize, value: f32, normalized: mutable f32&) -> i32:
+def appkit_flat_accessibility_set_numeric_value(index: usize, value: f32) -> usize can Unsafe.PointerCast:
     accepted: bool = UiFlat::set_accessibility_value(index, value)
     return 0 if not accepted
-    normalized <- UiFlat::widget(index).value
     UiAppKitCanvas::redraw()
-    return 1
+    # The returned +1 is released by the Cocoa protocol adapter after it has
+    # mirrored the accepted normalized value into the native element.
+    return appkit_canvas_accessibility_float_value(UiFlat::widget(index).value)
 
-def appkit_flat_accessibility_set_numeric_value_handle(handle: usize, value: f32, normalized: mutable f32&) -> i32:
+def appkit_flat_accessibility_set_numeric_value_handle(handle: usize, value: f32) -> usize can Unsafe.PointerCast:
     index: usize = UiAppKitCanvas::accessibility_action_for_handle(handle)
     return 0 if index == UiAppKitCanvas::not_found()
-    return appkit_flat_accessibility_set_numeric_value(index, value, normalized)
+    return appkit_flat_accessibility_set_numeric_value(index, value)
 
 def appkit_flat_window_closed() -> void:
     UiAppKitCanvas::cancel_redraw()
@@ -325,7 +326,7 @@ def appkit_flat_attributed_substring(location: usize, length: usize,
 
 export fn elisa_appkit_canvas_accessibility_activate(handle: usize) -> i32 = appkit_flat_accessibility_activate_handle
 export fn elisa_appkit_canvas_accessibility_adjust(handle: usize, direction: i32) -> i32 = appkit_flat_accessibility_adjust_handle
-export fn elisa_appkit_canvas_accessibility_set_numeric_value(handle: usize, value: f32, normalized: mutable f32&) -> i32 = appkit_flat_accessibility_set_numeric_value_handle
+export fn elisa_appkit_canvas_accessibility_set_numeric_value(handle: usize, value: f32) -> usize = appkit_flat_accessibility_set_numeric_value_handle
 export fn elisa_appkit_canvas_window_closed() -> void = appkit_flat_window_closed
 export fn elisa_appkit_canvas_pointer_move_event(x: f32, y: f32) -> usize = appkit_flat_pointer_move_event
 export fn elisa_appkit_canvas_pointer_button(x: f32, y: f32, button: i32, down: i32, click_count: i32) -> void = appkit_flat_pointer_button

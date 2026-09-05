@@ -26,9 +26,7 @@ extern void elisa_appkit_canvas_key_up(int keyCode, size_t character);
 extern int elisa_appkit_canvas_accessibility_activate(size_t handle);
 extern int elisa_appkit_canvas_accessibility_adjust(size_t handle, int direction);
 extern size_t elisa_appkit_canvas_accessibility_tooltip_text(size_t handle);
-extern int elisa_appkit_canvas_accessibility_set_numeric_value(size_t handle, float value,
-                                                               float *normalized);
-extern size_t elisa_appkit_canvas_accessibility_float_value(float value);
+extern size_t elisa_appkit_canvas_accessibility_set_numeric_value(size_t handle, float value);
 extern int elisa_appkit_canvas_pointer_button_primary(void);
 extern int elisa_appkit_canvas_pointer_button_secondary(void);
 extern int elisa_appkit_canvas_accessibility_increment_direction(void);
@@ -103,19 +101,17 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
 }
 - (void)setAccessibilityValue:(id)value {
     // Native role/value synchronization still flows through the superclass.
-    // Ask Elisa first for writable text and numeric sliders, then mirror only
-    // the normalized value it accepted; rejected edits cannot leave a
-    // transient native value that disagrees with the custom painter.
+    // Ask Elisa first for writable text and numeric sliders. For a slider,
+    // Elisa returns a retained NSNumber containing the normalized value it
+    // accepted; rejected edits cannot leave a transient native value that
+    // disagrees with the custom painter.
     if (![value isKindOfClass:[NSString class]]) {
         if ([value isKindOfClass:[NSNumber class]]) {
-            float normalized = 0.0f;
-            if (elisa_appkit_canvas_accessibility_set_numeric_value((size_t)(__bridge void *)self,
-                                                                    [(NSNumber *)value floatValue], &normalized) != 0) {
-                size_t native = elisa_appkit_canvas_accessibility_float_value(normalized);
-                NSNumber *normalizedValue = elisa_appkit_canvas_number(native);
-                if (normalizedValue != nil) [super setAccessibilityValue:normalizedValue];
-                if (native != 0) CFRelease((CFTypeRef)(void *)native);
-            }
+            size_t native = elisa_appkit_canvas_accessibility_set_numeric_value(
+                (size_t)(__bridge void *)self, [(NSNumber *)value floatValue]);
+            NSNumber *normalizedValue = elisa_appkit_canvas_number(native);
+            if (normalizedValue != nil) [super setAccessibilityValue:normalizedValue];
+            if (native != 0) CFRelease((CFTypeRef)(void *)native);
         }
         return;
     }
