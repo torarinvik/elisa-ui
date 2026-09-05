@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `38d3a85` on branch `work` |
+| elisa-ui revision | `ee02040` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `1a44c1d1`; SHA-256 `a9573ad3779ae57f9daf68f79c53761c5ec54d0045a11c1387071ba0562678bc` |
@@ -45,7 +45,7 @@ Externally imposed symbols are kept at the edges:
 - Cocoa object/protocol/selector entry points in
   `src/platform/appkit/appkit_shim.m` and `appkit_canvas_shim.m`.
 
-The two Objective-C files total 1,280 lines, but the custom canvas shim has no
+The two Objective-C files total 1,277 lines, but the custom canvas shim has no
 framework state table, widget/layout traversal, rendering path, text policy,
 semantic diff, selector map, menu schema, clipboard policy, or headless mode.
 Those decisions are made in Elisa and cross the boundary as typed values or
