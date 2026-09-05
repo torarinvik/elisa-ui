@@ -151,6 +151,10 @@ scripts/check_wapp.sh      # inspect an existing package without recompiling
 scripts/run_tests.sh      # builds and runs test/*_test.elisa
 ```
 
+Headless interaction and frame tests can use the deterministic Elisa-side
+[`UiHarness`](docs/ui-test-harness.md), which injects time and typed events
+without opening a native surface.
+
 The `.wapp` build needs `wasm-component-ld` (ships with Rust's `wasm32-wasip2`
 target) and the `wasm-browser` CLI for the packing step; set `WASM_BROWSER_CLI`
 or run `cargo build -p wb-cli` in the WasmBrowser checkout. It finds the WIT

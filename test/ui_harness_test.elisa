@@ -1,0 +1,70 @@
+# Headless regression for deterministic clock/event injection. The harness
+# drives the ordinary app contract and the app records what it received.
+
+include "../src/test/ui_harness.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable failures: i32 = 0
+global mutable init_calls: i32 = 0
+global mutable event_calls: i32 = 0
+global mutable frame_calls: i32 = 0
+global mutable last_event_kind: i32 = -1
+global mutable observed_time: f64 = -1.0
+
+def app_init() -> void:
+    init_calls <- init_calls + 1
+
+def app_event(event: UiCore::Event) -> void:
+    event_calls <- event_calls + 1
+    last_event_kind <- UiCore::wire_kind(event).i32()
+
+def app_frame() -> void:
+    frame_calls <- frame_calls + 1
+    observed_time <- UiCore::frame_time()
+    UiCore::clear(UiCore::rgb(12, 18, 28))
+    UiCore::request_frame_after(0.20)
+    UiCore::request_frame_after(0.05)
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiHarness::start(320.0, 200.0)
+    check("harness starts the app once", init_calls == 1)
+    check("harness starts at deterministic time zero", UiHarness::time() == 0.0 and UiCore::frame_time() == 0.0)
+    check("harness stores the injected viewport", UiCore::viewport_width() == 320.0 and UiCore::viewport_height() == 200.0)
+
+    UiHarness::dispatch(UiCore::Event.FocusGained)
+    check("harness forwards typed events", event_calls == 1 and last_event_kind == UiCore::WireKind.FocusGained.i32())
+    UiHarness::resize(640.0, 480.0)
+    check("harness updates viewport before resize event", UiCore::viewport_width() == 640.0 and UiCore::viewport_height() == 480.0)
+    check("resize is delivered through app contract", event_calls == 2 and last_event_kind == UiCore::WireKind.Resize.i32())
+
+    UiHarness::set_time(1.25)
+    UiHarness::frame()
+    check("frame uses the injected absolute time", frame_calls == 1 and observed_time == 1.25)
+    check("frame emits a command without a renderer", UiHarness::command_count() == 1 and not UiHarness::command_overflowed())
+    check("frame coalesces the earliest wake", UiHarness::next_frame_delay() == 0.05)
+
+    UiHarness::advance_time(-4.0)
+    check("clock injection never moves backwards", UiHarness::time() == 1.25)
+    UiHarness::run_frames(2, 0.25)
+    check("run_frames drives the app repeatedly", frame_calls == 3)
+    check("relative clock injection is deterministic", observed_time == 1.5)
+    check("each frame starts with a fresh command batch", UiHarness::command_count() == 1)
+
+    UiHarness::focus_lost()
+    check("lifecycle helper forwards focus loss", event_calls == 3 and last_event_kind == UiCore::WireKind.FocusLost.i32())
+    UiHarness::stop()
+    UiHarness::dispatch(UiCore::Event.FocusGained)
+    UiHarness::frame()
+    check("stopped harness ignores late input and frames", event_calls == 3 and frame_calls == 3)
+
+    if failures == 0:
+        _ = puts("ui harness: all checks passed")
+        return 0
+    _ = puts("ui harness: FAILURES above")
+    return 1

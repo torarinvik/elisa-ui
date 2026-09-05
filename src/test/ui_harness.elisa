@@ -1,0 +1,101 @@
+# Deterministic Elisa-side driver for interaction and frame tests.
+#
+# Native and hosted backends own their production event loops, but the retained
+# framework must also be testable without a window, clock, renderer, or host.
+# `UiHarness` supplies that small lifecycle: it injects a monotonic test clock,
+# forwards typed events through the normal application contract, and starts a
+# fresh command frame before each app render. No platform ABI is involved.
+
+include "../core/ui_core.elisa"
+
+module UiHarness:
+    private:
+        global mutable running: bool = false
+        global mutable test_time: f64 = 0.0
+
+    public:
+        # Start a deterministic application session. The application still
+        # receives its ordinary app_init callback, so this exercises the same
+        # initialization path as a native or hosted backend.
+        def start(width: f32, height: f32) -> void:
+            running <- true
+            test_time <- 0.0
+            UiCore::set_viewport(width, height)
+            UiCore::set_frame_time(test_time)
+            app_init()
+
+        def stop() -> void:
+            running <- false
+
+        def is_running() -> bool:
+            return running
+
+        # Absolute and relative clock injection both normalize hostile values
+        # through UiCore's finite helper. Time never moves backwards in this
+        # harness, matching the monotonic production clocks.
+        def set_time(seconds: f64) -> void:
+            return if not running
+            safe: f64 = UiCore::finite_or_zero_f64(seconds)
+            return if safe < test_time
+            test_time <- safe
+            UiCore::set_frame_time(test_time)
+
+        def advance_time(seconds: f64) -> void:
+            return if not running
+            safe: f64 = UiCore::finite_or_zero_f64(seconds)
+            return if safe <= 0.0
+            set_time(test_time + safe)
+
+        def time() -> f64:
+            return test_time
+
+        # Event injection goes through the public application callback instead
+        # of reaching into a widget implementation. Applications that use the
+        # flat layer can route this to UiFlat::handle in their app_event body,
+        # exactly as they do on production backends.
+        def dispatch(event: UiCore::Event) -> void:
+            return if not running
+            app_event(event)
+
+        def resize(width: f32, height: f32) -> void:
+            return if not running
+            UiCore::set_viewport(width, height)
+            dispatch(UiCore::Event.Resize(size: UiCore::Size(width, height)))
+
+        def focus_lost() -> void:
+            dispatch(UiCore::Event.FocusLost)
+
+        def focus_gained() -> void:
+            dispatch(UiCore::Event.FocusGained)
+
+        # Render one deterministic frame. begin_frame clears the retained
+        # command/semantic batches and the app then follows its normal frame
+        # contract; no painter or native surface is needed for assertions.
+        def frame() -> void:
+            return if not running
+            UiCore::set_frame_time(test_time)
+            UiCore::begin_frame()
+            app_frame()
+
+        def run_frames(count: usize, delta: f64) -> void:
+            return if not running
+            index: mutable usize = 0
+            while index < count |index|:
+                frame()
+                advance_time(delta)
+                index <- index + 1
+
+        def command_count() -> usize:
+            return UiCore::command_count()
+
+        def command_overflowed() -> bool:
+            return UiCore::command_overflowed()
+
+        def semantic_count() -> usize:
+            return UiCore::accessibility_count()
+
+        def semantic_overflowed() -> bool:
+            return UiCore::accessibility_overflowed()
+
+        def next_frame_delay() -> f32:
+            return UiCore::frame_delay()
