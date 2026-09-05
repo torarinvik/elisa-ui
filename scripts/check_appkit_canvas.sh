@@ -444,11 +444,9 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_schedule_redraw$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_cancel_redraw$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_activate$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_center$'
-# The live Elisa path calls UiAppKitCanvas::render_headless directly. Both
-# exported renderer symbols may be link-dead-stripped from this executable
-# (the compatibility trampoline is exercised by the standalone bridge test),
-# so verify the source-level ownership instead of requiring either symbol in
-# the final image.
+# The live Elisa path calls UiAppKitCanvas::render_headless directly. The
+# exported renderer symbol may be link-dead-stripped from this executable, so
+# verify the source-level ownership instead of requiring it in the final image.
 rg -q 'UiAppKitCanvas::render_headless\(canvas_window' \
   "$ROOT"/src/platform/appkit/ui_appkit_canvas_*.elisa
 # Do not use grep -q with pipefail here: these symbols can occur early enough

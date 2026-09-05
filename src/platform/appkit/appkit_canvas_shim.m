@@ -667,26 +667,6 @@ int elisa_appkit_canvas_present(size_t windowHandle) {
 void elisa_appkit_canvas_activate(void) {
     [NSApp activateIgnoringOtherApps:YES];
 }
-// Snapshot rendering and encoding live in Elisa through CoreGraphics/ImageIO
-// FFI. Keep this ABI entry point as a tiny compatibility trampoline for native
-// callers and bridge tests; Objective-C no longer constructs or encodes the
-// bitmap itself.
-int elisa_appkit_canvas_present_headless(size_t windowHandle, size_t color_space, int image_type,
-                                         size_t snapshot, int pixels_width,
-                                         int pixels_height, int bits_per_sample,
-                                         int samples_per_pixel, int has_alpha,
-                                         int bitmap_format) {
-    // These legacy arguments are retained for ABI compatibility. Elisa owns
-    // the validated pixel format and snapshot type now.
-    (void)color_space;
-    (void)image_type;
-    (void)bits_per_sample;
-    (void)samples_per_pixel;
-    (void)has_alpha;
-    (void)bitmap_format;
-    return elisa_appkit_canvas_render_headless(windowHandle, snapshot,
-                                               pixels_width, pixels_height);
-}
 void elisa_appkit_canvas_run(void) {
     [NSApp run];
 }

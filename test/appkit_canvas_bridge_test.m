@@ -448,9 +448,7 @@ static int require(BOOL condition, NSString *message) {
 int main(void) {
     @autoreleasepool {
         if (require(!elisa_appkit_canvas_present(0), @"present succeeded before opening a canvas")) return 1;
-        if (require(!elisa_appkit_canvas_present_headless(
-                         0,
-                         0, 0, 0, 200, 100, 0, 0, 0, 0),
+        if (require(!elisa_appkit_canvas_render_headless(0, 0, 200, 100),
                     @"headless present succeeded before opening a canvas")) return 1;
         NSObject *invalidTitle = [NSObject new];
         if (require(!elisa_appkit_canvas_open((size_t)(__bridge void *)invalidTitle,
@@ -497,9 +495,7 @@ int main(void) {
     if (require(!elisa_appkit_canvas_schedule_redraw(
                     0.1f, (size_t)(__bridge void *)invalidNativeString, opened),
                 @"invalid run-loop mode was accepted")) return 1;
-    if (require(!elisa_appkit_canvas_present_headless(
-                    opened,
-                    0, 0, 0, 0, 100, 0, 0, 0, 0),
+    if (require(!elisa_appkit_canvas_render_headless(opened, 0, 0, 100),
                 @"invalid bitmap extent was accepted")) return 1;
     if (require(elisa_appkit_canvas_accessibility_add(
                     opened, 0, 1, 0, (size_t)(__bridge void *)NSAccessibilityButtonRole, 0, 0,
@@ -532,9 +528,7 @@ int main(void) {
         if (require([[applicationSubmenu itemAtIndex:2].keyEquivalent isEqualToString:@"q"], @"menu key equivalent mapped incorrectly")) return 1;
         if (require([applicationSubmenu itemAtIndex:2].keyEquivalentModifierMask == NSEventModifierFlagCommand, @"native menu modifier mask was not preserved")) return 1;
         if (require(NSApp.windowsMenu == [NSApp.mainMenu itemAtIndex:1].submenu, @"window menu designation failed")) return 1;
-        if (require(elisa_appkit_canvas_present_headless(
-                        opened,
-                        0, 0, 0, 200, 100, 0, 0, 0, 0), @"off-screen presentation failed")) return 1;
+        if (require(elisa_appkit_canvas_render_headless(opened, 0, 200, 100), @"off-screen presentation failed")) return 1;
         if (require(test_frame_count > 0, @"off-screen frame did not draw")) return 1;
         ElisaCanvasDelegate *delegate = (__bridge ElisaCanvasDelegate *)(void *)delegateHandle;
         NSNotification *focusNotification = [NSNotification notificationWithName:NSWindowDidResignKeyNotification object:elisa_appkit_canvas_window(opened)];
@@ -542,10 +536,8 @@ int main(void) {
         if (require(test_window_focused == 0, @"window focus loss did not reach Elisa")) return 1;
         [delegate windowDidBecomeKey:focusNotification];
         if (require(test_window_focused == 1, @"window focus gain did not reach Elisa")) return 1;
-        if (require(!elisa_appkit_canvas_present_headless(
-                         opened,
-                         0, 0,
-                         (size_t)(__bridge void *)@"/elisa-ui-missing-directory/frame.png", 200, 100, 8, 4, 1, 0), @"snapshot failure did not cross the FFI boundary")) return 1;
+        if (require(!elisa_appkit_canvas_render_headless(
+                         opened, (size_t)(__bridge void *)@"/elisa-ui-missing-directory/frame.png", 200, 100), @"snapshot failure did not cross the FFI boundary")) return 1;
         NSEvent *move = [NSEvent mouseEventWithType:NSEventTypeMouseMoved
             location:NSMakePoint(40, 20) modifierFlags:0 timestamp:0
             windowNumber:[elisa_appkit_canvas_window(opened) windowNumber] context:nil eventNumber:0
@@ -723,9 +715,7 @@ int main(void) {
         test_slider_value = 0.75f;
         test_text_focused = 0;
         test_selection_start = test_selection_end = 0;
-        if (require(elisa_appkit_canvas_present_headless(
-                        opened,
-                        0, 0, 0, 200, 100, 0, 0, 0, 0), @"second off-screen presentation failed")) return 1;
+        if (require(elisa_appkit_canvas_render_headless(opened, 0, 200, 100), @"second off-screen presentation failed")) return 1;
         NSArray *secondChildren = [elisa_appkit_canvas_view(opened) accessibilityChildren];
         ElisaAccessibilityElement *second = secondChildren[0];
         ElisaAccessibilityElement *secondTextField = secondChildren[1];
