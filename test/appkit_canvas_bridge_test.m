@@ -24,6 +24,7 @@ static int test_text_focused = 1;
 static int test_allow_text_mutation = 1;
 static int test_tooltip_calls;
 static size_t test_timer_fired_window;
+static size_t test_closed_window;
 static int test_invalid_attributed_substring;
 static int test_invalid_attributed_substring_released;
 static size_t test_accessibility_handles[3];
@@ -197,7 +198,7 @@ size_t elisa_appkit_canvas_accessibility_set_value(size_t handle, size_t value) 
     }
     return 0;
 }
-void elisa_appkit_canvas_window_closed(void) {}
+void elisa_appkit_canvas_window_closed(size_t windowHandle) { test_closed_window = windowHandle; }
 void elisa_appkit_canvas_rebuild_cursor_rects(void) {}
 int elisa_appkit_canvas_view_is_flipped(void) { return 1; }
 int elisa_appkit_canvas_view_accepts_first_responder(void) { return 1; }
@@ -548,6 +549,10 @@ int main(void) {
         if (require(test_window_focused == 0, @"window focus loss did not reach Elisa")) return 1;
         [delegate windowDidBecomeKey:focusNotification];
         if (require(test_window_focused == 1, @"window focus gain did not reach Elisa")) return 1;
+        test_closed_window = 0;
+        NSNotification *closeNotification = [NSNotification notificationWithName:NSWindowWillCloseNotification object:elisa_appkit_canvas_window(opened)];
+        [delegate windowWillClose:closeNotification];
+        if (require(test_closed_window == opened, @"window close identity did not reach Elisa")) return 1;
         if (require(!elisa_appkit_canvas_render_headless(
                          opened, (size_t)(__bridge void *)@"/elisa-ui-missing-directory/frame.png", 200, 100), @"snapshot failure did not cross the FFI boundary")) return 1;
         NSEvent *move = [NSEvent mouseEventWithType:NSEventTypeMouseMoved

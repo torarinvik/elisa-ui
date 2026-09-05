@@ -15,7 +15,7 @@ extern void elisa_appkit_canvas_pointer_scroll(float x, float y, float dx, float
 extern void elisa_appkit_canvas_raw_flags(int keyCode, size_t modifiers);
 extern void elisa_appkit_canvas_focus_changed(int focused);
 extern void elisa_appkit_canvas_accessibility_environment_changed(void);
-extern void elisa_appkit_canvas_window_closed(void);
+extern void elisa_appkit_canvas_window_closed(size_t windowHandle);
 extern void elisa_appkit_canvas_rebuild_cursor_rects(void);
 extern int elisa_appkit_canvas_render_headless(size_t windowHandle,
                                                size_t snapshot,
@@ -198,8 +198,12 @@ static NSArray *elisa_appkit_canvas_event_array(size_t handle) {
 @end
 @implementation ElisaCanvasDelegate
 - (void)windowWillClose:(NSNotification *)notification {
-    (void)notification;
-    elisa_appkit_canvas_window_closed();
+    id object = notification.object;
+    NSWindow *window = [object isKindOfClass:[NSWindow class]] ? (NSWindow *)object : nil;
+    // Pass the native identity through unchanged. Elisa decides whether this
+    // close belongs to the live session; a late notification from an older
+    // window must not stop a replacement session.
+    elisa_appkit_canvas_window_closed(window == nil ? 0 : (size_t)(__bridge void *)window);
 }
 - (void)windowDidResignKey:(NSNotification *)notification {
     (void)notification;
