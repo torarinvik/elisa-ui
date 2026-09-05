@@ -299,10 +299,9 @@ module UiSdl3:
                 out_event <- (UiCore::KeyEvent.Up(code: UiCore::Key(key_from_sdl(event_keycode()))))
             return true
 
-        # Drain after polling a burst so SDL's native queue cannot re-enter the
-        # application callback while its event memory is still being decoded.
-        # Ordering remains FIFO and the queue's sticky overflow fact remains
-        # available to inspectors if a hostile burst exceeds the bound.
+        # Drain each decoded event before polling borrowed text from SDL. This
+        # preserves focus/key/text order and prevents native bursts overflowing
+        # the smaller framework queue.
         def dispatch_queued_events(running: mutable bool&) -> void:
             event: mutable UiCore::Event = UiCore::Event.None
             while UiEvents::dequeue(event):
@@ -368,7 +367,9 @@ module UiSdl3:
                         text_editing(event_text_pointer(), event_text_editing_start(), event_text_editing_length())
                     else:
                         _ = UiEvents::enqueue(event)
-                dispatch_queued_events(&running)
+                    dispatch_queued_events(&running)
+                    break if not running
+                break if not running
                 # Same retained contract as the component backend: the app
                 # fills a command batch, then the backend consumes it. SDL3
                 # replays immediately.
