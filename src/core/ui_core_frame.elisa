@@ -14,16 +14,22 @@ extend UiCore:
         # frame-local Paint/Semantics/Animation bits while durable Layout and
         # Resources state survives until the owner resolves it.
         def invalidate(reason: Invalidation) -> void:
-            bits: i32 = reason.i32()
+            raw: i32 = reason.i32()
+            return if raw < Invalidation.None.i32() or raw > Invalidation.All.i32()
+            bits: i32 = raw
             return if bits == 0
             invalidation_flags <- invalidation_flags | bits
             invalidation_sequence_state <- next_sequence(invalidation_sequence_state)
 
         def clear_invalidations(reasons: Invalidation) -> void:
-            invalidation_flags <- invalidation_flags & (~reasons.i32())
+            raw: i32 = reasons.i32()
+            return if raw < Invalidation.None.i32() or raw > Invalidation.All.i32()
+            invalidation_flags <- invalidation_flags & (~raw)
 
         def is_invalidated(reason: Invalidation) -> bool:
-            return (invalidation_flags & reason.i32()) != 0
+            raw: i32 = reason.i32()
+            return false if raw < Invalidation.None.i32() or raw > Invalidation.All.i32()
+            return (invalidation_flags & raw) != 0
 
         def invalidations() -> i32:
             return invalidation_flags
@@ -88,7 +94,7 @@ extend UiCore:
                 safe_range_maximum <- safe_range_minimum
                 range_conflict <- true
             node: AccessibilityNode = AccessibilityNode{
-                role: role, label: label, help: help, frame: safe_frame, id: id,
+                role: normalize_role(role), label: label, help: help, frame: safe_frame, id: id,
                 action: action, enabled: enabled, focused: focused,
                 selected: selected, value: safe_value, text_value: text_value,
                 selected_text: selected_text, revision: revision,
@@ -295,3 +301,6 @@ extend UiCore:
         def relationship_id(id: usize) -> usize:
             return id if id < MAX_ACCESSIBILITY_NODES
             return MAX_ACCESSIBILITY_NODES
+
+        def normalize_role(value: AccessibilityRole) -> AccessibilityRole:
+            return value if value.i32() >= AccessibilityRole.Label.i32() and value.i32() <= AccessibilityRole.Dialog.i32() else AccessibilityRole.Label
