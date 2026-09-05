@@ -50,7 +50,10 @@ extend UiFlat:
             return if text.len < 0 or not accepts_text()
             safe_text: sview = UiCore::bounded_text(text)
             index: usize = focused_widget
-            widgets[index].text_truncated <- false
+            # Preserve the fact that the caller exceeded Core's counted-text
+            # boundary even though `bounded_text` has already clipped the
+            # borrowed view before storage.
+            widgets[index].text_truncated <- text.len > UiCore::MAX_TEXT_BYTES.i64()
             start: usize = selection_start(index)
             stop: usize = selection_end(index)
             if safe_text.len == 0:
@@ -61,7 +64,7 @@ extend UiFlat:
             available: usize = TEXT_CAPACITY - 1 - remaining
             byte_limit: usize = safe_text.len if safe_text.len < available else available
             take: usize = grapheme_prefix_length(safe_text, valid_utf8_prefix(safe_text, byte_limit))
-            widgets[index].text_truncated <- take < safe_text.len
+            widgets[index].text_truncated <- true if take < safe_text.len
             return if take == 0
             history_slot: usize = begin_text_history(index)
             offset: usize = index * TEXT_CAPACITY
@@ -97,7 +100,11 @@ extend UiFlat:
             safe_text: sview = UiCore::bounded_text(text)
             byte_limit: usize = safe_text.len if safe_text.len < TEXT_CAPACITY - 1 else TEXT_CAPACITY - 1
             take: usize = grapheme_prefix_length(safe_text, valid_utf8_prefix(safe_text, byte_limit))
-            widgets[index].text_truncated <- take < safe_text.len
+            # `bounded_text` intentionally hides bytes beyond the framework
+            # limit from all later consumers. Keep a separate signal so the
+            # public diagnostic still reports that the original edit was
+            # clipped, even when the bounded prefix itself fits storage.
+            widgets[index].text_truncated <- text.len > UiCore::MAX_TEXT_BYTES.i64() or take < safe_text.len
 
             offset: usize = index * TEXT_CAPACITY
             old_length: usize = widgets[index].input_length
