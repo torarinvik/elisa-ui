@@ -1,0 +1,63 @@
+# The high-level UiFlat event router keeps resize, focus, pointer and keyboard
+# policy in Elisa. This test exercises that single entry point without a host
+# window or backend.
+
+include "../src/widgets/ui_widget.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable failures: i32 = 0
+global mutable last_click: usize = UiFlat::NONE
+
+def ui_measure_text_width(text: sview, size: f32) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size
+
+def ui_font_ascent(size: f32) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return 0
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    last_click <- widget if event == UiConst::WidgetEvent.Click.i32()
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiFlat::reset()
+    root: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 8.0, 0.0, UiCore::rgb(20, 20, 20))
+    button: usize = UiFlat::button(root, 120.0, 40.0, UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50), UiCore::rgb(60, 60, 60))
+
+    # Resize is adopted by the framework router, so hit testing immediately
+    # sees the laid-out child without an application-specific branch.
+    UiFlat::handle((UiCore::Event.Resize(size: UiCore::Size{width: 240.0, height: 120.0})))
+    check("handle lays out resize", UiFlat::widget(button).width == 224.0 and UiFlat::widget(button).height == 40.0)
+
+    UiFlat::handle((UiCore::PointerEvent.Down(at: UiCore::Vec2(20.0, 20.0), button: UiCore::PointerButton.Primary.i32())))
+    check("handle routes pointer down", UiFlat::active() == button and UiFlat::widget(button).pressed)
+    UiFlat::handle((UiCore::Event.FocusLost))
+    check("handle cancels capture on focus loss", UiFlat::active() == UiFlat::NONE and not UiFlat::widget(button).pressed)
+
+    last_click <- UiFlat::NONE
+    UiFlat::handle((UiCore::PointerEvent.Up(at: UiCore::Vec2(20.0, 20.0), button: UiCore::PointerButton.Primary.i32())))
+    check("cancelled press cannot click", last_click == UiFlat::NONE)
+
+    UiFlat::handle((UiCore::PointerEvent.Down(at: UiCore::Vec2(20.0, 20.0), button: UiCore::PointerButton.Primary.i32())))
+    UiFlat::handle((UiCore::PointerEvent.Up(at: UiCore::Vec2(20.0, 20.0), button: UiCore::PointerButton.Primary.i32())))
+    check("handle routes a complete click", last_click == button)
+    return failures.i64()

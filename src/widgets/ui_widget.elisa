@@ -2362,6 +2362,37 @@ module UiFlat:
                 _:
                     pass
 
+        # Framework-owned event router for applications that use the flat tree.
+        # Backends and app code can forward the typed stream unchanged; resize
+        # adopts the new viewport, focus loss releases transient capture, and
+        # pointer/key leaves reach the same handlers used by the low-level API.
+        # Quit and gamepad events remain application-owned and are intentionally
+        # ignored here.
+        def handle(event: UiCore::Event) -> void:
+            match event:
+                UiCore::Event.Resize(size):
+                    layout(size.width, size.height)
+                UiCore::Event.FocusGained:
+                    lifecycle(event)
+                UiCore::Event.FocusLost:
+                    lifecycle(event)
+                UiCore::PointerEvent.Move(at):
+                    pointer(event)
+                UiCore::PointerEvent.Down(at, button):
+                    pointer(event)
+                UiCore::PointerEvent.Up(at, button):
+                    pointer(event)
+                UiCore::PointerEvent.Leave:
+                    pointer(event)
+                UiCore::PointerEvent.Scroll(at, delta):
+                    pointer(event)
+                UiCore::KeyEvent.Down(code):
+                    keyboard(event)
+                UiCore::KeyEvent.Up(code):
+                    keyboard(event)
+                _:
+                    pass
+
         # One activation path for accessibility adapters and future automation.
         # It deliberately mirrors a completed pointer/keyboard click.
         def activate(index: usize) -> bool:
