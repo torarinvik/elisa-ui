@@ -1,0 +1,275 @@
+# UiFlat keyboard, accessibility, and focus interaction.
+# This file is included by ui_widget.elisa; UiFlat remains the public
+# compatibility namespace while its implementation is organized by concern.
+
+extend UiFlat:
+    public:
+        def keyboard(event: UiCore::Event) -> void:
+            mark_state_dirty()
+            match event:
+                UiCore::KeyEvent.Down(code):
+                    if code == UiCore::Key.LeftShift:
+                        left_shift_down <- true
+                        return
+                    if code == UiCore::Key.RightShift:
+                        right_shift_down <- true
+                        return
+                    if code == UiCore::Key.LeftControl:
+                        left_control_down <- true
+                        return
+                    if code == UiCore::Key.RightControl:
+                        right_control_down <- true
+                        return
+                    if code == UiCore::Key.LeftSuper:
+                        left_super_down <- true
+                        return
+                    if code == UiCore::Key.RightSuper:
+                        right_super_down <- true
+                        return
+                    if accepts_text() and (control_active() or super_active()):
+                        action: mutable i32 = 0
+                        action <- 1 if code == UiCore::Key.A
+                        action <- 2 if code == UiCore::Key.C
+                        action <- 3 if code == UiCore::Key.X
+                        action <- 4 if code == UiCore::Key.V
+                        action <- 6 if code == UiCore::Key.Z and shift_active()
+                        action <- 5 if code == UiCore::Key.Z and not shift_active()
+                        if action != 0:
+                            _ = perform_text_action(action)
+                            return
+                    if code == UiCore::Key.Tab:
+                        focus_previous() if shift_active() else focus_next()
+                        return
+                    if focused_widget < widget_count and widgets[focused_widget].kind == UiConst::WidgetKind.TextField:
+                        field: usize = focused_widget
+                        if code == UiCore::Key.Left:
+                            if not shift_active() and selection_start(field) != selection_end(field):
+                                widgets[field].caret <- selection_start(field)
+                            else:
+                                widgets[field].caret <- previous_character(field, widgets[field].caret)
+                            widgets[field].selection_anchor <- widgets[field].caret if not shift_active()
+                            restart_caret_blink()
+                            return
+                        if code == UiCore::Key.Right:
+                            if not shift_active() and selection_start(field) != selection_end(field):
+                                widgets[field].caret <- selection_end(field)
+                            else:
+                                widgets[field].caret <- next_character(field, widgets[field].caret)
+                            widgets[field].selection_anchor <- widgets[field].caret if not shift_active()
+                            restart_caret_blink()
+                            return
+                        if code == UiCore::Key.Home:
+                            widgets[field].caret <- 0
+                            widgets[field].selection_anchor <- widgets[field].caret if not shift_active()
+                            restart_caret_blink()
+                            return
+                        if code == UiCore::Key.End:
+                            widgets[field].caret <- widgets[field].input_length
+                            widgets[field].selection_anchor <- widgets[field].caret if not shift_active()
+                            restart_caret_blink()
+                            return
+                        if code == UiCore::Key.Backspace and selection_start(field) != selection_end(field):
+                            remove_text(field, selection_start(field), selection_end(field))
+                            return
+                        if code == UiCore::Key.Backspace and widgets[field].caret > 0:
+                            remove_text(field, previous_character(field, widgets[field].caret), widgets[field].caret)
+                            return
+                        if code == UiCore::Key.Delete and selection_start(field) != selection_end(field):
+                            remove_text(field, selection_start(field), selection_end(field))
+                            return
+                        if code == UiCore::Key.Delete and widgets[field].caret < widgets[field].input_length:
+                            remove_text(field, widgets[field].caret, next_character(field, widgets[field].caret))
+                            return
+                        if code == UiCore::Key.Enter:
+                            emit_widget_event(field, UiConst::WidgetEvent.Submit)
+                            return
+                    if focused_widget < widget_count and widgets[focused_widget].kind == UiConst::WidgetKind.RadioButton:
+                        direction: i32 = -1 if code == UiCore::Key.Left or code == UiCore::Key.Up else 1 if code == UiCore::Key.Right or code == UiCore::Key.Down else 0
+                        return if radio_move(focused_widget, direction)
+                    if focused_widget < widget_count and widgets[focused_widget].kind == UiConst::WidgetKind.Slider:
+                        adjust_step(focused_widget, -1) if code == UiCore::Key.Left or code == UiCore::Key.Down
+                        adjust_step(focused_widget, 1) if code == UiCore::Key.Right or code == UiCore::Key.Up
+                        adjust(focused_widget, -widgets[focused_widget].step * 10.0) if code == UiCore::Key.PageDown
+                        adjust(focused_widget, widgets[focused_widget].step * 10.0) if code == UiCore::Key.PageUp
+                        adjust(focused_widget, -1.0) if code == UiCore::Key.Home
+                        adjust(focused_widget, 1.0) if code == UiCore::Key.End
+                        return if code == UiCore::Key.Left or code == UiCore::Key.Down or code == UiCore::Key.Right or code == UiCore::Key.Up or code == UiCore::Key.PageDown or code == UiCore::Key.PageUp or code == UiCore::Key.Home or code == UiCore::Key.End
+                    return if scroll_keyboard(code)
+                    if (code == UiCore::Key.Space or code == UiCore::Key.Enter) and focused_widget < widget_count and widgets[focused_widget].kind != UiConst::WidgetKind.Slider and widgets[focused_widget].kind != UiConst::WidgetKind.TextField:
+                        return if active_key >= 0 or active_pointer_button >= 0
+                        active_widget <- focused_widget
+                        active_key <- code.i32()
+                        widgets[focused_widget].pressed <- true
+                UiCore::KeyEvent.Up(code):
+                    if code == UiCore::Key.LeftShift:
+                        left_shift_down <- false
+                        return
+                    if code == UiCore::Key.RightShift:
+                        right_shift_down <- false
+                        return
+                    if code == UiCore::Key.LeftControl:
+                        left_control_down <- false
+                        return
+                    if code == UiCore::Key.RightControl:
+                        right_control_down <- false
+                        return
+                    if code == UiCore::Key.LeftSuper:
+                        left_super_down <- false
+                        return
+                    if code == UiCore::Key.RightSuper:
+                        right_super_down <- false
+                        return
+                    if (code == UiCore::Key.Space or code == UiCore::Key.Enter) and focused_widget < widget_count and widgets[focused_widget].kind != UiConst::WidgetKind.Slider and widgets[focused_widget].kind != UiConst::WidgetKind.TextField:
+                        return if active_key != code.i32() or active_widget >= widget_count
+                        activated: usize = active_widget
+                        active_widget <- NONE
+                        active_key <- -1
+                        widgets[activated].pressed <- false
+                        dispatch_activation(activated) if activated == focused_widget and effectively_enabled(activated)
+                _:
+                    pass
+
+        # Framework-owned event router for applications that use the flat tree.
+        # Backends and app code can forward the typed stream unchanged; resize
+        # adopts the new viewport, focus loss releases transient capture, and
+        # pointer/key leaves reach the same handlers used by the low-level API.
+        # Quit and gamepad events remain application-owned and are intentionally
+        # ignored here.
+        def handle(event: UiCore::Event) -> void:
+            match event:
+                UiCore::Event.Resize(size):
+                    layout(size.width, size.height)
+                UiCore::Event.FocusGained:
+                    lifecycle(event)
+                UiCore::Event.FocusLost:
+                    lifecycle(event)
+                UiCore::PointerEvent.Move(at):
+                    pointer(event)
+                UiCore::PointerEvent.Down(at, button):
+                    pointer(event)
+                UiCore::PointerEvent.Up(at, button):
+                    pointer(event)
+                UiCore::PointerEvent.Leave:
+                    pointer(event)
+                UiCore::PointerEvent.Scroll(at, delta):
+                    pointer(event)
+                UiCore::KeyEvent.Down(code):
+                    keyboard(event)
+                UiCore::KeyEvent.Up(code):
+                    keyboard(event)
+                _:
+                    pass
+
+        # One activation path for accessibility adapters and future automation.
+        # It deliberately mirrors a completed pointer/keyboard click.
+        def activate(index: usize) -> bool:
+            return false if index >= widget_count or not widgets[index].interactive or not effectively_enabled(index) or not effectively_visible(index) or widgets[index].kind == UiConst::WidgetKind.Slider or widgets[index].kind == UiConst::WidgetKind.TextField
+            release_active_press()
+            focus(index)
+            callback_epoch: usize = widget_epoch
+            dispatch_activation(index)
+            return widget_epoch == callback_epoch
+
+        # Accessibility adapters use the same normalized adjustment path as
+        # arrow keys, so assistive actions update app state identically.
+        def adjust(index: usize, delta: f32) -> bool:
+            return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider or not effectively_enabled(index) or not effectively_visible(index)
+            before: f32 = widgets[index].value
+            set_value(index, before + delta)
+            return false if widgets[index].value == before
+            focus(index)
+            callback_epoch: usize = widget_epoch
+            emit_widget_event(index, UiConst::WidgetEvent.Change)
+            return widget_epoch == callback_epoch
+
+        # Assistive clients may assign a slider value directly. Keep that
+        # mutation on the same normalized, visibility- and enabled-checked path
+        # as pointer and keyboard adjustments, and report whether the request
+        # was accepted so native accessibility state can mirror the result.
+        def set_accessibility_value(index: usize, value: f32) -> bool:
+            return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider or not effectively_enabled(index) or not effectively_visible(index)
+            before: f32 = widgets[index].value
+            set_value(index, value)
+            return false if widgets[index].value == before
+            focus(index)
+            callback_epoch: usize = widget_epoch
+            emit_widget_event(index, UiConst::WidgetEvent.Change)
+            return widget_epoch == callback_epoch
+
+        def adjust_step(index: usize, direction: i32) -> bool:
+            return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider or direction == 0
+            delta: f32 = widgets[index].step if direction > 0 else -widgets[index].step
+            return adjust(index, delta)
+
+        # Arrow navigation in a radio group follows the same deterministic
+        # focus order as Tab. Disabled and hidden peers are skipped, and the
+        # search wraps so a group remains navigable from either end.
+        def radio_move(index: usize, direction: i32) -> bool:
+            return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.RadioButton or direction == 0
+            group: usize = widgets[index].selection_group
+            current_order: usize = widgets[index].focus_order
+            candidate: mutable usize = NONE
+            if direction > 0:
+                for scan in 0..<widget_count:
+                    eligible: bool = scan != index and widgets[scan].kind == UiConst::WidgetKind.RadioButton and widgets[scan].selection_group == group and effectively_enabled(scan) and effectively_visible(scan)
+                    follows: bool = widgets[scan].focus_order > current_order or (widgets[scan].focus_order == current_order and scan > index)
+                    if eligible and follows:
+                        candidate <- scan if candidate == NONE or widgets[scan].focus_order < widgets[candidate].focus_order or (widgets[scan].focus_order == widgets[candidate].focus_order and scan < candidate) else candidate
+                if candidate == NONE:
+                    for scan in 0..<widget_count:
+                        eligible: bool = scan != index and widgets[scan].kind == UiConst::WidgetKind.RadioButton and widgets[scan].selection_group == group and effectively_enabled(scan) and effectively_visible(scan)
+                        if eligible:
+                            candidate <- scan if candidate == NONE or widgets[scan].focus_order < widgets[candidate].focus_order or (widgets[scan].focus_order == widgets[candidate].focus_order and scan < candidate) else candidate
+            else:
+                for scan in 0..<widget_count:
+                    eligible: bool = scan != index and widgets[scan].kind == UiConst::WidgetKind.RadioButton and widgets[scan].selection_group == group and effectively_enabled(scan) and effectively_visible(scan)
+                    precedes: bool = widgets[scan].focus_order < current_order or (widgets[scan].focus_order == current_order and scan < index)
+                    if eligible and precedes:
+                        candidate <- scan if candidate == NONE or widgets[scan].focus_order > widgets[candidate].focus_order or (widgets[scan].focus_order == widgets[candidate].focus_order and scan > candidate) else candidate
+                if candidate == NONE:
+                    for scan in 0..<widget_count:
+                        eligible: bool = scan != index and widgets[scan].kind == UiConst::WidgetKind.RadioButton and widgets[scan].selection_group == group and effectively_enabled(scan) and effectively_visible(scan)
+                        if eligible:
+                            candidate <- scan if candidate == NONE or widgets[scan].focus_order > widgets[candidate].focus_order or (widgets[scan].focus_order == widgets[candidate].focus_order and scan > candidate) else candidate
+            return false if candidate == NONE
+            set_selected(candidate, true)
+            focus(candidate)
+            callback_epoch: usize = widget_epoch
+            emit_widget_event(candidate, UiConst::WidgetEvent.Change)
+            return widget_epoch == callback_epoch
+
+        # Keyboard scrolling follows focus into the nearest scroll ancestor,
+        # so a focused child remains usable even when its viewport is clipped.
+        # The offset setter owns clamping and re-layout; this helper only maps
+        # desktop navigation keys to a retained viewport delta.
+        const KEYBOARD_SCROLL_STEP: f32 = 40.0
+
+        def focused_scroll_target() -> usize:
+            return NONE if focused_widget >= widget_count
+            cursor: mutable usize = focused_widget
+            steps: mutable usize = 0
+            while cursor < widget_count |cursor, steps|:
+                return NONE if steps >= MAX_TRAVERSAL_DEPTH
+                steps <- steps + 1
+                return cursor if widgets[cursor].kind == UiConst::WidgetKind.Scroll
+                cursor <- widgets[cursor].parent
+            return NONE
+
+        def scroll_keyboard(code: UiCore::Key) -> bool:
+            target: usize = focused_scroll_target()
+            return false if target == NONE or not effectively_enabled(target) or not effectively_visible(target)
+            is_row: bool = widgets[target].axis == UiConst::Axis.Row
+            forward: bool = code == UiCore::Key.PageDown or (is_row and code == UiCore::Key.Right) or (not is_row and code == UiCore::Key.Down)
+            backward: bool = code == UiCore::Key.PageUp or (is_row and code == UiCore::Key.Left) or (not is_row and code == UiCore::Key.Up)
+            if code == UiCore::Key.Home:
+                return set_scroll_offset(target, 0.0)
+            if code == UiCore::Key.End:
+                return set_scroll_offset(target, scroll_limit(target))
+            return false if not forward and not backward
+            viewport: f32 = widgets[target].width if is_row else widgets[target].height
+            page: bool = code == UiCore::Key.PageDown or code == UiCore::Key.PageUp
+            amount: mutable f32 = viewport if page else KEYBOARD_SCROLL_STEP
+            amount <- -amount if backward
+            return set_scroll_offset(target, widgets[target].scroll_offset + amount)
+
+

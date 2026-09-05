@@ -1,0 +1,165 @@
+# UiFlat scrollbar geometry and paint ordering.
+# This file is included by ui_widget.elisa; UiFlat remains the public
+# compatibility namespace while its implementation is organized by concern.
+
+extend UiFlat:
+    private:
+        # Scroll indicators are drawn by the flat painter itself, so a canvas
+        # backend does not need an NSScroller or a browser scrollbar. The thumb
+        # length reflects the viewport/content ratio and its travel follows the
+        # same clamped offset used by wheel input.
+        def paint_scrollbar(index: usize) -> void:
+            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Scroll
+            is_row: bool = widgets[index].axis == UiConst::Axis.Row
+            viewport: f32 = widgets[index].width if is_row else widgets[index].height
+            content: f32 = widgets[index].scroll_content_width if is_row else widgets[index].scroll_content_height
+            return if content <= viewport or viewport <= 0.0
+            cross_extent: f32 = widgets[index].height if is_row else widgets[index].width
+            inset: f32 = clamped_inset(current_theme.scrollbar_inset, cross_extent)
+            bar: mutable f32 = current_theme.scrollbar_width
+            bar <- cross_extent - inset * 2.0 if bar > cross_extent - inset * 2.0 else bar
+            return if bar <= 0.0
+            track_extent: f32 = viewport - inset * 2.0
+            return if track_extent <= 0.0
+            thumb_extent: mutable f32 = track_extent * viewport / content
+            minimum_thumb: f32 = 24.0 if track_extent >= 24.0 else track_extent
+            thumb_extent <- minimum_thumb if thumb_extent < minimum_thumb else thumb_extent
+            thumb_extent <- track_extent if thumb_extent > track_extent else thumb_extent
+            limit: f32 = content - viewport
+            travel: f32 = track_extent - thumb_extent
+            thumb_position: f32 = travel * widgets[index].scroll_offset / limit if limit > 0.0 else 0.0
+            thumb_color: mutable UiCore::Color = current_theme.scrollbar_thumb
+            enabled: bool = effectively_enabled(index)
+            thumb_color <- muted_color(thumb_color) if not enabled
+            thumb_color <- current_theme.scrollbar_thumb_active if enabled and active_scroll == index
+            thumb_color <- current_theme.scrollbar_thumb_hover if enabled and active_scroll != index and pointer_inside and scrollbar_part(index, pointer_x, pointer_y) == 2
+            track_color: UiCore::Color = current_theme.scrollbar_track if enabled else muted_color(current_theme.scrollbar_track)
+            if is_row:
+                track: UiCore::Rect = UiCore::Rect(widgets[index].x + inset, widgets[index].y + widgets[index].height - bar - inset, track_extent, bar)
+                thumb: UiCore::Rect = UiCore::Rect(track.origin.x + thumb_position, track.origin.y, thumb_extent, bar)
+                UiCore::fill(track, track_color)
+                UiCore::fill(thumb, thumb_color)
+            else:
+                track: UiCore::Rect = UiCore::Rect(widgets[index].x + widgets[index].width - bar - inset, widgets[index].y + inset, bar, track_extent)
+                thumb: UiCore::Rect = UiCore::Rect(track.origin.x, track.origin.y + thumb_position, bar, thumb_extent)
+                UiCore::fill(track, track_color)
+                UiCore::fill(thumb, thumb_color)
+
+        # Return 2 for the thumb, 1 for the track, and 0 outside the current
+        # indicator. Reverse-order callers still choose the innermost nested
+        # viewport before invoking this geometry helper.
+        def scrollbar_part(index: usize, x: f32, y: f32) -> i32:
+            return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Scroll
+            return 0 if not effectively_enabled(index) or not effectively_visible(index) or not inside_scroll_viewports(index, x, y)
+            is_row: bool = widgets[index].axis == UiConst::Axis.Row
+            viewport: f32 = widgets[index].width if is_row else widgets[index].height
+            content: f32 = widgets[index].scroll_content_width if is_row else widgets[index].scroll_content_height
+            return 0 if content <= viewport or viewport <= 0.0
+            cross_extent: f32 = widgets[index].height if is_row else widgets[index].width
+            inset: f32 = clamped_inset(current_theme.scrollbar_inset, cross_extent)
+            bar: mutable f32 = current_theme.scrollbar_width
+            bar <- cross_extent - inset * 2.0 if bar > cross_extent - inset * 2.0 else bar
+            return 0 if bar <= 0.0
+            track_extent: f32 = viewport - inset * 2.0
+            return 0 if track_extent <= 0.0
+            thumb_extent: mutable f32 = track_extent * viewport / content
+            minimum_thumb: f32 = 24.0 if track_extent >= 24.0 else track_extent
+            thumb_extent <- minimum_thumb if thumb_extent < minimum_thumb else thumb_extent
+            thumb_extent <- track_extent if thumb_extent > track_extent else thumb_extent
+            limit: f32 = content - viewport
+            travel: f32 = track_extent - thumb_extent
+            thumb_position: f32 = travel * widgets[index].scroll_offset / limit if limit > 0.0 else 0.0
+            if is_row:
+                track_x: f32 = widgets[index].x + inset
+                track_y: f32 = widgets[index].y + widgets[index].height - bar - inset
+                return 0 if x < track_x or x >= track_x + track_extent or y < track_y or y >= track_y + bar
+                thumb_x: f32 = track_x + thumb_position
+                return 2 if x >= thumb_x and x < thumb_x + thumb_extent
+                return 1
+            track_x: f32 = widgets[index].x + widgets[index].width - bar - inset
+            track_y: f32 = widgets[index].y + inset
+            return 0 if x < track_x or x >= track_x + bar or y < track_y or y >= track_y + track_extent
+            thumb_y: f32 = track_y + thumb_position
+            return 2 if y >= thumb_y and y < thumb_y + thumb_extent
+            return 1
+
+        def scrollbar_target(x: f32, y: f32) -> usize:
+            return NONE if widget_count == 0
+            build_paint_order()
+            order_index: mutable usize = paint_order_count
+            while order_index > 0 |order_index|:
+                order_index <- order_index - 1
+                scan: usize = paint_order[order_index]
+                return scan if scrollbar_part(scan, x, y) != 0
+            return NONE
+
+        def scrollbar_coordinate(index: usize, x: f32, y: f32) -> f32:
+            return x if widgets[index].axis == UiConst::Axis.Row else y
+
+        def scrollbar_track_start(index: usize) -> f32:
+            is_row: bool = widgets[index].axis == UiConst::Axis.Row
+            cross_extent: f32 = widgets[index].height if is_row else widgets[index].width
+            inset: f32 = clamped_inset(current_theme.scrollbar_inset, cross_extent)
+            return widgets[index].x + inset if is_row else widgets[index].y + inset
+
+        def scrollbar_track_length(index: usize) -> f32:
+            viewport: f32 = widgets[index].width if widgets[index].axis == UiConst::Axis.Row else widgets[index].height
+            cross_extent: f32 = widgets[index].height if widgets[index].axis == UiConst::Axis.Row else widgets[index].width
+            inset: f32 = clamped_inset(current_theme.scrollbar_inset, cross_extent)
+            return viewport - inset * 2.0
+
+        def scrollbar_thumb_length(index: usize) -> f32:
+            viewport: f32 = widgets[index].width if widgets[index].axis == UiConst::Axis.Row else widgets[index].height
+            content: f32 = widgets[index].scroll_content_width if widgets[index].axis == UiConst::Axis.Row else widgets[index].scroll_content_height
+            track_length: f32 = scrollbar_track_length(index)
+            return 0.0 if content <= viewport or track_length <= 0.0
+            thumb: mutable f32 = track_length * viewport / content
+            minimum_thumb: f32 = 24.0 if track_length >= 24.0 else track_length
+            thumb <- minimum_thumb if thumb < minimum_thumb else thumb
+            return track_length if thumb > track_length else thumb
+
+        def scroll_page(index: usize, x: f32, y: f32) -> void:
+            coordinate: f32 = scrollbar_coordinate(index, x, y)
+            start: f32 = scrollbar_track_start(index)
+            thumb: f32 = scrollbar_thumb_length(index)
+            limit: f32 = scroll_limit(index)
+            travel: f32 = scrollbar_track_length(index) - thumb
+            thumb_position: f32 = travel * widgets[index].scroll_offset / limit if limit > 0.0 else 0.0
+            thumb_start: f32 = start + thumb_position
+            return if coordinate >= thumb_start and coordinate <= thumb_start + thumb
+            viewport: f32 = widgets[index].width if widgets[index].axis == UiConst::Axis.Row else widgets[index].height
+            _ = set_scroll_offset(index, widgets[index].scroll_offset - viewport if coordinate < thumb_start else widgets[index].scroll_offset + viewport)
+
+        # Build a bounded pre-order snapshot from the retained links. The flat
+        # layer normally receives well-formed links from its constructors, but
+        # Widget is public for zero-copy integration, so malformed cycles and
+        # out-of-range handles must fail closed instead of hanging a frame.
+        def append_paint_order(index: usize, depth: usize) -> void:
+            return if index >= widget_count or paint_order_seen[index] or paint_order_count >= widget_count
+            return if depth >= MAX_WIDGETS
+            paint_order_seen[index] <- true
+            paint_order[paint_order_count] <- index
+            paint_order_count <- paint_order_count + 1
+            child: mutable usize = widgets[index].first_child
+            steps: mutable usize = 0
+            while child != NONE and child < widget_count |child, depth, steps|:
+                break if steps >= MAX_WIDGETS
+                steps <- steps + 1
+                append_paint_order(child, depth + 1)
+                child <- widgets[child].next_sibling
+
+        def build_paint_order() -> void:
+            paint_order_count <- 0
+            for index in 0..<widget_count:
+                paint_order_seen[index] <- false
+            # Start at every detached root. A second pass below keeps malformed
+            # links visible as isolated rows without duplicating valid nodes.
+            for index in 0..<widget_count:
+                parent: usize = widgets[index].parent
+                append_paint_order(index, 0) if parent == NONE or parent >= widget_count
+            for index in 0..<widget_count:
+                append_paint_order(index, 0) if not paint_order_seen[index]
+
+        # Pre-order emission gives painter's-algorithm ordering for free: a
+        # parent's background is laid down before any of its children.
+

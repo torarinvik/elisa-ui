@@ -1,0 +1,122 @@
+# UiFlat widget constructors.
+# This file is included by ui_widget.elisa; UiFlat remains the public
+# compatibility namespace while its implementation is organized by concern.
+
+extend UiFlat:
+    public:
+        def panel(parent: usize, axis: UiConst::Axis, padding: f32, spacing: f32, color: UiCore::Color) -> usize:
+            index: usize = new_widget(parent, UiConst::WidgetKind.Panel)
+            return index if index == NONE
+            widgets[index] with { axis, padding <- UiCore::nonnegative_extent(padding), spacing <- UiCore::nonnegative_extent(spacing), color, hover_color <- color, press_color <- color }
+            return index
+
+        # A scroll container reserves a viewport while its children retain
+        # their measured extent. Wheel input changes the offset in Elisa and
+        # re-runs the same layout pass, so no backend owns scroll geometry.
+        def scroll(parent: usize, axis: UiConst::Axis, min_width: f32, min_height: f32, color: UiCore::Color) -> usize:
+            index: usize = new_widget(parent, UiConst::WidgetKind.Scroll)
+            return index if index == NONE
+            safe_width: f32 = UiCore::nonnegative_extent(min_width)
+            safe_height: f32 = UiCore::nonnegative_extent(min_height)
+            widgets[index] with {
+                axis, declared_min_width <- safe_width, declared_min_height <- safe_height,
+                min_width <- safe_width, min_height <- safe_height,
+                color, hover_color <- color, press_color <- color,
+            }
+            return index
+
+        def button(parent: usize, min_width: f32, min_height: f32, color: UiCore::Color, hover_color: UiCore::Color, press_color: UiCore::Color) -> usize:
+            index: usize = new_widget(parent, UiConst::WidgetKind.Button)
+            return index if index == NONE
+            safe_width: f32 = UiCore::nonnegative_extent(min_width)
+            safe_height: f32 = UiCore::nonnegative_extent(min_height)
+            widgets[index] with { declared_min_width <- safe_width, declared_min_height <- safe_height, min_width <- safe_width, min_height <- safe_height, color, hover_color, press_color, interactive <- true }
+            return index
+
+        def radio_button(parent: usize, min_width: f32, min_height: f32, color: UiCore::Color, hover_color: UiCore::Color, press_color: UiCore::Color) -> usize:
+            index: usize = new_widget(parent, UiConst::WidgetKind.RadioButton)
+            return index if index == NONE
+            safe_width: f32 = UiCore::nonnegative_extent(min_width)
+            safe_height: f32 = UiCore::nonnegative_extent(min_height)
+            widgets[index] with { declared_min_width <- safe_width, declared_min_height <- safe_height, min_width <- safe_width, min_height <- safe_height, color, hover_color, press_color, interactive <- true }
+            return index
+
+        def check_box(parent: usize, min_width: f32, min_height: f32, color: UiCore::Color, hover_color: UiCore::Color, press_color: UiCore::Color) -> usize:
+            index: usize = new_widget(parent, UiConst::WidgetKind.CheckBox)
+            return index if index == NONE
+            safe_width: f32 = UiCore::nonnegative_extent(min_width)
+            safe_height: f32 = UiCore::nonnegative_extent(min_height)
+            widgets[index] with { declared_min_width <- safe_width, declared_min_height <- safe_height, min_width <- safe_width, min_height <- safe_height, color, hover_color, press_color, interactive <- true }
+            return index
+
+        # A slider stores a normalized value. Its three colors are the track,
+        # filled range and thumb, keeping the fixed widget record compact.
+        def slider(parent: usize, label: sview, min_width: f32, min_height: f32, value: f32, track_color: UiCore::Color, fill_color: UiCore::Color, thumb_color: UiCore::Color) -> usize:
+            index: usize = new_widget(parent, UiConst::WidgetKind.Slider)
+            return index if index == NONE
+            safe_width: f32 = UiCore::nonnegative_extent(min_width)
+            safe_height: f32 = UiCore::nonnegative_extent(min_height)
+            widgets[index] with {
+                declared_min_width <- safe_width, declared_min_height <- safe_height, min_width <- safe_width, min_height <- safe_height, text <- label, value,
+                color <- track_color, hover_color <- fill_color, press_color <- thumb_color,
+                interactive <- true,
+            }
+            set_value(index, value)
+            return index
+
+        def progress_bar(parent: usize, label: sview, min_width: f32, min_height: f32, value: f32, track_color: UiCore::Color, fill_color: UiCore::Color) -> usize:
+            index: usize = new_widget(parent, UiConst::WidgetKind.ProgressBar)
+            return index if index == NONE
+            safe_width: f32 = UiCore::nonnegative_extent(min_width)
+            safe_height: f32 = UiCore::nonnegative_extent(min_height)
+            widgets[index] with {
+                declared_min_width <- safe_width, declared_min_height <- safe_height, min_width <- safe_width, min_height <- safe_height, text <- label, value,
+                color <- track_color, hover_color <- fill_color,
+            }
+            set_value(index, value)
+            return index
+
+        def text_field(parent: usize, label: sview, placeholder: sview, initial: sview, min_width: f32, min_height: f32, size: f32, ink: UiCore::Color, fill: UiCore::Color) -> usize:
+            index: usize = new_widget(parent, UiConst::WidgetKind.TextField)
+            return index if index == NONE
+            safe_width: f32 = UiCore::nonnegative_extent(min_width)
+            safe_height: f32 = UiCore::nonnegative_extent(min_height)
+            safe_size: f32 = UiCore::nonnegative_extent(size)
+            widgets[index] with {
+                declared_min_width <- safe_width, declared_min_height <- safe_height, min_width <- safe_width, min_height <- safe_height, text <- label, placeholder,
+                text_size <- safe_size, text_color <- ink, color <- fill,
+                hover_color <- fill, press_color <- fill, interactive <- true,
+            }
+            byte_limit: usize = initial.len if initial.len < TEXT_CAPACITY - 1 else TEXT_CAPACITY - 1
+            limit: usize = grapheme_prefix_length(initial, valid_utf8_prefix(initial, byte_limit))
+            widgets[index].text_truncated <- limit < initial.len
+            offset: usize = index * TEXT_CAPACITY
+            for byte_index in 0..<limit:
+                text_storage[offset + byte_index] <- single_line_byte(initial, byte_index)
+            widgets[index].input_length <- limit
+            widgets[index].caret <- limit
+            widgets[index].selection_anchor <- limit
+            widgets[index] with { marked_start <- 0, marked_end <- 0 }
+            return index
+
+        def secure_text_field(parent: usize, label: sview, placeholder: sview, initial: sview, min_width: f32, min_height: f32, size: f32, ink: UiCore::Color, fill: UiCore::Color) -> usize:
+            index: usize = text_field(parent, label, placeholder, initial, min_width, min_height, size, ink, fill)
+            set_secure(index, true)
+            return index
+
+        # A label's minimum is the measured extent of its text, so it
+        # participates in layout like any other child. Measurement happens
+        # once here rather than every frame: the text is a view that does not
+        # change, and the platform's measure call may cross into the host.
+        def label(parent: usize, text: sview, size: f32, color: UiCore::Color) -> usize:
+            index: usize = new_widget(parent, UiConst::WidgetKind.Label)
+            return index if index == NONE
+            safe_size: f32 = UiCore::nonnegative_extent(size)
+            measured_width: f32 = UiCore::nonnegative_extent(ui_measure_text_width(text, safe_size))
+            measured_height: f32 = UiCore::nonnegative_extent(ui_text_line_height(safe_size))
+            widgets[index] with {
+                text, text_size <- safe_size, text_color <- color,
+                declared_min_width <- measured_width, declared_min_height <- measured_height,
+                min_width <- measured_width, min_height <- measured_height,
+            }
+            return index

@@ -1,0 +1,274 @@
+# UiFlat public text editing and undo API.
+# This file is included by ui_widget.elisa; UiFlat remains the public
+# compatibility namespace while its implementation is organized by concern.
+
+extend UiFlat:
+    public:
+        def move_word_left(extend_selection: bool) -> void:
+            return if not accepts_text()
+            index: usize = focused_widget
+            if not extend_selection and selection_start(index) != selection_end(index):
+                widgets[index].caret <- selection_start(index)
+            else:
+                widgets[index].caret <- previous_word(index, widgets[index].caret)
+            widgets[index].selection_anchor <- widgets[index].caret if not extend_selection
+            restart_caret_blink()
+            mark_state_dirty()
+
+        def move_word_right(extend_selection: bool) -> void:
+            return if not accepts_text()
+            index: usize = focused_widget
+            if not extend_selection and selection_start(index) != selection_end(index):
+                widgets[index].caret <- selection_end(index)
+            else:
+                widgets[index].caret <- next_word(index, widgets[index].caret)
+            widgets[index].selection_anchor <- widgets[index].caret if not extend_selection
+            restart_caret_blink()
+            mark_state_dirty()
+
+        def delete_word_backward() -> void:
+            return if not accepts_text()
+            index: usize = focused_widget
+            if selection_start(index) != selection_end(index):
+                remove_text(index, selection_start(index), selection_end(index))
+                return
+            remove_text(index, previous_word(index, widgets[index].caret), widgets[index].caret)
+
+        def delete_word_forward() -> void:
+            return if not accepts_text()
+            index: usize = focused_widget
+            if selection_start(index) != selection_end(index):
+                remove_text(index, selection_start(index), selection_end(index))
+                return
+            remove_text(index, widgets[index].caret, next_word(index, widgets[index].caret))
+
+        # Insert committed UTF-8 at the focused field's caret. The AppKit text
+        # input manager calls this with whole composed strings, never key codes.
+        def insert_text(text: sview) -> void:
+            return if not accepts_text()
+            index: usize = focused_widget
+            widgets[index].text_truncated <- false
+            start: usize = selection_start(index)
+            stop: usize = selection_end(index)
+            if text.len == 0:
+                remove_text(index, start, stop)
+                return
+            removed: usize = stop - start
+            remaining: usize = widgets[index].input_length - removed
+            available: usize = TEXT_CAPACITY - 1 - remaining
+            byte_limit: usize = text.len if text.len < available else available
+            take: usize = grapheme_prefix_length(text, valid_utf8_prefix(text, byte_limit))
+            widgets[index].text_truncated <- take < text.len
+            return if take == 0
+            history_slot: usize = begin_text_history(index)
+            offset: usize = index * TEXT_CAPACITY
+            old_length: usize = widgets[index].input_length
+            tail_length: usize = widgets[index].input_length - stop
+            cursor: mutable usize = 0
+            if start + take > stop:
+                cursor <- tail_length
+                while cursor > 0 |cursor, offset, start, stop, take|:
+                    cursor <- cursor - 1
+                    text_storage[offset + start + take + cursor] <- text_storage[offset + stop + cursor]
+            else:
+                while cursor < tail_length |cursor, offset, start, stop, take, tail_length|:
+                    text_storage[offset + start + take + cursor] <- text_storage[offset + stop + cursor]
+                    cursor <- cursor + 1
+            for byte_index in 0..<take:
+                text_storage[offset + start + byte_index] <- single_line_byte(text, byte_index)
+            widgets[index].caret <- start + take
+            widgets[index].selection_anchor <- widgets[index].caret
+            widgets[index].input_length <- remaining + take
+            for byte_index in widgets[index].input_length..<old_length:
+                text_storage[offset + byte_index] <- 0
+            widgets[index].text_revision <- widgets[index].text_revision + 1
+            widgets[index] with { marked_start <- 0, marked_end <- 0 }
+            restart_caret_blink()
+            mark_state_dirty()
+            callback_epoch: usize = widget_epoch
+            emit_widget_event(index, UiConst::WidgetEvent.Change)
+            finish_text_history(history_slot, index) if widget_epoch == callback_epoch
+
+        def replace_text(index: usize, text: sview) -> void:
+            return if not text_editable(index)
+            byte_limit: usize = text.len if text.len < TEXT_CAPACITY - 1 else TEXT_CAPACITY - 1
+            take: usize = grapheme_prefix_length(text, valid_utf8_prefix(text, byte_limit))
+            widgets[index].text_truncated <- take < text.len
+
+            offset: usize = index * TEXT_CAPACITY
+            old_length: usize = widgets[index].input_length
+            changed: mutable bool = widgets[index].input_length != take
+            compare: mutable usize = 0
+            while not changed and compare < take |compare, changed, offset|:
+                changed <- true if text_storage[offset + compare] != single_line_byte(text, compare)
+                compare <- compare + 1
+
+            history_slot: usize = begin_text_history(index) if changed else TEXT_HISTORY_CAPACITY
+            for byte_index in 0..<take:
+                text_storage[offset + byte_index] <- single_line_byte(text, byte_index)
+            for byte_index in take..<old_length:
+                text_storage[offset + byte_index] <- 0
+            widgets[index] with { input_length <- take, caret <- take, selection_anchor <- take, marked_start <- 0, marked_end <- 0 }
+            widgets[index].text_revision <- widgets[index].text_revision + 1 if changed
+            restart_caret_blink() if changed and index == focused_widget
+            mark_state_dirty() if changed
+            callback_epoch: usize = widget_epoch
+            emit_widget_event(index, UiConst::WidgetEvent.Change) if changed
+            finish_text_history(history_slot, index) if widget_epoch == callback_epoch
+
+        # Platform text systems describe ranges in UTF-16 code units. Keeping
+        # this conversion and all replacement policy in Elisa leaves native
+        # adapters responsible only for forwarding protocol calls.
+        def commit_text(text: sview, replacement_location: usize, replacement_length: usize, has_replacement: bool) -> void:
+            return if not accepts_text()
+            index: usize = focused_widget
+            if composition_history_slot < TEXT_HISTORY_CAPACITY and widgets[index].marked_end > widgets[index].marked_start:
+                history_suppressed <- true
+                set_selection(index, widgets[index].marked_start, widgets[index].marked_end)
+                callback_epoch: usize = widget_epoch
+                insert_text(text)
+                return if widget_epoch != callback_epoch
+                history_suppressed <- false
+                store_history_state(composition_history_slot, index, true)
+                composition_history_slot <- TEXT_HISTORY_CAPACITY
+                return
+            history_slot: usize = begin_text_history(index) if has_replacement else TEXT_HISTORY_CAPACITY
+            if has_replacement:
+                set_selection_utf16(index, replacement_location, replacement_length)
+            elif widgets[index].marked_end > widgets[index].marked_start:
+                set_selection(index, widgets[index].marked_start, widgets[index].marked_end)
+            callback_epoch: usize = widget_epoch
+            insert_text(text)
+            finish_text_history(history_slot, index) if widget_epoch == callback_epoch
+
+        def update_marked_text(text: sview, selected_location: usize, selected_length: usize, replacement_location: usize, replacement_length: usize, has_replacement: bool) -> void:
+            return if not accepts_text()
+            index: usize = focused_widget
+            continuing_slot: usize = composition_history_slot
+            history_slot: mutable usize = TEXT_HISTORY_CAPACITY
+            if continuing_slot < TEXT_HISTORY_CAPACITY:
+                history_suppressed <- true
+            else:
+                history_slot <- begin_text_history(index)
+            if has_replacement:
+                set_selection_utf16(index, replacement_location, replacement_length)
+            elif widgets[index].marked_end > widgets[index].marked_start:
+                set_selection(index, widgets[index].marked_start, widgets[index].marked_end)
+            marked_start: usize = selection_start(index)
+            callback_epoch: usize = widget_epoch
+            insert_text(text)
+            return if widget_epoch != callback_epoch
+            marked_stop: usize = widgets[index].caret
+            set_marked(index, marked_start, marked_stop)
+            total_units: usize = utf16_units_for_prefix(text, text.len)
+            safe_location: usize = selected_location if selected_location < total_units else total_units
+            remaining_units: usize = total_units - safe_location
+            safe_length: usize = selected_length if selected_length < remaining_units else remaining_units
+            relative_start: mutable usize = byte_offset_for_utf16(text, safe_location)
+            relative_stop: mutable usize = byte_offset_for_utf16(text, safe_location + safe_length)
+            inserted_length: usize = marked_stop - marked_start
+            relative_start <- inserted_length if relative_start > inserted_length
+            relative_stop <- inserted_length if relative_stop > inserted_length
+            set_selection(index, marked_start + relative_start, marked_start + relative_stop)
+            if continuing_slot < TEXT_HISTORY_CAPACITY:
+                history_suppressed <- false
+                store_history_state(continuing_slot, index, true)
+            else:
+                finish_text_history(history_slot, index)
+                composition_history_slot <- history_slot if history_slot < TEXT_HISTORY_CAPACITY and history_text_changed(history_slot) else TEXT_HISTORY_CAPACITY
+
+        # SDL describes the selection inside marked text in Unicode scalar
+        # counts, whereas AppKit uses UTF-16 units. Normalize both at this
+        # framework boundary so the editing engine has one internal protocol.
+        def update_marked_text_utf8_characters(text: sview, selected_start: i32, selected_length: i32) -> void:
+            start_count: usize = selected_start.usize() if selected_start > 0 else 0
+            length_count: usize = selected_length.usize() if selected_length > 0 else 0
+            cursor: mutable usize = 0
+            scalars: mutable usize = 0
+            while cursor < text.len and scalars < start_count |cursor, scalars, start_count|:
+                cursor <- cursor + utf8_scalar_bytes(text, cursor)
+                scalars <- scalars + 1
+            selection_location: usize = utf16_units_for_prefix(text, cursor)
+            stop: mutable usize = cursor
+            scalars <- 0
+            while stop < text.len and scalars < length_count |stop, scalars, length_count|:
+                stop <- stop + utf8_scalar_bytes(text, stop)
+                scalars <- scalars + 1
+            selection_length_units: usize = utf16_units_for_prefix(text, stop) - selection_location
+            update_marked_text(text, selection_location, selection_length_units, 0, 0, false)
+            unmark_text() if text.len == 0
+
+        def unmark_text() -> void:
+            return if not accepts_text()
+            widgets[focused_widget] with { marked_start <- 0, marked_end <- 0 }
+            if composition_history_slot < TEXT_HISTORY_CAPACITY:
+                store_history_state(composition_history_slot, focused_widget, true)
+            composition_history_slot <- TEXT_HISTORY_CAPACITY
+            mark_state_dirty()
+
+        def can_undo_text() -> bool:
+            return history_cursor > 0
+
+        def can_redo_text() -> bool:
+            return history_cursor < history_count
+
+        def undo_text() -> bool:
+            return false if history_cursor == 0
+            composition_history_slot <- TEXT_HISTORY_CAPACITY
+            history_cursor <- history_cursor - 1
+            history_suppressed <- true
+            callback_epoch: usize = widget_epoch
+            restore_history_state(history_cursor, false)
+            history_suppressed <- false
+            return false if widget_epoch != callback_epoch
+            mark_state_dirty()
+            return true
+
+        def redo_text() -> bool:
+            return false if history_cursor >= history_count
+            composition_history_slot <- TEXT_HISTORY_CAPACITY
+            history_suppressed <- true
+            callback_epoch: usize = widget_epoch
+            restore_history_state(history_cursor, true)
+            history_suppressed <- false
+            return false if widget_epoch != callback_epoch
+            history_cursor <- history_cursor + 1
+            mark_state_dirty()
+            return true
+
+        # Backend hooks expose bytes only. Selection, security, history, and
+        # shortcut policy remain in Elisa's retained control implementation.
+        def text_action_enabled(action: i32) -> bool:
+            return can_undo_text() if action == 5
+            return can_redo_text() if action == 6
+            return false if not accepts_text()
+            return allows_text_readback() and selected_text_length(focused_widget) > 0 if action == 2 or action == 3
+            return true if action == 1
+            return ui_clipboard_has_text() if action == 4
+            return false
+
+        def perform_text_action(action: i32) -> bool:
+            return false if not text_action_enabled(action)
+            if action == 1:
+                set_selection(focused_widget, 0, widgets[focused_widget].input_length)
+                return true
+            if action == 2 or action == 3:
+                length: usize = selected_text_length(focused_widget)
+                return false if not ui_clipboard_write(selected_text_pointer(focused_widget), length)
+                callback_epoch: usize = widget_epoch
+                insert_text("") if action == 3
+                return widget_epoch == callback_epoch
+            if action == 4:
+                length: usize = ui_clipboard_read(&clipboard_buffer[0], TEXT_CAPACITY)
+                return false if length == 0
+                callback_epoch: usize = widget_epoch
+                insert_text(sview(&clipboard_buffer[0], 0, length.i64()))
+                scrub_clipboard_buffer()
+                return widget_epoch == callback_epoch
+            return undo_text() if action == 5
+            return redo_text() if action == 6
+            return false
+
+        # Later widgets are drawn over earlier ones, so scanning backwards finds
+        # the topmost interactive widget under the pointer.
+

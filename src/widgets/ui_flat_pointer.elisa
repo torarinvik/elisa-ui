@@ -1,0 +1,168 @@
+# UiFlat pointer hit testing and interaction.
+# This file is included by ui_widget.elisa; UiFlat remains the public
+# compatibility namespace while its implementation is organized by concern.
+
+extend UiFlat:
+    public:
+        def hit(x: f32, y: f32) -> usize:
+            ensure_layout()
+            return NONE if widget_count == 0
+            build_paint_order()
+            order_index: mutable usize = paint_order_count
+            while order_index > 0 |order_index|:
+                order_index <- order_index - 1
+                scan: usize = paint_order[order_index]
+                return scan if widgets[scan].interactive and effectively_enabled(scan) and effectively_visible(scan) and inside_scroll_viewports(scan, x, y) and contains(scan, x, y)
+            return NONE
+
+        # Find the innermost flat scroll viewport that can consume this wheel
+        # delta. Reverse arena order prefers a nested descendant, but a
+        # non-scrollable or edge-clamped child is skipped so the gesture can
+        # bubble to an outer viewport.
+        def scroll_target(x: f32, y: f32, dx: f32, dy: f32) -> usize:
+            ensure_layout()
+            return NONE if widget_count == 0
+            build_paint_order()
+            order_index: mutable usize = paint_order_count
+            while order_index > 0 |order_index|:
+                order_index <- order_index - 1
+                scan: usize = paint_order[order_index]
+                if widgets[scan].kind == UiConst::WidgetKind.Scroll and effectively_enabled(scan) and effectively_visible(scan) and inside_scroll_viewports(scan, x, y) and contains(scan, x, y):
+                    limit: f32 = scroll_limit(scan)
+                    delta: f32 = UiCore::finite_or_zero(dx if widgets[scan].axis == UiConst::Axis.Row else dy)
+                    current: f32 = widgets[scan].scroll_offset
+                    can_move: bool = limit > 0.0 and ((delta > 0.0 and current > 0.0) or (delta < 0.0 and current < limit))
+                    return scan if can_move
+            return NONE
+
+        # Native hosts need only choose the system cursor; widget semantics and
+        # hit ordering remain owned by Elisa. 0=arrow, 1=pointing hand, 2=I-beam.
+        def cursor_at(x: f32, y: f32) -> i32:
+            target: usize = hit(x, y)
+            return 0 if target == NONE
+            return 2 if widgets[target].kind == UiConst::WidgetKind.TextField
+            return 1 if widgets[target].kind == UiConst::WidgetKind.Button or widgets[target].kind == UiConst::WidgetKind.RadioButton or widgets[target].kind == UiConst::WidgetKind.CheckBox
+            return 0
+
+        # Feed one event through the flat tree. Anything that is not a pointer event
+        # is ignored here, so an app can hand the whole stream over without sorting
+        # it first.
+        def pointer(event: UiCore::Event) -> void:
+            mark_state_dirty()
+            at: mutable UiCore::Vec2 = UiCore::Vec2(0.0, 0.0)
+            match event:
+                UiCore::PointerEvent.Move(move_at):
+                    at <- move_at
+                    pointer_x <- move_at.x
+                    pointer_y <- move_at.y
+                    pointer_inside <- true
+                UiCore::PointerEvent.Down(down_at, down_button):
+                    at <- down_at
+                    pointer_x <- down_at.x
+                    pointer_y <- down_at.y
+                    pointer_inside <- true
+                UiCore::PointerEvent.Up(up_at, up_button):
+                    at <- up_at
+                    pointer_x <- up_at.x
+                    pointer_y <- up_at.y
+                    pointer_inside <- true
+                UiCore::PointerEvent.Leave:
+                    pointer_inside <- false
+                    pass
+                UiCore::PointerEvent.Scroll(scroll_at, scroll_delta):
+                    pointer_x <- scroll_at.x
+                    pointer_y <- scroll_at.y
+                    pointer_inside <- true
+                    target: usize = scroll_target(scroll_at.x, scroll_at.y, scroll_delta.x, scroll_delta.y)
+                    return if target == NONE
+                    amount: f32 = scroll_delta.x if widgets[target].axis == UiConst::Axis.Row else scroll_delta.y
+                    _ = set_scroll_offset(target, scroll_offset(target) - amount)
+                    return
+                _:
+                    return
+
+            target: usize = hit(at.x, at.y)
+            clear_hover()
+            hot_widget <- target
+            if target != NONE:
+                widgets[target].hovered <- true
+
+            match event:
+                UiCore::PointerEvent.Down(press_at, press_button):
+                    return if press_button != UiCore::PointerButton.Primary.i32()
+                    scroll_bar: usize = scrollbar_target(press_at.x, press_at.y)
+                    if scroll_bar != NONE:
+                        release_active_press()
+                        if scrollbar_part(scroll_bar, press_at.x, press_at.y) == 2:
+                            active_scroll <- scroll_bar
+                            active_scroll_pointer <- scrollbar_coordinate(scroll_bar, press_at.x, press_at.y)
+                            active_scroll_offset <- widgets[scroll_bar].scroll_offset
+                            active_pointer_button <- press_button
+                        else:
+                            scroll_page(scroll_bar, press_at.x, press_at.y)
+                        return
+                    return if target == NONE
+                    focus(target)
+                    active_widget <- target
+                    active_pointer_button <- press_button
+                    widgets[target].pressed <- true
+                    if widgets[target].kind == UiConst::WidgetKind.TextField:
+                        widgets[target].caret <- caret_from_pointer(target, press_at.x)
+                        widgets[target].selection_anchor <- widgets[target].caret if not shift_active()
+                        restart_caret_blink()
+                    update_slider(target, press_at.x)
+                UiCore::PointerEvent.Move(move_at):
+                    if active_scroll < widget_count:
+                        track_length: f32 = scrollbar_track_length(active_scroll)
+                        thumb_length: f32 = scrollbar_thumb_length(active_scroll)
+                        travel: f32 = track_length - thumb_length
+                        limit: f32 = scroll_limit(active_scroll)
+                        coordinate: f32 = scrollbar_coordinate(active_scroll, move_at.x, move_at.y)
+                        requested: f32 = active_scroll_offset + (coordinate - active_scroll_pointer) * limit / travel if travel > 0.0 else active_scroll_offset
+                        _ = set_scroll_offset(active_scroll, requested)
+                        return
+                    if active_pointer_button >= 0 and active_widget < widget_count:
+                        if widgets[active_widget].kind == UiConst::WidgetKind.Slider:
+                            widgets[active_widget].pressed <- true
+                            update_slider(active_widget, move_at.x)
+                        elif widgets[active_widget].kind == UiConst::WidgetKind.TextField:
+                            widgets[active_widget].pressed <- true
+                            widgets[active_widget].caret <- caret_from_pointer(active_widget, move_at.x)
+                            restart_caret_blink()
+                        else:
+                            widgets[active_widget].pressed <- target == active_widget
+                UiCore::PointerEvent.Up(release_at, release_button):
+                    if active_scroll < widget_count:
+                        return if release_button != UiCore::PointerButton.Primary.i32()
+                        active_scroll <- NONE
+                        active_scroll_pointer <- 0.0
+                        active_scroll_offset <- 0.0
+                        active_pointer_button <- UiCore::NO_POINTER_BUTTON
+                        return
+                    return if active_pointer_button < 0 or active_widget == NONE or release_button != active_pointer_button
+                    held: usize = active_widget
+                    active_widget <- NONE
+                    active_pointer_button <- UiCore::NO_POINTER_BUTTON
+                    active_key <- -1
+                    widgets[held].pressed <- false
+                    if widgets[held].kind == UiConst::WidgetKind.Slider:
+                        update_slider(held, release_at.x)
+                    elif widgets[held].kind == UiConst::WidgetKind.TextField:
+                        pass
+                    elif held == target:
+                        dispatch_activation(held)
+                UiCore::PointerEvent.Leave:
+                    hot_widget <- NONE
+                    return if active_scroll < widget_count
+                    return if active_pointer_button < 0 or active_widget == NONE
+                    # Keep capture until mouse-up. Sliders continue to receive
+                    # clamped drag updates outside the view; buttons can regain
+                    # their pressed appearance if the pointer comes back.
+                    widgets[active_widget].pressed <- widgets[active_widget].kind == UiConst::WidgetKind.Slider
+                _:
+                    pass
+
+        # Keyboard interaction mirrors desktop controls: Tab moves focus, while
+        # Space/Enter press and release the focused control. Activation happens
+        # on release, matching pointer clicks and allowing the pressed state to paint.
+

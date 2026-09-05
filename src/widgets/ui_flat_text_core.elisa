@@ -1,0 +1,298 @@
+# UiFlat text geometry and Unicode navigation helpers.
+# This file is included by ui_widget.elisa; UiFlat remains the public
+# compatibility namespace while its implementation is organized by concern.
+
+extend UiFlat:
+    private:
+        def ensure_visible(index: usize) -> void:
+            cursor: mutable usize = widgets[index].parent
+            steps: mutable usize = 0
+            while cursor < widget_count |cursor, index, steps|:
+                return if steps >= MAX_TRAVERSAL_DEPTH
+                steps <- steps + 1
+                if widgets[cursor].kind == UiConst::WidgetKind.Scroll:
+                    current: f32 = widgets[cursor].scroll_offset
+                    requested: mutable f32 = current
+                    if widgets[cursor].axis == UiConst::Axis.Row:
+                        viewport_start: f32 = widgets[cursor].x
+                        viewport_end: f32 = viewport_start + widgets[cursor].width
+                        child_start: f32 = widgets[index].x
+                        child_end: f32 = child_start + widgets[index].width
+                        unscrolled_start: f32 = child_start + current
+                        unscrolled_end: f32 = child_end + current
+                        requested <- unscrolled_start - viewport_start if child_start < viewport_start
+                        requested <- unscrolled_end - viewport_end if child_end > viewport_end and child_start >= viewport_start
+                    else:
+                        viewport_start: f32 = widgets[cursor].y
+                        viewport_end: f32 = viewport_start + widgets[cursor].height
+                        child_start: f32 = widgets[index].y
+                        child_end: f32 = child_start + widgets[index].height
+                        unscrolled_start: f32 = child_start + current
+                        unscrolled_end: f32 = child_end + current
+                        requested <- unscrolled_start - viewport_start if child_start < viewport_start
+                        requested <- unscrolled_end - viewport_end if child_end > viewport_end and child_start >= viewport_start
+                    _ = set_scroll_offset(cursor, requested)
+                cursor <- widgets[cursor].parent
+
+        def emit_accessibility(index: usize) -> void:
+            enabled: bool = effectively_enabled(index)
+            frame: UiCore::Rect = UiCore::Rect(widgets[index].x, widgets[index].y, widgets[index].width, widgets[index].height)
+            if widgets[index].kind == UiConst::WidgetKind.Button:
+                UiCore::accessibility(UiCore::AccessibilityRole.Button, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, false, 0.0, "", "", 0, 0, 0)
+            elif widgets[index].kind == UiConst::WidgetKind.RadioButton:
+                UiCore::accessibility(UiCore::AccessibilityRole.RadioButton, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, widgets[index].selected, 0.0, "", "", 0, 0, 0)
+            elif widgets[index].kind == UiConst::WidgetKind.CheckBox:
+                UiCore::accessibility(UiCore::AccessibilityRole.CheckBox, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, widgets[index].selected, 0.0, "", "", 0, 0, 0)
+            elif widgets[index].kind == UiConst::WidgetKind.Slider:
+                UiCore::accessibility(UiCore::AccessibilityRole.Slider, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, false, widgets[index].value, "", "", 0, 0, 0)
+            elif widgets[index].kind == UiConst::WidgetKind.ProgressBar:
+                UiCore::accessibility(UiCore::AccessibilityRole.ProgressBar, widgets[index].text, widgets[index].help, frame, index, NONE, enabled, false, false, widgets[index].value, "", "", 0, 0, 0)
+            elif widgets[index].kind == UiConst::WidgetKind.TextField:
+                semantic_role: UiCore::AccessibilityRole = UiCore::AccessibilityRole.PasswordField if widgets[index].secure else UiCore::AccessibilityRole.TextField
+                semantic_value: sview = secure_display_value(index) if widgets[index].secure else text_value(index)
+                UiCore::accessibility(semantic_role, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, false, 0.0, semantic_value, selected_text_value(index), widgets[index].text_revision, selection_utf16_location(index), selection_utf16_length(index))
+            elif widgets[index].kind == UiConst::WidgetKind.Label:
+                UiCore::accessibility(UiCore::AccessibilityRole.Label, widgets[index].text, widgets[index].help, frame, index, NONE, enabled, false, false, 0.0, "", "", 0, 0, 0)
+
+        def update_slider(index: usize, pointer_x: f32) -> void:
+            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider
+            inset: f32 = clamped_inset(current_theme.slider_horizontal_inset, widgets[index].width)
+            travel: f32 = widgets[index].width - inset * 2.0
+            return if travel <= 0.0
+            next: mutable f32 = (pointer_x - widgets[index].x - inset) / travel
+            before: f32 = widgets[index].value
+            set_value(index, next)
+            return if widgets[index].value == before
+            emit_widget_event(index, UiConst::WidgetEvent.Change)
+
+        def dispatch_activation(index: usize) -> void:
+            return if index >= widget_count
+            if widgets[index].kind == UiConst::WidgetKind.CheckBox:
+                set_selected(index, not widgets[index].selected)
+            elif widgets[index].kind == UiConst::WidgetKind.RadioButton:
+                set_selected(index, true)
+            emit_widget_event(index, UiConst::WidgetEvent.Click)
+
+        def is_utf8_continuation(byte: u8) -> bool:
+            return (byte.u32() & 192) == 128
+
+        def utf8_scalar_bytes(text: sview, position: usize) -> usize:
+            return 0 if position >= text.len
+            byte: u32 = text.data[position].u32()
+            return 1 if byte < 128
+            return 2 if byte < 224 and position + 1 < text.len
+            return 3 if byte < 240 and position + 2 < text.len
+            return 4 if byte < 248 and position + 3 < text.len
+            return 1
+
+        def utf8_scalar_value(text: sview, position: usize) -> u32:
+            return 0 if position >= text.len
+            first: u32 = text.data[position].u32()
+            bytes: usize = utf8_scalar_bytes(text, position)
+            return first if bytes == 1
+            second: u32 = text.data[position + 1].u32() & 63
+            return ((first & 31) << 6) | second if bytes == 2
+            third: u32 = text.data[position + 2].u32() & 63
+            return ((first & 15) << 12) | (second << 6) | third if bytes == 3
+            fourth: u32 = text.data[position + 3].u32() & 63
+            return ((first & 7) << 18) | (second << 12) | (third << 6) | fourth
+
+        # Return the longest well-formed UTF-8 prefix that fits byte_limit.
+        # Invalid, overlong, surrogate and out-of-range sequences terminate the
+        # prefix, keeping stored values safe for painters and native strings.
+        def valid_utf8_prefix(text: sview, byte_limit: usize) -> usize:
+            limit: usize = byte_limit if byte_limit < text.len else text.len
+            cursor: mutable usize = 0
+            while cursor < limit |cursor, limit|:
+                first: u32 = text.data[cursor].u32()
+                if first <= 127:
+                    cursor <- cursor + 1
+                    continue
+                if first >= 194 and first <= 223:
+                    return cursor if cursor + 1 >= limit or not is_utf8_continuation(text.data[cursor + 1])
+                    cursor <- cursor + 2
+                    continue
+                if first >= 224 and first <= 239:
+                    return cursor if cursor + 2 >= limit
+                    second: u32 = text.data[cursor + 1].u32()
+                    return cursor if not is_utf8_continuation(text.data[cursor + 1]) or not is_utf8_continuation(text.data[cursor + 2])
+                    return cursor if first == 224 and second < 160
+                    return cursor if first == 237 and second > 159
+                    cursor <- cursor + 3
+                    continue
+                if first >= 240 and first <= 244:
+                    return cursor if cursor + 3 >= limit
+                    second: u32 = text.data[cursor + 1].u32()
+                    return cursor if not is_utf8_continuation(text.data[cursor + 1]) or not is_utf8_continuation(text.data[cursor + 2]) or not is_utf8_continuation(text.data[cursor + 3])
+                    return cursor if first == 240 and second < 144
+                    return cursor if first == 244 and second > 143
+                    cursor <- cursor + 4
+                    continue
+                return cursor
+            return cursor
+
+        # The ranges that most often extend a user-perceived character: Unicode
+        # combining marks, variation selectors, emoji skin tones and emoji tag
+        # characters. ZWJ and regional-indicator pairing are handled separately.
+        def extends_grapheme(scalar: u32) -> bool:
+            return true if scalar >= 768 and scalar <= 879
+            return true if scalar >= 6832 and scalar <= 6911
+            return true if scalar >= 7616 and scalar <= 7679
+            return true if scalar >= 8400 and scalar <= 8447
+            return true if scalar >= 65024 and scalar <= 65039
+            return true if scalar >= 127995 and scalar <= 127999
+            return true if scalar >= 917536 and scalar <= 917631
+            return scalar >= 65056 and scalar <= 65071
+
+        def regional_indicator(scalar: u32) -> bool:
+            return scalar >= 127462 and scalar <= 127487
+
+        def next_grapheme(text: sview, position: usize) -> usize:
+            return text.len if position >= text.len
+            first: u32 = utf8_scalar_value(text, position)
+            cursor: mutable usize = position + utf8_scalar_bytes(text, position)
+            if first == 13 and cursor < text.len and utf8_scalar_value(text, cursor) == 10:
+                return cursor + 1
+            if regional_indicator(first) and cursor < text.len and regional_indicator(utf8_scalar_value(text, cursor)):
+                cursor <- cursor + utf8_scalar_bytes(text, cursor)
+            while cursor < text.len |cursor|:
+                scalar: u32 = utf8_scalar_value(text, cursor)
+                if extends_grapheme(scalar):
+                    cursor <- cursor + utf8_scalar_bytes(text, cursor)
+                elif scalar == 8205:
+                    cursor <- cursor + utf8_scalar_bytes(text, cursor)
+                    cursor <- cursor + utf8_scalar_bytes(text, cursor) if cursor < text.len
+                else:
+                    break
+            return cursor
+
+        def grapheme_prefix_length(text: sview, byte_limit: usize) -> usize:
+            limit: usize = byte_limit if byte_limit < text.len else text.len
+            cursor: mutable usize = 0
+            while cursor < limit |cursor, limit|:
+                after: usize = next_grapheme(text, cursor)
+                return cursor if after > limit
+                cursor <- after
+            return cursor
+
+        def utf16_units_for_prefix(text: sview, byte_stop: usize) -> usize:
+            stop: usize = byte_stop if byte_stop < text.len else text.len
+            cursor: mutable usize = 0
+            units: mutable usize = 0
+            while cursor < stop |cursor, units, stop|:
+                scalar_bytes: usize = utf8_scalar_bytes(text, cursor)
+                units <- units + (2 if scalar_bytes == 4 else 1)
+                cursor <- cursor + scalar_bytes
+            return units
+
+        def byte_offset_for_utf16(text: sview, unit_stop: usize) -> usize:
+            cursor: mutable usize = 0
+            units: mutable usize = 0
+            while cursor < text.len |cursor, units, unit_stop|:
+                scalar_bytes: usize = utf8_scalar_bytes(text, cursor)
+                scalar_units: usize = 2 if scalar_bytes == 4 else 1
+                return cursor if units + scalar_units > unit_stop
+                units <- units + scalar_units
+                cursor <- cursor + scalar_bytes
+                return cursor if units == unit_stop
+            return text.len
+
+        def previous_character(index: usize, position: usize) -> usize:
+            return 0 if position == 0
+            cursor: mutable usize = 0
+            previous: mutable usize = 0
+            while cursor < position |cursor, previous, position|:
+                previous <- cursor
+                after: usize = next_character(index, cursor)
+                return previous if after >= position
+                cursor <- after
+            return previous
+
+        def next_character(index: usize, position: usize) -> usize:
+            value: sview = text_value(index)
+            return next_grapheme(value, position)
+
+        def grapheme_boundary_at_or_before(index: usize, position: usize) -> usize:
+            cursor: mutable usize = 0
+            while cursor < position |cursor, position|:
+                after: usize = next_character(index, cursor)
+                return cursor if after > position
+                cursor <- after
+            return cursor
+
+        def secure_display_offset(index: usize, byte_position: usize) -> usize:
+            cursor: mutable usize = 0
+            output: mutable usize = 0
+            stop: usize = byte_position if byte_position < widgets[index].input_length else widgets[index].input_length
+            while cursor < stop |cursor, output, stop|:
+                cursor <- next_character(index, cursor)
+                output <- output + 3
+            return output
+
+        def secure_display_value(index: usize) -> sview:
+            output_base: usize = index * SECURE_TEXT_CAPACITY
+            cursor: mutable usize = 0
+            output: mutable usize = 0
+            while cursor < widgets[index].input_length |cursor, output, output_base|:
+                # U+2022 BULLET in UTF-8. The mask reveals scalar count but
+                # never the original bytes or grapheme widths.
+                secure_text_storage[output_base + output] <- 226
+                secure_text_storage[output_base + output + 1] <- 128
+                secure_text_storage[output_base + output + 2] <- 162
+                output <- output + 3
+                cursor <- next_character(index, cursor)
+            return sview(&secure_text_storage[output_base], 0, output.i64())
+
+        def display_range(index: usize, start: usize, stop: usize) -> sview:
+            value: sview = text_value(index)
+            return sview(value.data + start, 0, (stop - start).i64()) if not widgets[index].secure
+            masked: sview = secure_display_value(index)
+            masked_start: usize = secure_display_offset(index, start)
+            masked_stop: usize = secure_display_offset(index, stop)
+            return sview(masked.data + masked_start, 0, (masked_stop - masked_start).i64())
+
+        def measure_text_range(index: usize, start: usize, stop: usize) -> f32:
+            return ui_measure_text_width(display_range(index, start, stop), widgets[index].text_size)
+
+        # Word navigation is intentionally Unicode-safe without pretending to
+        # implement locale-specific tokenization: ASCII letters, digits and
+        # underscore form words, while every non-ASCII scalar stays intact and
+        # participates as a word character.
+        def is_word_character(index: usize, position: usize) -> bool:
+            return false if position >= widgets[index].input_length
+            byte: u32 = text_storage[index * TEXT_CAPACITY + position].u32()
+            return true if byte >= 128
+            return true if byte >= 48 and byte <= 57
+            return true if byte >= 65 and byte <= 90
+            return true if byte >= 97 and byte <= 122
+            return byte == 95
+
+        def previous_word(index: usize, position: usize) -> usize:
+            return 0 if position == 0
+            cursor: mutable usize = previous_character(index, position)
+            while cursor > 0 and not is_word_character(index, cursor) |cursor|:
+                cursor <- previous_character(index, cursor)
+            while cursor > 0 |cursor|:
+                before: usize = previous_character(index, cursor)
+                return cursor if not is_word_character(index, before)
+                cursor <- before
+            return 0
+
+        def next_word(index: usize, position: usize) -> usize:
+            length: usize = widgets[index].input_length
+            cursor: mutable usize = position if position < length else length
+            while cursor < length and not is_word_character(index, cursor) |cursor, length|:
+                cursor <- next_character(index, cursor)
+            while cursor < length and is_word_character(index, cursor) |cursor, length|:
+                cursor <- next_character(index, cursor)
+            return cursor
+
+        def visible_text_start(index: usize, available_width: f32) -> usize:
+            visible_start: mutable usize = 0
+            return visible_start if widgets[index].caret == 0
+            while visible_start < widgets[index].caret |visible_start, available_width|:
+                return visible_start if measure_text_range(index, visible_start, widgets[index].caret) <= available_width
+                visible_start <- next_character(index, visible_start)
+            return visible_start
+
+

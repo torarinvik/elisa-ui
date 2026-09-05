@@ -1,0 +1,385 @@
+# UiFlat measurement, arrangement, and focus helpers.
+# This file is included by ui_widget.elisa; UiFlat remains the public
+# compatibility namespace while its implementation is organized by concern.
+
+extend UiFlat:
+    private:
+        def child_count(index: usize) -> usize:
+            total: mutable usize = 0
+            cursor: mutable usize = widgets[index].first_child
+            steps: mutable usize = 0
+            while cursor != NONE |cursor, total, steps|:
+                break if steps >= MAX_TRAVERSAL_SIBLINGS or cursor >= widget_count
+                steps <- steps + 1
+                total <- total + 1 if widgets[cursor].visible
+                cursor <- widgets[cursor].next_sibling
+            return total
+
+        def effectively_visible(index: usize) -> bool:
+            return false if index >= widget_count
+            cursor: mutable usize = index
+            steps: mutable usize = 0
+            while cursor < widget_count |cursor, steps|:
+                return false if steps >= MAX_TRAVERSAL_DEPTH
+                steps <- steps + 1
+                return false if not widgets[cursor].visible
+                cursor <- widgets[cursor].parent
+            return true
+
+        def effectively_enabled(index: usize) -> bool:
+            return false if index >= widget_count
+            cursor: mutable usize = index
+            steps: mutable usize = 0
+            while cursor < widget_count |cursor, steps|:
+                return false if steps >= MAX_TRAVERSAL_DEPTH
+                steps <- steps + 1
+                return false if not widgets[cursor].enabled
+                cursor <- widgets[cursor].parent
+            return true
+
+        def collapse(index: usize, depth: usize) -> void:
+            return if index >= widget_count or depth >= MAX_TRAVERSAL_DEPTH
+            widgets[index] with { x <- 0.0, y <- 0.0, width <- 0.0, height <- 0.0 }
+            child: mutable usize = widgets[index].first_child
+            steps: mutable usize = 0
+            while child != NONE |child, depth, steps|:
+                return if steps >= MAX_TRAVERSAL_SIBLINGS or child >= widget_count
+                steps <- steps + 1
+                collapse(child, depth + 1)
+                child <- widgets[child].next_sibling
+
+        # Bottom-up pass: a container's minimum is its children's minima summed
+        # along its axis (plus spacing and padding) and maximised across it. A
+        # declared minimum still wins if it is larger.
+        def measure(index: usize, depth: usize) -> void:
+            return if index >= widget_count or depth >= MAX_TRAVERSAL_DEPTH
+            widgets[index].min_width <- widgets[index].declared_min_width
+            widgets[index].min_height <- widgets[index].declared_min_height
+            widgets[index].scroll_content_width <- widgets[index].declared_min_width
+            widgets[index].scroll_content_height <- widgets[index].declared_min_height
+            return if not effectively_visible(index)
+            cursor: mutable usize = widgets[index].first_child
+            return if cursor == NONE
+            is_row: bool = widgets[index].axis == UiConst::Axis.Row
+            along: mutable f32 = 0.0
+            across: mutable f32 = 0.0
+            children: mutable f32 = 0.0
+            steps: mutable usize = 0
+            while cursor != NONE |cursor, along, across, children, is_row, steps|:
+                return if steps >= MAX_TRAVERSAL_SIBLINGS or cursor >= widget_count
+                steps <- steps + 1
+                if widgets[cursor].visible:
+                    measure(cursor, depth + 1)
+                    child_margin: f32 = widgets[cursor].margin * 2.0
+                    child_along: f32 = (widgets[cursor].min_width if is_row else widgets[cursor].min_height) + child_margin
+                    child_across: f32 = (widgets[cursor].min_height if is_row else widgets[cursor].min_width) + child_margin
+                    along <- along + child_along
+                    across <- child_across if child_across > across else across
+                    children <- children + 1.0
+                cursor <- widgets[cursor].next_sibling
+            gaps: f32 = widgets[index].spacing * (children - 1.0) if children > 1.0 else 0.0
+            pad: f32 = widgets[index].padding * 2.0
+            content_width: f32 = along + gaps + pad if is_row else across + pad
+            content_height: f32 = across + pad if is_row else along + gaps + pad
+            if widgets[index].kind == UiConst::WidgetKind.Scroll:
+                widgets[index].scroll_content_width <- content_width if content_width > widgets[index].scroll_content_width else widgets[index].scroll_content_width
+                widgets[index].scroll_content_height <- content_height if content_height > widgets[index].scroll_content_height else widgets[index].scroll_content_height
+            else:
+                widgets[index].min_width <- content_width if content_width > widgets[index].min_width
+                widgets[index].min_height <- content_height if content_height > widgets[index].min_height
+
+        # Top-down pass: give every child its minimum along the axis, then
+        # share the leftover in proportion to `grow`. Cross-axis alignment can
+        # stretch a child or place its measured extent at the start, center, or
+        # end of the remaining band.
+        def arrange(index: usize, x: f32, y: f32, width: f32, height: f32, depth: usize) -> void:
+            return if index >= widget_count or depth >= MAX_TRAVERSAL_DEPTH
+            if not effectively_visible(index):
+                collapse(index, depth)
+                return
+            widgets[index] with { x, y, width, height }
+            first: usize = widgets[index].first_child
+            return if first == NONE
+
+            pad: f32 = widgets[index].padding
+            inner_x: f32 = x + pad
+            inner_y: f32 = y + pad
+            raw_inner_width: f32 = width - pad * 2.0
+            raw_inner_height: f32 = height - pad * 2.0
+            inner_width: f32 = raw_inner_width if raw_inner_width > 0.0 else 0.0
+            inner_height: f32 = raw_inner_height if raw_inner_height > 0.0 else 0.0
+            is_row: bool = widgets[index].axis == UiConst::Axis.Row
+            scrolling: bool = widgets[index].kind == UiConst::WidgetKind.Scroll
+
+            children: f32 = child_count(index).f32()
+            gaps: f32 = widgets[index].spacing * (children - 1.0) if children > 1.0 else 0.0
+            viewport_along: f32 = inner_width if is_row else inner_height
+            content_along: f32 = widgets[index].scroll_content_width if is_row else widgets[index].scroll_content_height
+            inner_along: f32 = content_along if scrolling and content_along > viewport_along else viewport_along
+            if scrolling:
+                limit: f32 = content_along - viewport_along if content_along > viewport_along else 0.0
+                next_offset: mutable f32 = UiCore::nonnegative_extent(widgets[index].scroll_offset)
+                next_offset <- limit if next_offset > limit else next_offset
+                widgets[index].scroll_offset <- next_offset
+
+            demand: mutable f32 = 0.0
+            weight: mutable f32 = 0.0
+            cursor: mutable usize = first
+            demand_steps: mutable usize = 0
+            while cursor != NONE |cursor, demand, weight, is_row, demand_steps|:
+                return if demand_steps >= MAX_TRAVERSAL_SIBLINGS or cursor >= widget_count
+                demand_steps <- demand_steps + 1
+                if widgets[cursor].visible:
+                    layout_extra[cursor] <- 0.0
+                    layout_capped[cursor] <- false
+                    demand <- demand + (widgets[cursor].min_width if is_row else widgets[cursor].min_height) + widgets[cursor].margin * 2.0
+                    weight <- weight + widgets[cursor].grow
+                cursor <- widgets[cursor].next_sibling
+
+            required: f32 = demand + gaps
+            scale: f32 = inner_along / required if required > inner_along and required > 0.0 else 1.0
+            free: f32 = inner_along - demand - gaps
+
+            # Iterative weighted distribution prevents a capped child from
+            # stranding free space that an uncapped sibling could use.
+            remaining: mutable f32 = free if free > 0.0 and scale == 1.0 else 0.0
+            remaining_weight: mutable f32 = weight
+            distributing: mutable bool = remaining > 0.0 and remaining_weight > 0.0
+            while distributing |remaining, remaining_weight, distributing, is_row|:
+                capped_any: mutable bool = false
+                candidate: mutable usize = first
+                cap_steps: mutable usize = 0
+                while candidate != NONE |candidate, remaining, remaining_weight, capped_any, is_row, cap_steps|:
+                    return if cap_steps >= MAX_TRAVERSAL_SIBLINGS or candidate >= widget_count
+                    cap_steps <- cap_steps + 1
+                    child_weight: f32 = widgets[candidate].grow
+                    if widgets[candidate].visible and child_weight > 0.0 and not layout_capped[candidate]:
+                        maximum: f32 = widgets[candidate].max_width if is_row else widgets[candidate].max_height
+                        minimum: f32 = widgets[candidate].min_width if is_row else widgets[candidate].min_height
+                        capacity: f32 = maximum - minimum
+                        proposed: f32 = remaining * child_weight / remaining_weight
+                        if maximum > 0.0 and capacity >= 0.0 and proposed > capacity:
+                            layout_extra[candidate] <- capacity
+                            layout_capped[candidate] <- true
+                            remaining <- remaining - capacity
+                            remaining_weight <- remaining_weight - child_weight
+                            capped_any <- true
+                    candidate <- widgets[candidate].next_sibling
+                if not capped_any:
+                    candidate <- first
+                    distribute_steps: mutable usize = 0
+                    while candidate != NONE |candidate, remaining, remaining_weight, distribute_steps|:
+                        return if distribute_steps >= MAX_TRAVERSAL_SIBLINGS or candidate >= widget_count
+                        distribute_steps <- distribute_steps + 1
+                        if widgets[candidate].visible and widgets[candidate].grow > 0.0 and not layout_capped[candidate]:
+                            layout_extra[candidate] <- remaining * widgets[candidate].grow / remaining_weight
+                        candidate <- widgets[candidate].next_sibling
+                    distributing <- false
+                distributing <- false if remaining <= 0.0 or remaining_weight <= 0.0
+
+            used_growth: mutable f32 = 0.0
+            growth_cursor: mutable usize = first
+            growth_steps: mutable usize = 0
+            while growth_cursor != NONE |growth_cursor, used_growth, growth_steps|:
+                return if growth_steps >= MAX_TRAVERSAL_SIBLINGS or growth_cursor >= widget_count
+                growth_steps <- growth_steps + 1
+                used_growth <- used_growth + layout_extra[growth_cursor] if widgets[growth_cursor].visible
+                growth_cursor <- widgets[growth_cursor].next_sibling
+            unused: f32 = free - used_growth if free > used_growth else 0.0
+            main_alignment: UiConst::MainAlignment = UiConst::MainAlignment.Start if scrolling else widgets[index].main_alignment
+            offset: mutable f32 = 0.0
+            offset <- unused * 0.5 if main_alignment == UiConst::MainAlignment.Center
+            offset <- unused if main_alignment == UiConst::MainAlignment.End
+            gap_extra: f32 = unused / (children - 1.0) if main_alignment == UiConst::MainAlignment.SpaceBetween and children > 1.0 else 0.0
+            offset <- -widgets[index].scroll_offset if scrolling
+            walk: mutable usize = first
+            walk_steps: mutable usize = 0
+            while walk != NONE |walk, offset, is_row, inner_x, inner_y, inner_width, inner_height, gap_extra, walk_steps|:
+                return if walk_steps >= MAX_TRAVERSAL_SIBLINGS or walk >= widget_count
+                walk_steps <- walk_steps + 1
+                if widgets[walk].visible:
+                    margin: f32 = widgets[walk].margin
+                    base: f32 = (widgets[walk].min_width if is_row else widgets[walk].min_height) + margin * 2.0
+                    outer_extent: f32 = base * scale + layout_extra[walk]
+                    extent: f32 = outer_extent - margin * 2.0
+                    extent <- 0.0 if extent < 0.0 else extent
+                    available_cross: f32 = (inner_height if is_row else inner_width) - margin * 2.0
+                    available_cross <- 0.0 if available_cross < 0.0 else available_cross
+                    cross_extent: f32 = available_cross
+                    cross_offset: f32 = margin
+                    alignment: UiConst::CrossAlignment = widgets[walk].cross_alignment
+                    minimum_cross: f32 = widgets[walk].min_height if is_row else widgets[walk].min_width
+                    maximum_cross: f32 = widgets[walk].max_height if is_row else widgets[walk].max_width
+                    cross_extent <- maximum_cross if maximum_cross > 0.0 and maximum_cross >= minimum_cross and cross_extent > maximum_cross else cross_extent
+                    if alignment != UiConst::CrossAlignment.Stretch:
+                        desired_cross: f32 = minimum_cross
+                        cross_extent <- desired_cross if desired_cross < available_cross else available_cross
+                        if alignment == UiConst::CrossAlignment.Center:
+                            cross_offset <- margin + (available_cross - cross_extent) * 0.5
+                        else:
+                            if alignment == UiConst::CrossAlignment.End:
+                                cross_offset <- margin + available_cross - cross_extent
+                    if is_row:
+                        arrange(walk, inner_x + offset + margin, inner_y + cross_offset, extent, cross_extent, depth + 1)
+                    else:
+                        arrange(walk, inner_x + cross_offset, inner_y + offset + margin, cross_extent, extent, depth + 1)
+                    offset <- offset + outer_extent + widgets[index].spacing * scale + gap_extra
+                else:
+                    collapse(walk, depth + 1)
+                walk <- widgets[walk].next_sibling
+
+        def contains(index: usize, x: f32, y: f32) -> bool:
+            return x >= widgets[index].x and y >= widgets[index].y and x < widgets[index].x + widgets[index].width and y < widgets[index].y + widgets[index].height
+
+        # A translated child remains in the retained tree, but it is not
+        # visible or hittable once the pointer leaves any scroll viewport on
+        # its ancestor chain. The same shared predicate drives hit testing and
+        # semantic visibility; paint() records the geometric half as side-band
+        # clip metadata so native painters can enforce it without a backend-
+        # specific command payload.
+        def inside_scroll_viewports(index: usize, x: f32, y: f32) -> bool:
+            cursor: mutable usize = widgets[index].parent
+            steps: mutable usize = 0
+            while cursor < widget_count |cursor, x, y, steps|:
+                return false if steps >= MAX_TRAVERSAL_DEPTH
+                steps <- steps + 1
+                if widgets[cursor].kind == UiConst::WidgetKind.Scroll:
+                    return false if not contains(cursor, x, y)
+                cursor <- widgets[cursor].parent
+            return true
+
+        def intersects_scroll_viewports(index: usize) -> bool:
+            left: f32 = widgets[index].x
+            top: f32 = widgets[index].y
+            right: f32 = left + widgets[index].width
+            bottom: f32 = top + widgets[index].height
+            cursor: mutable usize = widgets[index].parent
+            steps: mutable usize = 0
+            while cursor < widget_count |cursor, left, top, right, bottom, steps|:
+                return false if steps >= MAX_TRAVERSAL_DEPTH
+                steps <- steps + 1
+                if widgets[cursor].kind == UiConst::WidgetKind.Scroll:
+                    viewport_left: f32 = widgets[cursor].x
+                    viewport_top: f32 = widgets[cursor].y
+                    viewport_right: f32 = viewport_left + widgets[cursor].width
+                    viewport_bottom: f32 = viewport_top + widgets[cursor].height
+                    return false if right <= viewport_left or left >= viewport_right or bottom <= viewport_top or top >= viewport_bottom
+                cursor <- widgets[cursor].parent
+            return right > left and bottom > top
+
+        # Attach the intersection of every scroll ancestor to commands emitted
+        # for this widget. Core keeps this clip beside the command so native
+        # painters can apply it without changing their wire payloads.
+        def set_scroll_clip(index: usize) -> void:
+            UiCore::clear_clip()
+            cursor: mutable usize = widgets[index].parent
+            left: mutable f32 = 0.0
+            top: mutable f32 = 0.0
+            right: mutable f32 = 0.0
+            bottom: mutable f32 = 0.0
+            found: mutable bool = false
+            steps: mutable usize = 0
+            while cursor < widget_count |cursor, left, top, right, bottom, found, steps|:
+                return if steps >= MAX_TRAVERSAL_DEPTH
+                steps <- steps + 1
+                if widgets[cursor].kind == UiConst::WidgetKind.Scroll:
+                    viewport_left: f32 = widgets[cursor].x
+                    viewport_top: f32 = widgets[cursor].y
+                    viewport_right: f32 = viewport_left + widgets[cursor].width
+                    viewport_bottom: f32 = viewport_top + widgets[cursor].height
+                    if not found:
+                        left <- viewport_left
+                        top <- viewport_top
+                        right <- viewport_right
+                        bottom <- viewport_bottom
+                        found <- true
+                    else:
+                        left <- viewport_left if viewport_left > left else left
+                        top <- viewport_top if viewport_top > top else top
+                        right <- viewport_right if viewport_right < right else right
+                        bottom <- viewport_bottom if viewport_bottom < bottom else bottom
+                cursor <- widgets[cursor].parent
+            if found:
+                UiCore::set_clip(UiCore::Rect(left, top, right - left, bottom - top))
+
+        def clear_hover() -> void:
+            for index in 0..<widget_count:
+                widgets[index].hovered <- false
+            mark_paint_dirty()
+
+        def release_active_press() -> void:
+            if active_widget < widget_count:
+                widgets[active_widget].pressed <- false
+            active_widget <- NONE
+            active_scroll <- NONE
+            active_scroll_pointer <- 0.0
+            active_scroll_offset <- 0.0
+            active_pointer_button <- UiCore::NO_POINTER_BUTTON
+            active_key <- -1
+            mark_paint_dirty()
+
+        def focus(index: usize) -> void:
+            target: mutable usize = index
+            target <- NONE if target < widget_count and (not widgets[target].interactive or not effectively_enabled(target) or not effectively_visible(target))
+            changed: bool = target != focused_widget
+            release_active_press() if target != focused_widget
+            if focused_widget < widget_count:
+                widgets[focused_widget].focused <- false
+            focused_widget <- target
+            if focused_widget < widget_count:
+                widgets[focused_widget].focused <- true
+                restart_caret_blink() if widgets[focused_widget].kind == UiConst::WidgetKind.TextField
+                ensure_visible(focused_widget)
+            mark_state_dirty() if changed
+
+        def focus_next() -> void:
+            return if widget_count == 0
+            next: mutable usize = NONE
+            current_order: usize = widgets[focused_widget].focus_order if focused_widget < widget_count else 0
+            for candidate in 0..<widget_count:
+                eligible: bool = widgets[candidate].interactive and effectively_enabled(candidate) and effectively_visible(candidate)
+                follows: bool = focused_widget >= widget_count or widgets[candidate].focus_order > current_order or (widgets[candidate].focus_order == current_order and candidate > focused_widget)
+                if eligible and follows:
+                    next <- candidate if next >= widget_count or widgets[candidate].focus_order < widgets[next].focus_order or (widgets[candidate].focus_order == widgets[next].focus_order and candidate < next) else next
+            if next >= widget_count:
+                for candidate in 0..<widget_count:
+                    eligible: bool = widgets[candidate].interactive and effectively_enabled(candidate) and effectively_visible(candidate)
+                    if eligible:
+                        next <- candidate if next >= widget_count or widgets[candidate].focus_order < widgets[next].focus_order or (widgets[candidate].focus_order == widgets[next].focus_order and candidate < next) else next
+            focus(next) if next < widget_count
+
+        def focus_previous() -> void:
+            return if widget_count == 0
+            previous: mutable usize = NONE
+            current_order: usize = widgets[focused_widget].focus_order if focused_widget < widget_count else 0
+            for candidate in 0..<widget_count:
+                eligible: bool = widgets[candidate].interactive and effectively_enabled(candidate) and effectively_visible(candidate)
+                precedes: bool = focused_widget < widget_count and (widgets[candidate].focus_order < current_order or (widgets[candidate].focus_order == current_order and candidate < focused_widget))
+                if eligible and precedes:
+                    previous <- candidate if previous >= widget_count or widgets[candidate].focus_order > widgets[previous].focus_order or (widgets[candidate].focus_order == widgets[previous].focus_order and candidate > previous) else previous
+            if previous >= widget_count:
+                for candidate in 0..<widget_count:
+                    eligible: bool = widgets[candidate].interactive and effectively_enabled(candidate) and effectively_visible(candidate)
+                    if eligible:
+                        previous <- candidate if previous >= widget_count or widgets[candidate].focus_order > widgets[previous].focus_order or (widgets[candidate].focus_order == widgets[previous].focus_order and candidate > previous) else previous
+            focus(previous) if previous < widget_count
+
+        def color_of(index: usize) -> UiCore::Color:
+            if not effectively_enabled(index):
+                return muted_color(widgets[index].color)
+            return widgets[index].press_color if widgets[index].pressed
+            return widgets[index].hover_color if widgets[index].hovered
+            return widgets[index].color
+
+        def muted_color(base: UiCore::Color) -> UiCore::Color:
+            return UiCore::Color{r: base.r / 2, g: base.g / 2, b: base.b / 2, a: base.a}
+
+        # Keep widget notifications typed throughout the retained framework.
+        # The legacy application callback is the only compatibility boundary
+        # that still accepts an ordinal, so the conversion lives in one place.
+        def emit_widget_event(index: usize, event: UiConst::WidgetEvent) -> void:
+            app_widget_event(index, event.i32())
+
+        # Keyboard focus must never disappear into a translated viewport. The
+        # child frame already contains the current offset, so recover its
+        # unscrolled edge and request the smallest offset that reveals it.

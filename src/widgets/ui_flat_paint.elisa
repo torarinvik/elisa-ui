@@ -1,0 +1,158 @@
+# UiFlat retained painting.
+# This file is included by ui_widget.elisa; UiFlat remains the public
+# compatibility namespace while its implementation is organized by concern.
+
+extend UiFlat:
+    public:
+        def paint() -> void:
+            layout(last_layout_width, last_layout_height) if layout_initialized and layout_dirty
+            build_paint_order()
+            for index in 0..<widget_count:
+                semantic_emitted[index] <- not effectively_visible(index) or not intersects_scroll_viewports(index)
+            for emitted_count in 0..<widget_count:
+                next_semantic: mutable usize = NONE
+                for candidate in 0..<widget_count:
+                    if not semantic_emitted[candidate]:
+                        next_semantic <- candidate if next_semantic >= widget_count or widgets[candidate].focus_order < widgets[next_semantic].focus_order or (widgets[candidate].focus_order == widgets[next_semantic].focus_order and candidate < next_semantic) else next_semantic
+                if next_semantic < widget_count:
+                    emit_accessibility(next_semantic)
+                    semantic_emitted[next_semantic] <- true
+            for order_index in 0..<paint_order_count:
+                index: usize = paint_order[order_index]
+                continue if not effectively_visible(index) or not intersects_scroll_viewports(index)
+                set_scroll_clip(index)
+                enabled: bool = effectively_enabled(index)
+                color: UiCore::Color = color_of(index)
+                frame: UiCore::Rect = UiCore::Rect(widgets[index].x, widgets[index].y, widgets[index].width, widgets[index].height)
+                if widgets[index].kind == UiConst::WidgetKind.Slider:
+                    slider_inset: f32 = clamped_inset(current_theme.slider_horizontal_inset, widgets[index].width)
+                    track_height: f32 = current_theme.slider_track_height if current_theme.slider_track_height < widgets[index].height else widgets[index].height
+                    track_y: f32 = widgets[index].y + widgets[index].height / 2.0 - track_height / 2.0
+                    track_x: f32 = widgets[index].x + slider_inset
+                    track_width: f32 = widgets[index].width - slider_inset * 2.0
+                    slider_track: UiCore::Color = widgets[index].color if enabled else muted_color(widgets[index].color)
+                    slider_fill: UiCore::Color = widgets[index].hover_color if enabled else muted_color(widgets[index].hover_color)
+                    UiCore::fill(UiCore::Rect(track_x, track_y, track_width, track_height), slider_track)
+                    UiCore::fill(UiCore::Rect(track_x, track_y, track_width * widgets[index].value, track_height), slider_fill)
+                    thumb_x: f32 = track_x + track_width * widgets[index].value
+                    thumb: mutable UiCore::Color = widgets[index].press_color if enabled else muted_color(widgets[index].press_color)
+                    thumb <- current_theme.control_mark_strong if widgets[index].pressed
+                    UiCore::fill(UiCore::Circle{center: UiCore::Vec2(thumb_x, track_y + track_height / 2.0), radius: current_theme.slider_thumb_radius}, thumb)
+                elif widgets[index].kind == UiConst::WidgetKind.ProgressBar:
+                    progress_height: f32 = current_theme.slider_track_height if current_theme.slider_track_height < widgets[index].height else widgets[index].height
+                    progress_y: f32 = widgets[index].y + widgets[index].height / 2.0 - progress_height / 2.0
+                    progress_track: UiCore::Color = widgets[index].color if enabled else muted_color(widgets[index].color)
+                    progress_fill: UiCore::Color = widgets[index].hover_color if enabled else muted_color(widgets[index].hover_color)
+                    UiCore::fill(UiCore::Rect(widgets[index].x, progress_y, widgets[index].width, progress_height), progress_track)
+                    UiCore::fill(UiCore::Rect(widgets[index].x, progress_y, widgets[index].width * widgets[index].value, progress_height), progress_fill)
+                elif color.a != 0:
+                    UiCore::fill(frame, color)
+                if widgets[index].kind == UiConst::WidgetKind.RadioButton:
+                    mark_x: f32 = widgets[index].x + current_theme.choice_center_x
+                    mark_y: f32 = widgets[index].y + widgets[index].height / 2.0
+                    outer: UiCore::Color = current_theme.control_mark if enabled else muted_color(current_theme.control_mark)
+                    UiCore::fill(UiCore::Circle{center: UiCore::Vec2(mark_x, mark_y), radius: current_theme.radio_outer_radius}, outer)
+                    inner: mutable UiCore::Color = color
+                    inner <- current_theme.control_mark_strong if widgets[index].selected and enabled
+                    inner <- muted_color(current_theme.control_mark_strong) if widgets[index].selected and not enabled
+                    UiCore::fill(UiCore::Circle{center: UiCore::Vec2(mark_x, mark_y), radius: current_theme.radio_inner_radius}, inner)
+                elif widgets[index].kind == UiConst::WidgetKind.CheckBox:
+                    checkbox_extent: f32 = current_theme.checkbox_size
+                    box_x: f32 = widgets[index].x + current_theme.choice_center_x - checkbox_extent / 2.0
+                    box_y: f32 = widgets[index].y + widgets[index].height / 2.0 - checkbox_extent / 2.0
+                    box_color: UiCore::Color = current_theme.control_mark if enabled else muted_color(current_theme.control_mark)
+                    UiCore::fill(UiCore::Rect(box_x, box_y, checkbox_extent, checkbox_extent), box_color)
+                    # Scale the inset and checkmark with the token. Fixed
+                    # pixel geometry here used to overflow when an app chose
+                    # a compact checkbox theme.
+                    checkbox_inset: f32 = checkbox_extent * 0.18
+                    checkbox_inner_extent: mutable f32 = checkbox_extent - checkbox_inset * 2.0
+                    checkbox_inner_extent <- 0.0 if checkbox_inner_extent < 0.0
+                    UiCore::fill(UiCore::Rect(box_x + checkbox_inset, box_y + checkbox_inset, checkbox_inner_extent, checkbox_inner_extent), color)
+                    if widgets[index].selected and checkbox_extent > 0.0:
+                        check_ink: UiCore::Color = current_theme.control_mark_strong if enabled else muted_color(current_theme.control_mark_strong)
+                        UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(box_x + checkbox_extent * 0.23, box_y + checkbox_extent * 0.50), to_point: UiCore::Vec2(box_x + checkbox_extent * 0.44, box_y + checkbox_extent * 0.73)}, check_ink)
+                        UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(box_x + checkbox_extent * 0.44, box_y + checkbox_extent * 0.73), to_point: UiCore::Vec2(box_x + checkbox_extent * 0.82, box_y + checkbox_extent * 0.27)}, check_ink)
+                if widgets[index].focused:
+                    focus_x: f32 = clamped_inset(current_theme.focus_inset, widgets[index].width)
+                    focus_y: f32 = clamped_inset(current_theme.focus_inset, widgets[index].height)
+                    left: f32 = widgets[index].x + focus_x
+                    top: f32 = widgets[index].y + focus_y
+                    right: f32 = widgets[index].x + widgets[index].width - focus_x
+                    bottom: f32 = widgets[index].y + widgets[index].height - focus_y
+                    UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(left, top), to_point: UiCore::Vec2(right, top)}, current_theme.focus_ring)
+                    UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(right, top), to_point: UiCore::Vec2(right, bottom)}, current_theme.focus_ring)
+                    UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(right, bottom), to_point: UiCore::Vec2(left, bottom)}, current_theme.focus_ring)
+                    UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(left, bottom), to_point: UiCore::Vec2(left, top)}, current_theme.focus_ring)
+                if widgets[index].kind == UiConst::WidgetKind.TextField:
+                    field_value: sview = text_value(index)
+                    text_inset: f32 = clamped_inset(current_theme.text_horizontal_padding, widgets[index].width)
+                    available_width: mutable f32 = widgets[index].width - text_inset * 2.0
+                    available_width <- 0.0 if available_width < 0.0 else available_width
+                    visible_start: mutable usize = 0
+                    visible_start <- visible_text_start(index, available_width) if widgets[index].focused
+                    visible_stop: mutable usize = visible_start
+                    scan: mutable usize = visible_start
+                    while scan < widgets[index].input_length |scan, visible_stop, visible_start, available_width|:
+                        after: usize = next_character(index, scan)
+                        break if measure_text_range(index, visible_start, after) > available_width
+                        visible_stop <- after
+                        scan <- after
+                    visible_value: sview = display_range(index, visible_start, visible_stop)
+                    display_text: sview = visible_value if field_value.len > 0 else widgets[index].placeholder
+                    field_ink: mutable UiCore::Color = widgets[index].text_color
+                    field_ink <- muted_color(field_ink) if not enabled
+                    if field_value.len == 0:
+                        field_ink <- UiCore::Color{r: field_ink.r / 2, g: field_ink.g / 2, b: field_ink.b / 2, a: field_ink.a}
+                    field_y: f32 = widgets[index].y + (widgets[index].height - ui_text_line_height(widgets[index].text_size)) / 2.0
+                    selected_start: mutable usize = selection_start(index)
+                    selected_stop: mutable usize = selection_end(index)
+                    selected_start <- visible_start if selected_start < visible_start else selected_start
+                    selected_stop <- visible_stop if selected_stop > visible_stop else selected_stop
+                    if selected_stop > selected_start:
+                        selection_x: f32 = widgets[index].x + text_inset + measure_text_range(index, visible_start, selected_start)
+                        selection_width: f32 = measure_text_range(index, selected_start, selected_stop)
+                        selection_inset: f32 = clamped_inset(current_theme.selection_vertical_inset, widgets[index].height)
+                        UiCore::fill(UiCore::Rect(selection_x, widgets[index].y + selection_inset, selection_width, widgets[index].height - selection_inset * 2.0), current_theme.selection)
+                    UiCore::draw(UiCore::TextRun(UiCore::Vec2(widgets[index].x + text_inset, field_y), widgets[index].text_size, display_text), field_ink)
+                    marked_start: mutable usize = widgets[index].marked_start
+                    marked_stop: mutable usize = widgets[index].marked_end
+                    marked_start <- visible_start if marked_start < visible_start else marked_start
+                    marked_stop <- visible_stop if marked_stop > visible_stop else marked_stop
+                    if marked_stop > marked_start:
+                        marked_x: f32 = widgets[index].x + text_inset + measure_text_range(index, visible_start, marked_start)
+                        marked_width: f32 = measure_text_range(index, marked_start, marked_stop)
+                        # Keep the composition underline inside the field even
+                        # when a theme supplies an inset larger than its
+                        # current widget height.
+                        marked_inset: f32 = clamped_inset(current_theme.marked_underline_inset, widgets[index].height)
+                        marked_y: f32 = widgets[index].y + widgets[index].height - marked_inset
+                        UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(marked_x, marked_y), to_point: UiCore::Vec2(marked_x + marked_width, marked_y)}, widgets[index].text_color)
+                    if widgets[index].focused and selection_start(index) == selection_end(index) and caret_is_visible():
+                        caret_x: f32 = widgets[index].x + text_inset + measure_text_range(index, visible_start, widgets[index].caret)
+                        caret_inset: f32 = clamped_inset(current_theme.text_vertical_padding, widgets[index].height)
+                        UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(caret_x, widgets[index].y + caret_inset), to_point: UiCore::Vec2(caret_x, widgets[index].y + widgets[index].height - caret_inset)}, widgets[index].text_color)
+                    continue
+                continue if widgets[index].text_size <= 0.0 or widgets[index].text.len == 0
+                # Button captions are centered in their hit target. Ordinary labels
+                # remain leading-aligned, which is the useful default for content.
+                text_y: f32 = widgets[index].y + (widgets[index].height - ui_text_line_height(widgets[index].text_size)) / 2.0
+                text_x: mutable f32 = widgets[index].x
+                text_width: f32 = ui_measure_text_width(widgets[index].text, widgets[index].text_size)
+                if widgets[index].kind == UiConst::WidgetKind.Button:
+                    text_x <- widgets[index].x + (widgets[index].width - text_width) / 2.0
+                elif widgets[index].kind == UiConst::WidgetKind.RadioButton or widgets[index].kind == UiConst::WidgetKind.CheckBox:
+                    marker_space: f32 = current_theme.choice_text_space
+                    text_x <- widgets[index].x + marker_space + (widgets[index].width - marker_space - text_width) / 2.0
+                ink: mutable UiCore::Color = widgets[index].text_color
+                ink <- muted_color(ink) if not enabled
+                UiCore::draw(UiCore::TextRun(UiCore::Vec2(text_x, text_y), widgets[index].text_size, widgets[index].text), ink)
+            # Indicators are emitted after content so they remain readable over
+            # translated children and nested scroll areas.
+            for order_index in 0..<paint_order_count:
+                index: usize = paint_order[order_index]
+                continue if not effectively_visible(index) or not intersects_scroll_viewports(index)
+                set_scroll_clip(index)
+                paint_scrollbar(index)
+            UiCore::clear_clip()
+

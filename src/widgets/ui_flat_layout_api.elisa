@@ -1,0 +1,67 @@
+# UiFlat layout and scroll public API.
+# This file is included by ui_widget.elisa; UiFlat remains the public
+# compatibility namespace while its implementation is organized by concern.
+
+extend UiFlat:
+    public:
+        def layout(width: f32, height: f32) -> void:
+            last_layout_width <- UiCore::nonnegative_extent(width)
+            last_layout_height <- UiCore::nonnegative_extent(height)
+            layout_initialized <- true
+            layout_dirty <- false
+            UiCore::clear_invalidations(UiCore::Invalidation.Layout)
+            return if widget_count == 0
+            measure(0, 0)
+            arrange(0, 0.0, 0.0, last_layout_width, last_layout_height, 0)
+
+        # Geometry consumers share paint's deferred retained reflow. Keeping
+        # this in Elisa means a mutation followed immediately by hit testing
+        # or scrolling cannot observe stale frames.
+        def ensure_layout() -> void:
+            layout(last_layout_width, last_layout_height) if layout_initialized and layout_dirty
+
+        # Scroll geometry is retained in the flat widget row, not in a host
+        # object. Setters clamp in Elisa and optionally reflow the remembered
+        # viewport so all backends observe the same translated child frames.
+        def scroll_offset(index: usize) -> f32:
+            return 0.0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Scroll
+            return widgets[index].scroll_offset
+
+        def scroll_dragging() -> bool:
+            return active_scroll < widget_count
+
+        def scroll_limit(index: usize) -> f32:
+            ensure_layout()
+            return 0.0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Scroll
+            viewport: f32 = widgets[index].width if widgets[index].axis == UiConst::Axis.Row else widgets[index].height
+            content: f32 = widgets[index].scroll_content_width if widgets[index].axis == UiConst::Axis.Row else widgets[index].scroll_content_height
+            return content - viewport if content > viewport else 0.0
+
+        def set_scroll_offset(index: usize, requested: f32) -> bool:
+            ensure_layout()
+            return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Scroll
+            wanted: mutable f32 = UiCore::nonnegative_extent(UiCore::finite_or_zero(requested))
+            limit: f32 = scroll_limit(index)
+            wanted <- limit if wanted > limit else wanted
+            current: f32 = widgets[index].scroll_offset
+            difference: f32 = wanted - current if wanted >= current else current - wanted
+            return false if difference < 0.0001
+            widgets[index].scroll_offset <- wanted
+            mark_state_dirty()
+            layout(last_layout_width, last_layout_height) if layout_initialized
+            return true
+
+        # Window deactivation, modal interruption and capture loss must not
+        # leave a control visually held or a modifier latched.
+        def cancel_interaction() -> void:
+            release_active_press()
+            hot_widget <- NONE
+            pointer_inside <- false
+            left_shift_down <- false
+            right_shift_down <- false
+            left_control_down <- false
+            right_control_down <- false
+            left_super_down <- false
+            right_super_down <- false
+            clear_hover()
+

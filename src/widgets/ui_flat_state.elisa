@@ -1,0 +1,247 @@
+# UiFlat retained state and common mutation helpers.
+# This file is included by ui_widget.elisa; UiFlat remains the public
+# compatibility namespace while its implementation is organized by concern.
+
+extend UiFlat:
+    private:
+        global mutable widgets: Widget[MAX_WIDGETS] = zeroed
+        # Scratch allocation by widget index. Recursive layout is safe because
+        # each tree node has a unique slot and a child only rewrites descendants;
+        # the explicit depth/sibling budgets above also make malformed public
+        # links fail closed instead of turning a frame into an infinite walk.
+        global mutable layout_extra: f32[MAX_WIDGETS] = zeroed
+        global mutable layout_capped: bool[MAX_WIDGETS] = zeroed
+        global mutable semantic_emitted: bool[MAX_WIDGETS] = zeroed
+        # Paint order is derived from links, not allocation order. An app may
+        # construct a later sibling before filling an earlier container; the
+        # retained tree must still paint each subtree contiguously so a sibling
+        # cannot cover a descendant merely because its row was allocated first.
+        global mutable paint_order: usize[MAX_WIDGETS] = zeroed
+        global mutable paint_order_seen: bool[MAX_WIDGETS] = zeroed
+        global mutable paint_order_count: usize = 0
+        global mutable text_storage: u8[TEXT_STORAGE_SIZE] = zeroed
+        global mutable secure_text_storage: u8[SECURE_TEXT_STORAGE_SIZE] = zeroed
+        global mutable widget_count: usize = 0
+        # A monotonically changing arena lifetime makes an index-backed handle
+        # distinguishable across reset/rebuild.  The flat compatibility API
+        # still exposes indexes, while UiHandles can reject an old index even
+        # after its slot has been reused by a new tree.
+        global mutable widget_epoch: usize = 1
+        global mutable widget_dropped: bool = false
+        global mutable last_layout_width: f32 = 0.0
+        global mutable last_layout_height: f32 = 0.0
+        global mutable layout_initialized: bool = false
+        # Geometry-affecting mutations defer one retained reflow until the
+        # next paint. This keeps layout policy in Elisa while avoiding a full
+        # measure/arrange pass for every setter during a frame.
+        global mutable layout_dirty: bool = false
+        # The widget under the pointer, and the one holding a press. A click
+        # only fires when both agree on release, so dragging off a button
+        # cancels it.
+        global mutable hot_widget: usize = NONE
+        global mutable pointer_x: f32 = 0.0
+        global mutable pointer_y: f32 = 0.0
+        global mutable pointer_inside: bool = false
+        global mutable active_widget: usize = NONE
+        global mutable active_scroll: usize = NONE
+        global mutable active_scroll_pointer: f32 = 0.0
+        global mutable active_scroll_offset: f32 = 0.0
+        global mutable active_pointer_button: i32 = UiCore::NO_POINTER_BUTTON
+        global mutable active_key: i32 = -1
+        global mutable focused_widget: usize = NONE
+        global mutable left_shift_down: bool = false
+        global mutable right_shift_down: bool = false
+        global mutable left_control_down: bool = false
+        global mutable right_control_down: bool = false
+        global mutable left_super_down: bool = false
+        global mutable right_super_down: bool = false
+        global mutable clipboard_buffer: u8[TEXT_CAPACITY] = zeroed
+        # Text history is global so edits across fields undo in chronological
+        # order. Each bounded entry stores complete before/after field states;
+        # Complete before/after snapshots keep behavior deterministic and
+        # allocation-free; capacity constants derive the exact storage cost.
+        global mutable history_widget: usize[TEXT_HISTORY_CAPACITY] = zeroed
+        global mutable history_before_text: u8[TEXT_HISTORY_STORAGE_SIZE] = zeroed
+        global mutable history_after_text: u8[TEXT_HISTORY_STORAGE_SIZE] = zeroed
+        global mutable history_before_length: usize[TEXT_HISTORY_CAPACITY] = zeroed
+        global mutable history_after_length: usize[TEXT_HISTORY_CAPACITY] = zeroed
+        global mutable history_before_caret: usize[TEXT_HISTORY_CAPACITY] = zeroed
+        global mutable history_after_caret: usize[TEXT_HISTORY_CAPACITY] = zeroed
+        global mutable history_before_anchor: usize[TEXT_HISTORY_CAPACITY] = zeroed
+        global mutable history_after_anchor: usize[TEXT_HISTORY_CAPACITY] = zeroed
+        global mutable history_before_marked_start: usize[TEXT_HISTORY_CAPACITY] = zeroed
+        global mutable history_before_marked_end: usize[TEXT_HISTORY_CAPACITY] = zeroed
+        global mutable history_after_marked_start: usize[TEXT_HISTORY_CAPACITY] = zeroed
+        global mutable history_after_marked_end: usize[TEXT_HISTORY_CAPACITY] = zeroed
+        global mutable history_count: usize = 0
+        global mutable history_cursor: usize = 0
+        global mutable history_active: bool = false
+        global mutable history_suppressed: bool = false
+        global mutable composition_history_slot: usize = TEXT_HISTORY_CAPACITY
+        global mutable caret_blink_started: f64 = 0.0
+
+        # Flat widgets have two container kinds. Keeping this predicate beside
+        # link/new_widget makes the nesting invariant explicit and prevents a
+        # leaf from becoming an unreachable parent with a misleading ancestry.
+        def can_nest(index: usize) -> bool:
+            return false if index >= widget_count
+            return widgets[index].kind == UiConst::WidgetKind.Panel or widgets[index].kind == UiConst::WidgetKind.Scroll
+
+        # Geometry mutations are deferred until the next retained reflow, but
+        # the core also exposes the durable invalidation reason to hosts and
+        # diagnostics. Paint and semantic work naturally follow a layout change
+        # on the next frame.
+        def mark_layout_dirty() -> void:
+            layout_dirty <- true if layout_initialized
+            UiCore::invalidate(UiCore::Invalidation.Layout)
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+            UiCore::invalidate(UiCore::Invalidation.Semantics)
+
+        def mark_paint_dirty() -> void:
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+
+        def mark_semantics_dirty() -> void:
+            UiCore::invalidate(UiCore::Invalidation.Semantics)
+
+        def mark_state_dirty() -> void:
+            mark_paint_dirty()
+            mark_semantics_dirty()
+        global mutable current_theme: Theme = Theme{
+            focus_ring: UiCore::Color{r: 94, g: 158, b: 255, a: 245},
+            selection: UiCore::Color{r: 55, g: 112, b: 214, a: 210},
+            control_mark: UiCore::Color{r: 255, g: 255, b: 255, a: 185},
+            control_mark_strong: UiCore::Color{r: 255, g: 255, b: 255, a: 255},
+            focus_inset: 2.0,
+            text_horizontal_padding: 12.0,
+            text_vertical_padding: 8.0,
+            selection_vertical_inset: 6.0,
+            marked_underline_inset: 7.0,
+            slider_horizontal_inset: 8.0,
+            slider_track_height: 6.0,
+            slider_thumb_radius: 8.0,
+            choice_center_x: 17.0,
+            radio_outer_radius: 5.5,
+            radio_inner_radius: 2.8,
+            checkbox_size: 11.0,
+            choice_text_space: 28.0,
+            caret_blink_interval: 0.5,
+            scrollbar_track: UiCore::Color{r: 0, g: 0, b: 0, a: 70},
+            scrollbar_thumb: UiCore::Color{r: 255, g: 255, b: 255, a: 175},
+            scrollbar_thumb_hover: UiCore::Color{r: 255, g: 255, b: 255, a: 220},
+            scrollbar_thumb_active: UiCore::Color{r: 255, g: 255, b: 255, a: 255},
+            scrollbar_width: 8.0,
+            scrollbar_inset: 4.0,
+        }
+
+        # Fractions are part of the public widget state and must never let an
+        # out-of-range value reach layout, paint, accessibility, or a native
+        # setter. The same helper is used by both direct setters and pointer
+        # interaction so the two paths cannot drift.
+        def shift_active() -> bool:
+            return left_shift_down or right_shift_down
+
+        def control_active() -> bool:
+            return left_control_down or right_control_down
+
+        def super_active() -> bool:
+            return left_super_down or right_super_down
+
+        # TextField is deliberately single-line. Native text input normally
+        # routes Return to Submit, but paste and programmatic replacement can
+        # still contain control or Unicode line separators. Replace every byte
+        # of such a sequence with ASCII space so storage length and offsets stay
+        # stable while no backend can interpret the value as multiple lines.
+        def single_line_byte(text: sview, position: usize) -> u8:
+            byte: u8 = text.data[position]
+            return 32 if byte < 32 or byte == 127
+            return 32 if byte == 194 and position + 1 < text.len and text.data[position + 1] == 133
+            return 32 if byte == 133 and position > 0 and text.data[position - 1] == 194
+            return 32 if byte == 226 and position + 2 < text.len and text.data[position + 1] == 128 and (text.data[position + 2] == 168 or text.data[position + 2] == 169)
+            return 32 if byte == 128 and position > 0 and position + 1 < text.len and text.data[position - 1] == 226 and (text.data[position + 1] == 168 or text.data[position + 1] == 169)
+            return 32 if (byte == 168 or byte == 169) and position > 1 and text.data[position - 1] == 128 and text.data[position - 2] == 226
+            return byte
+
+        def clamped_inset(value: f32, extent: f32) -> f32:
+            safe: f32 = UiCore::nonnegative_extent(value)
+            half: f32 = UiCore::nonnegative_extent(extent) / 2.0
+            return safe if safe < half else half
+
+        def restart_caret_blink() -> void:
+            caret_blink_started <- UiCore::frame_time()
+
+        def caret_is_visible() -> bool:
+            interval: f32 = current_theme.caret_blink_interval
+            return true if interval <= 0.0
+            UiCore::request_frame_after(interval)
+            elapsed: f64 = UiCore::frame_time() - caret_blink_started
+            return true if elapsed <= 0.0
+            return ((elapsed / interval.f64()).i64() % 2) == 0
+
+        def link(parent: usize, child: usize) -> void:
+            return if parent >= widget_count or child >= widget_count or parent == child
+            return if not can_nest(parent)
+            # A child may only be attached once. `new_widget` initializes its
+            # parent before calling this helper, so the same-parent case is the
+            # normal insertion path; a different parent would silently create
+            # two ownership paths and make focus/layout traversal ambiguous.
+            return if widgets[child].parent != NONE and widgets[child].parent != parent
+            # Walking the proposed parent's ancestry rejects attaching an
+            # ancestor below its own descendant, which would otherwise make
+            # every parent/sibling traversal unbounded.
+            ancestor: mutable usize = parent
+            ancestor_steps: mutable usize = 0
+            while ancestor < widget_count |ancestor, ancestor_steps|:
+                return if ancestor_steps >= MAX_TRAVERSAL_DEPTH
+                ancestor_steps <- ancestor_steps + 1
+                return if ancestor == child
+                ancestor <- widgets[ancestor].parent
+            if widgets[parent].first_child == NONE:
+                widgets[parent].first_child <- child
+                widgets[child].parent <- parent
+                return
+            cursor: mutable usize = widgets[parent].first_child
+            return if cursor == child
+            sibling_steps: mutable usize = 0
+            while cursor < widget_count and widgets[cursor].next_sibling != NONE |cursor, sibling_steps|:
+                return if sibling_steps >= MAX_TRAVERSAL_SIBLINGS
+                sibling_steps <- sibling_steps + 1
+                cursor <- widgets[cursor].next_sibling
+                return if cursor == child
+            return if cursor >= widget_count
+            widgets[cursor].next_sibling <- child
+            widgets[child].parent <- parent
+
+        # Returns NONE when the arena is full; callers may pass that on as a
+        # parent, and every traversal treats it as absent, so overflow degrades
+        # to missing widgets rather than corrupting the tree.
+        def new_widget(parent: usize, kind: UiConst::WidgetKind) -> usize:
+            if widget_count >= MAX_WIDGETS:
+                widget_dropped <- true
+                return NONE
+            index: usize = widget_count
+            widget_count <- widget_count + 1
+            mark_layout_dirty()
+            safe_parent: usize = parent if parent < index and can_nest(parent) else NONE
+            # A whole-record reset, not a `with` block: a literal must name
+            # every field, so a field added to Widget cannot be left
+            # uninitialised here.
+            widgets[index] <- Widget{
+                kind, parent: safe_parent,
+                first_child: NONE, next_sibling: NONE,
+                axis: UiConst::Axis.Column, padding: 0.0, spacing: 0.0, margin: 0.0,
+                cross_alignment: UiConst::CrossAlignment.Stretch,
+                main_alignment: UiConst::MainAlignment.Start,
+                declared_min_width: 0.0, declared_min_height: 0.0,
+                min_width: 0.0, min_height: 0.0,
+                max_width: 0.0, max_height: 0.0, grow: 0.0,
+                x: 0.0, y: 0.0, width: 0.0, height: 0.0,
+                color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, hover_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, press_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0},
+                text: "", placeholder: "", help: "", text_size: 0.0, text_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, secure: false,
+                interactive: false, focus_order: index, selection_group: parent, visible: true, enabled: true, hovered: false, pressed: false, focused: false, selected: false, value: 0.0, step: 0.05,
+                input_length: 0, caret: 0, selection_anchor: 0, marked_start: 0, marked_end: 0, text_revision: 0, text_truncated: false,
+                scroll_offset: 0.0, scroll_content_width: 0.0, scroll_content_height: 0.0,
+            }
+            link(safe_parent, index)
+            return index
+
+

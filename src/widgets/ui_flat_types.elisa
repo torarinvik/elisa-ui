@@ -1,0 +1,137 @@
+# elisa-ui flat widget layer: a retained widget tree in one fixed array, box
+# layout, and hit testing. `module UiFlat`.
+#
+# This is the older, simpler layer: every widget is one row of `UiFlat::Widget`
+# and a reference is an index. The sealed hierarchy in ui_hierarchy.elisa is
+# the typed successor; this layer stays because it needs no arena and no
+# region, which suits the smallest components.
+#
+# The layout model is wxWidgets' sizer idea reduced to its load-bearing parts: a
+# container distributes its inner box along one axis, each child contributes a
+# minimum size, and leftover space is shared out in proportion to each child's
+# `grow` weight. Two passes -- measure bottom-up, then arrange top-down -- so a
+# container's size never depends on the order its children were added.
+#
+# Nothing here allocates: a frame that lays out, hit-tests, and paints touches
+# only the array and the core's command batch, which is what lets the same code
+# run on the component backend's monotonic heap.
+#
+# Apps implement `app_widget_event(widget: usize, event)` to receive clicks.
+
+include "../core/ui_core.elisa"
+include "./ui_const.elisa"
+
+module UiFlat:
+    public:
+        # The flat layer caps its tree; the sealed hierarchy in ui_hierarchy.elisa
+        # has no cap because a handle IS the node there. new_widget degrades to
+        # NONE past this rather than corrupting the tree.
+        const MAX_WIDGETS: usize = 256
+        # Structural walks are bounded by the fixed arena as well. A malformed
+        # parent or sibling link must fail closed instead of hanging layout or
+        # input dispatch, while valid trees cannot exceed this many nodes.
+        const MAX_TRAVERSAL_DEPTH: usize = MAX_WIDGETS
+        const MAX_TRAVERSAL_SIBLINGS: usize = MAX_WIDGETS
+        # One KiB per field keeps the flat layer deterministic and allocation-
+        # free without imposing the old 127-byte ceiling on ordinary desktop
+        # input. One byte remains reserved by the storage contract.
+        const TEXT_CAPACITY: usize = 1024
+        const TEXT_STORAGE_SIZE: usize = MAX_WIDGETS * TEXT_CAPACITY
+        const SECURE_TEXT_CAPACITY: usize = TEXT_CAPACITY * 3
+        const SECURE_TEXT_STORAGE_SIZE: usize = MAX_WIDGETS * SECURE_TEXT_CAPACITY
+        const TEXT_HISTORY_CAPACITY: usize = 32
+        const TEXT_HISTORY_STORAGE_SIZE: usize = TEXT_HISTORY_CAPACITY * TEXT_CAPACITY
+        # One past the last valid slot, so it can never collide with a real index.
+        # DERIVED, not a second literal: as `= 256` beside `MAX_WIDGETS = 256` it
+        # was one edit away from becoming a valid index, which would have made the
+        # sentinel silently alias a real widget instead of failing loudly.
+        const NONE: usize = MAX_WIDGETS
+
+        struct Widget:
+            kind: mutable UiConst::WidgetKind
+            parent: mutable usize
+            first_child: mutable usize
+            next_sibling: mutable usize
+            axis: mutable UiConst::Axis
+            padding: mutable f32
+            spacing: mutable f32
+            margin: mutable f32
+            cross_alignment: mutable UiConst::CrossAlignment
+            main_alignment: mutable UiConst::MainAlignment
+            declared_min_width: mutable f32
+            declared_min_height: mutable f32
+            min_width: mutable f32
+            min_height: mutable f32
+            max_width: mutable f32
+            max_height: mutable f32
+            grow: mutable f32
+            x: mutable f32
+            y: mutable f32
+            width: mutable f32
+            height: mutable f32
+            color: mutable UiCore::Color
+            hover_color: mutable UiCore::Color
+            press_color: mutable UiCore::Color
+            text: mutable sview
+            placeholder: mutable sview
+            help: mutable sview
+            text_size: mutable f32
+            text_color: mutable UiCore::Color
+            secure: mutable bool
+            interactive: mutable bool
+            focus_order: mutable usize
+            selection_group: mutable usize
+            visible: mutable bool
+            enabled: mutable bool
+            hovered: mutable bool
+            pressed: mutable bool
+            focused: mutable bool
+            selected: mutable bool
+            value: mutable f32
+            step: mutable f32
+            input_length: mutable usize
+            caret: mutable usize
+            selection_anchor: mutable usize
+            marked_start: mutable usize
+            marked_end: mutable usize
+            text_revision: mutable usize
+            text_truncated: mutable bool
+            # Scroll state is framework-owned. The content extents are the
+            # measured size of the child strip; offset is clamped to the
+            # viewport during arrange and changed by wheel input.
+            scroll_offset: mutable f32
+            scroll_content_width: mutable f32
+            scroll_content_height: mutable f32
+
+        # Shared visual tokens for details that are common to every widget.
+        # Per-control surface and text colors remain on Widget so applications
+        # can still build palettes without cloning the framework painter.
+        struct Theme:
+            focus_ring: mutable UiCore::Color
+            selection: mutable UiCore::Color
+            control_mark: mutable UiCore::Color
+            control_mark_strong: mutable UiCore::Color
+            focus_inset: mutable f32
+            text_horizontal_padding: mutable f32
+            text_vertical_padding: mutable f32
+            selection_vertical_inset: mutable f32
+            marked_underline_inset: mutable f32
+            slider_horizontal_inset: mutable f32
+            slider_track_height: mutable f32
+            slider_thumb_radius: mutable f32
+            choice_center_x: mutable f32
+            radio_outer_radius: mutable f32
+            radio_inner_radius: mutable f32
+            checkbox_size: mutable f32
+            choice_text_space: mutable f32
+            # One visible or hidden half-cycle. Zero keeps the caret steadily
+            # visible and requests no animation, useful for reduced motion.
+            caret_blink_interval: mutable f32
+            scrollbar_track: mutable UiCore::Color
+            scrollbar_thumb: mutable UiCore::Color
+            scrollbar_thumb_hover: mutable UiCore::Color
+            scrollbar_thumb_active: mutable UiCore::Color
+            scrollbar_width: mutable f32
+            scrollbar_inset: mutable f32
+
+

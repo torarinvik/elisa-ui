@@ -1,0 +1,168 @@
+# UiFlat bounded text history and editing storage.
+# This file is included by ui_widget.elisa; UiFlat remains the public
+# compatibility namespace while its implementation is organized by concern.
+
+extend UiFlat:
+    private:
+        def caret_from_pointer(index: usize, pointer_x: f32) -> usize:
+            inset: f32 = clamped_inset(current_theme.text_horizontal_padding, widgets[index].width)
+            local_x: f32 = pointer_x - widgets[index].x - inset
+            available_width: mutable f32 = widgets[index].width - inset * 2.0
+            available_width <- 0.0 if available_width < 0.0 else available_width
+            visible_start: usize = visible_text_start(index, available_width)
+            return visible_start if local_x <= 0.0 or widgets[index].input_length == 0
+            cursor: mutable usize = visible_start
+            previous_width: mutable f32 = 0.0
+            while cursor < widgets[index].input_length |cursor, previous_width, local_x|:
+                after: usize = next_character(index, cursor)
+                width: f32 = measure_text_range(index, visible_start, after)
+                return cursor if local_x < (previous_width + width) * 0.5
+                previous_width <- width
+                cursor <- after
+            return widgets[index].input_length
+
+        def clear_history_slot(slot: usize) -> void:
+            offset: usize = slot * TEXT_CAPACITY
+            for byte_index in 0..<TEXT_CAPACITY:
+                history_before_text[offset + byte_index] <- 0
+                history_after_text[offset + byte_index] <- 0
+            history_before_length[slot] <- 0
+            history_after_length[slot] <- 0
+            history_before_caret[slot] <- 0
+            history_after_caret[slot] <- 0
+            history_before_anchor[slot] <- 0
+            history_after_anchor[slot] <- 0
+            history_before_marked_start[slot] <- 0
+            history_before_marked_end[slot] <- 0
+            history_after_marked_start[slot] <- 0
+            history_after_marked_end[slot] <- 0
+
+        def copy_history_slot(source: usize, target: usize) -> void:
+            history_widget[target] <- history_widget[source]
+            history_before_length[target] <- history_before_length[source]
+            history_after_length[target] <- history_after_length[source]
+            history_before_caret[target] <- history_before_caret[source]
+            history_after_caret[target] <- history_after_caret[source]
+            history_before_anchor[target] <- history_before_anchor[source]
+            history_after_anchor[target] <- history_after_anchor[source]
+            history_before_marked_start[target] <- history_before_marked_start[source]
+            history_before_marked_end[target] <- history_before_marked_end[source]
+            history_after_marked_start[target] <- history_after_marked_start[source]
+            history_after_marked_end[target] <- history_after_marked_end[source]
+            source_offset: usize = source * TEXT_CAPACITY
+            target_offset: usize = target * TEXT_CAPACITY
+            for byte_index in 0..<TEXT_CAPACITY:
+                history_before_text[target_offset + byte_index] <- history_before_text[source_offset + byte_index]
+                history_after_text[target_offset + byte_index] <- history_after_text[source_offset + byte_index]
+
+        def store_history_state(slot: usize, index: usize, after: bool) -> void:
+            source_offset: usize = index * TEXT_CAPACITY
+            target_offset: usize = slot * TEXT_CAPACITY
+            for byte_index in 0..<TEXT_CAPACITY:
+                if after:
+                    history_after_text[target_offset + byte_index] <- 0
+                else:
+                    history_before_text[target_offset + byte_index] <- 0
+            for byte_index in 0..<widgets[index].input_length:
+                if after:
+                    history_after_text[target_offset + byte_index] <- text_storage[source_offset + byte_index]
+                else:
+                    history_before_text[target_offset + byte_index] <- text_storage[source_offset + byte_index]
+            if after:
+                history_after_length[slot] <- widgets[index].input_length
+                history_after_caret[slot] <- widgets[index].caret
+                history_after_anchor[slot] <- widgets[index].selection_anchor
+                history_after_marked_start[slot] <- widgets[index].marked_start
+                history_after_marked_end[slot] <- widgets[index].marked_end
+            else:
+                history_before_length[slot] <- widgets[index].input_length
+                history_before_caret[slot] <- widgets[index].caret
+                history_before_anchor[slot] <- widgets[index].selection_anchor
+                history_before_marked_start[slot] <- widgets[index].marked_start
+                history_before_marked_end[slot] <- widgets[index].marked_end
+
+        def history_text_changed(slot: usize) -> bool:
+            return true if history_before_length[slot] != history_after_length[slot]
+            offset: usize = slot * TEXT_CAPACITY
+            for byte_index in 0..<history_before_length[slot]:
+                return true if history_before_text[offset + byte_index] != history_after_text[offset + byte_index]
+            return false
+
+        def begin_text_history(index: usize) -> usize:
+            return TEXT_HISTORY_CAPACITY if history_suppressed or history_active
+            discarded_count: usize = history_count
+            history_count <- history_cursor
+            for discarded in history_count..<discarded_count:
+                clear_history_slot(discarded)
+            if history_count == TEXT_HISTORY_CAPACITY:
+                for slot in 1..<TEXT_HISTORY_CAPACITY:
+                    copy_history_slot(slot, slot - 1)
+                history_count <- TEXT_HISTORY_CAPACITY - 1
+                history_cursor <- history_count
+            slot: usize = history_count
+            clear_history_slot(slot)
+            history_widget[slot] <- index
+            store_history_state(slot, index, false)
+            history_active <- true
+            composition_history_slot <- TEXT_HISTORY_CAPACITY
+            return slot
+
+        def finish_text_history(slot: usize, index: usize) -> void:
+            return if slot >= TEXT_HISTORY_CAPACITY
+            store_history_state(slot, index, true)
+            if history_text_changed(slot):
+                history_count <- slot + 1
+                history_cursor <- history_count
+            else:
+                clear_history_slot(slot)
+            history_active <- false
+
+        def restore_history_state(slot: usize, after: bool) -> void:
+            index: usize = history_widget[slot]
+            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            length: usize = history_after_length[slot] if after else history_before_length[slot]
+            source_offset: usize = slot * TEXT_CAPACITY
+            target_offset: usize = index * TEXT_CAPACITY
+            for byte_index in 0..<TEXT_CAPACITY:
+                text_storage[target_offset + byte_index] <- 0
+            for byte_index in 0..<length:
+                text_storage[target_offset + byte_index] <- history_after_text[source_offset + byte_index] if after else history_before_text[source_offset + byte_index]
+            if after:
+                widgets[index] with {
+                    input_length <- length, caret <- history_after_caret[slot], selection_anchor <- history_after_anchor[slot],
+                    marked_start <- history_after_marked_start[slot], marked_end <- history_after_marked_end[slot],
+                }
+            else:
+                widgets[index] with {
+                    input_length <- length, caret <- history_before_caret[slot], selection_anchor <- history_before_anchor[slot],
+                    marked_start <- history_before_marked_start[slot], marked_end <- history_before_marked_end[slot],
+                }
+            widgets[index].text_revision <- widgets[index].text_revision + 1
+            widgets[index].text_truncated <- false
+            focus(index)
+            emit_widget_event(index, UiConst::WidgetEvent.Change)
+
+        def remove_text(index: usize, start: usize, stop: usize) -> void:
+            return if stop <= start or stop > widgets[index].input_length
+            widgets[index].text_truncated <- false
+            history_slot: usize = begin_text_history(index)
+            offset: usize = index * TEXT_CAPACITY
+            old_length: usize = widgets[index].input_length
+            removed: usize = stop - start
+            cursor: mutable usize = stop
+            while cursor < widgets[index].input_length |cursor, offset, removed|:
+                text_storage[offset + cursor - removed] <- text_storage[offset + cursor]
+                cursor <- cursor + 1
+            widgets[index].input_length <- widgets[index].input_length - removed
+            for byte_index in widgets[index].input_length..<old_length:
+                text_storage[offset + byte_index] <- 0
+            widgets[index].text_revision <- widgets[index].text_revision + 1
+            widgets[index].caret <- start
+            widgets[index].selection_anchor <- start
+            widgets[index] with { marked_start <- 0, marked_end <- 0 }
+            restart_caret_blink() if index == focused_widget
+            callback_epoch: usize = widget_epoch
+            emit_widget_event(index, UiConst::WidgetEvent.Change)
+            finish_text_history(history_slot, index) if widget_epoch == callback_epoch
+
+

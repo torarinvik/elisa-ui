@@ -1,0 +1,217 @@
+# UiFlat public text queries and selection API.
+# This file is included by ui_widget.elisa; UiFlat remains the public
+# compatibility namespace while its implementation is organized by concern.
+
+extend UiFlat:
+    public:
+        # Portable window lifecycle handling. Backends report focus changes as
+        # UiCore events; the widget layer owns the state that must be released
+        # when the application can no longer receive the matching key/mouse-up.
+        def lifecycle(event: UiCore::Event) -> void:
+            match event:
+                UiCore::Event.FocusLost:
+                    cancel_interaction()
+                _:
+                    pass
+
+        def accepts_text() -> bool:
+            return focused_widget < widget_count and widgets[focused_widget].kind == UiConst::WidgetKind.TextField and effectively_enabled(focused_widget) and effectively_visible(focused_widget)
+
+        # Accessibility and native text adapters may target a specific field,
+        # not only the focused one. Keep the same kind/enabled/visible policy
+        # used by replace_text in one query so a host can ask for permission
+        # before mirroring a mutation into its native object.
+        def text_editable(index: usize) -> bool:
+            return index < widget_count and widgets[index].kind == UiConst::WidgetKind.TextField and effectively_enabled(index) and effectively_visible(index)
+
+        def allows_text_readback() -> bool:
+            return accepts_text() and not widgets[focused_widget].secure
+
+        def selection_start(index: usize) -> usize:
+            return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            return widgets[index].selection_anchor if widgets[index].selection_anchor < widgets[index].caret else widgets[index].caret
+
+        def selection_end(index: usize) -> usize:
+            return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            return widgets[index].caret if widgets[index].caret > widgets[index].selection_anchor else widgets[index].selection_anchor
+
+        def selected_text_pointer(index: usize) -> u8&:
+            return &text_storage[0] if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            return &text_storage[index * TEXT_CAPACITY + selection_start(index)]
+
+        def selected_text_length(index: usize) -> usize:
+            return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField or widgets[index].secure
+            return selection_end(index) - selection_start(index)
+
+        def selected_text_value(index: usize) -> sview:
+            length: usize = selected_text_length(index)
+            return "" if length == 0
+            return sview(&text_storage[index * TEXT_CAPACITY + selection_start(index)], 0, length.i64())
+
+        def selection_utf16_location(index: usize) -> usize:
+            return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            return utf16_units_for_prefix(text_value(index), selection_start(index))
+
+        def selection_utf16_length(index: usize) -> usize:
+            return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            return utf16_units_for_prefix(text_value(index), selection_end(index)) - selection_utf16_location(index)
+
+        def text_utf16_offset(index: usize, byte_offset: usize) -> usize:
+            return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            return utf16_units_for_prefix(text_value(index), byte_offset)
+
+        def text_utf16_length(index: usize) -> usize:
+            return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            value: sview = text_value(index)
+            return utf16_units_for_prefix(value, value.len)
+
+        def text_range_location(index: usize, requested_location: usize) -> usize:
+            total: usize = text_utf16_length(index)
+            return requested_location if requested_location < total else total
+
+        def text_range_length(index: usize, requested_location: usize, requested_length: usize) -> usize:
+            location: usize = text_range_location(index, requested_location)
+            remaining: usize = text_utf16_length(index) - location
+            return requested_length if requested_length < remaining else remaining
+
+        def text_range_pointer(index: usize, location: usize) -> u8&:
+            return &text_storage[0] if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            byte_start: usize = byte_offset_for_utf16(text_value(index), text_range_location(index, location))
+            return &text_storage[index * TEXT_CAPACITY + byte_start]
+
+        def text_range_byte_length(index: usize, location: usize, length: usize) -> usize:
+            return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            value: sview = text_value(index)
+            safe_location: usize = text_range_location(index, location)
+            safe_length: usize = text_range_length(index, location, length)
+            start: usize = byte_offset_for_utf16(value, safe_location)
+            stop: usize = byte_offset_for_utf16(value, safe_location + safe_length)
+            return stop - start
+
+        # Selection positions are UTF-8 byte offsets. Platform adapters convert
+        # from their native indexing convention and only pass scalar boundaries.
+        def set_selection(index: usize, anchor: usize, caret: usize) -> void:
+            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            length: usize = widgets[index].input_length
+            next_anchor: mutable usize = anchor if anchor < length else length
+            next_caret: mutable usize = caret if caret < length else length
+            offset: usize = index * TEXT_CAPACITY
+            while next_anchor > 0 and next_anchor < length and is_utf8_continuation(text_storage[offset + next_anchor]) |next_anchor, offset, length|:
+                next_anchor <- next_anchor - 1
+            while next_caret > 0 and next_caret < length and is_utf8_continuation(text_storage[offset + next_caret]) |next_caret, offset, length|:
+                next_caret <- next_caret - 1
+            next_anchor <- grapheme_boundary_at_or_before(index, next_anchor)
+            next_caret <- grapheme_boundary_at_or_before(index, next_caret)
+            widgets[index] with { selection_anchor <- next_anchor, caret <- next_caret }
+            restart_caret_blink() if index == focused_widget
+            mark_state_dirty()
+
+        def set_selection_utf16(index: usize, location: usize, length: usize) -> void:
+            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            value: sview = text_value(index)
+            total_units: usize = utf16_units_for_prefix(value, value.len)
+            safe_location: usize = location if location < total_units else total_units
+            remaining_units: usize = total_units - safe_location
+            safe_length: usize = length if length < remaining_units else remaining_units
+            start: usize = byte_offset_for_utf16(value, safe_location)
+            stop: usize = byte_offset_for_utf16(value, safe_location + safe_length)
+            set_selection(index, start, stop)
+
+        def set_marked(index: usize, start: usize, stop: usize) -> void:
+            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            length: usize = widgets[index].input_length
+            widgets[index].marked_start <- start if start < length else length
+            widgets[index].marked_end <- stop if stop < length else length
+            if widgets[index].marked_end < widgets[index].marked_start:
+                swap: usize = widgets[index].marked_start
+                widgets[index].marked_start <- widgets[index].marked_end
+                widgets[index].marked_end <- swap
+            mark_state_dirty()
+
+        def marked_utf16_location(index: usize) -> usize:
+            return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            return utf16_units_for_prefix(text_value(index), widgets[index].marked_start)
+
+        def marked_utf16_length(index: usize) -> usize:
+            return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            return utf16_units_for_prefix(text_value(index), widgets[index].marked_end) - marked_utf16_location(index)
+
+        def text_caret_x(index: usize) -> f32:
+            return 0.0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            inset: f32 = clamped_inset(current_theme.text_horizontal_padding, widgets[index].width)
+            available_width: mutable f32 = widgets[index].width - inset * 2.0
+            available_width <- 0.0 if available_width < 0.0 else available_width
+            visible_start: usize = visible_text_start(index, available_width)
+            return widgets[index].x + inset + measure_text_range(index, visible_start, widgets[index].caret)
+
+        def text_character_x(index: usize, utf16_location: usize) -> f32:
+            return 0.0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            inset: f32 = clamped_inset(current_theme.text_horizontal_padding, widgets[index].width)
+            available_width: mutable f32 = widgets[index].width - inset * 2.0
+            available_width <- 0.0 if available_width < 0.0 else available_width
+            visible_start: usize = visible_text_start(index, available_width)
+            position: mutable usize = byte_offset_for_utf16(text_value(index), text_range_location(index, utf16_location))
+            position <- visible_start if position < visible_start else position
+            width: mutable f32 = measure_text_range(index, visible_start, position)
+            width <- available_width if width > available_width else width
+            return widgets[index].x + inset + width
+
+        def text_caret_y(index: usize) -> f32:
+            return 0.0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            inset: f32 = clamped_inset(current_theme.text_vertical_padding, widgets[index].height)
+            return widgets[index].y + inset
+
+        def text_caret_height(index: usize) -> f32:
+            return 0.0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            inset: f32 = clamped_inset(current_theme.text_vertical_padding, widgets[index].height)
+            inner: f32 = widgets[index].height - inset * 2.0
+            return inner if inner > 0.0 else 0.0
+
+        def text_position_at(index: usize, x: f32) -> usize:
+            return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            return caret_from_pointer(index, x)
+
+        # Desktop-native multi-click behavior without exposing byte indexing to
+        # the host. Double-click selects the word or separator run under the
+        # pointer; triple-click selects the complete single-line field.
+        def select_text_at(x: f32, click_count: i32) -> void:
+            return if click_count < 2 or not accepts_text()
+            index: usize = focused_widget
+            if click_count >= 3:
+                set_selection(index, 0, widgets[index].input_length)
+                return
+            length: usize = widgets[index].input_length
+            if length == 0:
+                set_selection(index, 0, 0)
+                return
+            position: mutable usize = caret_from_pointer(index, x)
+            position <- previous_character(index, position) if position == length
+            word: bool = is_word_character(index, position)
+            start: mutable usize = position
+            while start > 0 |start, word|:
+                before: usize = previous_character(index, start)
+                break if is_word_character(index, before) != word
+                start <- before
+            stop: mutable usize = next_character(index, position)
+            while stop < length and is_word_character(index, stop) == word |stop, length, word|:
+                stop <- next_character(index, stop)
+            set_selection(index, start, stop)
+
+        # Platform adapters should use this raw-click entry point. Keeping the
+        # primary-button rule beside the editing engine prevents each native
+        # host from developing subtly different selection behavior.
+        def select_text_click_at(x: f32, button: i32, click_count: i32) -> void:
+            return if button != UiCore::PointerButton.Primary.i32()
+            select_text_at(x, click_count)
+
+        # Native adapters that also report pointer coordinates should use this
+        # guarded entry point. A scrollbar press must not be interpreted as a
+        # multi-click in whichever text field happened to retain focus.
+        def select_text_click_at_pointer(x: f32, y: f32, button: i32, click_count: i32) -> void:
+            return if button != UiCore::PointerButton.Primary.i32()
+            target: usize = hit(x, y)
+            return if target >= widget_count or widgets[target].kind != UiConst::WidgetKind.TextField
+            return if scrollbar_target(x, y) != NONE
+            select_text_at(x, click_count)
+
+

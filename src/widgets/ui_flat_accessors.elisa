@@ -1,0 +1,297 @@
+# UiFlat public state queries and setters.
+# This file is included by ui_widget.elisa; UiFlat remains the public
+# compatibility namespace while its implementation is organized by concern.
+
+extend UiFlat:
+    public:
+        # Reading and writing rows. A row is copied out; writes go through
+        # the setters so the array stays private. `widget` is the fast path
+        # for a known-valid handle; uncertain external handles use the checked
+        # optional reader instead.
+        def count() -> usize:
+            return widget_count
+
+        # The current retained-tree lifetime. Typed wrappers pair this value
+        # with a slot index; resetting the tree advances it before any slot can
+        # be allocated again.
+        def lifetime() -> usize:
+            return widget_epoch
+
+        def is_valid(index: usize) -> bool:
+            return index < widget_count
+
+        def widget(index: usize) -> Widget:
+            return widgets[index]
+
+        def widget_if_valid(index: usize) -> Widget?:
+            return null if index >= widget_count
+            return widgets[index]
+
+        def hot() -> usize:
+            return hot_widget
+
+        def active() -> usize:
+            return active_widget
+
+        def focused() -> usize:
+            return focused_widget
+
+        def request_focus(index: usize) -> bool:
+            return false if index >= widget_count or not widgets[index].interactive or not effectively_enabled(index) or not effectively_visible(index)
+            focus(index)
+            return focused_widget == index
+
+        def clear_focus() -> void:
+            focus(NONE)
+
+        def overflowed() -> bool:
+            return widget_dropped
+
+        # Diagnostics and high-level adapters can observe deferred retained
+        # work without reaching into the private arena state. A dirty layout is
+        # cleared only after the remembered viewport has been arranged.
+        def layout_is_dirty() -> bool:
+            return layout_dirty
+
+        def layout_is_initialized() -> bool:
+            return layout_initialized
+
+        def set_color(index: usize, color: UiCore::Color) -> void:
+            return if index >= widget_count
+            widgets[index].color <- color
+            mark_paint_dirty()
+
+        def theme() -> Theme:
+            return current_theme
+
+        def set_theme(next: Theme) -> void:
+            normalized: mutable Theme = next
+            normalized.focus_inset <- UiCore::nonnegative_extent(next.focus_inset)
+            normalized.text_horizontal_padding <- UiCore::nonnegative_extent(next.text_horizontal_padding)
+            normalized.text_vertical_padding <- UiCore::nonnegative_extent(next.text_vertical_padding)
+            normalized.selection_vertical_inset <- UiCore::nonnegative_extent(next.selection_vertical_inset)
+            normalized.marked_underline_inset <- UiCore::nonnegative_extent(next.marked_underline_inset)
+            normalized.slider_horizontal_inset <- UiCore::nonnegative_extent(next.slider_horizontal_inset)
+            normalized.slider_track_height <- UiCore::nonnegative_extent(next.slider_track_height)
+            normalized.slider_thumb_radius <- UiCore::nonnegative_extent(next.slider_thumb_radius)
+            normalized.choice_center_x <- UiCore::nonnegative_extent(next.choice_center_x)
+            normalized.radio_outer_radius <- UiCore::nonnegative_extent(next.radio_outer_radius)
+            normalized.radio_inner_radius <- UiCore::nonnegative_extent(next.radio_inner_radius)
+            # A selected radio mark is drawn inside the outer ring. Keep a
+            # hostile theme from inverting that layering relationship.
+            normalized.radio_inner_radius <- normalized.radio_outer_radius if normalized.radio_inner_radius > normalized.radio_outer_radius
+            normalized.checkbox_size <- UiCore::nonnegative_extent(next.checkbox_size)
+            normalized.choice_text_space <- UiCore::nonnegative_extent(next.choice_text_space)
+            normalized.caret_blink_interval <- UiCore::nonnegative_extent(next.caret_blink_interval)
+            normalized.scrollbar_width <- UiCore::nonnegative_extent(next.scrollbar_width)
+            normalized.scrollbar_inset <- UiCore::nonnegative_extent(next.scrollbar_inset)
+            current_theme <- normalized
+            mark_layout_dirty()
+
+        def set_colors(index: usize, color: UiCore::Color, hover: UiCore::Color, press: UiCore::Color) -> void:
+            return if index >= widget_count
+            widgets[index] with { color, hover_color <- hover, press_color <- press }
+            mark_paint_dirty()
+
+        def set_grow(index: usize, grow: f32) -> void:
+            return if index >= widget_count
+            widgets[index].grow <- UiCore::nonnegative_extent(grow)
+            mark_layout_dirty()
+
+        # Zero means unbounded. A maximum below the measured minimum never
+        # clips required content; the minimum wins for that axis.
+        def set_max_size(index: usize, width: f32, height: f32) -> void:
+            return if index >= widget_count
+            widgets[index].max_width <- UiCore::nonnegative_extent(width)
+            widgets[index].max_height <- UiCore::nonnegative_extent(height)
+            mark_layout_dirty()
+
+        def set_margin(index: usize, margin: f32) -> void:
+            return if index >= widget_count
+            widgets[index].margin <- UiCore::nonnegative_extent(margin)
+            mark_layout_dirty()
+
+        def set_cross_alignment(index: usize, alignment: UiConst::CrossAlignment) -> void:
+            return if index >= widget_count
+            widgets[index].cross_alignment <- alignment
+            mark_layout_dirty()
+
+        def set_main_alignment(index: usize, alignment: UiConst::MainAlignment) -> void:
+            return if index >= widget_count
+            widgets[index].main_alignment <- alignment
+            mark_layout_dirty()
+
+        def set_focus_order(index: usize, order: usize) -> void:
+            return if index >= widget_count
+            widgets[index].focus_order <- order
+            mark_semantics_dirty()
+
+        # Radios default to one group per parent. An explicit group allows a
+        # logical choice set to span layout containers without native state.
+        def set_selection_group(index: usize, group: usize) -> void:
+            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.RadioButton
+            widgets[index].selection_group <- group
+            mark_semantics_dirty()
+
+        def set_enabled(index: usize, enabled: bool) -> void:
+            return if index >= widget_count
+            widgets[index].enabled <- enabled
+            mark_state_dirty()
+            if not enabled:
+                for candidate in 0..<widget_count:
+                    if not effectively_enabled(candidate):
+                        widgets[candidate].hovered <- false
+                        widgets[candidate].pressed <- false
+                if active_widget < widget_count and not effectively_enabled(active_widget):
+                    active_widget <- NONE
+                    active_pointer_button <- UiCore::NO_POINTER_BUTTON
+                    active_key <- -1
+                if active_scroll < widget_count and not effectively_enabled(active_scroll):
+                    active_scroll <- NONE
+                    active_scroll_pointer <- 0.0
+                    active_scroll_offset <- 0.0
+                    active_pointer_button <- UiCore::NO_POINTER_BUTTON
+                hot_widget <- NONE if hot_widget < widget_count and not effectively_enabled(hot_widget)
+                focus(NONE) if focused_widget < widget_count and not effectively_enabled(focused_widget)
+
+        def is_enabled(index: usize) -> bool:
+            return effectively_enabled(index)
+
+        def is_visible(index: usize) -> bool:
+            return effectively_visible(index)
+
+        # Hidden widgets remain in the retained tree but contribute no layout,
+        # painting, hit target, focus stop or accessibility node. Hiding a
+        # container applies transitively to its descendants.
+        def set_visible(index: usize, shown: bool) -> void:
+            return if index >= widget_count
+            widgets[index].visible <- shown
+            mark_layout_dirty()
+            return if shown
+            for candidate in 0..<widget_count:
+                if not effectively_visible(candidate):
+                    widgets[candidate].hovered <- false
+                    widgets[candidate].pressed <- false
+            if active_widget < widget_count and not effectively_visible(active_widget):
+                active_widget <- NONE
+                active_pointer_button <- UiCore::NO_POINTER_BUTTON
+                active_key <- -1
+            if active_scroll < widget_count and not effectively_visible(active_scroll):
+                active_scroll <- NONE
+                active_scroll_pointer <- 0.0
+                active_scroll_offset <- 0.0
+                active_pointer_button <- UiCore::NO_POINTER_BUTTON
+            hot_widget <- NONE if hot_widget < widget_count and not effectively_visible(hot_widget)
+            focus(NONE) if focused_widget < widget_count and not effectively_visible(focused_widget)
+
+        # Give any painted widget a caption. Buttons keep their declared minimum
+        # hit target; labels still use `label`, which derives its minimum from text.
+        def set_text(index: usize, text: sview, size: f32, color: UiCore::Color) -> void:
+            return if index >= widget_count
+            safe_size: f32 = UiCore::nonnegative_extent(size)
+            widgets[index] with { text, text_size <- safe_size, text_color <- color }
+            if widgets[index].kind == UiConst::WidgetKind.Label:
+                measured_width: f32 = UiCore::nonnegative_extent(ui_measure_text_width(text, safe_size))
+                measured_height: f32 = UiCore::nonnegative_extent(ui_text_line_height(safe_size))
+                widgets[index] with {
+                    declared_min_width <- measured_width, declared_min_height <- measured_height,
+                    min_width <- measured_width, min_height <- measured_height,
+                }
+            mark_layout_dirty()
+
+        def set_help(index: usize, help: sview) -> void:
+            return if index >= widget_count
+            widgets[index].help <- help
+            mark_semantics_dirty()
+
+        def set_secure(index: usize, secure: bool) -> void:
+            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            widgets[index].secure <- secure
+            mark_state_dirty()
+
+        # Selection is independent from focus and press state. Applications own
+        # group policy, so a radio group can span containers without hidden state.
+        def set_selected(index: usize, selected: bool) -> void:
+            return if index >= widget_count
+            return if widgets[index].kind != UiConst::WidgetKind.RadioButton and widgets[index].kind != UiConst::WidgetKind.CheckBox
+            if selected and widgets[index].kind == UiConst::WidgetKind.RadioButton:
+                for candidate in 0..<widget_count:
+                    if candidate != index and widgets[candidate].kind == UiConst::WidgetKind.RadioButton and widgets[candidate].selection_group == widgets[index].selection_group:
+                        widgets[candidate].selected <- false
+            widgets[index].selected <- selected
+            mark_state_dirty()
+
+        def set_value(index: usize, value: f32) -> void:
+            return if index >= widget_count
+            return if widgets[index].kind != UiConst::WidgetKind.Slider and widgets[index].kind != UiConst::WidgetKind.ProgressBar
+            widgets[index].value <- UiCore::normalized_unit(value)
+            mark_state_dirty()
+
+        def set_step(index: usize, step: f32) -> void:
+            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider
+            widgets[index].step <- UiCore::nonnegative_extent(step)
+            mark_paint_dirty()
+
+        def text_value(index: usize) -> sview:
+            return "" if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            offset: usize = index * TEXT_CAPACITY
+            return sview(&text_storage[offset], 0, widgets[index].input_length.i64())
+
+        # Whether the most recent input operation retained only a prefix due
+        # to malformed UTF-8 or fixed-capacity exhaustion.
+        def text_was_truncated(index: usize) -> bool:
+            return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            return widgets[index].text_truncated
+
+        def scrub_clipboard_buffer() -> void:
+            # Paste data is transient framework state. Erase the fixed scratch
+            # arena after use instead of leaving a copy alive until the next
+            # reset or process exit.
+            for byte_index in 0..<TEXT_CAPACITY:
+                clipboard_buffer[byte_index] <- 0
+
+        def reset() -> void:
+            # Fixed buffers are reused, so reset must erase content rather than
+            # merely dropping lengths. This also scrubs secure values retained
+            # by undo/redo snapshots.
+            for byte_index in 0..<TEXT_STORAGE_SIZE:
+                text_storage[byte_index] <- 0
+            for byte_index in 0..<SECURE_TEXT_STORAGE_SIZE:
+                secure_text_storage[byte_index] <- 0
+            for byte_index in 0..<TEXT_HISTORY_STORAGE_SIZE:
+                history_before_text[byte_index] <- 0
+                history_after_text[byte_index] <- 0
+            scrub_clipboard_buffer()
+            widget_epoch <- widget_epoch + 1
+            widget_epoch <- 1 if widget_epoch == 0
+            widget_count <- 0
+            widget_dropped <- false
+            last_layout_width <- 0.0
+            last_layout_height <- 0.0
+            layout_initialized <- false
+            layout_dirty <- false
+            UiCore::clear_all_invalidations()
+            hot_widget <- NONE
+            pointer_x <- 0.0
+            pointer_y <- 0.0
+            pointer_inside <- false
+            active_widget <- NONE
+            active_scroll <- NONE
+            active_scroll_pointer <- 0.0
+            active_scroll_offset <- 0.0
+            active_pointer_button <- UiCore::NO_POINTER_BUTTON
+            active_key <- -1
+            focused_widget <- NONE
+            left_shift_down <- false
+            right_shift_down <- false
+            left_control_down <- false
+            right_control_down <- false
+            left_super_down <- false
+            right_super_down <- false
+            history_count <- 0
+            history_cursor <- 0
+            history_active <- false
+            history_suppressed <- false
+            composition_history_slot <- TEXT_HISTORY_CAPACITY
+
+
