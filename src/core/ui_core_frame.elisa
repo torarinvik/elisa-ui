@@ -93,11 +93,15 @@ extend UiCore:
             if has_range and safe_range_maximum < safe_range_minimum:
                 safe_range_maximum <- safe_range_minimum
                 range_conflict <- true
+            safe_label: sview = bounded_text(label)
+            safe_help: sview = bounded_text(help)
+            safe_text_value: sview = bounded_text(text_value)
+            safe_selected_text: sview = bounded_text(selected_text)
             node: AccessibilityNode = AccessibilityNode{
-                role: normalize_role(role), label: label, help: help, frame: safe_frame, id: id,
+                role: normalize_role(role), label: safe_label, help: safe_help, frame: safe_frame, id: id,
                 action: action, enabled: enabled, focused: focused,
-                selected: selected, value: safe_value, text_value: text_value,
-                selected_text: selected_text, revision: revision,
+                selected: selected, value: safe_value, text_value: safe_text_value,
+                selected_text: safe_selected_text, revision: revision,
                 selection_location: selection_location,
                 selection_length: selection_length,
                 parent_id: safe_parent, first_child_id: safe_first_child,
@@ -172,7 +176,7 @@ extend UiCore:
             slot: usize = command_total.usize()
             command_has_clip_flag[slot] <- current_clip_active
             command_clip[slot] <- current_clip if current_clip_active
-            command_buffer[slot] <- command
+            command_buffer[slot] <- normalized_command(command)
             command_total <- command_total + 1
             invalidate(Invalidation.Paint)
 
@@ -241,6 +245,11 @@ extend UiCore:
         # before they reach a native API. Keeping the cap in Core lets platform
         # adapters sanitize direct metric calls without depending on widgets.
         const MAX_GEOMETRY_EXTENT: f32 = 16777216.0
+        # Counted text views cross the same native boundaries as geometry. A
+        # bounded view keeps a hostile length from being narrowed to a smaller
+        # ABI type (or from making a renderer spend an unbounded amount of work)
+        # while still leaving room for ordinary labels and messages.
+        const MAX_TEXT_BYTES: usize = 1024
 
         def bounded_extent(value: f32) -> f32:
             safe: f32 = nonnegative_extent(value)
@@ -251,6 +260,15 @@ extend UiCore:
             return MAX_GEOMETRY_EXTENT if safe > MAX_GEOMETRY_EXTENT
             return -MAX_GEOMETRY_EXTENT if safe < -MAX_GEOMETRY_EXTENT
             return safe
+
+        # Preserve the caller's storage and borrow lifetime, but clamp the
+        # signed ABI length without calling the NUL-terminated `sview`
+        # constructor again. The latter would scan arbitrary foreign memory;
+        # StringView is the correct representation for an already-counted view.
+        def bounded_text(value: sview) -> sview:
+            return "" if value.len <= 0
+            return value[0:MAX_TEXT_BYTES.i64()] if value.len > MAX_TEXT_BYTES.i64()
+            return value
 
         # Normalize values that represent a fraction or progress amount. The
         # Sanitize malformed host values before applying the ordinary lower and
@@ -319,3 +337,25 @@ extend UiCore:
 
         def normalize_role(value: AccessibilityRole) -> AccessibilityRole:
             return value if value.i32() >= AccessibilityRole.Label.i32() and value.i32() <= AccessibilityRole.Dialog.i32() else AccessibilityRole.Label
+
+        # `push_command` is public for low-level integrations, so do not rely
+        # on every caller going through the shape helpers. Normalize the raw
+        # payload immediately before it enters the retained frame buffer.
+        def normalized_command(command: Command) -> Command:
+            match command:
+                Command.Clear(color):
+                    return Command.Clear(color)
+                Command.FillRect(rect, color):
+                    safe_rect: Rect = Rect{origin: Vec2{x: bounded_coordinate(rect.origin.x), y: bounded_coordinate(rect.origin.y)}, size: Size{width: bounded_extent(rect.size.width), height: bounded_extent(rect.size.height)}}
+                    return Command.FillRect(safe_rect, color)
+                Command.FillCircle(disc, color):
+                    safe_disc: Circle = Circle{center: Vec2{x: bounded_coordinate(disc.center.x), y: bounded_coordinate(disc.center.y)}, radius: bounded_extent(disc.radius)}
+                    return Command.FillCircle(safe_disc, color)
+                Command.FillTriangle(tri, color):
+                    safe_tri: Triangle = Triangle{a: Vec2{x: bounded_coordinate(tri.a.x), y: bounded_coordinate(tri.a.y)}, b: Vec2{x: bounded_coordinate(tri.b.x), y: bounded_coordinate(tri.b.y)}, c: Vec2{x: bounded_coordinate(tri.c.x), y: bounded_coordinate(tri.c.y)}}
+                    return Command.FillTriangle(safe_tri, color)
+                Command.FillLine(segment, color):
+                    safe_segment: Line = Line{from_point: Vec2{x: bounded_coordinate(segment.from_point.x), y: bounded_coordinate(segment.from_point.y)}, to_point: Vec2{x: bounded_coordinate(segment.to_point.x), y: bounded_coordinate(segment.to_point.y)}}
+                    return Command.FillLine(safe_segment, color)
+                Command.DrawText(run, color):
+                    return Command.DrawText(TextRun(run.origin, run.size, run.text), color)

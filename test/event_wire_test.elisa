@@ -78,6 +78,16 @@ def main() -> i64:
     check("TextRun constructor bounds huge font sizes", huge_text_run.size == UiCore::MAX_GEOMETRY_EXTENT)
     malformed_text_origin: UiCore::TextRun = UiCore::TextRun(UiCore::Vec2{ x: infinity, y: nan }, 12.0, "text")
     check("TextRun constructor sanitizes origin", malformed_text_origin.origin.x == 0.0 and malformed_text_origin.origin.y == 0.0)
+    bounded_text_bytes: mutable u8[UiCore::MAX_TEXT_BYTES + 8] = zeroed
+    for index in 0..<UiCore::MAX_TEXT_BYTES + 8:
+        bounded_text_bytes[index] <- 65
+    oversized_text: sview = sview(&bounded_text_bytes[0], 0, (UiCore::MAX_TEXT_BYTES + 8).i64())
+    bounded_run: UiCore::TextRun = UiCore::TextRun(UiCore::Vec2(0.0, 0.0), 12.0, oversized_text)
+    check("TextRun bounds oversized counted text", bounded_run.text.len == UiCore::MAX_TEXT_BYTES.i64())
+    UiCore::begin_frame()
+    UiCore::accessibility(UiCore::AccessibilityRole.Label, oversized_text, oversized_text, UiCore::Rect(0.0, 0.0, 1.0, 1.0), 3, 0, true, false, false, 0.0, oversized_text, oversized_text, 0, 0, 0)
+    bounded_node: UiCore::AccessibilityNode = UiCore::accessibility_at(0)
+    check("accessibility bounds all counted text fields", bounded_node.label.len == UiCore::MAX_TEXT_BYTES.i64() and bounded_node.help.len == UiCore::MAX_TEXT_BYTES.i64() and bounded_node.text_value.len == UiCore::MAX_TEXT_BYTES.i64() and bounded_node.selected_text.len == UiCore::MAX_TEXT_BYTES.i64())
     UiCore::begin_frame()
     UiCore::fill(UiCore::Rect{origin: UiCore::Vec2{ x: nan, y: infinity }, size: UiCore::Size{width: nan, height: infinity}}, UiCore::rgb(1, 2, 3))
     match UiCore::command_at(0):
@@ -103,6 +113,13 @@ def main() -> i64:
             check("fill bounds huge circle radius", circle.radius == UiCore::MAX_GEOMETRY_EXTENT)
         _:
             check("fill records a huge circle command", false)
+    UiCore::begin_frame()
+    UiCore::push_command(UiCore::Command.FillRect(UiCore::Rect{origin: UiCore::Vec2{ x: infinity, y: -infinity }, size: UiCore::Size{width: huge_extent, height: huge_extent}}, UiCore::rgb(1, 2, 3)))
+    match UiCore::command_at(0):
+        UiCore::Command.FillRect(rect, color):
+            check("raw command pushes sanitize geometry", rect.origin.x == 0.0 and rect.origin.y == 0.0 and rect.size.width == UiCore::MAX_GEOMETRY_EXTENT and rect.size.height == UiCore::MAX_GEOMETRY_EXTENT)
+        _:
+            check("raw command remains a rectangle", false)
     check("invalid command reads fail closed", UiCore::command_if_valid(99) == null)
     check("invalid clip reads fail closed", UiCore::command_clip_if_valid(99) == null)
     UiCore::begin_frame()

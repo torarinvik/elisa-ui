@@ -188,10 +188,11 @@ extend UiFlat:
         # hit target; labels still use `label`, which derives its minimum from text.
         def set_text(index: usize, text: sview, size: f32, color: UiCore::Color) -> void:
             return if index >= widget_count or text.len < 0
+            safe_text: sview = UiCore::bounded_text(text)
             safe_size: f32 = UiConstraints::bounded(size)
-            widgets[index] with { text, text_size <- safe_size, text_color <- color }
+            widgets[index] with { text <- safe_text, text_size <- safe_size, text_color <- color }
             if widgets[index].kind == UiConst::WidgetKind.Label:
-                measured_width: f32 = UiConstraints::bounded(ui_measure_text_width(text, safe_size))
+                measured_width: f32 = UiConstraints::bounded(ui_measure_text_width(safe_text, safe_size))
                 measured_height: f32 = UiConstraints::bounded(ui_text_line_height(safe_size))
                 widgets[index] with {
                     declared_min_width <- measured_width, declared_min_height <- measured_height,
@@ -201,7 +202,7 @@ extend UiFlat:
 
         def set_help(index: usize, help: sview) -> void:
             return if index >= widget_count or help.len < 0
-            widgets[index].help <- help
+            widgets[index].help <- UiCore::bounded_text(help)
             mark_semantics_dirty()
 
         def set_secure(index: usize, secure: bool) -> void:
