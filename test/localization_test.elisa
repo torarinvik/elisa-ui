@@ -1,0 +1,34 @@
+# Headless regression for direction, mirrored geometry, and plural policy.
+
+include "../src/widgets/ui_localization.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    check("English defaults to left-to-right", UiLocalization::direction("en-US") == UiLocalization::Direction.LeftToRight and not UiLocalization::is_rtl("en-US"))
+    check("Arabic selects right-to-left", UiLocalization::direction("ar-SA") == UiLocalization::Direction.RightToLeft and UiLocalization::is_rtl("AR"))
+    check("Hebrew start maps to end", UiLocalization::start_alignment("he") == UiConst::CrossAlignment.End and UiLocalization::end_alignment("he") == UiConst::CrossAlignment.Start)
+    check("LTR start maps to start", UiLocalization::start_alignment("en") == UiConst::CrossAlignment.Start and UiLocalization::end_alignment("en") == UiConst::CrossAlignment.End)
+
+    check("RTL mirrors item origin", UiLocalization::mirror_x("ar", 300.0, 40.0, 80.0) == 180.0)
+    check("LTR keeps item origin", UiLocalization::mirror_x("en", 300.0, 40.0, 80.0) == 40.0)
+    check("mirrored origin clips malformed geometry", UiLocalization::mirror_x("ar", 100.0, 200.0, 20.0) == 0.0)
+
+    check("English one/other", UiLocalization::plural("en", 1) == UiLocalization::PluralCategory.One and UiLocalization::plural("en", 2) == UiLocalization::PluralCategory.Other)
+    check("French treats zero as one", UiLocalization::plural("fr", 0) == UiLocalization::PluralCategory.One)
+    check("Arabic exposes zero/one/two/few/many", UiLocalization::plural("ar", 0) == UiLocalization::PluralCategory.Zero and UiLocalization::plural("ar", 1) == UiLocalization::PluralCategory.One and UiLocalization::plural("ar", 2) == UiLocalization::PluralCategory.Two and UiLocalization::plural("ar", 7) == UiLocalization::PluralCategory.Few and UiLocalization::plural("ar", 20) == UiLocalization::PluralCategory.Many)
+    check("Russian handles one/few/many", UiLocalization::plural("ru", 21) == UiLocalization::PluralCategory.One and UiLocalization::plural("ru", 24) == UiLocalization::PluralCategory.Few and UiLocalization::plural("ru", 25) == UiLocalization::PluralCategory.Many)
+    check("Polish keeps zero in other", UiLocalization::plural("pl", 0) == UiLocalization::PluralCategory.Other and UiLocalization::plural("pl", 3) == UiLocalization::PluralCategory.Few)
+    check("negative counts fail closed", UiLocalization::plural("en", -1) == UiLocalization::PluralCategory.Other)
+
+    if failures == 0:
+        _ = puts("localization: all checks passed")
+        return 0
+    _ = puts("localization: FAILURES above")
+    return 1

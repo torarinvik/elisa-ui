@@ -1,0 +1,105 @@
+# Compact backend-neutral localization policy.
+#
+# Locale metadata is application data, not a native-window concern. This module
+# keeps the decisions that affect geometry and semantics in Elisa: text
+# direction, start/end alignment, mirrored item coordinates, and a bounded
+# plural-category resolver for common locales. Full message formatting remains
+# application-owned, but every backend can consume the same category result.
+
+include "../core/ui_core.elisa"
+include "./ui_const.elisa"
+
+module UiLocalization:
+    public:
+        const enum Direction of i32:
+            LeftToRight = 0
+            RightToLeft = 1
+
+        const enum PluralCategory of i32:
+            Zero = 0
+            One = 1
+            Two = 2
+            Few = 3
+            Many = 4
+            Other = 5
+
+        def direction(locale: sview) -> Direction:
+            return Direction.RightToLeft if language_is(locale, 0x61, 0x72) # ar
+            return Direction.RightToLeft if language_is(locale, 0x66, 0x61) # fa
+            return Direction.RightToLeft if language_is(locale, 0x68, 0x65) # he
+            return Direction.RightToLeft if language_is(locale, 0x75, 0x72) # ur
+            return Direction.RightToLeft if language_is(locale, 0x70, 0x73) # ps
+            return Direction.RightToLeft if language_is(locale, 0x64, 0x76) # dv
+            return Direction.RightToLeft if language_is(locale, 0x79, 0x69) # yi
+            return Direction.LeftToRight
+
+        def is_rtl(locale: sview) -> bool:
+            return direction(locale) == Direction.RightToLeft
+
+        # Logical start/end map to the existing cross-axis alignment enum. A
+        # caller can therefore keep one layout tree and switch only this fact
+        # when the locale changes.
+        def start_alignment(locale: sview) -> UiConst::CrossAlignment:
+            return UiConst::CrossAlignment.End if is_rtl(locale)
+            return UiConst::CrossAlignment.Start
+
+        def end_alignment(locale: sview) -> UiConst::CrossAlignment:
+            return UiConst::CrossAlignment.Start if is_rtl(locale)
+            return UiConst::CrossAlignment.End
+
+        # Mirror an already-resolved item origin inside a container. Geometry
+        # is sanitized and clipped at zero so stale/narrow host dimensions do
+        # not produce negative frames in any painter.
+        def mirror_x(locale: sview, container_width: f32, item_x: f32, item_width: f32) -> f32:
+            return UiCore::finite_or_zero(item_x) if not is_rtl(locale)
+            width: f32 = UiCore::nonnegative_extent(container_width)
+            x: f32 = UiCore::finite_or_zero(item_x)
+            extent: f32 = UiCore::nonnegative_extent(item_width)
+            mirrored: mutable f32 = width - x - extent
+            mirrored <- 0.0 if mirrored < 0.0
+            return mirrored
+
+        # Resolve the plural category used by a message catalog. This is a
+        # small deterministic subset, not a replacement for a full CLDR
+        # formatter; unknown languages use the safe one/other rule.
+        def plural(locale: sview, quantity: i64) -> PluralCategory:
+            return PluralCategory.Other if quantity < 0
+            if language_is(locale, 0x61, 0x72): # Arabic
+                return PluralCategory.Zero if quantity == 0
+                return PluralCategory.One if quantity == 1
+                return PluralCategory.Two if quantity == 2
+                return PluralCategory.Few if quantity >= 3 and quantity <= 10
+                return PluralCategory.Many if quantity >= 11 and quantity <= 99
+                return PluralCategory.Other
+            if language_is(locale, 0x66, 0x72): # French
+                return PluralCategory.One if quantity == 0 or quantity == 1
+                return PluralCategory.Other
+            if language_is(locale, 0x72, 0x75) or language_is(locale, 0x75, 0x6b): # Russian/Ukrainian
+                return slavic_plural(quantity)
+            if language_is(locale, 0x70, 0x6c): # Polish
+                return polish_plural(quantity)
+            return PluralCategory.One if quantity == 1 else PluralCategory.Other
+
+    private:
+        def lower_ascii(value: u8) -> u8:
+            return value + 32 if value >= 65 and value <= 90 else value
+
+        def language_is(locale: sview, first: u8, second: u8) -> bool:
+            return false if locale.len < 2
+            return lower_ascii(locale.data[0]) == first and lower_ascii(locale.data[1]) == second
+
+        def slavic_plural(quantity: i64) -> PluralCategory:
+            ones: i64 = quantity % 10
+            hundreds: i64 = quantity % 100
+            return PluralCategory.One if ones == 1 and hundreds != 11
+            return PluralCategory.Few if ones >= 2 and ones <= 4 and (hundreds < 12 or hundreds > 14)
+            return PluralCategory.Many if ones == 0 or ones >= 5 or (hundreds >= 11 and hundreds <= 14)
+            return PluralCategory.Other
+
+        def polish_plural(quantity: i64) -> PluralCategory:
+            return PluralCategory.One if quantity == 1
+            ones: i64 = quantity % 10
+            hundreds: i64 = quantity % 100
+            return PluralCategory.Few if ones >= 2 and ones <= 4 and (hundreds < 12 or hundreds > 14)
+            return PluralCategory.Many if quantity != 0
+            return PluralCategory.Other
