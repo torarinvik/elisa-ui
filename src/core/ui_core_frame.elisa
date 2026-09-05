@@ -1,0 +1,208 @@
+extend UiCore:
+    public:
+        def begin_frame() -> void:
+            command_total <- 0
+            command_dropped <- false
+            current_clip_active <- false
+            accessibility_total <- 0
+            accessibility_dropped <- false
+            requested_frame_delay <- 0.0
+            clear_invalidations(Invalidation.Frame)
+
+        # Invalidation is a framework-owned bitset rather than a backend hint.
+        # A host may clear only the work it has consumed; begin_frame clears the
+        # frame-local Paint/Semantics/Animation bits while durable Layout and
+        # Resources state survives until the owner resolves it.
+        def invalidate(reason: Invalidation) -> void:
+            invalidation_flags <- invalidation_flags | reason.i32()
+
+        def clear_invalidations(reasons: Invalidation) -> void:
+            invalidation_flags <- invalidation_flags & (~reasons.i32())
+
+        def is_invalidated(reason: Invalidation) -> bool:
+            return (invalidation_flags & reason.i32()) != 0
+
+        def invalidations() -> i32:
+            return invalidation_flags
+
+        def clear_all_invalidations() -> void:
+            invalidation_flags <- 0
+
+        # Semantic IDs are the retained identity key used by every backend.
+        # Keep one node per ID in the frame buffer so a malformed or overly
+        # eager app declaration cannot make a backend reuse one native object
+        # at two positions in its accessibility child list.
+        def accessibility_index_for_id(id: usize) -> usize:
+            for index in 0..<accessibility_total.usize():
+                return index if accessibility_nodes[index].id == id
+            return MAX_ACCESSIBILITY_NODES
+
+        def accessibility(role: AccessibilityRole, label: sview, help: sview, frame: Rect, id: usize, action: usize, enabled: bool, focused: bool, selected: bool, value: f32, text_value: sview, selected_text: sview, revision: usize, selection_location: usize, selection_length: usize) -> void:
+            return if label.len == 0
+            safe_frame: Rect = Rect{
+                origin: Vec2{ x: finite_or_zero(frame.origin.x), y: finite_or_zero(frame.origin.y) },
+                size: Size{ width: nonnegative_extent(frame.size.width), height: nonnegative_extent(frame.size.height) },
+            }
+            safe_value: f32 = finite_or_zero(value)
+            node: AccessibilityNode = AccessibilityNode{role: role, label: label, help: help, frame: safe_frame, id: id, action: action, enabled: enabled, focused: focused, selected: selected, value: safe_value, text_value: text_value, selected_text: selected_text, revision: revision, selection_location: selection_location, selection_length: selection_length}
+            existing: usize = accessibility_index_for_id(id)
+            if existing < MAX_ACCESSIBILITY_NODES:
+                # Last declaration wins while preserving the ID's first
+                # position, giving frame diffs stable ordering and identity.
+                accessibility_nodes[existing] <- node
+                invalidate(Invalidation.Semantics)
+                return
+            if accessibility_total >= MAX_ACCESSIBILITY_NODES.u32():
+                accessibility_dropped <- true
+                return
+            accessibility_nodes[accessibility_total.usize()] <- node
+            accessibility_total <- accessibility_total + 1
+            invalidate(Invalidation.Semantics)
+
+        def accessibility_count() -> usize:
+            return accessibility_total.usize()
+
+        # The indexed reader is the zero-overhead path used by bounded backend
+        # loops. External callers should use the optional form below when the
+        # index did not come from accessibility_count().
+        def accessibility_at(index: usize) -> AccessibilityNode:
+            return accessibility_nodes[index]
+
+        def accessibility_if_valid(index: usize) -> AccessibilityNode?:
+            return null if index >= accessibility_total.usize()
+            return accessibility_nodes[index]
+
+        def accessibility_overflowed() -> bool:
+            return accessibility_dropped
+
+        # Commands past the buffer's capacity are dropped rather than growing
+        # it. A frame that overflows draws incompletely, which is visible and
+        # fixable; the alternative is growing the buffer while making the
+        # component's monotonic heap grow without bound.
+        def push_command(command: Command) -> void:
+            if command_total >= MAX_COMMANDS.u32():
+                command_dropped <- true
+                return
+            slot: usize = command_total.usize()
+            command_has_clip_flag[slot] <- current_clip_active
+            command_clip[slot] <- current_clip if current_clip_active
+            command_buffer[slot] <- command
+            command_total <- command_total + 1
+            invalidate(Invalidation.Paint)
+
+        # The batch a backend consumes at frame end.
+        def command_count() -> usize:
+            return command_total.usize()
+
+        # Keep the existing reader as a proven-valid fast path for painters and
+        # wire encoders. The optional form is the safe API for a host inspecting
+        # a frame without first proving that its index is in range.
+        def command_at(index: usize) -> Command:
+            return command_buffer[index]
+
+        def command_if_valid(index: usize) -> Command?:
+            return null if index >= command_total.usize()
+            return command_buffer[index]
+
+        def command_overflowed() -> bool:
+            return command_dropped
+
+        # Clip state is deliberately side-band metadata. A backend that can
+        # clip natively applies it around one command; a wire backend can keep
+        # the render-command discriminants and payloads byte-for-byte stable.
+        def set_clip(box: Rect) -> void:
+            current_clip <- Rect{
+                origin: Vec2{ x: finite_or_zero(box.origin.x), y: finite_or_zero(box.origin.y) },
+                size: Size{ width: nonnegative_extent(box.size.width), height: nonnegative_extent(box.size.height) },
+            }
+            current_clip_active <- true
+
+        def clear_clip() -> void:
+            current_clip_active <- false
+
+        def command_has_clip(index: usize) -> bool:
+            return index < command_total.usize() and command_has_clip_flag[index]
+
+        def command_clip_at(index: usize) -> Rect:
+            return command_clip[index]
+
+        def command_clip_if_valid(index: usize) -> Rect?:
+            return null if index >= command_total.usize()
+            return command_clip[index]
+
+        # Surface dimensions are extents, never signed offsets. Normalize them
+        # at the core boundary so painters and backends cannot observe a
+        # negative or NaN-sized viewport from a host resize callback.
+        # Host-provided scalar values may be NaN even when they are not
+        # extents or normalized fractions. Preserve finite negatives (slider
+        # ranges are allowed to span them), but make NaN and infinities
+        # deterministic before they reach layout, painting, or a native API.
+        def finite_or_zero(value: f32) -> f32:
+            difference: f32 = value - value
+            return value if difference == difference
+            return 0.0
+
+        def finite_or_zero_f64(value: f64) -> f64:
+            difference: f64 = value - value
+            return value if difference == difference
+            return 0.0
+
+        def nonnegative_extent(value: f32) -> f32:
+            safe: f32 = finite_or_zero(value)
+            return safe if safe > 0.0 else 0.0
+
+        # Normalize values that represent a fraction or progress amount. The
+        # Sanitize malformed host values before applying the ordinary lower and
+        # upper bounds, so neither NaN nor infinity can poison layout or paint.
+        def normalized_unit(value: f32) -> f32:
+            safe: f32 = finite_or_zero(value)
+            return 0.0 if safe < 0.0
+            return 1.0 if safe > 1.0 else safe
+
+        def set_viewport(width: f32, height: f32) -> void:
+            normalized: Size = Size{width: nonnegative_extent(width), height: nonnegative_extent(height)}
+            changed: bool = normalized.width != viewport_size.width or normalized.height != viewport_size.height
+            viewport_size <- normalized
+            if changed:
+                invalidate(Invalidation.Layout)
+                invalidate(Invalidation.Paint)
+                invalidate(Invalidation.Semantics)
+
+        def viewport_width() -> f32:
+            return viewport_size.width
+
+        def viewport_height() -> f32:
+            return viewport_size.height
+
+        # Backends provide a monotonic clock at frame start. Keeping time in
+        # core makes animation policy deterministic and directly testable;
+        # platforms that do not animate may leave the default at zero.
+        def set_frame_time(seconds: f64) -> void:
+            safe: f64 = finite_or_zero_f64(seconds)
+            current_frame_time <- safe if safe >= 0.0 else 0.0
+
+        def frame_time() -> f64:
+            return current_frame_time
+
+        # Animation remains backend-neutral: painting code requests the next
+        # frame, while each host decides how to schedule it. Zero means idle.
+        # Multiple animated controls coalesce onto the earliest requested wake.
+        def request_frame_after(seconds: f32) -> void:
+            safe: f32 = finite_or_zero(seconds)
+            return if safe <= 0.0
+            requested_frame_delay <- safe if requested_frame_delay <= 0.0 or safe < requested_frame_delay
+            invalidate(Invalidation.Animation)
+
+        def frame_delay() -> f32:
+            return requested_frame_delay
+
+        # Convert the backend-neutral wake delay to the signed millisecond
+        # timeout used by native event queues. Keeping clamping and sub-
+        # millisecond rounding here prevents each backend from inventing a
+        # slightly different idle/animation policy.
+        def frame_timeout_ms(delay: f32) -> i32:
+            safe: f32 = finite_or_zero(delay)
+            return -1 if safe <= 0.0
+            return 2147483647 if safe >= 2147483.0
+            milliseconds: i32 = (safe * 1000.0).i32()
+            return 1 if milliseconds < 1 else milliseconds

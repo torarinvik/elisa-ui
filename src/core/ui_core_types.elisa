@@ -1,0 +1,352 @@
+# elisa-ui core: the platform-independent model every backend shares.
+#
+# Drawing is RETAINED, not immediate. An app's frame appends commands to a
+# buffer; the backend consumes the whole batch at the end of the frame. That is
+# the shape wasmbrowser:window/host@0.1.0 requires (`present-commands` takes one
+# list per frame, and the manifest's `hybrid` execution mode depends on it), and
+# an immediate-mode backend like SDL3 loses nothing by replaying the batch.
+#
+# The geometry records mirror the WIT records field-for-field so the component
+# backend can lower them without reshaping. Canonical-ABI encoding stays in that
+# backend; nothing here knows about the wire format.
+#
+# NAMESPACES. Everything lives in a module and is reached as `Module::name`;
+# the module gives the prefix, so names inside drop the `ui_` they used to
+# carry. State is private and reached through functions, which is what lets a
+# backend live in its own module.
+#
+# THE CONTRACT. Two sets of top-level functions are declared by name only and
+# implemented outside this library, which is why they are not in a module:
+#
+#   platform (text metrics, from the font the backend rasterizes with):
+#     ui_measure_text_width(text, size)   ui_measure_text_height(text, size)
+#     ui_font_ascent(size)                ui_text_line_height(size)
+#   application:
+#     app_init()            once, after the surface exists
+#     app_event(event)      per translated input event (`UiCore::Event`, by value)
+#     app_text_input(text)  committed UTF-8 text (separate from physical keys)
+#     app_text_editing(text, start, length)  live IME composition
+#     app_frame()           once per frame; issues draw calls
+#     app_widget_event(widget, event)   a widget layer's click report
+
+module UiCore:
+    public:
+        # A point or a displacement. One type for both, because a UI never needs
+        # to distinguish them and two would double every helper.
+        struct Vec2:
+            x: f32
+            y: f32
+
+        struct Size:
+            width: f32
+            height: f32
+
+        struct Color:
+            r: u8
+            g: u8
+            b: u8
+            a: u8
+
+        # SHAPES CARRY NO COLOUR. A shape is geometry, and the colour is how it
+        # is painted this frame, so `fill(shape, colour)` takes them separately
+        # and one shape can be drawn twice in two colours without rebuilding it.
+        struct Rect:
+            origin: Vec2
+            size: Size
+
+        struct Circle:
+            center: Vec2
+            radius: f32
+
+        struct Triangle:
+            a: Vec2
+            b: Vec2
+            c: Vec2
+
+        struct Line:
+            from_point: Vec2
+            to_point: Vec2
+
+        # `origin` is the run's top-left, not its baseline, so a caller that
+        # knows only a layout box can place text without consulting font
+        # metrics. The text is a view, not a copy: it must outlive the frame,
+        # which is why the label widget takes static text rather than building
+        # strings per frame -- the component backend's allocator is monotonic
+        # and would never reclaim them.
+        struct TextRun:
+            origin: Vec2
+            size: f32
+            text: sview
+
+        enum Command:
+            Clear(color: Color)
+            FillRect(rect: Rect, color: Color)
+            FillCircle(circle: Circle, color: Color)
+            FillTriangle(triangle: Triangle, color: Color)
+            FillLine(line: Line, color: Color)
+            DrawText(run: TextRun, color: Color)
+
+        # A semantic tree travels beside the visual command list. Custom-painted
+        # controls are otherwise invisible to VoiceOver and browser accessibility
+        # APIs because pixels carry no role, label, bounds, or action target.
+        const enum AccessibilityRole of i32:
+            Label = 0
+            Button = 1
+            RadioButton = 2
+            CheckBox = 3
+            Slider = 4
+            ProgressBar = 5
+            TextField = 6
+            PasswordField = 7
+
+        struct AccessibilityNode:
+            role: AccessibilityRole
+            label: sview
+            help: sview
+            frame: Rect
+            id: usize
+            action: usize
+            enabled: bool
+            focused: bool
+            selected: bool
+            value: f32
+            text_value: sview
+            selected_text: sview
+            revision: usize
+            selection_location: usize
+            selection_length: usize
+
+        # Key codes, in GLFW's numbering -- which is what the wasmbrowser host reports.
+        # A closed set of named values, so an app writes `Key.Escape` instead of a bare
+        # 256 and the compiler catches a typo. A const enum is its BACKING, so `.i32()`
+        # converts out and `raw.Key()` converts in; the SDL3 backend, whose keycodes are
+        # a different space entirely, translates in key_from_sdl rather than casting.
+        #
+        # THE SEPARATORS DIFFER, and both are load-bearing. `::` reaches into the
+        # module and `.` names a variant of the type it found there, so a backend
+        # writes `UiCore::Key.Escape`. The conversion has no such spelling --
+        # `raw.UiCore::Key()` does not parse -- which is why `Key`, `Pad` and
+        # `PadAxis` below are also FUNCTIONS: `UiCore::Key(raw)` is the same cast
+        # a caller inside this module writes as `raw.Key()`.
+        const enum Key of i32:
+            Space = 32
+            Apostrophe = 39
+            Comma = 44
+            Minus = 45
+            Period = 46
+            Slash = 47
+            Digit0 = 48
+            Digit1 = 49
+            Digit2 = 50
+            Digit3 = 51
+            Digit4 = 52
+            Digit5 = 53
+            Digit6 = 54
+            Digit7 = 55
+            Digit8 = 56
+            Digit9 = 57
+            Semicolon = 59
+            Equal = 61
+            A = 65
+            B = 66
+            C = 67
+            D = 68
+            E = 69
+            F = 70
+            G = 71
+            H = 72
+            I = 73
+            J = 74
+            K = 75
+            L = 76
+            M = 77
+            N = 78
+            O = 79
+            P = 80
+            Q = 81
+            R = 82
+            S = 83
+            T = 84
+            U = 85
+            V = 86
+            W = 87
+            X = 88
+            Y = 89
+            Z = 90
+            LeftBracket = 91
+            Backslash = 92
+            RightBracket = 93
+            Backtick = 96
+            Escape = 256
+            Enter = 257
+            Tab = 258
+            Backspace = 259
+            Insert = 260
+            Delete = 261
+            Right = 262
+            Left = 263
+            Down = 264
+            Up = 265
+            PageUp = 266
+            PageDown = 267
+            Home = 268
+            End = 269
+            F1 = 290
+            F2 = 291
+            F3 = 292
+            F4 = 293
+            F5 = 294
+            F6 = 295
+            F7 = 296
+            F8 = 297
+            F9 = 298
+            F10 = 299
+            F11 = 300
+            F12 = 301
+            LeftShift = 340
+            LeftControl = 341
+            LeftAlt = 342
+            LeftSuper = 343
+            RightShift = 344
+            RightControl = 345
+            RightAlt = 346
+            RightSuper = 347
+
+
+        # Gamepad buttons, in the order every modern pad reports them. `South`/`East`/
+        # `West`/`North` name POSITIONS rather than letters, because the letter printed
+        # on the same physical button differs by vendor.
+        const enum Pad of i32:
+            South = 0
+            East = 1
+            West = 2
+            North = 3
+            LeftBumper = 4
+            RightBumper = 5
+            Back = 6
+            Start = 7
+            Guide = 8
+            LeftStick = 9
+            RightStick = 10
+            DPadUp = 11
+            DPadRight = 12
+            DPadDown = 13
+            DPadLeft = 14
+
+
+        # Gamepad axes.
+        const enum PadAxis of i32:
+            LeftX = 0
+            LeftY = 1
+            RightX = 2
+            RightY = 3
+            LeftTrigger = 4
+            RightTrigger = 5
+
+        # INPUT, as a sealed hierarchy (docs/77). Each kind carries exactly its own
+        # data, so there is no record where `dx` means something only for a scroll and
+        # `code` means three different things depending on the tag.
+        #
+        # It costs nothing: no member is recursive, none declares `common:`, and the
+        # root is not `packed`, so the whole tree lowers INLINE -- one tagged union
+        # sized for the widest leaf, no store and no allocation per event.
+        #
+        # The `InputEvent` tier is what lets a handler say "any input at all" in one
+        # arm (`InputEvent input:`) instead of listing every leaf.
+        enum Event:
+            None
+            Quit
+            Resize(size: Size)
+            FocusGained
+            FocusLost
+
+        enum InputEvent is Event:
+            pass
+
+        enum PointerEvent is InputEvent:
+            Move(at: Vec2)
+            Down(at: Vec2, button: i32)
+            Up(at: Vec2, button: i32)
+            Leave
+            Scroll(at: Vec2, delta: Vec2)
+
+        # Pointer button identities are framework vocabulary, not a platform's
+        # event ordinal. Keep the two named buttons that have semantics in the
+        # retained widgets here; other native button numbers remain available
+        # through the event's i32 payload for applications that need them.
+        const enum PointerButton of i32:
+            Primary = 0
+            Secondary = 1
+
+        # A captured button uses this sentinel until a press claims it. Keeping
+        # it beside the button identities avoids another magic value in the
+        # portable interaction state machine.
+        const NO_POINTER_BUTTON: i32 = -1
+
+        # The codes are NAMED types, not bare i32. A const enum is its backing, so
+        # this costs nothing at runtime and makes `key.code == Key.Escape` a
+        # comparison the compiler can check -- against a Pad, say, it cannot.
+        enum KeyEvent is InputEvent:
+            Down(code: Key)
+            Up(code: Key)
+
+        enum GamepadEvent is InputEvent:
+            Button(button: Pad, value: f32)
+            Axis(axis: PadAxis, value: f32)
+
+        # The FLAT form, for the two boundaries that cannot carry a variant: the WIT
+        # host hands the guest loose scalars, and a C caller wants a POD struct. The
+        # field meanings are the ones the flat `Event` used to carry, and `kind` keeps
+        # the same wire ordinals, so neither boundary shifts.
+        struct EventRecord:
+            kind: mutable WireKind
+            x: mutable f32
+            y: mutable f32
+            dx: mutable f32
+            dy: mutable f32
+            code: mutable i32
+
+        # Wire ordinals. Named so the mapping is stated once and both directions of
+        # the conversion below read against it. A const enum rather than loose
+        # constants, for the same reason Key and Pad are one: a match arm reads
+        # `WireKind.Quit`, and a dotted path cannot be mistaken for a fresh binding
+        # the way a bare constant name can -- that spelling bound the scrutinee and
+        # matched everything, so every event decoded as the first arm. A typo is now
+        # a compile error rather than a catch-all. This mirrors elisa_ui_event_kind
+        # in include/elisa_ui.h ordinal for ordinal; a const enum IS its backing, so
+        # both boundaries still see a plain i32 and nothing shifts.
+        const enum WireKind of i32:
+            None = 0
+            Quit = 1
+            PointerMove = 2
+            PointerDown = 3
+            PointerUp = 4
+            PointerLeave = 5
+            KeyDown = 6
+            KeyUp = 7
+            Resize = 8
+            Scroll = 9
+            GamepadButton = 10
+            GamepadAxis = 11
+            FocusGained = 12
+            FocusLost = 13
+
+        # Reasons a retained surface may need work. The bit values are stable
+        # framework vocabulary; hosts can inspect one flag at a time without
+        # learning any backend's event-loop or renderer state.
+        const enum Invalidation of i32:
+            None = 0
+            Layout = 1
+            Paint = 2
+            Semantics = 4
+            Resources = 8
+            Animation = 16
+            Frame = 22
+            All = 31
+
+        # A fixed buffer keeps the frame path allocation-free, which matters
+        # most on the component side: the freestanding cabi_realloc is
+        # monotonic, so a per-frame growing list would never return memory to
+        # the instance.
+        const MAX_COMMANDS: usize = 1024
+        const MAX_ACCESSIBILITY_NODES: usize = 256

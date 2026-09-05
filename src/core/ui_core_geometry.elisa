@@ -1,0 +1,65 @@
+extend UiCore:
+    public:
+        # Short constructors named for the type they build, so a call site reads as
+        # geometry rather than as a list of floats. `rgb`/`rgba` keep their own names:
+        # they are two constructors for ONE type, and the channel set is the whole
+        # distinction between them, which a pair of `Color` overloads would throw away.
+        def Vec2(x: f32, y: f32) -> Vec2:
+            return Vec2{x: finite_or_zero(x), y: finite_or_zero(y)}
+
+        def Size(width: f32, height: f32) -> Size:
+            return Size{width: nonnegative_extent(width), height: nonnegative_extent(height)}
+
+        def Rect(x: f32, y: f32, width: f32, height: f32) -> Rect:
+            return Rect{origin: Vec2(x, y), size: Size(width, height)}
+
+        def rgba(r: u8, g: u8, b: u8, a: u8) -> Color:
+            return Color{r: r, g: g, b: b, a: a}
+
+        def rgb(r: u8, g: u8, b: u8) -> Color:
+            return Color{r: r, g: g, b: b, a: 255}
+
+        # A rectangle's far edges, for hit testing and layout.
+        def right_edge(box: Rect) -> f32:
+            origin: f32 = finite_or_zero(box.origin.x)
+            extent: f32 = nonnegative_extent(box.size.width)
+            return finite_or_zero(origin + extent)
+
+        def bottom_edge(box: Rect) -> f32:
+            origin: f32 = finite_or_zero(box.origin.y)
+            extent: f32 = nonnegative_extent(box.size.height)
+            return finite_or_zero(origin + extent)
+
+        def contains(box: Rect, point: Vec2) -> bool:
+            safe_box: Rect = Rect(box.origin.x, box.origin.y, box.size.width, box.size.height)
+            safe_point: Vec2 = Vec2(point.x, point.y)
+            return safe_point.x >= safe_box.origin.x and safe_point.y >= safe_box.origin.y and safe_point.x < right_edge(safe_box) and safe_point.y < bottom_edge(safe_box)
+
+        def clear(color: Color) -> void:
+            push_command(Command.Clear(color))
+
+        # ONE NAME PER OPERATION, overloaded on the shape. Elisa resolves a free
+        # call by its first argument's type, so `fill` needs no protocol and no
+        # per-shape suffix; adding a shape means adding one overload.
+        def fill(box: Rect, color: Color) -> void:
+            safe_box: Rect = Rect(box.origin.x, box.origin.y, box.size.width, box.size.height)
+            push_command(Command.FillRect(safe_box, color))
+
+        def fill(disc: Circle, color: Color) -> void:
+            safe_disc: Circle = Circle{center: Vec2(disc.center.x, disc.center.y), radius: nonnegative_extent(disc.radius)}
+            push_command(Command.FillCircle(safe_disc, color))
+
+        def fill(tri: Triangle, color: Color) -> void:
+            safe_tri: Triangle = Triangle{a: Vec2(tri.a.x, tri.a.y), b: Vec2(tri.b.x, tri.b.y), c: Vec2(tri.c.x, tri.c.y)}
+            push_command(Command.FillTriangle(safe_tri, color))
+
+        def fill(segment: Line, color: Color) -> void:
+            safe_segment: Line = Line{from_point: Vec2(segment.from_point.x, segment.from_point.y), to_point: Vec2(segment.to_point.x, segment.to_point.y)}
+            push_command(Command.FillLine(safe_segment, color))
+
+        def draw(run: TextRun, color: Color) -> void:
+            safe_run: TextRun = TextRun(run.origin, run.size, run.text)
+            push_command(Command.DrawText(safe_run, color))
+
+        def TextRun(origin: Vec2, size: f32, body: sview) -> TextRun:
+            return TextRun{origin: origin, size: nonnegative_extent(size), text: body}

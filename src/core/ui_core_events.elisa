@@ -1,0 +1,151 @@
+extend UiCore:
+    public:
+        # The constructors for every ordinal that arrives from outside: a raw
+        # integer from a host or a C caller, named into its closed set. A const
+        # enum IS its backing, so each of these is a cast the compiler erases --
+        # they exist because the cast syntax cannot be qualified, not because a
+        # conversion has to happen.
+        def Key(raw: i32) -> Key:
+            return raw.Key()
+
+        def Pad(raw: i32) -> Pad:
+            return raw.Pad()
+
+        def PadAxis(raw: i32) -> PadAxis:
+            return raw.PadAxis()
+
+        def WireKind(raw: i32) -> WireKind:
+            return raw.WireKind()
+
+        # The packed event boundary accepts raw integers from C and WIT hosts,
+        # while the typed hierarchy promises closed key and gamepad sets. Keep
+        # the membership checks beside the casts so an unknown host ordinal can
+        # never become an invalid `Key`, `Pad`, or `PadAxis` value in an app.
+        def key_is_valid(raw: i32) -> bool:
+            return true if raw == Key.Space.i32() or raw == Key.Apostrophe.i32() or raw == Key.Comma.i32() or raw == Key.Minus.i32() or raw == Key.Period.i32() or raw == Key.Slash.i32()
+            return true if raw >= Key.Digit0.i32() and raw <= Key.Digit9.i32()
+            return true if raw == Key.Semicolon.i32() or raw == Key.Equal.i32()
+            return true if raw >= Key.A.i32() and raw <= Key.Z.i32()
+            return true if raw == Key.LeftBracket.i32() or raw == Key.Backslash.i32() or raw == Key.RightBracket.i32() or raw == Key.Backtick.i32()
+            return true if raw >= Key.Escape.i32() and raw <= Key.End.i32()
+            return true if raw >= Key.F1.i32() and raw <= Key.F12.i32()
+            return raw >= Key.LeftShift.i32() and raw <= Key.RightSuper.i32()
+
+        def pad_is_valid(raw: i32) -> bool:
+            return raw >= Pad.South.i32() and raw <= Pad.DPadLeft.i32()
+
+        def pad_axis_is_valid(raw: i32) -> bool:
+            return raw >= PadAxis.LeftX.i32() and raw <= PadAxis.RightTrigger.i32()
+
+        # ---- The flat boundary ----
+        #
+        # Everything above this line speaks in variants. These three are the only
+        # place the ordinal encoding is written down, so a backend that receives
+        # loose scalars (WIT) or a C caller that wants a POD struct converts once
+        # here rather than spreading tag arithmetic through the tree.
+
+        # The ordinal a kind travels as. Exhaustive on purpose: adding a leaf without
+        # giving it a number is a compile error, not a silent zero.
+        def wire_kind(event: Event) -> WireKind:
+            match event:
+                Event.None:
+                    return WireKind.None
+                Event.Quit:
+                    return WireKind.Quit
+                Event.Resize(size):
+                    return WireKind.Resize
+                Event.FocusGained:
+                    return WireKind.FocusGained
+                Event.FocusLost:
+                    return WireKind.FocusLost
+                PointerEvent.Move(at):
+                    return WireKind.PointerMove
+                PointerEvent.Down(at, button):
+                    return WireKind.PointerDown
+                PointerEvent.Up(at, button):
+                    return WireKind.PointerUp
+                PointerEvent.Leave:
+                    return WireKind.PointerLeave
+                PointerEvent.Scroll(at, delta):
+                    return WireKind.Scroll
+                KeyEvent.Down(code):
+                    return WireKind.KeyDown
+                KeyEvent.Up(code):
+                    return WireKind.KeyUp
+                GamepadEvent.Button(button, value):
+                    return WireKind.GamepadButton
+                GamepadEvent.Axis(axis, value):
+                    return WireKind.GamepadAxis
+
+        # Flatten. Fields a kind does not use stay zero, which is what the flat
+        # record always meant.
+        def to_record(event: Event) -> EventRecord:
+            record: mutable EventRecord = EventRecord{kind: wire_kind(event), x: 0.0, y: 0.0, dx: 0.0, dy: 0.0, code: 0}
+            match event:
+                Event.Resize(size):
+                    record with { x <- nonnegative_extent(size.width), y <- nonnegative_extent(size.height) }
+                PointerEvent.Move(at):
+                    record with { x <- finite_or_zero(at.x), y <- finite_or_zero(at.y) }
+                PointerEvent.Down(at, button):
+                    record with { x <- finite_or_zero(at.x), y <- finite_or_zero(at.y), code <- button }
+                PointerEvent.Up(at, button):
+                    record with { x <- finite_or_zero(at.x), y <- finite_or_zero(at.y), code <- button }
+                PointerEvent.Scroll(at, delta):
+                    record with { x <- finite_or_zero(at.x), y <- finite_or_zero(at.y), dx <- finite_or_zero(delta.x), dy <- finite_or_zero(delta.y) }
+                KeyEvent.Down(code):
+                    record.code <- code.i32()
+                KeyEvent.Up(code):
+                    record.code <- code.i32()
+                GamepadEvent.Button(button, value):
+                    record with { dx <- finite_or_zero(value), code <- button.i32() }
+                GamepadEvent.Axis(axis, value):
+                    record with { dx <- finite_or_zero(value), code <- axis.i32() }
+                Event.None:
+                    pass
+                Event.Quit:
+                    pass
+                Event.FocusGained:
+                    pass
+                Event.FocusLost:
+                    pass
+                PointerEvent.Leave:
+                    pass
+            return record
+
+        # Rebuild. An unknown ordinal is `None` rather than a panic: the host is
+        # free to grow its event set faster than this library does.
+        def from_record(record: EventRecord) -> Event:
+            at: Vec2 = Vec2(record.x, record.y)
+            return match record.kind:
+                WireKind.Quit:
+                    Event.Quit
+                WireKind.Resize:
+                    Event.Resize(size: Size(record.x, record.y))
+                WireKind.FocusGained:
+                    Event.FocusGained
+                WireKind.FocusLost:
+                    Event.FocusLost
+                WireKind.PointerMove:
+                    PointerEvent.Move(at: at)
+                WireKind.PointerDown:
+                    PointerEvent.Down(at: at, button: record.code)
+                WireKind.PointerUp:
+                    PointerEvent.Up(at: at, button: record.code)
+                WireKind.PointerLeave:
+                    PointerEvent.Leave
+                WireKind.Scroll:
+                    PointerEvent.Scroll(at: at, delta: Vec2(record.dx, record.dy))
+                WireKind.KeyDown:
+                    return Event.None if not key_is_valid(record.code)
+                    KeyEvent.Down(code: record.code.Key())
+                WireKind.KeyUp:
+                    return Event.None if not key_is_valid(record.code)
+                    KeyEvent.Up(code: record.code.Key())
+                WireKind.GamepadButton:
+                    return Event.None if not pad_is_valid(record.code)
+                    GamepadEvent.Button(button: record.code.Pad(), value: finite_or_zero(record.dx))
+                WireKind.GamepadAxis:
+                    return Event.None if not pad_axis_is_valid(record.code)
+                    GamepadEvent.Axis(axis: record.code.PadAxis(), value: finite_or_zero(record.dx))
+                _:
+                    Event.None
