@@ -71,6 +71,10 @@ because a module member's symbol carries its module and those names cannot move.
   interface, and canonical-ABI encoding is confined to this file; its clipboard
   bridge is also a byte-only Elisa adapter over the WIT host capability). Both
   render real text: WasmBrowser through its host font, SDL3 through SDL_ttf.
+- **Responsive layout** ([src/widgets/ui_responsive.elisa](src/widgets/ui_responsive.elisa)) —
+  backend-neutral compact/medium/expanded size classes, adaptive axis choice,
+  bounded grid-column calculation, and physical touch-target normalization,
+  all driven by logical space rather than OS-name branches.
 - **Widgets** ([src/widgets/ui_widget.elisa](src/widgets/ui_widget.elisa)) — a
   retained tree in one fixed array linked by index, box layout, hit testing, and
   hover/press/focus/disabled/selected state. Buttons, radio buttons, check boxes,
