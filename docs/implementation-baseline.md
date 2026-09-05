@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `109d6aa` on branch `work` |
+| elisa-ui revision | `0d2d358` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `1a44c1d1`; SHA-256 `a9573ad3779ae57f9daf68f79c53761c5ec54d0045a11c1387071ba0562678bc` |
@@ -27,7 +27,7 @@ profile, Elisa language, and elisa-ui framework explicitly.
 Public framework modules are `UiCore`, `UiLifecycle`, `UiMetrics`, `UiState`, `UiCapabilities`, `UiEvents`, `UiPaint`, `UiRaster`,
 `UiConst`, `UiWidgets`, `UiFlat`, `UiHandles`, `UiResources`, `UiResourcePresentation`,
 `UiResponsive`, `UiVirtualList`, `UiConstraints`, `UiIdentity`, `UiTheme`,
-`UiLocalization`, `UiValidation`, `UiDialog`, `UiGestures`, `UiTextLayout`, `UiControls`, `UiCapi`, `UiAppKit`,
+`UiLocalization`, `UiValidation`, `UiDialog`, `UiGestures`, `UiTextLayout`, `UiTextInput`, `UiControls`, `UiCapi`, `UiAppKit`,
 `UiAppKitNative`, `UiAppKitCanvas`, `UiSdl3`, `UiSdl3Draw`, `UiWasmBrowser`,
 and `UiInspector`. The application contract is
 the top-level `app_init`, `app_event`, `app_text_input`, `app_text_editing`,
@@ -105,8 +105,8 @@ typed widget lifetimes, hit testing and scrolling, control state, Unicode text
 editing/IME and bounded undo history, shared themes/localization/RTL/plurals,
 revision-safe async validation, bounded dialog ordering/results/semantics,
 deterministic touch gesture classification, scalar-safe text line breaking,
-clipping and raster commands, C API shape, AppKit semantics, and SDL/AppKit key
-maps. Implemented
+purpose-driven text-input/privacy traits, clipping and raster commands, C API
+shape, AppKit semantics, and SDL/AppKit key maps. Implemented
 but not yet device-verified: actual VoiceOver interaction, non-ASCII IMEs on a
 physical device, and cross-scale font fallback. Secure text is intentionally
 excluded from readback, semantic selected text, snapshots, and clipboard.
@@ -125,7 +125,7 @@ The following completed headlessly from this checkout:
 bash scripts/run_tests.sh
   capi, appkit, appkit canvas, appkit canvas keymap, capi bridge,
   controls, dialog, drop raii, event wire, gestures, hierarchy build/layout,
-  raster, responsive, sdl3 keymap/text, text layout, widget dispatch, widget handles,
+  raster, responsive, sdl3 keymap/text, text input, text layout, widget dispatch, widget handles,
   widget layout, widget inspector, widget reentrancy, ui harness, metrics,
   resource presentation, core invalidation, lifecycle, constraints, identity,
   localization, theme, validation, virtual-list and virtual-list semantics: PASS
@@ -220,6 +220,9 @@ separate host-enforced security boundary.
   break points, and deterministic long-word fallback. Renderers still own
   shaping and measured pixel widths; coverage lives in
   `test/text_layout_test.elisa`.
+- `UiTextInput` owns purpose-driven keyboard/multiline traits and hardens secure
+  fields by denying clipboard, semantic value, autocorrect, and suggestions;
+  coverage lives in `test/text_input_test.elisa`.
 - `UiIdentity` owns bounded keyed generation transactions for dynamic lists and
   forms, while `UiTheme`, `UiLocalization`, and `UiValidation` keep appearance,
   RTL/plural policy, and revision-safe asynchronous field state in shared Elisa
