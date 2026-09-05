@@ -1,0 +1,152 @@
+# Cross-backend lifecycle policy for elisa-ui.
+#
+# Hosts own their event loops and OS surface objects. This module owns the
+# framework's interpretation of those facts: when application state may be
+# initialized, when input/rendering are valid, and when a late callback must be
+# ignored. Every backend can therefore share one transition vocabulary without
+# duplicating booleans such as `running` or `initialized`.
+
+module UiLifecycle:
+    public:
+        const enum Phase of i32:
+            New = 0
+            Starting = 1
+            Active = 2
+            Inactive = 3
+            Background = 4
+            SurfaceLost = 5
+            Stopped = 6
+
+        const enum Signal of i32:
+            Begin = 0
+            Ready = 1
+            FocusGained = 2
+            FocusLost = 3
+            Suspend = 4
+            Resume = 5
+            SurfaceLost = 6
+            SurfaceRestored = 7
+            Stop = 8
+
+        struct Snapshot:
+            phase: Phase
+            generation: u32
+            surface_available: bool
+            accepts_input: bool
+            can_render: bool
+            focused: bool
+
+        def reset() -> void:
+            phase_state <- Phase.New
+            focused_state <- false
+
+        # Begin a new owner/session. The generation changes here, before any
+        # host object is created, so callbacks from a previous run cannot be
+        # mistaken for events belonging to the new run.
+        def begin() -> bool:
+            return false if phase_state != Phase.New and phase_state != Phase.Stopped
+            generation_state <- generation_state + 1
+            phase_state <- Phase.Starting
+            focused_state <- false
+            return true
+
+        def ready() -> bool:
+            return false if phase_state != Phase.Starting and phase_state != Phase.SurfaceLost
+            phase_state <- Phase.Active if focused_state else Phase.Inactive
+            return true
+
+        def focus_gained() -> bool:
+            return false if phase_state == Phase.New or phase_state == Phase.Stopped or phase_state == Phase.SurfaceLost
+            focused_state <- true
+            phase_state <- Phase.Active if phase_state == Phase.Inactive else phase_state
+            return true
+
+        def focus_lost() -> bool:
+            return false if phase_state != Phase.Active and phase_state != Phase.Inactive
+            focused_state <- false
+            phase_state <- Phase.Inactive
+            return true
+
+        def suspend() -> bool:
+            return false if phase_state == Phase.New or phase_state == Phase.Stopped or phase_state == Phase.SurfaceLost
+            focused_state <- false
+            phase_state <- Phase.Background
+            return true
+
+        def resume() -> bool:
+            return false if phase_state != Phase.Background and phase_state != Phase.SurfaceLost
+            focused_state <- true
+            phase_state <- Phase.Active
+            return true
+
+        def surface_lost() -> bool:
+            return false if phase_state == Phase.New or phase_state == Phase.Stopped
+            phase_state <- Phase.SurfaceLost
+            return true
+
+        def surface_restored() -> bool:
+            return false if phase_state != Phase.SurfaceLost
+            phase_state <- Phase.Active if focused_state else Phase.Inactive
+            return true
+
+        # Stop is idempotent so every backend can call it from both an explicit
+        # close path and its normal teardown path.
+        def stop() -> bool:
+            return false if phase_state == Phase.New or phase_state == Phase.Stopped
+            phase_state <- Phase.Stopped
+            focused_state <- false
+            return true
+
+        def apply(signal: Signal) -> bool:
+            match signal:
+                Signal.Begin:
+                    return begin()
+                Signal.Ready:
+                    return ready()
+                Signal.FocusGained:
+                    return focus_gained()
+                Signal.FocusLost:
+                    return focus_lost()
+                Signal.Suspend:
+                    return suspend()
+                Signal.Resume:
+                    return resume()
+                Signal.SurfaceLost:
+                    return surface_lost()
+                Signal.SurfaceRestored:
+                    return surface_restored()
+                Signal.Stop:
+                    return stop()
+
+        def phase() -> Phase:
+            return phase_state
+
+        def generation() -> u32:
+            return generation_state
+
+        def surface_available() -> bool:
+            return phase_state == Phase.Active or phase_state == Phase.Inactive or phase_state == Phase.Background
+
+        def accepts_input() -> bool:
+            return phase_state == Phase.Active
+
+        def can_render() -> bool:
+            return phase_state == Phase.Active or phase_state == Phase.Inactive
+
+        def is_started() -> bool:
+            return phase_state != Phase.New and phase_state != Phase.Stopped
+
+        def snapshot() -> Snapshot:
+            return Snapshot{
+                phase: phase_state,
+                generation: generation_state,
+                surface_available: surface_available(),
+                accepts_input: accepts_input(),
+                can_render: can_render(),
+                focused: focused_state,
+            }
+
+    private:
+        global mutable phase_state: Phase = Phase.New
+        global mutable generation_state: u32 = 0
+        global mutable focused_state: bool = false

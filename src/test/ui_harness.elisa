@@ -7,11 +7,11 @@
 # fresh command frame before each app render. No platform ABI is involved.
 
 include "../core/ui_core.elisa"
+include "../core/ui_lifecycle.elisa"
 include "../widgets/ui_resources.elisa"
 
 module UiHarness:
     private:
-        global mutable running: bool = false
         global mutable test_time: f64 = 0.0
 
     public:
@@ -19,32 +19,34 @@ module UiHarness:
         # receives its ordinary app_init callback, so this exercises the same
         # initialization path as a native or hosted backend.
         def start(width: f32, height: f32) -> void:
-            running <- true
+            UiLifecycle::reset()
+            return if not UiLifecycle::begin()
             test_time <- 0.0
             UiResources::reset()
             UiCore::set_viewport(width, height)
             UiCore::set_frame_time(test_time)
             app_init()
+            _ = UiLifecycle::ready()
 
         def stop() -> void:
             UiResources::reset()
-            running <- false
+            _ = UiLifecycle::stop()
 
         def is_running() -> bool:
-            return running
+            return UiLifecycle::is_started()
 
         # Absolute and relative clock injection both normalize hostile values
         # through UiCore's finite helper. Time never moves backwards in this
         # harness, matching the monotonic production clocks.
         def set_time(seconds: f64) -> void:
-            return if not running
+            return if not UiLifecycle::is_started()
             safe: f64 = UiCore::finite_or_zero_f64(seconds)
             return if safe < test_time
             test_time <- safe
             UiCore::set_frame_time(test_time)
 
         def advance_time(seconds: f64) -> void:
-            return if not running
+            return if not UiLifecycle::is_started()
             safe: f64 = UiCore::finite_or_zero_f64(seconds)
             return if safe <= 0.0
             set_time(test_time + safe)
@@ -57,31 +59,33 @@ module UiHarness:
         # flat layer can route this to UiFlat::handle in their app_event body,
         # exactly as they do on production backends.
         def dispatch(event: UiCore::Event) -> void:
-            return if not running
+            return if not UiLifecycle::is_started()
             app_event(event)
 
         def resize(width: f32, height: f32) -> void:
-            return if not running
+            return if not UiLifecycle::is_started()
             UiCore::set_viewport(width, height)
             dispatch(UiCore::Event.Resize(size: UiCore::Size(width, height)))
 
         def focus_lost() -> void:
+            return if not UiLifecycle::focus_lost()
             dispatch(UiCore::Event.FocusLost)
 
         def focus_gained() -> void:
+            return if not UiLifecycle::focus_gained()
             dispatch(UiCore::Event.FocusGained)
 
         # Render one deterministic frame. begin_frame clears the retained
         # command/semantic batches and the app then follows its normal frame
         # contract; no painter or native surface is needed for assertions.
         def frame() -> void:
-            return if not running
+            return if not UiLifecycle::can_render()
             UiCore::set_frame_time(test_time)
             UiCore::begin_frame()
             app_frame()
 
         def run_frames(count: usize, delta: f64) -> void:
-            return if not running
+            return if not UiLifecycle::can_render()
             index: mutable usize = 0
             while index < count |index|:
                 frame()
@@ -107,40 +111,40 @@ module UiHarness:
         # frames. Stopping the harness resets generations first, so a late
         # completion cannot revive a disposed resource slot.
         def request_resource(identifier: sview, owner: u32) -> UiResources::Handle:
-            return UiResources::invalid() if not running
+            return UiResources::invalid() if not UiLifecycle::is_started()
             return UiResources::request(identifier, owner)
 
         def resource_state(handle: UiResources::Handle) -> UiResources::State:
             return UiResources::state(handle)
 
         def set_resource_progress(handle: UiResources::Handle, network: f32, decode: f32) -> bool:
-            return false if not running
+            return false if not UiLifecycle::is_started()
             return UiResources::set_progress(handle, network, decode)
 
         def set_resource_demand(handle: UiResources::Handle, priority: u32) -> bool:
-            return false if not running
+            return false if not UiLifecycle::is_started()
             return UiResources::set_demand(handle, priority)
 
         def clear_resource_demand(handle: UiResources::Handle) -> bool:
-            return false if not running
+            return false if not UiLifecycle::is_started()
             return UiResources::clear_demand(handle)
 
         def set_resource_state(handle: UiResources::Handle, state: UiResources::State) -> bool:
-            return false if not running
+            return false if not UiLifecycle::is_started()
             return UiResources::set_state(handle, state)
 
         def cancel_resource(handle: UiResources::Handle) -> bool:
-            return false if not running
+            return false if not UiLifecycle::is_started()
             return UiResources::cancel(handle)
 
         def dispose_resource(handle: UiResources::Handle) -> bool:
-            return false if not running
+            return false if not UiLifecycle::is_started()
             return UiResources::dispose(handle)
 
         def cancel_resources_for_owner(owner: u32) -> usize:
-            return 0 if not running
+            return 0 if not UiLifecycle::is_started()
             return UiResources::cancel_owner(owner)
 
         def dispose_resources_for_owner(owner: u32) -> usize:
-            return 0 if not running
+            return 0 if not UiLifecycle::is_started()
             return UiResources::dispose_owner(owner)

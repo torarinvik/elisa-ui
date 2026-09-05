@@ -31,6 +31,11 @@ because a module member's symbol carries its module and those names cannot move.
   (`UiCore::Key`, `UiCore::Pad`, `UiCore::PadAxis`). It also exposes typed
   invalidation reasons for layout, paint, semantics, resources, and animation.
   Knows nothing about any wire format.
+- **Lifecycle** ([src/core/ui_lifecycle.elisa](src/core/ui_lifecycle.elisa)) —
+  one typed startup/focus/background/surface/stop state machine shared by the
+  headless harness and every backend. It owns session generations and derived
+  input/rendering predicates, so platform adapters do not grow divergent
+  `running` or `initialized` policy.
 - **Backends** implement the platform side and own the frame loop:
   [sdl3](src/platform/sdl3/ui_sdl3.elisa) (native; the `UiSdl3` module owns
   window/event lifecycle while [ui_sdl3_draw](src/platform/sdl3/ui_sdl3_draw.elisa)

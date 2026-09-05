@@ -9,6 +9,7 @@
 # top-level by name; they delegate into the module.
 
 include "../../core/ui_core.elisa"
+include "../../core/ui_lifecycle.elisa"
 include "../../core/ui_raster.elisa"
 include "../../core/ui_paint.elisa"
 
@@ -324,6 +325,7 @@ module UiSdl3:
         # many frames (headless smoke runs use it together with
         # SDL_VIDEODRIVER=dummy).
         def run(title: cstr, width: i32, height: i32, max_frames: i64) -> i64:
+            UiLifecycle::reset()
             if not SDL_Init(INIT_VIDEO):
                 _ = puts(SDL_GetError())
                 return 1
@@ -347,7 +349,9 @@ module UiSdl3:
             if path_override is override:
                 UiSdl3Draw::set_font_override(override)
             UiCore::set_viewport(width.f32(), height.f32())
+            return 1 if not UiLifecycle::begin()
             app_init()
+            _ = UiLifecycle::ready()
             if window is text_window:
                 if not SDL_StartTextInput(text_window):
                     _ = puts(SDL_GetError())
@@ -366,6 +370,10 @@ module UiSdl3:
                                 running <- false
                             UiCore::Event.Resize(size):
                                 UiCore::set_viewport(size.width, size.height)
+                            UiCore::Event.FocusGained:
+                                _ = UiLifecycle::focus_gained()
+                            UiCore::Event.FocusLost:
+                                _ = UiLifecycle::focus_lost()
                             _:
                                 pass
                         app_event(event)
@@ -389,4 +397,5 @@ module UiSdl3:
             if window is done_window:
                 SDL_DestroyWindow(done_window)
             SDL_Quit()
+            _ = UiLifecycle::stop()
             return 0

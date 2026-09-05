@@ -1,6 +1,7 @@
 # AppKit window/event host for elisa-ui's custom-painted command backend.
 
 include "../../core/ui_paint.elisa"
+include "../../core/ui_lifecycle.elisa"
 using UiPaint
 
 extern getenv(name: cstr) -> cstr?
@@ -302,7 +303,7 @@ module UiAppKitCanvas:
         # Elisa's retained state and construct a short-lived native string only
         # when that state still exposes help text for an interactive node.
         def accessibility_tooltip_text(handle: usize) -> usize can Unsafe.PointerCast:
-            return 0 if not canvas_initialized or canvas_window == 0
+            return 0 if not UiLifecycle::can_render() or canvas_window == 0
             state_index: usize = accessibility_state_index_for_handle(handle)
             return 0 if state_index == not_found()
             state: AccessibilityState = accessibility_previous[state_index]
@@ -343,7 +344,7 @@ module UiAppKitCanvas:
 
         def render_headless(window_handle: usize, snapshot: usize, pixels_width: i32, pixels_height: i32) -> i32 can Ui.Draw, Ui.Text, Unsafe.PointerCast:
             return 0 if window_handle == 0 or window_handle != canvas_window
-            return 0 if not canvas_initialized or pixels_width <= 0 or pixels_height <= 0
+            return 0 if not UiLifecycle::can_render() or pixels_width <= 0 or pixels_height <= 0
             return 0 if not snapshot_dimensions_safe(pixels_width, pixels_height)
             if snapshot != 0:
                 return 0 if CFGetTypeID(snapshot) != CFStringGetTypeID()
@@ -688,7 +689,6 @@ module UiAppKitCanvas:
         global mutable accessibility_force_layout: bool = true
         global mutable headless_session: bool = false
         global mutable redraw_timer: usize = 0
-        global mutable canvas_initialized: bool = false
         global mutable frame_rendered: bool = false
         global mutable frame_context: usize = 0
         # The retained root window handle lives in Elisa for exactly one run.
@@ -1086,7 +1086,7 @@ module UiAppKitCanvas:
             # AppKit can synchronously emit a late resize/focus notification
             # while a window is being dismantled, and those callbacks must not
             # re-enter application state through a dead window handle.
-            canvas_initialized <- false
+            _ = UiLifecycle::stop()
             cancel_redraw()
             release_canvas_delegate()
             release_accessibility_handles()
@@ -1493,7 +1493,8 @@ module UiAppKitCanvas:
                 native_title: usize = native_string(title)
                 return 1 if native_title == 0
                 release_canvas()
-                canvas_initialized <- false
+                UiLifecycle::reset()
+                return 1 if not UiLifecycle::begin()
                 headless_session <- headless
                 set_activation_policy(activation_policy(headless))
                 delegate_handle: mutable usize = 0
@@ -1519,7 +1520,7 @@ module UiAppKitCanvas:
                 reset_accessibility_history()
                 reset_frame_state()
                 app_init()
-                canvas_initialized <- true
+                _ = UiLifecycle::ready()
                 elisa_appkit_canvas_focus(canvas_window) if options.focus
                 if headless:
                     snapshot_opt: cstr? = getenv("ELISA_UI_SNAPSHOT")
@@ -1580,7 +1581,7 @@ module UiAppKitCanvas:
         # Keep one lifecycle predicate in Elisa so every event entry point uses
         # the same answer about whether retained widget state is still live.
         def live() -> bool:
-            return canvas_initialized and canvas_window != 0
+            return UiLifecycle::can_render() and canvas_window != 0
 
         def redraw() -> void:
             return if not live()
@@ -1590,6 +1591,7 @@ module UiAppKitCanvas:
         # window close should cancel retained interaction and invoke it belongs
         # to the Elisa adapter that owns the widget layer.
         def stop() -> void:
+            _ = UiLifecycle::stop()
             elisa_appkit_canvas_stop()
 
 # C callbacks from ElisaCanvasView. Top-level because the Objective-C ABI names them.
@@ -1681,6 +1683,8 @@ def appkit_canvas_raw_flags_callback(key_code: i32, modifiers: usize) -> void:
 
 def appkit_canvas_focus_changed_callback(focused: i32) -> void:
     return if not UiAppKitCanvas::live()
+    changed: bool = UiLifecycle::focus_gained() if focused != 0 else UiLifecycle::focus_lost()
+    return if not changed
     event: UiCore::Event = (UiCore::Event.FocusGained) if focused != 0 else (UiCore::Event.FocusLost)
     app_event(event)
     UiAppKitCanvas::redraw()
