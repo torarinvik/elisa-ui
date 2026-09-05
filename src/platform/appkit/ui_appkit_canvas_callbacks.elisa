@@ -31,13 +31,19 @@ def appkit_canvas_frame_callback(context: usize) -> void:
         UiMetrics::begin_frame(UiCore::frame_time())
         UiCore::begin_frame()
         app_frame()
-        UiMetrics::mark_application(UiAppKitCanvas::monotonic_time())
-        UiAppKitCanvas::sync_accessibility()
-        UiMetrics::mark_semantics(UiAppKitCanvas::monotonic_time())
-        UiPaint::replay[UiAppKitCanvas::AppKitPainter]()
-        UiMetrics::mark_paint(UiAppKitCanvas::monotonic_time())
+        # `app_frame` is application-owned and may close the window (or stop
+        # the lifecycle) synchronously. In that case the current CGContext is
+        # still balanced below, but semantic synchronization, native redraw
+        # scheduling and command replay must not target a surface that has
+        # already become unavailable.
+        if UiAppKitCanvas::live():
+            UiMetrics::mark_application(UiAppKitCanvas::monotonic_time())
+            UiAppKitCanvas::sync_accessibility()
+            UiMetrics::mark_semantics(UiAppKitCanvas::monotonic_time())
+            UiPaint::replay[UiAppKitCanvas::AppKitPainter]()
+            UiMetrics::mark_paint(UiAppKitCanvas::monotonic_time())
+            UiAppKitCanvas::schedule_next_frame(UiCore::frame_delay())
         UiAppKitCanvas::end_native_frame()
-        UiAppKitCanvas::schedule_next_frame(UiCore::frame_delay())
         CGContextRestoreGState(context)
         UiMetrics::finish_frame(UiAppKitCanvas::monotonic_time())
         objc_autoreleasePoolPop(autorelease_pool)
