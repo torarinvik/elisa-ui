@@ -23,11 +23,10 @@ extern int elisa_appkit_canvas_render_headless(size_t windowHandle,
                                                int pixelsHeight);
 extern void elisa_appkit_canvas_key_down_event(size_t event, int keyCode, size_t character, size_t modifiers);
 extern void elisa_appkit_canvas_key_up(int keyCode, size_t character);
-extern int elisa_appkit_canvas_accessibility_activate(size_t index);
-extern int elisa_appkit_canvas_accessibility_adjust(size_t index, int direction);
-extern size_t elisa_appkit_canvas_accessibility_index_for_handle(size_t handle);
+extern int elisa_appkit_canvas_accessibility_activate(size_t handle);
+extern int elisa_appkit_canvas_accessibility_adjust(size_t handle, int direction);
 extern size_t elisa_appkit_canvas_accessibility_tooltip_text(size_t handle);
-extern int elisa_appkit_canvas_accessibility_set_numeric_value(size_t index, float value,
+extern int elisa_appkit_canvas_accessibility_set_numeric_value(size_t handle, float value,
                                                                float *normalized);
 extern size_t elisa_appkit_canvas_accessibility_boolean_value(int selected);
 extern size_t elisa_appkit_canvas_accessibility_float_value(float value);
@@ -38,10 +37,10 @@ extern int elisa_appkit_canvas_accessibility_decrement_direction(void);
 extern const size_t elisa_appkit_canvas_not_found;
 extern int elisa_appkit_canvas_has_marked_text(void);
 extern size_t elisa_appkit_canvas_pointer_leave_event(void);
-extern int elisa_appkit_canvas_set_text(size_t index, size_t text);
+extern int elisa_appkit_canvas_set_text(size_t handle, size_t text);
 extern size_t elisa_appkit_canvas_selection_location(void);
 extern size_t elisa_appkit_canvas_selection_length(void);
-extern int elisa_appkit_canvas_set_selected_range(size_t index, size_t location, size_t length);
+extern int elisa_appkit_canvas_set_selected_range(size_t handle, size_t location, size_t length);
 extern size_t elisa_appkit_canvas_marked_location(void);
 extern size_t elisa_appkit_canvas_marked_length(void);
 extern void elisa_appkit_canvas_commit_text(size_t text,
@@ -90,18 +89,17 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
 - (void)elisaSetAccessibilitySelectedTextRange:(NSRange)value;
 @end
 @implementation ElisaAccessibilityElement
+// Accessibility callbacks pass the opaque element handle directly to Elisa;
+// semantic-slot lookup and widget authorization stay outside the Cocoa shim.
 - (BOOL)accessibilityPerformPress {
-    size_t index = elisa_appkit_canvas_accessibility_index_for_handle((size_t)(__bridge void *)self);
-    return index != elisa_appkit_canvas_not_found && elisa_appkit_canvas_accessibility_activate(index) != 0;
+    return elisa_appkit_canvas_accessibility_activate((size_t)(__bridge void *)self) != 0;
 }
 - (BOOL)accessibilityPerformIncrement {
-    size_t index = elisa_appkit_canvas_accessibility_index_for_handle((size_t)(__bridge void *)self);
-    return index != elisa_appkit_canvas_not_found && elisa_appkit_canvas_accessibility_adjust(index,
+    return elisa_appkit_canvas_accessibility_adjust((size_t)(__bridge void *)self,
         elisa_appkit_canvas_accessibility_increment_direction()) != 0;
 }
 - (BOOL)accessibilityPerformDecrement {
-    size_t index = elisa_appkit_canvas_accessibility_index_for_handle((size_t)(__bridge void *)self);
-    return index != elisa_appkit_canvas_not_found && elisa_appkit_canvas_accessibility_adjust(index,
+    return elisa_appkit_canvas_accessibility_adjust((size_t)(__bridge void *)self,
         elisa_appkit_canvas_accessibility_decrement_direction()) != 0;
 }
 - (void)setAccessibilityValue:(id)value {
@@ -109,11 +107,11 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
     // Ask Elisa first for writable text and numeric sliders, then mirror only
     // the normalized value it accepted; rejected edits cannot leave a
     // transient native value that disagrees with the custom painter.
-    size_t index = elisa_appkit_canvas_accessibility_index_for_handle((size_t)(__bridge void *)self);
     if (![value isKindOfClass:[NSString class]]) {
-        if ([value isKindOfClass:[NSNumber class]] && index != elisa_appkit_canvas_not_found) {
+        if ([value isKindOfClass:[NSNumber class]]) {
             float normalized = 0.0f;
-            if (elisa_appkit_canvas_accessibility_set_numeric_value(index, [(NSNumber *)value floatValue], &normalized) != 0) {
+            if (elisa_appkit_canvas_accessibility_set_numeric_value((size_t)(__bridge void *)self,
+                                                                    [(NSNumber *)value floatValue], &normalized) != 0) {
                 size_t native = elisa_appkit_canvas_accessibility_float_value(normalized);
                 NSNumber *normalizedValue = elisa_appkit_canvas_number(native);
                 if (normalizedValue != nil) [super setAccessibilityValue:normalizedValue];
@@ -122,13 +120,14 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
         }
         return;
     }
-    if (index != elisa_appkit_canvas_not_found && elisa_appkit_canvas_set_text(index, (size_t)(__bridge void *)value) != 0) {
+    if (elisa_appkit_canvas_set_text((size_t)(__bridge void *)self,
+                                     (size_t)(__bridge void *)value) != 0) {
         [super setAccessibilityValue:value];
     }
 }
 - (void)setAccessibilitySelectedTextRange:(NSRange)value {
-    size_t index = elisa_appkit_canvas_accessibility_index_for_handle((size_t)(__bridge void *)self);
-    if (index != elisa_appkit_canvas_not_found && elisa_appkit_canvas_set_selected_range(index, value.location, value.length) != 0) {
+    if (elisa_appkit_canvas_set_selected_range((size_t)(__bridge void *)self,
+                                               value.location, value.length) != 0) {
         [super setAccessibilitySelectedTextRange:value];
     }
 }

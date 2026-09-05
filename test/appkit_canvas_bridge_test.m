@@ -151,12 +151,14 @@ int elisa_appkit_canvas_key_down_route(int character, size_t modifiers) {
     if (character == 'z') return shift ? 7 : 6;
     return 0;
 }
-int elisa_appkit_canvas_accessibility_activate(size_t index) { (void)index; return 0; }
-size_t elisa_appkit_canvas_accessibility_index_for_handle(size_t handle) {
+static size_t test_accessibility_index_for_handle(size_t handle) {
     if (handle == test_accessibility_handles[0]) return 7;
     if (handle == test_accessibility_handles[1]) return 8;
     if (handle == test_accessibility_handles[2]) return 9;
     return elisa_appkit_canvas_not_found;
+}
+int elisa_appkit_canvas_accessibility_activate(size_t handle) {
+    return test_accessibility_index_for_handle(handle) == 7;
 }
 size_t elisa_appkit_canvas_accessibility_tooltip_text(size_t handle) {
     if (handle == 0) return 0;
@@ -169,13 +171,13 @@ int elisa_appkit_canvas_pointer_button_primary(void) { return 0; }
 int elisa_appkit_canvas_pointer_button_secondary(void) { return 1; }
 int elisa_appkit_canvas_accessibility_increment_direction(void) { return 1; }
 int elisa_appkit_canvas_accessibility_decrement_direction(void) { return -1; }
-int elisa_appkit_canvas_accessibility_adjust(size_t index, int direction) {
-    if (index != 7) return 0;
+int elisa_appkit_canvas_accessibility_adjust(size_t handle, int direction) {
+    if (test_accessibility_index_for_handle(handle) != 7) return 0;
     test_slider_value += direction > 0 ? 0.05f : -0.05f;
     return 1;
 }
-int elisa_appkit_canvas_accessibility_set_numeric_value(size_t index, float value, float *normalized) {
-    if (index != 7) return 0;
+int elisa_appkit_canvas_accessibility_set_numeric_value(size_t handle, float value, float *normalized) {
+    if (test_accessibility_index_for_handle(handle) != 7) return 0;
     test_slider_value = value < 0.0f ? 0.0f : (value > 1.0f ? 1.0f : value);
     if (normalized != NULL) *normalized = test_slider_value;
     return 1;
@@ -281,8 +283,8 @@ static size_t test_native_text_bytes(size_t native, char *buffer, size_t capacit
     if (take > 0) memcpy(buffer, utf8.bytes, take);
     return take;
 }
-int elisa_appkit_canvas_set_text(size_t index, size_t native) {
-    if (index != 8 || !test_allow_text_mutation) return 0;
+int elisa_appkit_canvas_set_text(size_t handle, size_t native) {
+    if (test_accessibility_index_for_handle(handle) != 8 || !test_allow_text_mutation) return 0;
     size_t take = test_native_text_bytes(native, test_text, sizeof(test_text) - 1);
     test_text[take] = '\0';
     test_selection_start = test_selection_end = take;
@@ -299,11 +301,15 @@ static size_t test_byte_from_utf16(NSUInteger offset) {
 }
 size_t elisa_appkit_canvas_selection_location(void) { return test_utf16_from_byte(test_selection_start); }
 size_t elisa_appkit_canvas_selection_length(void) { return test_utf16_from_byte(test_selection_end) - test_utf16_from_byte(test_selection_start); }
-int elisa_appkit_canvas_set_selected_range(size_t index, size_t location, size_t length) {
+static int test_set_selected_range_index(size_t index, size_t location, size_t length) {
     if (index != 8 || !test_allow_text_mutation) return 0;
     test_selection_start = test_byte_from_utf16(location);
     test_selection_end = test_byte_from_utf16(location + length);
     return 1;
+}
+int elisa_appkit_canvas_set_selected_range(size_t handle, size_t location, size_t length) {
+    if (test_accessibility_index_for_handle(handle) != 8) return 0;
+    return test_set_selected_range_index(8, location, length);
 }
 size_t elisa_appkit_canvas_marked_location(void) {
     return test_marked_end > test_marked_start ? test_utf16_from_byte(test_marked_start) : NSNotFound;
@@ -313,7 +319,7 @@ int elisa_appkit_canvas_has_marked_text(void) { return test_marked_end > test_ma
 void elisa_appkit_canvas_commit_text(size_t native, size_t replacementLocation, size_t replacementLength) {
     char bytes[sizeof(test_text)];
     size_t length = test_native_text_bytes(native, bytes, sizeof(bytes));
-    if (replacementLocation != NSNotFound) elisa_appkit_canvas_set_selected_range(8, replacementLocation, replacementLength);
+    if (replacementLocation != NSNotFound) test_set_selected_range_index(8, replacementLocation, replacementLength);
     else if (test_marked_end > test_marked_start) {
         test_selection_start = test_marked_start;
         test_selection_end = test_marked_end;
@@ -324,7 +330,7 @@ void elisa_appkit_canvas_commit_text(size_t native, size_t replacementLocation, 
 void elisa_appkit_canvas_update_marked_text(size_t native, size_t selectedLocation, size_t selectedLength, size_t replacementLocation, size_t replacementLength) {
     char bytes[sizeof(test_text)];
     size_t length = test_native_text_bytes(native, bytes, sizeof(bytes));
-    if (replacementLocation != NSNotFound) elisa_appkit_canvas_set_selected_range(8, replacementLocation, replacementLength);
+    if (replacementLocation != NSNotFound) test_set_selected_range_index(8, replacementLocation, replacementLength);
     else if (test_marked_end > test_marked_start) {
         test_selection_start = test_marked_start;
         test_selection_end = test_marked_end;

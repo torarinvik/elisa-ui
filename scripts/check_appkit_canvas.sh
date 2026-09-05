@@ -173,6 +173,10 @@ if grep -Eq 'children\.count[[:space:]]*>|accessibility_capacity' "$ROOT/src/pla
   echo "appkit canvas: accessibility child-capacity policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'elisa_appkit_canvas_accessibility_index_for_handle' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: accessibility handle-to-widget lookup leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'elisa_appkit_canvas_perform_text_action\([[:space:]]*[1-6][[:space:]]*\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: text-action token policy leaked back into Objective-C" >&2
   exit 1
@@ -372,7 +376,6 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_menu_add_item$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_menus_commit$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_activate$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_adjust$'
-nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_index_for_handle$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_set_numeric_value$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_add_tooltip$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_release$'

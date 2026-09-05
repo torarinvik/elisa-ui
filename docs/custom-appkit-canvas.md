@@ -191,9 +191,11 @@ selection ranges are accepted by Elisa before Cocoa mirrors them, so a rejected
 or disabled request cannot leave transient native state behind. Press and adjustment
 authorization is rechecked by `UiFlat`, and Cocoa returns that Elisa result
 directly to assistive technology. Cocoa retains no framework interaction-kind
-policy: accessibility edits carry their target widget id back to Elisa, and
-tooltip eligibility plus tooltip text are resolved from Elisa's retained semantic
-state. The lazy tooltip callback creates a temporary native string through the
+policy: accessibility edits carry only their opaque element handle back to
+Elisa, where the retained semantic slot resolves the widget action target.
+Tooltip eligibility and text are resolved from that semantic slot as well, so
+widget action ids never get confused with child-list positions. The lazy tooltip
+callback creates a temporary native string through the
 same FFI conversion path, so the Objective-C owner does not become a second
 source of help text. Writable slider values are normalized and accepted by Elisa
 before Cocoa mirrors the result. Elisa also decides when a reused semantic
