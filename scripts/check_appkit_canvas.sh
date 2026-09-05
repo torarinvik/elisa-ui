@@ -75,6 +75,10 @@ if grep -Eq '\bstrlen\b' "$ROOT/src/platform/appkit/ui_appkit_canvas.elisa"; the
   echo "appkit canvas: libc strlen survived in the Elisa backend" >&2
   exit 1
 fi
+if grep -Eq '\bstrcmp\b' "$ROOT/src/platform/appkit/ui_appkit_canvas.elisa"; then
+  echo "appkit canvas: libc strcmp survived in the Elisa backend" >&2
+  exit 1
+fi
 if grep -Eq '\bvalueKind\b|\bvalue_kind\b' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: accessibility value-shape policy leaked back into Objective-C" >&2
   exit 1

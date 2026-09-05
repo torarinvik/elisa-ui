@@ -4,7 +4,6 @@ include "../../core/ui_paint.elisa"
 using UiPaint
 
 extern getenv(name: cstr) -> cstr?
-extern strcmp(left: cstr, right: cstr) -> i32
 extern elisa_appkit_canvas_window_style_titled: i32
 extern elisa_appkit_canvas_window_style_closable: i32
 extern elisa_appkit_canvas_window_style_miniaturizable: i32
@@ -183,6 +182,16 @@ def snapshot_path_length(text: cstr) -> usize:
     # CAPACITY + 1 is an explicit invalid sentinel: a valid path can be exactly
     # CAPACITY bytes long, but this value had no terminator in the scan window.
     return SNAPSHOT_PATH_SCAN_CAPACITY + 1
+
+def appkit_cstr_equals(left: cstr, right: cstr) -> bool:
+    index: mutable usize = 0
+    while index < SNAPSHOT_PATH_SCAN_CAPACITY |index|:
+        left_byte: u8 = appkit_cstr_byte(left, index)
+        right_byte: u8 = appkit_cstr_byte(right, index)
+        return false if left_byte != right_byte
+        return true if left_byte == 0
+        index <- index + 1
+    return false
 
 def ui_measure_text_width(text: sview, size: f32) -> f32:
     return 0.0 if text.len == 0
@@ -804,7 +813,7 @@ module UiAppKitCanvas:
         def smoke_mode() -> bool:
             value_opt: cstr? = getenv("ELISA_UI_SMOKE_FRAMES")
             if value_opt is value:
-                return strcmp(value, "0") != 0
+                return not appkit_cstr_equals(value, "0")
             return false
 
         def menu_key(key: UiCore::Key) -> i32:
@@ -1231,34 +1240,34 @@ module UiAppKitCanvas:
         # Selector names are decoded from Cocoa's opaque SEL handles through the
         # runtime C ABI before these comparisons; Elisa owns their meaning.
         def text_selector_token(selector: cstr) -> i32:
-            return 1 if strcmp(selector, "moveLeft:") == 0
-            return 2 if strcmp(selector, "moveRight:") == 0
-            return 3 if strcmp(selector, "moveLeftAndModifySelection:") == 0
-            return 4 if strcmp(selector, "moveRightAndModifySelection:") == 0
-            return 5 if strcmp(selector, "moveToBeginningOfLine:") == 0
-            return 6 if strcmp(selector, "moveToEndOfLine:") == 0
-            return 7 if strcmp(selector, "moveToBeginningOfLineAndModifySelection:") == 0
-            return 8 if strcmp(selector, "moveToEndOfLineAndModifySelection:") == 0
-            return 9 if strcmp(selector, "deleteBackward:") == 0
-            return 10 if strcmp(selector, "deleteForward:") == 0
-            return 11 if strcmp(selector, "insertNewline:") == 0
-            return 12 if strcmp(selector, "insertTab:") == 0
-            return 13 if strcmp(selector, "insertBacktab:") == 0
-            return 14 if strcmp(selector, "moveWordLeft:") == 0
-            return 15 if strcmp(selector, "moveWordRight:") == 0
-            return 16 if strcmp(selector, "moveWordLeftAndModifySelection:") == 0
-            return 17 if strcmp(selector, "moveWordRightAndModifySelection:") == 0
-            return 18 if strcmp(selector, "deleteWordBackward:") == 0
-            return 19 if strcmp(selector, "deleteWordForward:") == 0
+            return 1 if appkit_cstr_equals(selector, "moveLeft:")
+            return 2 if appkit_cstr_equals(selector, "moveRight:")
+            return 3 if appkit_cstr_equals(selector, "moveLeftAndModifySelection:")
+            return 4 if appkit_cstr_equals(selector, "moveRightAndModifySelection:")
+            return 5 if appkit_cstr_equals(selector, "moveToBeginningOfLine:")
+            return 6 if appkit_cstr_equals(selector, "moveToEndOfLine:")
+            return 7 if appkit_cstr_equals(selector, "moveToBeginningOfLineAndModifySelection:")
+            return 8 if appkit_cstr_equals(selector, "moveToEndOfLineAndModifySelection:")
+            return 9 if appkit_cstr_equals(selector, "deleteBackward:")
+            return 10 if appkit_cstr_equals(selector, "deleteForward:")
+            return 11 if appkit_cstr_equals(selector, "insertNewline:")
+            return 12 if appkit_cstr_equals(selector, "insertTab:")
+            return 13 if appkit_cstr_equals(selector, "insertBacktab:")
+            return 14 if appkit_cstr_equals(selector, "moveWordLeft:")
+            return 15 if appkit_cstr_equals(selector, "moveWordRight:")
+            return 16 if appkit_cstr_equals(selector, "moveWordLeftAndModifySelection:")
+            return 17 if appkit_cstr_equals(selector, "moveWordRightAndModifySelection:")
+            return 18 if appkit_cstr_equals(selector, "deleteWordBackward:")
+            return 19 if appkit_cstr_equals(selector, "deleteWordForward:")
             return 0
 
         def text_action_for_selector(selector: cstr) -> i32:
-            return 1 if strcmp(selector, "selectAll:") == 0
-            return 2 if strcmp(selector, "copy:") == 0
-            return 3 if strcmp(selector, "cut:") == 0
-            return 4 if strcmp(selector, "paste:") == 0
-            return 5 if strcmp(selector, "undo:") == 0
-            return 6 if strcmp(selector, "redo:") == 0
+            return 1 if appkit_cstr_equals(selector, "selectAll:")
+            return 2 if appkit_cstr_equals(selector, "copy:")
+            return 3 if appkit_cstr_equals(selector, "cut:")
+            return 4 if appkit_cstr_equals(selector, "paste:")
+            return 5 if appkit_cstr_equals(selector, "undo:")
+            return 6 if appkit_cstr_equals(selector, "redo:")
             return 0
 
         def native_modifier_flags(flags: usize) -> usize:
