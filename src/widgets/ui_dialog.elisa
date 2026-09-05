@@ -79,7 +79,7 @@ module UiDialog:
         # are allowed for secondary actions but the title/message are bounded
         # and copied before the handle is returned.
         def open(kind: Kind, title: sview, message: sview, primary: sview, secondary: sview, owner: u32) -> Handle:
-            return invalid() if title.len < 0 or message.len < 0 or primary.len < 0 or secondary.len < 0
+            return invalid() if not kind_is_valid(kind) or title.len < 0 or message.len < 0 or primary.len < 0 or secondary.len < 0
             free_slot: mutable usize = NONE_SLOT
             for slot in 0..<MAX_DIALOGS:
                 if not active[slot] and not closed[slot]:
@@ -177,7 +177,7 @@ module UiDialog:
         # native surface has already gone away.
         def choose(handle: Handle, next: Result) -> bool:
             return false if not is_valid(handle) or closed[handle.slot.usize()]
-            return false if next == Result.None
+            return false if not result_is_valid(next)
             slot: usize = handle.slot.usize()
             results[slot] <- next
             closed[slot] <- true
@@ -251,6 +251,12 @@ module UiDialog:
 
         def make_handle(slot: usize) -> Handle:
             return Handle{slot: slot.u32(), generation: generations[slot]}
+
+        def kind_is_valid(value: Kind) -> bool:
+            return value == Kind.Alert or value == Kind.Confirm or value == Kind.Sheet
+
+        def result_is_valid(value: Result) -> bool:
+            return value == Result.Primary or value == Result.Secondary or value == Result.Cancelled or value == Result.Back
 
         def text_offset(slot: usize, field: usize) -> usize:
             return (slot * 4 + field) * TEXT_CAPACITY

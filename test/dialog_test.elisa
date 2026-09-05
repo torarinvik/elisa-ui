@@ -12,6 +12,9 @@ def check(name: cstr, ok: bool) -> void:
 
 def main() -> i64:
     UiDialog::reset()
+    invalid_kind: UiDialog::Kind = (-1).i32().Kind()
+    rejected_kind: UiDialog::Handle = UiDialog::open(invalid_kind, "Invalid", "", "OK", "", 1)
+    check("invalid dialog kinds are rejected", not UiDialog::is_valid(rejected_kind) and UiDialog::snapshot().active == 0)
     first: UiDialog::Handle = UiDialog::open(UiDialog::Kind.Confirm, "Delete item", "This cannot be undone.", "Delete", "Keep", 10)
     check("dialog opens with a valid handle", UiDialog::is_valid(first) and UiDialog::is_open(first))
     check("dialog copies title and actions", UiDialog::title(first) == "Delete item" and UiDialog::message(first) == "This cannot be undone." and UiDialog::primary_label(first) == "Delete" and UiDialog::secondary_label(first) == "Keep")
@@ -30,6 +33,8 @@ def main() -> i64:
     check("top skips closed results", UiDialog::top().slot == first.slot)
     check("closed result remains readable", UiDialog::snapshot().active == 1 and UiDialog::snapshot().closed == 1)
     check("closed dialog rejects a second result", not UiDialog::cancel(second))
+    invalid_result: UiDialog::Result = (-1).i32().Result()
+    check("invalid dialog results are rejected", not UiDialog::choose(first, invalid_result) and UiDialog::is_open(first) and UiDialog::result(first) == UiDialog::Result.None)
 
     check("primary choice closes dialog", UiDialog::choose(first, UiDialog::Result.Primary) and UiDialog::result(first) == UiDialog::Result.Primary and not UiDialog::is_open(first))
     check("owner dismissal has no already-closed work", UiDialog::dismiss_owner(10) == 0)

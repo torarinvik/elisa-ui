@@ -48,29 +48,30 @@ module UiResourcePresentation:
             reserved_size: UiCore::Size
 
         def default_options(kind: Kind) -> Options:
-            if kind == Kind.Image:
+            safe_kind: Kind = normalize_kind(kind)
+            if safe_kind == Kind.Image:
                 return Options{
-                    kind: kind, reserved_width: 64.0, reserved_height: 64.0,
+                    kind: safe_kind, reserved_width: 64.0, reserved_height: 64.0,
                     placeholder_color: UiCore::rgb(42, 46, 56),
                     fallback_color: UiCore::rgb(92, 48, 54),
                     show_progress: true, allow_retry: true,
                 }
-            if kind == Kind.Font:
+            if safe_kind == Kind.Font:
                 return Options{
-                    kind: kind, reserved_width: 0.0, reserved_height: 0.0,
+                    kind: safe_kind, reserved_width: 0.0, reserved_height: 0.0,
                     placeholder_color: UiCore::rgb(42, 46, 56),
                     fallback_color: UiCore::rgb(92, 48, 54),
                     show_progress: false, allow_retry: true,
                 }
-            if kind == Kind.Document:
+            if safe_kind == Kind.Document:
                 return Options{
-                    kind: kind, reserved_width: 320.0, reserved_height: 200.0,
+                    kind: safe_kind, reserved_width: 320.0, reserved_height: 200.0,
                     placeholder_color: UiCore::rgb(42, 46, 56),
                     fallback_color: UiCore::rgb(92, 48, 54),
                     show_progress: true, allow_retry: true,
                 }
             return Options{
-                kind: kind, reserved_width: 0.0, reserved_height: 0.0,
+                kind: safe_kind, reserved_width: 0.0, reserved_height: 0.0,
                 placeholder_color: UiCore::rgb(42, 46, 56),
                 fallback_color: UiCore::rgb(92, 48, 54),
                 show_progress: true, allow_retry: false,
@@ -140,7 +141,7 @@ module UiResourcePresentation:
             retryable: bool = options.allow_retry and can_retry(handle)
             return Record{
                 handle: handle,
-                kind: options.kind,
+                kind: normalize_kind(options.kind),
                 state: current,
                 failure: UiResources::failure(handle),
                 network_progress: UiResources::downloaded_progress(handle),
@@ -152,3 +153,7 @@ module UiResourcePresentation:
                 interaction_enabled: current == DisplayState.Ready or retryable,
                 reserved_size: UiCore::Size(options.reserved_width, options.reserved_height),
             }
+
+        def normalize_kind(kind: Kind) -> Kind:
+            return kind if kind == Kind.Image or kind == Kind.Font or kind == Kind.Document
+            return Kind.Generic

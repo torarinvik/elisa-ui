@@ -181,7 +181,7 @@ module UiResources:
         # require a package update or host/toolchain change and must not cause
         # an automatic retry loop in a view.
         def fail(handle: Handle, kind: FailureKind) -> bool:
-            return false if not is_valid(handle) or kind == FailureKind.Unknown
+            return false if not is_valid(handle) or not failure_kind_is_valid(kind)
             slot: usize = handle.slot.usize()
             return false if resource_states[slot] == State.Ready
             resource_states[slot] <- State.Failed
@@ -253,7 +253,7 @@ module UiResources:
             return true
 
         def set_state(handle: Handle, next: State) -> bool:
-            return false if not is_valid(handle) or next == State.Unrequested
+            return false if not is_valid(handle) or not state_is_valid(next)
             slot: usize = handle.slot.usize()
             return false if resource_states[slot] == next
             resource_states[slot] <- next
@@ -313,6 +313,12 @@ module UiResources:
                     cancelled <- cancelled + 1
             mark_changed() if cancelled > 0
             return cancelled
+
+        def failure_kind_is_valid(value: FailureKind) -> bool:
+            return value == FailureKind.RetryableTransport or value == FailureKind.Corrupt or value == FailureKind.Incompatible
+
+        def state_is_valid(value: State) -> bool:
+            return value == State.Requested or value == State.Ready or value == State.UnavailableOffline or value == State.Denied or value == State.Failed or value == State.Cancelled
 
     private:
         global mutable resource_count: usize = 0

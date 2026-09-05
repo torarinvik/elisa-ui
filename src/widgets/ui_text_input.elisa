@@ -38,31 +38,34 @@ module UiTextInput:
             semantic_value_allowed: bool
 
         def defaults(purpose: Purpose) -> Options:
-            secure: bool = purpose == Purpose.Password
+            safe_purpose: Purpose = normalize_purpose(purpose)
+            secure: bool = safe_purpose == Purpose.Password
             return Options{
-                purpose: purpose,
-                multiline: purpose == Purpose.Text,
-                autocorrect: not secure and (purpose == Purpose.Text or purpose == Purpose.Search),
-                suggestions: not secure and purpose != Purpose.Number,
+                purpose: safe_purpose,
+                multiline: safe_purpose == Purpose.Text,
+                autocorrect: not secure and (safe_purpose == Purpose.Text or safe_purpose == Purpose.Search),
+                suggestions: not secure and safe_purpose != Purpose.Number,
             }
 
         def resolve(options: Options) -> Traits:
-            secure: bool = options.purpose == Purpose.Password
-            multiline: bool = options.multiline and not secure and options.purpose != Purpose.Number
-            autocorrect: bool = options.autocorrect and not secure and (options.purpose == Purpose.Text or options.purpose == Purpose.Search)
-            suggestions: bool = options.suggestions and not secure and options.purpose != Purpose.Number
-            keyboard: Keyboard = keyboard_for(options.purpose)
+            safe_purpose: Purpose = normalize_purpose(options.purpose)
+            secure: bool = safe_purpose == Purpose.Password
+            multiline: bool = options.multiline and not secure and safe_purpose != Purpose.Number
+            autocorrect: bool = options.autocorrect and not secure and (safe_purpose == Purpose.Text or safe_purpose == Purpose.Search)
+            suggestions: bool = options.suggestions and not secure and safe_purpose != Purpose.Number
+            keyboard: Keyboard = keyboard_for(safe_purpose)
             return Traits{
-                purpose: options.purpose, keyboard: keyboard, secure: secure,
+                purpose: safe_purpose, keyboard: keyboard, secure: secure,
                 multiline: multiline, autocorrect: autocorrect,
                 suggestions: suggestions, clipboard_allowed: not secure,
                 semantic_value_allowed: not secure,
             }
 
         def keyboard_for(purpose: Purpose) -> Keyboard:
-            return Keyboard.Email if purpose == Purpose.Email
-            return Keyboard.Url if purpose == Purpose.Url
-            return Keyboard.Number if purpose == Purpose.Number
+            safe_purpose: Purpose = normalize_purpose(purpose)
+            return Keyboard.Email if safe_purpose == Purpose.Email
+            return Keyboard.Url if safe_purpose == Purpose.Url
+            return Keyboard.Number if safe_purpose == Purpose.Number
             return Keyboard.Default
 
         # `code` is a Unicode scalar supplied by the platform text bridge. This
@@ -84,3 +87,10 @@ module UiTextInput:
 
         def allows_semantic_value(traits: Traits) -> bool:
             return traits.semantic_value_allowed
+
+        # Unknown host/application purpose values must not silently become a
+        # clipboard-readable plain-text field. Password is the fail-closed
+        # fallback because it disables assistive text services and readback.
+        def normalize_purpose(value: Purpose) -> Purpose:
+            return value if value == Purpose.Text or value == Purpose.Password or value == Purpose.Email or value == Purpose.Url or value == Purpose.Number or value == Purpose.Search
+            return Purpose.Password
