@@ -1,0 +1,57 @@
+# AppKit canvas semantic state and native-handle lookup.
+#
+# Accessibility elements are opaque Cocoa callback targets only. The retained
+# semantic record and the handle-to-action/tooltip resolution stay in Elisa so
+# the native bridge never owns a second widget lookup table.
+
+extend UiAppKitCanvas:
+    public:
+        struct AccessibilityState:
+            role: mutable i32
+            action: mutable usize
+            interaction: mutable i32
+            value_kind: mutable i32
+            cursor: mutable i32
+            enabled: mutable bool
+            focused: mutable bool
+            selected: mutable bool
+            value: mutable f32
+            text_revision: mutable usize
+            selection_location: mutable usize
+            selection_length: mutable usize
+            label: mutable sview
+            help: mutable sview
+            x: mutable f32
+            y: mutable f32
+            width: mutable f32
+            height: mutable f32
+            parent_id: mutable usize
+            first_child_id: mutable usize
+            next_sibling_id: mutable usize
+            has_range: mutable bool
+            range_min: mutable f32
+            range_max: mutable f32
+            range_conflict: mutable bool
+
+        def accessibility_state_index_for_handle(handle: usize) -> usize:
+            return not_found() if handle == 0
+            for index in 0..<accessibility_previous_count:
+                return index if accessibility_previous_handles[index] == handle
+            return not_found()
+
+        def accessibility_action_for_handle(handle: usize) -> usize:
+            state_index: usize = accessibility_state_index_for_handle(handle)
+            return not_found() if state_index == not_found()
+            return accessibility_previous[state_index].action
+
+        # Cocoa asks the tooltip owner for a string lazily, after the semantic
+        # frame has already been committed. Resolve the element handle back to
+        # Elisa's retained state and construct a short-lived native string only
+        # when that state still exposes help text for an interactive node.
+        def accessibility_tooltip_text(handle: usize) -> usize can Unsafe.PointerCast:
+            return 0 if not UiLifecycle::can_render() or canvas_window == 0
+            state_index: usize = accessibility_state_index_for_handle(handle)
+            return 0 if state_index == not_found()
+            state: AccessibilityState = accessibility_previous[state_index]
+            return 0 if state.interaction == 0 or state.help.len == 0
+            return native_string(state.help)
