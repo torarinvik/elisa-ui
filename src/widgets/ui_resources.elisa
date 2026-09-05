@@ -130,13 +130,17 @@ module UiResources:
 
         # Requesting a key is idempotent while its record is alive. This keeps
         # per-frame view rebuilds from starting duplicate host work. A cancelled
-        # record can be requested again without changing its typed identity.
+        # record can be requested again, but that starts a new host operation and
+        # therefore rotates its generation so late completion from the cancelled
+        # operation cannot mutate the replacement request.
         def request(key: sview, owner: u32) -> Handle:
             return invalid() if key.len <= 0 or key.len >= IDENTIFIER_CAPACITY
             for slot in 0..<resource_count:
                 if resource_states[slot] != State.Unrequested and key_matches(slot, key):
                     resource_owners[slot] <- owner
                     if resource_states[slot] == State.Cancelled:
+                        next_generation: u32 = resource_generations[slot] + 1
+                        resource_generations[slot] <- 1 if next_generation == 0 else next_generation
                         resource_states[slot] <- State.Requested
                         resource_failure_kinds[slot] <- FailureKind.Unknown
                         resource_downloaded[slot] <- 0.0
@@ -302,9 +306,9 @@ module UiResources:
             mark_changed() if released > 0
             return released
 
-        # Cancellation keeps the logical record available for a re-request,
-        # but invalidates no identity. This is useful when a view is hidden
-        # temporarily and its host task may be resumed later.
+        # Cancellation keeps the logical record available for a re-request. The
+        # re-request rotates its generation, so an old host task cannot resume
+        # into the replacement operation for the same key.
         def cancel_owner(owner: u32) -> usize:
             cancelled: mutable usize = 0
             for slot in 0..<resource_count:

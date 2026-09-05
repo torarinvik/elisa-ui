@@ -79,13 +79,16 @@ def main() -> i64:
     check("cancel transition is accepted", UiResources::cancel(image) and UiResources::state(image) == UiResources::State.Cancelled)
     cancelled_snapshot: UiResources::Snapshot = UiResources::snapshot()
     check("snapshot counts cancelled resources", cancelled_snapshot.total == 1 and cancelled_snapshot.cancelled == 1 and cancelled_snapshot.requested == 0)
+    cancelled_generation: u32 = image.generation
     requested_again: UiResources::Handle = UiResources::request("images/logo", 77)
     check("cancelled key can be requested again", requested_again.slot == image.slot and UiResources::state(requested_again) == UiResources::State.Requested and UiResources::owner(requested_again) == 77)
+    check("cancelled re-request rotates generation", requested_again.generation != cancelled_generation and not UiResources::is_valid(image))
+    check("cancelled completion cannot touch replacement", not UiResources::set_state(image, UiResources::State.Ready) and UiResources::state(requested_again) == UiResources::State.Requested)
 
-    old_generation: u32 = image.generation
-    check("dispose releases the resource", UiResources::dispose(image) and UiResources::count() == 0)
-    check("disposed identity becomes stale", not UiResources::is_valid(image) and image.generation == old_generation)
-    check("late completion cannot revive disposed identity", not UiResources::set_state(image, UiResources::State.Ready))
+    old_generation: u32 = requested_again.generation
+    check("dispose releases the resource", UiResources::dispose(requested_again) and UiResources::count() == 0)
+    check("disposed identity becomes stale", not UiResources::is_valid(requested_again) and requested_again.generation == old_generation)
+    check("late completion cannot revive disposed identity", not UiResources::set_state(requested_again, UiResources::State.Ready))
 
     fresh: UiResources::Handle = UiResources::request("images/new-logo", 88)
     check("slot reuse gets a new generation", UiResources::is_valid(fresh) and fresh.slot == image.slot and fresh.generation != old_generation)
