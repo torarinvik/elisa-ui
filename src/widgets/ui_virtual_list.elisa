@@ -15,6 +15,7 @@ module UiVirtualList:
         # visible range is additionally capped by the caller's max_visible.
         const MAX_ITEMS: i32 = 16777216
         const NONE_INDEX: i32 = -1
+        const MAX_GEOMETRY_EXTENT: f32 = 16777216.0
 
         struct VisibleRange:
             first: i32
@@ -44,9 +45,9 @@ module UiVirtualList:
             has_after: bool
 
         def metrics(item_extent: f32, spacing: f32) -> Metrics:
-            safe_item: mutable f32 = UiCore::nonnegative_extent(item_extent)
+            safe_item: mutable f32 = bounded_extent(item_extent)
             safe_item <- 1.0 if safe_item == 0.0
-            safe_spacing: f32 = UiCore::nonnegative_extent(spacing)
+            safe_spacing: f32 = bounded_extent(spacing)
             return Metrics{item_extent: safe_item, spacing: safe_spacing, stride: safe_item + safe_spacing}
 
         def bounded_count(item_count: i32) -> i32:
@@ -148,3 +149,7 @@ module UiVirtualList:
             next: mutable i32 = index + 1 if forward else index - 1
             return NONE_INDEX if next < 0 or next >= total
             return next
+
+        def bounded_extent(value: f32) -> f32:
+            safe: f32 = UiCore::nonnegative_extent(value)
+            return MAX_GEOMETRY_EXTENT if safe > MAX_GEOMETRY_EXTENT else safe

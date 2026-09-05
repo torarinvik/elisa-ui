@@ -142,9 +142,13 @@ module UiResponsive:
             safe_spacing: f32 = UiCore::nonnegative_extent(spacing)
             cap: i32 = maximum if maximum > 0 else 1
             return cap if safe_item == 0.0
-            denominator: f32 = safe_item + safe_spacing
-            available: f32 = safe_width + safe_spacing
-            result: mutable i32 = (available / denominator).i32()
+            denominator: f32 = UiCore::finite_or_zero(safe_item + safe_spacing)
+            return 1 if denominator <= 0.0
+            available: f32 = UiCore::finite_or_zero(safe_width + safe_spacing)
+            ratio: f32 = UiCore::finite_or_zero(available / denominator)
+            return 1 if ratio <= 0.0
+            return cap if ratio >= cap.f32()
+            result: mutable i32 = ratio.i32()
             result <- 1 if result < 1
             result <- cap if result > cap
             return result
@@ -156,5 +160,5 @@ module UiResponsive:
             safe_scale: mutable f32 = UiCore::nonnegative_extent(scale)
             safe_scale <- 1.0 if safe_scale == 0.0
             safe_physical: f32 = UiCore::nonnegative_extent(minimum_physical)
-            required: f32 = safe_physical / safe_scale
+            required: f32 = UiCore::finite_or_zero(safe_physical / safe_scale)
             return required if required > safe_logical else safe_logical
