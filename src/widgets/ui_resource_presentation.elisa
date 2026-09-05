@@ -110,6 +110,31 @@ module UiResourcePresentation:
         def cancel(handle: UiResources::Handle) -> bool:
             return UiResources::cancel(handle)
 
+        # Emit the stable visual fallback owned by the framework. Ready assets
+        # intentionally emit nothing: the host resolves verified bytes through
+        # its renderer, while every non-ready state remains backend-neutral.
+        def paint(box: UiCore::Rect, value: Record, options: Options) -> void:
+            safe_box: UiCore::Rect = UiCore::Rect(box.origin.x, box.origin.y, box.size.width, box.size.height)
+            if value.placeholder_visible:
+                UiCore::fill(safe_box, options.placeholder_color)
+                if value.progress_visible and safe_box.size.width > 0.0 and safe_box.size.height > 0.0:
+                    progress_width: f32 = safe_box.size.width * UiCore::normalized_unit(value.decode_progress)
+                    progress_y: mutable f32 = UiCore::bottom_edge(safe_box) - 4.0
+                    progress_y <- safe_box.origin.y if progress_y < safe_box.origin.y else progress_y
+                    UiCore::fill(UiCore::Rect(safe_box.origin.x, progress_y, progress_width, 3.0), options.fallback_color)
+                return
+            return if not value.fallback_visible
+            UiCore::fill(safe_box, options.fallback_color)
+            mark: UiCore::Color = UiCore::rgba(255, 255, 255, 70)
+            UiCore::fill(UiCore::Line{
+                from_point: UiCore::Vec2(safe_box.origin.x, safe_box.origin.y),
+                to_point: UiCore::Vec2(UiCore::right_edge(safe_box), UiCore::bottom_edge(safe_box)),
+            }, mark)
+            UiCore::fill(UiCore::Line{
+                from_point: UiCore::Vec2(UiCore::right_edge(safe_box), safe_box.origin.y),
+                to_point: UiCore::Vec2(safe_box.origin.x, UiCore::bottom_edge(safe_box)),
+            }, mark)
+
         def record(handle: UiResources::Handle, options: Options) -> Record:
             current: DisplayState = display_state(handle)
             retryable: bool = options.allow_retry and can_retry(handle)

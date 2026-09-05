@@ -42,10 +42,20 @@ def main() -> i64:
     UiResources::set_progress(image, 0.8, 0.25)
     loading <- UiResourcePresentation::record(image, options)
     check("presentation preserves independent progress", loading.network_progress == 0.8 and loading.decode_progress == 0.25 and loading.state == UiResourcePresentation::DisplayState.Loading)
+    UiCore::begin_frame()
+    UiResourcePresentation::paint(UiCore::Rect(10.0, 20.0, 100.0, 40.0), loading, options)
+    check("loading presentation emits placeholder and progress", UiCore::command_count() == 2)
+    if UiCore::command_at(1) is UiCore::Command.FillRect(progress_box, progress_color):
+        check("progress command follows decoded fraction", progress_box.size.width == 25.0 and progress_box.size.height == 3.0)
+    else:
+        check("progress command is a rectangle", false)
 
     UiResources::set_state(image, UiResources::State.Ready)
     ready: UiResourcePresentation::Record = UiResourcePresentation::record(image, options)
     check("ready resource hides fallback and placeholder", ready.state == UiResourcePresentation::DisplayState.Ready and not ready.placeholder_visible and not ready.fallback_visible and ready.interaction_enabled and ready.reserved_size.width == 64.0)
+    UiCore::begin_frame()
+    UiResourcePresentation::paint(UiCore::Rect(10.0, 20.0, 100.0, 40.0), ready, options)
+    check("ready presentation leaves resource painting to the host", UiCore::command_count() == 0)
 
     UiResources::set_state(image, UiResources::State.Failed)
     failed: UiResourcePresentation::Record = UiResourcePresentation::record(image, options)
@@ -53,6 +63,9 @@ def main() -> i64:
     UiResources::set_state(image, UiResources::State.Denied)
     denied: UiResourcePresentation::Record = UiResourcePresentation::record(image, options)
     check("denied resource uses fallback without prompting by itself", denied.fallback_visible and denied.retry_available)
+    UiCore::begin_frame()
+    UiResourcePresentation::paint(UiCore::Rect(10.0, 20.0, 100.0, 40.0), denied, options)
+    check("fallback presentation emits a filled card and marks", UiCore::command_count() == 3)
     UiResourcePresentation::cancel(image)
     cancelled: UiResourcePresentation::Record = UiResourcePresentation::record(image, options)
     check("cancelled resource stops loading presentation", cancelled.state == UiResourcePresentation::DisplayState.Cancelled and cancelled.fallback_visible and not cancelled.progress_visible)

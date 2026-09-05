@@ -58,3 +58,9 @@ resources. `record(handle, options)` returns a read-only snapshot containing:
 presentation layer never starts a fetch by itself. This keeps offline/denied
 states recoverable without retry loops and lets a host render the returned
 record with native, SDL, or hosted primitives.
+
+`paint(box, record, options)` emits the backend-neutral placeholder, decoded
+progress strip, or fallback card (including its diagnostic mark) through the
+ordinary `UiCore` command list. It emits no command for `Ready`, leaving the
+verified resource's image/font/document rendering to the host. Thus a backend
+does not need a resource-state switch of its own.
