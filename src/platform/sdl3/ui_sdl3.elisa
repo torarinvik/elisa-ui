@@ -338,7 +338,31 @@ module UiSdl3:
                         _ = UiLifecycle::focus_lost()
                     _:
                         pass
-                app_event(event)
+                # Resize, quit and focus transitions remain observable while
+                # inactive; physical input does not. This mirrors the hosted
+                # backend's lifecycle gate and prevents a background SDL
+                # window from mutating retained widget state.
+                match event:
+                    UiCore::PointerEvent.Move(at):
+                        app_event(event) if UiLifecycle::accepts_input()
+                    UiCore::PointerEvent.Down(at, button):
+                        app_event(event) if UiLifecycle::accepts_input()
+                    UiCore::PointerEvent.Up(at, button):
+                        app_event(event) if UiLifecycle::accepts_input()
+                    UiCore::PointerEvent.Leave:
+                        app_event(event) if UiLifecycle::accepts_input()
+                    UiCore::PointerEvent.Scroll(at, delta):
+                        app_event(event) if UiLifecycle::accepts_input()
+                    UiCore::KeyEvent.Down(code):
+                        app_event(event) if UiLifecycle::accepts_input()
+                    UiCore::KeyEvent.Up(code):
+                        app_event(event) if UiLifecycle::accepts_input()
+                    UiCore::GamepadEvent.Button(button, value):
+                        app_event(event) if UiLifecycle::accepts_input()
+                    UiCore::GamepadEvent.Axis(axis, value):
+                        app_event(event) if UiLifecycle::accepts_input()
+                    _:
+                        app_event(event)
 
     public:
         # max_frames <= 0 runs until quit; a positive value exits after that
@@ -375,6 +399,10 @@ module UiSdl3:
             return 1 if not UiLifecycle::begin()
             app_init()
             _ = UiLifecycle::ready()
+            # SDL does not guarantee a separate initial focus event after a
+            # freshly created window is shown. Treat the newly owned window as
+            # focused; later SDL focus transitions still update this state.
+            _ = UiLifecycle::focus_gained()
             if window is text_window:
                 if not SDL_StartTextInput(text_window):
                     _ = puts(SDL_GetError())
@@ -383,9 +411,9 @@ module UiSdl3:
             while running |frames|:
                 event: mutable UiCore::Event = (UiCore::Event.None)
                 while next_event(event) |event, running|:
-                    if event_type() == EVENT_TEXT_INPUT:
+                    if event_type() == EVENT_TEXT_INPUT and UiLifecycle::accepts_input():
                         text_input(event_text_pointer())
-                    elif event_type() == EVENT_TEXT_EDITING:
+                    elif event_type() == EVENT_TEXT_EDITING and UiLifecycle::accepts_input():
                         text_editing(event_text_pointer(), event_text_editing_start(), event_text_editing_length())
                     else:
                         _ = UiEvents::enqueue(event)

@@ -5,6 +5,13 @@ def appkit_canvas_dispatch_event(event: UiCore::Event) -> void:
     while UiEvents::dequeue(queued):
         app_event(queued)
 
+def appkit_canvas_dispatch_input_event(event: UiCore::Event) -> void:
+    # Focus transitions and resize notifications use the broader dispatch
+    # path above. Pointer, keyboard and gamepad events must stop at the
+    # lifecycle boundary once AppKit has made the window inactive.
+    return if not UiLifecycle::accepts_input()
+    appkit_canvas_dispatch_event(event)
+
 def appkit_canvas_frame_callback(context: usize) -> void:
     can Ui.Draw, Ui.Text, Unsafe.PointerCast:
         # AppKit may issue a draw request while the view is being constructed
@@ -53,7 +60,7 @@ def appkit_canvas_pointer_callback(kind: i32, x: f32, y: f32, dx: f32, dy: f32, 
     event <- (UiCore::PointerEvent.Up(at: at, button: button)) if kind == 2
     event <- (UiCore::PointerEvent.Leave) if kind == 3
     event <- (UiCore::PointerEvent.Scroll(at: at, delta: UiCore::Vec2(dx, dy))) if kind == 4
-    appkit_canvas_dispatch_event(event)
+    appkit_canvas_dispatch_input_event(event)
     UiAppKitCanvas::redraw()
 
 def appkit_canvas_pointer_move_callback(x: f32, y: f32) -> void:
@@ -78,7 +85,7 @@ def appkit_canvas_key_callback(down: i32, code: i32) -> void:
         return
     return if not UiCore::key_is_valid(code)
     event: UiCore::Event = (UiCore::KeyEvent.Down(code: UiCore::Key(code))) if down != 0 else (UiCore::KeyEvent.Up(code: UiCore::Key(code)))
-    appkit_canvas_dispatch_event(event)
+    appkit_canvas_dispatch_input_event(event)
     UiAppKitCanvas::redraw()
 
 def appkit_canvas_raw_key_callback(down: i32, key_code: i32, character: i32) -> void:
