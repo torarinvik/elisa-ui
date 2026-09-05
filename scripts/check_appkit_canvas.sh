@@ -218,14 +218,6 @@ if awk '/- \(void\)setFrameSize:/ { inside=1 } inside && /elisa_canvas_window/ {
   echo "appkit canvas: Elisa initialization policy leaked back into Objective-C" >&2
   exit 1
 fi
-if awk '/- \(NSUInteger\)characterIndexForPoint:/ { inside=1 } inside && /elisa_appkit_canvas_accepts_text/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
-  echo "appkit canvas: text availability policy leaked back into Objective-C character lookup" >&2
-  exit 1
-fi
-if awk '/- \(NSRect\)firstRectForCharacterRange:/ { inside=1 } inside && /elisa_appkit_canvas_accepts_text/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
-  echo "appkit canvas: text availability policy leaked back into Objective-C candidate-rect lookup" >&2
-  exit 1
-fi
 if grep -Eq 'NSMakeRange\(location,[[:space:]]*0\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: text range length policy leaked back into Objective-C" >&2
   exit 1

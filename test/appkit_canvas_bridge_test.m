@@ -106,7 +106,6 @@ void elisa_appkit_canvas_pointer_scroll(float x, float y, float dx, float dy) {
     test_pointer_kind = 4;
     test_pointer_button = 0;
 }
-void elisa_appkit_canvas_raw_key(int down, int keyCode, int character) { (void)down; (void)keyCode; (void)character; }
 void elisa_appkit_canvas_key_down_event(size_t event, int keyCode, size_t character, size_t modifiers) {
     (void)event; (void)keyCode; (void)character; (void)modifiers;
 }
@@ -152,7 +151,6 @@ int elisa_appkit_canvas_accessibility_set_numeric_value(size_t index, float valu
 }
 void elisa_appkit_canvas_window_closed(void) {}
 void elisa_appkit_canvas_rebuild_cursor_rects(void) {}
-int elisa_appkit_canvas_accepts_text(void) { return 1; }
 int elisa_appkit_canvas_view_is_flipped(void) { return 1; }
 int elisa_appkit_canvas_view_accepts_first_responder(void) { return 1; }
 int elisa_appkit_canvas_view_is_accessibility_element(void) { return 0; }
