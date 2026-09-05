@@ -582,13 +582,16 @@ void elisa_appkit_canvas_menu_add_item(size_t menu, size_t title,
     elisa_appkit_canvas_menu_add_item_title(menu, value, key, actionHandle, modifiers);
 }
 
-size_t elisa_appkit_canvas_modifier_command(void) { return NSEventModifierFlagCommand; }
-size_t elisa_appkit_canvas_modifier_shift(void) { return NSEventModifierFlagShift; }
-size_t elisa_appkit_canvas_modifier_option(void) { return NSEventModifierFlagOption; }
-size_t elisa_appkit_canvas_modifier_control(void) { return NSEventModifierFlagControl; }
-size_t elisa_appkit_canvas_modifier_device_independent_mask(void) {
-    return NSEventModifierFlagDeviceIndependentFlagsMask;
-}
+extern const size_t elisa_appkit_canvas_modifier_command;
+const size_t elisa_appkit_canvas_modifier_command = NSEventModifierFlagCommand;
+extern const size_t elisa_appkit_canvas_modifier_shift;
+const size_t elisa_appkit_canvas_modifier_shift = NSEventModifierFlagShift;
+extern const size_t elisa_appkit_canvas_modifier_option;
+const size_t elisa_appkit_canvas_modifier_option = NSEventModifierFlagOption;
+extern const size_t elisa_appkit_canvas_modifier_control;
+const size_t elisa_appkit_canvas_modifier_control = NSEventModifierFlagControl;
+extern const size_t elisa_appkit_canvas_modifier_device_independent_mask;
+const size_t elisa_appkit_canvas_modifier_device_independent_mask = NSEventModifierFlagDeviceIndependentFlagsMask;
 
 void elisa_appkit_canvas_menu_add_separator(size_t menu) {
     NSMenu *value = (__bridge NSMenu *)(void *)menu;
