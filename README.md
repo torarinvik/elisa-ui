@@ -35,6 +35,10 @@ because a module member's symbol carries its module and those names cannot move.
   window/event lifecycle while [ui_sdl3_draw](src/platform/sdl3/ui_sdl3_draw.elisa)
   owns renderer state, SDL_ttf fonts, raster drawing, and the painter; externs
   target system libSDL3 and `UiSdl3::run` drives the loop) and
+  [AppKit controls](src/platform/appkit/ui_appkit.elisa) (real native controls;
+  [ui_appkit_native](src/platform/appkit/ui_appkit_native.elisa) contains only
+  the typed Objective-C/CoreFoundation bridge wrappers while `UiAppKit` owns
+  retained control realization) and
   [AppKit canvas](src/platform/appkit/ui_appkit_canvas.elisa) (a custom-painted
   macOS `NSView`; AppKit supplies the window, events, CoreGraphics context and
   accessibility objects and byte-oriented pasteboard primitives through a thin

@@ -94,204 +94,16 @@ extern elisa_appkit_is_flipped(handle: usize) -> i32
 extern elisa_appkit_progress_is_indeterminate(handle: usize) -> i32
 extern elisa_appkit_progress_style(handle: usize) -> i32
 
+
+# Objective-C/CFString calls live behind one explicit native module.
+include "./ui_appkit_native.elisa"
+
 module UiAppKit:
     private:
         const STANDARD_WINDOW_WIDTH: f32 = 640.0
         const STANDARD_WINDOW_HEIGHT: f32 = 480.0
         const FLOATING_PANEL_WIDTH: f32 = 480.0
         const FLOATING_PANEL_HEIGHT: f32 = 320.0
-        const UTF8_ENCODING: u32 = 0x08000100
-
-        # Build counted native strings in Elisa. The Objective-C shim borrows
-        # the opaque CFString only long enough to assign it to a control, so
-        # byte-to-string conversion and its policy stay outside the bridge.
-        def native_string(text: sview) -> usize can Unsafe.PointerCast:
-            empty: cstr = ""
-            pointer: mutable cstr = empty
-            pointer <- text.data.cast[cstr] can Unsafe.PointerCast if text.len > 0
-            return CFStringCreateWithBytes(0, pointer, text.len.i64(), UTF8_ENCODING, false)
-
-        def empty_native_string() -> usize can Unsafe.PointerCast:
-            empty: cstr = ""
-            return native_string(sview(empty, 0, 0))
-
-        # Keep temporary Cocoa objects bounded without putting lifecycle policy
-        # back into the Objective-C shim. Each wrapper transfers only the
-        # retained result (if any) across the pool boundary.
-        def native_init() -> void:
-            pool: usize = objc_autoreleasePoolPush()
-            elisa_appkit_init()
-            objc_autoreleasePoolPop(pool)
-
-        def native_set_activation_policy(policy: i32) -> void:
-            pool: usize = objc_autoreleasePoolPush()
-            elisa_appkit_set_activation_policy(policy)
-            objc_autoreleasePoolPop(pool)
-
-        def native_create_window(style: i32, backing: i32, width: f32, height: f32) -> usize:
-            pool: usize = objc_autoreleasePoolPush()
-            result: usize = elisa_appkit_create_window_with_style(style, backing, width, height)
-            objc_autoreleasePoolPop(pool)
-            return result
-
-        def native_create_panel_window(style: i32, backing: i32, floating: i32,
-                                       becomes_key_only: i32, width: f32, height: f32) -> usize:
-            pool: usize = objc_autoreleasePoolPush()
-            result: usize = elisa_appkit_create_panel_window(style, backing, floating,
-                becomes_key_only, width, height)
-            objc_autoreleasePoolPop(pool)
-            return result
-
-        def native_create_panel() -> usize:
-            pool: usize = objc_autoreleasePoolPush()
-            result: usize = elisa_appkit_create_panel()
-            objc_autoreleasePoolPop(pool)
-            return result
-
-        def native_create_scroll_view(vertical: i32, horizontal: i32) -> usize:
-            pool: usize = objc_autoreleasePoolPush()
-            result: usize = elisa_appkit_create_scroll_view(vertical, horizontal)
-            objc_autoreleasePoolPop(pool)
-            return result
-
-        def native_create_label(text: usize) -> usize:
-            pool: usize = objc_autoreleasePoolPush()
-            result: usize = elisa_appkit_create_label(text)
-            objc_autoreleasePoolPop(pool)
-            return result
-
-        def native_create_push_button(bezel_style: i32, text: usize) -> usize:
-            pool: usize = objc_autoreleasePoolPush()
-            result: usize = elisa_appkit_create_push_button(bezel_style, text)
-            objc_autoreleasePoolPop(pool)
-            return result
-
-        def native_create_toggle_button(button_type: i32, text: usize) -> usize:
-            pool: usize = objc_autoreleasePoolPush()
-            result: usize = elisa_appkit_create_toggle_button(button_type, text)
-            objc_autoreleasePoolPop(pool)
-            return result
-
-        def native_create_checkbox(text: usize) -> usize:
-            pool: usize = objc_autoreleasePoolPush()
-            result: usize = elisa_appkit_create_checkbox(text)
-            objc_autoreleasePoolPop(pool)
-            return result
-
-        def native_create_radio_button(text: usize) -> usize:
-            pool: usize = objc_autoreleasePoolPush()
-            result: usize = elisa_appkit_create_radio_button(text)
-            objc_autoreleasePoolPop(pool)
-            return result
-
-        def native_create_text_field(text: usize) -> usize:
-            pool: usize = objc_autoreleasePoolPush()
-            result: usize = elisa_appkit_create_text_field(text)
-            objc_autoreleasePoolPop(pool)
-            return result
-
-        def native_create_slider(low: f32, high: f32, value: f32) -> usize:
-            pool: usize = objc_autoreleasePoolPush()
-            result: usize = elisa_appkit_create_slider(low, high, value)
-            objc_autoreleasePoolPop(pool)
-            return result
-
-        def native_create_progress_bar(progress_style: i32, indeterminate: i32) -> usize:
-            pool: usize = objc_autoreleasePoolPush()
-            result: usize = elisa_appkit_create_progress_bar(progress_style, indeterminate)
-            objc_autoreleasePoolPop(pool)
-            return result
-
-        def native_attach_to_window(handle: usize, parent: usize) -> void:
-            pool: usize = objc_autoreleasePoolPush()
-            elisa_appkit_attach_to_window(handle, parent)
-            objc_autoreleasePoolPop(pool)
-
-        def native_attach_to_scroll_view(handle: usize, parent: usize) -> void:
-            pool: usize = objc_autoreleasePoolPush()
-            elisa_appkit_attach_to_scroll_view(handle, parent)
-            objc_autoreleasePoolPop(pool)
-
-        def native_attach_to_view(handle: usize, parent: usize) -> void:
-            pool: usize = objc_autoreleasePoolPush()
-            elisa_appkit_attach_to_view(handle, parent)
-            objc_autoreleasePoolPop(pool)
-
-        def native_set_window_frame(handle: usize, width: f32, height: f32) -> void:
-            pool: usize = objc_autoreleasePoolPush()
-            elisa_appkit_set_window_frame(handle, width, height)
-            objc_autoreleasePoolPop(pool)
-
-        def native_set_view_frame(handle: usize, x: f32, y: f32, width: f32, height: f32) -> void:
-            pool: usize = objc_autoreleasePoolPush()
-            elisa_appkit_set_view_frame(handle, x, y, width, height)
-            objc_autoreleasePoolPop(pool)
-
-        def native_set_scroll_document_frame(handle: usize, width: f32, height: f32) -> void:
-            pool: usize = objc_autoreleasePoolPush()
-            elisa_appkit_set_scroll_document_frame(handle, width, height)
-            objc_autoreleasePoolPop(pool)
-
-        def native_set_window_title(handle: usize, text: usize) -> void:
-            pool: usize = objc_autoreleasePoolPush()
-            elisa_appkit_set_window_title(handle, text)
-            objc_autoreleasePoolPop(pool)
-
-        def native_set_button_title(handle: usize, text: usize) -> void:
-            pool: usize = objc_autoreleasePoolPush()
-            elisa_appkit_set_button_title(handle, text)
-            objc_autoreleasePoolPop(pool)
-
-        def native_set_field_text(handle: usize, text: usize) -> void:
-            pool: usize = objc_autoreleasePoolPush()
-            elisa_appkit_set_field_text(handle, text)
-            objc_autoreleasePoolPop(pool)
-
-        def native_set_button_state(handle: usize, state: i32) -> void:
-            pool: usize = objc_autoreleasePoolPush()
-            elisa_appkit_set_button_state(handle, state)
-            objc_autoreleasePoolPop(pool)
-
-        def native_set_slider_state(handle: usize, low: f32, high: f32, value: f32) -> void:
-            pool: usize = objc_autoreleasePoolPush()
-            elisa_appkit_set_slider_state(handle, low, high, value)
-            objc_autoreleasePoolPop(pool)
-
-        def native_set_progress_value(handle: usize, value: f32) -> void:
-            pool: usize = objc_autoreleasePoolPush()
-            elisa_appkit_set_progress_value(handle, value)
-            objc_autoreleasePoolPop(pool)
-
-        def native_present(handle: usize) -> void:
-            pool: usize = objc_autoreleasePoolPush()
-            elisa_appkit_present(handle)
-            objc_autoreleasePoolPop(pool)
-
-        def native_activate() -> void:
-            pool: usize = objc_autoreleasePoolPush()
-            elisa_appkit_activate()
-            objc_autoreleasePoolPop(pool)
-
-        def native_run() -> void:
-            pool: usize = objc_autoreleasePoolPush()
-            elisa_appkit_run()
-            objc_autoreleasePoolPop(pool)
-
-        # AppKit's enum values cross the FFI as opaque facts. The decoration
-        # policy itself stays in Elisa, where the widget's WindowMode is already
-        # resolved and can be tested without constructing an NSWindow.
-        def standard_window_style(resizable: bool) -> i32:
-            style: mutable i32 = elisa_appkit_window_style_titled
-            style <- style | elisa_appkit_window_style_closable
-            style <- style | elisa_appkit_window_style_miniaturizable
-            style <- style | elisa_appkit_window_style_resizable if resizable
-            return style
-
-        def floating_panel_style() -> i32:
-            style: mutable i32 = elisa_appkit_window_style_titled
-            style <- style | elisa_appkit_window_style_closable
-            style <- style | elisa_appkit_window_style_utility
-            return style
 
     public:
         # The AppKit controls backend. A TYPE, not a value: native handles live
@@ -316,18 +128,18 @@ module UiAppKit:
             parent_handle: usize = native_handle(parent)
             return if parent_handle == 0
             if parent_kind == UiControls::Kind.Window:
-                native_attach_to_window(handle, parent_handle)
+                UiAppKitNative::native_attach_to_window(handle, parent_handle)
                 return
             if parent_kind == UiControls::Kind.ScrollView:
-                native_attach_to_scroll_view(handle, parent_handle)
+                UiAppKitNative::native_attach_to_scroll_view(handle, parent_handle)
                 return
-            native_attach_to_view(handle, parent_handle)
+            UiAppKitNative::native_attach_to_view(handle, parent_handle)
 
         # Class names used by the headless read-back check are framework text
         # too. Build them as counted CoreFoundation strings so the native shim
         # only resolves an already-constructed NSString class identity.
         def class_is(index: i32, name: sview) -> i32 can Unsafe.PointerCast:
-            native: usize = native_string(name)
+            native: usize = UiAppKitNative::native_string(name)
             return 0 if native == 0
             result: i32 = elisa_appkit_is_class(native_handle(index), native)
             CFRelease(native)
@@ -391,70 +203,70 @@ module UiAppKit:
                         parent_kind <- UiControls::kind_at(parent.usize())
                     if kind == UiControls::Kind.Window:
                         if window_mode == UiControls::WindowMode.Floating:
-                            handle: usize = native_create_panel_window(floating_panel_style(), elisa_appkit_backing_store_buffered, 1, 1, FLOATING_PANEL_WIDTH, FLOATING_PANEL_HEIGHT)
+                            handle: usize = UiAppKitNative::native_create_panel_window(UiAppKitNative::floating_panel_style(), elisa_appkit_backing_store_buffered, 1, 1, FLOATING_PANEL_WIDTH, FLOATING_PANEL_HEIGHT)
                             record_created(index, handle, parent, parent_kind)
                             return
-                        handle: usize = native_create_window(standard_window_style(window_mode == UiControls::WindowMode.Resizable), elisa_appkit_backing_store_buffered, STANDARD_WINDOW_WIDTH, STANDARD_WINDOW_HEIGHT)
+                        handle: usize = UiAppKitNative::native_create_window(UiAppKitNative::standard_window_style(window_mode == UiControls::WindowMode.Resizable), elisa_appkit_backing_store_buffered, STANDARD_WINDOW_WIDTH, STANDARD_WINDOW_HEIGHT)
                         record_created(index, handle, parent, parent_kind)
                         return
                     if kind == UiControls::Kind.Panel:
-                        handle: usize = native_create_panel()
+                        handle: usize = UiAppKitNative::native_create_panel()
                         record_created(index, handle, parent, parent_kind)
                         return
                     if kind == UiControls::Kind.ScrollView:
                         vertical: i32 = 0 if axis == UiConst::Axis.Row else 1
                         horizontal: i32 = 1 if axis == UiConst::Axis.Row else 0
-                        handle: usize = native_create_scroll_view(vertical, horizontal)
+                        handle: usize = UiAppKitNative::native_create_scroll_view(vertical, horizontal)
                         record_created(index, handle, parent, parent_kind)
                         return
                     if kind == UiControls::Kind.Label:
-                        empty: usize = empty_native_string()
+                        empty: usize = UiAppKitNative::empty_native_string()
                         return if empty == 0
-                        handle: usize = native_create_label(empty)
+                        handle: usize = UiAppKitNative::native_create_label(empty)
                         CFRelease(empty)
                         record_created(index, handle, parent, parent_kind)
                         return
                     if kind == UiControls::Kind.PushButton:
-                        empty: usize = empty_native_string()
+                        empty: usize = UiAppKitNative::empty_native_string()
                         return if empty == 0
-                        handle: usize = native_create_push_button(elisa_appkit_bezel_style_rounded, empty)
+                        handle: usize = UiAppKitNative::native_create_push_button(elisa_appkit_bezel_style_rounded, empty)
                         CFRelease(empty)
                         record_created(index, handle, parent, parent_kind)
                         return
                     if kind == UiControls::Kind.ToggleButton:
-                        empty: usize = empty_native_string()
+                        empty: usize = UiAppKitNative::empty_native_string()
                         return if empty == 0
-                        handle: usize = native_create_toggle_button(elisa_appkit_button_type_push_on_push_off, empty)
+                        handle: usize = UiAppKitNative::native_create_toggle_button(elisa_appkit_button_type_push_on_push_off, empty)
                         CFRelease(empty)
                         record_created(index, handle, parent, parent_kind)
                         return
                     if kind == UiControls::Kind.CheckBox:
-                        empty: usize = empty_native_string()
+                        empty: usize = UiAppKitNative::empty_native_string()
                         return if empty == 0
-                        handle: usize = native_create_checkbox(empty)
+                        handle: usize = UiAppKitNative::native_create_checkbox(empty)
                         CFRelease(empty)
                         record_created(index, handle, parent, parent_kind)
                         return
                     if kind == UiControls::Kind.RadioButton:
-                        empty: usize = empty_native_string()
+                        empty: usize = UiAppKitNative::empty_native_string()
                         return if empty == 0
-                        handle: usize = native_create_radio_button(empty)
+                        handle: usize = UiAppKitNative::native_create_radio_button(empty)
                         CFRelease(empty)
                         record_created(index, handle, parent, parent_kind)
                         return
                     if kind == UiControls::Kind.TextField:
-                        empty: usize = empty_native_string()
+                        empty: usize = UiAppKitNative::empty_native_string()
                         return if empty == 0
-                        handle: usize = native_create_text_field(empty)
+                        handle: usize = UiAppKitNative::native_create_text_field(empty)
                         CFRelease(empty)
                         record_created(index, handle, parent, parent_kind)
                         return
                     if kind == UiControls::Kind.Slider:
-                        handle: usize = native_create_slider(state.low, state.high, state.value)
+                        handle: usize = UiAppKitNative::native_create_slider(state.low, state.high, state.value)
                         record_created(index, handle, parent, parent_kind)
                         return
                     if kind == UiControls::Kind.ProgressBar:
-                        handle: usize = native_create_progress_bar(elisa_appkit_progress_style_bar, 0)
+                        handle: usize = UiAppKitNative::native_create_progress_bar(elisa_appkit_progress_style_bar, 0)
                         record_created(index, handle, parent, parent_kind)
 
             def set_frame(index: i32, kind: UiControls::Kind, box: UiCore::Rect) -> void:
@@ -462,25 +274,25 @@ module UiAppKit:
                     handle: usize = native_handle(index)
                     return if handle == 0
                     if kind == UiControls::Kind.Window:
-                        native_set_window_frame(handle, box.size.width, box.size.height)
+                        UiAppKitNative::native_set_window_frame(handle, box.size.width, box.size.height)
                         return
-                    native_set_view_frame(handle, box.origin.x, box.origin.y, box.size.width, box.size.height)
+                    UiAppKitNative::native_set_view_frame(handle, box.origin.x, box.origin.y, box.size.width, box.size.height)
                     if kind == UiControls::Kind.ScrollView:
-                        native_set_scroll_document_frame(handle, box.size.width, box.size.height)
+                        UiAppKitNative::native_set_scroll_document_frame(handle, box.size.width, box.size.height)
 
             def set_text(index: i32, kind: UiControls::Kind, text: sview) -> void:
                 # Native controls copy this borrowed CoreFoundation string in
                 # their Cocoa setter. The bridge therefore performs only the
                 # object assignment, not framework-side text conversion.
-                value: usize = native_string(text)
+                value: usize = UiAppKitNative::native_string(text)
                 return if value == 0
                 handle: usize = native_handle(index)
                 if kind == UiControls::Kind.Window:
-                    native_set_window_title(handle, value)
+                    UiAppKitNative::native_set_window_title(handle, value)
                 if kind == UiControls::Kind.PushButton or kind == UiControls::Kind.ToggleButton or kind == UiControls::Kind.CheckBox or kind == UiControls::Kind.RadioButton:
-                    native_set_button_title(handle, value)
+                    UiAppKitNative::native_set_button_title(handle, value)
                 if kind == UiControls::Kind.Label or kind == UiControls::Kind.TextField:
-                    native_set_field_text(handle, value)
+                    UiAppKitNative::native_set_field_text(handle, value)
                 CFRelease(value)
 
             def set_state(index: i32, kind: UiControls::Kind, value: f32, low: f32, high: f32, selected: bool) -> void:
@@ -488,13 +300,13 @@ module UiAppKit:
                     handle: usize = native_handle(index)
                     return if handle == 0
                     if kind == UiControls::Kind.ToggleButton or kind == UiControls::Kind.CheckBox or kind == UiControls::Kind.RadioButton:
-                        native_set_button_state(handle, elisa_appkit_control_state_on if selected else elisa_appkit_control_state_off)
+                        UiAppKitNative::native_set_button_state(handle, elisa_appkit_control_state_on if selected else elisa_appkit_control_state_off)
                         return
                     if kind == UiControls::Kind.Slider:
-                        native_set_slider_state(handle, low, high, value)
+                        UiAppKitNative::native_set_slider_state(handle, low, high, value)
                         return
                     if kind == UiControls::Kind.ProgressBar:
-                        native_set_progress_value(handle, value)
+                        UiAppKitNative::native_set_progress_value(handle, value)
 
         # Release the retained handles before the next realization. Child views
         # may still be retained by their old parent, but releasing every Elisa
@@ -529,13 +341,13 @@ module UiAppKit:
             # UiControls owns the validated arena, dense index sequence and
             # retained native identities. AppKit initialization only establishes
             # the Cocoa application object.
-            native_init()
-            native_set_activation_policy(elisa_appkit_activation_policy_regular)
+            UiAppKitNative::native_init()
+            UiAppKitNative::native_set_activation_policy(elisa_appkit_activation_policy_regular)
 
         def present() -> void:
             # The retained realization always emits its root at index zero.
-            native_present(native_handle(0))
-            native_activate()
+            UiAppKitNative::native_present(native_handle(0))
+            UiAppKitNative::native_activate()
 
         def run() -> void:
-            native_run()
+            UiAppKitNative::native_run()

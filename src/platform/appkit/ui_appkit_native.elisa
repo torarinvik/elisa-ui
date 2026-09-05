@@ -1,0 +1,202 @@
+# AppKit native bridge wrappers for elisa-ui.
+#
+# Every function in this module brackets one Objective-C/CoreFoundation call
+# with an autorelease pool. The public surface is deliberately only the
+# typed bridge operations consumed by UiAppKit; control policy and retained
+# widget ownership stay in that module.
+
+module UiAppKitNative:
+    private:
+        const UTF8_ENCODING: u32 = 0x08000100
+
+    public:
+        # Build counted native strings in Elisa. The Objective-C shim borrows
+        # the opaque CFString only long enough to assign it to a control, so
+        # byte-to-string conversion and its policy stay outside the bridge.
+        def native_string(text: sview) -> usize can Unsafe.PointerCast:
+            empty: cstr = ""
+            pointer: mutable cstr = empty
+            pointer <- text.data.cast[cstr] can Unsafe.PointerCast if text.len > 0
+            return CFStringCreateWithBytes(0, pointer, text.len.i64(), UTF8_ENCODING, false)
+
+        def empty_native_string() -> usize can Unsafe.PointerCast:
+            empty: cstr = ""
+            return native_string(sview(empty, 0, 0))
+
+        # Keep temporary Cocoa objects bounded without putting lifecycle policy
+        # back into the Objective-C shim. Each wrapper transfers only the
+        # retained result (if any) across the pool boundary.
+        def native_init() -> void:
+            pool: usize = objc_autoreleasePoolPush()
+            elisa_appkit_init()
+            objc_autoreleasePoolPop(pool)
+
+        def native_set_activation_policy(policy: i32) -> void:
+            pool: usize = objc_autoreleasePoolPush()
+            elisa_appkit_set_activation_policy(policy)
+            objc_autoreleasePoolPop(pool)
+
+        def native_create_window(style: i32, backing: i32, width: f32, height: f32) -> usize:
+            pool: usize = objc_autoreleasePoolPush()
+            result: usize = elisa_appkit_create_window_with_style(style, backing, width, height)
+            objc_autoreleasePoolPop(pool)
+            return result
+
+        def native_create_panel_window(style: i32, backing: i32, floating: i32,
+                                       becomes_key_only: i32, width: f32, height: f32) -> usize:
+            pool: usize = objc_autoreleasePoolPush()
+            result: usize = elisa_appkit_create_panel_window(style, backing, floating,
+                becomes_key_only, width, height)
+            objc_autoreleasePoolPop(pool)
+            return result
+
+        def native_create_panel() -> usize:
+            pool: usize = objc_autoreleasePoolPush()
+            result: usize = elisa_appkit_create_panel()
+            objc_autoreleasePoolPop(pool)
+            return result
+
+        def native_create_scroll_view(vertical: i32, horizontal: i32) -> usize:
+            pool: usize = objc_autoreleasePoolPush()
+            result: usize = elisa_appkit_create_scroll_view(vertical, horizontal)
+            objc_autoreleasePoolPop(pool)
+            return result
+
+        def native_create_label(text: usize) -> usize:
+            pool: usize = objc_autoreleasePoolPush()
+            result: usize = elisa_appkit_create_label(text)
+            objc_autoreleasePoolPop(pool)
+            return result
+
+        def native_create_push_button(bezel_style: i32, text: usize) -> usize:
+            pool: usize = objc_autoreleasePoolPush()
+            result: usize = elisa_appkit_create_push_button(bezel_style, text)
+            objc_autoreleasePoolPop(pool)
+            return result
+
+        def native_create_toggle_button(button_type: i32, text: usize) -> usize:
+            pool: usize = objc_autoreleasePoolPush()
+            result: usize = elisa_appkit_create_toggle_button(button_type, text)
+            objc_autoreleasePoolPop(pool)
+            return result
+
+        def native_create_checkbox(text: usize) -> usize:
+            pool: usize = objc_autoreleasePoolPush()
+            result: usize = elisa_appkit_create_checkbox(text)
+            objc_autoreleasePoolPop(pool)
+            return result
+
+        def native_create_radio_button(text: usize) -> usize:
+            pool: usize = objc_autoreleasePoolPush()
+            result: usize = elisa_appkit_create_radio_button(text)
+            objc_autoreleasePoolPop(pool)
+            return result
+
+        def native_create_text_field(text: usize) -> usize:
+            pool: usize = objc_autoreleasePoolPush()
+            result: usize = elisa_appkit_create_text_field(text)
+            objc_autoreleasePoolPop(pool)
+            return result
+
+        def native_create_slider(low: f32, high: f32, value: f32) -> usize:
+            pool: usize = objc_autoreleasePoolPush()
+            result: usize = elisa_appkit_create_slider(low, high, value)
+            objc_autoreleasePoolPop(pool)
+            return result
+
+        def native_create_progress_bar(progress_style: i32, indeterminate: i32) -> usize:
+            pool: usize = objc_autoreleasePoolPush()
+            result: usize = elisa_appkit_create_progress_bar(progress_style, indeterminate)
+            objc_autoreleasePoolPop(pool)
+            return result
+
+        def native_attach_to_window(handle: usize, parent: usize) -> void:
+            pool: usize = objc_autoreleasePoolPush()
+            elisa_appkit_attach_to_window(handle, parent)
+            objc_autoreleasePoolPop(pool)
+
+        def native_attach_to_scroll_view(handle: usize, parent: usize) -> void:
+            pool: usize = objc_autoreleasePoolPush()
+            elisa_appkit_attach_to_scroll_view(handle, parent)
+            objc_autoreleasePoolPop(pool)
+
+        def native_attach_to_view(handle: usize, parent: usize) -> void:
+            pool: usize = objc_autoreleasePoolPush()
+            elisa_appkit_attach_to_view(handle, parent)
+            objc_autoreleasePoolPop(pool)
+
+        def native_set_window_frame(handle: usize, width: f32, height: f32) -> void:
+            pool: usize = objc_autoreleasePoolPush()
+            elisa_appkit_set_window_frame(handle, width, height)
+            objc_autoreleasePoolPop(pool)
+
+        def native_set_view_frame(handle: usize, x: f32, y: f32, width: f32, height: f32) -> void:
+            pool: usize = objc_autoreleasePoolPush()
+            elisa_appkit_set_view_frame(handle, x, y, width, height)
+            objc_autoreleasePoolPop(pool)
+
+        def native_set_scroll_document_frame(handle: usize, width: f32, height: f32) -> void:
+            pool: usize = objc_autoreleasePoolPush()
+            elisa_appkit_set_scroll_document_frame(handle, width, height)
+            objc_autoreleasePoolPop(pool)
+
+        def native_set_window_title(handle: usize, text: usize) -> void:
+            pool: usize = objc_autoreleasePoolPush()
+            elisa_appkit_set_window_title(handle, text)
+            objc_autoreleasePoolPop(pool)
+
+        def native_set_button_title(handle: usize, text: usize) -> void:
+            pool: usize = objc_autoreleasePoolPush()
+            elisa_appkit_set_button_title(handle, text)
+            objc_autoreleasePoolPop(pool)
+
+        def native_set_field_text(handle: usize, text: usize) -> void:
+            pool: usize = objc_autoreleasePoolPush()
+            elisa_appkit_set_field_text(handle, text)
+            objc_autoreleasePoolPop(pool)
+
+        def native_set_button_state(handle: usize, state: i32) -> void:
+            pool: usize = objc_autoreleasePoolPush()
+            elisa_appkit_set_button_state(handle, state)
+            objc_autoreleasePoolPop(pool)
+
+        def native_set_slider_state(handle: usize, low: f32, high: f32, value: f32) -> void:
+            pool: usize = objc_autoreleasePoolPush()
+            elisa_appkit_set_slider_state(handle, low, high, value)
+            objc_autoreleasePoolPop(pool)
+
+        def native_set_progress_value(handle: usize, value: f32) -> void:
+            pool: usize = objc_autoreleasePoolPush()
+            elisa_appkit_set_progress_value(handle, value)
+            objc_autoreleasePoolPop(pool)
+
+        def native_present(handle: usize) -> void:
+            pool: usize = objc_autoreleasePoolPush()
+            elisa_appkit_present(handle)
+            objc_autoreleasePoolPop(pool)
+
+        def native_activate() -> void:
+            pool: usize = objc_autoreleasePoolPush()
+            elisa_appkit_activate()
+            objc_autoreleasePoolPop(pool)
+
+        def native_run() -> void:
+            pool: usize = objc_autoreleasePoolPush()
+            elisa_appkit_run()
+            objc_autoreleasePoolPop(pool)
+
+        # AppKit's enum values cross the FFI as opaque facts. The decoration
+        # policy itself stays in Elisa, where the widget's WindowMode is already
+        # resolved and can be tested without constructing an NSWindow.
+        def standard_window_style(resizable: bool) -> i32:
+            style: mutable i32 = elisa_appkit_window_style_titled
+            style <- style | elisa_appkit_window_style_closable
+            style <- style | elisa_appkit_window_style_miniaturizable
+            style <- style | elisa_appkit_window_style_resizable if resizable
+            return style
+
+        def floating_panel_style() -> i32:
+            style: mutable i32 = elisa_appkit_window_style_titled
+            style <- style | elisa_appkit_window_style_closable
+            style <- style | elisa_appkit_window_style_utility
+            return style
