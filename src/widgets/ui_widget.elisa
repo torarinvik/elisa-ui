@@ -27,6 +27,11 @@ module UiFlat:
         # has no cap because a handle IS the node there. new_widget degrades to
         # NONE past this rather than corrupting the tree.
         const MAX_WIDGETS: usize = 256
+        # Structural walks are bounded by the fixed arena as well. A malformed
+        # parent or sibling link must fail closed instead of hanging layout or
+        # input dispatch, while valid trees cannot exceed this many nodes.
+        const MAX_TRAVERSAL_DEPTH: usize = MAX_WIDGETS
+        const MAX_TRAVERSAL_SIBLINGS: usize = MAX_WIDGETS
         # One KiB per field keeps the flat layer deterministic and allocation-
         # free without imposing the old 127-byte ceiling on ordinary desktop
         # input. One byte remains reserved by the storage contract.
@@ -132,7 +137,9 @@ module UiFlat:
     private:
         global mutable widgets: Widget[MAX_WIDGETS] = zeroed
         # Scratch allocation by widget index. Recursive layout is safe because
-        # each tree node has a unique slot and a child only rewrites descendants.
+        # each tree node has a unique slot and a child only rewrites descendants;
+        # the explicit depth/sibling budgets above also make malformed public
+        # links fail closed instead of turning a frame into an infinite walk.
         global mutable layout_extra: f32[MAX_WIDGETS] = zeroed
         global mutable layout_capped: bool[MAX_WIDGETS] = zeroed
         global mutable semantic_emitted: bool[MAX_WIDGETS] = zeroed
@@ -288,7 +295,10 @@ module UiFlat:
             # ancestor below its own descendant, which would otherwise make
             # every parent/sibling traversal unbounded.
             ancestor: mutable usize = parent
-            while ancestor < widget_count |ancestor|:
+            ancestor_steps: mutable usize = 0
+            while ancestor < widget_count |ancestor, ancestor_steps|:
+                return if ancestor_steps >= MAX_TRAVERSAL_DEPTH
+                ancestor_steps <- ancestor_steps + 1
                 return if ancestor == child
                 ancestor <- widgets[ancestor].parent
             if widgets[parent].first_child == NONE:
@@ -297,9 +307,13 @@ module UiFlat:
                 return
             cursor: mutable usize = widgets[parent].first_child
             return if cursor == child
-            while widgets[cursor].next_sibling != NONE |cursor|:
+            sibling_steps: mutable usize = 0
+            while cursor < widget_count and widgets[cursor].next_sibling != NONE |cursor, sibling_steps|:
+                return if sibling_steps >= MAX_TRAVERSAL_SIBLINGS
+                sibling_steps <- sibling_steps + 1
                 cursor <- widgets[cursor].next_sibling
                 return if cursor == child
+            return if cursor >= widget_count
             widgets[cursor].next_sibling <- child
             widgets[child].parent <- parent
 
@@ -719,7 +733,10 @@ module UiFlat:
         def child_count(index: usize) -> usize:
             total: mutable usize = 0
             cursor: mutable usize = widgets[index].first_child
-            while cursor != NONE |cursor, total|:
+            steps: mutable usize = 0
+            while cursor != NONE |cursor, total, steps|:
+                break if steps >= MAX_TRAVERSAL_SIBLINGS or cursor >= widget_count
+                steps <- steps + 1
                 total <- total + 1 if widgets[cursor].visible
                 cursor <- widgets[cursor].next_sibling
             return total
@@ -727,7 +744,10 @@ module UiFlat:
         def effectively_visible(index: usize) -> bool:
             return false if index >= widget_count
             cursor: mutable usize = index
-            while cursor < widget_count |cursor|:
+            steps: mutable usize = 0
+            while cursor < widget_count |cursor, steps|:
+                return false if steps >= MAX_TRAVERSAL_DEPTH
+                steps <- steps + 1
                 return false if not widgets[cursor].visible
                 cursor <- widgets[cursor].parent
             return true
@@ -735,24 +755,30 @@ module UiFlat:
         def effectively_enabled(index: usize) -> bool:
             return false if index >= widget_count
             cursor: mutable usize = index
-            while cursor < widget_count |cursor|:
+            steps: mutable usize = 0
+            while cursor < widget_count |cursor, steps|:
+                return false if steps >= MAX_TRAVERSAL_DEPTH
+                steps <- steps + 1
                 return false if not widgets[cursor].enabled
                 cursor <- widgets[cursor].parent
             return true
 
-        def collapse(index: usize) -> void:
-            return if index >= widget_count
+        def collapse(index: usize, depth: usize) -> void:
+            return if index >= widget_count or depth >= MAX_TRAVERSAL_DEPTH
             widgets[index] with { x <- 0.0, y <- 0.0, width <- 0.0, height <- 0.0 }
             child: mutable usize = widgets[index].first_child
-            while child != NONE |child|:
-                collapse(child)
+            steps: mutable usize = 0
+            while child != NONE |child, depth, steps|:
+                return if steps >= MAX_TRAVERSAL_SIBLINGS or child >= widget_count
+                steps <- steps + 1
+                collapse(child, depth + 1)
                 child <- widgets[child].next_sibling
 
         # Bottom-up pass: a container's minimum is its children's minima summed
         # along its axis (plus spacing and padding) and maximised across it. A
         # declared minimum still wins if it is larger.
-        def measure(index: usize) -> void:
-            return if index >= widget_count
+        def measure(index: usize, depth: usize) -> void:
+            return if index >= widget_count or depth >= MAX_TRAVERSAL_DEPTH
             widgets[index].min_width <- widgets[index].declared_min_width
             widgets[index].min_height <- widgets[index].declared_min_height
             widgets[index].scroll_content_width <- widgets[index].declared_min_width
@@ -764,9 +790,12 @@ module UiFlat:
             along: mutable f32 = 0.0
             across: mutable f32 = 0.0
             children: mutable f32 = 0.0
-            while cursor != NONE |cursor, along, across, children, is_row|:
+            steps: mutable usize = 0
+            while cursor != NONE |cursor, along, across, children, is_row, steps|:
+                return if steps >= MAX_TRAVERSAL_SIBLINGS or cursor >= widget_count
+                steps <- steps + 1
                 if widgets[cursor].visible:
-                    measure(cursor)
+                    measure(cursor, depth + 1)
                     child_margin: f32 = widgets[cursor].margin * 2.0
                     child_along: f32 = (widgets[cursor].min_width if is_row else widgets[cursor].min_height) + child_margin
                     child_across: f32 = (widgets[cursor].min_height if is_row else widgets[cursor].min_width) + child_margin
@@ -789,10 +818,10 @@ module UiFlat:
         # share the leftover in proportion to `grow`. Cross-axis alignment can
         # stretch a child or place its measured extent at the start, center, or
         # end of the remaining band.
-        def arrange(index: usize, x: f32, y: f32, width: f32, height: f32) -> void:
-            return if index >= widget_count
+        def arrange(index: usize, x: f32, y: f32, width: f32, height: f32, depth: usize) -> void:
+            return if index >= widget_count or depth >= MAX_TRAVERSAL_DEPTH
             if not effectively_visible(index):
-                collapse(index)
+                collapse(index, depth)
                 return
             widgets[index] with { x, y, width, height }
             first: usize = widgets[index].first_child
@@ -822,7 +851,10 @@ module UiFlat:
             demand: mutable f32 = 0.0
             weight: mutable f32 = 0.0
             cursor: mutable usize = first
-            while cursor != NONE |cursor, demand, weight, is_row|:
+            demand_steps: mutable usize = 0
+            while cursor != NONE |cursor, demand, weight, is_row, demand_steps|:
+                return if demand_steps >= MAX_TRAVERSAL_SIBLINGS or cursor >= widget_count
+                demand_steps <- demand_steps + 1
                 if widgets[cursor].visible:
                     layout_extra[cursor] <- 0.0
                     layout_capped[cursor] <- false
@@ -842,7 +874,10 @@ module UiFlat:
             while distributing |remaining, remaining_weight, distributing, is_row|:
                 capped_any: mutable bool = false
                 candidate: mutable usize = first
-                while candidate != NONE |candidate, remaining, remaining_weight, capped_any, is_row|:
+                cap_steps: mutable usize = 0
+                while candidate != NONE |candidate, remaining, remaining_weight, capped_any, is_row, cap_steps|:
+                    return if cap_steps >= MAX_TRAVERSAL_SIBLINGS or candidate >= widget_count
+                    cap_steps <- cap_steps + 1
                     child_weight: f32 = widgets[candidate].grow
                     if widgets[candidate].visible and child_weight > 0.0 and not layout_capped[candidate]:
                         maximum: f32 = widgets[candidate].max_width if is_row else widgets[candidate].max_height
@@ -858,7 +893,10 @@ module UiFlat:
                     candidate <- widgets[candidate].next_sibling
                 if not capped_any:
                     candidate <- first
-                    while candidate != NONE |candidate, remaining, remaining_weight|:
+                    distribute_steps: mutable usize = 0
+                    while candidate != NONE |candidate, remaining, remaining_weight, distribute_steps|:
+                        return if distribute_steps >= MAX_TRAVERSAL_SIBLINGS or candidate >= widget_count
+                        distribute_steps <- distribute_steps + 1
                         if widgets[candidate].visible and widgets[candidate].grow > 0.0 and not layout_capped[candidate]:
                             layout_extra[candidate] <- remaining * widgets[candidate].grow / remaining_weight
                         candidate <- widgets[candidate].next_sibling
@@ -867,7 +905,10 @@ module UiFlat:
 
             used_growth: mutable f32 = 0.0
             growth_cursor: mutable usize = first
-            while growth_cursor != NONE |growth_cursor, used_growth|:
+            growth_steps: mutable usize = 0
+            while growth_cursor != NONE |growth_cursor, used_growth, growth_steps|:
+                return if growth_steps >= MAX_TRAVERSAL_SIBLINGS or growth_cursor >= widget_count
+                growth_steps <- growth_steps + 1
                 used_growth <- used_growth + layout_extra[growth_cursor] if widgets[growth_cursor].visible
                 growth_cursor <- widgets[growth_cursor].next_sibling
             unused: f32 = free - used_growth if free > used_growth else 0.0
@@ -878,7 +919,10 @@ module UiFlat:
             gap_extra: f32 = unused / (children - 1.0) if main_alignment == UiConst::MainAlignment.SpaceBetween and children > 1.0 else 0.0
             offset <- -widgets[index].scroll_offset if scrolling
             walk: mutable usize = first
-            while walk != NONE |walk, offset, is_row, inner_x, inner_y, inner_width, inner_height, gap_extra|:
+            walk_steps: mutable usize = 0
+            while walk != NONE |walk, offset, is_row, inner_x, inner_y, inner_width, inner_height, gap_extra, walk_steps|:
+                return if walk_steps >= MAX_TRAVERSAL_SIBLINGS or walk >= widget_count
+                walk_steps <- walk_steps + 1
                 if widgets[walk].visible:
                     margin: f32 = widgets[walk].margin
                     base: f32 = (widgets[walk].min_width if is_row else widgets[walk].min_height) + margin * 2.0
@@ -902,12 +946,12 @@ module UiFlat:
                             if alignment == UiConst::CrossAlignment.End:
                                 cross_offset <- margin + available_cross - cross_extent
                     if is_row:
-                        arrange(walk, inner_x + offset + margin, inner_y + cross_offset, extent, cross_extent)
+                        arrange(walk, inner_x + offset + margin, inner_y + cross_offset, extent, cross_extent, depth + 1)
                     else:
-                        arrange(walk, inner_x + cross_offset, inner_y + offset + margin, cross_extent, extent)
+                        arrange(walk, inner_x + cross_offset, inner_y + offset + margin, cross_extent, extent, depth + 1)
                     offset <- offset + outer_extent + widgets[index].spacing * scale + gap_extra
                 else:
-                    collapse(walk)
+                    collapse(walk, depth + 1)
                 walk <- widgets[walk].next_sibling
 
         def contains(index: usize, x: f32, y: f32) -> bool:
@@ -921,7 +965,10 @@ module UiFlat:
         # specific command payload.
         def inside_scroll_viewports(index: usize, x: f32, y: f32) -> bool:
             cursor: mutable usize = widgets[index].parent
-            while cursor < widget_count |cursor, x, y|:
+            steps: mutable usize = 0
+            while cursor < widget_count |cursor, x, y, steps|:
+                return false if steps >= MAX_TRAVERSAL_DEPTH
+                steps <- steps + 1
                 if widgets[cursor].kind == UiConst::WidgetKind.Scroll:
                     return false if not contains(cursor, x, y)
                 cursor <- widgets[cursor].parent
@@ -933,7 +980,10 @@ module UiFlat:
             right: f32 = left + widgets[index].width
             bottom: f32 = top + widgets[index].height
             cursor: mutable usize = widgets[index].parent
-            while cursor < widget_count |cursor, left, top, right, bottom|:
+            steps: mutable usize = 0
+            while cursor < widget_count |cursor, left, top, right, bottom, steps|:
+                return false if steps >= MAX_TRAVERSAL_DEPTH
+                steps <- steps + 1
                 if widgets[cursor].kind == UiConst::WidgetKind.Scroll:
                     viewport_left: f32 = widgets[cursor].x
                     viewport_top: f32 = widgets[cursor].y
@@ -954,7 +1004,10 @@ module UiFlat:
             right: mutable f32 = 0.0
             bottom: mutable f32 = 0.0
             found: mutable bool = false
-            while cursor < widget_count |cursor, left, top, right, bottom, found|:
+            steps: mutable usize = 0
+            while cursor < widget_count |cursor, left, top, right, bottom, found, steps|:
+                return if steps >= MAX_TRAVERSAL_DEPTH
+                steps <- steps + 1
                 if widgets[cursor].kind == UiConst::WidgetKind.Scroll:
                     viewport_left: f32 = widgets[cursor].x
                     viewport_top: f32 = widgets[cursor].y
@@ -1048,7 +1101,10 @@ module UiFlat:
         # unscrolled edge and request the smallest offset that reveals it.
         def ensure_visible(index: usize) -> void:
             cursor: mutable usize = widgets[index].parent
-            while cursor < widget_count |cursor, index|:
+            steps: mutable usize = 0
+            while cursor < widget_count |cursor, index, steps|:
+                return if steps >= MAX_TRAVERSAL_DEPTH
+                steps <- steps + 1
                 if widgets[cursor].kind == UiConst::WidgetKind.Scroll:
                     current: f32 = widgets[cursor].scroll_offset
                     requested: mutable f32 = current
@@ -1501,8 +1557,8 @@ module UiFlat:
             layout_initialized <- true
             layout_dirty <- false
             return if widget_count == 0
-            measure(0)
-            arrange(0, 0.0, 0.0, last_layout_width, last_layout_height)
+            measure(0, 0)
+            arrange(0, 0.0, 0.0, last_layout_width, last_layout_height, 0)
 
         # Geometry consumers share paint's deferred retained reflow. Keeping
         # this in Elisa means a mutation followed immediately by hit testing
@@ -2376,7 +2432,10 @@ module UiFlat:
         def focused_scroll_target() -> usize:
             return NONE if focused_widget >= widget_count
             cursor: mutable usize = focused_widget
-            while cursor < widget_count |cursor|:
+            steps: mutable usize = 0
+            while cursor < widget_count |cursor, steps|:
+                return NONE if steps >= MAX_TRAVERSAL_DEPTH
+                steps <- steps + 1
                 return cursor if widgets[cursor].kind == UiConst::WidgetKind.Scroll
                 cursor <- widgets[cursor].parent
             return NONE

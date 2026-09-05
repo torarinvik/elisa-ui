@@ -76,11 +76,13 @@ The complete working version is
   Home/End, plus arrows along the viewport axis, route through the nearest
   focused scroll ancestor and use the same clamped Elisa-owned offset.
 - `label` measures and paints static text.
-- Flat painting derives a bounded pre-order from the retained parent/sibling
-  links, so a subtree stays contiguous even when an application constructs a
-  later sibling before adding its children; malformed links are bounded and
-  cannot hang a frame. Hit testing, wheel routing, and scrollbar capture use
-  that same reverse order, keeping the topmost painted node interactive.
+- Flat layout, visibility, clipping, scrolling, hit testing and painting all
+  derive from the retained parent/sibling links with fixed Elisa-owned depth
+  and sibling budgets. A subtree stays contiguous even when an application
+  constructs a later sibling before adding its children; malformed links fail
+  closed and cannot hang a frame. Hit testing, wheel routing, and scrollbar
+  capture use that same reverse paint order, keeping the topmost painted node
+  interactive.
 - `button`, `radio_button` and `check_box` support hover, press, disabled,
   selected and keyboard-focus states. Focused radio buttons move through their
   group with the arrow keys, wrapping in focus order while skipping disabled
