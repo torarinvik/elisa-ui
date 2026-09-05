@@ -403,14 +403,6 @@ size_t elisa_appkit_canvas_pasteboard_type_string(void) {
     return (size_t)(__bridge void *)NSPasteboardTypeString;
 }
 
-size_t elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(void) {
-    return (size_t)(__bridge void *)NSCalibratedRGBColorSpace;
-}
-
-int elisa_appkit_canvas_bitmap_file_type_png(void) {
-    return (int)NSBitmapImageFileTypePNG;
-}
-
 int elisa_appkit_canvas_activation_policy_regular(void) {
     return (int)NSApplicationActivationPolicyRegular;
 }

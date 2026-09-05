@@ -367,8 +367,7 @@ int main(void) {
         if (require(!elisa_appkit_canvas_present(0), @"present succeeded before opening a canvas")) return 1;
         if (require(!elisa_appkit_canvas_present_headless(
                          0,
-                         elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(),
-                         elisa_appkit_canvas_bitmap_file_type_png(), 0, 200, 100, 8, 4, 1, 0),
+                         0, 0, 0, 200, 100, 0, 0, 0, 0),
                     @"headless present succeeded before opening a canvas")) return 1;
         NSObject *invalidTitle = [NSObject new];
         if (require(!elisa_appkit_canvas_open((size_t)(__bridge void *)invalidTitle,
@@ -409,8 +408,7 @@ int main(void) {
                 @"invalid run-loop mode was accepted")) return 1;
     if (require(!elisa_appkit_canvas_present_headless(
                     opened,
-                    elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(),
-                    elisa_appkit_canvas_bitmap_file_type_png(), 0, 0, 100, 8, 4, 1, 0),
+                    0, 0, 0, 0, 100, 0, 0, 0, 0),
                 @"invalid bitmap extent was accepted")) return 1;
     if (require(elisa_appkit_canvas_accessibility_add(
                     opened, 0, 0, 0, NSAccessibilityButtonRole, NULL, 0,
@@ -434,8 +432,7 @@ int main(void) {
         if (require(NSApp.windowsMenu == [NSApp.mainMenu itemAtIndex:1].submenu, @"window menu designation failed")) return 1;
         if (require(elisa_appkit_canvas_present_headless(
                         opened,
-                        elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(),
-                        elisa_appkit_canvas_bitmap_file_type_png(), 0, 200, 100, 8, 4, 1, 0), @"off-screen presentation failed")) return 1;
+                        0, 0, 0, 200, 100, 0, 0, 0, 0), @"off-screen presentation failed")) return 1;
         if (require(test_frame_count > 0, @"off-screen frame did not draw")) return 1;
         ElisaCanvasDelegate *delegate = (__bridge ElisaCanvasDelegate *)(void *)delegateHandle;
         NSNotification *focusNotification = [NSNotification notificationWithName:NSWindowDidResignKeyNotification object:elisa_appkit_canvas_window(opened)];
@@ -445,8 +442,7 @@ int main(void) {
         if (require(test_window_focused == 1, @"window focus gain did not reach Elisa")) return 1;
         if (require(!elisa_appkit_canvas_present_headless(
                          opened,
-                         elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(),
-                         elisa_appkit_canvas_bitmap_file_type_png(),
+                         0, 0,
                          (size_t)(__bridge void *)@"/elisa-ui-missing-directory/frame.png", 200, 100, 8, 4, 1, 0), @"snapshot failure did not cross the FFI boundary")) return 1;
         NSEvent *move = [NSEvent mouseEventWithType:NSEventTypeMouseMoved
             location:NSMakePoint(40, 20) modifierFlags:0 timestamp:0
@@ -597,8 +593,7 @@ int main(void) {
         test_selection_start = test_selection_end = 0;
         if (require(elisa_appkit_canvas_present_headless(
                         opened,
-                        elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(),
-                        elisa_appkit_canvas_bitmap_file_type_png(), 0, 200, 100, 8, 4, 1, 0), @"second off-screen presentation failed")) return 1;
+                        0, 0, 0, 200, 100, 0, 0, 0, 0), @"second off-screen presentation failed")) return 1;
         NSArray *secondChildren = [elisa_appkit_canvas_view(opened) accessibilityChildren];
         ElisaAccessibilityElement *second = secondChildren[0];
         ElisaAccessibilityElement *secondTextField = secondChildren[1];
