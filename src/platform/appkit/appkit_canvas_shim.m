@@ -794,14 +794,6 @@ size_t elisa_appkit_canvas_accessibility_add(size_t windowHandle, size_t previou
     element.accessibilityIdentifier = identifierValue;
     element.accessibilityEnabled = enabled != 0;
     element.accessibilityFocused = focused != 0;
-    // Values are assigned by typed FFI setters chosen in Elisa. Resetting all
-    // value slots here keeps reused semantic elements from retaining a stale
-    // value when their framework role changes between frames.
-    [element elisaSetAccessibilityValue:nil];
-    element.accessibilitySelectedText = nil;
-    [element elisaSetAccessibilitySelectedTextRange:NSMakeRange(elisa_appkit_canvas_not_found(), 0)];
-    element.accessibilityMinValue = nil;
-    element.accessibilityMaxValue = nil;
     NSRect inWindow = [view convertRect:local toView:nil];
     NSWindow *window = elisa_appkit_canvas_window(windowHandle);
     if (window == nil) return 0;
@@ -819,6 +811,19 @@ void elisa_appkit_canvas_accessibility_release(size_t handle) {
     (void)CFBridgingRelease((CFTypeRef)(void *)handle);
 }
 
+// Value slots are reused across semantic frames. Elisa owns the role/value
+// transition policy and calls this primitive only when a node changes value
+// kind (or is first created); Cocoa only clears the typed properties.
+void elisa_appkit_canvas_accessibility_clear_value(size_t handle) {
+    ElisaAccessibilityElement *element = elisa_appkit_canvas_element(handle);
+    if (element == nil) return;
+    [element elisaSetAccessibilityValue:nil];
+    element.accessibilitySelectedText = nil;
+    [element elisaSetAccessibilitySelectedTextRange:NSMakeRange(elisa_appkit_canvas_not_found(), 0)];
+    element.accessibilityMinValue = nil;
+    element.accessibilityMaxValue = nil;
+}
+
 void elisa_appkit_canvas_accessibility_add_tooltip(size_t windowHandle, size_t handle,
                                                    float x, float y, float width, float height) {
     ElisaAccessibilityElement *element = elisa_appkit_canvas_element(handle);
@@ -831,10 +836,6 @@ void elisa_appkit_canvas_accessibility_set_boolean(size_t handle, int selected) 
     ElisaAccessibilityElement *element = elisa_appkit_canvas_element(handle);
     if (element == nil) return;
     [element elisaSetAccessibilityValue:@(selected != 0)];
-    element.accessibilitySelectedText = nil;
-    [element elisaSetAccessibilitySelectedTextRange:NSMakeRange(elisa_appkit_canvas_not_found(), 0)];
-    element.accessibilityMinValue = nil;
-    element.accessibilityMaxValue = nil;
 }
 
 void elisa_appkit_canvas_accessibility_set_range(size_t handle, float value,
@@ -842,8 +843,6 @@ void elisa_appkit_canvas_accessibility_set_range(size_t handle, float value,
     ElisaAccessibilityElement *element = elisa_appkit_canvas_element(handle);
     if (element == nil) return;
     [element elisaSetAccessibilityValue:@(value)];
-    element.accessibilitySelectedText = nil;
-    [element elisaSetAccessibilitySelectedTextRange:NSMakeRange(elisa_appkit_canvas_not_found(), 0)];
     element.accessibilityMinValue = @(minimum);
     element.accessibilityMaxValue = @(maximum);
 }
@@ -859,8 +858,6 @@ void elisa_appkit_canvas_accessibility_set_text(size_t handle,
     [element elisaSetAccessibilityValue:value];
     [element elisaSetAccessibilitySelectedTextRange:NSMakeRange(selectionLocation, selectionLength)];
     element.accessibilitySelectedText = selected;
-    element.accessibilityMinValue = nil;
-    element.accessibilityMaxValue = nil;
 }
 
 void elisa_appkit_canvas_accessibility_commit(size_t windowHandle,

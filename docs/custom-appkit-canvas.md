@@ -170,7 +170,10 @@ tooltip eligibility plus tooltip text are resolved from Elisa's retained semanti
 state. The lazy tooltip callback creates a temporary native string through the
 same FFI conversion path, so the Objective-C owner does not become a second
 source of help text. Writable slider values are normalized and accepted by Elisa
-before Cocoa mirrors the result. Per-element value,
+before Cocoa mirrors the result. Elisa also decides when a reused semantic
+element changes value kind and explicitly clears its old Cocoa value slots;
+the bridge only exposes that typed clear primitive and never infers a role
+transition from native state. Per-element value,
 focus and selection notifications are posted through AppKit's C ABI directly
 from Elisa; only resolving the retained root view from its window handle still
 crosses the native object resolver.

@@ -53,6 +53,7 @@ extern elisa_appkit_canvas_close(window_handle: usize) -> void
 extern elisa_appkit_canvas_accessibility_reset(window_handle: usize) -> void
 extern elisa_appkit_canvas_accessibility_add(window_handle: usize, previous_handle: usize, identifier: usize, role: usize, subrole: usize, label: usize, help: usize, x: f32, y: f32, width: f32, height: f32, enabled: i32, focused: i32) -> usize
 extern elisa_appkit_canvas_accessibility_release(handle: usize) -> void
+extern elisa_appkit_canvas_accessibility_clear_value(handle: usize) -> void
 extern elisa_appkit_canvas_accessibility_add_tooltip(window_handle: usize, handle: usize, x: f32, y: f32, width: f32, height: f32) -> void
 extern elisa_appkit_canvas_accessibility_set_boolean(handle: usize, selected: i32) -> void
 extern elisa_appkit_canvas_accessibility_set_range(handle: usize, value: f32, minimum: f32, maximum: f32) -> void
@@ -1078,6 +1079,12 @@ module UiAppKitCanvas:
                 accessibility_next[index] <- state
                 handle: usize = elisa_appkit_canvas_accessibility_add(canvas_window, previous_handle, native_identifier, native_role, native_subrole, native_label, native_help, node.frame.origin.x, node.frame.origin.y, node.frame.size.width, node.frame.size.height, enabled, focused)
                 accessibility_next_handles[index] <- handle
+                # Reused native elements retain Cocoa's role-specific value
+                # slots. Elisa owns the semantic transition, so clear only
+                # when the node is new or its value kind changed; the native
+                # side remains a typed property primitive with no frame policy.
+                value_kind_changed: bool = not existed or before.value_kind != value_kind
+                elisa_appkit_canvas_accessibility_clear_value(handle) if handle != 0 and value_kind_changed
                 if value_kind == 1 and handle != 0:
                     elisa_appkit_canvas_accessibility_set_boolean(handle, selected)
                 if value_kind == 2 and handle != 0:

@@ -652,6 +652,16 @@ int main(void) {
         if (require(fabs([second.accessibilityValue floatValue] - 0.75f) < 0.001f, @"value did not update")) return 1;
         if (require([secondTextField.accessibilitySelectedText isEqualToString:@""] && NSEqualRanges(secondTextField.accessibilitySelectedTextRange, NSMakeRange(0, 0)), @"blurred text field retained stale accessibility selection")) return 1;
 
+        // The production sync path now asks Elisa when a reused node changes
+        // value kind, then invokes this narrow Cocoa primitive. Verify that
+        // clearing removes every role-specific slot without replacing the
+        // native semantic object.
+        elisa_appkit_canvas_accessibility_clear_value((size_t)(__bridge void *)second);
+        if (require(second.accessibilityValue == nil && second.accessibilitySelectedText == nil &&
+                        NSEqualRanges(second.accessibilitySelectedTextRange, NSMakeRange(NSNotFound, 0)) &&
+                        second.accessibilityMinValue == nil && second.accessibilityMaxValue == nil,
+                    @"accessibility value reset did not clear native slots")) return 1;
+
         if (require([second accessibilityPerformIncrement], @"increment action was rejected")) return 1;
         if (require(fabs(test_slider_value - 0.80f) < 0.001f, @"increment action did not reach the app")) return 1;
         [elisa_appkit_canvas_window(opened) close];
