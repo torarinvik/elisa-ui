@@ -1,0 +1,53 @@
+# Headless regression for revision-safe asynchronous validation.
+
+include "../src/widgets/ui_validation.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiValidation::reset()
+    missing: UiValidation::Handle = UiValidation::invalid()
+    check("invalid validation handle is rejected", not UiValidation::is_valid(missing) and UiValidation::status(missing) == UiValidation::Status.Idle)
+
+    field: UiValidation::Handle = UiValidation::bind(7)
+    duplicate: UiValidation::Handle = UiValidation::bind(7)
+    check("binding a field is idempotent", field.slot == duplicate.slot and field.generation == duplicate.generation and UiValidation::snapshot().fields == 1)
+    check("new field starts idle", UiValidation::status(field) == UiValidation::Status.Idle and not UiValidation::has_error(field))
+
+    first_token: u32 = UiValidation::begin(field)
+    check("begin marks field pending", first_token != 0 and UiValidation::is_pending(field) and UiValidation::revision(field) == first_token)
+    check("stale token cannot resolve", not UiValidation::reject(field, first_token + 1, "old result") and UiValidation::is_pending(field))
+    check("current token accepts valid result", UiValidation::accept(field, first_token) and UiValidation::status(field) == UiValidation::Status.Valid and UiValidation::message(field) == "")
+
+    second_token: u32 = UiValidation::begin(field)
+    check("a new edit gets a new revision", second_token != first_token and UiValidation::is_pending(field))
+    check("invalid result keeps its message", UiValidation::reject(field, second_token, "Name is already in use") and UiValidation::status(field) == UiValidation::Status.Invalid and UiValidation::has_error(field) and UiValidation::message(field) == "Name is already in use")
+    check("late valid result cannot overwrite newer error", not UiValidation::accept(field, first_token) and UiValidation::message(field) == "Name is already in use")
+
+    third_token: u32 = UiValidation::begin(field)
+    check("offline result is explicit", UiValidation::unavailable(field, third_token, "Validation is unavailable") and UiValidation::status(field) == UiValidation::Status.Unavailable and UiValidation::has_error(field))
+    check("clear returns to idle", UiValidation::clear(field) and UiValidation::status(field) == UiValidation::Status.Idle and UiValidation::message(field) == "")
+
+    long_message: mutable u8[400] = zeroed
+    for index in 0..<400:
+        long_message[index] <- 65
+    fourth_token: u32 = UiValidation::begin(field)
+    check("long messages are bounded", UiValidation::reject(field, fourth_token, sview(&long_message[0], 0, 400)) and UiValidation::message(field).len.usize() == UiValidation::MESSAGE_CAPACITY - 1 and UiValidation::message_truncated(field))
+
+    old_generation: u32 = field.generation
+    check("dispose invalidates a field", UiValidation::dispose(field) and not UiValidation::is_valid(field))
+    fresh: UiValidation::Handle = UiValidation::bind(8)
+    check("slot reuse advances generation", fresh.slot == field.slot and fresh.generation != old_generation)
+    check("late disposed completion stays harmless", not UiValidation::accept(field, fourth_token) and UiValidation::status(fresh) == UiValidation::Status.Idle)
+
+    if failures == 0:
+        _ = puts("validation: all checks passed")
+        return 0
+    _ = puts("validation: FAILURES above")
+    return 1

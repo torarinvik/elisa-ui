@@ -90,6 +90,10 @@ because a module member's symbol carries its module and those names cannot move.
 - **Localization and RTL policy** ([src/widgets/ui_localization.elisa](src/widgets/ui_localization.elisa)) —
   locale direction, logical start/end alignment, mirrored coordinates, and
   typed plural categories are resolved once in Elisa so backends do not drift.
+- **Async validation** ([src/widgets/ui_validation.elisa](src/widgets/ui_validation.elisa)) —
+  stable field bindings, explicit pending/valid/invalid/offline states, bounded
+  messages, and revision-checked completions preserve edits when validation
+  tasks finish out of order.
 - **Widgets** ([src/widgets/ui_widget.elisa](src/widgets/ui_widget.elisa)) — a
   retained tree in one fixed array linked by index, box layout, hit testing, and
   hover/press/focus/disabled/selected state. Buttons, radio buttons, check boxes,

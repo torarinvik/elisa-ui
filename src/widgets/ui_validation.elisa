@@ -1,0 +1,188 @@
+# Bounded asynchronous validation state for dynamic forms.
+#
+# Validation observes application-owned field values; it never replaces those
+# values. Each field has a stable identity and a monotonically changing
+# revision token. A host task must resolve the revision it was given, so a late
+# result from an older edit cannot overwrite the message for a newer value.
+
+include "../core/ui_core.elisa"
+
+module UiValidation:
+    public:
+        const MAX_FIELDS: usize = 128
+        const MESSAGE_CAPACITY: usize = 256
+        const NONE: usize = MAX_FIELDS
+
+        const enum Status of i32:
+            Idle = 0
+            Validating = 1
+            Valid = 2
+            Invalid = 3
+            Unavailable = 4
+
+        struct Handle:
+            slot: u32
+            generation: u32
+
+        struct Snapshot:
+            fields: usize
+            overflowed: bool
+
+        def invalid() -> Handle:
+            return Handle{slot: NONE.u32(), generation: 0}
+
+        def is_valid(handle: Handle) -> bool:
+            return handle.slot.usize() < MAX_FIELDS and active[handle.slot.usize()] and generations[handle.slot.usize()] == handle.generation
+
+        def reset() -> void:
+            for slot in 0..<MAX_FIELDS:
+                active[slot] <- false
+                field_ids[slot] <- 0
+                generations[slot] <- next_generation(generations[slot])
+                revisions[slot] <- 0
+                statuses[slot] <- Status.Idle
+                message_lengths[slot] <- 0
+                message_truncated_state[slot] <- false
+            field_count <- 0
+            overflowed_state <- false
+
+        # Bind one application field to a stable validation record. Rebinding
+        # the same field ID reuses its status and revision instead of starting
+        # a second request during every view rebuild.
+        def bind(field_id: u32) -> Handle:
+            for slot in 0..<field_count:
+                if active[slot] and field_ids[slot] == field_id:
+                    return make_handle(slot)
+            free_slot: mutable usize = NONE
+            for slot in 0..<MAX_FIELDS:
+                if not active[slot]:
+                    free_slot <- slot
+                    break
+            if free_slot == NONE:
+                overflowed_state <- true
+                return invalid()
+            active[free_slot] <- true
+            field_ids[free_slot] <- field_id
+            generations[free_slot] <- next_generation(generations[free_slot])
+            revisions[free_slot] <- 0
+            statuses[free_slot] <- Status.Idle
+            clear_message(free_slot)
+            field_count <- free_slot + 1 if free_slot >= field_count else field_count
+            return make_handle(free_slot)
+
+        def snapshot() -> Snapshot:
+            return Snapshot{fields: field_count, overflowed: overflowed_state}
+
+        def status(handle: Handle) -> Status:
+            return Status.Idle if not is_valid(handle)
+            return statuses[handle.slot.usize()]
+
+        def revision(handle: Handle) -> u32:
+            return 0 if not is_valid(handle)
+            return revisions[handle.slot.usize()]
+
+        def begin(handle: Handle) -> u32:
+            return 0 if not is_valid(handle)
+            slot: usize = handle.slot.usize()
+            revisions[slot] <- next_revision(revisions[slot])
+            statuses[slot] <- Status.Validating
+            clear_message(slot)
+            return revisions[slot]
+
+        # Resolve only the currently pending revision. The accepted value and
+        # the user's draft remain outside this registry, so a stale completion
+        # cannot roll back edits or selection state.
+        def resolve(handle: Handle, token: u32, next: Status, message: sview) -> bool:
+            return false if not is_valid(handle) or token == 0
+            slot: usize = handle.slot.usize()
+            return false if statuses[slot] != Status.Validating or revisions[slot] != token
+            return false if next != Status.Valid and next != Status.Invalid and next != Status.Unavailable
+            statuses[slot] <- next
+            write_message(slot, message)
+            return true
+
+        def accept(handle: Handle, token: u32) -> bool:
+            return resolve(handle, token, Status.Valid, "")
+
+        def reject(handle: Handle, token: u32, message: sview) -> bool:
+            return resolve(handle, token, Status.Invalid, message)
+
+        def unavailable(handle: Handle, token: u32, message: sview) -> bool:
+            return resolve(handle, token, Status.Unavailable, message)
+
+        def clear(handle: Handle) -> bool:
+            return false if not is_valid(handle)
+            slot: usize = handle.slot.usize()
+            statuses[slot] <- Status.Idle
+            clear_message(slot)
+            return true
+
+        def field_id(handle: Handle) -> u32:
+            return 0 if not is_valid(handle)
+            return field_ids[handle.slot.usize()]
+
+        def message(handle: Handle) -> sview:
+            return "" if not is_valid(handle)
+            slot: usize = handle.slot.usize()
+            return sview(&message_storage[slot * MESSAGE_CAPACITY], 0, message_lengths[slot].i64())
+
+        def message_truncated(handle: Handle) -> bool:
+            return is_valid(handle) and message_truncated_state[handle.slot.usize()]
+
+        def is_pending(handle: Handle) -> bool:
+            return is_valid(handle) and status(handle) == Status.Validating
+
+        def has_error(handle: Handle) -> bool:
+            return is_valid(handle) and (status(handle) == Status.Invalid or status(handle) == Status.Unavailable)
+
+        # Disposal advances the generation before a slot can be reused, which
+        # makes late validation completions harmless after a view disappears.
+        def dispose(handle: Handle) -> bool:
+            return false if not is_valid(handle)
+            slot: usize = handle.slot.usize()
+            active[slot] <- false
+            field_ids[slot] <- 0
+            generations[slot] <- next_generation(generations[slot])
+            revisions[slot] <- 0
+            statuses[slot] <- Status.Idle
+            clear_message(slot)
+            while field_count > 0 and not active[field_count - 1]:
+                field_count <- field_count - 1
+            return true
+
+    private:
+        global mutable field_ids: u32[MAX_FIELDS] = zeroed
+        global mutable generations: u32[MAX_FIELDS] = zeroed
+        global mutable revisions: u32[MAX_FIELDS] = zeroed
+        global mutable statuses: Status[MAX_FIELDS] = zeroed
+        global mutable active: bool[MAX_FIELDS] = zeroed
+        global mutable message_lengths: usize[MAX_FIELDS] = zeroed
+        global mutable message_truncated_state: bool[MAX_FIELDS] = zeroed
+        global mutable message_storage: u8[MAX_FIELDS * MESSAGE_CAPACITY] = zeroed
+        global mutable field_count: usize = 0
+        global mutable overflowed_state: bool = false
+
+        def next_generation(value: u32) -> u32:
+            next: u32 = value + 1
+            return 1 if next == 0 else next
+
+        def next_revision(value: u32) -> u32:
+            next: u32 = value + 1
+            return 1 if next == 0 else next
+
+        def make_handle(slot: usize) -> Handle:
+            return Handle{slot: slot.u32(), generation: generations[slot]}
+
+        def clear_message(slot: usize) -> void:
+            message_lengths[slot] <- 0
+            message_truncated_state[slot] <- false
+            for index in 0..<MESSAGE_CAPACITY:
+                message_storage[slot * MESSAGE_CAPACITY + index] <- 0
+
+        def write_message(slot: usize, value: sview) -> void:
+            take: usize = value.len.usize() if value.len.usize() < MESSAGE_CAPACITY - 1 else MESSAGE_CAPACITY - 1
+            for index in 0..<MESSAGE_CAPACITY - 1:
+                message_storage[slot * MESSAGE_CAPACITY + index] <- value.data[index] if index < take else 0
+            message_storage[slot * MESSAGE_CAPACITY + take] <- 0
+            message_lengths[slot] <- take
+            message_truncated_state[slot] <- take < value.len.usize()
