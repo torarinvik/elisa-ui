@@ -1,0 +1,119 @@
+# Backend-neutral appearance and accessibility preference policy.
+#
+# A host may learn system appearance and contrast settings, but it must not
+# make each backend invent its own palette, text-scale clamp, or animation
+# behavior. Applications can override the resolved palette explicitly; the
+# resolver supplies a stable baseline and keeps malformed preference values
+# deterministic before they reach measurement or painting.
+
+include "../core/ui_core.elisa"
+
+module UiTheme:
+    public:
+        const MIN_TEXT_SCALE: f32 = 0.5
+        const MAX_TEXT_SCALE: f32 = 3.0
+        const MAX_SCALED_EXTENT: f32 = 4096.0
+
+        const enum ColorMode of i32:
+            System = 0
+            Light = 1
+            Dark = 2
+
+        const enum Contrast of i32:
+            Normal = 0
+            High = 1
+
+        struct Preferences:
+            mode: ColorMode
+            contrast: Contrast
+            text_scale: f32
+            reduced_motion: bool
+
+        struct Palette:
+            background: UiCore::Color
+            surface: UiCore::Color
+            text: UiCore::Color
+            muted_text: UiCore::Color
+            accent: UiCore::Color
+            focus_ring: UiCore::Color
+            selection: UiCore::Color
+            disabled_text: UiCore::Color
+            disabled_surface: UiCore::Color
+
+        def defaults() -> Preferences:
+            return Preferences{mode: ColorMode.System, contrast: Contrast.Normal,
+                text_scale: 1.0, reduced_motion: false}
+
+        # Clamp host-provided preference values once. System is the safe
+        # fallback for unknown enum values, so a future mode cannot silently
+        # select a palette that this version does not understand.
+        def normalize(preferences: Preferences) -> Preferences:
+            mode: mutable ColorMode = preferences.mode
+            mode <- ColorMode.System if mode != ColorMode.Light and mode != ColorMode.Dark
+            contrast: mutable Contrast = preferences.contrast
+            contrast <- Contrast.Normal if contrast != Contrast.High
+            scale: mutable f32 = UiCore::finite_or_zero(preferences.text_scale)
+            scale <- MIN_TEXT_SCALE if scale < MIN_TEXT_SCALE
+            scale <- MAX_TEXT_SCALE if scale > MAX_TEXT_SCALE
+            return Preferences{mode: mode, contrast: contrast,
+                text_scale: scale, reduced_motion: preferences.reduced_motion}
+
+        def is_dark(preferences: Preferences, system_dark: bool) -> bool:
+            normalized: Preferences = normalize(preferences)
+            return true if normalized.mode == ColorMode.Dark
+            return system_dark if normalized.mode == ColorMode.System
+            return false
+
+        def is_high_contrast(preferences: Preferences, system_high_contrast: bool) -> bool:
+            normalized: Preferences = normalize(preferences)
+            return true if normalized.contrast == Contrast.High
+            return system_high_contrast
+
+        # Resolve one complete palette. `system_*` are facts supplied by the
+        # host; all color choices and fallback behavior remain in Elisa.
+        def resolve(preferences: Preferences, system_dark: bool, system_high_contrast: bool) -> Palette:
+            normalized: Preferences = normalize(preferences)
+            dark: bool = is_dark(normalized, system_dark)
+            high: bool = is_high_contrast(normalized, system_high_contrast)
+            return dark_palette(high) if dark else light_palette(high)
+
+        def scaled_text_size(preferences: Preferences, base: f32) -> f32:
+            normalized: Preferences = normalize(preferences)
+            safe_base: f32 = UiCore::nonnegative_extent(base)
+            result: mutable f32 = safe_base * normalized.text_scale
+            result <- MAX_SCALED_EXTENT if result > MAX_SCALED_EXTENT
+            return result
+
+        # A reduced-motion preference disables recurring animation rather than
+        # changing the caller's requested cadence. Zero is the shared sentinel
+        # used by the caret and frame scheduler for "do not animate".
+        def animation_interval(preferences: Preferences, base: f32) -> f32:
+            return 0.0 if preferences.reduced_motion
+            return UiCore::nonnegative_extent(base)
+
+    private:
+        def light_palette(high: bool) -> Palette:
+            return Palette{
+                background: UiCore::rgb(255, 255, 255) if high else UiCore::rgb(245, 247, 250),
+                surface: UiCore::rgb(240, 240, 240) if high else UiCore::rgb(255, 255, 255),
+                text: UiCore::rgb(0, 0, 0) if high else UiCore::rgb(28, 33, 42),
+                muted_text: UiCore::rgb(55, 55, 55) if high else UiCore::rgb(98, 108, 122),
+                accent: UiCore::rgb(0, 64, 180) if high else UiCore::rgb(48, 105, 214),
+                focus_ring: UiCore::rgb(0, 64, 180) if high else UiCore::rgb(38, 112, 235),
+                selection: UiCore::rgb(255, 204, 0) if high else UiCore::rgb(190, 216, 255),
+                disabled_text: UiCore::rgb(110, 110, 110) if high else UiCore::rgb(145, 151, 162),
+                disabled_surface: UiCore::rgb(225, 225, 225) if high else UiCore::rgb(232, 235, 240),
+            }
+
+        def dark_palette(high: bool) -> Palette:
+            return Palette{
+                background: UiCore::rgb(0, 0, 0) if high else UiCore::rgb(15, 19, 28),
+                surface: UiCore::rgb(24, 24, 24) if high else UiCore::rgb(28, 35, 47),
+                text: UiCore::rgb(255, 255, 255) if high else UiCore::rgb(239, 243, 250),
+                muted_text: UiCore::rgb(205, 205, 205) if high else UiCore::rgb(166, 177, 195),
+                accent: UiCore::rgb(255, 255, 0) if high else UiCore::rgb(103, 161, 255),
+                focus_ring: UiCore::rgb(0, 255, 255) if high else UiCore::rgb(130, 190, 255),
+                selection: UiCore::rgb(0, 255, 255) if high else UiCore::rgb(55, 112, 214),
+                disabled_text: UiCore::rgb(135, 135, 135) if high else UiCore::rgb(108, 119, 137),
+                disabled_surface: UiCore::rgb(48, 48, 48) if high else UiCore::rgb(52, 61, 76),
+            }

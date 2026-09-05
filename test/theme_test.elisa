@@ -1,0 +1,41 @@
+# Headless regression for shared appearance and accessibility preferences.
+
+include "../src/widgets/ui_theme.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    defaults: UiTheme::Preferences = UiTheme::defaults()
+    check("defaults use system appearance", defaults.mode == UiTheme::ColorMode.System and defaults.contrast == UiTheme::Contrast.Normal and defaults.text_scale == 1.0 and not defaults.reduced_motion)
+
+    malformed: UiTheme::Preferences = UiTheme::Preferences{mode: UiTheme::ColorMode.System, contrast: UiTheme::Contrast.Normal, text_scale: -4.0, reduced_motion: false}
+    normalized: UiTheme::Preferences = UiTheme::normalize(malformed)
+    check("malformed scale fails closed", normalized.mode == UiTheme::ColorMode.System and normalized.contrast == UiTheme::Contrast.Normal and normalized.text_scale == UiTheme::MIN_TEXT_SCALE)
+    check("system dark fact selects dark palette", UiTheme::is_dark(defaults, true) and not UiTheme::is_dark(defaults, false))
+
+    explicit_dark: UiTheme::Preferences = UiTheme::Preferences{mode: UiTheme::ColorMode.Dark, contrast: UiTheme::Contrast.Normal, text_scale: 1.0, reduced_motion: false}
+    dark: UiTheme::Palette = UiTheme::resolve(explicit_dark, false, false)
+    light: UiTheme::Palette = UiTheme::resolve(defaults, false, false)
+    check("explicit dark mode wins over host fact", dark.background.r == 15 and dark.text.r == 239)
+    check("light and dark palettes differ", light.background.r != dark.background.r and light.text.r != dark.text.r)
+
+    high: UiTheme::Preferences = UiTheme::Preferences{mode: UiTheme::ColorMode.Light, contrast: UiTheme::Contrast.High, text_scale: 2.0, reduced_motion: false}
+    high_palette: UiTheme::Palette = UiTheme::resolve(high, false, false)
+    check("high contrast is explicit", high_palette.text.r == 0 and high_palette.selection.r == 255 and high_palette.selection.g == 204)
+    check("system high contrast fact is honored", UiTheme::resolve(defaults, false, true).text.r == 0)
+
+    check("text scale multiplies base size", UiTheme::scaled_text_size(high, 12.0) == 24.0)
+    check("text scale clamps to a safe maximum", UiTheme::scaled_text_size(UiTheme::Preferences{mode: UiTheme::ColorMode.System, contrast: UiTheme::Contrast.Normal, text_scale: 3.0, reduced_motion: false}, 9000.0) == UiTheme::MAX_SCALED_EXTENT)
+    check("reduced motion disables animation", UiTheme::animation_interval(high, 0.5) == 0.5 and UiTheme::animation_interval(UiTheme::Preferences{mode: UiTheme::ColorMode.System, contrast: UiTheme::Contrast.Normal, text_scale: 1.0, reduced_motion: true}, 0.5) == 0.0)
+
+    if failures == 0:
+        _ = puts("theme: all checks passed")
+        return 0
+    _ = puts("theme: FAILURES above")
+    return 1

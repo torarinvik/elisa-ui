@@ -83,6 +83,10 @@ because a module member's symbol carries its module and those names cannot move.
   list and form rebuilds, reject duplicate keys, and invalidate retired items
   safely before slot reuse. It is opt-in so handle-heavy binaries do not pay
   for a registry they do not use.
+- **Shared appearance policy** ([src/widgets/ui_theme.elisa](src/widgets/ui_theme.elisa)) —
+  one Elisa-side resolver covers system/light/dark palettes, normal/high
+  contrast, bounded text scaling, and reduced-motion animation timing for every
+  backend. It is opt-in and applications can override resolved tokens.
 - **Widgets** ([src/widgets/ui_widget.elisa](src/widgets/ui_widget.elisa)) — a
   retained tree in one fixed array linked by index, box layout, hit testing, and
   hover/press/focus/disabled/selected state. Buttons, radio buttons, check boxes,
