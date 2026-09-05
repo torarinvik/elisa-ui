@@ -620,25 +620,62 @@ extend UiWidgets:
                     UiCore::draw(UiCore::TextRun(UiCore::Vec2(box_x, label_y), 14.0, label), UiCore::rgb(255, 255, 255)) if label.len != 0
 
     public:
+        # Intersect two retained clip boxes. A zero-sized result is intentional:
+        # it lets the backend discard commands from a child completely outside
+        # a nested viewport without a separate visibility walk.
+        def clip_intersection(first: UiCore::Rect, second: UiCore::Rect) -> UiCore::Rect:
+            left: f32 = first.origin.x if first.origin.x > second.origin.x else second.origin.x
+            top: f32 = first.origin.y if first.origin.y > second.origin.y else second.origin.y
+            first_right: f32 = UiCore::right_edge(first)
+            second_right: f32 = UiCore::right_edge(second)
+            first_bottom: f32 = UiCore::bottom_edge(first)
+            second_bottom: f32 = UiCore::bottom_edge(second)
+            right: f32 = first_right if first_right < second_right else second_right
+            bottom: f32 = first_bottom if first_bottom < second_bottom else second_bottom
+            width: f32 = right - left if right > left else 0.0
+            height: f32 = bottom - top if bottom > top else 0.0
+            return UiCore::Rect(left, top, width, height)
+
         # Emit one widget's own drawing, then recurse into its children.
-        # Pre-order gives painter's-algorithm ordering for free: a parent's
-        # background is laid down before anything it contains.
-        def paint_depth(w: Widget, depth: i32) -> void:
+        # Pre-order gives painter-algorithm ordering for free: a parent's
+        # background is laid down before anything it contains. The accumulated
+        # clip is passed as an ordinary Elisa value because hierarchy handles do
+        # not expose parent identity; each scroll node contributes its own
+        # viewport before descending into its children.
+        def paint_depth(w: Widget, depth: i32, clip_active: bool, clip: UiCore::Rect) -> void:
             return if depth >= MAX_HIERARCHY_DEPTH
+            UiCore::set_clip(clip) if clip_active
             surface: UiCore::Color = fill_of(w)
             if surface.a != 0:
                 UiCore::fill(box_of(w), surface)
             paint_content(w)
+            UiCore::clear_clip() if clip_active
+
+            child_clip_active: mutable bool = clip_active
+            child_clip: mutable UiCore::Rect = clip
+            is_scroll: mutable bool = false
+            match w:
+                Container.Scroll(axis, offset, fill):
+                    is_scroll <- true
+                Container.ScrollWithState(axis, state, fill):
+                    is_scroll <- true
+                _:
+                    pass
+            if is_scroll:
+                viewport: UiCore::Rect = box_of(w)
+                child_clip <- clip_intersection(clip, viewport) if clip_active else viewport
+                child_clip_active <- true
             paint_steps: mutable i32 = 0
             cursor: mutable Widget? = w.first_child
-            while cursor is node |cursor, paint_steps|:
+            while cursor is node |cursor, paint_steps, child_clip_active, child_clip|:
                 break if paint_steps >= MAX_HIERARCHY_SIBLINGS
                 paint_steps <- paint_steps + 1
-                paint_depth(node, depth + 1)
+                paint_depth(node, depth + 1, child_clip_active, child_clip)
                 cursor <- node.next_sibling
 
         def paint(w: Widget) -> void:
-            paint_depth(w, 0)
+            empty_clip: UiCore::Rect = UiCore::Rect(0.0, 0.0, 0.0, 0.0)
+            paint_depth(w, 0, false, empty_clip)
 
     # ------------------------------------------------------------------
     # Pointer state machine

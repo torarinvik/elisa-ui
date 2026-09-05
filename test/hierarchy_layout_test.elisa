@@ -176,6 +176,25 @@ def main() -> i64:
         pointer(stateful_scroll, (UiCore::PointerEvent.Scroll(at: UiCore::Vec2(200.0, 10.0), delta: UiCore::Vec2(0.0, -10.0))))
         check("wheel outside viewport is ignored", scroll_state.offset, 40.0)
 
+        # Hierarchy painting carries the same scroll-viewport clip metadata as
+        # UiFlat, so translated children cannot bleed outside their container.
+        clipped_a: Widget = Button.Push(min_width: 40.0, min_height: 30.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "a", rest: grey(30), hover: grey(40), press: grey(20))
+        clipped_b: Widget = Button.Push(min_width: 40.0, min_height: 30.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "b", rest: grey(30), hover: grey(40), press: grey(20))
+        clipped_a.next_sibling <- clipped_b
+        clipped_scroll: Widget = Container.Scroll(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: clipped_a, next_sibling: null, axis: UiConst::Axis.Column, offset: 20.0, fill: grey(18))
+        layout(clipped_scroll, 100.0, 40.0)
+        UiCore::begin_frame()
+        paint(clipped_scroll)
+        clipped_commands: mutable i32 = 0
+        clipped_geometry: mutable bool = false
+        for command_index in 0..<UiCore::command_count():
+            if UiCore::command_has_clip(command_index):
+                clipped_commands <- clipped_commands + 1
+                clip: UiCore::Rect = UiCore::command_clip_at(command_index)
+                clipped_geometry <- true if clip.origin.x == 0.0 and clip.origin.y == 0.0 and clip.size.width == 100.0 and clip.size.height == 40.0
+        test_failures <- test_failures + 1 if clipped_commands == 0
+        test_failures <- test_failures + 1 if not clipped_geometry
+
         # A grid uses a fixed column count and uniform cells rather than
         # degenerating into a vertical box.
         grid_a: Widget = Button.Push(min_width: 20.0, min_height: 10.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "a", rest: grey(30), hover: grey(40), press: grey(20))
