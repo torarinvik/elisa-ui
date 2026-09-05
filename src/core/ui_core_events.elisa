@@ -83,7 +83,12 @@ extend UiCore:
             record: mutable EventRecord = EventRecord{kind: wire_kind(event), x: 0.0, y: 0.0, dx: 0.0, dy: 0.0, code: 0}
             match event:
                 Event.Resize(size):
-                    record with { x <- nonnegative_extent(size.width), y <- nonnegative_extent(size.height) }
+                    # Resize extents are part of the same geometry contract as
+                    # viewport and retained boxes. A caller can construct the
+                    # sealed event with a raw `Size{...}` value, bypassing the
+                    # convenience constructor, so keep the exported wire
+                    # record bounded before a C/WIT host receives it.
+                    record with { x <- bounded_extent(size.width), y <- bounded_extent(size.height) }
                 PointerEvent.Move(at):
                     record with { x <- finite_or_zero(at.x), y <- finite_or_zero(at.y) }
                 PointerEvent.Down(at, button):
