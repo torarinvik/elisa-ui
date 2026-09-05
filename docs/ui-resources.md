@@ -37,8 +37,8 @@ coalescing; it does not grant bandwidth, bypass cache policy, or force a fetch.
 
 `snapshot()` returns bounded counts for the total live records and each
 loading/ready/offline/denied/failed/cancelled state, plus the sticky overflow
-flag. `UiInspector::Frame` exposes that snapshot so loading diagnostics do not
-need to inspect resource handles or keep a native shadow table.
+flag. Diagnostic consumers can use that aggregate without inspecting resource
+handles or keeping a native shadow table.
 
 The fixed 128-record table and 256-byte logical identifier limit are deliberate
 bounded behavior for native and Wasm tests. `overflowed` reports exhaustion;
