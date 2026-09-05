@@ -22,24 +22,25 @@ static NSUInteger test_frame_count;
 static int test_allows_readback = 1;
 static int test_text_focused = 1;
 static size_t test_accessibility_handles[3];
+static size_t test_window_handle;
 
 void elisa_appkit_canvas_insert_text(const char *bytes, size_t length);
 
 void elisa_appkit_canvas_frame(size_t context) {
     (void)context;
     test_frame_count += 1;
-    elisa_appkit_canvas_accessibility_reset();
-    size_t sliderElement = elisa_appkit_canvas_accessibility_add(test_accessibility_handles[0], (size_t)(__bridge void *)@"elisa-ui-7", 7, NSAccessibilitySliderRole, 0,
+    elisa_appkit_canvas_accessibility_reset(test_window_handle);
+    size_t sliderElement = elisa_appkit_canvas_accessibility_add(test_window_handle, test_accessibility_handles[0], (size_t)(__bridge void *)@"elisa-ui-7", 7, NSAccessibilitySliderRole, 0,
         (size_t)(__bridge void *)[NSCursor pointingHandCursor],
         (size_t)(__bridge void *)@"Intensity", (size_t)(__bridge void *)@"Adjust preview intensity",
         10, 10, 180, 24, 1, 0);
-    elisa_appkit_canvas_accessibility_add_tooltip(sliderElement);
+    elisa_appkit_canvas_accessibility_add_tooltip(test_window_handle, sliderElement);
     elisa_appkit_canvas_accessibility_set_range(sliderElement, test_slider_value, 0.0f, 1.0f);
-    size_t textElement = elisa_appkit_canvas_accessibility_add(test_accessibility_handles[1], (size_t)(__bridge void *)@"elisa-ui-8", 8, NSAccessibilityTextFieldRole, 0,
+    size_t textElement = elisa_appkit_canvas_accessibility_add(test_window_handle, test_accessibility_handles[1], (size_t)(__bridge void *)@"elisa-ui-8", 8, NSAccessibilityTextFieldRole, 0,
         (size_t)(__bridge void *)[NSCursor IBeamCursor],
         (size_t)(__bridge void *)@"Project name", (size_t)(__bridge void *)@"Edit the project name",
         10, 44, 180, 32, 1, test_text_focused);
-    elisa_appkit_canvas_accessibility_add_tooltip(textElement);
+    elisa_appkit_canvas_accessibility_add_tooltip(test_window_handle, textElement);
     NSString *textValue = [NSString stringWithUTF8String:test_text];
     NSString *selectedValue = [[NSString alloc]
         initWithBytes:test_text + test_selection_start
@@ -48,18 +49,18 @@ void elisa_appkit_canvas_frame(size_t context) {
         (size_t)(__bridge void *)selectedValue,
         elisa_appkit_canvas_selection_location(), elisa_appkit_canvas_selection_length());
     const char *masked = "••••";
-    size_t secureElement = elisa_appkit_canvas_accessibility_add(test_accessibility_handles[2], (size_t)(__bridge void *)@"elisa-ui-9", 9, NSAccessibilityTextFieldRole, NSAccessibilitySecureTextFieldSubrole,
+    size_t secureElement = elisa_appkit_canvas_accessibility_add(test_window_handle, test_accessibility_handles[2], (size_t)(__bridge void *)@"elisa-ui-9", 9, NSAccessibilityTextFieldRole, NSAccessibilitySecureTextFieldSubrole,
         (size_t)(__bridge void *)[NSCursor IBeamCursor],
         (size_t)(__bridge void *)@"Password", (size_t)(__bridge void *)@"Secure entry",
         10, 80, 180, 32, 1, 0);
-    elisa_appkit_canvas_accessibility_add_tooltip(secureElement);
+    elisa_appkit_canvas_accessibility_add_tooltip(test_window_handle, secureElement);
     elisa_appkit_canvas_accessibility_set_text(secureElement, (size_t)(__bridge void *)[NSString stringWithUTF8String:masked],
         (size_t)(__bridge void *)@"", 0, 0);
     test_accessibility_handles[0] = sliderElement;
     test_accessibility_handles[1] = textElement;
     test_accessibility_handles[2] = secureElement;
-    elisa_appkit_canvas_accessibility_commit(test_accessibility_handles, 3);
-    elisa_appkit_canvas_accessibility_post_layout_changed(
+    elisa_appkit_canvas_accessibility_commit(test_window_handle, test_accessibility_handles, 3);
+    elisa_appkit_canvas_accessibility_post_layout_changed(test_window_handle,
         elisa_appkit_canvas_accessibility_layout_changed_notification());
 }
 
@@ -342,8 +343,9 @@ static int require(BOOL condition, NSString *message) {
 
 int main(void) {
     @autoreleasepool {
-        if (require(!elisa_appkit_canvas_present(), @"present succeeded before opening a canvas")) return 1;
+        if (require(!elisa_appkit_canvas_present(0), @"present succeeded before opening a canvas")) return 1;
         if (require(!elisa_appkit_canvas_present_headless(
+                         0,
                          elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(),
                          elisa_appkit_canvas_bitmap_file_type_png(), 0, 200, 100, 8, 4, 1, 0),
                     @"headless present succeeded before opening a canvas")) return 1;
@@ -361,18 +363,19 @@ int main(void) {
                                                  elisa_appkit_canvas_backing_store_buffered(),
                                                  &delegateHandle);
         if (!opened) return 1;
-        elisa_appkit_canvas_set_tabbing_mode(NSWindowTabbingModeDisallowed);
-        elisa_appkit_canvas_set_restorable(0);
-        if (require([elisa_appkit_canvas_view() isFlipped], @"canvas coordinate policy was not supplied by Elisa")) return 1;
-        if (require([elisa_appkit_canvas_view() acceptsFirstResponder], @"canvas focus policy was not supplied by Elisa")) return 1;
-        if (require(![elisa_appkit_canvas_view() isAccessibilityElement], @"canvas semantic-root policy was not supplied by Elisa")) return 1;
+        test_window_handle = opened;
+        elisa_appkit_canvas_set_tabbing_mode(opened, NSWindowTabbingModeDisallowed);
+        elisa_appkit_canvas_set_restorable(opened, 0);
+        if (require([elisa_appkit_canvas_view(opened) isFlipped], @"canvas coordinate policy was not supplied by Elisa")) return 1;
+        if (require([elisa_appkit_canvas_view(opened) acceptsFirstResponder], @"canvas focus policy was not supplied by Elisa")) return 1;
+        if (require(![elisa_appkit_canvas_view(opened) isAccessibilityElement], @"canvas semantic-root policy was not supplied by Elisa")) return 1;
         NSObject *invalidEvent = [NSObject new];
-        elisa_appkit_canvas_interpret_key_event((size_t)(__bridge void *)invalidEvent);
+        elisa_appkit_canvas_interpret_key_event((size_t)(__bridge void *)invalidEvent, opened);
         NSObject *invalidTimer = [NSObject new];
         elisa_appkit_canvas_cancel_redraw((size_t)(__bridge void *)invalidTimer);
-        elisa_appkit_canvas_center();
-        elisa_appkit_canvas_accessibility_commit(NULL, 1);
-        elisa_appkit_canvas_accessibility_commit(NULL, elisa_appkit_canvas_accessibility_capacity() + 1);
+        elisa_appkit_canvas_center(opened);
+        elisa_appkit_canvas_accessibility_commit(opened, NULL, 1);
+        elisa_appkit_canvas_accessibility_commit(opened, NULL, elisa_appkit_canvas_accessibility_capacity() + 1);
     size_t menuBar = elisa_appkit_canvas_menus_begin();
     NSObject *invalidMenuString = [NSObject new];
     if (require(elisa_appkit_canvas_menu_add(
@@ -381,14 +384,15 @@ int main(void) {
                 @"invalid menu string was accepted")) return 1;
     NSObject *invalidNativeString = [NSObject new];
     if (require(!elisa_appkit_canvas_schedule_redraw(
-                    0.1f, (size_t)(__bridge void *)invalidNativeString),
+                    0.1f, (size_t)(__bridge void *)invalidNativeString, opened),
                 @"invalid run-loop mode was accepted")) return 1;
     if (require(!elisa_appkit_canvas_present_headless(
+                    opened,
                     (size_t)(__bridge void *)invalidNativeString,
                     elisa_appkit_canvas_bitmap_file_type_png(), 0, 200, 100, 8, 4, 1, 0),
                 @"invalid bitmap color-space handle was accepted")) return 1;
     if (require(elisa_appkit_canvas_accessibility_add(
-                    0, 0, 0, NSAccessibilityButtonRole, NULL, 0,
+                    opened, 0, 0, 0, NSAccessibilityButtonRole, NULL, 0,
                     (size_t)(__bridge void *)invalidNativeString, 0,
                     0, 0, 10, 10, 1, 0) == 0,
                 @"invalid accessibility label was accepted")) return 1;
@@ -408,61 +412,63 @@ int main(void) {
         if (require([applicationSubmenu itemAtIndex:2].keyEquivalentModifierMask == NSEventModifierFlagCommand, @"native menu modifier mask was not preserved")) return 1;
         if (require(NSApp.windowsMenu == [NSApp.mainMenu itemAtIndex:1].submenu, @"window menu designation failed")) return 1;
         if (require(elisa_appkit_canvas_present_headless(
+                        opened,
                         elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(),
                         elisa_appkit_canvas_bitmap_file_type_png(), 0, 200, 100, 8, 4, 1, 0), @"off-screen presentation failed")) return 1;
         if (require(test_frame_count > 0, @"off-screen frame did not draw")) return 1;
         ElisaCanvasDelegate *delegate = (__bridge ElisaCanvasDelegate *)(void *)delegateHandle;
-        NSNotification *focusNotification = [NSNotification notificationWithName:NSWindowDidResignKeyNotification object:elisa_appkit_canvas_window()];
+        NSNotification *focusNotification = [NSNotification notificationWithName:NSWindowDidResignKeyNotification object:elisa_appkit_canvas_window(opened)];
         [delegate windowDidResignKey:focusNotification];
         if (require(test_window_focused == 0, @"window focus loss did not reach Elisa")) return 1;
         [delegate windowDidBecomeKey:focusNotification];
         if (require(test_window_focused == 1, @"window focus gain did not reach Elisa")) return 1;
         if (require(!elisa_appkit_canvas_present_headless(
+                         opened,
                          elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(),
                          elisa_appkit_canvas_bitmap_file_type_png(),
                          (size_t)(__bridge void *)@"/elisa-ui-missing-directory/frame.png", 200, 100, 8, 4, 1, 0), @"snapshot failure did not cross the FFI boundary")) return 1;
         NSEvent *move = [NSEvent mouseEventWithType:NSEventTypeMouseMoved
             location:NSMakePoint(40, 20) modifierFlags:0 timestamp:0
-            windowNumber:[elisa_appkit_canvas_window() windowNumber] context:nil eventNumber:0
+            windowNumber:[elisa_appkit_canvas_window(opened) windowNumber] context:nil eventNumber:0
             clickCount:0 pressure:0.0];
-        [elisa_appkit_canvas_view() mouseMoved:move];
+        [elisa_appkit_canvas_view(opened) mouseMoved:move];
         if (require(test_pointer_kind == 0, @"pointer motion did not cross the Elisa event path")) return 1;
         NSEvent *singleClick = [NSEvent mouseEventWithType:NSEventTypeLeftMouseDown
             location:NSMakePoint(40, 20) modifierFlags:0 timestamp:0
-            windowNumber:[elisa_appkit_canvas_window() windowNumber] context:nil eventNumber:1
+            windowNumber:[elisa_appkit_canvas_window(opened) windowNumber] context:nil eventNumber:1
             clickCount:1 pressure:1.0];
-        [elisa_appkit_canvas_view() mouseDown:singleClick];
+        [elisa_appkit_canvas_view(opened) mouseDown:singleClick];
         if (require(test_click_button == 0 && test_click_count == 1, @"single click facts did not reach Elisa")) return 1;
         NSEvent *doubleClick = [NSEvent mouseEventWithType:NSEventTypeLeftMouseDown
             location:NSMakePoint(40, 20) modifierFlags:0 timestamp:0
-            windowNumber:[elisa_appkit_canvas_window() windowNumber] context:nil eventNumber:2
+            windowNumber:[elisa_appkit_canvas_window(opened) windowNumber] context:nil eventNumber:2
             clickCount:2 pressure:1.0];
-        [elisa_appkit_canvas_view() mouseDown:doubleClick];
+        [elisa_appkit_canvas_view(opened) mouseDown:doubleClick];
         if (require(test_click_button == 0 && test_click_count == 2, @"native click facts did not reach Elisa")) return 1;
         NSEvent *rightClick = [NSEvent mouseEventWithType:NSEventTypeRightMouseDown
             location:NSMakePoint(40, 20) modifierFlags:0 timestamp:0
-            windowNumber:[elisa_appkit_canvas_window() windowNumber] context:nil eventNumber:3
+            windowNumber:[elisa_appkit_canvas_window(opened) windowNumber] context:nil eventNumber:3
             clickCount:2 pressure:1.0];
-        [elisa_appkit_canvas_view() rightMouseDown:rightClick];
+        [elisa_appkit_canvas_view(opened) rightMouseDown:rightClick];
         if (require(test_pointer_kind == 1 && test_pointer_button == 1,
                     @"right-button press did not cross the pointer FFI")) return 1;
         if (require(test_click_button == 1 && test_click_count == 2,
                     @"right-button click facts did not reach Elisa")) return 1;
         NSEvent *rightRelease = [NSEvent mouseEventWithType:NSEventTypeRightMouseUp
             location:NSMakePoint(40, 20) modifierFlags:0 timestamp:0
-            windowNumber:[elisa_appkit_canvas_window() windowNumber] context:nil eventNumber:4
+            windowNumber:[elisa_appkit_canvas_window(opened) windowNumber] context:nil eventNumber:4
             clickCount:2 pressure:0.0];
-        [elisa_appkit_canvas_view() rightMouseUp:rightRelease];
+        [elisa_appkit_canvas_view(opened) rightMouseUp:rightRelease];
         if (require(test_pointer_kind == 2 && test_pointer_button == 1,
                     @"right-button release did not cross the pointer FFI")) return 1;
         NSEvent *exit = [NSEvent mouseEventWithType:NSEventTypeMouseMoved
             location:NSMakePoint(40, 20) modifierFlags:0 timestamp:0
-            windowNumber:[elisa_appkit_canvas_window() windowNumber] context:nil eventNumber:5
+            windowNumber:[elisa_appkit_canvas_window(opened) windowNumber] context:nil eventNumber:5
             clickCount:0 pressure:0.0];
-        [elisa_appkit_canvas_view() mouseExited:exit];
+        [elisa_appkit_canvas_view(opened) mouseExited:exit];
         if (require(test_pointer_kind == 3 && test_pointer_button == 0,
                     @"pointer exit did not cross the Elisa event path")) return 1;
-        NSArray *children = [elisa_appkit_canvas_view() accessibilityChildren];
+        NSArray *children = [elisa_appkit_canvas_view(opened) accessibilityChildren];
         if (require(children.count == 3, @"semantic children missing")) return 1;
 
         ElisaAccessibilityElement *first = children[0];
@@ -484,37 +490,37 @@ int main(void) {
         if (require(test_selection_start == 1 && test_selection_end == 4, @"writable accessibility selection did not reach Elisa")) return 1;
         textField.accessibilitySelectedTextRange = NSMakeRange(5, 0);
         NSObject *invalidInput = [NSObject new];
-        [elisa_appkit_canvas_view() insertText:invalidInput replacementRange:NSMakeRange(NSNotFound, 0)];
+        [elisa_appkit_canvas_view(opened) insertText:invalidInput replacementRange:NSMakeRange(NSNotFound, 0)];
         if (require(strcmp(test_text, "World") == 0, @"invalid text input was not ignored")) return 1;
-        [elisa_appkit_canvas_view() setMarkedText:invalidInput selectedRange:NSMakeRange(0, 0) replacementRange:NSMakeRange(NSNotFound, 0)];
-        if (require(strcmp(test_text, "World") == 0 && !elisa_appkit_canvas_view().hasMarkedText,
+        [elisa_appkit_canvas_view(opened) setMarkedText:invalidInput selectedRange:NSMakeRange(0, 0) replacementRange:NSMakeRange(NSNotFound, 0)];
+        if (require(strcmp(test_text, "World") == 0 && !elisa_appkit_canvas_view(opened).hasMarkedText,
                     @"invalid marked text input was not ignored")) return 1;
-        [elisa_appkit_canvas_view() insertText:@"é" replacementRange:NSMakeRange(NSNotFound, 0)];
+        [elisa_appkit_canvas_view(opened) insertText:@"é" replacementRange:NSMakeRange(NSNotFound, 0)];
         if (require(strcmp(test_text, "Worldé") == 0, @"Unicode text commit did not reach the app")) return 1;
-        if (require(NSEqualRanges(elisa_appkit_canvas_view().selectedRange, NSMakeRange(6, 0)), @"UTF-8 caret did not convert to UTF-16")) return 1;
+        if (require(NSEqualRanges(elisa_appkit_canvas_view(opened).selectedRange, NSMakeRange(6, 0)), @"UTF-8 caret did not convert to UTF-16")) return 1;
         NSRange actualRange = NSMakeRange(NSNotFound, 0);
-        NSAttributedString *substring = [elisa_appkit_canvas_view() attributedSubstringForProposedRange:NSMakeRange(5, 1) actualRange:&actualRange];
+        NSAttributedString *substring = [elisa_appkit_canvas_view(opened) attributedSubstringForProposedRange:NSMakeRange(5, 1) actualRange:&actualRange];
         if (require([substring.string isEqualToString:@"é"] && NSEqualRanges(actualRange, NSMakeRange(5, 1)), @"Unicode substring did not come from Elisa range slicing")) return 1;
         actualRange = NSMakeRange(NSNotFound, 0);
-        (void)[elisa_appkit_canvas_view() firstRectForCharacterRange:NSMakeRange(4, 2) actualRange:&actualRange];
+        (void)[elisa_appkit_canvas_view(opened) firstRectForCharacterRange:NSMakeRange(4, 2) actualRange:&actualRange];
         if (require(NSEqualRanges(actualRange, NSMakeRange(4, 2)), @"candidate rect range length did not come from Elisa range slicing")) return 1;
         test_allows_readback = 0;
-        if (require([elisa_appkit_canvas_view() attributedSubstringForProposedRange:NSMakeRange(0, 1) actualRange:NULL] == nil, @"secure substring readback was not denied")) return 1;
+        if (require([elisa_appkit_canvas_view(opened) attributedSubstringForProposedRange:NSMakeRange(0, 1) actualRange:NULL] == nil, @"secure substring readback was not denied")) return 1;
         test_text_focused = 0;
-        if (require([elisa_appkit_canvas_view() characterIndexForPoint:NSMakePoint(40, 20)] == NSNotFound,
+        if (require([elisa_appkit_canvas_view(opened) characterIndexForPoint:NSMakePoint(40, 20)] == NSNotFound,
                     @"unfocused character lookup did not stay in Elisa policy")) return 1;
         test_text_focused = 1;
         strcpy(test_text, "secret");
         test_selection_start = 0;
         test_selection_end = 6;
-        [elisa_appkit_canvas_view() cut:nil];
+        [elisa_appkit_canvas_view(opened) cut:nil];
         if (require(strcmp(test_text, "secret") == 0, @"disabled secure Cut destroyed text without exporting it")) return 1;
         test_allows_readback = 1;
         strcpy(test_text, "Worldé");
 
-        [elisa_appkit_canvas_view() selectAll:nil];
-        if (require(NSEqualRanges(elisa_appkit_canvas_view().selectedRange, NSMakeRange(0, 6)), @"Select All did not cover the field")) return 1;
-        [elisa_appkit_canvas_view() copy:nil];
+        [elisa_appkit_canvas_view(opened) selectAll:nil];
+        if (require(NSEqualRanges(elisa_appkit_canvas_view(opened).selectedRange, NSMakeRange(0, 6)), @"Select All did not cover the field")) return 1;
+        [elisa_appkit_canvas_view(opened) copy:nil];
         if (require([[[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString] isEqualToString:@"Worldé"], @"Copy did not write selected Unicode text")) return 1;
         [[NSPasteboard generalPasteboard] clearContents];
         [[NSPasteboard generalPasteboard] setString:@"keep" forType:NSPasteboardTypeString];
@@ -532,38 +538,39 @@ int main(void) {
                         (size_t)(__bridge void *)@"",
                         elisa_appkit_canvas_pasteboard_type_string()), @"empty clipboard write failed")) return 1;
         if (require([[[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString] isEqualToString:@""], @"empty clipboard write did not clear the pasteboard")) return 1;
-        [elisa_appkit_canvas_view() insertText:@"Next" replacementRange:NSMakeRange(NSNotFound, 0)];
+        [elisa_appkit_canvas_view(opened) insertText:@"Next" replacementRange:NSMakeRange(NSNotFound, 0)];
         if (require(strcmp(test_text, "Next") == 0, @"typing did not replace the selection")) return 1;
 
         strcpy(test_text, "Cafe");
         test_selection_start = test_selection_end = 4;
-        [elisa_appkit_canvas_view() setMarkedText:@"é" selectedRange:NSMakeRange(1, 0) replacementRange:NSMakeRange(NSNotFound, 0)];
+        [elisa_appkit_canvas_view(opened) setMarkedText:@"é" selectedRange:NSMakeRange(1, 0) replacementRange:NSMakeRange(NSNotFound, 0)];
         if (require(strcmp(test_text, "Cafeé") == 0, @"marked text was not inserted")) return 1;
-        if (require(NSEqualRanges(elisa_appkit_canvas_view().markedRange, NSMakeRange(4, 1)), @"marked range is wrong")) return 1;
+        if (require(NSEqualRanges(elisa_appkit_canvas_view(opened).markedRange, NSMakeRange(4, 1)), @"marked range is wrong")) return 1;
         if (require(test_marked_start == 4 && test_marked_end == 6, @"marked range did not convert to UTF-8 bytes")) return 1;
-        [elisa_appkit_canvas_view() setMarkedText:@"ø" selectedRange:NSMakeRange(1, 0) replacementRange:NSMakeRange(NSNotFound, 0)];
+        [elisa_appkit_canvas_view(opened) setMarkedText:@"ø" selectedRange:NSMakeRange(1, 0) replacementRange:NSMakeRange(NSNotFound, 0)];
         if (require(strcmp(test_text, "Cafeø") == 0, @"marked text update did not replace its range")) return 1;
-        [elisa_appkit_canvas_view() insertText:@"å" replacementRange:NSMakeRange(NSNotFound, 0)];
+        [elisa_appkit_canvas_view(opened) insertText:@"å" replacementRange:NSMakeRange(NSNotFound, 0)];
         if (require(strcmp(test_text, "Cafeå") == 0, @"committed text did not replace marked text")) return 1;
-        if (require(!elisa_appkit_canvas_view().hasMarkedText, @"marked range survived commit")) return 1;
+        if (require(!elisa_appkit_canvas_view(opened).hasMarkedText, @"marked range survived commit")) return 1;
         if (require(test_marked_start == 0 && test_marked_end == 0, @"painted marked range survived commit")) return 1;
-        [elisa_appkit_canvas_view() undo:nil];
-        [elisa_appkit_canvas_view() redo:nil];
+        [elisa_appkit_canvas_view(opened) undo:nil];
+        [elisa_appkit_canvas_view(opened) redo:nil];
         if (require(test_undo_calls == 1 && test_redo_calls == 1, @"Undo/Redo actions did not cross the FFI boundary")) return 1;
-        [elisa_appkit_canvas_view() doCommandBySelector:@selector(moveLeftAndModifySelection:)];
+        [elisa_appkit_canvas_view(opened) doCommandBySelector:@selector(moveLeftAndModifySelection:)];
         if (require(test_text_selector == 3, @"native text selector identity did not cross the FFI boundary")) return 1;
-        [elisa_appkit_canvas_view() doCommandBySelector:@selector(moveWordRightAndModifySelection:)];
+        [elisa_appkit_canvas_view(opened) doCommandBySelector:@selector(moveWordRightAndModifySelection:)];
         if (require(test_text_selector == 17, @"native word-selection identity did not cross the FFI boundary")) return 1;
-        [elisa_appkit_canvas_view() doCommandBySelector:@selector(deleteWordBackward:)];
+        [elisa_appkit_canvas_view(opened) doCommandBySelector:@selector(deleteWordBackward:)];
         if (require(test_text_selector == 18, @"native word-deletion identity did not cross the FFI boundary")) return 1;
 
         test_slider_value = 0.75f;
         test_text_focused = 0;
         test_selection_start = test_selection_end = 0;
         if (require(elisa_appkit_canvas_present_headless(
+                        opened,
                         elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(),
                         elisa_appkit_canvas_bitmap_file_type_png(), 0, 200, 100, 8, 4, 1, 0), @"second off-screen presentation failed")) return 1;
-        NSArray *secondChildren = [elisa_appkit_canvas_view() accessibilityChildren];
+        NSArray *secondChildren = [elisa_appkit_canvas_view(opened) accessibilityChildren];
         ElisaAccessibilityElement *second = secondChildren[0];
         ElisaAccessibilityElement *secondTextField = secondChildren[1];
         ElisaAccessibilityElement *secondSecureField = secondChildren[2];
@@ -575,7 +582,7 @@ int main(void) {
 
         if (require([second accessibilityPerformIncrement], @"increment action was rejected")) return 1;
         if (require(fabs(test_slider_value - 0.80f) < 0.001f, @"increment action did not reach the app")) return 1;
-        [elisa_appkit_canvas_window() close];
+        [elisa_appkit_canvas_window(opened) close];
         for (ElisaAccessibilityElement *element in secondChildren) {
             elisa_appkit_canvas_accessibility_release((size_t)(__bridge void *)element);
         }

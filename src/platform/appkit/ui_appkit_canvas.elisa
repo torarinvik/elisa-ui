@@ -28,9 +28,9 @@ extern elisa_appkit_canvas_open(title: usize, width: f32, height: f32, style: i3
 extern elisa_appkit_canvas_release_window(handle: usize) -> void
 extern elisa_appkit_canvas_release_delegate(handle: usize) -> void
 extern elisa_appkit_canvas_set_activation_policy(policy: i32) -> void
-extern elisa_appkit_canvas_focus() -> void
-extern elisa_appkit_canvas_set_tabbing_mode(mode: i32) -> void
-extern elisa_appkit_canvas_set_restorable(restorable: i32) -> void
+extern elisa_appkit_canvas_focus(window_handle: usize) -> void
+extern elisa_appkit_canvas_set_tabbing_mode(window_handle: usize, mode: i32) -> void
+extern elisa_appkit_canvas_set_restorable(window_handle: usize, restorable: i32) -> void
 extern elisa_appkit_canvas_menus_begin() -> usize
 extern elisa_appkit_canvas_menu_add(menu_bar: usize, title: usize, empty_key_equivalent: usize) -> usize
 extern elisa_appkit_canvas_menu_set_windows(menu: usize) -> void
@@ -42,21 +42,21 @@ extern elisa_appkit_canvas_modifier_shift() -> usize
 extern elisa_appkit_canvas_modifier_option() -> usize
 extern elisa_appkit_canvas_modifier_control() -> usize
 extern elisa_appkit_canvas_modifier_device_independent_mask() -> usize
-extern elisa_appkit_canvas_schedule_redraw(delay: f32, run_loop_mode: usize) -> usize
+extern elisa_appkit_canvas_schedule_redraw(delay: f32, run_loop_mode: usize, window_handle: usize) -> usize
 extern elisa_appkit_canvas_cancel_redraw(handle: usize) -> void
-extern elisa_appkit_canvas_present() -> i32
+extern elisa_appkit_canvas_present(window_handle: usize) -> i32
 extern elisa_appkit_canvas_activate() -> void
-extern elisa_appkit_canvas_center() -> void
-extern elisa_appkit_canvas_present_headless(color_space: usize, image_type: i32, snapshot: usize, pixels_width: i32, pixels_height: i32, bits_per_sample: i32, samples_per_pixel: i32, has_alpha: i32, bitmap_format: i32) -> i32
+extern elisa_appkit_canvas_center(window_handle: usize) -> void
+extern elisa_appkit_canvas_present_headless(window_handle: usize, color_space: usize, image_type: i32, snapshot: usize, pixels_width: i32, pixels_height: i32, bits_per_sample: i32, samples_per_pixel: i32, has_alpha: i32, bitmap_format: i32) -> i32
 extern elisa_appkit_canvas_run() -> void
 extern elisa_appkit_canvas_stop() -> void
-extern elisa_appkit_canvas_set_min_size(width: f32, height: f32) -> void
-extern elisa_appkit_canvas_redraw() -> void
-extern elisa_appkit_canvas_close() -> void
-extern elisa_appkit_canvas_accessibility_reset() -> void
-extern elisa_appkit_canvas_accessibility_add(previous_handle: usize, identifier: usize, action: usize, role: usize, subrole: usize, cursor: usize, label: usize, help: usize, x: f32, y: f32, width: f32, height: f32, enabled: i32, focused: i32) -> usize
+extern elisa_appkit_canvas_set_min_size(window_handle: usize, width: f32, height: f32) -> void
+extern elisa_appkit_canvas_redraw(window_handle: usize) -> void
+extern elisa_appkit_canvas_close(window_handle: usize) -> void
+extern elisa_appkit_canvas_accessibility_reset(window_handle: usize) -> void
+extern elisa_appkit_canvas_accessibility_add(window_handle: usize, previous_handle: usize, identifier: usize, action: usize, role: usize, subrole: usize, cursor: usize, label: usize, help: usize, x: f32, y: f32, width: f32, height: f32, enabled: i32, focused: i32) -> usize
 extern elisa_appkit_canvas_accessibility_release(handle: usize) -> void
-extern elisa_appkit_canvas_accessibility_add_tooltip(handle: usize) -> void
+extern elisa_appkit_canvas_accessibility_add_tooltip(window_handle: usize, handle: usize) -> void
 extern elisa_appkit_canvas_accessibility_set_boolean(handle: usize, selected: i32) -> void
 extern elisa_appkit_canvas_accessibility_set_range(handle: usize, value: f32, minimum: f32, maximum: f32) -> void
 extern elisa_appkit_canvas_accessibility_set_text(handle: usize, text_value: usize, selected_text: usize, selection_location: usize, selection_length: usize) -> void
@@ -64,9 +64,9 @@ extern elisa_appkit_canvas_accessibility_notify(handle: usize, notification: usi
 extern elisa_appkit_canvas_arrow_cursor() -> usize
 extern elisa_appkit_canvas_pointing_hand_cursor() -> usize
 extern elisa_appkit_canvas_ibeam_cursor() -> usize
-extern elisa_appkit_canvas_accessibility_commit(handles: usize&, count: usize) -> void
+extern elisa_appkit_canvas_accessibility_commit(window_handle: usize, handles: usize&, count: usize) -> void
 extern elisa_appkit_canvas_accessibility_layout_changed_notification() -> usize
-extern elisa_appkit_canvas_accessibility_post_layout_changed(notification: usize) -> void
+extern elisa_appkit_canvas_accessibility_post_layout_changed(window_handle: usize, notification: usize) -> void
 extern elisa_appkit_canvas_clipboard_write(text: usize, pasteboard_type: usize) -> i32
 extern elisa_appkit_canvas_clipboard_read(pasteboard_type: usize) -> usize
 extern clock_gettime_nsec_np(clock_id: i32) -> u64
@@ -741,7 +741,7 @@ module UiAppKitCanvas:
             return if headless_session
             if delay <= 0.0:
                 return
-            redraw_timer <- elisa_appkit_canvas_schedule_redraw(delay, elisa_appkit_canvas_run_loop_common_modes())
+            redraw_timer <- elisa_appkit_canvas_schedule_redraw(delay, elisa_appkit_canvas_run_loop_common_modes(), canvas_window)
 
         def cancel_redraw() -> void:
             return if redraw_timer == 0
@@ -915,7 +915,7 @@ module UiAppKitCanvas:
         # Called by the exported frame callback after the app has rebuilt the
         # semantic nodes for this frame.
         def sync_accessibility() -> void can Unsafe.PointerCast:
-            elisa_appkit_canvas_accessibility_reset()
+            elisa_appkit_canvas_accessibility_reset(canvas_window)
             next_count: usize = UiCore::accessibility_count()
             previous_count: usize = accessibility_previous_count
             layout_changed: mutable bool = accessibility_force_layout or next_count != accessibility_previous_count
@@ -953,10 +953,10 @@ module UiAppKitCanvas:
                 accessibility_next_ids[index] <- node.id
                 accessibility_next[index] <- state
                 tooltip: i32 = 1 if node.help.len > 0 and interaction != 0 else 0
-                handle: usize = elisa_appkit_canvas_accessibility_add(previous_handle, native_identifier, node.action, native_role, native_subrole, native_cursor(cursor), native_label, native_help, node.frame.origin.x, node.frame.origin.y, node.frame.size.width, node.frame.size.height, enabled, focused)
+                handle: usize = elisa_appkit_canvas_accessibility_add(canvas_window, previous_handle, native_identifier, node.action, native_role, native_subrole, native_cursor(cursor), native_label, native_help, node.frame.origin.x, node.frame.origin.y, node.frame.size.width, node.frame.size.height, enabled, focused)
                 accessibility_next_handles[index] <- handle
                 if handle != 0:
-                    elisa_appkit_canvas_accessibility_add_tooltip(handle) if tooltip != 0
+                    elisa_appkit_canvas_accessibility_add_tooltip(canvas_window, handle) if tooltip != 0
                 if value_kind == 1 and handle != 0:
                     elisa_appkit_canvas_accessibility_set_boolean(handle, selected)
                 if value_kind == 2 and handle != 0:
@@ -990,8 +990,8 @@ module UiAppKitCanvas:
                 accessibility_previous_ids[index] <- accessibility_next_ids[index]
                 accessibility_previous_handles[index] <- accessibility_next_handles[index]
                 accessibility_previous[index] <- accessibility_next[index]
-            elisa_appkit_canvas_accessibility_commit(&accessibility_next_handles[0], accessibility_previous_count)
-            elisa_appkit_canvas_accessibility_post_layout_changed(elisa_appkit_canvas_accessibility_layout_changed_notification()) if layout_changed
+            elisa_appkit_canvas_accessibility_commit(canvas_window, &accessibility_next_handles[0], accessibility_previous_count)
+            elisa_appkit_canvas_accessibility_post_layout_changed(canvas_window, elisa_appkit_canvas_accessibility_layout_changed_notification()) if layout_changed
             accessibility_force_layout <- false
 
         struct AppKitPainter:
@@ -1077,20 +1077,20 @@ module UiAppKitCanvas:
                 return 1 if opened == 0
                 canvas_window <- opened
                 canvas_delegate <- delegate_handle
-                elisa_appkit_canvas_set_tabbing_mode(tabbing_mode(options.tabbing))
-                elisa_appkit_canvas_set_restorable(1 if options.restorable else 0)
-                elisa_appkit_canvas_center() if options.centered
+                elisa_appkit_canvas_set_tabbing_mode(canvas_window, tabbing_mode(options.tabbing))
+                elisa_appkit_canvas_set_restorable(canvas_window, 1 if options.restorable else 0)
+                elisa_appkit_canvas_center(canvas_window) if options.centered
                 install_standard_menus(pointer, title.len)
                 snapshot_path: mutable usize = 0
                 min_width: f32 = UiCore::nonnegative_extent(options.min_width)
                 min_height: f32 = UiCore::nonnegative_extent(options.min_height)
-                elisa_appkit_canvas_set_min_size(min_width, min_height)
+                elisa_appkit_canvas_set_min_size(canvas_window, min_width, min_height)
                 UiCore::set_viewport(width, height)
                 reset_accessibility_history()
                 reset_frame_state()
                 app_init()
                 canvas_initialized <- true
-                elisa_appkit_canvas_focus() if options.focus
+                elisa_appkit_canvas_focus(canvas_window) if options.focus
                 if headless:
                     snapshot_opt: cstr? = getenv("ELISA_UI_SNAPSHOT")
                     if snapshot_opt is snapshot:
@@ -1101,17 +1101,17 @@ module UiAppKitCanvas:
                             return 2
                     bitmap_width: i32 = bitmap_extent(width)
                     bitmap_height: i32 = bitmap_extent(height)
-                    result: i32 = elisa_appkit_canvas_present_headless(elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(), elisa_appkit_canvas_bitmap_file_type_png(), snapshot_path, bitmap_width, bitmap_height, SNAPSHOT_BITS_PER_SAMPLE, SNAPSHOT_SAMPLES_PER_PIXEL, SNAPSHOT_HAS_ALPHA, SNAPSHOT_BITMAP_FORMAT)
+                    result: i32 = elisa_appkit_canvas_present_headless(canvas_window, elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(), elisa_appkit_canvas_bitmap_file_type_png(), snapshot_path, bitmap_width, bitmap_height, SNAPSHOT_BITS_PER_SAMPLE, SNAPSHOT_SAMPLES_PER_PIXEL, SNAPSHOT_HAS_ALPHA, SNAPSHOT_BITMAP_FORMAT)
                     CFRelease(snapshot_path) if snapshot_path != 0
                     if result == 0 or not frame_was_rendered():
                         release_canvas()
                         return 2
                     release_canvas()
                     return 0
-                if elisa_appkit_canvas_present() == 0:
+                if elisa_appkit_canvas_present(canvas_window) == 0:
                     release_canvas()
                     return 2
-                elisa_appkit_canvas_redraw()
+                elisa_appkit_canvas_redraw(canvas_window)
                 elisa_appkit_canvas_activate() if options.activate
                 elisa_appkit_canvas_run()
                 release_canvas()
@@ -1132,7 +1132,17 @@ module UiAppKitCanvas:
 
         def close() -> void can[Ui.Window]:
             cancel_redraw()
-            elisa_appkit_canvas_close()
+            elisa_appkit_canvas_close(canvas_window)
+
+        # Redraw requests originate from native callbacks and the flat adapter,
+        # but the live root identity belongs to Elisa. Keep the handle threaded
+        # through this single framework-owned entry point.
+        def window_handle() -> usize:
+            return canvas_window
+
+        def redraw() -> void:
+            return if canvas_window == 0
+            elisa_appkit_canvas_redraw(canvas_window)
 
         # Stopping the Cocoa run loop is a native primitive; deciding when a
         # window close should cancel retained interaction and invoke it belongs
@@ -1158,7 +1168,7 @@ def appkit_canvas_resize_callback(width: f32, height: f32) -> void:
     return if not UiAppKitCanvas::canvas_initialized
     UiCore::set_viewport(width, height)
     app_event(UiCore::Event.Resize(size: UiCore::Size(width, height)))
-    elisa_appkit_canvas_redraw()
+    UiAppKitCanvas::redraw()
 
 def appkit_canvas_pointer_callback(kind: i32, x: f32, y: f32, dx: f32, dy: f32, button: i32) -> void:
     at: UiCore::Vec2 = UiCore::Vec2(x, y)
@@ -1168,7 +1178,7 @@ def appkit_canvas_pointer_callback(kind: i32, x: f32, y: f32, dx: f32, dy: f32, 
     event <- (UiCore::PointerEvent.Leave) if kind == 3
     event <- (UiCore::PointerEvent.Scroll(at: at, delta: UiCore::Vec2(dx, dy))) if kind == 4
     app_event(event)
-    elisa_appkit_canvas_redraw()
+    UiAppKitCanvas::redraw()
 
 def appkit_canvas_pointer_move_callback(x: f32, y: f32) -> void:
     appkit_canvas_pointer_callback(0, x, y, 0.0, 0.0, 0)
@@ -1194,7 +1204,7 @@ def appkit_canvas_key_callback(down: i32, code: i32) -> void:
         return
     event: UiCore::Event = (UiCore::KeyEvent.Down(code: UiCore::Key(code))) if down != 0 else (UiCore::KeyEvent.Up(code: UiCore::Key(code)))
     app_event(event)
-    elisa_appkit_canvas_redraw()
+    UiAppKitCanvas::redraw()
 
 def appkit_canvas_raw_key_callback(down: i32, key_code: i32, character: i32) -> void:
     code: i32 = UiAppKitCanvas::key_from_appkit(key_code, character)
@@ -1216,11 +1226,11 @@ def appkit_canvas_raw_flags_callback(key_code: i32, modifiers: usize) -> void:
 def appkit_canvas_focus_changed_callback(focused: i32) -> void:
     event: UiCore::Event = (UiCore::Event.FocusGained) if focused != 0 else (UiCore::Event.FocusLost)
     app_event(event)
-    elisa_appkit_canvas_redraw()
+    UiAppKitCanvas::redraw()
 
 def appkit_canvas_accessibility_environment_changed_callback() -> void:
     UiAppKitCanvas::accessibility_environment_changed()
-    elisa_appkit_canvas_redraw()
+    UiAppKitCanvas::redraw()
 
 def appkit_canvas_caret_width() -> f32:
     return UiAppKitCanvas::caret_width()

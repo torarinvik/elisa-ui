@@ -105,6 +105,10 @@ if grep -Eq 'static (__strong |__weak )?ElisaCanvasDelegate[[:space:]]*\*' "$ROO
   echo "appkit canvas: delegate ownership was hidden in Objective-C state" >&2
   exit 1
 fi
+if grep -Eq '\belisa_canvas_window\b' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: root-window lookup state was hidden in Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'static NSMutableArray[[:space:]]*\*' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: accessibility element ownership was hidden in Objective-C state" >&2
   exit 1
