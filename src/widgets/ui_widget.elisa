@@ -2150,6 +2150,9 @@ module UiFlat:
                         if code == UiCore::Key.Enter:
                             app_widget_event(field, UiConst::WidgetEvent.Submit.i32())
                             return
+                    if focused_widget < widget_count and widgets[focused_widget].kind == UiConst::WidgetKind.RadioButton:
+                        direction: i32 = -1 if code == UiCore::Key.Left or code == UiCore::Key.Up else 1 if code == UiCore::Key.Right or code == UiCore::Key.Down else 0
+                        return if radio_move(focused_widget, direction)
                     if focused_widget < widget_count and widgets[focused_widget].kind == UiConst::WidgetKind.Slider:
                         adjust_step(focused_widget, -1) if code == UiCore::Key.Left or code == UiCore::Key.Down
                         adjust_step(focused_widget, 1) if code == UiCore::Key.Right or code == UiCore::Key.Up
@@ -2217,6 +2220,42 @@ module UiFlat:
             return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider or direction == 0
             delta: f32 = widgets[index].step if direction > 0 else -widgets[index].step
             return adjust(index, delta)
+
+        # Arrow navigation in a radio group follows the same deterministic
+        # focus order as Tab. Disabled and hidden peers are skipped, and the
+        # search wraps so a group remains navigable from either end.
+        def radio_move(index: usize, direction: i32) -> bool:
+            return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.RadioButton or direction == 0
+            group: usize = widgets[index].selection_group
+            current_order: usize = widgets[index].focus_order
+            candidate: mutable usize = NONE
+            if direction > 0:
+                for scan in 0..<widget_count:
+                    eligible: bool = scan != index and widgets[scan].kind == UiConst::WidgetKind.RadioButton and widgets[scan].selection_group == group and effectively_enabled(scan) and effectively_visible(scan)
+                    follows: bool = widgets[scan].focus_order > current_order or (widgets[scan].focus_order == current_order and scan > index)
+                    if eligible and follows:
+                        candidate <- scan if candidate == NONE or widgets[scan].focus_order < widgets[candidate].focus_order or (widgets[scan].focus_order == widgets[candidate].focus_order and scan < candidate) else candidate
+                if candidate == NONE:
+                    for scan in 0..<widget_count:
+                        eligible: bool = scan != index and widgets[scan].kind == UiConst::WidgetKind.RadioButton and widgets[scan].selection_group == group and effectively_enabled(scan) and effectively_visible(scan)
+                        if eligible:
+                            candidate <- scan if candidate == NONE or widgets[scan].focus_order < widgets[candidate].focus_order or (widgets[scan].focus_order == widgets[candidate].focus_order and scan < candidate) else candidate
+            else:
+                for scan in 0..<widget_count:
+                    eligible: bool = scan != index and widgets[scan].kind == UiConst::WidgetKind.RadioButton and widgets[scan].selection_group == group and effectively_enabled(scan) and effectively_visible(scan)
+                    precedes: bool = widgets[scan].focus_order < current_order or (widgets[scan].focus_order == current_order and scan < index)
+                    if eligible and precedes:
+                        candidate <- scan if candidate == NONE or widgets[scan].focus_order > widgets[candidate].focus_order or (widgets[scan].focus_order == widgets[candidate].focus_order and scan > candidate) else candidate
+                if candidate == NONE:
+                    for scan in 0..<widget_count:
+                        eligible: bool = scan != index and widgets[scan].kind == UiConst::WidgetKind.RadioButton and widgets[scan].selection_group == group and effectively_enabled(scan) and effectively_visible(scan)
+                        if eligible:
+                            candidate <- scan if candidate == NONE or widgets[scan].focus_order > widgets[candidate].focus_order or (widgets[scan].focus_order == widgets[candidate].focus_order and scan > candidate) else candidate
+            return false if candidate == NONE
+            set_selected(candidate, true)
+            focus(candidate)
+            app_widget_event(candidate, UiConst::WidgetEvent.Change.i32())
+            return true
 
         # Keyboard scrolling follows focus into the nearest scroll ancestor,
         # so a focused child remains usable even when its viewport is clipped.
