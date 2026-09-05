@@ -1,0 +1,86 @@
+# Shared text-input purpose and privacy policy.
+#
+# Backends provide native text controls/IME bridges; this module decides the
+# traits they should request from those bridges. Secure fields never opt into
+# autocorrect, suggestions, clipboard export, or semantic value readback.
+
+module UiTextInput:
+    public:
+        const enum Purpose of i32:
+            Text = 0
+            Password = 1
+            Email = 2
+            Url = 3
+            Number = 4
+            Search = 5
+
+        const enum Keyboard of i32:
+            Default = 0
+            Email = 1
+            Url = 2
+            Number = 3
+            Decimal = 4
+
+        struct Options:
+            purpose: Purpose
+            multiline: bool
+            autocorrect: bool
+            suggestions: bool
+
+        struct Traits:
+            purpose: Purpose
+            keyboard: Keyboard
+            secure: bool
+            multiline: bool
+            autocorrect: bool
+            suggestions: bool
+            clipboard_allowed: bool
+            semantic_value_allowed: bool
+
+        def defaults(purpose: Purpose) -> Options:
+            secure: bool = purpose == Purpose.Password
+            return Options{
+                purpose: purpose,
+                multiline: purpose == Purpose.Text,
+                autocorrect: not secure and (purpose == Purpose.Text or purpose == Purpose.Search),
+                suggestions: not secure and purpose != Purpose.Number,
+            }
+
+        def resolve(options: Options) -> Traits:
+            secure: bool = options.purpose == Purpose.Password
+            multiline: bool = options.multiline and not secure and options.purpose != Purpose.Number
+            autocorrect: bool = options.autocorrect and not secure and (options.purpose == Purpose.Text or options.purpose == Purpose.Search)
+            suggestions: bool = options.suggestions and not secure and options.purpose != Purpose.Number
+            keyboard: Keyboard = keyboard_for(options.purpose)
+            return Traits{
+                purpose: options.purpose, keyboard: keyboard, secure: secure,
+                multiline: multiline, autocorrect: autocorrect,
+                suggestions: suggestions, clipboard_allowed: not secure,
+                semantic_value_allowed: not secure,
+            }
+
+        def keyboard_for(purpose: Purpose) -> Keyboard:
+            return Keyboard.Email if purpose == Purpose.Email
+            return Keyboard.Url if purpose == Purpose.Url
+            return Keyboard.Number if purpose == Purpose.Number
+            return Keyboard.Default
+
+        # `code` is a Unicode scalar supplied by the platform text bridge. This
+        # conservative gate handles the common numeric controls without trying
+        # to replace locale-specific decimal formatting or IME composition.
+        def allows_scalar(traits: Traits, code: i32) -> bool:
+            return false if code < 0
+            if code == 10 or code == 13:
+                return traits.multiline
+            return true if traits.purpose != Purpose.Number and code >= 32
+            return true if code >= 48 and code <= 57
+            return code == 43 or code == 45 or code == 46 or code == 44
+
+        def is_secure(traits: Traits) -> bool:
+            return traits.secure
+
+        def allows_clipboard(traits: Traits) -> bool:
+            return traits.clipboard_allowed
+
+        def allows_semantic_value(traits: Traits) -> bool:
+            return traits.semantic_value_allowed

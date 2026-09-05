@@ -95,6 +95,9 @@ because a module member's symbol carries its module and those names cannot move.
 - **Text layout** ([src/widgets/ui_text_layout.elisa](src/widgets/ui_text_layout.elisa)) —
   bounded UTF-8-safe line ranges, newline and whitespace breaks, and
   deterministic long-word fallback independent of the renderer's shaping API.
+- **Text input policy** ([src/widgets/ui_text_input.elisa](src/widgets/ui_text_input.elisa)) —
+  purpose-driven keyboard/multiline traits with secure-field hardening and
+  explicit clipboard and semantic-value privacy.
 - **Stable dynamic identity** ([src/widgets/ui_identity.elisa](src/widgets/ui_identity.elisa)) —
   explicit begin/claim/finish transactions preserve keyed generations across
   list and form rebuilds, reject duplicate keys, and invalidate retired items

@@ -1,0 +1,40 @@
+# Headless checks for shared text-input traits and privacy policy.
+
+include "../src/widgets/ui_text_input.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    plain: UiTextInput::Traits = UiTextInput::resolve(UiTextInput::defaults(UiTextInput::Purpose.Text))
+    check("plain text uses default keyboard", plain.keyboard == UiTextInput::Keyboard.Default and plain.multiline and plain.autocorrect and plain.suggestions)
+    check("plain text keeps clipboard and semantic value", UiTextInput::allows_clipboard(plain) and UiTextInput::allows_semantic_value(plain))
+    check("plain text accepts newline", UiTextInput::allows_scalar(plain, 10))
+
+    password: UiTextInput::Traits = UiTextInput::resolve(UiTextInput::defaults(UiTextInput::Purpose.Password))
+    check("password is secure", UiTextInput::is_secure(password) and not password.multiline)
+    check("password disables assistive leakage", not password.autocorrect and not password.suggestions and not UiTextInput::allows_clipboard(password) and not UiTextInput::allows_semantic_value(password))
+    check("password uses default keyboard", password.keyboard == UiTextInput::Keyboard.Default)
+
+    email: UiTextInput::Traits = UiTextInput::resolve(UiTextInput::defaults(UiTextInput::Purpose.Email))
+    url: UiTextInput::Traits = UiTextInput::resolve(UiTextInput::defaults(UiTextInput::Purpose.Url))
+    number: UiTextInput::Traits = UiTextInput::resolve(UiTextInput::defaults(UiTextInput::Purpose.Number))
+    check("email selects email keyboard", email.keyboard == UiTextInput::Keyboard.Email and not email.multiline)
+    check("url selects URL keyboard", url.keyboard == UiTextInput::Keyboard.Url)
+    check("number selects numeric keyboard", number.keyboard == UiTextInput::Keyboard.Number and not number.multiline and not UiTextInput::allows_scalar(number, 65))
+    check("number accepts decimal sign characters", UiTextInput::allows_scalar(number, 48) and UiTextInput::allows_scalar(number, 46) and UiTextInput::allows_scalar(number, 45))
+
+    custom: UiTextInput::Options = UiTextInput::Options{purpose: UiTextInput::Purpose.Password, multiline: true, autocorrect: true, suggestions: true}
+    hardened: UiTextInput::Traits = UiTextInput::resolve(custom)
+    check("custom password options are hardened", hardened.secure and not hardened.multiline and not hardened.autocorrect and not hardened.suggestions)
+
+    if failures == 0:
+        _ = puts("text input: all checks passed")
+        return 0
+    _ = puts("text input: FAILURES above")
+    return 1
