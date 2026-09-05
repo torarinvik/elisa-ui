@@ -29,6 +29,18 @@ def main() -> i64:
     check("consume entry handles back", UiNavigation::request_back() == UiNavigation::BackDecision.Consumed and UiNavigation::is_valid(consumed))
     check("owner dismissal releases entries", UiNavigation::dismiss_owner(30) == 1 and UiNavigation::snapshot().entries == 0)
 
+    lower: UiNavigation::Handle = UiNavigation::push(50, UiNavigation::BackPolicy.Allow, false)
+    upper: UiNavigation::Handle = UiNavigation::push(51, UiNavigation::BackPolicy.Allow, false)
+    check("commit cannot skip the top entry", not UiNavigation::commit(lower) and UiNavigation::is_valid(lower) and UiNavigation::is_valid(upper))
+    check("top entry still commits", UiNavigation::commit(upper) and UiNavigation::commit(lower))
+
+    pending: UiNavigation::Handle = UiNavigation::push(60, UiNavigation::BackPolicy.Confirm, true)
+    check("confirmation is pending before a newer entry", UiNavigation::request_back() == UiNavigation::BackDecision.Confirm)
+    newer: UiNavigation::Handle = UiNavigation::push(61, UiNavigation::BackPolicy.Allow, false)
+    check("confirmation cannot pop beneath a newer entry", UiNavigation::resolve_confirmation(true) == UiNavigation::BackDecision.Consumed and UiNavigation::is_valid(pending) and UiNavigation::is_valid(newer))
+    _ = UiNavigation::commit(newer)
+    _ = UiNavigation::commit(pending)
+
     stale: UiNavigation::Handle = UiNavigation::push(40, UiNavigation::BackPolicy.Allow, false)
     check("dirty mutation is explicit", UiNavigation::set_dirty(stale, true) and UiNavigation::is_dirty(stale) and not UiNavigation::set_dirty(stale, true))
     check("stale commit is rejected", UiNavigation::commit(UiNavigation::Handle{slot: stale.slot, generation: stale.generation + 1}) == false and UiNavigation::is_valid(stale))

@@ -15,6 +15,11 @@ confirmation UI succeeds, or `resolve_confirmation(false)` to leave the view
 and its edits intact. This keeps OS navigation available instead of trapping it
 inside a native shim.
 
+The stack is strict: only the current top entry can be committed. If a newer
+entry appears while a confirmation is pending, accepting the older prompt is
+consumed without removing the newer view; the application can request back
+again for the new top entry.
+
 Entries and confirmation state use generation-checked handles. `dismiss_owner`
 releases every entry belonging to a disposed view/task and invalidates its
 handles, so a late callback cannot pop a recycled surface. Capacity exhaustion

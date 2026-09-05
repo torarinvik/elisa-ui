@@ -129,6 +129,8 @@ module UiNavigation:
         def commit(handle: Handle) -> bool:
             return false if not is_valid(handle)
             return false if pending_slot != NONE_SLOT and pending_slot != handle.slot.usize()
+            current: Handle = top()
+            return false if not is_valid(current) or current.slot != handle.slot or current.generation != handle.generation
             clear_slot(handle.slot.usize())
             return true
 
@@ -141,7 +143,8 @@ module UiNavigation:
             return BackDecision.Consumed if not accept
             return BackDecision.Unhandled if not occupied[slot]
             handle: Handle = Handle{slot: slot.u32(), generation: generations[slot]}
-            _ = commit(handle)
+            return BackDecision.Consumed if top().slot != handle.slot or top().generation != handle.generation
+            return BackDecision.Consumed if not commit(handle)
             return BackDecision.Navigate
 
         def cancel_confirmation() -> bool:
