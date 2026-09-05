@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `611f384` on branch `work` |
+| elisa-ui revision | `6ad8ebc` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `1a44c1d1`; SHA-256 `a9573ad3779ae57f9daf68f79c53761c5ec54d0045a11c1387071ba0562678bc` |
@@ -191,8 +191,9 @@ separate host-enforced security boundary.
   retry and generation-safe disposal, including owner-scoped teardown helpers
   and idempotent visibility/prefetch demand priorities. Host/SDK layers still
   own verified bytes, transport, cache and decode/upload authority; resource
-  transitions raise the shared resource/paint invalidation reasons and are
-  covered by `test/resource_state_test.elisa`.
+  transitions raise the shared resource/paint invalidation reasons, and its
+  aggregate snapshot reports bounded loading/ready/failure counts. Coverage
+  lives in `test/resource_state_test.elisa`.
 - `UiResourcePresentation` maps those lifecycle states to explicit
   placeholder/loading/ready/fallback records, reserved geometry, independent
   progress visibility and retry affordances. Kind-specific defaults and all
