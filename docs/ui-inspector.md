@@ -11,7 +11,8 @@ snapshot: UiInspector::Frame = UiInspector::frame()
 node: UiInspector::Node? = UiInspector::inspect(save)
 ```
 
-`Frame` reports the viewport, deferred layout state, frame clock/deadline,
+`Frame` reports the viewport, shared lifecycle phase/generation and its input
+and rendering predicates, deferred layout state, frame clock/deadline,
 command/semantic buffer counts and overflow flags, and the five typed
 invalidation reasons (`Layout`, `Paint`, `Semantics`, `Resources`, and
 `Animation`). `Node` reports a typed
