@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `1df109f` on branch `work` |
+| elisa-ui revision | `43f293a` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `1a44c1d1`; SHA-256 `a9573ad3779ae57f9daf68f79c53761c5ec54d0045a11c1387071ba0562678bc` |
@@ -25,7 +25,7 @@ profile, Elisa language, and elisa-ui framework explicitly.
 ## Source and boundary inventory
 
 Public framework modules are `UiCore`, `UiPaint`, `UiRaster`, `UiConst`,
-`UiWidgets`, `UiFlat`, `UiHandles`, `UiControls`, `UiCapi`, `UiAppKit`,
+`UiWidgets`, `UiFlat`, `UiHandles`, `UiResources`, `UiControls`, `UiCapi`, `UiAppKit`,
 `UiAppKitNative`, `UiAppKitCanvas`, `UiSdl3`, `UiSdl3Draw`, and
 `UiWasmBrowser`, and `UiInspector`. The application contract is
 the top-level `app_init`, `app_event`, `app_text_input`, `app_text_editing`,
@@ -160,6 +160,11 @@ separate host-enforced security boundary.
 - `UiFlat` carries the closed `UiConst::WidgetEvent` enum through all control,
   editing, keyboard, and accessibility paths; one private Elisa helper performs
   the final ordinal conversion required by the legacy `app_widget_event` ABI.
+- `UiResources` owns bounded logical-resource identity, progress, cancellation,
+  retry and generation-safe disposal. Host/SDK layers still own verified bytes,
+  transport, cache and decode/upload authority; resource transitions raise the
+  shared resource/paint invalidation reasons and are covered by
+  `test/resource_state_test.elisa`.
 - `UiInspector` is a read-only, allocation-free diagnostic projection of the
   retained tree and semantic buffer. It reports deferred layout/frame-buffer
   state and typed relationships while redacting secure text; coverage lives in
