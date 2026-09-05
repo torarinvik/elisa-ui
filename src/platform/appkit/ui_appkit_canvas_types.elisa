@@ -183,6 +183,12 @@ module UiAppKitCanvas:
             return CFStringCreateWithBytes(0, pointer, safe_text.len, UTF8_ENCODING, false)
 
         def native_string_bytes(bytes: u8&, length: usize) -> usize can Unsafe.PointerCast:
+            # This helper receives a raw byte pointer from a platform adapter.
+            # Unlike `native_string`, it cannot inspect a signed view or safely
+            # discover the allocation extent, so reject lengths outside the
+            # framework text budget instead of letting CoreFoundation walk an
+            # untrusted range.
+            return 0 if length > UiCore::MAX_TEXT_BYTES
             pointer: cstr = (&bytes).cast[cstr] can Unsafe.PointerCast
             return CFStringCreateWithBytes(0, pointer, length.i64(), UTF8_ENCODING, false)
 
