@@ -3,24 +3,31 @@ extend UiWidgets:
         global mutable hot_widget: Widget? = null
         global mutable active_widget: Widget? = null
 
-        # Find the innermost viewport under a pointer. A child is searched
-        # first so nested scroll areas consume the wheel before an ancestor.
-        def scroll_target(w: Widget, x: f32, y: f32, depth: i32) -> Widget?:
+        # Find the innermost viewport under a pointer that can consume this
+        # wheel delta. A child is searched first so nested scroll areas consume
+        # the wheel before an ancestor; an edge-clamped child is skipped so the
+        # remaining delta can bubble to the next viewport.
+        def scroll_target(w: Widget, x: f32, y: f32, dx: f32, dy: f32, depth: i32) -> Widget?:
             return null if depth >= MAX_HIERARCHY_DEPTH
             return null if not contains(w, x, y)
             scroll_steps: mutable i32 = 0
             cursor: mutable Widget? = w.first_child
-            while cursor is node |cursor, x, y, scroll_steps|:
+            while cursor is node |cursor, x, y, dx, dy, scroll_steps|:
                 break if scroll_steps >= MAX_HIERARCHY_SIBLINGS
                 scroll_steps <- scroll_steps + 1
-                found: Widget? = scroll_target(node, x, y, depth + 1)
+                found: Widget? = scroll_target(node, x, y, dx, dy, depth + 1)
                 return found if found != null
                 cursor <- node.next_sibling
             match w:
                 Container.Scroll(axis, offset, fill):
-                    return w
+                    return null
                 Container.ScrollWithState(axis, state, fill):
-                    return w
+                    amount: f32 = dx if axis_of(w) == UiConst::Axis.Row else dy
+                    current: f32 = scroll_offset_of(w)
+                    limit: f32 = scroll_limit(w)
+                    can_move: bool = limit > 0.0 and ((amount > 0.0 and current > 0.0) or (amount < 0.0 and current < limit))
+                    return w if can_move
+                    return null
                 _:
                     return null
 
@@ -28,7 +35,7 @@ extend UiWidgets:
         # deltas follow AppKit/SDL convention (negative means content moves
         # down), hence subtracting the delta from the logical offset.
         def scroll_pointer(root: Widget, at: UiCore::Vec2, delta: UiCore::Vec2) -> void:
-            target: Widget? = scroll_target(root, at.x, at.y, 0)
+            target: Widget? = scroll_target(root, at.x, at.y, delta.x, delta.y, 0)
             return if target == null
             if target is viewport:
                 axis: UiConst::Axis = axis_of(viewport)
