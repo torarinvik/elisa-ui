@@ -95,6 +95,8 @@ struct NativeRange:
 extern CFStringCreateWithBytes(allocator: usize, bytes: cstr, length: i64, encoding: u32, external: bool) -> usize
 extern CFArrayCreate(allocator: usize, values: usize&, count: i64, callbacks: usize) -> usize
 extern CFNumberCreate(allocator: usize, number_type: i32, value: usize&) -> usize
+extern CFNumberGetTypeID() -> usize
+extern CFNumberGetValue(number: usize, number_type: i32, value: usize&) -> bool
 extern CFDictionaryCreate(allocator: usize, keys: usize&, values: usize&, count: i64, key_callbacks: usize, value_callbacks: usize) -> usize
 extern CFAttributedStringCreate(allocator: usize, text: usize, attributes: usize) -> usize
 extern CFStringGetLength(value: usize) -> i64
@@ -104,6 +106,7 @@ extern CTLineCreateWithAttributedString(text: usize) -> usize
 extern CTLineGetTypographicBounds(line: usize, ascent: mutable f64&, descent: mutable f64&, leading: mutable f64&) -> f64
 extern CTLineDraw(line: usize, context: usize) -> void
 extern CFRelease(value: usize) -> void
+extern CFRetain(value: usize) -> usize
 extern sel_registerName(name: cstr) -> usize
 extern sel_getName(selector: usize) -> cstr
 # Keep per-frame temporary Objective-C objects bounded even for headless
@@ -384,6 +387,21 @@ module UiAppKitCanvas:
         def native_float_value(value: f32) -> usize can Unsafe.PointerCast:
             value_pointer: usize& = (&value).cast[usize&] can Unsafe.PointerCast
             return CFNumberCreate(0, CF_NUMBER_FLOAT32_TYPE, value_pointer)
+
+        # Accessibility edits arrive as borrowed Cocoa objects. Keep their
+        # type classification and scalar extraction in Elisa so the protocol
+        # adapter only mirrors a retained result into NSAccessibility.
+        def native_accessibility_value_kind(value: usize) -> i32:
+            return 0 if value == 0
+            type_id: usize = CFGetTypeID(value)
+            return 1 if type_id == CFStringGetTypeID()
+            return 2 if type_id == CFNumberGetTypeID()
+            return 0
+
+        def native_number_value(value: usize, result: mutable f32&) -> bool can Unsafe.PointerCast:
+            return false if native_accessibility_value_kind(value) != 2
+            result_pointer: usize& = (&result).cast[usize&] can Unsafe.PointerCast
+            return CFNumberGetValue(value, CF_NUMBER_FLOAT32_TYPE, result_pointer)
 
         # NSTextInputClient expects key interpretation as a one-event NSArray.
         # Build the toll-free-bridged collection through CoreFoundation so the

@@ -27,6 +27,7 @@ static int test_invalid_attributed_substring;
 static int test_invalid_attributed_substring_released;
 static size_t test_accessibility_handles[3];
 static size_t test_window_handle;
+static size_t test_native_text_bytes(size_t native, char *buffer, size_t capacity);
 
 @interface ElisaInvalidAttributedSubstring : NSObject
 @end
@@ -177,10 +178,22 @@ int elisa_appkit_canvas_accessibility_adjust(size_t handle, int direction) {
     test_slider_value += direction > 0 ? 0.05f : -0.05f;
     return 1;
 }
-size_t elisa_appkit_canvas_accessibility_set_numeric_value(size_t handle, float value) {
-    if (test_accessibility_index_for_handle(handle) != 7) return 0;
-    test_slider_value = value < 0.0f ? 0.0f : (value > 1.0f ? 1.0f : value);
-    return (size_t)(void *)CFNumberCreate(NULL, kCFNumberFloat32Type, &test_slider_value);
+size_t elisa_appkit_canvas_accessibility_set_value(size_t handle, size_t value) {
+    id object = value == 0 ? nil : (__bridge id)(void *)value;
+    if (test_accessibility_index_for_handle(handle) == 7 &&
+        [object isKindOfClass:[NSNumber class]]) {
+        float scalar = [(NSNumber *)object floatValue];
+        test_slider_value = scalar < 0.0f ? 0.0f : (scalar > 1.0f ? 1.0f : scalar);
+        return (size_t)(void *)CFNumberCreate(NULL, kCFNumberFloat32Type, &test_slider_value);
+    }
+    if (test_accessibility_index_for_handle(handle) == 8 &&
+        [object isKindOfClass:[NSString class]] && test_allow_text_mutation) {
+        size_t take = test_native_text_bytes(value, test_text, sizeof(test_text) - 1);
+        test_text[take] = '\0';
+        test_selection_start = test_selection_end = take;
+        return (size_t)CFRetain((CFTypeRef)object);
+    }
+    return 0;
 }
 void elisa_appkit_canvas_window_closed(void) {}
 void elisa_appkit_canvas_rebuild_cursor_rects(void) {}
@@ -282,13 +295,6 @@ static size_t test_native_text_bytes(size_t native, char *buffer, size_t capacit
     size_t take = MIN((size_t)utf8.length, capacity);
     if (take > 0) memcpy(buffer, utf8.bytes, take);
     return take;
-}
-int elisa_appkit_canvas_set_text(size_t handle, size_t native) {
-    if (test_accessibility_index_for_handle(handle) != 8 || !test_allow_text_mutation) return 0;
-    size_t take = test_native_text_bytes(native, test_text, sizeof(test_text) - 1);
-    test_text[take] = '\0';
-    test_selection_start = test_selection_end = take;
-    return 1;
 }
 static NSUInteger test_utf16_from_byte(size_t byteOffset) {
     NSString *prefix = [[NSString alloc] initWithBytes:test_text length:MIN(byteOffset, strlen(test_text)) encoding:NSUTF8StringEncoding];

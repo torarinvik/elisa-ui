@@ -26,7 +26,7 @@ extern void elisa_appkit_canvas_key_up(int keyCode, size_t character);
 extern int elisa_appkit_canvas_accessibility_activate(size_t handle);
 extern int elisa_appkit_canvas_accessibility_adjust(size_t handle, int direction);
 extern size_t elisa_appkit_canvas_accessibility_tooltip_text(size_t handle);
-extern size_t elisa_appkit_canvas_accessibility_set_numeric_value(size_t handle, float value);
+extern size_t elisa_appkit_canvas_accessibility_set_value(size_t handle, size_t value);
 extern int elisa_appkit_canvas_pointer_button_primary(void);
 extern int elisa_appkit_canvas_pointer_button_secondary(void);
 extern int elisa_appkit_canvas_accessibility_increment_direction(void);
@@ -34,7 +34,6 @@ extern int elisa_appkit_canvas_accessibility_decrement_direction(void);
 extern const size_t elisa_appkit_canvas_not_found;
 extern int elisa_appkit_canvas_has_marked_text(void);
 extern size_t elisa_appkit_canvas_pointer_leave_event(void);
-extern int elisa_appkit_canvas_set_text(size_t handle, size_t text);
 extern size_t elisa_appkit_canvas_selection_location(void);
 extern size_t elisa_appkit_canvas_selection_length(void);
 extern int elisa_appkit_canvas_set_selected_range(size_t handle, size_t location, size_t length);
@@ -100,25 +99,21 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
         elisa_appkit_canvas_accessibility_decrement_direction()) != 0;
 }
 - (void)setAccessibilityValue:(id)value {
-    // Native role/value synchronization still flows through the superclass.
-    // Ask Elisa first for writable text and numeric sliders. For a slider,
-    // Elisa returns a retained NSNumber containing the normalized value it
-    // accepted; rejected edits cannot leave a transient native value that
-    // disagrees with the custom painter.
-    if (![value isKindOfClass:[NSString class]]) {
-        if ([value isKindOfClass:[NSNumber class]]) {
-            size_t native = elisa_appkit_canvas_accessibility_set_numeric_value(
-                (size_t)(__bridge void *)self, [(NSNumber *)value floatValue]);
-            NSNumber *normalizedValue = elisa_appkit_canvas_number(native);
-            if (normalizedValue != nil) [super setAccessibilityValue:normalizedValue];
-            if (native != 0) CFRelease((CFTypeRef)(void *)native);
-        }
-        return;
+    // Elisa classifies the borrowed value, applies the widget policy and
+    // returns a retained string or normalized number only when it accepted the
+    // edit. The native adapter validates that returned object, mirrors it into
+    // the superclass, then releases the one retained result.
+    size_t native = elisa_appkit_canvas_accessibility_set_value(
+        (size_t)(__bridge void *)self, (size_t)(__bridge void *)value);
+    if (native == 0) return;
+    NSString *stringValue = elisa_appkit_canvas_string(native);
+    NSNumber *numberValue = stringValue == nil ? elisa_appkit_canvas_number(native) : nil;
+    if (stringValue != nil) {
+        [super setAccessibilityValue:stringValue];
+    } else if (numberValue != nil) {
+        [super setAccessibilityValue:numberValue];
     }
-    if (elisa_appkit_canvas_set_text((size_t)(__bridge void *)self,
-                                     (size_t)(__bridge void *)value) != 0) {
-        [super setAccessibilityValue:value];
-    }
+    CFRelease((CFTypeRef)(void *)native);
 }
 - (void)setAccessibilitySelectedTextRange:(NSRange)value {
     if (elisa_appkit_canvas_set_selected_range((size_t)(__bridge void *)self,
