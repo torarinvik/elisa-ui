@@ -70,7 +70,9 @@ The complete working version is
   focused scroll ancestor and use the same clamped Elisa-owned offset.
 - `label` measures and paints static text.
 - `button`, `radio_button` and `check_box` support hover, press, disabled,
-  selected and keyboard-focus states.
+  selected and keyboard-focus states. Focused radio buttons move through their
+  group with the arrow keys, wrapping in focus order while skipping disabled
+  or hidden peers.
 - `slider` stores a normalized `0.0...1.0` value and supports pointer capture,
   arrow keys and accessibility increment/decrement.
 - `progress_bar` presents a normalized, noninteractive value.
