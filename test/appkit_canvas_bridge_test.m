@@ -408,7 +408,8 @@ size_t elisa_appkit_canvas_attributed_substring(size_t location, size_t length,
     NSUInteger safeLocation = test_range_location(location);
     NSUInteger safeLength = test_range_length(location, length);
     NSString *substring = [value substringWithRange:NSMakeRange(safeLocation, safeLength)];
-    return (size_t)CFBridgingRetain(substring);
+    NSAttributedString *attributed = [[NSAttributedString alloc] initWithString:substring];
+    return (size_t)CFBridgingRetain(attributed);
 }
 int elisa_appkit_canvas_first_rect(size_t location, size_t length,
                                    size_t *actualLocation, size_t *actualLength,

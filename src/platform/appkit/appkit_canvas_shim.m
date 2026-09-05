@@ -70,6 +70,7 @@ extern size_t elisa_appkit_canvas_tracking_options(void);
 @class ElisaAccessibilityElement;
 static NSString *elisa_appkit_canvas_string(size_t handle);
 static NSNumber *elisa_appkit_canvas_number(size_t handle);
+static NSAttributedString *elisa_appkit_canvas_attributed_string(size_t handle);
 
 // Cursor objects are Cocoa singletons. Return opaque, non-owning pointers so
 // Elisa can select the native object while this shim only installs it.
@@ -378,17 +379,15 @@ void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) 
                                                              &actualLocation, &actualLength);
     if (native == 0) return nil;
     if (actualRange != NULL) *actualRange = NSMakeRange(actualLocation, actualLength);
-    NSString *text = elisa_appkit_canvas_string(native);
-    if (text == nil) {
-        // The Elisa callback transfers a +1 even when the object is not a
-        // string. Drop that ownership before failing closed; otherwise a
-        // malformed attributed-substring result leaks across the FFI boundary.
+    NSAttributedString *result = elisa_appkit_canvas_attributed_string(native);
+    if (result == nil) {
+        // The Elisa callback transfers a +1 even when the object is not an
+        // attributed string. Drop that ownership before failing closed;
+        // otherwise a malformed result leaks across the FFI boundary.
         CFRelease((CFTypeRef)(void *)native);
         return nil;
     }
-    NSAttributedString *result = [[NSAttributedString alloc] initWithString:text];
-    CFRelease((CFTypeRef)(void *)native);
-    return result;
+    return CFBridgingRelease((CFTypeRef)(void *)native);
 }
 - (NSUInteger)characterIndexForPoint:(NSPoint)point {
     if (self.window == nil) return elisa_appkit_canvas_not_found();
@@ -787,6 +786,12 @@ static NSNumber *elisa_appkit_canvas_number(size_t handle) {
     if (handle == 0) return nil;
     id object = (__bridge id)(void *)handle;
     return [object isKindOfClass:[NSNumber class]] ? (NSNumber *)object : nil;
+}
+
+static NSAttributedString *elisa_appkit_canvas_attributed_string(size_t handle) {
+    if (handle == 0) return nil;
+    id object = (__bridge id)(void *)handle;
+    return [object isKindOfClass:[NSAttributedString class]] ? (NSAttributedString *)object : nil;
 }
 
 size_t elisa_appkit_canvas_accessibility_add(size_t windowHandle, size_t previousHandle,

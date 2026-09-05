@@ -33,6 +33,10 @@ if grep -Eq '@\(' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: number construction leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq '\[\[NSAttributedString alloc\]|initWithString:' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: attributed-substring construction leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq '\bNSMutableArray\b|arrayWithCapacity:' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: accessibility child-list construction leaked back into Objective-C" >&2
   exit 1

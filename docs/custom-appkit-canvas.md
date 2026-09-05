@@ -210,6 +210,9 @@ validates them, executes the edit and requests redraws. The shim
 exposes two byte-oriented pasteboard primitives; it never reads, deletes or replaces a
 widget's selection itself. Elisa also decides when those mutations invalidate
 the canvas; the native side only exposes the `setNeedsDisplay` primitive.
+Attributed substrings are wrapped as retained `CFAttributedString` objects by
+Elisa through CoreFoundation FFI; Objective-C validates and transfers the
+object to the text-input protocol without allocating a second wrapper.
 Key-release ownership follows the same rule: Cocoa forwards its hardware facts,
 and Elisa decides whether the text-input system consumes them. The protocol's
 empty `validAttributesForMarkedText` collection is created by Elisa through
