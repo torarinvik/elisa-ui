@@ -147,6 +147,7 @@ The scripts use the synchronized `../wasm-sdk-compiler` checkout by default
 scripts/build_native.sh   # -> build/hello_native (needs brew's sdl3 and sdl3_ttf)
 scripts/build_appkit_canvas.sh # -> build/hello_appkit_canvas.app (macOS)
 scripts/build_wapp.sh     # -> build/hello.wapp (+ build/hello.wasm)
+scripts/check_wapp.sh      # inspect an existing package without recompiling
 scripts/run_tests.sh      # builds and runs test/*_test.elisa
 ```
 

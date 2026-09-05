@@ -153,9 +153,12 @@ separate host-enforced security boundary.
   retained tree and semantic buffer. It reports deferred layout/frame-buffer
   state and typed relationships while redacting secure text; coverage lives in
   `test/widget_inspector_test.elisa`.
-- The next concrete work item is a compiler-independent hosted build fixture.
-  The public `UiHandles` builder now covers all flat constructors, typed state
-  setters/queries, event forwarding, hit testing, accessibility actions, and
-  text editing with stale-handle guards. Android/iOS and remote work remain
-  blocked on sibling host/SDK execution fixtures rather than being simulated
-  here.
+- `scripts/check_wapp.sh` is now the compiler-independent hosted package
+  fixture: it inspects an existing `.wapp` through WasmBrowser's CLI and
+  asserts the profile, host imports, guest exports, and absence of JS/TS/ESM
+  artifacts. The public `UiHandles` builder covers all flat constructors,
+  typed state setters/queries, event forwarding, hit testing, accessibility
+  actions, and text editing with stale-handle guards. Android/iOS and remote
+  work remain blocked on sibling host/SDK execution fixtures rather than being
+  simulated here; the next UI-side integration gap is consuming generated
+  SDK bindings instead of the hosted adapter's handwritten WIT lowering.
