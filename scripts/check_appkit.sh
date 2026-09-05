@@ -17,6 +17,10 @@ if grep -Eq 'elisa_appkit_(create|set_(text|frame))\b' "$ROOT/src/platform/appki
   echo "appkit: generic control dispatch leaked back into the native boundary" >&2
   exit 1
 fi
+if grep -Eq '@autoreleasepool' "$ROOT/src/platform/appkit/appkit_shim.m"; then
+  echo "appkit: autorelease scope leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'styleMask:[[:space:]]*\(NSWindowStyleMask(Titled|Closable|Miniaturizable|Resizable|UtilityWindow)|setBezelStyle:NSBezelStyleRounded|setButtonType:NSButtonTypePushOnPushOff|setStyle:NSProgressIndicatorStyleBar' "$ROOT/src/platform/appkit/appkit_shim.m"; then
   echo "appkit: native control style policy leaked back into Objective-C" >&2
   exit 1
