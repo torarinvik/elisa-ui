@@ -763,8 +763,8 @@ static ElisaAccessibilityElement *elisa_appkit_canvas_element(size_t handle) {
 }
 
 size_t elisa_appkit_canvas_accessibility_add(size_t windowHandle, size_t previousHandle,
-                                            size_t identifierString, const void *role,
-                                            const void *subrole,
+                                            size_t identifierString, size_t role,
+                                            size_t subrole,
                                             size_t label, size_t help,
                                             float x, float y, float width, float height,
                                             int enabled, int focused) {
@@ -774,10 +774,10 @@ size_t elisa_appkit_canvas_accessibility_add(size_t windowHandle, size_t previou
     if (labelValue == nil) return 0;
     NSString *helpValue = help == 0 ? nil : elisa_appkit_canvas_string(help);
     NSString *identifierValue = identifierString == 0 ? nil : elisa_appkit_canvas_string(identifierString);
-    NSAccessibilityRole roleValue = role == NULL ? nil : (NSAccessibilityRole)elisa_appkit_canvas_string((size_t)role);
-    NSAccessibilitySubrole subroleValue = subrole == NULL ? nil : (NSAccessibilitySubrole)elisa_appkit_canvas_string((size_t)subrole);
-    if (role != NULL && roleValue == nil) return 0;
-    if (subrole != NULL && subroleValue == nil) return 0;
+    NSAccessibilityRole roleValue = role == 0 ? nil : (NSAccessibilityRole)elisa_appkit_canvas_string(role);
+    NSAccessibilitySubrole subroleValue = subrole == 0 ? nil : (NSAccessibilitySubrole)elisa_appkit_canvas_string(subrole);
+    if (role != 0 && roleValue == nil) return 0;
+    if (subrole != 0 && subroleValue == nil) return 0;
     if (help != 0 && helpValue == nil) return 0;
     if (identifierString != 0 && identifierValue == nil) return 0;
     ElisaAccessibilityElement *element = elisa_appkit_canvas_element(previousHandle);
