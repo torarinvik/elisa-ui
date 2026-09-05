@@ -46,6 +46,10 @@ void elisa_ui_on_text_editing(const char *text, size_t length, int32_t selected_
 int main(void) {
     int failures = 0;
 
+    if (elisa_ui_abi_version() != ELISA_UI_ABI_VERSION) {
+        puts("C ABI version did not match the header"); failures++;
+    }
+
     /* C host -> Elisa -> back out to the C app callback, through the hierarchy
      * both ways. A pointer-down must keep its position and its button. */
     elisa_ui_dispatch_event(ELISA_UI_EVENT_POINTER_DOWN, 12.5f, 34.25f, 0.0f, 0.0f, 2);

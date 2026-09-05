@@ -142,6 +142,9 @@ separate host-enforced security boundary.
 - The hosted backend still contains handwritten WIT/canonical ABI declarations;
   it should consume the authoritative SDK-generated bindings after the SDK/WIT
   migration gate, without creating a second ABI implementation.
+- The C boundary now exposes a packed ABI version from Elisa and checks it
+  against the public header in `scripts/check_capi.sh`; wire ordinals and field
+  meanings remain documented in `include/elisa_ui.h`.
 - Callback entry points are lifetime-guarded: if an application handler resets
   the flat tree, post-callback history, composition, activation, adjustment, and
   radio state updates are abandoned instead of touching recycled slots. This is

@@ -7,8 +7,9 @@
  *
  * TWO DIRECTIONS, and a program uses one or both:
  *
- *   A C HOST driving an Elisa app links src/capi/ui_capi.elisa and calls
- *   elisa_ui_dispatch_event / elisa_ui_set_viewport.
+ *   A C HOST driving an Elisa app links src/capi/ui_capi.elisa, checks
+ *   elisa_ui_abi_version(), then calls elisa_ui_dispatch_event /
+ *   elisa_ui_set_viewport.
  *
  *   A C APP driven by a native backend links src/capi/ui_capi_app.elisa and
  *   IMPLEMENTS the elisa_ui_on_* callbacks below. That file supplies the Elisa
@@ -23,6 +24,18 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* Packed as 0xMMmmpp (major, minor, patch). The version is returned by Elisa's
+ * boundary implementation before any host events are sent. A major mismatch
+ * is incompatible; minor/patch changes preserve the existing wire records. */
+#define ELISA_UI_ABI_VERSION_MAJOR 0u
+#define ELISA_UI_ABI_VERSION_MINOR 1u
+#define ELISA_UI_ABI_VERSION_PATCH 0u
+#define ELISA_UI_ABI_VERSION \
+    ((ELISA_UI_ABI_VERSION_MAJOR << 16) | \
+     (ELISA_UI_ABI_VERSION_MINOR << 8) | ELISA_UI_ABI_VERSION_PATCH)
+
+uint32_t elisa_ui_abi_version(void);
 
 /* Wire ordinals. Stable: they are what crosses this boundary and the
  * wasmbrowser one, and UiCore::wire_kind is exhaustive over them, so a kind
