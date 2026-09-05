@@ -1,0 +1,36 @@
+# Accessibility geometry is retained in Core and must obey the same finite
+# extent envelope as paint commands before a backend reads the node.
+
+include "../src/core/ui_core.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiCore::begin_frame()
+    huge: f32 = 3.0e38
+    huge_size: UiCore::Size = UiCore::Size(huge, huge)
+    check("Size bounds width", huge_size.width == UiCore::MAX_GEOMETRY_EXTENT)
+    check("Size bounds height", huge_size.height == UiCore::MAX_GEOMETRY_EXTENT)
+    UiCore::set_viewport(huge, huge)
+    check("viewport bounds width", UiCore::viewport_width() == UiCore::MAX_GEOMETRY_EXTENT)
+    check("viewport bounds height", UiCore::viewport_height() == UiCore::MAX_GEOMETRY_EXTENT)
+    direct_box: UiCore::Rect = UiCore::Rect{origin: UiCore::Vec2{ x: 0.0, y: 0.0 }, size: UiCore::Size{width: huge, height: huge}}
+    check("right edge bounds width", UiCore::right_edge(direct_box) == UiCore::MAX_GEOMETRY_EXTENT)
+    check("bottom edge bounds height", UiCore::bottom_edge(direct_box) == UiCore::MAX_GEOMETRY_EXTENT)
+    UiCore::set_clip(direct_box)
+    UiCore::fill(UiCore::Rect(0.0, 0.0, 1.0, 1.0), UiCore::rgb(1, 2, 3))
+    check("clip bounds width", UiCore::command_clip_at(0).size.width == UiCore::MAX_GEOMETRY_EXTENT)
+    check("clip bounds height", UiCore::command_clip_at(0).size.height == UiCore::MAX_GEOMETRY_EXTENT)
+    UiCore::begin_frame()
+    UiCore::accessibility(UiCore::AccessibilityRole.Label, "large", "", UiCore::Rect(2.0, -4.0, huge, huge), 1, 0, true, false, false, 0.0, "", "", 0, 0, 0)
+    node: UiCore::AccessibilityNode = UiCore::accessibility_at(0)
+    check("accessibility bounds width", node.frame.size.width == UiCore::MAX_GEOMETRY_EXTENT)
+    check("accessibility bounds height", node.frame.size.height == UiCore::MAX_GEOMETRY_EXTENT)
+    return failures.i64()
