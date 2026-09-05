@@ -146,7 +146,9 @@ separate host-enforced security boundary.
   the flat tree, post-callback history, composition, activation, adjustment, and
   radio state updates are abandoned instead of touching recycled slots. This is
   covered by `test/widget_reentrancy_test.elisa`.
-- The next concrete work items are a compiler-independent hosted build fixture
-  and a fuller public builder layer over `UiHandles`. Android/iOS and remote
-  work remain blocked on sibling host/SDK execution fixtures rather than being
-  simulated here.
+- The next concrete work item is a compiler-independent hosted build fixture.
+  The public `UiHandles` builder now covers all flat constructors, typed state
+  setters/queries, event forwarding, hit testing, accessibility actions, and
+  text editing with stale-handle guards. Android/iOS and remote work remain
+  blocked on sibling host/SDK execution fixtures rather than being simulated
+  here.

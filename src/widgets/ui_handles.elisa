@@ -86,17 +86,29 @@ module UiHandles:
             return invalid() if not parent_is_valid(parent)
             return from_index(UiFlat::check_box(parent_index(parent), min_width, min_height, color, hover, press))
 
+        # Keep the original no-caption constructors for source compatibility;
+        # the labeled forms are the preferred API for new applications.
         def slider(parent: Handle, min_width: f32, min_height: f32, value: f32, track: UiCore::Color, fill: UiCore::Color, thumb: UiCore::Color) -> Handle:
+            return slider_labeled(parent, "", min_width, min_height, value, track, fill, thumb)
+
+        def slider_labeled(parent: Handle, label: sview, min_width: f32, min_height: f32, value: f32, track: UiCore::Color, fill: UiCore::Color, thumb: UiCore::Color) -> Handle:
             return invalid() if not parent_is_valid(parent)
-            return from_index(UiFlat::slider(parent_index(parent), min_width, min_height, value, track, fill, thumb))
+            return from_index(UiFlat::slider(parent_index(parent), label, min_width, min_height, value, track, fill, thumb))
 
         def progress_bar(parent: Handle, min_width: f32, min_height: f32, value: f32, track: UiCore::Color, fill: UiCore::Color) -> Handle:
+            return progress_bar_labeled(parent, "", min_width, min_height, value, track, fill)
+
+        def progress_bar_labeled(parent: Handle, label: sview, min_width: f32, min_height: f32, value: f32, track: UiCore::Color, fill: UiCore::Color) -> Handle:
             return invalid() if not parent_is_valid(parent)
-            return from_index(UiFlat::progress_bar(parent_index(parent), min_width, min_height, value, track, fill))
+            return from_index(UiFlat::progress_bar(parent_index(parent), label, min_width, min_height, value, track, fill))
 
         def text_field(parent: Handle, label: sview, placeholder: sview, initial: sview, min_width: f32, min_height: f32, size: f32, ink: UiCore::Color, fill: UiCore::Color) -> Handle:
             return invalid() if not parent_is_valid(parent)
             return from_index(UiFlat::text_field(parent_index(parent), label, placeholder, initial, min_width, min_height, size, ink, fill))
+
+        def secure_text_field(parent: Handle, label: sview, placeholder: sview, initial: sview, min_width: f32, min_height: f32, size: f32, ink: UiCore::Color, fill: UiCore::Color) -> Handle:
+            return invalid() if not parent_is_valid(parent)
+            return from_index(UiFlat::secure_text_field(parent_index(parent), label, placeholder, initial, min_width, min_height, size, ink, fill))
 
         def label(parent: Handle, text: sview, size: f32, color: UiCore::Color) -> Handle:
             return invalid() if not parent_is_valid(parent)
@@ -112,6 +124,14 @@ module UiHandles:
         def set_help(handle: Handle, help: sview) -> void:
             return if not is_valid(handle)
             UiFlat::set_help(handle.widget_id.usize(), help)
+
+        def set_color(handle: Handle, color: UiCore::Color) -> void:
+            return if not is_valid(handle)
+            UiFlat::set_color(handle.widget_id.usize(), color)
+
+        def set_colors(handle: Handle, color: UiCore::Color, hover: UiCore::Color, press: UiCore::Color) -> void:
+            return if not is_valid(handle)
+            UiFlat::set_colors(handle.widget_id.usize(), color, hover, press)
 
         def set_value(handle: Handle, value: f32) -> void:
             return if not is_valid(handle)
@@ -129,16 +149,173 @@ module UiHandles:
             return if not is_valid(handle)
             UiFlat::set_visible(handle.widget_id.usize(), visible)
 
+        def set_secure(handle: Handle, secure: bool) -> void:
+            return if not is_valid(handle)
+            UiFlat::set_secure(handle.widget_id.usize(), secure)
+
+        def set_step(handle: Handle, step: f32) -> void:
+            return if not is_valid(handle)
+            UiFlat::set_step(handle.widget_id.usize(), step)
+
         def set_grow(handle: Handle, weight: f32) -> void:
             return if not is_valid(handle)
             UiFlat::set_grow(handle.widget_id.usize(), weight)
+
+        def set_max_size(handle: Handle, width: f32, height: f32) -> void:
+            return if not is_valid(handle)
+            UiFlat::set_max_size(handle.widget_id.usize(), width, height)
+
+        def set_margin(handle: Handle, margin: f32) -> void:
+            return if not is_valid(handle)
+            UiFlat::set_margin(handle.widget_id.usize(), margin)
+
+        def set_cross_alignment(handle: Handle, alignment: UiConst::CrossAlignment) -> void:
+            return if not is_valid(handle)
+            UiFlat::set_cross_alignment(handle.widget_id.usize(), alignment)
+
+        def set_main_alignment(handle: Handle, alignment: UiConst::MainAlignment) -> void:
+            return if not is_valid(handle)
+            UiFlat::set_main_alignment(handle.widget_id.usize(), alignment)
+
+        def set_focus_order(handle: Handle, order: usize) -> void:
+            return if not is_valid(handle)
+            UiFlat::set_focus_order(handle.widget_id.usize(), order)
+
+        def set_selection_group(handle: Handle, group: usize) -> void:
+            return if not is_valid(handle)
+            UiFlat::set_selection_group(handle.widget_id.usize(), group)
+
+        # Queries return neutral values for stale handles. This keeps a view
+        # teardown safe even when application state still owns a token.
+        def is_enabled(handle: Handle) -> bool:
+            return false if not is_valid(handle)
+            return UiFlat::is_enabled(handle.widget_id.usize())
+
+        def is_visible(handle: Handle) -> bool:
+            return false if not is_valid(handle)
+            return UiFlat::is_visible(handle.widget_id.usize())
+
+        def is_focused(handle: Handle) -> bool:
+            return is_valid(handle) and UiFlat::focused() == handle.widget_id.usize()
+
+        def is_hot(handle: Handle) -> bool:
+            return is_valid(handle) and UiFlat::hot() == handle.widget_id.usize()
+
+        def is_active(handle: Handle) -> bool:
+            return is_valid(handle) and UiFlat::active() == handle.widget_id.usize()
+
+        def selected(handle: Handle) -> bool:
+            return false if not is_valid(handle)
+            row: UiFlat::Widget = UiFlat::widget(handle.widget_id.usize())
+            return row.selected if row.kind == UiConst::WidgetKind.RadioButton or row.kind == UiConst::WidgetKind.CheckBox else false
+
+        def value(handle: Handle) -> f32:
+            return 0.0 if not is_valid(handle)
+            row: UiFlat::Widget = UiFlat::widget(handle.widget_id.usize())
+            return row.value if row.kind == UiConst::WidgetKind.Slider or row.kind == UiConst::WidgetKind.ProgressBar else 0.0
+
+        def text_value(handle: Handle) -> sview:
+            return "" if not is_valid(handle)
+            return UiFlat::text_value(handle.widget_id.usize())
+
+        def text_was_truncated(handle: Handle) -> bool:
+            return is_valid(handle) and UiFlat::text_was_truncated(handle.widget_id.usize())
+
+        def scroll_offset(handle: Handle) -> f32:
+            return 0.0 if not is_valid(handle)
+            return UiFlat::scroll_offset(handle.widget_id.usize())
+
+        def scroll_limit(handle: Handle) -> f32:
+            return 0.0 if not is_valid(handle)
+            return UiFlat::scroll_limit(handle.widget_id.usize())
+
+        def set_scroll_offset(handle: Handle, requested: f32) -> bool:
+            return false if not is_valid(handle)
+            return UiFlat::set_scroll_offset(handle.widget_id.usize(), requested)
 
         def request_focus(handle: Handle) -> bool:
             return false if not is_valid(handle)
             return UiFlat::request_focus(handle.widget_id.usize())
 
+        def clear_focus() -> void:
+            UiFlat::clear_focus()
+
+        def activate(handle: Handle) -> bool:
+            return false if not is_valid(handle)
+            return UiFlat::activate(handle.widget_id.usize())
+
+        def adjust(handle: Handle, delta: f32) -> bool:
+            return false if not is_valid(handle)
+            return UiFlat::adjust(handle.widget_id.usize(), delta)
+
+        def set_accessibility_value(handle: Handle, requested: f32) -> bool:
+            return false if not is_valid(handle)
+            return UiFlat::set_accessibility_value(handle.widget_id.usize(), requested)
+
+        def adjust_step(handle: Handle, direction: i32) -> bool:
+            return false if not is_valid(handle)
+            return UiFlat::adjust_step(handle.widget_id.usize(), direction)
+
+        def radio_move(handle: Handle, direction: i32) -> bool:
+            return false if not is_valid(handle)
+            return UiFlat::radio_move(handle.widget_id.usize(), direction)
+
+        def hit(x: f32, y: f32) -> Handle:
+            return from_index(UiFlat::hit(x, y))
+
+        def scroll_target(x: f32, y: f32, dx: f32, dy: f32) -> Handle:
+            return from_index(UiFlat::scroll_target(x, y, dx, dy))
+
+        def cursor_at(x: f32, y: f32) -> i32:
+            return UiFlat::cursor_at(x, y)
+
+        def handle(event: UiCore::Event) -> void:
+            UiFlat::handle(event)
+
+        # Text editing remains framework-owned; only the focused field is
+        # implicit for composition/insert operations, matching native hosts.
+        def insert_text(text: sview) -> void:
+            UiFlat::insert_text(text)
+
+        def replace_text(handle: Handle, text: sview) -> void:
+            return if not is_valid(handle)
+            UiFlat::replace_text(handle.widget_id.usize(), text)
+
+        def commit_text(text: sview, replacement_location: usize, replacement_length: usize, has_replacement: bool) -> void:
+            UiFlat::commit_text(text, replacement_location, replacement_length, has_replacement)
+
+        def update_marked_text(text: sview, selected_location: usize, selected_length: usize, replacement_location: usize, replacement_length: usize, has_replacement: bool) -> void:
+            UiFlat::update_marked_text(text, selected_location, selected_length, replacement_location, replacement_length, has_replacement)
+
+        def update_marked_text_utf8_characters(text: sview, selected_start: i32, selected_length: i32) -> void:
+            UiFlat::update_marked_text_utf8_characters(text, selected_start, selected_length)
+
+        def unmark_text() -> void:
+            UiFlat::unmark_text()
+
+        def can_undo_text() -> bool:
+            return UiFlat::can_undo_text()
+
+        def can_redo_text() -> bool:
+            return UiFlat::can_redo_text()
+
+        def undo_text() -> bool:
+            return UiFlat::undo_text()
+
+        def redo_text() -> bool:
+            return UiFlat::redo_text()
+
+        def text_action_enabled(action: i32) -> bool:
+            return UiFlat::text_action_enabled(action)
+
+        def perform_text_action(action: i32) -> bool:
+            return UiFlat::perform_text_action(action)
+
         def layout(width: f32, height: f32) -> void:
             UiFlat::layout(width, height)
+
+        def ensure_layout() -> void:
+            UiFlat::ensure_layout()
 
         def paint() -> void:
             UiFlat::paint()

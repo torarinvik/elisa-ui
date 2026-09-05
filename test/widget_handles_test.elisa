@@ -68,9 +68,64 @@ def main() -> i64:
     check("child exposes a retained widget", UiHandles::widget(child) != null)
     check("stale parent is not involved before reset", UiHandles::is_valid(root))
 
+    # The typed builder covers every flat control constructor while keeping
+    # the old compact slider/progress signatures source-compatible.
+    slider: UiHandles::Handle = UiHandles::slider_labeled(root, "Volume", 100.0, 24.0, 0.25, UiCore::rgb(30, 30, 34), UiCore::rgb(70, 120, 220), UiCore::rgb(240, 240, 250))
+    progress: UiHandles::Handle = UiHandles::progress_bar_labeled(root, "Loading", 100.0, 20.0, 0.5, UiCore::rgb(30, 30, 34), UiCore::rgb(70, 180, 120))
+    secret: UiHandles::Handle = UiHandles::secure_text_field(root, "Password", "required", "initial", 160.0, 28.0, 14.0, UiCore::rgb(240, 240, 240), UiCore::rgb(30, 30, 36))
+    radio: UiHandles::Handle = UiHandles::radio_button(root, 80.0, 24.0, UiCore::rgb(40, 40, 44), UiCore::rgb(60, 60, 68), UiCore::rgb(80, 80, 90))
+    check_box: UiHandles::Handle = UiHandles::check_box(root, 80.0, 24.0, UiCore::rgb(40, 40, 44), UiCore::rgb(60, 60, 68), UiCore::rgb(80, 80, 90))
+    check("labeled slider is valid", UiHandles::is_valid(slider) and UiHandles::value(slider) == 0.25)
+    check("labeled progress is valid", UiHandles::is_valid(progress) and UiHandles::value(progress) == 0.5)
+    check("secure field keeps initial text", UiHandles::text_value(secret) == "initial")
+    if UiHandles::widget(secret) is secret_row:
+        check("secure field is a text field", secret_row.kind == UiConst::WidgetKind.TextField)
+    else:
+        check("secure field is a text field", false)
+    if UiHandles::widget(slider) is slider_row:
+        check("slider caption stays in Elisa state", slider_row.text == "Volume")
+    else:
+        check("slider caption stays in Elisa state", false)
+
+    UiHandles::set_selected(radio, true)
+    UiHandles::set_selection_group(radio, 7)
+    UiHandles::set_selected(check_box, true)
+    check("radio selection is readable through its handle", UiHandles::selected(radio))
+    check("checkbox selection is readable through its handle", UiHandles::selected(check_box))
+    UiHandles::set_step(slider, 0.1)
+    UiHandles::set_accessibility_value(slider, 0.75)
+    check("slider accessibility value stays normalized", UiHandles::value(slider) == 0.75)
+
+    UiHandles::set_color(child, UiCore::rgb(9, 10, 11))
+    UiHandles::set_colors(child, UiCore::rgb(12, 13, 14), UiCore::rgb(15, 16, 17), UiCore::rgb(18, 19, 20))
+    UiHandles::set_max_size(child, 140.0, 40.0)
+    UiHandles::set_margin(child, 2.0)
+    UiHandles::set_cross_alignment(child, UiConst::CrossAlignment.Center)
+    UiHandles::set_main_alignment(root, UiConst::MainAlignment.Center)
+    UiHandles::set_focus_order(child, 3)
+    UiHandles::set_enabled(child, true)
+    UiHandles::set_visible(child, true)
+    styled: UiFlat::Widget = UiFlat::widget(UiHandles::index(child))
+    check("handle style setters reach Elisa widget state", styled.color.r == 12 and styled.hover_color.g == 16 and styled.press_color.b == 20 and styled.max_width == 140.0 and styled.margin == 2.0)
+    check("handle alignment setters reach Elisa widget state", styled.cross_alignment == UiConst::CrossAlignment.Center)
+
+    UiHandles::layout(240.0, 220.0)
+    hit_x: f32 = UiFlat::widget(UiHandles::index(child)).x + 1.0
+    hit_y: f32 = UiFlat::widget(UiHandles::index(child)).y + 1.0
+    check("handle hit testing returns a typed child", UiHandles::hit(hit_x, hit_y).widget_id == child.widget_id)
+    UiHandles::handle((UiCore::PointerEvent.Move(at: UiCore::Vec2(hit_x, hit_y))))
+    check("handle event dispatch updates hot state", UiHandles::is_hot(child) and UiHandles::cursor_at(hit_x, hit_y) == 1)
+    check("handle focus request is observable", UiHandles::request_focus(secret) and UiHandles::is_focused(secret))
+    UiHandles::replace_text(secret, "changed")
+    check("handle text replacement stays in Elisa", UiHandles::text_value(secret) == "changed")
+    check("handle text replacement records undo", UiHandles::can_undo_text())
+    check("handle undo restores text", UiHandles::undo_text() and UiHandles::text_value(secret) == "initial")
+    check("handle redo restores text", UiHandles::redo_text() and UiHandles::text_value(secret) == "changed")
+
     UiHandles::reset()
     check("reset invalidates the old root", not UiHandles::is_valid(old_root))
     check("stale handles expose no widget", UiHandles::widget(old_root) == null)
+    check("stale queries fail closed", not UiHandles::is_enabled(old_root) and UiHandles::value(old_root) == 0.0 and UiHandles::text_value(old_root) == "")
     stale_child: UiHandles::Handle = UiHandles::button(old_root, 80.0, 24.0, UiCore::rgb(40, 80, 140), UiCore::rgb(60, 100, 160), UiCore::rgb(20, 50, 100))
     check("stale parent is rejected", not UiHandles::is_valid(stale_child) and UiHandles::index(stale_child) == UiFlat::NONE)
 
