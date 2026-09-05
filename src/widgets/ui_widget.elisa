@@ -91,6 +91,12 @@ module UiFlat:
             marked_end: mutable usize
             text_revision: mutable usize
             text_truncated: mutable bool
+            # Scroll state is framework-owned. The content extents are the
+            # measured size of the child strip; offset is clamped to the
+            # viewport during arrange and changed by wheel input.
+            scroll_offset: mutable f32
+            scroll_content_width: mutable f32
+            scroll_content_height: mutable f32
 
         # Shared visual tokens for details that are common to every widget.
         # Per-control surface and text colors remain on Widget so applications
@@ -128,6 +134,9 @@ module UiFlat:
         global mutable secure_text_storage: u8[SECURE_TEXT_STORAGE_SIZE] = zeroed
         global mutable widget_count: usize = 0
         global mutable widget_dropped: bool = false
+        global mutable last_layout_width: f32 = 0.0
+        global mutable last_layout_height: f32 = 0.0
+        global mutable layout_initialized: bool = false
         # The widget under the pointer, and the one holding a press. A click
         # only fires when both agree on release, so dragging off a button
         # cancels it.
@@ -267,6 +276,7 @@ module UiFlat:
                 text: "", placeholder: "", help: "", text_size: 0.0, text_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, secure: false,
                 interactive: false, focus_order: index, selection_group: parent, visible: true, enabled: true, hovered: false, pressed: false, focused: false, selected: false, value: 0.0, step: 0.05,
                 input_length: 0, caret: 0, selection_anchor: 0, marked_start: 0, marked_end: 0, text_revision: 0, text_truncated: false,
+                scroll_offset: 0.0, scroll_content_width: 0.0, scroll_content_height: 0.0,
             }
             link(parent, index)
             return index
@@ -484,6 +494,9 @@ module UiFlat:
             scrub_clipboard_buffer()
             widget_count <- 0
             widget_dropped <- false
+            last_layout_width <- 0.0
+            last_layout_height <- 0.0
+            layout_initialized <- false
             hot_widget <- NONE
             active_widget <- NONE
             active_pointer_button <- UiCore::NO_POINTER_BUTTON
@@ -505,6 +518,21 @@ module UiFlat:
             index: usize = new_widget(parent, UiConst::WidgetKind.Panel)
             return index if index == NONE
             widgets[index] with { axis, padding <- UiCore::nonnegative_extent(padding), spacing <- UiCore::nonnegative_extent(spacing), color, hover_color <- color, press_color <- color }
+            return index
+
+        # A scroll container reserves a viewport while its children retain
+        # their measured extent. Wheel input changes the offset in Elisa and
+        # re-runs the same layout pass, so no backend owns scroll geometry.
+        def scroll(parent: usize, axis: UiConst::Axis, min_width: f32, min_height: f32, color: UiCore::Color) -> usize:
+            index: usize = new_widget(parent, UiConst::WidgetKind.Scroll)
+            return index if index == NONE
+            safe_width: f32 = UiCore::nonnegative_extent(min_width)
+            safe_height: f32 = UiCore::nonnegative_extent(min_height)
+            widgets[index] with {
+                axis, declared_min_width <- safe_width, declared_min_height <- safe_height,
+                min_width <- safe_width, min_height <- safe_height,
+                color, hover_color <- color, press_color <- color,
+            }
             return index
 
         def button(parent: usize, min_width: f32, min_height: f32, color: UiCore::Color, hover_color: UiCore::Color, press_color: UiCore::Color) -> usize:
@@ -643,6 +671,8 @@ module UiFlat:
             return if index >= widget_count
             widgets[index].min_width <- widgets[index].declared_min_width
             widgets[index].min_height <- widgets[index].declared_min_height
+            widgets[index].scroll_content_width <- widgets[index].declared_min_width
+            widgets[index].scroll_content_height <- widgets[index].declared_min_height
             return if not effectively_visible(index)
             cursor: mutable usize = widgets[index].first_child
             return if cursor == NONE
@@ -664,8 +694,12 @@ module UiFlat:
             pad: f32 = widgets[index].padding * 2.0
             content_width: f32 = along + gaps + pad if is_row else across + pad
             content_height: f32 = across + pad if is_row else along + gaps + pad
-            widgets[index].min_width <- content_width if content_width > widgets[index].min_width
-            widgets[index].min_height <- content_height if content_height > widgets[index].min_height
+            if widgets[index].kind == UiConst::WidgetKind.Scroll:
+                widgets[index].scroll_content_width <- content_width if content_width > widgets[index].scroll_content_width else widgets[index].scroll_content_width
+                widgets[index].scroll_content_height <- content_height if content_height > widgets[index].scroll_content_height else widgets[index].scroll_content_height
+            else:
+                widgets[index].min_width <- content_width if content_width > widgets[index].min_width
+                widgets[index].min_height <- content_height if content_height > widgets[index].min_height
 
         # Top-down pass: give every child its minimum along the axis, then
         # share the leftover in proportion to `grow`. Cross-axis alignment can
@@ -688,10 +722,18 @@ module UiFlat:
             inner_width: f32 = raw_inner_width if raw_inner_width > 0.0 else 0.0
             inner_height: f32 = raw_inner_height if raw_inner_height > 0.0 else 0.0
             is_row: bool = widgets[index].axis == UiConst::Axis.Row
+            scrolling: bool = widgets[index].kind == UiConst::WidgetKind.Scroll
 
             children: f32 = child_count(index).f32()
             gaps: f32 = widgets[index].spacing * (children - 1.0) if children > 1.0 else 0.0
-            inner_along: f32 = inner_width if is_row else inner_height
+            viewport_along: f32 = inner_width if is_row else inner_height
+            content_along: f32 = widgets[index].scroll_content_width if is_row else widgets[index].scroll_content_height
+            inner_along: f32 = content_along if scrolling and content_along > viewport_along else viewport_along
+            if scrolling:
+                limit: f32 = content_along - viewport_along if content_along > viewport_along else 0.0
+                next_offset: mutable f32 = UiCore::nonnegative_extent(widgets[index].scroll_offset)
+                next_offset <- limit if next_offset > limit else next_offset
+                widgets[index].scroll_offset <- next_offset
 
             demand: mutable f32 = 0.0
             weight: mutable f32 = 0.0
@@ -745,11 +787,12 @@ module UiFlat:
                 used_growth <- used_growth + layout_extra[growth_cursor] if widgets[growth_cursor].visible
                 growth_cursor <- widgets[growth_cursor].next_sibling
             unused: f32 = free - used_growth if free > used_growth else 0.0
-            main_alignment: UiConst::MainAlignment = widgets[index].main_alignment
+            main_alignment: UiConst::MainAlignment = UiConst::MainAlignment.Start if scrolling else widgets[index].main_alignment
             offset: mutable f32 = 0.0
             offset <- unused * 0.5 if main_alignment == UiConst::MainAlignment.Center
             offset <- unused if main_alignment == UiConst::MainAlignment.End
             gap_extra: f32 = unused / (children - 1.0) if main_alignment == UiConst::MainAlignment.SpaceBetween and children > 1.0 else 0.0
+            offset <- -widgets[index].scroll_offset if scrolling
             walk: mutable usize = first
             while walk != NONE |walk, offset, is_row, inner_x, inner_y, inner_width, inner_height, gap_extra|:
                 if widgets[walk].visible:
@@ -785,6 +828,35 @@ module UiFlat:
 
         def contains(index: usize, x: f32, y: f32) -> bool:
             return x >= widgets[index].x and y >= widgets[index].y and x < widgets[index].x + widgets[index].width and y < widgets[index].y + widgets[index].height
+
+        # A translated child remains in the retained tree, but it is not
+        # visible or hittable once the pointer leaves any scroll viewport on
+        # its ancestor chain. The command protocol has no clip primitive, so
+        # this shared predicate provides the important semantic half of
+        # clipping without adding a backend-specific operation.
+        def inside_scroll_viewports(index: usize, x: f32, y: f32) -> bool:
+            cursor: mutable usize = widgets[index].parent
+            while cursor < widget_count |cursor, x, y|:
+                if widgets[cursor].kind == UiConst::WidgetKind.Scroll:
+                    return false if not contains(cursor, x, y)
+                cursor <- widgets[cursor].parent
+            return true
+
+        def intersects_scroll_viewports(index: usize) -> bool:
+            left: f32 = widgets[index].x
+            top: f32 = widgets[index].y
+            right: f32 = left + widgets[index].width
+            bottom: f32 = top + widgets[index].height
+            cursor: mutable usize = widgets[index].parent
+            while cursor < widget_count |cursor, left, top, right, bottom|:
+                if widgets[cursor].kind == UiConst::WidgetKind.Scroll:
+                    viewport_left: f32 = widgets[cursor].x
+                    viewport_top: f32 = widgets[cursor].y
+                    viewport_right: f32 = viewport_left + widgets[cursor].width
+                    viewport_bottom: f32 = viewport_top + widgets[cursor].height
+                    return false if right <= viewport_left or left >= viewport_right or bottom <= viewport_top or top >= viewport_bottom
+                cursor <- widgets[cursor].parent
+            return right > left and bottom > top
 
         def clear_hover() -> void:
             for index in 0..<widget_count:
@@ -1273,9 +1345,37 @@ module UiFlat:
 
     public:
         def layout(width: f32, height: f32) -> void:
+            last_layout_width <- UiCore::nonnegative_extent(width)
+            last_layout_height <- UiCore::nonnegative_extent(height)
+            layout_initialized <- true
             return if widget_count == 0
             measure(0)
-            arrange(0, 0.0, 0.0, UiCore::nonnegative_extent(width), UiCore::nonnegative_extent(height))
+            arrange(0, 0.0, 0.0, last_layout_width, last_layout_height)
+
+        # Scroll geometry is retained in the flat widget row, not in a host
+        # object. Setters clamp in Elisa and optionally reflow the remembered
+        # viewport so all backends observe the same translated child frames.
+        def scroll_offset(index: usize) -> f32:
+            return 0.0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Scroll
+            return widgets[index].scroll_offset
+
+        def scroll_limit(index: usize) -> f32:
+            return 0.0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Scroll
+            viewport: f32 = widgets[index].width if widgets[index].axis == UiConst::Axis.Row else widgets[index].height
+            content: f32 = widgets[index].scroll_content_width if widgets[index].axis == UiConst::Axis.Row else widgets[index].scroll_content_height
+            return content - viewport if content > viewport else 0.0
+
+        def set_scroll_offset(index: usize, requested: f32) -> bool:
+            return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Scroll
+            wanted: mutable f32 = UiCore::nonnegative_extent(UiCore::finite_or_zero(requested))
+            limit: f32 = scroll_limit(index)
+            wanted <- limit if wanted > limit else wanted
+            current: f32 = widgets[index].scroll_offset
+            difference: f32 = wanted - current if wanted >= current else current - wanted
+            return false if difference < 0.0001
+            widgets[index].scroll_offset <- wanted
+            layout(last_layout_width, last_layout_height) if layout_initialized
+            return true
 
         # Window deactivation, modal interruption and capture loss must not
         # leave a control visually held or a modifier latched.
@@ -1733,7 +1833,17 @@ module UiFlat:
             scan: mutable usize = widget_count
             while scan > 0 |scan|:
                 scan <- scan - 1
-                return scan if widgets[scan].interactive and effectively_enabled(scan) and effectively_visible(scan) and contains(scan, x, y)
+                return scan if widgets[scan].interactive and effectively_enabled(scan) and effectively_visible(scan) and inside_scroll_viewports(scan, x, y) and contains(scan, x, y)
+            return NONE
+
+        # Find the innermost flat scroll viewport under the pointer. Reverse
+        # arena order prefers a nested descendant, matching painter ordering.
+        def scroll_target(x: f32, y: f32) -> usize:
+            return NONE if widget_count == 0
+            scan: mutable usize = widget_count
+            while scan > 0 |scan|:
+                scan <- scan - 1
+                return scan if widgets[scan].kind == UiConst::WidgetKind.Scroll and effectively_visible(scan) and inside_scroll_viewports(scan, x, y) and contains(scan, x, y)
             return NONE
 
         # Native hosts need only choose the system cursor; widget semantics and
@@ -1759,6 +1869,12 @@ module UiFlat:
                     at <- up_at
                 UiCore::PointerEvent.Leave:
                     pass
+                UiCore::PointerEvent.Scroll(scroll_at, scroll_delta):
+                    target: usize = scroll_target(scroll_at.x, scroll_at.y)
+                    return if target == NONE
+                    amount: f32 = scroll_delta.x if widgets[target].axis == UiConst::Axis.Row else scroll_delta.y
+                    _ = set_scroll_offset(target, scroll_offset(target) - amount)
+                    return
                 _:
                     return
 
@@ -1967,7 +2083,7 @@ module UiFlat:
         # parent's background is laid down before any of its children.
         def paint() -> void:
             for index in 0..<widget_count:
-                semantic_emitted[index] <- not effectively_visible(index)
+                semantic_emitted[index] <- not effectively_visible(index) or not intersects_scroll_viewports(index)
             for emitted_count in 0..<widget_count:
                 next_semantic: mutable usize = NONE
                 for candidate in 0..<widget_count:
@@ -1977,7 +2093,7 @@ module UiFlat:
                     emit_accessibility(next_semantic)
                     semantic_emitted[next_semantic] <- true
             for index in 0..<widget_count:
-                continue if not effectively_visible(index)
+                continue if not effectively_visible(index) or not intersects_scroll_viewports(index)
                 enabled: bool = effectively_enabled(index)
                 color: UiCore::Color = color_of(index)
                 frame: UiCore::Rect = UiCore::Rect(widgets[index].x, widgets[index].y, widgets[index].width, widgets[index].height)

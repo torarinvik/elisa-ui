@@ -55,6 +55,10 @@ The complete working version is
 
 - `panel` lays children out by row or column, with padding, spacing and grow
   weights.
+- `scroll` reserves a fixed viewport while retaining the full measured child
+  strip. `UiFlat::set_scroll_offset` clamps and relayouts it, wheel events route
+  to the innermost viewport, and hit testing/semantics ignore children outside
+  every ancestor viewport.
 - `label` measures and paints static text.
 - `button`, `radio_button` and `check_box` support hover, press, disabled,
   selected and keyboard-focus states.

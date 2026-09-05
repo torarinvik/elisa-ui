@@ -237,6 +237,11 @@ fi
 
 # These callbacks cross the Objective-C/Elisa boundary and must survive dead
 # stripping in the packaged product.
+# `nm` emits the complete table on every check; with `pipefail`, a successful
+# `grep -q` can close the pipe early and make `nm` report SIGPIPE (141). The
+# checks below intentionally use grep's match status, so suspend pipefail for
+# this symbol-only block and restore it before the remaining commands.
+set +o pipefail
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_frame$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_move_event$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pointer_button$'
@@ -324,6 +329,7 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_cancel_redraw$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_activate$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_center$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_present_headless$'
+set -o pipefail
 plutil -lint "$APP/Contents/Info.plist" >/dev/null
 codesign --verify --deep --strict "$APP"
 ELISA_UI_SMOKE_FRAMES=1 ELISA_UI_SNAPSHOT="$SNAPSHOT" "$BIN"

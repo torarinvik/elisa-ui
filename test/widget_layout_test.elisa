@@ -886,6 +886,29 @@ def main() -> i64:
     UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.RightSuper)))
     check("releasing one Command preserves shortcuts from the other", test_clipboard_value() == "copy")
 
+    # Flat scroll containers keep their viewport size while translating the
+    # measured child strip. Wheel routing, clamping, and hit clipping all live
+    # in Elisa and therefore work without a backend window.
+    UiFlat::reset()
+    scroll_view: usize = UiFlat::scroll(UiFlat::NONE, UiConst::Axis.Column, 120.0, 100.0, UiCore::rgb(12, 16, 24))
+    scroll_first: usize = UiFlat::button(scroll_view, 120.0, 60.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
+    scroll_second: usize = UiFlat::button(scroll_view, 120.0, 60.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
+    scroll_third: usize = UiFlat::button(scroll_view, 120.0, 60.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
+    UiFlat::layout(120.0, 100.0)
+    check("scroll viewport keeps its declared height", rect_is(scroll_view, 0.0, 0.0, 120.0, 100.0))
+    check("scroll content reports its measured extent", near(UiFlat::scroll_limit(scroll_view), 80.0))
+    check("scroll starts at the leading edge", near(UiFlat::widget(scroll_first).y, 0.0) and near(UiFlat::widget(scroll_third).y, 120.0))
+    check("scroll setter translates children", UiFlat::set_scroll_offset(scroll_view, 50.0) and near(UiFlat::scroll_offset(scroll_view), 50.0) and near(UiFlat::widget(scroll_second).y, 10.0))
+    check("scroll hit testing follows translated content", UiFlat::hit(60.0, 20.0) == scroll_second)
+    UiFlat::pointer((UiCore::PointerEvent.Scroll(at: UiCore::Vec2(60.0, 50.0), delta: UiCore::Vec2(0.0, 30.0))))
+    check("wheel input updates the nearest flat viewport", near(UiFlat::scroll_offset(scroll_view), 20.0))
+    UiFlat::pointer((UiCore::PointerEvent.Scroll(at: UiCore::Vec2(60.0, 50.0), delta: UiCore::Vec2(0.0, -200.0))))
+    check("wheel input clamps at the content end", near(UiFlat::scroll_offset(scroll_view), 80.0) and near(UiFlat::scroll_limit(scroll_view), 80.0))
+    check("a fully clipped child cannot be hit outside the viewport", UiFlat::hit(60.0, -30.0) == UiFlat::NONE)
+    before_outside_scroll: f32 = UiFlat::scroll_offset(scroll_view)
+    UiFlat::pointer((UiCore::PointerEvent.Scroll(at: UiCore::Vec2(200.0, 50.0), delta: UiCore::Vec2(0.0, 30.0))))
+    check("wheel input outside a viewport is ignored", near(UiFlat::scroll_offset(scroll_view), before_outside_scroll))
+
     UiFlat::reset()
     for index in 0..<257:
         _ = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 0.0, 0.0, UiCore::rgb(0, 0, 0))
