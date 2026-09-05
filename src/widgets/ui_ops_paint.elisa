@@ -3,7 +3,15 @@ include "./ui_constraints.elisa"
 extend UiWidgets:
     public:
         def box_of(w: Widget) -> UiCore::Rect:
-            return UiCore::Rect(w.x, w.y, w.width, w.height)
+            # Raw sealed-enum constructors expose the common geometry fields
+            # directly. Keep this shared projection safe for every consumer
+            # (painting, hit testing, and native-control realization), even
+            # when an application skips layout or supplies a hostile extent.
+            safe_x: f32 = UiCore::finite_or_zero(w.x)
+            safe_y: f32 = UiCore::finite_or_zero(w.y)
+            safe_width: f32 = UiConstraints::bounded(w.width)
+            safe_height: f32 = UiConstraints::bounded(w.height)
+            return UiCore::Rect(safe_x, safe_y, safe_width, safe_height)
 
     private:
         # The surface colour a widget draws right now. A pressable widget
