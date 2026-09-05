@@ -220,8 +220,9 @@ cannot leave stale native selection content, and secure nodes always carry an
 empty substring.
 
 The canvas view implements AppKit's text-input client protocol. Cocoa forwards
-native strings and UTF-16 ranges while one Elisa callback performs the complete
-range normalization and UTF-8 conversion atomically,
+borrowed NSString/NSAttributedString objects and UTF-16 ranges while one Elisa
+callback normalizes the object and performs the complete range normalization
+and UTF-8 conversion atomically,
 selection/replacement rules and IME composition with an underline, positions the
 system candidate window at the custom caret, and provides standard Cut, Copy,
 Paste and Select All commands through both shortcuts and the Edit menu. Command
