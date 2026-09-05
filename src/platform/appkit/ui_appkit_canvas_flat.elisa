@@ -119,7 +119,10 @@ def appkit_flat_key_up(key_code: i32, character_native: usize) -> void:
     appkit_canvas_raw_key_callback(0, key_code, character)
 
 def appkit_flat_text_click(x: f32, y: f32, button: i32, click_count: i32) -> void:
-    return if not UiAppKitCanvas::live()
+    # Text selection is pointer input too. Keep it behind the same lifecycle
+    # gate as the raw pointer event; otherwise a click arriving after focus
+    # loss would still mutate the retained text field directly here.
+    return if not UiAppKitCanvas::live() or not UiLifecycle::accepts_input()
     UiFlat::select_text_click_at_pointer(x, y, button, click_count)
 
 def appkit_flat_pointer_button(x: f32, y: f32, button: i32, down: i32, click_count: i32) -> void:
