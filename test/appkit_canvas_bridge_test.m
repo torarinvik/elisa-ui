@@ -23,8 +23,18 @@ static int test_allows_readback = 1;
 static int test_text_focused = 1;
 static int test_allow_text_mutation = 1;
 static int test_tooltip_calls;
+static int test_invalid_attributed_substring;
+static int test_invalid_attributed_substring_released;
 static size_t test_accessibility_handles[3];
 static size_t test_window_handle;
+
+@interface ElisaInvalidAttributedSubstring : NSObject
+@end
+@implementation ElisaInvalidAttributedSubstring
+- (void)dealloc {
+    test_invalid_attributed_substring_released = 1;
+}
+@end
 
 void elisa_appkit_canvas_insert_text(const char *bytes, size_t length);
 
@@ -371,6 +381,10 @@ static size_t test_range_length(size_t location, size_t length) {
 size_t elisa_appkit_canvas_attributed_substring(size_t location, size_t length,
                                                size_t *actualLocation, size_t *actualLength) {
     if (!test_text_focused || !test_allows_readback || location == NSNotFound) return 0;
+    if (test_invalid_attributed_substring) {
+        ElisaInvalidAttributedSubstring *invalid = [ElisaInvalidAttributedSubstring new];
+        return (size_t)CFBridgingRetain(invalid);
+    }
     if (actualLocation != NULL) *actualLocation = test_range_location(location);
     if (actualLength != NULL) *actualLength = test_range_length(location, length);
     NSString *value = [NSString stringWithUTF8String:test_text];
@@ -640,6 +654,15 @@ int main(void) {
         if (require(test_text_selector == 17, @"native word-selection identity did not cross the FFI boundary")) return 1;
         [elisa_appkit_canvas_view(opened) doCommandBySelector:@selector(deleteWordBackward:)];
         if (require(test_text_selector == 18, @"native word-deletion identity did not cross the FFI boundary")) return 1;
+
+        test_invalid_attributed_substring = 1;
+        if (require([elisa_appkit_canvas_view(opened)
+                      attributedSubstringForProposedRange:NSMakeRange(0, 1)
+                                              actualRange:NULL] == nil,
+                    @"invalid attributed-substring object was accepted")) return 1;
+        test_invalid_attributed_substring = 0;
+        if (require(test_invalid_attributed_substring_released,
+                    @"invalid attributed-substring object leaked")) return 1;
 
         test_slider_value = 0.75f;
         test_text_focused = 0;

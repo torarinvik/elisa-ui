@@ -360,7 +360,13 @@ void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) 
     if (native == 0) return nil;
     if (actualRange != NULL) *actualRange = NSMakeRange(actualLocation, actualLength);
     NSString *text = elisa_appkit_canvas_string(native);
-    if (text == nil) return nil;
+    if (text == nil) {
+        // The Elisa callback transfers a +1 even when the object is not a
+        // string. Drop that ownership before failing closed; otherwise a
+        // malformed attributed-substring result leaks across the FFI boundary.
+        CFRelease((CFTypeRef)(void *)native);
+        return nil;
+    }
     NSAttributedString *result = [[NSAttributedString alloc] initWithString:text];
     CFRelease((CFTypeRef)(void *)native);
     return result;
