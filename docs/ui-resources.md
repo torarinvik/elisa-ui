@@ -35,6 +35,11 @@ Visible views can add an idempotent `set_demand(handle, priority)` hint and
 remove it with `clear_demand`. The priority is framework state for host/SDK
 coalescing; it does not grant bandwidth, bypass cache policy, or force a fetch.
 
+`snapshot()` returns bounded counts for the total live records and each
+loading/ready/offline/denied/failed/cancelled state, plus the sticky overflow
+flag. `UiInspector::Frame` exposes that snapshot so loading diagnostics do not
+need to inspect resource handles or keep a native shadow table.
+
 The fixed 128-record table and 256-byte logical identifier limit are deliberate
 bounded behavior for native and Wasm tests. `overflowed` reports exhaustion;
 invalid or oversized identifiers return `invalid()` and do not create a record.
