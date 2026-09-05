@@ -1,0 +1,111 @@
+# elisa-ui deterministic inspector over the retained flat widget tree.
+#
+# Diagnostics are framework-owned data, not a second model. The inspector
+# copies bounded facts from UiFlat and UiCore, pairs every node with its typed
+# lifetime handle, and redacts secure text before it can reach logs or tools.
+# It is safe to call between events, after a setter, or from a headless test.
+
+include "./ui_handles.elisa"
+
+module UiInspector:
+    public:
+        struct Constraints:
+            min_width: f32
+            min_height: f32
+            max_width: f32
+            max_height: f32
+            grow: f32
+            margin: f32
+
+        struct Node:
+            handle: UiHandles::Handle
+            parent: UiHandles::Handle
+            first_child: UiHandles::Handle
+            next_sibling: UiHandles::Handle
+            kind: UiConst::WidgetKind
+            frame: UiCore::Rect
+            constraints: Constraints
+            visible: bool
+            enabled: bool
+            focused: bool
+            selected: bool
+            value: f32
+            secure: bool
+            text: sview
+            help: sview
+            semantic: UiCore::AccessibilityNode?
+
+        struct Frame:
+            viewport: UiCore::Size
+            layout_initialized: bool
+            layout_dirty: bool
+            frame_time: f64
+            frame_delay: f32
+            command_count: usize
+            command_overflowed: bool
+            semantic_count: usize
+            semantic_overflowed: bool
+
+        def count() -> usize:
+            return UiHandles::count()
+
+        def root() -> UiHandles::Handle:
+            return UiHandles::from_index(0)
+
+        def frame() -> Frame:
+            return Frame{
+                viewport: UiCore::Size(UiCore::viewport_width(), UiCore::viewport_height()),
+                layout_initialized: UiFlat::layout_is_initialized(),
+                layout_dirty: UiFlat::layout_is_dirty(),
+                frame_time: UiCore::frame_time(),
+                frame_delay: UiCore::frame_delay(),
+                command_count: UiCore::command_count(),
+                command_overflowed: UiCore::command_overflowed(),
+                semantic_count: UiCore::accessibility_count(),
+                semantic_overflowed: UiCore::accessibility_overflowed(),
+            }
+
+        # A stale handle has no diagnostic record. This makes inspectors safe
+        # during rebuilds and prevents a recycled slot from being mislabeled.
+        def inspect(handle: UiHandles::Handle) -> Node?:
+            return null if not UiHandles::is_valid(handle)
+            row: UiFlat::Widget = UiFlat::widget(UiHandles::index(handle))
+            visible_text: sview = "[secure]" if row.secure else row.text
+            return Node{
+                handle: handle,
+                parent: UiHandles::parent(handle),
+                first_child: UiHandles::first_child(handle),
+                next_sibling: UiHandles::next_sibling(handle),
+                kind: row.kind,
+                frame: UiCore::Rect(row.x, row.y, row.width, row.height),
+                constraints: Constraints{
+                    min_width: row.min_width, min_height: row.min_height,
+                    max_width: row.max_width, max_height: row.max_height,
+                    grow: row.grow, margin: row.margin,
+                },
+                visible: UiHandles::is_visible(handle),
+                enabled: UiHandles::is_enabled(handle),
+                focused: UiHandles::is_focused(handle),
+                selected: UiHandles::selected(handle),
+                value: UiHandles::value(handle),
+                secure: row.secure,
+                text: visible_text,
+                help: row.help,
+                semantic: semantic_for(handle),
+            }
+
+        # Semantics are looked up by the same retained widget identity used by
+        # layout and input. Return a sanitized copy so a diagnostic consumer
+        # cannot turn a password node into a secret-value side channel.
+        def semantic_for(handle: UiHandles::Handle) -> UiCore::AccessibilityNode?:
+            return null if not UiHandles::is_valid(handle)
+            target: usize = UiHandles::index(handle)
+            for index in 0..<UiCore::accessibility_count():
+                node: mutable UiCore::AccessibilityNode = UiCore::accessibility_at(index)
+                continue if node.id != target
+                if node.role == UiCore::AccessibilityRole.PasswordField:
+                    node.text_value <- "[secure]"
+                    node.selected_text <- ""
+                return node
+            return null
+

@@ -27,7 +27,7 @@ profile, Elisa language, and elisa-ui framework explicitly.
 Public framework modules are `UiCore`, `UiPaint`, `UiRaster`, `UiConst`,
 `UiWidgets`, `UiFlat`, `UiHandles`, `UiControls`, `UiCapi`, `UiAppKit`,
 `UiAppKitNative`, `UiAppKitCanvas`, `UiSdl3`, `UiSdl3Draw`, and
-`UiWasmBrowser`. The application contract is
+`UiWasmBrowser`, and `UiInspector`. The application contract is
 the top-level `app_init`, `app_event`, `app_text_input`, `app_text_editing`,
 `app_frame`, and optional `app_widget_event` callbacks.
 
@@ -105,7 +105,7 @@ bash scripts/run_tests.sh
   capi, appkit, appkit canvas, appkit canvas keymap, capi bridge,
   controls, drop raii, event wire, hierarchy build/layout, raster,
   sdl3 keymap/text, widget dispatch, widget handles, widget layout,
-  widget reentrancy: PASS
+  widget inspector, widget reentrancy: PASS
 git diff --check: PASS
 ```
 
@@ -146,6 +146,10 @@ separate host-enforced security boundary.
   the flat tree, post-callback history, composition, activation, adjustment, and
   radio state updates are abandoned instead of touching recycled slots. This is
   covered by `test/widget_reentrancy_test.elisa`.
+- `UiInspector` is a read-only, allocation-free diagnostic projection of the
+  retained tree and semantic buffer. It reports deferred layout/frame-buffer
+  state and typed relationships while redacting secure text; coverage lives in
+  `test/widget_inspector_test.elisa`.
 - The next concrete work item is a compiler-independent hosted build fixture.
   The public `UiHandles` builder now covers all flat constructors, typed state
   setters/queries, event forwarding, hit testing, accessibility actions, and

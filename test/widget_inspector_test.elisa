@@ -1,0 +1,101 @@
+# Headless coverage for the Elisa-owned retained-tree inspector.
+
+include "../src/widgets/ui_inspector.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable failures: i32 = 0
+
+def ui_measure_text_width(text: sview, size: f32) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size
+
+def ui_font_ascent(size: f32) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return 0
+
+def app_init() -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    pass
+
+def app_text_input(text: sview) -> void:
+    pass
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    pass
+
+def app_frame() -> void:
+    pass
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiHandles::reset()
+    root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 8.0, 4.0, UiCore::rgb(10, 10, 12))
+    button: UiHandles::Handle = UiHandles::button(root, 80.0, 24.0, UiCore::rgb(20, 20, 24), UiCore::rgb(30, 30, 36), UiCore::rgb(12, 12, 16))
+    UiHandles::set_text(button, "Inspect me", 14.0, UiCore::rgb(240, 240, 245))
+    secret: UiHandles::Handle = UiHandles::secure_text_field(root, "Password", "", "private", 140.0, 28.0, 14.0, UiCore::rgb(240, 240, 245), UiCore::rgb(24, 24, 30))
+    UiCore::set_viewport(320.0, 180.0)
+    UiHandles::layout(320.0, 180.0)
+
+    check("inspector count follows retained tree", UiInspector::count() == 3)
+    check("inspector root is typed", UiInspector::root().widget_id == root.widget_id)
+    if UiInspector::inspect(button) is button_node:
+        check("inspector preserves widget identity", button_node.handle.tree_id == button.tree_id)
+        check("inspector preserves parent relationship", button_node.parent.widget_id == root.widget_id)
+        check("inspector exposes laid-out bounds", button_node.frame.size.width >= 80.0 and button_node.frame.size.height >= 24.0)
+        check("inspector exposes constraints", button_node.constraints.min_width == 80.0 and button_node.constraints.min_height == 24.0)
+        check("inspector reads framework text", button_node.text == "Inspect me")
+    else:
+        check("inspector returns a live node", false)
+
+    if UiInspector::inspect(secret) is secret_node:
+        check("inspector identifies secure controls", secret_node.secure)
+        check("inspector redacts secure text", secret_node.text == "[secure]")
+    else:
+        check("inspector returns secure node", false)
+
+    snapshot: UiInspector::Frame = UiInspector::frame()
+    check("inspector records viewport", snapshot.viewport.width == 320.0 and snapshot.viewport.height == 180.0 and snapshot.layout_initialized and not snapshot.layout_dirty)
+    check("inspector records empty frame buffers", snapshot.command_count == 0 and snapshot.semantic_count == 0)
+    UiHandles::set_margin(button, 3.0)
+    check("inspector reports deferred layout work", UiInspector::frame().layout_dirty)
+    UiHandles::ensure_layout()
+    check("inspector observes settled layout", not UiInspector::frame().layout_dirty)
+
+    # The semantic record uses the same widget ID and is sanitized at the
+    # inspector boundary even if a test or adapter supplied a raw value.
+    UiCore::begin_frame()
+    UiCore::accessibility(UiCore::AccessibilityRole.PasswordField, "Password", "", UiCore::Rect(0.0, 0.0, 100.0, 20.0), UiHandles::index(secret), UiHandles::index(secret), true, false, false, 0.0, "private", "private", 1, 0, 7)
+    if UiInspector::semantic_for(secret) is semantic:
+        check("inspector follows semantic identity", semantic.id == UiHandles::index(secret))
+        check("inspector redacts semantic value", semantic.text_value == "[secure]" and semantic.selected_text == "")
+    else:
+        check("inspector returns matching semantics", false)
+
+    UiHandles::reset()
+    check("inspector rejects stale identity", UiInspector::inspect(button) == null and UiInspector::semantic_for(button) == null)
+    if failures == 0:
+        _ = puts("widget inspector: all checks passed")
+    return failures.i64()
