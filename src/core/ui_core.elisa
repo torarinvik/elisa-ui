@@ -364,14 +364,30 @@ module UiCore:
             accessibility_dropped <- false
             requested_frame_delay <- 0.0
 
+        # Semantic IDs are the retained identity key used by every backend.
+        # Keep one node per ID in the frame buffer so a malformed or overly
+        # eager app declaration cannot make a backend reuse one native object
+        # at two positions in its accessibility child list.
+        def accessibility_index_for_id(id: usize) -> usize:
+            for index in 0..<accessibility_total:
+                return index if accessibility_nodes[index].id == id
+            return MAX_ACCESSIBILITY_NODES
+
         def accessibility(role: AccessibilityRole, label: sview, help: sview, frame: Rect, id: usize, action: usize, enabled: bool, focused: bool, selected: bool, value: f32, text_value: sview, selected_text: sview, revision: usize, selection_location: usize, selection_length: usize) -> void:
             return if label.len == 0
+            safe_frame: Rect = Rect(frame.origin.x, frame.origin.y, frame.size.width, frame.size.height)
+            safe_value: f32 = finite_or_zero(value)
+            node: AccessibilityNode = AccessibilityNode{role: role, label: label, help: help, frame: safe_frame, id: id, action: action, enabled: enabled, focused: focused, selected: selected, value: safe_value, text_value: text_value, selected_text: selected_text, revision: revision, selection_location: selection_location, selection_length: selection_length}
+            existing: usize = accessibility_index_for_id(id)
+            if existing < MAX_ACCESSIBILITY_NODES:
+                # Last declaration wins while preserving the ID's first
+                # position, giving frame diffs stable ordering and identity.
+                accessibility_nodes[existing] <- node
+                return
             if accessibility_total >= MAX_ACCESSIBILITY_NODES:
                 accessibility_dropped <- true
                 return
-            safe_frame: Rect = Rect(frame.origin.x, frame.origin.y, frame.size.width, frame.size.height)
-            safe_value: f32 = finite_or_zero(value)
-            accessibility_nodes[accessibility_total] <- AccessibilityNode{role: role, label: label, help: help, frame: safe_frame, id: id, action: action, enabled: enabled, focused: focused, selected: selected, value: safe_value, text_value: text_value, selected_text: selected_text, revision: revision, selection_location: selection_location, selection_length: selection_length}
+            accessibility_nodes[accessibility_total] <- node
             accessibility_total <- accessibility_total + 1
 
         def accessibility_count() -> usize:
