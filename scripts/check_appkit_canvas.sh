@@ -33,6 +33,10 @@ if grep -Eq '@\(' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: number construction leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq '\bNSMutableArray\b|arrayWithCapacity:' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: accessibility child-list construction leaked back into Objective-C" >&2
+  exit 1
+fi
 if awk '/void elisa_appkit_canvas_accessibility_set_boolean\(/ { inside=1 } inside && /@\(/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: accessibility boolean boxing leaked back into Objective-C" >&2
   exit 1

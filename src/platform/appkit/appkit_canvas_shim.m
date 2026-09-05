@@ -901,16 +901,12 @@ void elisa_appkit_canvas_accessibility_set_text(size_t handle,
     element.accessibilitySelectedText = selected;
 }
 
-void elisa_appkit_canvas_accessibility_commit(size_t windowHandle,
-                                              const size_t *handles, size_t count) {
-    if (count > elisa_appkit_canvas_accessibility_capacity()) return;
-    if (count > 0 && handles == NULL) return;
-    NSMutableArray *children = [NSMutableArray arrayWithCapacity:count];
-    for (size_t index = 0; index < count; index++) {
-        ElisaAccessibilityElement *element = elisa_appkit_canvas_element(handles[index]);
-        if (element == nil) continue;
-        [children addObject:element];
-    }
+void elisa_appkit_canvas_accessibility_commit(size_t windowHandle, size_t childrenHandle) {
+    if (childrenHandle == 0) return;
+    id object = (__bridge id)(void *)childrenHandle;
+    if (![object isKindOfClass:[NSArray class]]) return;
+    NSArray *children = (NSArray *)object;
+    if (children.count > elisa_appkit_canvas_accessibility_capacity()) return;
     ElisaCanvasView *view = elisa_appkit_canvas_view(windowHandle);
     if (view == nil) return;
     [view setAccessibilityChildren:children];

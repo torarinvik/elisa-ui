@@ -190,6 +190,9 @@ transition from native state. Per-element value,
 focus and selection notifications are posted through AppKit's C ABI directly
 from Elisa; only resolving the retained root view from its window handle still
 crosses the native object resolver.
+The ordered accessibility child list is compacted in Elisa and materialized as
+an immutable `CFArray` through FFI; the bridge validates that array and assigns
+it to AppKit without a native mutable collection or semantic filtering pass.
 Each semantic text node carries its own selected substring; focus changes
 cannot leave stale native selection content, and secure nodes always carry an
 empty substring.

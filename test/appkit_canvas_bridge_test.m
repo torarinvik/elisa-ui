@@ -77,7 +77,11 @@ void elisa_appkit_canvas_frame(size_t context) {
     test_accessibility_handles[0] = sliderElement;
     test_accessibility_handles[1] = textElement;
     test_accessibility_handles[2] = secureElement;
-    elisa_appkit_canvas_accessibility_commit(test_window_handle, test_accessibility_handles, 3);
+    CFArrayRef children = CFArrayCreate(NULL,
+                                        (const void **)(const void *)test_accessibility_handles,
+                                        3, NULL);
+    elisa_appkit_canvas_accessibility_commit(test_window_handle, (size_t)(void *)children);
+    CFRelease(children);
 }
 
 // The production bitmap path is implemented by Elisa through CoreGraphics and
@@ -456,8 +460,15 @@ int main(void) {
         NSObject *invalidTimer = [NSObject new];
         elisa_appkit_canvas_cancel_redraw((size_t)(__bridge void *)invalidTimer);
         elisa_appkit_canvas_center(opened);
-        elisa_appkit_canvas_accessibility_commit(opened, NULL, 1);
-        elisa_appkit_canvas_accessibility_commit(opened, NULL, elisa_appkit_canvas_accessibility_capacity() + 1);
+        elisa_appkit_canvas_accessibility_commit(opened, 0);
+        NSObject *invalidChildren = [NSObject new];
+        elisa_appkit_canvas_accessibility_commit(opened, (size_t)(__bridge void *)invalidChildren);
+        size_t oversizedHandles[257] = {0};
+        CFArrayRef oversizedChildren = CFArrayCreate(NULL,
+                                                     (const void **)(const void *)oversizedHandles,
+                                                     elisa_appkit_canvas_accessibility_capacity() + 1, NULL);
+        elisa_appkit_canvas_accessibility_commit(opened, (size_t)(void *)oversizedChildren);
+        CFRelease(oversizedChildren);
     size_t menuBar = elisa_appkit_canvas_menus_begin();
     NSObject *invalidMenuString = [NSObject new];
     if (require(elisa_appkit_canvas_menu_add(
