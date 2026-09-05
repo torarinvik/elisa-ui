@@ -1,0 +1,68 @@
+# Bounded, backend-neutral event ingress.
+#
+# Platform adapters translate their native facts into UiCore::Event and hand
+# them to this queue before application dispatch. The queue owns capacity and
+# overflow policy in Elisa; a host cannot silently grow an unbounded event
+# backlog or overwrite an authoritative event. Adapters may drain immediately
+# when their host callback is synchronous, or after polling a burst.
+
+module UiEvents:
+    public:
+        const EVENT_QUEUE_CAPACITY: usize = 256
+
+        struct Snapshot:
+            pending: usize
+            capacity: usize
+            dropped: usize
+            overflowed: bool
+
+        def reset() -> void:
+            queue_head <- 0
+            queue_count <- 0
+            dropped_count <- 0
+            overflow_state <- false
+
+        # Enqueue is loss-aware. The event is never replaced when full; callers
+        # receive false and can expose the sticky overflow through diagnostics.
+        def enqueue(event: UiCore::Event) -> bool:
+            if queue_count >= EVENT_QUEUE_CAPACITY:
+                dropped_count <- dropped_count + 1
+                overflow_state <- true
+                return false
+            slot: usize = (queue_head + queue_count) % EVENT_QUEUE_CAPACITY
+            queue[slot] <- event
+            queue_count <- queue_count + 1
+            return true
+
+        # The destination is written only when an event exists. This keeps a
+        # failed drain from accidentally replacing a caller's current event.
+        def dequeue(out_event: mutable UiCore::Event&) -> bool:
+            return false if queue_count == 0
+            out_event <- queue[queue_head]
+            queue_head <- (queue_head + 1) % EVENT_QUEUE_CAPACITY
+            queue_count <- queue_count - 1
+            return true
+
+        def pending() -> usize:
+            return queue_count
+
+        def dropped() -> usize:
+            return dropped_count
+
+        def overflowed() -> bool:
+            return overflow_state
+
+        def snapshot() -> Snapshot:
+            return Snapshot{
+                pending: queue_count,
+                capacity: EVENT_QUEUE_CAPACITY,
+                dropped: dropped_count,
+                overflowed: overflow_state,
+            }
+
+    private:
+        global mutable queue: UiCore::Event[EVENT_QUEUE_CAPACITY] = zeroed
+        global mutable queue_head: usize = 0
+        global mutable queue_count: usize = 0
+        global mutable dropped_count: usize = 0
+        global mutable overflow_state: bool = false

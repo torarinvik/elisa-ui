@@ -140,11 +140,17 @@ module UiWasmBrowser:
         # ordinal plus scalars; see dispatch_record.
         def dispatch(event: UiCore::Event) -> void:
             return if not UiLifecycle::is_started()
-            app_event(event)
+            return if not UiEvents::enqueue(event)
+            queued: mutable UiCore::Event = UiCore::Event.None
+            while UiEvents::dequeue(queued):
+                app_event(queued)
 
         def dispatch_input(event: UiCore::Event) -> void:
             return if not UiLifecycle::accepts_input()
-            app_event(event)
+            return if not UiEvents::enqueue(event)
+            queued: mutable UiCore::Event = UiCore::Event.None
+            while UiEvents::dequeue(queued):
+                app_event(queued)
 
         # The generic WIT path: ordinal in, event out. Unused by the callbacks
         # below, and kept because the wire encoding is the host's to change --
@@ -152,13 +158,14 @@ module UiWasmBrowser:
         # backend growing a callback for it.
         def dispatch_record(kind: i32, x: f32, y: f32, dx: f32, dy: f32, code: i32) -> void:
             record: UiCore::EventRecord = UiCore::EventRecord{kind: kind.WireKind(), x: x, y: y, dx: dx, dy: dy, code: code}
-            app_event(UiCore::from_record(record))
+            dispatch(UiCore::from_record(record))
 
     public:
         # The guest lifecycle, one function per WIT export.
         def start(width: u32, height: u32) -> void:
             UiLifecycle::reset()
             UiCapabilities::use_wasm_browser()
+            UiEvents::reset()
             UiMetrics::reset()
             return if not UiLifecycle::begin()
             ui_wasm_clipboard_cache_valid <- false

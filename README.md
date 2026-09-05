@@ -47,6 +47,10 @@ because a module member's symbol carries its module and those names cannot move.
   text/IME, clipboard, semantics, hosted presentation, snapshots, scale, and
   deterministic tests. Applications inspect facts instead of branching on OS
   names; the selected profile is visible through `UiInspector::Frame`.
+- **Event ingress** ([src/core/ui_event_queue.elisa](src/core/ui_event_queue.elisa)) —
+  every backend translates into one bounded FIFO owned by Elisa. Full queues
+  reject new events and expose sticky overflow/drop counts through the
+  inspector; no native adapter silently replaces authoritative input.
 - **Backends** implement the platform side and own the frame loop:
   [sdl3](src/platform/sdl3/ui_sdl3.elisa) (native; the `UiSdl3` module owns
   window/event lifecycle while [ui_sdl3_draw](src/platform/sdl3/ui_sdl3_draw.elisa)

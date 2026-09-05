@@ -46,7 +46,10 @@ module UiCapi:
         # app ignores, rather than as a trap.
         def dispatch_event(kind: i32, x: f32, y: f32, dx: f32, dy: f32, code: i32) -> void:
             record: UiCore::EventRecord = UiCore::EventRecord{kind: UiCore::WireKind(kind), x: x, y: y, dx: dx, dy: dy, code: code}
-            app_event(UiCore::from_record(record))
+            return if not UiEvents::enqueue(UiCore::from_record(record))
+            event: mutable UiCore::Event = UiCore::Event.None
+            while UiEvents::dequeue(event):
+                app_event(event)
 
         def dispatch_text_input(text: cstr?, length: usize) -> void:
             # A C caller may provide a null pointer for an empty payload, or

@@ -23,6 +23,7 @@ module UiHarness:
         def start(width: f32, height: f32) -> void:
             UiLifecycle::reset()
             UiCapabilities::use_harness()
+            UiEvents::reset()
             return if not UiLifecycle::begin()
             UiMetrics::reset()
             test_time <- 0.0
@@ -64,7 +65,10 @@ module UiHarness:
         # exactly as they do on production backends.
         def dispatch(event: UiCore::Event) -> void:
             return if not UiLifecycle::is_started()
-            app_event(event)
+            return if not UiEvents::enqueue(event)
+            queued: mutable UiCore::Event = UiCore::Event.None
+            while UiEvents::dequeue(queued):
+                app_event(queued)
 
         def resize(width: f32, height: f32) -> void:
             return if not UiLifecycle::is_started()

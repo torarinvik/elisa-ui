@@ -299,6 +299,26 @@ module UiSdl3:
                 out_event <- (UiCore::KeyEvent.Up(code: UiCore::Key(key_from_sdl(event_keycode()))))
             return true
 
+        # Drain after polling a burst so SDL's native queue cannot re-enter the
+        # application callback while its event memory is still being decoded.
+        # Ordering remains FIFO and the queue's sticky overflow fact remains
+        # available to inspectors if a hostile burst exceeds the bound.
+        def dispatch_queued_events(running: mutable bool&) -> void:
+            event: mutable UiCore::Event = UiCore::Event.None
+            while UiEvents::dequeue(event):
+                match event:
+                    UiCore::Event.Quit:
+                        running <- false
+                    UiCore::Event.Resize(size):
+                        UiCore::set_viewport(size.width, size.height)
+                    UiCore::Event.FocusGained:
+                        _ = UiLifecycle::focus_gained()
+                    UiCore::Event.FocusLost:
+                        _ = UiLifecycle::focus_lost()
+                    _:
+                        pass
+                app_event(event)
+
     public:
         # max_frames <= 0 runs until quit; a positive value exits after that
         # many frames (headless smoke runs use it together with
@@ -306,6 +326,7 @@ module UiSdl3:
         def run(title: cstr, width: i32, height: i32, max_frames: i64) -> i64:
             UiLifecycle::reset()
             UiCapabilities::use_sdl3()
+            UiEvents::reset()
             UiMetrics::reset()
             if not SDL_Init(INIT_VIDEO):
                 _ = puts(SDL_GetError())
@@ -346,18 +367,8 @@ module UiSdl3:
                     elif event_type() == EVENT_TEXT_EDITING:
                         text_editing(event_text_pointer(), event_text_editing_start(), event_text_editing_length())
                     else:
-                        match event:
-                            UiCore::Event.Quit:
-                                running <- false
-                            UiCore::Event.Resize(size):
-                                UiCore::set_viewport(size.width, size.height)
-                            UiCore::Event.FocusGained:
-                                _ = UiLifecycle::focus_gained()
-                            UiCore::Event.FocusLost:
-                                _ = UiLifecycle::focus_lost()
-                            _:
-                                pass
-                        app_event(event)
+                        _ = UiEvents::enqueue(event)
+                dispatch_queued_events(&running)
                 # Same retained contract as the component backend: the app
                 # fills a command batch, then the backend consumes it. SDL3
                 # replays immediately.

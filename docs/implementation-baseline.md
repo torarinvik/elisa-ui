@@ -24,7 +24,7 @@ profile, Elisa language, and elisa-ui framework explicitly.
 
 ## Source and boundary inventory
 
-Public framework modules are `UiCore`, `UiLifecycle`, `UiMetrics`, `UiState`, `UiCapabilities`, `UiPaint`, `UiRaster`,
+Public framework modules are `UiCore`, `UiLifecycle`, `UiMetrics`, `UiState`, `UiCapabilities`, `UiEvents`, `UiPaint`, `UiRaster`,
 `UiConst`, `UiWidgets`, `UiFlat`, `UiHandles`, `UiResources`, `UiResourcePresentation`,
 `UiControls`, `UiCapi`, `UiAppKit`, `UiAppKitNative`, `UiAppKitCanvas`, `UiSdl3`,
 `UiSdl3Draw`, `UiWasmBrowser`, and `UiInspector`. The application contract is
@@ -199,6 +199,10 @@ separate host-enforced security boundary.
   profile at startup; applications and `UiInspector` consume capability facts
   without OS-name branches or native-object queries. Coverage lives in
   `test/capabilities_test.elisa`.
+- `UiEvents` owns bounded FIFO ingress after each adapter has translated native
+  facts into `UiCore::Event`. Synchronous adapters drain immediately; SDL drains
+  poll bursts. Full queues reject incoming events and expose sticky loss facts
+  through `UiInspector`. Coverage lives in `test/event_queue_test.elisa`.
 - `UiHarness` is the deterministic Elisa-side test driver. It injects a
   monotonic clock, typed lifecycle/input events, resource requests/progress,
   and frame boundaries while leaving production event-loop ownership with each

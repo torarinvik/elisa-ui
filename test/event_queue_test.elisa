@@ -1,0 +1,43 @@
+# Headless regression for bounded Elisa-side event ingress.
+
+include "../src/core/ui_core.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiEvents::reset()
+    empty: UiEvents::Snapshot = UiEvents::snapshot()
+    check("queue starts empty", empty.pending == 0 and empty.dropped == 0 and not empty.overflowed)
+    check("queue exposes fixed capacity", empty.capacity == UiEvents::EVENT_QUEUE_CAPACITY)
+
+    first: UiCore::Event = UiCore::Event.Resize(size: UiCore::Size(320.0, 200.0))
+    second: UiCore::Event = UiCore::PointerEvent.Down(at: UiCore::Vec2(12.0, 24.0), button: UiCore::PointerButton.Primary.i32())
+    check("queue accepts events", UiEvents::enqueue(first) and UiEvents::enqueue(second) and UiEvents::pending() == 2)
+
+    out: mutable UiCore::Event = UiCore::Event.None
+    check("queue preserves FIFO", UiEvents::dequeue(out) and UiCore::wire_kind(out) == UiCore::WireKind.Resize)
+    check("queue keeps later event", UiEvents::dequeue(out) and UiCore::wire_kind(out) == UiCore::WireKind.PointerDown and UiEvents::pending() == 0)
+    check("empty dequeue is harmless", not UiEvents::dequeue(out))
+
+    UiEvents::reset()
+    accepted: mutable usize = 0
+    for index in 0..<UiEvents::EVENT_QUEUE_CAPACITY:
+        accepted <- accepted + 1 if UiEvents::enqueue(UiCore::Event.FocusGained)
+    check("queue fills to capacity", accepted == UiEvents::EVENT_QUEUE_CAPACITY and UiEvents::pending() == UiEvents::EVENT_QUEUE_CAPACITY)
+    check("queue rejects overflow without replacement", not UiEvents::enqueue(UiCore::Event.Quit) and UiEvents::pending() == UiEvents::EVENT_QUEUE_CAPACITY)
+    full: UiEvents::Snapshot = UiEvents::snapshot()
+    check("queue exposes loss", full.overflowed and full.dropped == 1)
+    UiEvents::reset()
+    check("reset clears loss state", UiEvents::pending() == 0 and not UiEvents::overflowed())
+
+    if failures == 0:
+        _ = puts("event queue: all checks passed")
+        return 0
+    _ = puts("event queue: FAILURES above")
+    return 1

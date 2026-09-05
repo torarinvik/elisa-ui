@@ -1,4 +1,10 @@
 # C callbacks from ElisaCanvasView. Top-level because the Objective-C ABI names them.
+def appkit_canvas_dispatch_event(event: UiCore::Event) -> void:
+    return if not UiEvents::enqueue(event)
+    queued: mutable UiCore::Event = UiCore::Event.None
+    while UiEvents::dequeue(queued):
+        app_event(queued)
+
 def appkit_canvas_frame_callback(context: usize) -> void:
     can Ui.Draw, Ui.Text, Unsafe.PointerCast:
         # AppKit may issue a draw request while the view is being constructed
@@ -35,7 +41,7 @@ def appkit_canvas_valid_marked_attributes() -> usize:
 def appkit_canvas_resize_callback(width: f32, height: f32) -> void:
     return if not UiAppKitCanvas::live()
     UiCore::set_viewport(width, height)
-    app_event(UiCore::Event.Resize(size: UiCore::Size(width, height)))
+    appkit_canvas_dispatch_event(UiCore::Event.Resize(size: UiCore::Size(width, height)))
     UiAppKitCanvas::redraw()
 
 def appkit_canvas_pointer_callback(kind: i32, x: f32, y: f32, dx: f32, dy: f32, button: i32) -> void:
@@ -46,7 +52,7 @@ def appkit_canvas_pointer_callback(kind: i32, x: f32, y: f32, dx: f32, dy: f32, 
     event <- (UiCore::PointerEvent.Up(at: at, button: button)) if kind == 2
     event <- (UiCore::PointerEvent.Leave) if kind == 3
     event <- (UiCore::PointerEvent.Scroll(at: at, delta: UiCore::Vec2(dx, dy))) if kind == 4
-    app_event(event)
+    appkit_canvas_dispatch_event(event)
     UiAppKitCanvas::redraw()
 
 def appkit_canvas_pointer_move_callback(x: f32, y: f32) -> void:
@@ -70,7 +76,7 @@ def appkit_canvas_key_callback(down: i32, code: i32) -> void:
         UiAppKitCanvas::close()
         return
     event: UiCore::Event = (UiCore::KeyEvent.Down(code: UiCore::Key(code))) if down != 0 else (UiCore::KeyEvent.Up(code: UiCore::Key(code)))
-    app_event(event)
+    appkit_canvas_dispatch_event(event)
     UiAppKitCanvas::redraw()
 
 def appkit_canvas_raw_key_callback(down: i32, key_code: i32, character: i32) -> void:
@@ -95,7 +101,7 @@ def appkit_canvas_focus_changed_callback(focused: i32) -> void:
     changed: bool = UiLifecycle::focus_gained() if focused != 0 else UiLifecycle::focus_lost()
     return if not changed
     event: UiCore::Event = (UiCore::Event.FocusGained) if focused != 0 else (UiCore::Event.FocusLost)
-    app_event(event)
+    appkit_canvas_dispatch_event(event)
     UiAppKitCanvas::redraw()
 
 def appkit_canvas_accessibility_environment_changed_callback() -> void:
