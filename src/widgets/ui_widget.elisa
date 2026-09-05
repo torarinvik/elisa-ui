@@ -2012,9 +2012,11 @@ module UiFlat:
         def hit(x: f32, y: f32) -> usize:
             ensure_layout()
             return NONE if widget_count == 0
-            scan: mutable usize = widget_count
-            while scan > 0 |scan|:
-                scan <- scan - 1
+            build_paint_order()
+            order_index: mutable usize = paint_order_count
+            while order_index > 0 |order_index|:
+                order_index <- order_index - 1
+                scan: usize = paint_order[order_index]
                 return scan if widgets[scan].interactive and effectively_enabled(scan) and effectively_visible(scan) and inside_scroll_viewports(scan, x, y) and contains(scan, x, y)
             return NONE
 
@@ -2025,9 +2027,11 @@ module UiFlat:
         def scroll_target(x: f32, y: f32, dx: f32, dy: f32) -> usize:
             ensure_layout()
             return NONE if widget_count == 0
-            scan: mutable usize = widget_count
-            while scan > 0 |scan|:
-                scan <- scan - 1
+            build_paint_order()
+            order_index: mutable usize = paint_order_count
+            while order_index > 0 |order_index|:
+                order_index <- order_index - 1
+                scan: usize = paint_order[order_index]
                 if widgets[scan].kind == UiConst::WidgetKind.Scroll and effectively_enabled(scan) and effectively_visible(scan) and inside_scroll_viewports(scan, x, y) and contains(scan, x, y):
                     limit: f32 = scroll_limit(scan)
                     delta: f32 = UiCore::finite_or_zero(dx if widgets[scan].axis == UiConst::Axis.Row else dy)
@@ -2475,9 +2479,11 @@ module UiFlat:
 
         def scrollbar_target(x: f32, y: f32) -> usize:
             return NONE if widget_count == 0
-            scan: mutable usize = widget_count
-            while scan > 0 |scan|:
-                scan <- scan - 1
+            build_paint_order()
+            order_index: mutable usize = paint_order_count
+            while order_index > 0 |order_index|:
+                order_index <- order_index - 1
+                scan: usize = paint_order[order_index]
                 return scan if scrollbar_part(scan, x, y) != 0
             return NONE
 
