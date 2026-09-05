@@ -25,3 +25,8 @@ large text, and high-density touch targets deterministic across SDL, AppKit,
 WasmBrowser, and the headless harness. `UiWidgets::adaptive_grid` applies the
 same bounded policy to the retained hierarchy, so a resize handler can rebuild
 the composition without copying breakpoint logic into every screen.
+
+`orientation(viewport)` reports portrait, landscape, or square from logical
+dimensions. Hosts can pass `insets(top, right, bottom, left)` to
+`content_area(...)`; the returned origin and size reserve safe areas in logical
+coordinates and clamp oversized/malformed insets to an empty content box.

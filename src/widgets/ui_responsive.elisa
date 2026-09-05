@@ -29,6 +29,22 @@ module UiResponsive:
             height: f32
             scale: f32
 
+        struct Insets:
+            top: f32
+            right: f32
+            bottom: f32
+            left: f32
+
+        struct ContentArea:
+            origin: UiCore::Vec2
+            size: UiCore::Size
+            scale: f32
+
+        const enum Orientation of i32:
+            Portrait = 0
+            Landscape = 1
+            Square = 2
+
         def defaults() -> Breakpoints:
             return Breakpoints{compact_max: DEFAULT_COMPACT_MAX, medium_max: DEFAULT_MEDIUM_MAX}
 
@@ -56,6 +72,34 @@ module UiResponsive:
 
         def classify_viewport(view: Viewport, points: Breakpoints) -> SizeClass:
             return classify(view.width, points)
+
+        def orientation(view: Viewport) -> Orientation:
+            return Orientation.Square if view.width == view.height
+            return Orientation.Landscape if view.width > view.height else Orientation.Portrait
+
+        # Safe-area facts arrive from a host in logical units. Normalize every
+        # edge before subtracting it so malformed or non-finite insets cannot
+        # produce a negative content box.
+        def insets(top: f32, right: f32, bottom: f32, left: f32) -> Insets:
+            return Insets{
+                top: UiCore::nonnegative_extent(top),
+                right: UiCore::nonnegative_extent(right),
+                bottom: UiCore::nonnegative_extent(bottom),
+                left: UiCore::nonnegative_extent(left),
+            }
+
+        def content_area(view: Viewport, safe: Insets) -> ContentArea:
+            safe_view: Viewport = viewport(view.width, view.height, view.scale)
+            normalized: Insets = insets(safe.top, safe.right, safe.bottom, safe.left)
+            available_width: mutable f32 = safe_view.width - normalized.left - normalized.right
+            available_height: mutable f32 = safe_view.height - normalized.top - normalized.bottom
+            available_width <- 0.0 if available_width < 0.0
+            available_height <- 0.0 if available_height < 0.0
+            return ContentArea{
+                origin: UiCore::Vec2(normalized.left, normalized.top),
+                size: UiCore::Size(available_width, available_height),
+                scale: safe_view.scale,
+            }
 
         def is_compact(width: f32, points: Breakpoints) -> bool:
             return classify(width, points) == SizeClass.Compact
