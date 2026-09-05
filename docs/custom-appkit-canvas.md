@@ -144,6 +144,9 @@ depth and sibling budgets because packed `Widget` handles intentionally do not
 expose identity comparison. A self-linked child or sibling cycle therefore
 terminates without hanging layout, hit testing, painting or scroll targeting;
 well-formed trees built by the normal constructors are unaffected.
+The hierarchy painter also carries the intersection of every ancestor scroll
+viewport beside each emitted command, matching `UiFlat` so translated children
+cannot bleed outside nested viewports on any backend.
 
 The native-controls realization pass has the same fail-closed behavior. Its
 Elisa-side walk enforces explicit depth and sibling budgets; exceeding either
