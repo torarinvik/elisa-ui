@@ -69,6 +69,10 @@ extern host_component_realloc(old_pointer: u32, old_size: u32, alignment: u32, n
 extern ui_wasm_memory_size_pages(memory_index: u32) -> u32
 
 const UI_WASM_HOST_MAX_ALLOCATION: u32 = 67108864
+# C strings crossing the component boundary are bounded independently of the
+# host result allocation cap. Keeping the same conservative limit avoids an
+# unbounded walk while still accepting ordinary platform strings.
+const UI_WASM_CSTR_SCAN_CAPACITY: u32 = UI_WASM_HOST_MAX_ALLOCATION
 const UI_WASM_CLIPBOARD_WIRE_SIZE: usize = 64
 
 global mutable ui_wasm_clipboard_buffer: u8[UiFlat::TEXT_CAPACITY] = zeroed
@@ -84,10 +88,13 @@ def ui_wasm_read_wire_u32(wire: mutable u8[UI_WASM_CLIPBOARD_WIRE_SIZE]&, offset
         slot: u32& = (&wire[offset]).cast[u32&]
         return slot
 
+def ui_wasm_host_memory_end() -> u64:
+    return ui_wasm_memory_size_pages(0).u64() * 65536
+
 def ui_wasm_host_memory_range_valid(pointer: u32, byte_count: u32) -> bool:
     start: u64 = pointer.u64()
     end: u64 = start + byte_count.u64()
-    memory_end: u64 = ui_wasm_memory_size_pages(0).u64() * 65536
+    memory_end: u64 = ui_wasm_host_memory_end()
     return end >= start and end <= memory_end and (byte_count == 0 or pointer != 0)
 
 def ui_wasm_memory_byte(pointer: u32) -> u8:
@@ -100,12 +107,20 @@ def ui_wasm_memory_byte(pointer: u32) -> u8:
 # conventional `strlen` symbol; keep that tiny primitive in Elisa so the Wasm
 # component has no accidental env::strlen import.
 def strlen(text: cstr) -> usize:
-    pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
-    return 0 if pointer == 0.uintptr()
-    length: mutable usize = 0
-    while ui_wasm_memory_byte(pointer.u32() + length.u32()) != 0 |length|:
+    pointer_value: uintptr = text.cast[uintptr] can Unsafe.PointerCast
+    return 0 if pointer_value == 0.uintptr()
+    pointer: u32 = pointer_value.u32()
+    length: mutable u32 = 0
+    memory_end: u64 = ui_wasm_host_memory_end()
+    while length < UI_WASM_CSTR_SCAN_CAPACITY |length|:
+        # Compute in u64 before converting back to a wasm32 pointer. This
+        # prevents pointer+length wraparound from turning a malformed string
+        # into a read near address zero.
+        address: u64 = pointer.u64() + length.u64()
+        return length.usize() if address >= memory_end
+        return length.usize() if ui_wasm_memory_byte(address.u32()) == 0
         length <- length + 1
-    return length
+    return length.usize()
 
 def ui_wasm_release_clipboard_allocation(pointer: u32, length: u32) -> void:
     if length <= UI_WASM_HOST_MAX_ALLOCATION and pointer != 0 and ui_wasm_host_memory_range_valid(pointer, length):
