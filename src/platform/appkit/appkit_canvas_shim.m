@@ -35,7 +35,6 @@ extern int elisa_appkit_canvas_pointer_button_primary(void);
 extern int elisa_appkit_canvas_pointer_button_secondary(void);
 extern int elisa_appkit_canvas_accessibility_increment_direction(void);
 extern int elisa_appkit_canvas_accessibility_decrement_direction(void);
-extern size_t elisa_appkit_canvas_accessibility_capacity(void);
 extern const size_t elisa_appkit_canvas_not_found;
 extern int elisa_appkit_canvas_has_marked_text(void);
 extern size_t elisa_appkit_canvas_pointer_leave_event(void);
@@ -870,7 +869,6 @@ void elisa_appkit_canvas_accessibility_commit(size_t windowHandle, size_t childr
     id object = (__bridge id)(void *)childrenHandle;
     if (![object isKindOfClass:[NSArray class]]) return;
     NSArray *children = (NSArray *)object;
-    if (children.count > elisa_appkit_canvas_accessibility_capacity()) return;
     ElisaCanvasView *view = elisa_appkit_canvas_view(windowHandle);
     if (view == nil) return;
     [view setAccessibilityChildren:children];

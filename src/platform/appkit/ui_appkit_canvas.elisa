@@ -191,13 +191,6 @@ export fn elisa_appkit_canvas_view_is_flipped() -> i32 = appkit_canvas_view_is_f
 export fn elisa_appkit_canvas_view_accepts_first_responder() -> i32 = appkit_canvas_view_accepts_first_responder
 export fn elisa_appkit_canvas_view_is_accessibility_element() -> i32 = appkit_canvas_view_is_accessibility_element
 
-# The native bridge uses this ABI fact to reject malformed child-list lengths
-# without duplicating the semantic arena's capacity in Objective-C.
-def appkit_canvas_accessibility_capacity() -> usize:
-    return UiCore::MAX_ACCESSIBILITY_NODES
-
-export fn elisa_appkit_canvas_accessibility_capacity() -> usize = appkit_canvas_accessibility_capacity
-
 module UiAppKitCanvas:
     public:
         # Darwin's CLOCK_MONOTONIC value. Calling libSystem directly keeps
@@ -640,12 +633,18 @@ module UiAppKitCanvas:
         # validates and assigns this immutable array; it owns no semantic-list
         # filtering or mutable collection state.
         def commit_accessibility_children() -> void can Unsafe.PointerCast:
+            return if accessibility_previous_count > UiCore::MAX_ACCESSIBILITY_NODES
             count: mutable usize = 0
             for index in 0..<accessibility_previous_count:
                 handle: usize = accessibility_previous_handles[index]
                 if handle != 0:
                     accessibility_commit_handles[count] <- handle
                     count <- count + 1
+            # The semantic arena is bounded, but keep the boundary invariant
+            # explicit at the construction site too. Objective-C receives only
+            # an already-bounded immutable child list and therefore does not
+            # need to know the framework's capacity policy.
+            return if count > UiCore::MAX_ACCESSIBILITY_NODES
             values_pointer: usize& = (&accessibility_commit_handles[0]).cast[usize&] can Unsafe.PointerCast
             children: usize = CFArrayCreate(0, values_pointer, count.i64(), 0)
             return if children == 0
