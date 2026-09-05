@@ -509,6 +509,11 @@ module UiAppKit:
             while index > 0 |index|:
                 index <- index - 1
                 handle: usize = UiControls::native_handle_at(index)
+                # Clear Elisa's ownership slot before crossing the FFI boundary.
+                # If Cocoa synchronously tears down part of the old tree, any
+                # re-entrant lookup fails closed instead of observing a handle
+                # whose retain is already being relinquished.
+                UiControls::set_native_handle(index, 0) if handle != 0
                 CFRelease(handle) if handle != 0
 
         # Realize a laid-out widget tree as native controls. Run UiWidgets::layout
