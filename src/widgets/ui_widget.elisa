@@ -889,6 +889,7 @@ module UiFlat:
             if focused_widget < widget_count:
                 widgets[focused_widget].focused <- true
                 restart_caret_blink() if widgets[focused_widget].kind == UiConst::WidgetKind.TextField
+                ensure_visible(focused_widget)
 
         def focus_next() -> void:
             return if widget_count == 0
@@ -931,6 +932,36 @@ module UiFlat:
 
         def muted_color(base: UiCore::Color) -> UiCore::Color:
             return UiCore::Color{r: base.r / 2, g: base.g / 2, b: base.b / 2, a: base.a}
+
+        # Keyboard focus must never disappear into a translated viewport. The
+        # child frame already contains the current offset, so recover its
+        # unscrolled edge and request the smallest offset that reveals it.
+        def ensure_visible(index: usize) -> void:
+            cursor: mutable usize = widgets[index].parent
+            while cursor < widget_count |cursor, index|:
+                if widgets[cursor].kind == UiConst::WidgetKind.Scroll:
+                    current: f32 = widgets[cursor].scroll_offset
+                    requested: mutable f32 = current
+                    if widgets[cursor].axis == UiConst::Axis.Row:
+                        viewport_start: f32 = widgets[cursor].x
+                        viewport_end: f32 = viewport_start + widgets[cursor].width
+                        child_start: f32 = widgets[index].x
+                        child_end: f32 = child_start + widgets[index].width
+                        unscrolled_start: f32 = child_start + current
+                        unscrolled_end: f32 = child_end + current
+                        requested <- unscrolled_start - viewport_start if child_start < viewport_start
+                        requested <- unscrolled_end - viewport_end if child_end > viewport_end and child_start >= viewport_start
+                    else:
+                        viewport_start: f32 = widgets[cursor].y
+                        viewport_end: f32 = viewport_start + widgets[cursor].height
+                        child_start: f32 = widgets[index].y
+                        child_end: f32 = child_start + widgets[index].height
+                        unscrolled_start: f32 = child_start + current
+                        unscrolled_end: f32 = child_end + current
+                        requested <- unscrolled_start - viewport_start if child_start < viewport_start
+                        requested <- unscrolled_end - viewport_end if child_end > viewport_end and child_start >= viewport_start
+                    _ = set_scroll_offset(cursor, requested)
+                cursor <- widgets[cursor].parent
 
         def emit_accessibility(index: usize) -> void:
             enabled: bool = effectively_enabled(index)

@@ -119,6 +119,8 @@ Window focus gain and loss also arrive as portable `UiCore::Event` variants.
 Applications using `UiFlat` pass those variants to `UiFlat::lifecycle`; focus
 loss releases pointer/key capture and latched modifiers while preserving the
 logical focused control for when the window becomes active again.
+Focusing a descendant inside a flat scroll viewport automatically reveals the
+smallest visible range, including through nested scroll ancestors.
 
 ## Accessibility
 
