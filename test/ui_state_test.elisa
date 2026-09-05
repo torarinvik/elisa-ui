@@ -1,0 +1,76 @@
+# Headless regression for bounded application-state snapshots.
+
+include "../src/core/ui_state.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def set_u32(buffer: mutable u8&, offset: usize, value: u32) -> void:
+    buffer[offset] <- value.u8()
+    buffer[offset + 1] <- (value >> 8).u8()
+    buffer[offset + 2] <- (value >> 16).u8()
+    buffer[offset + 3] <- (value >> 24).u8()
+
+def main() -> i64:
+    UiState::reset()
+    initial: UiState::Snapshot = UiState::restored()
+    check("state starts without a restored snapshot", not initial.valid and initial.length == 0)
+
+    UiState::begin()
+    check("state save starts with a valid header", UiState::saved().valid and UiState::saved().length == UiState::HEADER_BYTES)
+    check("state stores text", UiState::put_text(10, "draft text"))
+    check("state stores float", UiState::put_f32(11, 1.25))
+    check("state stores integer", UiState::put_i32(12, -42))
+    check("state stores boolean", UiState::put_bool(13, true))
+    check("state rejects duplicate IDs", not UiState::put_i32(12, 99) and UiState::saved().failed)
+
+    blob: mutable u8[UiState::MAX_BYTES] = zeroed
+    length: usize = UiState::copy_to(&blob[0], UiState::MAX_BYTES)
+    saved: UiState::Snapshot = UiState::saved()
+    check("state reports four records", saved.records == 4 and length == saved.length)
+    check("state copies a bounded prefix", UiState::copy_to(&blob[0], 5) == 5)
+    check("state restores a complete blob", UiState::restore(&blob[0], length))
+    restored: UiState::Snapshot = UiState::restored()
+    check("restored metadata is valid", restored.valid and restored.records == 4 and restored.length == length)
+    check("restored text matches", UiState::has(10) and UiState::text(10) == "draft text")
+    check("restored float matches", UiState::f32(11, 0.0) == 1.25)
+    check("restored integer matches", UiState::i32(12, 0) == -42)
+    check("restored boolean matches", UiState::bool(13, false))
+    check("type mismatch uses fallback", UiState::f32(10, 9.0) == 9.0 and UiState::text(11) == "")
+    check("missing field uses fallback", not UiState::has(99) and UiState::bool(99, true))
+
+    # Corrupt a later record's ID. The parser must reject duplicate logical
+    # identity instead of exposing whichever record happened to be visited
+    # first, and it must clear the previously valid restored state.
+    second_record: usize = UiState::HEADER_BYTES + UiState::RECORD_HEADER_BYTES + 10
+    set_u32(&blob[0], second_record, 10)
+    check("duplicate IDs invalidate restore", not UiState::restore(&blob[0], length) and not UiState::restored().valid and not UiState::has(10))
+
+    # Truncation and bad headers fail closed as well.
+    check("truncated snapshots are rejected", not UiState::restore(&blob[0], length - 1))
+    blob[0] <- 0
+    check("bad magic is rejected", not UiState::restore(&blob[0], length))
+
+    # A large value is rejected before any partial record is emitted, while a
+    # full snapshot reports capacity exhaustion explicitly.
+    payload: mutable u8[900] = zeroed
+    for index in 0..<900:
+        payload[index] <- 65
+    UiState::begin()
+    check("state accepts a bounded payload", UiState::put_text(1, sview(&payload[0], 0, 900.i64())))
+    check("state accepts a second bounded payload", UiState::put_text(2, sview(&payload[0], 0, 900.i64())))
+    check("state accepts a third bounded payload", UiState::put_text(3, sview(&payload[0], 0, 900.i64())))
+    check("state accepts a fourth bounded payload", UiState::put_text(4, sview(&payload[0], 0, 900.i64())))
+    check("state exposes capacity overflow", not UiState::put_text(5, sview(&payload[0], 0, 900.i64())) and UiState::saved().overflowed and UiState::saved().failed)
+
+    if failures == 0:
+        _ = puts("ui state: all checks passed")
+        return 0
+    _ = puts("ui state: FAILURES above")
+    return 1

@@ -36,6 +36,12 @@ because a module member's symbol carries its module and those names cannot move.
   headless harness and every backend. It owns session generations and derived
   input/rendering predicates, so platform adapters do not grow divergent
   `running` or `initialized` policy.
+- **Application state** ([src/core/ui_state.elisa](src/core/ui_state.elisa)) —
+  an explicit, bounded, versioned snapshot hook for application-owned text,
+  integer, boolean, and floating-point values. Snapshots contain stable field
+  IDs only; framework handles, arena indexes, references, and heap objects are
+  never serialized. Malformed, duplicate, truncated, or oversized snapshots
+  fail closed.
 - **Backends** implement the platform side and own the frame loop:
   [sdl3](src/platform/sdl3/ui_sdl3.elisa) (native; the `UiSdl3` module owns
   window/event lifecycle while [ui_sdl3_draw](src/platform/sdl3/ui_sdl3_draw.elisa)

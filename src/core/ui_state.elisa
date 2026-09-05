@@ -1,0 +1,245 @@
+# Bounded, pointer-free application state snapshots.
+#
+# The framework never serializes widget handles, arena indexes, references, or
+# arbitrary heap memory. An application explicitly records stable numeric field
+# IDs and typed values, copies the resulting versioned blob to its host, and
+# restores it after a lifecycle interruption or view rebuild. The format and
+# parser are owned by Elisa so every backend gets identical validation.
+
+include "./ui_core.elisa"
+
+module UiState:
+    public:
+        const MAX_BYTES: usize = 4096
+        const MAX_RECORDS: usize = 128
+        const MAX_TEXT_BYTES: usize = 1024
+        const HEADER_BYTES: usize = 12
+        const RECORD_HEADER_BYTES: usize = 8
+        const FORMAT_VERSION: u32 = 1
+
+        const enum ValueKind of i32:
+            Text = 1
+            F32 = 2
+            I32 = 3
+            Bool = 4
+
+        struct Snapshot:
+            length: usize
+            records: usize
+            overflowed: bool
+            failed: bool
+            valid: bool
+
+        # Start a new application-owned snapshot. Existing bytes are replaced;
+        # callers decide when to persist the previous copy.
+        def begin() -> void:
+            save_length <- HEADER_BYTES
+            save_count <- 0
+            save_overflowed <- false
+            save_failed <- false
+            save_started <- true
+            store_u32(&save_buffer[0], 0, 0x31535545)
+            store_u32(&save_buffer[0], 4, FORMAT_VERSION)
+            store_u32(&save_buffer[0], 8, 0)
+
+        def reset() -> void:
+            save_length <- 0
+            save_count <- 0
+            save_overflowed <- false
+            save_failed <- false
+            save_started <- false
+            restore_length <- 0
+            restore_count <- 0
+            restore_valid <- false
+
+        # Each field ID is application-owned and must be unique in one
+        # snapshot. Reusing an ID is rejected instead of making restore order
+        # observable or silently selecting one of two values.
+        def put_text(id: u32, value: sview) -> bool:
+            return false if not ready_for_put(value.len)
+            return append_header(id, ValueKind.Text, value.len) and append_bytes(value)
+
+        def put_f32(id: u32, value: f32) -> bool can Unsafe.PointerCast:
+            safe: mutable f32 = UiCore::finite_or_zero(value)
+            bits: mutable u32& = (&safe).cast[mutable u32&] can Unsafe.PointerCast
+            return append_u32_record(id, ValueKind.F32, bits[0])
+
+        def put_i32(id: u32, value: i32) -> bool:
+            return append_u32_record(id, ValueKind.I32, value.u32())
+
+        def put_bool(id: u32, value: bool) -> bool:
+            return append_header(id, ValueKind.Bool, 1) and append_byte(1 if value else 0)
+
+        def saved() -> Snapshot:
+            return Snapshot{length: save_length, records: save_count,
+                overflowed: save_overflowed, failed: save_failed, valid: save_started}
+
+        def copy_to(destination: mutable u8&, capacity: usize) -> usize:
+            return 0 if not save_started
+            take: usize = save_length if save_length < capacity else capacity
+            for index in 0..<take:
+                destination[index] <- save_buffer[index]
+            return take
+
+        # Validate the entire blob before making it visible to query methods.
+        # A failed restore clears the old restored state so callers cannot
+        # accidentally continue using a previous session's values.
+        def restore(source: u8&, length: usize) -> bool:
+            restore_length <- 0
+            restore_count <- 0
+            restore_valid <- false
+            return false if length < HEADER_BYTES or length > MAX_BYTES
+            return false if load_u32(source, 0) != 0x31535545
+            return false if load_u32(source, 4) != FORMAT_VERSION
+            count: usize = load_u32(source, 8).usize()
+            return false if count > MAX_RECORDS
+            cursor: mutable usize = HEADER_BYTES
+            for _ in 0..<count:
+                return false if cursor > length or length - cursor < RECORD_HEADER_BYTES
+                id: u32 = load_u32(source, cursor)
+                kind: i32 = source[cursor + 4].i32()
+                value_length: usize = load_u16(source, cursor + 6).usize()
+                return false if source[cursor + 5] != 0
+                return false if kind < ValueKind.Text.i32() or kind > ValueKind.Bool.i32()
+                expected: mutable usize = 0
+                expected <- MAX_TEXT_BYTES if kind == ValueKind.Text.i32()
+                expected <- 4 if kind == ValueKind.F32.i32() or kind == ValueKind.I32.i32()
+                expected <- 1 if kind == ValueKind.Bool.i32()
+                return false if value_length > expected or (kind != ValueKind.Text.i32() and value_length != expected)
+                return false if length - cursor - RECORD_HEADER_BYTES < value_length
+                return false if duplicate_in(source, HEADER_BYTES, cursor, id)
+                cursor <- cursor + RECORD_HEADER_BYTES + value_length
+            return false if cursor != length
+            for index in 0..<length:
+                restore_buffer[index] <- source[index]
+            restore_length <- length
+            restore_count <- count
+            restore_valid <- true
+            return true
+
+        def restored() -> Snapshot:
+            return Snapshot{length: restore_length, records: restore_count,
+                overflowed: false, failed: false, valid: restore_valid}
+
+        def has(id: u32) -> bool:
+            return find_record(id) != 0
+
+        def text(id: u32) -> sview:
+            position: usize = find_record(id)
+            return "" if position == 0 or restore_buffer[position + 4].i32() != ValueKind.Text.i32()
+            length: usize = load_u16(&restore_buffer[0], position + 6).usize()
+            return sview(&restore_buffer[position + RECORD_HEADER_BYTES], 0, length.i64())
+
+        def f32(id: u32, fallback: f32) -> f32 can Unsafe.PointerCast:
+            position: usize = find_record(id)
+            return fallback if position == 0 or restore_buffer[position + 4].i32() != ValueKind.F32.i32()
+            bits: mutable u32 = load_u32(&restore_buffer[0], position + RECORD_HEADER_BYTES)
+            value: mutable f32& = (&bits).cast[mutable f32&] can Unsafe.PointerCast
+            return value[0]
+
+        def i32(id: u32, fallback: i32) -> i32:
+            position: usize = find_record(id)
+            return fallback if position == 0 or restore_buffer[position + 4].i32() != ValueKind.I32.i32()
+            return load_u32(&restore_buffer[0], position + RECORD_HEADER_BYTES).i32()
+
+        def bool(id: u32, fallback: bool) -> bool:
+            position: usize = find_record(id)
+            return fallback if position == 0 or restore_buffer[position + 4].i32() != ValueKind.Bool.i32()
+            return restore_buffer[position + RECORD_HEADER_BYTES] != 0
+
+    private:
+        global mutable save_buffer: u8[MAX_BYTES] = zeroed
+        global mutable restore_buffer: u8[MAX_BYTES] = zeroed
+        global mutable save_length: usize = 0
+        global mutable save_count: usize = 0
+        global mutable save_overflowed: bool = false
+        global mutable save_failed: bool = false
+        global mutable save_started: bool = false
+        global mutable restore_length: usize = 0
+        global mutable restore_count: usize = 0
+        global mutable restore_valid: bool = false
+
+        def store_u16(buffer: mutable u8&, offset: usize, value: usize) -> void:
+            buffer[offset] <- (value & 255).u8()
+            buffer[offset + 1] <- ((value >> 8) & 255).u8()
+
+        def store_u32(buffer: mutable u8&, offset: usize, value: u32) -> void:
+            buffer[offset] <- value.u8()
+            buffer[offset + 1] <- (value >> 8).u8()
+            buffer[offset + 2] <- (value >> 16).u8()
+            buffer[offset + 3] <- (value >> 24).u8()
+
+        def load_u16(buffer: u8&, offset: usize) -> u16:
+            return buffer[offset].u16() | (buffer[offset + 1].u16() << 8)
+
+        def load_u32(buffer: u8&, offset: usize) -> u32:
+            return buffer[offset].u32() | (buffer[offset + 1].u32() << 8) | (buffer[offset + 2].u32() << 16) | (buffer[offset + 3].u32() << 24)
+
+        def duplicate_in(buffer: u8&, first: usize, limit: usize, id: u32) -> bool:
+            cursor: mutable usize = first
+            while cursor < limit |cursor|:
+                return true if load_u32(buffer, cursor) == id
+                length: usize = load_u16(buffer, cursor + 6).usize()
+                cursor <- cursor + RECORD_HEADER_BYTES + length
+            return false
+
+        def ready_for_put(value_length: usize) -> bool:
+            if not save_started:
+                save_failed <- true
+                return false
+            if value_length > MAX_TEXT_BYTES:
+                save_failed <- true
+                return false
+            if save_count >= MAX_RECORDS:
+                save_failed <- true
+                return false
+            return true
+
+        def append_header(id: u32, kind: ValueKind, value_length: usize) -> bool:
+            if not save_started or save_count >= MAX_RECORDS:
+                save_failed <- true
+                return false
+            if duplicate_in(&save_buffer[0], HEADER_BYTES, save_length, id):
+                save_failed <- true
+                return false
+            if value_length > 65535 or save_length > MAX_BYTES - RECORD_HEADER_BYTES - value_length:
+                save_overflowed <- true
+                save_failed <- true
+                return false
+            offset: usize = save_length
+            store_u32(&save_buffer[0], offset, id)
+            save_buffer[offset + 4] <- kind.i32().u8()
+            save_buffer[offset + 5] <- 0
+            store_u16(&save_buffer[0], offset + 6, value_length)
+            save_length <- save_length + RECORD_HEADER_BYTES + value_length
+            save_count <- save_count + 1
+            store_u32(&save_buffer[0], 8, save_count.u32())
+            return true
+
+        def append_byte(value: u8) -> bool:
+            # append_header reserves the byte and advances the cursor; payload
+            # begins at the last record's start plus its fixed header.
+            payload: usize = save_length - 1
+            save_buffer[payload] <- value
+            return true
+
+        def append_bytes(value: sview) -> bool:
+            payload: usize = save_length - value.len
+            for index in 0..<value.len:
+                save_buffer[payload + index] <- value.data[index]
+            return true
+
+        def append_u32_record(id: u32, kind: ValueKind, value: u32) -> bool:
+            return false if not append_header(id, kind, 4)
+            payload: usize = save_length - 4
+            store_u32(&save_buffer[0], payload, value)
+            return true
+
+        def find_record(id: u32) -> usize:
+            return 0 if not restore_valid
+            cursor: mutable usize = HEADER_BYTES
+            for _ in 0..<restore_count:
+                return cursor if load_u32(&restore_buffer[0], cursor) == id
+                length: usize = load_u16(&restore_buffer[0], cursor + 6).usize()
+                cursor <- cursor + RECORD_HEADER_BYTES + length
+            return 0
