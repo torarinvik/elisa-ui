@@ -183,6 +183,20 @@ def main() -> i64:
     check("negative typography normalizes before measurement", UiFlat::widget(normalized_label).text_size == 0.0 and UiFlat::widget(normalized_label).min_width == 0.0 and UiFlat::widget(normalized_label).min_height == 0.0)
     check("negative viewport dimensions never escape as geometry", UiFlat::widget(normalized_root).width == 0.0 and UiFlat::widget(normalized_root).height == 0.0 and UiFlat::widget(normalized_button).width >= 0.0 and UiFlat::widget(normalized_button).height >= 0.0)
 
+    # Flat setters and the retained normalization pass share the constraints
+    # bound used by hierarchy layout. Hostile finite metrics therefore remain
+    # finite and bounded before aggregate layout arithmetic or paint consumes
+    # them.
+    UiFlat::reset()
+    huge_flat: f32 = 3.0e38
+    huge_flat_root: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Row, huge_flat, huge_flat, UiCore::rgb(0, 0, 0))
+    huge_flat_child: usize = UiFlat::button(huge_flat_root, huge_flat, huge_flat, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    UiFlat::set_grow(huge_flat_child, huge_flat)
+    check("flat hostile metrics clamp at construction", UiFlat::widget(huge_flat_root).padding == UiConstraints::MAX_EXTENT and UiFlat::widget(huge_flat_root).spacing == UiConstraints::MAX_EXTENT and UiFlat::widget(huge_flat_child).min_width == UiConstraints::MAX_EXTENT)
+    UiFlat::layout(huge_flat, huge_flat)
+    check("flat hostile layout stays bounded", UiFlat::widget(huge_flat_root).width <= UiConstraints::MAX_EXTENT and UiFlat::widget(huge_flat_root).height <= UiConstraints::MAX_EXTENT and UiFlat::widget(huge_flat_child).width <= UiConstraints::MAX_EXTENT and UiFlat::widget(huge_flat_child).height <= UiConstraints::MAX_EXTENT)
+    check("flat hostile layout stays finite", UiFlat::widget(huge_flat_root).width == UiFlat::widget(huge_flat_root).width and UiFlat::widget(huge_flat_child).width == UiFlat::widget(huge_flat_child).width)
+
     UiFlat::reset()
     invalid_axis: UiConst::Axis = (-1).i32().Axis()
     invalid_alignment: UiConst::CrossAlignment = (-1).i32().CrossAlignment()
