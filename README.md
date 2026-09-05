@@ -29,7 +29,8 @@ because a module member's symbol carries its module and those names cannot move.
   records mirroring the WIT records field-for-field, the `UiCore::Command` batch,
   the drawing API that appends to it, `UiCore::Event` and the input vocabulary
   (`UiCore::Key`, `UiCore::Pad`, `UiCore::PadAxis`). It also exposes typed
-  invalidation reasons for layout, paint, semantics, resources, and animation.
+  invalidation reasons for layout, paint, semantics, resources, and animation,
+  plus a monotonic invalidation sequence for detecting repeated dirty requests.
   Knows nothing about any wire format.
 - **Lifecycle** ([src/core/ui_lifecycle.elisa](src/core/ui_lifecycle.elisa)) —
   one typed startup/focus/background/surface/stop state machine shared by the
@@ -183,6 +184,9 @@ because a module member's symbol carries its module and those names cannot move.
   rather than silently indistinguishable from missing UI. The read-only
   `UiInspector` projection reports typed hierarchy, bounds/constraints,
   deferred layout and frame-buffer state, matching semantic nodes while
+  redacting secure text for diagnostics.
+  It also exposes the raw invalidation mask and sequence so tooling can observe
+  repeated updates even when a dirty bit remains set.
   redacting secure text for diagnostics.
   New application code can use [UiHandles](docs/ui-handles.md) for typed u32
   handles with retained-tree lifetime checks; the older index API remains for

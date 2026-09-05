@@ -14,7 +14,10 @@ extend UiCore:
         # frame-local Paint/Semantics/Animation bits while durable Layout and
         # Resources state survives until the owner resolves it.
         def invalidate(reason: Invalidation) -> void:
-            invalidation_flags <- invalidation_flags | reason.i32()
+            bits: i32 = reason.i32()
+            return if bits == 0
+            invalidation_flags <- invalidation_flags | bits
+            invalidation_sequence_state <- next_sequence(invalidation_sequence_state)
 
         def clear_invalidations(reasons: Invalidation) -> void:
             invalidation_flags <- invalidation_flags & (~reasons.i32())
@@ -24,6 +27,12 @@ extend UiCore:
 
         def invalidations() -> i32:
             return invalidation_flags
+
+        # A sequence changes on every non-empty invalidation request, even when
+        # that reason was already set. Inspectors can therefore detect repeated
+        # updates without clearing a durable bit or keeping backend shadow state.
+        def invalidation_sequence() -> u32:
+            return invalidation_sequence_state
 
         def clear_all_invalidations() -> void:
             invalidation_flags <- 0
@@ -268,6 +277,10 @@ extend UiCore:
             return 1 if milliseconds < 1 else milliseconds
 
     private:
+        def next_sequence(value: u32) -> u32:
+            next: u32 = value + 1
+            return 1 if next == 0 else next
+
         def relationship_id(id: usize) -> usize:
             return id if id < MAX_ACCESSIBILITY_NODES
             return MAX_ACCESSIBILITY_NODES

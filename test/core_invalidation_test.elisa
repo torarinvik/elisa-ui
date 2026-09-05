@@ -14,13 +14,17 @@ def check(name: cstr, ok: bool) -> void:
 def main() -> i64:
     UiCore::clear_all_invalidations()
     check("invalidation starts clear", UiCore::invalidations() == 0)
+    sequence_before: u32 = UiCore::invalidation_sequence()
 
     UiCore::invalidate(UiCore::Invalidation.Layout)
     UiCore::invalidate(UiCore::Invalidation.Resources)
+    check("invalidation sequence records new requests", UiCore::invalidation_sequence() == sequence_before + 2)
     check("layout flag is observable", UiCore::is_invalidated(UiCore::Invalidation.Layout))
     check("resource flag is durable", UiCore::is_invalidated(UiCore::Invalidation.Resources))
     UiCore::clear_invalidations(UiCore::Invalidation.Layout)
     check("one invalidation clears independently", not UiCore::is_invalidated(UiCore::Invalidation.Layout) and UiCore::is_invalidated(UiCore::Invalidation.Resources))
+    UiCore::invalidate(UiCore::Invalidation.Resources)
+    check("repeated dirty reasons still advance sequence", UiCore::invalidation_sequence() == sequence_before + 3)
 
     UiCore::begin_frame()
     UiCore::clear(UiCore::rgb(1, 2, 3))
