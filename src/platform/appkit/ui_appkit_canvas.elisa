@@ -5,7 +5,6 @@ using UiPaint
 
 extern getenv(name: cstr) -> cstr?
 extern strcmp(left: cstr, right: cstr) -> i32
-extern strlen(text: cstr) -> usize
 extern elisa_appkit_canvas_window_style_titled: i32
 extern elisa_appkit_canvas_window_style_closable: i32
 extern elisa_appkit_canvas_window_style_miniaturizable: i32
@@ -160,6 +159,30 @@ extern CGImageDestinationAddImage(destination: usize, image: usize, properties: 
 extern CGImageDestinationFinalize(destination: usize) -> bool
 extern CFGetTypeID(value: usize) -> usize
 extern CFStringGetTypeID() -> usize
+
+# Snapshot paths come from the process environment and are bounded by the
+# platform's path limits in normal use. Keep the scan in Elisa so this backend
+# does not acquire a libc dependency for one small string primitive, while the
+# bound prevents an unterminated value from becoming an unbounded memory walk.
+const SNAPSHOT_PATH_SCAN_CAPACITY: usize = 4096
+
+def appkit_cstr_byte(text: cstr, index: usize) -> u8:
+    pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
+    return 0 if pointer == 0.uintptr()
+    trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic]:
+        byte: u8& = (pointer + index.uintptr()).cast[u8&]
+        return byte
+
+def snapshot_path_length(text: cstr) -> usize:
+    pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
+    return 0 if pointer == 0.uintptr()
+    length: mutable usize = 0
+    while length < SNAPSHOT_PATH_SCAN_CAPACITY |length|:
+        return length if appkit_cstr_byte(text, length) == 0
+        length <- length + 1
+    # CAPACITY + 1 is an explicit invalid sentinel: a valid path can be exactly
+    # CAPACITY bytes long, but this value had no terminator in the scan window.
+    return SNAPSHOT_PATH_SCAN_CAPACITY + 1
 
 def ui_measure_text_width(text: sview, size: f32) -> f32:
     return 0.0 if text.len == 0
@@ -1491,7 +1514,10 @@ module UiAppKitCanvas:
                 if headless:
                     snapshot_opt: cstr? = getenv("ELISA_UI_SNAPSHOT")
                     if snapshot_opt is snapshot:
-                        snapshot_length: usize = strlen(snapshot)
+                        snapshot_length: usize = snapshot_path_length(snapshot)
+                        if snapshot_length > SNAPSHOT_PATH_SCAN_CAPACITY:
+                            release_canvas()
+                            return 2
                         snapshot_path <- native_string(sview(snapshot, 0, snapshot_length.i64()))
                         if snapshot_length > 0 and snapshot_path == 0:
                             release_canvas()

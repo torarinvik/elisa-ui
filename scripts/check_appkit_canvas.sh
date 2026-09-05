@@ -69,6 +69,12 @@ if grep -Eq '\bNSFont\b|NSForegroundColorAttributeName|sizeWithAttributes' "$ROO
   echo "appkit canvas: font construction or measurement leaked back into Objective-C" >&2
   exit 1
 fi
+# The only C-string scan needed by the canvas is framework-side snapshot-path
+# handling; keep it in Elisa alongside the rest of the headless policy.
+if grep -Eq '\bstrlen\b' "$ROOT/src/platform/appkit/ui_appkit_canvas.elisa"; then
+  echo "appkit canvas: libc strlen survived in the Elisa backend" >&2
+  exit 1
+fi
 if grep -Eq '\bvalueKind\b|\bvalue_kind\b' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: accessibility value-shape policy leaked back into Objective-C" >&2
   exit 1
