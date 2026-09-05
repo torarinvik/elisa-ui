@@ -126,18 +126,17 @@ module UiGestures:
             return false if slot == NONE_SLOT
             position: UiCore::Vec2 = safe_point(contact.position)
             timestamp: f32 = safe_time(contact.timestamp)
-            duration: mutable f32 = 0.0
-            if timestamp >= start_times[slot]:
-                duration <- timestamp - start_times[slot]
             lasts[slot] <- position
             if timestamp >= last_times[slot]:
                 last_times[slot] <- timestamp
+            duration: f32 = last_times[slot] - start_times[slot]
+            moved[slot] <- true if distance_squared(position, starts[slot]) >= MOVE_THRESHOLD * MOVE_THRESHOLD
             last_primary <- contact.id
             last_position <- position
             last_delta <- UiCore::Vec2(position.x - starts[slot].x, position.y - starts[slot].y)
             last_duration <- duration
             if pinch_active:
-                last_result <- Kind.Pinch
+                _ = update_pinch()
             elif moved[slot]:
                 last_result <- Kind.Drag
             elif duration <= TAP_MAX_DURATION:
@@ -220,13 +219,22 @@ module UiGestures:
         # platform math import is needed just to report pinch scale.
         def square_root(value: f32) -> f32:
             return 0.0 if value <= 0.0
+            # Normalize by powers of four before Newton iteration. Starting at
+            # value takes far more than eight iterations at screen distances.
+            scaled: mutable f32 = value
+            factor: mutable f32 = 1.0
+            while scaled > 4.0 |scaled, factor|:
+                scaled <- scaled * 0.25
+                factor <- factor * 2.0
+            while scaled < 1.0 |scaled, factor|:
+                scaled <- scaled * 4.0
+                factor <- factor * 0.5
             estimate: mutable f32 = 1.0
-            estimate <- value if value > 1.0
             iteration: mutable usize = 0
             while iteration < 8 |iteration|:
-                estimate <- (estimate + value / estimate) * 0.5
+                estimate <- (estimate + scaled / estimate) * 0.5
                 iteration <- iteration + 1
-            return UiCore::finite_or_zero(estimate)
+            return UiCore::finite_or_zero(estimate * factor)
 
         def find_slot(id: u32) -> usize:
             for slot in 0..<MAX_TOUCHES:
