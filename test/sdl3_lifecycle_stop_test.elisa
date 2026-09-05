@@ -1,0 +1,53 @@
+# Lifecycle regressions for the SDL3 host loop. Applications may stop during
+# initialization or while producing a frame; neither path should present more
+# native work after the lifecycle has become unavailable.
+
+include "../src/platform/sdl3/ui_sdl3.elisa"
+
+extern SDL_setenv_unsafe(name: cstr, value: cstr, overwrite: i32) -> i32
+extern puts(text: cstr) -> i64
+
+global mutable stop_in_init: bool = true
+global mutable stop_in_frame: bool = false
+global mutable frame_calls: i32 = 0
+global mutable failures: i32 = 0
+
+def app_init() -> void:
+    UiLifecycle::stop() if stop_in_init
+
+def app_frame() -> void:
+    frame_calls <- frame_calls + 1
+    UiLifecycle::stop() if stop_in_frame
+
+def app_event(event: UiCore::Event) -> void:
+    pass
+
+def app_text_input(text: sview) -> void:
+    pass
+
+def app_text_editing(text: sview, start: i32, length: i32) -> void:
+    pass
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    _ = SDL_setenv_unsafe("SDL_VIDEODRIVER", "dummy", 1)
+
+    first: i64 = UiSdl3::run("startup stop", 64, 64, 1)
+    check("startup stop returns cleanly", first == 0)
+    check("startup stop skips the first frame", frame_calls == 0)
+
+    stop_in_init <- false
+    stop_in_frame <- true
+    frame_calls <- 0
+    second: i64 = UiSdl3::run("frame stop", 64, 64, 1)
+    check("frame stop returns cleanly", second == 0)
+    check("frame stop runs one application frame", frame_calls == 1)
+    check("frame stop leaves lifecycle stopped", UiLifecycle::phase() == UiLifecycle::Phase.Stopped)
+
+    if failures == 0:
+        _ = puts("SDL lifecycle stop: passed")
+    return failures.i64()
