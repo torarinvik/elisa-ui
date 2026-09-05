@@ -143,6 +143,10 @@ module UiFlat:
         global mutable last_layout_width: f32 = 0.0
         global mutable last_layout_height: f32 = 0.0
         global mutable layout_initialized: bool = false
+        # Geometry-affecting mutations defer one retained reflow until the
+        # next paint. This keeps layout policy in Elisa while avoiding a full
+        # measure/arrange pass for every setter during a frame.
+        global mutable layout_dirty: bool = false
         # The widget under the pointer, and the one holding a press. A click
         # only fires when both agree on release, so dragging off a button
         # cancels it.
@@ -293,6 +297,7 @@ module UiFlat:
                 return NONE
             index: usize = widget_count
             widget_count <- widget_count + 1
+            layout_dirty <- true if layout_initialized
             safe_parent: usize = parent if parent < index else NONE
             # A whole-record reset, not a `with` block: a literal must name
             # every field, so a field added to Widget cannot be left
@@ -388,6 +393,7 @@ module UiFlat:
         def set_grow(index: usize, grow: f32) -> void:
             return if index >= widget_count
             widgets[index].grow <- UiCore::nonnegative_extent(grow)
+            layout_dirty <- true if layout_initialized
 
         # Zero means unbounded. A maximum below the measured minimum never
         # clips required content; the minimum wins for that axis.
@@ -395,18 +401,22 @@ module UiFlat:
             return if index >= widget_count
             widgets[index].max_width <- UiCore::nonnegative_extent(width)
             widgets[index].max_height <- UiCore::nonnegative_extent(height)
+            layout_dirty <- true if layout_initialized
 
         def set_margin(index: usize, margin: f32) -> void:
             return if index >= widget_count
             widgets[index].margin <- UiCore::nonnegative_extent(margin)
+            layout_dirty <- true if layout_initialized
 
         def set_cross_alignment(index: usize, alignment: UiConst::CrossAlignment) -> void:
             return if index >= widget_count
             widgets[index].cross_alignment <- alignment
+            layout_dirty <- true if layout_initialized
 
         def set_main_alignment(index: usize, alignment: UiConst::MainAlignment) -> void:
             return if index >= widget_count
             widgets[index].main_alignment <- alignment
+            layout_dirty <- true if layout_initialized
 
         def set_focus_order(index: usize, order: usize) -> void:
             return if index >= widget_count
@@ -450,6 +460,7 @@ module UiFlat:
         def set_visible(index: usize, shown: bool) -> void:
             return if index >= widget_count
             widgets[index].visible <- shown
+            layout_dirty <- true if layout_initialized
             return if shown
             for candidate in 0..<widget_count:
                 if not effectively_visible(candidate):
@@ -480,6 +491,7 @@ module UiFlat:
                     declared_min_width <- measured_width, declared_min_height <- measured_height,
                     min_width <- measured_width, min_height <- measured_height,
                 }
+            layout_dirty <- true if layout_initialized
 
         def set_help(index: usize, help: sview) -> void:
             return if index >= widget_count
@@ -544,6 +556,7 @@ module UiFlat:
             last_layout_width <- 0.0
             last_layout_height <- 0.0
             layout_initialized <- false
+            layout_dirty <- false
             hot_widget <- NONE
             pointer_x <- 0.0
             pointer_y <- 0.0
@@ -1468,6 +1481,7 @@ module UiFlat:
             last_layout_width <- UiCore::nonnegative_extent(width)
             last_layout_height <- UiCore::nonnegative_extent(height)
             layout_initialized <- true
+            layout_dirty <- false
             return if widget_count == 0
             measure(0)
             arrange(0, 0.0, 0.0, last_layout_width, last_layout_height)
@@ -2479,6 +2493,7 @@ module UiFlat:
         # Pre-order emission gives painter's-algorithm ordering for free: a
         # parent's background is laid down before any of its children.
         def paint() -> void:
+            layout(last_layout_width, last_layout_height) if layout_initialized and layout_dirty
             for index in 0..<widget_count:
                 semantic_emitted[index] <- not effectively_visible(index) or not intersects_scroll_viewports(index)
             for emitted_count in 0..<widget_count:
