@@ -189,7 +189,13 @@ module UiWasmBrowser:
         def frame(dt: f64) -> void:
             return if not UiLifecycle::can_render()
             safe_dt: f64 = UiCore::finite_or_zero_f64(dt)
-            elapsed_time <- elapsed_time + safe_dt if safe_dt > 0.0
+            if safe_dt > 0.0:
+                # Keep the accumulated clock finite. A very large but finite
+                # host delta can overflow the sum to +Inf; accepting that
+                # value would make UiCore::set_frame_time sanitize it to zero
+                # and silently rewind all animation state on the next frame.
+                candidate: f64 = elapsed_time + safe_dt
+                elapsed_time <- candidate if UiCore::finite_or_zero_f64(candidate) == candidate
             UiCore::set_frame_time(elapsed_time)
             UiMetrics::begin_frame(elapsed_time)
             UiCore::begin_frame()
