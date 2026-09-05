@@ -206,17 +206,25 @@ def main() -> i64:
         nested_c: Widget = Button.Push(min_width: 40.0, min_height: 30.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "c", rest: grey(30), hover: grey(40), press: grey(20))
         nested_a.next_sibling <- nested_b
         nested_b.next_sibling <- nested_c
-        nested_inner: Widget = Container.ScrollWithState(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: nested_a, next_sibling: null, axis: UiConst::Axis.Column, state: &nested_inner_state, fill: grey(18))
-        nested_outer_tail: Widget = Button.Push(min_width: 40.0, min_height: 20.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "tail", rest: grey(30), hover: grey(40), press: grey(20))
+        nested_inner: Widget = Container.ScrollWithState(min_width: 0.0, min_height: 50.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: nested_a, next_sibling: null, axis: UiConst::Axis.Column, state: &nested_inner_state, fill: grey(18))
+        nested_outer_tail: Widget = Button.Push(min_width: 40.0, min_height: 80.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "tail", rest: grey(30), hover: grey(40), press: grey(20))
         nested_inner.next_sibling <- nested_outer_tail
         nested_outer: Widget = Container.ScrollWithState(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: nested_inner, next_sibling: null, axis: UiConst::Axis.Column, state: &nested_outer_state, fill: grey(18))
         layout(nested_outer, 100.0, 50.0)
-        nested_inner.height <- 50.0
+        check("nested scroll keeps its parent-provided viewport", nested_inner.height, 50.0)
         _ = scroll_to(nested_inner, 40.0)
+        layout(nested_inner, 100.0, 50.0)
         check("nested inner viewport reaches its edge", nested_inner_state.offset, 40.0)
         pointer(nested_outer, (UiCore::PointerEvent.Scroll(at: UiCore::Vec2(10.0, 10.0), delta: UiCore::Vec2(0.0, -20.0))))
         check("edge-clamped nested wheel bubbles to its parent", nested_inner_state.offset, 40.0)
         check("parent viewport consumes bubbled wheel", nested_outer_state.offset, 20.0)
+
+        # Direct state edits are normalized by the next layout just like
+        # scroll_to requests, so callers cannot leave a stale offset beyond
+        # the current content range.
+        nested_inner_state.offset <- 999.0
+        layout(nested_inner, 100.0, 50.0)
+        check("layout clamps direct scroll-state edits", nested_inner_state.offset, 40.0)
 
         # Hierarchy painting carries the same scroll-viewport clip metadata as
         # UiFlat, so translated children cannot bleed outside their container.

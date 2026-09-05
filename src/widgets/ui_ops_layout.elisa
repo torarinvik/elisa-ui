@@ -156,8 +156,21 @@ extend UiWidgets:
             pad: f32 = safe_product(padding_of(w), 2.0)
             content_width: f32 = safe_sum(safe_sum(along, gaps), pad) if is_row else safe_sum(across, pad)
             content_height: f32 = safe_sum(across, pad) if is_row else safe_sum(safe_sum(along, gaps), pad)
-            w.min_width <- content_width if content_width > w.min_width
-            w.min_height <- content_height if content_height > w.min_height
+            # A scroll node's content demand belongs to its scroll range, not
+            # to the viewport minimum. Keeping the declared minimum lets a
+            # parent provide the visible extent (the flat backend follows the
+            # same rule); ordinary containers still grow to fit their content.
+            scrolling: mutable bool = false
+            match w:
+                Container.Scroll(axis, offset, fill):
+                    scrolling <- true
+                Container.ScrollWithState(axis, state, fill):
+                    scrolling <- true
+                _:
+                    pass
+            if not scrolling:
+                w.min_width <- content_width if content_width > w.min_width
+                w.min_height <- content_height if content_height > w.min_height
 
         # Top-down pass. Every child gets its minimum along the axis, then the
         # leftover is shared in proportion to `grow`; children stretch to fill
@@ -243,7 +256,15 @@ extend UiWidgets:
             count: f32 = child_count(w)
             gaps: f32 = safe_product(gap, count - 1.0) if count > 1.0 else 0.0
             inner_along: f32 = inner_width if is_row else inner_height
-            scroll_offset: f32 = scroll_offset_of(w)
+            scrolling: mutable bool = false
+            match w:
+                Container.Scroll(axis, offset, fill):
+                    scrolling <- true
+                Container.ScrollWithState(axis, state, fill):
+                    scrolling <- true
+                _:
+                    pass
+            scroll_offset: mutable f32 = scroll_offset_of(w)
 
             # First walk: what the children demand, and how much weight wants
             # the rest.
@@ -257,6 +278,22 @@ extend UiWidgets:
                 demand <- safe_sum(demand, node.min_width if is_row else node.min_height)
                 weight <- safe_sum(weight, node.grow)
                 scan <- node.next_sibling
+
+            # The offset is caller-owned for stateful viewports, so normalize
+            # it again during every layout. This covers applications that
+            # update ScrollState directly and keeps a stale value from moving
+            # content beyond the measured range.
+            if scrolling:
+                content_along: f32 = safe_sum(demand, gaps)
+                limit: f32 = safe_difference(content_along, inner_along)
+                match w:
+                    Container.ScrollWithState(axis, state, fill):
+                        requested: f32 = UiCore::nonnegative_extent(state.offset)
+                        next_offset: f32 = limit if requested > limit else requested
+                        state.offset <- next_offset
+                        scroll_offset <- next_offset
+                    _:
+                        pass
 
             free: f32 = safe_difference(inner_along, safe_sum(gaps, demand))
             share: f32 = free / weight if weight > 0.0 and free > 0.0 else 0.0
