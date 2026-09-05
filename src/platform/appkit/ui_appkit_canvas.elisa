@@ -1026,10 +1026,18 @@ module UiAppKitCanvas:
             # Teardown is also reachable from failed setup and headless
             # completion, where AppKit never sends windowWillClose. Cancel the
             # retained timer here so no callback can target a released view.
+            # Mark the canvas unavailable before releasing any native object;
+            # AppKit can synchronously emit a late resize/focus notification
+            # while a window is being dismantled, and those callbacks must not
+            # re-enter application state through a dead window handle.
+            canvas_initialized <- false
             cancel_redraw()
             release_canvas_delegate()
             release_accessibility_handles()
             release_canvas_window()
+            headless_session <- false
+            frame_context <- 0
+            frame_rendered <- false
 
         # AppKit reports hardware key codes plus a UTF-16 character. Translate
         # that platform vocabulary here so the Objective-C host only forwards
