@@ -32,16 +32,14 @@ void elisa_appkit_canvas_frame(size_t context) {
     test_frame_count += 1;
     elisa_appkit_canvas_accessibility_reset(test_window_handle);
     size_t sliderElement = elisa_appkit_canvas_accessibility_add(test_window_handle, test_accessibility_handles[0], (size_t)(__bridge void *)@"elisa-ui-7", 7, NSAccessibilitySliderRole, 0,
-        (size_t)(__bridge void *)[NSCursor pointingHandCursor],
         (size_t)(__bridge void *)@"Intensity", (size_t)(__bridge void *)@"Adjust preview intensity",
         10, 10, 180, 24, 1, 0);
-    elisa_appkit_canvas_accessibility_add_tooltip(test_window_handle, sliderElement);
+    elisa_appkit_canvas_accessibility_add_tooltip(test_window_handle, sliderElement, 10, 10, 180, 24);
     elisa_appkit_canvas_accessibility_set_range(sliderElement, test_slider_value, 0.0f, 1.0f);
     size_t textElement = elisa_appkit_canvas_accessibility_add(test_window_handle, test_accessibility_handles[1], (size_t)(__bridge void *)@"elisa-ui-8", 8, NSAccessibilityTextFieldRole, 0,
-        (size_t)(__bridge void *)[NSCursor IBeamCursor],
         (size_t)(__bridge void *)@"Project name", (size_t)(__bridge void *)@"Edit the project name",
         10, 44, 180, 32, 1, test_text_focused);
-    elisa_appkit_canvas_accessibility_add_tooltip(test_window_handle, textElement);
+    elisa_appkit_canvas_accessibility_add_tooltip(test_window_handle, textElement, 10, 44, 180, 32);
     NSString *textValue = [NSString stringWithUTF8String:test_text];
     NSString *selectedValue = [[NSString alloc]
         initWithBytes:test_text + test_selection_start
@@ -51,10 +49,9 @@ void elisa_appkit_canvas_frame(size_t context) {
         elisa_appkit_canvas_selection_location(), elisa_appkit_canvas_selection_length());
     const char *masked = "••••";
     size_t secureElement = elisa_appkit_canvas_accessibility_add(test_window_handle, test_accessibility_handles[2], (size_t)(__bridge void *)@"elisa-ui-9", 9, NSAccessibilityTextFieldRole, NSAccessibilitySecureTextFieldSubrole,
-        (size_t)(__bridge void *)[NSCursor IBeamCursor],
         (size_t)(__bridge void *)@"Password", (size_t)(__bridge void *)@"Secure entry",
         10, 80, 180, 32, 1, 0);
-    elisa_appkit_canvas_accessibility_add_tooltip(test_window_handle, secureElement);
+    elisa_appkit_canvas_accessibility_add_tooltip(test_window_handle, secureElement, 10, 80, 180, 32);
     elisa_appkit_canvas_accessibility_set_text(secureElement, (size_t)(__bridge void *)[NSString stringWithUTF8String:masked],
         (size_t)(__bridge void *)@"", 0, 0);
     test_accessibility_handles[0] = sliderElement;
@@ -411,7 +408,7 @@ int main(void) {
     if (require(elisa_appkit_canvas_accessibility_add(
                     opened, 0, 0, 0, NSAccessibilityButtonRole, NULL, 0,
                     (size_t)(__bridge void *)invalidNativeString, 0,
-                    0, 0, 10, 10, 1, 0) == 0,
+                    0, 10, 10, 1, 0) == 0,
                 @"invalid accessibility label was accepted")) return 1;
     size_t applicationMenu = elisa_appkit_canvas_menu_add(menuBar, (size_t)(__bridge void *)@"test", (size_t)(__bridge void *)@"");
         elisa_appkit_canvas_menu_add_item(applicationMenu, (size_t)(__bridge void *)@"About test", (size_t)(__bridge void *)@"", (size_t)(void *)sel_registerName("orderFrontStandardAboutPanel:"), 0);
@@ -489,7 +486,6 @@ int main(void) {
         ElisaAccessibilityElement *first = children[0];
         if (require([first.accessibilityRole isEqualToString:NSAccessibilitySliderRole], @"wrong slider role")) return 1;
         if (require([first.accessibilityIdentifier isEqualToString:@"elisa-ui-7"], @"accessibility identifier did not cross the FFI")) return 1;
-        if (require(first.elisaCursor == [NSCursor pointingHandCursor], @"opaque cursor pointer was not installed")) return 1;
         if (require([first.accessibilityHelp isEqualToString:@"Adjust preview intensity"], @"help text missing")) return 1;
         if (require(fabs([first.accessibilityValue floatValue] - 0.25f) < 0.001f, @"wrong initial value")) return 1;
         ElisaAccessibilityElement *textField = children[1];

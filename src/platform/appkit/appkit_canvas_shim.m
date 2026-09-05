@@ -84,9 +84,7 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
 
 @interface ElisaAccessibilityElement : NSAccessibilityElement
 @property(nonatomic) size_t elisaIndex;
-@property(nonatomic, strong) NSCursor *elisaCursor;
 @property(nonatomic) BOOL elisaSynchronizing;
-@property(nonatomic) NSRect elisaLocalFrame;
 @end
 @implementation ElisaAccessibilityElement
 - (BOOL)accessibilityPerformPress {
@@ -744,7 +742,7 @@ static ElisaAccessibilityElement *elisa_appkit_canvas_element(size_t handle) {
 
 size_t elisa_appkit_canvas_accessibility_add(size_t windowHandle, size_t previousHandle,
                                             size_t identifierString, size_t action, const void *role,
-                                            const void *subrole, size_t cursor,
+                                            const void *subrole,
                                             size_t label, size_t help,
                                             float x, float y, float width, float height,
                                             int enabled, int focused) {
@@ -785,8 +783,6 @@ size_t elisa_appkit_canvas_accessibility_add(size_t windowHandle, size_t previou
     element.accessibilityMaxValue = nil;
     element.elisaSynchronizing = NO;
     element.elisaIndex = action;
-    element.elisaCursor = elisa_appkit_canvas_cursor(cursor);
-    element.elisaLocalFrame = local;
     NSRect inWindow = [view convertRect:local toView:nil];
     NSWindow *window = elisa_appkit_canvas_window(windowHandle);
     if (window == nil) return 0;
@@ -804,11 +800,12 @@ void elisa_appkit_canvas_accessibility_release(size_t handle) {
     (void)CFBridgingRelease((CFTypeRef)(void *)handle);
 }
 
-void elisa_appkit_canvas_accessibility_add_tooltip(size_t windowHandle, size_t handle) {
+void elisa_appkit_canvas_accessibility_add_tooltip(size_t windowHandle, size_t handle,
+                                                   float x, float y, float width, float height) {
     ElisaAccessibilityElement *element = elisa_appkit_canvas_element(handle);
     ElisaCanvasView *view = elisa_appkit_canvas_view(windowHandle);
     if (element == nil || view == nil) return;
-    [view addToolTipRect:element.elisaLocalFrame owner:element userData:NULL];
+    [view addToolTipRect:NSMakeRect(x, y, width, height) owner:element userData:NULL];
 }
 
 void elisa_appkit_canvas_accessibility_set_boolean(size_t handle, int selected) {

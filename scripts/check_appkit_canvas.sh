@@ -117,6 +117,10 @@ if grep -Eq 'static NSMutableArray[[:space:]]*\*' "$ROOT/src/platform/appkit/app
   echo "appkit canvas: accessibility element ownership was hidden in Objective-C state" >&2
   exit 1
 fi
+if grep -Eq 'elisa(LocalFrame|Cursor)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: accessibility geometry or cursor state was duplicated in Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'static NSMenu \*elisa_canvas_menu_bar' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: menu-bar lifetime was hidden in Objective-C state" >&2
   exit 1

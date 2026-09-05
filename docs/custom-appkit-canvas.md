@@ -141,7 +141,9 @@ objects between frames, exposes actions to VoiceOver, updates screen-relative
 frames after window moves, and applies the Cocoa role/subrole constants plus interaction,
 tooltip and cursor tokens computed by Elisa from the same metadata. Value shape
 (boolean, range, text, or empty) is selected in Elisa and sent through typed FFI
-setters. Elisa also diffs semantic state between frames;
+setters. Tooltip rectangles receive the node frame directly during each sync;
+the native element does not cache a second frame or cursor identity. Elisa also
+diffs semantic state between frames;
 AppKit receives explicit value, focus, text-selection and layout notification
 bits instead of inferring framework behavior from native objects. Text changes
 use explicit widget edit revisions rather than per-frame string hashing.
