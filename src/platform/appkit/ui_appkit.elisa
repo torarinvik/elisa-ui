@@ -501,7 +501,13 @@ module UiAppKit:
         # ownership reference (including the root window) lets ARC tear down the
         # old tree without leaving a second native lifetime table behind.
         def release_native_handles() -> void:
-            for index in 0..<UiControls::count():
+            # UiControls emits parents before children. Release the retained
+            # handles in reverse order so a parent deallocation cannot invalidate
+            # a child handle that Elisa still needs to release.
+            count: usize = UiControls::count()
+            index: mutable usize = count
+            while index > 0 |index|:
+                index <- index - 1
                 handle: usize = UiControls::native_handle_at(index)
                 CFRelease(handle) if handle != 0
 
