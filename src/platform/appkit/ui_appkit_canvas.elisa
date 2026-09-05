@@ -1446,6 +1446,12 @@ module UiAppKitCanvas:
         def window_handle() -> usize:
             return canvas_window
 
+        # Native callbacks can arrive after AppKit starts dismantling a window.
+        # Keep one lifecycle predicate in Elisa so every event entry point uses
+        # the same answer about whether retained widget state is still live.
+        def live() -> bool:
+            return canvas_initialized and canvas_window != 0
+
         def redraw() -> void:
             return if canvas_window == 0
             elisa_appkit_canvas_redraw(canvas_window)
@@ -1486,12 +1492,13 @@ def appkit_canvas_valid_marked_attributes() -> usize:
     return UiAppKitCanvas::valid_marked_attributes()
 
 def appkit_canvas_resize_callback(width: f32, height: f32) -> void:
-    return if not UiAppKitCanvas::canvas_initialized
+    return if not UiAppKitCanvas::live()
     UiCore::set_viewport(width, height)
     app_event(UiCore::Event.Resize(size: UiCore::Size(width, height)))
     UiAppKitCanvas::redraw()
 
 def appkit_canvas_pointer_callback(kind: i32, x: f32, y: f32, dx: f32, dy: f32, button: i32) -> void:
+    return if not UiAppKitCanvas::live()
     at: UiCore::Vec2 = UiCore::Vec2(x, y)
     event: mutable UiCore::Event = (UiCore::PointerEvent.Move(at: at))
     event <- (UiCore::PointerEvent.Down(at: at, button: button)) if kind == 1
@@ -1517,6 +1524,7 @@ def appkit_canvas_pointer_scroll_callback(x: f32, y: f32, dx: f32, dy: f32) -> v
     appkit_canvas_pointer_callback(4, x, y, dx, dy, 0)
 
 def appkit_canvas_key_callback(down: i32, code: i32) -> void:
+    return if not UiAppKitCanvas::live()
     if down != 0 and code == UiCore::Key.Escape.i32():
         UiAppKitCanvas::close()
         return
@@ -1542,15 +1550,18 @@ def appkit_canvas_raw_flags_callback(key_code: i32, modifiers: usize) -> void:
     appkit_canvas_raw_key_callback(down, key_code, 0)
 
 def appkit_canvas_focus_changed_callback(focused: i32) -> void:
+    return if not UiAppKitCanvas::live()
     event: UiCore::Event = (UiCore::Event.FocusGained) if focused != 0 else (UiCore::Event.FocusLost)
     app_event(event)
     UiAppKitCanvas::redraw()
 
 def appkit_canvas_accessibility_environment_changed_callback() -> void:
+    return if not UiAppKitCanvas::live()
     UiAppKitCanvas::accessibility_environment_changed()
     UiAppKitCanvas::redraw()
 
 def appkit_canvas_rebuild_cursor_rects_callback() -> void:
+    return if not UiAppKitCanvas::live()
     UiAppKitCanvas::rebuild_cursor_rects()
 
 def appkit_canvas_render_headless_callback(window_handle: usize, snapshot: usize, pixels_width: i32, pixels_height: i32) -> i32:
