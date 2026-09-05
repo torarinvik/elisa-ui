@@ -158,6 +158,7 @@ module UiWasmBrowser:
         # The guest lifecycle, one function per WIT export.
         def start(width: u32, height: u32) -> void:
             UiLifecycle::reset()
+            UiMetrics::reset()
             return if not UiLifecycle::begin()
             ui_wasm_clipboard_cache_valid <- false
             ui_wasm_clipboard_length <- 0
@@ -177,9 +178,14 @@ module UiWasmBrowser:
             safe_dt: f64 = UiCore::finite_or_zero_f64(dt)
             elapsed_time <- elapsed_time + safe_dt if safe_dt > 0.0
             UiCore::set_frame_time(elapsed_time)
+            UiMetrics::begin_frame(elapsed_time)
             UiCore::begin_frame()
             app_frame()
+            UiMetrics::mark_application(elapsed_time)
+            UiMetrics::mark_semantics(elapsed_time)
             present()
+            UiMetrics::mark_paint(elapsed_time)
+            UiMetrics::finish_frame(elapsed_time)
 
         # The host's pointer-kind ordinal is ITS encoding, not ours; translate it
         # into a variant here and an unmodeled kind simply produces no event.

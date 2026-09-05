@@ -1,0 +1,49 @@
+# Headless regression for shared frame-stage diagnostics.
+
+include "../src/core/ui_metrics.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable failures: i32 = 0
+
+def close(left: f64, right: f64) -> bool:
+    delta: f64 = left - right
+    return delta < 0.000001 and delta > -0.000001
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiMetrics::reset()
+    UiCore::begin_frame()
+    UiMetrics::begin_frame(1.0)
+    UiCore::clear(UiCore::rgb(10, 20, 30))
+    UiMetrics::mark_application(1.25)
+    UiMetrics::mark_semantics(1.30)
+    UiMetrics::mark_paint(1.50)
+    UiMetrics::finish_frame(1.75)
+
+    first: UiMetrics::Snapshot = UiMetrics::snapshot()
+    check("metrics records one complete frame", first.sequence == 1 and first.complete and first.stage == UiMetrics::Stage.Complete)
+    check("metrics records frame duration", close(first.started_at, 1.0) and close(first.completed_at, 1.75) and close(first.frame_duration, 0.75))
+    check("metrics records application duration", close(first.application_duration, 0.25))
+    check("metrics records semantic duration", close(first.semantics_duration, 0.05))
+    check("metrics records paint duration", close(first.paint_duration, 0.20))
+    check("metrics reports retained work", first.command_count == 1 and first.semantic_count == 0 and not first.command_overflowed and not first.semantic_overflowed)
+
+    UiMetrics::begin_frame(2.0)
+    UiMetrics::finish_frame(1.0)
+    second: UiMetrics::Snapshot = UiMetrics::snapshot()
+    check("metrics clamps backwards clock", second.sequence == 2 and second.complete and second.completed_at == 2.0 and second.frame_duration == 0.0)
+
+    UiMetrics::reset()
+    idle: UiMetrics::Snapshot = UiMetrics::snapshot()
+    check("metrics reset clears sample", idle.sequence == 0 and idle.stage == UiMetrics::Stage.Idle and not idle.complete)
+
+    if failures == 0:
+        _ = puts("metrics: all checks passed")
+        return 0
+    _ = puts("metrics: FAILURES above")
+    return 1

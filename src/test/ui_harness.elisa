@@ -8,6 +8,7 @@
 
 include "../core/ui_core.elisa"
 include "../core/ui_lifecycle.elisa"
+include "../core/ui_metrics.elisa"
 include "../widgets/ui_resources.elisa"
 
 module UiHarness:
@@ -21,6 +22,7 @@ module UiHarness:
         def start(width: f32, height: f32) -> void:
             UiLifecycle::reset()
             return if not UiLifecycle::begin()
+            UiMetrics::reset()
             test_time <- 0.0
             UiResources::reset()
             UiCore::set_viewport(width, height)
@@ -81,8 +83,13 @@ module UiHarness:
         def frame() -> void:
             return if not UiLifecycle::can_render()
             UiCore::set_frame_time(test_time)
+            UiMetrics::begin_frame(test_time)
             UiCore::begin_frame()
             app_frame()
+            UiMetrics::mark_application(test_time)
+            UiMetrics::mark_semantics(test_time)
+            UiMetrics::mark_paint(test_time)
+            UiMetrics::finish_frame(test_time)
 
         def run_frames(count: usize, delta: f64) -> void:
             return if not UiLifecycle::can_render()

@@ -1,0 +1,127 @@
+# Shared frame diagnostics for elisa-ui.
+#
+# Backends own their clocks, but frame-stage interpretation belongs to the
+# framework. They pass monotonic timestamps into this module around the
+# application, semantic, and paint phases; the resulting snapshot is safe for
+# inspectors and headless tests without retaining a second command tree.
+
+include "./ui_core.elisa"
+
+module UiMetrics:
+    public:
+        const enum Stage of i32:
+            Idle = 0
+            Application = 1
+            Semantics = 2
+            Paint = 3
+            Complete = 4
+
+        struct Snapshot:
+            sequence: u64
+            stage: Stage
+            started_at: f64
+            completed_at: f64
+            frame_duration: f64
+            application_duration: f64
+            semantics_duration: f64
+            paint_duration: f64
+            command_count: usize
+            semantic_count: usize
+            command_overflowed: bool
+            semantic_overflowed: bool
+            invalidations: i32
+            complete: bool
+
+        def reset() -> void:
+            stage_state <- Stage.Idle
+            sequence_state <- 0
+            started_at_state <- 0.0
+            completed_at_state <- 0.0
+            frame_duration_state <- 0.0
+            application_duration_state <- 0.0
+            semantics_duration_state <- 0.0
+            paint_duration_state <- 0.0
+            complete_state <- false
+
+        # Start one retained frame. Calling begin_frame again replaces an
+        # unfinished sample, which keeps a host callback from poisoning all
+        # later diagnostics after an interrupted frame.
+        def begin_frame(at: f64) -> void:
+            sequence_state <- sequence_state + 1
+            started_at_state <- safe_time(at)
+            completed_at_state <- started_at_state
+            frame_duration_state <- 0.0
+            application_duration_state <- 0.0
+            semantics_duration_state <- 0.0
+            paint_duration_state <- 0.0
+            complete_state <- false
+            stage_state <- Stage.Application
+
+        def mark_application(at: f64) -> void:
+            return if stage_state != Stage.Application
+            now: f64 = safe_time(at)
+            application_duration_state <- elapsed(started_at_state, now)
+            stage_state <- Stage.Semantics
+
+        def mark_semantics(at: f64) -> void:
+            mark_application(at) if stage_state == Stage.Application
+            return if stage_state != Stage.Semantics
+            now: f64 = safe_time(at)
+            semantics_duration_state <- elapsed(started_at_state + application_duration_state, now)
+            stage_state <- Stage.Paint
+
+        def mark_paint(at: f64) -> void:
+            mark_semantics(at) if stage_state == Stage.Application or stage_state == Stage.Semantics
+            return if stage_state != Stage.Paint
+            now: f64 = safe_time(at)
+            paint_start: f64 = started_at_state + application_duration_state + semantics_duration_state
+            paint_duration_state <- elapsed(paint_start, now)
+            stage_state <- Stage.Complete
+
+        # Finish is forgiving by design: a backend that has no distinct
+        # semantic phase still gets a complete frame sample, while a partially
+        # completed callback cannot leave an apparently live stage behind.
+        def finish_frame(at: f64) -> void:
+            return if stage_state == Stage.Idle
+            mark_paint(at)
+            return if stage_state != Stage.Complete
+            now: f64 = safe_time(at)
+            completed_at_state <- started_at_state if now < started_at_state else now
+            frame_duration_state <- elapsed(started_at_state, completed_at_state)
+            complete_state <- true
+
+        def snapshot() -> Snapshot:
+            return Snapshot{
+                sequence: sequence_state,
+                stage: stage_state,
+                started_at: started_at_state,
+                completed_at: completed_at_state,
+                frame_duration: frame_duration_state,
+                application_duration: application_duration_state,
+                semantics_duration: semantics_duration_state,
+                paint_duration: paint_duration_state,
+                command_count: UiCore::command_count(),
+                semantic_count: UiCore::accessibility_count(),
+                command_overflowed: UiCore::command_overflowed(),
+                semantic_overflowed: UiCore::accessibility_overflowed(),
+                invalidations: UiCore::invalidations(),
+                complete: complete_state,
+            }
+
+    private:
+        global mutable stage_state: Stage = Stage.Idle
+        global mutable sequence_state: u64 = 0
+        global mutable started_at_state: f64 = 0.0
+        global mutable completed_at_state: f64 = 0.0
+        global mutable frame_duration_state: f64 = 0.0
+        global mutable application_duration_state: f64 = 0.0
+        global mutable semantics_duration_state: f64 = 0.0
+        global mutable paint_duration_state: f64 = 0.0
+        global mutable complete_state: bool = false
+
+        def safe_time(value: f64) -> f64:
+            safe: f64 = UiCore::finite_or_zero_f64(value)
+            return safe if safe >= 0.0 else 0.0
+
+        def elapsed(start: f64, finish: f64) -> f64:
+            return finish - start if finish > start else 0.0

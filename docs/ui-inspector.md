@@ -13,7 +13,8 @@ node: UiInspector::Node? = UiInspector::inspect(save)
 
 `Frame` reports the viewport, shared lifecycle phase/generation and its input
 and rendering predicates, deferred layout state, frame clock/deadline,
-command/semantic buffer counts and overflow flags, and the five typed
+stage timing metrics (application, semantics, and paint), command/semantic
+buffer counts and overflow flags, and the five typed
 invalidation reasons (`Layout`, `Paint`, `Semantics`, `Resources`, and
 `Animation`). `Node` reports a typed
 lifetime handle, parent/child/sibling relationships, resolved bounds,
