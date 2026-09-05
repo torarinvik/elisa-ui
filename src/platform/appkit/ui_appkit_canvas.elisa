@@ -51,7 +51,7 @@ extern elisa_appkit_canvas_set_min_size(window_handle: usize, width: f32, height
 extern elisa_appkit_canvas_redraw(window_handle: usize) -> void
 extern elisa_appkit_canvas_close(window_handle: usize) -> void
 extern elisa_appkit_canvas_accessibility_reset(window_handle: usize) -> void
-extern elisa_appkit_canvas_accessibility_add(window_handle: usize, previous_handle: usize, identifier: usize, action: usize, role: usize, subrole: usize, label: usize, help: usize, x: f32, y: f32, width: f32, height: f32, enabled: i32, focused: i32) -> usize
+extern elisa_appkit_canvas_accessibility_add(window_handle: usize, previous_handle: usize, identifier: usize, role: usize, subrole: usize, label: usize, help: usize, x: f32, y: f32, width: f32, height: f32, enabled: i32, focused: i32) -> usize
 extern elisa_appkit_canvas_accessibility_release(handle: usize) -> void
 extern elisa_appkit_canvas_accessibility_add_tooltip(window_handle: usize, handle: usize, x: f32, y: f32, width: f32, height: f32) -> void
 extern elisa_appkit_canvas_accessibility_set_boolean(handle: usize, selected: i32) -> void
@@ -236,6 +236,15 @@ module UiAppKitCanvas:
         # embedding a point-size default in the Objective-C adapter.
         def caret_width() -> f32:
             return 1.0
+
+        # Native accessibility elements are opaque callback targets only. Keep
+        # the widget action target in Elisa's retained semantic history and
+        # resolve a callback's element handle back to that target on demand.
+        def accessibility_index_for_handle(handle: usize) -> usize:
+            return not_found() if handle == 0
+            for index in 0..<accessibility_previous_count:
+                return accessibility_previous[index].action if accessibility_previous_handles[index] == handle
+            return not_found()
 
         # Bitmap dimensions are framework geometry, not a Cocoa default. Keep
         # the conversion from logical points to whole pixels in Elisa so the
@@ -1043,7 +1052,7 @@ module UiAppKitCanvas:
                 accessibility_next_ids[index] <- node.id
                 accessibility_next[index] <- state
                 tooltip: i32 = 1 if node.help.len > 0 and interaction != 0 else 0
-                handle: usize = elisa_appkit_canvas_accessibility_add(canvas_window, previous_handle, native_identifier, node.action, native_role, native_subrole, native_label, native_help, node.frame.origin.x, node.frame.origin.y, node.frame.size.width, node.frame.size.height, enabled, focused)
+                handle: usize = elisa_appkit_canvas_accessibility_add(canvas_window, previous_handle, native_identifier, native_role, native_subrole, native_label, native_help, node.frame.origin.x, node.frame.origin.y, node.frame.size.width, node.frame.size.height, enabled, focused)
                 accessibility_next_handles[index] <- handle
                 if handle != 0:
                     elisa_appkit_canvas_accessibility_add_tooltip(canvas_window, handle, node.frame.origin.x, node.frame.origin.y, node.frame.size.width, node.frame.size.height) if tooltip != 0
@@ -1367,12 +1376,16 @@ def appkit_canvas_accessibility_increment_direction() -> i32:
 def appkit_canvas_accessibility_decrement_direction() -> i32:
     return UiAppKitCanvas::accessibility_decrement_direction()
 
+def appkit_canvas_accessibility_index_for_handle(handle: usize) -> usize:
+    return UiAppKitCanvas::accessibility_index_for_handle(handle)
+
 export fn elisa_appkit_canvas_frame(context: usize) -> void = appkit_canvas_frame_callback
 export fn elisa_appkit_canvas_caret_width() -> f32 = appkit_canvas_caret_width
 export fn elisa_appkit_canvas_pointer_button_primary() -> i32 = appkit_canvas_pointer_button_primary
 export fn elisa_appkit_canvas_pointer_button_secondary() -> i32 = appkit_canvas_pointer_button_secondary
 export fn elisa_appkit_canvas_accessibility_increment_direction() -> i32 = appkit_canvas_accessibility_increment_direction
 export fn elisa_appkit_canvas_accessibility_decrement_direction() -> i32 = appkit_canvas_accessibility_decrement_direction
+export fn elisa_appkit_canvas_accessibility_index_for_handle(handle: usize) -> usize = appkit_canvas_accessibility_index_for_handle
 export fn elisa_appkit_canvas_resize(width: f32, height: f32) -> void = appkit_canvas_resize_callback
 export fn elisa_appkit_canvas_pointer_move(x: f32, y: f32) -> void = appkit_canvas_pointer_move_callback
 export fn elisa_appkit_canvas_pointer_down(x: f32, y: f32, button: i32) -> void = appkit_canvas_pointer_down_callback

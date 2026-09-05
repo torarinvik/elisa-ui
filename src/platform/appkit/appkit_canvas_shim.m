@@ -26,6 +26,7 @@ extern void elisa_appkit_canvas_key_down_event(size_t event, int keyCode, size_t
 extern void elisa_appkit_canvas_key_up(int keyCode, size_t character);
 extern int elisa_appkit_canvas_accessibility_activate(size_t index);
 extern int elisa_appkit_canvas_accessibility_adjust(size_t index, int direction);
+extern size_t elisa_appkit_canvas_accessibility_index_for_handle(size_t handle);
 extern int elisa_appkit_canvas_pointer_button_primary(void);
 extern int elisa_appkit_canvas_pointer_button_secondary(void);
 extern int elisa_appkit_canvas_accessibility_increment_direction(void);
@@ -83,20 +84,22 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
 }
 
 @interface ElisaAccessibilityElement : NSAccessibilityElement
-@property(nonatomic) size_t elisaIndex;
 - (void)elisaSetAccessibilityValue:(id)value;
 - (void)elisaSetAccessibilitySelectedTextRange:(NSRange)value;
 @end
 @implementation ElisaAccessibilityElement
 - (BOOL)accessibilityPerformPress {
-    return elisa_appkit_canvas_accessibility_activate(self.elisaIndex) != 0;
+    size_t index = elisa_appkit_canvas_accessibility_index_for_handle((size_t)(__bridge void *)self);
+    return index != elisa_appkit_canvas_not_found() && elisa_appkit_canvas_accessibility_activate(index) != 0;
 }
 - (BOOL)accessibilityPerformIncrement {
-    return elisa_appkit_canvas_accessibility_adjust(self.elisaIndex,
+    size_t index = elisa_appkit_canvas_accessibility_index_for_handle((size_t)(__bridge void *)self);
+    return index != elisa_appkit_canvas_not_found() && elisa_appkit_canvas_accessibility_adjust(index,
         elisa_appkit_canvas_accessibility_increment_direction()) != 0;
 }
 - (BOOL)accessibilityPerformDecrement {
-    return elisa_appkit_canvas_accessibility_adjust(self.elisaIndex,
+    size_t index = elisa_appkit_canvas_accessibility_index_for_handle((size_t)(__bridge void *)self);
+    return index != elisa_appkit_canvas_not_found() && elisa_appkit_canvas_accessibility_adjust(index,
         elisa_appkit_canvas_accessibility_decrement_direction()) != 0;
 }
 - (void)setAccessibilityValue:(id)value {
@@ -108,12 +111,14 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
         [super setAccessibilityValue:value];
         return;
     }
-    if (elisa_appkit_canvas_set_text(self.elisaIndex, (size_t)(__bridge void *)value) != 0) {
+    size_t index = elisa_appkit_canvas_accessibility_index_for_handle((size_t)(__bridge void *)self);
+    if (index != elisa_appkit_canvas_not_found() && elisa_appkit_canvas_set_text(index, (size_t)(__bridge void *)value) != 0) {
         [super setAccessibilityValue:value];
     }
 }
 - (void)setAccessibilitySelectedTextRange:(NSRange)value {
-    if (elisa_appkit_canvas_set_selected_range(self.elisaIndex, value.location, value.length) != 0) {
+    size_t index = elisa_appkit_canvas_accessibility_index_for_handle((size_t)(__bridge void *)self);
+    if (index != elisa_appkit_canvas_not_found() && elisa_appkit_canvas_set_selected_range(index, value.location, value.length) != 0) {
         [super setAccessibilitySelectedTextRange:value];
     }
 }
@@ -744,7 +749,7 @@ static ElisaAccessibilityElement *elisa_appkit_canvas_element(size_t handle) {
 }
 
 size_t elisa_appkit_canvas_accessibility_add(size_t windowHandle, size_t previousHandle,
-                                            size_t identifierString, size_t action, const void *role,
+                                            size_t identifierString, const void *role,
                                             const void *subrole,
                                             size_t label, size_t help,
                                             float x, float y, float width, float height,
@@ -783,7 +788,6 @@ size_t elisa_appkit_canvas_accessibility_add(size_t windowHandle, size_t previou
     [element elisaSetAccessibilitySelectedTextRange:NSMakeRange(elisa_appkit_canvas_not_found(), 0)];
     element.accessibilityMinValue = nil;
     element.accessibilityMaxValue = nil;
-    element.elisaIndex = action;
     NSRect inWindow = [view convertRect:local toView:nil];
     NSWindow *window = elisa_appkit_canvas_window(windowHandle);
     if (window == nil) return 0;

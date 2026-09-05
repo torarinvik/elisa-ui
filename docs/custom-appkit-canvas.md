@@ -136,7 +136,8 @@ smallest visible range, including through nested scroll ancestors.
 Each painted control produces a parallel semantic node containing its stable
 identifier, role, label, optional help, frame, enabled/focused/selected state and
 normalized value. Elisa owns the retained opaque handle for each live semantic
-element and releases handles that leave the tree; the AppKit bridge reuses the
+element and releases handles that leave the tree; callbacks resolve those
+handles back to Elisa's action targets on demand. The AppKit bridge reuses the
 objects between frames, exposes actions to VoiceOver, updates screen-relative
 frames after window moves, and applies the Cocoa role/subrole constants plus interaction,
 tooltip and cursor tokens computed by Elisa from the same metadata. Value shape

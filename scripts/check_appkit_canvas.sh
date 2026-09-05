@@ -117,8 +117,8 @@ if grep -Eq 'static NSMutableArray[[:space:]]*\*' "$ROOT/src/platform/appkit/app
   echo "appkit canvas: accessibility element ownership was hidden in Objective-C state" >&2
   exit 1
 fi
-if grep -Eq 'elisa(LocalFrame|Cursor|Synchronizing)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
-  echo "appkit canvas: accessibility geometry, cursor, or synchronization state was duplicated in Objective-C" >&2
+if grep -Eq 'elisa(LocalFrame|Cursor|Synchronizing|Index)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: accessibility geometry, cursor, synchronization, or target state was duplicated in Objective-C" >&2
   exit 1
 fi
 if grep -Eq 'static NSMenu \*elisa_canvas_menu_bar' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
@@ -311,6 +311,7 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_menu_add_item$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_menus_commit$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_activate$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_adjust$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_index_for_handle$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_add_tooltip$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_release$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_commit$'
