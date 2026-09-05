@@ -56,7 +56,7 @@ module UiState:
         # snapshot. Reusing an ID is rejected instead of making restore order
         # observable or silently selecting one of two values.
         def put_text(id: u32, value: sview) -> bool:
-            return false if not ready_for_put(value.len)
+            return false if value.len < 0 or not ready_for_put(value.len)
             return append_header(id, ValueKind.Text, value.len) and append_bytes(value)
 
         def put_f32(id: u32, value: f32) -> bool can Unsafe.PointerCast:
@@ -225,6 +225,7 @@ module UiState:
             return true
 
         def append_bytes(value: sview) -> bool:
+            return false if value.len < 0
             payload: usize = save_length - value.len
             for index in 0..<value.len:
                 save_buffer[payload + index] <- value.data[index]

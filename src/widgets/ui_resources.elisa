@@ -101,6 +101,7 @@ module UiResources:
                 cancelled: cancelled_count, overflowed: resource_overflowed}
 
         def key_matches(slot: usize, key: sview) -> bool:
+            return false if slot >= MAX_RESOURCES or key.len < 0
             return false if resource_identifier_lengths[slot] != key.len
             for offset in 0..<key.len:
                 return false if resource_identifier_storage[slot * IDENTIFIER_CAPACITY + offset] != key.data[offset]
@@ -131,7 +132,7 @@ module UiResources:
         # per-frame view rebuilds from starting duplicate host work. A cancelled
         # record can be requested again without changing its typed identity.
         def request(key: sview, owner: u32) -> Handle:
-            return invalid() if key.len == 0 or key.len >= IDENTIFIER_CAPACITY
+            return invalid() if key.len <= 0 or key.len >= IDENTIFIER_CAPACITY
             for slot in 0..<resource_count:
                 if resource_states[slot] != State.Unrequested and key_matches(slot, key):
                     resource_owners[slot] <- owner

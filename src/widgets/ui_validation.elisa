@@ -108,7 +108,7 @@ module UiValidation:
         # the user's draft remain outside this registry, so a stale completion
         # cannot roll back edits or selection state.
         def resolve(handle: Handle, token: u32, next: Status, message: sview) -> bool:
-            return false if not is_valid(handle) or token == 0
+            return false if not is_valid(handle) or token == 0 or message.len < 0
             slot: usize = handle.slot.usize()
             return false if statuses[slot] != Status.Validating or revisions[slot] != token
             return false if next != Status.Valid and next != Status.Invalid and next != Status.Unavailable
@@ -229,6 +229,7 @@ module UiValidation:
                 message_storage[slot * MESSAGE_CAPACITY + index] <- 0
 
         def write_message(slot: usize, value: sview) -> void:
+            return if slot >= MAX_FIELDS or value.len < 0
             take: usize = value.len.usize() if value.len.usize() < MESSAGE_CAPACITY - 1 else MESSAGE_CAPACITY - 1
             for index in 0..<MESSAGE_CAPACITY - 1:
                 message_storage[slot * MESSAGE_CAPACITY + index] <- value.data[index] if index < take else 0
