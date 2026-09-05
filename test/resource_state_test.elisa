@@ -59,7 +59,11 @@ def main() -> i64:
     check("ready is not retried", not UiResources::retry(image))
 
     check("failed transition is accepted", UiResources::set_state(image, UiResources::State.Failed))
+    check("failed transition defaults to retryable transport", UiResources::failure(image) == UiResources::FailureKind.RetryableTransport and UiResources::can_retry(image))
     check("failed resource can retry", UiResources::retry(image) and UiResources::state(image) == UiResources::State.Requested and UiResources::downloaded_progress(image) == 0.0)
+    check("corrupt resource exposes a terminal failure", UiResources::fail(image, UiResources::FailureKind.Corrupt) and not UiResources::can_retry(image) and UiResources::failure(image) == UiResources::FailureKind.Corrupt)
+    check("incompatible resource also stays terminal", UiResources::fail(image, UiResources::FailureKind.Incompatible) and not UiResources::retry(image) and UiResources::failure(image) == UiResources::FailureKind.Incompatible)
+    check("unknown failure kind is rejected", not UiResources::fail(image, UiResources::FailureKind.Unknown))
     check("cancel transition is accepted", UiResources::cancel(image) and UiResources::state(image) == UiResources::State.Cancelled)
     requested_again: UiResources::Handle = UiResources::request("images/logo", 77)
     check("cancelled key can be requested again", requested_again.slot == image.slot and UiResources::state(requested_again) == UiResources::State.Requested and UiResources::owner(requested_again) == 77)

@@ -22,6 +22,12 @@ module UiResources:
             Failed = 5
             Cancelled = 6
 
+        const enum FailureKind of i32:
+            Unknown = 0
+            RetryableTransport = 1
+            Corrupt = 2
+            Incompatible = 3
+
         struct Handle:
             slot: u32
             generation: u32
@@ -37,6 +43,7 @@ module UiResources:
                 next_generation: u32 = generations[slot] + 1
                 generations[slot] <- 1 if next_generation == 0 else next_generation
                 states[slot] <- State.Unrequested
+                resource_failure_kinds[slot] <- FailureKind.Unknown
                 owners[slot] <- 0
                 identifier_lengths[slot] <- 0
                 downloaded[slot] <- 0.0
@@ -68,6 +75,7 @@ module UiResources:
             next_generation: u32 = generations[slot] + 1
             generations[slot] <- 1 if next_generation == 0 else next_generation
             states[slot] <- State.Unrequested
+            resource_failure_kinds[slot] <- FailureKind.Unknown
             owners[slot] <- 0
             identifier_lengths[slot] <- 0
             for index in 0..<IDENTIFIER_CAPACITY:
@@ -91,6 +99,7 @@ module UiResources:
                     owners[slot] <- owner
                     if states[slot] == State.Cancelled:
                         states[slot] <- State.Requested
+                        resource_failure_kinds[slot] <- FailureKind.Unknown
                         downloaded[slot] <- 0.0
                         decoded[slot] <- 0.0
                         mark_changed()
@@ -122,6 +131,27 @@ module UiResources:
         def state(handle: Handle) -> State:
             return State.Unrequested if not is_valid(handle)
             return states[handle.slot.usize()]
+
+        def failure(handle: Handle) -> FailureKind:
+            return FailureKind.Unknown if not is_valid(handle)
+            return resource_failure_kinds[handle.slot.usize()]
+
+        # Transport failures may be retried; corrupt or incompatible bytes
+        # require a package update or host/toolchain change and must not cause
+        # an automatic retry loop in a view.
+        def fail(handle: Handle, kind: FailureKind) -> bool:
+            return false if not is_valid(handle) or kind == FailureKind.Unknown
+            slot: usize = handle.slot.usize()
+            return false if states[slot] == State.Ready
+            states[slot] <- State.Failed
+            resource_failure_kinds[slot] <- kind
+            mark_changed()
+            return true
+
+        def can_retry(handle: Handle) -> bool:
+            return false if not is_valid(handle)
+            current: State = states[handle.slot.usize()]
+            return current == State.UnavailableOffline or current == State.Denied or (current == State.Failed and resource_failure_kinds[handle.slot.usize()] == FailureKind.RetryableTransport)
 
         def owner(handle: Handle) -> u32:
             return 0 if not is_valid(handle)
@@ -186,6 +216,7 @@ module UiResources:
             slot: usize = handle.slot.usize()
             return false if states[slot] == next
             states[slot] <- next
+            resource_failure_kinds[slot] <- FailureKind.RetryableTransport if next == State.Failed else FailureKind.Unknown
             if next == State.Requested:
                 downloaded[slot] <- 0.0
                 decoded[slot] <- 0.0
@@ -201,7 +232,7 @@ module UiResources:
         def retry(handle: Handle) -> bool:
             return false if not is_valid(handle)
             current: State = states[handle.slot.usize()]
-            return false if current != State.Failed and current != State.UnavailableOffline and current != State.Denied
+            return false if not can_retry(handle)
             return set_state(handle, State.Requested)
 
         # Disposal invalidates the generation before releasing the identifier.
@@ -247,6 +278,7 @@ module UiResources:
         global mutable dropped: bool = false
         global mutable generations: u32[MAX_RESOURCES] = zeroed
         global mutable states: State[MAX_RESOURCES] = zeroed
+        global mutable resource_failure_kinds: FailureKind[MAX_RESOURCES] = zeroed
         global mutable owners: u32[MAX_RESOURCES] = zeroed
         global mutable identifier_lengths: usize[MAX_RESOURCES] = zeroed
         global mutable identifier_storage: u8[MAX_RESOURCES * IDENTIFIER_CAPACITY] = zeroed

@@ -55,9 +55,11 @@ resources. `record(handle, options)` returns a read-only snapshot containing:
   arrive.
 
 `retry` and `cancel` are explicit actions that forward to `UiResources`; the
-presentation layer never starts a fetch by itself. This keeps offline/denied
-states recoverable without retry loops and lets a host render the returned
-record with native, SDL, or hosted primitives.
+presentation layer never starts a fetch by itself. Failed resources carry a
+typed `FailureKind`: `RetryableTransport` permits retry, while `Corrupt` and
+`Incompatible` remain terminal until a new package/resource identity is
+selected. This keeps offline/denied states recoverable without retry loops and
+lets a host render the returned record with native, SDL, or hosted primitives.
 
 `paint(box, record, options)` emits the backend-neutral placeholder, decoded
 progress strip, or fallback card (including its diagnostic mark) through the

@@ -59,7 +59,10 @@ def main() -> i64:
 
     UiResources::set_state(image, UiResources::State.Failed)
     failed: UiResourcePresentation::Record = UiResourcePresentation::record(image, options)
-    check("failed resource exposes retry", failed.state == UiResourcePresentation::DisplayState.Failed and failed.fallback_visible and failed.retry_available and UiResourcePresentation::retry(image) and UiResources::state(image) == UiResources::State.Requested)
+    check("failed resource exposes typed retry", failed.state == UiResourcePresentation::DisplayState.Failed and failed.failure == UiResources::FailureKind.RetryableTransport and failed.fallback_visible and failed.retry_available and UiResourcePresentation::retry(image) and UiResources::state(image) == UiResources::State.Requested)
+    UiResources::fail(image, UiResources::FailureKind.Corrupt)
+    corrupt: UiResourcePresentation::Record = UiResourcePresentation::record(image, options)
+    check("corrupt resource has no retry action", corrupt.failure == UiResources::FailureKind.Corrupt and not corrupt.retry_available and not UiResourcePresentation::can_retry(image))
     UiResources::set_state(image, UiResources::State.Denied)
     denied: UiResourcePresentation::Record = UiResourcePresentation::record(image, options)
     check("denied resource uses fallback without prompting by itself", denied.fallback_visible and denied.retry_available)
