@@ -65,7 +65,6 @@ extern size_t elisa_appkit_canvas_tracking_options(void);
 // An unpresented headless window is not reliably retained by its content view;
 // keep this owning reference until Cocoa takes over the visible window.
 static NSWindow *elisa_canvas_window;
-static ElisaCanvasView *elisa_canvas_view;
 static NSMutableArray *elisa_accessibility_children;
 
 // Cursor objects are Cocoa singletons. Return opaque, non-owning pointers so
@@ -121,8 +120,15 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
 @end
 
 static NSWindow *elisa_appkit_canvas_window(void) {
-    if (elisa_canvas_window != nil) return elisa_canvas_window;
-    return elisa_canvas_view == nil ? nil : [elisa_canvas_view window];
+    return elisa_canvas_window;
+}
+
+// NSWindow strongly retains its content view. Resolve that object on demand so
+// the shim does not keep a duplicate global owner for the same native view.
+static ElisaCanvasView *elisa_appkit_canvas_view(void) {
+    NSWindow *window = elisa_appkit_canvas_window();
+    NSView *view = window == nil ? nil : [window contentView];
+    return [view isKindOfClass:[ElisaCanvasView class]] ? (ElisaCanvasView *)view : nil;
 }
 
 // FFI strings are borrowed opaque Objective-C objects. Validate their dynamic
@@ -186,7 +192,8 @@ static ElisaCanvasDelegate *elisa_canvas_delegate;
 
 void elisa_appkit_canvas_interpret_key_event(size_t event) {
     NSEvent *nativeEvent = elisa_appkit_canvas_event(event);
-    if (nativeEvent != nil && elisa_canvas_view != nil) [elisa_canvas_view interpretKeyEvents:@[nativeEvent]];
+    ElisaCanvasView *view = elisa_appkit_canvas_view();
+    if (nativeEvent != nil && view != nil) [view interpretKeyEvents:@[nativeEvent]];
 }
 
 @implementation ElisaCanvasView
@@ -460,12 +467,12 @@ int elisa_appkit_canvas_open(size_t title, float width, float height,
         // View construction may synchronously report its initial frame. The
         // Elisa adapter owns the readiness guard and filters that callback
         // until app_init has completed.
-        elisa_canvas_view = [[ElisaCanvasView alloc] initWithFrame:rect];
+        ElisaCanvasView *view = [[ElisaCanvasView alloc] initWithFrame:rect];
         elisa_accessibility_children = [NSMutableArray new];
         elisa_canvas_window = window;
         elisa_canvas_delegate = [ElisaCanvasDelegate new];
         [window setDelegate:elisa_canvas_delegate];
-        [window setContentView:elisa_canvas_view];
+        [window setContentView:view];
         return 1;
     }
 }
@@ -479,8 +486,9 @@ void elisa_appkit_canvas_set_activation_policy(int policy) {
 
 void elisa_appkit_canvas_focus(void) {
     NSWindow *window = elisa_appkit_canvas_window();
-    if (window != nil && elisa_canvas_view != nil) {
-        [window makeFirstResponder:elisa_canvas_view];
+    ElisaCanvasView *view = elisa_appkit_canvas_view();
+    if (window != nil && view != nil) {
+        [window makeFirstResponder:view];
     }
 }
 
@@ -609,7 +617,8 @@ size_t elisa_appkit_canvas_schedule_redraw(float delay, size_t run_loop_mode) {
     if (mode == nil) return 0;
     NSTimer *timer = [NSTimer timerWithTimeInterval:delay repeats:NO block:^(NSTimer *fired) {
         (void)fired;
-        [elisa_canvas_view setNeedsDisplay:YES];
+        ElisaCanvasView *view = elisa_appkit_canvas_view();
+        if (view != nil) [view setNeedsDisplay:YES];
     }];
     [NSRunLoop.mainRunLoop addTimer:timer forMode:mode];
     // Transfer one retain to Elisa, which releases it through the matching
@@ -633,7 +642,7 @@ void elisa_appkit_canvas_set_min_size(float width, float height) {
 
 int elisa_appkit_canvas_present(void) {
     NSWindow *window = elisa_appkit_canvas_window();
-    if (window == nil || elisa_canvas_view == nil) return 0;
+    if (window == nil || elisa_appkit_canvas_view() == nil) return 0;
     [window makeKeyAndOrderFront:nil];
     return 1;
 }
@@ -650,8 +659,9 @@ int elisa_appkit_canvas_present_headless(size_t color_space, int image_type,
                                          int bitmap_format) {
     // Exercise the real frame, painter and semantic bridge without ordering
     // a window onscreen or stealing focus from the user's current app.
-    if (elisa_canvas_view == nil) return 0;
-    NSRect bounds = elisa_canvas_view.bounds;
+    ElisaCanvasView *view = elisa_appkit_canvas_view();
+    if (view == nil) return 0;
+    NSRect bounds = view.bounds;
     if (pixels_width <= 0 || pixels_height <= 0) return 0;
     NSString *colorSpace = elisa_appkit_canvas_string(color_space);
     if (colorSpace == nil) return 0;
@@ -667,7 +677,7 @@ int elisa_appkit_canvas_present_headless(size_t color_space, int image_type,
     if (bitmap == nil) return 0;
     NSGraphicsContext *graphics = [NSGraphicsContext graphicsContextWithBitmapImageRep:bitmap];
     if (graphics == nil) return 0;
-    [elisa_canvas_view displayRectIgnoringOpacity:bounds inContext:graphics];
+    [view displayRectIgnoringOpacity:bounds inContext:graphics];
     if (snapshot != 0) {
         NSString *snapshotPath = elisa_appkit_canvas_string(snapshot);
         if (snapshotPath == nil) return 0;
@@ -682,13 +692,17 @@ void elisa_appkit_canvas_run(void) {
 void elisa_appkit_canvas_stop(void) {
     [NSApp stop:nil];
 }
-void elisa_appkit_canvas_redraw(void) { [elisa_canvas_view setNeedsDisplay:YES]; }
+void elisa_appkit_canvas_redraw(void) {
+    ElisaCanvasView *view = elisa_appkit_canvas_view();
+    if (view != nil) [view setNeedsDisplay:YES];
+}
 void elisa_appkit_canvas_close(void) {
     NSWindow *window = elisa_appkit_canvas_window();
     if (window != nil) [window performClose:nil];
 }
 void elisa_appkit_canvas_accessibility_reset(void) {
-    [elisa_canvas_view removeAllToolTips];
+    ElisaCanvasView *view = elisa_appkit_canvas_view();
+    if (view != nil) [view removeAllToolTips];
 }
 
 // Elisa owns semantic identity and calls the typed setters immediately after
@@ -707,7 +721,8 @@ size_t elisa_appkit_canvas_accessibility_add(size_t previousHandle,
                                             size_t label, size_t help,
                                             float x, float y, float width, float height,
                                             int enabled, int focused) {
-    if (label == 0 || elisa_canvas_view == nil) return 0;
+    ElisaCanvasView *view = elisa_appkit_canvas_view();
+    if (label == 0 || view == nil) return 0;
     NSString *labelValue = elisa_appkit_canvas_string(label);
     if (labelValue == nil) return 0;
     NSString *helpValue = help == 0 ? nil : elisa_appkit_canvas_string(help);
@@ -722,7 +737,7 @@ size_t elisa_appkit_canvas_accessibility_add(size_t previousHandle,
     BOOL isNew = element == nil;
     if (isNew) {
         element = [ElisaAccessibilityElement new];
-        element.accessibilityParent = elisa_canvas_view;
+        element.accessibilityParent = view;
     }
     NSRect local = NSMakeRect(x, y, width, height);
     element.accessibilityRole = roleValue;
@@ -745,7 +760,7 @@ size_t elisa_appkit_canvas_accessibility_add(size_t previousHandle,
     element.elisaIndex = action;
     element.elisaCursor = elisa_appkit_canvas_cursor(cursor);
     element.elisaLocalFrame = local;
-    NSRect inWindow = [elisa_canvas_view convertRect:local toView:nil];
+    NSRect inWindow = [view convertRect:local toView:nil];
     NSWindow *window = elisa_appkit_canvas_window();
     if (window == nil) return 0;
     element.accessibilityFrame = [window convertRectToScreen:inWindow];
@@ -759,8 +774,9 @@ size_t elisa_appkit_canvas_accessibility_add(size_t previousHandle,
 
 void elisa_appkit_canvas_accessibility_add_tooltip(size_t handle) {
     ElisaAccessibilityElement *element = elisa_appkit_canvas_element(handle);
-    if (element == nil || elisa_canvas_view == nil) return;
-    [elisa_canvas_view addToolTipRect:element.elisaLocalFrame owner:element userData:NULL];
+    ElisaCanvasView *view = elisa_appkit_canvas_view();
+    if (element == nil || view == nil) return;
+    [view addToolTipRect:element.elisaLocalFrame owner:element userData:NULL];
 }
 
 void elisa_appkit_canvas_accessibility_set_boolean(size_t handle, int selected) {
@@ -822,16 +838,19 @@ void elisa_appkit_canvas_accessibility_commit(const size_t *handles, size_t coun
         if (element == nil) continue;
         [children addObject:element];
     }
+    ElisaCanvasView *view = elisa_appkit_canvas_view();
+    if (view == nil) return;
     elisa_accessibility_children = children;
-    [elisa_canvas_view setAccessibilityChildren:elisa_accessibility_children];
-    [elisa_canvas_view setAccessibilityChildrenInNavigationOrder:elisa_accessibility_children];
-    [[elisa_canvas_view window] invalidateCursorRectsForView:elisa_canvas_view];
+    [view setAccessibilityChildren:elisa_accessibility_children];
+    [view setAccessibilityChildrenInNavigationOrder:elisa_accessibility_children];
+    [[view window] invalidateCursorRectsForView:view];
 }
 
 void elisa_appkit_canvas_accessibility_post_layout_changed(size_t notification) {
-    if (elisa_canvas_view == nil) return;
+    ElisaCanvasView *view = elisa_appkit_canvas_view();
+    if (view == nil) return;
     if (notification == 0) return;
     NSString *name = elisa_appkit_canvas_string(notification);
     if (name == nil) return;
-    NSAccessibilityPostNotification(elisa_canvas_view, (NSAccessibilityNotificationName)name);
+    NSAccessibilityPostNotification(view, (NSAccessibilityNotificationName)name);
 }
