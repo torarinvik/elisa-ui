@@ -124,6 +124,8 @@ module UiFlat:
             caret_blink_interval: mutable f32
             scrollbar_track: mutable UiCore::Color
             scrollbar_thumb: mutable UiCore::Color
+            scrollbar_thumb_hover: mutable UiCore::Color
+            scrollbar_thumb_active: mutable UiCore::Color
             scrollbar_width: mutable f32
             scrollbar_inset: mutable f32
 
@@ -145,6 +147,9 @@ module UiFlat:
         # only fires when both agree on release, so dragging off a button
         # cancels it.
         global mutable hot_widget: usize = NONE
+        global mutable pointer_x: f32 = 0.0
+        global mutable pointer_y: f32 = 0.0
+        global mutable pointer_inside: bool = false
         global mutable active_widget: usize = NONE
         global mutable active_scroll: usize = NONE
         global mutable active_scroll_pointer: f32 = 0.0
@@ -203,6 +208,8 @@ module UiFlat:
             caret_blink_interval: 0.5,
             scrollbar_track: UiCore::Color{r: 0, g: 0, b: 0, a: 70},
             scrollbar_thumb: UiCore::Color{r: 255, g: 255, b: 255, a: 175},
+            scrollbar_thumb_hover: UiCore::Color{r: 255, g: 255, b: 255, a: 220},
+            scrollbar_thumb_active: UiCore::Color{r: 255, g: 255, b: 255, a: 255},
             scrollbar_width: 8.0,
             scrollbar_inset: 4.0,
         }
@@ -511,6 +518,9 @@ module UiFlat:
             last_layout_height <- 0.0
             layout_initialized <- false
             hot_widget <- NONE
+            pointer_x <- 0.0
+            pointer_y <- 0.0
+            pointer_inside <- false
             active_widget <- NONE
             active_scroll <- NONE
             active_scroll_pointer <- 0.0
@@ -1468,6 +1478,7 @@ module UiFlat:
         def cancel_interaction() -> void:
             release_active_press()
             hot_widget <- NONE
+            pointer_inside <- false
             left_shift_down <- false
             right_shift_down <- false
             left_control_down <- false
@@ -1973,13 +1984,26 @@ module UiFlat:
             match event:
                 UiCore::PointerEvent.Move(move_at):
                     at <- move_at
+                    pointer_x <- move_at.x
+                    pointer_y <- move_at.y
+                    pointer_inside <- true
                 UiCore::PointerEvent.Down(down_at, down_button):
                     at <- down_at
+                    pointer_x <- down_at.x
+                    pointer_y <- down_at.y
+                    pointer_inside <- true
                 UiCore::PointerEvent.Up(up_at, up_button):
                     at <- up_at
+                    pointer_x <- up_at.x
+                    pointer_y <- up_at.y
+                    pointer_inside <- true
                 UiCore::PointerEvent.Leave:
+                    pointer_inside <- false
                     pass
                 UiCore::PointerEvent.Scroll(scroll_at, scroll_delta):
+                    pointer_x <- scroll_at.x
+                    pointer_y <- scroll_at.y
+                    pointer_inside <- true
                     target: usize = scroll_target(scroll_at.x, scroll_at.y, scroll_delta.x, scroll_delta.y)
                     return if target == NONE
                     amount: f32 = scroll_delta.x if widgets[target].axis == UiConst::Axis.Row else scroll_delta.y
@@ -2312,16 +2336,19 @@ module UiFlat:
             limit: f32 = content - viewport
             travel: f32 = track_extent - thumb_extent
             thumb_position: f32 = travel * widgets[index].scroll_offset / limit if limit > 0.0 else 0.0
+            thumb_color: mutable UiCore::Color = current_theme.scrollbar_thumb
+            thumb_color <- current_theme.scrollbar_thumb_active if active_scroll == index
+            thumb_color <- current_theme.scrollbar_thumb_hover if active_scroll != index and pointer_inside and scrollbar_part(index, pointer_x, pointer_y) == 2
             if is_row:
                 track: UiCore::Rect = UiCore::Rect(widgets[index].x + inset, widgets[index].y + widgets[index].height - bar - inset, track_extent, bar)
                 thumb: UiCore::Rect = UiCore::Rect(track.origin.x + thumb_position, track.origin.y, thumb_extent, bar)
                 UiCore::fill(track, current_theme.scrollbar_track)
-                UiCore::fill(thumb, current_theme.scrollbar_thumb)
+                UiCore::fill(thumb, thumb_color)
             else:
                 track: UiCore::Rect = UiCore::Rect(widgets[index].x + widgets[index].width - bar - inset, widgets[index].y + inset, bar, track_extent)
                 thumb: UiCore::Rect = UiCore::Rect(track.origin.x, track.origin.y + thumb_position, bar, thumb_extent)
                 UiCore::fill(track, current_theme.scrollbar_track)
-                UiCore::fill(thumb, current_theme.scrollbar_thumb)
+                UiCore::fill(thumb, thumb_color)
 
         # Return 2 for the thumb, 1 for the track, and 0 outside the current
         # indicator. Reverse-order callers still choose the innermost nested
