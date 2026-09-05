@@ -1939,14 +1939,21 @@ module UiFlat:
                 return scan if widgets[scan].interactive and effectively_enabled(scan) and effectively_visible(scan) and inside_scroll_viewports(scan, x, y) and contains(scan, x, y)
             return NONE
 
-        # Find the innermost flat scroll viewport under the pointer. Reverse
-        # arena order prefers a nested descendant, matching painter ordering.
-        def scroll_target(x: f32, y: f32) -> usize:
+        # Find the innermost flat scroll viewport that can consume this wheel
+        # delta. Reverse arena order prefers a nested descendant, but a
+        # non-scrollable or edge-clamped child is skipped so the gesture can
+        # bubble to an outer viewport.
+        def scroll_target(x: f32, y: f32, dx: f32, dy: f32) -> usize:
             return NONE if widget_count == 0
             scan: mutable usize = widget_count
             while scan > 0 |scan|:
                 scan <- scan - 1
-                return scan if widgets[scan].kind == UiConst::WidgetKind.Scroll and effectively_visible(scan) and inside_scroll_viewports(scan, x, y) and contains(scan, x, y)
+                if widgets[scan].kind == UiConst::WidgetKind.Scroll and effectively_enabled(scan) and effectively_visible(scan) and inside_scroll_viewports(scan, x, y) and contains(scan, x, y):
+                    limit: f32 = scroll_limit(scan)
+                    delta: f32 = UiCore::finite_or_zero(dx if widgets[scan].axis == UiConst::Axis.Row else dy)
+                    current: f32 = widgets[scan].scroll_offset
+                    can_move: bool = limit > 0.0 and ((delta > 0.0 and current > 0.0) or (delta < 0.0 and current < limit))
+                    return scan if can_move
             return NONE
 
         # Native hosts need only choose the system cursor; widget semantics and
@@ -1973,7 +1980,7 @@ module UiFlat:
                 UiCore::PointerEvent.Leave:
                     pass
                 UiCore::PointerEvent.Scroll(scroll_at, scroll_delta):
-                    target: usize = scroll_target(scroll_at.x, scroll_at.y)
+                    target: usize = scroll_target(scroll_at.x, scroll_at.y, scroll_delta.x, scroll_delta.y)
                     return if target == NONE
                     amount: f32 = scroll_delta.x if widgets[target].axis == UiConst::Axis.Row else scroll_delta.y
                     _ = set_scroll_offset(target, scroll_offset(target) - amount)
