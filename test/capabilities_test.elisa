@@ -1,0 +1,45 @@
+# Headless regression for explicit backend capability profiles.
+
+include "../src/core/ui_capabilities.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiCapabilities::reset()
+    empty: UiCapabilities::Snapshot = UiCapabilities::snapshot()
+    check("capabilities start unknown", empty.backend == UiCapabilities::Backend.Unknown and not empty.surface)
+
+    UiCapabilities::use_sdl3()
+    sdl: UiCapabilities::Snapshot = UiCapabilities::snapshot()
+    check("SDL exposes native custom painting", sdl.backend == UiCapabilities::Backend.Sdl3 and sdl.native_window and sdl.custom_paint and not sdl.native_controls)
+    check("SDL exposes input but not semantics", sdl.text_input and sdl.composition and not sdl.semantics and UiCapabilities::supports_text_input())
+
+    UiCapabilities::use_appkit()
+    appkit: UiCapabilities::Snapshot = UiCapabilities::snapshot()
+    check("AppKit controls expose native realization", appkit.backend == UiCapabilities::Backend.AppKit and appkit.native_window and appkit.native_controls and not appkit.custom_paint)
+    check("AppKit controls do not claim canvas snapshots", not appkit.offscreen and UiCapabilities::supports_semantics())
+
+    UiCapabilities::use_appkit_canvas()
+    canvas: UiCapabilities::Snapshot = UiCapabilities::snapshot()
+    check("AppKit canvas exposes semantics and snapshots", canvas.backend == UiCapabilities::Backend.AppKitCanvas and canvas.custom_paint and canvas.offscreen and canvas.semantics)
+
+    UiCapabilities::use_wasm_browser()
+    hosted: UiCapabilities::Snapshot = UiCapabilities::snapshot()
+    check("WasmBrowser identifies hosted presentation", hosted.backend == UiCapabilities::Backend.WasmBrowser and hosted.hosted and not hosted.native_window and hosted.custom_paint)
+    check("capability helpers follow the selected profile", UiCapabilities::has_surface() and UiCapabilities::supports_clipboard() and not UiCapabilities::supports_offscreen())
+
+    UiCapabilities::use_harness()
+    harness: UiCapabilities::Snapshot = UiCapabilities::snapshot()
+    check("harness advertises deterministic testing", harness.backend == UiCapabilities::Backend.Harness and harness.deterministic_clock and not harness.surface)
+
+    if failures == 0:
+        _ = puts("capabilities: all checks passed")
+        return 0
+    _ = puts("capabilities: FAILURES above")
+    return 1

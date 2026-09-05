@@ -42,6 +42,11 @@ because a module member's symbol carries its module and those names cannot move.
   IDs only; framework handles, arena indexes, references, and heap objects are
   never serialized. Malformed, duplicate, truncated, or oversized snapshots
   fail closed.
+- **Capabilities** ([src/core/ui_capabilities.elisa](src/core/ui_capabilities.elisa)) —
+  conservative, typed backend profiles for native windows, custom painting,
+  text/IME, clipboard, semantics, hosted presentation, snapshots, scale, and
+  deterministic tests. Applications inspect facts instead of branching on OS
+  names; the selected profile is visible through `UiInspector::Frame`.
 - **Backends** implement the platform side and own the frame loop:
   [sdl3](src/platform/sdl3/ui_sdl3.elisa) (native; the `UiSdl3` module owns
   window/event lifecycle while [ui_sdl3_draw](src/platform/sdl3/ui_sdl3_draw.elisa)

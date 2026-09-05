@@ -1,0 +1,147 @@
+# Portable backend capability profiles.
+#
+# Applications can branch on facts exposed by the selected backend without
+# inspecting OS names or reaching into native objects. Profiles are declared
+# once in Elisa; platform adapters only select the profile they implement.
+
+module UiCapabilities:
+    public:
+        const enum Backend of i32:
+            Unknown = 0
+            Harness = 1
+            Sdl3 = 2
+            AppKit = 3
+            AppKitCanvas = 4
+            WasmBrowser = 5
+
+        struct Snapshot:
+            backend: Backend
+            surface: bool
+            native_window: bool
+            custom_paint: bool
+            native_controls: bool
+            hosted: bool
+            text_input: bool
+            composition: bool
+            clipboard: bool
+            semantics: bool
+            offscreen: bool
+            multiple_windows: bool
+            scale_changes: bool
+            deterministic_clock: bool
+
+        def reset() -> void:
+            backend_state <- Backend.Unknown
+            surface_state <- false
+            native_window_state <- false
+            custom_paint_state <- false
+            native_controls_state <- false
+            hosted_state <- false
+            text_input_state <- false
+            composition_state <- false
+            clipboard_state <- false
+            semantics_state <- false
+            offscreen_state <- false
+            multiple_windows_state <- false
+            scale_changes_state <- false
+            deterministic_clock_state <- false
+
+        # These profiles are intentionally explicit. A newly added capability
+        # must be selected here for every backend instead of defaulting to an
+        # optimistic value that an adapter cannot fulfill.
+        def use_harness() -> void:
+            set_profile(Snapshot{backend: Backend.Harness, surface: false,
+                native_window: false, custom_paint: false, native_controls: false,
+                hosted: false, text_input: true, composition: true, clipboard: true,
+                semantics: true, offscreen: true, multiple_windows: false,
+                scale_changes: false, deterministic_clock: true})
+
+        def use_sdl3() -> void:
+            set_profile(Snapshot{backend: Backend.Sdl3, surface: true,
+                native_window: true, custom_paint: true, native_controls: false,
+                hosted: false, text_input: true, composition: true, clipboard: true,
+                semantics: false, offscreen: false, multiple_windows: false,
+                scale_changes: false, deterministic_clock: false})
+
+        def use_appkit() -> void:
+            set_profile(Snapshot{backend: Backend.AppKit, surface: true,
+                native_window: true, custom_paint: false, native_controls: true,
+                hosted: false, text_input: true, composition: true, clipboard: false,
+                semantics: true, offscreen: false, multiple_windows: false,
+                scale_changes: false, deterministic_clock: false})
+
+        def use_appkit_canvas() -> void:
+            set_profile(Snapshot{backend: Backend.AppKitCanvas, surface: true,
+                native_window: true, custom_paint: true, native_controls: false,
+                hosted: false, text_input: true, composition: true, clipboard: true,
+                semantics: true, offscreen: true, multiple_windows: false,
+                scale_changes: false, deterministic_clock: false})
+
+        def use_wasm_browser() -> void:
+            set_profile(Snapshot{backend: Backend.WasmBrowser, surface: true,
+                native_window: false, custom_paint: true, native_controls: false,
+                hosted: true, text_input: true, composition: true, clipboard: true,
+                semantics: false, offscreen: false, multiple_windows: false,
+                scale_changes: false, deterministic_clock: false})
+
+        def snapshot() -> Snapshot:
+            return Snapshot{backend: backend_state, surface: surface_state,
+                native_window: native_window_state, custom_paint: custom_paint_state,
+                native_controls: native_controls_state, hosted: hosted_state,
+                text_input: text_input_state, composition: composition_state,
+                clipboard: clipboard_state, semantics: semantics_state,
+                offscreen: offscreen_state, multiple_windows: multiple_windows_state,
+                scale_changes: scale_changes_state, deterministic_clock: deterministic_clock_state}
+
+        def backend() -> Backend:
+            return backend_state
+
+        def has_surface() -> bool:
+            return surface_state
+
+        def supports_text_input() -> bool:
+            return text_input_state
+
+        def supports_composition() -> bool:
+            return composition_state
+
+        def supports_clipboard() -> bool:
+            return clipboard_state
+
+        def supports_semantics() -> bool:
+            return semantics_state
+
+        def supports_offscreen() -> bool:
+            return offscreen_state
+
+    private:
+        global mutable backend_state: Backend = Backend.Unknown
+        global mutable surface_state: bool = false
+        global mutable native_window_state: bool = false
+        global mutable custom_paint_state: bool = false
+        global mutable native_controls_state: bool = false
+        global mutable hosted_state: bool = false
+        global mutable text_input_state: bool = false
+        global mutable composition_state: bool = false
+        global mutable clipboard_state: bool = false
+        global mutable semantics_state: bool = false
+        global mutable offscreen_state: bool = false
+        global mutable multiple_windows_state: bool = false
+        global mutable scale_changes_state: bool = false
+        global mutable deterministic_clock_state: bool = false
+
+        def set_profile(profile: Snapshot) -> void:
+            backend_state <- profile.backend
+            surface_state <- profile.surface
+            native_window_state <- profile.native_window
+            custom_paint_state <- profile.custom_paint
+            native_controls_state <- profile.native_controls
+            hosted_state <- profile.hosted
+            text_input_state <- profile.text_input
+            composition_state <- profile.composition
+            clipboard_state <- profile.clipboard
+            semantics_state <- profile.semantics
+            offscreen_state <- profile.offscreen
+            multiple_windows_state <- profile.multiple_windows
+            scale_changes_state <- profile.scale_changes
+            deterministic_clock_state <- profile.deterministic_clock
