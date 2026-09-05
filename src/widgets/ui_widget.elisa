@@ -2151,6 +2151,7 @@ module UiFlat:
                         adjust(focused_widget, -1.0) if code == UiCore::Key.Home
                         adjust(focused_widget, 1.0) if code == UiCore::Key.End
                         return if code == UiCore::Key.Left or code == UiCore::Key.Down or code == UiCore::Key.Right or code == UiCore::Key.Up or code == UiCore::Key.PageDown or code == UiCore::Key.PageUp or code == UiCore::Key.Home or code == UiCore::Key.End
+                    return if scroll_keyboard(code)
                     if (code == UiCore::Key.Space or code == UiCore::Key.Enter) and focused_widget < widget_count and widgets[focused_widget].kind != UiConst::WidgetKind.Slider and widgets[focused_widget].kind != UiConst::WidgetKind.TextField:
                         return if active_key >= 0 or active_pointer_button >= 0
                         active_widget <- focused_widget
@@ -2209,6 +2210,37 @@ module UiFlat:
             return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider or direction == 0
             delta: f32 = widgets[index].step if direction > 0 else -widgets[index].step
             return adjust(index, delta)
+
+        # Keyboard scrolling follows focus into the nearest scroll ancestor,
+        # so a focused child remains usable even when its viewport is clipped.
+        # The offset setter owns clamping and re-layout; this helper only maps
+        # desktop navigation keys to a retained viewport delta.
+        const KEYBOARD_SCROLL_STEP: f32 = 40.0
+
+        def focused_scroll_target() -> usize:
+            return NONE if focused_widget >= widget_count
+            cursor: mutable usize = focused_widget
+            while cursor < widget_count |cursor|:
+                return cursor if widgets[cursor].kind == UiConst::WidgetKind.Scroll
+                cursor <- widgets[cursor].parent
+            return NONE
+
+        def scroll_keyboard(code: UiCore::Key) -> bool:
+            target: usize = focused_scroll_target()
+            return false if target == NONE or not effectively_enabled(target) or not effectively_visible(target)
+            is_row: bool = widgets[target].axis == UiConst::Axis.Row
+            forward: bool = code == UiCore::Key.PageDown or (is_row and code == UiCore::Key.Right) or (not is_row and code == UiCore::Key.Down)
+            backward: bool = code == UiCore::Key.PageUp or (is_row and code == UiCore::Key.Left) or (not is_row and code == UiCore::Key.Up)
+            if code == UiCore::Key.Home:
+                return set_scroll_offset(target, 0.0)
+            if code == UiCore::Key.End:
+                return set_scroll_offset(target, scroll_limit(target))
+            return false if not forward and not backward
+            viewport: f32 = widgets[target].width if is_row else widgets[target].height
+            page: bool = code == UiCore::Key.PageDown or code == UiCore::Key.PageUp
+            amount: mutable f32 = viewport if page else KEYBOARD_SCROLL_STEP
+            amount <- -amount if backward
+            return set_scroll_offset(target, widgets[target].scroll_offset + amount)
 
         # Scroll indicators are drawn by the flat painter itself, so a canvas
         # backend does not need an NSScroller or a browser scrollbar. The thumb
