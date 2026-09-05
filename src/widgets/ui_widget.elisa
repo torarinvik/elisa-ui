@@ -146,6 +146,9 @@ module UiFlat:
         # cancels it.
         global mutable hot_widget: usize = NONE
         global mutable active_widget: usize = NONE
+        global mutable active_scroll: usize = NONE
+        global mutable active_scroll_pointer: f32 = 0.0
+        global mutable active_scroll_offset: f32 = 0.0
         global mutable active_pointer_button: i32 = UiCore::NO_POINTER_BUTTON
         global mutable active_key: i32 = -1
         global mutable focused_widget: usize = NONE
@@ -509,6 +512,9 @@ module UiFlat:
             layout_initialized <- false
             hot_widget <- NONE
             active_widget <- NONE
+            active_scroll <- NONE
+            active_scroll_pointer <- 0.0
+            active_scroll_offset <- 0.0
             active_pointer_button <- UiCore::NO_POINTER_BUTTON
             active_key <- -1
             focused_widget <- NONE
@@ -876,6 +882,9 @@ module UiFlat:
             if active_widget < widget_count:
                 widgets[active_widget].pressed <- false
             active_widget <- NONE
+            active_scroll <- NONE
+            active_scroll_pointer <- 0.0
+            active_scroll_offset <- 0.0
             active_pointer_button <- UiCore::NO_POINTER_BUTTON
             active_key <- -1
 
@@ -1399,6 +1408,9 @@ module UiFlat:
         def scroll_offset(index: usize) -> f32:
             return 0.0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Scroll
             return widgets[index].scroll_offset
+
+        def scroll_dragging() -> bool:
+            return active_scroll < widget_count
 
         def scroll_limit(index: usize) -> f32:
             return 0.0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Scroll
@@ -1928,6 +1940,17 @@ module UiFlat:
             match event:
                 UiCore::PointerEvent.Down(press_at, press_button):
                     return if press_button != UiCore::PointerButton.Primary.i32()
+                    scroll_bar: usize = scrollbar_target(press_at.x, press_at.y)
+                    if scroll_bar != NONE:
+                        release_active_press()
+                        if scrollbar_part(scroll_bar, press_at.x, press_at.y) == 2:
+                            active_scroll <- scroll_bar
+                            active_scroll_pointer <- scrollbar_coordinate(scroll_bar, press_at.x, press_at.y)
+                            active_scroll_offset <- widgets[scroll_bar].scroll_offset
+                            active_pointer_button <- press_button
+                        else:
+                            scroll_page(scroll_bar, press_at.x, press_at.y)
+                        return
                     return if target == NONE
                     focus(target)
                     active_widget <- target
@@ -1939,6 +1962,15 @@ module UiFlat:
                         restart_caret_blink()
                     update_slider(target, press_at.x)
                 UiCore::PointerEvent.Move(move_at):
+                    if active_scroll < widget_count:
+                        track_length: f32 = scrollbar_track_length(active_scroll)
+                        thumb_length: f32 = scrollbar_thumb_length(active_scroll)
+                        travel: f32 = track_length - thumb_length
+                        limit: f32 = scroll_limit(active_scroll)
+                        coordinate: f32 = scrollbar_coordinate(active_scroll, move_at.x, move_at.y)
+                        requested: f32 = active_scroll_offset + (coordinate - active_scroll_pointer) * limit / travel if travel > 0.0 else active_scroll_offset
+                        _ = set_scroll_offset(active_scroll, requested)
+                        return
                     if active_pointer_button >= 0 and active_widget < widget_count:
                         if widgets[active_widget].kind == UiConst::WidgetKind.Slider:
                             widgets[active_widget].pressed <- true
@@ -1950,6 +1982,13 @@ module UiFlat:
                         else:
                             widgets[active_widget].pressed <- target == active_widget
                 UiCore::PointerEvent.Up(release_at, release_button):
+                    if active_scroll < widget_count:
+                        return if release_button != UiCore::PointerButton.Primary.i32()
+                        active_scroll <- NONE
+                        active_scroll_pointer <- 0.0
+                        active_scroll_offset <- 0.0
+                        active_pointer_button <- UiCore::NO_POINTER_BUTTON
+                        return
                     return if active_pointer_button < 0 or active_widget == NONE or release_button != active_pointer_button
                     held: usize = active_widget
                     active_widget <- NONE
@@ -1964,6 +2003,7 @@ module UiFlat:
                         dispatch_activation(held)
                 UiCore::PointerEvent.Leave:
                     hot_widget <- NONE
+                    return if active_scroll < widget_count
                     return if active_pointer_button < 0 or active_widget == NONE
                     # Keep capture until mouse-up. Sliders continue to receive
                     # clamped drag updates outside the view; buttons can regain
@@ -2154,6 +2194,89 @@ module UiFlat:
                 thumb: UiCore::Rect = UiCore::Rect(track.origin.x, track.origin.y + thumb_position, bar, thumb_extent)
                 UiCore::fill(track, current_theme.scrollbar_track)
                 UiCore::fill(thumb, current_theme.scrollbar_thumb)
+
+        # Return 2 for the thumb, 1 for the track, and 0 outside the current
+        # indicator. Reverse-order callers still choose the innermost nested
+        # viewport before invoking this geometry helper.
+        def scrollbar_part(index: usize, x: f32, y: f32) -> i32:
+            return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Scroll
+            return 0 if not effectively_visible(index) or not inside_scroll_viewports(index, x, y)
+            is_row: bool = widgets[index].axis == UiConst::Axis.Row
+            viewport: f32 = widgets[index].width if is_row else widgets[index].height
+            content: f32 = widgets[index].scroll_content_width if is_row else widgets[index].scroll_content_height
+            return 0 if content <= viewport or viewport <= 0.0
+            cross_extent: f32 = widgets[index].height if is_row else widgets[index].width
+            inset: f32 = clamped_inset(current_theme.scrollbar_inset, cross_extent)
+            bar: mutable f32 = current_theme.scrollbar_width
+            bar <- cross_extent - inset * 2.0 if bar > cross_extent - inset * 2.0 else bar
+            return 0 if bar <= 0.0
+            track_extent: f32 = viewport - inset * 2.0
+            return 0 if track_extent <= 0.0
+            thumb_extent: mutable f32 = track_extent * viewport / content
+            minimum_thumb: f32 = 24.0 if track_extent >= 24.0 else track_extent
+            thumb_extent <- minimum_thumb if thumb_extent < minimum_thumb else thumb_extent
+            thumb_extent <- track_extent if thumb_extent > track_extent else thumb_extent
+            limit: f32 = content - viewport
+            travel: f32 = track_extent - thumb_extent
+            thumb_position: f32 = travel * widgets[index].scroll_offset / limit if limit > 0.0 else 0.0
+            if is_row:
+                track_x: f32 = widgets[index].x + inset
+                track_y: f32 = widgets[index].y + widgets[index].height - bar - inset
+                return 0 if x < track_x or x >= track_x + track_extent or y < track_y or y >= track_y + bar
+                thumb_x: f32 = track_x + thumb_position
+                return 2 if x >= thumb_x and x < thumb_x + thumb_extent
+                return 1
+            track_x: f32 = widgets[index].x + widgets[index].width - bar - inset
+            track_y: f32 = widgets[index].y + inset
+            return 0 if x < track_x or x >= track_x + bar or y < track_y or y >= track_y + track_extent
+            thumb_y: f32 = track_y + thumb_position
+            return 2 if y >= thumb_y and y < thumb_y + thumb_extent
+            return 1
+
+        def scrollbar_target(x: f32, y: f32) -> usize:
+            return NONE if widget_count == 0
+            scan: mutable usize = widget_count
+            while scan > 0 |scan|:
+                scan <- scan - 1
+                return scan if scrollbar_part(scan, x, y) != 0
+            return NONE
+
+        def scrollbar_coordinate(index: usize, x: f32, y: f32) -> f32:
+            return x if widgets[index].axis == UiConst::Axis.Row else y
+
+        def scrollbar_track_start(index: usize) -> f32:
+            is_row: bool = widgets[index].axis == UiConst::Axis.Row
+            cross_extent: f32 = widgets[index].height if is_row else widgets[index].width
+            inset: f32 = clamped_inset(current_theme.scrollbar_inset, cross_extent)
+            return widgets[index].x + inset if is_row else widgets[index].y + inset
+
+        def scrollbar_track_length(index: usize) -> f32:
+            viewport: f32 = widgets[index].width if widgets[index].axis == UiConst::Axis.Row else widgets[index].height
+            cross_extent: f32 = widgets[index].height if widgets[index].axis == UiConst::Axis.Row else widgets[index].width
+            inset: f32 = clamped_inset(current_theme.scrollbar_inset, cross_extent)
+            return viewport - inset * 2.0
+
+        def scrollbar_thumb_length(index: usize) -> f32:
+            viewport: f32 = widgets[index].width if widgets[index].axis == UiConst::Axis.Row else widgets[index].height
+            content: f32 = widgets[index].scroll_content_width if widgets[index].axis == UiConst::Axis.Row else widgets[index].scroll_content_height
+            track_length: f32 = scrollbar_track_length(index)
+            return 0.0 if content <= viewport or track_length <= 0.0
+            thumb: mutable f32 = track_length * viewport / content
+            minimum_thumb: f32 = 24.0 if track_length >= 24.0 else track_length
+            thumb <- minimum_thumb if thumb < minimum_thumb else thumb
+            return track_length if thumb > track_length else thumb
+
+        def scroll_page(index: usize, x: f32, y: f32) -> void:
+            coordinate: f32 = scrollbar_coordinate(index, x, y)
+            start: f32 = scrollbar_track_start(index)
+            thumb: f32 = scrollbar_thumb_length(index)
+            limit: f32 = scroll_limit(index)
+            travel: f32 = scrollbar_track_length(index) - thumb
+            thumb_position: f32 = travel * widgets[index].scroll_offset / limit if limit > 0.0 else 0.0
+            thumb_start: f32 = start + thumb_position
+            return if coordinate >= thumb_start and coordinate <= thumb_start + thumb
+            viewport: f32 = widgets[index].width if widgets[index].axis == UiConst::Axis.Row else widgets[index].height
+            _ = set_scroll_offset(index, widgets[index].scroll_offset - viewport if coordinate < thumb_start else widgets[index].scroll_offset + viewport)
 
         # Pre-order emission gives painter's-algorithm ordering for free: a
         # parent's background is laid down before any of its children.

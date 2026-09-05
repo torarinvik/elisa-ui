@@ -60,7 +60,8 @@ The complete working version is
   to the innermost viewport, and hit testing/semantics ignore children outside
   every ancestor viewport. Overflowing viewports draw a proportional,
   allocation-free scrollbar from `UiFlat::Theme::scrollbar_track` and
-  `scrollbar_thumb`.
+  `scrollbar_thumb`; clicking the track pages by one viewport and dragging the
+  thumb updates the offset with Elisa-owned pointer capture.
 - `label` measures and paints static text.
 - `button`, `radio_button` and `check_box` support hover, press, disabled,
   selected and keyboard-focus states.
