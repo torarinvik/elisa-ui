@@ -1486,6 +1486,12 @@ module UiFlat:
             measure(0)
             arrange(0, 0.0, 0.0, last_layout_width, last_layout_height)
 
+        # Geometry consumers share paint's deferred retained reflow. Keeping
+        # this in Elisa means a mutation followed immediately by hit testing
+        # or scrolling cannot observe stale frames.
+        def ensure_layout() -> void:
+            layout(last_layout_width, last_layout_height) if layout_initialized and layout_dirty
+
         # Scroll geometry is retained in the flat widget row, not in a host
         # object. Setters clamp in Elisa and optionally reflow the remembered
         # viewport so all backends observe the same translated child frames.
@@ -1497,12 +1503,14 @@ module UiFlat:
             return active_scroll < widget_count
 
         def scroll_limit(index: usize) -> f32:
+            ensure_layout()
             return 0.0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Scroll
             viewport: f32 = widgets[index].width if widgets[index].axis == UiConst::Axis.Row else widgets[index].height
             content: f32 = widgets[index].scroll_content_width if widgets[index].axis == UiConst::Axis.Row else widgets[index].scroll_content_height
             return content - viewport if content > viewport else 0.0
 
         def set_scroll_offset(index: usize, requested: f32) -> bool:
+            ensure_layout()
             return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Scroll
             wanted: mutable f32 = UiCore::nonnegative_extent(UiCore::finite_or_zero(requested))
             limit: f32 = scroll_limit(index)
@@ -1984,6 +1992,7 @@ module UiFlat:
         # Later widgets are drawn over earlier ones, so scanning backwards finds
         # the topmost interactive widget under the pointer.
         def hit(x: f32, y: f32) -> usize:
+            ensure_layout()
             return NONE if widget_count == 0
             scan: mutable usize = widget_count
             while scan > 0 |scan|:
@@ -1996,6 +2005,7 @@ module UiFlat:
         # non-scrollable or edge-clamped child is skipped so the gesture can
         # bubble to an outer viewport.
         def scroll_target(x: f32, y: f32, dx: f32, dy: f32) -> usize:
+            ensure_layout()
             return NONE if widget_count == 0
             scan: mutable usize = widget_count
             while scan > 0 |scan|:

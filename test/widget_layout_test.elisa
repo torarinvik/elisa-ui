@@ -453,11 +453,15 @@ def main() -> i64:
     UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(50.0, 15.0), button: 0)))
     UiFlat::set_visible(visible_a, false)
     check("hiding an active widget clears capture and focus", UiFlat::active() == UiFlat::NONE and UiFlat::focused() == UiFlat::NONE)
-    # A retained visibility mutation invalidates geometry; paint owns the
+    check("hit testing reflows after visibility mutation", UiFlat::hit(50.0, 15.0) == visible_b)
+    UiFlat::set_margin(visible_b, 4.0)
+    # A retained geometry mutation invalidates layout; paint owns the
     # deferred reflow when callers do not issue an explicit layout pass.
     UiCore::begin_frame()
     UiFlat::paint()
-    check("paint reflows after visibility mutation", near(UiFlat::widget(visible_b).x, 0.0))
+    check("paint reflows after a sizing mutation", near(UiFlat::widget(visible_b).x, 4.0))
+    UiFlat::set_margin(visible_b, 0.0)
+    UiFlat::layout(210.0, 30.0)
     check("hidden widgets collapse their arranged frame", rect_is(visible_a, 0.0, 0.0, 0.0, 0.0))
     check("visible siblings reflow without a hidden gap", near(UiFlat::widget(visible_b).x, 0.0))
     check("hidden children stop contributing to container minimums", near(UiFlat::widget(visibility_row).min_width, 100.0))
