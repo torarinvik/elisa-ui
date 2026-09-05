@@ -56,7 +56,7 @@ static NSView *elisa_container_for(size_t handle) {
     if ([object isKindOfClass:[NSScrollView class]]) {
         return [(NSScrollView *)object documentView];
     }
-    return (NSView *)object;
+    return [object isKindOfClass:[NSView class]] ? (NSView *)object : nil;
 }
 
 void elisa_appkit_init(void) {
@@ -80,21 +80,24 @@ static size_t elisa_appkit_retain(id object) {
 }
 
 void elisa_appkit_attach_to_window(size_t handle, size_t parent) {
-    NSView *view = (NSView *)elisa_appkit_object(handle);
+    id child = elisa_appkit_object(handle);
+    NSView *view = [child isKindOfClass:[NSView class]] ? (NSView *)child : nil;
     id object = elisa_appkit_object(parent);
     NSView *container = [object isKindOfClass:[NSWindow class]] ? [(NSWindow *)object contentView] : nil;
     if (container != nil && view != nil) [container addSubview:view];
 }
 
 void elisa_appkit_attach_to_scroll_view(size_t handle, size_t parent) {
-    NSView *view = (NSView *)elisa_appkit_object(handle);
+    id child = elisa_appkit_object(handle);
+    NSView *view = [child isKindOfClass:[NSView class]] ? (NSView *)child : nil;
     id object = elisa_appkit_object(parent);
     NSView *container = [object isKindOfClass:[NSScrollView class]] ? [(NSScrollView *)object documentView] : nil;
     if (container != nil && view != nil) [container addSubview:view];
 }
 
 void elisa_appkit_attach_to_view(size_t handle, size_t parent) {
-    NSView *view = (NSView *)elisa_appkit_object(handle);
+    id child = elisa_appkit_object(handle);
+    NSView *view = [child isKindOfClass:[NSView class]] ? (NSView *)child : nil;
     id object = elisa_appkit_object(parent);
     NSView *container = [object isKindOfClass:[NSView class]] ? (NSView *)object : nil;
     if (container != nil && view != nil) [container addSubview:view];
@@ -378,6 +381,7 @@ float elisa_appkit_frame_width(size_t handle) {
     if ([object isKindOfClass:[NSWindow class]]) {
         return (float)[[(NSWindow *)object contentView] frame].size.width;
     }
+    if (![object isKindOfClass:[NSView class]]) return -1.0f;
     return (float)[(NSView *)object frame].size.width;
 }
 
@@ -394,6 +398,7 @@ float elisa_appkit_frame_y(size_t handle) {
     id object = elisa_appkit_object(handle);
     if (object == nil) return -1.0f;
     if ([object isKindOfClass:[NSWindow class]]) return 0.0f;
+    if (![object isKindOfClass:[NSView class]]) return -1.0f;
     return (float)[(NSView *)object frame].origin.y;
 }
 
@@ -401,6 +406,7 @@ float elisa_appkit_frame_x(size_t handle) {
     id object = elisa_appkit_object(handle);
     if (object == nil) return -1.0f;
     if ([object isKindOfClass:[NSWindow class]]) return 0.0f;
+    if (![object isKindOfClass:[NSView class]]) return -1.0f;
     return (float)[(NSView *)object frame].origin.x;
 }
 
