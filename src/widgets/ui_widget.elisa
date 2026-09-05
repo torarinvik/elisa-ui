@@ -191,6 +191,13 @@ module UiFlat:
         global mutable history_suppressed: bool = false
         global mutable composition_history_slot: usize = TEXT_HISTORY_CAPACITY
         global mutable caret_blink_started: f64 = 0.0
+
+        # Flat widgets have two container kinds. Keeping this predicate beside
+        # link/new_widget makes the nesting invariant explicit and prevents a
+        # leaf from becoming an unreachable parent with a misleading ancestry.
+        def can_nest(index: usize) -> bool:
+            return false if index >= widget_count
+            return widgets[index].kind == UiConst::WidgetKind.Panel or widgets[index].kind == UiConst::WidgetKind.Scroll
         global mutable current_theme: Theme = Theme{
             focus_ring: UiCore::Color{r: 94, g: 158, b: 255, a: 245},
             selection: UiCore::Color{r: 55, g: 112, b: 214, a: 210},
@@ -264,6 +271,7 @@ module UiFlat:
 
         def link(parent: usize, child: usize) -> void:
             return if parent >= widget_count or child >= widget_count or parent == child
+            return if not can_nest(parent)
             # A child may only be attached once. `new_widget` initializes its
             # parent before calling this helper, so the same-parent case is the
             # normal insertion path; a different parent would silently create
@@ -298,7 +306,7 @@ module UiFlat:
             index: usize = widget_count
             widget_count <- widget_count + 1
             layout_dirty <- true if layout_initialized
-            safe_parent: usize = parent if parent < index else NONE
+            safe_parent: usize = parent if parent < index and can_nest(parent) else NONE
             # A whole-record reset, not a `with` block: a literal must name
             # every field, so a field added to Widget cannot be left
             # uninitialised here.
