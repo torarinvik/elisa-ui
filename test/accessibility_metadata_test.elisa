@@ -1,0 +1,42 @@
+# Headless regression for portable semantic relationships and numeric ranges.
+
+include "../src/core/ui_core.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiCore::begin_frame()
+    UiCore::accessibility_with_metadata(
+        UiCore::AccessibilityRole.Slider, "Volume", "", UiCore::Rect(4.0, 8.0, 100.0, 24.0),
+        7, 7, true, true, false, 0.5, "", "", 0, 0, 0,
+        2, 8, 9, -1.0, 1.0, true)
+    check("metadata creates one semantic node", UiCore::accessibility_count() == 1)
+    node: mutable UiCore::AccessibilityNode = UiCore::accessibility_at(0)
+    check("metadata preserves stable identity", node.id == 7 and node.action == 7)
+    check("metadata preserves relationships", node.parent_id == 2 and node.first_child_id == 8 and node.next_sibling_id == 9)
+    check("metadata preserves numeric range", node.has_range and node.range_min == -1.0 and node.range_max == 1.0 and not node.range_conflict)
+
+    UiCore::accessibility_set_relationships(7, 3, 4, 5)
+    UiCore::accessibility_set_range(7, 10.0, 2.0)
+    node <- UiCore::accessibility_at(0)
+    check("relationship patch updates the retained node", node.parent_id == 3 and node.first_child_id == 4 and node.next_sibling_id == 5)
+    check("reversed range fails closed", node.has_range and node.range_min == 10.0 and node.range_max == 10.0 and node.range_conflict)
+
+    UiCore::accessibility_with_metadata(
+        UiCore::AccessibilityRole.Button, "Apply", "", UiCore::Rect(0.0, 0.0, 20.0, 20.0),
+        8, 8, true, false, false, 0.0, "", "", 0, 0, 0,
+        999, 999, 999, 0.0, 1.0, false)
+    second: UiCore::AccessibilityNode = UiCore::accessibility_at(1)
+    check("relationship IDs are bounded", second.parent_id == UiCore::MAX_ACCESSIBILITY_NODES and second.first_child_id == UiCore::MAX_ACCESSIBILITY_NODES and second.next_sibling_id == UiCore::MAX_ACCESSIBILITY_NODES)
+
+    if failures == 0:
+        _ = puts("accessibility metadata: all checks passed")
+        return 0
+    _ = puts("accessibility metadata: FAILURES above")
+    return 1

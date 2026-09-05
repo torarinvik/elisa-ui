@@ -4,6 +4,45 @@
 
 extend UiFlat:
     private:
+        # Semantic links are derived from the same retained tree that drives
+        # paint and hit testing. Non-semantic layout wrappers are skipped for
+        # parents, while direct semantic siblings remain cheap to discover in
+        # the bounded flat arena.
+        def semantic_kind(index: usize) -> bool:
+            return false if index >= widget_count
+            kind: UiConst::WidgetKind = widgets[index].kind
+            return kind == UiConst::WidgetKind.Button or kind == UiConst::WidgetKind.RadioButton or kind == UiConst::WidgetKind.CheckBox or kind == UiConst::WidgetKind.Slider or kind == UiConst::WidgetKind.ProgressBar or kind == UiConst::WidgetKind.TextField or kind == UiConst::WidgetKind.Label
+
+        def semantic_parent_id(index: usize) -> usize:
+            cursor: mutable usize = widgets[index].parent
+            steps: mutable usize = 0
+            while cursor < widget_count |cursor, steps|:
+                return cursor if semantic_kind(cursor) and effectively_visible(cursor) and intersects_scroll_viewports(cursor)
+                return UiCore::MAX_ACCESSIBILITY_NODES if steps >= MAX_TRAVERSAL_DEPTH
+                steps <- steps + 1
+                cursor <- widgets[cursor].parent
+            return UiCore::MAX_ACCESSIBILITY_NODES
+
+        def semantic_child_id(index: usize) -> usize:
+            cursor: mutable usize = widgets[index].first_child
+            steps: mutable usize = 0
+            while cursor != NONE |cursor, steps|:
+                return UiCore::MAX_ACCESSIBILITY_NODES if steps >= MAX_TRAVERSAL_SIBLINGS or cursor >= widget_count
+                steps <- steps + 1
+                return cursor if semantic_kind(cursor) and effectively_visible(cursor) and intersects_scroll_viewports(cursor)
+                cursor <- widgets[cursor].next_sibling
+            return UiCore::MAX_ACCESSIBILITY_NODES
+
+        def semantic_next_sibling_id(index: usize) -> usize:
+            cursor: mutable usize = widgets[index].next_sibling
+            steps: mutable usize = 0
+            while cursor != NONE |cursor, steps|:
+                return UiCore::MAX_ACCESSIBILITY_NODES if steps >= MAX_TRAVERSAL_SIBLINGS or cursor >= widget_count
+                steps <- steps + 1
+                return cursor if semantic_kind(cursor) and effectively_visible(cursor) and intersects_scroll_viewports(cursor)
+                cursor <- widgets[cursor].next_sibling
+            return UiCore::MAX_ACCESSIBILITY_NODES
+
         def ensure_visible(index: usize) -> void:
             cursor: mutable usize = widgets[index].parent
             steps: mutable usize = 0
@@ -53,6 +92,9 @@ extend UiFlat:
                 UiCore::accessibility(semantic_role, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, false, 0.0, semantic_value, selected_text_value(index), widgets[index].text_revision, selection_utf16_location(index), selection_utf16_length(index))
             elif widgets[index].kind == UiConst::WidgetKind.Label:
                 UiCore::accessibility(UiCore::AccessibilityRole.Label, widgets[index].text, widgets[index].help, frame, index, NONE, enabled, false, false, 0.0, "", "", 0, 0, 0)
+            UiCore::accessibility_set_relationships(index, semantic_parent_id(index), semantic_child_id(index), semantic_next_sibling_id(index))
+            if widgets[index].kind == UiConst::WidgetKind.Slider or widgets[index].kind == UiConst::WidgetKind.ProgressBar:
+                UiCore::accessibility_set_range(index, 0.0, 1.0)
 
         def update_slider(index: usize, pointer_x: f32) -> void:
             return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider
@@ -294,5 +336,4 @@ extend UiFlat:
                 return visible_start if measure_text_range(index, visible_start, widgets[index].caret) <= available_width
                 visible_start <- next_character(index, visible_start)
             return visible_start
-
 

@@ -81,6 +81,9 @@ because a module member's symbol carries its module and those names cannot move.
 - **Size constraints** ([src/widgets/ui_constraints.elisa](src/widgets/ui_constraints.elisa)) —
   normalized minimum/preferred/maximum extents, bounded resolution, and
   explicit conflict diagnostics for adaptive layouts.
+- **Portable semantics** ([docs/ui-semantics.md](docs/ui-semantics.md)) —
+  stable semantic relationships and optional numeric ranges are emitted from
+  the retained tree and consumed by adapters without duplicating widget state.
 - **Stable dynamic identity** ([src/widgets/ui_identity.elisa](src/widgets/ui_identity.elisa)) —
   explicit begin/claim/finish transactions preserve keyed generations across
   list and form rebuilds, reject duplicate keys, and invalidate retired items

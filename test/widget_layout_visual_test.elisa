@@ -64,6 +64,12 @@ def main() -> i64:
     UiFlat::set_text(visible_a, "First", 14.0, UiCore::rgb(255, 255, 255))
     UiFlat::set_text(visible_b, "Second", 14.0, UiCore::rgb(255, 255, 255))
     UiFlat::layout(210.0, 30.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    first_semantic: UiCore::AccessibilityNode = UiCore::accessibility_at(0)
+    second_semantic: UiCore::AccessibilityNode = UiCore::accessibility_at(1)
+    check("semantic siblings preserve retained order", first_semantic.id == visible_a and second_semantic.id == visible_b and first_semantic.next_sibling_id == visible_b)
+    check("semantic links omit non-semantic layout wrappers", first_semantic.parent_id == UiCore::MAX_ACCESSIBILITY_NODES and second_semantic.parent_id == UiCore::MAX_ACCESSIBILITY_NODES)
     UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(50.0, 15.0), button: 0)))
     UiFlat::set_visible(visible_a, false)
     check("hiding an active widget clears capture and focus", UiFlat::active() == UiFlat::NONE and UiFlat::focused() == UiFlat::NONE)
@@ -207,6 +213,7 @@ def main() -> i64:
     slider_node: UiCore::AccessibilityNode = UiCore::accessibility_at(0)
     check("slider exposes its semantic role", slider_node.role == UiCore::AccessibilityRole.Slider)
     check("slider exposes its normalized value", near(slider_node.value, 0.0))
+    check("slider exposes its normalized range", slider_node.has_range and slider_node.range_min == 0.0 and slider_node.range_max == 1.0 and not slider_node.range_conflict)
     base_theme: UiFlat::Theme = UiFlat::theme()
     custom_theme: mutable UiFlat::Theme = base_theme
     custom_theme.slider_horizontal_inset <- 20.0
@@ -265,10 +272,10 @@ def main() -> i64:
     progress_node: UiCore::AccessibilityNode = UiCore::accessibility_at(0)
     check("progress exposes its semantic role", progress_node.role == UiCore::AccessibilityRole.ProgressBar)
     check("progress exposes its normalized value", near(progress_node.value, 0.4))
+    check("progress exposes its normalized range", progress_node.has_range and progress_node.range_min == 0.0 and progress_node.range_max == 1.0 and not progress_node.range_conflict)
 
     if test_failures == 0:
         _ = puts("widget layout: all checks passed")
         return 0
     _ = puts("widget layout: FAILURES above")
     return 1
-

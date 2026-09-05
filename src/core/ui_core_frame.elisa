@@ -37,14 +37,48 @@ extend UiCore:
                 return index if accessibility_nodes[index].id == id
             return MAX_ACCESSIBILITY_NODES
 
+        # Compatibility builder for ordinary controls. Metadata-aware callers
+        # can use `accessibility_with_metadata`; keeping this signature stable
+        # avoids forcing every existing widget to learn relationship/range
+        # details before it needs them.
         def accessibility(role: AccessibilityRole, label: sview, help: sview, frame: Rect, id: usize, action: usize, enabled: bool, focused: bool, selected: bool, value: f32, text_value: sview, selected_text: sview, revision: usize, selection_location: usize, selection_length: usize) -> void:
+            accessibility_with_metadata(role, label, help, frame, id, action,
+                enabled, focused, selected, value, text_value, selected_text,
+                revision, selection_location, selection_length,
+                MAX_ACCESSIBILITY_NODES, MAX_ACCESSIBILITY_NODES,
+                MAX_ACCESSIBILITY_NODES, 0.0, 1.0, false)
+
+        # Build one portable semantic node with optional tree relationships and
+        # a numeric range. IDs are bounded before storage so a malformed host
+        # cannot make an adapter chase an arbitrary pointer-sized value.
+        def accessibility_with_metadata(role: AccessibilityRole, label: sview, help: sview, frame: Rect, id: usize, action: usize, enabled: bool, focused: bool, selected: bool, value: f32, text_value: sview, selected_text: sview, revision: usize, selection_location: usize, selection_length: usize, parent_id: usize, first_child_id: usize, next_sibling_id: usize, range_minimum: f32, range_maximum: f32, has_range: bool) -> void:
             return if label.len == 0
             safe_frame: Rect = Rect{
                 origin: Vec2{ x: finite_or_zero(frame.origin.x), y: finite_or_zero(frame.origin.y) },
                 size: Size{ width: nonnegative_extent(frame.size.width), height: nonnegative_extent(frame.size.height) },
             }
             safe_value: f32 = finite_or_zero(value)
-            node: AccessibilityNode = AccessibilityNode{role: role, label: label, help: help, frame: safe_frame, id: id, action: action, enabled: enabled, focused: focused, selected: selected, value: safe_value, text_value: text_value, selected_text: selected_text, revision: revision, selection_location: selection_location, selection_length: selection_length}
+            safe_parent: usize = relationship_id(parent_id)
+            safe_first_child: usize = relationship_id(first_child_id)
+            safe_next_sibling: usize = relationship_id(next_sibling_id)
+            safe_range_minimum: f32 = finite_or_zero(range_minimum)
+            safe_range_maximum: mutable f32 = finite_or_zero(range_maximum)
+            range_conflict: mutable bool = false
+            if has_range and safe_range_maximum < safe_range_minimum:
+                safe_range_maximum <- safe_range_minimum
+                range_conflict <- true
+            node: AccessibilityNode = AccessibilityNode{
+                role: role, label: label, help: help, frame: safe_frame, id: id,
+                action: action, enabled: enabled, focused: focused,
+                selected: selected, value: safe_value, text_value: text_value,
+                selected_text: selected_text, revision: revision,
+                selection_location: selection_location,
+                selection_length: selection_length,
+                parent_id: safe_parent, first_child_id: safe_first_child,
+                next_sibling_id: safe_next_sibling, has_range: has_range,
+                range_min: safe_range_minimum, range_max: safe_range_maximum,
+                range_conflict: range_conflict,
+            }
             existing: usize = accessibility_index_for_id(id)
             if existing < MAX_ACCESSIBILITY_NODES:
                 # Last declaration wins while preserving the ID's first
@@ -57,6 +91,32 @@ extend UiCore:
                 return
             accessibility_nodes[accessibility_total.usize()] <- node
             accessibility_total <- accessibility_total + 1
+            invalidate(Invalidation.Semantics)
+
+        # Patch metadata after a compatibility declaration. This is useful for
+        # retained widget emitters that already share one role/value branch but
+        # can derive relationships from their tree only after the node exists.
+        def accessibility_set_relationships(id: usize, parent_id: usize, first_child_id: usize, next_sibling_id: usize) -> void:
+            existing: usize = accessibility_index_for_id(id)
+            return if existing >= accessibility_total.usize()
+            accessibility_nodes[existing].parent_id <- relationship_id(parent_id)
+            accessibility_nodes[existing].first_child_id <- relationship_id(first_child_id)
+            accessibility_nodes[existing].next_sibling_id <- relationship_id(next_sibling_id)
+            invalidate(Invalidation.Semantics)
+
+        def accessibility_set_range(id: usize, minimum: f32, maximum: f32) -> void:
+            existing: usize = accessibility_index_for_id(id)
+            return if existing >= accessibility_total.usize()
+            safe_minimum: f32 = finite_or_zero(minimum)
+            safe_maximum: mutable f32 = finite_or_zero(maximum)
+            conflict: mutable bool = false
+            if safe_maximum < safe_minimum:
+                safe_maximum <- safe_minimum
+                conflict <- true
+            accessibility_nodes[existing].has_range <- true
+            accessibility_nodes[existing].range_min <- safe_minimum
+            accessibility_nodes[existing].range_max <- safe_maximum
+            accessibility_nodes[existing].range_conflict <- conflict
             invalidate(Invalidation.Semantics)
 
         def accessibility_count() -> usize:
@@ -206,3 +266,8 @@ extend UiCore:
             return 2147483647 if safe >= 2147483.0
             milliseconds: i32 = (safe * 1000.0).i32()
             return 1 if milliseconds < 1 else milliseconds
+
+    private:
+        def relationship_id(id: usize) -> usize:
+            return id if id < MAX_ACCESSIBILITY_NODES
+            return MAX_ACCESSIBILITY_NODES
