@@ -42,7 +42,6 @@ extern elisa_appkit_canvas_modifier_control() -> usize
 extern elisa_appkit_canvas_modifier_device_independent_mask() -> usize
 extern elisa_appkit_canvas_schedule_redraw(delay: f32, run_loop_mode: usize, window_handle: usize) -> usize
 extern elisa_appkit_canvas_cancel_redraw(handle: usize) -> void
-extern elisa_appkit_canvas_present_headless(window_handle: usize, color_space: usize, image_type: i32, snapshot: usize, pixels_width: i32, pixels_height: i32, bits_per_sample: i32, samples_per_pixel: i32, has_alpha: i32, bitmap_format: i32) -> i32
 extern elisa_appkit_canvas_present(window_handle: usize) -> i32
 extern elisa_appkit_canvas_activate() -> void
 extern elisa_appkit_canvas_center(window_handle: usize) -> void
@@ -1206,10 +1205,12 @@ module UiAppKitCanvas:
                             return 2
                     bitmap_width: i32 = bitmap_extent(width)
                     bitmap_height: i32 = bitmap_extent(height)
-                    # The native entry is a compatibility trampoline only;
-                    # all bitmap construction, frame rendering and PNG
-                    # encoding happen in UiAppKitCanvas::render_headless.
-                    result: i32 = elisa_appkit_canvas_present_headless(canvas_window, 0, 0, snapshot_path, bitmap_width, bitmap_height, 0, 0, 0, 0)
+                    # Keep the live path entirely in Elisa: bitmap
+                    # construction, frame rendering, and PNG encoding all
+                    # happen in the retained renderer below. The legacy C
+                    # entry point remains available only for older native
+                    # callers and bridge tests.
+                    result: i32 = UiAppKitCanvas::render_headless(canvas_window, snapshot_path, bitmap_width, bitmap_height)
                     CFRelease(snapshot_path) if snapshot_path != 0
                     if result == 0 or not frame_was_rendered():
                         release_canvas()
