@@ -53,16 +53,21 @@ extend UiWidgets:
         # UiControls and UiFlat. Keep direct hierarchy painting from drawing
         # past its box when an application supplies an out-of-range value.
         def normalized_slider_ratio(value: f32, low: f32, high: f32) -> f32:
-            lower: mutable f32 = UiCore::finite_or_zero(low)
-            upper: mutable f32 = UiCore::finite_or_zero(high)
+            # Do the subtraction in f64. Two finite f32 endpoints with
+            # opposite signs can overflow their f32 span even though their
+            # logical range is perfectly valid (for example -3e38..3e38).
+            # Keeping the intermediate in f64 preserves the midpoint and
+            # still returns the same normalized f32 contract to painters.
+            lower: mutable f64 = UiCore::finite_or_zero_f64(low.f64())
+            upper: mutable f64 = UiCore::finite_or_zero_f64(high.f64())
             if upper < lower:
-                swap: f32 = lower
+                swap: f64 = lower
                 lower <- upper
                 upper <- swap
-            span: f32 = upper - lower
+            span: f64 = upper - lower
             return 0.0 if span <= 0.0
-            normalized: f32 = (UiCore::finite_or_zero(value) - lower) / span
-            return UiCore::normalized_unit(normalized)
+            normalized: f64 = (UiCore::finite_or_zero_f64(value.f64()) - lower) / span
+            return UiCore::normalized_unit(normalized.f32())
 
         # How many children a node has. Walks the sibling chain rather than
         # storing a count, so adding or removing a child needs no bookkeeping.
@@ -161,9 +166,11 @@ extend UiWidgets:
         # non-zero proportion.
         def arrange(w: Widget, x: f32, y: f32, width: f32, height: f32, depth: i32) -> void:
             return if depth >= MAX_HIERARCHY_DEPTH
+            safe_x: f32 = UiCore::bounded_coordinate(x)
+            safe_y: f32 = UiCore::bounded_coordinate(y)
             safe_width: f32 = bounded_extent(width)
             safe_height: f32 = bounded_extent(height)
-            w with { x, y, width <- safe_width, height <- safe_height }
+            w with { x <- safe_x, y <- safe_y, width <- safe_width, height <- safe_height }
             first: Widget? = w.first_child
             return if first == null
 
@@ -193,8 +200,8 @@ extend UiWidgets:
                         remaining <- remaining - columns_count
                     pad: f32 = bounded_extent(padding)
                     gap: f32 = bounded_extent(spacing)
-                    inner_x: f32 = x + pad
-                    inner_y: f32 = y + pad
+                    inner_x: f32 = UiCore::bounded_coordinate(safe_x + pad)
+                    inner_y: f32 = UiCore::bounded_coordinate(safe_y + pad)
                     inner_width: f32 = safe_difference(width, safe_product(pad, 2.0))
                     inner_height: f32 = safe_difference(height, safe_product(pad, 2.0))
                     gaps_x: f32 = safe_product(gap, columns_count - 1.0) if columns_count > 1.0 else 0.0
@@ -214,7 +221,9 @@ extend UiWidgets:
                     while walk is node |column, row, walk, inner_x, inner_y, cell_width, cell_height, gap, columns_count, arrange_grid_walk_steps|:
                         break if arrange_grid_walk_steps >= MAX_HIERARCHY_SIBLINGS
                         arrange_grid_walk_steps <- arrange_grid_walk_steps + 1
-                        arrange(node, inner_x + column * (cell_width + gap), inner_y + row * (cell_height + gap), cell_width, cell_height, depth + 1)
+                        child_x: f32 = UiCore::bounded_coordinate(inner_x + column * (cell_width + gap))
+                        child_y: f32 = UiCore::bounded_coordinate(inner_y + row * (cell_height + gap))
+                        arrange(node, child_x, child_y, cell_width, cell_height, depth + 1)
                         column <- column + 1.0
                         if column >= columns_count:
                             column <- 0.0
@@ -227,8 +236,8 @@ extend UiWidgets:
             is_row: bool = axis_of(w) == UiConst::Axis.Row
             pad: f32 = bounded_extent(padding_of(w))
             gap: f32 = bounded_extent(spacing_of(w))
-            inner_x: f32 = x + pad
-            inner_y: f32 = y + pad
+            inner_x: f32 = UiCore::bounded_coordinate(safe_x + pad)
+            inner_y: f32 = UiCore::bounded_coordinate(safe_y + pad)
             inner_width: f32 = safe_difference(width, safe_product(pad, 2.0))
             inner_height: f32 = safe_difference(height, safe_product(pad, 2.0))
             count: f32 = child_count(w)
@@ -262,8 +271,10 @@ extend UiWidgets:
                 base: f32 = bounded_extent(node.min_width if is_row else node.min_height)
                 extent: f32 = safe_sum(base, safe_product(share, node.grow))
                 if is_row:
-                    arrange(node, inner_x + offset - scroll_offset, inner_y, extent, inner_height, depth + 1)
+                    child_x: f32 = UiCore::bounded_coordinate(inner_x + offset - scroll_offset)
+                    arrange(node, child_x, inner_y, extent, inner_height, depth + 1)
                 else:
-                    arrange(node, inner_x, inner_y + offset - scroll_offset, inner_width, extent, depth + 1)
+                    child_y: f32 = UiCore::bounded_coordinate(inner_y + offset - scroll_offset)
+                    arrange(node, inner_x, child_y, inner_width, extent, depth + 1)
                 offset <- safe_sum(safe_sum(offset, extent), gap)
                 walk <- node.next_sibling

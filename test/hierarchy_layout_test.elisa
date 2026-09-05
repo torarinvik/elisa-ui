@@ -282,6 +282,17 @@ def main() -> i64:
         test_failures <- test_failures + 1 if huge_child.width > UiConstraints::MAX_EXTENT or huge_child.height > UiConstraints::MAX_EXTENT
         test_failures <- test_failures + 1 if huge_panel.width != huge_panel.width or huge_panel.height != huge_panel.height or huge_child.width != huge_child.width or huge_child.height != huge_child.height
 
+        # Nested hostile padding must not make a stored child origin disagree
+        # with the bounded box projection used by painting and native frames.
+        nested_huge_leaf: Widget = Button.Push(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "nested", rest: grey(30), hover: grey(40), press: grey(20))
+        nested_huge_inner: Widget = Container.Box(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: nested_huge_leaf, next_sibling: null, axis: UiConst::Axis.Column, padding: huge, spacing: 0.0, fill: grey(15))
+        nested_huge_outer: Widget = Container.Box(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: nested_huge_inner, next_sibling: null, axis: UiConst::Axis.Column, padding: huge, spacing: 0.0, fill: grey(15))
+        layout(nested_huge_outer, huge, huge)
+        check("nested layout bounds child x", nested_huge_inner.x, UiConstraints::MAX_EXTENT)
+        check("nested layout bounds grandchild x", nested_huge_leaf.x, UiConstraints::MAX_EXTENT)
+        check("nested layout bounds child y", nested_huge_inner.y, UiConstraints::MAX_EXTENT)
+        check("nested layout bounds grandchild y", nested_huge_leaf.y, UiConstraints::MAX_EXTENT)
+
         # Growth weights are layout metrics too. A hostile negative weight must
         # not steal space from a valid sibling or poison the weighted pass.
         invalid_grow: Widget = Button.Push(min_width: 20.0, min_height: 8.0, grow: -4.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "invalid grow", rest: grey(30), hover: grey(40), press: grey(20))
@@ -318,6 +329,17 @@ def main() -> i64:
             if knob_x < slider.x or knob_x + slider.height > slider.x + slider.width:
                 test_failures <- test_failures + 1
                 _ = puts("slider knob stays inside its frame")
+
+        # The ratio calculation must retain a midpoint when the finite range
+        # itself would overflow f32 subtraction.
+        wide_slider: Widget = Control.Slider(min_width: 40.0, min_height: 10.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, value: 0.0, low: -3.0e38, high: 3.0e38, track: grey(20), knob: grey(200))
+        layout(wide_slider, 100.0, 20.0)
+        UiCore::begin_frame()
+        paint(wide_slider)
+        if UiCore::command_count() > 1:
+            wide_knob_x: f32 = command_rect_origin_x(1)
+            expected_wide_knob_x: f32 = wide_slider.x + (wide_slider.width - wide_slider.height) * 0.5
+            check("wide slider preserves midpoint", wide_knob_x, expected_wide_knob_x)
 
         # Raw hierarchy text payloads use the same bounded typography contract
         # as convenience builders before they cross into a painter backend.
