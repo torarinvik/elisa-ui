@@ -190,14 +190,20 @@ static NSCursor *elisa_appkit_canvas_cursor(size_t handle) {
     return [object isKindOfClass:[NSCursor class]] ? object : nil;
 }
 
-// Key interpretation receives a borrowed NSEvent handle from the view's
-// callback. Validate it before placing it in an NSArray and handing it back to
-// AppKit; malformed cross-boundary data must be a no-op, never an Objective-C
-// message to an arbitrary object.
+// Key interpretation receives a retained CFArray created by Elisa from the
+// view's borrowed NSEvent handle. Validate both the collection and its single
+// event before handing it back to AppKit; malformed cross-boundary data must be
+// a no-op, never an Objective-C message to an arbitrary object.
 static NSEvent *elisa_appkit_canvas_event(size_t handle) {
     if (handle == 0) return nil;
     id object = (__bridge id)(void *)handle;
     return [object isKindOfClass:[NSEvent class]] ? object : nil;
+}
+
+static NSArray *elisa_appkit_canvas_event_array(size_t handle) {
+    if (handle == 0) return nil;
+    id object = (__bridge id)(void *)handle;
+    return [object isKindOfClass:[NSArray class]] ? object : nil;
 }
 
 @interface ElisaCanvasDelegate : NSObject <NSWindowDelegate>
@@ -225,9 +231,12 @@ static NSEvent *elisa_appkit_canvas_event(size_t handle) {
 }
 @end
 void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) {
-    NSEvent *nativeEvent = elisa_appkit_canvas_event(event);
+    NSArray *events = elisa_appkit_canvas_event_array(event);
     ElisaCanvasView *view = elisa_appkit_canvas_view(windowHandle);
-    if (nativeEvent != nil && view != nil) [view interpretKeyEvents:@[nativeEvent]];
+    if (events == nil || events.count != 1 || view == nil) return;
+    id candidate = [events objectAtIndex:0];
+    NSEvent *nativeEvent = elisa_appkit_canvas_event((size_t)(__bridge void *)candidate);
+    if (nativeEvent != nil) [view interpretKeyEvents:events];
 }
 
 @implementation ElisaCanvasView

@@ -26,6 +26,7 @@ extern elisa_appkit_canvas_open(title: usize, width: f32, height: f32, style: i3
 extern elisa_appkit_canvas_release_window(handle: usize) -> void
 extern elisa_appkit_canvas_release_delegate(handle: usize) -> void
 extern elisa_appkit_canvas_set_activation_policy(policy: i32) -> void
+extern elisa_appkit_canvas_interpret_key_event(event_array: usize, window_handle: usize) -> void
 extern elisa_appkit_canvas_focus(window_handle: usize) -> void
 extern elisa_appkit_canvas_set_tabbing_mode(window_handle: usize, mode: i32) -> void
 extern elisa_appkit_canvas_set_restorable(window_handle: usize, restorable: i32) -> void
@@ -365,6 +366,20 @@ module UiAppKitCanvas:
             values: usize[1] = zeroed
             values_pointer: usize& = (&values[0]).cast[usize&] can Unsafe.PointerCast
             return CFArrayCreate(0, values_pointer, 0, 0)
+
+        # NSTextInputClient expects key interpretation as a one-event NSArray.
+        # Build the toll-free-bridged collection through CoreFoundation so the
+        # Objective-C adapter does not construct transient framework objects or
+        # embed an array literal. The event is borrowed and AppKit consumes the
+        # array synchronously, so a no-retain callback table is sufficient.
+        def interpret_key_event(event: usize, window_handle: usize) -> void can Unsafe.PointerCast:
+            return if event == 0 or window_handle == 0
+            values: usize[1] = [event]
+            values_pointer: usize& = (&values[0]).cast[usize&] can Unsafe.PointerCast
+            events: usize = CFArrayCreate(0, values_pointer, 1, 0)
+            return if events == 0
+            elisa_appkit_canvas_interpret_key_event(events, window_handle)
+            CFRelease(events)
 
         # Encode a retained native string into a caller-owned UTF-8 buffer.
         # CFStringGetBytes stops at a complete scalar when the fixed buffer is

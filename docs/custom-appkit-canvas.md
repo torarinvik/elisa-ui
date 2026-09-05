@@ -208,8 +208,10 @@ Key-release ownership follows the same rule: Cocoa forwards its hardware facts,
 and Elisa decides whether the text-input system consumes them. The protocol's
 empty `validAttributesForMarkedText` collection is created by Elisa through
 CoreFoundation FFI; the Objective-C method only transfers that retained array
-to AppKit. Window setup and activation use the same Elisa-owned libobjc
-autorelease scope as frame rendering.
+to AppKit. Keyboard interpretation also builds its transient one-event
+collection in Elisa through `CFArrayCreate`; the shim only validates that
+collection and invokes the protocol. Window setup and activation use the same
+Elisa-owned libobjc autorelease scope as frame rendering.
 
 ## Build and test without showing a window
 
