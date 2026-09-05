@@ -22,8 +22,10 @@ def main() -> i64:
     dirty: UiNavigation::Handle = UiNavigation::push(20, UiNavigation::BackPolicy.Confirm, true)
     check("dirty confirm requests prompt", UiNavigation::request_back() == UiNavigation::BackDecision.Confirm and UiNavigation::snapshot().pending_confirmation)
     check("repeated back keeps prompt pending", UiNavigation::request_back() == UiNavigation::BackDecision.Confirm)
-    check("cancel leaves dirty entry", UiNavigation::resolve_confirmation(false) == UiNavigation::BackDecision.Consumed and UiNavigation::is_valid(dirty) and UiNavigation::is_dirty(dirty))
-    check("accepted confirmation navigates", UiNavigation::request_back() == UiNavigation::BackDecision.Confirm and UiNavigation::resolve_confirmation(true) == UiNavigation::BackDecision.Navigate and not UiNavigation::is_valid(dirty))
+    check("direct commit clears a pending confirmation", UiNavigation::commit(dirty) and not UiNavigation::snapshot().pending_confirmation and not UiNavigation::is_valid(dirty))
+    dirty_after: UiNavigation::Handle = UiNavigation::push(20, UiNavigation::BackPolicy.Confirm, true)
+    check("cancel leaves dirty entry", UiNavigation::request_back() == UiNavigation::BackDecision.Confirm and UiNavigation::resolve_confirmation(false) == UiNavigation::BackDecision.Consumed and UiNavigation::is_valid(dirty_after) and UiNavigation::is_dirty(dirty_after))
+    check("accepted confirmation navigates", UiNavigation::request_back() == UiNavigation::BackDecision.Confirm and UiNavigation::resolve_confirmation(true) == UiNavigation::BackDecision.Navigate and not UiNavigation::is_valid(dirty_after))
 
     consumed: UiNavigation::Handle = UiNavigation::push(30, UiNavigation::BackPolicy.Consume, false)
     check("consume entry handles back", UiNavigation::request_back() == UiNavigation::BackDecision.Consumed and UiNavigation::is_valid(consumed))
