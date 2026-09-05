@@ -243,6 +243,15 @@ def main() -> i64:
     UiFlat::set_theme(base_theme)
     UiCore::set_frame_time(0.0)
 
+    # A finite but enormous host clock must not overflow the caret blink tick
+    # narrowing in UiFlat::paint. Once f64 loses integer parity precision the
+    # framework keeps the caret visible deterministically.
+    UiCore::set_frame_time(1.0e308)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("huge blink elapsed time remains safe", UiCore::command_count() >= caret_visible_commands)
+    UiCore::set_frame_time(0.0)
+
     UiFlat::reset()
     UiCore::begin_frame()
     UiFlat::paint()
