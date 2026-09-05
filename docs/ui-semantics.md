@@ -1,9 +1,14 @@
 # Portable semantic nodes
 
 `UiCore::AccessibilityNode` is the backend-neutral semantic record emitted
-alongside each retained frame's drawing commands. Existing role, label, help,
-bounds, action, enabled/focused/selected state, text values, and revision
-fields are supplemented by:
+alongside each retained frame's drawing commands. Its portable role set
+includes `Dialog` for modal containers. `UiDialog` can
+project its copied title/message and typed result into this role directly;
+AppKit maps it to its stable group-container role while hosted adapters keep the
+same role value.
+
+Existing role, label, help, bounds, action, enabled/focused/selected state, text
+values, and revision fields are supplemented by:
 
 - optional `parent_id`, `first_child_id`, and `next_sibling_id` links using
   `UiCore::MAX_ACCESSIBILITY_NODES` as a bounded sentinel; and

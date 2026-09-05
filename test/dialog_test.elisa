@@ -17,6 +17,12 @@ def main() -> i64:
     check("dialog copies title and actions", UiDialog::title(first) == "Delete item" and UiDialog::message(first) == "This cannot be undone." and UiDialog::primary_label(first) == "Delete" and UiDialog::secondary_label(first) == "Keep")
     check("dialog reports owner and kind", UiDialog::owner(first) == 10 and UiDialog::kind(first) == UiDialog::Kind.Confirm)
     check("snapshot counts open dialog", UiDialog::snapshot().active == 1 and UiDialog::snapshot().closed == 0)
+    semantic: UiDialog::Semantics = UiDialog::semantics(first, true)
+    check("dialog projects a portable semantic role", semantic.role == UiCore::AccessibilityRole.Dialog and semantic.label == "Delete item" and semantic.help == "This cannot be undone." and semantic.identity == first.slot.usize() + 1 and semantic.focused and semantic.dismissible)
+    UiCore::begin_frame()
+    UiDialog::emit_accessibility(first, UiCore::Rect(4.0, 8.0, 240.0, 120.0), true, UiCore::MAX_ACCESSIBILITY_NODES, UiCore::MAX_ACCESSIBILITY_NODES, UiCore::MAX_ACCESSIBILITY_NODES)
+    node: UiCore::AccessibilityNode = UiCore::accessibility_at(0)
+    check("dialog emits copied labels into the semantic frame", UiCore::accessibility_count() == 1 and node.role == UiCore::AccessibilityRole.Dialog and node.label == "Delete item" and node.help == "This cannot be undone." and node.focused)
 
     second: UiDialog::Handle = UiDialog::open(UiDialog::Kind.Alert, "Offline", "Try again later.", "OK", "", 20)
     check("top returns newest dialog", UiDialog::top().slot == second.slot)

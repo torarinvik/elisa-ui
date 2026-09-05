@@ -14,6 +14,12 @@ handle readable until explicit `dispose`, so the owner can consume the result
 after the presentation surface has disappeared. Disposal advances the
 generation before the slot can be reused.
 
+`semantics(handle, focused)` projects a live record into the portable Dialog
+role with copied title/message text, stable bounded identity, action availability,
+and the current result. `emit_accessibility(...)` appends that projection to the
+same `UiCore` semantic frame as its buttons and content, so applications do not
+need a backend-specific accessibility shadow model.
+
 The fixed `MAX_DIALOGS` and `TEXT_CAPACITY` bounds make exhaustion and label
 truncation observable and allocation-free. The module does not create native
 windows, perform permission work, or trap OS navigation; those remain backend

@@ -34,6 +34,22 @@ module UiDialog:
             closed: usize
             overflowed: bool
 
+        # A backend-neutral semantic projection of one live dialog. The dialog
+        # stack owns the copied labels and result state; applications can emit
+        # this record into UiCore's retained semantic tree without rebuilding
+        # modal policy in every backend.
+        struct Semantics:
+            role: UiCore::AccessibilityRole
+            label: sview
+            help: sview
+            identity: usize
+            enabled: bool
+            focused: bool
+            dismissible: bool
+            primary_available: bool
+            secondary_available: bool
+            result: Result
+
         def invalid() -> Handle:
             return Handle{slot: NONE_SLOT.u32(), generation: 0}
 
@@ -51,6 +67,7 @@ module UiDialog:
             closed_count <- 0
             sequence_state <- 0
             overflowed_state <- false
+            mark_changed()
 
         def snapshot() -> Snapshot:
             return Snapshot{active: active_count, closed: closed_count, overflowed: overflowed_state}
@@ -83,6 +100,7 @@ module UiDialog:
             write_text(free_slot, 2, primary)
             write_text(free_slot, 3, secondary)
             active_count <- active_count + 1
+            mark_changed()
             return Handle{slot: free_slot.u32(), generation: generations[free_slot]}
 
         def top() -> Handle:
@@ -122,6 +140,37 @@ module UiDialog:
             return Result.None if not is_valid(handle)
             return results[handle.slot.usize()]
 
+        # Project the current dialog into the portable semantic vocabulary. A
+        # closed record remains readable for its typed result, but is no longer
+        # exposed as an active semantic element.
+        def semantics(handle: Handle, focused: bool) -> Semantics:
+            return Semantics{
+                role: UiCore::AccessibilityRole.Dialog,
+                label: title(handle), help: message(handle),
+                identity: semantic_id(handle), enabled: is_open(handle),
+                focused: focused and is_open(handle), dismissible: is_open(handle),
+                primary_available: is_open(handle) and primary_label(handle).len > 0,
+                secondary_available: is_open(handle) and secondary_label(handle).len > 0,
+                result: result(handle),
+            }
+
+        # Dialog identity is stable while its generation is live and remains in
+        # the bounded semantic-ID space expected by UiCore relationship fields.
+        def semantic_id(handle: Handle) -> usize:
+            return UiCore::MAX_ACCESSIBILITY_NODES if not is_valid(handle)
+            return handle.slot.usize() + 1
+
+        # Emit one dialog node directly into the retained semantic frame. Child
+        # action controls may be emitted separately by the application; the
+        # dialog's copied title/message and active state stay authoritative here.
+        def emit_accessibility(handle: Handle, frame: UiCore::Rect, focused: bool, parent_id: usize, first_child_id: usize, next_sibling_id: usize) -> void:
+            return if not is_open(handle) or title(handle).len == 0
+            value: Semantics = semantics(handle, focused)
+            UiCore::accessibility_with_metadata(value.role, value.label, value.help,
+                frame, value.identity, 0, value.enabled, value.focused, false,
+                0.0, "", "", sequence[handle.slot.usize()], 0, 0,
+                parent_id, first_child_id, next_sibling_id, 0.0, 1.0, false)
+
         # Choosing any typed result closes the record but keeps its handle valid
         # until `dispose`, allowing the application to read the result after a
         # native surface has already gone away.
@@ -133,6 +182,7 @@ module UiDialog:
             closed[slot] <- true
             active_count <- active_count - 1 if active_count > 0
             closed_count <- closed_count + 1
+            mark_changed()
             return true
 
         def cancel(handle: Handle) -> bool:
@@ -168,6 +218,7 @@ module UiDialog:
             sequence[slot] <- 0
             results[slot] <- Result.None
             clear_text(slot)
+            mark_changed()
             return true
 
     private:
@@ -184,6 +235,10 @@ module UiDialog:
         global mutable closed_count: usize = 0
         global mutable sequence_state: u32 = 0
         global mutable overflowed_state: bool = false
+
+        def mark_changed() -> void:
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+            UiCore::invalidate(UiCore::Invalidation.Semantics)
 
         def next_generation(value: u32) -> u32:
             next: u32 = value + 1
