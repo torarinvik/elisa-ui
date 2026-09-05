@@ -1,0 +1,51 @@
+# Headless protocol regression for the ordinal WIT input mappings.
+include "../src/platform/wasmbrowser/ui_wasm_input.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, got: i32, want: i32) -> void:
+    return if got == want
+    failures <- failures + 1
+    _ = puts(name)
+
+def app_init() -> void:
+    pass
+
+def app_frame() -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    pass
+
+def app_text_input(text: sview) -> void:
+    pass
+
+def app_text_editing(text: sview, start: i32, length: i32) -> void:
+    pass
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def main() -> i64:
+    check("WIT up maps to UiCore Up", UiWasmInput::key_from_host(1), UiCore::Key.Up.i32())
+    check("WIT escape maps to UiCore Escape", UiWasmInput::key_from_host(7), UiCore::Key.Escape.i32())
+    check("WIT A maps to UiCore A", UiWasmInput::key_from_host(9), UiCore::Key.A.i32())
+    check("unknown WIT key is rejected", UiWasmInput::key_from_host(0), 0)
+    check("WIT secondary starts at framework secondary", UiWasmInput::button_from_host(0), UiCore::PointerButton.Secondary.i32())
+    check("WIT forward maps to the final extra button", UiWasmInput::button_from_host(3), 4)
+    check("unknown WIT pointer button is rejected", UiWasmInput::button_from_host(4), UiCore::NO_POINTER_BUTTON)
+    check("WIT north preserves north identity", UiWasmInput::gamepad_button_from_host(2), UiCore::Pad.North.i32())
+    check("WIT west preserves west identity", UiWasmInput::gamepad_button_from_host(3), UiCore::Pad.West.i32())
+    check("WIT left trigger is represented", UiWasmInput::gamepad_button_from_host(6), UiCore::Pad.LeftTrigger.i32())
+    check("WIT dpad right is represented", UiWasmInput::gamepad_button_from_host(18), UiCore::Pad.DPadRight.i32())
+    check("unknown WIT gamepad button is rejected", UiWasmInput::gamepad_button_from_host(19), -1)
+    check("WIT left Z maps to its axis", UiWasmInput::gamepad_axis_from_host(2), UiCore::PadAxis.LeftZ.i32())
+    check("WIT right stick X maps to its axis", UiWasmInput::gamepad_axis_from_host(3), UiCore::PadAxis.RightX.i32())
+    check("WIT dpad Y maps to its axis", UiWasmInput::gamepad_axis_from_host(7), UiCore::PadAxis.DPadY.i32())
+    check("unknown WIT gamepad axis is rejected", UiWasmInput::gamepad_axis_from_host(8), -1)
+    if failures == 0:
+        _ = puts("wasmbrowser input mapping: all checks passed")
+        return 0
+    _ = puts("wasmbrowser input mapping: FAILURES above")
+    return 1
