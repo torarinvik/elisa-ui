@@ -1,0 +1,82 @@
+# Headless checks for the Elisa-owned logical resource state machine.
+# Hosts may supply bytes and decode results later; the framework keeps the
+# typed identity, lifetime and visible state deterministic in the meantime.
+
+include "../src/widgets/ui_resources.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable failures: i32 = 0
+
+def app_init() -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    pass
+
+def app_text_input(text: sview) -> void:
+    pass
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    pass
+
+def app_frame() -> void:
+    pass
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiResources::reset()
+    UiCore::clear_all_invalidations()
+    missing: UiResources::Handle = UiResources::invalid()
+    check("invalid resource handle is rejected", not UiResources::is_valid(missing) and UiResources::state(missing) == UiResources::State.Unrequested)
+    check("resource table starts empty", UiResources::count() == 0 and not UiResources::overflowed())
+
+    image: UiResources::Handle = UiResources::request("images/logo", 11)
+    check("request creates a typed resource", UiResources::is_valid(image) and UiResources::count() == 1)
+    check("new resource starts requested", UiResources::state(image) == UiResources::State.Requested and UiResources::owner(image) == 11)
+    check("resource key is retained in Elisa", UiResources::identifier(image) == "images/logo")
+    check("request raises resource invalidation", UiCore::is_invalidated(UiCore::Invalidation.Resources))
+
+    duplicate: UiResources::Handle = UiResources::request("images/logo", 42)
+    check("duplicate request reuses identity", duplicate.slot == image.slot and duplicate.generation == image.generation and UiResources::count() == 1)
+    check("duplicate request updates the live owner", UiResources::owner(image) == 42)
+
+    check("progress clamps malformed network values", UiResources::set_progress(image, 1.5, -2.0) and UiResources::downloaded_progress(image) == 1.0 and UiResources::decoded_progress(image) == 0.0)
+    check("ready is separate from network completion", UiResources::state(image) == UiResources::State.Requested)
+    check("ready transition is accepted", UiResources::set_state(image, UiResources::State.Ready) and UiResources::state(image) == UiResources::State.Ready)
+    check("ready state completes both progress channels", UiResources::downloaded_progress(image) == 1.0 and UiResources::decoded_progress(image) == 1.0)
+    check("ready is not retried", not UiResources::retry(image))
+
+    check("failed transition is accepted", UiResources::set_state(image, UiResources::State.Failed))
+    check("failed resource can retry", UiResources::retry(image) and UiResources::state(image) == UiResources::State.Requested and UiResources::downloaded_progress(image) == 0.0)
+    check("cancel transition is accepted", UiResources::cancel(image) and UiResources::state(image) == UiResources::State.Cancelled)
+    requested_again: UiResources::Handle = UiResources::request("images/logo", 77)
+    check("cancelled key can be requested again", requested_again.slot == image.slot and UiResources::state(requested_again) == UiResources::State.Requested and UiResources::owner(requested_again) == 77)
+
+    old_generation: u32 = image.generation
+    check("dispose releases the resource", UiResources::dispose(image) and UiResources::count() == 0)
+    check("disposed identity becomes stale", not UiResources::is_valid(image) and image.generation == old_generation)
+    check("late completion cannot revive disposed identity", not UiResources::set_state(image, UiResources::State.Ready))
+
+    fresh: UiResources::Handle = UiResources::request("images/new-logo", 88)
+    check("slot reuse gets a new generation", UiResources::is_valid(fresh) and fresh.slot == image.slot and fresh.generation != old_generation)
+    check("old completion still cannot touch reused slot", UiResources::state(image) == UiResources::State.Unrequested and UiResources::identifier(fresh) == "images/new-logo")
+
+    check("offline fallback transition is accepted", UiResources::set_state(fresh, UiResources::State.UnavailableOffline))
+    check("offline failure can retry", UiResources::retry(fresh) and UiResources::state(fresh) == UiResources::State.Requested)
+    check("resource invalidation can be consumed", UiCore::is_invalidated(UiCore::Invalidation.Resources))
+    UiCore::clear_invalidations(UiCore::Invalidation.Resources)
+    check("resource invalidation clears explicitly", not UiCore::is_invalidated(UiCore::Invalidation.Resources))
+
+    UiResources::reset()
+    check("reset invalidates live resource handles", not UiResources::is_valid(fresh) and UiResources::count() == 0)
+    if failures == 0:
+        _ = puts("resource state: all checks passed")
+    return failures.i64()

@@ -1,0 +1,192 @@
+# Elisa-owned logical resource state for images, fonts and other package assets.
+#
+# Hosts/SDKs own verified bytes, transport, caching and decode/upload. This
+# module owns only the visible state attached to a live view: typed identity,
+# request deduplication, progress, cancellation and recoverable transitions.
+# It is fixed-capacity and allocation-free so the same state machine works in
+# native tests and a Wasm component.
+
+include "../core/ui_core.elisa"
+
+module UiResources:
+    public:
+        const MAX_RESOURCES: usize = 128
+        const IDENTIFIER_CAPACITY: usize = 256
+
+        const enum State of i32:
+            Unrequested = 0
+            Requested = 1
+            Ready = 2
+            UnavailableOffline = 3
+            Denied = 4
+            Failed = 5
+            Cancelled = 6
+
+        struct Handle:
+            slot: u32
+            generation: u32
+
+        def invalid() -> Handle:
+            return Handle{slot: MAX_RESOURCES.u32(), generation: 0}
+
+        def is_valid(handle: Handle) -> bool:
+            return handle.slot.usize() < resource_count and handle.generation == generations[handle.slot.usize()] and states[handle.slot.usize()] != State.Unrequested
+
+        def reset() -> void:
+            for slot in 0..<MAX_RESOURCES:
+                next_generation: u32 = generations[slot] + 1
+                generations[slot] <- 1 if next_generation == 0 else next_generation
+                states[slot] <- State.Unrequested
+                owners[slot] <- 0
+                identifier_lengths[slot] <- 0
+                downloaded[slot] <- 0.0
+                decoded[slot] <- 0.0
+            resource_count <- 0
+            dropped <- false
+            UiCore::clear_invalidations(UiCore::Invalidation.Resources)
+            UiCore::invalidate(UiCore::Invalidation.Resources)
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+
+        def count() -> usize:
+            return resource_count
+
+        def overflowed() -> bool:
+            return dropped
+
+        def key_matches(slot: usize, key: sview) -> bool:
+            return false if identifier_lengths[slot] != key.len
+            for offset in 0..<key.len:
+                return false if identifier_storage[slot * IDENTIFIER_CAPACITY + offset] != key.data[offset]
+            return true
+
+        def make_handle(slot: usize) -> Handle:
+            return Handle{slot: slot.u32(), generation: generations[slot]}
+
+        def mark_changed() -> void:
+            UiCore::invalidate(UiCore::Invalidation.Resources)
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+
+        # Requesting a key is idempotent while its record is alive. This keeps
+        # per-frame view rebuilds from starting duplicate host work. A cancelled
+        # record can be requested again without changing its typed identity.
+        def request(key: sview, owner: u32) -> Handle:
+            return invalid() if key.len == 0 or key.len >= IDENTIFIER_CAPACITY
+            for slot in 0..<resource_count:
+                if states[slot] != State.Unrequested and key_matches(slot, key):
+                    owners[slot] <- owner
+                    if states[slot] == State.Cancelled:
+                        states[slot] <- State.Requested
+                        downloaded[slot] <- 0.0
+                        decoded[slot] <- 0.0
+                        mark_changed()
+                    return make_handle(slot)
+
+            free_slot: mutable usize = MAX_RESOURCES
+            for slot in 0..<MAX_RESOURCES:
+                if states[slot] == State.Unrequested:
+                    free_slot <- slot
+                    break
+            return invalid() if free_slot == MAX_RESOURCES
+
+            generation: u32 = generations[free_slot]
+            generations[free_slot] <- 1 if generation == 0 else generation
+            offset: usize = free_slot * IDENTIFIER_CAPACITY
+            for index in 0..<IDENTIFIER_CAPACITY:
+                identifier_storage[offset + index] <- key.data[index] if index < key.len else 0
+            identifier_lengths[free_slot] <- key.len
+            owners[free_slot] <- owner
+            states[free_slot] <- State.Requested
+            downloaded[free_slot] <- 0.0
+            decoded[free_slot] <- 0.0
+            resource_count <- free_slot + 1 if free_slot >= resource_count else resource_count
+            mark_changed()
+            return make_handle(free_slot)
+
+        def state(handle: Handle) -> State:
+            return State.Unrequested if not is_valid(handle)
+            return states[handle.slot.usize()]
+
+        def owner(handle: Handle) -> u32:
+            return 0 if not is_valid(handle)
+            return owners[handle.slot.usize()]
+
+        def identifier(handle: Handle) -> sview:
+            return "" if not is_valid(handle)
+            slot: usize = handle.slot.usize()
+            return sview(&identifier_storage[slot * IDENTIFIER_CAPACITY], 0, identifier_lengths[slot].i64())
+
+        def downloaded_progress(handle: Handle) -> f32:
+            return 0.0 if not is_valid(handle)
+            return downloaded[handle.slot.usize()]
+
+        def decoded_progress(handle: Handle) -> f32:
+            return 0.0 if not is_valid(handle)
+            return decoded[handle.slot.usize()]
+
+        # Hosts report transport/decode progress independently. Both fractions
+        # are normalized before storage; network completion therefore does not
+        # imply a resource is ready to paint.
+        def set_progress(handle: Handle, network: f32, decode: f32) -> bool:
+            return false if not is_valid(handle)
+            slot: usize = handle.slot.usize()
+            next_network: f32 = UiCore::normalized_unit(network)
+            next_decode: f32 = UiCore::normalized_unit(decode)
+            return false if downloaded[slot] == next_network and decoded[slot] == next_decode
+            downloaded[slot] <- next_network
+            decoded[slot] <- next_decode
+            mark_changed()
+            return true
+
+        def set_state(handle: Handle, next: State) -> bool:
+            return false if not is_valid(handle) or next == State.Unrequested
+            slot: usize = handle.slot.usize()
+            return false if states[slot] == next
+            states[slot] <- next
+            if next == State.Requested:
+                downloaded[slot] <- 0.0
+                decoded[slot] <- 0.0
+            if next == State.Ready:
+                downloaded[slot] <- 1.0
+                decoded[slot] <- 1.0
+            mark_changed()
+            return true
+
+        def cancel(handle: Handle) -> bool:
+            return set_state(handle, State.Cancelled)
+
+        def retry(handle: Handle) -> bool:
+            return false if not is_valid(handle)
+            current: State = states[handle.slot.usize()]
+            return false if current != State.Failed and current != State.UnavailableOffline and current != State.Denied
+            return set_state(handle, State.Requested)
+
+        # Disposal invalidates the generation before releasing the identifier.
+        # A late host completion holding the old token therefore becomes a safe
+        # no-op even when the slot is immediately reused by a different key.
+        def dispose(handle: Handle) -> bool:
+            return false if not is_valid(handle)
+            slot: usize = handle.slot.usize()
+            next_generation: u32 = generations[slot] + 1
+            generations[slot] <- 1 if next_generation == 0 else next_generation
+            states[slot] <- State.Unrequested
+            owners[slot] <- 0
+            identifier_lengths[slot] <- 0
+            for index in 0..<IDENTIFIER_CAPACITY:
+                identifier_storage[slot * IDENTIFIER_CAPACITY + index] <- 0
+            downloaded[slot] <- 0.0
+            decoded[slot] <- 0.0
+            while resource_count > 0 and states[resource_count - 1] == State.Unrequested:
+                resource_count <- resource_count - 1
+            mark_changed()
+            return true
+
+    private:
+        global mutable resource_count: usize = 0
+        global mutable dropped: bool = false
+        global mutable generations: u32[MAX_RESOURCES] = zeroed
+        global mutable states: State[MAX_RESOURCES] = zeroed
+        global mutable owners: u32[MAX_RESOURCES] = zeroed
+        global mutable identifier_lengths: usize[MAX_RESOURCES] = zeroed
+        global mutable identifier_storage: u8[MAX_RESOURCES * IDENTIFIER_CAPACITY] = zeroed
+        global mutable downloaded: f32[MAX_RESOURCES] = zeroed
+        global mutable decoded: f32[MAX_RESOURCES] = zeroed

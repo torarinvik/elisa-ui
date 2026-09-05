@@ -20,7 +20,7 @@ logic with local presentation. SDL3 loses nothing by replaying the batch.
 Every file in the library puts its names in a module and is reached as
 `Module::name`, so the module supplies the prefix the names used to carry
 themselves: `UiCore`, `UiPaint`, `UiRaster`, `UiConst`, `UiWidgets`, `UiFlat`,
-`UiControls`, `UiCapi`, and one per backend. The only top-level names anywhere
+`UiHandles`, `UiResources`, `UiControls`, `UiCapi`, and one per backend. The only top-level names anywhere
 are the ones something outside Elisa dictates — the `extern`s, the C entry
 points, the WIT guest exports, and the platform/application contract below —
 because a module member's symbol carries its module and those names cannot move.
@@ -117,6 +117,11 @@ because a module member's symbol carries its module and those names cannot move.
   New application code can use [UiHandles](docs/ui-handles.md) for typed u32
   handles with retained-tree lifetime checks; the older index API remains for
   compatibility and low-level adapters.
+- **Resources** ([src/widgets/ui_resources.elisa](src/widgets/ui_resources.elisa)) —
+  a bounded, typed logical-resource state machine. Requests deduplicate by key,
+  keep owner/generation lifetimes, separate network and decode progress, expose
+  retry/cancel/dispose transitions, and raise resource/paint invalidation while
+  hosts and SDKs retain authority over bytes, caching and decoding.
 - **Apps** implement `app_init` / `app_event(UiCore::Event)` /
   `app_text_input(sview)` / `app_text_editing(sview, i32, i32)` / `app_frame`, plus
   `app_widget_event(widget, event)` when using the widget layer. Physical keys
