@@ -214,7 +214,9 @@ each run. An unpresented headless window is not reliably retained by its content
 view, so the Objective-C shim observes that handle through a weak lookup while
 AppKit delivers deferred accessibility or close callbacks. Releasing the handle
 after the headless frame or visible run lets Cocoa tear down the tree without a
-second native lifetime owner; all window policy and operations still cross the
+second native lifetime owner. The non-owning `NSWindow` delegate follows the same
+pattern: Elisa retains and releases its opaque delegate handle, while Cocoa only
+receives the protocol object. All window policy and operations still cross the
 boundary as explicit FFI facts.
 
 Text fields are currently single-line and deliberately bounded to 1023 UTF-8

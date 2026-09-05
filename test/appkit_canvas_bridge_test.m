@@ -350,13 +350,16 @@ int main(void) {
         NSObject *invalidTitle = [NSObject new];
         if (require(!elisa_appkit_canvas_open((size_t)(__bridge void *)invalidTitle,
                                               200, 100, 15,
-                                              elisa_appkit_canvas_backing_store_buffered()),
+                                              elisa_appkit_canvas_backing_store_buffered(),
+                                              NULL),
                     @"invalid window title was accepted")) return 1;
         NSString *title = @"test";
         elisa_appkit_canvas_set_activation_policy(NSApplicationActivationPolicyProhibited);
+        size_t delegateHandle = 0;
         size_t opened = elisa_appkit_canvas_open((size_t)(__bridge void *)title,
                                                  200, 100, 15,
-                                                 elisa_appkit_canvas_backing_store_buffered());
+                                                 elisa_appkit_canvas_backing_store_buffered(),
+                                                 &delegateHandle);
         if (!opened) return 1;
         elisa_appkit_canvas_set_tabbing_mode(NSWindowTabbingModeDisallowed);
         elisa_appkit_canvas_set_restorable(0);
@@ -408,10 +411,11 @@ int main(void) {
                         elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(),
                         elisa_appkit_canvas_bitmap_file_type_png(), 0, 200, 100, 8, 4, 1, 0), @"off-screen presentation failed")) return 1;
         if (require(test_frame_count > 0, @"off-screen frame did not draw")) return 1;
+        ElisaCanvasDelegate *delegate = (__bridge ElisaCanvasDelegate *)(void *)delegateHandle;
         NSNotification *focusNotification = [NSNotification notificationWithName:NSWindowDidResignKeyNotification object:elisa_appkit_canvas_window()];
-        [elisa_canvas_delegate windowDidResignKey:focusNotification];
+        [delegate windowDidResignKey:focusNotification];
         if (require(test_window_focused == 0, @"window focus loss did not reach Elisa")) return 1;
-        [elisa_canvas_delegate windowDidBecomeKey:focusNotification];
+        [delegate windowDidBecomeKey:focusNotification];
         if (require(test_window_focused == 1, @"window focus gain did not reach Elisa")) return 1;
         if (require(!elisa_appkit_canvas_present_headless(
                          elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(),
@@ -570,6 +574,7 @@ int main(void) {
         if (require([second accessibilityPerformIncrement], @"increment action was rejected")) return 1;
         if (require(fabs(test_slider_value - 0.80f) < 0.001f, @"increment action did not reach the app")) return 1;
         [elisa_appkit_canvas_window() close];
+        elisa_appkit_canvas_release_delegate(delegateHandle);
         elisa_appkit_canvas_release_window(opened);
     }
     puts("appkit canvas bridge: all checks passed");

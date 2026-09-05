@@ -101,6 +101,10 @@ if grep -Eq 'static ElisaCanvasView[[:space:]]*\*elisa_canvas_view' "$ROOT/src/p
   echo "appkit canvas: duplicate content-view ownership was hidden in Objective-C state" >&2
   exit 1
 fi
+if grep -Eq 'static (__strong |__weak )?ElisaCanvasDelegate[[:space:]]*\*' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: delegate ownership was hidden in Objective-C state" >&2
+  exit 1
+fi
 if grep -Eq 'static NSMenu \*elisa_canvas_menu_bar' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: menu-bar lifetime was hidden in Objective-C state" >&2
   exit 1

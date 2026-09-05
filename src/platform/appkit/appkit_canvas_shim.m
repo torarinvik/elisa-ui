@@ -189,8 +189,6 @@ static NSEvent *elisa_appkit_canvas_event(size_t handle) {
     elisa_appkit_canvas_accessibility_environment_changed();
 }
 @end
-static ElisaCanvasDelegate *elisa_canvas_delegate;
-
 void elisa_appkit_canvas_interpret_key_event(size_t event) {
     NSEvent *nativeEvent = elisa_appkit_canvas_event(event);
     ElisaCanvasView *view = elisa_appkit_canvas_view();
@@ -453,8 +451,9 @@ size_t elisa_appkit_canvas_accessibility_layout_changed_notification(void) {
 // Cocoa retains/copies it through -setTitle; the bridge does not perform any
 // UTF-8 decoding itself.
 size_t elisa_appkit_canvas_open(size_t title, float width, float height,
-                                int style, int backing) {
+                                int style, int backing, size_t *delegateHandle) {
     @autoreleasepool {
+        if (delegateHandle == NULL) return 0;
         [NSApplication sharedApplication];
         NSRect rect = NSMakeRect(0, 0, width, height);
         NSWindowStyleMask styleMask = (NSWindowStyleMask)style;
@@ -471,12 +470,13 @@ size_t elisa_appkit_canvas_open(size_t title, float width, float height,
         ElisaCanvasView *view = [[ElisaCanvasView alloc] initWithFrame:rect];
         elisa_accessibility_children = [NSMutableArray new];
         elisa_canvas_window = window;
-        elisa_canvas_delegate = [ElisaCanvasDelegate new];
+        ElisaCanvasDelegate *delegate = [ElisaCanvasDelegate new];
         // Elisa holds the returned +1 until the run finishes. Prevent
         // -close from consuming that ownership before the FFI release point.
         [window setReleasedWhenClosed:NO];
-        [window setDelegate:elisa_canvas_delegate];
+        [window setDelegate:delegate];
         [window setContentView:view];
+        *delegateHandle = (size_t)(__bridge_retained void *)delegate;
         // Transfer the window retain to Elisa. The weak lookup above is only
         // an observation point for callbacks and does not own this object.
         return (size_t)(__bridge_retained void *)window;
@@ -490,6 +490,13 @@ void elisa_appkit_canvas_release_window(size_t handle) {
     // Transfer Elisa's +1 into ARC exactly once. Keeping the bridged value as
     // a strong local while also calling CFRelease would over-release it when
     // ARC tears that local down at function exit.
+    (void)CFBridgingRelease((CFTypeRef)(void *)handle);
+}
+
+void elisa_appkit_canvas_release_delegate(size_t handle) {
+    if (handle == 0) return;
+    id object = (__bridge id)(void *)handle;
+    if (![object isKindOfClass:[ElisaCanvasDelegate class]]) return;
     (void)CFBridgingRelease((CFTypeRef)(void *)handle);
 }
 
