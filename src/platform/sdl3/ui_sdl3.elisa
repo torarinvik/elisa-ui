@@ -264,15 +264,10 @@ module UiSdl3:
         def seconds_from_ticks(ticks: u64) -> f64:
             return ticks.f64() / 1000.0
 
+        # Compatibility name for existing SDL callers; timeout policy itself
+        # is centralized in UiCore so other event-loop backends can share it.
         def animation_timeout(delay: f32) -> i32:
-            return -1 if delay <= 0.0
-            # SDL's timeout is a signed millisecond count. Keep conversion
-            # deterministic when application animation policy supplies a very
-            # large (but still finite) number of seconds.
-            return 2147483647 if delay >= 2147483.0
-            milliseconds: i32 = (delay * 1000.0).i32()
-            return 1 if milliseconds < 1
-            return milliseconds
+            return UiCore::frame_timeout_ms(delay)
 
         # SDL supplies committed input as a NUL-terminated UTF-8 string. Keep
         # key events and text separate: key codes express navigation/shortcuts,
@@ -388,7 +383,7 @@ module UiSdl3:
                 frames <- frames + 1
                 running <- false if max_frames > 0 and frames >= max_frames
                 if running and max_frames <= 0:
-                    _ = SDL_WaitEventTimeout(null, animation_timeout(UiCore::frame_delay()))
+                    _ = SDL_WaitEventTimeout(null, UiCore::frame_timeout_ms(UiCore::frame_delay()))
             UiSdl3Draw::fonts_close()
             TTF_Quit()
             if window is text_window:

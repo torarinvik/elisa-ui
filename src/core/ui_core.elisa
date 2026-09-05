@@ -569,6 +569,17 @@ module UiCore:
         def frame_delay() -> f32:
             return requested_frame_delay
 
+        # Convert the backend-neutral wake delay to the signed millisecond
+        # timeout used by native event queues. Keeping clamping and sub-
+        # millisecond rounding here prevents each backend from inventing a
+        # slightly different idle/animation policy.
+        def frame_timeout_ms(delay: f32) -> i32:
+            safe: f32 = finite_or_zero(delay)
+            return -1 if safe <= 0.0
+            return 2147483647 if safe >= 2147483.0
+            milliseconds: i32 = (safe * 1000.0).i32()
+            return 1 if milliseconds < 1 else milliseconds
+
         # Short constructors named for the type they build, so a call site reads as
         # geometry rather than as a list of floats. `rgb`/`rgba` keep their own names:
         # they are two constructors for ONE type, and the channel set is the whole
