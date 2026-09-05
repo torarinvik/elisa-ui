@@ -272,7 +272,10 @@ and event-loop ownership, Objective-C selector identity/casting, `NSTextInputCli
 protocol/range plumbing, AppKit menus, pasteboard and accessibility objects,
 and timers. These operations require Objective-C objects or
 Cocoa protocol implementations; all UTF-8 conversion now lives in Elisa through
-CoreFoundation FFI. Widget state, command policy, layout,
+CoreFoundation FFI. AppKit enum/sentinel facts and object constants such as the
+common run-loop mode, pasteboard type and accessibility layout notification are
+imported directly into Elisa as FFI globals, so they do not need one
+Objective-C wrapper function each. Widget state, command policy, layout,
 interaction, editing, accessibility diffing, headless orchestration, all
 CoreGraphics path construction, bitmap contexts, ImageIO snapshot encoding and
 CoreText text rendering now live in Elisa.

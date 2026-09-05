@@ -22,7 +22,7 @@ def ui_clipboard_has_text() -> bool:
     # Read once and retain the bytes so UiFlat's enabled check and Paste action
     # observe one native snapshot, matching the Wasm adapter's host cache.
     appkit_scrub_buffer(&appkit_clipboard_buffer[0], UiFlat::TEXT_CAPACITY)
-    native_text: usize = elisa_appkit_canvas_clipboard_read(elisa_appkit_canvas_pasteboard_type_string())
+    native_text: usize = elisa_appkit_canvas_clipboard_read(NSPasteboardTypeString)
     appkit_clipboard_length <- UiAppKitCanvas::copy_native_string(native_text, &appkit_clipboard_buffer[0], UiFlat::TEXT_CAPACITY)
     CFRelease(native_text) if native_text != 0
     appkit_clipboard_cache_valid <- true
@@ -31,7 +31,7 @@ def ui_clipboard_has_text() -> bool:
 def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
     native_text: usize = UiAppKitCanvas::native_string_bytes(bytes, length)
     return false if native_text == 0
-    written: bool = elisa_appkit_canvas_clipboard_write(native_text, elisa_appkit_canvas_pasteboard_type_string()) != 0
+    written: bool = elisa_appkit_canvas_clipboard_write(native_text, NSPasteboardTypeString) != 0
     CFRelease(native_text)
     appkit_scrub_buffer(&appkit_clipboard_buffer[0], UiFlat::TEXT_CAPACITY)
     appkit_clipboard_cache_valid <- false
@@ -42,7 +42,7 @@ def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
     available: mutable usize = appkit_clipboard_length if appkit_clipboard_cache_valid else 0
     if not appkit_clipboard_cache_valid:
         appkit_scrub_buffer(&appkit_clipboard_buffer[0], UiFlat::TEXT_CAPACITY)
-        native_text: usize = elisa_appkit_canvas_clipboard_read(elisa_appkit_canvas_pasteboard_type_string())
+        native_text: usize = elisa_appkit_canvas_clipboard_read(NSPasteboardTypeString)
         available <- UiAppKitCanvas::copy_native_string(native_text, &appkit_clipboard_buffer[0], UiFlat::TEXT_CAPACITY)
         CFRelease(native_text) if native_text != 0
     take: usize = available if available < capacity else capacity

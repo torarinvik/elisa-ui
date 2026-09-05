@@ -156,7 +156,7 @@ size_t elisa_appkit_canvas_accessibility_index_for_handle(size_t handle) {
     if (handle == test_accessibility_handles[0]) return 7;
     if (handle == test_accessibility_handles[1]) return 8;
     if (handle == test_accessibility_handles[2]) return 9;
-    return elisa_appkit_canvas_not_found();
+    return elisa_appkit_canvas_not_found;
 }
 size_t elisa_appkit_canvas_accessibility_tooltip_text(size_t handle) {
     if (handle == 0) return 0;
@@ -218,13 +218,13 @@ int elisa_appkit_canvas_perform_text_action(int action) {
                    length:length encoding:NSUTF8StringEncoding];
         if (selected == nil || !elisa_appkit_canvas_clipboard_write(
                 (size_t)(__bridge void *)selected,
-                elisa_appkit_canvas_pasteboard_type_string())) return 0;
+                (size_t)(__bridge void *)NSPasteboardTypeString)) return 0;
         if (action == 3) elisa_appkit_canvas_insert_text("", 0);
         return action == 3;
     }
     if (action == 4) {
         size_t nativeText = elisa_appkit_canvas_clipboard_read(
-            elisa_appkit_canvas_pasteboard_type_string());
+            (size_t)(__bridge void *)NSPasteboardTypeString);
         if (nativeText == 0) return 0;
         NSString *clipboardText = (__bridge NSString *)(void *)nativeText;
         NSData *utf8 = [clipboardText dataUsingEncoding:NSUTF8StringEncoding];
@@ -439,7 +439,7 @@ int main(void) {
         NSObject *invalidTitle = [NSObject new];
         if (require(!elisa_appkit_canvas_open((size_t)(__bridge void *)invalidTitle,
                                               200, 100, 15,
-                                              elisa_appkit_canvas_backing_store_buffered(),
+                                              elisa_appkit_canvas_backing_store_buffered,
                                               NULL),
                     @"invalid window title was accepted")) return 1;
         NSString *title = @"test";
@@ -447,7 +447,7 @@ int main(void) {
         size_t delegateHandle = 0;
         size_t opened = elisa_appkit_canvas_open((size_t)(__bridge void *)title,
                                                  200, 100, 15,
-                                                 elisa_appkit_canvas_backing_store_buffered(),
+                                                 elisa_appkit_canvas_backing_store_buffered,
                                                  &delegateHandle);
         if (!opened) return 1;
         test_window_handle = opened;
@@ -656,7 +656,7 @@ int main(void) {
                     @"invalid clipboard type was readable")) return 1;
         if (require(elisa_appkit_canvas_clipboard_write(
                         (size_t)(__bridge void *)@"",
-                        elisa_appkit_canvas_pasteboard_type_string()), @"empty clipboard write failed")) return 1;
+                        (size_t)(__bridge void *)NSPasteboardTypeString), @"empty clipboard write failed")) return 1;
         if (require([[[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString] isEqualToString:@""], @"empty clipboard write did not clear the pasteboard")) return 1;
         [elisa_appkit_canvas_view(opened) insertText:@"Next" replacementRange:NSMakeRange(NSNotFound, 0)];
         if (require(strcmp(test_text, "Next") == 0, @"typing did not replace the selection")) return 1;

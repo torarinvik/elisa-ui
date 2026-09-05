@@ -36,7 +36,7 @@ extern int elisa_appkit_canvas_pointer_button_secondary(void);
 extern int elisa_appkit_canvas_accessibility_increment_direction(void);
 extern int elisa_appkit_canvas_accessibility_decrement_direction(void);
 extern size_t elisa_appkit_canvas_accessibility_capacity(void);
-extern size_t elisa_appkit_canvas_not_found(void);
+extern const size_t elisa_appkit_canvas_not_found;
 extern int elisa_appkit_canvas_has_marked_text(void);
 extern size_t elisa_appkit_canvas_pointer_leave_event(void);
 extern int elisa_appkit_canvas_set_text(size_t index, size_t text);
@@ -93,16 +93,16 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
 @implementation ElisaAccessibilityElement
 - (BOOL)accessibilityPerformPress {
     size_t index = elisa_appkit_canvas_accessibility_index_for_handle((size_t)(__bridge void *)self);
-    return index != elisa_appkit_canvas_not_found() && elisa_appkit_canvas_accessibility_activate(index) != 0;
+    return index != elisa_appkit_canvas_not_found && elisa_appkit_canvas_accessibility_activate(index) != 0;
 }
 - (BOOL)accessibilityPerformIncrement {
     size_t index = elisa_appkit_canvas_accessibility_index_for_handle((size_t)(__bridge void *)self);
-    return index != elisa_appkit_canvas_not_found() && elisa_appkit_canvas_accessibility_adjust(index,
+    return index != elisa_appkit_canvas_not_found && elisa_appkit_canvas_accessibility_adjust(index,
         elisa_appkit_canvas_accessibility_increment_direction()) != 0;
 }
 - (BOOL)accessibilityPerformDecrement {
     size_t index = elisa_appkit_canvas_accessibility_index_for_handle((size_t)(__bridge void *)self);
-    return index != elisa_appkit_canvas_not_found() && elisa_appkit_canvas_accessibility_adjust(index,
+    return index != elisa_appkit_canvas_not_found && elisa_appkit_canvas_accessibility_adjust(index,
         elisa_appkit_canvas_accessibility_decrement_direction()) != 0;
 }
 - (void)setAccessibilityValue:(id)value {
@@ -112,7 +112,7 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
     // transient native value that disagrees with the custom painter.
     size_t index = elisa_appkit_canvas_accessibility_index_for_handle((size_t)(__bridge void *)self);
     if (![value isKindOfClass:[NSString class]]) {
-        if ([value isKindOfClass:[NSNumber class]] && index != elisa_appkit_canvas_not_found()) {
+        if ([value isKindOfClass:[NSNumber class]] && index != elisa_appkit_canvas_not_found) {
             float normalized = 0.0f;
             if (elisa_appkit_canvas_accessibility_set_numeric_value(index, [(NSNumber *)value floatValue], &normalized) != 0) {
                 size_t native = elisa_appkit_canvas_accessibility_float_value(normalized);
@@ -123,13 +123,13 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
         }
         return;
     }
-    if (index != elisa_appkit_canvas_not_found() && elisa_appkit_canvas_set_text(index, (size_t)(__bridge void *)value) != 0) {
+    if (index != elisa_appkit_canvas_not_found && elisa_appkit_canvas_set_text(index, (size_t)(__bridge void *)value) != 0) {
         [super setAccessibilityValue:value];
     }
 }
 - (void)setAccessibilitySelectedTextRange:(NSRange)value {
     size_t index = elisa_appkit_canvas_accessibility_index_for_handle((size_t)(__bridge void *)self);
-    if (index != elisa_appkit_canvas_not_found() && elisa_appkit_canvas_set_selected_range(index, value.location, value.length) != 0) {
+    if (index != elisa_appkit_canvas_not_found && elisa_appkit_canvas_set_selected_range(index, value.location, value.length) != 0) {
         [super setAccessibilitySelectedTextRange:value];
     }
 }
@@ -373,7 +373,7 @@ void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) 
     return native == 0 ? nil : CFBridgingRelease((CFTypeRef)(void *)native);
 }
 - (NSAttributedString *)attributedSubstringForProposedRange:(NSRange)range actualRange:(NSRangePointer)actualRange {
-    size_t actualLocation = elisa_appkit_canvas_not_found();
+    size_t actualLocation = elisa_appkit_canvas_not_found;
     size_t actualLength = 0;
     size_t native = elisa_appkit_canvas_attributed_substring(range.location, range.length,
                                                              &actualLocation, &actualLength);
@@ -390,14 +390,14 @@ void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) 
     return CFBridgingRelease((CFTypeRef)(void *)native);
 }
 - (NSUInteger)characterIndexForPoint:(NSPoint)point {
-    if (self.window == nil) return elisa_appkit_canvas_not_found();
+    if (self.window == nil) return elisa_appkit_canvas_not_found;
     NSPoint inWindow = [self.window convertPointFromScreen:point];
     NSPoint local = [self convertPoint:inWindow fromView:nil];
     return elisa_appkit_canvas_character_at_x(local.x);
 }
 - (NSRect)firstRectForCharacterRange:(NSRange)range actualRange:(NSRangePointer)actualRange {
     if (self.window == nil) {
-        if (actualRange != NULL) *actualRange = NSMakeRange(elisa_appkit_canvas_not_found(), 0);
+        if (actualRange != NULL) *actualRange = NSMakeRange(elisa_appkit_canvas_not_found, 0);
         return NSZeroRect;
     }
     size_t location = 0;
@@ -408,7 +408,7 @@ void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) 
     float height = 0.0f;
     if (!elisa_appkit_canvas_first_rect(range.location, range.length,
                                         &location, &length, &x, &y, &width, &height)) {
-        if (actualRange != NULL) *actualRange = NSMakeRange(elisa_appkit_canvas_not_found(), 0);
+        if (actualRange != NULL) *actualRange = NSMakeRange(elisa_appkit_canvas_not_found, 0);
         return NSZeroRect;
     }
     if (actualRange != NULL) *actualRange = NSMakeRange(location, length);
@@ -421,81 +421,37 @@ void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) 
 }
 @end
 
-// Cocoa style masks are exported as facts so Elisa can assemble window policy
-// without copying SDK ordinals into the retained backend.
-int elisa_appkit_canvas_window_style_titled(void) {
-    return (int)NSWindowStyleMaskTitled;
-}
-
-int elisa_appkit_canvas_window_style_closable(void) {
-    return (int)NSWindowStyleMaskClosable;
-}
-
-int elisa_appkit_canvas_window_style_miniaturizable(void) {
-    return (int)NSWindowStyleMaskMiniaturizable;
-}
-
-int elisa_appkit_canvas_window_style_resizable(void) {
-    return (int)NSWindowStyleMaskResizable;
-}
-
-int elisa_appkit_canvas_backing_store_buffered(void) {
-    return (int)NSBackingStoreBuffered;
-}
-
-size_t elisa_appkit_canvas_pasteboard_type_string(void) {
-    return (size_t)(__bridge void *)NSPasteboardTypeString;
-}
-
-int elisa_appkit_canvas_activation_policy_regular(void) {
-    return (int)NSApplicationActivationPolicyRegular;
-}
-
-int elisa_appkit_canvas_activation_policy_prohibited(void) {
-    return (int)NSApplicationActivationPolicyProhibited;
-}
-
-int elisa_appkit_canvas_tabbing_mode_preferred(void) {
-    return (int)NSWindowTabbingModePreferred;
-}
-
-int elisa_appkit_canvas_tabbing_mode_disallowed(void) {
-    return (int)NSWindowTabbingModeDisallowed;
-}
-
-size_t elisa_appkit_canvas_tracking_mouse_moved(void) {
-    return (size_t)NSTrackingMouseMoved;
-}
-
-size_t elisa_appkit_canvas_tracking_mouse_entered_exited(void) {
-    return (size_t)NSTrackingMouseEnteredAndExited;
-}
-
-size_t elisa_appkit_canvas_tracking_active_in_key_window(void) {
-    return (size_t)NSTrackingActiveInKeyWindow;
-}
-
-size_t elisa_appkit_canvas_tracking_in_visible_rect(void) {
-    return (size_t)NSTrackingInVisibleRect;
-}
-
-size_t elisa_appkit_canvas_run_loop_common_modes(void) {
-    return (size_t)(__bridge void *)NSRunLoopCommonModes;
-}
-
-// NSNotFound is a platform sentinel used by NSTextInputClient. Export the
-// native value as a fact; Elisa owns every decision about how that sentinel
-// affects selection and text editing.
-size_t elisa_appkit_canvas_not_found(void) {
-    return NSNotFound;
-}
-
-// The notification name is an exported Cocoa object, not framework policy.
-// Elisa decides when a layout changed and passes this opaque identity back
-// through the FFI so the bridge only performs NSAccessibilityPostNotification.
-size_t elisa_appkit_canvas_accessibility_layout_changed_notification(void) {
-    return (size_t)(__bridge void *)NSAccessibilityLayoutChangedNotification;
-}
+// Cocoa enum values and sentinels are ABI facts. Export them as read-only FFI
+// globals so Elisa can assemble window, tracking and text-input policy without
+// paying for a native accessor function for each SDK constant.
+extern const int elisa_appkit_canvas_window_style_titled;
+const int elisa_appkit_canvas_window_style_titled = NSWindowStyleMaskTitled;
+extern const int elisa_appkit_canvas_window_style_closable;
+const int elisa_appkit_canvas_window_style_closable = NSWindowStyleMaskClosable;
+extern const int elisa_appkit_canvas_window_style_miniaturizable;
+const int elisa_appkit_canvas_window_style_miniaturizable = NSWindowStyleMaskMiniaturizable;
+extern const int elisa_appkit_canvas_window_style_resizable;
+const int elisa_appkit_canvas_window_style_resizable = NSWindowStyleMaskResizable;
+extern const int elisa_appkit_canvas_backing_store_buffered;
+const int elisa_appkit_canvas_backing_store_buffered = NSBackingStoreBuffered;
+extern const int elisa_appkit_canvas_activation_policy_regular;
+const int elisa_appkit_canvas_activation_policy_regular = NSApplicationActivationPolicyRegular;
+extern const int elisa_appkit_canvas_activation_policy_prohibited;
+const int elisa_appkit_canvas_activation_policy_prohibited = NSApplicationActivationPolicyProhibited;
+extern const int elisa_appkit_canvas_tabbing_mode_preferred;
+const int elisa_appkit_canvas_tabbing_mode_preferred = NSWindowTabbingModePreferred;
+extern const int elisa_appkit_canvas_tabbing_mode_disallowed;
+const int elisa_appkit_canvas_tabbing_mode_disallowed = NSWindowTabbingModeDisallowed;
+extern const size_t elisa_appkit_canvas_tracking_mouse_moved;
+const size_t elisa_appkit_canvas_tracking_mouse_moved = NSTrackingMouseMoved;
+extern const size_t elisa_appkit_canvas_tracking_mouse_entered_exited;
+const size_t elisa_appkit_canvas_tracking_mouse_entered_exited = NSTrackingMouseEnteredAndExited;
+extern const size_t elisa_appkit_canvas_tracking_active_in_key_window;
+const size_t elisa_appkit_canvas_tracking_active_in_key_window = NSTrackingActiveInKeyWindow;
+extern const size_t elisa_appkit_canvas_tracking_in_visible_rect;
+const size_t elisa_appkit_canvas_tracking_in_visible_rect = NSTrackingInVisibleRect;
+extern const size_t elisa_appkit_canvas_not_found;
+const size_t elisa_appkit_canvas_not_found = NSNotFound;
 
 // The window title arrives as an opaque, counted CFString created by Elisa.
 // Cocoa retains/copies it through -setTitle; the bridge does not perform any
@@ -851,7 +807,7 @@ void elisa_appkit_canvas_accessibility_clear_value(size_t handle) {
     if (element == nil) return;
     [element elisaSetAccessibilityValue:nil];
     element.accessibilitySelectedText = nil;
-    [element elisaSetAccessibilitySelectedTextRange:NSMakeRange(elisa_appkit_canvas_not_found(), 0)];
+    [element elisaSetAccessibilitySelectedTextRange:NSMakeRange(elisa_appkit_canvas_not_found, 0)];
     element.accessibilityMinValue = nil;
     element.accessibilityMaxValue = nil;
 }

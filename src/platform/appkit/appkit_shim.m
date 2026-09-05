@@ -66,9 +66,8 @@ void elisa_appkit_init(void) {
 // AppKit's activation enum is an ABI fact. Elisa selects the policy and sends
 // the chosen value back through this setter, keeping application behavior out
 // of the Objective-C object bridge.
-int elisa_appkit_activation_policy_regular(void) {
-    return (int)NSApplicationActivationPolicyRegular;
-}
+extern const int elisa_appkit_activation_policy_regular;
+const int elisa_appkit_activation_policy_regular = NSApplicationActivationPolicyRegular;
 
 void elisa_appkit_set_activation_policy(int policy) {
     [NSApp setActivationPolicy:(NSApplicationActivationPolicy)policy];
@@ -104,49 +103,29 @@ void elisa_appkit_attach_to_view(size_t handle, size_t parent) {
 // Cocoa's style values are ABI facts, not framework policy. Elisa combines
 // these values into the requested decoration mask and passes the result back
 // to the shim; the native side only casts the already-resolved mask.
-int elisa_appkit_window_style_titled(void) {
-    return (int)NSWindowStyleMaskTitled;
-}
+extern const int elisa_appkit_window_style_titled;
+const int elisa_appkit_window_style_titled = NSWindowStyleMaskTitled;
 
-int elisa_appkit_window_style_closable(void) {
-    return (int)NSWindowStyleMaskClosable;
-}
-
-int elisa_appkit_window_style_miniaturizable(void) {
-    return (int)NSWindowStyleMaskMiniaturizable;
-}
-
-int elisa_appkit_window_style_resizable(void) {
-    return (int)NSWindowStyleMaskResizable;
-}
-
-int elisa_appkit_window_style_utility(void) {
-    return (int)NSWindowStyleMaskUtilityWindow;
-}
-
-int elisa_appkit_bezel_style_rounded(void) {
-    return (int)NSBezelStyleRounded;
-}
-
-int elisa_appkit_button_type_push_on_push_off(void) {
-    return (int)NSButtonTypePushOnPushOff;
-}
-
-int elisa_appkit_control_state_on(void) {
-    return (int)NSControlStateValueOn;
-}
-
-int elisa_appkit_control_state_off(void) {
-    return (int)NSControlStateValueOff;
-}
-
-int elisa_appkit_progress_style_bar(void) {
-    return (int)NSProgressIndicatorStyleBar;
-}
-
-int elisa_appkit_backing_store_buffered(void) {
-    return (int)NSBackingStoreBuffered;
-}
+extern const int elisa_appkit_window_style_closable;
+const int elisa_appkit_window_style_closable = NSWindowStyleMaskClosable;
+extern const int elisa_appkit_window_style_miniaturizable;
+const int elisa_appkit_window_style_miniaturizable = NSWindowStyleMaskMiniaturizable;
+extern const int elisa_appkit_window_style_resizable;
+const int elisa_appkit_window_style_resizable = NSWindowStyleMaskResizable;
+extern const int elisa_appkit_window_style_utility;
+const int elisa_appkit_window_style_utility = NSWindowStyleMaskUtilityWindow;
+extern const int elisa_appkit_bezel_style_rounded;
+const int elisa_appkit_bezel_style_rounded = NSBezelStyleRounded;
+extern const int elisa_appkit_button_type_push_on_push_off;
+const int elisa_appkit_button_type_push_on_push_off = NSButtonTypePushOnPushOff;
+extern const int elisa_appkit_control_state_on;
+const int elisa_appkit_control_state_on = NSControlStateValueOn;
+extern const int elisa_appkit_control_state_off;
+const int elisa_appkit_control_state_off = NSControlStateValueOff;
+extern const int elisa_appkit_progress_style_bar;
+const int elisa_appkit_progress_style_bar = NSProgressIndicatorStyleBar;
+extern const int elisa_appkit_backing_store_buffered;
+const int elisa_appkit_backing_store_buffered = NSBackingStoreBuffered;
 
 size_t elisa_appkit_create_window_with_style(int style, int backing,
                                              float width, float height) {
