@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `baacb29` on branch `work` |
+| elisa-ui revision | `c042ce2` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `1a44c1d1`; SHA-256 `a9573ad3779ae57f9daf68f79c53761c5ec54d0045a11c1387071ba0562678bc` |
@@ -189,6 +189,10 @@ separate host-enforced security boundary.
   `begin_frame`, while layout/resource reasons remain until an owner resolves
   them; `UiInspector::Frame` exposes the five states and
   `test/core_invalidation_test.elisa` covers the lifecycle.
+- `UiCore::frame_timeout_ms` owns deterministic conversion from animation
+  seconds to bounded native wait milliseconds. `UiSdl3::animation_timeout` is
+  retained only as a compatibility forwarding name; SDL supplies the final
+  event-queue call.
 - `scripts/check_wapp.sh` is now the compiler-independent hosted package
   fixture: it inspects an existing `.wapp` through WasmBrowser's CLI and
   asserts the profile, host imports, guest exports, and absence of JS/TS/ESM
