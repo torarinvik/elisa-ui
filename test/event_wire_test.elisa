@@ -73,6 +73,9 @@ def main() -> i64:
     check("infinite frame times are ignored", UiCore::frame_time() == 0.0)
     text_run: UiCore::TextRun = UiCore::TextRun(UiCore::Vec2(0.0, 0.0), -4.0, "text")
     check("TextRun constructor normalizes font size", text_run.size == 0.0)
+    huge_extent: f32 = 3.0e38
+    huge_text_run: UiCore::TextRun = UiCore::TextRun(UiCore::Vec2(0.0, 0.0), huge_extent, "text")
+    check("TextRun constructor bounds huge font sizes", huge_text_run.size == UiCore::MAX_GEOMETRY_EXTENT)
     malformed_text_origin: UiCore::TextRun = UiCore::TextRun(UiCore::Vec2{ x: infinity, y: nan }, 12.0, "text")
     check("TextRun constructor sanitizes origin", malformed_text_origin.origin.x == 0.0 and malformed_text_origin.origin.y == 0.0)
     UiCore::begin_frame()
@@ -88,6 +91,18 @@ def main() -> i64:
             check("fill sanitizes circle geometry", circle.center.x == 0.0 and circle.center.y == 0.0 and circle.radius == 0.0)
         _:
             check("fill records a circle command", false)
+    UiCore::fill(UiCore::Rect(0.0, 0.0, huge_extent, huge_extent), UiCore::rgb(1, 2, 3))
+    match UiCore::command_at(2):
+        UiCore::Command.FillRect(rect, color):
+            check("fill bounds huge rectangle extents", rect.size.width == UiCore::MAX_GEOMETRY_EXTENT and rect.size.height == UiCore::MAX_GEOMETRY_EXTENT)
+        _:
+            check("fill records a huge rectangle command", false)
+    UiCore::fill(UiCore::Circle{center: UiCore::Vec2{ x: 0.0, y: 0.0 }, radius: huge_extent}, UiCore::rgb(1, 2, 3))
+    match UiCore::command_at(3):
+        UiCore::Command.FillCircle(circle, color):
+            check("fill bounds huge circle radius", circle.radius == UiCore::MAX_GEOMETRY_EXTENT)
+        _:
+            check("fill records a huge circle command", false)
     check("invalid command reads fail closed", UiCore::command_if_valid(99) == null)
     check("invalid clip reads fail closed", UiCore::command_clip_if_valid(99) == null)
     UiCore::begin_frame()

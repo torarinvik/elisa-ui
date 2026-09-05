@@ -93,8 +93,15 @@ module UiSdl3Draw:
         def paint_circle(disc: UiCore::Circle, color: UiCore::Color) -> void:
             return if disc.radius <= 0.0
             _ = SDL_SetRenderDrawColor(ren(), color.r, color.g, color.b, color.a)
-            last: f32 = UiRaster::last_scanline(disc.center.y + disc.radius)
-            y: mutable f32 = UiRaster::first_scanline(disc.center.y - disc.radius)
+            top: mutable f32 = disc.center.y - disc.radius
+            bottom: mutable f32 = disc.center.y + disc.radius
+            viewport_height: f32 = UiCore::viewport_height()
+            if viewport_height > 0.0:
+                return if bottom < 0.0 or top > viewport_height
+                top <- 0.0 if top < 0.0
+                bottom <- viewport_height if bottom > viewport_height
+            last: f32 = UiRaster::last_scanline(bottom)
+            y: mutable f32 = UiRaster::first_scanline(top)
             while y <= last:
                 offset: f32 = UiRaster::scanline_centre(y) - disc.center.y
                 half: f32 = UiRaster::circle_half_width(disc.radius, offset)
@@ -110,8 +117,13 @@ module UiSdl3Draw:
             cy: f32 = tri.c.y
             lowest: f32 = ay if ay < by else by
             highest: f32 = ay if ay > by else by
-            top: f32 = lowest if lowest < cy else cy
-            bottom: f32 = highest if highest > cy else cy
+            top: mutable f32 = lowest if lowest < cy else cy
+            bottom: mutable f32 = highest if highest > cy else cy
+            viewport_height: f32 = UiCore::viewport_height()
+            if viewport_height > 0.0:
+                return if bottom < 0.0 or top > viewport_height
+                top <- 0.0 if top < 0.0
+                bottom <- viewport_height if bottom > viewport_height
             last: f32 = UiRaster::last_scanline(bottom)
             y: mutable f32 = UiRaster::first_scanline(top)
             while y <= last:
