@@ -245,6 +245,12 @@ collection in Elisa through `CFArrayCreate`; the shim only validates that
 collection and invokes the protocol. Window setup and activation use the same
 Elisa-owned libobjc autorelease scope as frame rendering.
 
+Key mapping follows the same ownership rule. Elisa first uses AppKit's printable
+character when it is unambiguous, then translates the hardware key code for
+non-printable keys and modifier-sensitive chords. This keeps keys such as
+Control-A and Option-1 addressable even when `charactersIgnoringModifiers`
+contains a control character or alternate scalar.
+
 ## Build and test without showing a window
 
 ```sh
