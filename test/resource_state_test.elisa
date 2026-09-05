@@ -43,6 +43,10 @@ def main() -> i64:
     check("new resource starts requested", UiResources::state(image) == UiResources::State.Requested and UiResources::owner(image) == 11)
     check("resource key is retained in Elisa", UiResources::identifier(image) == "images/logo")
     check("request raises resource invalidation", UiCore::is_invalidated(UiCore::Invalidation.Resources))
+    check("resource demand hint is accepted", UiResources::set_demand(image, 10) and UiResources::is_demanded(image) and UiResources::demand_priority(image) == 10)
+    check("repeated demand hint is idempotent", not UiResources::set_demand(image, 10))
+    check("demand priority can be raised", UiResources::set_demand(image, 90) and UiResources::demand_priority(image) == 90)
+    check("demand hint can be cleared", UiResources::clear_demand(image) and not UiResources::is_demanded(image) and UiResources::demand_priority(image) == 0)
 
     duplicate: UiResources::Handle = UiResources::request("images/logo", 42)
     check("duplicate request reuses identity", duplicate.slot == image.slot and duplicate.generation == image.generation and UiResources::count() == 1)

@@ -41,6 +41,8 @@ module UiResources:
                 identifier_lengths[slot] <- 0
                 downloaded[slot] <- 0.0
                 decoded[slot] <- 0.0
+                demanded[slot] <- false
+                priorities[slot] <- 0
             resource_count <- 0
             dropped <- false
             UiCore::clear_invalidations(UiCore::Invalidation.Resources)
@@ -72,6 +74,8 @@ module UiResources:
                 identifier_storage[slot * IDENTIFIER_CAPACITY + index] <- 0
             downloaded[slot] <- 0.0
             decoded[slot] <- 0.0
+            demanded[slot] <- false
+            priorities[slot] <- 0
 
         def mark_changed() -> void:
             UiCore::invalidate(UiCore::Invalidation.Resources)
@@ -109,6 +113,8 @@ module UiResources:
             states[free_slot] <- State.Requested
             downloaded[free_slot] <- 0.0
             decoded[free_slot] <- 0.0
+            demanded[free_slot] <- false
+            priorities[free_slot] <- 0
             resource_count <- free_slot + 1 if free_slot >= resource_count else resource_count
             mark_changed()
             return make_handle(free_slot)
@@ -133,6 +139,33 @@ module UiResources:
         def decoded_progress(handle: Handle) -> f32:
             return 0.0 if not is_valid(handle)
             return decoded[handle.slot.usize()]
+
+        # Visibility and prefetch policy stays in Elisa, while the host decides
+        # whether a hint can be serviced under bandwidth/cache constraints.
+        # A repeated hint is idempotent and only invalidates when its value
+        # changes, so scrolling cannot create a request storm.
+        def set_demand(handle: Handle, priority: u32) -> bool:
+            return false if not is_valid(handle)
+            slot: usize = handle.slot.usize()
+            return false if demanded[slot] and priorities[slot] == priority
+            demanded[slot] <- true
+            priorities[slot] <- priority
+            mark_changed()
+            return true
+
+        def clear_demand(handle: Handle) -> bool:
+            return false if not is_valid(handle) or not demanded[handle.slot.usize()]
+            demanded[handle.slot.usize()] <- false
+            priorities[handle.slot.usize()] <- 0
+            mark_changed()
+            return true
+
+        def is_demanded(handle: Handle) -> bool:
+            return is_valid(handle) and demanded[handle.slot.usize()]
+
+        def demand_priority(handle: Handle) -> u32:
+            return 0 if not is_valid(handle) or not demanded[handle.slot.usize()]
+            return priorities[handle.slot.usize()]
 
         # Hosts report transport/decode progress independently. Both fractions
         # are normalized before storage; network completion therefore does not
@@ -219,3 +252,5 @@ module UiResources:
         global mutable identifier_storage: u8[MAX_RESOURCES * IDENTIFIER_CAPACITY] = zeroed
         global mutable downloaded: f32[MAX_RESOURCES] = zeroed
         global mutable decoded: f32[MAX_RESOURCES] = zeroed
+        global mutable demanded: bool[MAX_RESOURCES] = zeroed
+        global mutable priorities: u32[MAX_RESOURCES] = zeroed
