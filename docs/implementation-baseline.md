@@ -102,7 +102,7 @@ path; no window is shown or foregrounded. The hello app's new
 
 ```text
 failed to encode component
-type mismatch: expected i64, found i32 (at offset 0x2b02)
+type mismatch: expected i64, found i32 (at offset 0x2b06)
 ```
 
 This is recorded as a compiler/toolchain blocker, not a framework feature
@@ -126,4 +126,3 @@ must isolate or fix that compiler defect before claiming hosted parity.
   lifecycle/reentrancy tests around the new typed event router, and a public
   builder layer over `UiHandles`. Android/iOS and remote work remain blocked on
   sibling host/SDK execution fixtures rather than being simulated here.
-

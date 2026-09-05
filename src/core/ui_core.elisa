@@ -344,10 +344,13 @@ module UiCore:
         # the command union, so existing backend wire layouts remain stable.
         global mutable command_clip: Rect[MAX_COMMANDS] = zeroed
         global mutable command_has_clip_flag: bool[MAX_COMMANDS] = zeroed
-        global mutable command_total: usize = 0
+        # These counters are bounded by the fixed capacities below. Keeping
+        # their storage in the wire-facing u32 width also avoids asking a
+        # wasm32 backend to compare an i64 usize load with an i32 capacity.
+        global mutable command_total: u32 = 0
         global mutable command_dropped: bool = false
         global mutable accessibility_nodes: AccessibilityNode[MAX_ACCESSIBILITY_NODES] = zeroed
-        global mutable accessibility_total: usize = 0
+        global mutable accessibility_total: u32 = 0
         global mutable accessibility_dropped: bool = false
         global mutable viewport_size: Size = Size{width: 0.0, height: 0.0}
         global mutable current_clip: Rect = Rect{origin: Vec2{ x: 0.0, y: 0.0 }, size: Size{ width: 0.0, height: 0.0 }}
@@ -369,7 +372,7 @@ module UiCore:
         # eager app declaration cannot make a backend reuse one native object
         # at two positions in its accessibility child list.
         def accessibility_index_for_id(id: usize) -> usize:
-            for index in 0..<accessibility_total:
+            for index in 0..<accessibility_total.usize():
                 return index if accessibility_nodes[index].id == id
             return MAX_ACCESSIBILITY_NODES
 
@@ -387,14 +390,14 @@ module UiCore:
                 # position, giving frame diffs stable ordering and identity.
                 accessibility_nodes[existing] <- node
                 return
-            if accessibility_total >= MAX_ACCESSIBILITY_NODES:
+            if accessibility_total >= MAX_ACCESSIBILITY_NODES.u32():
                 accessibility_dropped <- true
                 return
-            accessibility_nodes[accessibility_total] <- node
+            accessibility_nodes[accessibility_total.usize()] <- node
             accessibility_total <- accessibility_total + 1
 
         def accessibility_count() -> usize:
-            return accessibility_total
+            return accessibility_total.usize()
 
         # The indexed reader is the zero-overhead path used by bounded backend
         # loops. External callers should use the optional form below when the
@@ -403,7 +406,7 @@ module UiCore:
             return accessibility_nodes[index]
 
         def accessibility_if_valid(index: usize) -> AccessibilityNode?:
-            return null if index >= accessibility_total
+            return null if index >= accessibility_total.usize()
             return accessibility_nodes[index]
 
         def accessibility_overflowed() -> bool:
@@ -414,17 +417,18 @@ module UiCore:
         # fixable; the alternative is growing the buffer while making the
         # component's monotonic heap grow without bound.
         def push_command(command: Command) -> void:
-            if command_total >= MAX_COMMANDS:
+            if command_total >= MAX_COMMANDS.u32():
                 command_dropped <- true
                 return
-            command_has_clip_flag[command_total] <- current_clip_active
-            command_clip[command_total] <- current_clip if current_clip_active
-            command_buffer[command_total] <- command
+            slot: usize = command_total.usize()
+            command_has_clip_flag[slot] <- current_clip_active
+            command_clip[slot] <- current_clip if current_clip_active
+            command_buffer[slot] <- command
             command_total <- command_total + 1
 
         # The batch a backend consumes at frame end.
         def command_count() -> usize:
-            return command_total
+            return command_total.usize()
 
         # Keep the existing reader as a proven-valid fast path for painters and
         # wire encoders. The optional form is the safe API for a host inspecting
@@ -433,7 +437,7 @@ module UiCore:
             return command_buffer[index]
 
         def command_if_valid(index: usize) -> Command?:
-            return null if index >= command_total
+            return null if index >= command_total.usize()
             return command_buffer[index]
 
         def command_overflowed() -> bool:
@@ -453,13 +457,13 @@ module UiCore:
             current_clip_active <- false
 
         def command_has_clip(index: usize) -> bool:
-            return index < command_total and command_has_clip_flag[index]
+            return index < command_total.usize() and command_has_clip_flag[index]
 
         def command_clip_at(index: usize) -> Rect:
             return command_clip[index]
 
         def command_clip_if_valid(index: usize) -> Rect?:
-            return null if index >= command_total
+            return null if index >= command_total.usize()
             return command_clip[index]
 
         # Surface dimensions are extents, never signed offsets. Normalize them
