@@ -18,6 +18,11 @@ Messages are allocation-free and bounded to 255 bytes; truncation is exposed
 through `message_truncated`. Disposal advances the generation before slot reuse
 to make callbacks targeting a recycled view harmless.
 
+Use `bind_owned(field_id, owner_id)` when a field belongs to a view or task;
+`dispose_owner(owner_id)` invalidates all of that owner's bindings in one bounded
+pass. This makes surface teardown independent of application handle bookkeeping
+and rejects late validation completions before they can touch a recycled field.
+
 Binding, pending, result, clear, and disposal transitions raise shared paint and
 semantic invalidations. Adapters do not need a validation-specific redraw path;
 they consume the same `UiCore::Invalidation` flags as the rest of the retained

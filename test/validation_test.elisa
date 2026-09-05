@@ -50,6 +50,19 @@ def main() -> i64:
     check("slot reuse advances generation", fresh.slot == field.slot and fresh.generation != old_generation)
     check("late disposed completion stays harmless", not UiValidation::accept(field, fourth_token) and UiValidation::status(fresh) == UiValidation::Status.Idle)
 
+    owned_a: UiValidation::Handle = UiValidation::bind_owned(41, 77)
+    owned_b: UiValidation::Handle = UiValidation::bind_owned(42, 77)
+    other_owner: UiValidation::Handle = UiValidation::bind_owned(43, 88)
+    owned_token: u32 = UiValidation::begin(owned_a)
+    old_owned_generation: u32 = owned_a.generation
+    check("owned bindings retain owner identity", UiValidation::owner(owned_a) == 77 and UiValidation::owner(other_owner) == 88 and owned_token != 0)
+    check("owner disposal invalidates all owned fields", UiValidation::dispose_owner(77) == 2 and not UiValidation::is_valid(owned_a) and not UiValidation::is_valid(owned_b) and UiValidation::is_valid(other_owner))
+    check("owner disposal rejects late completion", not UiValidation::accept(owned_a, owned_token))
+    recycled: UiValidation::Handle = UiValidation::bind_owned(44, 99)
+    check("owner disposal advances generations before reuse", recycled.slot == owned_a.slot and recycled.generation != old_owned_generation)
+    _ = UiValidation::dispose_owner(88)
+    _ = UiValidation::dispose_owner(99)
+
     if failures == 0:
         _ = puts("validation: all checks passed")
         return 0

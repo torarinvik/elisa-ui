@@ -38,6 +38,7 @@ module UiValidation:
             for slot in 0..<MAX_FIELDS:
                 active[slot] <- false
                 field_ids[slot] <- 0
+                owners[slot] <- 0
                 generations[slot] <- next_generation(generations[slot])
                 revisions[slot] <- 0
                 statuses[slot] <- Status.Idle
@@ -51,8 +52,15 @@ module UiValidation:
         # the same field ID reuses its status and revision instead of starting
         # a second request during every view rebuild.
         def bind(field_id: u32) -> Handle:
+            return bind_owned(field_id, 0)
+
+        # Associate a validation field with its owning view/task. Rebinding a
+        # stable field ID updates that owner while preserving the pending
+        # revision and user-visible status.
+        def bind_owned(field_id: u32, owner: u32) -> Handle:
             for slot in 0..<field_count:
                 if active[slot] and field_ids[slot] == field_id:
+                    owners[slot] <- owner
                     return make_handle(slot)
             free_slot: mutable usize = NONE
             for slot in 0..<MAX_FIELDS:
@@ -64,6 +72,7 @@ module UiValidation:
                 return invalid()
             active[free_slot] <- true
             field_ids[free_slot] <- field_id
+            owners[free_slot] <- owner
             generations[free_slot] <- next_generation(generations[free_slot])
             revisions[free_slot] <- 0
             statuses[free_slot] <- Status.Idle
@@ -126,6 +135,10 @@ module UiValidation:
             return 0 if not is_valid(handle)
             return field_ids[handle.slot.usize()]
 
+        def owner(handle: Handle) -> u32:
+            return 0 if not is_valid(handle)
+            return owners[handle.slot.usize()]
+
         def message(handle: Handle) -> sview:
             return "" if not is_valid(handle)
             slot: usize = handle.slot.usize()
@@ -145,16 +158,25 @@ module UiValidation:
         def dispose(handle: Handle) -> bool:
             return false if not is_valid(handle)
             slot: usize = handle.slot.usize()
-            active[slot] <- false
-            field_ids[slot] <- 0
-            generations[slot] <- next_generation(generations[slot])
-            revisions[slot] <- 0
-            statuses[slot] <- Status.Idle
-            clear_message(slot)
+            clear_slot(slot)
             while field_count > 0 and not active[field_count - 1]:
                 field_count <- field_count - 1
             mark_changed()
             return true
+
+        # View/task teardown can invalidate every field it owns in one bounded
+        # pass. Each slot advances its generation before reuse, so late host
+        # completions carrying an old field handle are rejected.
+        def dispose_owner(owner_id: u32) -> usize:
+            released: mutable usize = 0
+            for slot in 0..<field_count:
+                if active[slot] and owners[slot] == owner_id:
+                    clear_slot(slot)
+                    released <- released + 1
+            while field_count > 0 and not active[field_count - 1]:
+                field_count <- field_count - 1
+            mark_changed() if released > 0
+            return released
 
     private:
         global mutable field_ids: u32[MAX_FIELDS] = zeroed
@@ -162,6 +184,7 @@ module UiValidation:
         global mutable revisions: u32[MAX_FIELDS] = zeroed
         global mutable statuses: Status[MAX_FIELDS] = zeroed
         global mutable active: bool[MAX_FIELDS] = zeroed
+        global mutable owners: u32[MAX_FIELDS] = zeroed
         global mutable message_lengths: usize[MAX_FIELDS] = zeroed
         global mutable message_truncated_state: bool[MAX_FIELDS] = zeroed
         global mutable message_storage: u8[MAX_FIELDS * MESSAGE_CAPACITY] = zeroed
@@ -182,6 +205,16 @@ module UiValidation:
         def next_revision(value: u32) -> u32:
             next: u32 = value + 1
             return 1 if next == 0 else next
+
+        def clear_slot(slot: usize) -> void:
+            return if slot >= MAX_FIELDS or not active[slot]
+            active[slot] <- false
+            field_ids[slot] <- 0
+            owners[slot] <- 0
+            generations[slot] <- next_generation(generations[slot])
+            revisions[slot] <- 0
+            statuses[slot] <- Status.Idle
+            clear_message(slot)
 
         def make_handle(slot: usize) -> Handle:
             return Handle{slot: slot.u32(), generation: generations[slot]}
