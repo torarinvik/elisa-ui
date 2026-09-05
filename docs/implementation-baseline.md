@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `c042ce2` on branch `work` |
+| elisa-ui revision | `42856ab` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `1a44c1d1`; SHA-256 `a9573ad3779ae57f9daf68f79c53761c5ec54d0045a11c1387071ba0562678bc` |
@@ -175,9 +175,10 @@ separate host-enforced security boundary.
   data into renderer objects. Coverage lives in
   `test/resource_presentation_test.elisa`.
 - `UiInspector` is a read-only, allocation-free diagnostic projection of the
-  retained tree and semantic buffer. It reports deferred layout/frame-buffer
-  state and typed relationships while redacting secure text; coverage lives in
-  `test/widget_inspector_test.elisa`.
+  retained tree and semantic buffer. It reports shared lifecycle phase,
+  generation, surface/input/render/focus predicates, deferred layout/frame-
+  buffer state, and typed relationships while redacting secure text; coverage
+  lives in `test/widget_inspector_test.elisa`.
 - `UiHarness` is the deterministic Elisa-side test driver. It injects a
   monotonic clock, typed lifecycle/input events, resource requests/progress,
   and frame boundaries while leaving production event-loop ownership with each
