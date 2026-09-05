@@ -1,0 +1,66 @@
+# Headless checks for Elisa-owned resource presentation policy.
+
+include "../src/widgets/ui_resource_presentation.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable failures: i32 = 0
+
+def app_init() -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    pass
+
+def app_text_input(text: sview) -> void:
+    pass
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    pass
+
+def app_frame() -> void:
+    pass
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiResources::reset()
+    options: UiResourcePresentation::Options = UiResourcePresentation::default_options(UiResourcePresentation::Kind.Image)
+    missing: UiResources::Handle = UiResources::invalid()
+    missing_record: UiResourcePresentation::Record = UiResourcePresentation::record(missing, options)
+    check("invalid resource presents a placeholder", missing_record.state == UiResourcePresentation::DisplayState.Placeholder and missing_record.placeholder_visible and not missing_record.fallback_visible)
+
+    image: UiResources::Handle = UiResources::request("images/preview", 3)
+    loading: mutable UiResourcePresentation::Record = UiResourcePresentation::record(image, options)
+    check("requested resource presents loading", loading.state == UiResourcePresentation::DisplayState.Loading and loading.placeholder_visible and loading.progress_visible)
+    UiResources::set_progress(image, 0.8, 0.25)
+    loading <- UiResourcePresentation::record(image, options)
+    check("presentation preserves independent progress", loading.network_progress == 0.8 and loading.decode_progress == 0.25 and loading.state == UiResourcePresentation::DisplayState.Loading)
+
+    UiResources::set_state(image, UiResources::State.Ready)
+    ready: UiResourcePresentation::Record = UiResourcePresentation::record(image, options)
+    check("ready resource hides fallback and placeholder", ready.state == UiResourcePresentation::DisplayState.Ready and not ready.placeholder_visible and not ready.fallback_visible and ready.interaction_enabled and ready.reserved_size.width == 64.0)
+
+    UiResources::set_state(image, UiResources::State.Failed)
+    failed: UiResourcePresentation::Record = UiResourcePresentation::record(image, options)
+    check("failed resource exposes retry", failed.state == UiResourcePresentation::DisplayState.Failed and failed.fallback_visible and failed.retry_available and UiResourcePresentation::retry(image) and UiResources::state(image) == UiResources::State.Requested)
+    UiResources::set_state(image, UiResources::State.Denied)
+    denied: UiResourcePresentation::Record = UiResourcePresentation::record(image, options)
+    check("denied resource uses fallback without prompting by itself", denied.fallback_visible and denied.retry_available)
+    UiResourcePresentation::cancel(image)
+    cancelled: UiResourcePresentation::Record = UiResourcePresentation::record(image, options)
+    check("cancelled resource stops loading presentation", cancelled.state == UiResourcePresentation::DisplayState.Cancelled and cancelled.fallback_visible and not cancelled.progress_visible)
+
+    font_options: UiResourcePresentation::Options = UiResourcePresentation::default_options(UiResourcePresentation::Kind.Font)
+    font: UiResources::Handle = UiResources::request("fonts/body", 4)
+    font_record: UiResourcePresentation::Record = UiResourcePresentation::record(font, font_options)
+    check("font policy avoids artificial progress and geometry", not font_record.progress_visible and font_record.reserved_size.width == 0.0 and font_record.reserved_size.height == 0.0)
+    if failures == 0:
+        _ = puts("resource presentation: all checks passed")
+    return failures.i64()

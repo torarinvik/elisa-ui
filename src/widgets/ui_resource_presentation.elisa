@@ -1,0 +1,128 @@
+# Elisa-owned presentation policy for logical resources.
+#
+# UiResources owns identity and lifecycle; this module owns the user-facing
+# interpretation of those states. Hosts still provide verified bytes and
+# renderer handles. A backend can therefore consume one explicit record for a
+# placeholder, progress indicator, ready asset, or recoverable fallback.
+
+include "./ui_resources.elisa"
+
+module UiResourcePresentation:
+    public:
+        const enum Kind of i32:
+            Generic = 0
+            Image = 1
+            Font = 2
+            Document = 3
+
+        const enum DisplayState of i32:
+            Placeholder = 0
+            Loading = 1
+            Ready = 2
+            Offline = 3
+            Denied = 4
+            Failed = 5
+            Cancelled = 6
+
+        struct Options:
+            kind: Kind
+            reserved_width: f32
+            reserved_height: f32
+            placeholder_color: UiCore::Color
+            fallback_color: UiCore::Color
+            show_progress: bool
+            allow_retry: bool
+
+        struct Record:
+            handle: UiResources::Handle
+            kind: Kind
+            state: DisplayState
+            network_progress: f32
+            decode_progress: f32
+            placeholder_visible: bool
+            fallback_visible: bool
+            progress_visible: bool
+            retry_available: bool
+            interaction_enabled: bool
+            reserved_size: UiCore::Size
+
+        def default_options(kind: Kind) -> Options:
+            if kind == Kind.Image:
+                return Options{
+                    kind: kind, reserved_width: 64.0, reserved_height: 64.0,
+                    placeholder_color: UiCore::rgb(42, 46, 56),
+                    fallback_color: UiCore::rgb(92, 48, 54),
+                    show_progress: true, allow_retry: true,
+                }
+            if kind == Kind.Font:
+                return Options{
+                    kind: kind, reserved_width: 0.0, reserved_height: 0.0,
+                    placeholder_color: UiCore::rgb(42, 46, 56),
+                    fallback_color: UiCore::rgb(92, 48, 54),
+                    show_progress: false, allow_retry: true,
+                }
+            if kind == Kind.Document:
+                return Options{
+                    kind: kind, reserved_width: 320.0, reserved_height: 200.0,
+                    placeholder_color: UiCore::rgb(42, 46, 56),
+                    fallback_color: UiCore::rgb(92, 48, 54),
+                    show_progress: true, allow_retry: true,
+                }
+            return Options{
+                kind: kind, reserved_width: 0.0, reserved_height: 0.0,
+                placeholder_color: UiCore::rgb(42, 46, 56),
+                fallback_color: UiCore::rgb(92, 48, 54),
+                show_progress: true, allow_retry: false,
+            }
+
+        def display_state(handle: UiResources::Handle) -> DisplayState:
+            match UiResources::state(handle):
+                UiResources::State.Unrequested:
+                    return DisplayState.Placeholder
+                UiResources::State.Requested:
+                    return DisplayState.Loading
+                UiResources::State.Ready:
+                    return DisplayState.Ready
+                UiResources::State.UnavailableOffline:
+                    return DisplayState.Offline
+                UiResources::State.Denied:
+                    return DisplayState.Denied
+                UiResources::State.Failed:
+                    return DisplayState.Failed
+                UiResources::State.Cancelled:
+                    return DisplayState.Cancelled
+
+        def is_placeholder(handle: UiResources::Handle) -> bool:
+            current: DisplayState = display_state(handle)
+            return current == DisplayState.Placeholder or current == DisplayState.Loading
+
+        def is_fallback(handle: UiResources::Handle) -> bool:
+            current: DisplayState = display_state(handle)
+            return current == DisplayState.Offline or current == DisplayState.Denied or current == DisplayState.Failed or current == DisplayState.Cancelled
+
+        def can_retry(handle: UiResources::Handle) -> bool:
+            current: UiResources::State = UiResources::state(handle)
+            return current == UiResources::State.UnavailableOffline or current == UiResources::State.Denied or current == UiResources::State.Failed
+
+        def retry(handle: UiResources::Handle) -> bool:
+            return UiResources::retry(handle)
+
+        def cancel(handle: UiResources::Handle) -> bool:
+            return UiResources::cancel(handle)
+
+        def record(handle: UiResources::Handle, options: Options) -> Record:
+            current: DisplayState = display_state(handle)
+            retryable: bool = options.allow_retry and can_retry(handle)
+            return Record{
+                handle: handle,
+                kind: options.kind,
+                state: current,
+                network_progress: UiResources::downloaded_progress(handle),
+                decode_progress: UiResources::decoded_progress(handle),
+                placeholder_visible: is_placeholder(handle),
+                fallback_visible: is_fallback(handle),
+                progress_visible: options.show_progress and current == DisplayState.Loading,
+                retry_available: retryable,
+                interaction_enabled: current == DisplayState.Ready or retryable,
+                reserved_size: UiCore::Size(options.reserved_width, options.reserved_height),
+            }

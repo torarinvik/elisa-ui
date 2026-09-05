@@ -38,3 +38,23 @@ coalescing; it does not grant bandwidth, bypass cache policy, or force a fetch.
 The fixed 128-record table and 256-byte logical identifier limit are deliberate
 bounded behavior for native and Wasm tests. `overflowed` reports exhaustion;
 invalid or oversized identifiers return `invalid()` and do not create a record.
+
+## Presentation policy
+
+`src/widgets/ui_resource_presentation.elisa` keeps the user-facing mapping out
+of every backend. `UiResourcePresentation::default_options` supplies reserved
+geometry and placeholder/fallback colors for generic, image, font, and document
+resources. `record(handle, options)` returns a read-only snapshot containing:
+
+- the display state (`Placeholder`, `Loading`, `Ready`, `Offline`, `Denied`,
+  `Failed`, or `Cancelled`);
+- independent network/decode progress and whether a progress indicator is
+  currently appropriate;
+- placeholder/fallback visibility, retry availability, and interaction state;
+- reserved size that can be used before intrinsic metadata or decoded bytes
+  arrive.
+
+`retry` and `cancel` are explicit actions that forward to `UiResources`; the
+presentation layer never starts a fetch by itself. This keeps offline/denied
+states recoverable without retry loops and lets a host render the returned
+record with native, SDL, or hosted primitives.
