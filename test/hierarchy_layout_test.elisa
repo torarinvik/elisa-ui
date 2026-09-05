@@ -160,6 +160,14 @@ def main() -> i64:
         check("scroll content follows its vertical offset", scrolled_child.y, -12.0)
         test_failures <- test_failures + 1 if scroll_to(scroll_view, 24.0)
 
+        # Public enum constructors can bypass the convenience builder and
+        # carry a finite offset far beyond the geometry envelope. Layout must
+        # clamp that translation before it reaches child coordinates.
+        hostile_scroll_child: Widget = Button.Push(min_width: 40.0, min_height: 20.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "hostile", rest: grey(60), hover: grey(90), press: grey(30))
+        hostile_scroll: Widget = Container.Scroll(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: hostile_scroll_child, next_sibling: null, axis: UiConst::Axis.Column, offset: 3.0e38, fill: grey(20))
+        layout(hostile_scroll, 100.0, 80.0)
+        check("raw scroll offset is bounded", hostile_scroll_child.y, -UiConstraints::MAX_EXTENT)
+
         # Stateful viewports keep their offset in caller-owned Elisa state, so
         # wheel input can mutate a packed hierarchy without any native policy.
         scroll_state: ScrollState = ScrollState{offset: 0.0}

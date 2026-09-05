@@ -10,12 +10,11 @@
 # one place and a kind added to the hierarchy reaches C without touching this
 # file.
 #
-# NAMESPACES. Every name a C program links against is dictated, so the four
-# entry points below are the file's whole top level and `UiCapi` holds the one
-# of them with a body. The other three forward to `UiCore` and not through the
-# module, which is the point: a hop through `UiCapi::set_viewport` would only
-# rename `UiCore::set_viewport`, and the asymmetry says plainly that decoding an
-# event is the only work this file does.
+# NAMESPACES. Every name a C program links against is dictated, so the public
+# ABI functions stay top-level. `UiCapi` owns the event conversion; viewport
+# accessors forward directly to `UiCore`. The counted text entry point also
+# stays top-level because its Elisa-owned copy must be adjacent to the C ABI
+# boundary and must never construct a view directly from foreign memory.
 #
 # A C header for this is:
 #
@@ -51,20 +50,6 @@ module UiCapi:
             while UiEvents::dequeue(event):
                 app_event(event)
 
-        def dispatch_text_input(text: cstr?, length: usize) -> void:
-            # A C caller may provide a null pointer for an empty payload, or
-            # accidentally pair NULL with a non-zero length. Fail closed before
-            # constructing a view that application code could dereference.
-            return if length == 0
-            if text is value:
-                # `sview` stores its extent as i64. Reject a size_t value that
-                # would wrap negative during the ABI conversion instead of
-                # handing application code an invalid view.
-                safe_length: mutable i64 = length.i64()
-                return if safe_length < 0
-                safe_length <- UiCore::MAX_TEXT_BYTES.i64() if safe_length > UiCore::MAX_TEXT_BYTES.i64()
-                app_text_input(sview(value, 0, safe_length))
-
 # The C entry points. Top-level by name, each one a single call.
 def elisa_ui_dispatch_event(kind: i32, x: f32, y: f32, dx: f32, dy: f32, code: i32) -> void:
     UiCapi::dispatch_event(kind, x, y, dx, dy, code)
@@ -72,8 +57,27 @@ def elisa_ui_dispatch_event(kind: i32, x: f32, y: f32, dx: f32, dy: f32, code: i
 def elisa_ui_abi_version() -> u32:
     return UiCapi::abi_version()
 
-def elisa_ui_dispatch_text_input(text: cstr?, length: usize) -> void:
-    UiCapi::dispatch_text_input(text, length)
+global mutable elisa_ui_text_buffer: u8[UiCore::MAX_TEXT_BYTES + 1] = zeroed
+
+# The C entry point receives a counted pointer, which is not required to be
+# NUL-terminated. Copy only the validated bounded prefix into Elisa-owned
+# storage so neither view construction nor the callback boundary can
+def elisa_ui_dispatch_text_input(text: cstr?, length: usize) -> void can Unsafe.PointerCast:
+    # A C caller may provide a null pointer for an empty payload, or
+    # accidentally pair NULL with a non-zero length. Fail closed before
+    # dereferencing a pointer that application code could not validate.
+    return if length == 0
+    if text is value:
+        safe_length: mutable i64 = length.i64()
+        return if safe_length < 0
+        safe_length <- UiCore::MAX_TEXT_BYTES.i64() if safe_length > UiCore::MAX_TEXT_BYTES.i64()
+        pointer: uintptr = value.cast[uintptr] can Unsafe.PointerCast
+        for index in 0..<safe_length.usize():
+            trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic]:
+                byte: u8& = (pointer + index.uintptr()).cast[u8&]
+                elisa_ui_text_buffer[index] <- byte
+        elisa_ui_text_buffer[safe_length.usize()] <- 0
+        app_text_input(sview(&elisa_ui_text_buffer[0], 0, safe_length))
 
 # The viewport, for a C host that owns the window. State lives in UiCore, so
 # these reach it directly.
