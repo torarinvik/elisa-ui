@@ -82,6 +82,15 @@ def frame_contains_rect(x: f32, y: f32, width: f32, height: f32) -> bool:
                 pass
     return false
 
+def frame_contains_line(x: f32, y: f32, end_x: f32, end_y: f32) -> bool:
+    for index in 0..<UiCore::command_count():
+        match UiCore::command_at(index):
+            UiCore::Command.FillLine(segment, color):
+                return true if near(segment.from_point.x, x) and near(segment.from_point.y, y) and near(segment.to_point.x, end_x) and near(segment.to_point.y, end_y)
+            _:
+                pass
+    return false
+
 def frame_contains_rect_color(x: f32, y: f32, width: f32, height: f32, expected: UiCore::Color) -> bool:
     for index in 0..<UiCore::command_count():
         match UiCore::command_at(index):
@@ -623,6 +632,21 @@ def main() -> i64:
     UiCore::begin_frame()
     UiFlat::paint()
     check("compact checkbox keeps its inner mark inside the token", frame_contains_rect(15.72, 8.72, 2.56, 2.56))
+    UiFlat::set_theme(base_theme)
+
+    # Marked-text decoration follows the field geometry even when an
+    # application supplies an inset larger than the field itself.
+    UiFlat::reset()
+    underline_field: usize = UiFlat::text_field(UiFlat::NONE, "Name", "", "abc", 80.0, 20.0, 14.0, UiCore::rgb(230, 230, 230), UiCore::rgb(30, 30, 30))
+    _ = UiFlat::request_focus(underline_field)
+    UiFlat::set_marked(underline_field, 0, 3)
+    underline_theme: mutable UiFlat::Theme = base_theme
+    underline_theme.marked_underline_inset <- 200.0
+    UiFlat::set_theme(underline_theme)
+    UiFlat::layout(100.0, 30.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("marked underline inset stays inside the field", frame_contains_line(12.0, 15.0, 33.0, 15.0))
     UiFlat::set_theme(base_theme)
 
     UiFlat::reset()
