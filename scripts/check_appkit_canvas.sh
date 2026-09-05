@@ -263,8 +263,12 @@ if grep -Eq 'NSMakeRect\([^\n]*1\.0' "$ROOT/src/platform/appkit/appkit_canvas_sh
   echo "appkit canvas: caret geometry policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq '@""' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
-  echo "appkit canvas: empty framework text leaked back into Objective-C" >&2
+# Cocoa's nonnull tooltip protocol needs a canonical empty result when Elisa
+# has no eligible help text or a native string allocation fails. Empty
+# protocol fallbacks are not framework text; reject only non-empty literals so
+# application-visible text still cannot migrate into the shim.
+if grep -Eq '@"[^"]+"' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: non-empty framework text leaked back into Objective-C" >&2
   exit 1
 fi
 if grep -Eq 'if \(activate\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
