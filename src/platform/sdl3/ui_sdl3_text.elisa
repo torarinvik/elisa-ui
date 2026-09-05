@@ -1,0 +1,27 @@
+# SDL's committed text and clipboard values are bounded NUL-terminated UTF-8.
+# The pointer scan stays private to this utility; the backend only receives the
+# validated length and keeps all text policy in Elisa.
+
+module UiSdl3Text:
+    public:
+        def byte(text: cstr, index: usize) -> u8:
+            pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
+            return 0 if pointer == 0.uintptr()
+            return byte_at(pointer, index)
+
+        def length(text: cstr) -> usize:
+            pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
+            return 0 if pointer == 0.uintptr()
+            count: mutable usize = 0
+            while count < MAX_SCAN_BYTES |count|:
+                return count if byte_at(pointer, count) == 0
+                count <- count + 1
+            return count
+
+    private:
+        const MAX_SCAN_BYTES: usize = 4096
+
+        def byte_at(pointer: uintptr, index: usize) -> u8:
+            trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic]:
+                byte: u8& = (pointer + index.uintptr()).cast[u8&]
+                return byte

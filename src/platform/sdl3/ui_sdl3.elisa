@@ -14,6 +14,7 @@ include "../../core/ui_lifecycle.elisa"
 include "../../core/ui_metrics.elisa"
 include "../../core/ui_raster.elisa"
 include "../../core/ui_paint.elisa"
+include "./ui_sdl3_text.elisa"
 
 # `impl UiPaint::Painter for T:` is the one shape no compiler takes -- stage0's
 # parser wants a `:` where the `for` is -- so the impl at the foot of this module
@@ -46,25 +47,6 @@ extern SDL_DestroySurface(surface: void&) -> void
 extern SDL_DestroyTexture(texture: void&) -> void
 extern puts(text: cstr) -> i64
 extern getenv(name: cstr) -> cstr?
-# SDL returns NUL-terminated UTF-8 for committed text and clipboard reads.
-# Keep the tiny scan in Elisa so the backend does not acquire a libc dependency
-# for a primitive whose policy (the backend's bounded text input) already lives here.
-const SDL_TEXT_SCAN_CAPACITY: usize = 4096
-def sdl_cstr_byte(text: cstr, index: usize) -> u8:
-    pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
-    return 0 if pointer == 0.uintptr()
-    trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic]:
-        byte: u8& = (pointer + index.uintptr()).cast[u8&]
-        return byte
-def sdl_cstr_length(text: cstr) -> usize:
-    pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
-    return 0 if pointer == 0.uintptr()
-    length: mutable usize = 0
-    while length < SDL_TEXT_SCAN_CAPACITY |length|:
-        byte: u8 = sdl_cstr_byte(text, length)
-        return length if byte == 0
-        length <- length + 1
-    return length
 # SDL_ttf 3.x. Lengths are byte counts, and a zero length means "NUL-terminated";
 # every call here passes an explicit length so an sview needs no terminator.
 extern TTF_Init() -> bool
@@ -275,12 +257,12 @@ module UiSdl3:
         # key events and text separate: key codes express navigation/shortcuts,
         # while this path preserves composed and non-ASCII text verbatim.
         def text_input(text: cstr) -> void:
-            length: usize = sdl_cstr_length(text)
+            length: usize = UiSdl3Text::length(text)
             return if length == 0
             app_text_input(sview(text, 0, length.i64()))
 
         def text_editing(text: cstr, selected_start: i32, selected_length: i32) -> void:
-            length: usize = sdl_cstr_length(text)
+            length: usize = UiSdl3Text::length(text)
             app_text_editing(sview(text, 0, length.i64()), selected_start, selected_length)
 
     private:
