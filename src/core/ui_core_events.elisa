@@ -90,13 +90,13 @@ extend UiCore:
                     # record bounded before a C/WIT host receives it.
                     record with { x <- bounded_extent(size.width), y <- bounded_extent(size.height) }
                 PointerEvent.Move(at):
-                    record with { x <- finite_or_zero(at.x), y <- finite_or_zero(at.y) }
+                    record with { x <- bounded_coordinate(at.x), y <- bounded_coordinate(at.y) }
                 PointerEvent.Down(at, button):
-                    record with { x <- finite_or_zero(at.x), y <- finite_or_zero(at.y), code <- button }
+                    record with { x <- bounded_coordinate(at.x), y <- bounded_coordinate(at.y), code <- button }
                 PointerEvent.Up(at, button):
-                    record with { x <- finite_or_zero(at.x), y <- finite_or_zero(at.y), code <- button }
+                    record with { x <- bounded_coordinate(at.x), y <- bounded_coordinate(at.y), code <- button }
                 PointerEvent.Scroll(at, delta):
-                    record with { x <- finite_or_zero(at.x), y <- finite_or_zero(at.y), dx <- finite_or_zero(delta.x), dy <- finite_or_zero(delta.y) }
+                    record with { x <- bounded_coordinate(at.x), y <- bounded_coordinate(at.y), dx <- bounded_coordinate(delta.x), dy <- bounded_coordinate(delta.y) }
                 KeyEvent.Down(code):
                     record.code <- code.i32()
                 KeyEvent.Up(code):
@@ -123,7 +123,7 @@ extend UiCore:
             # EventRecord is the raw C/WIT boundary. Normalize every numeric
             # payload here before rebuilding a typed event so hosts cannot
             # inject NaN/infinity into hit testing, layout, or scroll policy.
-            at: Vec2 = Vec2(finite_or_zero(record.x), finite_or_zero(record.y))
+            at: Vec2 = Vec2(bounded_coordinate(record.x), bounded_coordinate(record.y))
             return match record.kind:
                 WireKind.Quit:
                     Event.Quit
@@ -142,7 +142,7 @@ extend UiCore:
                 WireKind.PointerLeave:
                     PointerEvent.Leave
                 WireKind.Scroll:
-                    PointerEvent.Scroll(at: at, delta: Vec2(finite_or_zero(record.dx), finite_or_zero(record.dy)))
+                    PointerEvent.Scroll(at: at, delta: Vec2(bounded_coordinate(record.dx), bounded_coordinate(record.dy)))
                 WireKind.KeyDown:
                     return Event.None if not key_is_valid(record.code)
                     KeyEvent.Down(code: record.code.Key())
