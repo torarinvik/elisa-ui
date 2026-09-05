@@ -41,9 +41,11 @@ module UiLocalization:
         # direction; repeating the same canonical tag is idempotent.
         def set_locale(locale: sview) -> bool:
             return false if locale.len < 0
-            raw_length: usize = locale.len.usize()
-            take: usize = raw_length if raw_length < MAX_LOCALE_BYTES else MAX_LOCALE_BYTES - 1
-            was_truncated: bool = raw_length >= MAX_LOCALE_BYTES
+            # Keep the foreign signed extent signed until it has been bounded;
+            # narrowing first can wrap a large length on wasm32.
+            take: mutable usize = MAX_LOCALE_BYTES - 1
+            take <- locale.len.usize() if locale.len < (MAX_LOCALE_BYTES - 1).i64()
+            was_truncated: bool = locale.len >= MAX_LOCALE_BYTES.i64()
             same: mutable bool = locale_length_state == take and locale_truncated_state == was_truncated
             for index in 0..<MAX_LOCALE_BYTES - 1:
                 normalized: u8 = normalize_byte(locale.data[index]) if index < take else 0
