@@ -71,6 +71,10 @@ def main() -> i64:
 
     check("offline fallback transition is accepted", UiResources::set_state(fresh, UiResources::State.UnavailableOffline))
     check("offline failure can retry", UiResources::retry(fresh) and UiResources::state(fresh) == UiResources::State.Requested)
+    second: UiResources::Handle = UiResources::request("images/second", 88)
+    check("owner cancellation covers every live resource", UiResources::cancel_owner(88) == 2 and UiResources::state(fresh) == UiResources::State.Cancelled and UiResources::state(second) == UiResources::State.Cancelled)
+    check("owner cancellation is idempotent", UiResources::cancel_owner(88) == 0)
+    check("owner disposal invalidates every resource", UiResources::dispose_owner(88) == 2 and not UiResources::is_valid(fresh) and not UiResources::is_valid(second))
     check("resource invalidation can be consumed", UiCore::is_invalidated(UiCore::Invalidation.Resources))
     UiCore::clear_invalidations(UiCore::Invalidation.Resources)
     check("resource invalidation clears explicitly", not UiCore::is_invalidated(UiCore::Invalidation.Resources))

@@ -26,7 +26,9 @@ owner clears them; `Paint`, `Semantics`, and `Animation` are frame-local and are
 cleared at the next `begin_frame`.
 
 `UiHarness` also injects logical resource requests, progress and state changes
-through `request_resource`, `set_resource_progress`, and `set_resource_state`.
+through `request_resource`, `set_resource_progress`, and `set_resource_state`,
+with owner-scoped `cancel_resources_for_owner` and
+`dispose_resources_for_owner` helpers for view teardown.
 `stop()` resets resource generations before making late callbacks no-ops, so an
 async completion cannot update a disposed slot.
 

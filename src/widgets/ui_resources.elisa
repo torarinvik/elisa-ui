@@ -62,6 +62,17 @@ module UiResources:
         def make_handle(slot: usize) -> Handle:
             return Handle{slot: slot.u32(), generation: generations[slot]}
 
+        def clear_slot(slot: usize) -> void:
+            next_generation: u32 = generations[slot] + 1
+            generations[slot] <- 1 if next_generation == 0 else next_generation
+            states[slot] <- State.Unrequested
+            owners[slot] <- 0
+            identifier_lengths[slot] <- 0
+            for index in 0..<IDENTIFIER_CAPACITY:
+                identifier_storage[slot * IDENTIFIER_CAPACITY + index] <- 0
+            downloaded[slot] <- 0.0
+            decoded[slot] <- 0.0
+
         def mark_changed() -> void:
             UiCore::invalidate(UiCore::Invalidation.Resources)
             UiCore::invalidate(UiCore::Invalidation.Paint)
@@ -166,19 +177,37 @@ module UiResources:
         def dispose(handle: Handle) -> bool:
             return false if not is_valid(handle)
             slot: usize = handle.slot.usize()
-            next_generation: u32 = generations[slot] + 1
-            generations[slot] <- 1 if next_generation == 0 else next_generation
-            states[slot] <- State.Unrequested
-            owners[slot] <- 0
-            identifier_lengths[slot] <- 0
-            for index in 0..<IDENTIFIER_CAPACITY:
-                identifier_storage[slot * IDENTIFIER_CAPACITY + index] <- 0
-            downloaded[slot] <- 0.0
-            decoded[slot] <- 0.0
+            clear_slot(slot)
             while resource_count > 0 and states[resource_count - 1] == State.Unrequested:
                 resource_count <- resource_count - 1
             mark_changed()
             return true
+
+        # View teardown commonly owns several assets. Dispose them together so
+        # every token is invalidated before a slot can be reused and observers
+        # receive one coalesced resource/paint invalidation.
+        def dispose_owner(owner: u32) -> usize:
+            released: mutable usize = 0
+            for slot in 0..<resource_count:
+                if states[slot] != State.Unrequested and owners[slot] == owner:
+                    clear_slot(slot)
+                    released <- released + 1
+            while resource_count > 0 and states[resource_count - 1] == State.Unrequested:
+                resource_count <- resource_count - 1
+            mark_changed() if released > 0
+            return released
+
+        # Cancellation keeps the logical record available for a re-request,
+        # but invalidates no identity. This is useful when a view is hidden
+        # temporarily and its host task may be resumed later.
+        def cancel_owner(owner: u32) -> usize:
+            cancelled: mutable usize = 0
+            for slot in 0..<resource_count:
+                if states[slot] != State.Unrequested and owners[slot] == owner and states[slot] != State.Cancelled:
+                    states[slot] <- State.Cancelled
+                    cancelled <- cancelled + 1
+            mark_changed() if cancelled > 0
+            return cancelled
 
     private:
         global mutable resource_count: usize = 0
