@@ -25,6 +25,11 @@ painter. `UiCore::Invalidation.Layout` and `Resources` are durable until the
 owner clears them; `Paint`, `Semantics`, and `Animation` are frame-local and are
 cleared at the next `begin_frame`.
 
+`UiHarness` also injects logical resource requests, progress and state changes
+through `request_resource`, `set_resource_progress`, and `set_resource_state`.
+`stop()` resets resource generations before making late callbacks no-ops, so an
+async completion cannot update a disposed slot.
+
 `set_time` accepts monotonic absolute seconds; `advance_time` adds a positive
 delta and ignores negative, NaN, or infinite input. The clock never moves
 backwards. `resize`, `focus_lost`, and `focus_gained` are convenience helpers

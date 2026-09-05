@@ -7,6 +7,7 @@
 # fresh command frame before each app render. No platform ABI is involved.
 
 include "../core/ui_core.elisa"
+include "../widgets/ui_resources.elisa"
 
 module UiHarness:
     private:
@@ -20,11 +21,13 @@ module UiHarness:
         def start(width: f32, height: f32) -> void:
             running <- true
             test_time <- 0.0
+            UiResources::reset()
             UiCore::set_viewport(width, height)
             UiCore::set_frame_time(test_time)
             app_init()
 
         def stop() -> void:
+            UiResources::reset()
             running <- false
 
         def is_running() -> bool:
@@ -99,3 +102,29 @@ module UiHarness:
 
         def next_frame_delay() -> f32:
             return UiCore::frame_delay()
+
+        # Resource callbacks use the same deterministic seam as events and
+        # frames. Stopping the harness resets generations first, so a late
+        # completion cannot revive a disposed resource slot.
+        def request_resource(identifier: sview, owner: u32) -> UiResources::Handle:
+            return UiResources::invalid() if not running
+            return UiResources::request(identifier, owner)
+
+        def resource_state(handle: UiResources::Handle) -> UiResources::State:
+            return UiResources::state(handle)
+
+        def set_resource_progress(handle: UiResources::Handle, network: f32, decode: f32) -> bool:
+            return false if not running
+            return UiResources::set_progress(handle, network, decode)
+
+        def set_resource_state(handle: UiResources::Handle, state: UiResources::State) -> bool:
+            return false if not running
+            return UiResources::set_state(handle, state)
+
+        def cancel_resource(handle: UiResources::Handle) -> bool:
+            return false if not running
+            return UiResources::cancel(handle)
+
+        def dispose_resource(handle: UiResources::Handle) -> bool:
+            return false if not running
+            return UiResources::dispose(handle)

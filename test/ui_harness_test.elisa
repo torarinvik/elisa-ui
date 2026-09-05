@@ -37,6 +37,11 @@ def main() -> i64:
     check("harness starts at deterministic time zero", UiHarness::time() == 0.0 and UiCore::frame_time() == 0.0)
     check("harness stores the injected viewport", UiCore::viewport_width() == 320.0 and UiCore::viewport_height() == 200.0)
 
+    resource: UiResources::Handle = UiHarness::request_resource("images/test", 5)
+    check("harness injects a logical resource request", UiResources::is_valid(resource) and UiHarness::resource_state(resource) == UiResources::State.Requested)
+    check("harness injects independent resource progress", UiHarness::set_resource_progress(resource, 0.8, 0.25) and UiResources::downloaded_progress(resource) == 0.8 and UiResources::decoded_progress(resource) == 0.25)
+    check("harness injects resource completion", UiHarness::set_resource_state(resource, UiResources::State.Ready) and UiHarness::resource_state(resource) == UiResources::State.Ready)
+
     UiHarness::dispatch(UiCore::Event.FocusGained)
     check("harness forwards typed events", event_calls == 1 and last_event_kind == UiCore::WireKind.FocusGained.i32())
     UiHarness::resize(640.0, 480.0)
@@ -62,6 +67,7 @@ def main() -> i64:
     UiHarness::dispatch(UiCore::Event.FocusGained)
     UiHarness::frame()
     check("stopped harness ignores late input and frames", event_calls == 3 and frame_calls == 3)
+    check("stopped harness invalidates resource callbacks", not UiResources::is_valid(resource) and not UiHarness::set_resource_state(resource, UiResources::State.Failed))
 
     if failures == 0:
         _ = puts("ui harness: all checks passed")
