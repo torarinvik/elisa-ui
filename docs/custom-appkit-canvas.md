@@ -62,7 +62,9 @@ The complete working version is
   every ancestor viewport. Overflowing viewports draw a proportional,
   allocation-free scrollbar from `UiFlat::Theme::scrollbar_track` and
   `scrollbar_thumb`; clicking the track pages by one viewport and dragging the
-  thumb updates the offset with Elisa-owned pointer capture. Painting records
+  thumb updates the offset with Elisa-owned pointer capture. Disabled viewports
+  mute their scrollbar and reject wheel, track, and thumb interaction just like
+  their other descendants. Painting records
   the intersection of scroll ancestors beside each command; native painters
   apply that clip without changing the render-command wire layout, so partially
   visible children cannot bleed outside a viewport. Keyboard Page Up/Down and

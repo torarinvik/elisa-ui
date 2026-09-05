@@ -2350,17 +2350,20 @@ module UiFlat:
             travel: f32 = track_extent - thumb_extent
             thumb_position: f32 = travel * widgets[index].scroll_offset / limit if limit > 0.0 else 0.0
             thumb_color: mutable UiCore::Color = current_theme.scrollbar_thumb
-            thumb_color <- current_theme.scrollbar_thumb_active if active_scroll == index
-            thumb_color <- current_theme.scrollbar_thumb_hover if active_scroll != index and pointer_inside and scrollbar_part(index, pointer_x, pointer_y) == 2
+            enabled: bool = effectively_enabled(index)
+            thumb_color <- muted_color(thumb_color) if not enabled
+            thumb_color <- current_theme.scrollbar_thumb_active if enabled and active_scroll == index
+            thumb_color <- current_theme.scrollbar_thumb_hover if enabled and active_scroll != index and pointer_inside and scrollbar_part(index, pointer_x, pointer_y) == 2
+            track_color: UiCore::Color = current_theme.scrollbar_track if enabled else muted_color(current_theme.scrollbar_track)
             if is_row:
                 track: UiCore::Rect = UiCore::Rect(widgets[index].x + inset, widgets[index].y + widgets[index].height - bar - inset, track_extent, bar)
                 thumb: UiCore::Rect = UiCore::Rect(track.origin.x + thumb_position, track.origin.y, thumb_extent, bar)
-                UiCore::fill(track, current_theme.scrollbar_track)
+                UiCore::fill(track, track_color)
                 UiCore::fill(thumb, thumb_color)
             else:
                 track: UiCore::Rect = UiCore::Rect(widgets[index].x + widgets[index].width - bar - inset, widgets[index].y + inset, bar, track_extent)
                 thumb: UiCore::Rect = UiCore::Rect(track.origin.x, track.origin.y + thumb_position, bar, thumb_extent)
-                UiCore::fill(track, current_theme.scrollbar_track)
+                UiCore::fill(track, track_color)
                 UiCore::fill(thumb, thumb_color)
 
         # Return 2 for the thumb, 1 for the track, and 0 outside the current
@@ -2368,7 +2371,7 @@ module UiFlat:
         # viewport before invoking this geometry helper.
         def scrollbar_part(index: usize, x: f32, y: f32) -> i32:
             return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Scroll
-            return 0 if not effectively_visible(index) or not inside_scroll_viewports(index, x, y)
+            return 0 if not effectively_enabled(index) or not effectively_visible(index) or not inside_scroll_viewports(index, x, y)
             is_row: bool = widgets[index].axis == UiConst::Axis.Row
             viewport: f32 = widgets[index].width if is_row else widgets[index].height
             content: f32 = widgets[index].scroll_content_width if is_row else widgets[index].scroll_content_height
