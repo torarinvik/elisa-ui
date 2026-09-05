@@ -31,12 +31,14 @@ cat > "$WORK/host.c" <<'EOF'
 static elisa_ui_event seen;
 static int events;
 static int text_events;
+static size_t last_text_length;
 
 void elisa_ui_on_init(void) {}
 void elisa_ui_on_frame(void) {}
 void elisa_ui_on_widget_event(size_t widget, int32_t event) { (void)widget; (void)event; }
 void elisa_ui_on_event(const elisa_ui_event *event) { seen = *event; events++; }
 void elisa_ui_on_text_input(const char *text, size_t length) {
+    last_text_length = length;
     if (length == strlen("Hé 👋") && memcmp(text, "Hé 👋", length) == 0) text_events++;
 }
 void elisa_ui_on_text_editing(const char *text, size_t length, int32_t selected_start, int32_t selected_length) {
@@ -69,6 +71,10 @@ int main(void) {
     if (text_events != 1) { puts("UTF-8 text did not survive"); failures++; }
     elisa_ui_dispatch_text_input(NULL, 4);
     if (text_events != 1) { puts("null text pointer was not ignored"); failures++; }
+    char oversized_text[1032];
+    memset(oversized_text, 'x', sizeof(oversized_text));
+    elisa_ui_dispatch_text_input(oversized_text, sizeof(oversized_text));
+    if (last_text_length != 1024) { puts("oversized text was not bounded"); failures++; }
     elisa_ui_dispatch_text_input("x", SIZE_MAX);
     if (text_events != 1) { puts("oversized text length was not ignored"); failures++; }
 
