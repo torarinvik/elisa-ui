@@ -80,6 +80,10 @@ because a module member's symbol carries its module and those names cannot move.
   Checkbox toggling and exclusive radio selection are framework semantics, with
   configurable radio groups shared by pointer, keyboard, accessibility, and
   programmatic activation paths.
+  Focused radio buttons follow their group with the arrow keys, wrapping in
+  focus order while skipping disabled or hidden peers.
+  Scroll viewports bubble wheel input through nested ancestors and support
+  Page Up/Down, Home/End, and axis-arrow navigation from focused descendants.
   Slider step size is configurable; arrows and accessibility use one step,
   Page Up/Down use ten, and Home/End move to normalized bounds.
   Measure runs bottom-up, arrange top-down.
