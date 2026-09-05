@@ -269,7 +269,10 @@ module UiDialog:
 
         def write_text(slot: usize, field: usize, value: sview) -> void:
             return if slot >= MAX_DIALOGS or field >= 4 or value.len < 0
-            take: usize = value.len.usize() if value.len.usize() < TEXT_CAPACITY - 1 else TEXT_CAPACITY - 1
+            # Keep the signed-length check ahead of the usize narrowing.  A
+            # foreign sview may advertise a length wider than wasm32::usize.
+            take: mutable usize = TEXT_CAPACITY - 1
+            take <- value.len.usize() if value.len < (TEXT_CAPACITY - 1).i64()
             offset: usize = text_offset(slot, field)
             for index in 0..<TEXT_CAPACITY - 1:
                 storage[offset + index] <- value.data[index] if index < take else 0

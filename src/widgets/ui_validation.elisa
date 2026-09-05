@@ -230,9 +230,12 @@ module UiValidation:
 
         def write_message(slot: usize, value: sview) -> void:
             return if slot >= MAX_FIELDS or value.len < 0
-            take: usize = value.len.usize() if value.len.usize() < MESSAGE_CAPACITY - 1 else MESSAGE_CAPACITY - 1
+            # Validate the signed foreign length before narrowing it to
+            # usize; otherwise a large sview length can wrap on wasm32.
+            take: mutable usize = MESSAGE_CAPACITY - 1
+            take <- value.len.usize() if value.len < (MESSAGE_CAPACITY - 1).i64()
             for index in 0..<MESSAGE_CAPACITY - 1:
                 message_storage[slot * MESSAGE_CAPACITY + index] <- value.data[index] if index < take else 0
             message_storage[slot * MESSAGE_CAPACITY + take] <- 0
             message_lengths[slot] <- take
-            message_truncated_state[slot] <- take < value.len.usize()
+            message_truncated_state[slot] <- value.len >= (MESSAGE_CAPACITY - 1).i64()
