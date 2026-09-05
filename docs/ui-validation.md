@@ -17,3 +17,8 @@ cannot replace a newer error, clear a newer message, or roll back user edits.
 Messages are allocation-free and bounded to 255 bytes; truncation is exposed
 through `message_truncated`. Disposal advances the generation before slot reuse
 to make callbacks targeting a recycled view harmless.
+
+Binding, pending, result, clear, and disposal transitions raise shared paint and
+semantic invalidations. Adapters do not need a validation-specific redraw path;
+they consume the same `UiCore::Invalidation` flags as the rest of the retained
+widget state.

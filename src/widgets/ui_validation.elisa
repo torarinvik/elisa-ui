@@ -45,6 +45,7 @@ module UiValidation:
                 message_truncated_state[slot] <- false
             field_count <- 0
             overflowed_state <- false
+            mark_changed()
 
         # Bind one application field to a stable validation record. Rebinding
         # the same field ID reuses its status and revision instead of starting
@@ -68,6 +69,7 @@ module UiValidation:
             statuses[free_slot] <- Status.Idle
             clear_message(free_slot)
             field_count <- free_slot + 1 if free_slot >= field_count else field_count
+            mark_changed()
             return make_handle(free_slot)
 
         def snapshot() -> Snapshot:
@@ -87,6 +89,7 @@ module UiValidation:
             revisions[slot] <- next_revision(revisions[slot])
             statuses[slot] <- Status.Validating
             clear_message(slot)
+            mark_changed()
             return revisions[slot]
 
         # Resolve only the currently pending revision. The accepted value and
@@ -99,6 +102,7 @@ module UiValidation:
             return false if next != Status.Valid and next != Status.Invalid and next != Status.Unavailable
             statuses[slot] <- next
             write_message(slot, message)
+            mark_changed()
             return true
 
         def accept(handle: Handle, token: u32) -> bool:
@@ -115,6 +119,7 @@ module UiValidation:
             slot: usize = handle.slot.usize()
             statuses[slot] <- Status.Idle
             clear_message(slot)
+            mark_changed()
             return true
 
         def field_id(handle: Handle) -> u32:
@@ -148,6 +153,7 @@ module UiValidation:
             clear_message(slot)
             while field_count > 0 and not active[field_count - 1]:
                 field_count <- field_count - 1
+            mark_changed()
             return true
 
     private:
@@ -161,6 +167,13 @@ module UiValidation:
         global mutable message_storage: u8[MAX_FIELDS * MESSAGE_CAPACITY] = zeroed
         global mutable field_count: usize = 0
         global mutable overflowed_state: bool = false
+
+        # Validation messages and pending/error affordances are visible UI
+        # state. Keep their redraw and semantic invalidation in the shared
+        # policy so every backend observes the same update contract.
+        def mark_changed() -> void:
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+            UiCore::invalidate(UiCore::Invalidation.Semantics)
 
         def next_generation(value: u32) -> u32:
             next: u32 = value + 1
