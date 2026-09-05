@@ -1,0 +1,52 @@
+# Headless checks for deterministic touch/gesture policy.
+
+include "../src/widgets/ui_gestures.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def point(x: f32, y: f32) -> UiCore::Vec2:
+    return UiCore::Vec2(x, y)
+
+def touch(id: u32, phase: UiGestures::Phase, x: f32, y: f32, time: f32) -> UiGestures::Contact:
+    return UiGestures::Contact{id: id, phase: phase, position: point(x, y), timestamp: time}
+
+def main() -> i64:
+    UiGestures::reset()
+    check("reset clears prior overflow", not UiGestures::overflowed())
+    check("first contact begins", UiGestures::begin(touch(1, UiGestures::Phase.Began, 10.0, 20.0, 1.0)))
+    check("duplicate contact is rejected", not UiGestures::begin(touch(1, UiGestures::Phase.Began, 10.0, 20.0, 1.0)))
+    check("small movement stays undecided", UiGestures::move(touch(1, UiGestures::Phase.Moved, 14.0, 20.0, 1.1)) and UiGestures::snapshot().kind == UiGestures::Kind.None)
+    check("short release is a tap", UiGestures::end(touch(1, UiGestures::Phase.Ended, 14.0, 20.0, 1.2)) and UiGestures::snapshot().kind == UiGestures::Kind.Tap and UiGestures::active_count() == 0)
+
+    check("long press contact begins", UiGestures::begin(touch(2, UiGestures::Phase.Began, 0.0, 0.0, 2.0)))
+    check("long press is classified on release", UiGestures::end(touch(2, UiGestures::Phase.Ended, 0.0, 0.0, 2.8)) and UiGestures::snapshot().kind == UiGestures::Kind.LongPress)
+
+    check("drag contact begins", UiGestures::begin(touch(3, UiGestures::Phase.Began, 0.0, 0.0, 3.0)))
+    check("drag crosses the movement threshold", UiGestures::move(touch(3, UiGestures::Phase.Moved, 20.0, 0.0, 3.1)) and UiGestures::snapshot().kind == UiGestures::Kind.Drag and UiGestures::snapshot().delta.x == 20.0)
+    check("drag remains drag on release", UiGestures::end(touch(3, UiGestures::Phase.Ended, 24.0, 0.0, 3.2)) and UiGestures::snapshot().kind == UiGestures::Kind.Drag)
+
+    check("first pinch contact begins", UiGestures::begin(touch(10, UiGestures::Phase.Began, 0.0, 0.0, 4.0)))
+    check("second pinch contact begins", UiGestures::begin(touch(11, UiGestures::Phase.Began, 10.0, 0.0, 4.0)) and UiGestures::active_count() == 2)
+    check("pinch reports scale", UiGestures::move(touch(11, UiGestures::Phase.Moved, 20.0, 0.0, 4.1)) and UiGestures::snapshot().kind == UiGestures::Kind.Pinch and UiGestures::snapshot().secondary_id == 11 and UiGestures::snapshot().scale > 1.9 and UiGestures::snapshot().scale < 2.1)
+    check("pinch end remains observable", UiGestures::end(touch(10, UiGestures::Phase.Ended, 0.0, 0.0, 4.2)) and UiGestures::snapshot().kind == UiGestures::Kind.Pinch)
+    _ = UiGestures::end(touch(11, UiGestures::Phase.Ended, 20.0, 0.0, 4.2))
+
+    check("cancel all clears capture", UiGestures::begin(touch(20, UiGestures::Phase.Began, 0.0, 0.0, 5.0)) and UiGestures::begin(touch(21, UiGestures::Phase.Began, 1.0, 0.0, 5.0)) and UiGestures::cancel_all() == 2 and UiGestures::active_count() == 0 and UiGestures::snapshot().kind == UiGestures::Kind.Cancelled)
+    check("cancelled identity is gone", not UiGestures::cancel(20))
+
+    UiGestures::reset()
+    for index in 0..<UiGestures::MAX_TOUCHES:
+        check("gesture capacity accepts bounded contacts", UiGestures::begin(touch(index.u32(), UiGestures::Phase.Began, index.f32(), 0.0, 6.0)))
+    check("gesture capacity reports overflow", not UiGestures::begin(touch(99, UiGestures::Phase.Began, 0.0, 0.0, 6.0)) and UiGestures::overflowed())
+
+    if failures == 0:
+        _ = puts("gestures: all checks passed")
+        return 0
+    _ = puts("gestures: FAILURES above")
+    return 1

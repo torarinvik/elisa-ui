@@ -1,0 +1,287 @@
+# Deterministic, bounded touch/gesture interpretation owned by Elisa.
+#
+# Native and hosted adapters only forward contact identity, position and a
+# monotonic timestamp. Thresholds, capture identity, cancellation and the
+# resulting gesture vocabulary remain identical on every backend.
+
+include "../core/ui_core.elisa"
+
+module UiGestures:
+    public:
+        const MAX_TOUCHES: usize = 8
+        const NONE_SLOT: usize = MAX_TOUCHES
+        const MOVE_THRESHOLD: f32 = 8.0
+        const TAP_MAX_DURATION: f32 = 0.35
+        const LONG_PRESS_DURATION: f32 = 0.60
+
+        const enum Kind of i32:
+            None = 0
+            Tap = 1
+            LongPress = 2
+            Drag = 3
+            Pinch = 4
+            Cancelled = 5
+
+        const enum Phase of i32:
+            Began = 0
+            Moved = 1
+            Ended = 2
+            Cancelled = 3
+
+        struct Contact:
+            id: u32
+            phase: Phase
+            position: UiCore::Vec2
+            timestamp: f32
+
+        struct Snapshot:
+            kind: Kind
+            active: usize
+            primary_id: u32
+            secondary_id: u32
+            position: UiCore::Vec2
+            delta: UiCore::Vec2
+            scale: f32
+            duration: f32
+
+        def reset() -> void:
+            for slot in 0..<MAX_TOUCHES:
+                active[slot] <- false
+                identifiers[slot] <- 0
+                starts[slot] <- UiCore::Vec2(0.0, 0.0)
+                lasts[slot] <- UiCore::Vec2(0.0, 0.0)
+                start_times[slot] <- 0.0
+                last_times[slot] <- 0.0
+                moved[slot] <- false
+            active_total <- 0
+            overflowed_state <- false
+            pinch_active <- false
+            pinch_start_distance <- 0.0
+            pinch_last_distance <- 0.0
+            last_result <- Kind.None
+            last_primary <- 0
+            last_secondary <- 0
+            last_position <- UiCore::Vec2(0.0, 0.0)
+            last_delta <- UiCore::Vec2(0.0, 0.0)
+            last_scale <- 1.0
+            last_duration <- 0.0
+
+        def active_count() -> usize:
+            return active_total
+
+        def overflowed() -> bool:
+            return overflowed_state
+
+        # A duplicate contact identity is rejected rather than stealing another
+        # contact's capture. Capacity exhaustion is sticky and observable.
+        def begin(contact: Contact) -> bool:
+            return false if find_slot(contact.id) != NONE_SLOT
+            free: usize = free_slot()
+            if free == NONE_SLOT:
+                overflowed_state <- true
+                return false
+            position: UiCore::Vec2 = safe_point(contact.position)
+            timestamp: f32 = safe_time(contact.timestamp)
+            active[free] <- true
+            identifiers[free] <- contact.id
+            starts[free] <- position
+            lasts[free] <- position
+            start_times[free] <- timestamp
+            last_times[free] <- timestamp
+            moved[free] <- false
+            active_total <- active_total + 1
+            last_result <- Kind.None
+            last_primary <- contact.id
+            last_secondary <- 0
+            last_position <- position
+            last_delta <- UiCore::Vec2(0.0, 0.0)
+            last_scale <- 1.0
+            last_duration <- 0.0
+            refresh_pinch()
+            return true
+
+        def move(contact: Contact) -> bool:
+            slot: usize = find_slot(contact.id)
+            return false if slot == NONE_SLOT
+            position: UiCore::Vec2 = safe_point(contact.position)
+            timestamp: f32 = safe_time(contact.timestamp)
+            delta: UiCore::Vec2 = UiCore::Vec2(position.x - lasts[slot].x, position.y - lasts[slot].y)
+            lasts[slot] <- position
+            if timestamp >= last_times[slot]:
+                last_times[slot] <- timestamp
+            distance: f32 = distance_squared(position, starts[slot])
+            moved[slot] <- true if distance >= MOVE_THRESHOLD * MOVE_THRESHOLD
+            last_primary <- contact.id
+            last_position <- position
+            last_delta <- delta
+            last_duration <- last_times[slot] - start_times[slot]
+            if pinch_active:
+                return update_pinch()
+            if moved[slot]:
+                last_result <- Kind.Drag
+            return true
+
+        def end(contact: Contact) -> bool:
+            slot: usize = find_slot(contact.id)
+            return false if slot == NONE_SLOT
+            position: UiCore::Vec2 = safe_point(contact.position)
+            timestamp: f32 = safe_time(contact.timestamp)
+            duration: mutable f32 = 0.0
+            if timestamp >= start_times[slot]:
+                duration <- timestamp - start_times[slot]
+            lasts[slot] <- position
+            if timestamp >= last_times[slot]:
+                last_times[slot] <- timestamp
+            last_primary <- contact.id
+            last_position <- position
+            last_delta <- UiCore::Vec2(position.x - starts[slot].x, position.y - starts[slot].y)
+            last_duration <- duration
+            if pinch_active:
+                last_result <- Kind.Pinch
+            elif moved[slot]:
+                last_result <- Kind.Drag
+            elif duration <= TAP_MAX_DURATION:
+                last_result <- Kind.Tap
+            else:
+                last_result <- Kind.None
+                last_result <- Kind.LongPress if duration >= LONG_PRESS_DURATION
+            clear_slot(slot)
+            refresh_pinch()
+            return true
+
+        def cancel(id: u32) -> bool:
+            slot: usize = find_slot(id)
+            return false if slot == NONE_SLOT
+            last_primary <- id
+            last_result <- Kind.Cancelled
+            last_position <- lasts[slot]
+            last_delta <- UiCore::Vec2(0.0, 0.0)
+            last_duration <- last_times[slot] - start_times[slot]
+            clear_slot(slot)
+            refresh_pinch()
+            return true
+
+        # Lifecycle interruption cancels every captured contact atomically.
+        def cancel_all() -> usize:
+            cancelled: mutable usize = 0
+            for slot in 0..<MAX_TOUCHES:
+                if active[slot]:
+                    last_primary <- identifiers[slot]
+                    cancelled <- cancelled + 1
+                    clear_slot(slot)
+            if cancelled > 0:
+                last_result <- Kind.Cancelled
+                last_delta <- UiCore::Vec2(0.0, 0.0)
+            refresh_pinch()
+            return cancelled
+
+        def snapshot() -> Snapshot:
+            return Snapshot{
+                kind: last_result, active: active_total,
+                primary_id: last_primary, secondary_id: last_secondary,
+                position: last_position, delta: last_delta,
+                scale: last_scale, duration: last_duration,
+            }
+
+    private:
+        global mutable active: bool[MAX_TOUCHES] = zeroed
+        global mutable identifiers: u32[MAX_TOUCHES] = zeroed
+        global mutable starts: UiCore::Vec2[MAX_TOUCHES] = zeroed
+        global mutable lasts: UiCore::Vec2[MAX_TOUCHES] = zeroed
+        global mutable start_times: f32[MAX_TOUCHES] = zeroed
+        global mutable last_times: f32[MAX_TOUCHES] = zeroed
+        global mutable moved: bool[MAX_TOUCHES] = zeroed
+        global mutable active_total: usize = 0
+        global mutable overflowed_state: bool = false
+        global mutable pinch_active: bool = false
+        global mutable pinch_start_distance: f32 = 0.0
+        global mutable pinch_last_distance: f32 = 0.0
+        global mutable last_result: Kind = Kind.None
+        global mutable last_primary: u32 = 0
+        global mutable last_secondary: u32 = 0
+        global mutable last_position: UiCore::Vec2 = UiCore::Vec2(0.0, 0.0)
+        global mutable last_delta: UiCore::Vec2 = UiCore::Vec2(0.0, 0.0)
+        global mutable last_scale: f32 = 1.0
+        global mutable last_duration: f32 = 0.0
+
+        def safe_point(value: UiCore::Vec2) -> UiCore::Vec2:
+            return UiCore::Vec2(UiCore::finite_or_zero(value.x), UiCore::finite_or_zero(value.y))
+
+        def safe_time(value: f32) -> f32:
+            safe: f32 = UiCore::finite_or_zero(value)
+            return 0.0 if safe < 0.0 else safe
+
+        def distance_squared(left: UiCore::Vec2, right: UiCore::Vec2) -> f32:
+            dx: f32 = left.x - right.x
+            dy: f32 = left.y - right.y
+            return UiCore::finite_or_zero(dx * dx + dy * dy)
+
+        # Newton iterations keep the recognizer freestanding; no backend or
+        # platform math import is needed just to report pinch scale.
+        def square_root(value: f32) -> f32:
+            return 0.0 if value <= 0.0
+            estimate: mutable f32 = 1.0
+            estimate <- value if value > 1.0
+            iteration: mutable usize = 0
+            while iteration < 8 |iteration|:
+                estimate <- (estimate + value / estimate) * 0.5
+                iteration <- iteration + 1
+            return UiCore::finite_or_zero(estimate)
+
+        def find_slot(id: u32) -> usize:
+            for slot in 0..<MAX_TOUCHES:
+                return slot if active[slot] and identifiers[slot] == id
+            return NONE_SLOT
+
+        def free_slot() -> usize:
+            for slot in 0..<MAX_TOUCHES:
+                return slot if not active[slot]
+            return NONE_SLOT
+
+        def clear_slot(slot: usize) -> void:
+            active[slot] <- false
+            identifiers[slot] <- 0
+            moved[slot] <- false
+            if active_total > 0:
+                active_total <- active_total - 1
+
+        def refresh_pinch() -> void:
+            first: mutable usize = NONE_SLOT
+            second: mutable usize = NONE_SLOT
+            for slot in 0..<MAX_TOUCHES:
+                if active[slot]:
+                    if first == NONE_SLOT:
+                        first <- slot
+                    elif second == NONE_SLOT:
+                        second <- slot
+            if second == NONE_SLOT:
+                pinch_active <- false
+                pinch_start_distance <- 0.0
+                pinch_last_distance <- 0.0
+                last_secondary <- 0
+                return
+            current: f32 = square_root(distance_squared(lasts[first], lasts[second]))
+            pinch_active <- true
+            pinch_start_distance <- 1.0
+            pinch_start_distance <- current if current > 0.0
+            pinch_last_distance <- pinch_start_distance
+            last_primary <- identifiers[first]
+            last_secondary <- identifiers[second]
+
+        def update_pinch() -> bool:
+            first: mutable usize = NONE_SLOT
+            second: mutable usize = NONE_SLOT
+            for slot in 0..<MAX_TOUCHES:
+                if active[slot]:
+                    if first == NONE_SLOT:
+                        first <- slot
+                    elif second == NONE_SLOT:
+                        second <- slot
+            return false if second == NONE_SLOT
+            distance: f32 = square_root(distance_squared(lasts[first], lasts[second]))
+            pinch_last_distance <- distance
+            last_primary <- identifiers[first]
+            last_secondary <- identifiers[second]
+            last_scale <- UiCore::finite_or_zero(distance / pinch_start_distance)
+            last_result <- Kind.Pinch
+            return true

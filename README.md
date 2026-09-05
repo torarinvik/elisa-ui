@@ -88,6 +88,9 @@ because a module member's symbol carries its module and those names cannot move.
   bounded modal stacking, typed results, owner-scoped cancellation, portable
   Dialog semantics, and consistent desktop/mobile back behavior with
   stale-handle protection.
+- **Gestures** ([src/widgets/ui_gestures.elisa](src/widgets/ui_gestures.elisa)) —
+  deterministic bounded touch capture with tap, long-press, drag, pinch, and
+  lifecycle cancellation policy shared by native and hosted adapters.
 - **Stable dynamic identity** ([src/widgets/ui_identity.elisa](src/widgets/ui_identity.elisa)) —
   explicit begin/claim/finish transactions preserve keyed generations across
   list and form rebuilds, reject duplicate keys, and invalidate retired items
