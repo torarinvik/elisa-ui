@@ -2240,6 +2240,19 @@ module UiFlat:
             app_widget_event(index, UiConst::WidgetEvent.Change.i32())
             return true
 
+        # Assistive clients may assign a slider value directly. Keep that
+        # mutation on the same normalized, visibility- and enabled-checked path
+        # as pointer and keyboard adjustments, and report whether the request
+        # was accepted so native accessibility state can mirror the result.
+        def set_accessibility_value(index: usize, value: f32) -> bool:
+            return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider or not effectively_enabled(index) or not effectively_visible(index)
+            before: f32 = widgets[index].value
+            set_value(index, value)
+            return false if widgets[index].value == before
+            focus(index)
+            app_widget_event(index, UiConst::WidgetEvent.Change.i32())
+            return true
+
         def adjust_step(index: usize, direction: i32) -> bool:
             return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider or direction == 0
             delta: f32 = widgets[index].step if direction > 0 else -widgets[index].step

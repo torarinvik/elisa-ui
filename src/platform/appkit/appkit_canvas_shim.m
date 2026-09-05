@@ -27,6 +27,7 @@ extern void elisa_appkit_canvas_key_up(int keyCode, size_t character);
 extern int elisa_appkit_canvas_accessibility_activate(size_t index);
 extern int elisa_appkit_canvas_accessibility_adjust(size_t index, int direction);
 extern size_t elisa_appkit_canvas_accessibility_index_for_handle(size_t handle);
+extern float elisa_appkit_canvas_accessibility_set_numeric_value(size_t index, float value);
 extern int elisa_appkit_canvas_pointer_button_primary(void);
 extern int elisa_appkit_canvas_pointer_button_secondary(void);
 extern int elisa_appkit_canvas_accessibility_increment_direction(void);
@@ -102,14 +103,17 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
 }
 - (void)setAccessibilityValue:(id)value {
     // Native role/value synchronization still flows through the superclass.
-    // For writable text, ask Elisa first and mirror the value only when its
-    // retained policy accepted the request; rejected edits cannot leave a
+    // Ask Elisa first for writable text and numeric sliders, then mirror only
+    // the normalized value it accepted; rejected edits cannot leave a
     // transient native value that disagrees with the custom painter.
+    size_t index = elisa_appkit_canvas_accessibility_index_for_handle((size_t)(__bridge void *)self);
     if (![value isKindOfClass:[NSString class]]) {
-        [super setAccessibilityValue:value];
+        if ([value isKindOfClass:[NSNumber class]] && index != elisa_appkit_canvas_not_found()) {
+            float normalized = elisa_appkit_canvas_accessibility_set_numeric_value(index, [(NSNumber *)value floatValue]);
+            if (normalized >= 0.0f) [super setAccessibilityValue:@(normalized)];
+        }
         return;
     }
-    size_t index = elisa_appkit_canvas_accessibility_index_for_handle((size_t)(__bridge void *)self);
     if (index != elisa_appkit_canvas_not_found() && elisa_appkit_canvas_set_text(index, (size_t)(__bridge void *)value) != 0) {
         [super setAccessibilityValue:value];
     }

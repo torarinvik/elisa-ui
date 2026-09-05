@@ -144,6 +144,11 @@ int elisa_appkit_canvas_accessibility_adjust(size_t index, int direction) {
     test_slider_value += direction > 0 ? 0.05f : -0.05f;
     return 1;
 }
+float elisa_appkit_canvas_accessibility_set_numeric_value(size_t index, float value) {
+    if (index != 7) return -1.0f;
+    test_slider_value = value < 0.0f ? 0.0f : (value > 1.0f ? 1.0f : value);
+    return test_slider_value;
+}
 void elisa_appkit_canvas_window_closed(void) {}
 void elisa_appkit_canvas_rebuild_cursor_rects(void) {}
 int elisa_appkit_canvas_accepts_text(void) { return 1; }
@@ -502,6 +507,9 @@ int main(void) {
         if (require([first.accessibilityIdentifier isEqualToString:@"elisa-ui-7"], @"accessibility identifier did not cross the FFI")) return 1;
         if (require([first.accessibilityHelp isEqualToString:@"Adjust preview intensity"], @"help text missing")) return 1;
         if (require(fabs([first.accessibilityValue floatValue] - 0.25f) < 0.001f, @"wrong initial value")) return 1;
+        first.accessibilityValue = @0.65f;
+        if (require(fabs(test_slider_value - 0.65f) < 0.001f && fabs([first.accessibilityValue floatValue] - 0.65f) < 0.001f,
+                    @"writable accessibility slider value did not reach Elisa")) return 1;
         ElisaAccessibilityElement *textField = children[1];
         if (require([textField.accessibilityRole isEqualToString:NSAccessibilityTextFieldRole], @"wrong text-field role")) return 1;
         if (require([textField.accessibilityValue isEqualToString:@"Hello"], @"wrong editable value")) return 1;
