@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `ec9b737` on branch `work` |
+| elisa-ui revision | `9932605` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `1a44c1d1`; SHA-256 `a9573ad3779ae57f9daf68f79c53761c5ec54d0045a11c1387071ba0562678bc` |
@@ -104,7 +104,8 @@ The following completed headlessly from this checkout:
 bash scripts/run_tests.sh
   capi, appkit, appkit canvas, appkit canvas keymap, capi bridge,
   controls, drop raii, event wire, hierarchy build/layout, raster,
-  sdl3 keymap/text, widget dispatch, widget handles, widget layout: PASS
+  sdl3 keymap/text, widget dispatch, widget handles, widget layout,
+  widget reentrancy: PASS
 git diff --check: PASS
 ```
 
@@ -141,7 +142,11 @@ separate host-enforced security boundary.
 - The hosted backend still contains handwritten WIT/canonical ABI declarations;
   it should consume the authoritative SDK-generated bindings after the SDK/WIT
   migration gate, without creating a second ABI implementation.
-- The next concrete work items are a compiler-independent hosted build fixture,
-  lifecycle/reentrancy tests around the new typed event router, and a public
-  builder layer over `UiHandles`. Android/iOS and remote work remain blocked on
-  sibling host/SDK execution fixtures rather than being simulated here.
+- Callback entry points are lifetime-guarded: if an application handler resets
+  the flat tree, post-callback history, composition, activation, adjustment, and
+  radio state updates are abandoned instead of touching recycled slots. This is
+  covered by `test/widget_reentrancy_test.elisa`.
+- The next concrete work items are a compiler-independent hosted build fixture
+  and a fuller public builder layer over `UiHandles`. Android/iOS and remote
+  work remain blocked on sibling host/SDK execution fixtures rather than being
+  simulated here.
