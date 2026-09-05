@@ -236,8 +236,9 @@ separate host-enforced security boundary.
   generation, surface/input/render/focus predicates, deferred layout/frame-
   buffer state, typed relationships, and the raw invalidation mask plus
   monotonic invalidation sequence while redacting secure text. It also exposes
-  a bounded task snapshot so lifecycle teardown can be inspected without a
-  backend shadow table; coverage lives in `test/widget_inspector_test.elisa`.
+  a bounded task snapshot and the active locale snapshot so lifecycle and
+  locale-driven rebuilds can be inspected without a backend shadow table;
+  coverage lives in `test/widget_inspector_test.elisa`.
 - `UiMetrics` owns the interpretation of application, semantics, and paint
   stages, monotonic-clock normalization, completion state, retained command and
   semantic counts, overflow flags, and invalidation snapshots. The snapshot

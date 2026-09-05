@@ -188,8 +188,9 @@ because a module member's symbol carries its module and those names cannot move.
   deferred layout and frame-buffer state, matching semantic nodes while
   redacting secure text for diagnostics.
   It also exposes the raw invalidation mask and sequence so tooling can observe
-  repeated updates even when a dirty bit remains set, plus a task snapshot for
-  lifecycle diagnostics.
+  repeated updates even when a dirty bit remains set, a task snapshot for
+  lifecycle diagnostics, and the active locale snapshot (canonical tag,
+  direction, revision, and truncation state).
   New application code can use [UiHandles](docs/ui-handles.md) for typed u32
   handles with retained-tree lifetime checks; the older index API remains for
   compatibility and low-level adapters.
