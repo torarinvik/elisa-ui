@@ -41,11 +41,11 @@ if grep -Eq '\bNSMutableArray\b|arrayWithCapacity:' "$ROOT/src/platform/appkit/a
   echo "appkit canvas: accessibility child-list construction leaked back into Objective-C" >&2
   exit 1
 fi
-if awk '/void elisa_appkit_canvas_accessibility_set_boolean\(/ { inside=1 } inside && /@\(/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if awk '/void elisa_appkit_canvas_accessibility_set_boolean_value\(/ { inside=1 } inside && /@\(/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: accessibility boolean boxing leaked back into Objective-C" >&2
   exit 1
 fi
-if awk '/void elisa_appkit_canvas_accessibility_set_range\(/ { inside=1 } inside && /@\(/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if awk '/void elisa_appkit_canvas_accessibility_set_range_values\(/ { inside=1 } inside && /@\(/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: accessibility range boxing leaked back into Objective-C" >&2
   exit 1
 fi
@@ -377,6 +377,8 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_menus_commit$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_activate$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_adjust$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_set_numeric_value$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_set_boolean_value$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_set_range_values$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_add_tooltip$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_release$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_commit$'

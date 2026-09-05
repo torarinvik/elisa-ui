@@ -28,7 +28,6 @@ extern int elisa_appkit_canvas_accessibility_adjust(size_t handle, int direction
 extern size_t elisa_appkit_canvas_accessibility_tooltip_text(size_t handle);
 extern int elisa_appkit_canvas_accessibility_set_numeric_value(size_t handle, float value,
                                                                float *normalized);
-extern size_t elisa_appkit_canvas_accessibility_boolean_value(int selected);
 extern size_t elisa_appkit_canvas_accessibility_float_value(float value);
 extern int elisa_appkit_canvas_pointer_button_primary(void);
 extern int elisa_appkit_canvas_pointer_button_secondary(void);
@@ -821,33 +820,25 @@ void elisa_appkit_canvas_accessibility_add_tooltip(size_t windowHandle, size_t h
     [view addToolTipRect:NSMakeRect(x, y, width, height) owner:element userData:NULL];
 }
 
-void elisa_appkit_canvas_accessibility_set_boolean(size_t handle, int selected) {
+void elisa_appkit_canvas_accessibility_set_boolean_value(size_t handle, size_t valueHandle) {
     ElisaAccessibilityElement *element = elisa_appkit_canvas_element(handle);
     if (element == nil) return;
-    size_t native = elisa_appkit_canvas_accessibility_boolean_value(selected);
-    NSNumber *value = elisa_appkit_canvas_number(native);
+    NSNumber *value = elisa_appkit_canvas_number(valueHandle);
     if (value != nil) [element elisaSetAccessibilityValue:value];
-    if (native != 0) CFRelease((CFTypeRef)(void *)native);
 }
 
-void elisa_appkit_canvas_accessibility_set_range(size_t handle, float value,
-                                                 float minimum, float maximum) {
+void elisa_appkit_canvas_accessibility_set_range_values(size_t handle, size_t valueHandle,
+                                                        size_t minimumHandle, size_t maximumHandle) {
     ElisaAccessibilityElement *element = elisa_appkit_canvas_element(handle);
     if (element == nil) return;
-    size_t nativeValue = elisa_appkit_canvas_accessibility_float_value(value);
-    size_t nativeMinimum = elisa_appkit_canvas_accessibility_float_value(minimum);
-    size_t nativeMaximum = elisa_appkit_canvas_accessibility_float_value(maximum);
-    NSNumber *valueObject = elisa_appkit_canvas_number(nativeValue);
-    NSNumber *minimumObject = elisa_appkit_canvas_number(nativeMinimum);
-    NSNumber *maximumObject = elisa_appkit_canvas_number(nativeMaximum);
+    NSNumber *valueObject = elisa_appkit_canvas_number(valueHandle);
+    NSNumber *minimumObject = elisa_appkit_canvas_number(minimumHandle);
+    NSNumber *maximumObject = elisa_appkit_canvas_number(maximumHandle);
     if (valueObject != nil && minimumObject != nil && maximumObject != nil) {
         [element elisaSetAccessibilityValue:valueObject];
         element.accessibilityMinValue = minimumObject;
         element.accessibilityMaxValue = maximumObject;
     }
-    if (nativeValue != 0) CFRelease((CFTypeRef)(void *)nativeValue);
-    if (nativeMinimum != 0) CFRelease((CFTypeRef)(void *)nativeMinimum);
-    if (nativeMaximum != 0) CFRelease((CFTypeRef)(void *)nativeMaximum);
 }
 
 void elisa_appkit_canvas_accessibility_set_text(size_t handle,

@@ -38,11 +38,6 @@ static size_t test_window_handle;
 
 void elisa_appkit_canvas_insert_text(const char *bytes, size_t length);
 
-size_t elisa_appkit_canvas_accessibility_boolean_value(int selected) {
-    int value = selected != 0;
-    return (size_t)(void *)CFNumberCreate(NULL, kCFNumberSInt32Type, &value);
-}
-
 size_t elisa_appkit_canvas_accessibility_float_value(float value) {
     return (size_t)(void *)CFNumberCreate(NULL, kCFNumberFloat32Type, &value);
 }
@@ -55,7 +50,13 @@ void elisa_appkit_canvas_frame(size_t context) {
         (size_t)(__bridge void *)@"Intensity", (size_t)(__bridge void *)@"Adjust preview intensity",
         10, 10, 180, 24, 1, 0);
     elisa_appkit_canvas_accessibility_add_tooltip(test_window_handle, sliderElement, 10, 10, 180, 24);
-    elisa_appkit_canvas_accessibility_set_range(sliderElement, test_slider_value, 0.0f, 1.0f);
+    size_t sliderValue = elisa_appkit_canvas_accessibility_float_value(test_slider_value);
+    size_t sliderMinimum = elisa_appkit_canvas_accessibility_float_value(0.0f);
+    size_t sliderMaximum = elisa_appkit_canvas_accessibility_float_value(1.0f);
+    elisa_appkit_canvas_accessibility_set_range_values(sliderElement, sliderValue, sliderMinimum, sliderMaximum);
+    if (sliderValue != 0) CFRelease((CFTypeRef)(void *)sliderValue);
+    if (sliderMinimum != 0) CFRelease((CFTypeRef)(void *)sliderMinimum);
+    if (sliderMaximum != 0) CFRelease((CFTypeRef)(void *)sliderMaximum);
     size_t textElement = elisa_appkit_canvas_accessibility_add(test_window_handle, test_accessibility_handles[1], (size_t)(__bridge void *)@"elisa-ui-8", (size_t)(__bridge void *)NSAccessibilityTextFieldRole, 0,
         (size_t)(__bridge void *)@"Project name", (size_t)(__bridge void *)@"Edit the project name",
         10, 44, 180, 32, 1, test_text_focused);
