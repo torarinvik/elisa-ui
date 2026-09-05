@@ -1,0 +1,68 @@
+# Headless regression for stable keyed identity across dynamic rebuilds.
+
+include "../src/widgets/ui_identity.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiIdentity::reset()
+    stale: mutable UiIdentity::Handle = UiIdentity::invalid()
+    check("invalid identity is rejected", not UiIdentity::is_valid(stale))
+    check("identity table starts empty", UiIdentity::active() == 0)
+
+    UiIdentity::begin()
+    first: UiIdentity::Handle = UiIdentity::claim(101)
+    second: UiIdentity::Handle = UiIdentity::claim(202)
+    third: UiIdentity::Handle = UiIdentity::claim(303)
+    started: UiIdentity::Snapshot = UiIdentity::current()
+    check("first transaction inserts keys", started.claimed == 3 and started.inserted == 3 and started.reused == 0)
+    check("claimed handles retain their keys", UiIdentity::key(first) == 101 and UiIdentity::key(second) == 202 and UiIdentity::key(third) == 303)
+    committed: UiIdentity::Snapshot = UiIdentity::finish()
+    check("first transaction commits", committed.complete and committed.active == 3 and UiIdentity::active() == 3)
+
+    # Reordering must preserve every identity, while omission retires the
+    # missing key and invalidates its old handle.
+    UiIdentity::begin()
+    reordered: UiIdentity::Handle = UiIdentity::claim(303)
+    replacement: UiIdentity::Handle = UiIdentity::claim(404)
+    retained: UiIdentity::Handle = UiIdentity::claim(101)
+    updated: UiIdentity::Snapshot = UiIdentity::finish()
+    check("reordered key reuses its slot and generation", reordered.slot == third.slot and reordered.generation == third.generation)
+    check("retained key keeps identity after reorder", retained.slot == first.slot and retained.generation == first.generation)
+    check("new key gets a distinct identity", replacement.slot != first.slot and UiIdentity::key(replacement) == 404)
+    check("omitted key is retired", updated.retired == 1 and not UiIdentity::is_valid(second) and not updated.duplicate)
+    stale <- second
+
+    # The retired slot may be reused, but the old generation can never address
+    # the replacement record.
+    UiIdentity::begin()
+    _ = UiIdentity::claim(303)
+    _ = UiIdentity::claim(404)
+    recycled: UiIdentity::Handle = UiIdentity::claim(505)
+    _ = UiIdentity::finish()
+    check("retired slot reuse advances generation", recycled.slot == stale.slot and recycled.generation != stale.generation)
+    check("late stale handle remains invalid", not UiIdentity::is_valid(stale) and UiIdentity::key(stale) == 0)
+
+    UiIdentity::begin()
+    duplicate: UiIdentity::Handle = UiIdentity::claim(303)
+    duplicate_again: UiIdentity::Handle = UiIdentity::claim(303)
+    duplicate_snapshot: UiIdentity::Snapshot = UiIdentity::finish()
+    check("duplicate keys are rejected", duplicate_again.slot == UiIdentity::NONE.u32() and duplicate_snapshot.duplicate)
+    check("duplicate rejection does not alias the first handle", duplicate.slot != UiIdentity::NONE.u32() and UiIdentity::is_valid(duplicate))
+
+    # Calling claim outside a transaction fails closed rather than mutating the
+    # committed model.
+    outside: UiIdentity::Handle = UiIdentity::claim(606)
+    check("out-of-transaction claim is rejected", outside.slot == UiIdentity::NONE.u32() and UiIdentity::active() == 1)
+
+    if failures == 0:
+        _ = puts("identity: all checks passed")
+        return 0
+    _ = puts("identity: FAILURES above")
+    return 1

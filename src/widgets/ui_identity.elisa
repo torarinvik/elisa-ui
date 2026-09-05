@@ -1,0 +1,159 @@
+# Bounded stable identity for dynamic widget collections.
+#
+# Applications rebuild list/form composition as data changes. Position is not
+# identity: inserting a row above a focused editor must not silently transfer
+# its selection, scroll anchor, or edit history to a different record. This
+# module owns only the key -> generation mapping. The application keeps its
+# per-item state keyed by the returned handle, while virtualization decides
+# which of the already-identified items need realization.
+#
+# Identity is deliberately frame-scoped. Call begin(), claim every logical key
+# in the new model (including items currently outside a virtualized viewport),
+# then finish(). Reordered keys reuse their slot and generation; omitted keys
+# are retired and their old handles become stale before a slot can be reused.
+# The fixed bound makes exhaustion explicit instead of aliasing two records.
+
+module UiIdentity:
+    public:
+        const MAX_KEYS: usize = 1024
+        const NONE: usize = MAX_KEYS
+
+        struct Handle:
+            slot: u32
+            generation: u32
+
+        struct Snapshot:
+            active: usize
+            claimed: usize
+            reused: usize
+            inserted: usize
+            retired: usize
+            overflowed: bool
+            duplicate: bool
+            complete: bool
+
+        def invalid() -> Handle:
+            return Handle{slot: NONE.u32(), generation: 0}
+
+        def is_valid(handle: Handle) -> bool:
+            return handle.slot.usize() < MAX_KEYS and occupied[handle.slot.usize()] and generations[handle.slot.usize()] == handle.generation
+
+        def reset() -> void:
+            for slot in 0..<MAX_KEYS:
+                occupied[slot] <- false
+                seen[slot] <- false
+                keys[slot] <- 0
+                generations[slot] <- next_generation(generations[slot])
+            frame_active <- false
+            claimed_count <- 0
+            reused_count <- 0
+            inserted_count <- 0
+            retired_count <- 0
+            overflowed_state <- false
+            duplicate_state <- false
+            active_count <- 0
+
+        # Start a model transaction. Existing keys remain live until finish so
+        # a failed/partial rebuild can still reject stale input deterministically.
+        def begin() -> void:
+            for slot in 0..<MAX_KEYS:
+                seen[slot] <- false
+            frame_active <- true
+            claimed_count <- 0
+            reused_count <- 0
+            inserted_count <- 0
+            retired_count <- 0
+            overflowed_state <- false
+            duplicate_state <- false
+
+        # Claim one logical key. A duplicate in one transaction is rejected:
+        # two rows with one key would otherwise share focus and edit state.
+        def claim(key: u64) -> Handle:
+            return invalid() if not frame_active
+            for slot in 0..<MAX_KEYS:
+                if occupied[slot] and keys[slot] == key:
+                    return claim_existing(slot)
+
+            free_slot: mutable usize = NONE
+            for slot in 0..<MAX_KEYS:
+                if not occupied[slot]:
+                    free_slot <- slot
+                    break
+            if free_slot == NONE:
+                overflowed_state <- true
+                return invalid()
+
+            occupied[free_slot] <- true
+            seen[free_slot] <- true
+            keys[free_slot] <- key
+            generations[free_slot] <- next_generation(generations[free_slot])
+            claimed_count <- claimed_count + 1
+            inserted_count <- inserted_count + 1
+            active_count <- active_count + 1
+            return Handle{slot: free_slot.u32(), generation: generations[free_slot]}
+
+        # Finish the transaction and retire keys omitted from the new model.
+        # Retiring advances the slot generation before it becomes reusable, so
+        # a late callback carrying an old handle can never touch a new record.
+        def finish() -> Snapshot:
+            return snapshot(false) if not frame_active
+            for slot in 0..<MAX_KEYS:
+                if occupied[slot] and not seen[slot]:
+                    occupied[slot] <- false
+                    keys[slot] <- 0
+                    generations[slot] <- next_generation(generations[slot])
+                    retired_count <- retired_count + 1
+                    active_count <- active_count - 1
+            frame_active <- false
+            return snapshot(true)
+
+        def current() -> Snapshot:
+            return snapshot(frame_active)
+
+        def key(handle: Handle) -> u64:
+            return 0 if not is_valid(handle)
+            return keys[handle.slot.usize()]
+
+        def active() -> usize:
+            return active_count
+
+        def overflowed() -> bool:
+            return overflowed_state
+
+        def duplicate() -> bool:
+            return duplicate_state
+
+    private:
+        global mutable keys: u64[MAX_KEYS] = zeroed
+        global mutable generations: u32[MAX_KEYS] = zeroed
+        global mutable occupied: bool[MAX_KEYS] = zeroed
+        global mutable seen: bool[MAX_KEYS] = zeroed
+        global mutable frame_active: bool = false
+        global mutable active_count: usize = 0
+        global mutable claimed_count: usize = 0
+        global mutable reused_count: usize = 0
+        global mutable inserted_count: usize = 0
+        global mutable retired_count: usize = 0
+        global mutable overflowed_state: bool = false
+        global mutable duplicate_state: bool = false
+
+        def next_generation(value: u32) -> u32:
+            next: u32 = value + 1
+            return 1 if next == 0 else next
+
+        def claim_existing(slot: usize) -> Handle:
+            # Reusing an existing key is expected during reorder. Only the
+            # second claim of that key in one transaction is a duplicate.
+            if seen[slot]:
+                duplicate_state <- true
+                return invalid()
+            seen[slot] <- true
+            claimed_count <- claimed_count + 1
+            reused_count <- reused_count + 1
+            return Handle{slot: slot.u32(), generation: generations[slot]}
+
+        def snapshot(complete: bool) -> Snapshot:
+            return Snapshot{active: active_count, claimed: claimed_count,
+                reused: reused_count, inserted: inserted_count,
+                retired: retired_count, overflowed: overflowed_state,
+                duplicate: duplicate_state, complete: complete}
