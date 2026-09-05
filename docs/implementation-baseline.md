@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `2759d50` on branch `work` |
+| elisa-ui revision | `a625517` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `1a44c1d1`; SHA-256 `a9573ad3779ae57f9daf68f79c53761c5ec54d0045a11c1387071ba0562678bc` |
@@ -99,7 +99,7 @@ module-private.
 
 Implemented-tested in the current native corpus: retained layout and dirty
 relayout, responsive size classes/adaptive axes/bounded grid columns/safe-area
-content boxes/orientation, bounded virtual-list ranges/content extents/semantic
+and keyboard-inset content boxes/orientation, bounded virtual-list ranges/content extents/semantic
 windows, normalized min/preferred/max constraints, stable keyed identities,
 typed widget lifetimes, hit testing and scrolling, control state, Unicode text
 editing/IME and bounded undo history, shared themes/localization/RTL/plurals,
