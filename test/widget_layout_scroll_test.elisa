@@ -1,0 +1,147 @@
+# Scroll viewport, bubbling, clipping, and bounded-arena checks.
+
+include "./widget_layout_support.elisa"
+
+def main() -> i64:
+    # Flat scroll containers keep their viewport size while translating the
+    # measured child strip. Wheel routing, clamping, and hit clipping all live
+    # in Elisa and therefore work without a backend window.
+    UiFlat::reset()
+    scroll_view: usize = UiFlat::scroll(UiFlat::NONE, UiConst::Axis.Column, 120.0, 100.0, UiCore::rgb(12, 16, 24))
+    scroll_first: usize = UiFlat::button(scroll_view, 120.0, 60.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
+    scroll_second: usize = UiFlat::button(scroll_view, 120.0, 60.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
+    scroll_third: usize = UiFlat::button(scroll_view, 120.0, 60.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
+    UiFlat::layout(120.0, 100.0)
+    check("scroll viewport keeps its declared height", rect_is(scroll_view, 0.0, 0.0, 120.0, 100.0))
+    check("scroll content reports its measured extent", near(UiFlat::scroll_limit(scroll_view), 80.0))
+    check("scroll starts at the leading edge", near(UiFlat::widget(scroll_first).y, 0.0) and near(UiFlat::widget(scroll_third).y, 120.0))
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("scroll paint emits a themed track", frame_contains_rect(108.0, 4.0, 8.0, 92.0))
+    check("scroll paint emits a proportional thumb", frame_contains_rect(108.0, 4.0, 8.0, 51.1111))
+    scroll_base_theme: UiFlat::Theme = UiFlat::theme()
+    scroll_theme: mutable UiFlat::Theme = scroll_base_theme
+    scroll_theme.scrollbar_thumb_hover <- UiCore::rgba(255, 190, 70, 230)
+    scroll_theme.scrollbar_thumb_active <- UiCore::rgba(255, 90, 110, 255)
+    UiFlat::set_theme(scroll_theme)
+    UiFlat::pointer((UiCore::PointerEvent.Move(at: UiCore::Vec2(110.0, 20.0))))
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("scrollbar thumb adopts the themed hover color", frame_contains_rect_color(108.0, 4.0, 8.0, 51.1111, UiCore::rgba(255, 190, 70, 230)))
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(110.0, 20.0), button: 0)))
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("scrollbar thumb adopts the themed active color", frame_contains_rect_color(108.0, 4.0, 8.0, 51.1111, UiCore::rgba(255, 90, 110, 255)))
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(110.0, 20.0), button: 0)))
+    UiFlat::set_theme(scroll_base_theme)
+    _ = UiFlat::set_scroll_offset(scroll_view, 50.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("scroll paint records the viewport clip", frame_contains_clip(0.0, 0.0, 120.0, 100.0))
+    _ = UiFlat::set_scroll_offset(scroll_view, 0.0)
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(110.0, 80.0), button: 0)))
+    check("scrollbar track paging advances one viewport", near(UiFlat::scroll_offset(scroll_view), 80.0) and not UiFlat::scroll_dragging())
+    _ = UiFlat::set_scroll_offset(scroll_view, 0.0)
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(110.0, 20.0), button: 0)))
+    check("scrollbar thumb claims pointer capture", UiFlat::scroll_dragging())
+    UiFlat::pointer((UiCore::PointerEvent.Move(at: UiCore::Vec2(110.0, 45.0))))
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(110.0, 45.0), button: 0)))
+    check("scrollbar thumb dragging updates offset", UiFlat::scroll_offset(scroll_view) > 40.0 and UiFlat::scroll_offset(scroll_view) < 60.0 and not UiFlat::scroll_dragging())
+    check("scroll setter translates children", UiFlat::set_scroll_offset(scroll_view, 50.0) and near(UiFlat::scroll_offset(scroll_view), 50.0) and near(UiFlat::widget(scroll_second).y, 10.0))
+    check("scroll hit testing follows translated content", UiFlat::hit(60.0, 20.0) == scroll_second)
+    UiFlat::pointer((UiCore::PointerEvent.Scroll(at: UiCore::Vec2(60.0, 50.0), delta: UiCore::Vec2(0.0, 30.0))))
+    check("wheel input updates the nearest flat viewport", near(UiFlat::scroll_offset(scroll_view), 20.0))
+    UiFlat::pointer((UiCore::PointerEvent.Scroll(at: UiCore::Vec2(60.0, 50.0), delta: UiCore::Vec2(0.0, -200.0))))
+    check("wheel input clamps at the content end", near(UiFlat::scroll_offset(scroll_view), 80.0) and near(UiFlat::scroll_limit(scroll_view), 80.0))
+    check("a fully clipped child cannot be hit outside the viewport", UiFlat::hit(60.0, -30.0) == UiFlat::NONE)
+    check("focusing a clipped leading child reveals it", UiFlat::request_focus(scroll_first) and near(UiFlat::scroll_offset(scroll_view), 0.0) and near(UiFlat::widget(scroll_first).y, 0.0))
+    check("focusing the trailing child can restore the end offset", UiFlat::request_focus(scroll_third) and near(UiFlat::scroll_offset(scroll_view), 80.0) and near(UiFlat::widget(scroll_third).y + UiFlat::widget(scroll_third).height, 100.0))
+    _ = UiFlat::request_focus(scroll_first)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.PageDown)))
+    check("Page Down scrolls the focused child's nearest viewport", near(UiFlat::scroll_offset(scroll_view), 80.0))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Home)))
+    check("Home returns the focused viewport to its leading edge", near(UiFlat::scroll_offset(scroll_view), 0.0))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Down)))
+    check("axis arrows advance a focused vertical viewport", near(UiFlat::scroll_offset(scroll_view), 40.0))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Up)))
+    check("axis arrows reverse a focused vertical viewport", near(UiFlat::scroll_offset(scroll_view), 0.0))
+    before_outside_scroll: f32 = UiFlat::scroll_offset(scroll_view)
+    UiFlat::pointer((UiCore::PointerEvent.Scroll(at: UiCore::Vec2(200.0, 50.0), delta: UiCore::Vec2(0.0, 30.0))))
+    check("wheel input outside a viewport is ignored", near(UiFlat::scroll_offset(scroll_view), before_outside_scroll))
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(110.0, 20.0), button: 0)))
+    check("scrollbar thumb starts a drag before state changes", UiFlat::scroll_dragging())
+    UiFlat::set_enabled(scroll_view, false)
+    disabled_scroll_offset: f32 = UiFlat::scroll_offset(scroll_view)
+    UiFlat::pointer((UiCore::PointerEvent.Move(at: UiCore::Vec2(110.0, 45.0))))
+    check("disabling a viewport cancels an active scrollbar drag", not UiFlat::scroll_dragging() and near(UiFlat::scroll_offset(scroll_view), disabled_scroll_offset))
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(110.0, 20.0), button: 0)))
+    check("disabled scrollbar cannot claim pointer capture", not UiFlat::scroll_dragging() and near(UiFlat::scroll_offset(scroll_view), disabled_scroll_offset))
+    UiCore::begin_frame()
+    UiFlat::paint()
+    disabled_track: UiCore::Color = UiCore::Color{r: scroll_base_theme.scrollbar_track.r / 2, g: scroll_base_theme.scrollbar_track.g / 2, b: scroll_base_theme.scrollbar_track.b / 2, a: scroll_base_theme.scrollbar_track.a}
+    disabled_thumb: UiCore::Color = UiCore::Color{r: scroll_base_theme.scrollbar_thumb.r / 2, g: scroll_base_theme.scrollbar_thumb.g / 2, b: scroll_base_theme.scrollbar_thumb.b / 2, a: scroll_base_theme.scrollbar_thumb.a}
+    check("disabled scrollbar track is visually muted", frame_contains_rect_color(108.0, 4.0, 8.0, 92.0, disabled_track))
+    check("disabled scrollbar thumb is visually muted", frame_contains_rect_color(108.0, 4.0, 8.0, 51.1111, disabled_thumb))
+    UiFlat::set_enabled(scroll_view, true)
+
+    # A non-scrollable nested viewport must not swallow a wheel gesture that
+    # can still move its outer ancestor.
+    UiFlat::reset()
+    bubbling_outer: usize = UiFlat::scroll(UiFlat::NONE, UiConst::Axis.Column, 120.0, 100.0, UiCore::rgb(12, 16, 24))
+    bubbling_inner: usize = UiFlat::scroll(bubbling_outer, UiConst::Axis.Column, 120.0, 60.0, UiCore::rgb(18, 22, 30))
+    _ = UiFlat::button(bubbling_inner, 120.0, 40.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
+    _ = UiFlat::button(bubbling_outer, 120.0, 80.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
+    UiFlat::layout(120.0, 100.0)
+    UiFlat::pointer((UiCore::PointerEvent.Scroll(at: UiCore::Vec2(60.0, 20.0), delta: UiCore::Vec2(0.0, -30.0))))
+    check("wheel input bubbles past a non-scrollable nested viewport", near(UiFlat::scroll_offset(bubbling_inner), 0.0) and near(UiFlat::scroll_offset(bubbling_outer), 30.0))
+
+    UiFlat::reset()
+    guarded_scroll: usize = UiFlat::scroll(UiFlat::NONE, UiConst::Axis.Column, 120.0, 100.0, UiCore::rgb(12, 16, 24))
+    guarded_field: usize = UiFlat::text_field(guarded_scroll, "Guarded", "", "do not select", 120.0, 60.0, 14.0, UiCore::rgb(230, 230, 230), UiCore::rgb(30, 30, 30))
+    _ = UiFlat::button(guarded_scroll, 120.0, 60.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
+    UiFlat::layout(120.0, 100.0)
+    _ = UiFlat::request_focus(guarded_field)
+    UiFlat::set_selection(guarded_field, 0, 0)
+    UiFlat::select_text_click_at_pointer(110.0, 20.0, 0, 3)
+    check("scrollbar clicks do not multi-select the focused text field", UiFlat::selected_text_length(guarded_field) == 0)
+
+    UiFlat::reset()
+    leaf_parent: usize = UiFlat::label(UiFlat::NONE, "Leaf", 14.0, UiCore::rgb(230, 230, 230))
+    detached_child: usize = UiFlat::button(leaf_parent, 80.0, 24.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
+    check("leaf widgets reject child attachments", UiFlat::widget(leaf_parent).first_child == UiFlat::NONE and UiFlat::widget(detached_child).parent == UiFlat::NONE)
+
+    UiFlat::reset()
+    orphan: usize = UiFlat::button(999, 80.0, 24.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
+    check("invalid parent handles produce a safe detached widget", orphan == 0 and UiFlat::widget(orphan).parent == UiFlat::NONE and UiFlat::widget(orphan).next_sibling == UiFlat::NONE)
+
+    UiFlat::reset()
+    for index in 0..<257:
+        _ = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 0.0, 0.0, UiCore::rgb(0, 0, 0))
+    check("widget arena reports overflow", UiFlat::overflowed())
+    check("widget arena never exceeds capacity", UiFlat::count() == UiFlat::MAX_WIDGETS)
+
+    UiCore::begin_frame()
+    for index in 0..<1025:
+        UiCore::clear(UiCore::rgb(0, 0, 0))
+    check("command buffer reports overflow", UiCore::command_overflowed())
+    check("command buffer remains bounded", UiCore::command_count() == 1024)
+
+    UiCore::begin_frame()
+    for index in 0..<257:
+        UiCore::accessibility(UiCore::AccessibilityRole.Label, "node", "", UiCore::Rect(0.0, 0.0, 1.0, 1.0), index, UiFlat::NONE, true, false, false, 0.0, "", "", 0, 0, 0)
+    check("semantic buffer reports overflow", UiCore::accessibility_overflowed())
+    check("semantic buffer remains bounded", UiCore::accessibility_count() == 256)
+
+    UiCore::begin_frame()
+    UiCore::accessibility(UiCore::AccessibilityRole.Label, "first declaration", "", UiCore::Rect(0.0, 0.0, 1.0, 1.0), 77, UiFlat::NONE, true, false, false, 0.0, "", "", 0, 0, 0)
+    UiCore::accessibility(UiCore::AccessibilityRole.Button, "last declaration", "", UiCore::Rect(2.0, 3.0, 4.0, 5.0), 77, 77, true, false, false, 0.0, "", "", 0, 0, 0)
+    duplicate_node: UiCore::AccessibilityNode = UiCore::accessibility_at(0)
+    check("duplicate semantic IDs stay unique", UiCore::accessibility_count() == 1)
+    check("duplicate semantic IDs keep the first position", duplicate_node.label == "last declaration" and duplicate_node.role == UiCore::AccessibilityRole.Button)
+
+    if test_failures == 0:
+        _ = puts("widget layout: all checks passed")
+        return 0
+    _ = puts("widget layout: FAILURES above")
+    return 1
+

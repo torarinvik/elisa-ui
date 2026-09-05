@@ -1,0 +1,306 @@
+# Geometry, retained layout, and keyboard/pointer focus checks.
+
+include "./widget_layout_support.elisa"
+
+def main() -> i64:
+    build_tree()
+
+    # Clip state is side-band metadata attached at command emission time. It
+    # must apply only to commands emitted while active, then clear for both
+    # subsequent commands and the next frame.
+    UiCore::begin_frame()
+    UiCore::set_clip(UiCore::Rect{origin: UiCore::Vec2{ x: 3.0, y: 4.0 }, size: UiCore::Size{width: 10.0, height: 11.0}})
+    UiCore::fill(UiCore::Rect{origin: UiCore::Vec2{ x: 0.0, y: 0.0 }, size: UiCore::Size{width: 20.0, height: 20.0}}, UiCore::rgb(1, 2, 3))
+    UiCore::clear_clip()
+    UiCore::fill(UiCore::Rect{origin: UiCore::Vec2{ x: 20.0, y: 0.0 }, size: UiCore::Size{width: 20.0, height: 20.0}}, UiCore::rgb(4, 5, 6))
+    check("clip metadata attaches only to active commands", UiCore::command_has_clip(0) and not UiCore::command_has_clip(1))
+    check("clip metadata preserves its resolved rectangle", near(UiCore::command_clip_at(0).origin.x, 3.0) and near(UiCore::command_clip_at(0).origin.y, 4.0) and near(UiCore::command_clip_at(0).size.width, 10.0) and near(UiCore::command_clip_at(0).size.height, 11.0))
+    UiCore::begin_frame()
+    UiCore::fill(UiCore::Rect{origin: UiCore::Vec2{ x: 0.0, y: 0.0 }, size: UiCore::Size{width: 1.0, height: 1.0}}, UiCore::rgb(7, 8, 9))
+    check("begin_frame clears the active clip", not UiCore::command_has_clip(0))
+
+    check("retained handles report validity", UiFlat::is_valid(1) and not UiFlat::is_valid(UiFlat::NONE))
+    check("checked widget lookup rejects the sentinel", UiFlat::widget_if_valid(UiFlat::NONE) == null)
+    if UiFlat::widget_if_valid(1) is checked_widget:
+        check("checked widget lookup returns a copied row", checked_widget.kind == UiConst::WidgetKind.Button)
+    else:
+        check("checked widget lookup returns a copied row", false)
+
+    # Column of two: inner box is 780x580 after 10px padding, one 10px gap.
+    # The fixed child keeps its 40px minimum; the growing child takes the rest.
+    check("root rect", rect_is(0, 0.0, 0.0, 800.0, 600.0))
+    check("fixed child keeps its minimum", rect_is(1, 10.0, 10.0, 780.0, 40.0))
+    check("growing child absorbs free space", rect_is(2, 10.0, 60.0, 780.0, 530.0))
+
+    # A container's minimum is derived bottom-up: 40 + 40 + 10 gap + 20 padding.
+    check("container minimum height", near(UiFlat::widget(0).min_height, 110.0))
+
+    check("hit finds the top child", UiFlat::hit(400.0, 20.0) == 1)
+    check("hit finds the bottom child", UiFlat::hit(400.0, 300.0) == 2)
+    check("non-interactive panel is not hit", UiFlat::hit(5.0, 5.0) == UiFlat::NONE)
+    check("button cursor policy lives in Elisa", UiFlat::cursor_at(400.0, 20.0) == 1)
+
+    UiFlat::pointer((UiCore::PointerEvent.Move(at: UiCore::Vec2(400.0, 20.0))))
+    check("hover marks the widget under the pointer", UiFlat::widget(1).hovered)
+    check("hover clears elsewhere", not UiFlat::widget(2).hovered)
+
+    test_last_click <- UiFlat::NONE
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(400.0, 20.0), button: 0)))
+    check("press marks the widget active", UiFlat::widget(1).pressed)
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(400.0, 20.0), button: 0)))
+    check("release on the same widget clicks", test_last_click == 1)
+    check("release clears the pressed state", not UiFlat::widget(1).pressed)
+
+    test_last_click <- UiFlat::NONE
+    prior_focus: usize = UiFlat::focused()
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(400.0, 20.0), button: 2)))
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(400.0, 20.0), button: 2)))
+    check("non-primary buttons do not activate controls", UiFlat::active() == UiFlat::NONE and test_last_click == UiFlat::NONE)
+    check("non-primary buttons do not steal focus", UiFlat::focused() == prior_focus)
+
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(400.0, 20.0), button: 0)))
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(400.0, 20.0), button: 2)))
+    check("an unrelated button release preserves primary capture", UiFlat::active() == 1 and UiFlat::widget(1).pressed)
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(400.0, 20.0), button: 0)))
+    check("the matching primary release completes capture", UiFlat::active() == UiFlat::NONE and test_last_click == 1)
+
+    # Keyboard focus is portable widget behavior, not an AppKit special case.
+    check("pointer press transfers keyboard focus", UiFlat::focused() == 1)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Tab)))
+    check("Tab advances from pointer focus", UiFlat::focused() == 2)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Enter)))
+    check("Enter paints the focused widget pressed", UiFlat::widget(2).pressed)
+    test_last_click <- UiFlat::NONE
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.Enter)))
+    check("Enter release activates the focused widget", test_last_click == 2)
+    check("Enter release clears pressed state", not UiFlat::widget(2).pressed)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Tab)))
+    check("Tab wraps through interactive widgets", UiFlat::focused() == 1)
+
+    test_last_click <- UiFlat::NONE
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Enter)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Tab)))
+    check("focus traversal cancels a held keyboard press", UiFlat::focused() == 2 and UiFlat::active() == UiFlat::NONE and not UiFlat::widget(1).pressed)
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.Enter)))
+    check("a canceled key release cannot activate the new focus", test_last_click == UiFlat::NONE)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Tab)))
+
+    test_last_click <- UiFlat::NONE
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Space)))
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.Enter)))
+    check("an unrelated key release preserves keyboard capture", UiFlat::active() == 1 and UiFlat::widget(1).pressed and test_last_click == UiFlat::NONE)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Space)))
+    check("key repeat does not replace keyboard capture", UiFlat::active() == 1)
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.Space)))
+    check("the matching key release activates its original widget", UiFlat::active() == UiFlat::NONE and test_last_click == 1)
+
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.LeftShift)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Tab)))
+    check("Shift-Tab traverses focus backwards", UiFlat::focused() == 2)
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.LeftShift)))
+
+    UiFlat::set_enabled(2, false)
+    check("disabling focus clears it", UiFlat::focused() == UiFlat::NONE)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.LeftShift)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Tab)))
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.LeftShift)))
+    check("Shift-Tab skips disabled controls", UiFlat::focused() == 1)
+    test_last_click <- UiFlat::NONE
+    UiFlat::activate(2)
+    check("programmatic activation rejects disabled controls", test_last_click == UiFlat::NONE)
+    UiFlat::set_enabled(2, true)
+    UiFlat::activate(2)
+    check("programmatic activation uses the click path", test_last_click == 2)
+    check("programmatic activation transfers focus", UiFlat::focused() == 2)
+
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(400.0, 300.0), button: 0)))
+    UiFlat::set_enabled(2, false)
+    check("disabling a pressed control releases capture", UiFlat::active() == UiFlat::NONE)
+    check("disabling a hovered control clears hot state", UiFlat::hot() == UiFlat::NONE)
+    UiFlat::set_enabled(2, true)
+
+    # Pressing one widget and releasing over another must not click either.
+    test_last_click <- UiFlat::NONE
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(400.0, 20.0), button: 0)))
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(400.0, 300.0), button: 0)))
+    check("release elsewhere cancels the click", test_last_click == UiFlat::NONE)
+
+    test_last_click <- UiFlat::NONE
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(400.0, 20.0), button: 0)))
+    UiFlat::pointer((UiCore::PointerEvent.Leave))
+    check("leaving preserves pointer capture", UiFlat::active() == 1)
+    check("button loses pressed appearance outside", not UiFlat::widget(1).pressed)
+    UiFlat::pointer((UiCore::PointerEvent.Move(at: UiCore::Vec2(400.0, 20.0))))
+    check("button regains pressed appearance on re-entry", UiFlat::widget(1).pressed)
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(400.0, 20.0), button: 0)))
+    check("captured button clicks after re-entry", test_last_click == 1)
+
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(400.0, 20.0), button: 0)))
+    UiFlat::lifecycle((UiCore::Event.FocusLost))
+    check("window focus loss cancels pointer capture", UiFlat::active() == UiFlat::NONE and not UiFlat::widget(1).pressed)
+
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(400.0, 20.0), button: 0)))
+    UiFlat::cancel_interaction()
+    check("interaction cancellation releases capture", UiFlat::active() == UiFlat::NONE)
+    check("interaction cancellation clears pressed state", not UiFlat::widget(1).pressed)
+    check("interaction cancellation clears hover state", UiFlat::hot() == UiFlat::NONE)
+
+    # Relayout must be idempotent for the same viewport.
+    UiFlat::layout(800.0, 600.0)
+    check("relayout is stable", rect_is(2, 10.0, 60.0, 780.0, 530.0))
+
+    # A narrower viewport still respects minimums and re-splits the remainder.
+    UiFlat::layout(400.0, 300.0)
+    check("reflow keeps the fixed minimum", rect_is(1, 10.0, 10.0, 380.0, 40.0))
+    check("reflow shrinks the growing child", rect_is(2, 10.0, 60.0, 380.0, 230.0))
+
+    # Below the declared minimum, compress children and their gap together so
+    # the last child still ends exactly at the container edge.
+    UiFlat::reset()
+    tight_row: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Row, 0.0, 10.0, UiCore::rgb(0, 0, 0))
+    tight_a: usize = UiFlat::button(tight_row, 100.0, 30.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    tight_b: usize = UiFlat::button(tight_row, 100.0, 30.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    UiFlat::layout(110.0, 30.0)
+    tight_end: f32 = UiFlat::widget(tight_b).x + UiFlat::widget(tight_b).width
+    check("undersized rows remain inside their container", near(tight_end, 110.0))
+    check("undersized rows preserve child proportions", near(UiFlat::widget(tight_a).width, UiFlat::widget(tight_b).width))
+
+    UiFlat::reset()
+    padded: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 20.0, 0.0, UiCore::rgb(0, 0, 0))
+    padded_child: usize = UiFlat::button(padded, 10.0, 10.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    UiFlat::layout(10.0, 10.0)
+    check("padding cannot produce negative child width", UiFlat::widget(padded_child).width >= 0.0)
+    check("padding cannot produce negative child height", UiFlat::widget(padded_child).height >= 0.0)
+
+    UiFlat::reset()
+    normalized_root: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Row, -20.0, -5.0, UiCore::rgb(0, 0, 0))
+    normalized_button: usize = UiFlat::button(normalized_root, -100.0, -30.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    UiFlat::set_grow(normalized_button, -4.0)
+    normalized_label: usize = UiFlat::label(normalized_root, "invalid metrics", -12.0, UiCore::rgb(255, 255, 255))
+    UiFlat::layout(-200.0, -100.0)
+    check("negative panel metrics normalize to zero", UiFlat::widget(normalized_root).padding == 0.0 and UiFlat::widget(normalized_root).spacing == 0.0)
+    check("negative control minima and grow normalize to zero", UiFlat::widget(normalized_button).min_width == 0.0 and UiFlat::widget(normalized_button).min_height == 0.0 and UiFlat::widget(normalized_button).grow == 0.0)
+    check("negative typography normalizes before measurement", UiFlat::widget(normalized_label).text_size == 0.0 and UiFlat::widget(normalized_label).min_width == 0.0 and UiFlat::widget(normalized_label).min_height == 0.0)
+    check("negative viewport dimensions never escape as geometry", UiFlat::widget(normalized_root).width == 0.0 and UiFlat::widget(normalized_root).height == 0.0 and UiFlat::widget(normalized_button).width >= 0.0 and UiFlat::widget(normalized_button).height >= 0.0)
+
+    UiFlat::reset()
+    margin_row: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Row, 0.0, 10.0, UiCore::rgb(0, 0, 0))
+    margin_a: usize = UiFlat::button(margin_row, 100.0, 30.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    margin_b: usize = UiFlat::button(margin_row, 100.0, 30.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    UiFlat::set_margin(margin_a, 5.0)
+    UiFlat::set_margin(margin_b, 5.0)
+    UiFlat::layout(230.0, 40.0)
+    check("widget margins contribute to parent measurement", near(UiFlat::widget(margin_row).min_width, 230.0) and near(UiFlat::widget(margin_row).min_height, 40.0))
+    check("row margins inset the first child on both axes", rect_is(margin_a, 5.0, 5.0, 100.0, 30.0))
+    check("row margins preserve explicit sibling spacing", rect_is(margin_b, 125.0, 5.0, 100.0, 30.0))
+    UiFlat::set_margin(margin_a, -10.0)
+    check("negative widget margins normalize to zero", UiFlat::widget(margin_a).margin == 0.0)
+
+    UiFlat::reset()
+    aligned_row: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Row, 0.0, 0.0, UiCore::rgb(0, 0, 0))
+    aligned_start: usize = UiFlat::button(aligned_row, 40.0, 20.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    aligned_center: usize = UiFlat::button(aligned_row, 40.0, 20.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    aligned_end: usize = UiFlat::button(aligned_row, 40.0, 20.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    aligned_stretch: usize = UiFlat::button(aligned_row, 40.0, 20.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    UiFlat::set_cross_alignment(aligned_start, UiConst::CrossAlignment.Start)
+    UiFlat::set_cross_alignment(aligned_center, UiConst::CrossAlignment.Center)
+    UiFlat::set_cross_alignment(aligned_end, UiConst::CrossAlignment.End)
+    UiFlat::layout(160.0, 100.0)
+    check("row start alignment keeps the measured cross extent", rect_is(aligned_start, 0.0, 0.0, 40.0, 20.0))
+    check("row center alignment centers the measured cross extent", rect_is(aligned_center, 40.0, 40.0, 40.0, 20.0))
+    check("row end alignment places the measured cross extent last", rect_is(aligned_end, 80.0, 80.0, 40.0, 20.0))
+    check("cross alignment defaults to stretch", rect_is(aligned_stretch, 120.0, 0.0, 40.0, 100.0))
+
+    UiFlat::reset()
+    aligned_column: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 0.0, 0.0, UiCore::rgb(0, 0, 0))
+    column_center: usize = UiFlat::button(aligned_column, 40.0, 20.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    UiFlat::set_margin(column_center, 10.0)
+    UiFlat::set_cross_alignment(column_center, UiConst::CrossAlignment.Center)
+    UiFlat::layout(120.0, 40.0)
+    check("column alignment uses the horizontal cross axis inside margins", rect_is(column_center, 40.0, 10.0, 40.0, 20.0))
+
+    UiFlat::reset()
+    capped_row: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Row, 0.0, 0.0, UiCore::rgb(0, 0, 0))
+    capped_child: usize = UiFlat::button(capped_row, 100.0, 20.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    uncapped_child: usize = UiFlat::button(capped_row, 100.0, 20.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    UiFlat::set_grow(capped_child, 1.0)
+    UiFlat::set_grow(uncapped_child, 1.0)
+    UiFlat::set_max_size(capped_child, 120.0, 30.0)
+    UiFlat::layout(400.0, 100.0)
+    check("maximum width caps a growing row child", rect_is(capped_child, 0.0, 0.0, 120.0, 30.0))
+    check("unused capped growth redistributes to flexible siblings", rect_is(uncapped_child, 120.0, 0.0, 280.0, 100.0))
+    UiFlat::set_max_size(capped_child, -10.0, -20.0)
+    check("negative maximum sizes normalize to unbounded", UiFlat::widget(capped_child).max_width == 0.0 and UiFlat::widget(capped_child).max_height == 0.0)
+
+    UiFlat::reset()
+    max_column: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 0.0, 0.0, UiCore::rgb(0, 0, 0))
+    max_column_child: usize = UiFlat::button(max_column, 40.0, 20.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    UiFlat::set_max_size(max_column_child, 60.0, 0.0)
+    UiFlat::layout(120.0, 20.0)
+    check("maximum width caps a stretched column child", rect_is(max_column_child, 0.0, 0.0, 60.0, 20.0))
+
+    UiFlat::reset()
+    contradictory_column: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 0.0, 0.0, UiCore::rgb(0, 0, 0))
+    contradictory_child: usize = UiFlat::button(contradictory_column, 80.0, 20.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    UiFlat::set_max_size(contradictory_child, 60.0, 0.0)
+    UiFlat::layout(120.0, 20.0)
+    check("required minimum wins over a contradictory maximum", rect_is(contradictory_child, 0.0, 0.0, 120.0, 20.0))
+
+    UiFlat::reset()
+    justified_row: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Row, 0.0, 0.0, UiCore::rgb(0, 0, 0))
+    justified_a: usize = UiFlat::button(justified_row, 50.0, 20.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    justified_b: usize = UiFlat::button(justified_row, 50.0, 20.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    UiFlat::set_main_alignment(justified_row, UiConst::MainAlignment.Center)
+    UiFlat::layout(300.0, 20.0)
+    check("center distribution offsets the complete child group", rect_is(justified_a, 100.0, 0.0, 50.0, 20.0) and rect_is(justified_b, 150.0, 0.0, 50.0, 20.0))
+    UiFlat::set_main_alignment(justified_row, UiConst::MainAlignment.End)
+    UiFlat::layout(300.0, 20.0)
+    check("end distribution places the child group last", rect_is(justified_a, 200.0, 0.0, 50.0, 20.0) and rect_is(justified_b, 250.0, 0.0, 50.0, 20.0))
+    UiFlat::set_main_alignment(justified_row, UiConst::MainAlignment.SpaceBetween)
+    UiFlat::layout(300.0, 20.0)
+    check("space-between distributes unused room between siblings", rect_is(justified_a, 0.0, 0.0, 50.0, 20.0) and rect_is(justified_b, 250.0, 0.0, 50.0, 20.0))
+
+    UiFlat::reset()
+    justified_column: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 0.0, 0.0, UiCore::rgb(0, 0, 0))
+    justified_column_child: usize = UiFlat::button(justified_column, 40.0, 20.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    UiFlat::set_main_alignment(justified_column, UiConst::MainAlignment.End)
+    UiFlat::layout(40.0, 100.0)
+    check("main-axis distribution follows a column vertically", rect_is(justified_column_child, 0.0, 80.0, 40.0, 20.0))
+
+    UiFlat::reset()
+    focus_row: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Row, 0.0, 0.0, UiCore::rgb(0, 0, 0))
+    focus_late: usize = UiFlat::button(focus_row, 20.0, 20.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    focus_first: usize = UiFlat::button(focus_row, 20.0, 20.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    focus_middle: usize = UiFlat::button(focus_row, 20.0, 20.0, UiCore::rgb(1, 1, 1), UiCore::rgb(2, 2, 2), UiCore::rgb(3, 3, 3))
+    UiFlat::set_text(focus_late, "Late", 12.0, UiCore::rgb(255, 255, 255))
+    UiFlat::set_text(focus_first, "First", 12.0, UiCore::rgb(255, 255, 255))
+    UiFlat::set_text(focus_middle, "Middle", 12.0, UiCore::rgb(255, 255, 255))
+    UiFlat::set_focus_order(focus_late, 30)
+    UiFlat::set_focus_order(focus_first, 10)
+    UiFlat::set_focus_order(focus_middle, 20)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Tab)))
+    check("Tab starts at the lowest explicit focus order", UiFlat::focused() == focus_first)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Tab)))
+    check("Tab advances through explicit focus order", UiFlat::focused() == focus_middle)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Tab)))
+    check("Tab reaches the highest explicit focus order", UiFlat::focused() == focus_late)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Tab)))
+    check("explicit focus order wraps", UiFlat::focused() == focus_first)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.LeftShift)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Tab)))
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.LeftShift)))
+    check("Shift-Tab traverses explicit focus order backwards", UiFlat::focused() == focus_late)
+    UiFlat::layout(60.0, 20.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("focus-ordered accessibility keeps every control", UiCore::accessibility_count() == 3)
+    check("accessibility navigation starts at explicit first", UiCore::accessibility_at(0).id == focus_first)
+    check("accessibility navigation keeps explicit middle", UiCore::accessibility_at(1).id == focus_middle)
+    check("accessibility navigation ends at explicit last", UiCore::accessibility_at(2).id == focus_late)
+
+    if test_failures == 0:
+        _ = puts("widget layout: all checks passed")
+        return 0
+    _ = puts("widget layout: FAILURES above")
+    return 1
+

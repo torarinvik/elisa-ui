@@ -1,0 +1,129 @@
+# Widget layout and hit-testing checks. Needs no backend: the widget layer only
+# depends on the core, so the sizer maths and pointer state machine can be
+# exercised without a window.
+
+include "../src/widgets/ui_widget.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable test_last_click: usize = UiFlat::NONE
+global mutable test_last_event: i32 = -1
+global mutable test_failures: i32 = 0
+global mutable invalid_utf8: u8[8] = zeroed
+global mutable long_text: u8[1100] = zeroed
+global mutable test_clipboard: u8[UiFlat::TEXT_CAPACITY] = zeroed
+global mutable test_clipboard_length: usize = 0
+
+def ui_clipboard_has_text() -> bool:
+    return test_clipboard_length > 0
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    test_clipboard_length <- length if length < UiFlat::TEXT_CAPACITY else UiFlat::TEXT_CAPACITY
+    for index in 0..<test_clipboard_length:
+        test_clipboard[index] <- bytes[index]
+    return test_clipboard_length > 0
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    take: usize = test_clipboard_length if test_clipboard_length < capacity else capacity
+    for index in 0..<take:
+        buffer[index] <- test_clipboard[index]
+    return take
+
+def test_clipboard_value() -> sview:
+    return sview(&test_clipboard[0], 0, test_clipboard_length.i64())
+
+# Text measurement is part of the platform contract, so a test with no backend
+# supplies it. Deterministic ratios keep the label assertions exact instead of
+# depending on whichever font a host happens to load.
+def ui_measure_text_width(text: sview, size: f32) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size
+
+def ui_font_ascent(size: f32) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    test_last_event <- event
+    test_last_click <- widget if event == UiConst::WidgetEvent.Click.i32()
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    test_failures <- test_failures + 1
+    _ = puts(name)
+
+def near(actual: f32, expected: f32) -> bool:
+    delta: f32 = actual - expected
+    return delta > -0.01 and delta < 0.01
+
+def rect_is(index: usize, x: f32, y: f32, width: f32, height: f32) -> bool:
+    w: UiFlat::Widget = UiFlat::widget(index)
+    return near(w.x, x) and near(w.y, y) and near(w.width, width) and near(w.height, height)
+
+def frame_contains_text(text: sview) -> bool:
+    for index in 0..<UiCore::command_count():
+        match UiCore::command_at(index):
+            UiCore::Command.DrawText(run, color):
+                return true if run.text == text
+            _:
+                pass
+    return false
+
+def frame_contains_rect(x: f32, y: f32, width: f32, height: f32) -> bool:
+    for index in 0..<UiCore::command_count():
+        match UiCore::command_at(index):
+            UiCore::Command.FillRect(rect, color):
+                return true if near(rect.origin.x, x) and near(rect.origin.y, y) and near(rect.size.width, width) and near(rect.size.height, height)
+            _:
+                pass
+    return false
+
+def frame_contains_line(x: f32, y: f32, end_x: f32, end_y: f32) -> bool:
+    for index in 0..<UiCore::command_count():
+        match UiCore::command_at(index):
+            UiCore::Command.FillLine(segment, color):
+                return true if near(segment.from_point.x, x) and near(segment.from_point.y, y) and near(segment.to_point.x, end_x) and near(segment.to_point.y, end_y)
+            _:
+                pass
+    return false
+
+def frame_contains_rect_color(x: f32, y: f32, width: f32, height: f32, expected: UiCore::Color) -> bool:
+    for index in 0..<UiCore::command_count():
+        match UiCore::command_at(index):
+            UiCore::Command.FillRect(rect, color):
+                geometry: bool = near(rect.origin.x, x) and near(rect.origin.y, y) and near(rect.size.width, width) and near(rect.size.height, height)
+                ink: bool = color.r == expected.r and color.g == expected.g and color.b == expected.b and color.a == expected.a
+                return true if geometry and ink
+            _:
+                pass
+    return false
+
+def first_fill_color_command(expected: UiCore::Color) -> usize:
+    for index in 0..<UiCore::command_count():
+        match UiCore::command_at(index):
+            UiCore::Command.FillRect(rect, color):
+                return index if color.r == expected.r and color.g == expected.g and color.b == expected.b and color.a == expected.a
+            _:
+                pass
+    return UiCore::command_count()
+
+def frame_contains_clip(x: f32, y: f32, width: f32, height: f32) -> bool:
+    for index in 0..<UiCore::command_count():
+        if UiCore::command_has_clip(index):
+            clip: UiCore::Rect = UiCore::command_clip_at(index)
+            return true if near(clip.origin.x, x) and near(clip.origin.y, y) and near(clip.size.width, width) and near(clip.size.height, height)
+    return false
+
+def build_tree() -> void:
+    UiFlat::reset()
+    root: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 10.0, 10.0, UiCore::Color{r: 10, g: 10, b: 10, a: 255})
+    fixed: usize = UiFlat::button(root, 100.0, 40.0, UiCore::Color{r: 1, g: 1, b: 1, a: 255}, UiCore::Color{r: 2, g: 2, b: 2, a: 255}, UiCore::Color{r: 3, g: 3, b: 3, a: 255})
+    UiFlat::set_grow(fixed, 0.0)
+    stretchy: usize = UiFlat::button(root, 100.0, 40.0, UiCore::Color{r: 4, g: 4, b: 4, a: 255}, UiCore::Color{r: 5, g: 5, b: 5, a: 255}, UiCore::Color{r: 6, g: 6, b: 6, a: 255})
+    UiFlat::set_grow(stretchy, 1.0)
+    UiFlat::layout(800.0, 600.0)
+
