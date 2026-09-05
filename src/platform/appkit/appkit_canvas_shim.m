@@ -17,6 +17,7 @@ extern void elisa_appkit_canvas_raw_flags(int keyCode, size_t modifiers);
 extern void elisa_appkit_canvas_focus_changed(int focused);
 extern void elisa_appkit_canvas_accessibility_environment_changed(void);
 extern void elisa_appkit_canvas_window_closed(void);
+extern void elisa_appkit_canvas_rebuild_cursor_rects(void);
 extern void elisa_appkit_canvas_key_down_event(size_t event, int keyCode, size_t character, size_t modifiers);
 extern void elisa_appkit_canvas_key_up(int keyCode, size_t character);
 extern int elisa_appkit_canvas_accessibility_activate(size_t index);
@@ -222,9 +223,10 @@ void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) 
 }
 - (void)resetCursorRects {
     [super resetCursorRects];
-    for (ElisaAccessibilityElement *element in [self accessibilityChildren]) {
-        if (element.elisaCursor != nil) [self addCursorRect:element.elisaLocalFrame cursor:element.elisaCursor];
-    }
+    // Cursor eligibility, geometry and native cursor selection live in Elisa;
+    // Cocoa only clears its transient regions and asks the framework to add
+    // the resolved rectangles through the narrow FFI primitive below.
+    elisa_appkit_canvas_rebuild_cursor_rects();
 }
 - (void)forwardMouseButton:(NSEvent *)event down:(BOOL)down button:(int)button {
     NSPoint p = [self eventPoint:event];
@@ -716,6 +718,18 @@ void elisa_appkit_canvas_redraw(size_t windowHandle) {
     ElisaCanvasView *view = elisa_appkit_canvas_view(windowHandle);
     if (view != nil) [view setNeedsDisplay:YES];
 }
+
+// Cursor rectangles are transient NSView state. Elisa owns the semantic list
+// and supplies each resolved frame/cursor pair; this function performs only
+// the typed Cocoa insertion for the explicit window handle.
+void elisa_appkit_canvas_add_cursor_rect(size_t windowHandle, float x, float y,
+                                         float width, float height, size_t cursorHandle) {
+    ElisaCanvasView *view = elisa_appkit_canvas_view(windowHandle);
+    NSCursor *cursor = elisa_appkit_canvas_cursor(cursorHandle);
+    if (view == nil || cursor == nil) return;
+    [view addCursorRect:NSMakeRect(x, y, width, height) cursor:cursor];
+}
+
 void elisa_appkit_canvas_close(size_t windowHandle) {
     NSWindow *window = elisa_appkit_canvas_window(windowHandle);
     if (window != nil) [window performClose:nil];

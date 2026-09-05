@@ -61,7 +61,10 @@ The complete working version is
   every ancestor viewport. Overflowing viewports draw a proportional,
   allocation-free scrollbar from `UiFlat::Theme::scrollbar_track` and
   `scrollbar_thumb`; clicking the track pages by one viewport and dragging the
-  thumb updates the offset with Elisa-owned pointer capture.
+  thumb updates the offset with Elisa-owned pointer capture. Painting records
+  the intersection of scroll ancestors beside each command; native painters
+  apply that clip without changing the render-command wire layout, so partially
+  visible children cannot bleed outside a viewport.
 - `label` measures and paints static text.
 - `button`, `radio_button` and `check_box` support hover, press, disabled,
   selected and keyboard-focus states.

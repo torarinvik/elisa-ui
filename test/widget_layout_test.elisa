@@ -82,6 +82,13 @@ def frame_contains_rect(x: f32, y: f32, width: f32, height: f32) -> bool:
                 pass
     return false
 
+def frame_contains_clip(x: f32, y: f32, width: f32, height: f32) -> bool:
+    for index in 0..<UiCore::command_count():
+        if UiCore::command_has_clip(index):
+            clip: UiCore::Rect = UiCore::command_clip_at(index)
+            return true if near(clip.origin.x, x) and near(clip.origin.y, y) and near(clip.size.width, width) and near(clip.size.height, height)
+    return false
+
 def build_tree() -> void:
     UiFlat::reset()
     root: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 10.0, 10.0, UiCore::Color{r: 10, g: 10, b: 10, a: 255})
@@ -911,6 +918,11 @@ def main() -> i64:
     UiFlat::paint()
     check("scroll paint emits a themed track", frame_contains_rect(108.0, 4.0, 8.0, 92.0))
     check("scroll paint emits a proportional thumb", frame_contains_rect(108.0, 4.0, 8.0, 51.1111))
+    _ = UiFlat::set_scroll_offset(scroll_view, 50.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("scroll paint records the viewport clip", frame_contains_clip(0.0, 0.0, 120.0, 100.0))
+    _ = UiFlat::set_scroll_offset(scroll_view, 0.0)
     UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(110.0, 80.0), button: 0)))
     check("scrollbar track paging advances one viewport", near(UiFlat::scroll_offset(scroll_view), 80.0) and not UiFlat::scroll_dragging())
     _ = UiFlat::set_scroll_offset(scroll_view, 0.0)

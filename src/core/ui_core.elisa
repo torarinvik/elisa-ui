@@ -340,12 +340,18 @@ module UiCore:
 
     private:
         global mutable command_buffer: Command[MAX_COMMANDS] = zeroed
+        # Clip metadata travels beside each render command rather than inside
+        # the command union, so existing backend wire layouts remain stable.
+        global mutable command_clip: Rect[MAX_COMMANDS] = zeroed
+        global mutable command_has_clip_flag: bool[MAX_COMMANDS] = zeroed
         global mutable command_total: usize = 0
         global mutable command_dropped: bool = false
         global mutable accessibility_nodes: AccessibilityNode[MAX_ACCESSIBILITY_NODES] = zeroed
         global mutable accessibility_total: usize = 0
         global mutable accessibility_dropped: bool = false
         global mutable viewport_size: Size = Size{width: 0.0, height: 0.0}
+        global mutable current_clip: Rect = Rect{origin: Vec2{ x: 0.0, y: 0.0 }, size: Size{ width: 0.0, height: 0.0 }}
+        global mutable current_clip_active: bool = false
         global mutable current_frame_time: f64 = 0.0
         global mutable requested_frame_delay: f32 = 0.0
 
@@ -353,6 +359,7 @@ module UiCore:
         def begin_frame() -> void:
             command_total <- 0
             command_dropped <- false
+            current_clip_active <- false
             accessibility_total <- 0
             accessibility_dropped <- false
             requested_frame_delay <- 0.0
@@ -384,6 +391,8 @@ module UiCore:
             if command_total >= MAX_COMMANDS:
                 command_dropped <- true
                 return
+            command_has_clip_flag[command_total] <- current_clip_active
+            command_clip[command_total] <- current_clip if current_clip_active
             command_buffer[command_total] <- command
             command_total <- command_total + 1
 
@@ -396,6 +405,25 @@ module UiCore:
 
         def command_overflowed() -> bool:
             return command_dropped
+
+        # Clip state is deliberately side-band metadata. A backend that can
+        # clip natively applies it around one command; a wire backend can keep
+        # the render-command discriminants and payloads byte-for-byte stable.
+        def set_clip(box: Rect) -> void:
+            current_clip <- Rect{
+                origin: Vec2{ x: finite_or_zero(box.origin.x), y: finite_or_zero(box.origin.y) },
+                size: Size{ width: nonnegative_extent(box.size.width), height: nonnegative_extent(box.size.height) },
+            }
+            current_clip_active <- true
+
+        def clear_clip() -> void:
+            current_clip_active <- false
+
+        def command_has_clip(index: usize) -> bool:
+            return index < command_total and command_has_clip_flag[index]
+
+        def command_clip_at(index: usize) -> Rect:
+            return command_clip[index]
 
         # Surface dimensions are extents, never signed offsets. Normalize them
         # at the core boundary so painters and backends cannot observe a

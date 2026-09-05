@@ -63,6 +63,8 @@ module UiPaint:
         # the backend's own (SDL3's renderer handle, the component's wire cursor),
         # so the methods are static and the specialization inlines them.
         protocol Painter:
+            def push_clip(box: UiCore::Rect) -> void can[Ui.Draw]
+            def pop_clip() -> void can[Ui.Draw]
             def clear(color: UiCore::Color) -> void can[Ui.Draw]
             def fill_rect(box: UiCore::Rect, color: UiCore::Color) -> void can[Ui.Draw]
             def fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> void can[Ui.Draw]
@@ -75,6 +77,8 @@ module UiPaint:
         # command enum is matched for painting.
         def replay[P: Painter]() -> void can[Ui.Draw, Ui.Text]:
             for index in 0..<UiCore::command_count():
+                clipped: bool = UiCore::command_has_clip(index)
+                P.push_clip(UiCore::command_clip_at(index)) if clipped
                 match UiCore::command_at(index):
                     UiCore::Command.Clear(color):
                         P.clear(color)
@@ -88,3 +92,4 @@ module UiPaint:
                         P.fill_line(segment, color)
                     UiCore::Command.DrawText(run, color):
                         P.draw_text(run, color)
+                P.pop_clip() if clipped

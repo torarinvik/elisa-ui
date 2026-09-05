@@ -126,6 +126,7 @@ int elisa_appkit_canvas_accessibility_adjust(size_t index, int direction) {
     return 1;
 }
 void elisa_appkit_canvas_window_closed(void) {}
+void elisa_appkit_canvas_rebuild_cursor_rects(void) {}
 int elisa_appkit_canvas_accepts_text(void) { return 1; }
 int elisa_appkit_canvas_view_is_flipped(void) { return 1; }
 int elisa_appkit_canvas_view_accepts_first_responder(void) { return 1; }

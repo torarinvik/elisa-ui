@@ -874,6 +874,38 @@ module UiFlat:
                 cursor <- widgets[cursor].parent
             return right > left and bottom > top
 
+        # Attach the intersection of every scroll ancestor to commands emitted
+        # for this widget. Core keeps this clip beside the command so native
+        # painters can apply it without changing their wire payloads.
+        def set_scroll_clip(index: usize) -> void:
+            UiCore::clear_clip()
+            cursor: mutable usize = widgets[index].parent
+            left: mutable f32 = 0.0
+            top: mutable f32 = 0.0
+            right: mutable f32 = 0.0
+            bottom: mutable f32 = 0.0
+            found: mutable bool = false
+            while cursor < widget_count |cursor, left, top, right, bottom, found|:
+                if widgets[cursor].kind == UiConst::WidgetKind.Scroll:
+                    viewport_left: f32 = widgets[cursor].x
+                    viewport_top: f32 = widgets[cursor].y
+                    viewport_right: f32 = viewport_left + widgets[cursor].width
+                    viewport_bottom: f32 = viewport_top + widgets[cursor].height
+                    if not found:
+                        left <- viewport_left
+                        top <- viewport_top
+                        right <- viewport_right
+                        bottom <- viewport_bottom
+                        found <- true
+                    else:
+                        left <- viewport_left if viewport_left > left else left
+                        top <- viewport_top if viewport_top > top else top
+                        right <- viewport_right if viewport_right < right else right
+                        bottom <- viewport_bottom if viewport_bottom < bottom else bottom
+                cursor <- widgets[cursor].parent
+            if found:
+                UiCore::set_clip(UiCore::Rect(left, top, right - left, bottom - top))
+
         def clear_hover() -> void:
             for index in 0..<widget_count:
                 widgets[index].hovered <- false
@@ -2303,6 +2335,7 @@ module UiFlat:
                     semantic_emitted[next_semantic] <- true
             for index in 0..<widget_count:
                 continue if not effectively_visible(index) or not intersects_scroll_viewports(index)
+                set_scroll_clip(index)
                 enabled: bool = effectively_enabled(index)
                 color: UiCore::Color = color_of(index)
                 frame: UiCore::Rect = UiCore::Rect(widgets[index].x, widgets[index].y, widgets[index].width, widgets[index].height)
@@ -2422,4 +2455,6 @@ module UiFlat:
             # translated children and nested scroll areas.
             for index in 0..<widget_count:
                 continue if not effectively_visible(index) or not intersects_scroll_viewports(index)
+                set_scroll_clip(index)
                 paint_scrollbar(index)
+            UiCore::clear_clip()

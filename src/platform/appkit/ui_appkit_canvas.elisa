@@ -64,6 +64,7 @@ extern elisa_appkit_canvas_accessibility_notify(handle: usize, notification: usi
 extern elisa_appkit_canvas_arrow_cursor() -> usize
 extern elisa_appkit_canvas_pointing_hand_cursor() -> usize
 extern elisa_appkit_canvas_ibeam_cursor() -> usize
+extern elisa_appkit_canvas_add_cursor_rect(window_handle: usize, x: f32, y: f32, width: f32, height: f32, cursor: usize) -> void
 extern elisa_appkit_canvas_accessibility_commit(window_handle: usize, handles: usize&, count: usize) -> void
 extern elisa_appkit_canvas_accessibility_layout_changed_notification() -> usize
 extern elisa_appkit_canvas_accessibility_post_layout_changed(window_handle: usize, notification: usize) -> void
@@ -124,6 +125,7 @@ extern CGContextAddLineToPoint(context: usize, x: f64, y: f64) -> void
 extern CGContextAddArc(context: usize, x: f64, y: f64, radius: f64, start_angle: f64, end_angle: f64, clockwise: i32) -> void
 extern CGContextAddArcToPoint(context: usize, x1: f64, y1: f64, x2: f64, y2: f64, radius: f64) -> void
 extern CGContextClosePath(context: usize) -> void
+extern CGContextClip(context: usize) -> void
 extern CGContextFillPath(context: usize) -> void
 extern CGContextStrokePath(context: usize) -> void
 extern CGContextSetLineWidth(context: usize, width: f64) -> void
@@ -686,6 +688,20 @@ module UiAppKitCanvas:
             return elisa_appkit_canvas_ibeam_cursor() if cursor == 2
             return elisa_appkit_canvas_arrow_cursor()
 
+        # NSView cursor rectangles are rebuilt by Cocoa on demand. Keep the
+        # semantic traversal and cursor policy in Elisa, then hand each native
+        # frame/cursor pair to one narrow insertion primitive. This also means
+        # cursor regions stay in lockstep with the same retained nodes used for
+        # accessibility and hit testing.
+        def rebuild_cursor_rects() -> void:
+            return if canvas_window == 0
+            for index in 0..<UiCore::accessibility_count():
+                node: UiCore::AccessibilityNode = UiCore::accessibility_at(index)
+                cursor: usize = native_cursor(accessibility_cursor(node.role, node.enabled))
+                elisa_appkit_canvas_add_cursor_rect(canvas_window,
+                    node.frame.origin.x, node.frame.origin.y,
+                    node.frame.size.width, node.frame.size.height, cursor)
+
         def accessibility_notify(handle: usize, notifications: i32) -> void:
             elisa_appkit_canvas_accessibility_notify(handle, NSAccessibilityValueChangedNotification) if notifications & 1 != 0
             elisa_appkit_canvas_accessibility_notify(handle, NSAccessibilityFocusedUIElementChangedNotification) if notifications & 2 != 0
@@ -998,6 +1014,18 @@ module UiAppKitCanvas:
             unused: i32
 
         impl Painter for AppKitPainter:
+            def push_clip(box: UiCore::Rect) -> void can[Ui.Draw]:
+                context: usize = current_context()
+                CGContextSaveGState(context)
+                CGContextBeginPath(context)
+                CGContextMoveToPoint(context, box.origin.x.f64(), box.origin.y.f64())
+                CGContextAddLineToPoint(context, (box.origin.x + box.size.width).f64(), box.origin.y.f64())
+                CGContextAddLineToPoint(context, (box.origin.x + box.size.width).f64(), (box.origin.y + box.size.height).f64())
+                CGContextAddLineToPoint(context, box.origin.x.f64(), (box.origin.y + box.size.height).f64())
+                CGContextClosePath(context)
+                CGContextClip(context)
+            def pop_clip() -> void can[Ui.Draw]:
+                CGContextRestoreGState(current_context())
             def clear(color: UiCore::Color) -> void can[Ui.Draw]:
                 context: usize = current_context()
                 set_fill_color(context, color)
@@ -1237,6 +1265,9 @@ def appkit_canvas_accessibility_environment_changed_callback() -> void:
     UiAppKitCanvas::accessibility_environment_changed()
     UiAppKitCanvas::redraw()
 
+def appkit_canvas_rebuild_cursor_rects_callback() -> void:
+    UiAppKitCanvas::rebuild_cursor_rects()
+
 def appkit_canvas_caret_width() -> f32:
     return UiAppKitCanvas::caret_width()
 
@@ -1269,3 +1300,4 @@ export fn elisa_appkit_canvas_raw_key(down: i32, key_code: i32, character: i32) 
 export fn elisa_appkit_canvas_raw_flags(key_code: i32, modifiers: usize) -> void = appkit_canvas_raw_flags_callback
 export fn elisa_appkit_canvas_focus_changed(focused: i32) -> void = appkit_canvas_focus_changed_callback
 export fn elisa_appkit_canvas_accessibility_environment_changed() -> void = appkit_canvas_accessibility_environment_changed_callback
+export fn elisa_appkit_canvas_rebuild_cursor_rects() -> void = appkit_canvas_rebuild_cursor_rects_callback

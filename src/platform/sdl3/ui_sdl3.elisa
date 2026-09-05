@@ -29,6 +29,9 @@ extern SDL_SetRenderDrawColor(renderer: void&, r: u8, g: u8, b: u8, a: u8) -> bo
 extern SDL_RenderClear(renderer: void&) -> bool
 extern SDL_RenderFillRect(renderer: void&, rect: void&) -> bool
 extern SDL_RenderLine(renderer: void&, x1: f32, y1: f32, x2: f32, y2: f32) -> bool
+extern SDL_SetRenderClipRect(renderer: void&, rect: void&?) -> bool
+extern SDL_GetRenderClipRect(renderer: void&, rect: void&) -> bool
+extern SDL_RenderClipEnabled(renderer: void&) -> bool
 extern SDL_RenderPresent(renderer: void&) -> bool
 extern SDL_DestroyRenderer(renderer: void&) -> void
 extern SDL_DestroyWindow(window: void&) -> void
@@ -135,6 +138,9 @@ module UiSdl3:
         # fields at their SDL3 offsets (type@0; pointer events keep x@28 and
         # y@32 as f32).
         global mutable event_buffer: u8[128] = zeroed
+        global mutable saved_clip_rect: i32[4] = zeroed
+        global mutable saved_clip_enabled: bool = false
+        global mutable clip_depth: usize = 0
 
         def event_button() -> i32:
             return event_buffer[24].i32()
@@ -588,6 +594,27 @@ module UiSdl3:
             unused: i32
 
         impl Painter for Sdl3Painter:
+            def push_clip(box: UiCore::Rect) -> void can[Ui.Draw]:
+                if clip_depth == 0:
+                    saved_clip_enabled <- SDL_RenderClipEnabled(ren())
+                    _ = SDL_GetRenderClipRect(ren(), (&saved_clip_rect[0]).cast[void&] can Unsafe.PointerCast)
+                clip_depth <- clip_depth + 1
+                left: f32 = floorf(box.origin.x)
+                top: f32 = floorf(box.origin.y)
+                right: f32 = ceilf(box.origin.x + box.size.width)
+                bottom: f32 = ceilf(box.origin.y + box.size.height)
+                clip: mutable i32[4] = [left.i32(), top.i32(), (right - left).i32(), (bottom - top).i32()]
+                _ = SDL_SetRenderClipRect(ren(), (&clip[0]).cast[void&] can Unsafe.PointerCast)
+
+            def pop_clip() -> void can[Ui.Draw]:
+                return if clip_depth == 0
+                clip_depth <- clip_depth - 1
+                return if clip_depth != 0
+                if saved_clip_enabled:
+                    _ = SDL_SetRenderClipRect(ren(), (&saved_clip_rect[0]).cast[void&] can Unsafe.PointerCast)
+                else:
+                    _ = SDL_SetRenderClipRect(ren(), null)
+
             def clear(color: UiCore::Color) -> void can[Ui.Draw]:
                 paint_clear(color)
 
