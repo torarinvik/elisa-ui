@@ -292,6 +292,10 @@ if grep -Eq 'NSMakeRange\(location,[[:space:]]*0\)' "$ROOT/src/platform/appkit/a
   echo "appkit canvas: text range length policy leaked back into Objective-C" >&2
   exit 1
 fi
+if awk '/void elisa_appkit_canvas_accessibility_clear_value\(/ { inside=1 } inside && /NSMakeRange\(elisa_appkit_canvas_not_found,[[:space:]]*0\)/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: accessibility clear-range policy leaked back into Objective-C" >&2
+  exit 1
+fi
 if awk '/size_t elisa_appkit_canvas_open\(/ { inside=1 } inside && /make_first_responder/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: focus policy leaked back into Objective-C window creation" >&2
   exit 1

@@ -798,12 +798,14 @@ void elisa_appkit_canvas_accessibility_release(size_t handle) {
 // Value slots are reused across semantic frames. Elisa owns the role/value
 // transition policy and calls this primitive only when a node changes value
 // kind (or is first created); Cocoa only clears the typed properties.
-void elisa_appkit_canvas_accessibility_clear_value(size_t handle) {
+void elisa_appkit_canvas_accessibility_clear_value(size_t handle,
+                                                   size_t selectionLocation,
+                                                   size_t selectionLength) {
     ElisaAccessibilityElement *element = elisa_appkit_canvas_element(handle);
     if (element == nil) return;
     [element elisaSetAccessibilityValue:nil];
     element.accessibilitySelectedText = nil;
-    [element elisaSetAccessibilitySelectedTextRange:NSMakeRange(elisa_appkit_canvas_not_found, 0)];
+    [element elisaSetAccessibilitySelectedTextRange:NSMakeRange(selectionLocation, selectionLength)];
     element.accessibilityMinValue = nil;
     element.accessibilityMaxValue = nil;
 }

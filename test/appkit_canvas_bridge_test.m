@@ -740,7 +740,8 @@ int main(void) {
         // value kind, then invokes this narrow Cocoa primitive. Verify that
         // clearing removes every role-specific slot without replacing the
         // native semantic object.
-        elisa_appkit_canvas_accessibility_clear_value((size_t)(__bridge void *)second);
+        elisa_appkit_canvas_accessibility_clear_value((size_t)(__bridge void *)second,
+                                                      NSNotFound, 0);
         if (require(second.accessibilityValue == nil && second.accessibilitySelectedText == nil &&
                         NSEqualRanges(second.accessibilitySelectedTextRange, NSMakeRange(NSNotFound, 0)) &&
                         second.accessibilityMinValue == nil && second.accessibilityMaxValue == nil,
