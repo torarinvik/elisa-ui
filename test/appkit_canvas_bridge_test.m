@@ -38,6 +38,15 @@ static size_t test_window_handle;
 
 void elisa_appkit_canvas_insert_text(const char *bytes, size_t length);
 
+size_t elisa_appkit_canvas_accessibility_boolean_value(int selected) {
+    int value = selected != 0;
+    return (size_t)(void *)CFNumberCreate(NULL, kCFNumberSInt32Type, &value);
+}
+
+size_t elisa_appkit_canvas_accessibility_float_value(float value) {
+    return (size_t)(void *)CFNumberCreate(NULL, kCFNumberFloat32Type, &value);
+}
+
 void elisa_appkit_canvas_frame(size_t context) {
     (void)context;
     test_frame_count += 1;

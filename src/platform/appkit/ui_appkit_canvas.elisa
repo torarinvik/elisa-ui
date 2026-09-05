@@ -94,6 +94,7 @@ struct NativeRange:
     length: i64
 extern CFStringCreateWithBytes(allocator: usize, bytes: cstr, length: i64, encoding: u32, external: bool) -> usize
 extern CFArrayCreate(allocator: usize, values: usize&, count: i64, callbacks: usize) -> usize
+extern CFNumberCreate(allocator: usize, number_type: i32, value: usize&) -> usize
 extern CFDictionaryCreate(allocator: usize, keys: usize&, values: usize&, count: i64, key_callbacks: usize, value_callbacks: usize) -> usize
 extern CFAttributedStringCreate(allocator: usize, text: usize, attributes: usize) -> usize
 extern CFStringGetLength(value: usize) -> i64
@@ -222,6 +223,8 @@ module UiAppKitCanvas:
             return height
 
         const UTF8_ENCODING: u32 = 0x08000100
+        const CF_NUMBER_SINT32_TYPE: i32 = 3
+        const CF_NUMBER_FLOAT32_TYPE: i32 = 5
         const BOLD_TRAIT: u32 = 2
         def not_found() -> usize:
             return elisa_appkit_canvas_not_found()
@@ -366,6 +369,19 @@ module UiAppKitCanvas:
             values: usize[1] = zeroed
             values_pointer: usize& = (&values[0]).cast[usize&] can Unsafe.PointerCast
             return CFArrayCreate(0, values_pointer, 0, 0)
+
+        # Accessibility setter values are Cocoa NSNumber objects, but their
+        # scalar contents are framework state already decided by Elisa.
+        # Construct the retained CoreFoundation numbers here and let the
+        # native bridge only assign the typed objects.
+        def native_boolean_value(selected: i32) -> usize can Unsafe.PointerCast:
+            value: mutable i32 = 1 if selected != 0 else 0
+            value_pointer: usize& = (&value).cast[usize&] can Unsafe.PointerCast
+            return CFNumberCreate(0, CF_NUMBER_SINT32_TYPE, value_pointer)
+
+        def native_float_value(value: f32) -> usize can Unsafe.PointerCast:
+            value_pointer: usize& = (&value).cast[usize&] can Unsafe.PointerCast
+            return CFNumberCreate(0, CF_NUMBER_FLOAT32_TYPE, value_pointer)
 
         # NSTextInputClient expects key interpretation as a one-event NSArray.
         # Build the toll-free-bridged collection through CoreFoundation so the
@@ -1370,6 +1386,12 @@ def appkit_canvas_frame_callback(context: usize) -> void:
 def appkit_canvas_valid_marked_attributes() -> usize:
     return UiAppKitCanvas::valid_marked_attributes()
 
+def appkit_canvas_accessibility_boolean_value(selected: i32) -> usize:
+    return UiAppKitCanvas::native_boolean_value(selected)
+
+def appkit_canvas_accessibility_float_value(value: f32) -> usize:
+    return UiAppKitCanvas::native_float_value(value)
+
 def appkit_canvas_resize_callback(width: f32, height: f32) -> void:
     return if not UiAppKitCanvas::canvas_initialized
     UiCore::set_viewport(width, height)
@@ -1461,6 +1483,8 @@ def appkit_canvas_accessibility_tooltip_text(handle: usize) -> usize:
 
 export fn elisa_appkit_canvas_frame(context: usize) -> void = appkit_canvas_frame_callback
 export fn elisa_appkit_canvas_valid_marked_attributes() -> usize = appkit_canvas_valid_marked_attributes
+export fn elisa_appkit_canvas_accessibility_boolean_value(selected: i32) -> usize = appkit_canvas_accessibility_boolean_value
+export fn elisa_appkit_canvas_accessibility_float_value(value: f32) -> usize = appkit_canvas_accessibility_float_value
 export fn elisa_appkit_canvas_pointer_button_primary() -> i32 = appkit_canvas_pointer_button_primary
 export fn elisa_appkit_canvas_pointer_button_secondary() -> i32 = appkit_canvas_pointer_button_secondary
 export fn elisa_appkit_canvas_accessibility_increment_direction() -> i32 = appkit_canvas_accessibility_increment_direction

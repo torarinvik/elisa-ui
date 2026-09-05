@@ -29,6 +29,14 @@ if grep -Eq '@\[' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: array construction leaked back into Objective-C" >&2
   exit 1
 fi
+if awk '/void elisa_appkit_canvas_accessibility_set_boolean\(/ { inside=1 } inside && /@\(/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: accessibility boolean boxing leaked back into Objective-C" >&2
+  exit 1
+fi
+if awk '/void elisa_appkit_canvas_accessibility_set_range\(/ { inside=1 } inside && /@\(/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: accessibility range boxing leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'elisa_canvas_headless|elisaInteraction|elisa_appkit_canvas_(select_all|delete_selection|selected_text_pointer|selected_text_length|undo|redo)\b' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: framework state or edit policy leaked back into Objective-C" >&2
   exit 1
