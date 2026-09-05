@@ -259,14 +259,30 @@ module UiFlat:
             return ((elapsed / interval.f64()).i64() % 2) == 0
 
         def link(parent: usize, child: usize) -> void:
-            return if parent >= widget_count
+            return if parent >= widget_count or child >= widget_count or parent == child
+            # A child may only be attached once. `new_widget` initializes its
+            # parent before calling this helper, so the same-parent case is the
+            # normal insertion path; a different parent would silently create
+            # two ownership paths and make focus/layout traversal ambiguous.
+            return if widgets[child].parent != NONE and widgets[child].parent != parent
+            # Walking the proposed parent's ancestry rejects attaching an
+            # ancestor below its own descendant, which would otherwise make
+            # every parent/sibling traversal unbounded.
+            ancestor: mutable usize = parent
+            while ancestor < widget_count |ancestor|:
+                return if ancestor == child
+                ancestor <- widgets[ancestor].parent
             if widgets[parent].first_child == NONE:
                 widgets[parent].first_child <- child
+                widgets[child].parent <- parent
                 return
             cursor: mutable usize = widgets[parent].first_child
+            return if cursor == child
             while widgets[cursor].next_sibling != NONE |cursor|:
                 cursor <- widgets[cursor].next_sibling
+                return if cursor == child
             widgets[cursor].next_sibling <- child
+            widgets[child].parent <- parent
 
         # Returns NONE when the arena is full; callers may pass that on as a
         # parent, and every traversal treats it as absent, so overflow degrades
@@ -277,11 +293,12 @@ module UiFlat:
                 return NONE
             index: usize = widget_count
             widget_count <- widget_count + 1
+            safe_parent: usize = parent if parent < index else NONE
             # A whole-record reset, not a `with` block: a literal must name
             # every field, so a field added to Widget cannot be left
             # uninitialised here.
             widgets[index] <- Widget{
-                kind, parent,
+                kind, parent: safe_parent,
                 first_child: NONE, next_sibling: NONE,
                 axis: UiConst::Axis.Column, padding: 0.0, spacing: 0.0, margin: 0.0,
                 cross_alignment: UiConst::CrossAlignment.Stretch,
@@ -296,7 +313,7 @@ module UiFlat:
                 input_length: 0, caret: 0, selection_anchor: 0, marked_start: 0, marked_end: 0, text_revision: 0, text_truncated: false,
                 scroll_offset: 0.0, scroll_content_width: 0.0, scroll_content_height: 0.0,
             }
-            link(parent, index)
+            link(safe_parent, index)
             return index
 
     public:
