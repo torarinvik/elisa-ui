@@ -279,11 +279,20 @@ module UiAppKitCanvas:
         # Bitmap dimensions are framework geometry, not a Cocoa default. Keep
         # the conversion from logical points to whole pixels in Elisa so the
         # native snapshot bridge only receives explicit, validated extents.
+        const SNAPSHOT_MAX_PIXELS: u64 = 67108864
+
         def bitmap_extent(value: f32) -> i32:
             safe: f32 = UiCore::nonnegative_extent(value)
             return 1 if safe <= 0.0
             rounded: f32 = ceilf(safe)
             return 1 if rounded < 1.0 else rounded.i32()
+
+        # A headless frame allocates four bytes per pixel inside CoreGraphics.
+        # Reject an oversized area before the native allocator sees it, while
+        # keeping the limit in Elisa where snapshot/resource policy belongs.
+        def snapshot_dimensions_safe(width: i32, height: i32) -> bool:
+            return false if width <= 0 or height <= 0
+            return width.u64() <= SNAPSHOT_MAX_PIXELS / height.u64()
 
         # Render a frame into a CoreGraphics bitmap and optionally encode it
         # through ImageIO. The old NSBitmapImageRep path lived in Objective-C;
@@ -297,6 +306,7 @@ module UiAppKitCanvas:
         def render_headless(window_handle: usize, snapshot: usize, pixels_width: i32, pixels_height: i32) -> i32 can Ui.Draw, Ui.Text, Unsafe.PointerCast:
             return 0 if window_handle == 0 or window_handle != canvas_window
             return 0 if not canvas_initialized or pixels_width <= 0 or pixels_height <= 0
+            return 0 if not snapshot_dimensions_safe(pixels_width, pixels_height)
             if snapshot != 0:
                 return 0 if CFGetTypeID(snapshot) != CFStringGetTypeID()
             color_space: usize = CGColorSpaceCreateDeviceRGB()
