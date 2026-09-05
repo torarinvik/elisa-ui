@@ -97,6 +97,8 @@ extern CFArrayCreate(allocator: usize, values: usize&, count: i64, callbacks: us
 extern CFNumberCreate(allocator: usize, number_type: i32, value: usize&) -> usize
 extern CFNumberGetTypeID() -> usize
 extern CFNumberGetValue(number: usize, number_type: i32, value: usize&) -> bool
+extern CFBooleanGetTypeID() -> usize
+extern CFBooleanGetValue(value: usize) -> bool
 extern CFDictionaryCreate(allocator: usize, keys: usize&, values: usize&, count: i64, key_callbacks: usize, value_callbacks: usize) -> usize
 extern CFAttributedStringCreate(allocator: usize, text: usize, attributes: usize) -> usize
 extern CFAttributedStringGetTypeID() -> usize
@@ -408,11 +410,14 @@ module UiAppKitCanvas:
             return 0 if value == 0
             type_id: usize = CFGetTypeID(value)
             return 1 if type_id == CFStringGetTypeID()
-            return 2 if type_id == CFNumberGetTypeID()
+            return 2 if type_id == CFNumberGetTypeID() or type_id == CFBooleanGetTypeID()
             return 0
 
         def native_number_value(value: usize, result: mutable f32&) -> bool can Unsafe.PointerCast:
             return false if native_accessibility_value_kind(value) != 2
+            if CFGetTypeID(value) == CFBooleanGetTypeID():
+                result <- 1.0 if CFBooleanGetValue(value) else 0.0
+                return true
             result_pointer: usize& = (&result).cast[usize&] can Unsafe.PointerCast
             return CFNumberGetValue(value, CF_NUMBER_FLOAT32_TYPE, result_pointer)
 
