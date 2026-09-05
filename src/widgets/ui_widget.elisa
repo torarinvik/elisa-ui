@@ -1634,6 +1634,16 @@ module UiFlat:
             return if button != UiCore::PointerButton.Primary.i32()
             select_text_at(x, click_count)
 
+        # Native adapters that also report pointer coordinates should use this
+        # guarded entry point. A scrollbar press must not be interpreted as a
+        # multi-click in whichever text field happened to retain focus.
+        def select_text_click_at_pointer(x: f32, y: f32, button: i32, click_count: i32) -> void:
+            return if button != UiCore::PointerButton.Primary.i32()
+            target: usize = hit(x, y)
+            return if target >= widget_count or widgets[target].kind != UiConst::WidgetKind.TextField
+            return if scrollbar_target(x, y) != NONE
+            select_text_at(x, click_count)
+
         def move_word_left(extend_selection: bool) -> void:
             return if not accepts_text()
             index: usize = focused_widget
