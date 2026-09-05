@@ -1,0 +1,81 @@
+# Backend-neutral virtualization policy for long, uniform lists.
+#
+# The list's data and row widgets remain application-owned. This module owns
+# only the deterministic geometry that decides which rows need realization,
+# where they are placed, and how much content a viewport must reserve. Keeping
+# that policy in Elisa prevents native/host backends from growing separate
+# scroll-window calculations and keeps semantic navigation aligned with paint.
+
+include "../core/ui_core.elisa"
+
+module UiVirtualList:
+    public:
+        # A deliberately generous bound keeps malformed application counts
+        # from overflowing f32 geometry while still allowing large feeds. The
+        # visible range is additionally capped by the caller's max_visible.
+        const MAX_ITEMS: i32 = 16777216
+
+        struct VisibleRange:
+            first: i32
+            finish: i32
+
+        struct Metrics:
+            item_extent: f32
+            spacing: f32
+            stride: f32
+
+        def metrics(item_extent: f32, spacing: f32) -> Metrics:
+            safe_item: mutable f32 = UiCore::nonnegative_extent(item_extent)
+            safe_item <- 1.0 if safe_item == 0.0
+            safe_spacing: f32 = UiCore::nonnegative_extent(spacing)
+            return Metrics{item_extent: safe_item, spacing: safe_spacing, stride: safe_item + safe_spacing}
+
+        def bounded_count(item_count: i32) -> i32:
+            return 0 if item_count <= 0
+            return MAX_ITEMS if item_count > MAX_ITEMS
+            return item_count
+
+        # Reserve one row extent per item and one gap only between adjacent
+        # rows. A zero count has no trailing spacing.
+        def content_extent(item_count: i32, item_extent: f32, spacing: f32) -> f32:
+            count: i32 = bounded_count(item_count)
+            return 0.0 if count == 0
+            layout: Metrics = metrics(item_extent, spacing)
+            return (count.f32() * layout.item_extent) + ((count - 1).f32() * layout.spacing)
+
+        # Return the top edge of an item in content coordinates. Clamping the
+        # index makes this helper total for stale/negative list identities.
+        def item_offset(index: i32, item_count: i32, item_extent: f32, spacing: f32) -> f32:
+            count: i32 = bounded_count(item_count)
+            return 0.0 if count == 0 or index < 0
+            safe_index: mutable i32 = index
+            safe_index <- count - 1 if safe_index >= count
+            layout: Metrics = metrics(item_extent, spacing)
+            return safe_index.f32() * layout.stride
+
+        # Compute a half-open [first, finish) range. One extra row is retained at
+        # the lower edge so a fractional scroll or a pixel-rounding difference
+        # cannot expose a blank strip between frames. `max_visible` is a hard
+        # memory/semantic budget; zero means one row.
+        def visible_range(item_count: i32, item_extent: f32, spacing: f32, scroll_offset: f32, viewport_extent: f32, max_visible: i32) -> VisibleRange:
+            count: i32 = bounded_count(item_count)
+            return VisibleRange{first: 0, finish: 0} if count == 0
+            layout: Metrics = metrics(item_extent, spacing)
+            offset: f32 = UiCore::nonnegative_extent(scroll_offset)
+            viewport: f32 = UiCore::nonnegative_extent(viewport_extent)
+            first: mutable i32 = (offset / layout.stride).i32()
+            first <- count - 1 if first >= count
+            budget: mutable i32 = max_visible if max_visible > 0 else 1
+            budget <- count - first if budget > count - first
+            # Truncation is safe after the nonnegative normalization above.
+            finish: mutable i32 = ((offset + viewport) / layout.stride).i32() + 1
+            finish <- first + budget if finish > first + budget
+            finish <- count if finish > count
+            finish <- first + 1 if finish <= first
+            return VisibleRange{first: first, finish: finish}
+
+        def count(range: VisibleRange) -> i32:
+            return range.finish - range.first if range.finish > range.first else 0
+
+        def contains(range: VisibleRange, index: i32) -> bool:
+            return index >= range.first and index < range.finish

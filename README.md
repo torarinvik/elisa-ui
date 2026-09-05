@@ -75,6 +75,9 @@ because a module member's symbol carries its module and those names cannot move.
   backend-neutral compact/medium/expanded size classes, adaptive axis choice,
   bounded grid-column calculation, and physical touch-target normalization,
   all driven by logical space rather than OS-name branches.
+- **Virtual lists** ([src/widgets/ui_virtual_list.elisa](src/widgets/ui_virtual_list.elisa)) —
+  bounded visible ranges, edge buffering, item placement, and content extents
+  shared by every backend.
 - **Widgets** ([src/widgets/ui_widget.elisa](src/widgets/ui_widget.elisa)) — a
   retained tree in one fixed array linked by index, box layout, hit testing, and
   hover/press/focus/disabled/selected state. Buttons, radio buttons, check boxes,
