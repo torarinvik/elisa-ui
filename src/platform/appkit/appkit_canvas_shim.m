@@ -49,6 +49,7 @@ extern void elisa_appkit_canvas_update_marked_text(size_t text,
                                                    size_t selectedLocation, size_t selectedLength,
                                                    size_t replacementLocation, size_t replacementLength);
 extern void elisa_appkit_canvas_unmark_text(void);
+extern size_t elisa_appkit_canvas_valid_marked_attributes(void);
 extern void elisa_appkit_canvas_text_selector_handle(size_t selector);
 extern void elisa_appkit_canvas_text_action_selector(size_t selector);
 extern int elisa_appkit_canvas_text_action_valid_selector(size_t selector);
@@ -351,7 +352,10 @@ void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) 
                                            replacementRange.location, replacementRange.length);
 }
 - (void)unmarkText { elisa_appkit_canvas_unmark_text(); }
-- (NSArray<NSAttributedStringKey> *)validAttributesForMarkedText { return @[]; }
+- (NSArray<NSAttributedStringKey> *)validAttributesForMarkedText {
+    size_t native = elisa_appkit_canvas_valid_marked_attributes();
+    return native == 0 ? nil : CFBridgingRelease((CFTypeRef)(void *)native);
+}
 - (NSAttributedString *)attributedSubstringForProposedRange:(NSRange)range actualRange:(NSRangePointer)actualRange {
     size_t actualLocation = elisa_appkit_canvas_not_found();
     size_t actualLength = 0;

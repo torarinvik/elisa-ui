@@ -327,6 +327,10 @@ void elisa_appkit_canvas_update_marked_text(size_t native, size_t selectedLocati
     test_selection_end = start + [[marked substringToIndex:relativeEnd] lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
 }
 void elisa_appkit_canvas_unmark_text(void) { test_marked_start = test_marked_end = 0; }
+size_t elisa_appkit_canvas_valid_marked_attributes(void) {
+    CFArrayRef value = CFArrayCreate(NULL, NULL, 0, NULL);
+    return (size_t)(void *)value;
+}
 static int test_selector_token(const char *name) {
     if (strcmp(name, "moveLeft:") == 0) return 1;
     if (strcmp(name, "moveRight:") == 0) return 2;
@@ -581,6 +585,9 @@ int main(void) {
         [elisa_appkit_canvas_view(opened) setMarkedText:invalidInput selectedRange:NSMakeRange(0, 0) replacementRange:NSMakeRange(NSNotFound, 0)];
         if (require(strcmp(test_text, "World") == 0 && !elisa_appkit_canvas_view(opened).hasMarkedText,
                     @"invalid marked text input was not ignored")) return 1;
+        NSArray *markedAttributes = [elisa_appkit_canvas_view(opened) validAttributesForMarkedText];
+        if (require(markedAttributes != nil && markedAttributes.count == 0,
+                    @"marked-text attributes did not come from Elisa")) return 1;
         [elisa_appkit_canvas_view(opened) insertText:@"é" replacementRange:NSMakeRange(NSNotFound, 0)];
         if (require(strcmp(test_text, "Worldé") == 0, @"Unicode text commit did not reach the app")) return 1;
         if (require(NSEqualRanges(elisa_appkit_canvas_view(opened).selectedRange, NSMakeRange(6, 0)), @"UTF-8 caret did not convert to UTF-16")) return 1;

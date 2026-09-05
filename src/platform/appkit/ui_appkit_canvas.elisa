@@ -92,6 +92,7 @@ struct NativeRange:
     location: i64
     length: i64
 extern CFStringCreateWithBytes(allocator: usize, bytes: cstr, length: i64, encoding: u32, external: bool) -> usize
+extern CFArrayCreate(allocator: usize, values: usize&, count: i64, callbacks: usize) -> usize
 extern CFDictionaryCreate(allocator: usize, keys: usize&, values: usize&, count: i64, key_callbacks: usize, value_callbacks: usize) -> usize
 extern CFAttributedStringCreate(allocator: usize, text: usize, attributes: usize) -> usize
 extern CFStringGetLength(value: usize) -> i64
@@ -355,6 +356,15 @@ module UiAppKitCanvas:
         def native_string_bytes(bytes: u8&, length: usize) -> usize can Unsafe.PointerCast:
             pointer: cstr = (&bytes).cast[cstr] can Unsafe.PointerCast
             return CFStringCreateWithBytes(0, pointer, length.i64(), UTF8_ENCODING, false)
+
+        # NSTextInputClient currently exposes no marked-text attributes. Build
+        # the immutable empty collection in Elisa through CoreFoundation so
+        # the Objective-C protocol adapter never embeds an array literal or
+        # owns a second text-input policy.
+        def valid_marked_attributes() -> usize can Unsafe.PointerCast:
+            values: usize[1] = zeroed
+            values_pointer: usize& = (&values[0]).cast[usize&] can Unsafe.PointerCast
+            return CFArrayCreate(0, values_pointer, 0, 0)
 
         # Encode a retained native string into a caller-owned UTF-8 buffer.
         # CFStringGetBytes stops at a complete scalar when the fixed buffer is
@@ -1342,6 +1352,9 @@ def appkit_canvas_frame_callback(context: usize) -> void:
         CGContextRestoreGState(context)
         objc_autoreleasePoolPop(autorelease_pool)
 
+def appkit_canvas_valid_marked_attributes() -> usize:
+    return UiAppKitCanvas::valid_marked_attributes()
+
 def appkit_canvas_resize_callback(width: f32, height: f32) -> void:
     return if not UiAppKitCanvas::canvas_initialized
     UiCore::set_viewport(width, height)
@@ -1432,6 +1445,7 @@ def appkit_canvas_accessibility_tooltip_text(handle: usize) -> usize:
     return UiAppKitCanvas::accessibility_tooltip_text(handle)
 
 export fn elisa_appkit_canvas_frame(context: usize) -> void = appkit_canvas_frame_callback
+export fn elisa_appkit_canvas_valid_marked_attributes() -> usize = appkit_canvas_valid_marked_attributes
 export fn elisa_appkit_canvas_pointer_button_primary() -> i32 = appkit_canvas_pointer_button_primary
 export fn elisa_appkit_canvas_pointer_button_secondary() -> i32 = appkit_canvas_pointer_button_secondary
 export fn elisa_appkit_canvas_accessibility_increment_direction() -> i32 = appkit_canvas_accessibility_increment_direction
