@@ -1214,6 +1214,11 @@ module UiAppKitCanvas:
                 # side remains a typed property primitive with no frame policy.
                 value_kind_changed: bool = not existed or before.value_kind != value_kind
                 elisa_appkit_canvas_accessibility_clear_value(handle) if handle != 0 and value_kind_changed
+                # A failed native replacement leaves the semantic ID present in
+                # the next frame, so the stale-ID sweep deliberately will not
+                # release its old handle. Drop that ownership here instead of
+                # losing it when the next-frame handle is zero.
+                elisa_appkit_canvas_accessibility_release(previous_handle) if handle == 0 and previous_handle != 0
                 if value_kind == 1 and handle != 0:
                     native_selected: usize = native_boolean_value(selected)
                     elisa_appkit_canvas_accessibility_set_boolean_value(handle, native_selected)
