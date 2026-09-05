@@ -467,6 +467,7 @@ int main(void) {
                                                  &delegateHandle);
         if (!opened) return 1;
         test_window_handle = opened;
+        elisa_appkit_canvas_set_released_when_closed(opened, 0);
         elisa_appkit_canvas_set_tabbing_mode(opened, NSWindowTabbingModeDisallowed);
         elisa_appkit_canvas_set_restorable(opened, 0);
         if (require([elisa_appkit_canvas_view(opened) isFlipped], @"canvas coordinate policy was not supplied by Elisa")) return 1;

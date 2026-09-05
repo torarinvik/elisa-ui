@@ -309,7 +309,9 @@ only opaque `SEL` tokens and forwards them across the FFI.
 Elisa keeps one retained opaque handle to its root `NSWindow` for the duration of
 each run. Every operation that needs the root window or canvas view receives
 that handle explicitly through FFI; the Objective-C shim keeps no root lookup or
-ownership slot of its own. This makes headless and visible runs use the same
+ownership slot of its own. Elisa also selects the window's close-retain behavior
+through a typed FFI setter, so Cocoa does not consume that explicit retain before
+the adapter releases it. This makes headless and visible runs use the same
 explicit lifetime path, and releasing the handle after the run lets Cocoa tear
 down the tree without a second native lifetime owner. The non-owning `NSWindow`
 delegate follows the same pattern: Elisa retains and releases its opaque

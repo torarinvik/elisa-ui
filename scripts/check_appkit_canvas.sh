@@ -205,6 +205,10 @@ if grep -Eq 'forMode:NSRunLoopCommonModes' "$ROOT/src/platform/appkit/appkit_can
   echo "appkit canvas: run-loop mode policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'setReleasedWhenClosed:NO' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: window-retain policy leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'backing:NSBackingStoreBuffered' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: backing-store policy leaked back into Objective-C constructors" >&2
   exit 1

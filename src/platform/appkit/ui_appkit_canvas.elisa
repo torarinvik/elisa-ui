@@ -30,6 +30,7 @@ extern elisa_appkit_canvas_interpret_key_event(event_array: usize, window_handle
 extern elisa_appkit_canvas_focus(window_handle: usize) -> void
 extern elisa_appkit_canvas_set_tabbing_mode(window_handle: usize, mode: i32) -> void
 extern elisa_appkit_canvas_set_restorable(window_handle: usize, restorable: i32) -> void
+extern elisa_appkit_canvas_set_released_when_closed(window_handle: usize, released: i32) -> void
 extern elisa_appkit_canvas_menus_begin() -> usize
 extern elisa_appkit_canvas_menu_add(menu_bar: usize, title: usize, empty_key_equivalent: usize) -> usize
 extern elisa_appkit_canvas_menu_set_windows(menu: usize) -> void
@@ -1406,6 +1407,11 @@ module UiAppKitCanvas:
                 return 1 if opened == 0
                 canvas_window <- opened
                 canvas_delegate <- delegate_handle
+                # Elisa retains the root window explicitly through the whole
+                # run, so prevent Cocoa from consuming that retain on close.
+                # Keep this ownership decision beside the rest of the window
+                # lifecycle policy rather than hard-coding it in Objective-C.
+                elisa_appkit_canvas_set_released_when_closed(canvas_window, 0)
                 elisa_appkit_canvas_set_tabbing_mode(canvas_window, tabbing_mode(options.tabbing))
                 elisa_appkit_canvas_set_restorable(canvas_window, 1 if options.restorable else 0)
                 elisa_appkit_canvas_center(canvas_window) if options.centered

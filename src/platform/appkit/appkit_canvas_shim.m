@@ -455,9 +455,6 @@ size_t elisa_appkit_canvas_open(size_t title, float width, float height,
     // until app_init has completed.
     ElisaCanvasView *view = [[ElisaCanvasView alloc] initWithFrame:rect];
     ElisaCanvasDelegate *delegate = [ElisaCanvasDelegate new];
-    // Elisa holds the returned +1 until the run finishes. Prevent
-    // -close from consuming that ownership before the FFI release point.
-    [window setReleasedWhenClosed:NO];
     [window setDelegate:delegate];
     [window setContentView:view];
     *delegateHandle = (size_t)(__bridge_retained void *)delegate;
@@ -507,6 +504,16 @@ void elisa_appkit_canvas_set_restorable(size_t windowHandle, int restorable) {
     NSWindow *window = elisa_appkit_canvas_window(windowHandle);
     if (window != nil) {
         [window setRestorable:restorable != 0];
+    }
+}
+
+// Elisa owns the retained window handle and therefore decides whether Cocoa
+// may consume that ownership automatically when the user closes the window.
+// The shim only performs the typed NSWindow property write at the boundary.
+void elisa_appkit_canvas_set_released_when_closed(size_t windowHandle, int released) {
+    NSWindow *window = elisa_appkit_canvas_window(windowHandle);
+    if (window != nil) {
+        [window setReleasedWhenClosed:released != 0];
     }
 }
 
