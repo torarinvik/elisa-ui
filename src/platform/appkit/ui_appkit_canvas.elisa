@@ -12,8 +12,6 @@ extern elisa_appkit_canvas_window_style_miniaturizable() -> i32
 extern elisa_appkit_canvas_window_style_resizable() -> i32
 extern elisa_appkit_canvas_backing_store_buffered() -> i32
 extern elisa_appkit_canvas_pasteboard_type_string() -> usize
-extern elisa_appkit_canvas_bitmap_color_space_calibrated_rgb() -> usize
-extern elisa_appkit_canvas_bitmap_file_type_png() -> i32
 extern elisa_appkit_canvas_activation_policy_regular() -> i32
 extern elisa_appkit_canvas_activation_policy_prohibited() -> i32
 extern elisa_appkit_canvas_tabbing_mode_preferred() -> i32
@@ -44,10 +42,10 @@ extern elisa_appkit_canvas_modifier_control() -> usize
 extern elisa_appkit_canvas_modifier_device_independent_mask() -> usize
 extern elisa_appkit_canvas_schedule_redraw(delay: f32, run_loop_mode: usize, window_handle: usize) -> usize
 extern elisa_appkit_canvas_cancel_redraw(handle: usize) -> void
+extern elisa_appkit_canvas_present_headless(window_handle: usize, color_space: usize, image_type: i32, snapshot: usize, pixels_width: i32, pixels_height: i32, bits_per_sample: i32, samples_per_pixel: i32, has_alpha: i32, bitmap_format: i32) -> i32
 extern elisa_appkit_canvas_present(window_handle: usize) -> i32
 extern elisa_appkit_canvas_activate() -> void
 extern elisa_appkit_canvas_center(window_handle: usize) -> void
-extern elisa_appkit_canvas_present_headless(window_handle: usize, color_space: usize, image_type: i32, snapshot: usize, pixels_width: i32, pixels_height: i32, bits_per_sample: i32, samples_per_pixel: i32, has_alpha: i32, bitmap_format: i32) -> i32
 extern elisa_appkit_canvas_run() -> void
 extern elisa_appkit_canvas_stop() -> void
 extern elisa_appkit_canvas_set_min_size(window_handle: usize, width: f32, height: f32) -> void
@@ -131,6 +129,19 @@ extern CGContextStrokePath(context: usize) -> void
 extern CGContextSetLineWidth(context: usize, width: f64) -> void
 extern CGContextTranslateCTM(context: usize, x: f64, y: f64) -> void
 extern CGContextScaleCTM(context: usize, x: f64, y: f64) -> void
+extern CGContextFlush(context: usize) -> void
+extern CGContextRelease(context: usize) -> void
+extern CGColorSpaceCreateDeviceRGB() -> usize
+extern CGColorSpaceRelease(color_space: usize) -> void
+extern CGBitmapContextCreate(data: usize, width: usize, height: usize, bits_per_component: usize, bytes_per_row: usize, color_space: usize, bitmap_info: u32) -> usize
+extern CGBitmapContextCreateImage(context: usize) -> usize
+extern CGImageRelease(image: usize) -> void
+extern CFURLCreateWithFileSystemPath(allocator: usize, path: usize, path_style: i32, is_directory: bool) -> usize
+extern CGImageDestinationCreateWithURL(url: usize, image_type: usize, count: usize, options: usize) -> usize
+extern CGImageDestinationAddImage(destination: usize, image: usize, properties: usize) -> void
+extern CGImageDestinationFinalize(destination: usize) -> bool
+extern CFGetTypeID(value: usize) -> usize
+extern CFStringGetTypeID() -> usize
 
 def ui_measure_text_width(text: sview, size: f32) -> f32:
     return 0.0 if text.len == 0
@@ -203,11 +214,6 @@ module UiAppKitCanvas:
 
         const UTF8_ENCODING: u32 = 0x08000100
         const BOLD_TRAIT: u32 = 2
-        const SNAPSHOT_BITS_PER_SAMPLE: i32 = 8
-        const SNAPSHOT_SAMPLES_PER_PIXEL: i32 = 4
-        const SNAPSHOT_HAS_ALPHA: i32 = 1
-        const SNAPSHOT_BITMAP_FORMAT: i32 = 0
-
         def not_found() -> usize:
             return elisa_appkit_canvas_not_found()
 
@@ -240,6 +246,75 @@ module UiAppKitCanvas:
             return 1 if safe <= 0.0
             rounded: f32 = ceilf(safe)
             return 1 if rounded < 1.0 else rounded.i32()
+
+        # Render a frame into a CoreGraphics bitmap and optionally encode it
+        # through ImageIO. The old NSBitmapImageRep path lived in Objective-C;
+        # keeping the complete off-screen lifecycle here means smoke tests use
+        # the same retained frame callback as a visible window without ever
+        # ordering the window onscreen.
+        const SNAPSHOT_BITS_PER_COMPONENT: usize = 8
+        const SNAPSHOT_BITMAP_INFO_PREMULTIPLIED_LAST: u32 = 1
+        const SNAPSHOT_URL_POSIX_PATH_STYLE: i32 = 0
+
+        def render_headless(window_handle: usize, snapshot: usize, pixels_width: i32, pixels_height: i32) -> i32 can Ui.Draw, Ui.Text, Unsafe.PointerCast:
+            return 0 if window_handle == 0 or window_handle != canvas_window
+            return 0 if not canvas_initialized or pixels_width <= 0 or pixels_height <= 0
+            if snapshot != 0:
+                return 0 if CFGetTypeID(snapshot) != CFStringGetTypeID()
+            color_space: usize = CGColorSpaceCreateDeviceRGB()
+            return 0 if color_space == 0
+            context: usize = CGBitmapContextCreate(0, pixels_width.usize(), pixels_height.usize(), SNAPSHOT_BITS_PER_COMPONENT, 0, color_space, SNAPSHOT_BITMAP_INFO_PREMULTIPLIED_LAST)
+            CGColorSpaceRelease(color_space)
+            return 0 if context == 0
+
+            reset_frame_state()
+            # CGBitmapContext uses a bottom-left origin. Mirror the context so
+            # the custom painter sees the same top-left coordinates as an
+            # AppKit flipped NSView; CoreText's nested transform then remains
+            # identical between visible and off-screen frames.
+            CGContextSaveGState(context)
+            CGContextTranslateCTM(context, 0.0, pixels_height.f64())
+            CGContextScaleCTM(context, 1.0, -1.0)
+            appkit_canvas_frame_callback(context)
+            CGContextRestoreGState(context)
+            CGContextFlush(context)
+            rendered: bool = frame_was_rendered()
+            if not rendered:
+                CGContextRelease(context)
+                return 0
+            return_value: mutable i32 = 1
+            if snapshot != 0:
+                image: usize = CGBitmapContextCreateImage(context)
+                if image == 0:
+                    CGContextRelease(context)
+                    return 0
+                path_url: usize = CFURLCreateWithFileSystemPath(0, snapshot, SNAPSHOT_URL_POSIX_PATH_STYLE, false)
+                if path_url == 0:
+                    CGImageRelease(image)
+                    CGContextRelease(context)
+                    return 0
+                png_type: sview = "public.png"
+                native_png_type: usize = native_string(png_type)
+                if native_png_type == 0:
+                    CFRelease(path_url)
+                    CGImageRelease(image)
+                    CGContextRelease(context)
+                    return 0
+                destination: usize = CGImageDestinationCreateWithURL(path_url, native_png_type, 1, 0)
+                if destination == 0:
+                    CFRelease(native_png_type)
+                    CFRelease(path_url)
+                    CGImageRelease(image)
+                    CGContextRelease(context)
+                    return 0
+                CGImageDestinationAddImage(destination, image, 0)
+                return_value <- 1 if CGImageDestinationFinalize(destination) else 0
+                CFRelease(destination)
+                CFRelease(native_png_type)
+                CFRelease(path_url)
+                CGImageRelease(image)
+            CGContextRelease(context)
+            return return_value
 
         # Window titles originate in Elisa as counted UTF-8 views. Construct
         # their native object here so the Objective-C host only assigns the
@@ -1129,7 +1204,10 @@ module UiAppKitCanvas:
                             return 2
                     bitmap_width: i32 = bitmap_extent(width)
                     bitmap_height: i32 = bitmap_extent(height)
-                    result: i32 = elisa_appkit_canvas_present_headless(canvas_window, elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(), elisa_appkit_canvas_bitmap_file_type_png(), snapshot_path, bitmap_width, bitmap_height, SNAPSHOT_BITS_PER_SAMPLE, SNAPSHOT_SAMPLES_PER_PIXEL, SNAPSHOT_HAS_ALPHA, SNAPSHOT_BITMAP_FORMAT)
+                    # The native entry is a compatibility trampoline only;
+                    # all bitmap construction, frame rendering and PNG
+                    # encoding happen in UiAppKitCanvas::render_headless.
+                    result: i32 = elisa_appkit_canvas_present_headless(canvas_window, 0, 0, snapshot_path, bitmap_width, bitmap_height, 0, 0, 0, 0)
                     CFRelease(snapshot_path) if snapshot_path != 0
                     if result == 0 or not frame_was_rendered():
                         release_canvas()
@@ -1268,6 +1346,9 @@ def appkit_canvas_accessibility_environment_changed_callback() -> void:
 def appkit_canvas_rebuild_cursor_rects_callback() -> void:
     UiAppKitCanvas::rebuild_cursor_rects()
 
+def appkit_canvas_render_headless_callback(window_handle: usize, snapshot: usize, pixels_width: i32, pixels_height: i32) -> i32:
+    return UiAppKitCanvas::render_headless(window_handle, snapshot, pixels_width, pixels_height)
+
 def appkit_canvas_caret_width() -> f32:
     return UiAppKitCanvas::caret_width()
 
@@ -1301,3 +1382,4 @@ export fn elisa_appkit_canvas_raw_flags(key_code: i32, modifiers: usize) -> void
 export fn elisa_appkit_canvas_focus_changed(focused: i32) -> void = appkit_canvas_focus_changed_callback
 export fn elisa_appkit_canvas_accessibility_environment_changed() -> void = appkit_canvas_accessibility_environment_changed_callback
 export fn elisa_appkit_canvas_rebuild_cursor_rects() -> void = appkit_canvas_rebuild_cursor_rects_callback
+export fn elisa_appkit_canvas_render_headless(window_handle: usize, snapshot: usize, pixels_width: i32, pixels_height: i32) -> i32 = appkit_canvas_render_headless_callback

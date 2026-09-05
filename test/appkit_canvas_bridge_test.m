@@ -65,6 +65,23 @@ void elisa_appkit_canvas_frame(size_t context) {
         elisa_appkit_canvas_accessibility_layout_changed_notification());
 }
 
+// The production bitmap path is implemented by Elisa through CoreGraphics and
+// ImageIO. This bridge-only callback keeps the shim test focused on its FFI
+// trampoline while preserving the old status/error assertions.
+int elisa_appkit_canvas_render_headless(size_t windowHandle, size_t snapshot,
+                                        int pixelsWidth, int pixelsHeight) {
+    if (windowHandle == 0 || windowHandle != test_window_handle ||
+        pixelsWidth <= 0 || pixelsHeight <= 0) return 0;
+    if (snapshot != 0) {
+        id object = (__bridge id)(void *)snapshot;
+        if (![object isKindOfClass:[NSString class]]) return 0;
+        NSString *directory = [(NSString *)object stringByDeletingLastPathComponent];
+        if (![[NSFileManager defaultManager] fileExistsAtPath:directory]) return 0;
+    }
+    elisa_appkit_canvas_frame(0);
+    return 1;
+}
+
 void elisa_appkit_canvas_resize(float width, float height) { (void)width; (void)height; }
 void elisa_appkit_canvas_pointer_move(float x, float y) {
     (void)x; (void)y;
@@ -392,9 +409,9 @@ int main(void) {
                 @"invalid run-loop mode was accepted")) return 1;
     if (require(!elisa_appkit_canvas_present_headless(
                     opened,
-                    (size_t)(__bridge void *)invalidNativeString,
-                    elisa_appkit_canvas_bitmap_file_type_png(), 0, 200, 100, 8, 4, 1, 0),
-                @"invalid bitmap color-space handle was accepted")) return 1;
+                    elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(),
+                    elisa_appkit_canvas_bitmap_file_type_png(), 0, 0, 100, 8, 4, 1, 0),
+                @"invalid bitmap extent was accepted")) return 1;
     if (require(elisa_appkit_canvas_accessibility_add(
                     opened, 0, 0, 0, NSAccessibilityButtonRole, NULL, 0,
                     (size_t)(__bridge void *)invalidNativeString, 0,

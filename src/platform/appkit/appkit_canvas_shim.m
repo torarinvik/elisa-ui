@@ -18,6 +18,10 @@ extern void elisa_appkit_canvas_focus_changed(int focused);
 extern void elisa_appkit_canvas_accessibility_environment_changed(void);
 extern void elisa_appkit_canvas_window_closed(void);
 extern void elisa_appkit_canvas_rebuild_cursor_rects(void);
+extern int elisa_appkit_canvas_render_headless(size_t windowHandle,
+                                               size_t snapshot,
+                                               int pixelsWidth,
+                                               int pixelsHeight);
 extern void elisa_appkit_canvas_key_down_event(size_t event, int keyCode, size_t character, size_t modifiers);
 extern void elisa_appkit_canvas_key_up(int keyCode, size_t character);
 extern int elisa_appkit_canvas_accessibility_activate(size_t index);
@@ -684,41 +688,25 @@ int elisa_appkit_canvas_present(size_t windowHandle) {
 void elisa_appkit_canvas_activate(void) {
     [NSApp activateIgnoringOtherApps:YES];
 }
-// Snapshot paths are borrowed opaque CFStrings created by Elisa. The native
-// side only asks Cocoa to encode the bitmap and write it to that path.
+// Snapshot rendering and encoding live in Elisa through CoreGraphics/ImageIO
+// FFI. Keep this ABI entry point as a tiny compatibility trampoline for native
+// callers and bridge tests; Objective-C no longer constructs or encodes the
+// bitmap itself.
 int elisa_appkit_canvas_present_headless(size_t windowHandle, size_t color_space, int image_type,
                                          size_t snapshot, int pixels_width,
                                          int pixels_height, int bits_per_sample,
                                          int samples_per_pixel, int has_alpha,
                                          int bitmap_format) {
-    // Exercise the real frame, painter and semantic bridge without ordering
-    // a window onscreen or stealing focus from the user's current app.
-    ElisaCanvasView *view = elisa_appkit_canvas_view(windowHandle);
-    if (view == nil) return 0;
-    NSRect bounds = view.bounds;
-    if (pixels_width <= 0 || pixels_height <= 0) return 0;
-    NSString *colorSpace = elisa_appkit_canvas_string(color_space);
-    if (colorSpace == nil) return 0;
-    NSBitmapImageRep *bitmap = [[NSBitmapImageRep alloc]
-        initWithBitmapDataPlanes:NULL
-        pixelsWide:(NSUInteger)pixels_width
-        pixelsHigh:(NSUInteger)pixels_height
-        bitsPerSample:(NSInteger)bits_per_sample
-        samplesPerPixel:(NSInteger)samples_per_pixel
-        hasAlpha:has_alpha != 0 isPlanar:NO
-        colorSpaceName:colorSpace
-        bitmapFormat:(NSBitmapFormat)bitmap_format bytesPerRow:0 bitsPerPixel:0];
-    if (bitmap == nil) return 0;
-    NSGraphicsContext *graphics = [NSGraphicsContext graphicsContextWithBitmapImageRep:bitmap];
-    if (graphics == nil) return 0;
-    [view displayRectIgnoringOpacity:bounds inContext:graphics];
-    if (snapshot != 0) {
-        NSString *snapshotPath = elisa_appkit_canvas_string(snapshot);
-        if (snapshotPath == nil) return 0;
-        NSData *png = [bitmap representationUsingType:(NSBitmapImageFileType)image_type properties:@{}];
-        if (png == nil || ![png writeToFile:snapshotPath atomically:YES]) return 0;
-    }
-    return 1;
+    // These legacy arguments are retained for ABI compatibility. Elisa owns
+    // the validated pixel format and snapshot type now.
+    (void)color_space;
+    (void)image_type;
+    (void)bits_per_sample;
+    (void)samples_per_pixel;
+    (void)has_alpha;
+    (void)bitmap_format;
+    return elisa_appkit_canvas_render_headless(windowHandle, snapshot,
+                                               pixels_width, pixels_height);
 }
 void elisa_appkit_canvas_run(void) {
     [NSApp run];

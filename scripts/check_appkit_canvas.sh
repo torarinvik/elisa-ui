@@ -165,6 +165,10 @@ if grep -Eq 'forType:NSPasteboardTypeString|stringForType:NSPasteboardTypeString
   echo "appkit canvas: pasteboard or snapshot encoding policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'NSBitmapImageRep|displayRectIgnoringOpacity|representationUsingType:|writeToFile:' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: bitmap snapshot construction or encoding leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'elisa_canvas_empty_menu_key|keyEquivalent[[:space:]]*=[^=]' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: menu key fallback policy leaked back into Objective-C" >&2
   exit 1
@@ -282,8 +286,6 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_window_style_miniaturizable$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_window_style_resizable$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_backing_store_buffered$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_pasteboard_type_string$'
-nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_bitmap_color_space_calibrated_rgb$'
-nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_bitmap_file_type_png$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_activation_policy_regular$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_activation_policy_prohibited$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_tabbing_mode_preferred$'
@@ -350,6 +352,11 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_cancel_redraw$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_activate$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_center$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_present_headless$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_render_headless$'
+nm -g "$BIN" | grep -q ' U _CGBitmapContextCreate$'
+nm -g "$BIN" | grep -q ' U _CGBitmapContextCreateImage$'
+nm -g "$BIN" | grep -q ' U _CGImageDestinationCreateWithURL$'
+nm -g "$BIN" | grep -q ' U _CGImageDestinationFinalize$'
 set -o pipefail
 plutil -lint "$APP/Contents/Info.plist" >/dev/null
 codesign --verify --deep --strict "$APP"

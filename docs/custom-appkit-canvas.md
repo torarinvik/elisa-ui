@@ -10,7 +10,8 @@ and keyboard facts, exposes the active graphics context, implements the methods
 required by `NSTextInputClient`, and owns objects that only Cocoa can create.
 Elisa calls CoreGraphics' C ABI directly for every path, including rounded
 rectangles, circles, triangles, lines, the canvas clear, colors and shadows. It
-also calls CoreText's C ABI directly for font metrics, shaping and text drawing.
+also calls CoreText's C ABI directly for font metrics, shaping and text drawing,
+and uses CoreGraphics plus ImageIO FFI for headless bitmap snapshots.
 AppKit key-code translation, visual styling decisions, UTF-8/UTF-16 conversion,
 selection/replacement rules and IME composition state all live in Elisa. Elisa
 also creates every outbound `CFString` and decodes inbound Cocoa strings with
@@ -179,9 +180,10 @@ ELISA_UI_SMOKE_FRAMES=1 \
 
 Elisa selects the off-screen frame primitive directly in smoke mode and never
 enters the native presentation or event-loop primitives. Objective-C retains
-no headless-mode state. The off-screen primitive renders through a bitmap
-`NSGraphicsContext`, verifies that AppKit actually invokes the frame callback,
-and exits without showing or activating a window.
+no headless-mode state. The off-screen primitive renders through a flipped
+CoreGraphics bitmap context, encodes an optional PNG through ImageIO, verifies
+that the same Elisa frame callback ran, and exits without showing or activating
+a window.
 `scripts/check_appkit_canvas.sh` additionally checks callback symbols,
 the application bundle, code signature, PNG dimensions and semantic-object
 identity across redraws. `scripts/run_tests.sh` runs that check with the portable
@@ -206,11 +208,12 @@ collapsed text caret needs it, leaving an idle window timer-free.
 The remaining Objective-C is the actual Cocoa boundary: `NSWindow`/`NSView`
 and event-loop ownership, Objective-C selector identity/casting, `NSTextInputClient`
 protocol/range plumbing, AppKit menus, pasteboard and accessibility objects,
-bitmap snapshots and timers. These operations require Objective-C objects or
+and timers. These operations require Objective-C objects or
 Cocoa protocol implementations; all UTF-8 conversion now lives in Elisa through
 CoreFoundation FFI. Widget state, command policy, layout,
 interaction, editing, accessibility diffing, headless orchestration, all
-CoreGraphics path construction and CoreText text rendering now live in Elisa.
+CoreGraphics path construction, bitmap contexts, ImageIO snapshot encoding and
+CoreText text rendering now live in Elisa.
 Menu action names are registered through the Objective-C runtime's C ABI from
 Elisa; text-input selector names are decoded there as well. The shim receives
 only opaque `SEL` tokens and forwards them across the FFI.

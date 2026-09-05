@@ -163,10 +163,10 @@ backends, so layout agrees even though the rasterizers differ.
 SDL supplies monotonic frame time and waits for either input or the earliest
 animation deadline requested by the retained tree, keeping idle windows from
 busy-spinning while preserving caret animation.
-The AppKit renderer likewise calls libSystem, CoreGraphics, and CoreText
-directly from Elisa for its monotonic clock, path rendering, colors, shadows,
-and font metrics; Objective-C remains only where Cocoa requires objects,
-delegates, protocols, and selectors.
+The AppKit renderer likewise calls libSystem, CoreGraphics, CoreText and
+ImageIO directly from Elisa for its monotonic clock, path rendering, colors,
+shadows, font metrics and off-screen PNG snapshots; Objective-C remains only
+where Cocoa requires objects, delegates, protocols, and selectors.
 
 ### Elisascript ports (not yet runnable)
 
