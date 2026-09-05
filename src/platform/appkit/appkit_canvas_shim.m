@@ -133,11 +133,14 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
     // state. Cocoa only validates the returned object and transfers the
     // temporary +1 into ARC for the protocol's return value.
     size_t native = elisa_appkit_canvas_accessibility_tooltip_text((size_t)(__bridge void *)self);
-    if (native == 0) return nil;
+    // NSViewToolTipOwner declares this return value nonnull. An empty string
+    // is Cocoa's no-tooltip result, so keep the protocol contract intact when
+    // Elisa has no eligible semantic help text.
+    if (native == 0) return @"";
     NSString *value = elisa_appkit_canvas_string(native);
     if (value == nil) {
         CFRelease((CFTypeRef)(void *)native);
-        return nil;
+        return @"";
     }
     return CFBridgingRelease((CFTypeRef)(void *)native);
 }
@@ -354,7 +357,9 @@ void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) 
 - (void)unmarkText { elisa_appkit_canvas_unmark_text(); }
 - (NSArray<NSAttributedStringKey> *)validAttributesForMarkedText {
     size_t native = elisa_appkit_canvas_valid_marked_attributes();
-    return native == 0 ? nil : CFBridgingRelease((CFTypeRef)(void *)native);
+    // NSTextInputClient declares a nonnull array. Elisa normally returns an
+    // empty retained CFArray; preserve that contract even if allocation fails.
+    return native == 0 ? [NSArray array] : CFBridgingRelease((CFTypeRef)(void *)native);
 }
 - (NSAttributedString *)attributedSubstringForProposedRange:(NSRange)range actualRange:(NSRangePointer)actualRange {
     size_t actualLocation = elisa_appkit_canvas_not_found;
