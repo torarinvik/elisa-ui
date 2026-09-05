@@ -73,6 +73,10 @@ if grep -Eq 'elisa_menu_action|elisa_text_action|int[[:space:]]+token[[:space:]]
   echo "appkit canvas: selector/action policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'int[[:space:]]+action[[:space:]]*=|elisa_appkit_canvas_text_action_(handle|enabled|valid)\(|elisa_appkit_canvas_perform_text_action\(' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: text-selector dispatch policy leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq '\bsel_registerName\b' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: selector registration leaked back into Objective-C" >&2
   exit 1
@@ -309,7 +313,8 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_key_up$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_focus_changed$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_environment_changed$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_text_selector_handle$'
-nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_text_action_handle$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_text_action_selector$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_text_action_valid_selector$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_menus_begin$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_menu_add_item$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_menus_commit$'
@@ -332,9 +337,7 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_marked_location$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_has_marked_text$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_commit_text$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_update_marked_text$'
-nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_text_action_valid$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_not_found$'
-nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_perform_text_action$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_clipboard_write$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_clipboard_read$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_character_x$'

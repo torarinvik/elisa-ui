@@ -332,6 +332,14 @@ int elisa_appkit_canvas_text_action_handle(size_t selector) {
     if (selector == 0) return 0;
     return elisa_appkit_canvas_text_action(sel_getName((SEL)(void *)selector));
 }
+void elisa_appkit_canvas_text_action_selector(size_t selector) {
+    int action = elisa_appkit_canvas_text_action_handle(selector);
+    if (action != 0) (void)elisa_appkit_canvas_perform_text_action(action);
+}
+int elisa_appkit_canvas_text_action_valid_selector(size_t selector) {
+    int action = elisa_appkit_canvas_text_action_handle(selector);
+    return elisa_appkit_canvas_text_action_valid(action);
+}
 float elisa_appkit_canvas_character_x(size_t location) { return 10.0f + (float)location * 5.0f; }
 float elisa_appkit_canvas_caret_width(void) { return 1.0f; }
 float elisa_appkit_canvas_caret_y(void) { return 50.0f; }

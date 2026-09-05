@@ -171,7 +171,8 @@ system candidate window at the custom caret, and provides standard Cut, Copy,
 Paste and Select All commands through both shortcuts and the Edit menu. Command
 validation and execution are computed in Elisa from focus, selection,
 secure-readback and undo-history state. Objective-C forwards Cocoa selector
-names and raw modifier masks; Elisa maps them to opaque action tokens. The shim
+names and raw modifier masks; Elisa maps selector handles to action tokens,
+validates them, executes the edit and requests redraws. The shim
 exposes three byte-oriented pasteboard primitives; it never reads, deletes or replaces a
 widget's selection itself. Elisa also decides when those mutations invalidate
 the canvas; the native side only exposes the `setNeedsDisplay` primitive.
