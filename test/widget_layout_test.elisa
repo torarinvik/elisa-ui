@@ -102,6 +102,15 @@ def frame_contains_rect_color(x: f32, y: f32, width: f32, height: f32, expected:
                 pass
     return false
 
+def first_fill_color_command(expected: UiCore::Color) -> usize:
+    for index in 0..<UiCore::command_count():
+        match UiCore::command_at(index):
+            UiCore::Command.FillRect(rect, color):
+                return index if color.r == expected.r and color.g == expected.g and color.b == expected.b and color.a == expected.a
+            _:
+                pass
+    return UiCore::command_count()
+
 def frame_contains_clip(x: f32, y: f32, width: f32, height: f32) -> bool:
     for index in 0..<UiCore::command_count():
         if UiCore::command_has_clip(index):
@@ -451,6 +460,22 @@ def main() -> i64:
     UiCore::begin_frame()
     UiFlat::paint()
     check("an empty label emits no text", UiCore::command_count() == 2)
+
+    # Painting follows the retained tree, not allocation order. Construct a
+    # later sibling before filling the first one; its subtree must still be
+    # emitted contiguously so the sibling cannot cover the first child.
+    UiFlat::reset()
+    paint_root: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 0.0, 0.0, UiCore::rgba(0, 0, 0, 0))
+    paint_first: usize = UiFlat::panel(paint_root, UiConst::Axis.Column, 0.0, 0.0, UiCore::rgb(220, 60, 70))
+    paint_second: usize = UiFlat::panel(paint_root, UiConst::Axis.Column, 0.0, 0.0, UiCore::rgb(60, 90, 220))
+    _ = UiFlat::button(paint_first, 40.0, 20.0, UiCore::rgb(60, 210, 120), UiCore::rgb(60, 210, 120), UiCore::rgb(60, 210, 120))
+    UiFlat::layout(120.0, 80.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    first_fill: usize = first_fill_color_command(UiCore::rgb(220, 60, 70))
+    child_fill: usize = first_fill_color_command(UiCore::rgb(60, 210, 120))
+    second_fill: usize = first_fill_color_command(UiCore::rgb(60, 90, 220))
+    check("flat painting keeps each subtree in tree order", first_fill < child_fill and child_fill < second_fill)
 
     UiFlat::reset()
     visibility_row: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Row, 0.0, 10.0, UiCore::rgb(0, 0, 0))

@@ -136,6 +136,13 @@ module UiFlat:
         global mutable layout_extra: f32[MAX_WIDGETS] = zeroed
         global mutable layout_capped: bool[MAX_WIDGETS] = zeroed
         global mutable semantic_emitted: bool[MAX_WIDGETS] = zeroed
+        # Paint order is derived from links, not allocation order. An app may
+        # construct a later sibling before filling an earlier container; the
+        # retained tree must still paint each subtree contiguously so a sibling
+        # cannot cover a descendant merely because its row was allocated first.
+        global mutable paint_order: usize[MAX_WIDGETS] = zeroed
+        global mutable paint_order_seen: bool[MAX_WIDGETS] = zeroed
+        global mutable paint_order_count: usize = 0
         global mutable text_storage: u8[TEXT_STORAGE_SIZE] = zeroed
         global mutable secure_text_storage: u8[SECURE_TEXT_STORAGE_SIZE] = zeroed
         global mutable widget_count: usize = 0
@@ -2511,10 +2518,41 @@ module UiFlat:
             viewport: f32 = widgets[index].width if widgets[index].axis == UiConst::Axis.Row else widgets[index].height
             _ = set_scroll_offset(index, widgets[index].scroll_offset - viewport if coordinate < thumb_start else widgets[index].scroll_offset + viewport)
 
+        # Build a bounded pre-order snapshot from the retained links. The flat
+        # layer normally receives well-formed links from its constructors, but
+        # Widget is public for zero-copy integration, so malformed cycles and
+        # out-of-range handles must fail closed instead of hanging a frame.
+        def append_paint_order(index: usize, depth: usize) -> void:
+            return if index >= widget_count or paint_order_seen[index] or paint_order_count >= widget_count
+            return if depth >= MAX_WIDGETS
+            paint_order_seen[index] <- true
+            paint_order[paint_order_count] <- index
+            paint_order_count <- paint_order_count + 1
+            child: mutable usize = widgets[index].first_child
+            steps: mutable usize = 0
+            while child != NONE and child < widget_count |child, depth, steps|:
+                break if steps >= MAX_WIDGETS
+                steps <- steps + 1
+                append_paint_order(child, depth + 1)
+                child <- widgets[child].next_sibling
+
+        def build_paint_order() -> void:
+            paint_order_count <- 0
+            for index in 0..<widget_count:
+                paint_order_seen[index] <- false
+            # Start at every detached root. A second pass below keeps malformed
+            # links visible as isolated rows without duplicating valid nodes.
+            for index in 0..<widget_count:
+                parent: usize = widgets[index].parent
+                append_paint_order(index, 0) if parent == NONE or parent >= widget_count
+            for index in 0..<widget_count:
+                append_paint_order(index, 0) if not paint_order_seen[index]
+
         # Pre-order emission gives painter's-algorithm ordering for free: a
         # parent's background is laid down before any of its children.
         def paint() -> void:
             layout(last_layout_width, last_layout_height) if layout_initialized and layout_dirty
+            build_paint_order()
             for index in 0..<widget_count:
                 semantic_emitted[index] <- not effectively_visible(index) or not intersects_scroll_viewports(index)
             for emitted_count in 0..<widget_count:
@@ -2525,7 +2563,8 @@ module UiFlat:
                 if next_semantic < widget_count:
                     emit_accessibility(next_semantic)
                     semantic_emitted[next_semantic] <- true
-            for index in 0..<widget_count:
+            for order_index in 0..<paint_order_count:
+                index: usize = paint_order[order_index]
                 continue if not effectively_visible(index) or not intersects_scroll_viewports(index)
                 set_scroll_clip(index)
                 enabled: bool = effectively_enabled(index)
@@ -2656,7 +2695,8 @@ module UiFlat:
                 UiCore::draw(UiCore::TextRun(UiCore::Vec2(text_x, text_y), widgets[index].text_size, widgets[index].text), ink)
             # Indicators are emitted after content so they remain readable over
             # translated children and nested scroll areas.
-            for index in 0..<widget_count:
+            for order_index in 0..<paint_order_count:
+                index: usize = paint_order[order_index]
                 continue if not effectively_visible(index) or not intersects_scroll_viewports(index)
                 set_scroll_clip(index)
                 paint_scrollbar(index)
