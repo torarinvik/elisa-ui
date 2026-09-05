@@ -628,6 +628,11 @@ int main(void) {
         [elisa_appkit_canvas_view(opened) insertText:@"é" replacementRange:NSMakeRange(NSNotFound, 0)];
         if (require(strcmp(test_text, "Worldé") == 0, @"Unicode text commit did not reach the app")) return 1;
         if (require(NSEqualRanges(elisa_appkit_canvas_view(opened).selectedRange, NSMakeRange(6, 0)), @"UTF-8 caret did not convert to UTF-16")) return 1;
+        NSAttributedString *attributedInput = [[NSAttributedString alloc] initWithString:@"!"];
+        [elisa_appkit_canvas_view(opened) insertText:attributedInput replacementRange:NSMakeRange(NSNotFound, 0)];
+        if (require(strcmp(test_text, "Worldé!") == 0 &&
+                        NSEqualRanges(elisa_appkit_canvas_view(opened).selectedRange, NSMakeRange(7, 0)),
+                    @"attributed text commit was not normalized by Elisa")) return 1;
         NSRange actualRange = NSMakeRange(NSNotFound, 0);
         NSAttributedString *substring = [elisa_appkit_canvas_view(opened) attributedSubstringForProposedRange:NSMakeRange(5, 1) actualRange:&actualRange];
         if (require([substring.string isEqualToString:@"é"] && NSEqualRanges(actualRange, NSMakeRange(5, 1)), @"Unicode substring did not come from Elisa range slicing")) return 1;
