@@ -311,7 +311,7 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_add_tooltip$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_release$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_commit$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_layout_changed_notification$'
-nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_post_layout_changed$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_root$'
 nm -g "$BIN" | grep -q ' U _NSAccessibilityPostNotification$'
 # Do not use grep -q here: with pipefail, a late match can make nm exit on
 # SIGPIPE after grep closes the pipe, masking a successful symbol check.

@@ -870,12 +870,9 @@ void elisa_appkit_canvas_accessibility_commit(size_t windowHandle,
     [[view window] invalidateCursorRectsForView:view];
 }
 
-void elisa_appkit_canvas_accessibility_post_layout_changed(size_t windowHandle,
-                                                           size_t notification) {
+// The view is retained by its window. Return a borrowed opaque handle so
+// Elisa can post the layout notification through AppKit's C ABI directly.
+size_t elisa_appkit_canvas_accessibility_root(size_t windowHandle) {
     ElisaCanvasView *view = elisa_appkit_canvas_view(windowHandle);
-    if (view == nil) return;
-    if (notification == 0) return;
-    NSString *name = elisa_appkit_canvas_string(notification);
-    if (name == nil) return;
-    NSAccessibilityPostNotification(view, (NSAccessibilityNotificationName)name);
+    return view == nil ? 0 : (size_t)(__bridge void *)view;
 }
