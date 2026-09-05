@@ -38,7 +38,7 @@ static size_t test_window_handle;
 
 void elisa_appkit_canvas_insert_text(const char *bytes, size_t length);
 
-size_t elisa_appkit_canvas_accessibility_float_value(float value) {
+static size_t test_accessibility_float_value(float value) {
     return (size_t)(void *)CFNumberCreate(NULL, kCFNumberFloat32Type, &value);
 }
 
@@ -50,9 +50,9 @@ void elisa_appkit_canvas_frame(size_t context) {
         (size_t)(__bridge void *)@"Intensity", (size_t)(__bridge void *)@"Adjust preview intensity",
         10, 10, 180, 24, 1, 0);
     elisa_appkit_canvas_accessibility_add_tooltip(test_window_handle, sliderElement, 10, 10, 180, 24);
-    size_t sliderValue = elisa_appkit_canvas_accessibility_float_value(test_slider_value);
-    size_t sliderMinimum = elisa_appkit_canvas_accessibility_float_value(0.0f);
-    size_t sliderMaximum = elisa_appkit_canvas_accessibility_float_value(1.0f);
+    size_t sliderValue = test_accessibility_float_value(test_slider_value);
+    size_t sliderMinimum = test_accessibility_float_value(0.0f);
+    size_t sliderMaximum = test_accessibility_float_value(1.0f);
     elisa_appkit_canvas_accessibility_set_range_values(sliderElement, sliderValue, sliderMinimum, sliderMaximum);
     if (sliderValue != 0) CFRelease((CFTypeRef)(void *)sliderValue);
     if (sliderMinimum != 0) CFRelease((CFTypeRef)(void *)sliderMinimum);
