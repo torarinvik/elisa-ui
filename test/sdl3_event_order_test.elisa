@@ -15,6 +15,7 @@ struct TextEvent:
 global mutable received_keys: i32 = 0
 global mutable failures: i32 = 0
 global mutable saw_text: bool = false
+global mutable saw_quit: bool = false
 
 def push_key() -> void:
     event: mutable u64[16] = zeroed
@@ -34,11 +35,19 @@ def app_init() -> void:
     pointer: void& = (&event[0]).cast[void&] can Unsafe.PointerCast
     if not SDL_PushEvent(pointer):
         failures <- failures + 1
+    close_event: mutable u64[16] = zeroed
+    close_fields: mutable u32& = (&close_event[0]).cast[mutable u32&] can Unsafe.PointerCast
+    close_fields[0] <- 0x210
+    close_pointer: void& = (&close_event[0]).cast[void&] can Unsafe.PointerCast
+    if not SDL_PushEvent(close_pointer):
+        failures <- failures + 1
 
 def app_event(event: UiCore::Event) -> void:
     match event:
         UiCore::KeyEvent.Down(code):
             received_keys <- received_keys + 1
+        UiCore::Event.Quit:
+            saw_quit <- true
         _:
             pass
 
@@ -55,7 +64,7 @@ def app_frame() -> void:
 def main() -> i64:
     _ = SDL_setenv_unsafe("SDL_VIDEODRIVER", "dummy", 1)
     result: i64 = UiSdl3::run("headless event regression", 64, 64, 1)
-    if result != 0 or not saw_text or received_keys != 300 or UiEvents::dropped() != 0:
+    if result != 0 or not saw_text or not saw_quit or received_keys != 300 or UiEvents::dropped() != 0:
         failures <- failures + 1
     if failures == 0:
         _ = puts("SDL event ordering: passed")
