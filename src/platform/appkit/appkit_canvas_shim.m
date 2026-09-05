@@ -867,6 +867,11 @@ void elisa_appkit_canvas_accessibility_commit(size_t windowHandle,
     if (view == nil) return;
     [view setAccessibilityChildren:children];
     [view setAccessibilityChildrenInNavigationOrder:children];
+}
+
+void elisa_appkit_canvas_accessibility_invalidate_cursor_rects(size_t windowHandle) {
+    ElisaCanvasView *view = elisa_appkit_canvas_view(windowHandle);
+    if (view == nil) return;
     [[view window] invalidateCursorRectsForView:view];
 }
 

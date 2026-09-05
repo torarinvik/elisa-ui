@@ -274,6 +274,10 @@ if grep -Eq '\- \(NSArray \*\)(accessibilityChildren|accessibilityChildrenInNavi
   echo "appkit canvas: accessibility child-list fallback leaked back into Objective-C" >&2
   exit 1
 fi
+if awk '/void elisa_appkit_canvas_accessibility_commit\(/ { inside=1 } inside && /invalidateCursorRectsForView/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: cursor invalidation policy leaked back into Objective-C accessibility commit" >&2
+  exit 1
+fi
 
 # These callbacks cross the Objective-C/Elisa boundary and must survive dead
 # stripping in the packaged product.
@@ -328,6 +332,7 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_set_numeric_value$
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_add_tooltip$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_release$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_commit$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_invalidate_cursor_rects$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_layout_changed_notification$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_root$'
 nm -g "$BIN" | grep -q ' U _NSAccessibilityPostNotification$'
