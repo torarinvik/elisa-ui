@@ -26,6 +26,7 @@ extern void elisa_appkit_canvas_key_up(int keyCode, size_t character);
 extern int elisa_appkit_canvas_accessibility_activate(size_t index);
 extern int elisa_appkit_canvas_accessibility_adjust(size_t index, int direction);
 extern size_t elisa_appkit_canvas_accessibility_index_for_handle(size_t handle);
+extern size_t elisa_appkit_canvas_accessibility_tooltip_text(size_t handle);
 extern int elisa_appkit_canvas_accessibility_set_numeric_value(size_t index, float value,
                                                                float *normalized);
 extern int elisa_appkit_canvas_pointer_button_primary(void);
@@ -64,6 +65,7 @@ extern size_t elisa_appkit_canvas_tracking_options(void);
 
 @class ElisaCanvasView;
 @class ElisaAccessibilityElement;
+static NSString *elisa_appkit_canvas_string(size_t handle);
 
 // Cursor objects are Cocoa singletons. Return opaque, non-owning pointers so
 // Elisa can select the native object while this shim only installs it.
@@ -132,7 +134,17 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
 - (NSString *)view:(NSView *)view stringForToolTip:(NSToolTipTag)tag
              point:(NSPoint)point userData:(void *)data {
     (void)view; (void)tag; (void)point; (void)data;
-    return self.accessibilityHelp;
+    // Tooltip ownership and eligibility live in Elisa's retained semantic
+    // state. Cocoa only validates the returned object and transfers the
+    // temporary +1 into ARC for the protocol's return value.
+    size_t native = elisa_appkit_canvas_accessibility_tooltip_text((size_t)(__bridge void *)self);
+    if (native == 0) return nil;
+    NSString *value = elisa_appkit_canvas_string(native);
+    if (value == nil) {
+        CFRelease((CFTypeRef)(void *)native);
+        return nil;
+    }
+    return CFBridgingRelease((CFTypeRef)(void *)native);
 }
 @end
 

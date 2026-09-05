@@ -61,6 +61,10 @@ if grep -Eq 'if[[:space:]]*\([[:space:]]*tooltip[[:space:]]*\)' "$ROOT/src/platf
   echo "appkit canvas: accessibility tooltip policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'return[[:space:]]+self\.accessibilityHelp' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: tooltip text lookup leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq '\bappendApplicationName\b' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: menu title policy leaked back into Objective-C" >&2
   exit 1

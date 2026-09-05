@@ -22,6 +22,7 @@ static NSUInteger test_frame_count;
 static int test_allows_readback = 1;
 static int test_text_focused = 1;
 static int test_allow_text_mutation = 1;
+static int test_tooltip_calls;
 static size_t test_accessibility_handles[3];
 static size_t test_window_handle;
 
@@ -133,6 +134,13 @@ size_t elisa_appkit_canvas_accessibility_index_for_handle(size_t handle) {
     if (handle == test_accessibility_handles[1]) return 8;
     if (handle == test_accessibility_handles[2]) return 9;
     return elisa_appkit_canvas_not_found();
+}
+size_t elisa_appkit_canvas_accessibility_tooltip_text(size_t handle) {
+    if (handle == 0) return 0;
+    id object = (__bridge id)(void *)handle;
+    if (![object isKindOfClass:[ElisaAccessibilityElement class]]) return 0;
+    test_tooltip_calls += 1;
+    return (size_t)CFBridgingRetain(@"tooltip supplied by Elisa");
 }
 int elisa_appkit_canvas_pointer_button_primary(void) { return 0; }
 int elisa_appkit_canvas_pointer_button_secondary(void) { return 1; }
@@ -521,6 +529,9 @@ int main(void) {
         if (require([first.accessibilityRole isEqualToString:NSAccessibilitySliderRole], @"wrong slider role")) return 1;
         if (require([first.accessibilityIdentifier isEqualToString:@"elisa-ui-7"], @"accessibility identifier did not cross the FFI")) return 1;
         if (require([first.accessibilityHelp isEqualToString:@"Adjust preview intensity"], @"help text missing")) return 1;
+        NSString *tooltip = [(id)first view:(NSView *)first stringForToolTip:0 point:NSZeroPoint userData:NULL];
+        if (require([tooltip isEqualToString:@"tooltip supplied by Elisa"] && test_tooltip_calls == 1,
+                    @"tooltip text did not come from Elisa")) return 1;
         if (require(fabs([first.accessibilityValue floatValue] - 0.25f) < 0.001f, @"wrong initial value")) return 1;
         first.accessibilityValue = @0.65f;
         if (require(fabs(test_slider_value - 0.65f) < 0.001f && fabs([first.accessibilityValue floatValue] - 0.65f) < 0.001f,

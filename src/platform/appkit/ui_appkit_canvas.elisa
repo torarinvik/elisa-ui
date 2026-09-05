@@ -247,6 +247,17 @@ module UiAppKitCanvas:
                 return accessibility_previous[index].action if accessibility_previous_handles[index] == handle
             return not_found()
 
+        # Cocoa asks the tooltip owner for a string lazily, after the semantic
+        # frame has already been committed. Resolve the element handle back to
+        # Elisa's retained state and construct a short-lived native string only
+        # when that state still exposes help text for an interactive node.
+        def accessibility_tooltip_text(handle: usize) -> usize can Unsafe.PointerCast:
+            index: usize = accessibility_index_for_handle(handle)
+            return 0 if index == not_found() or index >= accessibility_previous_count
+            state: AccessibilityState = accessibility_previous[index]
+            return 0 if state.interaction == 0 or state.help.len == 0
+            return native_string(state.help)
+
         # Bitmap dimensions are framework geometry, not a Cocoa default. Keep
         # the conversion from logical points to whole pixels in Elisa so the
         # native snapshot bridge only receives explicit, validated extents.
@@ -1386,12 +1397,16 @@ def appkit_canvas_accessibility_decrement_direction() -> i32:
 def appkit_canvas_accessibility_index_for_handle(handle: usize) -> usize:
     return UiAppKitCanvas::accessibility_index_for_handle(handle)
 
+def appkit_canvas_accessibility_tooltip_text(handle: usize) -> usize:
+    return UiAppKitCanvas::accessibility_tooltip_text(handle)
+
 export fn elisa_appkit_canvas_frame(context: usize) -> void = appkit_canvas_frame_callback
 export fn elisa_appkit_canvas_pointer_button_primary() -> i32 = appkit_canvas_pointer_button_primary
 export fn elisa_appkit_canvas_pointer_button_secondary() -> i32 = appkit_canvas_pointer_button_secondary
 export fn elisa_appkit_canvas_accessibility_increment_direction() -> i32 = appkit_canvas_accessibility_increment_direction
 export fn elisa_appkit_canvas_accessibility_decrement_direction() -> i32 = appkit_canvas_accessibility_decrement_direction
 export fn elisa_appkit_canvas_accessibility_index_for_handle(handle: usize) -> usize = appkit_canvas_accessibility_index_for_handle
+export fn elisa_appkit_canvas_accessibility_tooltip_text(handle: usize) -> usize = appkit_canvas_accessibility_tooltip_text
 export fn elisa_appkit_canvas_resize(width: f32, height: f32) -> void = appkit_canvas_resize_callback
 export fn elisa_appkit_canvas_pointer_scroll(x: f32, y: f32, dx: f32, dy: f32) -> void = appkit_canvas_pointer_scroll_callback
 export fn elisa_appkit_canvas_raw_flags(key_code: i32, modifiers: usize) -> void = appkit_canvas_raw_flags_callback
