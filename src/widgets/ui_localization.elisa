@@ -11,6 +11,11 @@ include "./ui_const.elisa"
 
 module UiLocalization:
     public:
+        # Locale tags are application data, but keeping the active tag in a
+        # bounded Elisa-owned buffer gives every backend one change token and
+        # one canonical spelling. The final byte is reserved for a sentinel.
+        const MAX_LOCALE_BYTES: usize = 64
+
         const enum Direction of i32:
             LeftToRight = 0
             RightToLeft = 1
@@ -22,6 +27,63 @@ module UiLocalization:
             Few = 3
             Many = 4
             Other = 5
+
+        struct Snapshot:
+            locale: sview
+            revision: u32
+            direction: Direction
+            truncated: bool
+
+        # Replace the active locale without letting a host retain a pointer to
+        # transient event data. Tags are lower-cased and use '-' as the one
+        # separator spelling, then copied into the fixed buffer. A changed
+        # locale invalidates all work that can depend on translated text or
+        # direction; repeating the same canonical tag is idempotent.
+        def set_locale(locale: sview) -> bool:
+            raw_length: usize = locale.len.usize()
+            take: usize = raw_length if raw_length < MAX_LOCALE_BYTES else MAX_LOCALE_BYTES - 1
+            was_truncated: bool = raw_length >= MAX_LOCALE_BYTES
+            same: mutable bool = locale_length_state == take and locale_truncated_state == was_truncated
+            for index in 0..<MAX_LOCALE_BYTES - 1:
+                normalized: u8 = normalize_byte(locale.data[index]) if index < take else 0
+                same <- false if locale_storage[index] != normalized
+            return false if same
+            for index in 0..<MAX_LOCALE_BYTES - 1:
+                locale_storage[index] <- normalize_byte(locale.data[index]) if index < take else 0
+            locale_storage[take] <- 0
+            locale_length_state <- take
+            locale_truncated_state <- was_truncated
+            locale_revision_state <- next_revision(locale_revision_state)
+            mark_changed()
+            return true
+
+        # Clear application locale state at a lifecycle boundary. A non-empty
+        # previous value is still a visible change, so the next frame rebuilds
+        # its text, layout, and accessibility tree.
+        def reset() -> void:
+            changed: bool = locale_length_state > 0 or locale_revision_state > 0 or locale_truncated_state
+            for index in 0..<MAX_LOCALE_BYTES:
+                locale_storage[index] <- 0
+            locale_length_state <- 0
+            locale_revision_state <- 0
+            locale_truncated_state <- false
+            mark_changed() if changed
+
+        def current_locale() -> sview:
+            return sview(&locale_storage[0], 0, locale_length_state.i64())
+
+        def revision() -> u32:
+            return locale_revision_state
+
+        def is_truncated() -> bool:
+            return locale_truncated_state
+
+        def current_direction() -> Direction:
+            return direction(current_locale())
+
+        def snapshot() -> Snapshot:
+            return Snapshot{locale: current_locale(), revision: locale_revision_state,
+                direction: current_direction(), truncated: locale_truncated_state}
 
         def direction(locale: sview) -> Direction:
             return Direction.RightToLeft if language_is(locale, 0x61, 0x72) # ar
@@ -81,6 +143,25 @@ module UiLocalization:
             return PluralCategory.One if quantity == 1 else PluralCategory.Other
 
     private:
+        global mutable locale_storage: u8[MAX_LOCALE_BYTES] = zeroed
+        global mutable locale_length_state: usize = 0
+        global mutable locale_revision_state: u32 = 0
+        global mutable locale_truncated_state: bool = false
+
+        def normalize_byte(value: u8) -> u8:
+            return 45 if value == 95 # '_' -> '-'
+            return value + 32 if value >= 65 and value <= 90
+            return value
+
+        def next_revision(value: u32) -> u32:
+            next: u32 = value + 1
+            return 1 if next == 0 else next
+
+        def mark_changed() -> void:
+            UiCore::invalidate(UiCore::Invalidation.Layout)
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+            UiCore::invalidate(UiCore::Invalidation.Semantics)
+
         def lower_ascii(value: u8) -> u8:
             return value + 32 if value >= 65 and value <= 90 else value
 

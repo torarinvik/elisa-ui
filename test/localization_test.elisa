@@ -11,6 +11,18 @@ def check(name: cstr, ok: bool) -> void:
     _ = puts(name)
 
 def main() -> i64:
+    UiLocalization::reset()
+    UiCore::clear_all_invalidations()
+    check("locale starts empty", UiLocalization::current_locale().len == 0 and UiLocalization::revision() == 0)
+    check("first locale is copied and canonicalized", UiLocalization::set_locale("EN_us") and UiLocalization::current_locale() == "en-us" and UiLocalization::revision() == 1)
+    first_sequence: u32 = UiCore::invalidation_sequence()
+    first_mask: i32 = UiCore::invalidations()
+    check("locale change invalidates layout paint and semantics", first_mask == UiCore::Invalidation.Layout.i32() | UiCore::Invalidation.Paint.i32() | UiCore::Invalidation.Semantics.i32() and first_sequence > 0)
+    check("same canonical locale is idempotent", not UiLocalization::set_locale("en-US") and UiLocalization::revision() == 1 and UiCore::invalidation_sequence() == first_sequence)
+    check("region changes are observable", UiLocalization::set_locale("en-GB") and UiLocalization::revision() == 2 and UiLocalization::current_locale() == "en-gb")
+    check("active locale exposes direction", UiLocalization::set_locale("AR_sa") and UiLocalization::current_direction() == UiLocalization::Direction.RightToLeft and UiLocalization::snapshot().direction == UiLocalization::Direction.RightToLeft)
+    check("long locale tags are bounded", UiLocalization::set_locale("abcdefghijklmnopqrstuvwxyz-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789") and UiLocalization::is_truncated() and UiLocalization::current_locale().len.usize() == UiLocalization::MAX_LOCALE_BYTES - 1)
+
     check("English defaults to left-to-right", UiLocalization::direction("en-US") == UiLocalization::Direction.LeftToRight and not UiLocalization::is_rtl("en-US"))
     check("Arabic selects right-to-left", UiLocalization::direction("ar-SA") == UiLocalization::Direction.RightToLeft and UiLocalization::is_rtl("AR"))
     check("Hebrew start maps to end", UiLocalization::start_alignment("he") == UiConst::CrossAlignment.End and UiLocalization::end_alignment("he") == UiConst::CrossAlignment.Start)

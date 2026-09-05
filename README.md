@@ -116,8 +116,10 @@ because a module member's symbol carries its module and those names cannot move.
   contrast, bounded text scaling, and reduced-motion animation timing for every
   backend. It is opt-in and applications can override resolved tokens.
 - **Localization and RTL policy** ([src/widgets/ui_localization.elisa](src/widgets/ui_localization.elisa)) —
-  locale direction, logical start/end alignment, mirrored coordinates, and
-  typed plural categories are resolved once in Elisa so backends do not drift.
+  locale direction, logical start/end alignment, mirrored coordinates, typed
+  plural categories, and a bounded active-locale revision are resolved once in
+  Elisa so backends do not drift. Locale changes invalidate layout, paint, and
+  semantics together; oversized tags are reported as truncated.
 - **Async validation** ([src/widgets/ui_validation.elisa](src/widgets/ui_validation.elisa)) —
   stable field bindings, explicit pending/valid/invalid/offline states, bounded
   messages, owner-scoped teardown, and revision-checked completions preserve
