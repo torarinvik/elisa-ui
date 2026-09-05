@@ -151,6 +151,14 @@ module UiControls:
         # underscore, so this file did not build with stage0 at all until it was
         # renamed; stage1 accepts either spelling, which is why it went unnoticed.
         const MAX_CONTROLS: usize = 256
+        # Realization walks a handle-backed hierarchy, so unlike UiFlat it
+        # cannot infer termination from an arena index. Keep malformed
+        # self-links and sibling cycles bounded before they can exhaust the
+        # native-control list or the host call stack. These limits are
+        # framework policy, not backend details; every native target receives
+        # the same fail-closed behavior.
+        const MAX_REALIZE_DEPTH: i32 = 256
+        const MAX_REALIZE_SIBLINGS: i32 = 1024
 
         struct ControlOp:
             kind: mutable Kind
@@ -229,7 +237,10 @@ module UiControls:
         #
         # Past MAX_CONTROLS a subtree is dropped rather than overwriting a live record:
         # a missing control is visible and fixable, a corrupted one is neither.
-        def realize(w: UiWidgets::Widget, parent: i32) -> void:
+        def realize(w: UiWidgets::Widget, parent: i32, depth: i32) -> void:
+            if depth >= MAX_REALIZE_DEPTH:
+                control_dropped <- true
+                return
             if total >= MAX_CONTROLS:
                 control_dropped <- true
                 return
@@ -251,8 +262,13 @@ module UiControls:
             ops[index].text <- text_of(w)
             ops[index].native_handle <- 0
             cursor: mutable UiWidgets::Widget? = w.first_child
-            while cursor is node |cursor, index|:
-                realize(node, index.i32())
+            sibling_steps: mutable i32 = 0
+            while cursor is node |cursor, index, sibling_steps|:
+                if sibling_steps >= MAX_REALIZE_SIBLINGS:
+                    control_dropped <- true
+                    break
+                realize(node, index.i32(), depth + 1)
+                sibling_steps <- sibling_steps + 1
                 cursor <- node.next_sibling
 
         # Hand the list to a backend, in order. The only generic here, and it

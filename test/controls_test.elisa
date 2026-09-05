@@ -135,7 +135,7 @@ def main() -> i64:
         check("checkbox state extraction keeps checked", UiControls::state_of(checked_widget).selected)
         layout(root, 200.0, 100.0)
         UiControls::reset()
-        UiControls::realize(root, UiControls::NO_PARENT)
+        UiControls::realize(root, UiControls::NO_PARENT, 0)
         UiControls::apply[RecordingControls]()
 
         # One control per widget, every one placed and captioned.
@@ -210,9 +210,20 @@ def main() -> i64:
             last.next_sibling <- node
             last <- node
         overflow_root.first_child <- first
-        UiControls::realize(overflow_root, UiControls::NO_PARENT)
+        UiControls::realize(overflow_root, UiControls::NO_PARENT, 0)
         check("an overflowing tree reports dropped controls", UiControls::overflowed())
         check("an overflowing tree keeps the arena bounded", UiControls::count() == 256)
+
+        # A malformed hierarchy must fail closed before a native backend sees
+        # an unbounded stream of duplicate controls. The cycle is deliberately
+        # built through the public mutable link, just like an FFI caller could
+        # provide one.
+        UiControls::reset()
+        cycle_root: Widget = Window.Top(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, title: "Cycle", resizable: true)
+        cycle_root.first_child <- cycle_root
+        UiControls::realize(cycle_root, UiControls::NO_PARENT, 0)
+        check("a cyclic hierarchy reports dropped controls", UiControls::overflowed())
+        check("a cyclic hierarchy keeps realization bounded", UiControls::count() <= UiControls::capacity())
 
         if test_failures == 0:
             _ = puts("controls: all checks passed")

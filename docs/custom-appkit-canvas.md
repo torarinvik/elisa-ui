@@ -145,6 +145,11 @@ expose identity comparison. A self-linked child or sibling cycle therefore
 terminates without hanging layout, hit testing, painting or scroll targeting;
 well-formed trees built by the normal constructors are unaffected.
 
+The native-controls realization pass has the same fail-closed behavior. Its
+Elisa-side walk enforces explicit depth and sibling budgets; exceeding either
+marks `UiControls::overflowed()` and stops emitting controls instead of
+repeatedly constructing a native object from a malformed cycle.
+
 ## Accessibility
 
 Each painted control produces a parallel semantic node containing its stable
