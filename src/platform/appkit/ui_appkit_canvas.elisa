@@ -99,6 +99,8 @@ extern CFNumberGetTypeID() -> usize
 extern CFNumberGetValue(number: usize, number_type: i32, value: usize&) -> bool
 extern CFDictionaryCreate(allocator: usize, keys: usize&, values: usize&, count: i64, key_callbacks: usize, value_callbacks: usize) -> usize
 extern CFAttributedStringCreate(allocator: usize, text: usize, attributes: usize) -> usize
+extern CFAttributedStringGetTypeID() -> usize
+extern CFAttributedStringGetString(value: usize) -> usize
 extern CFStringGetLength(value: usize) -> i64
 extern CFStringGetCharacterAtIndex(value: usize, index: i64) -> i32
 extern CFStringGetBytes(value: usize, range: NativeRange, encoding: u32, loss_byte: u8, external: bool, buffer: mutable u8&, max_length: i64, used_length: mutable i64&) -> i64
@@ -365,6 +367,17 @@ module UiAppKitCanvas:
         def native_attributed_string(text: usize) -> usize:
             return 0 if text == 0
             return CFAttributedStringCreate(0, text, 0)
+
+        # NSTextInputClient accepts either NSString or NSAttributedString. Both
+        # are toll-free CoreFoundation values, so normalize the borrowed
+        # protocol object here and keep the text-editing layer independent of
+        # Objective-C dynamic-type checks.
+        def native_input_string(value: usize) -> usize:
+            return 0 if value == 0
+            type_id: usize = CFGetTypeID(value)
+            return value if type_id == CFStringGetTypeID()
+            return CFAttributedStringGetString(value) if type_id == CFAttributedStringGetTypeID()
+            return 0
 
         # NSTextInputClient currently exposes no marked-text attributes. Build
         # the immutable empty collection in Elisa through CoreFoundation so

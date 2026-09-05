@@ -290,7 +290,11 @@ void elisa_appkit_canvas_insert_text(const char *bytes, size_t length) {
 }
 static size_t test_native_text_bytes(size_t native, char *buffer, size_t capacity) {
     if (native == 0) return 0;
-    NSString *value = (__bridge NSString *)(void *)native;
+    id object = (__bridge id)(void *)native;
+    NSString *value = [object isKindOfClass:[NSAttributedString class]]
+        ? [(NSAttributedString *)object string]
+        : ([object isKindOfClass:[NSString class]] ? (NSString *)object : nil);
+    if (value == nil) return 0;
     NSData *utf8 = [value dataUsingEncoding:NSUTF8StringEncoding];
     size_t take = MIN((size_t)utf8.length, capacity);
     if (take > 0) memcpy(buffer, utf8.bytes, take);
