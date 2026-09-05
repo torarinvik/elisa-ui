@@ -295,10 +295,17 @@ extend UiWidgets:
                     while remaining > 0.0 |rows, remaining, columns_count|:
                         rows <- rows + 1.0
                         remaining <- remaining - columns_count
-                    gaps_x: f32 = spacing * (columns_count - 1.0) if columns_count > 1.0 else 0.0
-                    gaps_y: f32 = spacing * (rows - 1.0) if rows > 1.0 else 0.0
-                    content_width: f32 = widest * columns_count + gaps_x + padding * 2.0
-                    content_height: f32 = tallest * rows + gaps_y + padding * 2.0
+                    # Raw enum constructors are public, so a caller can
+                    # bypass UiWidgets::grid and supply hostile metrics.
+                    # Measurement must use the same normalized values as
+                    # arrangement; otherwise a negative gap or inset makes
+                    # the reported minimum disagree with the boxes we place.
+                    safe_padding: f32 = UiCore::nonnegative_extent(padding)
+                    safe_spacing: f32 = UiCore::nonnegative_extent(spacing)
+                    gaps_x: f32 = safe_spacing * (columns_count - 1.0) if columns_count > 1.0 else 0.0
+                    gaps_y: f32 = safe_spacing * (rows - 1.0) if rows > 1.0 else 0.0
+                    content_width: f32 = widest * columns_count + gaps_x + safe_padding * 2.0
+                    content_height: f32 = tallest * rows + gaps_y + safe_padding * 2.0
                     w.min_width <- content_width if content_width > w.min_width
                     w.min_height <- content_height if content_height > w.min_height
                     return

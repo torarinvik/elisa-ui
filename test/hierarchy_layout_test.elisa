@@ -190,6 +190,18 @@ def main() -> i64:
         check("grid places the third item on the next row", grid_c.y, 41.0)
         check("grid cells use the largest child minimum", grid_a.width, 45.0)
 
+        # Raw grid constructors must report the same geometry that arrange
+        # uses. Negative padding/spacing are valid inputs at the sealed enum
+        # boundary, but both passes normalize them to zero instead of letting
+        # the measured minimum disagree with the placed cell positions.
+        malformed_grid_a: Widget = Button.Push(min_width: 20.0, min_height: 10.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "a", rest: grey(30), hover: grey(40), press: grey(20))
+        malformed_grid_b: Widget = Button.Push(min_width: 30.0, min_height: 10.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "b", rest: grey(30), hover: grey(40), press: grey(20))
+        malformed_grid_a.next_sibling <- malformed_grid_b
+        malformed_grid: Widget = Container.Grid(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: malformed_grid_a, next_sibling: null, columns: 2, padding: -5.0, spacing: -7.0, fill: grey(15))
+        layout(malformed_grid, 60.0, 10.0)
+        check("grid measurement clamps negative padding and spacing", malformed_grid.min_width, 60.0)
+        check("grid arrangement shares the normalized minimum", malformed_grid_b.x, 30.0)
+
         # Tight surfaces must not leak negative geometry to descendants. This
         # can happen when a raw hierarchy node's padding is larger than the
         # viewport (the builder normally supplies ordinary positive values).
