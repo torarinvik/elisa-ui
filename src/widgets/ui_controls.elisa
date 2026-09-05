@@ -351,20 +351,28 @@ module UiControls:
         def text_of(w: UiWidgets::Widget) -> sview:
             match w:
                 UiWidgets::Window.Top(title, resizable):
-                    return title
+                    return normalized_text(title)
                 UiWidgets::Window.Floating(title):
-                    return title
+                    return normalized_text(title)
                 UiWidgets::Control.Label(text, size, ink):
-                    return text
+                    return normalized_text(text)
                 UiWidgets::Control.TextBox(text, caret, size, ink, fill):
-                    return text
+                    return normalized_text(text)
                 UiWidgets::Button.Push(label, rest, hover, press):
-                    return label
+                    return normalized_text(label)
                 UiWidgets::Button.Toggle(label, on, rest, hover, press):
-                    return label
+                    return normalized_text(label)
                 UiWidgets::Button.Check(label, checked, rest, hover, press):
-                    return label
+                    return normalized_text(label)
                 UiWidgets::Button.Radio(label, group, selected, rest, hover, press):
-                    return label
+                    return normalized_text(label)
                 _:
                     return ""
+
+    private:
+        # Hierarchy variants are public and can be constructed without the
+        # convenience builders. Normalize their signed ABI views again at the
+        # final control-list boundary so native backends never reinterpret a
+        # negative length as an unsigned copy size.
+        def normalized_text(value: sview) -> sview:
+            return "" if value.len < 0 else value

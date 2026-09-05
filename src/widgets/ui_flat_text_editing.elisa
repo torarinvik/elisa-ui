@@ -45,7 +45,9 @@ extend UiFlat:
         # Insert committed UTF-8 at the focused field's caret. The AppKit text
         # input manager calls this with whole composed strings, never key codes.
         def insert_text(text: sview) -> void:
-            return if not accepts_text()
+            # `sview.len` is signed at the ABI boundary. Reject malformed
+            # negative extents before storage arithmetic converts them to usize.
+            return if text.len < 0 or not accepts_text()
             index: usize = focused_widget
             widgets[index].text_truncated <- false
             start: usize = selection_start(index)
@@ -90,7 +92,7 @@ extend UiFlat:
             finish_text_history(history_slot, index) if widget_epoch == callback_epoch
 
         def replace_text(index: usize, text: sview) -> void:
-            return if not text_editable(index)
+            return if text.len < 0 or not text_editable(index)
             byte_limit: usize = text.len if text.len < TEXT_CAPACITY - 1 else TEXT_CAPACITY - 1
             take: usize = grapheme_prefix_length(text, valid_utf8_prefix(text, byte_limit))
             widgets[index].text_truncated <- take < text.len
@@ -120,7 +122,7 @@ extend UiFlat:
         # this conversion and all replacement policy in Elisa leaves native
         # adapters responsible only for forwarding protocol calls.
         def commit_text(text: sview, replacement_location: usize, replacement_length: usize, has_replacement: bool) -> void:
-            return if not accepts_text()
+            return if text.len < 0 or not accepts_text()
             index: usize = focused_widget
             if composition_history_slot < TEXT_HISTORY_CAPACITY and widgets[index].marked_end > widgets[index].marked_start:
                 history_suppressed <- true
@@ -142,7 +144,7 @@ extend UiFlat:
             finish_text_history(history_slot, index) if widget_epoch == callback_epoch
 
         def update_marked_text(text: sview, selected_location: usize, selected_length: usize, replacement_location: usize, replacement_length: usize, has_replacement: bool) -> void:
-            return if not accepts_text()
+            return if text.len < 0 or not accepts_text()
             index: usize = focused_widget
             continuing_slot: usize = composition_history_slot
             history_slot: mutable usize = TEXT_HISTORY_CAPACITY
@@ -181,6 +183,7 @@ extend UiFlat:
         # counts, whereas AppKit uses UTF-16 units. Normalize both at this
         # framework boundary so the editing engine has one internal protocol.
         def update_marked_text_utf8_characters(text: sview, selected_start: i32, selected_length: i32) -> void:
+            return if text.len < 0
             start_count: usize = selected_start.usize() if selected_start > 0 else 0
             length_count: usize = selected_length.usize() if selected_length > 0 else 0
             cursor: mutable usize = 0
@@ -271,4 +274,3 @@ extend UiFlat:
 
         # Later widgets are drawn over earlier ones, so scanning backwards finds
         # the topmost interactive widget under the pointer.
-
