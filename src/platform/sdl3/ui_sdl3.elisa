@@ -205,10 +205,9 @@ module UiSdl3:
             # SDL reports the LOWERCASE keycode for an unshifted letter; UiCore::Key names
             # the uppercase one, as GLFW does.
             return code - 32 if code >= 97 and code <= 122
-            # The rest of printable ASCII is shared. A code in this range that UiCore::Key
-            # does not name still passes through: it is an i32 underneath, and a
-            # caller comparing against UiCore::Key members simply matches none of them.
-            return code if code >= 32 and code <= 96
+            # The rest of printable ASCII is shared, but only the closed set
+            # named by UiCore is allowed through the typed event boundary.
+            return code if code >= 32 and code <= 96 and UiCore::key_is_valid(code)
             # The control codes SDL uses where GLFW uses its own high numbers.
             return UiCore::Key.Backspace.i32() if code == 8
             return UiCore::Key.Tab.i32() if code == 9
@@ -297,9 +296,13 @@ module UiSdl3:
             elif kind == EVENT_MOUSE_WHEEL:
                 out_event <- (UiCore::PointerEvent.Scroll(at: UiCore::Vec2(event_wheel_mouse_x(), event_wheel_mouse_y()), delta: UiCore::Vec2(event_wheel_x(), event_wheel_y())))
             elif kind == EVENT_KEY_DOWN:
-                out_event <- (UiCore::KeyEvent.Down(code: UiCore::Key(key_from_sdl(event_keycode()))))
+                translated: i32 = key_from_sdl(event_keycode())
+                if UiCore::key_is_valid(translated):
+                    out_event <- (UiCore::KeyEvent.Down(code: UiCore::Key(translated)))
             elif kind == EVENT_KEY_UP:
-                out_event <- (UiCore::KeyEvent.Up(code: UiCore::Key(key_from_sdl(event_keycode()))))
+                translated: i32 = key_from_sdl(event_keycode())
+                if UiCore::key_is_valid(translated):
+                    out_event <- (UiCore::KeyEvent.Up(code: UiCore::Key(translated)))
             return true
 
         # Drain each decoded event before polling borrowed text from SDL. This

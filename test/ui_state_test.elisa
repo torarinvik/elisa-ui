@@ -45,6 +45,14 @@ def main() -> i64:
     check("type mismatch uses fallback", UiState::f32(10, 9.0) == 9.0 and UiState::text(11) == "")
     check("missing field uses fallback", not UiState::has(99) and UiState::bool(99, true))
 
+    # Persisted bytes are untrusted input. A non-finite IEEE-754 payload must
+    # fail closed just like a non-finite value supplied to put_f32.
+    UiState::begin()
+    _ = UiState::put_f32(11, 1.25)
+    finite_length: usize = UiState::copy_to(&blob[0], UiState::MAX_BYTES)
+    set_u32(&blob[0], UiState::HEADER_BYTES + UiState::RECORD_HEADER_BYTES, 0x7fc00000)
+    check("non-finite restored float uses fallback", UiState::restore(&blob[0], finite_length) and UiState::f32(11, 7.0) == 0.0)
+
     # Corrupt a later record's ID. The parser must reject duplicate logical
     # identity instead of exposing whichever record happened to be visited
     # first, and it must clear the previously valid restored state.

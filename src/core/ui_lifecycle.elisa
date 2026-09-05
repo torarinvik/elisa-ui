@@ -45,7 +45,7 @@ module UiLifecycle:
         # mistaken for events belonging to the new run.
         def begin() -> bool:
             return false if phase_state != Phase.New and phase_state != Phase.Stopped
-            generation_state <- generation_state + 1
+            generation_state <- next_generation(generation_state)
             phase_state <- Phase.Starting
             focused_state <- false
             return true
@@ -150,3 +150,10 @@ module UiLifecycle:
         global mutable phase_state: Phase = Phase.New
         global mutable generation_state: u32 = 0
         global mutable focused_state: bool = false
+
+        # Generation zero is reserved for an object that has never belonged to
+        # a session.  Keep it reserved even after the 32-bit counter wraps so a
+        # stale callback can never become valid by coincidence.
+        def next_generation(value: u32) -> u32:
+            next: u32 = value + 1
+            return 1 if next == 0 else next
