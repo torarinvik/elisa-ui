@@ -1,0 +1,215 @@
+# Bounded modal-dialog policy shared by native and hosted backends.
+#
+# The framework owns modal ordering, typed results, back/cancel behavior, and
+# owner-scoped teardown. Backends only render the current record and report the
+# user's chosen action. Labels are copied into fixed storage so a dialog cannot
+# retain a view into a temporary application buffer.
+
+include "../core/ui_core.elisa"
+
+module UiDialog:
+    public:
+        const MAX_DIALOGS: usize = 16
+        const TEXT_CAPACITY: usize = 256
+        const NONE_SLOT: usize = MAX_DIALOGS
+
+        const enum Kind of i32:
+            Alert = 0
+            Confirm = 1
+            Sheet = 2
+
+        const enum Result of i32:
+            None = 0
+            Primary = 1
+            Secondary = 2
+            Cancelled = 3
+            Back = 4
+
+        struct Handle:
+            slot: u32
+            generation: u32
+
+        struct Snapshot:
+            active: usize
+            closed: usize
+            overflowed: bool
+
+        def invalid() -> Handle:
+            return Handle{slot: NONE_SLOT.u32(), generation: 0}
+
+        def reset() -> void:
+            for slot in 0..<MAX_DIALOGS:
+                active[slot] <- false
+                closed[slot] <- false
+                generations[slot] <- next_generation(generations[slot])
+                owners[slot] <- 0
+                sequence[slot] <- 0
+                kinds[slot] <- Kind.Alert
+                results[slot] <- Result.None
+                clear_text(slot)
+            active_count <- 0
+            closed_count <- 0
+            sequence_state <- 0
+            overflowed_state <- false
+
+        def snapshot() -> Snapshot:
+            return Snapshot{active: active_count, closed: closed_count, overflowed: overflowed_state}
+
+        def is_valid(handle: Handle) -> bool:
+            return handle.slot.usize() < MAX_DIALOGS and active[handle.slot.usize()] and generations[handle.slot.usize()] == handle.generation
+
+        # Open pushes a modal record above every previous record. Empty labels
+        # are allowed for secondary actions but the title/message are bounded
+        # and copied before the handle is returned.
+        def open(kind: Kind, title: sview, message: sview, primary: sview, secondary: sview, owner: u32) -> Handle:
+            free_slot: mutable usize = NONE_SLOT
+            for slot in 0..<MAX_DIALOGS:
+                if not active[slot] and not closed[slot]:
+                    free_slot <- slot
+                    break
+            if free_slot == NONE_SLOT:
+                overflowed_state <- true
+                return invalid()
+            active[free_slot] <- true
+            closed[free_slot] <- false
+            generations[free_slot] <- next_generation(generations[free_slot])
+            owners[free_slot] <- owner
+            sequence_state <- sequence_state + 1
+            sequence[free_slot] <- sequence_state
+            kinds[free_slot] <- kind
+            results[free_slot] <- Result.None
+            write_text(free_slot, 0, title)
+            write_text(free_slot, 1, message)
+            write_text(free_slot, 2, primary)
+            write_text(free_slot, 3, secondary)
+            active_count <- active_count + 1
+            return Handle{slot: free_slot.u32(), generation: generations[free_slot]}
+
+        def top() -> Handle:
+            selected: mutable usize = NONE_SLOT
+            newest: mutable u32 = 0
+            for slot in 0..<MAX_DIALOGS:
+                if active[slot] and not closed[slot] and sequence[slot] >= newest:
+                    selected <- slot
+                    newest <- sequence[slot]
+            return invalid() if selected == NONE_SLOT
+            return make_handle(selected)
+
+        def kind(handle: Handle) -> Kind:
+            return Kind.Alert if not is_valid(handle)
+            return kinds[handle.slot.usize()]
+
+        def title(handle: Handle) -> sview:
+            return text_value(handle, 0)
+
+        def message(handle: Handle) -> sview:
+            return text_value(handle, 1)
+
+        def primary_label(handle: Handle) -> sview:
+            return text_value(handle, 2)
+
+        def secondary_label(handle: Handle) -> sview:
+            return text_value(handle, 3)
+
+        def owner(handle: Handle) -> u32:
+            return 0 if not is_valid(handle)
+            return owners[handle.slot.usize()]
+
+        def is_open(handle: Handle) -> bool:
+            return is_valid(handle) and not closed[handle.slot.usize()]
+
+        def result(handle: Handle) -> Result:
+            return Result.None if not is_valid(handle)
+            return results[handle.slot.usize()]
+
+        # Choosing any typed result closes the record but keeps its handle valid
+        # until `dispose`, allowing the application to read the result after a
+        # native surface has already gone away.
+        def choose(handle: Handle, next: Result) -> bool:
+            return false if not is_valid(handle) or closed[handle.slot.usize()]
+            return false if next == Result.None
+            slot: usize = handle.slot.usize()
+            results[slot] <- next
+            closed[slot] <- true
+            active_count <- active_count - 1 if active_count > 0
+            closed_count <- closed_count + 1
+            return true
+
+        def cancel(handle: Handle) -> bool:
+            return choose(handle, Result.Cancelled)
+
+        # OS back navigation is a framework action: it dismisses only the
+        # newest open dialog and reports `Back` to its owner.
+        def back() -> bool:
+            dialog: Handle = top()
+            return choose(dialog, Result.Back)
+
+        def dismiss_owner(owner_id: u32) -> usize:
+            dismissed: mutable usize = 0
+            for slot in 0..<MAX_DIALOGS:
+                if active[slot] and not closed[slot] and owners[slot] == owner_id:
+                    _ = choose(make_handle(slot), Result.Cancelled)
+                    dismissed <- dismissed + 1
+            return dismissed
+
+        # Disposal is separate from choosing a result, so a late callback can
+        # still inspect a closed result but cannot use a recycled slot.
+        def dispose(handle: Handle) -> bool:
+            return false if not is_valid(handle)
+            slot: usize = handle.slot.usize()
+            active[slot] <- false
+            if closed[slot] and closed_count > 0:
+                closed_count <- closed_count - 1
+            if not closed[slot] and active_count > 0:
+                active_count <- active_count - 1
+            closed[slot] <- false
+            generations[slot] <- next_generation(generations[slot])
+            owners[slot] <- 0
+            sequence[slot] <- 0
+            results[slot] <- Result.None
+            clear_text(slot)
+            return true
+
+    private:
+        global mutable active: bool[MAX_DIALOGS] = zeroed
+        global mutable closed: bool[MAX_DIALOGS] = zeroed
+        global mutable generations: u32[MAX_DIALOGS] = zeroed
+        global mutable owners: u32[MAX_DIALOGS] = zeroed
+        global mutable sequence: u32[MAX_DIALOGS] = zeroed
+        global mutable kinds: Kind[MAX_DIALOGS] = zeroed
+        global mutable results: Result[MAX_DIALOGS] = zeroed
+        global mutable lengths: usize[MAX_DIALOGS * 4] = zeroed
+        global mutable storage: u8[MAX_DIALOGS * 4 * TEXT_CAPACITY] = zeroed
+        global mutable active_count: usize = 0
+        global mutable closed_count: usize = 0
+        global mutable sequence_state: u32 = 0
+        global mutable overflowed_state: bool = false
+
+        def next_generation(value: u32) -> u32:
+            next: u32 = value + 1
+            return 1 if next == 0 else next
+
+        def make_handle(slot: usize) -> Handle:
+            return Handle{slot: slot.u32(), generation: generations[slot]}
+
+        def text_offset(slot: usize, field: usize) -> usize:
+            return (slot * 4 + field) * TEXT_CAPACITY
+
+        def clear_text(slot: usize) -> void:
+            for field in 0..<4:
+                lengths[slot * 4 + field] <- 0
+                for index in 0..<TEXT_CAPACITY:
+                    storage[text_offset(slot, field) + index] <- 0
+
+        def write_text(slot: usize, field: usize, value: sview) -> void:
+            take: usize = value.len.usize() if value.len.usize() < TEXT_CAPACITY - 1 else TEXT_CAPACITY - 1
+            offset: usize = text_offset(slot, field)
+            for index in 0..<TEXT_CAPACITY - 1:
+                storage[offset + index] <- value.data[index] if index < take else 0
+            storage[offset + take] <- 0
+            lengths[slot * 4 + field] <- take
+
+        def text_value(handle: Handle, field: usize) -> sview:
+            return "" if not is_valid(handle) or field >= 4
+            slot: usize = handle.slot.usize()
+            return sview(&storage[text_offset(slot, field)], 0, lengths[slot * 4 + field].i64())

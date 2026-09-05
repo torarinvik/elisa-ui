@@ -1,0 +1,48 @@
+# Headless regression for modal dialog lifecycle and back-navigation policy.
+
+include "../src/widgets/ui_dialog.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiDialog::reset()
+    first: UiDialog::Handle = UiDialog::open(UiDialog::Kind.Confirm, "Delete item", "This cannot be undone.", "Delete", "Keep", 10)
+    check("dialog opens with a valid handle", UiDialog::is_valid(first) and UiDialog::is_open(first))
+    check("dialog copies title and actions", UiDialog::title(first) == "Delete item" and UiDialog::message(first) == "This cannot be undone." and UiDialog::primary_label(first) == "Delete" and UiDialog::secondary_label(first) == "Keep")
+    check("dialog reports owner and kind", UiDialog::owner(first) == 10 and UiDialog::kind(first) == UiDialog::Kind.Confirm)
+    check("snapshot counts open dialog", UiDialog::snapshot().active == 1 and UiDialog::snapshot().closed == 0)
+
+    second: UiDialog::Handle = UiDialog::open(UiDialog::Kind.Alert, "Offline", "Try again later.", "OK", "", 20)
+    check("top returns newest dialog", UiDialog::top().slot == second.slot)
+    check("back closes only the top dialog", UiDialog::back() and UiDialog::result(second) == UiDialog::Result.Back and not UiDialog::is_open(second) and UiDialog::is_open(first))
+    check("top skips closed results", UiDialog::top().slot == first.slot)
+    check("closed result remains readable", UiDialog::snapshot().active == 1 and UiDialog::snapshot().closed == 1)
+    check("closed dialog rejects a second result", not UiDialog::cancel(second))
+
+    check("primary choice closes dialog", UiDialog::choose(first, UiDialog::Result.Primary) and UiDialog::result(first) == UiDialog::Result.Primary and not UiDialog::is_open(first))
+    check("owner dismissal has no already-closed work", UiDialog::dismiss_owner(10) == 0)
+    check("owner dismissal cancels open dialogs", UiDialog::dismiss_owner(20) == 0)
+    check("disposing closed handles frees them", UiDialog::dispose(first) and UiDialog::dispose(second) and UiDialog::snapshot().active == 0 and UiDialog::snapshot().closed == 0)
+    check("disposed handles are stale", not UiDialog::is_valid(first) and UiDialog::result(first) == UiDialog::Result.None)
+
+    # Capacity exhaustion is explicit, never an alias to an existing modal.
+    handles: UiDialog::Handle[UiDialog::MAX_DIALOGS] = zeroed
+    for index in 0..<UiDialog::MAX_DIALOGS:
+        handles[index] <- UiDialog::open(UiDialog::Kind.Sheet, "Sheet", "", "Close", "", index.u32())
+    overflow: UiDialog::Handle = UiDialog::open(UiDialog::Kind.Alert, "Overflow", "", "OK", "", 99)
+    check("dialog capacity reports overflow", not UiDialog::is_valid(overflow) and UiDialog::snapshot().overflowed and UiDialog::snapshot().active == UiDialog::MAX_DIALOGS)
+    for index in 0..<UiDialog::MAX_DIALOGS:
+        _ = UiDialog::cancel(handles[index])
+        _ = UiDialog::dispose(handles[index])
+
+    if failures == 0:
+        _ = puts("dialog: all checks passed")
+        return 0
+    _ = puts("dialog: FAILURES above")
+    return 1
