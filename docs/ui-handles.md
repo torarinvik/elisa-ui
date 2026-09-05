@@ -18,6 +18,10 @@ UiHandles::layout(800.0, 600.0)
 UiHandles::paint()
 ```
 
+The shared hello example follows this pattern on SDL3, AppKit canvas, and
+WasmBrowser: application state stores handles, and only the legacy callback
+boundary converts a callback's widget index with `UiHandles::index`.
+
 The root-parent token is produced by `root_parent()`. A constructor returns an
 invalid handle when the parent belongs to an older tree or the fixed arena is
 full; check `UiHandles::is_valid` before retaining or using it. Mutations and

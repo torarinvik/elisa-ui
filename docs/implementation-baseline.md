@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `b5d84b7` on branch `work` |
+| elisa-ui revision | `8b263e5` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `1a44c1d1`; SHA-256 `a9573ad3779ae57f9daf68f79c53761c5ec54d0045a11c1387071ba0562678bc` |
@@ -120,6 +120,11 @@ wasm-browser inspect build/hello.wapp
   format: component
 ```
 
+The shared `examples/hello/app.elisa` now uses `UiHandles::Handle` values for
+every retained widget on SDL3, AppKit canvas, and WasmBrowser; only the
+backend callback's legacy widget index is converted through the explicit
+`UiHandles::index` escape hatch.
+
 The AppKit checks use activation policy prohibited and the custom canvas smoke
 path; no window is shown or foregrounded. The hello app's new
 `UiFlat::handle` entry point is covered by `test/widget_dispatch_test.elisa`.
@@ -170,7 +175,8 @@ separate host-enforced security boundary.
   asserts the profile, host imports, guest exports, and absence of JS/TS/ESM
   artifacts. The public `UiHandles` builder covers all flat constructors,
   typed state setters/queries, event forwarding, hit testing, accessibility
-  actions, and text editing with stale-handle guards. Android/iOS and remote
+  actions, and text editing with stale-handle guards. The shared hello example
+  is migrated to that surface across all three entrypoints. Android/iOS and remote
   work remain blocked on sibling host/SDK execution fixtures rather than being
   simulated here; the next UI-side integration gap is consuming generated
   SDK bindings instead of the hosted adapter's handwritten WIT lowering.
