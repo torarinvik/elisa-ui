@@ -43,3 +43,9 @@ Text composition and editing (`insert_text`, `replace_text`, marked text,
 clipboard actions, and undo/redo) remain in Elisa; native adapters only forward
 their protocol facts. Queries such as `value`, `selected`, `text_value`,
 `is_focused`, and `scroll_offset` return neutral values for stale handles.
+
+`parent`, `first_child`, and `next_sibling` keep tree traversal typed. Theme
+tokens are available through `theme`/`set_theme`; selection and marked-text
+ranges are exposed in UTF-16 units, with `selected_text` applying the secure
+field privacy rule. `overflowed` reports fixed-arena exhaustion so an app can
+render an explicit recovery state instead of silently losing a subtree.

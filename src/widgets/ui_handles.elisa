@@ -53,9 +53,33 @@ module UiHandles:
         def count() -> usize:
             return UiFlat::count()
 
+        def overflowed() -> bool:
+            return UiFlat::overflowed()
+
+        def theme() -> UiFlat::Theme:
+            return UiFlat::theme()
+
+        def set_theme(next: UiFlat::Theme) -> void:
+            UiFlat::set_theme(next)
+
         def widget(handle: Handle) -> UiFlat::Widget?:
             return null if not is_valid(handle)
             return UiFlat::widget(handle.widget_id.usize())
+
+        # Tree navigation returns typed tokens too, so an application can
+        # inspect a retained subtree without exposing an unchecked arena index.
+        def parent(handle: Handle) -> Handle:
+            return invalid() if not is_valid(handle)
+            row: UiFlat::Widget = UiFlat::widget(handle.widget_id.usize())
+            return root_parent() if row.parent == UiFlat::NONE else from_index(row.parent)
+
+        def first_child(handle: Handle) -> Handle:
+            return invalid() if not is_valid(handle)
+            return from_index(UiFlat::widget(handle.widget_id.usize()).first_child)
+
+        def next_sibling(handle: Handle) -> Handle:
+            return invalid() if not is_valid(handle)
+            return from_index(UiFlat::widget(handle.widget_id.usize()).next_sibling)
 
         # Constructors preserve UiFlat's defaults while returning a checked
         # typed value.  A stale parent is rejected rather than turned into a
@@ -232,6 +256,37 @@ module UiHandles:
         def set_scroll_offset(handle: Handle, requested: f32) -> bool:
             return false if not is_valid(handle)
             return UiFlat::set_scroll_offset(handle.widget_id.usize(), requested)
+
+        def scroll_dragging() -> bool:
+            return UiFlat::scroll_dragging()
+
+        def selection_location(handle: Handle) -> usize:
+            return 0 if not is_valid(handle)
+            return UiFlat::selection_utf16_location(handle.widget_id.usize())
+
+        def selection_length(handle: Handle) -> usize:
+            return 0 if not is_valid(handle)
+            return UiFlat::selection_utf16_length(handle.widget_id.usize())
+
+        def selected_text(handle: Handle) -> sview:
+            return "" if not is_valid(handle)
+            return UiFlat::selected_text_value(handle.widget_id.usize())
+
+        def set_selection(handle: Handle, anchor: usize, caret: usize) -> void:
+            return if not is_valid(handle)
+            UiFlat::set_selection(handle.widget_id.usize(), anchor, caret)
+
+        def set_selection_utf16(handle: Handle, location: usize, length: usize) -> void:
+            return if not is_valid(handle)
+            UiFlat::set_selection_utf16(handle.widget_id.usize(), location, length)
+
+        def marked_location(handle: Handle) -> usize:
+            return 0 if not is_valid(handle)
+            return UiFlat::marked_utf16_location(handle.widget_id.usize())
+
+        def marked_length(handle: Handle) -> usize:
+            return 0 if not is_valid(handle)
+            return UiFlat::marked_utf16_length(handle.widget_id.usize())
 
         def request_focus(handle: Handle) -> bool:
             return false if not is_valid(handle)

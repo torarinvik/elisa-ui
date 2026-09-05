@@ -66,7 +66,15 @@ def main() -> i64:
     check("child allocation increments count", UiHandles::count() == 2)
     check("child handle is valid", UiHandles::is_valid(child))
     check("child exposes a retained widget", UiHandles::widget(child) != null)
+    check("typed parent navigation returns the root", UiHandles::parent(child).widget_id == root.widget_id)
+    check("typed first-child navigation returns the button", UiHandles::first_child(root).widget_id == child.widget_id)
     check("stale parent is not involved before reset", UiHandles::is_valid(root))
+    check("new handle tree is not overflowed", not UiHandles::overflowed())
+
+    theme: mutable UiFlat::Theme = UiHandles::theme()
+    theme.focus_inset <- 3.0
+    UiHandles::set_theme(theme)
+    check("theme round-trips through the handle surface", UiHandles::theme().focus_inset == 3.0)
 
     # The typed builder covers every flat control constructor while keeping
     # the old compact slider/progress signatures source-compatible.
@@ -80,6 +88,7 @@ def main() -> i64:
     check("secure field keeps initial text", UiHandles::text_value(secret) == "initial")
     if UiHandles::widget(secret) is secret_row:
         check("secure field is a text field", secret_row.kind == UiConst::WidgetKind.TextField)
+        check("secure constructor marks private state", secret_row.secure)
     else:
         check("secure field is a text field", false)
     if UiHandles::widget(slider) is slider_row:
@@ -118,6 +127,12 @@ def main() -> i64:
     check("handle focus request is observable", UiHandles::request_focus(secret) and UiHandles::is_focused(secret))
     UiHandles::replace_text(secret, "changed")
     check("handle text replacement stays in Elisa", UiHandles::text_value(secret) == "changed")
+    UiHandles::set_secure(secret, false)
+    UiHandles::set_selection(secret, 0, 2)
+    check("byte selection is exposed in UTF-16 units", UiHandles::selection_location(secret) == 0 and UiHandles::selection_length(secret) == 2 and UiHandles::selected_text(secret) == "ch")
+    UiHandles::set_selection_utf16(secret, 2, 3)
+    check("UTF-16 selection stays in Elisa", UiHandles::selected_text(secret) == "ang")
+    UiHandles::set_secure(secret, true)
     check("handle text replacement records undo", UiHandles::can_undo_text())
     check("handle undo restores text", UiHandles::undo_text() and UiHandles::text_value(secret) == "initial")
     check("handle redo restores text", UiHandles::redo_text() and UiHandles::text_value(secret) == "changed")
