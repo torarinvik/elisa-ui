@@ -396,7 +396,14 @@ module UiCore:
         def accessibility_count() -> usize:
             return accessibility_total
 
+        # The indexed reader is the zero-overhead path used by bounded backend
+        # loops. External callers should use the optional form below when the
+        # index did not come from accessibility_count().
         def accessibility_at(index: usize) -> AccessibilityNode:
+            return accessibility_nodes[index]
+
+        def accessibility_if_valid(index: usize) -> AccessibilityNode?:
+            return null if index >= accessibility_total
             return accessibility_nodes[index]
 
         def accessibility_overflowed() -> bool:
@@ -419,7 +426,14 @@ module UiCore:
         def command_count() -> usize:
             return command_total
 
+        # Keep the existing reader as a proven-valid fast path for painters and
+        # wire encoders. The optional form is the safe API for a host inspecting
+        # a frame without first proving that its index is in range.
         def command_at(index: usize) -> Command:
+            return command_buffer[index]
+
+        def command_if_valid(index: usize) -> Command?:
+            return null if index >= command_total
             return command_buffer[index]
 
         def command_overflowed() -> bool:
@@ -442,6 +456,10 @@ module UiCore:
             return index < command_total and command_has_clip_flag[index]
 
         def command_clip_at(index: usize) -> Rect:
+            return command_clip[index]
+
+        def command_clip_if_valid(index: usize) -> Rect?:
+            return null if index >= command_total
             return command_clip[index]
 
         # Surface dimensions are extents, never signed offsets. Normalize them
