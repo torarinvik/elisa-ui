@@ -280,11 +280,16 @@ module UiAppKitCanvas:
         # the conversion from logical points to whole pixels in Elisa so the
         # native snapshot bridge only receives explicit, validated extents.
         const SNAPSHOT_MAX_PIXELS: u64 = 67108864
+        # The largest finite f32 below 2^31. Values at or above 2^31 cannot be
+        # represented by the i32 ABI used by the CoreGraphics entry point.
+        const SNAPSHOT_MAX_I32_EXTENT: f32 = 2147483520.0
 
         def bitmap_extent(value: f32) -> i32:
             safe: f32 = UiCore::nonnegative_extent(value)
             return 1 if safe <= 0.0
+            return 0 if safe > SNAPSHOT_MAX_I32_EXTENT
             rounded: f32 = ceilf(safe)
+            return 0 if rounded > SNAPSHOT_MAX_I32_EXTENT
             return 1 if rounded < 1.0 else rounded.i32()
 
         # A headless frame allocates four bytes per pixel inside CoreGraphics.
@@ -1376,12 +1381,21 @@ module UiAppKitCanvas:
             can Ui.Window, Ui.Draw, Ui.Text, Ui.Input, Unsafe.PointerCast:
                 return 1 if title.len == 0
                 pointer: cstr = title.data.cast[cstr] can Unsafe.PointerCast
-                native_title: usize = native_string(title)
-                return 1 if native_title == 0
                 width: f32 = UiCore::nonnegative_extent(options.width)
                 height: f32 = UiCore::nonnegative_extent(options.height)
                 style: i32 = window_style(options)
                 headless: bool = smoke_mode()
+                bitmap_width: mutable i32 = 0
+                bitmap_height: mutable i32 = 0
+                if headless:
+                    bitmap_width <- bitmap_extent(width)
+                    bitmap_height <- bitmap_extent(height)
+                    # Reject an invalid or oversized snapshot before creating
+                    # any AppKit objects. The visible path keeps its normal
+                    # window sizing semantics and never needs bitmap extents.
+                    return 2 if not snapshot_dimensions_safe(bitmap_width, bitmap_height)
+                native_title: usize = native_string(title)
+                return 1 if native_title == 0
                 release_canvas()
                 canvas_initialized <- false
                 headless_session <- headless
@@ -1414,8 +1428,6 @@ module UiAppKitCanvas:
                         if snapshot_length > 0 and snapshot_path == 0:
                             release_canvas()
                             return 2
-                    bitmap_width: i32 = bitmap_extent(width)
-                    bitmap_height: i32 = bitmap_extent(height)
                     # Keep the live path entirely in Elisa: bitmap
                     # construction, frame rendering, and PNG encoding all
                     # happen in the retained renderer below. The legacy C

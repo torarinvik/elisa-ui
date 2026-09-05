@@ -264,7 +264,8 @@ a window.
 
 Headless snapshots are bounded to 67,108,864 pixels (the equivalent of an
 8,192-by-8,192 RGBA bitmap); larger requests fail before CoreGraphics allocates
-the backing store.
+the backing store. Logical extents that cannot fit the signed 32-bit FFI
+dimensions are rejected in Elisa before a smoke-mode AppKit window is created.
 `scripts/check_appkit_canvas.sh` additionally checks callback symbols,
 the application bundle, code signature, PNG dimensions and semantic-object
 identity across redraws. `scripts/run_tests.sh` runs that check with the portable
