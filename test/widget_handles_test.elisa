@@ -1,0 +1,86 @@
+# Typed UiHandles keep the slot-based compatibility layer safe across rebuilds.
+# This is a headless identity test: no backend or window is involved.
+
+include "../src/widgets/ui_handles.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable failures: i32 = 0
+
+def ui_measure_text_width(text: sview, size: f32) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size
+
+def ui_font_ascent(size: f32) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return 0
+
+def app_init() -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    pass
+
+def app_text_input(text: sview) -> void:
+    pass
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    pass
+
+def app_frame() -> void:
+    pass
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiHandles::reset()
+    old_root: mutable UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
+    root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 8.0, 4.0, UiCore::rgb(20, 20, 24))
+    old_root <- root
+    check("flat root slot is valid", UiFlat::is_valid(0))
+    check("flat lifetime is nonzero", UiFlat::lifetime() != 0)
+    check("new root handle is valid", UiHandles::is_valid(root))
+    check("root handle lifetime matches", root.tree_id == UiFlat::lifetime().u32())
+    check("root handle keeps slot zero", root.widget_id == 0)
+    check("root handle index helper keeps slot zero", UiHandles::index(root) == 0)
+    child: UiHandles::Handle = UiHandles::button(root, 80.0, 24.0, UiCore::rgb(40, 80, 140), UiCore::rgb(60, 100, 160), UiCore::rgb(20, 50, 100))
+    check("child allocation increments count", UiHandles::count() == 2)
+    check("child handle is valid", UiHandles::is_valid(child))
+    check("child exposes a retained widget", UiHandles::widget(child) != null)
+    check("stale parent is not involved before reset", UiHandles::is_valid(root))
+
+    UiHandles::reset()
+    check("reset invalidates the old root", not UiHandles::is_valid(old_root))
+    check("stale handles expose no widget", UiHandles::widget(old_root) == null)
+    stale_child: UiHandles::Handle = UiHandles::button(old_root, 80.0, 24.0, UiCore::rgb(40, 80, 140), UiCore::rgb(60, 100, 160), UiCore::rgb(20, 50, 100))
+    check("stale parent is rejected", not UiHandles::is_valid(stale_child) and UiHandles::index(stale_child) == UiFlat::NONE)
+
+    fresh: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 0.0, 0.0, UiCore::rgb(20, 20, 24))
+    check("a rebuilt slot gets a fresh lifetime", UiHandles::is_valid(fresh) and fresh.tree_id != old_root.tree_id)
+    check("old root stays stale after slot reuse", not UiHandles::is_valid(old_root))
+    UiHandles::set_text(old_root, "must not reach rebuilt widget", 12.0, UiCore::rgb(255, 255, 255))
+    rebuilt: UiFlat::Widget = UiFlat::widget(0)
+    check("stale mutation does not reach rebuilt slot", rebuilt.text == "")
+
+    if failures == 0:
+        _ = puts("widget handles: all checks passed")
+    return failures.i64()

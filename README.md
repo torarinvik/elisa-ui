@@ -104,6 +104,9 @@ because a module member's symbol carries its module and those names cannot move.
   padding, spacing, grow weights or typography from escaping into geometry.
   Fixed arenas expose overflow flags, so capacity mistakes are diagnosable
   rather than silently indistinguishable from missing UI.
+  New application code can use [UiHandles](docs/ui-handles.md) for typed u32
+  handles with retained-tree lifetime checks; the older index API remains for
+  compatibility and low-level adapters.
 - **Apps** implement `app_init` / `app_event(UiCore::Event)` /
   `app_text_input(sview)` / `app_text_editing(sview, i32, i32)` / `app_frame`, plus
   `app_widget_event(widget, event)` when using the widget layer. Physical keys

@@ -153,6 +153,11 @@ module UiFlat:
         global mutable text_storage: u8[TEXT_STORAGE_SIZE] = zeroed
         global mutable secure_text_storage: u8[SECURE_TEXT_STORAGE_SIZE] = zeroed
         global mutable widget_count: usize = 0
+        # A monotonically changing arena lifetime makes an index-backed handle
+        # distinguishable across reset/rebuild.  The flat compatibility API
+        # still exposes indexes, while UiHandles can reject an old index even
+        # after its slot has been reused by a new tree.
+        global mutable widget_epoch: usize = 1
         global mutable widget_dropped: bool = false
         global mutable last_layout_width: f32 = 0.0
         global mutable last_layout_height: f32 = 0.0
@@ -357,6 +362,12 @@ module UiFlat:
         # optional reader instead.
         def count() -> usize:
             return widget_count
+
+        # The current retained-tree lifetime. Typed wrappers pair this value
+        # with a slot index; resetting the tree advances it before any slot can
+        # be allocated again.
+        def lifetime() -> usize:
+            return widget_epoch
 
         def is_valid(index: usize) -> bool:
             return index < widget_count
@@ -583,6 +594,8 @@ module UiFlat:
                 history_before_text[byte_index] <- 0
                 history_after_text[byte_index] <- 0
             scrub_clipboard_buffer()
+            widget_epoch <- widget_epoch + 1
+            widget_epoch <- 1 if widget_epoch == 0
             widget_count <- 0
             widget_dropped <- false
             last_layout_width <- 0.0
