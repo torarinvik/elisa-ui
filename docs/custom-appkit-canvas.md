@@ -252,6 +252,9 @@ the same `UiControls` arena that owns its dense, capacity-checked index. Its
 Objective-C half resolves those handles only at the FFI boundary; there is no
 index→object table, native count or second platform-side limit to drift from the
 retained control arena.
+Its transient Cocoa lifetime scopes are likewise owned by Elisa: the typed
+native-control wrappers bracket each FFI call with libobjc autorelease-pool
+push/pop, leaving the Objective-C shim free of per-call lifecycle policy.
 
 Animation scheduling is demand-driven. Elisa coalesces future-frame requests
 and asks AppKit for a one-shot wake only while an animated element such as a

@@ -60,9 +60,7 @@ static NSView *elisa_container_for(size_t handle) {
 }
 
 void elisa_appkit_init(void) {
-    @autoreleasepool {
-        [NSApplication sharedApplication];
-    }
+    [NSApplication sharedApplication];
 }
 
 // AppKit's activation enum is an ABI fact. Elisa selects the policy and sends
@@ -73,9 +71,7 @@ int elisa_appkit_activation_policy_regular(void) {
 }
 
 void elisa_appkit_set_activation_policy(int policy) {
-    @autoreleasepool {
-        [NSApp setActivationPolicy:(NSApplicationActivationPolicy)policy];
-    }
+    [NSApp setActivationPolicy:(NSApplicationActivationPolicy)policy];
 }
 
 // Constructors return a retained opaque handle. Elisa stores and releases it
@@ -154,220 +150,174 @@ int elisa_appkit_backing_store_buffered(void) {
 
 size_t elisa_appkit_create_window_with_style(int style, int backing,
                                              float width, float height) {
-    @autoreleasepool {
-        NSRect content = NSMakeRect(0, 0, width, height);
-        NSWindow *window = [[NSWindow alloc]
-            initWithContentRect:content
-                      styleMask:(NSWindowStyleMask)style
-                        backing:(NSBackingStoreType)backing
-                          defer:NO];
-        if (window == nil) return 0;
-        [window setContentView:[[ElisaFlippedView alloc] initWithFrame:content]];
-        return elisa_appkit_retain(window);
-    }
+    NSRect content = NSMakeRect(0, 0, width, height);
+    NSWindow *window = [[NSWindow alloc]
+        initWithContentRect:content
+                  styleMask:(NSWindowStyleMask)style
+                    backing:(NSBackingStoreType)backing
+                      defer:NO];
+    if (window == nil) return 0;
+    [window setContentView:[[ElisaFlippedView alloc] initWithFrame:content]];
+    return elisa_appkit_retain(window);
 }
 
 size_t elisa_appkit_create_panel_window(int style, int backing,
                                         int floating, int becomes_key_only,
                                         float width, float height) {
-    @autoreleasepool {
-        NSRect content = NSMakeRect(0, 0, width, height);
-        NSPanel *panel = [[NSPanel alloc]
-            initWithContentRect:content
-                      styleMask:(NSWindowStyleMask)style
-                        backing:(NSBackingStoreType)backing
-                          defer:NO];
-        if (panel == nil) return 0;
-        [panel setFloatingPanel:floating != 0];
-        [panel setBecomesKeyOnlyIfNeeded:becomes_key_only != 0];
-        [panel setContentView:[[ElisaFlippedView alloc] initWithFrame:content]];
-        return elisa_appkit_retain(panel);
-    }
+    NSRect content = NSMakeRect(0, 0, width, height);
+    NSPanel *panel = [[NSPanel alloc]
+        initWithContentRect:content
+                  styleMask:(NSWindowStyleMask)style
+                    backing:(NSBackingStoreType)backing
+                      defer:NO];
+    if (panel == nil) return 0;
+    [panel setFloatingPanel:floating != 0];
+    [panel setBecomesKeyOnlyIfNeeded:becomes_key_only != 0];
+    [panel setContentView:[[ElisaFlippedView alloc] initWithFrame:content]];
+    return elisa_appkit_retain(panel);
 }
 
 size_t elisa_appkit_create_panel(void) {
-    @autoreleasepool {
-        return elisa_appkit_retain([[ElisaFlippedView alloc] initWithFrame:NSZeroRect]);
-    }
+    return elisa_appkit_retain([[ElisaFlippedView alloc] initWithFrame:NSZeroRect]);
 }
 
 // The scrollbar policy is resolved by Elisa from the widget axis. The native
 // side only constructs the NSScrollView and applies the already-resolved bits.
 size_t elisa_appkit_create_scroll_view(int vertical, int horizontal) {
-    @autoreleasepool {
-        NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSZeroRect];
-        [scroll setHasVerticalScroller:vertical != 0];
-        [scroll setHasHorizontalScroller:horizontal != 0];
-        [scroll setDocumentView:[[ElisaFlippedView alloc] initWithFrame:NSZeroRect]];
-        return elisa_appkit_retain(scroll);
-    }
+    NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSZeroRect];
+    [scroll setHasVerticalScroller:vertical != 0];
+    [scroll setHasHorizontalScroller:horizontal != 0];
+    [scroll setDocumentView:[[ElisaFlippedView alloc] initWithFrame:NSZeroRect]];
+    return elisa_appkit_retain(scroll);
 }
 
 size_t elisa_appkit_create_label(size_t text) {
-    @autoreleasepool {
-        NSString *value = elisa_appkit_string(text);
-        if (value == nil) return 0;
-        return elisa_appkit_retain([NSTextField labelWithString:value]);
-    }
+    NSString *value = elisa_appkit_string(text);
+    if (value == nil) return 0;
+    return elisa_appkit_retain([NSTextField labelWithString:value]);
 }
 
 size_t elisa_appkit_create_push_button(int bezel_style, size_t text) {
-    @autoreleasepool {
-        NSString *value = elisa_appkit_string(text);
-        if (value == nil) return 0;
-        NSButton *button = [NSButton buttonWithTitle:value target:nil action:nil];
-        [button setBezelStyle:(NSBezelStyle)bezel_style];
-        return elisa_appkit_retain(button);
-    }
+    NSString *value = elisa_appkit_string(text);
+    if (value == nil) return 0;
+    NSButton *button = [NSButton buttonWithTitle:value target:nil action:nil];
+    [button setBezelStyle:(NSBezelStyle)bezel_style];
+    return elisa_appkit_retain(button);
 }
 
 size_t elisa_appkit_create_toggle_button(int button_type, size_t text) {
-    @autoreleasepool {
-        NSString *value = elisa_appkit_string(text);
-        if (value == nil) return 0;
-        NSButton *button = [NSButton buttonWithTitle:value target:nil action:nil];
-        [button setButtonType:(NSButtonType)button_type];
-        return elisa_appkit_retain(button);
-    }
+    NSString *value = elisa_appkit_string(text);
+    if (value == nil) return 0;
+    NSButton *button = [NSButton buttonWithTitle:value target:nil action:nil];
+    [button setButtonType:(NSButtonType)button_type];
+    return elisa_appkit_retain(button);
 }
 
 size_t elisa_appkit_create_checkbox(size_t text) {
-    @autoreleasepool {
-        NSString *value = elisa_appkit_string(text);
-        if (value == nil) return 0;
-        return elisa_appkit_retain([NSButton checkboxWithTitle:value target:nil action:nil]);
-    }
+    NSString *value = elisa_appkit_string(text);
+    if (value == nil) return 0;
+    return elisa_appkit_retain([NSButton checkboxWithTitle:value target:nil action:nil]);
 }
 
 size_t elisa_appkit_create_radio_button(size_t text) {
-    @autoreleasepool {
-        NSString *value = elisa_appkit_string(text);
-        if (value == nil) return 0;
-        return elisa_appkit_retain([NSButton radioButtonWithTitle:value target:nil action:nil]);
-    }
+    NSString *value = elisa_appkit_string(text);
+    if (value == nil) return 0;
+    return elisa_appkit_retain([NSButton radioButtonWithTitle:value target:nil action:nil]);
 }
 
 size_t elisa_appkit_create_text_field(size_t text) {
-    @autoreleasepool {
-        NSString *value = elisa_appkit_string(text);
-        if (value == nil) return 0;
-        return elisa_appkit_retain([NSTextField textFieldWithString:value]);
-    }
+    NSString *value = elisa_appkit_string(text);
+    if (value == nil) return 0;
+    return elisa_appkit_retain([NSTextField textFieldWithString:value]);
 }
 
 size_t elisa_appkit_create_slider(float low, float high, float value) {
-    @autoreleasepool {
-        return elisa_appkit_retain([NSSlider sliderWithValue:value minValue:low maxValue:high target:nil action:nil]);
-    }
+    return elisa_appkit_retain([NSSlider sliderWithValue:value minValue:low maxValue:high target:nil action:nil]);
 }
 
 size_t elisa_appkit_create_progress_bar(int progress_style, int indeterminate) {
-    @autoreleasepool {
-        NSProgressIndicator *bar = [[NSProgressIndicator alloc] initWithFrame:NSZeroRect];
-        [bar setStyle:(NSProgressIndicatorStyle)progress_style];
-        [bar setIndeterminate:indeterminate != 0];
-        return elisa_appkit_retain(bar);
-    }
+    NSProgressIndicator *bar = [[NSProgressIndicator alloc] initWithFrame:NSZeroRect];
+    [bar setStyle:(NSProgressIndicatorStyle)progress_style];
+    [bar setIndeterminate:indeterminate != 0];
+    return elisa_appkit_retain(bar);
 }
 
 void elisa_appkit_set_window_frame(size_t handle, float width, float height) {
-    @autoreleasepool {
-        // A window is positioned by the OS; only its content size is ours.
-        NSWindow *window = (NSWindow *)elisa_appkit_object(handle);
-        if (![window isKindOfClass:[NSWindow class]]) return;
-        [window setContentSize:NSMakeSize(width, height)];
-        [[window contentView] setFrame:NSMakeRect(0, 0, width, height)];
-    }
+    // A window is positioned by the OS; only its content size is ours.
+    NSWindow *window = (NSWindow *)elisa_appkit_object(handle);
+    if (![window isKindOfClass:[NSWindow class]]) return;
+    [window setContentSize:NSMakeSize(width, height)];
+    [[window contentView] setFrame:NSMakeRect(0, 0, width, height)];
 }
 
 void elisa_appkit_set_view_frame(size_t handle, float x, float y, float width, float height) {
-    @autoreleasepool {
-        NSView *view = (NSView *)elisa_appkit_object(handle);
-        if (![view isKindOfClass:[NSView class]]) return;
-        [view setFrame:NSMakeRect(x, y, width, height)];
-    }
+    NSView *view = (NSView *)elisa_appkit_object(handle);
+    if (![view isKindOfClass:[NSView class]]) return;
+    [view setFrame:NSMakeRect(x, y, width, height)];
 }
 
 // Elisa dispatches this only for a ScrollView. Keeping the document sizing as
 // its own typed entry point removes a production policy branch over the
 // framework enum from the native object bridge.
 void elisa_appkit_set_scroll_document_frame(size_t handle, float width, float height) {
-    @autoreleasepool {
-        NSScrollView *scroll = (NSScrollView *)elisa_appkit_object(handle);
-        if (![scroll isKindOfClass:[NSScrollView class]]) return;
-        [[scroll documentView] setFrame:NSMakeRect(0, 0, width, height)];
-    }
+    NSScrollView *scroll = (NSScrollView *)elisa_appkit_object(handle);
+    if (![scroll isKindOfClass:[NSScrollView class]]) return;
+    [[scroll documentView] setFrame:NSMakeRect(0, 0, width, height)];
 }
 
 // Elisa creates the counted CFString through CoreFoundation FFI. The shim only
 // borrows that opaque object long enough to assign it to the live Cocoa control;
 // no UTF-8 policy or byte-to-string conversion remains in this bridge.
 void elisa_appkit_set_window_title(size_t handle, size_t text) {
-    @autoreleasepool {
-        NSString *value = elisa_appkit_string(text);
-        NSWindow *window = (NSWindow *)elisa_appkit_object(handle);
-        if (value != nil && [window isKindOfClass:[NSWindow class]]) [window setTitle:value];
-    }
+    NSString *value = elisa_appkit_string(text);
+    NSWindow *window = (NSWindow *)elisa_appkit_object(handle);
+    if (value != nil && [window isKindOfClass:[NSWindow class]]) [window setTitle:value];
 }
 
 void elisa_appkit_set_button_title(size_t handle, size_t text) {
-    @autoreleasepool {
-        NSString *value = elisa_appkit_string(text);
-        NSButton *button = (NSButton *)elisa_appkit_object(handle);
-        if (value != nil && [button isKindOfClass:[NSButton class]]) [button setTitle:value];
-    }
+    NSString *value = elisa_appkit_string(text);
+    NSButton *button = (NSButton *)elisa_appkit_object(handle);
+    if (value != nil && [button isKindOfClass:[NSButton class]]) [button setTitle:value];
 }
 
 void elisa_appkit_set_field_text(size_t handle, size_t text) {
-    @autoreleasepool {
-        NSString *value = elisa_appkit_string(text);
-        NSTextField *field = (NSTextField *)elisa_appkit_object(handle);
-        if (value != nil && [field isKindOfClass:[NSTextField class]]) [field setStringValue:value];
-    }
+    NSString *value = elisa_appkit_string(text);
+    NSTextField *field = (NSTextField *)elisa_appkit_object(handle);
+    if (value != nil && [field isKindOfClass:[NSTextField class]]) [field setStringValue:value];
 }
 
 void elisa_appkit_set_button_state(size_t handle, int state) {
-    @autoreleasepool {
-        NSButton *button = (NSButton *)elisa_appkit_object(handle);
-        if ([button isKindOfClass:[NSButton class]]) [button setState:(NSControlStateValue)state];
-    }
+    NSButton *button = (NSButton *)elisa_appkit_object(handle);
+    if ([button isKindOfClass:[NSButton class]]) [button setState:(NSControlStateValue)state];
 }
 
 void elisa_appkit_set_slider_state(size_t handle, float low, float high, float value) {
-    @autoreleasepool {
-        NSSlider *slider = (NSSlider *)elisa_appkit_object(handle);
-        if (![slider isKindOfClass:[NSSlider class]]) return;
-        [slider setMinValue:low];
-        [slider setMaxValue:high];
-        [slider setDoubleValue:value];
-    }
+    NSSlider *slider = (NSSlider *)elisa_appkit_object(handle);
+    if (![slider isKindOfClass:[NSSlider class]]) return;
+    [slider setMinValue:low];
+    [slider setMaxValue:high];
+    [slider setDoubleValue:value];
 }
 
 void elisa_appkit_set_progress_value(size_t handle, float value) {
-    @autoreleasepool {
-        NSProgressIndicator *bar = (NSProgressIndicator *)elisa_appkit_object(handle);
-        if ([bar isKindOfClass:[NSProgressIndicator class]]) [bar setDoubleValue:value];
-    }
+    NSProgressIndicator *bar = (NSProgressIndicator *)elisa_appkit_object(handle);
+    if ([bar isKindOfClass:[NSProgressIndicator class]]) [bar setDoubleValue:value];
 }
 
 // Show the window. Separated from the run loop so a headless check can realize a
 // tree, assert it, and exit without ever presenting anything.
 void elisa_appkit_present(size_t handle) {
-    @autoreleasepool {
-        NSWindow *window = (NSWindow *)elisa_appkit_object(handle);
-        if (![window isKindOfClass:[NSWindow class]]) return;
-        [window makeKeyAndOrderFront:nil];
-    }
+    NSWindow *window = (NSWindow *)elisa_appkit_object(handle);
+    if (![window isKindOfClass:[NSWindow class]]) return;
+    [window makeKeyAndOrderFront:nil];
 }
 
 void elisa_appkit_activate(void) {
-    @autoreleasepool {
-        [NSApp activateIgnoringOtherApps:YES];
-    }
+    [NSApp activateIgnoringOtherApps:YES];
 }
 
 void elisa_appkit_run(void) {
-    @autoreleasepool { [NSApp run]; }
+    [NSApp run];
 }
 
 // --- introspection, for the headless test -------------------------------------
