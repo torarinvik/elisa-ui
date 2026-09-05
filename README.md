@@ -74,8 +74,8 @@ because a module member's symbol carries its module and those names cannot move.
 - **Responsive layout** ([src/widgets/ui_responsive.elisa](src/widgets/ui_responsive.elisa)) —
   backend-neutral compact/medium/expanded size classes, adaptive axis choice,
   bounded grid-column calculation, and physical touch-target normalization,
-  safe-area insets and orientation, all driven by logical space rather than
-  OS-name branches.
+  safe-area and software-keyboard insets, and orientation, all driven by
+  logical space rather than OS-name branches.
 - **Virtual lists** ([src/widgets/ui_virtual_list.elisa](src/widgets/ui_virtual_list.elisa)) —
   bounded visible ranges, edge buffering, item placement, content extents, and
   semantic navigation metadata shared by every backend.

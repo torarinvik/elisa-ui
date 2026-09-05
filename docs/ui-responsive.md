@@ -30,3 +30,8 @@ the composition without copying breakpoint logic into every screen.
 dimensions. Hosts can pass `insets(top, right, bottom, left)` to
 `content_area(...)`; the returned origin and size reserve safe areas in logical
 coordinates and clamp oversized/malformed insets to an empty content box.
+
+Software-keyboard occlusion uses `KeyboardInsets` and
+`content_area_with_keyboard(...)`. A visible keyboard reserves the larger of
+the safe bottom edge and keyboard bottom edge, avoiding double-counting the
+home-indicator area; hiding it restores the ordinary safe-area content box.

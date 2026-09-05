@@ -35,6 +35,13 @@ module UiResponsive:
             bottom: f32
             left: f32
 
+        # A software keyboard is a transient bottom occlusion, not a safe-area
+        # edge. Keep visibility explicit so an adapter can restore the full
+        # content box when the keyboard hides without rebuilding the viewport.
+        struct KeyboardInsets:
+            bottom: f32
+            visible: bool
+
         struct ContentArea:
             origin: UiCore::Vec2
             size: UiCore::Size
@@ -88,6 +95,9 @@ module UiResponsive:
                 left: UiCore::nonnegative_extent(left),
             }
 
+        def keyboard_insets(bottom: f32, visible: bool) -> KeyboardInsets:
+            return KeyboardInsets{bottom: UiCore::nonnegative_extent(bottom), visible: visible}
+
         def content_area(view: Viewport, safe: Insets) -> ContentArea:
             safe_view: Viewport = viewport(view.width, view.height, view.scale)
             normalized: Insets = insets(safe.top, safe.right, safe.bottom, safe.left)
@@ -100,6 +110,16 @@ module UiResponsive:
                 size: UiCore::Size(available_width, available_height),
                 scale: safe_view.scale,
             }
+
+        # Combine safe-area and keyboard occlusion by taking the larger bottom
+        # edge. Keyboard frames commonly already include the home-indicator
+        # area; adding both would reserve the same pixels twice.
+        def content_area_with_keyboard(view: Viewport, safe: Insets, keyboard: KeyboardInsets) -> ContentArea:
+            effective_bottom: mutable f32 = safe.bottom
+            effective_bottom <- keyboard.bottom if keyboard.visible and keyboard.bottom > effective_bottom
+            return content_area(view, Insets{
+                top: safe.top, right: safe.right, bottom: effective_bottom, left: safe.left,
+            })
 
         def is_compact(width: f32, points: Breakpoints) -> bool:
             return classify(width, points) == SizeClass.Compact
