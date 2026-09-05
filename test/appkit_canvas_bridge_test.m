@@ -172,8 +172,6 @@ size_t elisa_appkit_canvas_accessibility_tooltip_text(size_t handle) {
     test_tooltip_calls += 1;
     return (size_t)CFBridgingRetain(@"tooltip supplied by Elisa");
 }
-int elisa_appkit_canvas_pointer_button_primary(void) { return 0; }
-int elisa_appkit_canvas_pointer_button_secondary(void) { return 1; }
 int elisa_appkit_canvas_accessibility_increment_direction(void) { return 1; }
 int elisa_appkit_canvas_accessibility_decrement_direction(void) { return -1; }
 int elisa_appkit_canvas_accessibility_adjust(size_t handle, int direction) {
@@ -580,16 +578,16 @@ int main(void) {
             windowNumber:[elisa_appkit_canvas_window(opened) windowNumber] context:nil eventNumber:3
             clickCount:2 pressure:1.0];
         [elisa_appkit_canvas_view(opened) rightMouseDown:rightClick];
-        if (require(test_pointer_kind == 1 && test_pointer_button == 1,
-                    @"right-button press did not cross the pointer FFI")) return 1;
-        if (require(test_click_button == 1 && test_click_count == 2,
+        if (require(test_pointer_kind == 1 && test_pointer_button == (int)rightClick.buttonNumber,
+                    @"right-button raw identity did not cross the pointer FFI")) return 1;
+        if (require(test_click_button == (int)rightClick.buttonNumber && test_click_count == 2,
                     @"right-button click facts did not reach Elisa")) return 1;
         NSEvent *rightRelease = [NSEvent mouseEventWithType:NSEventTypeRightMouseUp
             location:NSMakePoint(40, 20) modifierFlags:0 timestamp:0
             windowNumber:[elisa_appkit_canvas_window(opened) windowNumber] context:nil eventNumber:4
             clickCount:2 pressure:0.0];
         [elisa_appkit_canvas_view(opened) rightMouseUp:rightRelease];
-        if (require(test_pointer_kind == 2 && test_pointer_button == 1,
+        if (require(test_pointer_kind == 2 && test_pointer_button == (int)rightRelease.buttonNumber,
                     @"right-button release did not cross the pointer FFI")) return 1;
         NSEvent *exit = [NSEvent mouseEventWithType:NSEventTypeMouseMoved
             location:NSMakePoint(40, 20) modifierFlags:0 timestamp:0

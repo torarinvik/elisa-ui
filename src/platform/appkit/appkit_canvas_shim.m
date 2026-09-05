@@ -27,8 +27,6 @@ extern int elisa_appkit_canvas_accessibility_activate(size_t handle);
 extern int elisa_appkit_canvas_accessibility_adjust(size_t handle, int direction);
 extern size_t elisa_appkit_canvas_accessibility_tooltip_text(size_t handle);
 extern size_t elisa_appkit_canvas_accessibility_set_value(size_t handle, size_t value);
-extern int elisa_appkit_canvas_pointer_button_primary(void);
-extern int elisa_appkit_canvas_pointer_button_secondary(void);
 extern int elisa_appkit_canvas_accessibility_increment_direction(void);
 extern int elisa_appkit_canvas_accessibility_decrement_direction(void);
 extern const size_t elisa_appkit_canvas_not_found;
@@ -279,11 +277,11 @@ void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) 
 - (void)mouseDragged:(NSEvent *)event { [self mouseMoved:event]; }
 - (void)rightMouseDragged:(NSEvent *)event { [self mouseMoved:event]; }
 - (void)otherMouseDragged:(NSEvent *)event { [self mouseMoved:event]; }
-- (void)mouseDown:(NSEvent *)event { [self forwardMouseButton:event down:YES button:elisa_appkit_canvas_pointer_button_primary()]; }
-- (void)rightMouseDown:(NSEvent *)event { [self forwardMouseButton:event down:YES button:elisa_appkit_canvas_pointer_button_secondary()]; }
+- (void)mouseDown:(NSEvent *)event { [self forwardMouseButton:event down:YES button:(int)event.buttonNumber]; }
+- (void)rightMouseDown:(NSEvent *)event { [self forwardMouseButton:event down:YES button:(int)event.buttonNumber]; }
 - (void)otherMouseDown:(NSEvent *)event { [self forwardMouseButton:event down:YES button:(int)event.buttonNumber]; }
-- (void)mouseUp:(NSEvent *)event { [self forwardMouseButton:event down:NO button:elisa_appkit_canvas_pointer_button_primary()]; }
-- (void)rightMouseUp:(NSEvent *)event { [self forwardMouseButton:event down:NO button:elisa_appkit_canvas_pointer_button_secondary()]; }
+- (void)mouseUp:(NSEvent *)event { [self forwardMouseButton:event down:NO button:(int)event.buttonNumber]; }
+- (void)rightMouseUp:(NSEvent *)event { [self forwardMouseButton:event down:NO button:(int)event.buttonNumber]; }
 - (void)otherMouseUp:(NSEvent *)event { [self forwardMouseButton:event down:NO button:(int)event.buttonNumber]; }
 - (void)mouseExited:(NSEvent *)event {
     (void)event;
