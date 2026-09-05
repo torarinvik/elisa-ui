@@ -43,6 +43,11 @@ def main() -> i64:
         long_message[index] <- 65
     fourth_token: u32 = UiValidation::begin(field)
     check("long messages are bounded", UiValidation::reject(field, fourth_token, sview(&long_message[0], 0, 400)) and UiValidation::message(field).len.usize() == UiValidation::MESSAGE_CAPACITY - 1 and UiValidation::message_truncated(field))
+    boundary_message: mutable u8[UiValidation::MESSAGE_CAPACITY - 1] = zeroed
+    for index in 0..<UiValidation::MESSAGE_CAPACITY - 1:
+        boundary_message[index] <- 66
+    boundary_token: u32 = UiValidation::begin(field)
+    check("maximum fitting message is not marked truncated", UiValidation::reject(field, boundary_token, sview(&boundary_message[0], 0, (UiValidation::MESSAGE_CAPACITY - 1).i64())) and UiValidation::message(field).len.usize() == UiValidation::MESSAGE_CAPACITY - 1 and not UiValidation::message_truncated(field))
 
     old_generation: u32 = field.generation
     check("dispose invalidates a field", UiValidation::dispose(field) and not UiValidation::is_valid(field))
