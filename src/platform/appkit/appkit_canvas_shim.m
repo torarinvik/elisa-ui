@@ -753,6 +753,12 @@ size_t elisa_appkit_canvas_accessibility_add(size_t windowHandle, size_t previou
     if (subrole != 0 && subroleValue == nil) return 0;
     if (help != 0 && helpValue == nil) return 0;
     if (identifierString != 0 && identifierValue == nil) return 0;
+    // Resolve the owning window before allocating a new element. The view is
+    // normally backed by this window, but a close notification can race a
+    // late accessibility rebuild; validating first keeps that failure path
+    // leak-free.
+    NSWindow *window = elisa_appkit_canvas_window(windowHandle);
+    if (window == nil) return 0;
     ElisaAccessibilityElement *element = nil;
     if (isNew != 0) {
         element = [ElisaAccessibilityElement new];
@@ -773,8 +779,6 @@ size_t elisa_appkit_canvas_accessibility_add(size_t windowHandle, size_t previou
     element.accessibilityEnabled = enabled != 0;
     element.accessibilityFocused = focused != 0;
     NSRect inWindow = [view convertRect:local toView:nil];
-    NSWindow *window = elisa_appkit_canvas_window(windowHandle);
-    if (window == nil) return 0;
     element.accessibilityFrame = [window convertRectToScreen:inWindow];
     // Elisa retains newly-created elements through the returned +1 handle;
     // identity/reuse itself is selected by Elisa from the previous-frame
