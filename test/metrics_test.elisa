@@ -32,6 +32,7 @@ def main() -> i64:
     check("metrics records semantic duration", close(first.semantics_duration, 0.05))
     check("metrics records paint duration", close(first.paint_duration, 0.20))
     check("metrics reports retained work", first.command_count == 1 and first.semantic_count == 0 and not first.command_overflowed and not first.semantic_overflowed)
+    check("metrics reports invalidation sequence", first.invalidations != 0 and first.invalidation_sequence > 0)
 
     UiMetrics::begin_frame(2.0)
     UiMetrics::finish_frame(1.0)
@@ -41,6 +42,7 @@ def main() -> i64:
     UiMetrics::reset()
     idle: UiMetrics::Snapshot = UiMetrics::snapshot()
     check("metrics reset clears sample", idle.sequence == 0 and idle.stage == UiMetrics::Stage.Idle and not idle.complete)
+    check("metrics keeps shared invalidation history", idle.invalidation_sequence == first.invalidation_sequence)
 
     if failures == 0:
         _ = puts("metrics: all checks passed")

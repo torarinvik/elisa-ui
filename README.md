@@ -187,7 +187,6 @@ because a module member's symbol carries its module and those names cannot move.
   redacting secure text for diagnostics.
   It also exposes the raw invalidation mask and sequence so tooling can observe
   repeated updates even when a dirty bit remains set.
-  redacting secure text for diagnostics.
   New application code can use [UiHandles](docs/ui-handles.md) for typed u32
   handles with retained-tree lifetime checks; the older index API remains for
   compatibility and low-level adapters.
