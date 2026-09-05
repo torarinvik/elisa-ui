@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `23ace6d` on branch `work` |
+| elisa-ui revision | `5a6332a` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `1a44c1d1`; SHA-256 `a9573ad3779ae57f9daf68f79c53761c5ec54d0045a11c1387071ba0562678bc` |
@@ -139,6 +139,9 @@ separate host-enforced security boundary.
 - Native/host hosts own OS objects, event queues, text shaping/rasterization,
   GPU/image mechanisms, accessibility protocol objects, package delivery, and
   service authority. Shims pass raw facts and explicit framework decisions.
+- AppKit native-control read-back is routed through the same Elisa-owned,
+  autorelease-scoped bridge wrapper surface as construction and mutation; the
+  realization module no longer imports raw Cocoa query symbols.
 - The hosted backend still contains handwritten WIT/canonical ABI declarations;
   it should consume the authoritative SDK-generated bindings after the SDK/WIT
   migration gate, without creating a second ABI implementation.
