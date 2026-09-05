@@ -170,7 +170,8 @@ replaces its node with the last declaration before any backend sees it. Elisa
 owns the retained opaque handle for each live semantic
 element and releases handles that leave the tree; callbacks resolve those
 handles back to Elisa's action targets on demand. The AppKit bridge reuses the
-objects between frames, exposes actions to VoiceOver, updates screen-relative
+objects between frames from an explicit Elisa `is_new` token (a malformed reuse
+handle fails closed instead of creating a duplicate), exposes actions to VoiceOver, updates screen-relative
 frames after window moves, and applies the Cocoa role/subrole constants plus interaction,
 tooltip and cursor tokens computed by Elisa from the same metadata. Tooltip
 registrations are rebuilt only when Elisa's semantic layout diff requires it,

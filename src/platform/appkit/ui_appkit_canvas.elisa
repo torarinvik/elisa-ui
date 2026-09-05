@@ -53,7 +53,7 @@ extern elisa_appkit_canvas_set_min_size(window_handle: usize, width: f32, height
 extern elisa_appkit_canvas_redraw(window_handle: usize) -> void
 extern elisa_appkit_canvas_close(window_handle: usize) -> void
 extern elisa_appkit_canvas_accessibility_reset(window_handle: usize) -> void
-extern elisa_appkit_canvas_accessibility_add(window_handle: usize, previous_handle: usize, identifier: usize, role: usize, subrole: usize, label: usize, help: usize, x: f32, y: f32, width: f32, height: f32, enabled: i32, focused: i32) -> usize
+extern elisa_appkit_canvas_accessibility_add(window_handle: usize, previous_handle: usize, is_new: i32, identifier: usize, role: usize, subrole: usize, label: usize, help: usize, x: f32, y: f32, width: f32, height: f32, enabled: i32, focused: i32) -> usize
 extern elisa_appkit_canvas_accessibility_release(handle: usize) -> void
 extern elisa_appkit_canvas_accessibility_clear_value(handle: usize) -> void
 extern elisa_appkit_canvas_accessibility_add_tooltip(window_handle: usize, handle: usize, x: f32, y: f32, width: f32, height: f32) -> void
@@ -1289,7 +1289,11 @@ module UiAppKitCanvas:
                 layout_changed <- true if index >= accessibility_previous_count or accessibility_previous_ids[index] != node.id
                 accessibility_next_ids[index] <- node.id
                 accessibility_next[index] <- state
-                handle: usize = elisa_appkit_canvas_accessibility_add(canvas_window, previous_handle, native_identifier, native_role, native_subrole, native_label, native_help, node.frame.origin.x, node.frame.origin.y, node.frame.size.width, node.frame.size.height, enabled, focused)
+                # Identity/reuse is decided from Elisa's semantic history and
+                # sent as an explicit token. The native bridge must not infer
+                # framework identity by probing an opaque handle.
+                is_new: i32 = 1 if not existed or previous_handle == 0 else 0
+                handle: usize = elisa_appkit_canvas_accessibility_add(canvas_window, previous_handle, is_new, native_identifier, native_role, native_subrole, native_label, native_help, node.frame.origin.x, node.frame.origin.y, node.frame.size.width, node.frame.size.height, enabled, focused)
                 accessibility_next_handles[index] <- handle
                 # Reused native elements retain Cocoa's role-specific value
                 # slots. Elisa owns the semantic transition, so clear only

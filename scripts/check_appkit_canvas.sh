@@ -177,6 +177,10 @@ if grep -Eq 'elisa_appkit_canvas_accessibility_index_for_handle' "$ROOT/src/plat
   echo "appkit canvas: accessibility handle-to-widget lookup leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'BOOL[[:space:]]+isNew[[:space:]]*=[[:space:]]*element[[:space:]]*==' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: accessibility identity/reuse policy leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'elisa_appkit_canvas_perform_text_action\([[:space:]]*[1-6][[:space:]]*\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: text-action token policy leaked back into Objective-C" >&2
   exit 1

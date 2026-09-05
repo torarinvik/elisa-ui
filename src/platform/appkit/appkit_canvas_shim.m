@@ -742,7 +742,7 @@ static NSAttributedString *elisa_appkit_canvas_attributed_string(size_t handle) 
 }
 
 size_t elisa_appkit_canvas_accessibility_add(size_t windowHandle, size_t previousHandle,
-                                            size_t identifierString, size_t role,
+                                            int isNew, size_t identifierString, size_t role,
                                             size_t subrole,
                                             size_t label, size_t help,
                                             float x, float y, float width, float height,
@@ -759,11 +759,16 @@ size_t elisa_appkit_canvas_accessibility_add(size_t windowHandle, size_t previou
     if (subrole != 0 && subroleValue == nil) return 0;
     if (help != 0 && helpValue == nil) return 0;
     if (identifierString != 0 && identifierValue == nil) return 0;
-    ElisaAccessibilityElement *element = elisa_appkit_canvas_element(previousHandle);
-    BOOL isNew = element == nil;
-    if (isNew) {
+    ElisaAccessibilityElement *element = nil;
+    if (isNew != 0) {
         element = [ElisaAccessibilityElement new];
         element.accessibilityParent = view;
+    } else {
+        // Elisa owns semantic identity and explicitly tells the bridge whether
+        // this slot is new. A missing reused handle therefore fails closed
+        // instead of silently creating a second element for the same node.
+        element = elisa_appkit_canvas_element(previousHandle);
+        if (element == nil) return 0;
     }
     NSRect local = NSMakeRect(x, y, width, height);
     element.accessibilityRole = roleValue;
@@ -780,7 +785,7 @@ size_t elisa_appkit_canvas_accessibility_add(size_t windowHandle, size_t previou
     // Elisa retains newly-created elements through the returned +1 handle;
     // identity/reuse itself is selected by Elisa from the previous-frame
     // handles rather than by a native semantic-ID dictionary.
-    return isNew ? (size_t)(__bridge_retained void *)element : (size_t)(__bridge void *)element;
+    return isNew != 0 ? (size_t)(__bridge_retained void *)element : (size_t)(__bridge void *)element;
 }
 
 void elisa_appkit_canvas_accessibility_release(size_t handle) {

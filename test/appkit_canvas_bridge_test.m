@@ -47,7 +47,7 @@ void elisa_appkit_canvas_frame(size_t context) {
     (void)context;
     test_frame_count += 1;
     elisa_appkit_canvas_accessibility_reset(test_window_handle);
-    size_t sliderElement = elisa_appkit_canvas_accessibility_add(test_window_handle, test_accessibility_handles[0], (size_t)(__bridge void *)@"elisa-ui-7", (size_t)(__bridge void *)NSAccessibilitySliderRole, 0,
+    size_t sliderElement = elisa_appkit_canvas_accessibility_add(test_window_handle, test_accessibility_handles[0], test_accessibility_handles[0] == 0, (size_t)(__bridge void *)@"elisa-ui-7", (size_t)(__bridge void *)NSAccessibilitySliderRole, 0,
         (size_t)(__bridge void *)@"Intensity", (size_t)(__bridge void *)@"Adjust preview intensity",
         10, 10, 180, 24, 1, 0);
     elisa_appkit_canvas_accessibility_add_tooltip(test_window_handle, sliderElement, 10, 10, 180, 24);
@@ -58,7 +58,7 @@ void elisa_appkit_canvas_frame(size_t context) {
     if (sliderValue != 0) CFRelease((CFTypeRef)(void *)sliderValue);
     if (sliderMinimum != 0) CFRelease((CFTypeRef)(void *)sliderMinimum);
     if (sliderMaximum != 0) CFRelease((CFTypeRef)(void *)sliderMaximum);
-    size_t textElement = elisa_appkit_canvas_accessibility_add(test_window_handle, test_accessibility_handles[1], (size_t)(__bridge void *)@"elisa-ui-8", (size_t)(__bridge void *)NSAccessibilityTextFieldRole, 0,
+    size_t textElement = elisa_appkit_canvas_accessibility_add(test_window_handle, test_accessibility_handles[1], test_accessibility_handles[1] == 0, (size_t)(__bridge void *)@"elisa-ui-8", (size_t)(__bridge void *)NSAccessibilityTextFieldRole, 0,
         (size_t)(__bridge void *)@"Project name", (size_t)(__bridge void *)@"Edit the project name",
         10, 44, 180, 32, 1, test_text_focused);
     elisa_appkit_canvas_accessibility_add_tooltip(test_window_handle, textElement, 10, 44, 180, 32);
@@ -70,7 +70,7 @@ void elisa_appkit_canvas_frame(size_t context) {
         (size_t)(__bridge void *)selectedValue,
         elisa_appkit_canvas_selection_location(), elisa_appkit_canvas_selection_length());
     const char *masked = "••••";
-    size_t secureElement = elisa_appkit_canvas_accessibility_add(test_window_handle, test_accessibility_handles[2], (size_t)(__bridge void *)@"elisa-ui-9", (size_t)(__bridge void *)NSAccessibilityTextFieldRole, (size_t)(__bridge void *)NSAccessibilitySecureTextFieldSubrole,
+    size_t secureElement = elisa_appkit_canvas_accessibility_add(test_window_handle, test_accessibility_handles[2], test_accessibility_handles[2] == 0, (size_t)(__bridge void *)@"elisa-ui-9", (size_t)(__bridge void *)NSAccessibilityTextFieldRole, (size_t)(__bridge void *)NSAccessibilitySecureTextFieldSubrole,
         (size_t)(__bridge void *)@"Password", (size_t)(__bridge void *)@"Secure entry",
         10, 80, 180, 32, 1, 0);
     elisa_appkit_canvas_accessibility_add_tooltip(test_window_handle, secureElement, 10, 80, 180, 32);
@@ -502,15 +502,21 @@ int main(void) {
                     0, 0, 0, 0, 100, 0, 0, 0, 0),
                 @"invalid bitmap extent was accepted")) return 1;
     if (require(elisa_appkit_canvas_accessibility_add(
-                    opened, 0, 0, (size_t)(__bridge void *)NSAccessibilityButtonRole, 0, 0,
+                    opened, 0, 1, 0, (size_t)(__bridge void *)NSAccessibilityButtonRole, 0, 0,
                     (size_t)(__bridge void *)invalidNativeString,
                     0, 0, 10, 10, 1, 0) == 0,
                 @"invalid accessibility label was accepted")) return 1;
     if (require(elisa_appkit_canvas_accessibility_add(
-                    opened, 0, 0, (size_t)(__bridge void *)invalidNativeString, 0,
+                    opened, 0, 1, 0, (size_t)(__bridge void *)invalidNativeString, 0,
                     (size_t)(__bridge void *)@"Label", 0,
                     0, 0, 10, 10, 1, 0) == 0,
                 @"invalid accessibility role was accepted")) return 1;
+    if (require(elisa_appkit_canvas_accessibility_add(
+                    opened, (size_t)(__bridge void *)invalidNativeString, 0, 0,
+                    (size_t)(__bridge void *)NSAccessibilityButtonRole, 0,
+                    (size_t)(__bridge void *)@"Label", 0,
+                    0, 0, 10, 10, 1, 0) == 0,
+                @"malformed accessibility reuse handle was accepted")) return 1;
     size_t applicationMenu = elisa_appkit_canvas_menu_add(menuBar, (size_t)(__bridge void *)@"test", (size_t)(__bridge void *)@"");
         elisa_appkit_canvas_menu_add_item(applicationMenu, (size_t)(__bridge void *)@"About test", (size_t)(__bridge void *)@"", (size_t)(void *)sel_registerName("orderFrontStandardAboutPanel:"), 0);
         elisa_appkit_canvas_menu_add_separator(applicationMenu);
