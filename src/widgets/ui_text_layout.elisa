@@ -57,6 +57,7 @@ module UiTextLayout:
                             if byte == 13 and cursor < source_length_state and text.data[cursor] == 10:
                                 cursor <- cursor + 1
                             start <- cursor
+                            emit_line(start, 0, 0) if start == source_length_state
                             finished <- true
                             break
                         width: usize = scalar_bytes(text, cursor, source_length_state)
@@ -105,6 +106,7 @@ module UiTextLayout:
             return "" if index >= line_count_state
             range: LineRange = line_at(index)
             return "" if range.offset > text.len.usize()
+            return "" if range.length > text.len.usize() - range.offset
             return sview(text.data + range.offset, 0, range.length.i64())
 
         def utf8_scalar_bytes(text: sview, offset: usize) -> usize:
@@ -133,15 +135,27 @@ module UiTextLayout:
             return byte == 10 or byte == 13
 
         def is_break(byte: u8) -> bool:
-            return byte == 9 or byte == 32 or byte == 45 or byte == 47
+            # Only whitespace may be discarded when wrapping. Treating '-' or
+            # '/' as whitespace silently removed characters from paths/words.
+            return byte == 9 or byte == 32
 
         def scalar_bytes(text: sview, offset: usize, end: usize) -> usize:
             return 1 if offset >= end
             first: i32 = text.data[offset].i32()
             return 1 if first < 128 or first >= 248
-            return 2 if first >= 194 and first <= 223 and offset + 1 < end
-            return 3 if first >= 224 and first <= 239 and offset + 2 < end
-            return 4 if first >= 240 and first <= 247 and offset + 3 < end
+            width: mutable usize = 1
+            width <- 2 if first >= 194 and first <= 223
+            width <- 3 if first >= 224 and first <= 239
+            width <- 4 if first >= 240 and first <= 244
+            return 1 if width == 1 or width > end - offset
+            for index in 1..<width:
+                byte: u8 = text.data[offset + index]
+                return 1 if byte < 128 or byte > 191
+            second: u8 = text.data[offset + 1]
+            return 1 if first == 224 and second < 160
+            return 1 if first == 237 and second >= 160
+            return 1 if first == 240 and second < 144
+            return 1 if first == 244 and second >= 144
+            return width
             # Invalid lead or truncated scalar: consume one byte so a malformed
             # string cannot stall the planner or make it skip past its extent.
-            return 1

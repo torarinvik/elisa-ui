@@ -29,6 +29,21 @@ def main() -> i64:
     empty: UiTextLayout::Layout = UiTextLayout::layout("", 0)
     check("empty text still has one empty line", empty.line_count == 1 and empty.max_columns == 1 and UiTextLayout::line_at(0).length == 0)
 
+    _ = UiTextLayout::layout("abcdef", 20)
+    check("short replacement view cannot expose out of bounds bytes", UiTextLayout::line_view("a", 0) == "")
+    _ = UiTextLayout::layout("ab/cd-ef", 4)
+    check("wrapping preserves punctuation", UiTextLayout::line_view("ab/cd-ef", 0) == "ab/c" and UiTextLayout::line_view("ab/cd-ef", 1) == "d-ef")
+    _ = UiTextLayout::layout("a\r\n", 20)
+    check("terminal newline retains empty last line", UiTextLayout::line_count() == 2 and UiTextLayout::line_at(1).length == 0)
+    bytes: mutable u8[4] = zeroed
+    bytes[0] <- 0xE2
+    bytes[1] <- 65
+    bytes[2] <- 66
+    check("invalid continuation never consumes following ASCII", UiTextLayout::utf8_scalar_bytes(sview(&bytes[0], 0, 3), 0) == 1)
+    bytes[0] <- 0xED
+    bytes[1] <- 0xA0
+    bytes[2] <- 0x80
+    check("surrogate encoding is not a scalar", UiTextLayout::utf8_scalar_bytes(sview(&bytes[0], 0, 3), 0) == 1)
     if failures == 0:
         _ = puts("text layout: all checks passed")
         return 0

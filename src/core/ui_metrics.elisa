@@ -83,11 +83,12 @@ module UiMetrics:
         # semantic phase still gets a complete frame sample, while a partially
         # completed callback cannot leave an apparently live stage behind.
         def finish_frame(at: f64) -> void:
-            return if stage_state == Stage.Idle
+            return if stage_state == Stage.Idle or complete_state
             mark_paint(at)
             return if stage_state != Stage.Complete
             now: f64 = safe_time(at)
-            completed_at_state <- started_at_state if now < started_at_state else now
+            last_stage: f64 = started_at_state + application_duration_state + semantics_duration_state + paint_duration_state
+            completed_at_state <- last_stage if now < last_stage else now
             frame_duration_state <- elapsed(started_at_state, completed_at_state)
             complete_state <- true
 
