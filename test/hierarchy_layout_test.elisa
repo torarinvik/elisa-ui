@@ -252,6 +252,18 @@ def main() -> i64:
         test_failures <- test_failures + 1 if malformed_child.min_width < 0.0 or malformed_child.min_height < 0.0
         test_failures <- test_failures + 1 if malformed_child.width < 0.0 or malformed_child.height < 0.0
 
+        # Public raw constructors can also carry finite values much larger
+        # than a useful viewport. The layout pass saturates those inputs before
+        # aggregation, so no valid f32 can become an infinite box after a
+        # padding, spacing, growth, or child-size calculation.
+        huge: f32 = 3.0e38
+        huge_child: Widget = Button.Push(min_width: huge, min_height: huge, grow: huge, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "huge", rest: grey(30), hover: grey(40), press: grey(20))
+        huge_panel: Widget = Container.Box(min_width: huge, min_height: huge, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: huge_child, next_sibling: null, axis: UiConst::Axis.Row, padding: huge, spacing: huge, fill: grey(15))
+        layout(huge_panel, huge, huge)
+        test_failures <- test_failures + 1 if huge_panel.width > UiConstraints::MAX_EXTENT or huge_panel.height > UiConstraints::MAX_EXTENT
+        test_failures <- test_failures + 1 if huge_child.width > UiConstraints::MAX_EXTENT or huge_child.height > UiConstraints::MAX_EXTENT
+        test_failures <- test_failures + 1 if huge_panel.width != huge_panel.width or huge_panel.height != huge_panel.height or huge_child.width != huge_child.width or huge_child.height != huge_child.height
+
         # Growth weights are layout metrics too. A hostile negative weight must
         # not steal space from a valid sibling or poison the weighted pass.
         invalid_grow: Widget = Button.Push(min_width: 20.0, min_height: 8.0, grow: -4.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "invalid grow", rest: grey(30), hover: grey(40), press: grey(20))

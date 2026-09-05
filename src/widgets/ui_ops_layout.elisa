@@ -1,3 +1,5 @@
+include "./ui_constraints.elisa"
+
 extend UiWidgets:
     private:
         # Packed hierarchy handles deliberately do not expose identity
@@ -9,21 +11,40 @@ extend UiWidgets:
         const MAX_HIERARCHY_DEPTH: i32 = 256
         const MAX_HIERARCHY_SIBLINGS: i32 = 1024
 
+        # Hierarchy constructors are public sealed-enum entry points, so a
+        # caller can bypass the convenience builders and supply finite values
+        # far beyond useful screen geometry. Keep every layout operand inside
+        # the same bound used by the constraints and flat-widget layers before
+        # adding or multiplying it; this makes aggregate math saturating and
+        # prevents a valid f32 input from turning into an infinite box.
+        def bounded_extent(value: f32) -> f32:
+            return UiConstraints::bounded(value)
+
+        def safe_sum(left: f32, right: f32) -> f32:
+            return bounded_extent(bounded_extent(left) + bounded_extent(right))
+
+        def safe_product(left: f32, right: f32) -> f32:
+            return bounded_extent(bounded_extent(left) * bounded_extent(right))
+
+        def safe_difference(left: f32, right: f32) -> f32:
+            safe_left: f32 = bounded_extent(left)
+            safe_right: f32 = bounded_extent(right)
+            return safe_left - safe_right if safe_left > safe_right else 0.0
+
         # The amount of content that can be revealed by a stateful viewport.
         # Child boxes already contain the current translation, so adding the
         # current offset recovers their unscrolled extent without a second
         # measurement pass or any backend-specific bookkeeping.
         def scroll_content_extent(w: Widget) -> f32:
             is_row: bool = axis_of(w) == UiConst::Axis.Row
-            translated: f32 = scroll_offset_of(w)
+            translated: f32 = bounded_extent(scroll_offset_of(w))
             extent: mutable f32 = 0.0
             content_steps: mutable i32 = 0
             cursor: mutable Widget? = w.first_child
             while cursor is node |extent, cursor, is_row, translated, w, content_steps|:
                 break if content_steps >= MAX_HIERARCHY_SIBLINGS
                 content_steps <- content_steps + 1
-                end: f32 = node.x - w.x + node.width + translated if is_row else node.y - w.y + node.height + translated
-                end <- 0.0 if end < 0.0
+                end: f32 = bounded_extent(node.x - w.x + node.width + translated) if is_row else bounded_extent(node.y - w.y + node.height + translated)
                 extent <- end if end > extent
                 cursor <- node.next_sibling
             return extent
@@ -62,8 +83,8 @@ extend UiWidgets:
         # reserves its clickable area even with a short label.
         def measure(w: Widget, depth: i32) -> void:
             return if depth >= MAX_HIERARCHY_DEPTH
-            w.min_width <- UiCore::nonnegative_extent(w.min_width)
-            w.min_height <- UiCore::nonnegative_extent(w.min_height)
+            w.min_width <- bounded_extent(w.min_width)
+            w.min_height <- bounded_extent(w.min_height)
             # Grid is the one container whose main-axis demand is not a simple
             # sibling sum. Measure a uniform cell from the largest child, then
             # derive the number of rows from the fixed column count.
@@ -81,8 +102,8 @@ extend UiWidgets:
                         break if measure_grid_steps >= MAX_HIERARCHY_SIBLINGS
                         measure_grid_steps <- measure_grid_steps + 1
                         measure(node, depth + 1)
-                        child_width: f32 = UiCore::nonnegative_extent(node.min_width)
-                        child_height: f32 = UiCore::nonnegative_extent(node.min_height)
+                        child_width: f32 = bounded_extent(node.min_width)
+                        child_height: f32 = bounded_extent(node.min_height)
                         widest <- child_width if child_width > widest else widest
                         tallest <- child_height if child_height > tallest else tallest
                         count <- count + 1.0
@@ -97,12 +118,12 @@ extend UiWidgets:
                     # Measurement must use the same normalized values as
                     # arrangement; otherwise a negative gap or inset makes
                     # the reported minimum disagree with the boxes we place.
-                    safe_padding: f32 = UiCore::nonnegative_extent(padding)
-                    safe_spacing: f32 = UiCore::nonnegative_extent(spacing)
-                    gaps_x: f32 = safe_spacing * (columns_count - 1.0) if columns_count > 1.0 else 0.0
-                    gaps_y: f32 = safe_spacing * (rows - 1.0) if rows > 1.0 else 0.0
-                    content_width: f32 = widest * columns_count + gaps_x + safe_padding * 2.0
-                    content_height: f32 = tallest * rows + gaps_y + safe_padding * 2.0
+                    safe_padding: f32 = bounded_extent(padding)
+                    safe_spacing: f32 = bounded_extent(spacing)
+                    gaps_x: f32 = safe_product(safe_spacing, columns_count - 1.0) if columns_count > 1.0 else 0.0
+                    gaps_y: f32 = safe_product(safe_spacing, rows - 1.0) if rows > 1.0 else 0.0
+                    content_width: f32 = safe_sum(safe_sum(safe_product(widest, columns_count), gaps_x), safe_product(safe_padding, 2.0))
+                    content_height: f32 = safe_sum(safe_sum(safe_product(tallest, rows), gaps_y), safe_product(safe_padding, 2.0))
                     w.min_width <- content_width if content_width > w.min_width
                     w.min_height <- content_height if content_height > w.min_height
                     return
@@ -120,16 +141,16 @@ extend UiWidgets:
                 break if measure_list_steps >= MAX_HIERARCHY_SIBLINGS
                 measure_list_steps <- measure_list_steps + 1
                 measure(node, depth + 1)
-                child_along: f32 = UiCore::nonnegative_extent(node.min_width if is_row else node.min_height)
-                child_across: f32 = UiCore::nonnegative_extent(node.min_height if is_row else node.min_width)
-                along <- along + child_along
+                child_along: f32 = bounded_extent(node.min_width if is_row else node.min_height)
+                child_across: f32 = bounded_extent(node.min_height if is_row else node.min_width)
+                along <- safe_sum(along, child_along)
                 across <- child_across if child_across > across else across
                 count <- count + 1.0
                 cursor <- node.next_sibling
-            gaps: f32 = UiCore::nonnegative_extent(spacing_of(w)) * (count - 1.0) if count > 1.0 else 0.0
-            pad: f32 = UiCore::nonnegative_extent(padding_of(w)) * 2.0
-            content_width: f32 = along + gaps + pad if is_row else across + pad
-            content_height: f32 = across + pad if is_row else along + gaps + pad
+            gaps: f32 = safe_product(spacing_of(w), count - 1.0) if count > 1.0 else 0.0
+            pad: f32 = safe_product(padding_of(w), 2.0)
+            content_width: f32 = safe_sum(safe_sum(along, gaps), pad) if is_row else safe_sum(across, pad)
+            content_height: f32 = safe_sum(across, pad) if is_row else safe_sum(safe_sum(along, gaps), pad)
             w.min_width <- content_width if content_width > w.min_width
             w.min_height <- content_height if content_height > w.min_height
 
@@ -140,7 +161,9 @@ extend UiWidgets:
         # non-zero proportion.
         def arrange(w: Widget, x: f32, y: f32, width: f32, height: f32, depth: i32) -> void:
             return if depth >= MAX_HIERARCHY_DEPTH
-            w with { x, y, width, height }
+            safe_width: f32 = bounded_extent(width)
+            safe_height: f32 = bounded_extent(height)
+            w with { x, y, width <- safe_width, height <- safe_height }
             first: Widget? = w.first_child
             return if first == null
 
@@ -157,8 +180,8 @@ extend UiWidgets:
                     while scan is node |widest, tallest, count, scan, arrange_grid_scan_steps|:
                         break if arrange_grid_scan_steps >= MAX_HIERARCHY_SIBLINGS
                         arrange_grid_scan_steps <- arrange_grid_scan_steps + 1
-                        child_width: f32 = UiCore::nonnegative_extent(node.min_width)
-                        child_height: f32 = UiCore::nonnegative_extent(node.min_height)
+                        child_width: f32 = bounded_extent(node.min_width)
+                        child_height: f32 = bounded_extent(node.min_height)
                         widest <- child_width if child_width > widest else widest
                         tallest <- child_height if child_height > tallest else tallest
                         count <- count + 1.0
@@ -168,18 +191,18 @@ extend UiWidgets:
                     while remaining > 0.0 |rows, remaining, columns_count|:
                         rows <- rows + 1.0
                         remaining <- remaining - columns_count
-                    pad: f32 = UiCore::nonnegative_extent(padding)
-                    gap: f32 = UiCore::nonnegative_extent(spacing)
+                    pad: f32 = bounded_extent(padding)
+                    gap: f32 = bounded_extent(spacing)
                     inner_x: f32 = x + pad
                     inner_y: f32 = y + pad
-                    raw_inner_width: f32 = width - pad * 2.0
-                    raw_inner_height: f32 = height - pad * 2.0
-                    inner_width: f32 = UiCore::nonnegative_extent(raw_inner_width)
-                    inner_height: f32 = UiCore::nonnegative_extent(raw_inner_height)
-                    gaps_x: f32 = gap * (columns_count - 1.0) if columns_count > 1.0 else 0.0
-                    gaps_y: f32 = gap * (rows - 1.0) if rows > 1.0 else 0.0
-                    cell_width: mutable f32 = (inner_width - gaps_x) / columns_count
-                    cell_height: mutable f32 = (inner_height - gaps_y) / rows
+                    inner_width: f32 = safe_difference(width, safe_product(pad, 2.0))
+                    inner_height: f32 = safe_difference(height, safe_product(pad, 2.0))
+                    gaps_x: f32 = safe_product(gap, columns_count - 1.0) if columns_count > 1.0 else 0.0
+                    gaps_y: f32 = safe_product(gap, rows - 1.0) if rows > 1.0 else 0.0
+                    cell_width: mutable f32 = safe_difference(inner_width, gaps_x) / columns_count
+                    cell_height: mutable f32 = safe_difference(inner_height, gaps_y) / rows
+                    cell_width <- bounded_extent(cell_width)
+                    cell_height <- bounded_extent(cell_height)
                     cell_width <- 0.0 if cell_width < 0.0
                     cell_height <- 0.0 if cell_height < 0.0
                     cell_width <- widest if cell_width < widest else cell_width
@@ -202,16 +225,14 @@ extend UiWidgets:
                     pass
 
             is_row: bool = axis_of(w) == UiConst::Axis.Row
-            pad: f32 = UiCore::nonnegative_extent(padding_of(w))
-            gap: f32 = UiCore::nonnegative_extent(spacing_of(w))
+            pad: f32 = bounded_extent(padding_of(w))
+            gap: f32 = bounded_extent(spacing_of(w))
             inner_x: f32 = x + pad
             inner_y: f32 = y + pad
-            raw_inner_width: f32 = width - pad * 2.0
-            raw_inner_height: f32 = height - pad * 2.0
-            inner_width: f32 = UiCore::nonnegative_extent(raw_inner_width)
-            inner_height: f32 = UiCore::nonnegative_extent(raw_inner_height)
+            inner_width: f32 = safe_difference(width, safe_product(pad, 2.0))
+            inner_height: f32 = safe_difference(height, safe_product(pad, 2.0))
             count: f32 = child_count(w)
-            gaps: f32 = gap * (count - 1.0) if count > 1.0 else 0.0
+            gaps: f32 = safe_product(gap, count - 1.0) if count > 1.0 else 0.0
             inner_along: f32 = inner_width if is_row else inner_height
             scroll_offset: f32 = scroll_offset_of(w)
 
@@ -224,11 +245,11 @@ extend UiWidgets:
             while scan is node |demand, weight, scan, is_row, arrange_scan_steps|:
                 break if arrange_scan_steps >= MAX_HIERARCHY_SIBLINGS
                 arrange_scan_steps <- arrange_scan_steps + 1
-                demand <- demand + UiCore::nonnegative_extent(node.min_width if is_row else node.min_height)
-                weight <- weight + UiCore::nonnegative_extent(node.grow)
+                demand <- safe_sum(demand, node.min_width if is_row else node.min_height)
+                weight <- safe_sum(weight, node.grow)
                 scan <- node.next_sibling
 
-            free: f32 = inner_along - gaps - demand
+            free: f32 = safe_difference(inner_along, safe_sum(gaps, demand))
             share: f32 = free / weight if weight > 0.0 and free > 0.0 else 0.0
 
             # Second walk: place each child at the running offset.
@@ -238,11 +259,11 @@ extend UiWidgets:
             while walk is node |offset, walk, is_row, inner_x, inner_y, inner_width, inner_height, share, scroll_offset, arrange_walk_steps|:
                 break if arrange_walk_steps >= MAX_HIERARCHY_SIBLINGS
                 arrange_walk_steps <- arrange_walk_steps + 1
-                base: f32 = UiCore::nonnegative_extent(node.min_width if is_row else node.min_height)
-                extent: f32 = base + share * UiCore::nonnegative_extent(node.grow)
+                base: f32 = bounded_extent(node.min_width if is_row else node.min_height)
+                extent: f32 = safe_sum(base, safe_product(share, node.grow))
                 if is_row:
                     arrange(node, inner_x + offset - scroll_offset, inner_y, extent, inner_height, depth + 1)
                 else:
                     arrange(node, inner_x, inner_y + offset - scroll_offset, inner_width, extent, depth + 1)
-                offset <- offset + extent + gap
+                offset <- safe_sum(safe_sum(offset, extent), gap)
                 walk <- node.next_sibling
