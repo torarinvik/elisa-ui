@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `a6eeefa` on branch `work` |
+| elisa-ui revision | `0a5e821` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `1a44c1d1`; SHA-256 `a9573ad3779ae57f9daf68f79c53761c5ec54d0045a11c1387071ba0562678bc` |
@@ -56,8 +56,8 @@ guards for the ownership decisions.
 Tracked Elisa file lengths at this baseline include the intentionally cohesive
 retained widget module (`ui_widget.elisa`, 2,812 lines) and custom canvas
 adapter (`ui_appkit_canvas.elisa`, 1,729 lines). The AppKit controls backend is
-now split into realization/policy (`ui_appkit.elisa`, 353 lines) and typed
-native bridge wrappers (`ui_appkit_native.elisa`, 202 lines). The SDL3 backend
+now split into realization/policy (`ui_appkit.elisa`, 288 lines) and typed
+native bridge wrappers (`ui_appkit_native.elisa`, 370 lines). The SDL3 backend
 is split into lifecycle/event (`ui_sdl3.elisa`, 392 lines) and drawing/font
 state (`ui_sdl3_draw.elisa`, 228 lines). New or changed Elisa source continues
 to use small, single-purpose modules; the existing large modules are
@@ -105,7 +105,7 @@ bash scripts/run_tests.sh
   capi, appkit, appkit canvas, appkit canvas keymap, capi bridge,
   controls, drop raii, event wire, hierarchy build/layout, raster,
   sdl3 keymap/text, widget dispatch, widget handles, widget layout,
-  widget inspector, widget reentrancy: PASS
+  widget inspector, widget reentrancy, ui harness: PASS
 git diff --check: PASS
 ```
 
@@ -156,6 +156,10 @@ separate host-enforced security boundary.
   retained tree and semantic buffer. It reports deferred layout/frame-buffer
   state and typed relationships while redacting secure text; coverage lives in
   `test/widget_inspector_test.elisa`.
+- `UiHarness` is the deterministic Elisa-side test driver. It injects a
+  monotonic clock, typed lifecycle/input events, and frame boundaries while
+  leaving production event-loop ownership with each backend; coverage lives in
+  `test/ui_harness_test.elisa`.
 - `scripts/check_wapp.sh` is now the compiler-independent hosted package
   fixture: it inspects an existing `.wapp` through WasmBrowser's CLI and
   asserts the profile, host imports, guest exports, and absence of JS/TS/ESM
