@@ -56,6 +56,7 @@ def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
 def appkit_flat_accessibility_activate(index: usize) -> i32:
     return 0 if not UiAppKitCanvas::live()
     activated: bool = UiFlat::activate(index)
+    return 0 if activated and not UiAppKitCanvas::live()
     UiAppKitCanvas::redraw() if activated
     return 1 if activated else 0
 
@@ -70,6 +71,7 @@ def appkit_flat_accessibility_activate_handle(handle: usize) -> i32:
 def appkit_flat_accessibility_adjust(index: usize, direction: i32) -> i32:
     return 0 if not UiAppKitCanvas::live()
     adjusted: bool = UiFlat::adjust_step(index, direction)
+    return 0 if adjusted and not UiAppKitCanvas::live()
     UiAppKitCanvas::redraw() if adjusted
     return 1 if adjusted else 0
 
@@ -82,7 +84,7 @@ def appkit_flat_accessibility_adjust_handle(handle: usize, direction: i32) -> i3
 def appkit_flat_accessibility_set_numeric_value(index: usize, value: f32) -> usize can Unsafe.PointerCast:
     return 0 if not UiAppKitCanvas::live()
     accepted: bool = UiFlat::set_accessibility_value(index, value)
-    return 0 if not accepted
+    return 0 if not accepted or not UiAppKitCanvas::live()
     UiAppKitCanvas::redraw()
     # The returned +1 is released by the Cocoa protocol adapter after it has
     # mirrored the accepted normalized value into the native element.
@@ -141,6 +143,7 @@ def appkit_flat_pointer_move_event(x: f32, y: f32) -> usize:
     # always describe the same retained frame. Cocoa receives only the opaque
     # cursor object it must install.
     appkit_canvas_pointer_move_callback(x, y)
+    return UiAppKitCanvas::native_cursor(0) if not UiAppKitCanvas::live()
     return UiAppKitCanvas::native_cursor(UiFlat::cursor_at(x, y))
 
 def appkit_flat_pointer_leave_event() -> usize:
