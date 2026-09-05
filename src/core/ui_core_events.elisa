@@ -115,12 +115,15 @@ extend UiCore:
         # Rebuild. An unknown ordinal is `None` rather than a panic: the host is
         # free to grow its event set faster than this library does.
         def from_record(record: EventRecord) -> Event:
-            at: Vec2 = Vec2(record.x, record.y)
+            # EventRecord is the raw C/WIT boundary. Normalize every numeric
+            # payload here before rebuilding a typed event so hosts cannot
+            # inject NaN/infinity into hit testing, layout, or scroll policy.
+            at: Vec2 = Vec2(finite_or_zero(record.x), finite_or_zero(record.y))
             return match record.kind:
                 WireKind.Quit:
                     Event.Quit
                 WireKind.Resize:
-                    Event.Resize(size: Size(record.x, record.y))
+                    Event.Resize(size: Size(nonnegative_extent(record.x), nonnegative_extent(record.y)))
                 WireKind.FocusGained:
                     Event.FocusGained
                 WireKind.FocusLost:
@@ -134,7 +137,7 @@ extend UiCore:
                 WireKind.PointerLeave:
                     PointerEvent.Leave
                 WireKind.Scroll:
-                    PointerEvent.Scroll(at: at, delta: Vec2(record.dx, record.dy))
+                    PointerEvent.Scroll(at: at, delta: Vec2(finite_or_zero(record.dx), finite_or_zero(record.dy)))
                 WireKind.KeyDown:
                     return Event.None if not key_is_valid(record.code)
                     KeyEvent.Down(code: record.code.Key())

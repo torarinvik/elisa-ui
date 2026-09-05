@@ -103,6 +103,23 @@ def main() -> i64:
     malformed_pad: UiCore::Event = UiCore::GamepadEvent.Axis(axis: UiCore::PadAxis.LeftX, value: nan)
     malformed_pad_record: UiCore::EventRecord = UiCore::to_record(malformed_pad)
     check("event flattening sanitizes gamepad values", malformed_pad_record.dx == 0.0)
+    hostile_record: UiCore::EventRecord = UiCore::EventRecord{
+        kind: UiCore::WireKind.Scroll, x: nan, y: infinity, dx: infinity, dy: nan, code: 0,
+    }
+    match UiCore::from_record(hostile_record):
+        UiCore::PointerEvent.Scroll(at, delta):
+            check("event decoding sanitizes raw pointer position", at.x == 0.0 and at.y == 0.0)
+            check("event decoding sanitizes raw scroll delta", delta.x == 0.0 and delta.y == 0.0)
+        _:
+            check("hostile scroll record keeps its event kind", false)
+    hostile_resize: UiCore::EventRecord = UiCore::EventRecord{
+        kind: UiCore::WireKind.Resize, x: -4.0, y: infinity, dx: 0.0, dy: 0.0, code: 0,
+    }
+    match UiCore::from_record(hostile_resize):
+        UiCore::Event.Resize(size):
+            check("event decoding clamps raw resize extents", size.width == 0.0 and size.height == 0.0)
+        _:
+            check("hostile resize record keeps its event kind", false)
     check("Scroll round-trips", round_trips((UiCore::PointerEvent.Scroll(at: UiCore::Vec2(1.0, 2.0), delta: UiCore::Vec2(0.0, -3.0))), 9))
     check("GamepadButton round-trips", round_trips((UiCore::GamepadEvent.Button(button: UiCore::Pad.LeftBumper, value: 1.0)), 10))
     check("GamepadAxis round-trips", round_trips((UiCore::GamepadEvent.Axis(axis: UiCore::PadAxis.LeftY, value: -0.5)), 11))
