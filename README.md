@@ -78,6 +78,9 @@ because a module member's symbol carries its module and those names cannot move.
 - **Virtual lists** ([src/widgets/ui_virtual_list.elisa](src/widgets/ui_virtual_list.elisa)) —
   bounded visible ranges, edge buffering, item placement, content extents, and
   semantic navigation metadata shared by every backend.
+- **Size constraints** ([src/widgets/ui_constraints.elisa](src/widgets/ui_constraints.elisa)) —
+  normalized minimum/preferred/maximum extents, bounded resolution, and
+  explicit conflict diagnostics for adaptive layouts.
 - **Stable dynamic identity** ([src/widgets/ui_identity.elisa](src/widgets/ui_identity.elisa)) —
   explicit begin/claim/finish transactions preserve keyed generations across
   list and form rebuilds, reject duplicate keys, and invalidate retired items

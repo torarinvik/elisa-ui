@@ -1,0 +1,34 @@
+# Headless regression for shared min/preferred/max size policy.
+
+include "../src/widgets/ui_constraints.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    normal: UiConstraints::Range = UiConstraints::normalize(40.0, 80.0, 160.0)
+    check("normal range preserves all sizes", normal.minimum == 40.0 and normal.preferred == 80.0 and normal.maximum == 160.0 and not normal.conflict)
+    check("preferred size is intrinsic hint", UiConstraints::preferred_size(normal) == 80.0)
+
+    low: UiConstraints::Resolution = UiConstraints::resolve(normal, 12.0)
+    check("available space clamps to minimum", low.value == 40.0 and low.clamped_low and not low.clamped_high and not low.conflict)
+    high: UiConstraints::Resolution = UiConstraints::resolve(normal, 400.0)
+    check("available space clamps to maximum", high.value == 160.0 and not high.clamped_low and high.clamped_high)
+    fit: UiConstraints::Resolution = UiConstraints::resolve(normal, 120.0)
+    check("available space inside range is preserved", fit.value == 120.0 and not fit.clamped_low and not fit.clamped_high)
+
+    malformed: UiConstraints::Range = UiConstraints::normalize(200.0, 20.0, 100.0)
+    check("contradictory range reports conflict", malformed.conflict and malformed.minimum == 200.0 and malformed.maximum == 200.0 and malformed.preferred == 200.0)
+    check("zero maximum is unbounded", UiConstraints::resolve(UiConstraints::normalize(10.0, 20.0, UiConstraints::UNBOUNDED), 1000.0).value == 1000.0)
+    check("oversize input is bounded", UiConstraints::normalize(999999999.0, 999999999.0, 0.0).minimum == UiConstraints::MAX_EXTENT)
+
+    if failures == 0:
+        _ = puts("constraints: all checks passed")
+        return 0
+    _ = puts("constraints: FAILURES above")
+    return 1

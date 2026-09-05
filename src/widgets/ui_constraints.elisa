@@ -1,0 +1,75 @@
+# Backend-neutral size constraints for intrinsic and responsive layout.
+#
+# A range carries the three values an application can express without knowing
+# which backend will arrange it. Zero means an unbounded maximum, matching the
+# existing flat layout contract. Normalization is explicit and reports a
+# contradictory declaration instead of silently letting a backend choose a
+# different answer.
+
+include "../core/ui_core.elisa"
+
+module UiConstraints:
+    public:
+        const MAX_EXTENT: f32 = 16777216.0
+        const UNBOUNDED: f32 = 0.0
+
+        struct Range:
+            minimum: f32
+            preferred: f32
+            maximum: f32
+            conflict: bool
+
+        struct Resolution:
+            value: f32
+            clamped_low: bool
+            clamped_high: bool
+            conflict: bool
+
+        # Normalize one axis. Preferred size is kept inside the legal range;
+        # a maximum below the minimum becomes the minimum because required
+        # content must win over a hostile cap. `conflict` preserves the fact
+        # that the declaration had to be repaired.
+        def normalize(minimum: f32, preferred: f32, maximum: f32) -> Range:
+            safe_minimum: f32 = bounded(minimum)
+            safe_preferred: mutable f32 = bounded(preferred)
+            safe_maximum: mutable f32 = bounded(maximum)
+            conflict: mutable bool = false
+
+            if safe_maximum > 0.0 and safe_maximum < safe_minimum:
+                safe_maximum <- safe_minimum
+                conflict <- true
+            if safe_preferred < safe_minimum:
+                safe_preferred <- safe_minimum
+                conflict <- true
+            if safe_maximum > 0.0 and safe_preferred > safe_maximum:
+                safe_preferred <- safe_maximum
+                conflict <- true
+            return Range{minimum: safe_minimum, preferred: safe_preferred,
+                maximum: safe_maximum, conflict: conflict}
+
+        def preferred_size(constraints: Range) -> f32:
+            normalized: Range = normalize(constraints.minimum, constraints.preferred, constraints.maximum)
+            return normalized.preferred
+
+        # Resolve an available extent against the normalized range. The
+        # requested space is not forced to the preferred size: preferred is an
+        # intrinsic hint, while available space remains authoritative when it
+        # fits the range. This makes shrink/grow decisions composable.
+        def resolve(constraints: Range, available: f32) -> Resolution:
+            normalized: Range = normalize(constraints.minimum, constraints.preferred, constraints.maximum)
+            safe_available: f32 = bounded(available)
+            value: mutable f32 = safe_available
+            low: mutable bool = false
+            high: mutable bool = false
+            if value < normalized.minimum:
+                value <- normalized.minimum
+                low <- true
+            if normalized.maximum > 0.0 and value > normalized.maximum:
+                value <- normalized.maximum
+                high <- true
+            return Resolution{value: value, clamped_low: low,
+                clamped_high: high, conflict: normalized.conflict}
+
+        def bounded(value: f32) -> f32:
+            safe: f32 = UiCore::nonnegative_extent(value)
+            return MAX_EXTENT if safe > MAX_EXTENT else safe
