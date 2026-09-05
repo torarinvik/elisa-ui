@@ -55,6 +55,7 @@ extern elisa_appkit_canvas_redraw() -> void
 extern elisa_appkit_canvas_close() -> void
 extern elisa_appkit_canvas_accessibility_reset() -> void
 extern elisa_appkit_canvas_accessibility_add(previous_handle: usize, identifier: usize, action: usize, role: usize, subrole: usize, cursor: usize, label: usize, help: usize, x: f32, y: f32, width: f32, height: f32, enabled: i32, focused: i32) -> usize
+extern elisa_appkit_canvas_accessibility_release(handle: usize) -> void
 extern elisa_appkit_canvas_accessibility_add_tooltip(handle: usize) -> void
 extern elisa_appkit_canvas_accessibility_set_boolean(handle: usize, selected: i32) -> void
 extern elisa_appkit_canvas_accessibility_set_range(handle: usize, value: f32, minimum: f32, maximum: f32) -> void
@@ -473,8 +474,15 @@ module UiAppKitCanvas:
                 return index if accessibility_previous_ids[index] == id
             return UiCore::MAX_ACCESSIBILITY_NODES
 
-        def reset_accessibility_history() -> void:
+        def release_accessibility_handles() -> void:
+            for index in 0..<accessibility_previous_count:
+                handle: usize = accessibility_previous_handles[index]
+                elisa_appkit_canvas_accessibility_release(handle) if handle != 0
+                accessibility_previous_handles[index] <- 0
             accessibility_previous_count <- 0
+
+        def reset_accessibility_history() -> void:
+            release_accessibility_handles()
             accessibility_force_layout <- true
 
         def color_component(value: u8) -> f32:
@@ -765,6 +773,7 @@ module UiAppKitCanvas:
 
         def release_canvas() -> void:
             release_canvas_delegate()
+            release_accessibility_handles()
             release_canvas_window()
 
         # AppKit reports hardware key codes plus a UTF-16 character. Translate
@@ -908,6 +917,7 @@ module UiAppKitCanvas:
         def sync_accessibility() -> void can Unsafe.PointerCast:
             elisa_appkit_canvas_accessibility_reset()
             next_count: usize = UiCore::accessibility_count()
+            previous_count: usize = accessibility_previous_count
             layout_changed: mutable bool = accessibility_force_layout or next_count != accessibility_previous_count
             for index in 0..<UiCore::accessibility_count():
                 node: UiCore::AccessibilityNode = UiCore::accessibility_at(index)
@@ -964,6 +974,17 @@ module UiAppKitCanvas:
                 CFRelease(native_identifier) if native_identifier != 0
                 CFRelease(native_label) if native_label != 0
                 CFRelease(native_help) if native_help != 0
+            # Drop Elisa's ownership for semantic nodes that disappeared. The
+            # committed AppKit array has already switched to the new list, so
+            # releasing these handles cannot invalidate a current child.
+            for previous_index in 0..<previous_count:
+                previous_id: usize = accessibility_previous_ids[previous_index]
+                retained: mutable bool = false
+                for next_index in 0..<next_count:
+                    retained <- true if accessibility_next_ids[next_index] == previous_id
+                if not retained:
+                    stale_handle: usize = accessibility_previous_handles[previous_index]
+                    elisa_appkit_canvas_accessibility_release(stale_handle) if stale_handle != 0
             accessibility_previous_count <- next_count
             for index in 0..<accessibility_previous_count:
                 accessibility_previous_ids[index] <- accessibility_next_ids[index]

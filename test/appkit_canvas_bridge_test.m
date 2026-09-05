@@ -462,18 +462,19 @@ int main(void) {
         [elisa_appkit_canvas_view() mouseExited:exit];
         if (require(test_pointer_kind == 3 && test_pointer_button == 0,
                     @"pointer exit did not cross the Elisa event path")) return 1;
-        if (require(elisa_accessibility_children.count == 3, @"semantic children missing")) return 1;
+        NSArray *children = [elisa_appkit_canvas_view() accessibilityChildren];
+        if (require(children.count == 3, @"semantic children missing")) return 1;
 
-        ElisaAccessibilityElement *first = elisa_accessibility_children[0];
+        ElisaAccessibilityElement *first = children[0];
         if (require([first.accessibilityRole isEqualToString:NSAccessibilitySliderRole], @"wrong slider role")) return 1;
         if (require([first.accessibilityIdentifier isEqualToString:@"elisa-ui-7"], @"accessibility identifier did not cross the FFI")) return 1;
         if (require(first.elisaCursor == [NSCursor pointingHandCursor], @"opaque cursor pointer was not installed")) return 1;
         if (require([first.accessibilityHelp isEqualToString:@"Adjust preview intensity"], @"help text missing")) return 1;
         if (require(fabs([first.accessibilityValue floatValue] - 0.25f) < 0.001f, @"wrong initial value")) return 1;
-        ElisaAccessibilityElement *textField = elisa_accessibility_children[1];
+        ElisaAccessibilityElement *textField = children[1];
         if (require([textField.accessibilityRole isEqualToString:NSAccessibilityTextFieldRole], @"wrong text-field role")) return 1;
         if (require([textField.accessibilityValue isEqualToString:@"Hello"], @"wrong editable value")) return 1;
-        ElisaAccessibilityElement *secureField = elisa_accessibility_children[2];
+        ElisaAccessibilityElement *secureField = children[2];
         if (require([secureField.accessibilityRole isEqualToString:NSAccessibilityTextFieldRole], @"wrong secure-field role")) return 1;
         if (require([secureField.accessibilitySubrole isEqualToString:NSAccessibilitySecureTextFieldSubrole], @"secure-field subrole missing")) return 1;
         if (require([secureField.accessibilityValue isEqualToString:@"••••"], @"secure accessibility value was not masked")) return 1;
@@ -562,9 +563,10 @@ int main(void) {
         if (require(elisa_appkit_canvas_present_headless(
                         elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(),
                         elisa_appkit_canvas_bitmap_file_type_png(), 0, 200, 100, 8, 4, 1, 0), @"second off-screen presentation failed")) return 1;
-        ElisaAccessibilityElement *second = elisa_accessibility_children[0];
-        ElisaAccessibilityElement *secondTextField = elisa_accessibility_children[1];
-        ElisaAccessibilityElement *secondSecureField = elisa_accessibility_children[2];
+        NSArray *secondChildren = [elisa_appkit_canvas_view() accessibilityChildren];
+        ElisaAccessibilityElement *second = secondChildren[0];
+        ElisaAccessibilityElement *secondTextField = secondChildren[1];
+        ElisaAccessibilityElement *secondSecureField = secondChildren[2];
         if (require(first == second, @"semantic identity changed across frames")) return 1;
         if (require(textField == secondTextField, @"text-field identity changed across frames")) return 1;
         if (require(secureField == secondSecureField, @"secure-field identity changed across frames")) return 1;
@@ -574,6 +576,9 @@ int main(void) {
         if (require([second accessibilityPerformIncrement], @"increment action was rejected")) return 1;
         if (require(fabs(test_slider_value - 0.80f) < 0.001f, @"increment action did not reach the app")) return 1;
         [elisa_appkit_canvas_window() close];
+        for (ElisaAccessibilityElement *element in secondChildren) {
+            elisa_appkit_canvas_accessibility_release((size_t)(__bridge void *)element);
+        }
         elisa_appkit_canvas_release_delegate(delegateHandle);
         elisa_appkit_canvas_release_window(opened);
     }

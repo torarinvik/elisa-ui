@@ -66,7 +66,6 @@ extern size_t elisa_appkit_canvas_tracking_options(void);
 // shim keeps only a weak lookup so callbacks and native operations can resolve
 // the current Cocoa object without maintaining a second lifetime owner.
 static __weak NSWindow *elisa_canvas_window;
-static NSMutableArray *elisa_accessibility_children;
 
 // Cursor objects are Cocoa singletons. Return opaque, non-owning pointers so
 // Elisa can select the native object while this shim only installs it.
@@ -199,8 +198,8 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
 - (BOOL)isFlipped { return elisa_appkit_canvas_view_is_flipped() != 0; }
 - (BOOL)acceptsFirstResponder { return elisa_appkit_canvas_view_accepts_first_responder() != 0; }
 - (BOOL)isAccessibilityElement { return elisa_appkit_canvas_view_is_accessibility_element() != 0; }
-- (NSArray *)accessibilityChildren { return elisa_accessibility_children ?: @[]; }
-- (NSArray *)accessibilityChildrenInNavigationOrder { return elisa_accessibility_children ?: @[]; }
+- (NSArray *)accessibilityChildren { return [super accessibilityChildren] ?: @[]; }
+- (NSArray *)accessibilityChildrenInNavigationOrder { return [super accessibilityChildrenInNavigationOrder] ?: @[]; }
 - (NSTrackingAreaOptions)trackingOptions {
     return (NSTrackingAreaOptions)elisa_appkit_canvas_tracking_options();
 }
@@ -226,7 +225,7 @@ void elisa_appkit_canvas_interpret_key_event(size_t event) {
 }
 - (void)resetCursorRects {
     [super resetCursorRects];
-    for (ElisaAccessibilityElement *element in elisa_accessibility_children) {
+    for (ElisaAccessibilityElement *element in [self accessibilityChildren]) {
         if (element.elisaCursor != nil) [self addCursorRect:element.elisaLocalFrame cursor:element.elisaCursor];
     }
 }
@@ -468,7 +467,6 @@ size_t elisa_appkit_canvas_open(size_t title, float width, float height,
         // Elisa adapter owns the readiness guard and filters that callback
         // until app_init has completed.
         ElisaCanvasView *view = [[ElisaCanvasView alloc] initWithFrame:rect];
-        elisa_accessibility_children = [NSMutableArray new];
         elisa_canvas_window = window;
         ElisaCanvasDelegate *delegate = [ElisaCanvasDelegate new];
         // Elisa holds the returned +1 until the run finishes. Prevent
@@ -729,9 +727,10 @@ void elisa_appkit_canvas_accessibility_reset(void) {
 }
 
 // Elisa owns semantic identity and calls the typed setters immediately after
-// adding a node. Return the retained native object as an opaque handle so the
+// adding a node. Return a retained native object for a new element so the
 // bridge does not maintain a second identifier lookup table for the in-flight
-// frame. The active child array above still retains objects across frames.
+// frame. Elisa retains each element handle; AppKit's accessibility children
+// property retains the currently committed ordered list.
 static ElisaAccessibilityElement *elisa_appkit_canvas_element(size_t handle) {
     if (handle == 0) return nil;
     id object = (__bridge id)(void *)handle;
@@ -787,12 +786,17 @@ size_t elisa_appkit_canvas_accessibility_add(size_t previousHandle,
     NSWindow *window = elisa_appkit_canvas_window();
     if (window == nil) return 0;
     element.accessibilityFrame = [window convertRectToScreen:inWindow];
-    // Retain a newly-created element until Elisa commits the ordered handle
-    // list. Existing elements are already retained by the active child array;
+    // Elisa retains newly-created elements through the returned +1 handle;
     // identity/reuse itself is selected by Elisa from the previous-frame
     // handles rather than by a native semantic-ID dictionary.
-    if (isNew) [elisa_accessibility_children addObject:element];
-    return (size_t)(__bridge void *)element;
+    return isNew ? (size_t)(__bridge_retained void *)element : (size_t)(__bridge void *)element;
+}
+
+void elisa_appkit_canvas_accessibility_release(size_t handle) {
+    if (handle == 0) return;
+    id object = (__bridge id)(void *)handle;
+    if (![object isKindOfClass:[ElisaAccessibilityElement class]]) return;
+    (void)CFBridgingRelease((CFTypeRef)(void *)handle);
 }
 
 void elisa_appkit_canvas_accessibility_add_tooltip(size_t handle) {
@@ -863,9 +867,8 @@ void elisa_appkit_canvas_accessibility_commit(const size_t *handles, size_t coun
     }
     ElisaCanvasView *view = elisa_appkit_canvas_view();
     if (view == nil) return;
-    elisa_accessibility_children = children;
-    [view setAccessibilityChildren:elisa_accessibility_children];
-    [view setAccessibilityChildrenInNavigationOrder:elisa_accessibility_children];
+    [view setAccessibilityChildren:children];
+    [view setAccessibilityChildrenInNavigationOrder:children];
     [[view window] invalidateCursorRectsForView:view];
 }
 

@@ -105,6 +105,10 @@ if grep -Eq 'static (__strong |__weak )?ElisaCanvasDelegate[[:space:]]*\*' "$ROO
   echo "appkit canvas: delegate ownership was hidden in Objective-C state" >&2
   exit 1
 fi
+if grep -Eq 'static NSMutableArray[[:space:]]*\*' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: accessibility element ownership was hidden in Objective-C state" >&2
+  exit 1
+fi
 if grep -Eq 'static NSMenu \*elisa_canvas_menu_bar' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: menu-bar lifetime was hidden in Objective-C state" >&2
   exit 1
@@ -294,6 +298,7 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_menus_commit$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_activate$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_adjust$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_add_tooltip$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_release$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_commit$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_layout_changed_notification$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_post_layout_changed$'
