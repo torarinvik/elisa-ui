@@ -126,12 +126,13 @@ def appkit_flat_pointer_leave_event() -> usize:
 def appkit_canvas_text_click_callback(x: f32, button: i32, click_count: i32) -> void:
     UiFlat::select_text_click_at(x, button, click_count)
 
-def appkit_flat_set_text(index: usize, text: usize) -> void:
-    return if text == 0
+def appkit_flat_set_text(index: usize, text: usize) -> i32:
+    return 0 if text == 0 or not UiFlat::text_editable(index)
     length: usize = UiAppKitCanvas::copy_native_string(text, &appkit_native_text_buffer[0], UiFlat::TEXT_CAPACITY)
     UiFlat::replace_text(index, sview(&appkit_native_text_buffer[0], 0, length.i64()))
     appkit_scrub_buffer(&appkit_native_text_buffer[0], UiFlat::TEXT_CAPACITY)
     UiAppKitCanvas::redraw()
+    return 1
 
 def appkit_flat_selection_location() -> usize:
     return UiAppKitCanvas::not_found() if not UiFlat::accepts_text()
@@ -141,11 +142,11 @@ def appkit_flat_selection_length() -> usize:
     return 0 if not UiFlat::accepts_text()
     return UiFlat::selection_utf16_length(UiFlat::focused())
 
-def appkit_flat_set_selected_range(index: usize, location: usize, length: usize) -> void:
-    return if location == UiAppKitCanvas::not_found()
-    return if not UiFlat::is_enabled(index) or not UiFlat::is_visible(index)
+def appkit_flat_set_selected_range(index: usize, location: usize, length: usize) -> i32:
+    return 0 if location == UiAppKitCanvas::not_found() or not UiFlat::text_editable(index)
     UiFlat::set_selection_utf16(index, location, length)
     UiAppKitCanvas::redraw()
+    return 1
 
 def appkit_flat_marked_location() -> usize:
     return UiAppKitCanvas::not_found() if not UiFlat::accepts_text()
@@ -294,10 +295,10 @@ export fn elisa_appkit_canvas_key_up(key_code: i32, character: i32) -> void = ap
 export fn elisa_appkit_canvas_allows_text_readback() -> i32 = appkit_flat_allows_text_readback
 export fn elisa_appkit_canvas_cursor_at(x: f32, y: f32) -> usize = appkit_flat_cursor_at
 export fn elisa_appkit_canvas_text_click(x: f32, button: i32, click_count: i32) -> void = appkit_canvas_text_click_callback
-export fn elisa_appkit_canvas_set_text(index: usize, text: usize) -> void = appkit_flat_set_text
+export fn elisa_appkit_canvas_set_text(index: usize, text: usize) -> i32 = appkit_flat_set_text
 export fn elisa_appkit_canvas_selection_location() -> usize = appkit_flat_selection_location
 export fn elisa_appkit_canvas_selection_length() -> usize = appkit_flat_selection_length
-export fn elisa_appkit_canvas_set_selected_range(index: usize, location: usize, length: usize) -> void = appkit_flat_set_selected_range
+export fn elisa_appkit_canvas_set_selected_range(index: usize, location: usize, length: usize) -> i32 = appkit_flat_set_selected_range
 export fn elisa_appkit_canvas_marked_location() -> usize = appkit_flat_marked_location
 export fn elisa_appkit_canvas_marked_length() -> usize = appkit_flat_marked_length
 export fn elisa_appkit_canvas_has_marked_text() -> i32 = appkit_flat_has_marked_text

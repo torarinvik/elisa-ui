@@ -21,6 +21,7 @@ static int test_window_focused = -1;
 static NSUInteger test_frame_count;
 static int test_allows_readback = 1;
 static int test_text_focused = 1;
+static int test_allow_text_mutation = 1;
 static size_t test_accessibility_handles[3];
 static size_t test_window_handle;
 
@@ -227,11 +228,12 @@ static size_t test_native_text_bytes(size_t native, char *buffer, size_t capacit
     if (take > 0) memcpy(buffer, utf8.bytes, take);
     return take;
 }
-void elisa_appkit_canvas_set_text(size_t index, size_t native) {
-    if (index != 8) return;
+int elisa_appkit_canvas_set_text(size_t index, size_t native) {
+    if (index != 8 || !test_allow_text_mutation) return 0;
     size_t take = test_native_text_bytes(native, test_text, sizeof(test_text) - 1);
     test_text[take] = '\0';
     test_selection_start = test_selection_end = take;
+    return 1;
 }
 static NSUInteger test_utf16_from_byte(size_t byteOffset) {
     NSString *prefix = [[NSString alloc] initWithBytes:test_text length:MIN(byteOffset, strlen(test_text)) encoding:NSUTF8StringEncoding];
@@ -244,10 +246,11 @@ static size_t test_byte_from_utf16(NSUInteger offset) {
 }
 size_t elisa_appkit_canvas_selection_location(void) { return test_utf16_from_byte(test_selection_start); }
 size_t elisa_appkit_canvas_selection_length(void) { return test_utf16_from_byte(test_selection_end) - test_utf16_from_byte(test_selection_start); }
-void elisa_appkit_canvas_set_selected_range(size_t index, size_t location, size_t length) {
-    if (index != 8) return;
+int elisa_appkit_canvas_set_selected_range(size_t index, size_t location, size_t length) {
+    if (index != 8 || !test_allow_text_mutation) return 0;
     test_selection_start = test_byte_from_utf16(location);
     test_selection_end = test_byte_from_utf16(location + length);
+    return 1;
 }
 size_t elisa_appkit_canvas_marked_location(void) {
     return test_marked_end > test_marked_start ? test_utf16_from_byte(test_marked_start) : NSNotFound;
@@ -490,6 +493,14 @@ int main(void) {
         textField.accessibilitySelectedTextRange = NSMakeRange(1, 3);
         if (require(test_selection_start == 1 && test_selection_end == 4, @"writable accessibility selection did not reach Elisa")) return 1;
         textField.accessibilitySelectedTextRange = NSMakeRange(5, 0);
+        test_allow_text_mutation = 0;
+        textField.accessibilityValue = @"rejected";
+        if (require(strcmp(test_text, "World") == 0 && [textField.accessibilityValue isEqualToString:@"World"],
+                    @"rejected accessibility value changed native state")) return 1;
+        textField.accessibilitySelectedTextRange = NSMakeRange(0, 2);
+        if (require(test_selection_start == 5 && test_selection_end == 5,
+                    @"rejected accessibility selection changed native state")) return 1;
+        test_allow_text_mutation = 1;
         NSObject *invalidInput = [NSObject new];
         [elisa_appkit_canvas_view(opened) insertText:invalidInput replacementRange:NSMakeRange(NSNotFound, 0)];
         if (require(strcmp(test_text, "World") == 0, @"invalid text input was not ignored")) return 1;

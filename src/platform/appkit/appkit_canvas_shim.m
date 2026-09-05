@@ -31,10 +31,10 @@ extern int elisa_appkit_canvas_accepts_text(void);
 extern size_t elisa_appkit_canvas_not_found(void);
 extern int elisa_appkit_canvas_has_marked_text(void);
 extern size_t elisa_appkit_canvas_pointer_leave_event(void);
-extern void elisa_appkit_canvas_set_text(size_t index, size_t text);
+extern int elisa_appkit_canvas_set_text(size_t index, size_t text);
 extern size_t elisa_appkit_canvas_selection_location(void);
 extern size_t elisa_appkit_canvas_selection_length(void);
-extern void elisa_appkit_canvas_set_selected_range(size_t index, size_t location, size_t length);
+extern int elisa_appkit_canvas_set_selected_range(size_t index, size_t location, size_t length);
 extern size_t elisa_appkit_canvas_marked_location(void);
 extern size_t elisa_appkit_canvas_marked_length(void);
 extern void elisa_appkit_canvas_commit_text(size_t text,
@@ -97,14 +97,26 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
         elisa_appkit_canvas_accessibility_decrement_direction()) != 0;
 }
 - (void)setAccessibilityValue:(id)value {
-    [super setAccessibilityValue:value];
-    if (self.elisaSynchronizing || ![value isKindOfClass:[NSString class]]) return;
-    elisa_appkit_canvas_set_text(self.elisaIndex, (size_t)(__bridge void *)value);
+    // Native role/value synchronization still flows through the superclass.
+    // For writable text, ask Elisa first and mirror the value only when its
+    // retained policy accepted the request; rejected edits cannot leave a
+    // transient native value that disagrees with the custom painter.
+    if (self.elisaSynchronizing || ![value isKindOfClass:[NSString class]]) {
+        [super setAccessibilityValue:value];
+        return;
+    }
+    if (elisa_appkit_canvas_set_text(self.elisaIndex, (size_t)(__bridge void *)value) != 0) {
+        [super setAccessibilityValue:value];
+    }
 }
 - (void)setAccessibilitySelectedTextRange:(NSRange)value {
-    [super setAccessibilitySelectedTextRange:value];
-    if (self.elisaSynchronizing) return;
-    elisa_appkit_canvas_set_selected_range(self.elisaIndex, value.location, value.length);
+    if (self.elisaSynchronizing) {
+        [super setAccessibilitySelectedTextRange:value];
+        return;
+    }
+    if (elisa_appkit_canvas_set_selected_range(self.elisaIndex, value.location, value.length) != 0) {
+        [super setAccessibilitySelectedTextRange:value];
+    }
 }
 - (NSString *)view:(NSView *)view stringForToolTip:(NSToolTipTag)tag
              point:(NSPoint)point userData:(void *)data {

@@ -847,9 +847,10 @@ module UiFlat:
 
         # A translated child remains in the retained tree, but it is not
         # visible or hittable once the pointer leaves any scroll viewport on
-        # its ancestor chain. The command protocol has no clip primitive, so
-        # this shared predicate provides the important semantic half of
-        # clipping without adding a backend-specific operation.
+        # its ancestor chain. The same shared predicate drives hit testing and
+        # semantic visibility; paint() records the geometric half as side-band
+        # clip metadata so native painters can enforce it without a backend-
+        # specific command payload.
         def inside_scroll_viewports(index: usize, x: f32, y: f32) -> bool:
             cursor: mutable usize = widgets[index].parent
             while cursor < widget_count |cursor, x, y|:
@@ -1488,6 +1489,13 @@ module UiFlat:
         def accepts_text() -> bool:
             return focused_widget < widget_count and widgets[focused_widget].kind == UiConst::WidgetKind.TextField and effectively_enabled(focused_widget) and effectively_visible(focused_widget)
 
+        # Accessibility and native text adapters may target a specific field,
+        # not only the focused one. Keep the same kind/enabled/visible policy
+        # used by replace_text in one query so a host can ask for permission
+        # before mirroring a mutation into its native object.
+        def text_editable(index: usize) -> bool:
+            return index < widget_count and widgets[index].kind == UiConst::WidgetKind.TextField and effectively_enabled(index) and effectively_visible(index)
+
         def allows_text_readback() -> bool:
             return accepts_text() and not widgets[focused_widget].secure
 
@@ -1758,7 +1766,7 @@ module UiFlat:
             finish_text_history(history_slot, index)
 
         def replace_text(index: usize, text: sview) -> void:
-            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField or not effectively_enabled(index) or not effectively_visible(index)
+            return if not text_editable(index)
             byte_limit: usize = text.len if text.len < TEXT_CAPACITY - 1 else TEXT_CAPACITY - 1
             take: usize = grapheme_prefix_length(text, valid_utf8_prefix(text, byte_limit))
             widgets[index].text_truncated <- take < text.len

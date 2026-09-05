@@ -142,7 +142,9 @@ bits instead of inferring framework behavior from native objects. Text changes
 use explicit widget edit revisions rather than per-frame string hashing.
 Text fields expose writable values and native selection ranges to assistive
 technology. Disabled controls expose no accessibility interaction token, so
-native editing actions cannot claim or perform work. Press and adjustment
+native editing actions cannot claim or perform work. Writable text values and
+selection ranges are accepted by Elisa before Cocoa mirrors them, so a rejected
+or disabled request cannot leave transient native state behind. Press and adjustment
 authorization is rechecked by `UiFlat`, and Cocoa returns that Elisa result
 directly to assistive technology. Cocoa retains no framework interaction-kind
 policy: accessibility edits carry their target widget id back to Elisa, and
