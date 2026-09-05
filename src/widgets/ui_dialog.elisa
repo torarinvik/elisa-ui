@@ -169,7 +169,7 @@ module UiDialog:
             value: Semantics = semantics(handle, focused)
             UiCore::accessibility_with_metadata(value.role, value.label, value.help,
                 frame, value.identity, 0, value.enabled, value.focused, false,
-                0.0, "", "", sequence[handle.slot.usize()], 0, 0,
+                0.0, "", "", sequence[handle.slot.usize()].usize(), 0, 0,
                 parent_id, first_child_id, next_sibling_id, 0.0, 1.0, false)
 
         # Choosing any typed result closes the record but keeps its handle valid
@@ -227,14 +227,17 @@ module UiDialog:
         global mutable closed: bool[MAX_DIALOGS] = zeroed
         global mutable generations: u32[MAX_DIALOGS] = zeroed
         global mutable owners: u32[MAX_DIALOGS] = zeroed
-        global mutable sequence: u32[MAX_DIALOGS] = zeroed
+        # Ordering is internal state, not an ABI field. Keep it wider than the
+        # compact handle generation so a long-lived modal stack cannot select
+        # an older dialog after a 32-bit sequence wrap.
+        global mutable sequence: u64[MAX_DIALOGS] = zeroed
         global mutable kinds: Kind[MAX_DIALOGS] = zeroed
         global mutable results: Result[MAX_DIALOGS] = zeroed
         global mutable lengths: usize[MAX_DIALOGS * 4] = zeroed
         global mutable storage: u8[MAX_DIALOGS * 4 * TEXT_CAPACITY] = zeroed
         global mutable active_count: usize = 0
         global mutable closed_count: usize = 0
-        global mutable sequence_state: u32 = 0
+        global mutable sequence_state: u64 = 0
         global mutable overflowed_state: bool = false
 
         def mark_changed() -> void:
@@ -245,8 +248,8 @@ module UiDialog:
             next: u32 = value + 1
             return 1 if next == 0 else next
 
-        def next_sequence(value: u32) -> u32:
-            next: u32 = value + 1
+        def next_sequence(value: u64) -> u64:
+            next: u64 = value + 1
             return 1 if next == 0 else next
 
         def make_handle(slot: usize) -> Handle:

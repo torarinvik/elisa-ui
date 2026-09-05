@@ -83,7 +83,7 @@ module UiNavigation:
 
         def top() -> Handle:
             selected: mutable usize = NONE_SLOT
-            newest: mutable u32 = 0
+            newest: mutable u64 = 0
             for slot in 0..<MAX_ENTRIES:
                 if occupied[slot] and sequence[slot] >= newest:
                     selected <- slot
@@ -169,9 +169,12 @@ module UiNavigation:
         global mutable owners: u32[MAX_ENTRIES] = zeroed
         global mutable policies: BackPolicy[MAX_ENTRIES] = zeroed
         global mutable dirty: bool[MAX_ENTRIES] = zeroed
-        global mutable sequence: u32[MAX_ENTRIES] = zeroed
+        # Sequence numbers are private ordering facts. Keep them wider than
+        # the compact handle generation so pushing views for a long-running
+        # session cannot make an older entry appear newer after wraparound.
+        global mutable sequence: u64[MAX_ENTRIES] = zeroed
         global mutable entry_count: usize = 0
-        global mutable sequence_state: u32 = 0
+        global mutable sequence_state: u64 = 0
         global mutable pending_slot: usize = NONE_SLOT
         global mutable overflowed_state: bool = false
 
@@ -179,8 +182,8 @@ module UiNavigation:
             next: u32 = value + 1
             return 1 if next == 0 else next
 
-        def next_sequence(value: u32) -> u32:
-            next: u32 = value + 1
+        def next_sequence(value: u64) -> u64:
+            next: u64 = value + 1
             return 1 if next == 0 else next
 
         def clear_slot(slot: usize) -> void:
