@@ -103,6 +103,12 @@ extern CTLineDraw(line: usize, context: usize) -> void
 extern CFRelease(value: usize) -> void
 extern sel_registerName(name: cstr) -> usize
 extern sel_getName(selector: usize) -> cstr
+# Keep per-frame temporary Objective-C objects bounded even for headless
+# rendering, which does not enter AppKit's normal event-loop autorelease scope.
+# These are libobjc C functions, so the pool lifetime remains in Elisa rather
+# than introducing an Objective-C frame wrapper.
+extern objc_autoreleasePoolPush() -> usize
+extern objc_autoreleasePoolPop(pool: usize) -> void
 extern ceilf(x: f32) -> f32
 extern CGContextSetTextPosition(context: usize, x: f64, y: f64) -> void
 struct NativeSize:
@@ -1302,6 +1308,7 @@ module UiAppKitCanvas:
 # C callbacks from ElisaCanvasView. Top-level because the Objective-C ABI names them.
 def appkit_canvas_frame_callback(context: usize) -> void:
     can Ui.Draw, Ui.Text, Unsafe.PointerCast:
+        autorelease_pool: usize = objc_autoreleasePoolPush()
         # Keep the AppKit graphics context balanced around the entire retained
         # frame. The native view only supplies the context; frame-state policy
         # and restoration now live with Elisa's painter replay.
@@ -1317,6 +1324,7 @@ def appkit_canvas_frame_callback(context: usize) -> void:
         UiAppKitCanvas::end_native_frame()
         UiAppKitCanvas::schedule_next_frame(UiCore::frame_delay())
         CGContextRestoreGState(context)
+        objc_autoreleasePoolPop(autorelease_pool)
 
 def appkit_canvas_resize_callback(width: f32, height: f32) -> void:
     return if not UiAppKitCanvas::canvas_initialized
