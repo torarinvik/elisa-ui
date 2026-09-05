@@ -25,6 +25,17 @@ if grep -Eq 'styleMask:[[:space:]]*\(NSWindowStyleMask(Titled|Closable|Miniaturi
   echo "appkit: native control style policy leaked back into Objective-C" >&2
   exit 1
 fi
+# SDK enum names are allowed only at the exported FFI-fact definitions. All
+# later reads must use those Elisa-visible globals, including headless checks.
+if awk '
+  /^[[:space:]]*\/\// { next }
+  /const int elisa_appkit_[[:alnum:]_]+[[:space:]]*=[[:space:]]*NS/ { next }
+  /NSWindowStyleMask(Titled|Closable|Miniaturizable|Resizable|UtilityWindow)|NSBezelStyleRounded|NSButtonTypePushOnPushOff|NSControlStateValue(On|Off)|NSProgressIndicatorStyleBar|NSBackingStoreBuffered/ { found=1 }
+  END { exit found ? 0 : 1 }
+' "$ROOT/src/platform/appkit/appkit_shim.m"; then
+  echo "appkit: SDK enum policy was duplicated in Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'setActivationPolicy:NSApplicationActivationPolicyRegular' "$ROOT/src/platform/appkit/appkit_shim.m"; then
   echo "appkit: activation policy leaked back into Objective-C initialization" >&2
   exit 1

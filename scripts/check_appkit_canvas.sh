@@ -201,6 +201,18 @@ if grep -Eq 'backing:NSBackingStoreBuffered' "$ROOT/src/platform/appkit/appkit_c
   echo "appkit canvas: backing-store policy leaked back into Objective-C constructors" >&2
   exit 1
 fi
+# AppKit enum/sentinel names are allowed only at the exported FFI-fact
+# definitions. Policy code must consume the globals from Elisa instead of
+# reopening SDK constants in the native bridge.
+if awk '
+  /^[[:space:]]*\/\// { next }
+  /const (int|size_t) elisa_appkit_canvas_[[:alnum:]_]+[[:space:]]*=[[:space:]]*NS/ { next }
+  /NSWindowStyleMask(Titled|Closable|Miniaturizable|Resizable)|NSBackingStoreBuffered|NSApplicationActivationPolicy(Regular|Prohibited)|NSWindowTabbingMode(Preferred|Disallowed)|NSTracking(MouseMoved|MouseEnteredAndExited|ActiveInKeyWindow|InVisibleRect)|NSNotFound|NSEventModifierFlag(Command|Shift|Option|Control|DeviceIndependentFlagsMask)/ { found=1 }
+  END { exit found ? 0 : 1 }
+' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: SDK enum policy was duplicated in Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'forType:NSPasteboardTypeString|stringForType:NSPasteboardTypeString|colorSpaceName:NSCalibratedRGBColorSpace|representationUsingType:NSBitmapImageFileTypePNG' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: pasteboard or snapshot encoding policy leaked back into Objective-C" >&2
   exit 1
