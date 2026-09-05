@@ -281,9 +281,12 @@ void elisa_appkit_set_slider_state(size_t handle, float low, float high, float v
     [slider setDoubleValue:value];
 }
 
-void elisa_appkit_set_progress_value(size_t handle, float value) {
+void elisa_appkit_set_progress_state(size_t handle, float low, float high, float value) {
     NSProgressIndicator *bar = (NSProgressIndicator *)elisa_appkit_object(handle);
-    if ([bar isKindOfClass:[NSProgressIndicator class]]) [bar setDoubleValue:value];
+    if (![bar isKindOfClass:[NSProgressIndicator class]]) return;
+    [bar setMinValue:low];
+    [bar setMaxValue:high];
+    [bar setDoubleValue:value];
 }
 
 // Show the window. Separated from the run loop so a headless check can realize a
@@ -417,4 +420,19 @@ int elisa_appkit_progress_style(size_t handle) {
     NSProgressIndicator *bar = (NSProgressIndicator *)elisa_appkit_object(handle);
     if (![bar isKindOfClass:[NSProgressIndicator class]]) return -1;
     return (int)[bar style];
+}
+
+float elisa_appkit_progress_min(size_t handle) {
+    NSProgressIndicator *bar = (NSProgressIndicator *)elisa_appkit_object(handle);
+    return [bar isKindOfClass:[NSProgressIndicator class]] ? (float)[bar minValue] : -1.0f;
+}
+
+float elisa_appkit_progress_max(size_t handle) {
+    NSProgressIndicator *bar = (NSProgressIndicator *)elisa_appkit_object(handle);
+    return [bar isKindOfClass:[NSProgressIndicator class]] ? (float)[bar maxValue] : -1.0f;
+}
+
+float elisa_appkit_progress_value(size_t handle) {
+    NSProgressIndicator *bar = (NSProgressIndicator *)elisa_appkit_object(handle);
+    return [bar isKindOfClass:[NSProgressIndicator class]] ? (float)[bar doubleValue] : -1.0f;
 }
