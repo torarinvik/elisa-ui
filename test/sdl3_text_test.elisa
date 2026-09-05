@@ -10,6 +10,8 @@ global mutable committed_text_seen: bool = false
 global mutable editing_text_seen: bool = false
 global mutable bounded_committed_text_seen: bool = false
 global mutable bounded_editing_text_seen: bool = false
+global mutable bounded_editing_selection_seen: bool = false
+global mutable negative_editing_selection_seen: bool = false
 global mutable oversized_text: u8[4097] = zeroed
 
 # The backend calls into the app contract; a measurement test has no app.
@@ -26,6 +28,8 @@ def app_text_input(text: sview) -> void:
 def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
     editing_text_seen <- text == "にほん" and selected_start == 1 and selected_length == 2
     bounded_editing_text_seen <- text.len == UiCore::MAX_TEXT_BYTES.i64()
+    bounded_editing_selection_seen <- selected_start == UiCore::MAX_TEXT_BYTES.i32() and selected_length == 0
+    negative_editing_selection_seen <- selected_start == 0 and selected_length == 0
 
 def app_frame() -> void:
     pass
@@ -71,9 +75,12 @@ def main() -> i64:
     oversized_text[4096] <- 0
     oversized_pointer: cstr = (&oversized_text[0]).cast[cstr] can Unsafe.PointerCast
     UiSdl3::text_input(oversized_pointer)
-    UiSdl3::text_editing(oversized_pointer, 0, 0)
+    UiSdl3::text_editing(oversized_pointer, 2147483647, 2147483647)
     check("SDL committed text bounds hostile NUL strings", bounded_committed_text_seen)
     check("SDL marked text bounds hostile NUL strings", bounded_editing_text_seen)
+    check("SDL marked selection stays inside bounded text", bounded_editing_selection_seen)
+    UiSdl3::text_editing("x", -1, -1)
+    check("SDL rejects negative marked selection offsets", negative_editing_selection_seen)
 
     # The size table must reuse an already-open font rather than growing.
     before: usize = UiSdl3::font_count()
