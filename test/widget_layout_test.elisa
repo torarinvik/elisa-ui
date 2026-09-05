@@ -73,6 +73,15 @@ def frame_contains_text(text: sview) -> bool:
                 pass
     return false
 
+def frame_contains_rect(x: f32, y: f32, width: f32, height: f32) -> bool:
+    for index in 0..<UiCore::command_count():
+        match UiCore::command_at(index):
+            UiCore::Command.FillRect(rect, color):
+                return true if near(rect.origin.x, x) and near(rect.origin.y, y) and near(rect.size.width, width) and near(rect.size.height, height)
+            _:
+                pass
+    return false
+
 def build_tree() -> void:
     UiFlat::reset()
     root: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 10.0, 10.0, UiCore::Color{r: 10, g: 10, b: 10, a: 255})
@@ -898,6 +907,10 @@ def main() -> i64:
     check("scroll viewport keeps its declared height", rect_is(scroll_view, 0.0, 0.0, 120.0, 100.0))
     check("scroll content reports its measured extent", near(UiFlat::scroll_limit(scroll_view), 80.0))
     check("scroll starts at the leading edge", near(UiFlat::widget(scroll_first).y, 0.0) and near(UiFlat::widget(scroll_third).y, 120.0))
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("scroll paint emits a themed track", frame_contains_rect(108.0, 4.0, 8.0, 92.0))
+    check("scroll paint emits a proportional thumb", frame_contains_rect(108.0, 4.0, 8.0, 51.1111))
     check("scroll setter translates children", UiFlat::set_scroll_offset(scroll_view, 50.0) and near(UiFlat::scroll_offset(scroll_view), 50.0) and near(UiFlat::widget(scroll_second).y, 10.0))
     check("scroll hit testing follows translated content", UiFlat::hit(60.0, 20.0) == scroll_second)
     UiFlat::pointer((UiCore::PointerEvent.Scroll(at: UiCore::Vec2(60.0, 50.0), delta: UiCore::Vec2(0.0, 30.0))))

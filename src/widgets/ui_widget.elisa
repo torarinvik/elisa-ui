@@ -122,6 +122,10 @@ module UiFlat:
             # One visible or hidden half-cycle. Zero keeps the caret steadily
             # visible and requests no animation, useful for reduced motion.
             caret_blink_interval: mutable f32
+            scrollbar_track: mutable UiCore::Color
+            scrollbar_thumb: mutable UiCore::Color
+            scrollbar_width: mutable f32
+            scrollbar_inset: mutable f32
 
     private:
         global mutable widgets: Widget[MAX_WIDGETS] = zeroed
@@ -194,6 +198,10 @@ module UiFlat:
             checkbox_size: 11.0,
             choice_text_space: 28.0,
             caret_blink_interval: 0.5,
+            scrollbar_track: UiCore::Color{r: 0, g: 0, b: 0, a: 70},
+            scrollbar_thumb: UiCore::Color{r: 255, g: 255, b: 255, a: 175},
+            scrollbar_width: 8.0,
+            scrollbar_inset: 4.0,
         }
 
         # Fractions are part of the public widget state and must never let an
@@ -342,6 +350,8 @@ module UiFlat:
             normalized.checkbox_size <- UiCore::nonnegative_extent(next.checkbox_size)
             normalized.choice_text_space <- UiCore::nonnegative_extent(next.choice_text_space)
             normalized.caret_blink_interval <- UiCore::nonnegative_extent(next.caret_blink_interval)
+            normalized.scrollbar_width <- UiCore::nonnegative_extent(next.scrollbar_width)
+            normalized.scrollbar_inset <- UiCore::nonnegative_extent(next.scrollbar_inset)
             current_theme <- normalized
 
         def set_colors(index: usize, color: UiCore::Color, hover: UiCore::Color, press: UiCore::Color) -> void:
@@ -2079,6 +2089,41 @@ module UiFlat:
             delta: f32 = widgets[index].step if direction > 0 else -widgets[index].step
             return adjust(index, delta)
 
+        # Scroll indicators are drawn by the flat painter itself, so a canvas
+        # backend does not need an NSScroller or a browser scrollbar. The thumb
+        # length reflects the viewport/content ratio and its travel follows the
+        # same clamped offset used by wheel input.
+        def paint_scrollbar(index: usize) -> void:
+            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Scroll
+            is_row: bool = widgets[index].axis == UiConst::Axis.Row
+            viewport: f32 = widgets[index].width if is_row else widgets[index].height
+            content: f32 = widgets[index].scroll_content_width if is_row else widgets[index].scroll_content_height
+            return if content <= viewport or viewport <= 0.0
+            cross_extent: f32 = widgets[index].height if is_row else widgets[index].width
+            inset: f32 = clamped_inset(current_theme.scrollbar_inset, cross_extent)
+            bar: mutable f32 = current_theme.scrollbar_width
+            bar <- cross_extent - inset * 2.0 if bar > cross_extent - inset * 2.0 else bar
+            return if bar <= 0.0
+            track_extent: f32 = viewport - inset * 2.0
+            return if track_extent <= 0.0
+            thumb_extent: mutable f32 = track_extent * viewport / content
+            minimum_thumb: f32 = 24.0 if track_extent >= 24.0 else track_extent
+            thumb_extent <- minimum_thumb if thumb_extent < minimum_thumb else thumb_extent
+            thumb_extent <- track_extent if thumb_extent > track_extent else thumb_extent
+            limit: f32 = content - viewport
+            travel: f32 = track_extent - thumb_extent
+            thumb_position: f32 = travel * widgets[index].scroll_offset / limit if limit > 0.0 else 0.0
+            if is_row:
+                track: UiCore::Rect = UiCore::Rect(widgets[index].x + inset, widgets[index].y + widgets[index].height - bar - inset, track_extent, bar)
+                thumb: UiCore::Rect = UiCore::Rect(track.origin.x + thumb_position, track.origin.y, thumb_extent, bar)
+                UiCore::fill(track, current_theme.scrollbar_track)
+                UiCore::fill(thumb, current_theme.scrollbar_thumb)
+            else:
+                track: UiCore::Rect = UiCore::Rect(widgets[index].x + widgets[index].width - bar - inset, widgets[index].y + inset, bar, track_extent)
+                thumb: UiCore::Rect = UiCore::Rect(track.origin.x, track.origin.y + thumb_position, bar, thumb_extent)
+                UiCore::fill(track, current_theme.scrollbar_track)
+                UiCore::fill(thumb, current_theme.scrollbar_thumb)
+
         # Pre-order emission gives painter's-algorithm ordering for free: a
         # parent's background is laid down before any of its children.
         def paint() -> void:
@@ -2209,3 +2254,8 @@ module UiFlat:
                 ink: mutable UiCore::Color = widgets[index].text_color
                 ink <- muted_color(ink) if not enabled
                 UiCore::draw(UiCore::TextRun(UiCore::Vec2(text_x, text_y), widgets[index].text_size, widgets[index].text), ink)
+            # Indicators are emitted after content so they remain readable over
+            # translated children and nested scroll areas.
+            for index in 0..<widget_count:
+                continue if not effectively_visible(index) or not intersects_scroll_viewports(index)
+                paint_scrollbar(index)

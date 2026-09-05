@@ -58,7 +58,9 @@ The complete working version is
 - `scroll` reserves a fixed viewport while retaining the full measured child
   strip. `UiFlat::set_scroll_offset` clamps and relayouts it, wheel events route
   to the innermost viewport, and hit testing/semantics ignore children outside
-  every ancestor viewport.
+  every ancestor viewport. Overflowing viewports draw a proportional,
+  allocation-free scrollbar from `UiFlat::Theme::scrollbar_track` and
+  `scrollbar_thumb`.
 - `label` measures and paints static text.
 - `button`, `radio_button` and `check_box` support hover, press, disabled,
   selected and keyboard-focus states.
