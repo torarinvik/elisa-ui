@@ -1,0 +1,122 @@
+extend UiAppKitCanvas:
+        def run_with_options(title: sview, options: WindowOptions) -> i64:
+            can Ui.Window, Ui.Draw, Ui.Text, Ui.Input, Unsafe.PointerCast:
+                return 1 if title.len == 0
+                pointer: cstr = title.data.cast[cstr] can Unsafe.PointerCast
+                width: f32 = UiCore::nonnegative_extent(options.width)
+                height: f32 = UiCore::nonnegative_extent(options.height)
+                style: i32 = window_style(options)
+                headless: bool = smoke_mode()
+                bitmap_width: mutable i32 = 0
+                bitmap_height: mutable i32 = 0
+                if headless:
+                    bitmap_width <- bitmap_extent(width)
+                    bitmap_height <- bitmap_extent(height)
+                    # Reject an invalid or oversized snapshot before creating
+                    # any AppKit objects. The visible path keeps its normal
+                    # window sizing semantics and never needs bitmap extents.
+                    return 2 if not snapshot_dimensions_safe(bitmap_width, bitmap_height)
+                native_title: usize = native_string(title)
+                return 1 if native_title == 0
+                release_canvas()
+                UiLifecycle::reset()
+                UiMetrics::reset()
+                return 1 if not UiLifecycle::begin()
+                headless_session <- headless
+                set_activation_policy(activation_policy(headless))
+                delegate_handle: mutable usize = 0
+                opened: usize = open_window(native_title, width, height, style, elisa_appkit_canvas_backing_store_buffered, &delegate_handle)
+                CFRelease(native_title)
+                return 1 if opened == 0
+                canvas_window <- opened
+                canvas_delegate <- delegate_handle
+                # Elisa retains the root window explicitly through the whole
+                # run, so prevent Cocoa from consuming that retain on close.
+                # Keep this ownership decision beside the rest of the window
+                # lifecycle policy rather than hard-coding it in Objective-C.
+                elisa_appkit_canvas_set_released_when_closed(canvas_window, 0)
+                elisa_appkit_canvas_set_tabbing_mode(canvas_window, tabbing_mode(options.tabbing))
+                elisa_appkit_canvas_set_restorable(canvas_window, 1 if options.restorable else 0)
+                elisa_appkit_canvas_center(canvas_window) if options.centered
+                install_standard_menus(pointer, title.len)
+                snapshot_path: mutable usize = 0
+                min_width: f32 = UiCore::nonnegative_extent(options.min_width)
+                min_height: f32 = UiCore::nonnegative_extent(options.min_height)
+                elisa_appkit_canvas_set_min_size(canvas_window, min_width, min_height)
+                UiCore::set_viewport(width, height)
+                reset_accessibility_history()
+                reset_frame_state()
+                app_init()
+                _ = UiLifecycle::ready()
+                elisa_appkit_canvas_focus(canvas_window) if options.focus
+                if headless:
+                    snapshot_opt: cstr? = getenv("ELISA_UI_SNAPSHOT")
+                    if snapshot_opt is snapshot:
+                        snapshot_length: usize = snapshot_path_length(snapshot)
+                        if snapshot_length > SNAPSHOT_PATH_SCAN_CAPACITY:
+                            release_canvas()
+                            return 2
+                        snapshot_path <- native_string(sview(snapshot, 0, snapshot_length.i64()))
+                        if snapshot_length > 0 and snapshot_path == 0:
+                            release_canvas()
+                            return 2
+                    # Keep the live path entirely in Elisa: bitmap
+                    # construction, frame rendering, and PNG encoding all
+                    # happen in the retained renderer below. The legacy C
+                    # entry point remains available only for older native
+                    # callers and bridge tests.
+                    result: i32 = UiAppKitCanvas::render_headless(canvas_window, snapshot_path, bitmap_width, bitmap_height)
+                    CFRelease(snapshot_path) if snapshot_path != 0
+                    if result == 0 or not frame_was_rendered():
+                        release_canvas()
+                        return 2
+                    release_canvas()
+                    return 0
+                if elisa_appkit_canvas_present(canvas_window) == 0:
+                    release_canvas()
+                    return 2
+                elisa_appkit_canvas_redraw(canvas_window)
+                elisa_appkit_canvas_activate() if options.activate
+                elisa_appkit_canvas_run()
+                release_canvas()
+                return 0
+
+        def run_with_min_size(title: sview, width: f32, height: f32, min_width: f32, min_height: f32) -> i64:
+            can Ui.Window, Ui.Draw, Ui.Text, Ui.Input, Unsafe.PointerCast:
+                options: WindowOptions = WindowOptions{
+                    width, height, min_width, min_height,
+                    titled: true, closable: true, minimizable: true, resizable: true,
+                    tabbing: false, restorable: false, centered: true, activate: true, focus: true,
+                }
+                return run_with_options(title, options)
+
+        def run(title: sview, width: f32, height: f32) -> i64:
+            can Ui.Window, Ui.Draw, Ui.Text, Ui.Input, Unsafe.PointerCast:
+                return run_with_min_size(title, width, height, 0.0, 0.0)
+
+        def close() -> void can[Ui.Window]:
+            cancel_redraw()
+            elisa_appkit_canvas_close(canvas_window)
+
+        # Redraw requests originate from native callbacks and the flat adapter,
+        # but the live root identity belongs to Elisa. Keep the handle threaded
+        # through this single framework-owned entry point.
+        def window_handle() -> usize:
+            return canvas_window
+
+        # Native callbacks can arrive after AppKit starts dismantling a window.
+        # Keep one lifecycle predicate in Elisa so every event entry point uses
+        # the same answer about whether retained widget state is still live.
+        def live() -> bool:
+            return UiLifecycle::can_render() and canvas_window != 0
+
+        def redraw() -> void:
+            return if not live()
+            elisa_appkit_canvas_redraw(canvas_window)
+
+        # Stopping the Cocoa run loop is a native primitive; deciding when a
+        # window close should cancel retained interaction and invoke it belongs
+        # to the Elisa adapter that owns the widget layer.
+        def stop() -> void:
+            _ = UiLifecycle::stop()
+            elisa_appkit_canvas_stop()

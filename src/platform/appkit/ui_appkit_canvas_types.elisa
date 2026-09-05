@@ -1,0 +1,390 @@
+module UiAppKitCanvas:
+    public:
+        # Darwin's CLOCK_MONOTONIC value. Calling libSystem directly keeps
+        # timing policy and unit conversion in Elisa rather than the Cocoa shim.
+        const CLOCK_MONOTONIC: i32 = 6
+        const SYSTEM_UI_FONT: i32 = 2
+
+        def monotonic_time() -> f64:
+            return clock_gettime_nsec_np(CLOCK_MONOTONIC).f64() / 1000000000.0
+
+        def font_ascent(size: f32) -> f32:
+            font: usize = CTFontCreateUIFontForLanguage(SYSTEM_UI_FONT, size.f64(), 0)
+            return 0.0 if font == 0
+            ascent: f32 = CTFontGetAscent(font).f32()
+            CFRelease(font)
+            return ascent
+
+        def font_line_height(size: f32) -> f32:
+            font: usize = CTFontCreateUIFontForLanguage(SYSTEM_UI_FONT, size.f64(), 0)
+            return 0.0 if font == 0
+            height: f32 = (CTFontGetAscent(font) + CTFontGetDescent(font) + CTFontGetLeading(font)).f32()
+            CFRelease(font)
+            return height
+
+        const UTF8_ENCODING: u32 = 0x08000100
+        const CF_NUMBER_SINT32_TYPE: i32 = 3
+        const CF_NUMBER_FLOAT32_TYPE: i32 = 5
+        const BOLD_TRAIT: u32 = 2
+        def not_found() -> usize:
+            return elisa_appkit_canvas_not_found
+
+        # Pointer and accessibility adapters use a compact, backend-neutral
+        # vocabulary. Keep these identities in Elisa so Cocoa event methods
+        # forward framework tokens instead of embedding button ordinals.
+        def pointer_button_primary() -> i32:
+            return UiCore::PointerButton.Primary.i32()
+
+        def pointer_button_secondary() -> i32:
+            return UiCore::PointerButton.Secondary.i32()
+
+        def accessibility_increment_direction() -> i32:
+            return 1
+
+        def accessibility_decrement_direction() -> i32:
+            return -1
+
+        # The text protocol wants a caret rectangle in view coordinates. Keep
+        # its visual width beside the rest of Elisa's caret geometry instead of
+        # embedding a point-size default in the Objective-C adapter.
+        def caret_width() -> f32:
+            return 1.0
+
+        # Native accessibility elements are opaque callback targets only. Keep
+        # the widget action target in Elisa's retained semantic history and
+        # resolve a callback's element handle back to that target on demand.
+        def accessibility_state_index_for_handle(handle: usize) -> usize:
+            return not_found() if handle == 0
+            for index in 0..<accessibility_previous_count:
+                return index if accessibility_previous_handles[index] == handle
+            return not_found()
+
+        def accessibility_action_for_handle(handle: usize) -> usize:
+            state_index: usize = accessibility_state_index_for_handle(handle)
+            return not_found() if state_index == not_found()
+            return accessibility_previous[state_index].action
+
+        # Cocoa asks the tooltip owner for a string lazily, after the semantic
+        # frame has already been committed. Resolve the element handle back to
+        # Elisa's retained state and construct a short-lived native string only
+        # when that state still exposes help text for an interactive node.
+        def accessibility_tooltip_text(handle: usize) -> usize can Unsafe.PointerCast:
+            return 0 if not UiLifecycle::can_render() or canvas_window == 0
+            state_index: usize = accessibility_state_index_for_handle(handle)
+            return 0 if state_index == not_found()
+            state: AccessibilityState = accessibility_previous[state_index]
+            return 0 if state.interaction == 0 or state.help.len == 0
+            return native_string(state.help)
+
+        # Bitmap dimensions are framework geometry, not a Cocoa default. Keep
+        # the conversion from logical points to whole pixels in Elisa so the
+        # native snapshot bridge only receives explicit, validated extents.
+        const SNAPSHOT_MAX_PIXELS: u64 = 67108864
+        # The largest finite f32 below 2^31. Values at or above 2^31 cannot be
+        # represented by the i32 ABI used by the CoreGraphics entry point.
+        const SNAPSHOT_MAX_I32_EXTENT: f32 = 2147483520.0
+
+        def bitmap_extent(value: f32) -> i32:
+            safe: f32 = UiCore::nonnegative_extent(value)
+            return 1 if safe <= 0.0
+            return 0 if safe > SNAPSHOT_MAX_I32_EXTENT
+            rounded: f32 = ceilf(safe)
+            return 0 if rounded > SNAPSHOT_MAX_I32_EXTENT
+            return 1 if rounded < 1.0 else rounded.i32()
+
+        # A headless frame allocates four bytes per pixel inside CoreGraphics.
+        # Reject an oversized area before the native allocator sees it, while
+        # keeping the limit in Elisa where snapshot/resource policy belongs.
+        def snapshot_dimensions_safe(width: i32, height: i32) -> bool:
+            return false if width <= 0 or height <= 0
+            return width.u64() <= SNAPSHOT_MAX_PIXELS / height.u64()
+
+        # Render a frame into a CoreGraphics bitmap and optionally encode it
+        # through ImageIO. The old NSBitmapImageRep path lived in Objective-C;
+        # keeping the complete off-screen lifecycle here means smoke tests use
+        # the same retained frame callback as a visible window without ever
+        # ordering the window onscreen.
+        const SNAPSHOT_BITS_PER_COMPONENT: usize = 8
+        const SNAPSHOT_BITMAP_INFO_PREMULTIPLIED_LAST: u32 = 1
+        const SNAPSHOT_URL_POSIX_PATH_STYLE: i32 = 0
+
+        def render_headless(window_handle: usize, snapshot: usize, pixels_width: i32, pixels_height: i32) -> i32 can Ui.Draw, Ui.Text, Unsafe.PointerCast:
+            return 0 if window_handle == 0 or window_handle != canvas_window
+            return 0 if not UiLifecycle::can_render() or pixels_width <= 0 or pixels_height <= 0
+            return 0 if not snapshot_dimensions_safe(pixels_width, pixels_height)
+            if snapshot != 0:
+                return 0 if CFGetTypeID(snapshot) != CFStringGetTypeID()
+            color_space: usize = CGColorSpaceCreateDeviceRGB()
+            return 0 if color_space == 0
+            context: usize = CGBitmapContextCreate(0, pixels_width.usize(), pixels_height.usize(), SNAPSHOT_BITS_PER_COMPONENT, 0, color_space, SNAPSHOT_BITMAP_INFO_PREMULTIPLIED_LAST)
+            CGColorSpaceRelease(color_space)
+            return 0 if context == 0
+
+            reset_frame_state()
+            # CGBitmapContext uses a bottom-left origin. Mirror the context so
+            # the custom painter sees the same top-left coordinates as an
+            # AppKit flipped NSView; CoreText's nested transform then remains
+            # identical between visible and off-screen frames.
+            CGContextSaveGState(context)
+            CGContextTranslateCTM(context, 0.0, pixels_height.f64())
+            CGContextScaleCTM(context, 1.0, -1.0)
+            appkit_canvas_frame_callback(context)
+            CGContextRestoreGState(context)
+            CGContextFlush(context)
+            rendered: bool = frame_was_rendered()
+            if not rendered:
+                CGContextRelease(context)
+                return 0
+            return_value: mutable i32 = 1
+            if snapshot != 0:
+                image: usize = CGBitmapContextCreateImage(context)
+                if image == 0:
+                    CGContextRelease(context)
+                    return 0
+                path_url: usize = CFURLCreateWithFileSystemPath(0, snapshot, SNAPSHOT_URL_POSIX_PATH_STYLE, false)
+                if path_url == 0:
+                    CGImageRelease(image)
+                    CGContextRelease(context)
+                    return 0
+                png_type: sview = "public.png"
+                native_png_type: usize = native_string(png_type)
+                if native_png_type == 0:
+                    CFRelease(path_url)
+                    CGImageRelease(image)
+                    CGContextRelease(context)
+                    return 0
+                destination: usize = CGImageDestinationCreateWithURL(path_url, native_png_type, 1, 0)
+                if destination == 0:
+                    CFRelease(native_png_type)
+                    CFRelease(path_url)
+                    CGImageRelease(image)
+                    CGContextRelease(context)
+                    return 0
+                CGImageDestinationAddImage(destination, image, 0)
+                return_value <- 1 if CGImageDestinationFinalize(destination) else 0
+                CFRelease(destination)
+                CFRelease(native_png_type)
+                CFRelease(path_url)
+                CGImageRelease(image)
+            CGContextRelease(context)
+            return return_value
+
+        # Window titles originate in Elisa as counted UTF-8 views. Construct
+        # their native object here so the Objective-C host only assigns the
+        # borrowed value to NSWindow and never decodes framework text.
+        def native_string(text: sview) -> usize can Unsafe.PointerCast:
+            empty: cstr = ""
+            pointer: mutable cstr = empty
+            pointer <- text.data.cast[cstr] can Unsafe.PointerCast if text.len > 0
+            return CFStringCreateWithBytes(0, pointer, text.len.i64(), UTF8_ENCODING, false)
+
+        def native_string_bytes(bytes: u8&, length: usize) -> usize can Unsafe.PointerCast:
+            pointer: cstr = (&bytes).cast[cstr] can Unsafe.PointerCast
+            return CFStringCreateWithBytes(0, pointer, length.i64(), UTF8_ENCODING, false)
+
+        def native_attributed_string(text: usize) -> usize:
+            return 0 if text == 0
+            return 0 if CFGetTypeID(text) != CFStringGetTypeID()
+            return CFAttributedStringCreate(0, text, 0)
+
+        # NSTextInputClient accepts either NSString or NSAttributedString. Both
+        # are toll-free CoreFoundation values, so normalize the borrowed
+        # protocol object here and keep the text-editing layer independent of
+        # Objective-C dynamic-type checks.
+        def native_input_string(value: usize) -> usize:
+            return 0 if value == 0
+            type_id: usize = CFGetTypeID(value)
+            return value if type_id == CFStringGetTypeID()
+            return CFAttributedStringGetString(value) if type_id == CFAttributedStringGetTypeID()
+            return 0
+
+        # NSTextInputClient currently exposes no marked-text attributes. Build
+        # the immutable empty collection in Elisa through CoreFoundation so
+        # the Objective-C protocol adapter never embeds an array literal or
+        # owns a second text-input policy.
+        def valid_marked_attributes() -> usize can Unsafe.PointerCast:
+            values: usize[1] = zeroed
+            values_pointer: usize& = (&values[0]).cast[usize&] can Unsafe.PointerCast
+            return CFArrayCreate(0, values_pointer, 0, 0)
+
+        # Accessibility setter values are Cocoa NSNumber objects, but their
+        # scalar contents are framework state already decided by Elisa.
+        # Construct the retained CoreFoundation numbers here and let the
+        # native bridge only assign the typed objects.
+        def native_boolean_value(selected: i32) -> usize can Unsafe.PointerCast:
+            value: mutable i32 = 1 if selected != 0 else 0
+            value_pointer: usize& = (&value).cast[usize&] can Unsafe.PointerCast
+            return CFNumberCreate(0, CF_NUMBER_SINT32_TYPE, value_pointer)
+
+        def native_float_value(value: f32) -> usize can Unsafe.PointerCast:
+            value_pointer: usize& = (&value).cast[usize&] can Unsafe.PointerCast
+            return CFNumberCreate(0, CF_NUMBER_FLOAT32_TYPE, value_pointer)
+
+        # Accessibility edits arrive as borrowed Cocoa objects. Keep their
+        # type classification and scalar extraction in Elisa so the protocol
+        # adapter only mirrors a retained result into NSAccessibility.
+        def native_accessibility_value_kind(value: usize) -> i32:
+            return 0 if value == 0
+            type_id: usize = CFGetTypeID(value)
+            return 1 if type_id == CFStringGetTypeID()
+            return 2 if type_id == CFNumberGetTypeID() or type_id == CFBooleanGetTypeID()
+            return 0
+
+        def native_number_value(value: usize, result: mutable f32&) -> bool can Unsafe.PointerCast:
+            return false if native_accessibility_value_kind(value) != 2
+            if CFGetTypeID(value) == CFBooleanGetTypeID():
+                result <- 1.0 if CFBooleanGetValue(value) else 0.0
+                return true
+            result_pointer: usize& = (&result).cast[usize&] can Unsafe.PointerCast
+            return CFNumberGetValue(value, CF_NUMBER_FLOAT32_TYPE, result_pointer)
+
+        # NSTextInputClient expects key interpretation as a one-event NSArray.
+        # Build the toll-free-bridged collection through CoreFoundation so the
+        # Objective-C adapter does not construct transient framework objects or
+        # embed an array literal. The event is borrowed and AppKit consumes the
+        # array synchronously, so a no-retain callback table is sufficient.
+        def interpret_key_event(event: usize, window_handle: usize) -> void can Unsafe.PointerCast:
+            return if event == 0 or window_handle == 0
+            values: usize[1] = [event]
+            values_pointer: usize& = (&values[0]).cast[usize&] can Unsafe.PointerCast
+            events: usize = CFArrayCreate(0, values_pointer, 1, 0)
+            return if events == 0
+            elisa_appkit_canvas_interpret_key_event(events, window_handle)
+            CFRelease(events)
+
+        # Encode a retained native string into a caller-owned UTF-8 buffer.
+        # CFStringGetBytes stops at a complete scalar when the fixed buffer is
+        # full, preserving the text layer's well-formed-prefix invariant.
+        def copy_native_string(value: usize, buffer: mutable u8&, capacity: usize) -> usize:
+            return 0 if value == 0 or capacity == 0
+            return 0 if CFGetTypeID(value) != CFStringGetTypeID()
+            length: i64 = CFStringGetLength(value)
+            return 0 if length <= 0
+            used: mutable i64 = 0
+            _ = CFStringGetBytes(value, NativeRange{location: 0, length: length}, UTF8_ENCODING, 0, false, buffer, capacity.i64(), &used)
+            return used.usize() if used > 0 else 0
+
+        # Keyboard callbacks carry Cocoa's borrowed charactersIgnoringModifiers
+        # object across the FFI. Keep the native UTF-16 extraction here rather
+        # than teaching the Objective-C shim any text policy.
+        def native_event_character(value: usize) -> i32:
+            return 0 if value == 0
+            return 0 if CFGetTypeID(value) != CFStringGetTypeID()
+            length: i64 = CFStringGetLength(value)
+            return 0 if length != 1
+            return CFStringGetCharacterAtIndex(value, 0)
+
+        # CoreText owns the glyph shaping and rasterization path. The only
+        # Objective-C work left in the canvas shim is object/protocol plumbing;
+        # text runs are UTF-8 bytes and CF references all the way down here.
+        def text_font(size: f32, semibold: i32) -> usize:
+            regular: usize = CTFontCreateUIFontForLanguage(SYSTEM_UI_FONT, size.f64(), 0)
+            return 0 if regular == 0
+            return regular if semibold == 0
+            emphasized: usize = CTFontCreateCopyWithSymbolicTraits(regular, size.f64(), 0, BOLD_TRAIT, BOLD_TRAIT)
+            return regular if emphasized == 0
+            CFRelease(regular)
+            return emphasized
+
+        def text_attributes(font: usize, color: usize) -> usize:
+            keys: usize[2] = [kCTFontAttributeName, kCTForegroundColorAttributeName]
+            values: usize[2] = [font, color]
+            key_pointer: usize& = (&keys[0]).cast[usize&] can Unsafe.PointerCast
+            value_pointer: usize& = (&values[0]).cast[usize&] can Unsafe.PointerCast
+            count: i64 = 2 if color != 0 else 1
+            return CFDictionaryCreate(0, key_pointer, value_pointer, count, 0, 0)
+
+        def text_line(text: cstr, length: usize, size: f32, semibold: i32, color: usize) -> usize:
+            font: usize = text_font(size, semibold)
+            return 0 if font == 0
+            string: usize = CFStringCreateWithBytes(0, text, length.i64(), UTF8_ENCODING, false)
+            if string == 0:
+                CFRelease(font)
+                return 0
+            attributes: usize = text_attributes(font, color)
+            if attributes == 0:
+                CFRelease(string)
+                CFRelease(font)
+                return 0
+            attributed: usize = CFAttributedStringCreate(0, string, attributes)
+            if attributed == 0:
+                CFRelease(attributes)
+                CFRelease(string)
+                CFRelease(font)
+                return 0
+            line: usize = CTLineCreateWithAttributedString(attributed)
+            CFRelease(attributed)
+            CFRelease(attributes)
+            CFRelease(string)
+            CFRelease(font)
+            return line if line != 0 else 0
+
+        # Draw and measure each create their own short-lived CF graph. This is
+        # intentionally explicit instead of relying on an autorelease pool: the
+        # same path is used by the off-screen AppKit smoke renderer.
+        def text_width(text: cstr, length: usize, size: f32, semibold: i32) -> f32:
+            return 0.0 if length == 0
+            line: usize = text_line(text, length, size, semibold, 0)
+            return 0.0 if line == 0
+            ascent: mutable f64 = 0.0
+            descent: mutable f64 = 0.0
+            leading: mutable f64 = 0.0
+            width: f32 = CTLineGetTypographicBounds(line, &ascent, &descent, &leading).f32()
+            CFRelease(line)
+            return width
+
+        def draw_text_line(text: cstr, length: usize, size: f32, semibold: i32, x: f32, y: f32, color: UiCore::Color) -> void:
+            return if length == 0
+            color_ref: usize = CGColorCreateGenericRGB(color_component(color.r).f64(), color_component(color.g).f64(), color_component(color.b).f64(), color_component(color.a).f64())
+            return if color_ref == 0
+            line: usize = text_line(text, length, size, semibold, color_ref)
+            if line != 0:
+                context: usize = current_context()
+                CGContextSaveGState(context)
+                # AppKit's flipped view supplies a y-down CTM while CoreText
+                # lays glyphs out in y-up coordinates. Reflect the drawing
+                # space around the view's bottom edge, then mirror the
+                # baseline so the rest of Elisa can stay y-down.
+                view_height: f64 = UiCore::viewport_height().f64()
+                CGContextTranslateCTM(context, 0.0, view_height)
+                CGContextScaleCTM(context, 1.0, -1.0)
+                CGContextSetTextPosition(context, x.f64(), view_height - y.f64())
+                CTLineDraw(line, context)
+                CGContextRestoreGState(context)
+                CFRelease(line)
+            CGColorRelease(color_ref)
+
+        struct WindowOptions:
+            width: f32
+            height: f32
+            min_width: f32
+            min_height: f32
+            titled: bool
+            closable: bool
+            minimizable: bool
+            resizable: bool
+            tabbing: bool
+            restorable: bool
+            centered: bool
+            activate: bool
+            focus: bool
+
+        struct AccessibilityState:
+            role: mutable i32
+            action: mutable usize
+            interaction: mutable i32
+            value_kind: mutable i32
+            cursor: mutable i32
+            enabled: mutable bool
+            focused: mutable bool
+            selected: mutable bool
+            value: mutable f32
+            text_revision: mutable usize
+            selection_location: mutable usize
+            selection_length: mutable usize
+            label: mutable sview
+            help: mutable sview
+            x: mutable f32
+            y: mutable f32
+            width: mutable f32
+            height: mutable f32

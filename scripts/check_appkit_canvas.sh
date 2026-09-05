@@ -449,11 +449,14 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_center$'
 # (the compatibility trampoline is exercised by the standalone bridge test),
 # so verify the source-level ownership instead of requiring either symbol in
 # the final image.
-grep -q 'UiAppKitCanvas::render_headless(canvas_window' "$ROOT/src/platform/appkit/ui_appkit_canvas.elisa"
-nm -g "$BIN" | grep -q ' U _CGBitmapContextCreate$'
-nm -g "$BIN" | grep -q ' U _CGBitmapContextCreateImage$'
-nm -g "$BIN" | grep -q ' U _CGImageDestinationCreateWithURL$'
-nm -g "$BIN" | grep -q ' U _CGImageDestinationFinalize$'
+rg -q 'UiAppKitCanvas::render_headless\(canvas_window' \
+  "$ROOT"/src/platform/appkit/ui_appkit_canvas_*.elisa
+# Do not use grep -q with pipefail here: these symbols can occur early enough
+# in nm's output for the producer to receive SIGPIPE after grep exits.
+nm -g "$BIN" | grep ' U _CGBitmapContextCreate$' >/dev/null
+nm -g "$BIN" | grep ' U _CGBitmapContextCreateImage$' >/dev/null
+nm -g "$BIN" | grep ' U _CGImageDestinationCreateWithURL$' >/dev/null
+nm -g "$BIN" | grep ' U _CGImageDestinationFinalize$' >/dev/null
 set -o pipefail
 plutil -lint "$APP/Contents/Info.plist" >/dev/null
 codesign --verify --deep --strict "$APP"

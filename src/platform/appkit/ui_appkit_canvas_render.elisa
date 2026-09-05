@@ -1,0 +1,185 @@
+extend UiAppKitCanvas:
+        def sync_accessibility() -> void can Unsafe.PointerCast:
+            next_count: usize = UiCore::accessibility_count()
+            previous_count: usize = accessibility_previous_count
+            layout_changed: mutable bool = accessibility_force_layout or next_count != accessibility_previous_count
+            for index in 0..<UiCore::accessibility_count():
+                node: UiCore::AccessibilityNode = UiCore::accessibility_at(index)
+                identifier: sview = accessibility_identifier(node.id)
+                native_identifier: usize = native_string(identifier)
+                native_label: usize = native_string(node.label)
+                native_help: mutable usize = 0
+                native_help <- native_string(node.help) if node.help.len > 0
+                enabled: i32 = 1 if node.enabled else 0
+                focused: i32 = 1 if node.focused else 0
+                selected: i32 = 1 if node.selected else 0
+                interaction: i32 = accessibility_interaction(node.role, node.enabled)
+                value_kind: i32 = accessibility_value_kind(node.role)
+                cursor: i32 = accessibility_cursor(node.role, node.enabled)
+                native_role: usize = accessibility_native_role(node.role)
+                native_subrole: usize = accessibility_native_subrole(node.role)
+                state: AccessibilityState = AccessibilityState{
+                    role: node.role.i32(), action: node.action, interaction, value_kind, cursor,
+                    enabled: node.enabled, focused: node.focused, selected: node.selected,
+                    value: node.value, text_revision: node.revision,
+                    selection_location: node.selection_location, selection_length: node.selection_length,
+                    label: node.label, help: node.help,
+                    x: node.frame.origin.x, y: node.frame.origin.y,
+                    width: node.frame.size.width, height: node.frame.size.height,
+                }
+                previous_index: usize = previous_accessibility_index(node.id)
+                existed: bool = previous_index < accessibility_previous_count
+                previous_handle: usize = accessibility_previous_handles[previous_index] if existed else 0
+                before: AccessibilityState = accessibility_previous[previous_index] if existed else state
+                notifications: i32 = accessibility_notifications(existed, before, state)
+                layout_changed <- true if accessibility_layout_changed(existed, before, state)
+                layout_changed <- true if index >= accessibility_previous_count or accessibility_previous_ids[index] != node.id
+                accessibility_next_ids[index] <- node.id
+                accessibility_next[index] <- state
+                # Identity/reuse is decided from Elisa's semantic history and
+                # sent as an explicit token. The native bridge must not infer
+                # framework identity by probing an opaque handle.
+                is_new: i32 = 1 if not existed or previous_handle == 0 else 0
+                handle: usize = elisa_appkit_canvas_accessibility_add(canvas_window, previous_handle, is_new, native_identifier, native_role, native_subrole, native_label, native_help, node.frame.origin.x, node.frame.origin.y, node.frame.size.width, node.frame.size.height, enabled, focused)
+                accessibility_next_handles[index] <- handle
+                # Reused native elements retain Cocoa's role-specific value
+                # slots. Elisa owns the semantic transition, so clear only
+                # when the node is new or its value kind changed; the native
+                # side remains a typed property primitive with no frame policy.
+                value_kind_changed: bool = not existed or before.value_kind != value_kind
+                elisa_appkit_canvas_accessibility_clear_value(handle, not_found(), 0) if handle != 0 and value_kind_changed
+                # A failed native replacement leaves the semantic ID present in
+                # the next frame, so the stale-ID sweep deliberately will not
+                # release its old handle. Drop that ownership here instead of
+                # losing it when the next-frame handle is zero.
+                elisa_appkit_canvas_accessibility_release(previous_handle) if handle == 0 and previous_handle != 0
+                # A native adapter may also replace an old element with a new
+                # retained object (for example after an external native view
+                # reset). The semantic ID is still present, so the stale-ID
+                # sweep cannot see the old handle; release that superseded
+                # ownership explicitly while keeping the new one for the next
+                # frame.
+                elisa_appkit_canvas_accessibility_release(previous_handle) if handle != 0 and previous_handle != 0 and handle != previous_handle
+                if value_kind == 1 and handle != 0:
+                    native_selected: usize = native_boolean_value(selected)
+                    elisa_appkit_canvas_accessibility_set_boolean_value(handle, native_selected)
+                    CFRelease(native_selected) if native_selected != 0
+                if value_kind == 2 and handle != 0:
+                    native_value: usize = native_float_value(node.value)
+                    native_minimum: usize = native_float_value(ACCESSIBILITY_RANGE_MINIMUM)
+                    native_maximum: usize = native_float_value(ACCESSIBILITY_RANGE_MAXIMUM)
+                    elisa_appkit_canvas_accessibility_set_range_values(handle, native_value, native_minimum, native_maximum)
+                    CFRelease(native_value) if native_value != 0
+                    CFRelease(native_minimum) if native_minimum != 0
+                    CFRelease(native_maximum) if native_maximum != 0
+                if value_kind == 3 and handle != 0:
+                    # Always pass counted strings, including empty values. The
+                    # native bridge only assigns these objects and never
+                    # manufactures an Objective-C empty-string fallback.
+                    native_value: usize = native_string(node.text_value)
+                    native_selected: usize = native_string(node.selected_text)
+                    elisa_appkit_canvas_accessibility_set_text(handle, native_value, native_selected, node.selection_location, node.selection_length)
+                    CFRelease(native_value) if native_value != 0
+                    CFRelease(native_selected) if native_selected != 0
+                accessibility_notify(handle, notifications) if handle != 0
+                CFRelease(native_identifier) if native_identifier != 0
+                CFRelease(native_label) if native_label != 0
+                CFRelease(native_help) if native_help != 0
+            # Drop Elisa's ownership for semantic nodes that disappeared. The
+            # committed AppKit array has already switched to the new list, so
+            # releasing these handles cannot invalidate a current child.
+            for previous_index in 0..<previous_count:
+                previous_id: usize = accessibility_previous_ids[previous_index]
+                retained: mutable bool = false
+                for next_index in 0..<next_count:
+                    retained <- true if accessibility_next_ids[next_index] == previous_id
+                if not retained:
+                    stale_handle: usize = accessibility_previous_handles[previous_index]
+                    elisa_appkit_canvas_accessibility_release(stale_handle) if stale_handle != 0
+            accessibility_previous_count <- next_count
+            for index in 0..<accessibility_previous_count:
+                accessibility_previous_ids[index] <- accessibility_next_ids[index]
+                accessibility_previous_handles[index] <- accessibility_next_handles[index]
+                accessibility_previous[index] <- accessibility_next[index]
+            commit_accessibility_children()
+            if layout_changed:
+                rebuild_accessibility_tooltips(next_count)
+                elisa_appkit_canvas_accessibility_invalidate_cursor_rects(canvas_window)
+                root_view: usize = elisa_appkit_canvas_accessibility_root(canvas_window)
+                NSAccessibilityPostNotification(root_view, NSAccessibilityLayoutChangedNotification) if root_view != 0
+            accessibility_force_layout <- false
+
+        struct AppKitPainter:
+            unused: i32
+
+        impl Painter for AppKitPainter:
+            def push_clip(box: UiCore::Rect) -> void can[Ui.Draw]:
+                context: usize = current_context()
+                CGContextSaveGState(context)
+                CGContextBeginPath(context)
+                CGContextMoveToPoint(context, box.origin.x.f64(), box.origin.y.f64())
+                CGContextAddLineToPoint(context, (box.origin.x + box.size.width).f64(), box.origin.y.f64())
+                CGContextAddLineToPoint(context, (box.origin.x + box.size.width).f64(), (box.origin.y + box.size.height).f64())
+                CGContextAddLineToPoint(context, box.origin.x.f64(), (box.origin.y + box.size.height).f64())
+                CGContextClosePath(context)
+                CGContextClip(context)
+            def pop_clip() -> void can[Ui.Draw]:
+                CGContextRestoreGState(current_context())
+            def clear(color: UiCore::Color) -> void can[Ui.Draw]:
+                context: usize = current_context()
+                set_fill_color(context, color)
+                CGContextBeginPath(context)
+                CGContextMoveToPoint(context, 0.0, 0.0)
+                CGContextAddLineToPoint(context, UiCore::viewport_width().f64(), 0.0)
+                CGContextAddLineToPoint(context, UiCore::viewport_width().f64(), UiCore::viewport_height().f64())
+                CGContextAddLineToPoint(context, 0.0, UiCore::viewport_height().f64())
+                CGContextClosePath(context)
+                CGContextFillPath(context)
+            def fill_rect(box: UiCore::Rect, color: UiCore::Color) -> void can[Ui.Draw]:
+                shortest: f32 = box.size.width if box.size.width < box.size.height else box.size.height
+                radius: mutable f32 = shortest * 0.22
+                radius <- 10.0 if radius > 10.0 else radius
+                elevated: bool = box.size.height <= 64.0 and box.size.width >= 72.0
+                shadow_alpha: f32 = 0.24 if elevated else 0.0
+                hairline_alpha: f32 = 0.13 if elevated else 0.055
+                context: usize = current_context()
+                CGContextSaveGState(context)
+                set_shadow(context, 0.0, 2.0, 5.0, shadow_alpha) if shadow_alpha > 0.0
+                set_fill_color(context, color)
+                rounded_path(context, box, radius)
+                CGContextFillPath(context)
+                CGContextRestoreGState(context)
+                CGContextSaveGState(context)
+                rounded_path(context, box, radius)
+                CGContextSetRGBStrokeColor(context, 1.0, 1.0, 1.0, hairline_alpha.f64())
+                CGContextSetLineWidth(context, 1.0)
+                CGContextStrokePath(context)
+                CGContextRestoreGState(context)
+            def fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> void can[Ui.Draw]:
+                context: usize = current_context()
+                set_fill_color(context, color)
+                CGContextBeginPath(context)
+                CGContextAddArc(context, disc.center.x.f64(), disc.center.y.f64(), disc.radius.f64(), 0.0, 6.283185307179586, 0)
+                CGContextFillPath(context)
+            def fill_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]:
+                context: usize = current_context()
+                set_fill_color(context, color)
+                CGContextBeginPath(context)
+                CGContextMoveToPoint(context, tri.a.x.f64(), tri.a.y.f64())
+                CGContextAddLineToPoint(context, tri.b.x.f64(), tri.b.y.f64())
+                CGContextAddLineToPoint(context, tri.c.x.f64(), tri.c.y.f64())
+                CGContextClosePath(context)
+                CGContextFillPath(context)
+            def fill_line(segment: UiCore::Line, color: UiCore::Color) -> void can[Ui.Draw]:
+                context: usize = current_context()
+                set_stroke_color(context, color)
+                CGContextSetLineWidth(context, 1.0)
+                CGContextBeginPath(context)
+                CGContextMoveToPoint(context, segment.from_point.x.f64(), segment.from_point.y.f64())
+                CGContextAddLineToPoint(context, segment.to_point.x.f64(), segment.to_point.y.f64())
+                CGContextStrokePath(context)
+            def draw_text(run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
+                return if run.text.len == 0
+                pointer: cstr = run.text.data.cast[cstr] can Unsafe.PointerCast
+                semibold: i32 = 1 if run.size >= 19.0 else 0
+                draw_text_line(pointer, run.text.len, run.size, semibold, run.origin.x, run.origin.y, color)

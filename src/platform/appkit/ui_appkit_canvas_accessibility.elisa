@@ -1,0 +1,173 @@
+extend UiAppKitCanvas:
+    public:
+        # Elisa resolves interaction, role identity and value policy before the
+        # native bridge. These compact ABI tokens keep action, value and cursor
+        # policy in Elisa; only the Cocoa object assignment remains native.
+        def accessibility_interaction(role: UiCore::AccessibilityRole, enabled: bool) -> i32:
+            return 0 if not enabled
+            return 1 if role == UiCore::AccessibilityRole.Button or role == UiCore::AccessibilityRole.RadioButton or role == UiCore::AccessibilityRole.CheckBox
+            return 2 if role == UiCore::AccessibilityRole.Slider
+            return 3 if role == UiCore::AccessibilityRole.TextField or role == UiCore::AccessibilityRole.PasswordField
+            return 0
+
+        def accessibility_value_kind(role: UiCore::AccessibilityRole) -> i32:
+            return 1 if role == UiCore::AccessibilityRole.RadioButton or role == UiCore::AccessibilityRole.CheckBox
+            return 2 if role == UiCore::AccessibilityRole.Slider or role == UiCore::AccessibilityRole.ProgressBar
+            return 3 if role == UiCore::AccessibilityRole.TextField or role == UiCore::AccessibilityRole.PasswordField
+            return 0
+
+        def accessibility_cursor(role: UiCore::AccessibilityRole, enabled: bool) -> i32:
+            return 0 if not enabled
+            return 1 if accessibility_interaction(role, enabled) == 1
+            return 2 if role == UiCore::AccessibilityRole.TextField or role == UiCore::AccessibilityRole.PasswordField
+            return 0
+
+        # Cursor identity is selected from the framework-neutral token here.
+        # The bridge receives an opaque NSCursor pointer and only installs it;
+        # it no longer repeats this token policy in Objective-C.
+        def native_cursor(cursor: i32) -> usize:
+            return elisa_appkit_canvas_pointing_hand_cursor() if cursor == 1
+            return elisa_appkit_canvas_ibeam_cursor() if cursor == 2
+            return elisa_appkit_canvas_arrow_cursor()
+
+        # NSView cursor rectangles are rebuilt by Cocoa on demand. Keep the
+        # semantic traversal and cursor policy in Elisa, then hand each native
+        # frame/cursor pair to one narrow insertion primitive. This also means
+        # cursor regions stay in lockstep with the same retained nodes used for
+        # accessibility and hit testing.
+        def rebuild_cursor_rects() -> void:
+            return if canvas_window == 0
+            for index in 0..<UiCore::accessibility_count():
+                node: UiCore::AccessibilityNode = UiCore::accessibility_at(index)
+                cursor: usize = native_cursor(accessibility_cursor(node.role, node.enabled))
+                elisa_appkit_canvas_add_cursor_rect(canvas_window,
+                    node.frame.origin.x, node.frame.origin.y,
+                    node.frame.size.width, node.frame.size.height, cursor)
+
+        def accessibility_notify(handle: usize, notifications: i32) -> void:
+            NSAccessibilityPostNotification(handle, NSAccessibilityValueChangedNotification) if notifications & 1 != 0
+            NSAccessibilityPostNotification(handle, NSAccessibilityFocusedUIElementChangedNotification) if notifications & 2 != 0
+            NSAccessibilityPostNotification(handle, NSAccessibilitySelectedTextChangedNotification) if notifications & 4 != 0
+
+        # Cocoa role identity is an exported NSString constant. Resolve it in
+        # Elisa from the framework-neutral semantic role, then pass the native
+        # pointer through FFI; Objective-C no longer owns this policy switch.
+        def accessibility_native_role(role: UiCore::AccessibilityRole) -> usize:
+            return NSAccessibilityButtonRole if role == UiCore::AccessibilityRole.Button
+            return NSAccessibilityRadioButtonRole if role == UiCore::AccessibilityRole.RadioButton
+            return NSAccessibilityCheckBoxRole if role == UiCore::AccessibilityRole.CheckBox
+            return NSAccessibilitySliderRole if role == UiCore::AccessibilityRole.Slider
+            return NSAccessibilityProgressIndicatorRole if role == UiCore::AccessibilityRole.ProgressBar
+            return NSAccessibilityTextFieldRole if role == UiCore::AccessibilityRole.TextField or role == UiCore::AccessibilityRole.PasswordField
+            return NSAccessibilityStaticTextRole
+
+        def accessibility_native_subrole(role: UiCore::AccessibilityRole) -> usize:
+            return NSAccessibilitySecureTextFieldSubrole if role == UiCore::AccessibilityRole.PasswordField
+            return 0
+
+        # Notification bits: 1 value, 2 focus, 4 text selection. Structural
+        # layout invalidation is computed separately for the view as a whole.
+        # Keeping this diff in Elisa avoids teaching the native object bridge
+        # how framework roles and values evolve between frames.
+        def accessibility_notifications(existed: bool, before: AccessibilityState, after: AccessibilityState) -> i32:
+            return 0 if not existed
+            notifications: mutable i32 = 0
+            if before.value_kind == after.value_kind:
+                notifications <- notifications + 1 if after.value_kind == 1 and before.selected != after.selected
+                notifications <- notifications + 1 if after.value_kind == 2 and before.value != after.value
+                notifications <- notifications + 1 if after.value_kind == 3 and before.text_revision != after.text_revision
+            # VoiceOver needs the same focused-element notification when focus
+            # leaves a node (including when the window loses focus), not only
+            # when a replacement node gains it.
+            notifications <- notifications + 2 if before.focused != after.focused
+            notifications <- notifications + 4 if after.value_kind == 3 and (before.selection_location != after.selection_location or before.selection_length != after.selection_length)
+            return notifications
+
+        def accessibility_layout_changed(existed: bool, before: AccessibilityState, after: AccessibilityState) -> bool:
+            return true if not existed
+            return true if before.role != after.role or before.action != after.action
+            return true if before.interaction != after.interaction or before.value_kind != after.value_kind or before.cursor != after.cursor
+            return true if before.enabled != after.enabled or before.label != after.label or before.help != after.help
+            return true if before.x != after.x or before.y != after.y or before.width != after.width or before.height != after.height
+            return false
+
+        # Tooltips are transient native view state. Rebuild them only after
+        # Elisa's semantic diff says the accessibility layout changed; stable
+        # frames can keep their existing Cocoa registrations instead of paying
+        # a remove-all/add-all cost on every paint.
+        def rebuild_accessibility_tooltips(count: usize) -> void:
+            return if canvas_window == 0
+            elisa_appkit_canvas_accessibility_reset(canvas_window)
+            for index in 0..<count:
+                state: AccessibilityState = accessibility_previous[index]
+                handle: usize = accessibility_previous_handles[index]
+                if handle != 0 and state.help.len > 0 and state.interaction != 0:
+                    elisa_appkit_canvas_accessibility_add_tooltip(canvas_window, handle,
+                        state.x, state.y, state.width, state.height)
+
+        # Window movement/backing changes alter screen-relative accessibility
+        # frames without changing local widget geometry. Native code reports
+        # only that environmental fact; Elisa owns the invalidation decision.
+        def accessibility_environment_changed() -> void:
+            accessibility_force_layout <- true
+
+        def schedule_next_frame(delay: f32) -> void:
+            cancel_redraw()
+            return if headless_session
+            safe_delay: f32 = UiCore::finite_or_zero(delay)
+            if safe_delay <= 0.0:
+                return
+            redraw_timer <- elisa_appkit_canvas_schedule_redraw(safe_delay, NSRunLoopCommonModes, canvas_window)
+
+        def cancel_redraw() -> void:
+            return if redraw_timer == 0
+            elisa_appkit_canvas_cancel_redraw(redraw_timer)
+            redraw_timer <- 0
+
+        def begin_native_frame(context: usize) -> void:
+            frame_context <- context
+            frame_rendered <- true
+
+        def reset_frame_state() -> void:
+            frame_rendered <- false
+
+        def frame_was_rendered() -> bool:
+            return frame_rendered
+
+        def end_native_frame() -> void:
+            frame_context <- 0
+
+        def release_canvas_window() -> void:
+            return if canvas_window == 0
+            elisa_appkit_canvas_release_window(canvas_window)
+            canvas_window <- 0
+
+        def release_canvas_delegate() -> void:
+            return if canvas_delegate == 0
+            elisa_appkit_canvas_release_delegate(canvas_delegate)
+            canvas_delegate <- 0
+
+        def release_canvas() -> void:
+            # Teardown is also reachable from failed setup and headless
+            # completion, where AppKit never sends windowWillClose. Cancel the
+            # retained timer here so no callback can target a released view.
+            # Mark the canvas unavailable before releasing any native object;
+            # AppKit can synchronously emit a late resize/focus notification
+            # while a window is being dismantled, and those callbacks must not
+            # re-enter application state through a dead window handle.
+            _ = UiLifecycle::stop()
+            cancel_redraw()
+            release_canvas_delegate()
+            release_accessibility_handles()
+            release_canvas_window()
+            headless_session <- false
+            frame_context <- 0
+            frame_rendered <- false
+
+        # AppKit reports hardware key codes plus a UTF-16 character. Translate
+        # that platform vocabulary here so the Objective-C host only forwards
+        # event facts across the FFI boundary.
+        # `charactersIgnoringModifiers` is still modifier-sensitive for Control
+        # and Option (for example Control-A becomes U+0001). Keep the ANSI
+        # hardware fallback in Elisa so those chords retain their physical key
+        # identity instead of disappearing before UiFlat can route them.

@@ -1,0 +1,307 @@
+extend UiAppKitCanvas:
+    private:
+        const enum MenuAction of i32:
+            About = 1
+            Hide = 2
+            HideOthers = 3
+            ShowAll = 4
+            Quit = 5
+            Undo = 6
+            Redo = 7
+            Cut = 8
+            Copy = 9
+            Paste = 10
+            SelectAll = 11
+            Minimize = 12
+            Zoom = 13
+            BringAllToFront = 14
+
+        def menu_action_name(action: MenuAction) -> cstr:
+            return "orderFrontStandardAboutPanel:" if action == MenuAction.About
+            return "hide:" if action == MenuAction.Hide
+            return "hideOtherApplications:" if action == MenuAction.HideOthers
+            return "unhideAllApplications:" if action == MenuAction.ShowAll
+            return "terminate:" if action == MenuAction.Quit
+            return "undo:" if action == MenuAction.Undo
+            return "redo:" if action == MenuAction.Redo
+            return "cut:" if action == MenuAction.Cut
+            return "copy:" if action == MenuAction.Copy
+            return "paste:" if action == MenuAction.Paste
+            return "selectAll:" if action == MenuAction.SelectAll
+            return "performMiniaturize:" if action == MenuAction.Minimize
+            return "performZoom:" if action == MenuAction.Zoom
+            return "arrangeInFront:" if action == MenuAction.BringAllToFront
+            return ""
+
+        # Register Cocoa selectors through the runtime C ABI from Elisa. The
+        # native shim receives only the opaque SEL token and never owns the
+        # framework's action-name mapping or registration branch.
+        def menu_action_selector(action: cstr) -> usize:
+            return 0 if action == ""
+            return sel_registerName(action)
+
+        const enum MenuModifiers of i32:
+            None = 0
+            Command = 1
+            CommandShift = 3
+            CommandOption = 5
+
+        def menu_modifiers(modifiers: MenuModifiers) -> usize:
+            return 0 if modifiers == MenuModifiers.None
+            command: usize = elisa_appkit_canvas_modifier_command
+            return command if modifiers == MenuModifiers.Command
+            shift: usize = elisa_appkit_canvas_modifier_shift
+            return command | shift if modifiers == MenuModifiers.CommandShift
+            return command | elisa_appkit_canvas_modifier_option
+
+        global mutable accessibility_previous_ids: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable accessibility_previous: AccessibilityState[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable accessibility_previous_handles: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable accessibility_next_ids: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable accessibility_next_handles: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable accessibility_commit_handles: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable accessibility_next: AccessibilityState[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable accessibility_previous_count: usize = 0
+        global mutable accessibility_force_layout: bool = true
+        global mutable headless_session: bool = false
+        global mutable redraw_timer: usize = 0
+        global mutable frame_rendered: bool = false
+        global mutable frame_context: usize = 0
+        # The retained root window handle lives in Elisa for exactly one run.
+        # Objective-C keeps only a weak lookup for callbacks and operations.
+        global mutable canvas_window: usize = 0
+        # AppKit's delegate property is non-owning. Keep its one transferred
+        # retain in Elisa alongside the window so close/focus callbacks remain
+        # valid until the run has fully returned.
+        global mutable canvas_delegate: usize = 0
+        const MENU_APPLICATION_LABEL_CAPACITY: usize = 4096
+        global mutable menu_application_label_storage: u8[MENU_APPLICATION_LABEL_CAPACITY] = zeroed
+        const ACCESSIBILITY_IDENTIFIER_CAPACITY: usize = 32
+        global mutable accessibility_identifier_storage: u8[ACCESSIBILITY_IDENTIFIER_CAPACITY] = zeroed
+        const ACCESSIBILITY_RANGE_MINIMUM: f32 = 0.0
+        const ACCESSIBILITY_RANGE_MAXIMUM: f32 = 1.0
+
+        def previous_accessibility_index(id: usize) -> usize:
+            for index in 0..<accessibility_previous_count:
+                return index if accessibility_previous_ids[index] == id
+            return UiCore::MAX_ACCESSIBILITY_NODES
+
+        def release_accessibility_handles() -> void:
+            for index in 0..<accessibility_previous_count:
+                handle: usize = accessibility_previous_handles[index]
+                elisa_appkit_canvas_accessibility_release(handle) if handle != 0
+                accessibility_previous_handles[index] <- 0
+            accessibility_previous_count <- 0
+
+        def reset_accessibility_history() -> void:
+            release_accessibility_handles()
+            accessibility_force_layout <- true
+
+        # Compact the valid retained element handles and construct the ordered
+        # Cocoa child collection through CoreFoundation. The native bridge only
+        # validates and assigns this immutable array; it owns no semantic-list
+        # filtering or mutable collection state.
+        def commit_accessibility_children() -> void can Unsafe.PointerCast:
+            return if accessibility_previous_count > UiCore::MAX_ACCESSIBILITY_NODES
+            count: mutable usize = 0
+            for index in 0..<accessibility_previous_count:
+                handle: usize = accessibility_previous_handles[index]
+                if handle != 0:
+                    accessibility_commit_handles[count] <- handle
+                    count <- count + 1
+            # The semantic arena is bounded, but keep the boundary invariant
+            # explicit at the construction site too. Objective-C receives only
+            # an already-bounded immutable child list and therefore does not
+            # need to know the framework's capacity policy.
+            return if count > UiCore::MAX_ACCESSIBILITY_NODES
+            values_pointer: usize& = (&accessibility_commit_handles[0]).cast[usize&] can Unsafe.PointerCast
+            children: usize = CFArrayCreate(0, values_pointer, count.i64(), 0)
+            return if children == 0
+            elisa_appkit_canvas_accessibility_commit(canvas_window, children)
+            CFRelease(children)
+
+        def color_component(value: u8) -> f32:
+            return value.f32() / 255.0
+
+        def set_fill_color(context: usize, color: UiCore::Color) -> void:
+            CGContextSetRGBFillColor(context, color_component(color.r).f64(), color_component(color.g).f64(), color_component(color.b).f64(), color_component(color.a).f64())
+
+        def set_stroke_color(context: usize, color: UiCore::Color) -> void:
+            CGContextSetRGBStrokeColor(context, color_component(color.r).f64(), color_component(color.g).f64(), color_component(color.b).f64(), color_component(color.a).f64())
+
+        def set_shadow(context: usize, x: f32, y: f32, blur: f32, alpha: f32) -> void:
+            color: usize = CGColorCreateGenericGray(0.0, alpha.f64())
+            return if color == 0
+            CGContextSetShadowWithColor(context, NativeSize{width: x.f64(), height: y.f64()}, blur.f64(), color)
+            CGColorRelease(color)
+
+        def current_context() -> usize:
+            return frame_context
+
+        def rounded_path(context: usize, box: UiCore::Rect, radius: f32) -> void:
+            left: f64 = box.origin.x.f64()
+            top: f64 = box.origin.y.f64()
+            right: f64 = (box.origin.x + box.size.width).f64()
+            bottom: f64 = (box.origin.y + box.size.height).f64()
+            curve: f64 = radius.f64()
+            CGContextBeginPath(context)
+            CGContextMoveToPoint(context, left + curve, top)
+            CGContextAddLineToPoint(context, right - curve, top)
+            CGContextAddArcToPoint(context, right, top, right, top + curve, curve)
+            CGContextAddLineToPoint(context, right, bottom - curve)
+            CGContextAddArcToPoint(context, right, bottom, right - curve, bottom, curve)
+            CGContextAddLineToPoint(context, left + curve, bottom)
+            CGContextAddArcToPoint(context, left, bottom, left, bottom - curve, curve)
+            CGContextAddLineToPoint(context, left, top + curve)
+            CGContextAddArcToPoint(context, left, top, left + curve, top, curve)
+            CGContextClosePath(context)
+
+        def window_style(options: WindowOptions) -> i32:
+            style: mutable i32 = 0
+            style <- style | elisa_appkit_canvas_window_style_titled if options.titled
+            style <- style | elisa_appkit_canvas_window_style_closable if options.closable
+            style <- style | elisa_appkit_canvas_window_style_miniaturizable if options.minimizable
+            style <- style | elisa_appkit_canvas_window_style_resizable if options.resizable
+            return style
+
+        def activation_policy(headless: bool) -> i32:
+            return elisa_appkit_canvas_activation_policy_prohibited if headless else elisa_appkit_canvas_activation_policy_regular
+
+        def tabbing_mode(enabled: bool) -> i32:
+            return elisa_appkit_canvas_tabbing_mode_preferred if enabled else elisa_appkit_canvas_tabbing_mode_disallowed
+
+        # Window construction and activation may create temporary Cocoa
+        # objects before AppKit's run loop installs its normal pool. Keep that
+        # lifetime scope in Elisa through libobjc's C ABI; the Objective-C shim
+        # only performs the requested object construction and assignment.
+        def open_window(title: usize, width: f32, height: f32, style: i32,
+                        backing: i32, delegate_handle: mutable usize&) -> usize:
+            pool: usize = objc_autoreleasePoolPush()
+            opened: usize = elisa_appkit_canvas_open(title, width, height, style, backing, &delegate_handle)
+            objc_autoreleasePoolPop(pool)
+            return opened
+
+        def set_activation_policy(policy: i32) -> void:
+            pool: usize = objc_autoreleasePoolPush()
+            elisa_appkit_canvas_set_activation_policy(policy)
+            objc_autoreleasePoolPop(pool)
+
+        def smoke_mode() -> bool:
+            value_opt: cstr? = getenv("ELISA_UI_SMOKE_FRAMES")
+            if value_opt is value:
+                return not appkit_cstr_equals(value, "0")
+            return false
+
+        def menu_key(key: UiCore::Key) -> i32:
+            # Cocoa menu equivalents use lowercase scalar values; UiCore's
+            # named alphabet keys intentionally use GLFW's uppercase values.
+            return key.i32() + 32
+
+        # Standard application-menu labels are framework policy. Compose the
+        # UTF-8 bytes in Elisa so the native bridge only receives a complete,
+        # counted menu title. Labels are bounded to keep this allocation-free;
+        # normal application names are far below this limit.
+        def application_menu_label(prefix: cstr, prefix_length: usize, application: cstr, application_length: usize) -> sview:
+            prefix_view: sview = sview(prefix, 0, prefix_length.i64())
+            application_view: sview = sview(application, 0, application_length.i64())
+            prefix_take: usize = prefix_length if prefix_length < MENU_APPLICATION_LABEL_CAPACITY else MENU_APPLICATION_LABEL_CAPACITY
+            remaining: usize = MENU_APPLICATION_LABEL_CAPACITY - prefix_take
+            application_take: usize = application_length if application_length < remaining else remaining
+            for index in 0..<prefix_take:
+                menu_application_label_storage[index] <- prefix_view.data[index]
+            for index in 0..<application_take:
+                menu_application_label_storage[prefix_take + index] <- application_view.data[index]
+            return sview(&menu_application_label_storage[0], 0, (prefix_take + application_take).i64())
+
+        def add_menu(menu_bar: usize, title: sview) -> usize can Unsafe.PointerCast:
+            native_title: usize = native_string(title)
+            return 0 if native_title == 0
+            empty: sview = sview("", 0, 0)
+            native_empty: usize = native_string(empty)
+            if native_empty == 0:
+                CFRelease(native_title)
+                return 0
+            menu: usize = elisa_appkit_canvas_menu_add(menu_bar, native_title, native_empty)
+            CFRelease(native_empty)
+            CFRelease(native_title)
+            return menu
+
+        def add_menu_item(menu: usize, title: sview, action: cstr, key: i32, modifiers: usize) -> void can Unsafe.PointerCast:
+            native_title: usize = native_string(title)
+            return if native_title == 0
+            empty: sview = sview("", 0, 0)
+            native_key: mutable usize = native_string(empty)
+            if native_key == 0:
+                CFRelease(native_title)
+                return
+            if key > 0 and key <= 255:
+                key_byte: mutable u8[1] = zeroed
+                key_byte[0] <- key.u8()
+                CFRelease(native_key)
+                native_key <- native_string_bytes(&key_byte[0], 1)
+                if native_key == 0:
+                    CFRelease(native_title)
+                    return
+            elisa_appkit_canvas_menu_add_item(menu, native_title, native_key, menu_action_selector(action), modifiers)
+            CFRelease(native_key) if native_key != 0
+            CFRelease(native_title)
+
+        def add_application_menu_item(menu: usize, prefix: cstr, prefix_length: usize,
+                                      application: cstr, application_length: usize,
+                                      action: cstr, key: i32, modifiers: usize) -> void can Unsafe.PointerCast:
+            label: sview = application_menu_label(prefix, prefix_length, application, application_length)
+            add_menu_item(menu, label, action, key, modifiers)
+
+        # Accessibility identifiers are stable framework metadata. Generate
+        # their UTF-8 bytes here so the Objective-C bridge never invents a
+        # naming scheme or formats framework state on its own.
+        def accessibility_identifier(id: usize) -> sview:
+            prefix: sview = "elisa-ui-"
+            for index in 0..<prefix.len.usize():
+                accessibility_identifier_storage[index] <- prefix.data[index]
+            value: mutable usize = id
+            digits: mutable usize = 1
+            if value > 0:
+                digits <- 0
+                while value > 0:
+                    digits <- digits + 1
+                    value <- value / 10
+            value <- id
+            for index in 0..<digits:
+                position: usize = prefix.len.usize() + digits - 1 - index
+                accessibility_identifier_storage[position] <- (value % 10 + 48).u8()
+                value <- value / 10
+            return sview(&accessibility_identifier_storage[0], 0, (prefix.len.usize() + digits).i64())
+
+        # Menu layout, labels, shortcuts and modifier policy belong to Elisa.
+        # Objective-C maps these action tokens to Cocoa selectors and creates
+        # the required NSMenu objects.
+        def install_standard_menus(title: cstr, length: usize) -> void can Unsafe.PointerCast:
+            menu_bar: usize = elisa_appkit_canvas_menus_begin()
+            application_title: sview = sview(title, 0, length.i64())
+            application: usize = add_menu(menu_bar, application_title)
+            add_application_menu_item(application, "About ", 6, title, length, menu_action_name(MenuAction.About), 0, menu_modifiers(MenuModifiers.None))
+            elisa_appkit_canvas_menu_add_separator(application)
+            add_application_menu_item(application, "Hide ", 5, title, length, menu_action_name(MenuAction.Hide), menu_key(UiCore::Key.H), menu_modifiers(MenuModifiers.Command))
+            add_menu_item(application, "Hide Others", menu_action_name(MenuAction.HideOthers), menu_key(UiCore::Key.H), menu_modifiers(MenuModifiers.CommandOption))
+            add_menu_item(application, "Show All", menu_action_name(MenuAction.ShowAll), 0, menu_modifiers(MenuModifiers.None))
+            elisa_appkit_canvas_menu_add_separator(application)
+            add_application_menu_item(application, "Quit ", 5, title, length, menu_action_name(MenuAction.Quit), menu_key(UiCore::Key.Q), menu_modifiers(MenuModifiers.Command))
+
+            edit: usize = add_menu(menu_bar, "Edit")
+            add_menu_item(edit, "Undo", menu_action_name(MenuAction.Undo), menu_key(UiCore::Key.Z), menu_modifiers(MenuModifiers.Command))
+            add_menu_item(edit, "Redo", menu_action_name(MenuAction.Redo), menu_key(UiCore::Key.Z), menu_modifiers(MenuModifiers.CommandShift))
+            elisa_appkit_canvas_menu_add_separator(edit)
+            add_menu_item(edit, "Cut", menu_action_name(MenuAction.Cut), menu_key(UiCore::Key.X), menu_modifiers(MenuModifiers.Command))
+            add_menu_item(edit, "Copy", menu_action_name(MenuAction.Copy), menu_key(UiCore::Key.C), menu_modifiers(MenuModifiers.Command))
+            add_menu_item(edit, "Paste", menu_action_name(MenuAction.Paste), menu_key(UiCore::Key.V), menu_modifiers(MenuModifiers.Command))
+            elisa_appkit_canvas_menu_add_separator(edit)
+            add_menu_item(edit, "Select All", menu_action_name(MenuAction.SelectAll), menu_key(UiCore::Key.A), menu_modifiers(MenuModifiers.Command))
+
+            window: usize = add_menu(menu_bar, "Window")
+            elisa_appkit_canvas_menu_set_windows(window)
+            add_menu_item(window, "Minimize", menu_action_name(MenuAction.Minimize), menu_key(UiCore::Key.M), menu_modifiers(MenuModifiers.Command))
+            add_menu_item(window, "Zoom", menu_action_name(MenuAction.Zoom), 0, menu_modifiers(MenuModifiers.None))
+            elisa_appkit_canvas_menu_add_separator(window)
+            add_menu_item(window, "Bring All to Front", menu_action_name(MenuAction.BringAllToFront), 0, menu_modifiers(MenuModifiers.None))
+            elisa_appkit_canvas_menus_commit(menu_bar)

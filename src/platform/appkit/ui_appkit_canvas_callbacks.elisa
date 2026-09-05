@@ -1,0 +1,142 @@
+# C callbacks from ElisaCanvasView. Top-level because the Objective-C ABI names them.
+def appkit_canvas_frame_callback(context: usize) -> void:
+    can Ui.Draw, Ui.Text, Unsafe.PointerCast:
+        # AppKit may issue a draw request while the view is being constructed
+        # or dismantled. Do not enter the retained frame pipeline until the
+        # window has completed initialization and a real graphics context was
+        # supplied; this keeps late native callbacks harmless after teardown.
+        return if context == 0 or not UiAppKitCanvas::live()
+        autorelease_pool: usize = objc_autoreleasePoolPush()
+        # Keep the AppKit graphics context balanced around the entire retained
+        # frame. The native view only supplies the context; frame-state policy
+        # and restoration now live with Elisa's painter replay.
+        CGContextSaveGState(context)
+        UiAppKitCanvas::begin_native_frame(context)
+        UiCore::set_frame_time(UiAppKitCanvas::monotonic_time())
+        CGContextSetShouldAntialias(context, true)
+        CGContextSetShouldSmoothFonts(context, true)
+        UiMetrics::begin_frame(UiCore::frame_time())
+        UiCore::begin_frame()
+        app_frame()
+        UiMetrics::mark_application(UiAppKitCanvas::monotonic_time())
+        UiAppKitCanvas::sync_accessibility()
+        UiMetrics::mark_semantics(UiAppKitCanvas::monotonic_time())
+        UiPaint::replay[UiAppKitCanvas::AppKitPainter]()
+        UiMetrics::mark_paint(UiAppKitCanvas::monotonic_time())
+        UiAppKitCanvas::end_native_frame()
+        UiAppKitCanvas::schedule_next_frame(UiCore::frame_delay())
+        CGContextRestoreGState(context)
+        UiMetrics::finish_frame(UiAppKitCanvas::monotonic_time())
+        objc_autoreleasePoolPop(autorelease_pool)
+
+def appkit_canvas_valid_marked_attributes() -> usize:
+    return UiAppKitCanvas::valid_marked_attributes()
+
+def appkit_canvas_resize_callback(width: f32, height: f32) -> void:
+    return if not UiAppKitCanvas::live()
+    UiCore::set_viewport(width, height)
+    app_event(UiCore::Event.Resize(size: UiCore::Size(width, height)))
+    UiAppKitCanvas::redraw()
+
+def appkit_canvas_pointer_callback(kind: i32, x: f32, y: f32, dx: f32, dy: f32, button: i32) -> void:
+    return if not UiAppKitCanvas::live()
+    at: UiCore::Vec2 = UiCore::Vec2(x, y)
+    event: mutable UiCore::Event = (UiCore::PointerEvent.Move(at: at))
+    event <- (UiCore::PointerEvent.Down(at: at, button: button)) if kind == 1
+    event <- (UiCore::PointerEvent.Up(at: at, button: button)) if kind == 2
+    event <- (UiCore::PointerEvent.Leave) if kind == 3
+    event <- (UiCore::PointerEvent.Scroll(at: at, delta: UiCore::Vec2(dx, dy))) if kind == 4
+    app_event(event)
+    UiAppKitCanvas::redraw()
+
+def appkit_canvas_pointer_move_callback(x: f32, y: f32) -> void:
+    appkit_canvas_pointer_callback(0, x, y, 0.0, 0.0, 0)
+
+def appkit_canvas_pointer_down_callback(x: f32, y: f32, button: i32) -> void:
+    appkit_canvas_pointer_callback(1, x, y, 0.0, 0.0, button)
+
+def appkit_canvas_pointer_up_callback(x: f32, y: f32, button: i32) -> void:
+    appkit_canvas_pointer_callback(2, x, y, 0.0, 0.0, button)
+
+def appkit_canvas_pointer_leave_callback() -> void:
+    appkit_canvas_pointer_callback(3, 0.0, 0.0, 0.0, 0.0, 0)
+
+def appkit_canvas_pointer_scroll_callback(x: f32, y: f32, dx: f32, dy: f32) -> void:
+    appkit_canvas_pointer_callback(4, x, y, dx, dy, 0)
+
+def appkit_canvas_key_callback(down: i32, code: i32) -> void:
+    return if not UiAppKitCanvas::live()
+    if down != 0 and code == UiCore::Key.Escape.i32():
+        UiAppKitCanvas::close()
+        return
+    event: UiCore::Event = (UiCore::KeyEvent.Down(code: UiCore::Key(code))) if down != 0 else (UiCore::KeyEvent.Up(code: UiCore::Key(code)))
+    app_event(event)
+    UiAppKitCanvas::redraw()
+
+def appkit_canvas_raw_key_callback(down: i32, key_code: i32, character: i32) -> void:
+    code: i32 = UiAppKitCanvas::key_from_appkit(key_code, character)
+    return if code == 0
+    appkit_canvas_key_callback(down, code)
+
+def appkit_canvas_raw_flags_callback(key_code: i32, modifiers: usize) -> void:
+    shift: i32 = 1 if UiAppKitCanvas::native_shift(modifiers) else 0
+    control: i32 = 1 if UiAppKitCanvas::native_control(modifiers) else 0
+    alt: i32 = 1 if UiAppKitCanvas::native_option(modifiers) else 0
+    super_key: i32 = 1 if UiAppKitCanvas::native_command(modifiers) else 0
+    down: mutable i32 = 0
+    down <- shift if key_code == 56 or key_code == 60
+    down <- control if key_code == 59 or key_code == 62
+    down <- alt if key_code == 58 or key_code == 61
+    down <- super_key if key_code == 54 or key_code == 55
+    appkit_canvas_raw_key_callback(down, key_code, 0)
+
+def appkit_canvas_focus_changed_callback(focused: i32) -> void:
+    return if not UiAppKitCanvas::live()
+    changed: bool = UiLifecycle::focus_gained() if focused != 0 else UiLifecycle::focus_lost()
+    return if not changed
+    event: UiCore::Event = (UiCore::Event.FocusGained) if focused != 0 else (UiCore::Event.FocusLost)
+    app_event(event)
+    UiAppKitCanvas::redraw()
+
+def appkit_canvas_accessibility_environment_changed_callback() -> void:
+    return if not UiAppKitCanvas::live()
+    UiAppKitCanvas::accessibility_environment_changed()
+    UiAppKitCanvas::redraw()
+
+def appkit_canvas_rebuild_cursor_rects_callback() -> void:
+    return if not UiAppKitCanvas::live()
+    UiAppKitCanvas::rebuild_cursor_rects()
+
+def appkit_canvas_render_headless_callback(window_handle: usize, snapshot: usize, pixels_width: i32, pixels_height: i32) -> i32:
+    return UiAppKitCanvas::render_headless(window_handle, snapshot, pixels_width, pixels_height)
+
+def appkit_canvas_pointer_button_primary() -> i32:
+    return UiAppKitCanvas::pointer_button_primary()
+
+def appkit_canvas_pointer_button_secondary() -> i32:
+    return UiAppKitCanvas::pointer_button_secondary()
+
+def appkit_canvas_accessibility_increment_direction() -> i32:
+    return UiAppKitCanvas::accessibility_increment_direction()
+
+def appkit_canvas_accessibility_decrement_direction() -> i32:
+    return UiAppKitCanvas::accessibility_decrement_direction()
+
+def appkit_canvas_accessibility_tooltip_text(handle: usize) -> usize:
+    return 0 if not UiAppKitCanvas::live()
+    return UiAppKitCanvas::accessibility_tooltip_text(handle)
+
+export fn elisa_appkit_canvas_frame(context: usize) -> void = appkit_canvas_frame_callback
+export fn elisa_appkit_canvas_valid_marked_attributes() -> usize = appkit_canvas_valid_marked_attributes
+export fn elisa_appkit_canvas_pointer_button_primary() -> i32 = appkit_canvas_pointer_button_primary
+export fn elisa_appkit_canvas_pointer_button_secondary() -> i32 = appkit_canvas_pointer_button_secondary
+export fn elisa_appkit_canvas_accessibility_increment_direction() -> i32 = appkit_canvas_accessibility_increment_direction
+export fn elisa_appkit_canvas_accessibility_decrement_direction() -> i32 = appkit_canvas_accessibility_decrement_direction
+export fn elisa_appkit_canvas_accessibility_tooltip_text(handle: usize) -> usize = appkit_canvas_accessibility_tooltip_text
+export fn elisa_appkit_canvas_resize(width: f32, height: f32) -> void = appkit_canvas_resize_callback
+export fn elisa_appkit_canvas_pointer_scroll(x: f32, y: f32, dx: f32, dy: f32) -> void = appkit_canvas_pointer_scroll_callback
+export fn elisa_appkit_canvas_raw_flags(key_code: i32, modifiers: usize) -> void = appkit_canvas_raw_flags_callback
+export fn elisa_appkit_canvas_focus_changed(focused: i32) -> void = appkit_canvas_focus_changed_callback
+export fn elisa_appkit_canvas_accessibility_environment_changed() -> void = appkit_canvas_accessibility_environment_changed_callback
+export fn elisa_appkit_canvas_rebuild_cursor_rects() -> void = appkit_canvas_rebuild_cursor_rects_callback
+export fn elisa_appkit_canvas_render_headless(window_handle: usize, snapshot: usize, pixels_width: i32, pixels_height: i32) -> i32 = appkit_canvas_render_headless_callback
