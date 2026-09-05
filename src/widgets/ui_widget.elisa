@@ -217,6 +217,26 @@ module UiFlat:
         def can_nest(index: usize) -> bool:
             return false if index >= widget_count
             return widgets[index].kind == UiConst::WidgetKind.Panel or widgets[index].kind == UiConst::WidgetKind.Scroll
+
+        # Geometry mutations are deferred until the next retained reflow, but
+        # the core also exposes the durable invalidation reason to hosts and
+        # diagnostics. Paint and semantic work naturally follow a layout change
+        # on the next frame.
+        def mark_layout_dirty() -> void:
+            layout_dirty <- true if layout_initialized
+            UiCore::invalidate(UiCore::Invalidation.Layout)
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+            UiCore::invalidate(UiCore::Invalidation.Semantics)
+
+        def mark_paint_dirty() -> void:
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+
+        def mark_semantics_dirty() -> void:
+            UiCore::invalidate(UiCore::Invalidation.Semantics)
+
+        def mark_state_dirty() -> void:
+            mark_paint_dirty()
+            mark_semantics_dirty()
         global mutable current_theme: Theme = Theme{
             focus_ring: UiCore::Color{r: 94, g: 158, b: 255, a: 245},
             selection: UiCore::Color{r: 55, g: 112, b: 214, a: 210},
@@ -331,7 +351,7 @@ module UiFlat:
                 return NONE
             index: usize = widget_count
             widget_count <- widget_count + 1
-            layout_dirty <- true if layout_initialized
+            mark_layout_dirty()
             safe_parent: usize = parent if parent < index and can_nest(parent) else NONE
             # A whole-record reset, not a `with` block: a literal must name
             # every field, so a field added to Widget cannot be left
@@ -411,6 +431,7 @@ module UiFlat:
         def set_color(index: usize, color: UiCore::Color) -> void:
             return if index >= widget_count
             widgets[index].color <- color
+            mark_paint_dirty()
 
         def theme() -> Theme:
             return current_theme
@@ -437,15 +458,17 @@ module UiFlat:
             normalized.scrollbar_width <- UiCore::nonnegative_extent(next.scrollbar_width)
             normalized.scrollbar_inset <- UiCore::nonnegative_extent(next.scrollbar_inset)
             current_theme <- normalized
+            mark_layout_dirty()
 
         def set_colors(index: usize, color: UiCore::Color, hover: UiCore::Color, press: UiCore::Color) -> void:
             return if index >= widget_count
             widgets[index] with { color, hover_color <- hover, press_color <- press }
+            mark_paint_dirty()
 
         def set_grow(index: usize, grow: f32) -> void:
             return if index >= widget_count
             widgets[index].grow <- UiCore::nonnegative_extent(grow)
-            layout_dirty <- true if layout_initialized
+            mark_layout_dirty()
 
         # Zero means unbounded. A maximum below the measured minimum never
         # clips required content; the minimum wins for that axis.
@@ -453,36 +476,39 @@ module UiFlat:
             return if index >= widget_count
             widgets[index].max_width <- UiCore::nonnegative_extent(width)
             widgets[index].max_height <- UiCore::nonnegative_extent(height)
-            layout_dirty <- true if layout_initialized
+            mark_layout_dirty()
 
         def set_margin(index: usize, margin: f32) -> void:
             return if index >= widget_count
             widgets[index].margin <- UiCore::nonnegative_extent(margin)
-            layout_dirty <- true if layout_initialized
+            mark_layout_dirty()
 
         def set_cross_alignment(index: usize, alignment: UiConst::CrossAlignment) -> void:
             return if index >= widget_count
             widgets[index].cross_alignment <- alignment
-            layout_dirty <- true if layout_initialized
+            mark_layout_dirty()
 
         def set_main_alignment(index: usize, alignment: UiConst::MainAlignment) -> void:
             return if index >= widget_count
             widgets[index].main_alignment <- alignment
-            layout_dirty <- true if layout_initialized
+            mark_layout_dirty()
 
         def set_focus_order(index: usize, order: usize) -> void:
             return if index >= widget_count
             widgets[index].focus_order <- order
+            mark_semantics_dirty()
 
         # Radios default to one group per parent. An explicit group allows a
         # logical choice set to span layout containers without native state.
         def set_selection_group(index: usize, group: usize) -> void:
             return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.RadioButton
             widgets[index].selection_group <- group
+            mark_semantics_dirty()
 
         def set_enabled(index: usize, enabled: bool) -> void:
             return if index >= widget_count
             widgets[index].enabled <- enabled
+            mark_state_dirty()
             if not enabled:
                 for candidate in 0..<widget_count:
                     if not effectively_enabled(candidate):
@@ -512,7 +538,7 @@ module UiFlat:
         def set_visible(index: usize, shown: bool) -> void:
             return if index >= widget_count
             widgets[index].visible <- shown
-            layout_dirty <- true if layout_initialized
+            mark_layout_dirty()
             return if shown
             for candidate in 0..<widget_count:
                 if not effectively_visible(candidate):
@@ -543,15 +569,17 @@ module UiFlat:
                     declared_min_width <- measured_width, declared_min_height <- measured_height,
                     min_width <- measured_width, min_height <- measured_height,
                 }
-            layout_dirty <- true if layout_initialized
+            mark_layout_dirty()
 
         def set_help(index: usize, help: sview) -> void:
             return if index >= widget_count
             widgets[index].help <- help
+            mark_semantics_dirty()
 
         def set_secure(index: usize, secure: bool) -> void:
             return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
             widgets[index].secure <- secure
+            mark_state_dirty()
 
         # Selection is independent from focus and press state. Applications own
         # group policy, so a radio group can span containers without hidden state.
@@ -563,15 +591,18 @@ module UiFlat:
                     if candidate != index and widgets[candidate].kind == UiConst::WidgetKind.RadioButton and widgets[candidate].selection_group == widgets[index].selection_group:
                         widgets[candidate].selected <- false
             widgets[index].selected <- selected
+            mark_state_dirty()
 
         def set_value(index: usize, value: f32) -> void:
             return if index >= widget_count
             return if widgets[index].kind != UiConst::WidgetKind.Slider and widgets[index].kind != UiConst::WidgetKind.ProgressBar
             widgets[index].value <- UiCore::normalized_unit(value)
+            mark_state_dirty()
 
         def set_step(index: usize, step: f32) -> void:
             return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider
             widgets[index].step <- UiCore::nonnegative_extent(step)
+            mark_paint_dirty()
 
         def text_value(index: usize) -> sview:
             return "" if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
@@ -611,6 +642,7 @@ module UiFlat:
             last_layout_height <- 0.0
             layout_initialized <- false
             layout_dirty <- false
+            UiCore::clear_all_invalidations()
             hot_widget <- NONE
             pointer_x <- 0.0
             pointer_y <- 0.0
@@ -1053,6 +1085,7 @@ module UiFlat:
         def clear_hover() -> void:
             for index in 0..<widget_count:
                 widgets[index].hovered <- false
+            mark_paint_dirty()
 
         def release_active_press() -> void:
             if active_widget < widget_count:
@@ -1063,10 +1096,12 @@ module UiFlat:
             active_scroll_offset <- 0.0
             active_pointer_button <- UiCore::NO_POINTER_BUTTON
             active_key <- -1
+            mark_paint_dirty()
 
         def focus(index: usize) -> void:
             target: mutable usize = index
             target <- NONE if target < widget_count and (not widgets[target].interactive or not effectively_enabled(target) or not effectively_visible(target))
+            changed: bool = target != focused_widget
             release_active_press() if target != focused_widget
             if focused_widget < widget_count:
                 widgets[focused_widget].focused <- false
@@ -1075,6 +1110,7 @@ module UiFlat:
                 widgets[focused_widget].focused <- true
                 restart_caret_blink() if widgets[focused_widget].kind == UiConst::WidgetKind.TextField
                 ensure_visible(focused_widget)
+            mark_state_dirty() if changed
 
         def focus_next() -> void:
             return if widget_count == 0
@@ -1579,6 +1615,7 @@ module UiFlat:
             last_layout_height <- UiCore::nonnegative_extent(height)
             layout_initialized <- true
             layout_dirty <- false
+            UiCore::clear_invalidations(UiCore::Invalidation.Layout)
             return if widget_count == 0
             measure(0, 0)
             arrange(0, 0.0, 0.0, last_layout_width, last_layout_height, 0)
@@ -1616,6 +1653,7 @@ module UiFlat:
             difference: f32 = wanted - current if wanted >= current else current - wanted
             return false if difference < 0.0001
             widgets[index].scroll_offset <- wanted
+            mark_state_dirty()
             layout(last_layout_width, last_layout_height) if layout_initialized
             return true
 
@@ -1733,6 +1771,7 @@ module UiFlat:
             next_caret <- grapheme_boundary_at_or_before(index, next_caret)
             widgets[index] with { selection_anchor <- next_anchor, caret <- next_caret }
             restart_caret_blink() if index == focused_widget
+            mark_state_dirty()
 
         def set_selection_utf16(index: usize, location: usize, length: usize) -> void:
             return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
@@ -1754,6 +1793,7 @@ module UiFlat:
                 swap: usize = widgets[index].marked_start
                 widgets[index].marked_start <- widgets[index].marked_end
                 widgets[index].marked_end <- swap
+            mark_state_dirty()
 
         def marked_utf16_location(index: usize) -> usize:
             return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
@@ -1850,6 +1890,7 @@ module UiFlat:
                 widgets[index].caret <- previous_word(index, widgets[index].caret)
             widgets[index].selection_anchor <- widgets[index].caret if not extend_selection
             restart_caret_blink()
+            mark_state_dirty()
 
         def move_word_right(extend_selection: bool) -> void:
             return if not accepts_text()
@@ -1860,6 +1901,7 @@ module UiFlat:
                 widgets[index].caret <- next_word(index, widgets[index].caret)
             widgets[index].selection_anchor <- widgets[index].caret if not extend_selection
             restart_caret_blink()
+            mark_state_dirty()
 
         def delete_word_backward() -> void:
             return if not accepts_text()
@@ -1919,6 +1961,7 @@ module UiFlat:
             widgets[index].text_revision <- widgets[index].text_revision + 1
             widgets[index] with { marked_start <- 0, marked_end <- 0 }
             restart_caret_blink()
+            mark_state_dirty()
             callback_epoch: usize = widget_epoch
             app_widget_event(index, UiConst::WidgetEvent.Change.i32())
             finish_text_history(history_slot, index) if widget_epoch == callback_epoch
@@ -1945,6 +1988,7 @@ module UiFlat:
             widgets[index] with { input_length <- take, caret <- take, selection_anchor <- take, marked_start <- 0, marked_end <- 0 }
             widgets[index].text_revision <- widgets[index].text_revision + 1 if changed
             restart_caret_blink() if changed and index == focused_widget
+            mark_state_dirty() if changed
             callback_epoch: usize = widget_epoch
             app_widget_event(index, UiConst::WidgetEvent.Change.i32()) if changed
             finish_text_history(history_slot, index) if widget_epoch == callback_epoch
@@ -2037,6 +2081,7 @@ module UiFlat:
             if composition_history_slot < TEXT_HISTORY_CAPACITY:
                 store_history_state(composition_history_slot, focused_widget, true)
             composition_history_slot <- TEXT_HISTORY_CAPACITY
+            mark_state_dirty()
 
         def can_undo_text() -> bool:
             return history_cursor > 0
@@ -2053,6 +2098,7 @@ module UiFlat:
             restore_history_state(history_cursor, false)
             history_suppressed <- false
             return false if widget_epoch != callback_epoch
+            mark_state_dirty()
             return true
 
         def redo_text() -> bool:
@@ -2064,6 +2110,7 @@ module UiFlat:
             history_suppressed <- false
             return false if widget_epoch != callback_epoch
             history_cursor <- history_cursor + 1
+            mark_state_dirty()
             return true
 
         # Backend hooks expose bytes only. Selection, security, history, and
@@ -2145,6 +2192,7 @@ module UiFlat:
         # is ignored here, so an app can hand the whole stream over without sorting
         # it first.
         def pointer(event: UiCore::Event) -> void:
+            mark_state_dirty()
             at: mutable UiCore::Vec2 = UiCore::Vec2(0.0, 0.0)
             match event:
                 UiCore::PointerEvent.Move(move_at):
@@ -2262,6 +2310,7 @@ module UiFlat:
         # Space/Enter press and release the focused control. Activation happens
         # on release, matching pointer clicks and allowing the pressed state to paint.
         def keyboard(event: UiCore::Event) -> void:
+            mark_state_dirty()
             match event:
                 UiCore::KeyEvent.Down(code):
                     if code == UiCore::Key.LeftShift:

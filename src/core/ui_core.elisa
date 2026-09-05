@@ -331,6 +331,19 @@ module UiCore:
             FocusGained = 12
             FocusLost = 13
 
+        # Reasons a retained surface may need work. The bit values are stable
+        # framework vocabulary; hosts can inspect one flag at a time without
+        # learning any backend's event-loop or renderer state.
+        const enum Invalidation of i32:
+            None = 0
+            Layout = 1
+            Paint = 2
+            Semantics = 4
+            Resources = 8
+            Animation = 16
+            Frame = 22
+            All = 31
+
         # A fixed buffer keeps the frame path allocation-free, which matters
         # most on the component side: the freestanding cabi_realloc is
         # monotonic, so a per-frame growing list would never return memory to
@@ -357,6 +370,7 @@ module UiCore:
         global mutable current_clip_active: bool = false
         global mutable current_frame_time: f64 = 0.0
         global mutable requested_frame_delay: f32 = 0.0
+        global mutable invalidation_flags: i32 = 0
 
     public:
         def begin_frame() -> void:
@@ -366,6 +380,26 @@ module UiCore:
             accessibility_total <- 0
             accessibility_dropped <- false
             requested_frame_delay <- 0.0
+            clear_invalidations(Invalidation.Frame)
+
+        # Invalidation is a framework-owned bitset rather than a backend hint.
+        # A host may clear only the work it has consumed; begin_frame clears the
+        # frame-local Paint/Semantics/Animation bits while durable Layout and
+        # Resources state survives until the owner resolves it.
+        def invalidate(reason: Invalidation) -> void:
+            invalidation_flags <- invalidation_flags | reason.i32()
+
+        def clear_invalidations(reasons: Invalidation) -> void:
+            invalidation_flags <- invalidation_flags & (~reasons.i32())
+
+        def is_invalidated(reason: Invalidation) -> bool:
+            return (invalidation_flags & reason.i32()) != 0
+
+        def invalidations() -> i32:
+            return invalidation_flags
+
+        def clear_all_invalidations() -> void:
+            invalidation_flags <- 0
 
         # Semantic IDs are the retained identity key used by every backend.
         # Keep one node per ID in the frame buffer so a malformed or overly
@@ -389,12 +423,14 @@ module UiCore:
                 # Last declaration wins while preserving the ID's first
                 # position, giving frame diffs stable ordering and identity.
                 accessibility_nodes[existing] <- node
+                invalidate(Invalidation.Semantics)
                 return
             if accessibility_total >= MAX_ACCESSIBILITY_NODES.u32():
                 accessibility_dropped <- true
                 return
             accessibility_nodes[accessibility_total.usize()] <- node
             accessibility_total <- accessibility_total + 1
+            invalidate(Invalidation.Semantics)
 
         def accessibility_count() -> usize:
             return accessibility_total.usize()
@@ -425,6 +461,7 @@ module UiCore:
             command_clip[slot] <- current_clip if current_clip_active
             command_buffer[slot] <- command
             command_total <- command_total + 1
+            invalidate(Invalidation.Paint)
 
         # The batch a backend consumes at frame end.
         def command_count() -> usize:
@@ -496,7 +533,13 @@ module UiCore:
             return 1.0 if safe > 1.0 else safe
 
         def set_viewport(width: f32, height: f32) -> void:
-            viewport_size <- Size{width: nonnegative_extent(width), height: nonnegative_extent(height)}
+            normalized: Size = Size{width: nonnegative_extent(width), height: nonnegative_extent(height)}
+            changed: bool = normalized.width != viewport_size.width or normalized.height != viewport_size.height
+            viewport_size <- normalized
+            if changed:
+                invalidate(Invalidation.Layout)
+                invalidate(Invalidation.Paint)
+                invalidate(Invalidation.Semantics)
 
         def viewport_width() -> f32:
             return viewport_size.width
@@ -521,6 +564,7 @@ module UiCore:
             safe: f32 = finite_or_zero(seconds)
             return if safe <= 0.0
             requested_frame_delay <- safe if requested_frame_delay <= 0.0 or safe < requested_frame_delay
+            invalidate(Invalidation.Animation)
 
         def frame_delay() -> f32:
             return requested_frame_delay

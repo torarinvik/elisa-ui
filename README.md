@@ -28,8 +28,9 @@ because a module member's symbol carries its module and those names cannot move.
 - **Core** ([src/core/ui_core.elisa](src/core/ui_core.elisa)) — colour/geometry
   records mirroring the WIT records field-for-field, the `UiCore::Command` batch,
   the drawing API that appends to it, `UiCore::Event` and the input vocabulary
-  (`UiCore::Key`, `UiCore::Pad`, `UiCore::PadAxis`). Knows nothing about any wire
-  format.
+  (`UiCore::Key`, `UiCore::Pad`, `UiCore::PadAxis`). It also exposes typed
+  invalidation reasons for layout, paint, semantics, resources, and animation.
+  Knows nothing about any wire format.
 - **Backends** implement the platform side and own the frame loop:
   [sdl3](src/platform/sdl3/ui_sdl3.elisa) (native; the `UiSdl3` module owns
   window/event lifecycle while [ui_sdl3_draw](src/platform/sdl3/ui_sdl3_draw.elisa)

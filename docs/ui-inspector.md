@@ -11,8 +11,10 @@ snapshot: UiInspector::Frame = UiInspector::frame()
 node: UiInspector::Node? = UiInspector::inspect(save)
 ```
 
-`Frame` reports the viewport, deferred layout state, frame clock/deadline, and
-command/semantic buffer counts and overflow flags. `Node` reports a typed
+`Frame` reports the viewport, deferred layout state, frame clock/deadline,
+command/semantic buffer counts and overflow flags, and the five typed
+invalidation reasons (`Layout`, `Paint`, `Semantics`, `Resources`, and
+`Animation`). `Node` reports a typed
 lifetime handle, parent/child/sibling relationships, resolved bounds,
 min/max/grow/margin constraints, visibility/enabled/focus/selection state,
 value, text, help, and its matching semantic node. Tree navigation remains

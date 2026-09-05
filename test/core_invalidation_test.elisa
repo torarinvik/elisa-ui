@@ -1,0 +1,48 @@
+# Core invalidation flags are a typed, backend-neutral dirty model. This test
+# exercises durable resource/layout state separately from frame-local work.
+
+include "../src/core/ui_core.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiCore::clear_all_invalidations()
+    check("invalidation starts clear", UiCore::invalidations() == 0)
+
+    UiCore::invalidate(UiCore::Invalidation.Layout)
+    UiCore::invalidate(UiCore::Invalidation.Resources)
+    check("layout flag is observable", UiCore::is_invalidated(UiCore::Invalidation.Layout))
+    check("resource flag is durable", UiCore::is_invalidated(UiCore::Invalidation.Resources))
+    UiCore::clear_invalidations(UiCore::Invalidation.Layout)
+    check("one invalidation clears independently", not UiCore::is_invalidated(UiCore::Invalidation.Layout) and UiCore::is_invalidated(UiCore::Invalidation.Resources))
+
+    UiCore::begin_frame()
+    UiCore::clear(UiCore::rgb(1, 2, 3))
+    UiCore::accessibility(UiCore::AccessibilityRole.Label, "label", "", UiCore::Rect(0.0, 0.0, 10.0, 10.0), 1, UiCore::MAX_ACCESSIBILITY_NODES, true, false, false, 0.0, "", "", 0, 0, 0)
+    UiCore::request_frame_after(0.25)
+    check("paint work raises paint invalidation", UiCore::is_invalidated(UiCore::Invalidation.Paint))
+    check("semantic work raises semantic invalidation", UiCore::is_invalidated(UiCore::Invalidation.Semantics))
+    check("animation scheduling raises animation invalidation", UiCore::is_invalidated(UiCore::Invalidation.Animation))
+    check("frame work is a composable mask", UiCore::is_invalidated(UiCore::Invalidation.Frame))
+    UiCore::begin_frame()
+    check("begin_frame clears frame-local work", not UiCore::is_invalidated(UiCore::Invalidation.Paint) and not UiCore::is_invalidated(UiCore::Invalidation.Semantics) and not UiCore::is_invalidated(UiCore::Invalidation.Animation))
+    check("begin_frame preserves durable resources", UiCore::is_invalidated(UiCore::Invalidation.Resources))
+
+    UiCore::set_viewport(640.0, 480.0)
+    check("viewport changes raise layout work", UiCore::is_invalidated(UiCore::Invalidation.Layout))
+    check("viewport changes raise paint and semantics", UiCore::is_invalidated(UiCore::Invalidation.Paint) and UiCore::is_invalidated(UiCore::Invalidation.Semantics))
+    UiCore::clear_all_invalidations()
+    UiCore::set_viewport(640.0, 480.0)
+    check("unchanged viewport does not re-invalidate", UiCore::invalidations() == 0)
+
+    if failures == 0:
+        _ = puts("core invalidation: all checks passed")
+        return 0
+    _ = puts("core invalidation: FAILURES above")
+    return 1
