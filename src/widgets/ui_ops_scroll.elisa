@@ -1,0 +1,38 @@
+extend UiWidgets:
+    public:
+        # Lay out a whole tree into a surface of the given size.
+        def layout(root: Widget, width: f32, height: f32) -> void:
+            measure(root, 0)
+            arrange(root, 0.0, 0.0, UiCore::nonnegative_extent(width), UiCore::nonnegative_extent(height), 0)
+
+        # Maximum legal offset, derived entirely from Elisa-owned geometry.
+        # Non-scroll widgets deliberately report zero, making this safe for
+        # callers that discover targets speculatively.
+        def scroll_limit(w: Widget) -> f32:
+            match w:
+                Container.Scroll(axis, offset, fill):
+                    viewport: f32 = UiCore::nonnegative_extent(w.width if axis == UiConst::Axis.Row else w.height)
+                    content: f32 = scroll_content_extent(w)
+                    return UiCore::nonnegative_extent(content - viewport)
+                Container.ScrollWithState(axis, state, fill):
+                    viewport: f32 = UiCore::nonnegative_extent(w.width if axis == UiConst::Axis.Row else w.height)
+                    content: f32 = scroll_content_extent(w)
+                    return UiCore::nonnegative_extent(content - viewport)
+                _:
+                    return 0.0
+
+        # Move a stateful viewport to a clamped offset. The immutable Scroll
+        # constructor remains useful for fixed initial translations, but cannot
+        # be mutated through a packed handle and therefore reports no change.
+        def scroll_to(w: Widget, requested: f32) -> bool:
+            match w:
+                Container.ScrollWithState(axis, state, fill):
+                    current: f32 = UiCore::nonnegative_extent(state.offset)
+                    limit: f32 = scroll_limit(w)
+                    wanted: f32 = UiCore::nonnegative_extent(UiCore::finite_or_zero(requested))
+                    next: f32 = limit if wanted > limit else wanted
+                    difference: f32 = next - current if next >= current else current - next
+                    state.offset <- next
+                    return difference >= 0.0001
+                _:
+                    return false

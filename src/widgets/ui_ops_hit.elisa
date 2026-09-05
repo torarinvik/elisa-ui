@@ -1,0 +1,27 @@
+extend UiWidgets:
+    private:
+        def contains(w: Widget, x: f32, y: f32) -> bool:
+            return x >= w.x and y >= w.y and x < w.x + w.width and y < w.y + w.height
+
+    public:
+        # The topmost interactive widget under the pointer. Children are
+        # painted after their parent, so a depth-first walk that prefers the
+        # LAST matching descendant returns what the user sees on top.
+        def hit_depth(w: Widget, x: f32, y: f32, depth: i32) -> Widget?:
+            return null if depth >= MAX_HIERARCHY_DEPTH
+            return null if not contains(w, x, y)
+            found: mutable Widget? = null
+            hit_steps: mutable i32 = 0
+            cursor: mutable Widget? = w.first_child
+            while cursor is node |found, cursor, x, y, hit_steps|:
+                break if hit_steps >= MAX_HIERARCHY_SIBLINGS
+                hit_steps <- hit_steps + 1
+                deeper: Widget? = hit_depth(node, x, y, depth + 1)
+                found <- deeper if deeper != null
+                cursor <- node.next_sibling
+            return found if found != null
+            return w if is_interactive(w)
+            return null
+
+        def hit(w: Widget, x: f32, y: f32) -> Widget?:
+            return hit_depth(w, x, y, 0)

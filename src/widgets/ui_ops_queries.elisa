@@ -1,0 +1,199 @@
+# elisa-ui widget operations: layout, hit testing, and painting over the sealed
+# widget hierarchy. Extends `UiWidgets` (types in ui_hierarchy.elisa).
+#
+# The algorithm is wxWidgets' sizer reduced to its load-bearing parts: measure
+# bottom-up so every node knows its minimum, then arrange top-down handing each
+# child its minimum plus a share of the leftover proportional to `grow`. Two
+# passes means a container's size never depends on the order its children were
+# added.
+#
+# Geometry, hover/press state and the child links are `common:` fields of the
+# root, so the passes read and write them through the handle directly. The
+# `match`es below are over what DIFFERS per kind, and each one is exhaustive
+# over the whole tree: adding a widget kind is a compile error at each site
+# that must handle it rather than a silently missed case -- which is the entire
+# reason for splitting `Widget` into sealed sub-categories instead of writing
+# one flat enum.
+#
+# Public: the per-kind queries, `layout`, `hit`, `paint`, `pointer`, and the
+# `hot`/`active` readers. Private: the passes and the pointer state.
+
+include "./ui_hierarchy.elisa"
+
+extend UiWidgets:
+    public:
+        # The axis a container distributes its children along. A leaf has no
+        # axis; UiConst::Axis.Column is returned so callers need no special case.
+        def axis_of(w: Widget) -> UiConst::Axis:
+            match w:
+                Window.Top(title, resizable):
+                    return UiConst::Axis.Column
+                Window.Floating(title):
+                    return UiConst::Axis.Column
+                Container.Box(axis, padding, spacing, fill):
+                    return axis
+                Container.Grid(columns, padding, spacing, fill):
+                    return UiConst::Axis.Column
+                Container.Scroll(axis, offset, fill):
+                    return axis
+                Container.ScrollWithState(axis, state, fill):
+                    return axis
+                Control.Label(text, size, ink):
+                    return UiConst::Axis.Column
+                Control.Gauge(fraction, track, bar):
+                    return UiConst::Axis.Column
+                Control.Slider(value, low, high, track, knob):
+                    return UiConst::Axis.Column
+                Control.TextBox(text, caret, size, ink, fill):
+                    return UiConst::Axis.Column
+                Button.Push(label, rest, hover, press):
+                    return UiConst::Axis.Column
+                Button.Toggle(label, on, rest, hover, press):
+                    return UiConst::Axis.Column
+                Button.Check(label, checked, rest, hover, press):
+                    return UiConst::Axis.Column
+                Button.Radio(label, group, selected, rest, hover, press):
+                    return UiConst::Axis.Column
+
+        # Inner margin a container reserves on every side.
+        def padding_of(w: Widget) -> f32:
+            match w:
+                Window.Top(title, resizable):
+                    return 0.0
+                Window.Floating(title):
+                    return 0.0
+                Container.Box(axis, padding, spacing, fill):
+                    return padding
+                Container.Grid(columns, padding, spacing, fill):
+                    return padding
+                Container.Scroll(axis, offset, fill):
+                    return 0.0
+                Container.ScrollWithState(axis, state, fill):
+                    return 0.0
+                Control.Label(text, size, ink):
+                    return 0.0
+                Control.Gauge(fraction, track, bar):
+                    return 0.0
+                Control.Slider(value, low, high, track, knob):
+                    return 0.0
+                Control.TextBox(text, caret, size, ink, fill):
+                    return 0.0
+                Button.Push(label, rest, hover, press):
+                    return 0.0
+                Button.Toggle(label, on, rest, hover, press):
+                    return 0.0
+                Button.Check(label, checked, rest, hover, press):
+                    return 0.0
+                Button.Radio(label, group, selected, rest, hover, press):
+                    return 0.0
+
+        # Scroll containers keep their viewport box while translating the
+        # arranged content along the declared axis. The offset is intentionally
+        # read here, in Elisa, so every backend sees identical child geometry.
+        def scroll_offset_of(w: Widget) -> f32:
+            match w:
+                Container.Scroll(axis, offset, fill):
+                    return UiCore::nonnegative_extent(offset)
+                Container.ScrollWithState(axis, state, fill):
+                    return UiCore::nonnegative_extent(state.offset)
+                _:
+                    return 0.0
+
+        # Gap a container leaves between adjacent children.
+        def spacing_of(w: Widget) -> f32:
+            match w:
+                Window.Top(title, resizable):
+                    return 0.0
+                Window.Floating(title):
+                    return 0.0
+                Container.Box(axis, padding, spacing, fill):
+                    return spacing
+                Container.Grid(columns, padding, spacing, fill):
+                    return spacing
+                Container.Scroll(axis, offset, fill):
+                    return 0.0
+                Container.ScrollWithState(axis, state, fill):
+                    return 0.0
+                Control.Label(text, size, ink):
+                    return 0.0
+                Control.Gauge(fraction, track, bar):
+                    return 0.0
+                Control.Slider(value, low, high, track, knob):
+                    return 0.0
+                Control.TextBox(text, caret, size, ink, fill):
+                    return 0.0
+                Button.Push(label, rest, hover, press):
+                    return 0.0
+                Button.Toggle(label, on, rest, hover, press):
+                    return 0.0
+                Button.Check(label, checked, rest, hover, press):
+                    return 0.0
+                Button.Radio(label, group, selected, rest, hover, press):
+                    return 0.0
+
+        # Whether the widget can hold children. Only containers and windows
+        # nest; `children` uses this to leave a leaf's `first_child` null.
+        def can_nest(w: Widget) -> bool:
+            match w:
+                Window.Top(title, resizable):
+                    return true
+                Window.Floating(title):
+                    return true
+                Container.Box(axis, padding, spacing, fill):
+                    return true
+                Container.Grid(columns, padding, spacing, fill):
+                    return true
+                Container.Scroll(axis, offset, fill):
+                    return true
+                Container.ScrollWithState(axis, state, fill):
+                    return true
+                Control.Label(text, size, ink):
+                    return false
+                Control.Gauge(fraction, track, bar):
+                    return false
+                Control.Slider(value, low, high, track, knob):
+                    return false
+                Control.TextBox(text, caret, size, ink, fill):
+                    return false
+                Button.Push(label, rest, hover, press):
+                    return false
+                Button.Toggle(label, on, rest, hover, press):
+                    return false
+                Button.Check(label, checked, rest, hover, press):
+                    return false
+                Button.Radio(label, group, selected, rest, hover, press):
+                    return false
+
+        # Whether the widget takes pointer input. Buttons, sliders and text
+        # boxes do; labels, gauges and containers are inert, so a click falls
+        # through them.
+        def is_interactive(w: Widget) -> bool:
+            match w:
+                Window.Top(title, resizable):
+                    return false
+                Window.Floating(title):
+                    return false
+                Container.Box(axis, padding, spacing, fill):
+                    return false
+                Container.Grid(columns, padding, spacing, fill):
+                    return false
+                Container.Scroll(axis, offset, fill):
+                    return false
+                Container.ScrollWithState(axis, state, fill):
+                    return false
+                Control.Label(text, size, ink):
+                    return false
+                Control.Gauge(fraction, track, bar):
+                    return false
+                Control.Slider(value, low, high, track, knob):
+                    return true
+                Control.TextBox(text, caret, size, ink, fill):
+                    return true
+                Button.Push(label, rest, hover, press):
+                    return true
+                Button.Toggle(label, on, rest, hover, press):
+                    return true
+                Button.Check(label, checked, rest, hover, press):
+                    return true
+                Button.Radio(label, group, selected, rest, hover, press):
+                    return true

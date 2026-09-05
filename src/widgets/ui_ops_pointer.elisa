@@ -1,0 +1,83 @@
+extend UiWidgets:
+    private:
+        global mutable hot_widget: Widget? = null
+        global mutable active_widget: Widget? = null
+
+        # Find the innermost viewport under a pointer. A child is searched
+        # first so nested scroll areas consume the wheel before an ancestor.
+        def scroll_target(w: Widget, x: f32, y: f32, depth: i32) -> Widget?:
+            return null if depth >= MAX_HIERARCHY_DEPTH
+            return null if not contains(w, x, y)
+            scroll_steps: mutable i32 = 0
+            cursor: mutable Widget? = w.first_child
+            while cursor is node |cursor, x, y, scroll_steps|:
+                break if scroll_steps >= MAX_HIERARCHY_SIBLINGS
+                scroll_steps <- scroll_steps + 1
+                found: Widget? = scroll_target(node, x, y, depth + 1)
+                return found if found != null
+                cursor <- node.next_sibling
+            match w:
+                Container.Scroll(axis, offset, fill):
+                    return w
+                Container.ScrollWithState(axis, state, fill):
+                    return w
+                _:
+                    return null
+
+        # Route a wheel event to the viewport under the pointer. Native wheel
+        # deltas follow AppKit/SDL convention (negative means content moves
+        # down), hence subtracting the delta from the logical offset.
+        def scroll_pointer(root: Widget, at: UiCore::Vec2, delta: UiCore::Vec2) -> void:
+            target: Widget? = scroll_target(root, at.x, at.y, 0)
+            return if target == null
+            if target is viewport:
+                axis: UiConst::Axis = axis_of(viewport)
+                amount: f32 = delta.x if axis == UiConst::Axis.Row else delta.y
+                current: f32 = scroll_offset_of(viewport)
+                changed: bool = scroll_to(viewport, current - amount)
+                layout(root, root.width, root.height) if changed
+
+        # One function per pointer kind. `root` is a real parameter in each: a body
+        # reaching the widget store only through a global has no store to decode a
+        # handle against, which stage0 rejects outright and stage1 now declines
+        # (43a08c31). Every one of them uses it for the hit test anyway.
+
+        # Move the hover to whatever is under `at`, and report it.
+        def hover_at(root: Widget, at: UiCore::Vec2) -> Widget?:
+            target: Widget? = hit(root, at.x, at.y)
+            if hot_widget is previous:
+                previous.hovered <- false
+            hot_widget <- target
+            if target is over:
+                over.hovered <- true
+            return target
+
+        def press_at(root: Widget, at: UiCore::Vec2, button: i32) -> void:
+            return if button != UiCore::PointerButton.Primary.i32()
+            target: Widget? = hover_at(root, at)
+            if target is pressed_now:
+                active_widget <- target
+                pressed_now.pressed <- true
+
+        # A click is a release ON the widget that holds the press, which is exactly
+        # "the widget under the pointer is pressed" -- only the active one ever is.
+        def release_at(root: Widget, at: UiCore::Vec2, button: i32) -> void:
+            return if button != UiCore::PointerButton.Primary.i32()
+            target: Widget? = hover_at(root, at)
+            clicked: mutable bool = false
+            if target is released_on:
+                clicked <- released_on.pressed
+            if active_widget is held:
+                held.pressed <- false
+            active_widget <- null
+            if clicked and target is clicked_widget:
+                app_widget_event(clicked_widget, UiConst::WidgetEvent.Click.i32())
+
+        def leave_all(root: Widget) -> void:
+            _ = hover_at(root, UiCore::Vec2(0.0, 0.0))
+            if active_widget is held:
+                held.pressed <- false
+            active_widget <- null
+            if hot_widget is left:
+                left.hovered <- false
+            hot_widget <- null
