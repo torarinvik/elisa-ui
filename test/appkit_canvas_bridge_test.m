@@ -354,9 +354,9 @@ int main(void) {
                     @"invalid window title was accepted")) return 1;
         NSString *title = @"test";
         elisa_appkit_canvas_set_activation_policy(NSApplicationActivationPolicyProhibited);
-        int opened = elisa_appkit_canvas_open((size_t)(__bridge void *)title,
-                                              200, 100, 15,
-                                              elisa_appkit_canvas_backing_store_buffered());
+        size_t opened = elisa_appkit_canvas_open((size_t)(__bridge void *)title,
+                                                 200, 100, 15,
+                                                 elisa_appkit_canvas_backing_store_buffered());
         if (!opened) return 1;
         elisa_appkit_canvas_set_tabbing_mode(NSWindowTabbingModeDisallowed);
         elisa_appkit_canvas_set_restorable(0);
@@ -570,6 +570,7 @@ int main(void) {
         if (require([second accessibilityPerformIncrement], @"increment action was rejected")) return 1;
         if (require(fabs(test_slider_value - 0.80f) < 0.001f, @"increment action did not reach the app")) return 1;
         [elisa_appkit_canvas_window() close];
+        elisa_appkit_canvas_release_window(opened);
     }
     puts("appkit canvas bridge: all checks passed");
     return 0;

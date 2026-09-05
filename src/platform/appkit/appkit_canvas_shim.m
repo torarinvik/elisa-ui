@@ -62,9 +62,10 @@ extern size_t elisa_appkit_canvas_tracking_options(void);
 
 @class ElisaCanvasView;
 @class ElisaAccessibilityElement;
-// An unpresented headless window is not reliably retained by its content view;
-// keep this owning reference until Cocoa takes over the visible window.
-static NSWindow *elisa_canvas_window;
+// Elisa owns the retained opaque window handle for the duration of a run. The
+// shim keeps only a weak lookup so callbacks and native operations can resolve
+// the current Cocoa object without maintaining a second lifetime owner.
+static __weak NSWindow *elisa_canvas_window;
 static NSMutableArray *elisa_accessibility_children;
 
 // Cursor objects are Cocoa singletons. Return opaque, non-owning pointers so
@@ -451,8 +452,8 @@ size_t elisa_appkit_canvas_accessibility_layout_changed_notification(void) {
 // The window title arrives as an opaque, counted CFString created by Elisa.
 // Cocoa retains/copies it through -setTitle; the bridge does not perform any
 // UTF-8 decoding itself.
-int elisa_appkit_canvas_open(size_t title, float width, float height,
-                             int style, int backing) {
+size_t elisa_appkit_canvas_open(size_t title, float width, float height,
+                                int style, int backing) {
     @autoreleasepool {
         [NSApplication sharedApplication];
         NSRect rect = NSMakeRect(0, 0, width, height);
@@ -471,10 +472,25 @@ int elisa_appkit_canvas_open(size_t title, float width, float height,
         elisa_accessibility_children = [NSMutableArray new];
         elisa_canvas_window = window;
         elisa_canvas_delegate = [ElisaCanvasDelegate new];
+        // Elisa holds the returned +1 until the run finishes. Prevent
+        // -close from consuming that ownership before the FFI release point.
+        [window setReleasedWhenClosed:NO];
         [window setDelegate:elisa_canvas_delegate];
         [window setContentView:view];
-        return 1;
+        // Transfer the window retain to Elisa. The weak lookup above is only
+        // an observation point for callbacks and does not own this object.
+        return (size_t)(__bridge_retained void *)window;
     }
+}
+
+void elisa_appkit_canvas_release_window(size_t handle) {
+    if (handle == 0) return;
+    id object = (__bridge id)(void *)handle;
+    if (![object isKindOfClass:[NSWindow class]]) return;
+    // Transfer Elisa's +1 into ARC exactly once. Keeping the bridged value as
+    // a strong local while also calling CFRelease would over-release it when
+    // ARC tears that local down at function exit.
+    (void)CFBridgingRelease((CFTypeRef)(void *)handle);
 }
 
 void elisa_appkit_canvas_set_activation_policy(int policy) {

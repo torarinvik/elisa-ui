@@ -209,11 +209,13 @@ Menu action names are registered through the Objective-C runtime's C ABI from
 Elisa; text-input selector names are decoded there as well. The shim receives
 only opaque `SEL` tokens and forwards them across the FFI.
 
-The canvas keeps one native strong reference to its root `NSWindow` on purpose.
-An unpresented headless window is not reliably retained by its content view, and
-AppKit can deliver deferred accessibility or close callbacks after the visible
-close action. Moving that final owner into Elisa would permit use-after-free;
-all window policy and operations still cross the boundary as explicit FFI facts.
+Elisa keeps one retained opaque handle to its root `NSWindow` for the duration of
+each run. An unpresented headless window is not reliably retained by its content
+view, so the Objective-C shim observes that handle through a weak lookup while
+AppKit delivers deferred accessibility or close callbacks. Releasing the handle
+after the headless frame or visible run lets Cocoa tear down the tree without a
+second native lifetime owner; all window policy and operations still cross the
+boundary as explicit FFI facts.
 
 Text fields are currently single-line and deliberately bounded to 1023 UTF-8
 bytes per widget so the flat layer remains allocation-free. Truncation preserves

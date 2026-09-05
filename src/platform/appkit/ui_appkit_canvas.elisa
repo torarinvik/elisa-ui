@@ -24,7 +24,8 @@ extern elisa_appkit_canvas_tracking_active_in_key_window() -> usize
 extern elisa_appkit_canvas_tracking_in_visible_rect() -> usize
 extern elisa_appkit_canvas_run_loop_common_modes() -> usize
 extern elisa_appkit_canvas_not_found() -> usize
-extern elisa_appkit_canvas_open(title: usize, width: f32, height: f32, style: i32, backing: i32) -> i32
+extern elisa_appkit_canvas_open(title: usize, width: f32, height: f32, style: i32, backing: i32) -> usize
+extern elisa_appkit_canvas_release_window(handle: usize) -> void
 extern elisa_appkit_canvas_set_activation_policy(policy: i32) -> void
 extern elisa_appkit_canvas_focus() -> void
 extern elisa_appkit_canvas_set_tabbing_mode(mode: i32) -> void
@@ -452,6 +453,9 @@ module UiAppKitCanvas:
         global mutable canvas_initialized: bool = false
         global mutable frame_rendered: bool = false
         global mutable frame_context: usize = 0
+        # The retained root window handle lives in Elisa for exactly one run.
+        # Objective-C keeps only a weak lookup for callbacks and operations.
+        global mutable canvas_window: usize = 0
         const MENU_APPLICATION_LABEL_CAPACITY: usize = 4096
         global mutable menu_application_label_storage: u8[MENU_APPLICATION_LABEL_CAPACITY] = zeroed
         const ACCESSIBILITY_IDENTIFIER_CAPACITY: usize = 32
@@ -744,6 +748,11 @@ module UiAppKitCanvas:
         def end_native_frame() -> void:
             frame_context <- 0
 
+        def release_canvas_window() -> void:
+            return if canvas_window == 0
+            elisa_appkit_canvas_release_window(canvas_window)
+            canvas_window <- 0
+
         # AppKit reports hardware key codes plus a UTF-16 character. Translate
         # that platform vocabulary here so the Objective-C host only forwards
         # event facts across the FFI boundary.
@@ -1023,12 +1032,14 @@ module UiAppKitCanvas:
                 height: f32 = UiCore::nonnegative_extent(options.height)
                 style: i32 = window_style(options)
                 headless: bool = smoke_mode()
+                release_canvas_window()
                 canvas_initialized <- false
                 headless_session <- headless
                 elisa_appkit_canvas_set_activation_policy(activation_policy(headless))
-                opened: i32 = elisa_appkit_canvas_open(native_title, width, height, style, elisa_appkit_canvas_backing_store_buffered())
+                opened: usize = elisa_appkit_canvas_open(native_title, width, height, style, elisa_appkit_canvas_backing_store_buffered())
                 CFRelease(native_title)
                 return 1 if opened == 0
+                canvas_window <- opened
                 elisa_appkit_canvas_set_tabbing_mode(tabbing_mode(options.tabbing))
                 elisa_appkit_canvas_set_restorable(1 if options.restorable else 0)
                 elisa_appkit_canvas_center() if options.centered
@@ -1048,17 +1059,25 @@ module UiAppKitCanvas:
                     if snapshot_opt is snapshot:
                         snapshot_length: usize = strlen(snapshot)
                         snapshot_path <- native_string(sview(snapshot, 0, snapshot_length.i64()))
-                        return 2 if snapshot_length > 0 and snapshot_path == 0
+                        if snapshot_length > 0 and snapshot_path == 0:
+                            release_canvas_window()
+                            return 2
                     bitmap_width: i32 = bitmap_extent(width)
                     bitmap_height: i32 = bitmap_extent(height)
                     result: i32 = elisa_appkit_canvas_present_headless(elisa_appkit_canvas_bitmap_color_space_calibrated_rgb(), elisa_appkit_canvas_bitmap_file_type_png(), snapshot_path, bitmap_width, bitmap_height, SNAPSHOT_BITS_PER_SAMPLE, SNAPSHOT_SAMPLES_PER_PIXEL, SNAPSHOT_HAS_ALPHA, SNAPSHOT_BITMAP_FORMAT)
                     CFRelease(snapshot_path) if snapshot_path != 0
-                    return 2 if result == 0 or not frame_was_rendered()
+                    if result == 0 or not frame_was_rendered():
+                        release_canvas_window()
+                        return 2
+                    release_canvas_window()
                     return 0
-                return 2 if elisa_appkit_canvas_present() == 0
+                if elisa_appkit_canvas_present() == 0:
+                    release_canvas_window()
+                    return 2
                 elisa_appkit_canvas_redraw()
                 elisa_appkit_canvas_activate() if options.activate
                 elisa_appkit_canvas_run()
+                release_canvas_window()
                 return 0
 
         def run_with_min_size(title: sview, width: f32, height: f32, min_width: f32, min_height: f32) -> i64:

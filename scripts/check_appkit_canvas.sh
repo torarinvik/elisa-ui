@@ -198,15 +198,15 @@ if grep -Eq 'NSMakeRange\(location,[[:space:]]*0\)' "$ROOT/src/platform/appkit/a
   echo "appkit canvas: text range length policy leaked back into Objective-C" >&2
   exit 1
 fi
-if awk '/int elisa_appkit_canvas_open\(/ { inside=1 } inside && /make_first_responder/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if awk '/size_t elisa_appkit_canvas_open\(/ { inside=1 } inside && /make_first_responder/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: focus policy leaked back into Objective-C window creation" >&2
   exit 1
 fi
-if awk '/int elisa_appkit_canvas_open\(/ { inside=1 } inside && /setActivationPolicy/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if awk '/size_t elisa_appkit_canvas_open\(/ { inside=1 } inside && /setActivationPolicy/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: activation policy leaked back into Objective-C window creation" >&2
   exit 1
 fi
-if awk '/int elisa_appkit_canvas_open\(/ { inside=1 } inside && /setTabbingMode|setRestorable/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if awk '/size_t elisa_appkit_canvas_open\(/ { inside=1 } inside && /setTabbingMode|setRestorable/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: window policy leaked back into Objective-C window creation" >&2
   exit 1
 fi
