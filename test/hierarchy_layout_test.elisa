@@ -258,4 +258,26 @@ def main() -> i64:
                 test_failures <- test_failures + 1
                 _ = puts("slider knob stays inside its frame")
 
+        # Packed handles do not expose identity comparison, so a caller can
+        # still construct a malformed self-link by writing a common directly.
+        # Every hierarchy traversal must terminate instead of recursing until
+        # the process stack is exhausted.
+        cyclic: Widget = Container.Box(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, axis: UiConst::Axis.Column, padding: 0.0, spacing: 0.0, fill: UiCore::Color{r: 0, g: 0, b: 0, a: 0})
+        cyclic.first_child <- cyclic
+        layout(cyclic, 40.0, 20.0)
+        check("cyclic layout keeps the root box", cyclic.width, 40.0)
+        _ = hit(cyclic, 1.0, 1.0)
+        UiCore::begin_frame()
+        paint(cyclic)
+        test_failures <- test_failures + 1 if UiCore::command_count() != 0
+
+        # The sibling budget covers a cycle that does not increase recursion
+        # depth (the common failure mode for a linked-list walk).
+        sibling_cycle: Widget = Button.Push(min_width: 20.0, min_height: 8.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "cycle", rest: grey(30), hover: grey(40), press: grey(20))
+        sibling_parent: Widget = Container.Box(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: sibling_cycle, next_sibling: null, axis: UiConst::Axis.Row, padding: 0.0, spacing: 0.0, fill: grey(15))
+        sibling_cycle.next_sibling <- sibling_cycle
+        layout(sibling_parent, 80.0, 20.0)
+        check("sibling cycle keeps the parent box", sibling_parent.width, 80.0)
+        _ = hit(sibling_parent, 1.0, 1.0)
+
         return test_failures.i64()

@@ -138,6 +138,13 @@ logical focused control for when the window becomes active again.
 Focusing a descendant inside a flat scroll viewport automatically reveals the
 smallest visible range, including through nested scroll ancestors.
 
+The sealed hierarchy operations also fail closed on malformed links. Elisa
+bounds every child/sibling walk and recursive descent with framework-owned
+depth and sibling budgets because packed `Widget` handles intentionally do not
+expose identity comparison. A self-linked child or sibling cycle therefore
+terminates without hanging layout, hit testing, painting or scroll targeting;
+well-formed trees built by the normal constructors are unaffected.
+
 ## Accessibility
 
 Each painted control produces a parallel semantic node containing its stable

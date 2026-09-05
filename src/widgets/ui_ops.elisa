@@ -203,6 +203,15 @@ extend UiWidgets:
     # ------------------------------------------------------------------
 
     private:
+        # Packed hierarchy handles deliberately do not expose identity
+        # comparisons. Bound every recursive descent and sibling walk so a
+        # malformed self-link or cycle cannot hang a backend indefinitely.
+        # These are traversal safety limits, not widget-arena capacities; a
+        # well-formed tree still owns all of its nodes and is never truncated
+        # by the normal constructors.
+        const MAX_HIERARCHY_DEPTH: i32 = 256
+        const MAX_HIERARCHY_SIBLINGS: i32 = 1024
+
         # The amount of content that can be revealed by a stateful viewport.
         # Child boxes already contain the current translation, so adding the
         # current offset recovers their unscrolled extent without a second
@@ -211,8 +220,11 @@ extend UiWidgets:
             is_row: bool = axis_of(w) == UiConst::Axis.Row
             translated: f32 = scroll_offset_of(w)
             extent: mutable f32 = 0.0
+            content_steps: mutable i32 = 0
             cursor: mutable Widget? = w.first_child
-            while cursor is node |extent, cursor, is_row, translated, w|:
+            while cursor is node |extent, cursor, is_row, translated, w, content_steps|:
+                break if content_steps >= MAX_HIERARCHY_SIBLINGS
+                content_steps <- content_steps + 1
                 end: f32 = node.x - w.x + node.width + translated if is_row else node.y - w.y + node.height + translated
                 end <- 0.0 if end < 0.0
                 extent <- end if end > extent
@@ -238,8 +250,11 @@ extend UiWidgets:
         # storing a count, so adding or removing a child needs no bookkeeping.
         def child_count(w: Widget) -> f32:
             total: mutable f32 = 0.0
+            child_steps: mutable i32 = 0
             cursor: mutable Widget? = w.first_child
-            while cursor is node |total, cursor|:
+            while cursor is node |total, cursor, child_steps|:
+                break if child_steps >= MAX_HIERARCHY_SIBLINGS
+                child_steps <- child_steps + 1
                 total <- total + 1.0
                 cursor <- node.next_sibling
             return total
@@ -248,7 +263,8 @@ extend UiWidgets:
         # along its axis (plus spacing and padding) and maximised across it. A
         # declared minimum still wins when it is larger, which is how a button
         # reserves its clickable area even with a short label.
-        def measure(w: Widget) -> void:
+        def measure(w: Widget, depth: i32) -> void:
+            return if depth >= MAX_HIERARCHY_DEPTH
             w.min_width <- UiCore::nonnegative_extent(w.min_width)
             w.min_height <- UiCore::nonnegative_extent(w.min_height)
             # Grid is the one container whose main-axis demand is not a simple
@@ -262,9 +278,12 @@ extend UiWidgets:
                     widest: mutable f32 = 0.0
                     tallest: mutable f32 = 0.0
                     count: mutable f32 = 0.0
+                    measure_grid_steps: mutable i32 = 0
                     cursor: mutable Widget? = child
-                    while cursor is node |widest, tallest, count, cursor|:
-                        measure(node)
+                    while cursor is node |widest, tallest, count, cursor, measure_grid_steps|:
+                        break if measure_grid_steps >= MAX_HIERARCHY_SIBLINGS
+                        measure_grid_steps <- measure_grid_steps + 1
+                        measure(node, depth + 1)
                         child_width: f32 = UiCore::nonnegative_extent(node.min_width)
                         child_height: f32 = UiCore::nonnegative_extent(node.min_height)
                         widest <- child_width if child_width > widest else widest
@@ -291,9 +310,12 @@ extend UiWidgets:
             along: mutable f32 = 0.0
             across: mutable f32 = 0.0
             count: mutable f32 = 0.0
+            measure_list_steps: mutable i32 = 0
             cursor: mutable Widget? = child
-            while cursor is node |along, across, count, cursor, is_row|:
-                measure(node)
+            while cursor is node |along, across, count, cursor, is_row, measure_list_steps|:
+                break if measure_list_steps >= MAX_HIERARCHY_SIBLINGS
+                measure_list_steps <- measure_list_steps + 1
+                measure(node, depth + 1)
                 child_along: f32 = UiCore::nonnegative_extent(node.min_width if is_row else node.min_height)
                 child_across: f32 = UiCore::nonnegative_extent(node.min_height if is_row else node.min_width)
                 along <- along + child_along
@@ -312,7 +334,8 @@ extend UiWidgets:
         # the cross axis. A container with no growing child simply leaves the
         # slack unused, which is wxSizer's behaviour when no item has a
         # non-zero proportion.
-        def arrange(w: Widget, x: f32, y: f32, width: f32, height: f32) -> void:
+        def arrange(w: Widget, x: f32, y: f32, width: f32, height: f32, depth: i32) -> void:
+            return if depth >= MAX_HIERARCHY_DEPTH
             w with { x, y, width, height }
             first: Widget? = w.first_child
             return if first == null
@@ -325,8 +348,11 @@ extend UiWidgets:
                     widest: mutable f32 = 0.0
                     tallest: mutable f32 = 0.0
                     count: mutable f32 = 0.0
+                    arrange_grid_scan_steps: mutable i32 = 0
                     scan: mutable Widget? = first
-                    while scan is node |widest, tallest, count, scan|:
+                    while scan is node |widest, tallest, count, scan, arrange_grid_scan_steps|:
+                        break if arrange_grid_scan_steps >= MAX_HIERARCHY_SIBLINGS
+                        arrange_grid_scan_steps <- arrange_grid_scan_steps + 1
                         child_width: f32 = UiCore::nonnegative_extent(node.min_width)
                         child_height: f32 = UiCore::nonnegative_extent(node.min_height)
                         widest <- child_width if child_width > widest else widest
@@ -356,9 +382,12 @@ extend UiWidgets:
                     cell_height <- tallest if cell_height < tallest else cell_height
                     column: mutable f32 = 0.0
                     row: mutable f32 = 0.0
+                    arrange_grid_walk_steps: mutable i32 = 0
                     walk: mutable Widget? = first
-                    while walk is node |column, row, walk, inner_x, inner_y, cell_width, cell_height, gap, columns_count|:
-                        arrange(node, inner_x + column * (cell_width + gap), inner_y + row * (cell_height + gap), cell_width, cell_height)
+                    while walk is node |column, row, walk, inner_x, inner_y, cell_width, cell_height, gap, columns_count, arrange_grid_walk_steps|:
+                        break if arrange_grid_walk_steps >= MAX_HIERARCHY_SIBLINGS
+                        arrange_grid_walk_steps <- arrange_grid_walk_steps + 1
+                        arrange(node, inner_x + column * (cell_width + gap), inner_y + row * (cell_height + gap), cell_width, cell_height, depth + 1)
                         column <- column + 1.0
                         if column >= columns_count:
                             column <- 0.0
@@ -386,8 +415,11 @@ extend UiWidgets:
             # the rest.
             demand: mutable f32 = 0.0
             weight: mutable f32 = 0.0
+            arrange_scan_steps: mutable i32 = 0
             scan: mutable Widget? = first
-            while scan is node |demand, weight, scan, is_row|:
+            while scan is node |demand, weight, scan, is_row, arrange_scan_steps|:
+                break if arrange_scan_steps >= MAX_HIERARCHY_SIBLINGS
+                arrange_scan_steps <- arrange_scan_steps + 1
                 demand <- demand + UiCore::nonnegative_extent(node.min_width if is_row else node.min_height)
                 weight <- weight + UiCore::nonnegative_extent(node.grow)
                 scan <- node.next_sibling
@@ -397,22 +429,25 @@ extend UiWidgets:
 
             # Second walk: place each child at the running offset.
             offset: mutable f32 = 0.0
+            arrange_walk_steps: mutable i32 = 0
             walk: mutable Widget? = first
-            while walk is node |offset, walk, is_row, inner_x, inner_y, inner_width, inner_height, share, scroll_offset|:
+            while walk is node |offset, walk, is_row, inner_x, inner_y, inner_width, inner_height, share, scroll_offset, arrange_walk_steps|:
+                break if arrange_walk_steps >= MAX_HIERARCHY_SIBLINGS
+                arrange_walk_steps <- arrange_walk_steps + 1
                 base: f32 = UiCore::nonnegative_extent(node.min_width if is_row else node.min_height)
                 extent: f32 = base + share * UiCore::nonnegative_extent(node.grow)
                 if is_row:
-                    arrange(node, inner_x + offset - scroll_offset, inner_y, extent, inner_height)
+                    arrange(node, inner_x + offset - scroll_offset, inner_y, extent, inner_height, depth + 1)
                 else:
-                    arrange(node, inner_x, inner_y + offset - scroll_offset, inner_width, extent)
+                    arrange(node, inner_x, inner_y + offset - scroll_offset, inner_width, extent, depth + 1)
                 offset <- offset + extent + gap
                 walk <- node.next_sibling
 
     public:
         # Lay out a whole tree into a surface of the given size.
         def layout(root: Widget, width: f32, height: f32) -> void:
-            measure(root)
-            arrange(root, 0.0, 0.0, UiCore::nonnegative_extent(width), UiCore::nonnegative_extent(height))
+            measure(root, 0)
+            arrange(root, 0.0, 0.0, UiCore::nonnegative_extent(width), UiCore::nonnegative_extent(height), 0)
 
         # Maximum legal offset, derived entirely from Elisa-owned geometry.
         # Non-scroll widgets deliberately report zero, making this safe for
@@ -458,17 +493,24 @@ extend UiWidgets:
         # The topmost interactive widget under the pointer. Children are
         # painted after their parent, so a depth-first walk that prefers the
         # LAST matching descendant returns what the user sees on top.
-        def hit(w: Widget, x: f32, y: f32) -> Widget?:
+        def hit_depth(w: Widget, x: f32, y: f32, depth: i32) -> Widget?:
+            return null if depth >= MAX_HIERARCHY_DEPTH
             return null if not contains(w, x, y)
             found: mutable Widget? = null
+            hit_steps: mutable i32 = 0
             cursor: mutable Widget? = w.first_child
-            while cursor is node |found, cursor, x, y|:
-                deeper: Widget? = hit(node, x, y)
+            while cursor is node |found, cursor, x, y, hit_steps|:
+                break if hit_steps >= MAX_HIERARCHY_SIBLINGS
+                hit_steps <- hit_steps + 1
+                deeper: Widget? = hit_depth(node, x, y, depth + 1)
                 found <- deeper if deeper != null
                 cursor <- node.next_sibling
             return found if found != null
             return w if is_interactive(w)
             return null
+
+        def hit(w: Widget, x: f32, y: f32) -> Widget?:
+            return hit_depth(w, x, y, 0)
 
     # ------------------------------------------------------------------
     # Painting
@@ -574,15 +616,22 @@ extend UiWidgets:
         # Emit one widget's own drawing, then recurse into its children.
         # Pre-order gives painter's-algorithm ordering for free: a parent's
         # background is laid down before anything it contains.
-        def paint(w: Widget) -> void:
+        def paint_depth(w: Widget, depth: i32) -> void:
+            return if depth >= MAX_HIERARCHY_DEPTH
             surface: UiCore::Color = fill_of(w)
             if surface.a != 0:
                 UiCore::fill(box_of(w), surface)
             paint_content(w)
+            paint_steps: mutable i32 = 0
             cursor: mutable Widget? = w.first_child
-            while cursor is node |cursor|:
-                paint(node)
+            while cursor is node |cursor, paint_steps|:
+                break if paint_steps >= MAX_HIERARCHY_SIBLINGS
+                paint_steps <- paint_steps + 1
+                paint_depth(node, depth + 1)
                 cursor <- node.next_sibling
+
+        def paint(w: Widget) -> void:
+            paint_depth(w, 0)
 
     # ------------------------------------------------------------------
     # Pointer state machine
@@ -602,11 +651,15 @@ extend UiWidgets:
 
         # Find the innermost viewport under a pointer. A child is searched
         # first so nested scroll areas consume the wheel before an ancestor.
-        def scroll_target(w: Widget, x: f32, y: f32) -> Widget?:
+        def scroll_target(w: Widget, x: f32, y: f32, depth: i32) -> Widget?:
+            return null if depth >= MAX_HIERARCHY_DEPTH
             return null if not contains(w, x, y)
+            scroll_steps: mutable i32 = 0
             cursor: mutable Widget? = w.first_child
-            while cursor is node |cursor, x, y|:
-                found: Widget? = scroll_target(node, x, y)
+            while cursor is node |cursor, x, y, scroll_steps|:
+                break if scroll_steps >= MAX_HIERARCHY_SIBLINGS
+                scroll_steps <- scroll_steps + 1
+                found: Widget? = scroll_target(node, x, y, depth + 1)
                 return found if found != null
                 cursor <- node.next_sibling
             match w:
@@ -621,7 +674,7 @@ extend UiWidgets:
         # deltas follow AppKit/SDL convention (negative means content moves
         # down), hence subtracting the delta from the logical offset.
         def scroll_pointer(root: Widget, at: UiCore::Vec2, delta: UiCore::Vec2) -> void:
-            target: Widget? = scroll_target(root, at.x, at.y)
+            target: Widget? = scroll_target(root, at.x, at.y, 0)
             return if target == null
             if target is viewport:
                 axis: UiConst::Axis = axis_of(viewport)
