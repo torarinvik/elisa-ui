@@ -237,6 +237,15 @@ extend UiCore:
             safe: f32 = finite_or_zero(value)
             return safe if safe > 0.0 else 0.0
 
+        # Shared geometry and typography values use a conservative finite cap
+        # before they reach a native API. Keeping the cap in Core lets platform
+        # adapters sanitize direct metric calls without depending on widgets.
+        const MAX_GEOMETRY_EXTENT: f32 = 16777216.0
+
+        def bounded_extent(value: f32) -> f32:
+            safe: f32 = nonnegative_extent(value)
+            return MAX_GEOMETRY_EXTENT if safe > MAX_GEOMETRY_EXTENT else safe
+
         # Normalize values that represent a fraction or progress amount. The
         # Sanitize malformed host values before applying the ordinary lower and
         # upper bounds, so neither NaN nor infinity can poison layout or paint.

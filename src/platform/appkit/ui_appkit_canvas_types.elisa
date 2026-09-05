@@ -9,16 +9,18 @@ module UiAppKitCanvas:
             return clock_gettime_nsec_np(CLOCK_MONOTONIC).f64() / 1000000000.0
 
         def font_ascent(size: f32) -> f32:
-            font: usize = CTFontCreateUIFontForLanguage(SYSTEM_UI_FONT, size.f64(), 0)
+            safe_size: f32 = UiCore::bounded_extent(size)
+            font: usize = CTFontCreateUIFontForLanguage(SYSTEM_UI_FONT, safe_size.f64(), 0)
             return 0.0 if font == 0
-            ascent: f32 = CTFontGetAscent(font).f32()
+            ascent: f32 = UiCore::bounded_extent(CTFontGetAscent(font).f32())
             CFRelease(font)
             return ascent
 
         def font_line_height(size: f32) -> f32:
-            font: usize = CTFontCreateUIFontForLanguage(SYSTEM_UI_FONT, size.f64(), 0)
+            safe_size: f32 = UiCore::bounded_extent(size)
+            font: usize = CTFontCreateUIFontForLanguage(SYSTEM_UI_FONT, safe_size.f64(), 0)
             return 0.0 if font == 0
-            height: f32 = (CTFontGetAscent(font) + CTFontGetDescent(font) + CTFontGetLeading(font)).f32()
+            height: f32 = UiCore::bounded_extent((CTFontGetAscent(font) + CTFontGetDescent(font) + CTFontGetLeading(font)).f32())
             CFRelease(font)
             return height
 
@@ -279,10 +281,11 @@ module UiAppKitCanvas:
         # Objective-C work left in the canvas shim is object/protocol plumbing;
         # text runs are UTF-8 bytes and CF references all the way down here.
         def text_font(size: f32, semibold: i32) -> usize:
-            regular: usize = CTFontCreateUIFontForLanguage(SYSTEM_UI_FONT, size.f64(), 0)
+            safe_size: f32 = UiCore::bounded_extent(size)
+            regular: usize = CTFontCreateUIFontForLanguage(SYSTEM_UI_FONT, safe_size.f64(), 0)
             return 0 if regular == 0
             return regular if semibold == 0
-            emphasized: usize = CTFontCreateCopyWithSymbolicTraits(regular, size.f64(), 0, BOLD_TRAIT, BOLD_TRAIT)
+            emphasized: usize = CTFontCreateCopyWithSymbolicTraits(regular, safe_size.f64(), 0, BOLD_TRAIT, BOLD_TRAIT)
             return regular if emphasized == 0
             CFRelease(regular)
             return emphasized
@@ -330,7 +333,7 @@ module UiAppKitCanvas:
             ascent: mutable f64 = 0.0
             descent: mutable f64 = 0.0
             leading: mutable f64 = 0.0
-            width: f32 = CTLineGetTypographicBounds(line, &ascent, &descent, &leading).f32()
+            width: f32 = UiCore::bounded_extent(CTLineGetTypographicBounds(line, &ascent, &descent, &leading).f32())
             CFRelease(line)
             return width
 
