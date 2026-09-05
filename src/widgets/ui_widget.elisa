@@ -1154,6 +1154,12 @@ module UiFlat:
         def muted_color(base: UiCore::Color) -> UiCore::Color:
             return UiCore::Color{r: base.r / 2, g: base.g / 2, b: base.b / 2, a: base.a}
 
+        # Keep widget notifications typed throughout the retained framework.
+        # The legacy application callback is the only compatibility boundary
+        # that still accepts an ordinal, so the conversion lives in one place.
+        def emit_widget_event(index: usize, event: UiConst::WidgetEvent) -> void:
+            app_widget_event(index, event.i32())
+
         # Keyboard focus must never disappear into a translated viewport. The
         # child frame already contains the current offset, so recover its
         # unscrolled edge and request the smallest offset that reveals it.
@@ -1216,7 +1222,7 @@ module UiFlat:
             before: f32 = widgets[index].value
             set_value(index, next)
             return if widgets[index].value == before
-            app_widget_event(index, UiConst::WidgetEvent.Change.i32())
+            emit_widget_event(index, UiConst::WidgetEvent.Change)
 
         def dispatch_activation(index: usize) -> void:
             return if index >= widget_count
@@ -1224,7 +1230,7 @@ module UiFlat:
                 set_selected(index, not widgets[index].selected)
             elif widgets[index].kind == UiConst::WidgetKind.RadioButton:
                 set_selected(index, true)
-            app_widget_event(index, UiConst::WidgetEvent.Click.i32())
+            emit_widget_event(index, UiConst::WidgetEvent.Click)
 
         def is_utf8_continuation(byte: u8) -> bool:
             return (byte.u32() & 192) == 128
@@ -1584,7 +1590,7 @@ module UiFlat:
             widgets[index].text_revision <- widgets[index].text_revision + 1
             widgets[index].text_truncated <- false
             focus(index)
-            app_widget_event(index, UiConst::WidgetEvent.Change.i32())
+            emit_widget_event(index, UiConst::WidgetEvent.Change)
 
         def remove_text(index: usize, start: usize, stop: usize) -> void:
             return if stop <= start or stop > widgets[index].input_length
@@ -1606,7 +1612,7 @@ module UiFlat:
             widgets[index] with { marked_start <- 0, marked_end <- 0 }
             restart_caret_blink() if index == focused_widget
             callback_epoch: usize = widget_epoch
-            app_widget_event(index, UiConst::WidgetEvent.Change.i32())
+            emit_widget_event(index, UiConst::WidgetEvent.Change)
             finish_text_history(history_slot, index) if widget_epoch == callback_epoch
 
     public:
@@ -1963,7 +1969,7 @@ module UiFlat:
             restart_caret_blink()
             mark_state_dirty()
             callback_epoch: usize = widget_epoch
-            app_widget_event(index, UiConst::WidgetEvent.Change.i32())
+            emit_widget_event(index, UiConst::WidgetEvent.Change)
             finish_text_history(history_slot, index) if widget_epoch == callback_epoch
 
         def replace_text(index: usize, text: sview) -> void:
@@ -1990,7 +1996,7 @@ module UiFlat:
             restart_caret_blink() if changed and index == focused_widget
             mark_state_dirty() if changed
             callback_epoch: usize = widget_epoch
-            app_widget_event(index, UiConst::WidgetEvent.Change.i32()) if changed
+            emit_widget_event(index, UiConst::WidgetEvent.Change) if changed
             finish_text_history(history_slot, index) if widget_epoch == callback_epoch
 
         # Platform text systems describe ranges in UTF-16 code units. Keeping
@@ -2386,7 +2392,7 @@ module UiFlat:
                             remove_text(field, widgets[field].caret, next_character(field, widgets[field].caret))
                             return
                         if code == UiCore::Key.Enter:
-                            app_widget_event(field, UiConst::WidgetEvent.Submit.i32())
+                            emit_widget_event(field, UiConst::WidgetEvent.Submit)
                             return
                     if focused_widget < widget_count and widgets[focused_widget].kind == UiConst::WidgetKind.RadioButton:
                         direction: i32 = -1 if code == UiCore::Key.Left or code == UiCore::Key.Up else 1 if code == UiCore::Key.Right or code == UiCore::Key.Down else 0
@@ -2484,7 +2490,7 @@ module UiFlat:
             return false if widgets[index].value == before
             focus(index)
             callback_epoch: usize = widget_epoch
-            app_widget_event(index, UiConst::WidgetEvent.Change.i32())
+            emit_widget_event(index, UiConst::WidgetEvent.Change)
             return widget_epoch == callback_epoch
 
         # Assistive clients may assign a slider value directly. Keep that
@@ -2498,7 +2504,7 @@ module UiFlat:
             return false if widgets[index].value == before
             focus(index)
             callback_epoch: usize = widget_epoch
-            app_widget_event(index, UiConst::WidgetEvent.Change.i32())
+            emit_widget_event(index, UiConst::WidgetEvent.Change)
             return widget_epoch == callback_epoch
 
         def adjust_step(index: usize, direction: i32) -> bool:
@@ -2540,7 +2546,7 @@ module UiFlat:
             set_selected(candidate, true)
             focus(candidate)
             callback_epoch: usize = widget_epoch
-            app_widget_event(candidate, UiConst::WidgetEvent.Change.i32())
+            emit_widget_event(candidate, UiConst::WidgetEvent.Change)
             return widget_epoch == callback_epoch
 
         # Keyboard scrolling follows focus into the nearest scroll ancestor,
