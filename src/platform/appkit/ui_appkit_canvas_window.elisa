@@ -33,6 +33,12 @@ extend UiAppKitCanvas:
                 opened: usize = open_window(width, height, style, elisa_appkit_canvas_backing_store_buffered, &delegate_handle)
                 if opened == 0:
                     CFRelease(native_title)
+                    # `begin()` precedes native construction so stale
+                    # callbacks cannot enter a new session. If AppKit rejects
+                    # construction, there is no canvas handle for
+                    # `release_canvas()` to tear down, but the lifecycle still
+                    # needs to leave its transient Starting phase.
+                    _ = UiLifecycle::stop()
                     return 1
                 canvas_window <- opened
                 canvas_delegate <- delegate_handle
