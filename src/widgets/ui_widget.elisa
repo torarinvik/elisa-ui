@@ -2564,15 +2564,22 @@ module UiFlat:
                     inner <- muted_color(current_theme.control_mark_strong) if widgets[index].selected and not enabled
                     UiCore::fill(UiCore::Circle{center: UiCore::Vec2(mark_x, mark_y), radius: current_theme.radio_inner_radius}, inner)
                 elif widgets[index].kind == UiConst::WidgetKind.CheckBox:
-                    box_x: f32 = widgets[index].x + current_theme.choice_center_x - current_theme.checkbox_size / 2.0
-                    box_y: f32 = widgets[index].y + widgets[index].height / 2.0 - current_theme.checkbox_size / 2.0
+                    checkbox_extent: f32 = current_theme.checkbox_size
+                    box_x: f32 = widgets[index].x + current_theme.choice_center_x - checkbox_extent / 2.0
+                    box_y: f32 = widgets[index].y + widgets[index].height / 2.0 - checkbox_extent / 2.0
                     box_color: UiCore::Color = current_theme.control_mark if enabled else muted_color(current_theme.control_mark)
-                    UiCore::fill(UiCore::Rect(box_x, box_y, current_theme.checkbox_size, current_theme.checkbox_size), box_color)
-                    UiCore::fill(UiCore::Rect(box_x + 2.0, box_y + 2.0, 7.0, 7.0), color)
-                    if widgets[index].selected:
+                    UiCore::fill(UiCore::Rect(box_x, box_y, checkbox_extent, checkbox_extent), box_color)
+                    # Scale the inset and checkmark with the token. Fixed
+                    # pixel geometry here used to overflow when an app chose
+                    # a compact checkbox theme.
+                    checkbox_inset: f32 = checkbox_extent * 0.18
+                    checkbox_inner_extent: mutable f32 = checkbox_extent - checkbox_inset * 2.0
+                    checkbox_inner_extent <- 0.0 if checkbox_inner_extent < 0.0
+                    UiCore::fill(UiCore::Rect(box_x + checkbox_inset, box_y + checkbox_inset, checkbox_inner_extent, checkbox_inner_extent), color)
+                    if widgets[index].selected and checkbox_extent > 0.0:
                         check_ink: UiCore::Color = current_theme.control_mark_strong if enabled else muted_color(current_theme.control_mark_strong)
-                        UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(box_x + 2.5, box_y + 5.5), to_point: UiCore::Vec2(box_x + 4.8, box_y + 8.0)}, check_ink)
-                        UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(box_x + 4.8, box_y + 8.0), to_point: UiCore::Vec2(box_x + 9.0, box_y + 3.0)}, check_ink)
+                        UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(box_x + checkbox_extent * 0.23, box_y + checkbox_extent * 0.50), to_point: UiCore::Vec2(box_x + checkbox_extent * 0.44, box_y + checkbox_extent * 0.73)}, check_ink)
+                        UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(box_x + checkbox_extent * 0.44, box_y + checkbox_extent * 0.73), to_point: UiCore::Vec2(box_x + checkbox_extent * 0.82, box_y + checkbox_extent * 0.27)}, check_ink)
                 if widgets[index].focused:
                     focus_x: f32 = clamped_inset(current_theme.focus_inset, widgets[index].width)
                     focus_y: f32 = clamped_inset(current_theme.focus_inset, widgets[index].height)
