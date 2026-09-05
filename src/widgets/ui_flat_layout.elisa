@@ -97,15 +97,22 @@ extend UiFlat:
             if not effectively_visible(index):
                 collapse(index, depth)
                 return
-            widgets[index] with { x, y, width, height }
+            # Keep both the stored frame and all arithmetic below inside the
+            # shared geometry envelope. A large scroll translation can be
+            # finite while still overflowing a later native or raster API.
+            safe_x: f32 = UiCore::bounded_coordinate(x)
+            safe_y: f32 = UiCore::bounded_coordinate(y)
+            safe_width: f32 = UiConstraints::bounded(width)
+            safe_height: f32 = UiConstraints::bounded(height)
+            widgets[index] with { x <- safe_x, y <- safe_y, width <- safe_width, height <- safe_height }
             first: usize = widgets[index].first_child
             return if first == NONE
 
             pad: f32 = widgets[index].padding
-            inner_x: f32 = x + pad
-            inner_y: f32 = y + pad
-            raw_inner_width: f32 = width - pad * 2.0
-            raw_inner_height: f32 = height - pad * 2.0
+            inner_x: f32 = UiCore::bounded_coordinate(safe_x + pad)
+            inner_y: f32 = UiCore::bounded_coordinate(safe_y + pad)
+            raw_inner_width: f32 = safe_width - pad * 2.0
+            raw_inner_height: f32 = safe_height - pad * 2.0
             inner_width: f32 = raw_inner_width if raw_inner_width > 0.0 else 0.0
             inner_height: f32 = raw_inner_height if raw_inner_height > 0.0 else 0.0
             is_row: bool = widgets[index].axis == UiConst::Axis.Row
@@ -220,16 +227,22 @@ extend UiFlat:
                             if alignment == UiConst::CrossAlignment.End:
                                 cross_offset <- margin + available_cross - cross_extent
                     if is_row:
-                        arrange(walk, inner_x + offset + margin, inner_y + cross_offset, extent, cross_extent, depth + 1)
+                        arrange(walk, inner_x + offset + margin, inner_y + cross_offset, UiConstraints::bounded(extent), UiConstraints::bounded(cross_extent), depth + 1)
                     else:
-                        arrange(walk, inner_x + cross_offset, inner_y + offset + margin, cross_extent, extent, depth + 1)
+                        arrange(walk, inner_x + cross_offset, inner_y + offset + margin, UiConstraints::bounded(cross_extent), UiConstraints::bounded(extent), depth + 1)
                     offset <- offset + outer_extent + widgets[index].spacing * scale + gap_extra
                 else:
                     collapse(walk, depth + 1)
                 walk <- widgets[walk].next_sibling
 
         def contains(index: usize, x: f32, y: f32) -> bool:
-            return x >= widgets[index].x and y >= widgets[index].y and x < widgets[index].x + widgets[index].width and y < widgets[index].y + widgets[index].height
+            return false if index >= widget_count
+            x_difference: f32 = x - x
+            y_difference: f32 = y - y
+            return false if x_difference != x_difference or y_difference != y_difference
+            box: UiCore::Rect = UiCore::Rect(widgets[index].x, widgets[index].y, widgets[index].width, widgets[index].height)
+            point: UiCore::Vec2 = UiCore::Vec2(x, y)
+            return UiCore::contains(box, point)
 
         # A translated child remains in the retained tree, but it is not
         # visible or hittable once the pointer leaves any scroll viewport on
@@ -249,20 +262,23 @@ extend UiFlat:
             return true
 
         def intersects_scroll_viewports(index: usize) -> bool:
-            left: f32 = widgets[index].x
-            top: f32 = widgets[index].y
-            right: f32 = left + widgets[index].width
-            bottom: f32 = top + widgets[index].height
+            return false if index >= widget_count
+            widget_box: UiCore::Rect = UiCore::Rect(widgets[index].x, widgets[index].y, widgets[index].width, widgets[index].height)
+            left: f32 = widget_box.origin.x
+            top: f32 = widget_box.origin.y
+            right: f32 = UiCore::right_edge(widget_box)
+            bottom: f32 = UiCore::bottom_edge(widget_box)
             cursor: mutable usize = widgets[index].parent
             steps: mutable usize = 0
             while cursor < widget_count |cursor, left, top, right, bottom, steps|:
                 return false if steps >= MAX_TRAVERSAL_DEPTH
                 steps <- steps + 1
                 if widgets[cursor].kind == UiConst::WidgetKind.Scroll:
-                    viewport_left: f32 = widgets[cursor].x
-                    viewport_top: f32 = widgets[cursor].y
-                    viewport_right: f32 = viewport_left + widgets[cursor].width
-                    viewport_bottom: f32 = viewport_top + widgets[cursor].height
+                    viewport_box: UiCore::Rect = UiCore::Rect(widgets[cursor].x, widgets[cursor].y, widgets[cursor].width, widgets[cursor].height)
+                    viewport_left: f32 = viewport_box.origin.x
+                    viewport_top: f32 = viewport_box.origin.y
+                    viewport_right: f32 = UiCore::right_edge(viewport_box)
+                    viewport_bottom: f32 = UiCore::bottom_edge(viewport_box)
                     return false if right <= viewport_left or left >= viewport_right or bottom <= viewport_top or top >= viewport_bottom
                 cursor <- widgets[cursor].parent
             return right > left and bottom > top
@@ -283,10 +299,11 @@ extend UiFlat:
                 return if steps >= MAX_TRAVERSAL_DEPTH
                 steps <- steps + 1
                 if widgets[cursor].kind == UiConst::WidgetKind.Scroll:
-                    viewport_left: f32 = widgets[cursor].x
-                    viewport_top: f32 = widgets[cursor].y
-                    viewport_right: f32 = viewport_left + widgets[cursor].width
-                    viewport_bottom: f32 = viewport_top + widgets[cursor].height
+                    viewport_box: UiCore::Rect = UiCore::Rect(widgets[cursor].x, widgets[cursor].y, widgets[cursor].width, widgets[cursor].height)
+                    viewport_left: f32 = viewport_box.origin.x
+                    viewport_top: f32 = viewport_box.origin.y
+                    viewport_right: f32 = UiCore::right_edge(viewport_box)
+                    viewport_bottom: f32 = UiCore::bottom_edge(viewport_box)
                     if not found:
                         left <- viewport_left
                         top <- viewport_top
