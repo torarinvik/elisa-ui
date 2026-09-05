@@ -1,0 +1,146 @@
+# Bounded, backend-neutral text line-break policy.
+#
+# Shaping and pixel measurement stay with the renderer that owns the font. This
+# module owns only safe UTF-8 scalar advancement and deterministic break points,
+# returning ranges into the caller's original text without copying it.
+
+include "../core/ui_core.elisa"
+
+module UiTextLayout:
+    public:
+        const MAX_LINES: usize = 256
+        const NONE_OFFSET: usize = 18446744073709551615
+
+        struct LineRange:
+            offset: usize
+            length: usize
+            columns: usize
+
+        struct Layout:
+            line_count: usize
+            max_columns: usize
+            source_length: usize
+            overflowed: bool
+
+        def reset() -> void:
+            line_count_state <- 0
+            source_length_state <- 0
+            max_columns_state <- 1
+            overflowed_state <- false
+            for index in 0..<MAX_LINES:
+                line_offsets[index] <- NONE_OFFSET
+                line_lengths[index] <- 0
+                line_columns[index] <- 0
+
+        # Plan lines using a scalar-column budget. A renderer may replace the
+        # budget with measured pixel widths later, while retaining these UTF-8
+        # and newline rules.
+        def layout(text: sview, max_columns: usize) -> Layout:
+            reset()
+            source_length_state <- text.len.usize() if text.len > 0 else 0
+            max_columns_state <- max_columns if max_columns > 0 else 1
+            if source_length_state == 0:
+                emit_line(0, 0, 0)
+            else:
+                start: mutable usize = 0
+                while start < source_length_state:
+                    cursor: mutable usize = start
+                    columns: mutable usize = 0
+                    last_break: mutable usize = NONE_OFFSET
+                    last_break_columns: mutable usize = 0
+                    finished: mutable bool = false
+                    while cursor < source_length_state:
+                        byte: u8 = text.data[cursor]
+                        if is_newline(byte):
+                            emit_line(start, cursor - start, columns)
+                            cursor <- cursor + 1
+                            if byte == 13 and cursor < source_length_state and text.data[cursor] == 10:
+                                cursor <- cursor + 1
+                            start <- cursor
+                            finished <- true
+                            break
+                        width: usize = scalar_bytes(text, cursor, source_length_state)
+                        if is_break(byte):
+                            last_break <- cursor
+                            last_break_columns <- columns
+                        if columns >= max_columns_state:
+                            if last_break != NONE_OFFSET and last_break >= start:
+                                emit_line(start, last_break - start, last_break_columns)
+                                cursor <- last_break + scalar_bytes(text, last_break, source_length_state)
+                                while cursor < source_length_state and is_break(text.data[cursor]):
+                                    cursor <- cursor + scalar_bytes(text, cursor, source_length_state)
+                                start <- cursor
+                                finished <- true
+                                break
+                            emit_line(start, cursor - start, columns)
+                            start <- cursor
+                            finished <- true
+                            break
+                        columns <- columns + 1
+                        cursor <- cursor + width
+                    if not finished:
+                        emit_line(start, source_length_state - start, columns)
+                        start <- source_length_state
+            return Layout{line_count: line_count_state, max_columns: max_columns_state,
+                source_length: source_length_state, overflowed: overflowed_state}
+
+        def snapshot() -> Layout:
+            return Layout{line_count: line_count_state, max_columns: max_columns_state,
+                source_length: source_length_state, overflowed: overflowed_state}
+
+        def line_count() -> usize:
+            return line_count_state
+
+        def line_at(index: usize) -> LineRange:
+            return LineRange{offset: line_offsets[index], length: line_lengths[index], columns: line_columns[index]}
+
+        def line_if_valid(index: usize) -> LineRange?:
+            return null if index >= line_count_state
+            return line_at(index)
+
+        # The returned view borrows the caller's text; it is valid for exactly
+        # the same lifetime as that input view.
+        def line_view(text: sview, index: usize) -> sview:
+            return "" if index >= line_count_state
+            range: LineRange = line_at(index)
+            return "" if range.offset == NONE_OFFSET or range.offset > text.len.usize()
+            return sview(text.data + range.offset, 0, range.length.i64())
+
+        def utf8_scalar_bytes(text: sview, offset: usize) -> usize:
+            return 0 if offset >= text.len.usize()
+            return scalar_bytes(text, offset, text.len.usize())
+
+    private:
+        global mutable line_offsets: usize[MAX_LINES] = zeroed
+        global mutable line_lengths: usize[MAX_LINES] = zeroed
+        global mutable line_columns: usize[MAX_LINES] = zeroed
+        global mutable line_count_state: usize = 0
+        global mutable source_length_state: usize = 0
+        global mutable max_columns_state: usize = 1
+        global mutable overflowed_state: bool = false
+
+        def emit_line(offset: usize, length: usize, columns: usize) -> void:
+            if line_count_state >= MAX_LINES:
+                overflowed_state <- true
+                return
+            line_offsets[line_count_state] <- offset
+            line_lengths[line_count_state] <- length
+            line_columns[line_count_state] <- columns
+            line_count_state <- line_count_state + 1
+
+        def is_newline(byte: u8) -> bool:
+            return byte == 10 or byte == 13
+
+        def is_break(byte: u8) -> bool:
+            return byte == 9 or byte == 32 or byte == 45 or byte == 47
+
+        def scalar_bytes(text: sview, offset: usize, end: usize) -> usize:
+            return 1 if offset >= end
+            first: i32 = text.data[offset].i32()
+            return 1 if first < 128 or first >= 248
+            return 2 if first >= 194 and first <= 223 and offset + 1 < end
+            return 3 if first >= 224 and first <= 239 and offset + 2 < end
+            return 4 if first >= 240 and first <= 247 and offset + 3 < end
+            # Invalid lead or truncated scalar: consume one byte so a malformed
+            # string cannot stall the planner or make it skip past its extent.
+            return 1

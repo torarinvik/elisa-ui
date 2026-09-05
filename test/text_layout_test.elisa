@@ -1,0 +1,36 @@
+# Headless checks for UTF-8-safe line-break planning.
+
+include "../src/widgets/ui_text_layout.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    planned: UiTextLayout::Layout = UiTextLayout::layout("one two three", 5)
+    check("layout records wrapped line count", planned.line_count == 3 and not planned.overflowed)
+    first: UiTextLayout::LineRange = UiTextLayout::line_at(0)
+    second: UiTextLayout::LineRange = UiTextLayout::line_at(1)
+    third: UiTextLayout::LineRange = UiTextLayout::line_at(2)
+    check("layout breaks at whitespace", UiTextLayout::line_view("one two three", 0) == "one" and UiTextLayout::line_view("one two three", 1) == "two" and UiTextLayout::line_view("one two three", 2) == "three")
+    check("line ranges preserve scalar columns", first.length == 3 and first.columns == 3 and second.offset == 4 and second.columns == 3 and third.offset == 8)
+
+    newline: UiTextLayout::Layout = UiTextLayout::layout("top\r\nbottom", 40)
+    check("CRLF produces two lines", newline.line_count == 2 and UiTextLayout::line_view("top\r\nbottom", 0) == "top" and UiTextLayout::line_view("top\r\nbottom", 1) == "bottom")
+    long_word: UiTextLayout::Layout = UiTextLayout::layout("abcdefgh", 3)
+    check("long words use a deterministic hard break", long_word.line_count == 3 and UiTextLayout::line_view("abcdefgh", 0) == "abc" and UiTextLayout::line_view("abcdefgh", 2) == "gh")
+
+    unicode: UiTextLayout::Layout = UiTextLayout::layout("café 👍", 5)
+    check("multibyte scalars count once", unicode.line_count == 2 and UiTextLayout::line_at(0).columns == 4 and UiTextLayout::utf8_scalar_bytes("é", 0) == 2)
+    empty: UiTextLayout::Layout = UiTextLayout::layout("", 0)
+    check("empty text still has one empty line", empty.line_count == 1 and empty.max_columns == 1 and UiTextLayout::line_at(0).length == 0)
+
+    if failures == 0:
+        _ = puts("text layout: all checks passed")
+        return 0
+    _ = puts("text layout: FAILURES above")
+    return 1
