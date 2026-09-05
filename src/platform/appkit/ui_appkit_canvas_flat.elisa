@@ -54,6 +54,7 @@ def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
     return take
 
 def appkit_flat_accessibility_activate(index: usize) -> i32:
+    return 0 if not UiAppKitCanvas::live()
     activated: bool = UiFlat::activate(index)
     UiAppKitCanvas::redraw() if activated
     return 1 if activated else 0
@@ -61,21 +62,25 @@ def appkit_flat_accessibility_activate(index: usize) -> i32:
 # Native accessibility callbacks carry an opaque element handle. Resolve it to
 # the retained widget action in Elisa before entering UiFlat's index API.
 def appkit_flat_accessibility_activate_handle(handle: usize) -> i32:
+    return 0 if not UiAppKitCanvas::live()
     index: usize = UiAppKitCanvas::accessibility_action_for_handle(handle)
     return 0 if index == UiAppKitCanvas::not_found()
     return appkit_flat_accessibility_activate(index)
 
 def appkit_flat_accessibility_adjust(index: usize, direction: i32) -> i32:
+    return 0 if not UiAppKitCanvas::live()
     adjusted: bool = UiFlat::adjust_step(index, direction)
     UiAppKitCanvas::redraw() if adjusted
     return 1 if adjusted else 0
 
 def appkit_flat_accessibility_adjust_handle(handle: usize, direction: i32) -> i32:
+    return 0 if not UiAppKitCanvas::live()
     index: usize = UiAppKitCanvas::accessibility_action_for_handle(handle)
     return 0 if index == UiAppKitCanvas::not_found()
     return appkit_flat_accessibility_adjust(index, direction)
 
 def appkit_flat_accessibility_set_numeric_value(index: usize, value: f32) -> usize can Unsafe.PointerCast:
+    return 0 if not UiAppKitCanvas::live()
     accepted: bool = UiFlat::set_accessibility_value(index, value)
     return 0 if not accepted
     UiAppKitCanvas::redraw()
@@ -112,6 +117,7 @@ def appkit_flat_key_up(key_code: i32, character_native: usize) -> void:
     appkit_canvas_raw_key_callback(0, key_code, character)
 
 def appkit_flat_text_click(x: f32, y: f32, button: i32, click_count: i32) -> void:
+    return if not UiAppKitCanvas::live()
     UiFlat::select_text_click_at_pointer(x, y, button, click_count)
 
 def appkit_flat_pointer_button(x: f32, y: f32, button: i32, down: i32, click_count: i32) -> void:
@@ -139,7 +145,7 @@ def appkit_flat_pointer_leave_event() -> usize:
     return UiAppKitCanvas::native_cursor(0)
 
 def appkit_flat_set_text(index: usize, text: usize) -> i32:
-    return 0 if text == 0 or not UiFlat::text_editable(index)
+    return 0 if not UiAppKitCanvas::live() or text == 0 or not UiFlat::text_editable(index)
     length: usize = UiAppKitCanvas::copy_native_string(text, &appkit_native_text_buffer[0], UiFlat::TEXT_CAPACITY)
     UiFlat::replace_text(index, sview(&appkit_native_text_buffer[0], 0, length.i64()))
     appkit_scrub_buffer(&appkit_native_text_buffer[0], UiFlat::TEXT_CAPACITY)
@@ -147,6 +153,7 @@ def appkit_flat_set_text(index: usize, text: usize) -> i32:
     return 1
 
 def appkit_flat_set_text_handle(handle: usize, text: usize) -> i32:
+    return 0 if not UiAppKitCanvas::live()
     index: usize = UiAppKitCanvas::accessibility_action_for_handle(handle)
     return 0 if index == UiAppKitCanvas::not_found()
     return appkit_flat_set_text(index, text)
@@ -156,6 +163,7 @@ def appkit_flat_set_text_handle(handle: usize, text: usize) -> i32:
 # native adapter only mirrors the retained object returned for an accepted
 # edit.
 def appkit_flat_accessibility_set_value_handle(handle: usize, value: usize) -> usize can Unsafe.PointerCast:
+    return 0 if not UiAppKitCanvas::live()
     index: usize = UiAppKitCanvas::accessibility_action_for_handle(handle)
     return 0 if index == UiAppKitCanvas::not_found()
     kind: i32 = UiAppKitCanvas::native_accessibility_value_kind(value)
@@ -170,39 +178,41 @@ def appkit_flat_accessibility_set_value_handle(handle: usize, value: usize) -> u
     return 0
 
 def appkit_flat_selection_location() -> usize:
-    return UiAppKitCanvas::not_found() if not UiFlat::accepts_text()
+    return UiAppKitCanvas::not_found() if not UiAppKitCanvas::live() or not UiFlat::accepts_text()
     return UiFlat::selection_utf16_location(UiFlat::focused())
 
 def appkit_flat_selection_length() -> usize:
-    return 0 if not UiFlat::accepts_text()
+    return 0 if not UiAppKitCanvas::live() or not UiFlat::accepts_text()
     return UiFlat::selection_utf16_length(UiFlat::focused())
 
 def appkit_flat_set_selected_range(index: usize, location: usize, length: usize) -> i32:
-    return 0 if location == UiAppKitCanvas::not_found() or not UiFlat::text_editable(index)
+    return 0 if not UiAppKitCanvas::live() or location == UiAppKitCanvas::not_found() or not UiFlat::text_editable(index)
     UiFlat::set_selection_utf16(index, location, length)
     UiAppKitCanvas::redraw()
     return 1
 
 def appkit_flat_set_selected_range_handle(handle: usize, location: usize, length: usize) -> i32:
+    return 0 if not UiAppKitCanvas::live()
     index: usize = UiAppKitCanvas::accessibility_action_for_handle(handle)
     return 0 if index == UiAppKitCanvas::not_found()
     return appkit_flat_set_selected_range(index, location, length)
 
 def appkit_flat_marked_location() -> usize:
-    return UiAppKitCanvas::not_found() if not UiFlat::accepts_text()
+    return UiAppKitCanvas::not_found() if not UiAppKitCanvas::live() or not UiFlat::accepts_text()
     index: usize = UiFlat::focused()
     return UiAppKitCanvas::not_found() if UiFlat::marked_utf16_length(index) == 0
     return UiFlat::marked_utf16_location(index)
 
 def appkit_flat_has_marked_text() -> i32:
-    return 0 if not UiFlat::accepts_text()
+    return 0 if not UiAppKitCanvas::live() or not UiFlat::accepts_text()
     return 1 if UiFlat::marked_utf16_length(UiFlat::focused()) > 0 else 0
 
 def appkit_flat_marked_length() -> usize:
-    return 0 if not UiFlat::accepts_text()
+    return 0 if not UiAppKitCanvas::live() or not UiFlat::accepts_text()
     return UiFlat::marked_utf16_length(UiFlat::focused())
 
 def appkit_flat_commit_text(text: usize, replacement_location: usize, replacement_length: usize) -> void:
+    return if not UiAppKitCanvas::live()
     plain: usize = UiAppKitCanvas::native_input_string(text)
     return if plain == 0
     length: usize = UiAppKitCanvas::copy_native_string(plain, &appkit_native_text_buffer[0], UiFlat::TEXT_CAPACITY)
@@ -212,6 +222,7 @@ def appkit_flat_commit_text(text: usize, replacement_location: usize, replacemen
     UiAppKitCanvas::redraw()
 
 def appkit_flat_update_marked_text(text: usize, selected_location: usize, selected_length: usize, replacement_location: usize, replacement_length: usize) -> void:
+    return if not UiAppKitCanvas::live()
     plain: usize = UiAppKitCanvas::native_input_string(text)
     return if plain == 0
     length: usize = UiAppKitCanvas::copy_native_string(plain, &appkit_native_text_buffer[0], UiFlat::TEXT_CAPACITY)
@@ -221,12 +232,14 @@ def appkit_flat_update_marked_text(text: usize, selected_location: usize, select
     UiAppKitCanvas::redraw()
 
 def appkit_flat_unmark_text() -> void:
+    return if not UiAppKitCanvas::live()
     UiFlat::unmark_text()
     UiAppKitCanvas::redraw()
 
 # NSTextInputClient selectors are reduced to this small FFI vocabulary. Elisa
 # owns the UiCore key mapping and modifier sequencing.
 def appkit_flat_text_command(command: i32, modify_selection: i32) -> void:
+    return if not UiAppKitCanvas::live()
     if command == 10:
         UiFlat::move_word_left(modify_selection != 0)
         return
@@ -256,6 +269,7 @@ def appkit_flat_text_command(command: i32, modify_selection: i32) -> void:
     UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.LeftShift))) if shifted
 
 def appkit_flat_text_selector(selector: cstr) -> void:
+    return if not UiAppKitCanvas::live()
     token: i32 = UiAppKitCanvas::text_selector_token(selector)
     command: i32 = UiAppKitCanvas::text_selector_command(token)
     return if command == 0
@@ -263,28 +277,32 @@ def appkit_flat_text_selector(selector: cstr) -> void:
     UiAppKitCanvas::redraw()
 
 def appkit_flat_text_action(selector: cstr) -> i32:
+    return 0 if not UiAppKitCanvas::live()
     return UiAppKitCanvas::text_action_for_selector(selector)
 
 # Cocoa passes selector identity as an opaque SEL handle. Resolve its runtime
 # spelling through the Objective-C runtime C ABI here, so the native shim does
 # not perform selector-to-string conversion before crossing into Elisa.
 def appkit_flat_text_selector_handle(selector: usize) -> void:
-    return if selector == 0
+    return if not UiAppKitCanvas::live() or selector == 0
     appkit_flat_text_selector(sel_getName(selector))
 
 def appkit_flat_text_action_handle(selector: usize) -> i32:
-    return 0 if selector == 0
+    return 0 if not UiAppKitCanvas::live() or selector == 0
     return appkit_flat_text_action(sel_getName(selector))
 
 def appkit_flat_text_action_enabled(action: i32) -> i32:
+    return 0 if not UiAppKitCanvas::live()
     return 1 if UiFlat::text_action_enabled(action) else 0
 
 def appkit_flat_text_action_valid(action: i32) -> i32:
+    return 0 if not UiAppKitCanvas::live()
     # Unknown Cocoa actions retain AppKit's default validation behavior; known
     # framework actions are enabled only when Elisa's retained state allows it.
     return 1 if action == 0 or UiFlat::text_action_enabled(action) else 0
 
 def appkit_flat_perform_text_action(action: i32) -> i32:
+    return 0 if not UiAppKitCanvas::live()
     changed: bool = UiFlat::perform_text_action(action)
     UiAppKitCanvas::redraw() if changed
     return 1 if changed else 0
@@ -299,17 +317,17 @@ def appkit_flat_text_action_valid_selector(selector: usize) -> i32:
     return appkit_flat_text_action_valid(action)
 
 def appkit_flat_character_at_x(x: f32) -> usize:
-    return UiAppKitCanvas::not_found() if not UiFlat::accepts_text()
+    return UiAppKitCanvas::not_found() if not UiAppKitCanvas::live() or not UiFlat::accepts_text()
     index: usize = UiFlat::focused()
     return UiFlat::text_utf16_offset(index, UiFlat::text_position_at(index, x))
 
 def appkit_flat_range_location(location: usize) -> usize:
-    return 0 if not UiFlat::accepts_text()
+    return 0 if not UiAppKitCanvas::live() or not UiFlat::accepts_text()
     return UiFlat::selection_utf16_location(UiFlat::focused()) if location == UiAppKitCanvas::not_found()
     return UiFlat::text_range_location(UiFlat::focused(), location)
 
 def appkit_flat_range_length(location: usize, length: usize) -> usize:
-    return 0 if not UiFlat::accepts_text()
+    return 0 if not UiAppKitCanvas::live() or not UiFlat::accepts_text()
     return 0 if location == UiAppKitCanvas::not_found()
     return UiFlat::text_range_length(UiFlat::focused(), location, length)
 
@@ -317,7 +335,9 @@ def appkit_flat_first_rect(range_location: usize, range_length: usize,
                            actual_location: mutable usize&, actual_length: mutable usize&,
                            x: mutable f32&, y: mutable f32&,
                            width: mutable f32&, height: mutable f32&) -> i32:
-    return 0 if not UiFlat::accepts_text()
+    actual_location <- UiAppKitCanvas::not_found()
+    actual_length <- 0
+    return 0 if not UiAppKitCanvas::live() or not UiFlat::accepts_text()
     index: usize = UiFlat::focused()
     actual_location <- appkit_flat_range_location(range_location)
     actual_length <- appkit_flat_range_length(range_location, range_length)
@@ -331,7 +351,7 @@ def appkit_flat_attributed_substring(location: usize, length: usize,
                                      actual_location: mutable usize&, actual_length: mutable usize&) -> usize:
     actual_location <- UiAppKitCanvas::not_found()
     actual_length <- 0
-    return 0 if not UiFlat::accepts_text() or not UiFlat::allows_text_readback()
+    return 0 if not UiAppKitCanvas::live() or not UiFlat::accepts_text() or not UiFlat::allows_text_readback()
     return 0 if location == UiAppKitCanvas::not_found()
     index: usize = UiFlat::focused()
     actual_location <- UiFlat::text_range_location(index, location)
