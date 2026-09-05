@@ -57,6 +57,13 @@ def command_rect_origin_x(index: usize) -> f32:
         _:
             return -1.0
 
+def command_text_size(index: usize) -> f32:
+    match UiCore::command_at(index):
+        UiCore::Command.DrawText(run, color):
+            return run.size
+        _:
+            return -1.0
+
 # A row of two buttons inside a padded panel:
 #
 #   Box(row, padding 10, spacing 5)
@@ -300,6 +307,19 @@ def main() -> i64:
             if knob_x < slider.x or knob_x + slider.height > slider.x + slider.width:
                 test_failures <- test_failures + 1
                 _ = puts("slider knob stays inside its frame")
+
+        # Raw hierarchy text payloads use the same bounded typography contract
+        # as convenience builders before they cross into a painter backend.
+        huge_label: Widget = Control.Label(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, text: "huge", size: 3.0e38, ink: grey(220))
+        layout(huge_label, 100.0, 20.0)
+        UiCore::begin_frame()
+        paint(huge_label)
+        found_text: mutable bool = false
+        for command_index in 0..<UiCore::command_count():
+            if command_text_size(command_index) >= 0.0:
+                found_text <- true
+                test_failures <- test_failures + 1 if command_text_size(command_index) > UiConstraints::MAX_EXTENT or command_text_size(command_index) != command_text_size(command_index)
+        test_failures <- test_failures + 1 if not found_text
 
         # Packed handles do not expose identity comparison, so a caller can
         # still construct a malformed self-link by writing a common directly.
