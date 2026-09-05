@@ -220,8 +220,6 @@ void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) 
 - (BOOL)isFlipped { return elisa_appkit_canvas_view_is_flipped() != 0; }
 - (BOOL)acceptsFirstResponder { return elisa_appkit_canvas_view_accepts_first_responder() != 0; }
 - (BOOL)isAccessibilityElement { return elisa_appkit_canvas_view_is_accessibility_element() != 0; }
-- (NSArray *)accessibilityChildren { return [super accessibilityChildren] ?: @[]; }
-- (NSArray *)accessibilityChildrenInNavigationOrder { return [super accessibilityChildrenInNavigationOrder] ?: @[]; }
 - (NSTrackingAreaOptions)trackingOptions {
     return (NSTrackingAreaOptions)elisa_appkit_canvas_tracking_options();
 }

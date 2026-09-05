@@ -262,6 +262,10 @@ if grep -Eq '\- \(BOOL\)(isFlipped|acceptsFirstResponder|isAccessibilityElement)
   echo "appkit canvas: view contract policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq '\- \(NSArray \*\)(accessibilityChildren|accessibilityChildrenInNavigationOrder) ' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: accessibility child-list fallback leaked back into Objective-C" >&2
+  exit 1
+fi
 
 # These callbacks cross the Objective-C/Elisa boundary and must survive dead
 # stripping in the packaged product.
