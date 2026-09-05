@@ -142,12 +142,16 @@ module UiResponsive:
             safe_spacing: f32 = UiCore::nonnegative_extent(spacing)
             cap: i32 = maximum if maximum > 0 else 1
             return cap if safe_item == 0.0
-            denominator: f32 = UiCore::finite_or_zero(safe_item + safe_spacing)
+            # Keep the ratio in f64. Finite f32 inputs can still overflow when
+            # adding spacing or dividing a very wide viewport by a tiny item;
+            # collapsing that intermediate to zero would incorrectly choose a
+            # single column instead of the caller's cap.
+            denominator: f64 = UiCore::finite_or_zero_f64(safe_item.f64() + safe_spacing.f64())
             return 1 if denominator <= 0.0
-            available: f32 = UiCore::finite_or_zero(safe_width + safe_spacing)
-            ratio: f32 = UiCore::finite_or_zero(available / denominator)
+            available: f64 = UiCore::finite_or_zero_f64(safe_width.f64() + safe_spacing.f64())
+            ratio: f64 = UiCore::finite_or_zero_f64(available / denominator)
             return 1 if ratio <= 0.0
-            return cap if ratio >= cap.f32()
+            return cap if ratio >= cap.f64()
             result: mutable i32 = ratio.i32()
             result <- 1 if result < 1
             result <- cap if result > cap
