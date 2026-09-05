@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `aea059c` on branch `work` |
+| elisa-ui revision | `70ab7f6` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `1a44c1d1`; SHA-256 `a9573ad3779ae57f9daf68f79c53761c5ec54d0045a11c1387071ba0562678bc` |
@@ -25,7 +25,7 @@ profile, Elisa language, and elisa-ui framework explicitly.
 ## Source and boundary inventory
 
 Public framework modules are `UiCore`, `UiPaint`, `UiRaster`, `UiConst`,
-`UiWidgets`, `UiFlat`, `UiHandles`, `UiResources`, `UiControls`, `UiCapi`, `UiAppKit`,
+`UiWidgets`, `UiFlat`, `UiHandles`, `UiResources`, `UiResourcePresentation`, `UiControls`, `UiCapi`, `UiAppKit`,
 `UiAppKitNative`, `UiAppKitCanvas`, `UiSdl3`, `UiSdl3Draw`, and
 `UiWasmBrowser`, and `UiInspector`. The application contract is
 the top-level `app_init`, `app_event`, `app_text_input`, `app_text_editing`,
@@ -105,7 +105,8 @@ bash scripts/run_tests.sh
   capi, appkit, appkit canvas, appkit canvas keymap, capi bridge,
   controls, drop raii, event wire, hierarchy build/layout, raster,
   sdl3 keymap/text, widget dispatch, widget handles, widget layout,
-  widget inspector, widget reentrancy, ui harness, core invalidation: PASS
+  widget inspector, widget reentrancy, ui harness, resource presentation,
+  core invalidation: PASS
 git diff --check: PASS
 ```
 
@@ -166,6 +167,12 @@ separate host-enforced security boundary.
   own verified bytes, transport, cache and decode/upload authority; resource
   transitions raise the shared resource/paint invalidation reasons and are
   covered by `test/resource_state_test.elisa`.
+- `UiResourcePresentation` maps those lifecycle states to explicit
+  placeholder/loading/ready/fallback records, reserved geometry, independent
+  progress visibility and retry affordances. Kind-specific defaults and all
+  presentation decisions remain in Elisa; hosts only resolve verified resource
+  data into renderer objects. Coverage lives in
+  `test/resource_presentation_test.elisa`.
 - `UiInspector` is a read-only, allocation-free diagnostic projection of the
   retained tree and semantic buffer. It reports deferred layout/frame-buffer
   state and typed relationships while redacting secure text; coverage lives in
