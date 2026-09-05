@@ -48,7 +48,11 @@ module UiVirtualList:
             safe_item: mutable f32 = bounded_extent(item_extent)
             safe_item <- 1.0 if safe_item == 0.0
             safe_spacing: f32 = bounded_extent(spacing)
-            return Metrics{item_extent: safe_item, spacing: safe_spacing, stride: safe_item + safe_spacing}
+            # The sum is itself a geometry operand. Keep it inside the same
+            # envelope as the individual row and gap before virtualization
+            # divides offsets by it or publishes it to a scroll backend.
+            stride: f32 = bounded_extent(safe_item + safe_spacing)
+            return Metrics{item_extent: safe_item, spacing: safe_spacing, stride: stride}
 
         def bounded_count(item_count: i32) -> i32:
             return 0 if item_count <= 0
@@ -61,7 +65,8 @@ module UiVirtualList:
             count: i32 = bounded_count(item_count)
             return 0.0 if count == 0
             layout: Metrics = metrics(item_extent, spacing)
-            return (count.f32() * layout.item_extent) + ((count - 1).f32() * layout.spacing)
+            extent: f32 = (count.f32() * layout.item_extent) + ((count - 1).f32() * layout.spacing)
+            return bounded_extent(extent)
 
         # Return the top edge of an item in content coordinates. Clamping the
         # index makes this helper total for stale/negative list identities.
@@ -71,7 +76,7 @@ module UiVirtualList:
             safe_index: mutable i32 = index
             safe_index <- count - 1 if safe_index >= count
             layout: Metrics = metrics(item_extent, spacing)
-            return safe_index.f32() * layout.stride
+            return bounded_extent(safe_index.f32() * layout.stride)
 
         # Compute a half-open [first, finish) range. One extra row is retained at
         # the lower edge so a fractional scroll or a pixel-rounding difference
