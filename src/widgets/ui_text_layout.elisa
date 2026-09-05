@@ -9,7 +9,6 @@ include "../core/ui_core.elisa"
 module UiTextLayout:
     public:
         const MAX_LINES: usize = 256
-        const NONE_OFFSET: usize = 18446744073709551615
 
         struct LineRange:
             offset: usize
@@ -28,7 +27,7 @@ module UiTextLayout:
             max_columns_state <- 1
             overflowed_state <- false
             for index in 0..<MAX_LINES:
-                line_offsets[index] <- NONE_OFFSET
+                line_offsets[index] <- 0
                 line_lengths[index] <- 0
                 line_columns[index] <- 0
 
@@ -46,7 +45,8 @@ module UiTextLayout:
                 while start < source_length_state:
                     cursor: mutable usize = start
                     columns: mutable usize = 0
-                    last_break: mutable usize = NONE_OFFSET
+                    last_break: mutable usize = 0
+                    has_break: mutable bool = false
                     last_break_columns: mutable usize = 0
                     finished: mutable bool = false
                     while cursor < source_length_state:
@@ -63,8 +63,9 @@ module UiTextLayout:
                         if is_break(byte):
                             last_break <- cursor
                             last_break_columns <- columns
+                            has_break <- true
                         if columns >= max_columns_state:
-                            if last_break != NONE_OFFSET and last_break >= start:
+                            if has_break and last_break >= start:
                                 emit_line(start, last_break - start, last_break_columns)
                                 cursor <- last_break + scalar_bytes(text, last_break, source_length_state)
                                 while cursor < source_length_state and is_break(text.data[cursor]):
@@ -103,7 +104,7 @@ module UiTextLayout:
         def line_view(text: sview, index: usize) -> sview:
             return "" if index >= line_count_state
             range: LineRange = line_at(index)
-            return "" if range.offset == NONE_OFFSET or range.offset > text.len.usize()
+            return "" if range.offset > text.len.usize()
             return sview(text.data + range.offset, 0, range.length.i64())
 
         def utf8_scalar_bytes(text: sview, offset: usize) -> usize:
