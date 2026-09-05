@@ -153,8 +153,14 @@ def appkit_flat_pointer_leave_event() -> usize:
 def appkit_flat_set_text(index: usize, text: usize) -> i32:
     return 0 if not UiAppKitCanvas::live() or text == 0 or not UiFlat::text_editable(index)
     length: usize = UiAppKitCanvas::copy_native_string(text, &appkit_native_text_buffer[0], UiFlat::TEXT_CAPACITY)
+    lifetime: usize = UiFlat::lifetime()
     UiFlat::replace_text(index, sview(&appkit_native_text_buffer[0], 0, length.i64()))
     appkit_scrub_buffer(&appkit_native_text_buffer[0], UiFlat::TEXT_CAPACITY)
+    # Text replacement emits the application callback synchronously. If that
+    # callback rebuilds the flat tree or stops the canvas, the native element
+    # that requested the edit is no longer the live source of truth. Do not
+    # report success or mirror the stale value back into Cocoa in that case.
+    return 0 if UiFlat::lifetime() != lifetime or not UiAppKitCanvas::live()
     UiAppKitCanvas::redraw()
     return 1
 
