@@ -50,8 +50,10 @@ framework state table, widget/layout traversal, rendering path, text policy,
 semantic diff, selector map, menu schema, clipboard policy, or headless mode.
 Those decisions are made in Elisa and cross the boundary as typed values or
 opaque handles. Remaining native code is required to message Cocoa objects or
-implement Cocoa protocols; `scripts/check_appkit_canvas.sh` contains source
-guards for the ownership decisions.
+implement Cocoa protocols; the category-by-category audit is recorded in
+[`docs/native-boundary.md`](native-boundary.md), and
+`scripts/check_appkit_canvas.sh` contains source guards for the ownership
+decisions.
 
 Tracked Elisa file lengths at this baseline include the custom canvas facade
 (`ui_appkit_canvas.elisa`, 12 lines), whose native, retained-state,
