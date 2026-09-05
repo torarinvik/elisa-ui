@@ -56,8 +56,13 @@ module UiState:
         # snapshot. Reusing an ID is rejected instead of making restore order
         # observable or silently selecting one of two values.
         def put_text(id: u32, value: sview) -> bool:
-            return false if value.len < 0 or not ready_for_put(value.len)
-            return append_header(id, ValueKind.Text, value.len) and append_bytes(value)
+            # Keep the signed ABI extent signed until the fixed text limit has
+            # been checked. Narrowing a hostile positive length first can wrap
+            # on wasm32 and make the append arithmetic underflow.
+            return false if value.len < 0 or value.len > MAX_TEXT_BYTES.i64()
+            value_length: usize = value.len.usize()
+            return false if not ready_for_put(value_length)
+            return append_header(id, ValueKind.Text, value_length) and append_bytes(value, value_length)
 
         def put_f32(id: u32, value: f32) -> bool can Unsafe.PointerCast:
             safe: mutable f32 = UiCore::finite_or_zero(value)
@@ -224,10 +229,10 @@ module UiState:
             save_buffer[payload] <- value
             return true
 
-        def append_bytes(value: sview) -> bool:
-            return false if value.len < 0
-            payload: usize = save_length - value.len
-            for index in 0..<value.len:
+        def append_bytes(value: sview, value_length: usize) -> bool:
+            return false if value.len < 0 or value.len != value_length.i64()
+            payload: usize = save_length - value_length
+            for index in 0..<value_length:
                 save_buffer[payload + index] <- value.data[index]
             return true
 

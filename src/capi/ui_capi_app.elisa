@@ -44,12 +44,17 @@ module UiCapiApp:
             elisa_ui_on_event(record)
 
         def on_text_input(text: sview) -> void:
-            pointer: cstr = text.data.cast[cstr] can Unsafe.PointerCast
-            elisa_ui_on_text_input(pointer, text.len)
+            # Text views may originate at another backend's counted ABI. Bound
+            # the signed extent before converting it to C's size_t so a
+            # malformed negative or oversized view cannot wrap at this seam.
+            safe_text: sview = UiCore::bounded_text(text)
+            pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
+            elisa_ui_on_text_input(pointer, safe_text.len.usize())
 
         def on_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
-            pointer: cstr = text.data.cast[cstr] can Unsafe.PointerCast
-            elisa_ui_on_text_editing(pointer, text.len, selected_start, selected_length)
+            safe_text: sview = UiCore::bounded_text(text)
+            pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
+            elisa_ui_on_text_editing(pointer, safe_text.len.usize(), selected_start, selected_length)
 
         def on_frame() -> void:
             elisa_ui_on_frame()
