@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `70ab7f6` on branch `work` |
+| elisa-ui revision | `baacb29` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `1a44c1d1`; SHA-256 `a9573ad3779ae57f9daf68f79c53761c5ec54d0045a11c1387071ba0562678bc` |
@@ -24,7 +24,7 @@ profile, Elisa language, and elisa-ui framework explicitly.
 
 ## Source and boundary inventory
 
-Public framework modules are `UiCore`, `UiPaint`, `UiRaster`, `UiConst`,
+Public framework modules are `UiCore`, `UiLifecycle`, `UiPaint`, `UiRaster`, `UiConst`,
 `UiWidgets`, `UiFlat`, `UiHandles`, `UiResources`, `UiResourcePresentation`, `UiControls`, `UiCapi`, `UiAppKit`,
 `UiAppKitNative`, `UiAppKitCanvas`, `UiSdl3`, `UiSdl3Draw`, and
 `UiWasmBrowser`, and `UiInspector`. The application contract is
@@ -53,9 +53,10 @@ opaque handles. Remaining native code is required to message Cocoa objects or
 implement Cocoa protocols; `scripts/check_appkit_canvas.sh` contains source
 guards for the ownership decisions.
 
-Tracked Elisa file lengths at this baseline include the intentionally cohesive
-retained widget module (`ui_widget.elisa`, 2,888 lines) and custom canvas
-adapter (`ui_appkit_canvas.elisa`, 1,729 lines). The AppKit controls backend is
+Tracked Elisa file lengths at this baseline include the custom canvas adapter
+(`ui_appkit_canvas.elisa`, 1,729 lines). The flat widget compatibility facade
+(`ui_widget.elisa`, 22 lines) now delegates to cohesive state, layout, input,
+text, scrolling, and painting modules, each below 400 lines. The AppKit controls backend is
 now split into realization/policy (`ui_appkit.elisa`, 288 lines) and typed
 native bridge wrappers (`ui_appkit_native.elisa`, 370 lines). The SDL3 backend
 is split into lifecycle/event (`ui_sdl3.elisa`, 392 lines) and drawing/font
@@ -106,7 +107,7 @@ bash scripts/run_tests.sh
   controls, drop raii, event wire, hierarchy build/layout, raster,
   sdl3 keymap/text, widget dispatch, widget handles, widget layout,
   widget inspector, widget reentrancy, ui harness, resource presentation,
-  core invalidation: PASS
+  core invalidation, lifecycle: PASS
 git diff --check: PASS
 ```
 
@@ -140,8 +141,8 @@ separate host-enforced security boundary.
 ## Ownership decisions and next gaps
 
 - Elisa owns retained widget/resource-visible state, layout, interaction,
-  themes, semantic generation, text editing, frame scheduling decisions, and
-  application-visible errors.
+  themes, semantic generation, text editing, frame scheduling decisions,
+  lifecycle interpretation, and application-visible errors.
 - Native/host hosts own OS objects, event queues, text shaping/rasterization,
   GPU/image mechanisms, accessibility protocol objects, package delivery, and
   service authority. Shims pass raw facts and explicit framework decisions.
@@ -180,8 +181,9 @@ separate host-enforced security boundary.
 - `UiHarness` is the deterministic Elisa-side test driver. It injects a
   monotonic clock, typed lifecycle/input events, resource requests/progress,
   and frame boundaries while leaving production event-loop ownership with each
-  backend; stopping resets resource generations so late completions are ignored;
-  coverage lives in `test/ui_harness_test.elisa`.
+  backend; `UiLifecycle` centralizes session generations and phase predicates,
+  stopping resets resource generations so late completions are ignored; coverage
+  lives in `test/ui_harness_test.elisa` and `test/lifecycle_test.elisa`.
 - `UiCore::Invalidation` is the shared dirty model for layout, paint, semantics,
   resources, and animation scheduling. Frame-local reasons clear at
   `begin_frame`, while layout/resource reasons remain until an owner resolves
