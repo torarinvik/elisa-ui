@@ -27,11 +27,17 @@ extend UiAppKitCanvas:
                 headless_session <- headless
                 set_activation_policy(activation_policy(headless))
                 delegate_handle: mutable usize = 0
-                opened: usize = open_window(native_title, width, height, style, elisa_appkit_canvas_backing_store_buffered, &delegate_handle)
-                CFRelease(native_title)
-                return 1 if opened == 0
+                opened: usize = open_window(width, height, style, elisa_appkit_canvas_backing_store_buffered, &delegate_handle)
+                if opened == 0:
+                    CFRelease(native_title)
+                    return 1
                 canvas_window <- opened
                 canvas_delegate <- delegate_handle
+                if not set_window_title(canvas_window, native_title):
+                    CFRelease(native_title)
+                    release_canvas()
+                    return 1
+                CFRelease(native_title)
                 # Elisa retains the root window explicitly through the whole
                 # run, so prevent Cocoa from consuming that retain on close.
                 # Keep this ownership decision beside the rest of the window

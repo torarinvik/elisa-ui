@@ -45,12 +45,15 @@ Externally imposed symbols are kept at the edges:
 - Cocoa object/protocol/selector entry points in
   `src/platform/appkit/appkit_shim.m` and `appkit_canvas_shim.m`.
 
-The two Objective-C files total 1,277 lines, but the custom canvas shim has no
+The two Objective-C files total 1,286 lines, but the custom canvas shim has no
 framework state table, widget/layout traversal, rendering path, text policy,
 semantic diff, selector map, menu schema, clipboard policy, or headless mode.
 Those decisions are made in Elisa and cross the boundary as typed values or
-opaque handles. Remaining native code is required to message Cocoa objects or
-implement Cocoa protocols; the category-by-category audit is recorded in
+opaque handles. The custom canvas window title is also assigned from Elisa
+after construction through a dedicated setter, so the constructor itself only
+creates native objects and attaches the required protocols. Remaining native
+code is required to message Cocoa objects or implement Cocoa protocols; the
+category-by-category audit is recorded in
 [`docs/native-boundary.md`](native-boundary.md), and
 `scripts/check_appkit_canvas.sh` contains source guards for the ownership
 decisions.

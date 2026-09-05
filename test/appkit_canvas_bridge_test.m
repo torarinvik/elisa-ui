@@ -451,19 +451,26 @@ int main(void) {
         if (require(!elisa_appkit_canvas_render_headless(0, 0, 200, 100),
                     @"headless present succeeded before opening a canvas")) return 1;
         NSObject *invalidTitle = [NSObject new];
-        if (require(!elisa_appkit_canvas_open((size_t)(__bridge void *)invalidTitle,
-                                              200, 100, 15,
+        size_t invalidTitleDelegate = 0;
+        size_t invalidTitleWindow = elisa_appkit_canvas_open(200, 100, 15,
                                               elisa_appkit_canvas_backing_store_buffered,
-                                              NULL),
+                                              &invalidTitleDelegate);
+        if (require(invalidTitleWindow != 0,
+                    @"window construction rejected a title-independent request")) return 1;
+        if (require(!elisa_appkit_canvas_set_title(invalidTitleWindow,
+                                                   (size_t)(__bridge void *)invalidTitle),
                     @"invalid window title was accepted")) return 1;
+        elisa_appkit_canvas_release_delegate(invalidTitleDelegate);
+        elisa_appkit_canvas_release_window(invalidTitleWindow);
         NSString *title = @"test";
         elisa_appkit_canvas_set_activation_policy(NSApplicationActivationPolicyProhibited);
         size_t delegateHandle = 0;
-        size_t opened = elisa_appkit_canvas_open((size_t)(__bridge void *)title,
-                                                 200, 100, 15,
+        size_t opened = elisa_appkit_canvas_open(200, 100, 15,
                                                  elisa_appkit_canvas_backing_store_buffered,
                                                  &delegateHandle);
         if (!opened) return 1;
+        if (require(elisa_appkit_canvas_set_title(opened, (size_t)(__bridge void *)title),
+                    @"valid window title was rejected")) return 1;
         test_window_handle = opened;
         elisa_appkit_canvas_set_released_when_closed(opened, 0);
         elisa_appkit_canvas_set_tabbing_mode(opened, NSWindowTabbingModeDisallowed);

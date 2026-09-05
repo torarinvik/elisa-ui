@@ -434,10 +434,10 @@ const size_t elisa_appkit_canvas_tracking_in_visible_rect = NSTrackingInVisibleR
 extern const size_t elisa_appkit_canvas_not_found;
 const size_t elisa_appkit_canvas_not_found = NSNotFound;
 
-// The window title arrives as an opaque, counted CFString created by Elisa.
-// Cocoa retains/copies it through -setTitle; the bridge does not perform any
-// UTF-8 decoding itself.
-size_t elisa_appkit_canvas_open(size_t title, float width, float height,
+// Window construction receives only dimensions and ABI style/backing facts.
+// Framework text is assigned through the typed setter below after Elisa has
+// installed the returned opaque handle.
+size_t elisa_appkit_canvas_open(float width, float height,
                                 int style, int backing, size_t *delegateHandle) {
     if (delegateHandle == NULL) return 0;
     [NSApplication sharedApplication];
@@ -447,9 +447,6 @@ size_t elisa_appkit_canvas_open(size_t title, float width, float height,
         styleMask:styleMask
         backing:(NSBackingStoreType)backing defer:NO];
     if (window == nil) return 0;
-    NSString *name = title == 0 ? nil : elisa_appkit_canvas_string(title);
-    if (title != 0 && name == nil) return 0;
-    if (name != nil) [window setTitle:name];
     // View construction may synchronously report its initial frame. The
     // Elisa adapter owns the readiness guard and filters that callback
     // until app_init has completed.
@@ -461,6 +458,18 @@ size_t elisa_appkit_canvas_open(size_t title, float width, float height,
     // Transfer the window retain to Elisa. All later operations receive
     // this explicit handle, so the native shim keeps no root owner.
     return (size_t)(__bridge_retained void *)window;
+}
+
+// Window text is framework-owned data. Keep conversion and validation in
+// Elisa, then expose one typed Cocoa property write after the opaque window
+// handle exists. Construction therefore remains limited to native object
+// allocation and protocol attachment.
+int elisa_appkit_canvas_set_title(size_t windowHandle, size_t title) {
+    NSWindow *window = elisa_appkit_canvas_window(windowHandle);
+    NSString *value = elisa_appkit_canvas_string(title);
+    if (window == nil || value == nil) return 0;
+    [window setTitle:value];
+    return 1;
 }
 
 void elisa_appkit_canvas_release_window(size_t handle) {

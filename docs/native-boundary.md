@@ -7,7 +7,7 @@ object, an Objective-C protocol callback, or an ABI-level fact.
 
 | Native surface | Why it remains native |
 | --- | --- |
-| `NSWindow`, `NSView`, `NSPanel`, `NSScrollView`, and control construction | Cocoa allocators and initializers return Objective-C objects and own their native behavior. |
+| `NSWindow`, `NSView`, `NSPanel`, `NSScrollView`, and control construction | Cocoa allocators and initializers return Objective-C objects and own their native behavior. The custom canvas constructor accepts only dimensions and ABI style/backing facts; Elisa assigns the framework-owned title through a separate typed setter after the handle exists. |
 | `NSView`/`NSWindow` attachment, frame writes, presentation, activation, close, and run-loop calls | These operations message live AppKit objects; Elisa supplies all dimensions and policy values. |
 | `ElisaCanvasView` and `ElisaCanvasDelegate` protocol methods | AppKit requires Objective-C method dispatch for drawing, pointer/key/text-input, focus, resize, tracking, and close notifications. Methods forward raw facts into Elisa. |
 | `NSTextInputClient` range/coordinate conversion | `NSRange`, screen/window/view conversion, and `interpretKeyEvents:` are Cocoa protocol ABI shapes. Range meaning and editing policy are resolved in Elisa. |
