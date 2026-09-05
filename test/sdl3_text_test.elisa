@@ -8,6 +8,9 @@ include "../src/platform/sdl3/ui_sdl3_flat.elisa"
 global mutable text_failures: i32 = 0
 global mutable committed_text_seen: bool = false
 global mutable editing_text_seen: bool = false
+global mutable bounded_committed_text_seen: bool = false
+global mutable bounded_editing_text_seen: bool = false
+global mutable oversized_text: u8[4097] = zeroed
 
 # The backend calls into the app contract; a measurement test has no app.
 def app_init() -> void:
@@ -18,9 +21,11 @@ def app_event(event: mutable UiCore::Event&) -> void:
 
 def app_text_input(text: sview) -> void:
     committed_text_seen <- text == "Grüße 👋"
+    bounded_committed_text_seen <- text.len == UiCore::MAX_TEXT_BYTES.i64()
 
 def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
     editing_text_seen <- text == "にほん" and selected_start == 1 and selected_length == 2
+    bounded_editing_text_seen <- text.len == UiCore::MAX_TEXT_BYTES.i64()
 
 def app_frame() -> void:
     pass
@@ -60,6 +65,15 @@ def main() -> i64:
     check("SDL committed UTF-8 reaches the application intact", committed_text_seen)
     UiSdl3::text_editing("にほん", 1, 2)
     check("SDL marked UTF-8 and selection reach the application intact", editing_text_seen)
+
+    for index in 0..<4096:
+        oversized_text[index] <- 120
+    oversized_text[4096] <- 0
+    oversized_pointer: cstr = (&oversized_text[0]).cast[cstr] can Unsafe.PointerCast
+    UiSdl3::text_input(oversized_pointer)
+    UiSdl3::text_editing(oversized_pointer, 0, 0)
+    check("SDL committed text bounds hostile NUL strings", bounded_committed_text_seen)
+    check("SDL marked text bounds hostile NUL strings", bounded_editing_text_seen)
 
     # The size table must reuse an already-open font rather than growing.
     before: usize = UiSdl3::font_count()

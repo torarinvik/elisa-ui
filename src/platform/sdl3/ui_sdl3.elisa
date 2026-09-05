@@ -259,11 +259,16 @@ module UiSdl3:
         def text_input(text: cstr) -> void:
             length: usize = UiSdl3Text::length(text)
             return if length == 0
-            app_text_input(sview(text, 0, length.i64()))
+            # SDL's text buffer is NUL-terminated but still host-owned. Keep
+            # the counted view inside the shared framework limit before it can
+            # reach an application callback that does not use UiFlat.
+            safe_text: sview = UiCore::bounded_text(sview(text, 0, length.i64()))
+            app_text_input(safe_text)
 
         def text_editing(text: cstr, selected_start: i32, selected_length: i32) -> void:
             length: usize = UiSdl3Text::length(text)
-            app_text_editing(sview(text, 0, length.i64()), selected_start, selected_length)
+            safe_text: sview = UiCore::bounded_text(sview(text, 0, length.i64()))
+            app_text_editing(safe_text, selected_start, selected_length)
 
     private:
         # Poll one SDL event and translate it. Returns false when the queue is
