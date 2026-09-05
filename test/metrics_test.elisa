@@ -47,6 +47,18 @@ def main() -> i64:
     check("completion cannot precede measured stages", UiMetrics::snapshot().completed_at == 6.0 and UiMetrics::snapshot().frame_duration == 3.0)
     UiMetrics::finish_frame(9.0)
     check("duplicate finish preserves sample", UiMetrics::snapshot().completed_at == 6.0)
+
+    # A host clock can provide individually finite values whose accumulated
+    # stage boundaries overflow. Derived metrics must still fail closed to
+    # finite values rather than leaking infinity into inspectors or telemetry.
+    UiMetrics::begin_frame(1.0e308)
+    UiMetrics::mark_application(1.0e308)
+    UiMetrics::mark_semantics(1.0e308)
+    UiMetrics::mark_paint(1.0e308)
+    UiMetrics::finish_frame(1.0e308)
+    huge: UiMetrics::Snapshot = UiMetrics::snapshot()
+    check("metrics keeps huge timestamp sums finite", UiCore::finite_or_zero_f64(huge.started_at) == huge.started_at and UiCore::finite_or_zero_f64(huge.completed_at) == huge.completed_at and UiCore::finite_or_zero_f64(huge.frame_duration) == huge.frame_duration and UiCore::finite_or_zero_f64(huge.application_duration) == huge.application_duration and UiCore::finite_or_zero_f64(huge.semantics_duration) == huge.semantics_duration and UiCore::finite_or_zero_f64(huge.paint_duration) == huge.paint_duration)
+
     UiMetrics::reset()
     idle: UiMetrics::Snapshot = UiMetrics::snapshot()
     check("metrics reset clears sample", idle.sequence == 0 and idle.stage == UiMetrics::Stage.Idle and not idle.complete)

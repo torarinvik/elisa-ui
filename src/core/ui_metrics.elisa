@@ -68,14 +68,15 @@ module UiMetrics:
             mark_application(at) if stage_state == Stage.Application
             return if stage_state != Stage.Semantics
             now: f64 = safe_time(at)
-            semantics_duration_state <- elapsed(started_at_state + application_duration_state, now)
+            semantics_start: f64 = safe_sum(started_at_state, application_duration_state)
+            semantics_duration_state <- elapsed(semantics_start, now)
             stage_state <- Stage.Paint
 
         def mark_paint(at: f64) -> void:
             mark_semantics(at) if stage_state == Stage.Application or stage_state == Stage.Semantics
             return if stage_state != Stage.Paint
             now: f64 = safe_time(at)
-            paint_start: f64 = started_at_state + application_duration_state + semantics_duration_state
+            paint_start: f64 = safe_sum(safe_sum(started_at_state, application_duration_state), semantics_duration_state)
             paint_duration_state <- elapsed(paint_start, now)
             stage_state <- Stage.Complete
 
@@ -87,7 +88,7 @@ module UiMetrics:
             mark_paint(at)
             return if stage_state != Stage.Complete
             now: f64 = safe_time(at)
-            last_stage: f64 = started_at_state + application_duration_state + semantics_duration_state + paint_duration_state
+            last_stage: f64 = safe_sum(safe_sum(started_at_state, application_duration_state), safe_sum(semantics_duration_state, paint_duration_state))
             completed_at_state <- last_stage if now < last_stage else now
             frame_duration_state <- elapsed(started_at_state, completed_at_state)
             complete_state <- true
@@ -127,7 +128,14 @@ module UiMetrics:
             return safe if safe >= 0.0 else 0.0
 
         def elapsed(start: f64, finish: f64) -> f64:
-            return finish - start if finish > start else 0.0
+            return UiCore::finite_or_zero_f64(finish - start) if finish > start else 0.0
+
+        # Timestamp arithmetic can overflow even when every individual host
+        # value is finite (for example, two 1e308 stage samples). Keep those
+        # derived boundaries finite so diagnostics never expose an infinity or
+        # poison a later comparison.
+        def safe_sum(left: f64, right: f64) -> f64:
+            return UiCore::finite_or_zero_f64(left + right)
 
         def next_sequence(value: u64) -> u64:
             next: u64 = value + 1
