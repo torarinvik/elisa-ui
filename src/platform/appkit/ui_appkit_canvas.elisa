@@ -830,6 +830,20 @@ module UiAppKitCanvas:
             return true if before.x != after.x or before.y != after.y or before.width != after.width or before.height != after.height
             return false
 
+        # Tooltips are transient native view state. Rebuild them only after
+        # Elisa's semantic diff says the accessibility layout changed; stable
+        # frames can keep their existing Cocoa registrations instead of paying
+        # a remove-all/add-all cost on every paint.
+        def rebuild_accessibility_tooltips(count: usize) -> void:
+            return if canvas_window == 0
+            elisa_appkit_canvas_accessibility_reset(canvas_window)
+            for index in 0..<count:
+                state: AccessibilityState = accessibility_previous[index]
+                handle: usize = accessibility_previous_handles[index]
+                if handle != 0 and state.help.len > 0 and state.interaction != 0:
+                    elisa_appkit_canvas_accessibility_add_tooltip(canvas_window, handle,
+                        state.x, state.y, state.width, state.height)
+
         # Window movement/backing changes alter screen-relative accessibility
         # frames without changing local widget geometry. Native code reports
         # only that environmental fact; Elisa owns the invalidation decision.
@@ -1015,7 +1029,6 @@ module UiAppKitCanvas:
         # Called by the exported frame callback after the app has rebuilt the
         # semantic nodes for this frame.
         def sync_accessibility() -> void can Unsafe.PointerCast:
-            elisa_appkit_canvas_accessibility_reset(canvas_window)
             next_count: usize = UiCore::accessibility_count()
             previous_count: usize = accessibility_previous_count
             layout_changed: mutable bool = accessibility_force_layout or next_count != accessibility_previous_count
@@ -1052,11 +1065,8 @@ module UiAppKitCanvas:
                 layout_changed <- true if index >= accessibility_previous_count or accessibility_previous_ids[index] != node.id
                 accessibility_next_ids[index] <- node.id
                 accessibility_next[index] <- state
-                tooltip: i32 = 1 if node.help.len > 0 and interaction != 0 else 0
                 handle: usize = elisa_appkit_canvas_accessibility_add(canvas_window, previous_handle, native_identifier, native_role, native_subrole, native_label, native_help, node.frame.origin.x, node.frame.origin.y, node.frame.size.width, node.frame.size.height, enabled, focused)
                 accessibility_next_handles[index] <- handle
-                if handle != 0:
-                    elisa_appkit_canvas_accessibility_add_tooltip(canvas_window, handle, node.frame.origin.x, node.frame.origin.y, node.frame.size.width, node.frame.size.height) if tooltip != 0
                 if value_kind == 1 and handle != 0:
                     elisa_appkit_canvas_accessibility_set_boolean(handle, selected)
                 if value_kind == 2 and handle != 0:
@@ -1092,6 +1102,7 @@ module UiAppKitCanvas:
                 accessibility_previous[index] <- accessibility_next[index]
             elisa_appkit_canvas_accessibility_commit(canvas_window, &accessibility_next_handles[0], accessibility_previous_count)
             if layout_changed:
+                rebuild_accessibility_tooltips(next_count)
                 elisa_appkit_canvas_accessibility_invalidate_cursor_rects(canvas_window)
                 root_view: usize = elisa_appkit_canvas_accessibility_root(canvas_window)
                 NSAccessibilityPostNotification(root_view, elisa_appkit_canvas_accessibility_layout_changed_notification()) if root_view != 0

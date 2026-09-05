@@ -142,7 +142,9 @@ element and releases handles that leave the tree; callbacks resolve those
 handles back to Elisa's action targets on demand. The AppKit bridge reuses the
 objects between frames, exposes actions to VoiceOver, updates screen-relative
 frames after window moves, and applies the Cocoa role/subrole constants plus interaction,
-tooltip and cursor tokens computed by Elisa from the same metadata. Value shape
+tooltip and cursor tokens computed by Elisa from the same metadata. Tooltip
+registrations are rebuilt only when Elisa's semantic layout diff requires it,
+so stable frames do not clear and re-add every native rectangle. Value shape
 (boolean, range, text, or empty) is selected in Elisa and sent through typed FFI
 setters. Tooltip rectangles receive the node frame directly during each sync;
 the native element does not cache a second frame or cursor identity. Elisa also
