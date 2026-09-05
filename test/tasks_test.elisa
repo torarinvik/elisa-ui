@@ -1,0 +1,55 @@
+# Headless regression for lifecycle-safe asynchronous task tokens.
+
+include "../src/core/ui_tasks.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiTasks::reset()
+    first: UiTasks::Handle = UiTasks::start(7)
+    first_token: u32 = UiTasks::token(first)
+    check("task start returns a live token", UiTasks::is_valid(first) and first_token != 0 and UiTasks::owner(first) == 7 and UiTasks::is_pending(first))
+    check("stale token cannot complete", not UiTasks::complete(first, first_token + 1, true) and UiTasks::is_pending(first))
+    check("current token completes successfully", UiTasks::complete(first, first_token, true) and UiTasks::state(first) == UiTasks::State.Completed)
+    check("completed task rejects duplicate completion", not UiTasks::complete(first, first_token, false) and UiTasks::state(first) == UiTasks::State.Completed)
+
+    cancelled: UiTasks::Handle = UiTasks::start(8)
+    cancelled_token: u32 = UiTasks::token(cancelled)
+    check("cancelled task rejects late completion", UiTasks::cancel(cancelled) and UiTasks::state(cancelled) == UiTasks::State.Cancelled and not UiTasks::complete(cancelled, cancelled_token, true))
+
+    a: UiTasks::Handle = UiTasks::start(20)
+    b: UiTasks::Handle = UiTasks::start(20)
+    c: UiTasks::Handle = UiTasks::start(21)
+    c_token: u32 = UiTasks::token(c)
+    check("owner cancellation only affects pending work", UiTasks::cancel_owner(20) == 2 and UiTasks::state(a) == UiTasks::State.Cancelled and UiTasks::state(b) == UiTasks::State.Cancelled and UiTasks::is_pending(c))
+    check("other owner can still complete", UiTasks::complete(c, c_token, false) and UiTasks::state(c) == UiTasks::State.Failed)
+    check("owner disposal invalidates every record", UiTasks::dispose_owner(20) == 2 and not UiTasks::is_valid(a) and not UiTasks::is_valid(b) and UiTasks::is_valid(first))
+
+    old_generation: u32 = first.generation
+    check("individual disposal invalidates handle", UiTasks::dispose(first) and not UiTasks::is_valid(first))
+    recycled: UiTasks::Handle = UiTasks::start(30)
+    check("slot reuse advances generation", recycled.slot == first.slot and recycled.generation != old_generation)
+    check("old handle cannot complete recycled task", not UiTasks::complete(first, first_token, true) and UiTasks::is_pending(recycled))
+    _ = UiTasks::dispose(recycled)
+    _ = UiTasks::dispose(c)
+    _ = UiTasks::dispose(cancelled)
+
+    handles: UiTasks::Handle[UiTasks::MAX_TASKS] = zeroed
+    for index in 0..<UiTasks::MAX_TASKS:
+        handles[index] <- UiTasks::start(index.u32())
+    overflow: UiTasks::Handle = UiTasks::start(99)
+    check("task capacity overflow is observable", not UiTasks::is_valid(overflow) and UiTasks::overflowed() and UiTasks::snapshot().active == UiTasks::MAX_TASKS)
+    for index in 0..<UiTasks::MAX_TASKS:
+        _ = UiTasks::dispose(handles[index])
+
+    if failures == 0:
+        _ = puts("tasks: all checks passed")
+        return 0
+    _ = puts("tasks: FAILURES above")
+    return 1

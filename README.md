@@ -42,6 +42,9 @@ because a module member's symbol carries its module and those names cannot move.
   IDs only; framework handles, arena indexes, references, and heap objects are
   never serialized. Malformed, duplicate, truncated, or oversized snapshots
   fail closed.
+- **Task lifetime** ([src/core/ui_tasks.elisa](src/core/ui_tasks.elisa)) —
+  generation- and token-checked completion records with owner-scoped
+  cancellation/disposal, so late host callbacks cannot touch recycled views.
 - **Capabilities** ([src/core/ui_capabilities.elisa](src/core/ui_capabilities.elisa)) —
   conservative, typed backend profiles for native windows, custom painting,
   text/IME, clipboard, semantics, hosted presentation, snapshots, scale, and

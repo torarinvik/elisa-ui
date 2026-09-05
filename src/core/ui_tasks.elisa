@@ -1,0 +1,162 @@
+# Bounded lifecycle-safe task tokens.
+#
+# Hosts and SDKs own the actual asynchronous work. This module owns only the
+# framework token that authorizes a completion to update a live view. Owners can
+# cancel or dispose all of their tasks during teardown; stale handles and old
+# tokens then fail closed without a native task table or callback pointer.
+
+module UiTasks:
+    public:
+        const MAX_TASKS: usize = 128
+        const NONE_SLOT: usize = MAX_TASKS
+
+        const enum State of i32:
+            Idle = 0
+            Pending = 1
+            Completed = 2
+            Failed = 3
+            Cancelled = 4
+
+        struct Handle:
+            slot: u32
+            generation: u32
+
+        struct Snapshot:
+            active: usize
+            pending: usize
+            completed: usize
+            failed: usize
+            cancelled: usize
+            overflowed: bool
+
+        def invalid() -> Handle:
+            return Handle{slot: NONE_SLOT.u32(), generation: 0}
+
+        def reset() -> void:
+            for slot in 0..<MAX_TASKS:
+                active[slot] <- false
+                generations[slot] <- next_generation(generations[slot])
+                owners[slot] <- 0
+                tokens[slot] <- 0
+                states[slot] <- State.Idle
+            task_count <- 0
+            overflowed_state <- false
+
+        def snapshot() -> Snapshot:
+            pending_count: mutable usize = 0
+            completed_count: mutable usize = 0
+            failed_count: mutable usize = 0
+            cancelled_count: mutable usize = 0
+            for slot in 0..<MAX_TASKS:
+                return_count: bool = active[slot]
+                continue if not return_count
+                pending_count <- pending_count + 1 if states[slot] == State.Pending
+                completed_count <- completed_count + 1 if states[slot] == State.Completed
+                failed_count <- failed_count + 1 if states[slot] == State.Failed
+                cancelled_count <- cancelled_count + 1 if states[slot] == State.Cancelled
+            return Snapshot{active: task_count, pending: pending_count,
+                completed: completed_count, failed: failed_count,
+                cancelled: cancelled_count, overflowed: overflowed_state}
+
+        def overflowed() -> bool:
+            return overflowed_state
+
+        def is_valid(handle: Handle) -> bool:
+            return handle.slot.usize() < MAX_TASKS and active[handle.slot.usize()] and generations[handle.slot.usize()] == handle.generation
+
+        # Start returns a fresh token for every host operation. A reused slot
+        # always advances its generation before the handle becomes visible.
+        def start(owner: u32) -> Handle:
+            free_slot: mutable usize = NONE_SLOT
+            for slot in 0..<MAX_TASKS:
+                if not active[slot]:
+                    free_slot <- slot
+                    break
+            if free_slot == NONE_SLOT:
+                overflowed_state <- true
+                return invalid()
+            active[free_slot] <- true
+            generations[free_slot] <- next_generation(generations[free_slot])
+            owners[free_slot] <- owner
+            tokens[free_slot] <- next_token(tokens[free_slot])
+            states[free_slot] <- State.Pending
+            task_count <- task_count + 1
+            return Handle{slot: free_slot.u32(), generation: generations[free_slot]}
+
+        def owner(handle: Handle) -> u32:
+            return 0 if not is_valid(handle)
+            return owners[handle.slot.usize()]
+
+        def token(handle: Handle) -> u32:
+            return 0 if not is_valid(handle)
+            return tokens[handle.slot.usize()]
+
+        def state(handle: Handle) -> State:
+            return State.Idle if not is_valid(handle)
+            return states[handle.slot.usize()]
+
+        def is_pending(handle: Handle) -> bool:
+            return is_valid(handle) and states[handle.slot.usize()] == State.Pending
+
+        # A completion must prove both identity and the token returned by
+        # start(). A cancelled, already-resolved, or stale task is a no-op.
+        def complete(handle: Handle, task_token: u32, succeeded: bool) -> bool:
+            return false if not is_valid(handle) or task_token == 0
+            slot: usize = handle.slot.usize()
+            return false if states[slot] != State.Pending or tokens[slot] != task_token
+            states[slot] <- State.Completed if succeeded else State.Failed
+            return true
+
+        def cancel(handle: Handle) -> bool:
+            return false if not is_valid(handle) or states[handle.slot.usize()] != State.Pending
+            states[handle.slot.usize()] <- State.Cancelled
+            return true
+
+        # Cancellation leaves the record readable for diagnostics, while
+        # disposal invalidates its generation and releases the slot completely.
+        def cancel_owner(owner_id: u32) -> usize:
+            cancelled: mutable usize = 0
+            for slot in 0..<MAX_TASKS:
+                if active[slot] and owners[slot] == owner_id and states[slot] == State.Pending:
+                    states[slot] <- State.Cancelled
+                    cancelled <- cancelled + 1
+            return cancelled
+
+        def dispose(handle: Handle) -> bool:
+            return false if not is_valid(handle)
+            clear_slot(handle.slot.usize())
+            return true
+
+        def dispose_owner(owner_id: u32) -> usize:
+            released: mutable usize = 0
+            for slot in 0..<MAX_TASKS:
+                if active[slot] and owners[slot] == owner_id:
+                    clear_slot(slot)
+                    released <- released + 1
+            return released
+
+    private:
+        global mutable active: bool[MAX_TASKS] = zeroed
+        global mutable generations: u32[MAX_TASKS] = zeroed
+        global mutable owners: u32[MAX_TASKS] = zeroed
+        global mutable tokens: u32[MAX_TASKS] = zeroed
+        global mutable states: State[MAX_TASKS] = zeroed
+        global mutable task_count: usize = 0
+        global mutable overflowed_state: bool = false
+
+        def next_generation(value: u32) -> u32:
+            next: u32 = value + 1
+            return 1 if next == 0 else next
+
+        def next_token(value: u32) -> u32:
+            next: u32 = value + 1
+            return 1 if next == 0 else next
+
+        def clear_slot(slot: usize) -> void:
+            return if slot >= MAX_TASKS or not active[slot]
+            active[slot] <- false
+            generations[slot] <- next_generation(generations[slot])
+            owners[slot] <- 0
+            tokens[slot] <- 0
+            states[slot] <- State.Idle
+            task_count <- task_count - 1 if task_count > 0
