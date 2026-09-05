@@ -39,6 +39,15 @@ def main() -> i64:
     check("Polish keeps zero in other", UiLocalization::plural("pl", 0) == UiLocalization::PluralCategory.Other and UiLocalization::plural("pl", 3) == UiLocalization::PluralCategory.Few)
     check("negative counts fail closed", UiLocalization::plural("en", -1) == UiLocalization::PluralCategory.Other)
 
+    check("three letter language is not a two letter prefix", not UiLocalization::is_rtl("arn") and not UiLocalization::is_rtl("fil"))
+    before_reset: u32 = UiLocalization::revision()
+    UiLocalization::reset()
+    check("reset advances locale revision", UiLocalization::revision() > before_reset and UiLocalization::current_locale().len == 0)
+    after_reset: u32 = UiLocalization::revision()
+    UiCore::clear_all_invalidations()
+    UiLocalization::reset()
+    check("repeated locale reset is idle", UiLocalization::revision() == after_reset and UiCore::invalidations() == 0)
+
     if failures == 0:
         _ = puts("localization: all checks passed")
         return 0

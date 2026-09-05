@@ -46,6 +46,14 @@ def main() -> i64:
     check("text scale clamps to a safe maximum", UiTheme::scaled_text_size(UiTheme::Preferences{mode: UiTheme::ColorMode.System, contrast: UiTheme::Contrast.Normal, text_scale: 3.0, reduced_motion: false}, 9000.0) == UiTheme::MAX_SCALED_EXTENT)
     check("reduced motion disables animation", UiTheme::animation_interval(high, 0.5) == 0.5 and UiTheme::animation_interval(UiTheme::Preferences{mode: UiTheme::ColorMode.System, contrast: UiTheme::Contrast.Normal, text_scale: 1.0, reduced_motion: true}, 0.5) == 0.0)
 
+    before_reset: u32 = UiTheme::revision()
+    UiTheme::reset()
+    check("reset advances theme revision", UiTheme::revision() > before_reset and UiTheme::current_preferences().text_scale == 1.0)
+    after_reset: u32 = UiTheme::revision()
+    UiCore::clear_all_invalidations()
+    UiTheme::reset()
+    check("repeated theme reset is idle", UiTheme::revision() == after_reset and UiCore::invalidations() == 0)
+
     if failures == 0:
         _ = puts("theme: all checks passed")
         return 0
