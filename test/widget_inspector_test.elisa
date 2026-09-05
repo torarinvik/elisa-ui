@@ -51,6 +51,7 @@ def check(name: cstr, ok: bool) -> void:
     _ = puts(name)
 
 def main() -> i64:
+    UiTasks::reset()
     UiHandles::reset()
     root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 8.0, 4.0, UiCore::rgb(10, 10, 12))
     button: UiHandles::Handle = UiHandles::button(root, 80.0, 24.0, UiCore::rgb(20, 20, 24), UiCore::rgb(30, 30, 36), UiCore::rgb(12, 12, 16))
@@ -77,11 +78,13 @@ def main() -> i64:
         check("inspector returns secure node", false)
 
     snapshot: UiInspector::Frame = UiInspector::frame()
+    task_state: UiTasks::Snapshot = snapshot.task_snapshot
     check("inspector records viewport", snapshot.viewport.width == 320.0 and snapshot.viewport.height == 180.0 and snapshot.layout_initialized and not snapshot.layout_dirty)
     check("inspector exposes lifecycle state", snapshot.lifecycle_phase == UiLifecycle::Phase.New and snapshot.lifecycle_generation == 0 and not snapshot.lifecycle_surface_available and not snapshot.lifecycle_accepts_input and not snapshot.lifecycle_can_render and not snapshot.lifecycle_focused)
     check("inspector exposes unknown capabilities before backend selection", snapshot.capabilities.backend == UiCapabilities::Backend.Unknown and not snapshot.capabilities.surface)
     check("inspector exposes empty event ingress", snapshot.event_queue_pending == 0 and snapshot.event_queue_dropped == 0 and not snapshot.event_queue_overflowed)
     check("inspector exposes idle frame metrics", snapshot.metrics.sequence == 0 and snapshot.metrics.stage == UiMetrics::Stage.Idle and not snapshot.metrics.complete)
+    check("inspector exposes empty task state", task_state.total == 0 and task_state.pending == 0 and not task_state.overflowed)
     check("inspector reports durable invalidation reasons", not snapshot.layout_invalidated and snapshot.paint_invalidated and snapshot.semantics_invalidated and not snapshot.resources_invalidated and not snapshot.animation_invalidated)
     check("inspector exposes invalidation mask and sequence", snapshot.invalidation_mask == UiCore::Invalidation.Paint.i32() | UiCore::Invalidation.Semantics.i32() and snapshot.invalidation_sequence > 0)
     check("inspector records empty frame buffers", snapshot.command_count == 0 and snapshot.semantic_count == 0)

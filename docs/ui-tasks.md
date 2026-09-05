@@ -13,6 +13,6 @@ cannot update a recycled slot. Individual `cancel` and `dispose` provide the
 same distinction for one operation.
 
 The fixed table is intentionally bounded and allocation-free. `snapshot()`
-reports pending, completed, failed, and cancelled counts plus sticky capacity
-overflow. The module stores no native task pointer, callback, future, or result;
+reports the total live records, pending, completed, failed, and cancelled counts
+plus sticky capacity overflow. The module stores no native task pointer, callback, future, or result;
 those remain host/SDK responsibilities behind the typed token boundary.

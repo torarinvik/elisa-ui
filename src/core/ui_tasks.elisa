@@ -22,7 +22,7 @@ module UiTasks:
             generation: u32
 
         struct Snapshot:
-            active: usize
+            total: usize
             pending: usize
             completed: usize
             failed: usize
@@ -34,7 +34,7 @@ module UiTasks:
 
         def reset() -> void:
             for slot in 0..<MAX_TASKS:
-                active[slot] <- false
+                task_active[slot] <- false
                 generations[slot] <- next_generation(generations[slot])
                 owners[slot] <- 0
                 tokens[slot] <- 0
@@ -48,13 +48,13 @@ module UiTasks:
             failed_count: mutable usize = 0
             cancelled_count: mutable usize = 0
             for slot in 0..<MAX_TASKS:
-                return_count: bool = active[slot]
+                return_count: bool = task_active[slot]
                 continue if not return_count
                 pending_count <- pending_count + 1 if states[slot] == State.Pending
                 completed_count <- completed_count + 1 if states[slot] == State.Completed
                 failed_count <- failed_count + 1 if states[slot] == State.Failed
                 cancelled_count <- cancelled_count + 1 if states[slot] == State.Cancelled
-            return Snapshot{active: task_count, pending: pending_count,
+            return Snapshot{total: task_count, pending: pending_count,
                 completed: completed_count, failed: failed_count,
                 cancelled: cancelled_count, overflowed: overflowed_state}
 
@@ -62,20 +62,20 @@ module UiTasks:
             return overflowed_state
 
         def is_valid(handle: Handle) -> bool:
-            return handle.slot.usize() < MAX_TASKS and active[handle.slot.usize()] and generations[handle.slot.usize()] == handle.generation
+            return handle.slot.usize() < MAX_TASKS and task_active[handle.slot.usize()] and generations[handle.slot.usize()] == handle.generation
 
         # Start returns a fresh token for every host operation. A reused slot
         # always advances its generation before the handle becomes visible.
         def start(owner: u32) -> Handle:
             free_slot: mutable usize = NONE_SLOT
             for slot in 0..<MAX_TASKS:
-                if not active[slot]:
+                if not task_active[slot]:
                     free_slot <- slot
                     break
             if free_slot == NONE_SLOT:
                 overflowed_state <- true
                 return invalid()
-            active[free_slot] <- true
+            task_active[free_slot] <- true
             generations[free_slot] <- next_generation(generations[free_slot])
             owners[free_slot] <- owner
             tokens[free_slot] <- next_token(tokens[free_slot])
@@ -117,7 +117,7 @@ module UiTasks:
         def cancel_owner(owner_id: u32) -> usize:
             cancelled: mutable usize = 0
             for slot in 0..<MAX_TASKS:
-                if active[slot] and owners[slot] == owner_id and states[slot] == State.Pending:
+                if task_active[slot] and owners[slot] == owner_id and states[slot] == State.Pending:
                     states[slot] <- State.Cancelled
                     cancelled <- cancelled + 1
             return cancelled
@@ -130,13 +130,13 @@ module UiTasks:
         def dispose_owner(owner_id: u32) -> usize:
             released: mutable usize = 0
             for slot in 0..<MAX_TASKS:
-                if active[slot] and owners[slot] == owner_id:
+                if task_active[slot] and owners[slot] == owner_id:
                     clear_slot(slot)
                     released <- released + 1
             return released
 
     private:
-        global mutable active: bool[MAX_TASKS] = zeroed
+        global mutable task_active: bool[MAX_TASKS] = zeroed
         global mutable generations: u32[MAX_TASKS] = zeroed
         global mutable owners: u32[MAX_TASKS] = zeroed
         global mutable tokens: u32[MAX_TASKS] = zeroed
@@ -153,8 +153,8 @@ module UiTasks:
             return 1 if next == 0 else next
 
         def clear_slot(slot: usize) -> void:
-            return if slot >= MAX_TASKS or not active[slot]
-            active[slot] <- false
+            return if slot >= MAX_TASKS or not task_active[slot]
+            task_active[slot] <- false
             generations[slot] <- next_generation(generations[slot])
             owners[slot] <- 0
             tokens[slot] <- 0
