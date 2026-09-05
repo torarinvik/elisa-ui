@@ -62,6 +62,14 @@ extend UiCore:
         # cannot make an adapter chase an arbitrary pointer-sized value.
         def accessibility_with_metadata(role: AccessibilityRole, label: sview, help: sview, frame: Rect, id: usize, action: usize, enabled: bool, focused: bool, selected: bool, value: f32, text_value: sview, selected_text: sview, revision: usize, selection_location: usize, selection_length: usize, parent_id: usize, first_child_id: usize, next_sibling_id: usize, range_minimum: f32, range_maximum: f32, has_range: bool) -> void:
             return if label.len == 0
+            # `MAX_ACCESSIBILITY_NODES` is also the relationship sentinel. Do
+            # not let a caller publish that sentinel (or an arbitrary large
+            # pointer-sized identity) as a real node ID; native adapters use
+            # IDs in bounded arrays and would otherwise risk truncation or an
+            # identifier-buffer overrun.
+            if id >= MAX_ACCESSIBILITY_NODES:
+                accessibility_dropped <- true
+                return
             safe_frame: Rect = Rect{
                 origin: Vec2{ x: finite_or_zero(frame.origin.x), y: finite_or_zero(frame.origin.y) },
                 size: Size{ width: nonnegative_extent(frame.size.width), height: nonnegative_extent(frame.size.height) },
