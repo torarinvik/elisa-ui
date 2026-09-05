@@ -2,6 +2,12 @@ include "./ui_constraints.elisa"
 
 extend UiWidgets:
     public:
+        # Platform metrics are an external service. Keep their results inside
+        # the same finite geometry envelope as widget boxes before using them
+        # in origins or secondary paint rectangles.
+        def safe_line_height(size: f32) -> f32:
+            return UiConstraints::bounded(ui_text_line_height(UiConstraints::bounded(size)))
+
         def box_of(w: Widget) -> UiCore::Rect:
             # Raw sealed-enum constructors expose the common geometry fields
             # directly. Keep this shared projection safe for every consumer
@@ -80,7 +86,7 @@ extend UiWidgets:
                     pass
                 Control.Label(text, size, ink):
                     safe_size: f32 = UiConstraints::bounded(size)
-                    text_y: f32 = box_y + (box_height - ui_text_line_height(safe_size)) / 2.0
+                    text_y: f32 = box_y + (box_height - safe_line_height(safe_size)) / 2.0
                     UiCore::draw(UiCore::TextRun(UiCore::Vec2(box_x, text_y), safe_size, text), ink)
                 Control.Gauge(fraction, track, bar):
                     filled: f32 = box_width * UiCore::normalized_unit(fraction)
@@ -91,19 +97,19 @@ extend UiWidgets:
                     UiCore::fill(UiCore::Rect(knob_x, box_y, box_height, box_height), knob)
                 Control.TextBox(text, caret, size, ink, fill):
                     safe_size: f32 = UiConstraints::bounded(size)
-                    text_y: f32 = box_y + (box_height - ui_text_line_height(safe_size)) / 2.0
+                    text_y: f32 = box_y + (box_height - safe_line_height(safe_size)) / 2.0
                     UiCore::draw(UiCore::TextRun(UiCore::Vec2(box_x, text_y), safe_size, text), ink)
                 Button.Push(label, rest, hover, press):
-                    label_y: f32 = box_y + (box_height - ui_text_line_height(14.0)) / 2.0
+                    label_y: f32 = box_y + (box_height - safe_line_height(14.0)) / 2.0
                     UiCore::draw(UiCore::TextRun(UiCore::Vec2(box_x, label_y), 14.0, label), UiCore::rgb(255, 255, 255)) if label.len != 0
                 Button.Toggle(label, on, rest, hover, press):
-                    label_y: f32 = box_y + (box_height - ui_text_line_height(14.0)) / 2.0
+                    label_y: f32 = box_y + (box_height - safe_line_height(14.0)) / 2.0
                     UiCore::draw(UiCore::TextRun(UiCore::Vec2(box_x, label_y), 14.0, label), UiCore::rgb(255, 255, 255)) if label.len != 0
                 Button.Check(label, checked, rest, hover, press):
-                    label_y: f32 = box_y + (box_height - ui_text_line_height(14.0)) / 2.0
+                    label_y: f32 = box_y + (box_height - safe_line_height(14.0)) / 2.0
                     UiCore::draw(UiCore::TextRun(UiCore::Vec2(box_x, label_y), 14.0, label), UiCore::rgb(255, 255, 255)) if label.len != 0
                 Button.Radio(label, group, selected, rest, hover, press):
-                    label_y: f32 = box_y + (box_height - ui_text_line_height(14.0)) / 2.0
+                    label_y: f32 = box_y + (box_height - safe_line_height(14.0)) / 2.0
                     UiCore::draw(UiCore::TextRun(UiCore::Vec2(box_x, label_y), 14.0, label), UiCore::rgb(255, 255, 255)) if label.len != 0
 
     public:

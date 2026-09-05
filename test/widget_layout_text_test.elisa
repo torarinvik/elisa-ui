@@ -252,6 +252,27 @@ def main() -> i64:
     check("huge blink elapsed time remains safe", UiCore::command_count() >= caret_visible_commands)
     UiCore::set_frame_time(0.0)
 
+    # Metric hooks are supplied by a backend and may return a finite but
+    # unusably large value. Paint-time measurement must bound both width and
+    # line height, not only the size stored in the retained widget.
+    UiFlat::reset()
+    metric_label: usize = UiFlat::label(UiFlat::NONE, "metric", 15.0, UiCore::rgb(240, 240, 245))
+    UiFlat::layout(120.0, 24.0)
+    hostile_text_metrics <- true
+    UiCore::begin_frame()
+    UiFlat::paint()
+    hostile_text_metrics <- false
+    metric_commands: mutable usize = 0
+    for command_index in 0..<UiCore::command_count():
+        match UiCore::command_at(command_index):
+            UiCore::Command.DrawText(run, color):
+                metric_commands <- metric_commands + 1
+                check("hostile metrics keep text size bounded", run.size <= UiConstraints::MAX_EXTENT and run.size == run.size)
+                check("hostile metrics keep text origin bounded", run.origin.x <= UiConstraints::MAX_EXTENT and run.origin.x >= -UiConstraints::MAX_EXTENT and run.origin.y <= UiConstraints::MAX_EXTENT and run.origin.y >= -UiConstraints::MAX_EXTENT and run.origin.x == run.origin.x and run.origin.y == run.origin.y)
+            _:
+                pass
+    check("hostile metrics still emit text", metric_commands > 0)
+
     UiFlat::reset()
     UiCore::begin_frame()
     UiFlat::paint()

@@ -14,6 +14,7 @@ extern puts(text: cstr) -> i64
 global mutable test_failures: i32 = 0
 global mutable test_last_click: UiWidgets::Widget? = null
 global mutable test_click_count: i32 = 0
+global mutable hostile_metrics: bool = false
 
 # The application contract: the widget layer calls this when a press and its
 # release land on the same widget.
@@ -23,6 +24,7 @@ def app_widget_event(widget: UiWidgets::Widget, event: i32) -> void:
     test_click_count <- test_click_count + 1
 
 def ui_measure_text_width(text: sview, size: f32) -> f32:
+    return 3.0e38 if hostile_metrics
     return text.len.f32() * size * 0.5
 
 def ui_measure_text_height(text: sview, size: f32) -> f32:
@@ -32,6 +34,7 @@ def ui_font_ascent(size: f32) -> f32:
     return size
 
 def ui_text_line_height(size: f32) -> f32:
+    return 3.0e38 if hostile_metrics
     return size
 
 def check(name: cstr, actual: f32, expected: f32) -> void:
@@ -312,13 +315,22 @@ def main() -> i64:
         # as convenience builders before they cross into a painter backend.
         huge_label: Widget = Control.Label(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, text: "huge", size: 3.0e38, ink: grey(220))
         layout(huge_label, 100.0, 20.0)
+        hostile_metrics <- true
         UiCore::begin_frame()
         paint(huge_label)
+        hostile_metrics <- false
         found_text: mutable bool = false
         for command_index in 0..<UiCore::command_count():
             if command_text_size(command_index) >= 0.0:
                 found_text <- true
                 test_failures <- test_failures + 1 if command_text_size(command_index) > UiConstraints::MAX_EXTENT or command_text_size(command_index) != command_text_size(command_index)
+                match UiCore::command_at(command_index):
+                    UiCore::Command.DrawText(run, color):
+                        if run.origin.y > UiConstraints::MAX_EXTENT or run.origin.y < -UiConstraints::MAX_EXTENT or run.origin.y != run.origin.y:
+                            test_failures <- test_failures + 1
+                            _ = puts("hostile text metric escaped geometry bound")
+                    _:
+                        pass
         test_failures <- test_failures + 1 if not found_text
 
         # Hit testing must use the same bounded projection as painting. A raw
@@ -326,12 +338,18 @@ def main() -> i64:
         # capture pointers far outside any useful surface, or turn NaN/Inf
         # pointer coordinates into an accidental origin hit.
         hostile_hit: Widget = Button.Push(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 3.0e38, height: 3.0e38, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "hostile", rest: grey(30), hover: grey(40), press: grey(20))
-        test_failures <- test_failures + 1 if hit(hostile_hit, 20000000.0, 20000000.0) != null
+        if hit(hostile_hit, 20000000.0, 20000000.0) != null:
+            test_failures <- test_failures + 1
+            _ = puts("hostile hit geometry was not bounded")
         zero_hit: f32 = 0.0
         nan_hit: f32 = zero_hit / zero_hit
         inf_hit: f32 = 1.0 / zero_hit
-        test_failures <- test_failures + 1 if hit(hostile_hit, nan_hit, 1.0) != null
-        test_failures <- test_failures + 1 if hit(hostile_hit, inf_hit, 1.0) != null
+        if hit(hostile_hit, nan_hit, 1.0) != null:
+            test_failures <- test_failures + 1
+            _ = puts("NaN hit coordinate did not fail closed")
+        if hit(hostile_hit, inf_hit, 1.0) != null:
+            test_failures <- test_failures + 1
+            _ = puts("infinite hit coordinate did not fail closed")
 
         # Packed handles do not expose identity comparison, so a caller can
         # still construct a malformed self-link by writing a common directly.
