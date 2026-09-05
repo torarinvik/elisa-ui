@@ -48,19 +48,20 @@ extend UiFlat:
             # `sview.len` is signed at the ABI boundary. Reject malformed
             # negative extents before storage arithmetic converts them to usize.
             return if text.len < 0 or not accepts_text()
+            safe_text: sview = UiCore::bounded_text(text)
             index: usize = focused_widget
             widgets[index].text_truncated <- false
             start: usize = selection_start(index)
             stop: usize = selection_end(index)
-            if text.len == 0:
+            if safe_text.len == 0:
                 remove_text(index, start, stop)
                 return
             removed: usize = stop - start
             remaining: usize = widgets[index].input_length - removed
             available: usize = TEXT_CAPACITY - 1 - remaining
-            byte_limit: usize = text.len if text.len < available else available
-            take: usize = grapheme_prefix_length(text, valid_utf8_prefix(text, byte_limit))
-            widgets[index].text_truncated <- take < text.len
+            byte_limit: usize = safe_text.len if safe_text.len < available else available
+            take: usize = grapheme_prefix_length(safe_text, valid_utf8_prefix(safe_text, byte_limit))
+            widgets[index].text_truncated <- take < safe_text.len
             return if take == 0
             history_slot: usize = begin_text_history(index)
             offset: usize = index * TEXT_CAPACITY
@@ -77,7 +78,7 @@ extend UiFlat:
                     text_storage[offset + start + take + cursor] <- text_storage[offset + stop + cursor]
                     cursor <- cursor + 1
             for byte_index in 0..<take:
-                text_storage[offset + start + byte_index] <- single_line_byte(text, byte_index)
+                text_storage[offset + start + byte_index] <- single_line_byte(safe_text, byte_index)
             widgets[index].caret <- start + take
             widgets[index].selection_anchor <- widgets[index].caret
             widgets[index].input_length <- remaining + take
@@ -93,21 +94,22 @@ extend UiFlat:
 
         def replace_text(index: usize, text: sview) -> void:
             return if text.len < 0 or not text_editable(index)
-            byte_limit: usize = text.len if text.len < TEXT_CAPACITY - 1 else TEXT_CAPACITY - 1
-            take: usize = grapheme_prefix_length(text, valid_utf8_prefix(text, byte_limit))
-            widgets[index].text_truncated <- take < text.len
+            safe_text: sview = UiCore::bounded_text(text)
+            byte_limit: usize = safe_text.len if safe_text.len < TEXT_CAPACITY - 1 else TEXT_CAPACITY - 1
+            take: usize = grapheme_prefix_length(safe_text, valid_utf8_prefix(safe_text, byte_limit))
+            widgets[index].text_truncated <- take < safe_text.len
 
             offset: usize = index * TEXT_CAPACITY
             old_length: usize = widgets[index].input_length
             changed: mutable bool = widgets[index].input_length != take
             compare: mutable usize = 0
             while not changed and compare < take |compare, changed, offset|:
-                changed <- true if text_storage[offset + compare] != single_line_byte(text, compare)
+                changed <- true if text_storage[offset + compare] != single_line_byte(safe_text, compare)
                 compare <- compare + 1
 
             history_slot: usize = begin_text_history(index) if changed else TEXT_HISTORY_CAPACITY
             for byte_index in 0..<take:
-                text_storage[offset + byte_index] <- single_line_byte(text, byte_index)
+                text_storage[offset + byte_index] <- single_line_byte(safe_text, byte_index)
             for byte_index in take..<old_length:
                 text_storage[offset + byte_index] <- 0
             widgets[index] with { input_length <- take, caret <- take, selection_anchor <- take, marked_start <- 0, marked_end <- 0 }
@@ -123,12 +125,13 @@ extend UiFlat:
         # adapters responsible only for forwarding protocol calls.
         def commit_text(text: sview, replacement_location: usize, replacement_length: usize, has_replacement: bool) -> void:
             return if text.len < 0 or not accepts_text()
+            safe_text: sview = UiCore::bounded_text(text)
             index: usize = focused_widget
             if composition_history_slot < TEXT_HISTORY_CAPACITY and widgets[index].marked_end > widgets[index].marked_start:
                 history_suppressed <- true
                 set_selection(index, widgets[index].marked_start, widgets[index].marked_end)
                 callback_epoch: usize = widget_epoch
-                insert_text(text)
+                insert_text(safe_text)
                 return if widget_epoch != callback_epoch
                 history_suppressed <- false
                 store_history_state(composition_history_slot, index, true)
@@ -140,11 +143,12 @@ extend UiFlat:
             elif widgets[index].marked_end > widgets[index].marked_start:
                 set_selection(index, widgets[index].marked_start, widgets[index].marked_end)
             callback_epoch: usize = widget_epoch
-            insert_text(text)
+            insert_text(safe_text)
             finish_text_history(history_slot, index) if widget_epoch == callback_epoch
 
         def update_marked_text(text: sview, selected_location: usize, selected_length: usize, replacement_location: usize, replacement_length: usize, has_replacement: bool) -> void:
             return if text.len < 0 or not accepts_text()
+            safe_text: sview = UiCore::bounded_text(text)
             index: usize = focused_widget
             continuing_slot: usize = composition_history_slot
             history_slot: mutable usize = TEXT_HISTORY_CAPACITY
@@ -158,16 +162,16 @@ extend UiFlat:
                 set_selection(index, widgets[index].marked_start, widgets[index].marked_end)
             marked_start: usize = selection_start(index)
             callback_epoch: usize = widget_epoch
-            insert_text(text)
+            insert_text(safe_text)
             return if widget_epoch != callback_epoch
             marked_stop: usize = widgets[index].caret
             set_marked(index, marked_start, marked_stop)
-            total_units: usize = utf16_units_for_prefix(text, text.len)
+            total_units: usize = utf16_units_for_prefix(safe_text, safe_text.len.usize())
             safe_location: usize = selected_location if selected_location < total_units else total_units
             remaining_units: usize = total_units - safe_location
             safe_length: usize = selected_length if selected_length < remaining_units else remaining_units
-            relative_start: mutable usize = byte_offset_for_utf16(text, safe_location)
-            relative_stop: mutable usize = byte_offset_for_utf16(text, safe_location + safe_length)
+            relative_start: mutable usize = byte_offset_for_utf16(safe_text, safe_location)
+            relative_stop: mutable usize = byte_offset_for_utf16(safe_text, safe_location + safe_length)
             inserted_length: usize = marked_stop - marked_start
             relative_start <- inserted_length if relative_start > inserted_length
             relative_stop <- inserted_length if relative_stop > inserted_length
@@ -184,22 +188,23 @@ extend UiFlat:
         # framework boundary so the editing engine has one internal protocol.
         def update_marked_text_utf8_characters(text: sview, selected_start: i32, selected_length: i32) -> void:
             return if text.len < 0
+            safe_text: sview = UiCore::bounded_text(text)
             start_count: usize = selected_start.usize() if selected_start > 0 else 0
             length_count: usize = selected_length.usize() if selected_length > 0 else 0
             cursor: mutable usize = 0
             scalars: mutable usize = 0
-            while cursor < text.len and scalars < start_count |cursor, scalars, start_count|:
-                cursor <- cursor + utf8_scalar_bytes(text, cursor)
+            while cursor < safe_text.len and scalars < start_count |cursor, scalars, start_count|:
+                cursor <- cursor + utf8_scalar_bytes(safe_text, cursor)
                 scalars <- scalars + 1
-            selection_location: usize = utf16_units_for_prefix(text, cursor)
+            selection_location: usize = utf16_units_for_prefix(safe_text, cursor)
             stop: mutable usize = cursor
             scalars <- 0
-            while stop < text.len and scalars < length_count |stop, scalars, length_count|:
-                stop <- stop + utf8_scalar_bytes(text, stop)
+            while stop < safe_text.len and scalars < length_count |stop, scalars, length_count|:
+                stop <- stop + utf8_scalar_bytes(safe_text, stop)
                 scalars <- scalars + 1
-            selection_length_units: usize = utf16_units_for_prefix(text, stop) - selection_location
-            update_marked_text(text, selection_location, selection_length_units, 0, 0, false)
-            unmark_text() if text.len == 0
+            selection_length_units: usize = utf16_units_for_prefix(safe_text, stop) - selection_location
+            update_marked_text(safe_text, selection_location, selection_length_units, 0, 0, false)
+            unmark_text() if safe_text.len == 0
 
         def unmark_text() -> void:
             return if not accepts_text()
