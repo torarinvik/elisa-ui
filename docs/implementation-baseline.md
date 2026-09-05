@@ -33,7 +33,9 @@ the top-level `app_init`, `app_event`, `app_text_input`, `app_text_editing`,
 Externally imposed symbols are kept at the edges:
 
 - C ABI declarations and exports in `include/elisa_ui.h` and `src/capi/`.
-- SDL3/SDL_ttf C functions in `src/platform/sdl3/ui_sdl3.elisa`.
+- SDL3/SDL_ttf C functions in `src/platform/sdl3/ui_sdl3.elisa`; the
+  `UiSdl3Draw` module in `src/platform/sdl3/ui_sdl3_draw.elisa` owns renderer,
+  font, raster, and painter state behind that boundary.
 - CoreGraphics, CoreText, CoreFoundation, ImageIO, libobjc, and AppKit fact
   globals in `src/platform/appkit/ui_appkit_canvas.elisa`.
 - WasmBrowser WIT imports/exports and canonical record encoding in
@@ -51,8 +53,10 @@ guards for the ownership decisions.
 
 Tracked Elisa file lengths at this baseline include the intentionally cohesive
 retained widget module (`ui_widget.elisa`, 2,812 lines) and custom canvas
-adapter (`ui_appkit_canvas.elisa`, 1,729 lines). New or changed Elisa source
-continues to use small, single-purpose modules; the existing large modules are
+adapter (`ui_appkit_canvas.elisa`, 1,729 lines). The SDL3 backend is now split
+into lifecycle/event (`ui_sdl3.elisa`, 395 lines) and drawing/font state
+(`ui_sdl3_draw.elisa`, 227 lines). New or changed Elisa source continues to
+use small, single-purpose modules; the existing large modules are
 not split mechanically.
 
 The WasmBrowser adapter is now an example of the intended refactoring boundary:

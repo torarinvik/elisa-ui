@@ -31,8 +31,10 @@ because a module member's symbol carries its module and those names cannot move.
   (`UiCore::Key`, `UiCore::Pad`, `UiCore::PadAxis`). Knows nothing about any wire
   format.
 - **Backends** implement the platform side and own the frame loop:
-  [sdl3](src/platform/sdl3/ui_sdl3.elisa) (native; externs against system
-  libSDL3; `UiSdl3::run` drives the loop) and
+  [sdl3](src/platform/sdl3/ui_sdl3.elisa) (native; the `UiSdl3` module owns
+  window/event lifecycle while [ui_sdl3_draw](src/platform/sdl3/ui_sdl3_draw.elisa)
+  owns renderer state, SDL_ttf fonts, raster drawing, and the painter; externs
+  target system libSDL3 and `UiSdl3::run` drives the loop) and
   [AppKit canvas](src/platform/appkit/ui_appkit_canvas.elisa) (a custom-painted
   macOS `NSView`; AppKit supplies the window, events, CoreGraphics context and
   accessibility objects and byte-oriented pasteboard primitives through a thin

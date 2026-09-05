@@ -43,19 +43,16 @@ extern SDL_DestroySurface(surface: void&) -> void
 extern SDL_DestroyTexture(texture: void&) -> void
 extern puts(text: cstr) -> i64
 extern getenv(name: cstr) -> cstr?
-
 # SDL returns NUL-terminated UTF-8 for committed text and clipboard reads.
 # Keep the tiny scan in Elisa so the backend does not acquire a libc dependency
 # for a primitive whose policy (the backend's bounded text input) already lives here.
 const SDL_TEXT_SCAN_CAPACITY: usize = 4096
-
 def sdl_cstr_byte(text: cstr, index: usize) -> u8:
     pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
     return 0 if pointer == 0.uintptr()
     trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic]:
         byte: u8& = (pointer + index.uintptr()).cast[u8&]
         return byte
-
 def sdl_cstr_length(text: cstr) -> usize:
     pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
     return 0 if pointer == 0.uintptr()
@@ -65,7 +62,6 @@ def sdl_cstr_length(text: cstr) -> usize:
         return length if byte == 0
         length <- length + 1
     return length
-
 # SDL_ttf 3.x. Lengths are byte counts, and a zero length means "NUL-terminated";
 # every call here passes an explicit length so an sview needs no terminator.
 extern TTF_Init() -> bool
@@ -76,21 +72,18 @@ extern TTF_GetStringSize(font: void&, text: cstr, length: usize, width: mutable 
 extern TTF_GetFontHeight(font: void&) -> i32
 extern TTF_GetFontAscent(font: void&) -> i32
 extern TTF_RenderText_Blended(font: void&, text: cstr, length: usize, color: u32) -> void&?
-
+# Renderer, font, and painter state live in their own cohesive module.
+include "./ui_sdl3_draw.elisa"
 # The platform half of the contract: text metrics from the font SDL_ttf
 # rasterizes with.
 def ui_measure_text_width(text: sview, size: f32) -> f32:
     return UiSdl3::measure_text_width(text, size)
-
 def ui_measure_text_height(text: sview, size: f32) -> f32:
     return UiSdl3::text_line_height(size)
-
 def ui_font_ascent(size: f32) -> f32:
     return UiSdl3::font_ascent(size)
-
 def ui_text_line_height(size: f32) -> f32:
     return UiSdl3::text_line_height(size)
-
 
 module UiSdl3:
     private:
@@ -133,213 +126,29 @@ module UiSdl3:
         const EVENT_MOUSE_WHEEL: u32 = 0x403
 
         global mutable window: void&? = null
-        global mutable renderer: void&? = null
         # SDL_Event is a 128-byte union; poll into this buffer and read typed
         # fields at their SDL3 offsets (type@0; pointer events keep x@28 and
         # y@32 as f32).
         global mutable event_buffer: u8[128] = zeroed
-        global mutable saved_clip_rect: i32[4] = zeroed
-        global mutable saved_clip_enabled: bool = false
-        global mutable clip_depth: usize = 0
 
         def event_button() -> i32:
             return event_buffer[24].i32()
-
-        def ren() -> void&:
-            if renderer is active_renderer:
-                return active_renderer
-            return zeroed
-
-        # Text comes from SDL_ttf. A TTF_Font is tied to one point size, so
-        # fonts are opened on demand and kept in a small table keyed by size;
-        # `fonts_close` releases them at shutdown.
-        #
-        # Fonts are released explicitly here because the table outlives any
-        # one scope; per-frame glyph surfaces and textures use `__drop__`
-        # instead (below).
-        const MAX_FONTS: usize = 8
-        const DEFAULT_FONT: cstr = "/System/Library/Fonts/Supplemental/Arial.ttf"
-
-        global mutable font_handles: (void&?)[MAX_FONTS] = zeroed
-        global mutable font_sizes: f32[MAX_FONTS] = zeroed
-        global mutable font_total: usize = 0
-        # An optional override rather than a mutable cstr global holding the
-        # default: resolving the default in a function is clearer.
-        global mutable font_override: cstr? = null
-
-        def font_path() -> cstr:
-            if font_override is override:
-                return override
-            return DEFAULT_FONT
-
-        def font_for(size: f32) -> void&?:
-            for index in 0..<font_total:
-                return font_handles[index] if font_sizes[index] == size
-            return null if font_total >= MAX_FONTS
-            opened: void&? = TTF_OpenFont(font_path(), size)
-            return null if opened == null
-            font_handles[font_total] <- opened
-            font_sizes[font_total] <- size
-            font_total <- font_total + 1
-            return opened
-
     public:
-        # How many fonts the size table holds; a test checks that repeat sizes
-        # reuse an entry rather than growing it.
         def font_count() -> usize:
-            return font_total
+            return UiSdl3Draw::font_count()
 
         def fonts_close() -> void:
-            for index in 0..<font_total:
-                if font_handles[index] is handle:
-                    TTF_CloseFont(handle)
-                font_handles[index] <- null
-            font_total <- 0
+            UiSdl3Draw::fonts_close()
 
         def measure_text_width(text: sview, size: f32) -> f32:
-            return 0.0 if text.len == 0
-            if font_for(size) is font:
-                measured_width: mutable i32 = 0
-                measured_height: mutable i32 = 0
-                pointer: cstr = text.data.cast[cstr] can Unsafe.PointerCast
-                if TTF_GetStringSize(font, pointer, text.len, &measured_width, &measured_height):
-                    return measured_width.f32()
-            return 0.0
+            return UiSdl3Draw::measure_text_width(text, size)
 
         def font_ascent(size: f32) -> f32:
-            if font_for(size) is font:
-                return TTF_GetFontAscent(font).f32()
-            return size
+            return UiSdl3Draw::font_ascent(size)
 
         def text_line_height(size: f32) -> f32:
-            if font_for(size) is font:
-                return TTF_GetFontHeight(font).f32()
-            return size
+            return UiSdl3Draw::text_line_height(size)
 
-    private:
-        # A rendered glyph surface and its texture are released by destructors
-        # rather than by hand. Declaring __drop__ induces affinity on the type,
-        # so the compiler both inserts the release on every exit path and stops
-        # the handle being used twice -- the early-return paths below used to
-        # be where a hand-written release was easiest to forget.
-        struct Surface:
-            handle: void&
-
-        def __drop__(self: Surface) -> void:
-            SDL_DestroySurface(self.handle)
-
-        struct Texture:
-            handle: void&
-
-        def __drop__(self: Texture) -> void:
-            SDL_DestroyTexture(self.handle)
-
-        # SDL_Color is four bytes and travels in a single register, so it
-        # crosses as a packed little-endian u32 rather than a by-value struct.
-        def packed_color(color: UiCore::Color) -> u32:
-            return color.r.u32() | (color.g.u32() << 8) | (color.b.u32() << 16) | (color.a.u32() << 24)
-
-        def blit_text(run: UiCore::TextRun, color: UiCore::Color) -> void:
-            return if run.text.len == 0
-            if font_for(run.size) is font:
-                pointer: cstr = run.text.data.cast[cstr] can Unsafe.PointerCast
-                surface_opt: void&? = TTF_RenderText_Blended(font, pointer, run.text.len, packed_color(color))
-                if surface_opt is surface_handle:
-                    surface: Surface = Surface{handle: surface_handle}
-                    texture_opt: void&? = SDL_CreateTextureFromSurface(ren(), surface.handle)
-                    if texture_opt is texture_handle:
-                        texture: Texture = Texture{handle: texture_handle}
-                        width: f32 = measure_text_width(run.text, run.size)
-                        height: f32 = text_line_height(run.size)
-                        destination: mutable array[f32, 4] = [run.origin.x, run.origin.y, width, height]
-                        destination_pointer: void& = (&destination[0]).cast[void&] can Unsafe.PointerCast
-                        _ = SDL_RenderTexture(ren(), texture.handle, null, destination_pointer)
-
-        def paint_rect(box_rect: UiCore::Rect, color: UiCore::Color) -> void:
-            box: mutable array[f32, 4] = [box_rect.origin.x, box_rect.origin.y, box_rect.size.width, box_rect.size.height]
-            _ = SDL_SetRenderDrawColor(ren(), color.r, color.g, color.b, color.a)
-            rect_pointer: void& = (&box[0]).cast[void&] can Unsafe.PointerCast
-            _ = SDL_RenderFillRect(ren(), rect_pointer)
-
-        # SDL3's 2D renderer has no filled-circle or filled-triangle primitive, so
-        # both are rasterized here as horizontal spans -- one 1px-tall FillRect per
-        # scanline, with the draw colour set once by the caller.
-        #
-        # They used to be approximated by their BOUNDING BOX, so a circle was a square
-        # on desktop while WasmBrowser drew a real circle from the same command list:
-        # the two backends disagreed about what one frame looked like, which is the
-        # thing a shared command list exists to prevent. Spans move the disagreement
-        # down to anti-aliasing, where it belongs.
-        def fill_span(x0: f32, x1: f32, y: f32) -> void:
-            return if x1 <= x0
-            span: mutable array[f32, 4] = [x0, y, x1 - x0, 1.0]
-            span_pointer: void& = (&span[0]).cast[void&] can Unsafe.PointerCast
-            _ = SDL_RenderFillRect(ren(), span_pointer)
-
-        def paint_circle(disc: UiCore::Circle, color: UiCore::Color) -> void:
-            return if disc.radius <= 0.0
-            _ = SDL_SetRenderDrawColor(ren(), color.r, color.g, color.b, color.a)
-            last: f32 = UiRaster::last_scanline(disc.center.y + disc.radius)
-            y: mutable f32 = UiRaster::first_scanline(disc.center.y - disc.radius)
-            while y <= last:
-                offset: f32 = UiRaster::scanline_centre(y) - disc.center.y
-                half: f32 = UiRaster::circle_half_width(disc.radius, offset)
-                fill_span(disc.center.x - half, disc.center.x + half, y) if half > 0.0
-                y <- y + 1.0
-
-        def paint_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> void:
-            _ = SDL_SetRenderDrawColor(ren(), color.r, color.g, color.b, color.a)
-            xs: array[f32, 3] = [tri.a.x, tri.b.x, tri.c.x]
-            ys: array[f32, 3] = [tri.a.y, tri.b.y, tri.c.y]
-            # The vertical extent, through NAMED locals: an index expression in the
-            # else-branch of a value-`if` does not parse (both compilers agree --
-            # stage0 says "expected else, got NEWLINE"), so `ys[0] if … else ys[1]`
-            # is not available here.
-            ay: f32 = tri.a.y
-            by: f32 = tri.b.y
-            cy: f32 = tri.c.y
-            lowest: f32 = ay if ay < by else by
-            highest: f32 = ay if ay > by else by
-            top: f32 = lowest if lowest < cy else cy
-            bottom: f32 = highest if highest > cy else cy
-            last: f32 = UiRaster::last_scanline(bottom)
-            y: mutable f32 = UiRaster::first_scanline(top)
-            while y <= last:
-                sample: f32 = UiRaster::scanline_centre(y)
-                span_lo: mutable f32 = 0.0
-                span_hi: mutable f32 = 0.0
-                crossings: mutable i32 = 0
-                for edge in 0..<3:
-                    # `tail` and `stack` are RESERVED words, so the second endpoint is
-                    # `next_corner`; a local named `tail` fails to parse at its colon.
-                    corner: usize = edge
-                    next_corner: usize = (edge + 1) % 3
-                    continue if not UiRaster::edge_straddles(ys[corner], ys[next_corner], sample)
-                    crossed: f32 = UiRaster::edge_crossing(xs[corner], ys[corner], xs[next_corner], ys[next_corner], sample)
-                    span_lo <- crossed if crossings == 0 or crossed < span_lo else span_lo
-                    span_hi <- crossed if crossings == 0 or crossed > span_hi else span_hi
-                    crossings <- crossings + 1
-                fill_span(span_lo, span_hi, y) if crossings > 0
-                y <- y + 1.0
-
-        # The two command bodies that are not already a raster helper. The MATCH
-        # that used to sit here lives once in ui_paint.elisa's UiPaint::replay, so
-        # this backend and WasmBrowser can no longer drift in how they read the same
-        # command list -- which they had: circles and triangles were bounding boxes
-        # here and exact there.
-        #
-        # Six public wrappers stood here until the `impl Painter` could live inside
-        # this module. Three of them only forwarded to the raster helpers and one to
-        # blit_text, so the impl calls those directly now; these two are the bodies
-        # that were really theirs. Nothing outside the backend ever called any of
-        # them.
-        def paint_clear(color: UiCore::Color) -> void:
-            _ = SDL_SetRenderDrawColor(ren(), color.r, color.g, color.b, color.a)
-            _ = SDL_RenderClear(ren())
-
-        def paint_line(segment: UiCore::Line, color: UiCore::Color) -> void:
-            _ = SDL_SetRenderDrawColor(ren(), color.r, color.g, color.b, color.a)
-            _ = SDL_RenderLine(ren(), segment.from_point.x, segment.from_point.y, segment.to_point.x, segment.to_point.y)
 
     private:
         def event_type() -> u32:
@@ -525,20 +334,18 @@ module UiSdl3:
                 return 1
             window <- window_opt
             if window is created_window:
-                renderer_opt: void&? = SDL_CreateRenderer(created_window, null)
-                if renderer_opt == null:
+                if not UiSdl3Draw::create_renderer(created_window):
                     _ = puts(SDL_GetError())
                     SDL_DestroyWindow(created_window)
                     SDL_Quit()
                     return 1
-                renderer <- renderer_opt
             # Text is optional: a host without the font still runs, it just
             # measures every run as zero-width.
             if not TTF_Init():
                 _ = puts(SDL_GetError())
             path_override: cstr? = getenv("ELISA_UI_FONT")
             if path_override is override:
-                font_override <- override
+                UiSdl3Draw::set_font_override(override)
             UiCore::set_viewport(width.f32(), height.f32())
             app_init()
             if window is text_window:
@@ -568,71 +375,18 @@ module UiSdl3:
                 UiCore::set_frame_time(seconds_from_ticks(SDL_GetTicks()))
                 UiCore::begin_frame()
                 app_frame()
-                UiPaint::replay[Sdl3Painter]()
-                _ = SDL_RenderPresent(ren())
+                UiPaint::replay[UiSdl3Draw::Sdl3Painter]()
+                UiSdl3Draw::present()
                 frames <- frames + 1
                 running <- false if max_frames > 0 and frames >= max_frames
                 if running and max_frames <= 0:
                     _ = SDL_WaitEventTimeout(null, animation_timeout(UiCore::frame_delay()))
-            fonts_close()
+            UiSdl3Draw::fonts_close()
             TTF_Quit()
             if window is text_window:
                 _ = SDL_StopTextInput(text_window)
-            if renderer is done_renderer:
-                SDL_DestroyRenderer(done_renderer)
+            UiSdl3Draw::destroy_renderer()
             if window is done_window:
                 SDL_DestroyWindow(done_window)
             SDL_Quit()
             return 0
-
-
-    public:
-        # The SDL3 painter. A TYPE, not a value: its state is this module's renderer
-        # handle, so every method is static and the specialization inlines straight
-        # through to the SDL calls -- no vtable, no indirect call on the per-command
-        # path.
-        #
-        # It sits INSIDE the module now, which is the whole reason the wrappers
-        # above could go: an impl written here reaches module-private helpers.
-        struct Sdl3Painter:
-            unused: i32
-
-        impl Painter for Sdl3Painter:
-            def push_clip(box: UiCore::Rect) -> void can[Ui.Draw]:
-                if clip_depth == 0:
-                    saved_clip_enabled <- SDL_RenderClipEnabled(ren())
-                    _ = SDL_GetRenderClipRect(ren(), (&saved_clip_rect[0]).cast[void&] can Unsafe.PointerCast)
-                clip_depth <- clip_depth + 1
-                left: f32 = floorf(box.origin.x)
-                top: f32 = floorf(box.origin.y)
-                right: f32 = ceilf(box.origin.x + box.size.width)
-                bottom: f32 = ceilf(box.origin.y + box.size.height)
-                clip: mutable i32[4] = [left.i32(), top.i32(), (right - left).i32(), (bottom - top).i32()]
-                _ = SDL_SetRenderClipRect(ren(), (&clip[0]).cast[void&] can Unsafe.PointerCast)
-
-            def pop_clip() -> void can[Ui.Draw]:
-                return if clip_depth == 0
-                clip_depth <- clip_depth - 1
-                return if clip_depth != 0
-                if saved_clip_enabled:
-                    _ = SDL_SetRenderClipRect(ren(), (&saved_clip_rect[0]).cast[void&] can Unsafe.PointerCast)
-                else:
-                    _ = SDL_SetRenderClipRect(ren(), null)
-
-            def clear(color: UiCore::Color) -> void can[Ui.Draw]:
-                paint_clear(color)
-
-            def fill_rect(box: UiCore::Rect, color: UiCore::Color) -> void can[Ui.Draw]:
-                paint_rect(box, color)
-
-            def fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> void can[Ui.Draw]:
-                paint_circle(disc, color)
-
-            def fill_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]:
-                paint_triangle(tri, color)
-
-            def fill_line(segment: UiCore::Line, color: UiCore::Color) -> void can[Ui.Draw]:
-                paint_line(segment, color)
-
-            def draw_text(run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
-                blit_text(run, color)
