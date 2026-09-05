@@ -74,6 +74,7 @@ module UiSdl3:
     private:
         const INIT_VIDEO: u32 = 0x20
         const WINDOW_RESIZABLE: u64 = 0x20
+        const WINDOW_MAX_EXTENT: i32 = 16777216
         const EVENT_QUIT: u32 = 0x100
         const EVENT_WINDOW_RESIZED: u32 = 0x206
         const EVENT_WINDOW_MOUSE_LEAVE: u32 = 0x20d
@@ -121,6 +122,17 @@ module UiSdl3:
             value_ref: mutable i32& = (&event_buffer[24]).cast[i32&] can Unsafe.PointerCast
             return value_ref[0]
     public:
+        # SDL requires positive initial window extents. Keep that native
+        # precondition in the framework adapter, and use the same conservative
+        # cap as retained geometry so an untrusted launch size cannot ask SDL
+        # for an unbounded surface. Resize events may still legitimately carry
+        # zero while a window is minimized; this helper is for initial creation
+        # only.
+        def window_extent(value: i32) -> i32:
+            return 1 if value <= 0
+            return WINDOW_MAX_EXTENT if value > WINDOW_MAX_EXTENT
+            return value
+
         def font_count() -> usize:
             return UiSdl3Draw::font_count()
 
@@ -282,6 +294,19 @@ module UiSdl3:
             app_text_editing(safe_text, safe_start, safe_length)
 
     private:
+        # Tear down every native resource created by run(). Keeping the
+        # failure path identical to ordinary shutdown prevents an unsuccessful
+        # lifecycle transition from leaking a renderer, font table, or window
+        # into the next backend session.
+        def release_native() -> void:
+            UiSdl3Draw::fonts_close()
+            TTF_Quit()
+            UiSdl3Draw::destroy_renderer()
+            if window is done_window:
+                SDL_DestroyWindow(done_window)
+            window <- null
+            SDL_Quit()
+
         # Poll one SDL event and translate it. Returns false when the queue is
         # empty; events outside the modeled set come back as `Event.None` for the
         # app to skip.
@@ -376,7 +401,9 @@ module UiSdl3:
             if not SDL_Init(INIT_VIDEO):
                 _ = puts(SDL_GetError())
                 return 1
-            window_opt: void&? = SDL_CreateWindow(title, width, height, WINDOW_RESIZABLE)
+            safe_width: i32 = window_extent(width)
+            safe_height: i32 = window_extent(height)
+            window_opt: void&? = SDL_CreateWindow(title, safe_width, safe_height, WINDOW_RESIZABLE)
             if window_opt == null:
                 _ = puts(SDL_GetError())
                 SDL_Quit()
@@ -395,8 +422,11 @@ module UiSdl3:
             path_override: cstr? = getenv("ELISA_UI_FONT")
             if path_override is override:
                 UiSdl3Draw::set_font_override(override)
-            UiCore::set_viewport(width.f32(), height.f32())
-            return 1 if not UiLifecycle::begin()
+            UiCore::set_viewport(safe_width.f32(), safe_height.f32())
+            if not UiLifecycle::begin():
+                release_native()
+                _ = UiLifecycle::stop()
+                return 1
             app_init()
             _ = UiLifecycle::ready()
             # SDL does not guarantee a separate initial focus event after a
@@ -438,13 +468,8 @@ module UiSdl3:
                 running <- false if max_frames > 0 and frames >= max_frames
                 if running and max_frames <= 0:
                     _ = SDL_WaitEventTimeout(null, UiCore::frame_timeout_ms(UiCore::frame_delay()))
-            UiSdl3Draw::fonts_close()
-            TTF_Quit()
             if window is text_window:
                 _ = SDL_StopTextInput(text_window)
-            UiSdl3Draw::destroy_renderer()
-            if window is done_window:
-                SDL_DestroyWindow(done_window)
-            SDL_Quit()
+            release_native()
             _ = UiLifecycle::stop()
             return 0
