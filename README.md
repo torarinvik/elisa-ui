@@ -76,8 +76,8 @@ because a module member's symbol carries its module and those names cannot move.
   bounded grid-column calculation, and physical touch-target normalization,
   all driven by logical space rather than OS-name branches.
 - **Virtual lists** ([src/widgets/ui_virtual_list.elisa](src/widgets/ui_virtual_list.elisa)) —
-  bounded visible ranges, edge buffering, item placement, and content extents
-  shared by every backend.
+  bounded visible ranges, edge buffering, item placement, content extents, and
+  semantic navigation metadata shared by every backend.
 - **Stable dynamic identity** ([src/widgets/ui_identity.elisa](src/widgets/ui_identity.elisa)) —
   explicit begin/claim/finish transactions preserve keyed generations across
   list and form rebuilds, reject duplicate keys, and invalidate retired items

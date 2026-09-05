@@ -1,0 +1,37 @@
+# Headless regression for virtual-list semantic navigation metadata.
+
+include "../src/widgets/ui_virtual_list.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    visible: UiVirtualList::VisibleRange = UiVirtualList::VisibleRange{first: 4, finish: 8}
+    window: UiVirtualList::SemanticWindow = UiVirtualList::semantic_window(20, visible, 12, 12)
+    check("semantic metadata preserves total count", window.total == 20)
+    check("semantic metadata preserves visible range", window.first == 4 and window.finish == 8)
+    check("off-screen focus remains addressable", window.has_focus and window.focused == 12 and not window.focus_visible)
+    check("off-screen selection remains addressable", window.has_selection and window.selected == 12 and not window.selection_visible)
+    check("window exposes both navigation edges", window.has_before and window.has_after)
+
+    malformed: UiVirtualList::SemanticWindow = UiVirtualList::semantic_window(3, UiVirtualList::VisibleRange{first: -9, finish: -2}, -2, 99)
+    check("malformed window clamps to one row", malformed.first == 0 and malformed.finish == 1)
+    check("malformed focus and selection fail closed", not malformed.has_focus and malformed.focused == UiVirtualList::NONE_INDEX and not malformed.has_selection and malformed.selected == UiVirtualList::NONE_INDEX)
+
+    empty: UiVirtualList::SemanticWindow = UiVirtualList::semantic_window(0, visible, 0, 0)
+    check("empty semantic window is inert", empty.total == 0 and empty.first == 0 and empty.finish == 0 and not empty.has_before and not empty.has_after)
+    check("logical navigation moves forward", UiVirtualList::move(4, 20, true) == 5)
+    check("logical navigation moves backward", UiVirtualList::move(4, 20, false) == 3)
+    check("navigation rejects an endpoint", UiVirtualList::move(0, 20, false) == UiVirtualList::NONE_INDEX and UiVirtualList::move(19, 20, true) == UiVirtualList::NONE_INDEX)
+    check("navigation rejects stale targets", UiVirtualList::move(99, 20, true) == UiVirtualList::NONE_INDEX)
+
+    if failures == 0:
+        _ = puts("virtual list semantics: all checks passed")
+        return 0
+    _ = puts("virtual list semantics: FAILURES above")
+    return 1

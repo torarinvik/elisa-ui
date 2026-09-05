@@ -14,6 +14,7 @@ module UiVirtualList:
         # from overflowing f32 geometry while still allowing large feeds. The
         # visible range is additionally capped by the caller's max_visible.
         const MAX_ITEMS: i32 = 16777216
+        const NONE_INDEX: i32 = -1
 
         struct VisibleRange:
             first: i32
@@ -23,6 +24,24 @@ module UiVirtualList:
             item_extent: f32
             spacing: f32
             stride: f32
+
+        # Bounded semantic metadata for a realized window. `total` describes
+        # the logical list even when only [first, finish) has widgets. Focus
+        # and selection retain their logical indexes, so an off-screen target
+        # remains addressable instead of silently disappearing from assistive
+        # navigation during virtualization.
+        struct SemanticWindow:
+            total: i32
+            first: i32
+            finish: i32
+            focused: i32
+            selected: i32
+            has_focus: bool
+            has_selection: bool
+            focus_visible: bool
+            selection_visible: bool
+            has_before: bool
+            has_after: bool
 
         def metrics(item_extent: f32, spacing: f32) -> Metrics:
             safe_item: mutable f32 = UiCore::nonnegative_extent(item_extent)
@@ -79,3 +98,48 @@ module UiVirtualList:
 
         def contains(range: VisibleRange, index: i32) -> bool:
             return index >= range.first and index < range.finish
+
+        # Normalize a geometry range supplied by a stale caller before it is
+        # published to a semantic adapter. A non-empty list always exposes at
+        # least one row, keeping accessibility navigation useful even when a
+        # surface briefly reports a zero-sized viewport.
+        def semantic_window(item_count: i32, range: VisibleRange, focused_index: i32, selected_index: i32) -> SemanticWindow:
+            total: i32 = bounded_count(item_count)
+            return SemanticWindow{total: 0, first: 0, finish: 0,
+                focused: NONE_INDEX, selected: NONE_INDEX,
+                has_focus: false, has_selection: false,
+                focus_visible: false, selection_visible: false,
+                has_before: false, has_after: false} if total == 0
+
+            first: mutable i32 = range.first
+            first <- 0 if first < 0
+            first <- total - 1 if first >= total
+            finish: mutable i32 = range.finish
+            finish <- first + 1 if finish <= first
+            finish <- total if finish > total
+
+            has_focus: bool = focused_index >= 0 and focused_index < total
+            has_selection: bool = selected_index >= 0 and selected_index < total
+            return SemanticWindow{
+                total: total,
+                first: first,
+                finish: finish,
+                focused: focused_index if has_focus else NONE_INDEX,
+                selected: selected_index if has_selection else NONE_INDEX,
+                has_focus: has_focus,
+                has_selection: has_selection,
+                focus_visible: has_focus and focused_index >= first and focused_index < finish,
+                selection_visible: has_selection and selected_index >= first and selected_index < finish,
+                has_before: first > 0,
+                has_after: finish < total,
+            }
+
+        # Move a logical semantic target without requiring its row to be
+        # realized. Invalid or empty targets fail closed with NONE_INDEX;
+        # callers can then request a new visible range before painting it.
+        def move(index: i32, item_count: i32, forward: bool) -> i32:
+            total: i32 = bounded_count(item_count)
+            return NONE_INDEX if total == 0 or index < 0 or index >= total
+            next: mutable i32 = index + 1 if forward else index - 1
+            return NONE_INDEX if next < 0 or next >= total
+            return next
