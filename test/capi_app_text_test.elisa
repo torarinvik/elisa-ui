@@ -1,0 +1,56 @@
+# The C app adapter must keep marked-text ranges inside the counted payload it
+# forwards. This stays headless: the callback below stands in for a C host.
+
+include "../src/capi/ui_capi_app.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable failures: i32 = 0
+global mutable seen_length: usize = 0
+global mutable seen_start: i32 = -1
+global mutable seen_selection_length: i32 = -1
+
+def elisa_ui_on_init() -> void:
+    pass
+
+def elisa_ui_on_event(event: UiCore::EventRecord&) -> void:
+    pass
+
+def elisa_ui_on_text_input(text: cstr, length: usize) -> void:
+    pass
+
+def elisa_ui_on_text_editing(text: cstr, length: usize, selected_start: i32, selected_length: i32) -> void:
+    seen_length <- length
+    seen_start <- selected_start
+    seen_selection_length <- selected_length
+
+def elisa_ui_on_frame() -> void:
+    pass
+
+def elisa_ui_on_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    bytes: mutable u8[UiCore::MAX_TEXT_BYTES + 8] = zeroed
+    for index in 0..<UiCore::MAX_TEXT_BYTES + 8:
+        bytes[index] <- 120
+    text: sview = sview(&bytes[0], 0, (UiCore::MAX_TEXT_BYTES + 8).i64())
+
+    app_text_editing(text, 2147483647, 2147483647)
+    check("C app editing text is bounded", seen_length == UiCore::MAX_TEXT_BYTES)
+    check("C app editing start stays inside text", seen_start == UiCore::MAX_TEXT_BYTES.i32())
+    check("C app editing range length is bounded", seen_selection_length == 0)
+
+    app_text_editing("x", -1, -1)
+    check("C app rejects negative editing offsets", seen_start == 0 and seen_selection_length == 0)
+
+    if failures == 0:
+        _ = puts("capi app text: all checks passed")
+        return 0
+    _ = puts("capi app text: FAILURES above")
+    return 1

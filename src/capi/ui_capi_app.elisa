@@ -54,7 +54,17 @@ module UiCapiApp:
         def on_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
             safe_text: sview = UiCore::bounded_text(text)
             pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
-            elisa_ui_on_text_editing(pointer, safe_text.len.usize(), selected_start, selected_length)
+            # Keep the marked range inside the same bounded view that crosses
+            # the C boundary. A hostile native backend can provide negative or
+            # oversized offsets; forwarding them unchanged would make the C
+            # app interpret a range that cannot exist in `safe_text`.
+            limit: i32 = safe_text.len.i32()
+            safe_start: mutable i32 = selected_start if selected_start > 0 else 0
+            safe_start <- limit if safe_start > limit else safe_start
+            remaining: i32 = limit - safe_start
+            safe_length: mutable i32 = selected_length if selected_length > 0 else 0
+            safe_length <- remaining if safe_length > remaining else safe_length
+            elisa_ui_on_text_editing(pointer, safe_text.len.usize(), safe_start, safe_length)
 
         def on_frame() -> void:
             elisa_ui_on_frame()
