@@ -321,6 +321,18 @@ def main() -> i64:
                 test_failures <- test_failures + 1 if command_text_size(command_index) > UiConstraints::MAX_EXTENT or command_text_size(command_index) != command_text_size(command_index)
         test_failures <- test_failures + 1 if not found_text
 
+        # Hit testing must use the same bounded projection as painting. A raw
+        # constructor can otherwise make a button with a near-infinite frame
+        # capture pointers far outside any useful surface, or turn NaN/Inf
+        # pointer coordinates into an accidental origin hit.
+        hostile_hit: Widget = Button.Push(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 3.0e38, height: 3.0e38, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "hostile", rest: grey(30), hover: grey(40), press: grey(20))
+        test_failures <- test_failures + 1 if hit(hostile_hit, 20000000.0, 20000000.0) != null
+        zero_hit: f32 = 0.0
+        nan_hit: f32 = zero_hit / zero_hit
+        inf_hit: f32 = 1.0 / zero_hit
+        test_failures <- test_failures + 1 if hit(hostile_hit, nan_hit, 1.0) != null
+        test_failures <- test_failures + 1 if hit(hostile_hit, inf_hit, 1.0) != null
+
         # Packed handles do not expose identity comparison, so a caller can
         # still construct a malformed self-link by writing a common directly.
         # Every hierarchy traversal must terminate instead of recursing until

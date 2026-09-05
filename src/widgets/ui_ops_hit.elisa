@@ -1,7 +1,21 @@
+include "./ui_constraints.elisa"
+
 extend UiWidgets:
     private:
         def contains(w: Widget, x: f32, y: f32) -> bool:
-            return x >= w.x and y >= w.y and x < w.x + w.width and y < w.y + w.height
+            # Hierarchy callers may construct a sealed Widget directly and
+            # invoke hit testing before layout. Project the common geometry
+            # through the same finite/bounded contract used by painting and
+            # native-control realization, and reject non-finite pointer input
+            # instead of accidentally treating NaN/Inf as the origin.
+            safe_x: f32 = UiCore::finite_or_zero(w.x)
+            safe_y: f32 = UiCore::finite_or_zero(w.y)
+            safe_width: f32 = UiConstraints::bounded(w.width)
+            safe_height: f32 = UiConstraints::bounded(w.height)
+            safe_pointer_x: f32 = UiCore::finite_or_zero(x)
+            safe_pointer_y: f32 = UiCore::finite_or_zero(y)
+            return false if x != safe_pointer_x or y != safe_pointer_y
+            return safe_pointer_x >= safe_x and safe_pointer_y >= safe_y and safe_pointer_x < safe_x + safe_width and safe_pointer_y < safe_y + safe_height
 
     public:
         # The topmost interactive widget under the pointer. Children are
