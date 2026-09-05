@@ -127,7 +127,6 @@ module UiWasmBrowser:
 
         def present() -> void:
             total: usize = UiCore::command_count()
-            return if total == 0
             wire_reset()
             UiPaint::replay[WasmPainter]()
             commands: void& = (&wire_buffer[0]).cast[void&] can Unsafe.PointerCast
@@ -183,6 +182,7 @@ module UiWasmBrowser:
             _ = UiLifecycle::focus_gained()
 
         def resize(width: u32, height: u32) -> void:
+            return if not UiLifecycle::is_started()
             UiCore::set_viewport(width.f32(), height.f32())
             dispatch((UiCore::Event.Resize(size: UiCore::Size(width.f32(), height.f32()))))
 
@@ -233,7 +233,7 @@ module UiWasmBrowser:
         def gamepad_axis_input(index: u32, axis: i32, value: f32) -> void:
             mapped: i32 = UiWasmInput::gamepad_axis_from_host(axis)
             return if mapped < 0
-            dispatch_input((UiCore::GamepadEvent.Axis(axis: UiCore::PadAxis(mapped), value: UiCore::finite_or_zero(value))))
+            dispatch_input((UiCore::GamepadEvent.Axis(axis: UiCore::PadAxis(mapped), value: UiWasmInput::axis_value(value))))
 
         def suspend() -> void:
             # Losing a WasmBrowser tab's presentation focus must release
