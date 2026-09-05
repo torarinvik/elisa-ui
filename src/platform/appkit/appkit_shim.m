@@ -352,15 +352,12 @@ int elisa_appkit_button_bezel_style(size_t handle) {
     return (int)[(NSButton *)object bezelStyle];
 }
 
-int elisa_appkit_button_toggles(size_t handle) {
+void elisa_appkit_perform_button_click(size_t handle) {
     NSButton *button = (NSButton *)elisa_appkit_object(handle);
-    if (![button isKindOfClass:[NSButton class]]) return -1;
-    NSControlStateValue before = button.state;
-    [button setState:elisa_appkit_control_state_off];
+    if (![button isKindOfClass:[NSButton class]]) return;
+    // Elisa owns the before/after state experiment; Cocoa only performs the
+    // protocol-level click on the explicitly supplied native object.
     [button performClick:nil];
-    BOOL toggles = button.state == elisa_appkit_control_state_on;
-    [button setState:before];
-    return toggles ? 1 : 0;
 }
 
 int elisa_appkit_scroll_has_vertical(size_t handle) {

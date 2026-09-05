@@ -61,6 +61,10 @@ if grep -Eq 'setFloatingPanel:YES|setBecomesKeyOnlyIfNeeded:YES' "$ROOT/src/plat
   echo "appkit: panel behavior policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq 'elisa_appkit_button_toggles|NSControlStateValue before|BOOL toggles' "$ROOT/src/platform/appkit/appkit_shim.m"; then
+  echo "appkit: button toggle experiment leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'backing:NSBackingStoreBuffered' "$ROOT/src/platform/appkit/appkit_shim.m"; then
   echo "appkit: backing-store policy leaked back into Objective-C constructors" >&2
   exit 1
@@ -72,7 +76,7 @@ fi
 # Keep native read-back behind UiAppKitNative as well as constructors and
 # setters. The realization module should express widget policy in terms of its
 # typed Elisa wrapper, never import a raw Cocoa query symbol directly.
-if grep -Eq '^extern elisa_appkit_(subview_count|is_class|window_is_resizable|window_is_floating|panel_becomes_key_only|button_is_on|button_bezel_style|button_toggles|scroll_has_vertical|scroll_has_horizontal|frame_width|frame_x|frame_y|is_flipped|progress_is_indeterminate|progress_style)\b' "$ROOT/src/platform/appkit/ui_appkit.elisa"; then
+if grep -Eq '^extern elisa_appkit_(subview_count|is_class|window_is_resizable|window_is_floating|panel_becomes_key_only|button_is_on|button_bezel_style|perform_button_click|scroll_has_vertical|scroll_has_horizontal|frame_width|frame_x|frame_y|is_flipped|progress_is_indeterminate|progress_style)\b' "$ROOT/src/platform/appkit/ui_appkit.elisa"; then
   echo "appkit: native read-back queries leaked into the realization module" >&2
   exit 1
 fi
@@ -138,7 +142,7 @@ nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_button_state$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_slider_state$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_progress_value$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_button_bezel_style$'
-nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_button_toggles$'
+nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_perform_button_click$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_panel_becomes_key_only$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_progress_style$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_progress_is_indeterminate$'

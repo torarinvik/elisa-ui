@@ -149,9 +149,11 @@ separate host-enforced security boundary.
 - Elisa owns retained widget/resource-visible state, layout, interaction,
   themes, semantic generation, text editing, frame scheduling decisions,
   lifecycle interpretation, and application-visible errors.
-- Native/host hosts own OS objects, event queues, text shaping/rasterization,
-  GPU/image mechanisms, accessibility protocol objects, package delivery, and
-  service authority. Shims pass raw facts and explicit framework decisions.
+- Native/host hosts own OS objects, native event queues, text
+  shaping/rasterization, GPU/image mechanisms, accessibility protocol objects,
+  package delivery, and service authority. After translation, `UiEvents` owns
+  the bounded Elisa-side FIFO and its overflow policy; shims pass raw facts and
+  explicit framework decisions.
 - AppKit native-control read-back is routed through the same Elisa-owned,
   autorelease-scoped bridge wrapper surface as construction and mutation; the
   realization module no longer imports raw Cocoa query symbols.
@@ -203,6 +205,10 @@ separate host-enforced security boundary.
   facts into `UiCore::Event`. Synchronous adapters drain immediately; SDL drains
   poll bursts. Full queues reject incoming events and expose sticky loss facts
   through `UiInspector`. Coverage lives in `test/event_queue_test.elisa`.
+- AppKit read-back helpers expose only native facts. The button-toggle
+  introspection path now performs the native click as one primitive while Elisa
+  owns the before/after comparison and state restoration; no test behavior is
+  encoded in the Objective-C shim.
 - `UiHarness` is the deterministic Elisa-side test driver. It injects a
   monotonic clock, typed lifecycle/input events, resource requests/progress,
   and frame boundaries while leaving production event-loop ownership with each
