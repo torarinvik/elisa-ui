@@ -89,6 +89,10 @@ because a module member's symbol carries its module and those names cannot move.
   bounded modal stacking, typed results, owner-scoped cancellation, portable
   Dialog semantics, and consistent desktop/mobile back behavior with
   stale-handle protection.
+- **Back navigation** ([src/widgets/ui_navigation.elisa](src/widgets/ui_navigation.elisa)) —
+  one bounded policy for desktop Escape, mobile back, and hosted navigation;
+  allow/consume/confirm decisions preserve dirty state and never trap OS
+  navigation in a native shim.
 - **Gestures** ([src/widgets/ui_gestures.elisa](src/widgets/ui_gestures.elisa)) —
   deterministic bounded touch capture with tap, long-press, drag, pinch, and
   lifecycle cancellation policy shared by native and hosted adapters.

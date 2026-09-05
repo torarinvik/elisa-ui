@@ -27,7 +27,7 @@ profile, Elisa language, and elisa-ui framework explicitly.
 Public framework modules are `UiCore`, `UiLifecycle`, `UiMetrics`, `UiState`, `UiCapabilities`, `UiEvents`, `UiPaint`, `UiRaster`,
 `UiConst`, `UiWidgets`, `UiFlat`, `UiHandles`, `UiResources`, `UiResourcePresentation`,
 `UiResponsive`, `UiVirtualList`, `UiConstraints`, `UiIdentity`, `UiTheme`,
-`UiLocalization`, `UiValidation`, `UiDialog`, `UiGestures`, `UiTextLayout`, `UiTextInput`, `UiControls`, `UiCapi`, `UiAppKit`,
+`UiLocalization`, `UiValidation`, `UiDialog`, `UiNavigation`, `UiGestures`, `UiTextLayout`, `UiTextInput`, `UiControls`, `UiCapi`, `UiAppKit`,
 `UiAppKitNative`, `UiAppKitCanvas`, `UiSdl3`, `UiSdl3Draw`, `UiWasmBrowser`,
 and `UiInspector`. The application contract is
 the top-level `app_init`, `app_event`, `app_text_input`, `app_text_editing`,
@@ -104,7 +104,8 @@ windows, normalized min/preferred/max constraints, stable keyed identities,
 typed widget lifetimes, hit testing and scrolling, control state, Unicode text
 editing/IME and bounded undo history, shared themes/localization/RTL/plurals,
 revision-safe async validation, bounded dialog ordering/results/semantics,
-deterministic touch gesture classification, scalar-safe text line breaking,
+deterministic touch gesture classification, explicit back-navigation
+allow/consume/confirm policy, scalar-safe text line breaking,
 purpose-driven text-input/privacy traits, clipping and raster commands, C API
 shape, AppKit semantics, and SDL/AppKit key maps. Implemented
 but not yet device-verified: actual VoiceOver interaction, non-ASCII IMEs on a
@@ -163,7 +164,8 @@ separate host-enforced security boundary.
 
 - Elisa owns retained widget/resource-visible state, layout, interaction,
   themes, semantic generation, text editing, frame scheduling decisions,
-  lifecycle interpretation, and application-visible errors.
+  lifecycle interpretation, back-navigation decisions, and application-visible
+  errors.
 - Native/host hosts own OS objects, native event queues, text
   shaping/rasterization, GPU/image mechanisms, accessibility protocol objects,
   package delivery, and service authority. After translation, `UiEvents` owns
