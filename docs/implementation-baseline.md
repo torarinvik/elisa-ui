@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `6056d22` on branch `work` |
+| elisa-ui revision | `3a8b93f` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `1a44c1d1`; SHA-256 `a9573ad3779ae57f9daf68f79c53761c5ec54d0045a11c1387071ba0562678bc` |
@@ -26,8 +26,10 @@ profile, Elisa language, and elisa-ui framework explicitly.
 
 Public framework modules are `UiCore`, `UiLifecycle`, `UiMetrics`, `UiState`, `UiCapabilities`, `UiEvents`, `UiPaint`, `UiRaster`,
 `UiConst`, `UiWidgets`, `UiFlat`, `UiHandles`, `UiResources`, `UiResourcePresentation`,
-`UiResponsive`, `UiVirtualList`, `UiControls`, `UiCapi`, `UiAppKit`, `UiAppKitNative`, `UiAppKitCanvas`, `UiSdl3`,
-`UiSdl3Draw`, `UiWasmBrowser`, and `UiInspector`. The application contract is
+`UiResponsive`, `UiVirtualList`, `UiConstraints`, `UiIdentity`, `UiTheme`,
+`UiLocalization`, `UiValidation`, `UiControls`, `UiCapi`, `UiAppKit`,
+`UiAppKitNative`, `UiAppKitCanvas`, `UiSdl3`, `UiSdl3Draw`, `UiWasmBrowser`,
+and `UiInspector`. The application contract is
 the top-level `app_init`, `app_event`, `app_text_input`, `app_text_editing`,
 `app_frame`, and optional `app_widget_event` callbacks.
 
@@ -97,9 +99,11 @@ module-private.
 
 Implemented-tested in the current native corpus: retained layout and dirty
 relayout, responsive size classes/adaptive axes/bounded grid columns, bounded
-virtual-list ranges/content extents, typed widget lifetimes, hit testing and scrolling, control state,
-Unicode text editing/IME and bounded undo history, themes, clipping and raster
-commands, C API shape, AppKit semantics, and SDL/AppKit key maps. Implemented
+virtual-list ranges/content extents/semantic windows, normalized min/preferred/
+max constraints, stable keyed identities, typed widget lifetimes, hit testing
+and scrolling, control state, Unicode text editing/IME and bounded undo history,
+shared themes/localization/RTL/plurals, revision-safe async validation, clipping
+and raster commands, C API shape, AppKit semantics, and SDL/AppKit key maps. Implemented
 but not yet device-verified: actual VoiceOver interaction, non-ASCII IMEs on a
 physical device, and cross-scale font fallback. Secure text is intentionally
 excluded from readback, semantic selected text, snapshots, and clipboard.
@@ -120,7 +124,8 @@ bash scripts/run_tests.sh
   controls, drop raii, event wire, hierarchy build/layout, raster,
   sdl3 keymap/text, widget dispatch, widget handles, widget layout,
   widget inspector, widget reentrancy, ui harness, metrics, resource presentation,
-  core invalidation, lifecycle: PASS
+  core invalidation, lifecycle, constraints, identity, localization, theme,
+  validation, virtual-list and virtual-list semantics: PASS
 git diff --check: PASS
 ```
 
@@ -189,6 +194,18 @@ separate host-enforced security boundary.
   presentation decisions remain in Elisa; hosts only resolve verified resource
   data into renderer objects. Coverage lives in
   `test/resource_presentation_test.elisa`.
+- `UiVirtualList` owns bounded geometry and semantic-window policy for long
+  lists. Logical total count, before/after edges, and off-screen focus or
+  selection indexes remain available even when row widgets are not realized;
+  coverage lives in `test/virtual_list_test.elisa` and
+  `test/virtual_list_semantics_test.elisa`.
+- `UiConstraints` owns finite minimum/preferred/maximum normalization and
+  reports repaired conflicts and allocation clamping without adding state to
+  every widget handle. Coverage lives in `test/constraints_test.elisa`.
+- `UiIdentity` owns bounded keyed generation transactions for dynamic lists and
+  forms, while `UiTheme`, `UiLocalization`, and `UiValidation` keep appearance,
+  RTL/plural policy, and revision-safe asynchronous field state in shared Elisa
+  modules. Each is opt-in and covered by its focused headless test.
 - `UiInspector` is a read-only, allocation-free diagnostic projection of the
   retained tree and semantic buffer. It reports shared lifecycle phase,
   generation, surface/input/render/focus predicates, deferred layout/frame-
