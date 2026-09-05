@@ -198,7 +198,11 @@ exposes two byte-oriented pasteboard primitives; it never reads, deletes or repl
 widget's selection itself. Elisa also decides when those mutations invalidate
 the canvas; the native side only exposes the `setNeedsDisplay` primitive.
 Key-release ownership follows the same rule: Cocoa forwards its hardware facts,
-and Elisa decides whether the text-input system consumes them.
+and Elisa decides whether the text-input system consumes them. The protocol's
+empty `validAttributesForMarkedText` collection is created by Elisa through
+CoreFoundation FFI; the Objective-C method only transfers that retained array
+to AppKit. Window setup and activation use the same Elisa-owned libobjc
+autorelease scope as frame rendering.
 
 ## Build and test without showing a window
 
