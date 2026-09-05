@@ -1,8 +1,9 @@
 extend UiAppKitCanvas:
         def run_with_options(title: sview, options: WindowOptions) -> i64:
             can Ui.Window, Ui.Draw, Ui.Text, Ui.Input, Unsafe.PointerCast:
-                return 1 if title.len <= 0
-                pointer: cstr = title.data.cast[cstr] can Unsafe.PointerCast
+                safe_title: sview = UiCore::bounded_text(title)
+                return 1 if safe_title.len <= 0
+                pointer: cstr = safe_title.data.cast[cstr] can Unsafe.PointerCast
                 width: f32 = UiCore::bounded_extent(options.width)
                 height: f32 = UiCore::bounded_extent(options.height)
                 style: i32 = window_style(options)
@@ -16,7 +17,7 @@ extend UiAppKitCanvas:
                     # any AppKit objects. The visible path keeps its normal
                     # window sizing semantics and never needs bitmap extents.
                     return 2 if not snapshot_dimensions_safe(bitmap_width, bitmap_height)
-                native_title: usize = native_string(title)
+                native_title: usize = native_string(safe_title)
                 return 1 if native_title == 0
                 release_canvas()
                 UiLifecycle::reset()
@@ -46,7 +47,7 @@ extend UiAppKitCanvas:
                 elisa_appkit_canvas_set_tabbing_mode(canvas_window, tabbing_mode(options.tabbing))
                 elisa_appkit_canvas_set_restorable(canvas_window, 1 if options.restorable else 0)
                 elisa_appkit_canvas_center(canvas_window) if options.centered
-                install_standard_menus(pointer, title.len)
+                install_standard_menus(pointer, safe_title.len.usize())
                 snapshot_path: mutable usize = 0
                 min_width: f32 = UiCore::bounded_extent(options.min_width)
                 min_height: f32 = UiCore::bounded_extent(options.min_height)
