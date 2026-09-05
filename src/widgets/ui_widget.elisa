@@ -1560,8 +1560,9 @@ module UiFlat:
             widgets[index].selection_anchor <- start
             widgets[index] with { marked_start <- 0, marked_end <- 0 }
             restart_caret_blink() if index == focused_widget
+            callback_epoch: usize = widget_epoch
             app_widget_event(index, UiConst::WidgetEvent.Change.i32())
-            finish_text_history(history_slot, index)
+            finish_text_history(history_slot, index) if widget_epoch == callback_epoch
 
     public:
         def layout(width: f32, height: f32) -> void:
@@ -1909,8 +1910,9 @@ module UiFlat:
             widgets[index].text_revision <- widgets[index].text_revision + 1
             widgets[index] with { marked_start <- 0, marked_end <- 0 }
             restart_caret_blink()
+            callback_epoch: usize = widget_epoch
             app_widget_event(index, UiConst::WidgetEvent.Change.i32())
-            finish_text_history(history_slot, index)
+            finish_text_history(history_slot, index) if widget_epoch == callback_epoch
 
         def replace_text(index: usize, text: sview) -> void:
             return if not text_editable(index)
@@ -1934,8 +1936,9 @@ module UiFlat:
             widgets[index] with { input_length <- take, caret <- take, selection_anchor <- take, marked_start <- 0, marked_end <- 0 }
             widgets[index].text_revision <- widgets[index].text_revision + 1 if changed
             restart_caret_blink() if changed and index == focused_widget
+            callback_epoch: usize = widget_epoch
             app_widget_event(index, UiConst::WidgetEvent.Change.i32()) if changed
-            finish_text_history(history_slot, index)
+            finish_text_history(history_slot, index) if widget_epoch == callback_epoch
 
         # Platform text systems describe ranges in UTF-16 code units. Keeping
         # this conversion and all replacement policy in Elisa leaves native
@@ -1946,7 +1949,9 @@ module UiFlat:
             if composition_history_slot < TEXT_HISTORY_CAPACITY and widgets[index].marked_end > widgets[index].marked_start:
                 history_suppressed <- true
                 set_selection(index, widgets[index].marked_start, widgets[index].marked_end)
+                callback_epoch: usize = widget_epoch
                 insert_text(text)
+                return if widget_epoch != callback_epoch
                 history_suppressed <- false
                 store_history_state(composition_history_slot, index, true)
                 composition_history_slot <- TEXT_HISTORY_CAPACITY
@@ -1956,8 +1961,9 @@ module UiFlat:
                 set_selection_utf16(index, replacement_location, replacement_length)
             elif widgets[index].marked_end > widgets[index].marked_start:
                 set_selection(index, widgets[index].marked_start, widgets[index].marked_end)
+            callback_epoch: usize = widget_epoch
             insert_text(text)
-            finish_text_history(history_slot, index)
+            finish_text_history(history_slot, index) if widget_epoch == callback_epoch
 
         def update_marked_text(text: sview, selected_location: usize, selected_length: usize, replacement_location: usize, replacement_length: usize, has_replacement: bool) -> void:
             return if not accepts_text()
@@ -1973,7 +1979,9 @@ module UiFlat:
             elif widgets[index].marked_end > widgets[index].marked_start:
                 set_selection(index, widgets[index].marked_start, widgets[index].marked_end)
             marked_start: usize = selection_start(index)
+            callback_epoch: usize = widget_epoch
             insert_text(text)
+            return if widget_epoch != callback_epoch
             marked_stop: usize = widgets[index].caret
             set_marked(index, marked_start, marked_stop)
             total_units: usize = utf16_units_for_prefix(text, text.len)
@@ -2032,16 +2040,20 @@ module UiFlat:
             composition_history_slot <- TEXT_HISTORY_CAPACITY
             history_cursor <- history_cursor - 1
             history_suppressed <- true
+            callback_epoch: usize = widget_epoch
             restore_history_state(history_cursor, false)
             history_suppressed <- false
+            return false if widget_epoch != callback_epoch
             return true
 
         def redo_text() -> bool:
             return false if history_cursor >= history_count
             composition_history_slot <- TEXT_HISTORY_CAPACITY
             history_suppressed <- true
+            callback_epoch: usize = widget_epoch
             restore_history_state(history_cursor, true)
             history_suppressed <- false
+            return false if widget_epoch != callback_epoch
             history_cursor <- history_cursor + 1
             return true
 
@@ -2064,14 +2076,16 @@ module UiFlat:
             if action == 2 or action == 3:
                 length: usize = selected_text_length(focused_widget)
                 return false if not ui_clipboard_write(selected_text_pointer(focused_widget), length)
+                callback_epoch: usize = widget_epoch
                 insert_text("") if action == 3
-                return true
+                return widget_epoch == callback_epoch
             if action == 4:
                 length: usize = ui_clipboard_read(&clipboard_buffer[0], TEXT_CAPACITY)
                 return false if length == 0
+                callback_epoch: usize = widget_epoch
                 insert_text(sview(&clipboard_buffer[0], 0, length.i64()))
                 scrub_clipboard_buffer()
-                return true
+                return widget_epoch == callback_epoch
             return undo_text() if action == 5
             return redo_text() if action == 6
             return false
@@ -2399,8 +2413,9 @@ module UiFlat:
             return false if index >= widget_count or not widgets[index].interactive or not effectively_enabled(index) or not effectively_visible(index) or widgets[index].kind == UiConst::WidgetKind.Slider or widgets[index].kind == UiConst::WidgetKind.TextField
             release_active_press()
             focus(index)
+            callback_epoch: usize = widget_epoch
             dispatch_activation(index)
-            return true
+            return widget_epoch == callback_epoch
 
         # Accessibility adapters use the same normalized adjustment path as
         # arrow keys, so assistive actions update app state identically.
@@ -2410,8 +2425,9 @@ module UiFlat:
             set_value(index, before + delta)
             return false if widgets[index].value == before
             focus(index)
+            callback_epoch: usize = widget_epoch
             app_widget_event(index, UiConst::WidgetEvent.Change.i32())
-            return true
+            return widget_epoch == callback_epoch
 
         # Assistive clients may assign a slider value directly. Keep that
         # mutation on the same normalized, visibility- and enabled-checked path
@@ -2423,8 +2439,9 @@ module UiFlat:
             set_value(index, value)
             return false if widgets[index].value == before
             focus(index)
+            callback_epoch: usize = widget_epoch
             app_widget_event(index, UiConst::WidgetEvent.Change.i32())
-            return true
+            return widget_epoch == callback_epoch
 
         def adjust_step(index: usize, direction: i32) -> bool:
             return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider or direction == 0
@@ -2464,8 +2481,9 @@ module UiFlat:
             return false if candidate == NONE
             set_selected(candidate, true)
             focus(candidate)
+            callback_epoch: usize = widget_epoch
             app_widget_event(candidate, UiConst::WidgetEvent.Change.i32())
-            return true
+            return widget_epoch == callback_epoch
 
         # Keyboard scrolling follows focus into the nearest scroll ancestor,
         # so a focused child remains usable even when its viewport is clipped.
