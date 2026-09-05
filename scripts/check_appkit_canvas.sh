@@ -21,6 +21,10 @@ if grep -Eq 'getenv\("ELISA_UI_(SMOKE_FRAMES|SNAPSHOT)"' "$ROOT/src/platform/app
   echo "appkit canvas: environment policy leaked back into Objective-C" >&2
   exit 1
 fi
+if grep -Eq '@autoreleasepool' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: autorelease scope leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'elisa_canvas_headless|elisaInteraction|elisa_appkit_canvas_(select_all|delete_selection|selected_text_pointer|selected_text_length|undo|redo)\b' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: framework state or edit policy leaked back into Objective-C" >&2
   exit 1

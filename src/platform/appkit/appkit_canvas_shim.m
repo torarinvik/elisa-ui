@@ -484,33 +484,31 @@ size_t elisa_appkit_canvas_accessibility_layout_changed_notification(void) {
 // UTF-8 decoding itself.
 size_t elisa_appkit_canvas_open(size_t title, float width, float height,
                                 int style, int backing, size_t *delegateHandle) {
-    @autoreleasepool {
-        if (delegateHandle == NULL) return 0;
-        [NSApplication sharedApplication];
-        NSRect rect = NSMakeRect(0, 0, width, height);
-        NSWindowStyleMask styleMask = (NSWindowStyleMask)style;
-        NSWindow *window = [[NSWindow alloc] initWithContentRect:rect
-            styleMask:styleMask
-            backing:(NSBackingStoreType)backing defer:NO];
-        if (window == nil) return 0;
-        NSString *name = title == 0 ? nil : elisa_appkit_canvas_string(title);
-        if (title != 0 && name == nil) return 0;
-        if (name != nil) [window setTitle:name];
-        // View construction may synchronously report its initial frame. The
-        // Elisa adapter owns the readiness guard and filters that callback
-        // until app_init has completed.
-        ElisaCanvasView *view = [[ElisaCanvasView alloc] initWithFrame:rect];
-        ElisaCanvasDelegate *delegate = [ElisaCanvasDelegate new];
-        // Elisa holds the returned +1 until the run finishes. Prevent
-        // -close from consuming that ownership before the FFI release point.
-        [window setReleasedWhenClosed:NO];
-        [window setDelegate:delegate];
-        [window setContentView:view];
-        *delegateHandle = (size_t)(__bridge_retained void *)delegate;
-        // Transfer the window retain to Elisa. All later operations receive
-        // this explicit handle, so the native shim keeps no root owner.
-        return (size_t)(__bridge_retained void *)window;
-    }
+    if (delegateHandle == NULL) return 0;
+    [NSApplication sharedApplication];
+    NSRect rect = NSMakeRect(0, 0, width, height);
+    NSWindowStyleMask styleMask = (NSWindowStyleMask)style;
+    NSWindow *window = [[NSWindow alloc] initWithContentRect:rect
+        styleMask:styleMask
+        backing:(NSBackingStoreType)backing defer:NO];
+    if (window == nil) return 0;
+    NSString *name = title == 0 ? nil : elisa_appkit_canvas_string(title);
+    if (title != 0 && name == nil) return 0;
+    if (name != nil) [window setTitle:name];
+    // View construction may synchronously report its initial frame. The
+    // Elisa adapter owns the readiness guard and filters that callback
+    // until app_init has completed.
+    ElisaCanvasView *view = [[ElisaCanvasView alloc] initWithFrame:rect];
+    ElisaCanvasDelegate *delegate = [ElisaCanvasDelegate new];
+    // Elisa holds the returned +1 until the run finishes. Prevent
+    // -close from consuming that ownership before the FFI release point.
+    [window setReleasedWhenClosed:NO];
+    [window setDelegate:delegate];
+    [window setContentView:view];
+    *delegateHandle = (size_t)(__bridge_retained void *)delegate;
+    // Transfer the window retain to Elisa. All later operations receive
+    // this explicit handle, so the native shim keeps no root owner.
+    return (size_t)(__bridge_retained void *)window;
 }
 
 void elisa_appkit_canvas_release_window(size_t handle) {
@@ -531,10 +529,8 @@ void elisa_appkit_canvas_release_delegate(size_t handle) {
 }
 
 void elisa_appkit_canvas_set_activation_policy(int policy) {
-    @autoreleasepool {
-        [NSApplication sharedApplication];
-        [NSApp setActivationPolicy:(NSApplicationActivationPolicy)policy];
-    }
+    [NSApplication sharedApplication];
+    [NSApp setActivationPolicy:(NSApplicationActivationPolicy)policy];
 }
 
 void elisa_appkit_canvas_focus(size_t windowHandle) {
