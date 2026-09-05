@@ -22,6 +22,19 @@ def main() -> i64:
     check("metadata preserves relationships", node.parent_id == 2 and node.first_child_id == 8 and node.next_sibling_id == 9)
     check("metadata preserves numeric range", node.has_range and node.range_min == -1.0 and node.range_max == 1.0 and not node.range_conflict)
 
+    changed: mutable UiCore::AccessibilityNode = node
+    changed.frame <- UiCore::Rect(5.0, 8.0, 100.0, 24.0)
+    changed.focused <- false
+    changed.text_value <- "updated"
+    changed.selection_length <- 2
+    changed.range_max <- 2.0
+    diff: i32 = UiCore::accessibility_diff(node, changed)
+    check("semantic diff reports geometry", diff & UiCore::AccessibilityChange.Geometry.i32() != 0)
+    check("semantic diff reports state", diff & UiCore::AccessibilityChange.State.i32() != 0)
+    check("semantic diff reports text and selection", diff & UiCore::AccessibilityChange.Text.i32() != 0 and diff & UiCore::AccessibilityChange.Selection.i32() != 0)
+    check("semantic diff reports range", diff & UiCore::AccessibilityChange.Range.i32() != 0)
+    check("identical nodes have no diff", UiCore::accessibility_diff(node, node) == UiCore::AccessibilityChange.None.i32())
+
     UiCore::accessibility_set_relationships(7, 3, 4, 5)
     UiCore::accessibility_set_range(7, 10.0, 2.0)
     node <- UiCore::accessibility_at(0)

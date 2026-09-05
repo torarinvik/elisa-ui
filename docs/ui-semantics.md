@@ -27,3 +27,8 @@ in the native shim.
 The semantic buffer remains fixed-capacity and deduplicated by stable ID. A
 duplicate declaration replaces the prior node in its original position, and
 overflow is reported rather than growing an unbounded frame allocation.
+
+`UiCore::accessibility_diff` compares two nodes and returns typed change bits
+for identity, structure, geometry, state, value, text, selection, and range.
+Adapters can use the mask to issue incremental native notifications while the
+retained frame remains the sole semantic source of truth.

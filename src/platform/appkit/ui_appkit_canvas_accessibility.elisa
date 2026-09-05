@@ -83,14 +83,44 @@ extend UiAppKitCanvas:
             notifications <- notifications + 4 if after.value_kind == 3 and (before.selection_location != after.selection_location or before.selection_length != after.selection_length)
             return notifications
 
+        def semantic_role(raw: i32) -> UiCore::AccessibilityRole:
+            return UiCore::AccessibilityRole.Button if raw == UiCore::AccessibilityRole.Button.i32()
+            return UiCore::AccessibilityRole.RadioButton if raw == UiCore::AccessibilityRole.RadioButton.i32()
+            return UiCore::AccessibilityRole.CheckBox if raw == UiCore::AccessibilityRole.CheckBox.i32()
+            return UiCore::AccessibilityRole.Slider if raw == UiCore::AccessibilityRole.Slider.i32()
+            return UiCore::AccessibilityRole.ProgressBar if raw == UiCore::AccessibilityRole.ProgressBar.i32()
+            return UiCore::AccessibilityRole.TextField if raw == UiCore::AccessibilityRole.TextField.i32()
+            return UiCore::AccessibilityRole.PasswordField if raw == UiCore::AccessibilityRole.PasswordField.i32()
+            return UiCore::AccessibilityRole.Label
+
+        # Adapt the backend's compact transition cache back into the portable
+        # node shape so the shared Elisa diff remains the source of truth for
+        # semantic geometry/structure/text/range changes. Native-only tokens
+        # (interaction and cursor) continue to be checked below.
+        def semantic_node(state: AccessibilityState) -> UiCore::AccessibilityNode:
+            return UiCore::AccessibilityNode{
+                role: semantic_role(state.role), label: state.label, help: state.help,
+                frame: UiCore::Rect(state.x, state.y, state.width, state.height),
+                id: 0, action: state.action, enabled: state.enabled,
+                focused: state.focused, selected: state.selected, value: state.value,
+                text_value: "", selected_text: "", revision: state.text_revision,
+                selection_location: state.selection_location,
+                selection_length: state.selection_length,
+                parent_id: state.parent_id, first_child_id: state.first_child_id,
+                next_sibling_id: state.next_sibling_id, has_range: state.has_range,
+                range_min: state.range_min, range_max: state.range_max,
+                range_conflict: state.range_conflict,
+            }
+
         def accessibility_layout_changed(existed: bool, before: AccessibilityState, after: AccessibilityState) -> bool:
             return true if not existed
-            return true if before.role != after.role or before.action != after.action
+            common: i32 = UiCore::accessibility_diff(semantic_node(before), semantic_node(after))
+            return true if common & UiCore::AccessibilityChange.Structure.i32() != 0
+            return true if common & UiCore::AccessibilityChange.Geometry.i32() != 0
+            return true if common & UiCore::AccessibilityChange.State.i32() != 0
+            return true if common & UiCore::AccessibilityChange.Text.i32() != 0
+            return true if common & UiCore::AccessibilityChange.Range.i32() != 0
             return true if before.interaction != after.interaction or before.value_kind != after.value_kind or before.cursor != after.cursor
-            return true if before.enabled != after.enabled or before.label != after.label or before.help != after.help
-            return true if before.x != after.x or before.y != after.y or before.width != after.width or before.height != after.height
-            return true if before.parent_id != after.parent_id or before.first_child_id != after.first_child_id or before.next_sibling_id != after.next_sibling_id
-            return true if before.has_range != after.has_range or before.range_min != after.range_min or before.range_max != after.range_max or before.range_conflict != after.range_conflict
             return false
 
         # Tooltips are transient native view state. Rebuild them only after

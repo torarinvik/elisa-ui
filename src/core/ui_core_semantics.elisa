@@ -1,0 +1,36 @@
+# Shared incremental diff policy for portable semantic nodes.
+#
+# Backends may retain their native object handles, but they should not invent a
+# second interpretation of when a semantic node changed. This mask compares
+# the same `AccessibilityNode` records emitted by the retained frame model.
+
+extend UiCore:
+    public:
+        const enum AccessibilityChange of i32:
+            None = 0
+            Identity = 1
+            Structure = 2
+            Geometry = 4
+            State = 8
+            Value = 16
+            Text = 32
+            Selection = 64
+            Range = 128
+            All = 255
+
+        # Compare two nodes without allocating or inspecting native handles.
+        # A caller can map each bit to the smallest host operation: structural
+        # replacement, geometry refresh, state notification, value update, or
+        # text/selection refresh.
+        def accessibility_diff(before: AccessibilityNode, after: AccessibilityNode) -> i32:
+            changes: mutable i32 = 0
+            changes <- changes | AccessibilityChange.Identity.i32() if before.id != after.id
+            changes <- changes | AccessibilityChange.Structure.i32() if before.role != after.role or before.action != after.action or before.parent_id != after.parent_id or before.first_child_id != after.first_child_id or before.next_sibling_id != after.next_sibling_id
+            changes <- changes | AccessibilityChange.Geometry.i32() if before.frame.origin.x != after.frame.origin.x or before.frame.origin.y != after.frame.origin.y or before.frame.size.width != after.frame.size.width or before.frame.size.height != after.frame.size.height
+            changes <- changes | AccessibilityChange.State.i32() if before.enabled != after.enabled or before.focused != after.focused or before.selected != after.selected
+            changes <- changes | AccessibilityChange.Value.i32() if before.value != after.value
+            changes <- changes | AccessibilityChange.Text.i32() if before.label != after.label or before.help != after.help or before.text_value != after.text_value or before.selected_text != after.selected_text or before.revision != after.revision
+            changes <- changes | AccessibilityChange.Selection.i32() if before.selection_location != after.selection_location or before.selection_length != after.selection_length
+            changes <- changes | AccessibilityChange.Range.i32() if before.has_range != after.has_range or before.range_min != after.range_min or before.range_max != after.range_max or before.range_conflict != after.range_conflict
+            return changes
+
