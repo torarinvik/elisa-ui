@@ -15,6 +15,12 @@ extent so malformed or huge application values cannot poison layout. The
 sentinel, which disables recurring caret/frame animation without changing
 ordinary geometry.
 
+Applications that change appearance at runtime can use `set_preferences`. It
+stores one normalized preference record in a bounded Elisa-side state, exposes
+an idempotent monotonic `revision` and `snapshot`, and invalidates layout,
+paint, and semantics together. Repeating the same normalized values is a no-op;
+malformed enum or scale values are canonicalized before comparison.
+
 The module is opt-in: applications that do not need shared palette policy do
 not pay for its resolver in their handle-heavy binaries. Applications may
 override any resolved token through their stable theme API after resolution.

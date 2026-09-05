@@ -27,6 +27,10 @@ the application: it includes the canonical active tag, direction, monotonic
 revision, and truncation flag. This lets diagnostics detect a locale-driven
 rebuild without keeping a second native or tooling-side locale table.
 
+`Frame.theme` likewise exposes the normalized `UiTheme::Snapshot`, including
+the active preferences and monotonic revision, so runtime appearance changes
+are visible to diagnostics without a backend shadow state.
+
 Secure text is redacted as `[secure]` in diagnostic nodes and semantic copies;
 selected text is cleared. This keeps inspector output safe for logs, snapshots,
 and future source-linked tooling. The module is allocation-free and can be

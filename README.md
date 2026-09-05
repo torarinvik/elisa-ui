@@ -114,7 +114,9 @@ because a module member's symbol carries its module and those names cannot move.
 - **Shared appearance policy** ([src/widgets/ui_theme.elisa](src/widgets/ui_theme.elisa)) —
   one Elisa-side resolver covers system/light/dark palettes, normal/high
   contrast, bounded text scaling, and reduced-motion animation timing for every
-  backend. It is opt-in and applications can override resolved tokens.
+  backend. Runtime preferences have a normalized revision/snapshot and
+  invalidate layout, paint, and semantics together; the policy is opt-in and
+  applications can override resolved tokens.
 - **Localization and RTL policy** ([src/widgets/ui_localization.elisa](src/widgets/ui_localization.elisa)) —
   locale direction, logical start/end alignment, mirrored coordinates, typed
   plural categories, and a bounded active-locale revision are resolved once in

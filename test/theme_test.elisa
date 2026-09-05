@@ -11,6 +11,18 @@ def check(name: cstr, ok: bool) -> void:
     _ = puts(name)
 
 def main() -> i64:
+    UiTheme::reset()
+    UiCore::clear_all_invalidations()
+    check("theme state starts at defaults", UiTheme::revision() == 0 and UiTheme::current_preferences().text_scale == 1.0)
+    first: UiTheme::Preferences = UiTheme::Preferences{mode: UiTheme::ColorMode.Dark, contrast: UiTheme::Contrast.High, text_scale: 2.0, reduced_motion: true}
+    check("theme state accepts normalized preferences", UiTheme::set_preferences(first) and UiTheme::revision() == 1 and UiTheme::current_preferences().mode == UiTheme::ColorMode.Dark and UiTheme::snapshot().preferences.contrast == UiTheme::Contrast.High)
+    first_sequence: u32 = UiCore::invalidation_sequence()
+    first_mask: i32 = UiCore::invalidations()
+    check("theme change invalidates dependent work", first_mask == UiCore::Invalidation.Layout.i32() | UiCore::Invalidation.Paint.i32() | UiCore::Invalidation.Semantics.i32() and first_sequence > 0)
+    check("same theme is idempotent", not UiTheme::set_preferences(first) and UiTheme::revision() == 1 and UiCore::invalidation_sequence() == first_sequence)
+    malformed_state: UiTheme::Preferences = UiTheme::Preferences{mode: UiTheme::ColorMode(99), contrast: UiTheme::Contrast(99), text_scale: -4.0, reduced_motion: false}
+    check("theme state stores canonical values", UiTheme::set_preferences(malformed_state) and UiTheme::current_preferences().mode == UiTheme::ColorMode.System and UiTheme::current_preferences().contrast == UiTheme::Contrast.Normal and UiTheme::current_preferences().text_scale == UiTheme::MIN_TEXT_SCALE)
+
     defaults: UiTheme::Preferences = UiTheme::defaults()
     check("defaults use system appearance", defaults.mode == UiTheme::ColorMode.System and defaults.contrast == UiTheme::Contrast.Normal and defaults.text_scale == 1.0 and not defaults.reduced_motion)
 

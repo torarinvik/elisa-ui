@@ -29,6 +29,39 @@ module UiTheme:
             text_scale: f32
             reduced_motion: bool
 
+        struct Snapshot:
+            preferences: Preferences
+            revision: u32
+
+        # Runtime appearance preferences are retained by Elisa so every
+        # backend sees one normalized value and one change token. The pure
+        # resolver below remains available for callers that intentionally keep
+        # preferences in application state.
+        def set_preferences(preferences: Preferences) -> bool:
+            normalized: Preferences = normalize(preferences)
+            same: bool = theme_preferences_state.mode == normalized.mode and theme_preferences_state.contrast == normalized.contrast and theme_preferences_state.text_scale == normalized.text_scale and theme_preferences_state.reduced_motion == normalized.reduced_motion
+            return false if same
+            theme_preferences_state <- normalized
+            theme_revision_state <- next_revision(theme_revision_state)
+            mark_changed()
+            return true
+
+        def reset() -> void:
+            defaults_value: Preferences = defaults()
+            changed: bool = theme_revision_state > 0 or theme_preferences_state.mode != defaults_value.mode or theme_preferences_state.contrast != defaults_value.contrast or theme_preferences_state.text_scale != defaults_value.text_scale or theme_preferences_state.reduced_motion != defaults_value.reduced_motion
+            theme_preferences_state <- defaults_value
+            theme_revision_state <- 0
+            mark_changed() if changed
+
+        def current_preferences() -> Preferences:
+            return theme_preferences_state
+
+        def revision() -> u32:
+            return theme_revision_state
+
+        def snapshot() -> Snapshot:
+            return Snapshot{preferences: theme_preferences_state, revision: theme_revision_state}
+
         struct Palette:
             background: UiCore::Color
             surface: UiCore::Color
@@ -92,6 +125,18 @@ module UiTheme:
             return UiCore::nonnegative_extent(base)
 
     private:
+        global mutable theme_preferences_state: Preferences = Preferences{mode: ColorMode.System, contrast: Contrast.Normal, text_scale: 1.0, reduced_motion: false}
+        global mutable theme_revision_state: u32 = 0
+
+        def next_revision(value: u32) -> u32:
+            next: u32 = value + 1
+            return 1 if next == 0 else next
+
+        def mark_changed() -> void:
+            UiCore::invalidate(UiCore::Invalidation.Layout)
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+            UiCore::invalidate(UiCore::Invalidation.Semantics)
+
         def light_palette(high: bool) -> Palette:
             return Palette{
                 background: UiCore::rgb(255, 255, 255) if high else UiCore::rgb(245, 247, 250),
