@@ -462,6 +462,8 @@ int main(void) {
             location:NSMakePoint(40, 20) modifierFlags:0 timestamp:0
             windowNumber:[elisa_appkit_canvas_window(opened) windowNumber] context:nil eventNumber:0
             clickCount:0 pressure:0.0];
+        [elisa_appkit_canvas_view(opened) mouseEntered:move];
+        if (require(test_pointer_kind == 0, @"pointer entry did not cross the Elisa event path")) return 1;
         [elisa_appkit_canvas_view(opened) mouseMoved:move];
         if (require(test_pointer_kind == 0, @"pointer motion did not cross the Elisa event path")) return 1;
         NSEvent *singleClick = [NSEvent mouseEventWithType:NSEventTypeLeftMouseDown

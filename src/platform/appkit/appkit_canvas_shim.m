@@ -262,6 +262,7 @@ void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) 
     NSCursor *nativeCursor = elisa_appkit_canvas_cursor(elisa_appkit_canvas_pointer_move_event(p.x, p.y));
     if (nativeCursor != nil) [nativeCursor set];
 }
+- (void)mouseEntered:(NSEvent *)event { [self mouseMoved:event]; }
 - (void)mouseDragged:(NSEvent *)event { [self mouseMoved:event]; }
 - (void)rightMouseDragged:(NSEvent *)event { [self mouseMoved:event]; }
 - (void)otherMouseDragged:(NSEvent *)event { [self mouseMoved:event]; }
