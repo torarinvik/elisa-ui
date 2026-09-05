@@ -1,0 +1,50 @@
+# Headless regression for responsive layout policy. No native backend is
+# involved: logical space is classified and arranged entirely in Elisa.
+
+include "../src/widgets/ui_responsive.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    defaults: UiResponsive::Breakpoints = UiResponsive::defaults()
+    check("default compact breakpoint", UiResponsive::classify(599.0, defaults) == UiResponsive::SizeClass.Compact)
+    check("default medium breakpoint", UiResponsive::classify(600.0, defaults) == UiResponsive::SizeClass.Medium)
+    check("default expanded breakpoint", UiResponsive::classify(1024.0, defaults) == UiResponsive::SizeClass.Expanded)
+
+    custom: UiResponsive::Breakpoints = UiResponsive::Breakpoints{compact_max: 400.0, medium_max: 800.0}
+    check("custom compact breakpoint", UiResponsive::classify(400.0, custom) == UiResponsive::SizeClass.Compact)
+    check("custom medium breakpoint", UiResponsive::classify(401.0, custom) == UiResponsive::SizeClass.Medium)
+    check("custom expanded breakpoint", UiResponsive::classify(801.0, custom) == UiResponsive::SizeClass.Expanded)
+    check("compact helper", UiResponsive::is_compact(400.0, custom) and not UiResponsive::is_compact(401.0, custom))
+
+    malformed: UiResponsive::Breakpoints = UiResponsive::Breakpoints{compact_max: 900.0, medium_max: 100.0}
+    check("breakpoints stay ordered", UiResponsive::classify(899.0, malformed) == UiResponsive::SizeClass.Compact)
+    check("negative width is compact", UiResponsive::classify(-20.0, defaults) == UiResponsive::SizeClass.Compact)
+
+    check("adaptive compact axis", UiResponsive::axis(300.0, defaults, UiConst::Axis.Column, UiConst::Axis.Row, UiConst::Axis.Row) == UiConst::Axis.Column)
+    check("adaptive medium axis", UiResponsive::axis(800.0, defaults, UiConst::Axis.Column, UiConst::Axis.Row, UiConst::Axis.Column) == UiConst::Axis.Row)
+    check("adaptive expanded axis", UiResponsive::axis(1200.0, defaults, UiConst::Axis.Column, UiConst::Axis.Row, UiConst::Axis.Column) == UiConst::Axis.Column)
+
+    check("two columns fit", UiResponsive::columns(500.0, 160.0, 16.0, 4) == 2)
+    check("columns honor cap", UiResponsive::columns(1200.0, 160.0, 16.0, 4) == 4)
+    check("narrow space keeps one", UiResponsive::columns(100.0, 160.0, 16.0, 4) == 1)
+    check("zero item uses cap", UiResponsive::columns(500.0, 0.0, 16.0, 3) == 3)
+    check("invalid cap keeps one", UiResponsive::columns(500.0, 160.0, 16.0, 0) == 1)
+
+    view: UiResponsive::Viewport = UiResponsive::viewport(800.0, 600.0, 2.0)
+    check("viewport dimensions normalize", view.width == 800.0 and view.height == 600.0 and view.scale == 2.0)
+    check("physical target respects scale", UiResponsive::physical_extent(20.0, 2.0, 44.0) == 22.0)
+    check("logical target wins", UiResponsive::physical_extent(30.0, 2.0, 44.0) == 30.0)
+    check("zero scale is deterministic", UiResponsive::physical_extent(20.0, 0.0, 44.0) == 44.0)
+
+    if failures == 0:
+        _ = puts("responsive: all checks passed")
+        return 0
+    _ = puts("responsive: FAILURES above")
+    return 1

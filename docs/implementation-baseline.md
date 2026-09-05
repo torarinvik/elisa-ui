@@ -26,7 +26,7 @@ profile, Elisa language, and elisa-ui framework explicitly.
 
 Public framework modules are `UiCore`, `UiLifecycle`, `UiMetrics`, `UiState`, `UiCapabilities`, `UiEvents`, `UiPaint`, `UiRaster`,
 `UiConst`, `UiWidgets`, `UiFlat`, `UiHandles`, `UiResources`, `UiResourcePresentation`,
-`UiControls`, `UiCapi`, `UiAppKit`, `UiAppKitNative`, `UiAppKitCanvas`, `UiSdl3`,
+`UiResponsive`, `UiControls`, `UiCapi`, `UiAppKit`, `UiAppKitNative`, `UiAppKitCanvas`, `UiSdl3`,
 `UiSdl3Draw`, `UiWasmBrowser`, and `UiInspector`. The application contract is
 the top-level `app_init`, `app_event`, `app_text_input`, `app_text_editing`,
 `app_frame`, and optional `app_widget_event` callbacks.
@@ -96,7 +96,8 @@ module-private.
 | Remote rendering/input | planned | Capability negotiation belongs to WasmBrowser/SDK; no elisa-ui remote fixture exists yet. |
 
 Implemented-tested in the current native corpus: retained layout and dirty
-relayout, typed widget lifetimes, hit testing and scrolling, control state,
+relayout, responsive size classes/adaptive axes/bounded grid columns, typed
+widget lifetimes, hit testing and scrolling, control state,
 Unicode text editing/IME and bounded undo history, themes, clipping and raster
 commands, C API shape, AppKit semantics, and SDL/AppKit key maps. Implemented
 but not yet device-verified: actual VoiceOver interaction, non-ASCII IMEs on a
