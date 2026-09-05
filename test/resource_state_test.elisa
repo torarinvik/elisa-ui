@@ -79,6 +79,9 @@ def main() -> i64:
     check("cancel transition is accepted", UiResources::cancel(image) and UiResources::state(image) == UiResources::State.Cancelled)
     cancelled_snapshot: UiResources::Snapshot = UiResources::snapshot()
     check("snapshot counts cancelled resources", cancelled_snapshot.total == 1 and cancelled_snapshot.cancelled == 1 and cancelled_snapshot.requested == 0)
+    check("cancelled resource rejects late progress", not UiResources::set_progress(image, 0.25, 0.75) and UiResources::downloaded_progress(image) == 0.0 and UiResources::decoded_progress(image) == 0.0)
+    check("cancelled resource rejects late failure", not UiResources::fail(image, UiResources::FailureKind.RetryableTransport) and UiResources::state(image) == UiResources::State.Cancelled)
+    check("cancelled resource rejects late state", not UiResources::set_state(image, UiResources::State.Ready) and UiResources::state(image) == UiResources::State.Cancelled)
     cancelled_generation: u32 = image.generation
     requested_again: UiResources::Handle = UiResources::request("images/logo", 77)
     check("cancelled key can be requested again", requested_again.slot == image.slot and UiResources::state(requested_again) == UiResources::State.Requested and UiResources::owner(requested_again) == 77)

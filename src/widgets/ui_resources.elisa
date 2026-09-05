@@ -187,7 +187,10 @@ module UiResources:
         def fail(handle: Handle, kind: FailureKind) -> bool:
             return false if not is_valid(handle) or not failure_kind_is_valid(kind)
             slot: usize = handle.slot.usize()
-            return false if resource_states[slot] == State.Ready
+            # Cancellation is terminal for this generation. A host operation
+            # that races teardown must not turn a cancelled record into a
+            # visible failure; request() creates the next generation first.
+            return false if resource_states[slot] == State.Ready or resource_states[slot] == State.Cancelled
             resource_states[slot] <- State.Failed
             resource_failure_kinds[slot] <- kind
             mark_changed()
@@ -248,6 +251,10 @@ module UiResources:
         def set_progress(handle: Handle, network: f32, decode: f32) -> bool:
             return false if not is_valid(handle)
             slot: usize = handle.slot.usize()
+            # Progress belongs to the currently requested operation only. Once
+            # it is cancelled or resolved, late host reports are stale and
+            # must not dirty the replacement/presentation state.
+            return false if resource_states[slot] != State.Requested
             next_network: f32 = UiCore::normalized_unit(network)
             next_decode: f32 = UiCore::normalized_unit(decode)
             return false if resource_downloaded[slot] == next_network and resource_decoded[slot] == next_decode
@@ -259,6 +266,9 @@ module UiResources:
         def set_state(handle: Handle, next: State) -> bool:
             return false if not is_valid(handle) or not state_is_valid(next)
             slot: usize = handle.slot.usize()
+            # A cancelled generation can only be observed or replaced through
+            # request(), which rotates its generation before host work resumes.
+            return false if resource_states[slot] == State.Cancelled
             return false if resource_states[slot] == next
             resource_states[slot] <- next
             resource_failure_kinds[slot] <- FailureKind.RetryableTransport if next == State.Failed else FailureKind.Unknown
