@@ -320,7 +320,9 @@ int elisa_appkit_is_class(size_t handle, size_t class_name) {
 int elisa_appkit_window_is_resizable(size_t handle) {
     id object = elisa_appkit_object(handle);
     if (![object isKindOfClass:[NSWindow class]]) return 0;
-    return ([(NSWindow *)object styleMask] & NSWindowStyleMaskResizable) != 0 ? 1 : 0;
+    // The style value is an ABI fact exported to Elisa. Read back against the
+    // same value instead of repeating the SDK enum in the native bridge.
+    return ([(NSWindow *)object styleMask] & elisa_appkit_window_style_resizable) != 0 ? 1 : 0;
 }
 
 int elisa_appkit_window_is_floating(size_t handle) {
@@ -338,7 +340,7 @@ int elisa_appkit_panel_becomes_key_only(size_t handle) {
 
 int elisa_appkit_button_is_on(size_t handle) {
     NSButton *button = (NSButton *)elisa_appkit_object(handle);
-    return [button isKindOfClass:[NSButton class]] && [button state] == NSControlStateValueOn ? 1 : 0;
+    return [button isKindOfClass:[NSButton class]] && [button state] == elisa_appkit_control_state_on ? 1 : 0;
 }
 
 int elisa_appkit_button_bezel_style(size_t handle) {
@@ -351,9 +353,9 @@ int elisa_appkit_button_toggles(size_t handle) {
     NSButton *button = (NSButton *)elisa_appkit_object(handle);
     if (![button isKindOfClass:[NSButton class]]) return -1;
     NSControlStateValue before = button.state;
-    [button setState:NSControlStateValueOff];
+    [button setState:elisa_appkit_control_state_off];
     [button performClick:nil];
-    BOOL toggles = button.state == NSControlStateValueOn;
+    BOOL toggles = button.state == elisa_appkit_control_state_on;
     [button setState:before];
     return toggles ? 1 : 0;
 }
