@@ -101,6 +101,20 @@ def build_tree() -> void:
 def main() -> i64:
     build_tree()
 
+    # Clip state is side-band metadata attached at command emission time. It
+    # must apply only to commands emitted while active, then clear for both
+    # subsequent commands and the next frame.
+    UiCore::begin_frame()
+    UiCore::set_clip(UiCore::Rect{origin: UiCore::Vec2{ x: 3.0, y: 4.0 }, size: UiCore::Size{width: 10.0, height: 11.0}})
+    UiCore::fill(UiCore::Rect{origin: UiCore::Vec2{ x: 0.0, y: 0.0 }, size: UiCore::Size{width: 20.0, height: 20.0}}, UiCore::rgb(1, 2, 3))
+    UiCore::clear_clip()
+    UiCore::fill(UiCore::Rect{origin: UiCore::Vec2{ x: 20.0, y: 0.0 }, size: UiCore::Size{width: 20.0, height: 20.0}}, UiCore::rgb(4, 5, 6))
+    check("clip metadata attaches only to active commands", UiCore::command_has_clip(0) and not UiCore::command_has_clip(1))
+    check("clip metadata preserves its resolved rectangle", near(UiCore::command_clip_at(0).origin.x, 3.0) and near(UiCore::command_clip_at(0).origin.y, 4.0) and near(UiCore::command_clip_at(0).size.width, 10.0) and near(UiCore::command_clip_at(0).size.height, 11.0))
+    UiCore::begin_frame()
+    UiCore::fill(UiCore::Rect{origin: UiCore::Vec2{ x: 0.0, y: 0.0 }, size: UiCore::Size{width: 1.0, height: 1.0}}, UiCore::rgb(7, 8, 9))
+    check("begin_frame clears the active clip", not UiCore::command_has_clip(0))
+
     check("retained handles report validity", UiFlat::is_valid(1) and not UiFlat::is_valid(UiFlat::NONE))
     check("checked widget lookup rejects the sentinel", UiFlat::widget_if_valid(UiFlat::NONE) == null)
     if UiFlat::widget_if_valid(1) is checked_widget:
