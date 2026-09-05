@@ -149,7 +149,10 @@ or disabled request cannot leave transient native state behind. Press and adjust
 authorization is rechecked by `UiFlat`, and Cocoa returns that Elisa result
 directly to assistive technology. Cocoa retains no framework interaction-kind
 policy: accessibility edits carry their target widget id back to Elisa, and
-tooltip eligibility arrives as an already-resolved boolean.
+tooltip eligibility arrives as an already-resolved boolean. Per-element value,
+focus and selection notifications are posted through AppKit's C ABI directly
+from Elisa; only the root-view notification still crosses the native object
+resolver.
 Each semantic text node carries its own selected substring; focus changes
 cannot leave stale native selection content, and secure nodes always carry an
 empty substring.

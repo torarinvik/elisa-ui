@@ -61,8 +61,6 @@ void elisa_appkit_canvas_frame(size_t context) {
     test_accessibility_handles[1] = textElement;
     test_accessibility_handles[2] = secureElement;
     elisa_appkit_canvas_accessibility_commit(test_window_handle, test_accessibility_handles, 3);
-    elisa_appkit_canvas_accessibility_post_layout_changed(test_window_handle,
-        elisa_appkit_canvas_accessibility_layout_changed_notification());
 }
 
 // The production bitmap path is implemented by Elisa through CoreGraphics and

@@ -853,14 +853,6 @@ void elisa_appkit_canvas_accessibility_set_text(size_t handle,
     element.elisaSynchronizing = NO;
 }
 
-void elisa_appkit_canvas_accessibility_notify(size_t handle, size_t notification) {
-    ElisaAccessibilityElement *element = elisa_appkit_canvas_element(handle);
-    if (element == nil || notification == 0) return;
-    NSString *name = elisa_appkit_canvas_string(notification);
-    if (name == nil) return;
-    NSAccessibilityPostNotification(element, (NSAccessibilityNotificationName)name);
-}
-
 void elisa_appkit_canvas_accessibility_commit(size_t windowHandle,
                                               const size_t *handles, size_t count) {
     if (count > elisa_appkit_canvas_accessibility_capacity()) return;
