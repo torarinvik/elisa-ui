@@ -8,7 +8,7 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../elisa-ui-worktrees/stage1}"
+STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
 WASMBROWSER="${ELISA_UI_WASMBROWSER:-$ROOT/../WasmBrowser}"
 WIT="${ELISA_UI_WIT:-$WASMBROWSER/wit/wasmbrowser.wit}"
 EXAMPLE="${1:-hello}"

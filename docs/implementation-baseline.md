@@ -8,20 +8,19 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `bb876df` on branch `work` |
+| elisa-ui revision | `ec9b737` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
-| Elisa compiler | `../elisa-ui-worktrees/stage1/bin/elisac-stage1`; SHA-256 `dca7d0851ecf6faaa46021db206c1b08e391dc14ecd037b467d2679381d946c3` |
-| Elisa runtime | `../elisa-ui-worktrees/stage1/build/runtime/elisacore_runtime.o` |
-| WasmBrowser checkout | revision `24fa9d6` |
+| Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `1a44c1d1`; SHA-256 `a9573ad3779ae57f9daf68f79c53761c5ec54d0045a11c1387071ba0562678bc` |
+| Elisa runtime | `../wasm-sdk-compiler/build/runtime/elisacore_runtime.o`; SHA-256 `cb06532f0c37540284de4ceaa622d0da9193f113877ac391fb00bad4bf9ff1e9` |
+| WasmBrowser checkout | revision `2bb3d5f` (host worktree has unrelated local `.gitignore` edits) |
 | WasmBrowser WIT | `../WasmBrowser/wit/wasmbrowser.wit`; SHA-256 `fa165611fe4934cc9508bc435a7a396bc9d203225aa2a510f6d35ae74ec12172` |
-| wasm-sdk checkout | revision `7f71963` (standalone SDK work is in progress) |
+| wasm-sdk checkout | revision `820fee2` (standalone SDK contract provenance and package validation) |
 | Rust component linker | rustc 1.98.0; `wasm-component-ld` from the stable aarch64 toolchain |
 | Native libraries | Homebrew SDL3 3.4.14 and SDL_ttf 3.2.2 under `/opt/homebrew/lib` |
 
-The working tree also contains an unrelated user edit to
-`examples/hello/manifest.json`; it is intentionally not part of this baseline
-commit.
+The hello manifest now declares the versioned `wasmbrowser:component@1`
+profile, Elisa language, and elisa-ui framework explicitly.
 
 ## Source and boundary inventory
 
@@ -56,6 +55,13 @@ adapter (`ui_appkit_canvas.elisa`, 1,729 lines). New or changed Elisa source
 continues to use small, single-purpose modules; the existing large modules are
 not split mechanically.
 
+The WasmBrowser adapter is now an example of the intended refactoring boundary:
+`ui_wasmbrowser.elisa` contains the host-facing declarations and WIT export
+glue (300 lines), while `ui_wasmbrowser_runtime.elisa` contains the private
+frame/event/wire implementation (252 lines). The split preserves the required
+top-level export symbols and keeps the internal painter and encoder names
+module-private.
+
 ## Backend and feature matrix
 
 | Backend/profile | Status | Evidence or limitation |
@@ -63,7 +69,7 @@ not split mechanically.
 | SDL3 native | implemented-tested | `scripts/run_tests.sh`; SDL keymap/text tests and dummy-video smoke path pass. |
 | AppKit native controls | implemented-tested | `scripts/check_appkit.sh` creates and reads real NSWindow/NSView/control objects without ordering a window onscreen. |
 | AppKit custom canvas | implemented-tested | `scripts/check_appkit_canvas.sh` builds/signs the app, renders an off-screen PNG, and exercises semantic-object identity and callbacks. |
-| WasmBrowser hosted | implemented-unverified / blocked | Source and WIT exports exist, but the current component link is rejected by the compiler output defect below. |
+| WasmBrowser hosted | implemented-tested for build/package/inspect | The synchronized compiler, explicit `Host` permission family, and component-memory sizing produce `build/hello.wapp`; WasmBrowser inspect reports the expected profile and imports/exports. Runtime launch and device execution still need dedicated fixtures. |
 | Android standalone | planned | No Android build or device fixture exists in this checkout. |
 | iOS standalone | planned | No iOS build or device fixture exists in this checkout. |
 | Remote rendering/input | planned | Capability negotiation belongs to WasmBrowser/SDK; no elisa-ui remote fixture exists yet. |
@@ -94,22 +100,27 @@ bash scripts/run_tests.sh
 git diff --check: PASS
 ```
 
+The hosted packaging gate also passed with the synchronized compiler:
+
+```text
+ELISA_UI_STAGE1=../wasm-sdk-compiler bash scripts/build_wapp.sh hello
+wasm-browser inspect build/hello.wapp
+  runtime profile: wasmbrowser:component@1
+  language: elisa
+  framework: elisa-ui
+  format: component
+```
+
 The AppKit checks use activation policy prohibited and the custom canvas smoke
 path; no window is shown or foregrounded. The hello app's new
 `UiFlat::handle` entry point is covered by `test/widget_dispatch_test.elisa`.
 
-`bash scripts/build_wapp.sh hello` currently fails before packaging:
-
-```text
-failed to encode component
-type mismatch: expected i64, found i32 (at offset 0x2b06)
-```
-
-This is recorded as a compiler/toolchain blocker, not a framework feature
-failure. The raw module contains a malformed generated comparison in
-`UiCore.draw`; the strict `wasm-component-ld --validate-component=true` check
-rejects it. Minimal WIT probes validate independently, so the next Wasm task
-must isolate or fix that compiler defect before claiming hosted parity.
+The previous hosted blocker (`expected i64, found i32` during component
+validation) was resolved for this tuple by consuming the current compiler
+work fixes and the component-memory sizing fix from the UI compiler worktree.
+The framework now declares its `Host.Present`, `Host.Layout`, and
+`Host.Clipboard` permission family explicitly; manifest capabilities remain a
+separate host-enforced security boundary.
 
 ## Ownership decisions and next gaps
 

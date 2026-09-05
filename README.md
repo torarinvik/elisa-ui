@@ -131,8 +131,8 @@ routing) — studied, not ported.
 
 ## Build
 
-Both scripts use the compiler worktrees in `../elisa-ui-worktrees/` (override
-with `ELISA_UI_STAGE1`):
+The scripts use the synchronized `../wasm-sdk-compiler` checkout by default
+(override with `ELISA_UI_STAGE1`):
 
 ```sh
 scripts/build_native.sh   # -> build/hello_native (needs brew's sdl3 and sdl3_ttf)

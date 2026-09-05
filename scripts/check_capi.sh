@@ -7,7 +7,7 @@
 # whose layout C computed reaches an Elisa function with its fields intact.
 set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../elisa-ui-worktrees/stage1}"
+STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
 RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
 [[ -x "$STAGE1/bin/elisac-stage1" ]] || { echo "no stage1 product at $STAGE1/bin/elisac-stage1" >&2; exit 2; }
 
