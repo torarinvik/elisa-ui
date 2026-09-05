@@ -49,6 +49,11 @@ def app_widget_event(widget: usize, event: i32) -> void
 
 Build a retained tree in `app_init`, relayout it for `UiCore::Event.Resize`, pass
 pointer and key events to `UiFlat`, and call `UiFlat::paint()` from `app_frame`.
+After the first explicit layout, geometry-affecting retained mutations (adding
+widgets, text metrics, visibility, margins, growth, and alignment) are marked
+dirty in Elisa and reflow automatically before painting or hit testing against
+the remembered viewport; explicit `layout` remains the way to adopt a new
+viewport size.
 The complete working version is
 [examples/hello/app.elisa](../examples/hello/app.elisa).
 

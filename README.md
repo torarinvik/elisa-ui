@@ -89,6 +89,10 @@ because a module member's symbol carries its module and those names cannot move.
   Measure runs bottom-up, arrange top-down.
   Dynamic label text and typography changes are remeasured before the next
   layout, so localization and live status content cannot retain stale bounds.
+  After the first layout, geometry-affecting mutations are retained as a dirty
+  layout and reflow automatically before paint, hit testing, or scroll queries
+  against the remembered viewport; call `layout` explicitly when the viewport
+  itself changes.
   Widgets can be hidden without rebuilding the tree; visibility collapses
   layout space and applies transitively to painting, input, focus, tooltips and
   accessibility.
