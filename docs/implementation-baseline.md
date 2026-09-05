@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `42856ab` on branch `work` |
+| elisa-ui revision | `38d3a85` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `1a44c1d1`; SHA-256 `a9573ad3779ae57f9daf68f79c53761c5ec54d0045a11c1387071ba0562678bc` |
@@ -24,10 +24,10 @@ profile, Elisa language, and elisa-ui framework explicitly.
 
 ## Source and boundary inventory
 
-Public framework modules are `UiCore`, `UiLifecycle`, `UiPaint`, `UiRaster`, `UiConst`,
-`UiWidgets`, `UiFlat`, `UiHandles`, `UiResources`, `UiResourcePresentation`, `UiControls`, `UiCapi`, `UiAppKit`,
-`UiAppKitNative`, `UiAppKitCanvas`, `UiSdl3`, `UiSdl3Draw`, and
-`UiWasmBrowser`, and `UiInspector`. The application contract is
+Public framework modules are `UiCore`, `UiLifecycle`, `UiMetrics`, `UiPaint`, `UiRaster`,
+`UiConst`, `UiWidgets`, `UiFlat`, `UiHandles`, `UiResources`, `UiResourcePresentation`,
+`UiControls`, `UiCapi`, `UiAppKit`, `UiAppKitNative`, `UiAppKitCanvas`, `UiSdl3`,
+`UiSdl3Draw`, `UiWasmBrowser`, and `UiInspector`. The application contract is
 the top-level `app_init`, `app_event`, `app_text_input`, `app_text_editing`,
 `app_frame`, and optional `app_widget_event` callbacks.
 
@@ -38,14 +38,14 @@ Externally imposed symbols are kept at the edges:
   `UiSdl3Draw` module in `src/platform/sdl3/ui_sdl3_draw.elisa` owns renderer,
   font, raster, and painter state behind that boundary.
 - CoreGraphics, CoreText, CoreFoundation, ImageIO, libobjc, and AppKit fact
-  globals in `src/platform/appkit/ui_appkit_canvas.elisa`; typed controls bridge
-  wrappers in `src/platform/appkit/ui_appkit_native.elisa`.
+  globals in `src/platform/appkit/ui_appkit_canvas_native.elisa`; typed controls
+  bridge wrappers in `src/platform/appkit/ui_appkit_native.elisa`.
 - WasmBrowser WIT imports/exports and canonical record encoding in
   `src/platform/wasmbrowser/ui_wasmbrowser.elisa`.
 - Cocoa object/protocol/selector entry points in
   `src/platform/appkit/appkit_shim.m` and `appkit_canvas_shim.m`.
 
-The two Objective-C files total 1,298 lines, but the custom canvas shim has no
+The two Objective-C files total 1,280 lines, but the custom canvas shim has no
 framework state table, widget/layout traversal, rendering path, text policy,
 semantic diff, selector map, menu schema, clipboard policy, or headless mode.
 Those decisions are made in Elisa and cross the boundary as typed values or
@@ -53,10 +53,12 @@ opaque handles. Remaining native code is required to message Cocoa objects or
 implement Cocoa protocols; `scripts/check_appkit_canvas.sh` contains source
 guards for the ownership decisions.
 
-Tracked Elisa file lengths at this baseline include the custom canvas adapter
-(`ui_appkit_canvas.elisa`, 1,729 lines). The flat widget compatibility facade
-(`ui_widget.elisa`, 22 lines) now delegates to cohesive state, layout, input,
-text, scrolling, and painting modules, each below 400 lines. The AppKit controls backend is
+Tracked Elisa file lengths at this baseline include the custom canvas facade
+(`ui_appkit_canvas.elisa`, 12 lines), whose native, retained-state,
+accessibility, input, render, window, and callback modules are all below 400
+lines; the ready-to-use flat adapter is 393 lines. The flat widget compatibility
+facade (`ui_widget.elisa`, 22 lines) now delegates to cohesive state, layout,
+input, text, scrolling, and painting modules, each below 400 lines. The AppKit controls backend is
 now split into realization/policy (`ui_appkit.elisa`, 288 lines) and typed
 native bridge wrappers (`ui_appkit_native.elisa`, 370 lines). The SDL3 backend
 is split into lifecycle/event (`ui_sdl3.elisa`, 392 lines) and drawing/font
@@ -64,7 +66,11 @@ state (`ui_sdl3_draw.elisa`, 228 lines). New or changed Elisa source continues
 to use small, single-purpose modules; the existing large modules are
 not split mechanically.
 
-The WasmBrowser adapter is now an example of the intended refactoring boundary:
+The core and widget operation facades follow the same boundary: `ui_core.elisa`
+is an 8-line include surface over typed, frame, geometry, event, and retained
+state modules, and `ui_ops.elisa` is a 10-line include surface over query,
+layout, scrolling, hit, paint, and pointer modules. The WasmBrowser adapter is
+now an example of the intended refactoring boundary:
 `ui_wasmbrowser.elisa` contains the host-facing declarations and WIT export
 glue (300 lines), while `ui_wasmbrowser_runtime.elisa` contains the private
 frame/event/wire implementation (252 lines). The split preserves the required
@@ -106,7 +112,7 @@ bash scripts/run_tests.sh
   capi, appkit, appkit canvas, appkit canvas keymap, capi bridge,
   controls, drop raii, event wire, hierarchy build/layout, raster,
   sdl3 keymap/text, widget dispatch, widget handles, widget layout,
-  widget inspector, widget reentrancy, ui harness, resource presentation,
+  widget inspector, widget reentrancy, ui harness, metrics, resource presentation,
   core invalidation, lifecycle: PASS
 git diff --check: PASS
 ```
@@ -179,6 +185,11 @@ separate host-enforced security boundary.
   generation, surface/input/render/focus predicates, deferred layout/frame-
   buffer state, and typed relationships while redacting secure text; coverage
   lives in `test/widget_inspector_test.elisa`.
+- `UiMetrics` owns the interpretation of application, semantics, and paint
+  stages, monotonic-clock normalization, completion state, retained command and
+  semantic counts, overflow flags, and invalidation snapshots. Backends supply
+  timestamps from their own clocks; no host-specific timing policy is duplicated
+  in the inspector or native bridges. Coverage lives in `test/metrics_test.elisa`.
 - `UiHarness` is the deterministic Elisa-side test driver. It injects a
   monotonic clock, typed lifecycle/input events, resource requests/progress,
   and frame boundaries while leaving production event-loop ownership with each
