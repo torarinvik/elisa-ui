@@ -1,7 +1,8 @@
 # elisa-ui native backend: SDL3 (system libSDL3 via extern declarations).
-# `module UiSdl3` implements the platform contract from ui_core.elisa and owns
-# the main loop: `UiSdl3::run` polls SDL events, translates them to
-# `UiCore::Event` or committed UTF-8, and drives the application contract.
+# `module UiSdl3` implements the platform contract from ui_core.elisa. Its
+# lifecycle extension owns the main loop: `UiSdl3::run` polls SDL events,
+# translates them to `UiCore::Event` or committed UTF-8, and drives the
+# application contract.
 #
 # The extern declarations stay at file scope: they name C symbols, which are
 # global by nature, and a module prefix would only pretend otherwise. The four
@@ -389,87 +390,4 @@ module UiSdl3:
                     _:
                         app_event(event)
 
-    public:
-        # max_frames <= 0 runs until quit; a positive value exits after that
-        # many frames (headless smoke runs use it together with
-        # SDL_VIDEODRIVER=dummy).
-        def run(title: cstr, width: i32, height: i32, max_frames: i64) -> i64:
-            UiLifecycle::reset()
-            UiCapabilities::use_sdl3()
-            UiEvents::reset()
-            UiMetrics::reset()
-            if not SDL_Init(INIT_VIDEO):
-                _ = puts(SDL_GetError())
-                return 1
-            safe_width: i32 = window_extent(width)
-            safe_height: i32 = window_extent(height)
-            window_opt: void&? = SDL_CreateWindow(title, safe_width, safe_height, WINDOW_RESIZABLE)
-            if window_opt == null:
-                _ = puts(SDL_GetError())
-                SDL_Quit()
-                return 1
-            window <- window_opt
-            if window is created_window:
-                if not UiSdl3Draw::create_renderer(created_window):
-                    _ = puts(SDL_GetError())
-                    SDL_DestroyWindow(created_window)
-                    SDL_Quit()
-                    return 1
-            # Text is optional: a host without the font still runs, it just
-            # measures every run as zero-width.
-            if not TTF_Init():
-                _ = puts(SDL_GetError())
-            path_override: cstr? = getenv("ELISA_UI_FONT")
-            if path_override is override:
-                UiSdl3Draw::set_font_override(override)
-            UiCore::set_viewport(safe_width.f32(), safe_height.f32())
-            if not UiLifecycle::begin():
-                release_native()
-                _ = UiLifecycle::stop()
-                return 1
-            app_init()
-            _ = UiLifecycle::ready()
-            # SDL does not guarantee a separate initial focus event after a
-            # freshly created window is shown. Treat the newly owned window as
-            # focused; later SDL focus transitions still update this state.
-            _ = UiLifecycle::focus_gained()
-            if window is text_window:
-                if not SDL_StartTextInput(text_window):
-                    _ = puts(SDL_GetError())
-            running: mutable bool = true
-            frames: mutable i64 = 0
-            while running |frames|:
-                event: mutable UiCore::Event = (UiCore::Event.None)
-                while next_event(event) |event, running|:
-                    if event_type() == EVENT_TEXT_INPUT and UiLifecycle::accepts_input():
-                        text_input(event_text_pointer())
-                    elif event_type() == EVENT_TEXT_EDITING and UiLifecycle::accepts_input():
-                        text_editing(event_text_pointer(), event_text_editing_start(), event_text_editing_length())
-                    else:
-                        _ = UiEvents::enqueue(event)
-                    dispatch_queued_events(&running)
-                    break if not running
-                break if not running
-                # Same retained contract as the component backend: the app
-                # fills a command batch, then the backend consumes it. SDL3
-                # replays immediately.
-                frame_start: f64 = seconds_from_ticks(SDL_GetTicks())
-                UiCore::set_frame_time(frame_start)
-                UiMetrics::begin_frame(frame_start)
-                UiCore::begin_frame()
-                app_frame()
-                UiMetrics::mark_application(seconds_from_ticks(SDL_GetTicks()))
-                UiMetrics::mark_semantics(seconds_from_ticks(SDL_GetTicks()))
-                UiPaint::replay[UiSdl3Draw::Sdl3Painter]()
-                UiMetrics::mark_paint(seconds_from_ticks(SDL_GetTicks()))
-                UiSdl3Draw::present()
-                UiMetrics::finish_frame(seconds_from_ticks(SDL_GetTicks()))
-                frames <- frames + 1
-                running <- false if max_frames > 0 and frames >= max_frames
-                if running and max_frames <= 0:
-                    _ = SDL_WaitEventTimeout(null, UiCore::frame_timeout_ms(UiCore::frame_delay()))
-            if window is text_window:
-                _ = SDL_StopTextInput(text_window)
-            release_native()
-            _ = UiLifecycle::stop()
-            return 0
+include "./ui_sdl3_run.elisa"
