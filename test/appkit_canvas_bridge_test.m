@@ -354,35 +354,37 @@ size_t elisa_appkit_canvas_character_at_x(float x) {
     if (!test_text_focused) return NSNotFound;
     return x < 40.0f ? 0 : [NSString stringWithUTF8String:test_text].length;
 }
-size_t elisa_appkit_canvas_range_location(size_t location) {
+static size_t test_range_location(size_t location) {
     return MIN(location, [NSString stringWithUTF8String:test_text].length);
 }
-size_t elisa_appkit_canvas_range_length(size_t location, size_t length) {
-    size_t safeLocation = elisa_appkit_canvas_range_location(location);
+static size_t test_range_length(size_t location, size_t length) {
+    size_t safeLocation = test_range_location(location);
     size_t remaining = [NSString stringWithUTF8String:test_text].length - safeLocation;
     return MIN(length, remaining);
+}
+size_t elisa_appkit_canvas_attributed_substring(size_t location, size_t length,
+                                               size_t *actualLocation, size_t *actualLength) {
+    if (!test_text_focused || !test_allows_readback || location == NSNotFound) return 0;
+    if (actualLocation != NULL) *actualLocation = test_range_location(location);
+    if (actualLength != NULL) *actualLength = test_range_length(location, length);
+    NSString *value = [NSString stringWithUTF8String:test_text];
+    NSUInteger safeLocation = test_range_location(location);
+    NSUInteger safeLength = test_range_length(location, length);
+    NSString *substring = [value substringWithRange:NSMakeRange(safeLocation, safeLength)];
+    return (size_t)CFBridgingRetain(substring);
 }
 int elisa_appkit_canvas_first_rect(size_t location, size_t length,
                                    size_t *actualLocation, size_t *actualLength,
                                    float *x, float *y, float *width, float *height) {
     if (!test_text_focused) return 0;
-    if (actualLocation != NULL) *actualLocation = elisa_appkit_canvas_range_location(location);
-    if (actualLength != NULL) *actualLength = elisa_appkit_canvas_range_length(location, length);
+    if (actualLocation != NULL) *actualLocation = test_range_location(location);
+    if (actualLength != NULL) *actualLength = test_range_length(location, length);
     if (x != NULL) *x = elisa_appkit_canvas_character_x(actualLocation == NULL ? location : *actualLocation);
     if (y != NULL) *y = elisa_appkit_canvas_caret_y();
     if (width != NULL) *width = elisa_appkit_canvas_caret_width();
     if (height != NULL) *height = elisa_appkit_canvas_caret_height();
     return 1;
 }
-size_t elisa_appkit_canvas_range_string(size_t location, size_t length) {
-    if (!test_allows_readback) return 0;
-    NSString *value = [NSString stringWithUTF8String:test_text];
-    NSUInteger safeLocation = MIN(location, value.length);
-    NSUInteger safeLength = MIN(length, value.length - safeLocation);
-    NSString *substring = [value substringWithRange:NSMakeRange(safeLocation, safeLength)];
-    return (size_t)CFBridgingRetain(substring);
-}
-
 static int require(BOOL condition, NSString *message) {
     if (condition) return 0;
     fprintf(stderr, "appkit canvas bridge: %s\n", message.UTF8String);

@@ -146,8 +146,9 @@ tooltip and cursor tokens computed by Elisa from the same metadata. Tooltip
 registrations are rebuilt only when Elisa's semantic layout diff requires it,
 so stable frames do not clear and re-add every native rectangle. Value shape
 (boolean, range, text, or empty) is selected in Elisa and sent through typed FFI
-setters. Tooltip rectangles receive the node frame directly during each sync;
-the native element does not cache a second frame or cursor identity. Elisa also
+setters. Tooltip rectangles receive the node frame directly when a semantic
+layout rebuild is required; the native element does not cache a second frame or
+cursor identity. Elisa also
 diffs semantic state between frames;
 AppKit receives explicit value, focus, text-selection and layout notification
 bits instead of inferring framework behavior from native objects. Text changes
@@ -170,7 +171,8 @@ cannot leave stale native selection content, and secure nodes always carry an
 empty substring.
 
 The canvas view implements AppKit's text-input client protocol. Cocoa forwards
-native strings and UTF-16 ranges while Elisa performs the UTF-8 conversion,
+native strings and UTF-16 ranges while one Elisa callback performs the complete
+range normalization and UTF-8 conversion atomically,
 selection/replacement rules and IME composition with an underline, positions the
 system candidate window at the custom caret, and provides standard Cut, Copy,
 Paste and Select All commands through both shortcuts and the Edit menu. Command

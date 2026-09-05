@@ -54,9 +54,8 @@ extern void elisa_appkit_canvas_text_selector_handle(size_t selector);
 extern void elisa_appkit_canvas_text_action_selector(size_t selector);
 extern int elisa_appkit_canvas_text_action_valid_selector(size_t selector);
 extern size_t elisa_appkit_canvas_character_at_x(float x);
-extern size_t elisa_appkit_canvas_range_location(size_t location);
-extern size_t elisa_appkit_canvas_range_length(size_t location, size_t length);
-extern size_t elisa_appkit_canvas_range_string(size_t location, size_t length);
+extern size_t elisa_appkit_canvas_attributed_substring(size_t location, size_t length,
+                                                       size_t *actualLocation, size_t *actualLength);
 extern int elisa_appkit_canvas_first_rect(size_t location, size_t length,
                                           size_t *actualLocation, size_t *actualLength,
                                           float *x, float *y, float *width, float *height);
@@ -344,11 +343,12 @@ void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) 
 - (void)unmarkText { elisa_appkit_canvas_unmark_text(); }
 - (NSArray<NSAttributedStringKey> *)validAttributesForMarkedText { return @[]; }
 - (NSAttributedString *)attributedSubstringForProposedRange:(NSRange)range actualRange:(NSRangePointer)actualRange {
-    size_t native = elisa_appkit_canvas_range_string(range.location, range.length);
+    size_t actualLocation = elisa_appkit_canvas_not_found();
+    size_t actualLength = 0;
+    size_t native = elisa_appkit_canvas_attributed_substring(range.location, range.length,
+                                                             &actualLocation, &actualLength);
     if (native == 0) return nil;
-    NSRange safe = NSMakeRange(elisa_appkit_canvas_range_location(range.location),
-                               elisa_appkit_canvas_range_length(range.location, range.length));
-    if (actualRange != NULL) *actualRange = safe;
+    if (actualRange != NULL) *actualRange = NSMakeRange(actualLocation, actualLength);
     NSString *text = elisa_appkit_canvas_string(native);
     if (text == nil) return nil;
     NSAttributedString *result = [[NSAttributedString alloc] initWithString:text];
