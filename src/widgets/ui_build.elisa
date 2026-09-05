@@ -16,6 +16,7 @@
 # -- parent first or children first -- as wxWidgets allows.
 
 include "./ui_ops.elisa"
+include "./ui_responsive.elisa"
 
 extend UiWidgets:
     public:
@@ -46,6 +47,14 @@ extend UiWidgets:
             can Memory.Allocate, Abort.Panic:
                 safe_columns: i32 = columns if columns > 0 else 1
                 return Container.Grid(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, columns: safe_columns, padding: UiCore::nonnegative_extent(padding), spacing: UiCore::nonnegative_extent(spacing), fill: fill)
+
+        # Choose a fixed-column grid from logical width at build time. The
+        # application can rebuild this small composition when a resize event
+        # changes its responsive facts; widget internals never inspect an OS
+        # name or native window object.
+        def adaptive_grid(width: f32, minimum_item_width: f32, maximum_columns: i32,
+                          padding: f32, spacing: f32, fill: UiCore::Color) -> Widget:
+            return grid(UiResponsive::columns(width, minimum_item_width, spacing, maximum_columns), padding, spacing, fill)
 
         def scroll(axis: UiConst::Axis, offset: f32, fill: UiCore::Color) -> Widget:
             can Memory.Allocate, Abort.Panic:
