@@ -109,7 +109,10 @@ because a module member's symbol carries its module and those names cannot move.
   Public layout metrics are normalized at entry, preventing negative sizes,
   padding, spacing, grow weights or typography from escaping into geometry.
   Fixed arenas expose overflow flags, so capacity mistakes are diagnosable
-  rather than silently indistinguishable from missing UI.
+  rather than silently indistinguishable from missing UI. The read-only
+  `UiInspector` projection reports typed hierarchy, bounds/constraints,
+  deferred layout and frame-buffer state, matching semantic nodes while
+  redacting secure text for diagnostics.
   New application code can use [UiHandles](docs/ui-handles.md) for typed u32
   handles with retained-tree lifetime checks; the older index API remains for
   compatibility and low-level adapters.
