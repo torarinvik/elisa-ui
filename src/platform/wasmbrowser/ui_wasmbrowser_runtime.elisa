@@ -201,10 +201,14 @@ module UiWasmBrowser:
             UiMetrics::begin_frame(elapsed_time)
             UiCore::begin_frame()
             app_frame()
-            UiMetrics::mark_application(elapsed_time)
-            UiMetrics::mark_semantics(elapsed_time)
-            present()
-            UiMetrics::mark_paint(elapsed_time)
+            # `app_frame` is application-owned and may stop the guest during
+            # its callback. Keep the frame sample complete, but never publish
+            # a command batch after the presentation lifecycle is gone.
+            if UiLifecycle::can_render():
+                UiMetrics::mark_application(elapsed_time)
+                UiMetrics::mark_semantics(elapsed_time)
+                present()
+                UiMetrics::mark_paint(elapsed_time)
             UiMetrics::finish_frame(elapsed_time)
 
         # The host's pointer-kind ordinal is ITS encoding, not ours; translate it
