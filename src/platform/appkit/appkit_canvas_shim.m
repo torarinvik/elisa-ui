@@ -27,7 +27,8 @@ extern void elisa_appkit_canvas_key_up(int keyCode, size_t character);
 extern int elisa_appkit_canvas_accessibility_activate(size_t index);
 extern int elisa_appkit_canvas_accessibility_adjust(size_t index, int direction);
 extern size_t elisa_appkit_canvas_accessibility_index_for_handle(size_t handle);
-extern float elisa_appkit_canvas_accessibility_set_numeric_value(size_t index, float value);
+extern int elisa_appkit_canvas_accessibility_set_numeric_value(size_t index, float value,
+                                                               float *normalized);
 extern int elisa_appkit_canvas_pointer_button_primary(void);
 extern int elisa_appkit_canvas_pointer_button_secondary(void);
 extern int elisa_appkit_canvas_accessibility_increment_direction(void);
@@ -108,8 +109,10 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
     size_t index = elisa_appkit_canvas_accessibility_index_for_handle((size_t)(__bridge void *)self);
     if (![value isKindOfClass:[NSString class]]) {
         if ([value isKindOfClass:[NSNumber class]] && index != elisa_appkit_canvas_not_found()) {
-            float normalized = elisa_appkit_canvas_accessibility_set_numeric_value(index, [(NSNumber *)value floatValue]);
-            if (normalized >= 0.0f) [super setAccessibilityValue:@(normalized)];
+            float normalized = 0.0f;
+            if (elisa_appkit_canvas_accessibility_set_numeric_value(index, [(NSNumber *)value floatValue], &normalized) != 0) {
+                [super setAccessibilityValue:@(normalized)];
+            }
         }
         return;
     }

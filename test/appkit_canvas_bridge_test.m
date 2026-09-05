@@ -144,10 +144,11 @@ int elisa_appkit_canvas_accessibility_adjust(size_t index, int direction) {
     test_slider_value += direction > 0 ? 0.05f : -0.05f;
     return 1;
 }
-float elisa_appkit_canvas_accessibility_set_numeric_value(size_t index, float value) {
-    if (index != 7) return -1.0f;
+int elisa_appkit_canvas_accessibility_set_numeric_value(size_t index, float value, float *normalized) {
+    if (index != 7) return 0;
     test_slider_value = value < 0.0f ? 0.0f : (value > 1.0f ? 1.0f : value);
-    return test_slider_value;
+    if (normalized != NULL) *normalized = test_slider_value;
+    return 1;
 }
 void elisa_appkit_canvas_window_closed(void) {}
 void elisa_appkit_canvas_rebuild_cursor_rects(void) {}
