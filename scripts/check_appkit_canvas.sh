@@ -97,6 +97,10 @@ if grep -Eq 'static NSTimer \*elisa_canvas_animation_timer' "$ROOT/src/platform/
   echo "appkit canvas: redraw-timer lifetime was hidden in Objective-C state" >&2
   exit 1
 fi
+if grep -Eq 'static ElisaCanvasView[[:space:]]*\*elisa_canvas_view' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: duplicate content-view ownership was hidden in Objective-C state" >&2
+  exit 1
+fi
 if grep -Eq 'static NSMenu \*elisa_canvas_menu_bar' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: menu-bar lifetime was hidden in Objective-C state" >&2
   exit 1
