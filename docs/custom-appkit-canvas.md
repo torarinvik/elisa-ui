@@ -65,7 +65,9 @@ The complete working version is
   thumb updates the offset with Elisa-owned pointer capture. Painting records
   the intersection of scroll ancestors beside each command; native painters
   apply that clip without changing the render-command wire layout, so partially
-  visible children cannot bleed outside a viewport.
+  visible children cannot bleed outside a viewport. Keyboard Page Up/Down and
+  Home/End, plus arrows along the viewport axis, route through the nearest
+  focused scroll ancestor and use the same clamped Elisa-owned offset.
 - `label` measures and paints static text.
 - `button`, `radio_button` and `check_box` support hover, press, disabled,
   selected and keyboard-focus states.
@@ -192,9 +194,9 @@ the application bundle, code signature, PNG dimensions and semantic-object
 identity across redraws. `scripts/run_tests.sh` runs that check with the portable
 unit suite.
 
-Native window creation and presentation plus off-screen snapshot rendering
-return status through FFI. Elisa owns the process result, chooses the visible
-or headless sequence, and enters the native event loop only for a visible run.
+Native window creation and presentation return status through FFI. Elisa owns
+the off-screen snapshot renderer, process result, and visible/headless
+sequence, and enters the native event loop only for a visible run.
 
 The native-controls AppKit backend records each retained opaque Cocoa handle in
 the same `UiControls` arena that owns its dense, capacity-checked index. Its
