@@ -34,6 +34,7 @@ extern int elisa_appkit_canvas_accessibility_decrement_direction(void);
 extern const size_t elisa_appkit_canvas_not_found;
 extern int elisa_appkit_canvas_has_marked_text(void);
 extern size_t elisa_appkit_canvas_pointer_leave_event(void);
+extern void elisa_appkit_canvas_timer_fired(size_t windowHandle);
 extern size_t elisa_appkit_canvas_selection_location(void);
 extern size_t elisa_appkit_canvas_selection_length(void);
 extern int elisa_appkit_canvas_set_selected_range(size_t handle, size_t location, size_t length);
@@ -638,13 +639,15 @@ size_t elisa_appkit_canvas_clipboard_read(size_t pasteboard_type) {
 size_t elisa_appkit_canvas_schedule_redraw(float delay, size_t run_loop_mode,
                                            size_t windowHandle) {
     NSString *mode = elisa_appkit_canvas_string(run_loop_mode);
-    ElisaCanvasView *view = elisa_appkit_canvas_view(windowHandle);
-    if (mode == nil || view == nil) return 0;
-    // Capture the resolved view in the timer block. The timer is retained by
-    // Elisa until delivery/cancellation, so no native root lookup is needed.
+    if (mode == nil || elisa_appkit_canvas_window(windowHandle) == nil) return 0;
+    // Capture only the opaque root handle in the timer block. The timer is
+    // retained by Elisa until delivery/cancellation, so no native view is
+    // captured or kept alive by the scheduler.
     NSTimer *timer = [NSTimer timerWithTimeInterval:delay repeats:NO block:^(NSTimer *fired) {
         (void)fired;
-        if (view != nil) [view setNeedsDisplay:YES];
+        // Timer delivery re-enters Elisa so lifecycle and stale-window policy
+        // stay with the retained framework state rather than this block.
+        elisa_appkit_canvas_timer_fired(windowHandle);
     }];
     [NSRunLoop.mainRunLoop addTimer:timer forMode:mode];
     // Transfer one retain to Elisa, which releases it through the matching

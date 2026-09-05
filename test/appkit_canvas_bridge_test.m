@@ -23,6 +23,7 @@ static int test_allows_readback = 1;
 static int test_text_focused = 1;
 static int test_allow_text_mutation = 1;
 static int test_tooltip_calls;
+static size_t test_timer_fired_window;
 static int test_invalid_attributed_substring;
 static int test_invalid_attributed_substring_released;
 static size_t test_accessibility_handles[3];
@@ -142,6 +143,7 @@ void elisa_appkit_canvas_raw_flags(int keyCode, size_t modifiers) {
 size_t elisa_appkit_canvas_accessibility_capacity(void) { return 256; }
 void elisa_appkit_canvas_focus_changed(int focused) { test_window_focused = focused; }
 void elisa_appkit_canvas_accessibility_environment_changed(void) {}
+void elisa_appkit_canvas_timer_fired(size_t windowHandle) { test_timer_fired_window = windowHandle; }
 int elisa_appkit_canvas_key_down_route(int character, size_t modifiers) {
     BOOL shift = (modifiers & NSEventModifierFlagShift) != 0;
     BOOL superKey = (modifiers & NSEventModifierFlagCommand) != 0;
@@ -472,6 +474,9 @@ int main(void) {
         if (require(elisa_appkit_canvas_set_title(opened, (size_t)(__bridge void *)title),
                     @"valid window title was rejected")) return 1;
         test_window_handle = opened;
+        elisa_appkit_canvas_timer_fired(opened);
+        if (require(test_timer_fired_window == opened,
+                    @"timer callback did not carry the window handle")) return 1;
         elisa_appkit_canvas_set_released_when_closed(opened, 0);
         elisa_appkit_canvas_set_tabbing_mode(opened, NSWindowTabbingModeDisallowed);
         elisa_appkit_canvas_set_restorable(opened, 0);

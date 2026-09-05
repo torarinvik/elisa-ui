@@ -113,6 +113,14 @@ def appkit_canvas_rebuild_cursor_rects_callback() -> void:
     return if not UiAppKitCanvas::live()
     UiAppKitCanvas::rebuild_cursor_rects()
 
+def appkit_canvas_timer_fired_callback(window_handle: usize) -> void:
+    # The native timer carries only the opaque root handle. Re-check both
+    # lifecycle and identity before requesting a redraw: a timer can fire
+    # after teardown or after a replacement window has been opened.
+    return if not UiAppKitCanvas::live()
+    return if window_handle != UiAppKitCanvas::window_handle()
+    UiAppKitCanvas::redraw()
+
 def appkit_canvas_render_headless_callback(window_handle: usize, snapshot: usize, pixels_width: i32, pixels_height: i32) -> i32:
     return UiAppKitCanvas::render_headless(window_handle, snapshot, pixels_width, pixels_height)
 
@@ -145,4 +153,5 @@ export fn elisa_appkit_canvas_raw_flags(key_code: i32, modifiers: usize) -> void
 export fn elisa_appkit_canvas_focus_changed(focused: i32) -> void = appkit_canvas_focus_changed_callback
 export fn elisa_appkit_canvas_accessibility_environment_changed() -> void = appkit_canvas_accessibility_environment_changed_callback
 export fn elisa_appkit_canvas_rebuild_cursor_rects() -> void = appkit_canvas_rebuild_cursor_rects_callback
+export fn elisa_appkit_canvas_timer_fired(window_handle: usize) -> void = appkit_canvas_timer_fired_callback
 export fn elisa_appkit_canvas_render_headless(window_handle: usize, snapshot: usize, pixels_width: i32, pixels_height: i32) -> i32 = appkit_canvas_render_headless_callback

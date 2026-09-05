@@ -312,6 +312,10 @@ if awk '/size_t elisa_appkit_canvas_open\(/ { inside=1 } inside && /setTitle/ { 
   echo "appkit canvas: window-title policy leaked back into Objective-C window creation" >&2
   exit 1
 fi
+if awk '/size_t elisa_appkit_canvas_schedule_redraw\(/ { inside=1 } inside && /setNeedsDisplay/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+  echo "appkit canvas: timer redraw policy leaked back into Objective-C" >&2
+  exit 1
+fi
 if grep -Eq 'if \(centered\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: window centering policy leaked back into Objective-C" >&2
   exit 1
@@ -447,6 +451,7 @@ fi
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_schedule_redraw$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_cancel_redraw$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_set_title$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_timer_fired$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_activate$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_center$'
 # The live Elisa path calls UiAppKitCanvas::render_headless directly. The
