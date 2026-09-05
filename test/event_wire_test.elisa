@@ -131,6 +131,16 @@ def main() -> i64:
     unknown: UiCore::EventRecord = UiCore::EventRecord{kind: 99.WireKind(), x: 0.0, y: 0.0, dx: 0.0, dy: 0.0, code: 0}
     check("an unknown ordinal decodes to None", UiCore::wire_kind(UiCore::from_record(unknown)) == 0)
 
+    # Host records carry closed enum payloads as raw integers. Unknown values
+    # must be rejected at the Elisa boundary instead of being cast into an
+    # invalid typed event and reaching application code.
+    invalid_key: UiCore::EventRecord = UiCore::EventRecord{kind: UiCore::WireKind.KeyDown.i32(), x: 0.0, y: 0.0, dx: 0.0, dy: 0.0, code: 31}
+    check("unknown key payload decodes to None", UiCore::wire_kind(UiCore::from_record(invalid_key)) == 0)
+    invalid_pad: UiCore::EventRecord = UiCore::EventRecord{kind: UiCore::WireKind.GamepadButton.i32(), x: 0.0, y: 0.0, dx: 1.0, dy: 0.0, code: 99}
+    check("unknown gamepad payload decodes to None", UiCore::wire_kind(UiCore::from_record(invalid_pad)) == 0)
+    invalid_axis: UiCore::EventRecord = UiCore::EventRecord{kind: UiCore::WireKind.GamepadAxis.i32(), x: 0.0, y: 0.0, dx: 1.0, dy: 0.0, code: -1}
+    check("unknown gamepad axis payload decodes to None", UiCore::wire_kind(UiCore::from_record(invalid_axis)) == 0)
+
     if test_failures == 0:
         _ = puts("event wire: all checks passed")
         return 0
