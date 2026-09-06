@@ -76,7 +76,11 @@ extend UiAppKitCanvas:
                     snapshot_opt: cstr? = getenv("ELISA_UI_SNAPSHOT")
                     if snapshot_opt is snapshot:
                         snapshot_length: usize = snapshot_path_length(snapshot)
-                        if snapshot_length > SNAPSHOT_PATH_SCAN_CAPACITY:
+                        # `native_string` bounds counted views at
+                        # UiCore::MAX_TEXT_BYTES. Reject a longer environment
+                        # path instead of passing a silently truncated URL to
+                        # CoreFoundation.
+                        if snapshot_length > SNAPSHOT_PATH_SCAN_CAPACITY or not snapshot_path_within_budget(snapshot_length):
                             release_canvas()
                             return 2
                         snapshot_path <- native_string(sview(snapshot, 0, snapshot_length.i64()))
