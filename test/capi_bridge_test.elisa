@@ -16,6 +16,7 @@ global mutable first_seen_kind: i32 = -1
 global mutable first_seen_x: f32 = 0.0
 global mutable first_seen_code: i32 = 0
 global mutable seen_text: bool = false
+global mutable malformed_text_seen: bool = false
 global mutable text_callbacks: i32 = 0
 global mutable nested_text_attempted: bool = false
 global mutable event_callbacks: i32 = 0
@@ -41,6 +42,7 @@ def app_event(event: UiCore::Event) -> void:
 def app_text_input(text: sview) -> void:
     text_callbacks <- text_callbacks + 1
     seen_text <- text == "Hé 👋"
+    malformed_text_seen <- text.len == 1 and text.data[0] == 65
     if not nested_text_attempted:
         nested_text_attempted <- true
         elisa_ui_dispatch_text_input("nested", "nested".len)
@@ -69,6 +71,13 @@ def main() -> i64:
     check("C committed UTF-8 reaches the Elisa application intact", seen_text)
     check("nested C text dispatch is rejected", nested_text_attempted and text_callbacks == 1)
     check("C text staging buffer is scrubbed after callback", elisa_ui_text_buffer[0] == 0 and elisa_ui_text_buffer[UiCore::MAX_TEXT_BYTES] == 0)
+    invalid_text: mutable u8[3] = zeroed
+    invalid_text[0] <- 65
+    invalid_text[1] <- 255
+    invalid_text[2] <- 66
+    invalid_text_pointer: cstr = (&invalid_text[0]).cast[cstr] can Unsafe.PointerCast
+    elisa_ui_dispatch_text_input(invalid_text_pointer, 3)
+    check("C host text rejects malformed UTF-8 before app delivery", malformed_text_seen and text_callbacks == 2)
 
     elisa_ui_dispatch_event(99, 0.0, 0.0, 0.0, 0.0, 0)
     check("an unmodelled ordinal arrives as None", seen_kind == 0)
