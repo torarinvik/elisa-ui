@@ -86,13 +86,19 @@ def appkit_canvas_pointer_scroll_callback(x: f32, y: f32, dx: f32, dy: f32) -> v
 
 def appkit_canvas_key_callback(down: i32, code: i32) -> void:
     return if not UiAppKitCanvas::live()
-    if down != 0 and code == UiCore::Key.Escape.i32():
+    if appkit_canvas_should_close_key(down, code):
         UiAppKitCanvas::close()
         return
     return if not UiCore::key_is_valid(code)
     event: UiCore::Event = (UiCore::KeyEvent.Down(code: UiCore::Key(code))) if down != 0 else (UiCore::KeyEvent.Up(code: UiCore::Key(code)))
     appkit_canvas_dispatch_input_event(event)
     UiAppKitCanvas::redraw()
+
+# Escape is a mutating lifecycle action, not a read-only key translation. Keep
+# it behind the same active-session predicate as every other input mutation so
+# an inactive/background window cannot close itself from a late key callback.
+def appkit_canvas_should_close_key(down: i32, code: i32) -> bool:
+    return down != 0 and code == UiCore::Key.Escape.i32() and UiLifecycle::accepts_input()
 
 def appkit_canvas_raw_key_callback(down: i32, key_code: i32, character: i32) -> void:
     code: i32 = UiAppKitCanvas::key_from_appkit(key_code, character)

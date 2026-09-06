@@ -97,6 +97,14 @@ def main() -> i64:
     check("dialog value kind stays neutral", UiAppKitCanvas::accessibility_value_kind(UiCore::AccessibilityRole.Dialog), 0)
     check("dialog raw role round-trips", 1 if UiAppKitCanvas::semantic_role(UiCore::AccessibilityRole.Dialog.i32()) == UiCore::AccessibilityRole.Dialog else 0, 1)
 
+    UiLifecycle::reset()
+    _ = UiLifecycle::begin()
+    _ = UiLifecycle::ready()
+    check("inactive Escape cannot close the canvas", 1 if appkit_canvas_should_close_key(1, UiCore::Key.Escape.i32()) else 0, 0)
+    _ = UiLifecycle::focus_gained()
+    check("active Escape closes through the guarded path", 1 if appkit_canvas_should_close_key(1, UiCore::Key.Escape.i32()) else 0, 1)
+    check("Escape key-up is never a close action", 1 if appkit_canvas_should_close_key(0, UiCore::Key.Escape.i32()) else 0, 0)
+
     before: UiAppKitCanvas::AccessibilityState = UiAppKitCanvas::AccessibilityState{
         role: UiCore::AccessibilityRole.TextField.i32(), action: 4, interaction: 3,
         value_kind: 3, cursor: 2, enabled: true, focused: false, selected: false,
