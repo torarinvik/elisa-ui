@@ -184,10 +184,12 @@ static size_t test_accessibility_index_for_handle(size_t handle) {
     if (handle == test_accessibility_handles[2]) return 9;
     return elisa_appkit_canvas_not_found;
 }
-int elisa_appkit_canvas_accessibility_activate(size_t handle) {
+int elisa_appkit_canvas_accessibility_activate(size_t windowHandle, size_t handle) {
+    test_input_window = windowHandle;
     return test_accessibility_index_for_handle(handle) == 7;
 }
-size_t elisa_appkit_canvas_accessibility_tooltip_text(size_t handle) {
+size_t elisa_appkit_canvas_accessibility_tooltip_text(size_t windowHandle, size_t handle) {
+    test_input_window = windowHandle;
     if (handle == 0) return 0;
     id object = (__bridge id)(void *)handle;
     if (![object isKindOfClass:[ElisaAccessibilityElement class]]) return 0;
@@ -196,12 +198,14 @@ size_t elisa_appkit_canvas_accessibility_tooltip_text(size_t handle) {
 }
 int elisa_appkit_canvas_accessibility_increment_direction(void) { return 1; }
 int elisa_appkit_canvas_accessibility_decrement_direction(void) { return -1; }
-int elisa_appkit_canvas_accessibility_adjust(size_t handle, int direction) {
+int elisa_appkit_canvas_accessibility_adjust(size_t windowHandle, size_t handle, int direction) {
+    test_input_window = windowHandle;
     if (test_accessibility_index_for_handle(handle) != 7) return 0;
     test_slider_value += direction > 0 ? 0.05f : -0.05f;
     return 1;
 }
-size_t elisa_appkit_canvas_accessibility_set_value(size_t handle, size_t value) {
+size_t elisa_appkit_canvas_accessibility_set_value(size_t windowHandle, size_t handle, size_t value) {
+    test_input_window = windowHandle;
     id object = value == 0 ? nil : (__bridge id)(void *)value;
     if (test_accessibility_index_for_handle(handle) == 7 &&
         [object isKindOfClass:[NSNumber class]]) {
@@ -348,7 +352,8 @@ static int test_set_selected_range_index(size_t index, size_t location, size_t l
     test_selection_end = test_byte_from_utf16(location + length);
     return 1;
 }
-int elisa_appkit_canvas_set_selected_range(size_t handle, size_t location, size_t length) {
+int elisa_appkit_canvas_set_selected_range(size_t windowHandle, size_t handle, size_t location, size_t length) {
+    test_input_window = windowHandle;
     if (test_accessibility_index_for_handle(handle) != 8) return 0;
     return test_set_selected_range_index(8, location, length);
 }
@@ -676,8 +681,9 @@ int main(void) {
         if (require([first.accessibilityIdentifier isEqualToString:@"elisa-ui-7"], @"accessibility identifier did not cross the FFI")) return 1;
         if (require([first.accessibilityHelp isEqualToString:@"Adjust preview intensity"], @"help text missing")) return 1;
         NSString *tooltip = [(id)first view:(NSView *)first stringForToolTip:0 point:NSZeroPoint userData:NULL];
-        if (require([tooltip isEqualToString:@"tooltip supplied by Elisa"] && test_tooltip_calls == 1,
-                    @"tooltip text did not come from Elisa")) return 1;
+        if (require([tooltip isEqualToString:@"tooltip supplied by Elisa"] && test_tooltip_calls == 1 &&
+                        test_input_window == opened,
+                    @"tooltip text did not come from Elisa with its window identity")) return 1;
         if (require(fabs([first.accessibilityValue floatValue] - 0.25f) < 0.001f, @"wrong initial value")) return 1;
         first.accessibilityValue = @0.65f;
         if (require(fabs(test_slider_value - 0.65f) < 0.001f && fabs([first.accessibilityValue floatValue] - 0.65f) < 0.001f,
@@ -825,7 +831,8 @@ int main(void) {
                         second.accessibilityMinValue == nil && second.accessibilityMaxValue == nil,
                     @"accessibility value reset did not clear native slots")) return 1;
 
-        if (require([second accessibilityPerformIncrement], @"increment action was rejected")) return 1;
+        if (require([second accessibilityPerformIncrement] && test_input_window == opened,
+                    @"increment action did not carry its window identity")) return 1;
         if (require(fabs(test_slider_value - 0.80f) < 0.001f, @"increment action did not reach the app")) return 1;
         [elisa_appkit_canvas_window(opened) close];
         for (ElisaAccessibilityElement *element in secondChildren) {

@@ -63,8 +63,8 @@ def appkit_flat_accessibility_activate(index: usize) -> i32:
 
 # Native accessibility callbacks carry an opaque element handle. Resolve it to
 # the retained widget action in Elisa before entering UiFlat's index API.
-def appkit_flat_accessibility_activate_handle(handle: usize) -> i32:
-    return 0 if not UiAppKitCanvas::live() or not UiLifecycle::accepts_input()
+def appkit_flat_accessibility_activate_handle(window_handle: usize, handle: usize) -> i32:
+    return 0 if not UiAppKitCanvas::live() or window_handle != UiAppKitCanvas::window_handle() or not UiLifecycle::accepts_input()
     index: usize = UiAppKitCanvas::accessibility_action_for_handle(handle)
     return 0 if index == UiAppKitCanvas::not_found()
     return appkit_flat_accessibility_activate(index)
@@ -76,8 +76,8 @@ def appkit_flat_accessibility_adjust(index: usize, direction: i32) -> i32:
     UiAppKitCanvas::redraw() if adjusted
     return 1 if adjusted else 0
 
-def appkit_flat_accessibility_adjust_handle(handle: usize, direction: i32) -> i32:
-    return 0 if not UiAppKitCanvas::live() or not UiLifecycle::accepts_input()
+def appkit_flat_accessibility_adjust_handle(window_handle: usize, handle: usize, direction: i32) -> i32:
+    return 0 if not UiAppKitCanvas::live() or window_handle != UiAppKitCanvas::window_handle() or not UiLifecycle::accepts_input()
     index: usize = UiAppKitCanvas::accessibility_action_for_handle(handle)
     return 0 if index == UiAppKitCanvas::not_found()
     return appkit_flat_accessibility_adjust(index, direction)
@@ -186,8 +186,8 @@ def appkit_flat_set_text(index: usize, text: usize) -> i32:
     UiAppKitCanvas::redraw()
     return 1
 
-def appkit_flat_set_text_handle(handle: usize, text: usize) -> i32:
-    return 0 if not UiAppKitCanvas::live() or not UiLifecycle::accepts_input()
+def appkit_flat_set_text_handle(window_handle: usize, handle: usize, text: usize) -> i32:
+    return 0 if not UiAppKitCanvas::live() or window_handle != UiAppKitCanvas::window_handle() or not UiLifecycle::accepts_input()
     index: usize = UiAppKitCanvas::accessibility_action_for_handle(handle)
     return 0 if index == UiAppKitCanvas::not_found()
     return appkit_flat_set_text(index, text)
@@ -196,8 +196,8 @@ def appkit_flat_set_text_handle(handle: usize, text: usize) -> i32:
 # values. Elisa owns object classification, conversion and widget policy; the
 # native adapter only mirrors the retained object returned for an accepted
 # edit.
-def appkit_flat_accessibility_set_value_handle(handle: usize, value: usize) -> usize can Unsafe.PointerCast:
-    return 0 if not UiAppKitCanvas::live() or not UiLifecycle::accepts_input()
+def appkit_flat_accessibility_set_value_handle(window_handle: usize, handle: usize, value: usize) -> usize can Unsafe.PointerCast:
+    return 0 if not UiAppKitCanvas::live() or window_handle != UiAppKitCanvas::window_handle() or not UiLifecycle::accepts_input()
     index: usize = UiAppKitCanvas::accessibility_action_for_handle(handle)
     return 0 if index == UiAppKitCanvas::not_found()
     kind: i32 = UiAppKitCanvas::native_accessibility_value_kind(value)
@@ -225,8 +225,8 @@ def appkit_flat_set_selected_range(index: usize, location: usize, length: usize)
     UiAppKitCanvas::redraw()
     return 1
 
-def appkit_flat_set_selected_range_handle(handle: usize, location: usize, length: usize) -> i32:
-    return 0 if not UiAppKitCanvas::live()
+def appkit_flat_set_selected_range_handle(window_handle: usize, handle: usize, location: usize, length: usize) -> i32:
+    return 0 if not UiAppKitCanvas::live() or window_handle != UiAppKitCanvas::window_handle()
     index: usize = UiAppKitCanvas::accessibility_action_for_handle(handle)
     return 0 if index == UiAppKitCanvas::not_found()
     return appkit_flat_set_selected_range(index, location, length)
@@ -327,9 +327,9 @@ def appkit_flat_attributed_substring(window_handle: usize, location: usize, leng
     CFRelease(native)
     return attributed
 
-export fn elisa_appkit_canvas_accessibility_activate(handle: usize) -> i32 = appkit_flat_accessibility_activate_handle
-export fn elisa_appkit_canvas_accessibility_adjust(handle: usize, direction: i32) -> i32 = appkit_flat_accessibility_adjust_handle
-export fn elisa_appkit_canvas_accessibility_set_value(handle: usize, value: usize) -> usize = appkit_flat_accessibility_set_value_handle
+export fn elisa_appkit_canvas_accessibility_activate(window_handle: usize, handle: usize) -> i32 = appkit_flat_accessibility_activate_handle
+export fn elisa_appkit_canvas_accessibility_adjust(window_handle: usize, handle: usize, direction: i32) -> i32 = appkit_flat_accessibility_adjust_handle
+export fn elisa_appkit_canvas_accessibility_set_value(window_handle: usize, handle: usize, value: usize) -> usize = appkit_flat_accessibility_set_value_handle
 export fn elisa_appkit_canvas_window_closed(window_handle: usize) -> void = appkit_flat_window_closed
 export fn elisa_appkit_canvas_pointer_move_event(window_handle: usize, x: f32, y: f32) -> usize = appkit_flat_pointer_move_event
 export fn elisa_appkit_canvas_pointer_button(window_handle: usize, x: f32, y: f32, button: i32, down: i32, click_count: i32) -> void = appkit_flat_pointer_button
@@ -341,7 +341,7 @@ export fn elisa_appkit_canvas_key_down_event(window_handle: usize, event: usize,
 export fn elisa_appkit_canvas_key_up(window_handle: usize, key_code: i32, character: usize) -> void = appkit_flat_key_up
 export fn elisa_appkit_canvas_selection_location(window_handle: usize) -> usize = appkit_flat_selection_location
 export fn elisa_appkit_canvas_selection_length(window_handle: usize) -> usize = appkit_flat_selection_length
-export fn elisa_appkit_canvas_set_selected_range(handle: usize, location: usize, length: usize) -> i32 = appkit_flat_set_selected_range_handle
+export fn elisa_appkit_canvas_set_selected_range(window_handle: usize, handle: usize, location: usize, length: usize) -> i32 = appkit_flat_set_selected_range_handle
 export fn elisa_appkit_canvas_marked_location(window_handle: usize) -> usize = appkit_flat_marked_location
 export fn elisa_appkit_canvas_marked_length(window_handle: usize) -> usize = appkit_flat_marked_length
 export fn elisa_appkit_canvas_has_marked_text(window_handle: usize) -> i32 = appkit_flat_has_marked_text

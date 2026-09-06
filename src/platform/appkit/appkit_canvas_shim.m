@@ -23,10 +23,10 @@ extern int elisa_appkit_canvas_render_headless(size_t windowHandle,
                                                int pixelsHeight);
 extern void elisa_appkit_canvas_key_down_event(size_t windowHandle, size_t event, int keyCode, size_t character, size_t modifiers);
 extern void elisa_appkit_canvas_key_up(size_t windowHandle, int keyCode, size_t character);
-extern int elisa_appkit_canvas_accessibility_activate(size_t handle);
-extern int elisa_appkit_canvas_accessibility_adjust(size_t handle, int direction);
-extern size_t elisa_appkit_canvas_accessibility_tooltip_text(size_t handle);
-extern size_t elisa_appkit_canvas_accessibility_set_value(size_t handle, size_t value);
+extern int elisa_appkit_canvas_accessibility_activate(size_t windowHandle, size_t handle);
+extern int elisa_appkit_canvas_accessibility_adjust(size_t windowHandle, size_t handle, int direction);
+extern size_t elisa_appkit_canvas_accessibility_tooltip_text(size_t windowHandle, size_t handle);
+extern size_t elisa_appkit_canvas_accessibility_set_value(size_t windowHandle, size_t handle, size_t value);
 extern int elisa_appkit_canvas_accessibility_increment_direction(void);
 extern int elisa_appkit_canvas_accessibility_decrement_direction(void);
 extern const size_t elisa_appkit_canvas_not_found;
@@ -35,7 +35,7 @@ extern size_t elisa_appkit_canvas_pointer_leave_event(size_t windowHandle);
 extern void elisa_appkit_canvas_timer_fired(size_t windowHandle);
 extern size_t elisa_appkit_canvas_selection_location(size_t windowHandle);
 extern size_t elisa_appkit_canvas_selection_length(size_t windowHandle);
-extern int elisa_appkit_canvas_set_selected_range(size_t handle, size_t location, size_t length);
+extern int elisa_appkit_canvas_set_selected_range(size_t windowHandle, size_t handle, size_t location, size_t length);
 extern size_t elisa_appkit_canvas_marked_location(size_t windowHandle);
 extern size_t elisa_appkit_canvas_marked_length(size_t windowHandle);
 extern void elisa_appkit_canvas_commit_text(size_t windowHandle, size_t text,
@@ -83,18 +83,24 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
 - (void)elisaSetAccessibilityValue:(id)value;
 - (void)elisaSetAccessibilitySelectedTextRange:(NSRange)value;
 @end
+
+static size_t elisa_appkit_canvas_element_window_handle(ElisaAccessibilityElement *element);
+
 @implementation ElisaAccessibilityElement
 // Accessibility callbacks pass the opaque element handle directly to Elisa;
 // semantic-slot lookup and widget authorization stay outside the Cocoa shim.
 - (BOOL)accessibilityPerformPress {
-    return elisa_appkit_canvas_accessibility_activate((size_t)(__bridge void *)self) != 0;
+    return elisa_appkit_canvas_accessibility_activate(
+        elisa_appkit_canvas_element_window_handle(self), (size_t)(__bridge void *)self) != 0;
 }
 - (BOOL)accessibilityPerformIncrement {
-    return elisa_appkit_canvas_accessibility_adjust((size_t)(__bridge void *)self,
+    return elisa_appkit_canvas_accessibility_adjust(elisa_appkit_canvas_element_window_handle(self),
+        (size_t)(__bridge void *)self,
         elisa_appkit_canvas_accessibility_increment_direction()) != 0;
 }
 - (BOOL)accessibilityPerformDecrement {
-    return elisa_appkit_canvas_accessibility_adjust((size_t)(__bridge void *)self,
+    return elisa_appkit_canvas_accessibility_adjust(elisa_appkit_canvas_element_window_handle(self),
+        (size_t)(__bridge void *)self,
         elisa_appkit_canvas_accessibility_decrement_direction()) != 0;
 }
 - (void)setAccessibilityValue:(id)value {
@@ -103,6 +109,7 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
     // edit. The native adapter validates that returned object, mirrors it into
     // the superclass, then releases the one retained result.
     size_t native = elisa_appkit_canvas_accessibility_set_value(
+        elisa_appkit_canvas_element_window_handle(self),
         (size_t)(__bridge void *)self, (size_t)(__bridge void *)value);
     if (native == 0) return;
     NSString *stringValue = elisa_appkit_canvas_string(native);
@@ -115,7 +122,8 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
     CFRelease((CFTypeRef)(void *)native);
 }
 - (void)setAccessibilitySelectedTextRange:(NSRange)value {
-    if (elisa_appkit_canvas_set_selected_range((size_t)(__bridge void *)self,
+    if (elisa_appkit_canvas_set_selected_range(elisa_appkit_canvas_element_window_handle(self),
+                                               (size_t)(__bridge void *)self,
                                                value.location, value.length) != 0) {
         [super setAccessibilitySelectedTextRange:value];
     }
@@ -132,7 +140,13 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
     // Tooltip ownership and eligibility live in Elisa's retained semantic
     // state. Cocoa only validates the returned object and transfers the
     // temporary +1 into ARC for the protocol's return value.
-    size_t native = elisa_appkit_canvas_accessibility_tooltip_text((size_t)(__bridge void *)self);
+    // The protocol's `view` argument is supplied by Cocoa, but bridge tests
+    // and some AppKit paths may pass the owner through an untyped callback
+    // slot. Resolve the identity from the element's retained parent instead
+    // of messaging that borrowed argument as though it were an NSView.
+    size_t windowHandle = elisa_appkit_canvas_element_window_handle(self);
+    size_t native = elisa_appkit_canvas_accessibility_tooltip_text(
+        windowHandle, (size_t)(__bridge void *)self);
     // NSViewToolTipOwner declares this return value nonnull. An empty string
     // is Cocoa's no-tooltip result, so keep the protocol contract intact when
     // Elisa has no eligible semantic help text.
@@ -193,6 +207,18 @@ static NSArray *elisa_appkit_canvas_event_array(size_t handle) {
     if (handle == 0) return nil;
     id object = (__bridge id)(void *)handle;
     return [object isKindOfClass:[NSArray class]] ? object : nil;
+}
+
+// Accessibility elements retain their parent view, not a duplicate window
+// owner. Resolve the current native identity at callback time so an element
+// from a retired window cannot authorize an action against a replacement
+// session merely because its allocator address was reused.
+static size_t elisa_appkit_canvas_element_window_handle(ElisaAccessibilityElement *element) {
+    if (element == nil) return 0;
+    id parent = [element accessibilityParent];
+    if (![parent isKindOfClass:[NSView class]]) return 0;
+    NSWindow *window = [(NSView *)parent window];
+    return window == nil ? 0 : (size_t)(__bridge void *)window;
 }
 
 @interface ElisaCanvasDelegate : NSObject <NSWindowDelegate>
