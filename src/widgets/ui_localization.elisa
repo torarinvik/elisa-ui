@@ -65,6 +65,13 @@ module UiLocalization:
         # its text, layout, and accessibility tree.
         def reset() -> void:
             _ = set_locale("")
+            # `set_locale` updates the logical length and sentinel, but its
+            # normal bounded-copy path deliberately leaves bytes after the
+            # active value untouched. Scrub the whole fixed buffer here so a
+            # locale from a previous surface cannot remain resident until the
+            # next replacement or process exit.
+            for index in 0..<MAX_LOCALE_BYTES:
+                locale_storage[index] <- 0
 
         def current_locale() -> sview:
             return sview(&locale_storage[0], 0, locale_length_state.i64())
