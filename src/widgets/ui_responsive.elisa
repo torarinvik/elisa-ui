@@ -169,5 +169,13 @@ module UiResponsive:
             safe_scale: mutable f32 = UiCore::bounded_extent(scale)
             safe_scale <- 1.0 if safe_scale == 0.0
             safe_physical: f32 = UiCore::bounded_extent(minimum_physical)
-            required: f32 = UiCore::bounded_extent(UiCore::finite_or_zero(safe_physical / safe_scale))
+            # Keep the conversion in f64. A tiny positive scale is still a
+            # valid finite host value, but dividing a physical minimum by it
+            # can overflow f32 and previously collapsed the required logical
+            # extent to zero. Clamp the wider intermediate before narrowing so
+            # the physical touch minimum remains effective and bounded.
+            ratio: f64 = UiCore::finite_or_zero_f64(safe_physical.f64() / safe_scale.f64())
+            required: mutable f32 = 0.0
+            required <- UiCore::MAX_GEOMETRY_EXTENT if ratio >= UiCore::MAX_GEOMETRY_EXTENT.f64()
+            required <- ratio.f32() if ratio > 0.0 and ratio < UiCore::MAX_GEOMETRY_EXTENT.f64()
             return required if required > safe_logical else safe_logical
