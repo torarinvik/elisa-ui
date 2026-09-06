@@ -33,6 +33,27 @@ module UiText:
             return 1 if first == 244 and second >= 144
             return width
 
+        # Return the longest well-formed UTF-8 prefix that fits byte_limit.
+        # Counted views can come directly from a foreign ABI, so a byte cap
+        # must not split a multibyte scalar or preserve malformed bytes for a
+        # painter/native string adapter. `utf8_scalar_bytes` deliberately uses
+        # one-byte recovery for counters; this helper instead stops before the
+        # first malformed or truncated scalar.
+        def valid_utf8_prefix(text: sview, byte_limit: usize) -> usize:
+            return 0 if text.len <= 0
+            total: usize = text.len.usize()
+            limit: usize = byte_limit if byte_limit < total else total
+            cursor: mutable usize = 0
+            while cursor < limit |cursor, limit|:
+                first: u32 = text.data[cursor].u32()
+                width: usize = utf8_scalar_bytes(text, cursor)
+                # A high-bit byte that decoded to one byte is an invalid lead,
+                # a bad continuation, or an invalid/overlong scalar.
+                return cursor if first >= 128 and width == 1
+                return cursor if width == 0 or width > limit - cursor
+                cursor <- cursor + width
+            return cursor
+
         # Count the scalar-sized units in a bounded UTF-8 view. This is a
         # protocol bound, not a grapheme count: a combining sequence or an
         # emoji ZWJ sequence contributes one unit per encoded scalar, matching

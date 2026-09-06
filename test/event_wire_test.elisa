@@ -90,6 +90,24 @@ def main() -> i64:
     oversized_text: sview = sview(&bounded_text_bytes[0], 0, (UiCore::MAX_TEXT_BYTES + 8).i64())
     bounded_run: UiCore::TextRun = UiCore::TextRun(UiCore::Vec2(0.0, 0.0), 12.0, oversized_text)
     check("TextRun bounds oversized counted text", bounded_run.text.len == UiCore::MAX_TEXT_BYTES.i64())
+    bounded_text_bytes[UiCore::MAX_TEXT_BYTES - 2] <- 0xC3
+    bounded_text_bytes[UiCore::MAX_TEXT_BYTES - 1] <- 0xA9
+    boundary_run: UiCore::TextRun = UiCore::TextRun(UiCore::Vec2(0.0, 0.0), 12.0, oversized_text)
+    check("TextRun preserves a scalar ending at the byte cap", boundary_run.text.len == UiCore::MAX_TEXT_BYTES.i64())
+    bounded_text_bytes[UiCore::MAX_TEXT_BYTES - 2] <- 65
+    bounded_text_bytes[UiCore::MAX_TEXT_BYTES - 1] <- 0xC3
+    bounded_text_bytes[UiCore::MAX_TEXT_BYTES] <- 0xA9
+    truncated_run: UiCore::TextRun = UiCore::TextRun(UiCore::Vec2(0.0, 0.0), 12.0, oversized_text)
+    check("TextRun drops a scalar split by the byte cap", truncated_run.text.len == (UiCore::MAX_TEXT_BYTES - 1).i64())
+    bounded_text_bytes[UiCore::MAX_TEXT_BYTES - 1] <- 65
+    bounded_text_bytes[UiCore::MAX_TEXT_BYTES] <- 65
+    malformed_bytes: mutable u8[3] = zeroed
+    malformed_bytes[0] <- 65
+    malformed_bytes[1] <- 0xC3
+    malformed_bytes[2] <- 66
+    malformed_view: sview = sview(&malformed_bytes[0], 0, 3)
+    malformed_run: UiCore::TextRun = UiCore::TextRun(UiCore::Vec2(0.0, 0.0), 12.0, malformed_view)
+    check("TextRun stops before malformed UTF-8", malformed_run.text.len == 1)
     UiCore::begin_frame()
     UiCore::accessibility(UiCore::AccessibilityRole.Label, oversized_text, oversized_text, UiCore::Rect(0.0, 0.0, 1.0, 1.0), 3, 0, true, false, false, 0.0, oversized_text, oversized_text, 0, 0, 0)
     bounded_node: UiCore::AccessibilityNode = UiCore::accessibility_at(0)
