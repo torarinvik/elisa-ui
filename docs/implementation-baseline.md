@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `c79237b86954` on branch `work` |
+| elisa-ui revision | `433458fda727` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -65,7 +65,9 @@ Tracked Elisa file lengths at this baseline include the custom canvas facade
 (`ui_appkit_canvas.elisa`, 14 lines), whose native, retained-state,
 accessibility, input, render, window, and callback modules are all below 400
 lines; the ready-to-use flat adapter is 348 lines (with text-command routing
-isolated in `ui_appkit_canvas_text.elisa`, 89 lines). The flat widget compatibility
+isolated in `ui_appkit_canvas_text.elisa`, 89 lines). The retained native-control
+adapter (`ui_controls.elisa`) is 397 lines and owns bounded caption storage.
+The flat widget compatibility
 facade (`ui_widget.elisa`, 23 lines) now delegates to cohesive state, layout,
 input, text, scrolling, and painting modules, each below 400 lines. The AppKit controls backend is
 now split into realization/policy (`ui_appkit.elisa`, 305 lines) and typed
@@ -81,7 +83,7 @@ state modules, and `ui_ops.elisa` is a 10-line include surface over query,
 layout, scrolling, hit, paint, and pointer modules. The WasmBrowser adapter is
 now an example of the intended refactoring boundary:
 `ui_wasmbrowser.elisa` contains the host-facing declarations and WIT export
-glue (306 lines), while `ui_wasmbrowser_runtime.elisa` contains the private
+glue (281 lines), while `ui_wasmbrowser_runtime.elisa` contains the private
 frame/event/wire implementation (298 lines). The split preserves the required
 top-level export symbols and keeps the internal painter and encoder names
 module-private.
@@ -185,9 +187,9 @@ separate host-enforced security boundary.
 - AppKit native-control read-back is routed through the same Elisa-owned,
   autorelease-scoped bridge wrapper surface as construction and mutation; the
   realization module no longer imports raw Cocoa query symbols.
-- The hosted backend still contains handwritten WIT/canonical ABI declarations;
-  it should consume the authoritative SDK-generated bindings after the SDK/WIT
-  migration gate, without creating a second ABI implementation.
+- The hosted backend consumes the authoritative SDK-generated host bindings from
+  `../wasm-sdk/sdk/elisa/wasmbrowser/`; Elisa retains only the UI-specific policy
+  and canonical record lowering around that imported ABI.
 - The C boundary now exposes a packed ABI version from Elisa and checks it
   against the public header in `scripts/check_capi.sh`; wire ordinals and field
   meanings remain documented in `include/elisa_ui.h`.
@@ -277,6 +279,10 @@ separate host-enforced security boundary.
   introspection path now performs the native click as one primitive while Elisa
   owns the before/after comparison and state restoration; no test behavior is
   encoded in the Objective-C shim.
+- `UiControls` owns bounded copies of retained captions before a native backend
+  applies its control list. This prevents labels, titles, and button text from
+  retaining caller-owned transient `sview` buffers; `test/controls_test.elisa`
+  covers the lifetime guarantee.
 - `UiHarness` is the deterministic Elisa-side test driver. It injects a
   monotonic clock, typed lifecycle/input events, resource requests/progress,
   and frame boundaries while leaving production event-loop ownership with each
@@ -301,10 +307,9 @@ separate host-enforced security boundary.
   actions, and text editing with stale-handle guards. The shared hello example
   is migrated to that surface across all three entrypoints. Android/iOS and remote
   work remain blocked on sibling host/SDK execution fixtures rather than being
-  simulated here; the next UI-side integration gap is consuming generated
-  SDK bindings instead of the hosted adapter's handwritten WIT lowering.
+  simulated here; the hosted adapter now consumes generated SDK bindings while
+  retaining only its UI-specific lowering in Elisa.
 
-The authoritative generated WasmBrowser Elisa bindings are currently staged in
-`../wasm-sdk/sdk/elisa/wasmbrowser/`; the hosted adapter still intentionally
-uses its existing handwritten lowering until the SDK/WIT migration gate is
-completed.
+The authoritative generated WasmBrowser Elisa bindings are staged in
+`../wasm-sdk/sdk/elisa/wasmbrowser/`; the hosted adapter includes those bindings
+directly and keeps its UI-specific lowering local to the adapter.
