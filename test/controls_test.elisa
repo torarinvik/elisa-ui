@@ -60,6 +60,7 @@ global mutable log_total: usize = 0
 global mutable frame_calls: usize = 0
 global mutable text_calls: usize = 0
 global mutable state_calls: usize = 0
+global mutable borrowed_caption: u8[8] = zeroed
 
 # A backend keeps its own index -> handle table; this one keeps a log instead,
 # which is the same thing with the native part left out.
@@ -168,6 +169,20 @@ def main() -> i64:
         check("a push button realizes a PushButton", kind_at(2) == UiControls::Kind.PushButton.i32())
         check("a checkbox carries its selected state", log_state_selected[3])
         check("a label realizes a Label", kind_at(4) == UiControls::Kind.Label.i32())
+
+        # Control records own their captions. A backend may consume the list
+        # after the builder's source buffer has been reused, so the retained
+        # view must not point back into application-owned scratch storage.
+        borrowed_caption[0] <- 79
+        borrowed_caption[1] <- 119
+        borrowed_caption[2] <- 110
+        borrowed_caption[3] <- 101
+        borrowed_caption[4] <- 100
+        owned_label: Widget = Control.Label(min_width: 1.0, min_height: 1.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, text: sview(&borrowed_caption[0], 0, 5), size: 10.0, ink: grey(200))
+        UiControls::reset()
+        UiControls::realize(owned_label, UiControls::NO_PARENT, 0)
+        borrowed_caption[0] <- 88
+        check("control text is copied into Elisa storage", UiControls::text_at(0) == "Owned")
 
         gauge: Widget = Control.Gauge(min_width: 1.0, min_height: 1.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, fraction: 2.0, track: grey(20), bar: grey(200))
         gauge_state: UiControls::ControlState = UiControls::state_of(gauge)

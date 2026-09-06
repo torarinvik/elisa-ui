@@ -141,15 +141,8 @@ module UiControls:
         # The list itself. It sits after the vocabulary because that is the reading
         # order -- what a backend must implement first, then how the list is kept.
         #
-        # MAX_CONTROLS carries an underscore because stage0's parser needs one. In
-        # `Elem[SIZE]` with a user-defined element and a bare identifier size, stage0
-        # decides array-vs-generic by NAME: the size must be SCREAMING_SNAKE *with an
-        # underscore*, or the brackets read as type arguments and the declaration is
-        # rejected with "type ControlOp expects 0 generic arguments, got 1". The
-        # underscore is what separates a const from a type parameter, since `Box[T]`
-        # and `Row[CAP]` are otherwise the same shape. The old name, CAPACITY, has no
-        # underscore, so this file did not build with stage0 at all until it was
-        # renamed; stage1 accepts either spelling, which is why it went unnoticed.
+        # Stage0 distinguishes fixed-size arrays from generic types by requiring
+        # an underscore in the array-size constant name.
         const MAX_CONTROLS: usize = 256
         # Realization walks a handle-backed hierarchy, so unlike UiFlat it
         # cannot infer termination from an arena index. Keep malformed
@@ -159,6 +152,9 @@ module UiControls:
         # the same fail-closed behavior.
         const MAX_REALIZE_DEPTH: i32 = 256
         const MAX_REALIZE_SIBLINGS: i32 = 1024
+        # Own captions in a bounded arena so a backend may apply records later.
+        const CONTROL_TEXT_CAPACITY: usize = UiCore::MAX_TEXT_BYTES
+        const CONTROL_TEXT_STORAGE_SIZE: usize = MAX_CONTROLS * CONTROL_TEXT_CAPACITY
 
         struct ControlOp:
             kind: mutable Kind
@@ -176,11 +172,26 @@ module UiControls:
             native_handle: mutable usize
 
         global mutable ops: ControlOp[MAX_CONTROLS] = zeroed
+        global mutable control_text_storage: u8[CONTROL_TEXT_STORAGE_SIZE] = zeroed
         global mutable total: usize = 0
         global mutable control_dropped: bool = false
 
+        def copy_control_text(index: usize, value: sview) -> sview:
+            return "" if index >= MAX_CONTROLS
+            safe: sview = UiCore::bounded_text(value)
+            offset: usize = index * CONTROL_TEXT_CAPACITY
+            for byte_index in 0..<CONTROL_TEXT_CAPACITY:
+                control_text_storage[offset + byte_index] <- 0
+            take: usize = safe.len.usize()
+            for byte_index in 0..<take:
+                control_text_storage[offset + byte_index] <- safe.data[byte_index]
+            return sview(&control_text_storage[offset], 0, take.i64())
+
     public:
         def reset() -> void:
+            for text_index in 0..<total:
+                for byte_index in 0..<CONTROL_TEXT_CAPACITY:
+                    control_text_storage[text_index * CONTROL_TEXT_CAPACITY + byte_index] <- 0
             for index in 0..<MAX_CONTROLS:
                 ops[index].native_handle <- 0
             total <- 0
@@ -268,7 +279,7 @@ module UiControls:
             ops[index].state_selected <- state.selected
             ops[index].parent <- parent
             ops[index].box <- UiWidgets::box_of(w)
-            ops[index].text <- text_of(w)
+            ops[index].text <- copy_control_text(index, text_of(w))
             ops[index].native_handle <- 0
             cursor: mutable UiWidgets::Widget? = w.first_child
             sibling_steps: mutable i32 = 0
