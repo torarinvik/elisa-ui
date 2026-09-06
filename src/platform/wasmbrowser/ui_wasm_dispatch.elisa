@@ -14,8 +14,14 @@ module UiWasmDispatch:
         def drain() -> void:
             return if event_dispatch_active
             event_dispatch_active <- true
+            # A synchronous callback may stop the guest or rotate the session
+            # before returning. Drain and discard the remaining queue once that
+            # happens so events from the old owner never reach a replacement.
+            drain_generation: u32 = UiLifecycle::generation()
             queued: mutable UiCore::Event = UiCore::Event.None
             while UiEvents::dequeue(queued):
+                continue if not UiLifecycle::is_started() or UiLifecycle::generation() != drain_generation
+                continue if UiCore::is_input_event(queued) and not UiLifecycle::accepts_input()
                 app_event(queued)
             event_dispatch_active <- false
 

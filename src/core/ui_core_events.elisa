@@ -80,6 +80,34 @@ extend UiCore:
                 GamepadEvent.Axis(axis, value):
                     return WireKind.GamepadAxis
 
+        # Physical input is the subset whose delivery is gated by the active
+        # lifecycle phase. Resize, focus, quit, and other framework events may
+        # still be meaningful while a surface is inactive; pointer, keyboard,
+        # and gamepad events must never cross that boundary from a stale queue.
+        def is_input_event(event: Event) -> bool:
+            match event:
+                PointerEvent.Move(at):
+                    return true
+                PointerEvent.Down(at, button):
+                    return true
+                PointerEvent.Up(at, button):
+                    return true
+                PointerEvent.Leave:
+                    return true
+                PointerEvent.Scroll(at, delta):
+                    return true
+                KeyEvent.Down(code):
+                    return true
+                KeyEvent.Up(code):
+                    return true
+                GamepadEvent.Button(button, value):
+                    return true
+                GamepadEvent.Axis(axis, value):
+                    return true
+                _:
+                    pass
+            return false
+
         # Flatten. Fields a kind does not use stay zero, which is what the flat
         # record always meant.
         def to_record(event: Event) -> EventRecord:
