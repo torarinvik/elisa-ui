@@ -87,7 +87,7 @@ extend UiCore:
                 origin: Vec2{ x: bounded_coordinate(frame.origin.x), y: bounded_coordinate(frame.origin.y) },
                 size: Size{ width: bounded_extent(frame.size.width), height: bounded_extent(frame.size.height) },
             }
-            safe_value: f32 = finite_or_zero(value)
+            safe_value: mutable f32 = finite_or_zero(value)
             safe_parent: usize = relationship_id(parent_id)
             safe_first_child: usize = relationship_id(first_child_id)
             safe_next_sibling: usize = relationship_id(next_sibling_id)
@@ -97,6 +97,12 @@ extend UiCore:
             if has_range and safe_range_maximum < safe_range_minimum:
                 safe_range_maximum <- safe_range_minimum
                 range_conflict <- true
+            # A ranged semantic value must stay inside the canonical interval.
+            # Repairing only the endpoints would otherwise publish an
+            # inconsistent tuple to native accessibility APIs.
+            if has_range:
+                safe_value <- safe_range_minimum if safe_value < safe_range_minimum
+                safe_value <- safe_range_maximum if safe_value > safe_range_maximum
             safe_label: sview = bounded_text(label)
             safe_help: sview = bounded_text(help)
             safe_text_value: sview = bounded_text(text_value)
@@ -151,6 +157,10 @@ extend UiCore:
             accessibility_nodes[existing].range_min <- safe_minimum
             accessibility_nodes[existing].range_max <- safe_maximum
             accessibility_nodes[existing].range_conflict <- conflict
+            value: mutable f32 = finite_or_zero(accessibility_nodes[existing].value)
+            value <- safe_minimum if value < safe_minimum
+            value <- safe_maximum if value > safe_maximum
+            accessibility_nodes[existing].value <- value
             invalidate(Invalidation.Semantics)
 
         def accessibility_count() -> usize:

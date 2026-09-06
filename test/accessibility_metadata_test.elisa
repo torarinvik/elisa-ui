@@ -39,7 +39,7 @@ def main() -> i64:
     UiCore::accessibility_set_range(7, 10.0, 2.0)
     node <- UiCore::accessibility_at(0)
     check("relationship patch updates the retained node", node.parent_id == 3 and node.first_child_id == 4 and node.next_sibling_id == 5)
-    check("reversed range fails closed", node.has_range and node.range_min == 10.0 and node.range_max == 10.0 and node.range_conflict)
+    check("reversed range fails closed", node.has_range and node.range_min == 10.0 and node.range_max == 10.0 and node.range_conflict and node.value == 10.0)
 
     UiCore::accessibility_with_metadata(
         UiCore::AccessibilityRole.Button, "Apply", "", UiCore::Rect(0.0, 0.0, 20.0, 20.0),
@@ -54,6 +54,13 @@ def main() -> i64:
     invalid_role: UiCore::AccessibilityRole = (-1).i32().AccessibilityRole()
     UiCore::accessibility(invalid_role, "Unknown role", "", UiCore::Rect(0.0, 0.0, 10.0, 10.0), 9, 0, true, false, false, 0.0, "", "", 0, 0, 0)
     check("unknown semantic roles fall back to labels", UiCore::accessibility_at(2).role == UiCore::AccessibilityRole.Label)
+
+    UiCore::accessibility_with_metadata(
+        UiCore::AccessibilityRole.Slider, "Bounded", "", UiCore::Rect(0.0, 0.0, 10.0, 10.0),
+        10, 10, true, false, false, 99.0, "", "", 0, 0, 0,
+        0, 0, 0, 0.0, 1.0, true)
+    bounded: UiCore::AccessibilityNode = UiCore::accessibility_at(3)
+    check("ranged semantic values clamp at construction", bounded.value == 1.0 and bounded.range_min == 0.0 and bounded.range_max == 1.0)
 
     if failures == 0:
         _ = puts("accessibility metadata: all checks passed")
