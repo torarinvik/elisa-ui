@@ -117,13 +117,18 @@ module UiLocalization:
         # is sanitized and clipped at zero so stale/narrow host dimensions do
         # not produce negative frames in any painter.
         def mirror_x(locale: sview, container_width: f32, item_x: f32, item_width: f32) -> f32:
-            return UiCore::finite_or_zero(item_x) if not is_rtl(locale)
-            width: f32 = UiCore::nonnegative_extent(container_width)
-            x: f32 = UiCore::finite_or_zero(item_x)
-            extent: f32 = UiCore::nonnegative_extent(item_width)
+            return UiCore::bounded_coordinate(item_x) if not is_rtl(locale)
+            # Mirror in the same bounded coordinate/extent envelope used by
+            # retained layout. Nonnegative-only normalization leaves large
+            # finite values intact; subtracting an extreme negative x from a
+            # wide container can then overflow to infinity before the result
+            # is clipped at zero.
+            width: f32 = UiCore::bounded_extent(container_width)
+            x: f32 = UiCore::bounded_coordinate(item_x)
+            extent: f32 = UiCore::bounded_extent(item_width)
             mirrored: mutable f32 = width - x - extent
             mirrored <- 0.0 if mirrored < 0.0
-            return mirrored
+            return UiCore::bounded_coordinate(mirrored)
 
         # Resolve the plural category used by a message catalog. This is a
         # small deterministic subset, not a replacement for a full CLDR
