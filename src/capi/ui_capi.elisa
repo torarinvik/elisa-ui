@@ -45,6 +45,12 @@ module UiCapi:
         # an ordinal this library does not model arrives as `Event.None`, which an
         # app ignores, rather than as a trap.
         def dispatch_event(kind: i32, x: f32, y: f32, dx: f32, dy: f32, code: i32) -> void:
+            # Pointer coordinates and wheel deltas are physical input facts.
+            # Do not let the core's value-level sanitizers turn a malformed C
+            # payload into a real hit at the origin; native backends apply the
+            # same fail-closed rule before they construct a typed event.
+            pointer_kind: bool = kind == UiCore::WireKind.PointerMove.i32() or kind == UiCore::WireKind.PointerDown.i32() or kind == UiCore::WireKind.PointerUp.i32() or kind == UiCore::WireKind.PointerLeave.i32() or kind == UiCore::WireKind.Scroll.i32()
+            return if pointer_kind and (not UiCore::is_finite(x) or not UiCore::is_finite(y) or (kind == UiCore::WireKind.Scroll.i32() and (not UiCore::is_finite(dx) or not UiCore::is_finite(dy))))
             record: UiCore::EventRecord = UiCore::EventRecord{kind: UiCore::WireKind(kind), x: x, y: y, dx: dx, dy: dy, code: code}
             return if not UiEvents::enqueue(UiCore::from_record(record))
             # Event payloads are copied into the bounded queue, so a callback

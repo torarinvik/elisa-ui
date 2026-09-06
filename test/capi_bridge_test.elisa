@@ -67,6 +67,14 @@ def main() -> i64:
     elisa_ui_dispatch_event(13, 0.0, 0.0, 0.0, 0.0, 0)
     check("a C focus-loss event arrives as kind 13", seen_kind == 13)
 
+    zero: f32 = 0.0
+    nan: f32 = zero / zero
+    before_malformed_event_callbacks: i32 = event_callbacks
+    elisa_ui_dispatch_event(3, nan, 12.0, 0.0, 0.0, 0)
+    check("C host rejects non-finite pointer coordinates", event_callbacks == before_malformed_event_callbacks)
+    elisa_ui_dispatch_event(9, 12.0, 24.0, 0.0, nan, 0)
+    check("C host rejects non-finite scroll deltas", event_callbacks == before_malformed_event_callbacks)
+
     elisa_ui_dispatch_text_input("Hé 👋", "Hé 👋".len)
     check("C committed UTF-8 reaches the Elisa application intact", seen_text)
     check("nested C text dispatch is rejected", nested_text_attempted and text_callbacks == 1)
