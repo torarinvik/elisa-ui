@@ -1,6 +1,6 @@
 # elisa-ui implementation baseline
 
-Recorded 2026-09-05 on macOS arm64. This is the durable UI-00 audit for the
+Recorded 2026-09-06 on macOS arm64. This is the durable UI-00 audit for the
 local implementation plan; it records observed behavior, not an assumption of
 parity on untested platforms.
 
@@ -8,14 +8,14 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `ca68347` on branch `work` |
+| elisa-ui revision | `c79237b86954` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
-| Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `1a44c1d1`; SHA-256 `a9573ad3779ae57f9daf68f79c53761c5ec54d0045a11c1387071ba0562678bc` |
+| Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
 | Elisa runtime | `../wasm-sdk-compiler/build/runtime/elisacore_runtime.o`; SHA-256 `cb06532f0c37540284de4ceaa622d0da9193f113877ac391fb00bad4bf9ff1e9` |
-| WasmBrowser checkout | revision `2bb3d5f` (host worktree has unrelated local `.gitignore` edits) |
-| WasmBrowser WIT | `../WasmBrowser/wit/wasmbrowser.wit`; SHA-256 `fa165611fe4934cc9508bc435a7a396bc9d203225aa2a510f6d35ae74ec12172` |
-| wasm-sdk checkout | revision `820fee2` (standalone SDK contract provenance and package validation) |
+| WasmBrowser checkout | revision `b40bb17a3141` (host worktree has unrelated local runtime edits) |
+| WasmBrowser WIT | `../WasmBrowser/wit/wasmbrowser.wit`; SHA-256 `9032a1c59a5495d4868bc7cdf494153096708ff6f2321b4ea2ffeff752c627d6` |
+| wasm-sdk checkout | revision `15024adfe066` (standalone SDK contract provenance and package validation) |
 | Rust component linker | rustc 1.98.0; `wasm-component-ld` from the stable aarch64 toolchain |
 | Native libraries | Homebrew SDL3 3.4.14 and SDL_ttf 3.2.2 under `/opt/homebrew/lib` |
 
@@ -47,7 +47,7 @@ Externally imposed symbols are kept at the edges:
 - Cocoa object/protocol/selector entry points in
   `src/platform/appkit/appkit_shim.m` and `appkit_canvas_shim.m`.
 
-The two Objective-C files total 1,289 lines, but the custom canvas shim has no
+The two Objective-C files total 1,318 lines, but the custom canvas shim has no
 framework state table, widget/layout traversal, rendering path, text policy,
 semantic diff, selector map, menu schema, clipboard policy, or headless mode.
 Those decisions are made in Elisa and cross the boundary as typed values or
@@ -62,15 +62,16 @@ validation before a redraw. The category-by-category audit is recorded in
 decisions.
 
 Tracked Elisa file lengths at this baseline include the custom canvas facade
-(`ui_appkit_canvas.elisa`, 12 lines), whose native, retained-state,
+(`ui_appkit_canvas.elisa`, 14 lines), whose native, retained-state,
 accessibility, input, render, window, and callback modules are all below 400
-lines; the ready-to-use flat adapter is 393 lines. The flat widget compatibility
-facade (`ui_widget.elisa`, 22 lines) now delegates to cohesive state, layout,
+lines; the ready-to-use flat adapter is 348 lines (with text-command routing
+isolated in `ui_appkit_canvas_text.elisa`, 89 lines). The flat widget compatibility
+facade (`ui_widget.elisa`, 23 lines) now delegates to cohesive state, layout,
 input, text, scrolling, and painting modules, each below 400 lines. The AppKit controls backend is
-now split into realization/policy (`ui_appkit.elisa`, 288 lines) and typed
-native bridge wrappers (`ui_appkit_native.elisa`, 370 lines). The SDL3 backend
-is split into lifecycle/event (`ui_sdl3.elisa`, 392 lines) and drawing/font
-state (`ui_sdl3_draw.elisa`, 228 lines). New or changed Elisa source continues
+now split into realization/policy (`ui_appkit.elisa`, 305 lines) and typed
+native bridge wrappers (`ui_appkit_native.elisa`, 392 lines). The SDL3 backend
+is split into lifecycle/event (`ui_sdl3.elisa`, 393 lines) and drawing/font
+state (`ui_sdl3_draw.elisa`, 247 lines). New or changed Elisa source continues
 to use small, single-purpose modules; the existing large modules are
 not split mechanically.
 
@@ -80,8 +81,8 @@ state modules, and `ui_ops.elisa` is a 10-line include surface over query,
 layout, scrolling, hit, paint, and pointer modules. The WasmBrowser adapter is
 now an example of the intended refactoring boundary:
 `ui_wasmbrowser.elisa` contains the host-facing declarations and WIT export
-glue (300 lines), while `ui_wasmbrowser_runtime.elisa` contains the private
-frame/event/wire implementation (252 lines). The split preserves the required
+glue (306 lines), while `ui_wasmbrowser_runtime.elisa` contains the private
+frame/event/wire implementation (298 lines). The split preserves the required
 top-level export symbols and keeps the internal painter and encoder names
 module-private.
 
@@ -144,6 +145,16 @@ wasm-browser inspect build/hello.wapp
   format: component
 ```
 
+The 2026-09-06 incremental gates also compile the complete AppKit canvas entry
+point with the pinned compiler (`ELISA_UI_STAGE1=/tmp/elisa-ui-stage1-p4
+ELISA_ALLOW_STALE_STAGE1=1 /tmp/elisa-ui-stage1-p4/scripts/elisac_stage1.sh
+-O0 -o build/appkit-input-guard-check.o examples/hello/appkit_canvas_main.elisa`)
+and pass `git diff --check`. A fresh AppKit runtime smoke was not counted as a
+pass for this record: the host intermittently stalled newly-linked binaries in
+`dyld_start` while the source/compiler gate remained clean. The previously
+recorded off-screen canvas fixture remains the last completed runtime result;
+the next run should repeat it once macOS process contention clears.
+
 The shared `examples/hello/app.elisa` now uses `UiHandles::Handle` values for
 every retained widget on SDL3, AppKit canvas, and WasmBrowser; only the
 backend callback's legacy widget index is converted through the explicit
@@ -183,7 +194,9 @@ separate host-enforced security boundary.
 - Callback entry points are lifetime-guarded: if an application handler resets
   the flat tree, post-callback history, composition, activation, adjustment, and
   radio state updates are abandoned instead of touching recycled slots. This is
-  covered by `test/widget_reentrancy_test.elisa`.
+  covered by `test/widget_reentrancy_test.elisa`; AppKit pointer-down, text
+  command, composition, accessibility, and inactive-window adapters now apply
+  the same epoch/lifecycle guard before continuing native work.
 - `UiFlat` carries the closed `UiConst::WidgetEvent` enum through all control,
   editing, keyboard, and accessibility paths; one private Elisa helper performs
   the final ordinal conversion required by the legacy `app_widget_event` ABI.
@@ -290,3 +303,8 @@ separate host-enforced security boundary.
   work remain blocked on sibling host/SDK execution fixtures rather than being
   simulated here; the next UI-side integration gap is consuming generated
   SDK bindings instead of the hosted adapter's handwritten WIT lowering.
+
+The authoritative generated WasmBrowser Elisa bindings are currently staged in
+`../wasm-sdk/sdk/elisa/wasmbrowser/`; the hosted adapter still intentionally
+uses its existing handwritten lowering until the SDK/WIT migration gate is
+completed.
