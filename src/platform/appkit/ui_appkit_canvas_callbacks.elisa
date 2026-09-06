@@ -1,9 +1,19 @@
 # C callbacks from ElisaCanvasView. Top-level because the Objective-C ABI names them.
+
+# AppKit callbacks are synchronous. An application callback can therefore
+# dispatch another event before the outer callback has returned. Keep one
+# iterative drain active at a time so nested events are queued for the current
+# drain instead of recursively re-entering application code.
+global mutable appkit_canvas_event_dispatch_active: bool = false
+
 def appkit_canvas_dispatch_event(event: UiCore::Event) -> void:
     return if not UiEvents::enqueue(event)
+    return if appkit_canvas_event_dispatch_active
+    appkit_canvas_event_dispatch_active <- true
     queued: mutable UiCore::Event = UiCore::Event.None
     while UiEvents::dequeue(queued):
         app_event(queued)
+    appkit_canvas_event_dispatch_active <- false
 
 def appkit_canvas_dispatch_input_event(event: UiCore::Event) -> void:
     # Focus transitions and resize notifications use the broader dispatch

@@ -7,6 +7,9 @@ include "../src/platform/appkit/ui_appkit_canvas.elisa"
 extern puts(text: cstr) -> i64
 
 global mutable keymap_failures: i32 = 0
+global mutable dispatch_event_count: i32 = 0
+global mutable dispatch_nested_sent: bool = false
+global mutable dispatch_nested_seen: bool = false
 
 def app_init() -> void:
     pass
@@ -15,7 +18,11 @@ def app_frame() -> void:
     pass
 
 def app_event(event: UiCore::Event) -> void:
-    pass
+    dispatch_event_count <- dispatch_event_count + 1
+    if not dispatch_nested_sent and UiCore::wire_kind(event) == 3:
+        dispatch_nested_sent <- true
+        appkit_canvas_dispatch_event(UiCore::KeyEvent.Down(code: UiCore::Key.A))
+    dispatch_nested_seen <- true if UiCore::wire_kind(event) == 6
 
 def app_widget_event(widget: usize, event: i32) -> void:
     pass
@@ -26,6 +33,10 @@ def check(name: cstr, got: i32, want: i32) -> void:
     _ = puts(name)
 
 def main() -> i64:
+    UiEvents::reset()
+    appkit_canvas_dispatch_event(UiCore::PointerEvent.Down(at: UiCore::Vec2(4.0, 5.0), button: UiCore::PointerButton.Primary.i32()))
+    check("nested AppKit events drain iteratively", 1 if dispatch_nested_sent and dispatch_nested_seen and dispatch_event_count == 2 else 0, 1)
+
     check("lowercase letter", UiAppKitCanvas::key_from_appkit(0, 97), UiCore::Key.A.i32())
     check("printable punctuation", UiAppKitCanvas::key_from_appkit(24, 61), UiCore::Key.Equal.i32())
     check("Return", UiAppKitCanvas::key_from_appkit(36, 0), UiCore::Key.Enter.i32())
