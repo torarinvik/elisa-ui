@@ -54,7 +54,9 @@ def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
     available: mutable usize = sdl_flat_clipboard_length if sdl_flat_clipboard_cache_valid else 0
     if not sdl_flat_clipboard_cache_valid:
         available <- sdl_flat_fetch_clipboard()
-    take: usize = available if available < capacity else capacity
+    take: mutable usize = available if available < capacity else capacity
+    source: sview = sview(&sdl_flat_clipboard_read[0], 0, take.i64())
+    take <- UiText::valid_utf8_prefix(source, take)
     for index in 0..<take:
         buffer[index] <- sdl_flat_clipboard_read[index]
     sdl_flat_clipboard_cache_valid <- false

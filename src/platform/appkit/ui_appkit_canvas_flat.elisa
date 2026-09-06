@@ -46,7 +46,9 @@ def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
         native_text: usize = elisa_appkit_canvas_clipboard_read(NSPasteboardTypeString)
         available <- UiAppKitCanvas::copy_native_string(native_text, &appkit_clipboard_buffer[0], UiFlat::TEXT_CAPACITY)
         CFRelease(native_text) if native_text != 0
-    take: usize = available if available < capacity else capacity
+    take: mutable usize = available if available < capacity else capacity
+    source: sview = sview(&appkit_clipboard_buffer[0], 0, take.i64())
+    take <- UiText::valid_utf8_prefix(source, take)
     for index in 0..<take:
         buffer[index] <- appkit_clipboard_buffer[index]
     appkit_clipboard_cache_valid <- false

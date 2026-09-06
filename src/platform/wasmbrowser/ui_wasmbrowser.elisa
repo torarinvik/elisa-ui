@@ -192,7 +192,9 @@ def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
 
 def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
     available: usize = ui_wasm_fetch_clipboard() if not ui_wasm_clipboard_cache_valid else ui_wasm_clipboard_length
-    take: usize = available if available < capacity else capacity
+    take: mutable usize = available if available < capacity else capacity
+    source: sview = sview(&ui_wasm_clipboard_buffer[0], 0, take.i64())
+    take <- UiText::valid_utf8_prefix(source, take)
     for index in 0..<take:
         buffer[index] <- ui_wasm_clipboard_buffer[index]
     ui_wasm_clipboard_cache_valid <- false
