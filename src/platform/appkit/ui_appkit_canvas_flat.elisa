@@ -212,7 +212,7 @@ def appkit_flat_selection_length() -> usize:
     return UiFlat::selection_utf16_length(UiFlat::focused())
 
 def appkit_flat_set_selected_range(index: usize, location: usize, length: usize) -> i32:
-    return 0 if not UiAppKitCanvas::live() or location == UiAppKitCanvas::not_found() or not UiFlat::text_editable(index)
+    return 0 if not UiAppKitCanvas::live() or not UiLifecycle::accepts_input() or location == UiAppKitCanvas::not_found() or not UiFlat::text_editable(index)
     UiFlat::set_selection_utf16(index, location, length)
     UiAppKitCanvas::redraw()
     return 1
@@ -243,8 +243,13 @@ def appkit_flat_commit_text(text: usize, replacement_location: usize, replacemen
     return if plain == 0
     length: usize = UiAppKitCanvas::copy_native_string(plain, &appkit_native_text_buffer[0], UiFlat::TEXT_CAPACITY)
     has_replacement: bool = replacement_location != UiAppKitCanvas::not_found()
+    lifetime: usize = UiFlat::lifetime()
     UiFlat::commit_text(sview(&appkit_native_text_buffer[0], 0, length.i64()), replacement_location, replacement_length, has_replacement)
     appkit_scrub_buffer(&appkit_native_text_buffer[0], UiFlat::TEXT_CAPACITY)
+    # Text insertion emits the application callback synchronously. A callback
+    # may replace the retained tree or stop the window, so do not repaint a
+    # stale surface after that callback returns.
+    return if UiFlat::lifetime() != lifetime or not UiAppKitCanvas::live() or not UiLifecycle::accepts_input()
     UiAppKitCanvas::redraw()
 
 def appkit_flat_update_marked_text(text: usize, selected_location: usize, selected_length: usize, replacement_location: usize, replacement_length: usize) -> void:
@@ -253,8 +258,12 @@ def appkit_flat_update_marked_text(text: usize, selected_location: usize, select
     return if plain == 0
     length: usize = UiAppKitCanvas::copy_native_string(plain, &appkit_native_text_buffer[0], UiFlat::TEXT_CAPACITY)
     has_replacement: bool = replacement_location != UiAppKitCanvas::not_found()
+    lifetime: usize = UiFlat::lifetime()
     UiFlat::update_marked_text(sview(&appkit_native_text_buffer[0], 0, length.i64()), selected_location, selected_length, replacement_location, replacement_length, has_replacement)
     appkit_scrub_buffer(&appkit_native_text_buffer[0], UiFlat::TEXT_CAPACITY)
+    # Composition updates can also run the application callback. Keep the
+    # native redraw tied to the same live retained session as the edit.
+    return if UiFlat::lifetime() != lifetime or not UiAppKitCanvas::live() or not UiLifecycle::accepts_input()
     UiAppKitCanvas::redraw()
 
 def appkit_flat_unmark_text() -> void:
