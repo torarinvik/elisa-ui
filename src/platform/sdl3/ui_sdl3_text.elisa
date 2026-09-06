@@ -4,6 +4,21 @@
 
 module UiSdl3Text:
     public:
+        # SDL's window title API accepts a raw NUL-terminated pointer. Copy it
+        # into framework-owned storage first so a caller-supplied title cannot
+        # make SDL scan an arbitrarily long or unterminated foreign buffer.
+        # The returned pointer remains stable until the next title preparation
+        # and is always terminated inside the fixed arena.
+        def bounded_title(title: cstr) -> cstr:
+            length_value: usize = length(title)
+            safe_length: usize = length_value if length_value < TITLE_CAPACITY else TITLE_CAPACITY
+            for index in 0..<TITLE_STORAGE_CAPACITY:
+                title_storage[index] <- 0
+            for index in 0..<safe_length:
+                title_storage[index] <- byte(title, index)
+            pointer: cstr = (&title_storage[0]).cast[cstr] can Unsafe.PointerCast
+            return pointer
+
         def byte(text: cstr, index: usize) -> u8:
             pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
             return 0 if pointer == 0.uintptr()
@@ -24,6 +39,9 @@ module UiSdl3Text:
         # malformed unterminated host pointer from turning one event callback
         # into an unbounded native-memory walk.
         const MAX_SCAN_BYTES: usize = UiCore::MAX_TEXT_BYTES
+        const TITLE_CAPACITY: usize = UiCore::MAX_TEXT_BYTES
+        const TITLE_STORAGE_CAPACITY: usize = TITLE_CAPACITY + 1
+        global mutable title_storage: u8[TITLE_STORAGE_CAPACITY] = zeroed
 
         def byte_at(pointer: uintptr, index: usize) -> u8:
             trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic]:

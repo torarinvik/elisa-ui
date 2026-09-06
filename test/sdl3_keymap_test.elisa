@@ -93,6 +93,13 @@ def main() -> i64:
     check("oversized animation delays clamp to SDL's timeout limit", UiSdl3::animation_timeout(3000000.0), 2147483647)
     check("SDL ticks convert to monotonic seconds", 1 if UiSdl3::seconds_from_ticks(2500) == 2.5 else 0, 1)
     check("Elisa scans SDL text without libc strlen", UiSdl3Text::length("hello").i32(), 5)
+    oversized_title: mutable u8[UiCore::MAX_TEXT_BYTES + 32] = zeroed
+    for index in 0..<UiCore::MAX_TEXT_BYTES + 32:
+        oversized_title[index] <- 65
+    oversized_title_pointer: cstr = (&oversized_title[0]).cast[cstr] can Unsafe.PointerCast
+    bounded_title: cstr = UiSdl3Text::bounded_title(oversized_title_pointer)
+    check("SDL titles are copied into a bounded buffer", UiSdl3Text::length(bounded_title).i32(), UiCore::MAX_TEXT_BYTES.i32())
+    check("bounded SDL titles are terminated", 1 if UiSdl3Text::byte(bounded_title, UiCore::MAX_TEXT_BYTES) == 0 else 0, 1)
 
     if keymap_failures == 0:
         _ = puts("sdl3 keymap: all checks passed")
