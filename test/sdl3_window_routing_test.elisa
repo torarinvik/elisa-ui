@@ -1,0 +1,56 @@
+# Verify that a single-window SDL backend ignores input addressed to another
+# SDL window. This uses SDL's dummy video driver and never foregrounds a window.
+
+include "../src/platform/sdl3/ui_sdl3.elisa"
+
+extern SDL_setenv_unsafe(name: cstr, value: cstr, overwrite: i32) -> i32
+extern SDL_PushEvent(event: void&) -> bool
+extern puts(text: cstr) -> i64
+
+global mutable failures: i32 = 0
+global mutable foreign_pointer_events: i32 = 0
+
+def push_foreign_pointer_event() -> void:
+    other_opt: void&? = SDL_CreateWindow("foreign", 16, 16, 0)
+    if other_opt is other:
+        foreign_id: u32 = SDL_GetWindowID(other)
+        event: mutable u64[16] = zeroed
+        fields: mutable u32& = (&event[0]).cast[mutable u32&] can Unsafe.PointerCast
+        fields[0] <- 0x401
+        fields[4] <- foreign_id
+        bytes: mutable u8& = (&event[0]).cast[mutable u8&] can Unsafe.PointerCast
+        bytes[24] <- 1
+        pointer: void& = (&event[0]).cast[void&] can Unsafe.PointerCast
+        if not SDL_PushEvent(pointer):
+            failures <- failures + 1
+        SDL_DestroyWindow(other)
+    else:
+        failures <- failures + 1
+
+def app_init() -> void:
+    push_foreign_pointer_event()
+
+def app_frame() -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    match event:
+        UiCore::PointerEvent.Down(at, button):
+            foreign_pointer_events <- foreign_pointer_events + 1
+        _:
+            pass
+
+def app_text_input(text: sview) -> void:
+    pass
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    pass
+
+def main() -> i64:
+    _ = SDL_setenv_unsafe("SDL_VIDEODRIVER", "dummy", 1)
+    result: i64 = UiSdl3::run("headless window routing regression", 64, 64, 1)
+    if result != 0 or foreign_pointer_events != 0:
+        failures <- failures + 1
+    if failures == 0:
+        _ = puts("SDL window routing: passed")
+    return failures.i64()

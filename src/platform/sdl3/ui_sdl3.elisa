@@ -24,6 +24,7 @@ using UiPaint
 
 extern SDL_Init(flags: u32) -> bool
 extern SDL_CreateWindow(title: cstr, w: i32, h: i32, flags: u64) -> void&?
+extern SDL_GetWindowID(window: void&) -> u32
 extern SDL_CreateRenderer(window: void&, name: void&?) -> void&?
 extern SDL_PollEvent(event: void&) -> bool
 extern SDL_WaitEventTimeout(event: void&?, timeout_ms: i32) -> bool
@@ -114,6 +115,7 @@ module UiSdl3:
         const EVENT_MOUSE_WHEEL: u32 = 0x403
 
         global mutable window: void&? = null
+        global mutable window_id: u32 = 0
         # SDL_Event is a 128-byte union; poll into this buffer and read typed
         # fields at their SDL3 offsets (type@0; pointer events keep x@28 and
         # y@32 as f32). The leading word gives the byte storage a guaranteed
@@ -187,6 +189,13 @@ module UiSdl3:
 
         def event_window_data2() -> i32:
             value_ref: mutable i32& = (&event_buffer.bytes[28]).cast[i32&] can Unsafe.PointerCast
+            return value_ref[0]
+
+        def event_window_id() -> u32:
+            # SDL window-bearing events place their 32-bit window ID at byte
+            # 16, immediately after the timestamp. Keep this read in Elisa so
+            # a second native window cannot feed the current retained tree.
+            value_ref: mutable u32& = (&event_buffer.bytes[16]).cast[u32&] can Unsafe.PointerCast
             return value_ref[0]
 
         # SDL_MouseWheelEvent has a different layout from mouse motion:
@@ -284,6 +293,12 @@ module UiSdl3:
             return UiCore::PointerButton.Forward.i32() if button == 5
             return UiCore::NO_POINTER_BUTTON
 
+        # SDL uses zero when an event has no associated window (and tests or
+        # global device events may legitimately carry that value). Only a pair
+        # of nonzero IDs can prove that an event belongs to another window.
+        def window_event_matches(target: u32, event_window: u32) -> bool:
+            return target == 0 or event_window == 0 or target == event_window
+
         def seconds_from_ticks(ticks: u64) -> f64:
             return ticks.f64() / 1000.0
 
@@ -334,6 +349,7 @@ module UiSdl3:
             if window is done_window:
                 SDL_DestroyWindow(done_window)
             window <- null
+            window_id <- 0
             SDL_Quit()
             clear_event_buffer()
 
@@ -346,6 +362,8 @@ module UiSdl3:
             return false if not has_event
             kind: u32 = event_type()
             out_event <- (UiCore::Event.None)
+            if kind != EVENT_QUIT and not window_event_matches(window_id, event_window_id()):
+                return true
             if kind == EVENT_QUIT:
                 out_event <- (UiCore::Event.Quit)
             elif kind == EVENT_WINDOW_RESIZED:
