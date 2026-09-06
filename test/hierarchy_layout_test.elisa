@@ -187,6 +187,27 @@ def main() -> i64:
         check("stateful scroll stores requested offset", scroll_state.offset, 12.0)
         layout(stateful_scroll, 100.0, 50.0)
         check("stateful scroll lays out translated content", scroll_b.y, 18.0)
+        pointer(stateful_scroll, (UiCore::PointerEvent.Move(at: UiCore::Vec2(10.0, 45.0))))
+        hover_before_wheel: mutable bool = false
+        if hot() is hot_before:
+            match hot_before:
+                Button.Push(label, rest, hover, press):
+                    hover_before_wheel <- label == "b"
+                _:
+                    pass
+        test_failures <- test_failures + 1 if not hover_before_wheel or not scroll_b.hovered
+        pointer(stateful_scroll, (UiCore::PointerEvent.Scroll(at: UiCore::Vec2(10.0, 45.0), delta: UiCore::Vec2(0.0, -10.0))))
+        check("wheel input refreshes hierarchy hover", scroll_state.offset, 22.0)
+        hover_after_wheel: mutable bool = false
+        if hot() is hot_after:
+            match hot_after:
+                Button.Push(label, rest, hover, press):
+                    hover_after_wheel <- label == "c"
+                _:
+                    pass
+        test_failures <- test_failures + 1 if not hover_after_wheel or not scroll_c.hovered or scroll_b.hovered
+        _ = scroll_to(stateful_scroll, 12.0)
+        layout(stateful_scroll, 100.0, 50.0)
         pointer(stateful_scroll, (UiCore::PointerEvent.Scroll(at: UiCore::Vec2(10.0, 10.0), delta: UiCore::Vec2(0.0, -10.0))))
         check("wheel input advances stateful scroll", scroll_state.offset, 22.0)
         check("wheel input reflows content", scroll_c.y, 38.0)
