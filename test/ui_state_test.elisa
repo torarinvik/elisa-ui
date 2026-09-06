@@ -17,10 +17,19 @@ def set_u32(buffer: mutable u8&, offset: usize, value: u32) -> void:
     buffer[offset + 2] <- (value >> 16).u8()
     buffer[offset + 3] <- (value >> 24).u8()
 
+def null_source_restore_is_rejected() -> bool can Unsafe.PointerCast:
+    source: u8& = 0.uintptr().cast[u8&] can Unsafe.PointerCast
+    return not UiState::restore(source, UiState::HEADER_BYTES)
+
+def null_destination_copy_is_ignored() -> bool can Unsafe.PointerCast:
+    destination: mutable u8& = 0.uintptr().cast[mutable u8&] can Unsafe.PointerCast
+    return UiState::copy_to(destination, 1) == 0
+
 def main() -> i64:
     UiState::reset()
     initial: UiState::Snapshot = UiState::restored()
     check("state starts without a restored snapshot", not initial.valid and initial.length == 0)
+    check("state rejects a null restore source", null_source_restore_is_rejected())
 
     UiState::begin()
     check("state save starts with a valid header", UiState::saved().valid and UiState::saved().length == UiState::HEADER_BYTES)
@@ -32,6 +41,7 @@ def main() -> i64:
 
     blob: mutable u8[UiState::MAX_BYTES] = zeroed
     length: usize = UiState::copy_to(&blob[0], UiState::MAX_BYTES)
+    check("state ignores a null copy destination", null_destination_copy_is_ignored())
     saved: UiState::Snapshot = UiState::saved()
     check("state reports four records", saved.records == 4 and length == saved.length)
     check("state copies a bounded prefix", UiState::copy_to(&blob[0], 5) == 5)
