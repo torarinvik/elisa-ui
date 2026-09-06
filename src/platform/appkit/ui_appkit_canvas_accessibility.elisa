@@ -161,6 +161,16 @@ extend UiAppKitCanvas:
             elisa_appkit_canvas_cancel_redraw(redraw_timer)
             redraw_timer <- 0
 
+        # The native timer is retained by the Elisa-side handle until either
+        # cancellation or delivery. A fired timer is no longer useful, so
+        # consume that exact handle immediately; otherwise a quiescent
+        # animation would retain its NSTimer until the whole window closes.
+        # Matching the handle also makes a late callback from an already
+        # cancelled timer harmless when a replacement timer is pending.
+        def consume_redraw_timer(handle: usize) -> void:
+            return if handle == 0 or redraw_timer != handle
+            cancel_redraw()
+
         def begin_native_frame(context: usize) -> void:
             frame_context <- context
             frame_rendered <- true

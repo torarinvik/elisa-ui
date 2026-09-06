@@ -32,7 +32,7 @@ extern int elisa_appkit_canvas_accessibility_decrement_direction(void);
 extern const size_t elisa_appkit_canvas_not_found;
 extern int elisa_appkit_canvas_has_marked_text(size_t windowHandle);
 extern size_t elisa_appkit_canvas_pointer_leave_event(size_t windowHandle);
-extern void elisa_appkit_canvas_timer_fired(size_t windowHandle, uint32_t generation);
+extern void elisa_appkit_canvas_timer_fired(size_t windowHandle, uint32_t generation, size_t timerHandle);
 extern size_t elisa_appkit_canvas_selection_location(size_t windowHandle);
 extern size_t elisa_appkit_canvas_selection_length(size_t windowHandle);
 extern int elisa_appkit_canvas_set_selected_range(size_t windowHandle, size_t handle, size_t location, size_t length);
@@ -736,7 +736,8 @@ size_t elisa_appkit_canvas_schedule_redraw(float delay, size_t run_loop_mode,
         (void)fired;
         // Timer delivery re-enters Elisa so lifecycle and stale-window policy
         // stay with the retained framework state rather than this block.
-        elisa_appkit_canvas_timer_fired(windowHandle, generation);
+        elisa_appkit_canvas_timer_fired(windowHandle, generation,
+                                        (size_t)(__bridge void *)fired);
     }];
     if (timer == nil) return 0;
     [NSRunLoop.mainRunLoop addTimer:timer forMode:mode];

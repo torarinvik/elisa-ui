@@ -168,7 +168,11 @@ def appkit_canvas_rebuild_cursor_rects_callback(window_handle: usize) -> void:
     return if window_handle != UiAppKitCanvas::window_handle()
     UiAppKitCanvas::rebuild_cursor_rects()
 
-def appkit_canvas_timer_fired_callback(window_handle: usize, generation: u32) -> void:
+def appkit_canvas_timer_fired_callback(window_handle: usize, generation: u32, timer_handle: usize) -> void:
+    # Release Elisa's bridge retain even when the timer is stale. The handle
+    # comparison inside consume_redraw_timer prevents an old callback from
+    # cancelling a newer timer scheduled for the same window.
+    UiAppKitCanvas::consume_redraw_timer(timer_handle)
     # The native timer carries the opaque root handle and the lifecycle
     # generation that scheduled it. Re-check both before requesting a redraw:
     # a timer can fire after teardown or after a replacement window has been
@@ -202,5 +206,5 @@ export fn elisa_appkit_canvas_raw_flags(window_handle: usize, key_code: i32, mod
 export fn elisa_appkit_canvas_focus_changed(window_handle: usize, focused: i32) -> void = appkit_canvas_focus_changed_callback
 export fn elisa_appkit_canvas_accessibility_environment_changed(window_handle: usize) -> void = appkit_canvas_accessibility_environment_changed_callback
 export fn elisa_appkit_canvas_rebuild_cursor_rects(window_handle: usize) -> void = appkit_canvas_rebuild_cursor_rects_callback
-export fn elisa_appkit_canvas_timer_fired(window_handle: usize, generation: u32) -> void = appkit_canvas_timer_fired_callback
+export fn elisa_appkit_canvas_timer_fired(window_handle: usize, generation: u32, timer_handle: usize) -> void = appkit_canvas_timer_fired_callback
 export fn elisa_appkit_canvas_render_headless(window_handle: usize, snapshot: usize, pixels_width: i32, pixels_height: i32) -> i32 = appkit_canvas_render_headless_callback

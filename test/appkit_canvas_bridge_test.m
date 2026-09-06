@@ -31,6 +31,7 @@ static int test_allow_text_mutation = 1;
 static int test_tooltip_calls;
 static size_t test_timer_fired_window;
 static uint32_t test_timer_fired_generation;
+static size_t test_timer_fired_handle;
 static size_t test_closed_window;
 static int test_invalid_attributed_substring;
 static int test_invalid_attributed_substring_released;
@@ -167,9 +168,10 @@ void elisa_appkit_canvas_focus_changed(size_t windowHandle, int focused) {
 void elisa_appkit_canvas_accessibility_environment_changed(size_t windowHandle) {
     test_environment_window = windowHandle;
 }
-void elisa_appkit_canvas_timer_fired(size_t windowHandle, uint32_t generation) {
+void elisa_appkit_canvas_timer_fired(size_t windowHandle, uint32_t generation, size_t timerHandle) {
     test_timer_fired_window = windowHandle;
     test_timer_fired_generation = generation;
+    test_timer_fired_handle = timerHandle;
 }
 int elisa_appkit_canvas_key_down_route(int character, size_t modifiers) {
     BOOL shift = (modifiers & NSEventModifierFlagShift) != 0;
@@ -531,11 +533,13 @@ int main(void) {
         if (require(elisa_appkit_canvas_set_title(opened, (size_t)(__bridge void *)title),
                     @"valid window title was rejected")) return 1;
         test_window_handle = opened;
-        elisa_appkit_canvas_timer_fired(opened, 17);
+        elisa_appkit_canvas_timer_fired(opened, 17, 19);
         if (require(test_timer_fired_window == opened,
                     @"timer callback did not carry the window handle")) return 1;
         if (require(test_timer_fired_generation == 17,
                     @"timer callback did not carry the lifecycle generation")) return 1;
+        if (require(test_timer_fired_handle == 19,
+                    @"timer callback did not carry the retained timer handle")) return 1;
         elisa_appkit_canvas_set_released_when_closed(opened, 0);
         elisa_appkit_canvas_set_tabbing_mode(opened, NSWindowTabbingModeDisallowed);
         elisa_appkit_canvas_set_restorable(opened, 0);
