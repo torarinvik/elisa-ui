@@ -1,0 +1,41 @@
+# Headless regression for lifecycle-safe C-host event draining.
+
+include "../src/capi/ui_capi.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable callbacks: i32 = 0
+global mutable nested_sent: bool = false
+global mutable failures: i32 = 0
+
+def app_event(event: UiCore::Event) -> void:
+    callbacks <- callbacks + 1
+    if callbacks == 1:
+        # The queued event is from the old session: a real application callback
+        # may stop its window and still submit one last synthetic event before
+        # returning to the C adapter.
+        _ = UiLifecycle::stop()
+        nested_sent <- true
+        elisa_ui_dispatch_event(6, 0.0, 0.0, 0.0, 0.0, 65)
+
+def app_text_input(text: sview) -> void:
+    pass
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiLifecycle::reset()
+    check("C adapter lifecycle starts a session", UiLifecycle::begin() and UiLifecycle::ready() and UiLifecycle::focus_gained())
+    elisa_ui_dispatch_event(3, 4.0, 5.0, 0.0, 0.0, 0)
+    check("C adapter delivers the current event before stop", callbacks == 1)
+    check("C adapter callback stopped its lifecycle", nested_sent and not UiLifecycle::is_started())
+    check("C adapter drops queued input after stop", UiEvents::pending() == 0 and callbacks == 1)
+
+    if failures == 0:
+        _ = puts("capi lifecycle: all checks passed")
+        return 0
+    _ = puts("capi lifecycle: FAILURES above")
+    return 1

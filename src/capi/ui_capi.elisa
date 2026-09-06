@@ -27,6 +27,7 @@
 #   float elisa_ui_viewport_height(void);
 
 include "../core/ui_core.elisa"
+include "../core/ui_lifecycle.elisa"
 
 module UiCapi:
     public:
@@ -53,8 +54,18 @@ module UiCapi:
             # stack without bound.
             return if elisa_ui_event_dispatch_active
             elisa_ui_event_dispatch_active <- true
+            # A callback may stop the current owner or begin a replacement
+            # session before returning. Capture the session identity at drain
+            # start so queued events cannot cross that lifecycle boundary.
+            # The phase-New case remains unguarded for embedders that use this
+            # pure C adapter without a lifecycle owner.
+            drain_started: bool = UiLifecycle::is_started()
+            drain_generation: u32 = UiLifecycle::generation()
             event: mutable UiCore::Event = UiCore::Event.None
             while UiEvents::dequeue(event):
+                if drain_started:
+                    continue if not UiLifecycle::is_started() or UiLifecycle::generation() != drain_generation
+                    continue if UiCore::is_input_event(event) and not UiLifecycle::accepts_input()
                 app_event(event)
             elisa_ui_event_dispatch_active <- false
 
