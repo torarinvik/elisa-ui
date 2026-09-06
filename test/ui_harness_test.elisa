@@ -12,6 +12,8 @@ global mutable frame_calls: i32 = 0
 global mutable last_event_kind: i32 = -1
 global mutable observed_time: f64 = -1.0
 global mutable stop_during_dispatch: bool = false
+global mutable nested_dispatch_on_event: bool = false
+global mutable nested_dispatch_sent: bool = false
 
 def app_init() -> void:
     init_calls <- init_calls + 1
@@ -19,6 +21,9 @@ def app_init() -> void:
 def app_event(event: UiCore::Event) -> void:
     event_calls <- event_calls + 1
     last_event_kind <- UiCore::wire_kind(event).i32()
+    if nested_dispatch_on_event and not nested_dispatch_sent:
+        nested_dispatch_sent <- true
+        UiHarness::dispatch(UiCore::KeyEvent.Down(code: UiCore::Key.A))
     if stop_during_dispatch:
         stop_during_dispatch <- false
         _ = UiEvents::enqueue(UiCore::KeyEvent.Down(code: UiCore::Key.A))
@@ -80,9 +85,19 @@ def main() -> i64:
 
     UiHarness::start(320.0, 200.0)
     before_turnover_events: i32 = event_calls
+    # Nested harness dispatches must be queued onto the same iterative drain,
+    # not recurse into app_event. The session is active so the nested key is a
+    # valid physical input event.
+    UiHarness::focus_gained()
+    nested_dispatch_on_event <- true
+    nested_dispatch_sent <- false
+    before_nested_events: i32 = event_calls
+    UiHarness::dispatch(UiCore::Event.FocusGained)
+    check("harness drains nested events iteratively", nested_dispatch_sent and event_calls == before_nested_events + 2 and last_event_kind == UiCore::WireKind.KeyDown.i32())
+    nested_dispatch_on_event <- false
     stop_during_dispatch <- true
     UiHarness::dispatch(UiCore::Event.FocusGained)
-    check("harness drops queued events after lifecycle stop", event_calls == before_turnover_events + 1 and UiLifecycle::phase() == UiLifecycle::Phase.Stopped)
+    check("harness drops queued events after lifecycle stop", event_calls == before_turnover_events + 4 and UiLifecycle::phase() == UiLifecycle::Phase.Stopped)
 
     if failures == 0:
         _ = puts("ui harness: all checks passed")
