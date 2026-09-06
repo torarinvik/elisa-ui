@@ -3,6 +3,19 @@
 # compatibility namespace while its implementation is organized by concern.
 
 extend UiFlat:
+    private:
+        # Native adapters normally sanitize coordinates while decoding their
+        # event records, but callers can construct the sealed pointer variants
+        # directly. Treat NaN and infinity as malformed input and ignore the
+        # whole event before it can clear hover state or move a captured slider
+        # or scrollbar to an arbitrary endpoint.
+        def pointer_coordinate_is_finite(value: f32) -> bool:
+            difference: f32 = value - value
+            return difference == difference
+
+        def pointer_position_is_finite(at: UiCore::Vec2) -> bool:
+            return pointer_coordinate_is_finite(at.x) and pointer_coordinate_is_finite(at.y)
+
     public:
         def hit(x: f32, y: f32) -> usize:
             ensure_layout()
@@ -56,15 +69,15 @@ extend UiFlat:
             # strand a valid press indefinitely.
             match event:
                 UiCore::PointerEvent.Move(at):
-                    pass
+                    return if not pointer_position_is_finite(at)
                 UiCore::PointerEvent.Down(at, button):
-                    return if not UiCore::pointer_button_is_valid(button)
+                    return if not pointer_position_is_finite(at) or not UiCore::pointer_button_is_valid(button)
                 UiCore::PointerEvent.Up(at, button):
-                    return if not UiCore::pointer_button_is_valid(button)
+                    return if not pointer_position_is_finite(at) or not UiCore::pointer_button_is_valid(button)
                 UiCore::PointerEvent.Leave:
                     pass
                 UiCore::PointerEvent.Scroll(at, delta):
-                    pass
+                    return if not pointer_position_is_finite(at) or not pointer_position_is_finite(delta)
                 _:
                     return
             mark_state_dirty()

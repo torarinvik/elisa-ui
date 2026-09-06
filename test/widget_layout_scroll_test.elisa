@@ -47,6 +47,14 @@ def main() -> i64:
     UiFlat::pointer((UiCore::PointerEvent.Move(at: UiCore::Vec2(110.0, 45.0))))
     UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(110.0, 45.0), button: 0)))
     check("scrollbar thumb dragging updates offset", UiFlat::scroll_offset(scroll_view) > 40.0 and UiFlat::scroll_offset(scroll_view) < 60.0 and not UiFlat::scroll_dragging())
+    _ = UiFlat::set_scroll_offset(scroll_view, 40.0)
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(110.0, 30.0), button: 0)))
+    before_malformed_scroll: f32 = UiFlat::scroll_offset(scroll_view)
+    zero_pointer: f32 = 0.0
+    malformed_pointer: f32 = zero_pointer / zero_pointer
+    UiFlat::pointer((UiCore::PointerEvent.Move(at: UiCore::Vec2{x: 110.0, y: malformed_pointer})))
+    check("non-finite scrollbar drags are ignored", near(UiFlat::scroll_offset(scroll_view), before_malformed_scroll) and UiFlat::scroll_dragging())
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(110.0, 30.0), button: 0)))
     check("scroll setter translates children", UiFlat::set_scroll_offset(scroll_view, 50.0) and near(UiFlat::scroll_offset(scroll_view), 50.0) and near(UiFlat::widget(scroll_second).y, 10.0))
     check("scroll hit testing follows translated content", UiFlat::hit(60.0, 20.0) == scroll_second)
     UiFlat::pointer((UiCore::PointerEvent.Scroll(at: UiCore::Vec2(60.0, 50.0), delta: UiCore::Vec2(0.0, 30.0))))
@@ -144,4 +152,3 @@ def main() -> i64:
         return 0
     _ = puts("widget layout: FAILURES above")
     return 1
-
