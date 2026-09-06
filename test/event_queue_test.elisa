@@ -26,6 +26,20 @@ def main() -> i64:
     check("empty dequeue is harmless", not UiEvents::dequeue(out))
 
     UiEvents::reset()
+    huge: f32 = 3.0e38
+    malformed: UiCore::Event = UiCore::PointerEvent.Scroll(
+        at: UiCore::Vec2(huge, -huge),
+        delta: UiCore::Vec2(-huge, huge))
+    check("queue accepts a typed event", UiEvents::enqueue(malformed))
+    check("queue normalizes typed event geometry", UiEvents::dequeue(out))
+    match out:
+        UiCore::PointerEvent.Scroll(at, delta):
+            check("queued pointer position is bounded", at.x == UiCore::MAX_GEOMETRY_EXTENT and at.y == -UiCore::MAX_GEOMETRY_EXTENT)
+            check("queued scroll delta is bounded", delta.x == -UiCore::MAX_GEOMETRY_EXTENT and delta.y == UiCore::MAX_GEOMETRY_EXTENT)
+        _:
+            check("queued event keeps its typed variant", false)
+
+    UiEvents::reset()
     accepted: mutable usize = 0
     for index in 0..<UiEvents::EVENT_QUEUE_CAPACITY:
         accepted <- accepted + 1 if UiEvents::enqueue(UiCore::Event.FocusGained)

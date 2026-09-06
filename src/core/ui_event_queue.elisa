@@ -26,13 +26,16 @@ module UiEvents:
 
         # Enqueue is loss-aware. The event is never replaced when full; callers
         # receive false and can expose the sticky overflow through diagnostics.
+        # Normalize at this shared ingress point as well: native and test
+        # adapters often construct typed variants directly and must not bypass
+        # the finite-geometry and enum checks used by flat ABI records.
         def enqueue(event: UiCore::Event) -> bool:
             if queue_count >= EVENT_QUEUE_CAPACITY:
                 dropped_count <- dropped_count + 1
                 overflow_state <- true
                 return false
             slot: usize = (queue_head + queue_count) % EVENT_QUEUE_CAPACITY
-            queue[slot] <- event
+            queue[slot] <- UiCore::normalize_event(event)
             queue_count <- queue_count + 1
             return true
 
