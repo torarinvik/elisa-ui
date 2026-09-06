@@ -227,6 +227,16 @@ def main() -> i64:
     check("missing pointer button decodes to None", UiCore::wire_kind(UiCore::from_record(invalid_pointer_up)) == 0)
     check("extra pointer buttons stay in the closed enum", UiCore::pointer_button_is_valid(UiCore::PointerButton.Forward.i32()))
 
+    # Named enum casts can still be constructed deliberately from raw integers.
+    # Flattening must reject those values too, so a C/WIT consumer never sees an
+    # invalid key, button, or axis ordinal emitted by the Elisa side.
+    invalid_key_out: UiCore::EventRecord = UiCore::to_record((UiCore::KeyEvent.Down(code: UiCore::Key(999))))
+    check("invalid key flattening uses a rejected sentinel", invalid_key_out.code == -1 and UiCore::wire_kind(UiCore::from_record(invalid_key_out)) == 0)
+    invalid_pad_out: UiCore::EventRecord = UiCore::to_record((UiCore::GamepadEvent.Button(button: UiCore::Pad(99), value: 1.0)))
+    check("invalid gamepad button flattening uses a rejected sentinel", invalid_pad_out.code == -1 and UiCore::wire_kind(UiCore::from_record(invalid_pad_out)) == 0)
+    invalid_axis_out: UiCore::EventRecord = UiCore::to_record((UiCore::GamepadEvent.Axis(axis: UiCore::PadAxis(-1), value: 1.0)))
+    check("invalid gamepad axis flattening uses a rejected sentinel", invalid_axis_out.code == -1 and UiCore::wire_kind(UiCore::from_record(invalid_axis_out)) == 0)
+
     if test_failures == 0:
         _ = puts("event wire: all checks passed")
         return 0
