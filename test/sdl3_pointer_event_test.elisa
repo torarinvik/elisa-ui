@@ -12,6 +12,7 @@ extern puts(text: cstr) -> i64
 global mutable failures: i32 = 0
 global mutable saw_down: bool = false
 global mutable saw_up: bool = false
+global mutable down_count: i32 = 0
 
 def push_button(kind: u32, button: u8, x: f32, y: f32) -> void:
     event: mutable u64[16] = zeroed
@@ -34,11 +35,14 @@ def push_button(kind: u32, button: u8, x: f32, y: f32) -> void:
 def app_init() -> void:
     push_button(0x401, 1, 12.5, 34.25)
     push_button(0x402, 1, 12.5, 34.25)
+    zero: f32 = 0.0
+    push_button(0x401, 1, zero / zero, 34.25)
 
 def app_event(event: UiCore::Event) -> void:
     match event:
         UiCore::PointerEvent.Down(at, button):
             saw_down <- true
+            down_count <- down_count + 1
             failures <- failures + 1 if button != 0 or at.x != 12.5 or at.y != 34.25
         UiCore::PointerEvent.Up(at, button):
             saw_up <- true
@@ -58,7 +62,7 @@ def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> 
 def main() -> i64:
     _ = SDL_setenv_unsafe("SDL_VIDEODRIVER", "dummy", 1)
     result: i64 = UiSdl3::run("headless pointer regression", 64, 64, 1)
-    if result != 0 or not saw_down or not saw_up:
+    if result != 0 or not saw_down or not saw_up or down_count != 1:
         failures <- failures + 1
     if failures == 0:
         _ = puts("SDL pointer coordinates: passed")
