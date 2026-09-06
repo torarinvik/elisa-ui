@@ -38,7 +38,7 @@ def main() -> i64:
     check("invalid resource handle is rejected", not UiResources::is_valid(missing) and UiResources::state(missing) == UiResources::State.Unrequested)
     check("resource table starts empty", UiResources::count() == 0 and not UiResources::overflowed())
 
-    image: UiResources::Handle = UiResources::request("images/logo", 11)
+    image: mutable UiResources::Handle = UiResources::request("images/logo", 11)
     check("request creates a typed resource", UiResources::is_valid(image) and UiResources::count() == 1)
     check("new resource starts requested", UiResources::state(image) == UiResources::State.Requested and UiResources::owner(image) == 11)
     requested_snapshot: UiResources::Snapshot = UiResources::snapshot()
@@ -60,13 +60,20 @@ def main() -> i64:
     check("ready state completes both progress channels", UiResources::downloaded_progress(image) == 1.0 and UiResources::decoded_progress(image) == 1.0)
     ready_snapshot: UiResources::Snapshot = UiResources::snapshot()
     check("snapshot counts ready resources", ready_snapshot.total == 1 and ready_snapshot.ready == 1 and ready_snapshot.requested == 0)
-    check("ready is not retried", not UiResources::retry(image))
+    not_retried: UiResources::Handle = UiResources::retry(image)
+    check("ready is not retried", not UiResources::is_valid(not_retried))
 
     check("failed transition is accepted", UiResources::set_state(image, UiResources::State.Failed))
     check("failed transition defaults to retryable transport", UiResources::failure(image) == UiResources::FailureKind.RetryableTransport and UiResources::can_retry(image))
-    check("failed resource can retry", UiResources::retry(image) and UiResources::state(image) == UiResources::State.Requested and UiResources::downloaded_progress(image) == 0.0)
+    failed_generation: u32 = image.generation
+    retried_image: UiResources::Handle = UiResources::retry(image)
+    check("failed resource can retry", UiResources::is_valid(retried_image) and UiResources::state(retried_image) == UiResources::State.Requested and UiResources::downloaded_progress(retried_image) == 0.0)
+    check("retry rotates generation", retried_image.generation != failed_generation and not UiResources::is_valid(image))
+    check("late failed callback cannot touch retry", not UiResources::set_state(image, UiResources::State.Ready) and UiResources::state(retried_image) == UiResources::State.Requested)
+    image <- retried_image
     check("corrupt resource exposes a terminal failure", UiResources::fail(image, UiResources::FailureKind.Corrupt) and not UiResources::can_retry(image) and UiResources::failure(image) == UiResources::FailureKind.Corrupt)
-    check("incompatible resource also stays terminal", UiResources::fail(image, UiResources::FailureKind.Incompatible) and not UiResources::retry(image) and UiResources::failure(image) == UiResources::FailureKind.Incompatible)
+    incompatible_retry: UiResources::Handle = UiResources::retry(image)
+    check("incompatible resource also stays terminal", UiResources::fail(image, UiResources::FailureKind.Incompatible) and not UiResources::is_valid(incompatible_retry) and UiResources::failure(image) == UiResources::FailureKind.Incompatible)
     check("unknown failure kind is rejected", not UiResources::fail(image, UiResources::FailureKind.Unknown))
     invalid_failure: UiResources::FailureKind = (-1).i32().FailureKind()
     check("invalid failure kind is rejected", not UiResources::fail(image, invalid_failure) and UiResources::failure(image) == UiResources::FailureKind.Incompatible)
@@ -93,12 +100,14 @@ def main() -> i64:
     check("disposed identity becomes stale", not UiResources::is_valid(requested_again) and requested_again.generation == old_generation)
     check("late completion cannot revive disposed identity", not UiResources::set_state(requested_again, UiResources::State.Ready))
 
-    fresh: UiResources::Handle = UiResources::request("images/new-logo", 88)
+    fresh: mutable UiResources::Handle = UiResources::request("images/new-logo", 88)
     check("slot reuse gets a new generation", UiResources::is_valid(fresh) and fresh.slot == image.slot and fresh.generation != old_generation)
     check("old completion still cannot touch reused slot", UiResources::state(image) == UiResources::State.Unrequested and UiResources::identifier(fresh) == "images/new-logo")
 
     check("offline fallback transition is accepted", UiResources::set_state(fresh, UiResources::State.UnavailableOffline))
-    check("offline failure can retry", UiResources::retry(fresh) and UiResources::state(fresh) == UiResources::State.Requested)
+    retried_fresh: UiResources::Handle = UiResources::retry(fresh)
+    check("offline failure can retry", UiResources::is_valid(retried_fresh) and UiResources::state(retried_fresh) == UiResources::State.Requested)
+    fresh <- retried_fresh
     second: UiResources::Handle = UiResources::request("images/second", 88)
     check("owner cancellation covers every live resource", UiResources::cancel_owner(88) == 2 and UiResources::state(fresh) == UiResources::State.Cancelled and UiResources::state(second) == UiResources::State.Cancelled)
     check("owner cancellation is idempotent", UiResources::cancel_owner(88) == 0)

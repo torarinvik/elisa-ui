@@ -290,11 +290,21 @@ module UiResources:
         def cancel(handle: Handle) -> bool:
             return set_state(handle, State.Cancelled)
 
-        def retry(handle: Handle) -> bool:
-            return false if not is_valid(handle)
-            current: State = resource_states[handle.slot.usize()]
-            return false if not can_retry(handle)
-            return set_state(handle, State.Requested)
+        # Start a recoverable resource operation with a fresh generation. The
+        # returned handle must replace the caller's old handle; leaving the old
+        # one in place makes late progress/state callbacks from the failed
+        # operation indistinguishable from callbacks for this retry.
+        def retry(handle: Handle) -> Handle:
+            return invalid() if not is_valid(handle) or not can_retry(handle)
+            slot: usize = handle.slot.usize()
+            next_generation: u32 = resource_generations[slot] + 1
+            resource_generations[slot] <- 1 if next_generation == 0 else next_generation
+            resource_states[slot] <- State.Requested
+            resource_failure_kinds[slot] <- FailureKind.Unknown
+            resource_downloaded[slot] <- 0.0
+            resource_decoded[slot] <- 0.0
+            mark_changed()
+            return make_handle(slot)
 
         # Disposal invalidates the generation before releasing the identifier.
         # A late host completion holding the old token therefore becomes a safe

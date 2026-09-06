@@ -36,7 +36,7 @@ def main() -> i64:
     missing_record: UiResourcePresentation::Record = UiResourcePresentation::record(missing, options)
     check("invalid resource presents a placeholder", missing_record.state == UiResourcePresentation::DisplayState.Placeholder and missing_record.placeholder_visible and not missing_record.fallback_visible)
 
-    image: UiResources::Handle = UiResources::request("images/preview", 3)
+    image: mutable UiResources::Handle = UiResources::request("images/preview", 3)
     loading: mutable UiResourcePresentation::Record = UiResourcePresentation::record(image, options)
     check("requested resource presents loading", loading.state == UiResourcePresentation::DisplayState.Loading and loading.placeholder_visible and loading.progress_visible)
     UiResources::set_progress(image, 0.8, 0.25)
@@ -59,7 +59,9 @@ def main() -> i64:
 
     UiResources::set_state(image, UiResources::State.Failed)
     failed: UiResourcePresentation::Record = UiResourcePresentation::record(image, options)
-    check("failed resource exposes typed retry", failed.state == UiResourcePresentation::DisplayState.Failed and failed.failure == UiResources::FailureKind.RetryableTransport and failed.fallback_visible and failed.retry_available and UiResourcePresentation::retry(image) and UiResources::state(image) == UiResources::State.Requested)
+    retried_image: UiResources::Handle = UiResourcePresentation::retry(image)
+    check("failed resource exposes typed retry", failed.state == UiResourcePresentation::DisplayState.Failed and failed.failure == UiResources::FailureKind.RetryableTransport and failed.fallback_visible and failed.retry_available and UiResources::is_valid(retried_image) and UiResources::state(retried_image) == UiResources::State.Requested and not UiResources::is_valid(image))
+    image <- retried_image
     UiResources::fail(image, UiResources::FailureKind.Corrupt)
     corrupt: UiResourcePresentation::Record = UiResourcePresentation::record(image, options)
     check("corrupt resource has no retry action", corrupt.failure == UiResources::FailureKind.Corrupt and not corrupt.retry_available and not UiResourcePresentation::can_retry(image))

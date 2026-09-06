@@ -23,7 +23,9 @@ view rebuild cannot start duplicate work. Each handle contains a slot and a
 generation. `dispose` advances the generation before releasing the identifier;
 late completions holding the old token become no-ops even if the slot is reused.
 `cancel` preserves the record for a possible re-request, while `retry` accepts
-only recoverable denied/offline/failed states.
+only recoverable denied/offline/failed states and returns a fresh generation
+handle. Replace the old handle with that result; the old handle is invalidated
+so late callbacks from the previous operation cannot update the retry.
 
 Network and decode progress are separate normalized fractions. A value of 1.0
 for network progress never implies that a resource is ready to paint. State or
