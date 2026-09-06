@@ -77,6 +77,18 @@ def main() -> i64:
     font: UiResources::Handle = UiResources::request("fonts/body", 4)
     font_record: UiResourcePresentation::Record = UiResourcePresentation::record(font, font_options)
     check("font policy avoids artificial progress and geometry", not font_record.progress_visible and font_record.reserved_size.width == 0.0 and font_record.reserved_size.height == 0.0)
+
+    invalid_options: mutable UiResourcePresentation::Options = options
+    invalid_options.reserved_width <- -100.0
+    invalid_options.reserved_height <- UiCore::MAX_GEOMETRY_EXTENT + 1.0
+    invalid_record: UiResourcePresentation::Record = UiResourcePresentation::record(image, invalid_options)
+    check("resource reservation rejects negative and oversized extents", invalid_record.reserved_size.width == 0.0 and invalid_record.reserved_size.height == UiCore::MAX_GEOMETRY_EXTENT)
+    UiCore::begin_frame()
+    UiResourcePresentation::paint(UiCore::Rect{origin: UiCore::Vec2{x: 10.0, y: 20.0}, size: UiCore::Size{width: -4.0, height: UiCore::MAX_GEOMETRY_EXTENT + 1.0}}, loading, invalid_options)
+    if UiCore::command_at(0) is UiCore::Command.FillRect(painted_box, painted_color):
+        check("resource paint normalizes direct rectangle geometry", painted_box.origin.x == 10.0 and painted_box.origin.y == 20.0 and painted_box.size.width == 0.0 and painted_box.size.height == UiCore::MAX_GEOMETRY_EXTENT)
+    else:
+        check("resource paint emits a normalized rectangle", false)
     if failures == 0:
         _ = puts("resource presentation: all checks passed")
     return failures.i64()

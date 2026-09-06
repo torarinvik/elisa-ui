@@ -115,7 +115,14 @@ module UiResourcePresentation:
         # intentionally emit nothing: the host resolves verified bytes through
         # its renderer, while every non-ready state remains backend-neutral.
         def paint(box: UiCore::Rect, value: Record, options: Options) -> void:
-            safe_box: UiCore::Rect = UiCore::Rect(box.origin.x, box.origin.y, box.size.width, box.size.height)
+            # Callers can construct records and rectangles directly, bypassing
+            # the convenience constructors. Normalize at this policy boundary
+            # before deriving progress geometry or emitting a fallback card.
+            safe_box: UiCore::Rect = UiCore::Rect(
+                UiCore::bounded_coordinate(box.origin.x),
+                UiCore::bounded_coordinate(box.origin.y),
+                UiCore::bounded_extent(box.size.width),
+                UiCore::bounded_extent(box.size.height))
             if value.placeholder_visible:
                 UiCore::fill(safe_box, options.placeholder_color)
                 if value.progress_visible and safe_box.size.width > 0.0 and safe_box.size.height > 0.0:
@@ -151,7 +158,9 @@ module UiResourcePresentation:
                 progress_visible: options.show_progress and current == DisplayState.Loading,
                 retry_available: retryable,
                 interaction_enabled: current == DisplayState.Ready or retryable,
-                reserved_size: UiCore::Size(options.reserved_width, options.reserved_height),
+                reserved_size: UiCore::Size(
+                    UiCore::bounded_extent(options.reserved_width),
+                    UiCore::bounded_extent(options.reserved_height)),
             }
 
         def normalize_kind(kind: Kind) -> Kind:
