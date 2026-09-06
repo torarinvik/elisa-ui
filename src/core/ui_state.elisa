@@ -64,6 +64,7 @@ module UiState:
             # on wasm32 and make the append arithmetic underflow.
             return false if value.len < 0 or value.len > MAX_TEXT_BYTES.i64()
             value_length: usize = value.len.usize()
+            return false if UiText::valid_utf8_prefix(value, value_length) != value_length
             return false if not ready_for_put(value_length)
             return append_header(id, ValueKind.Text, value_length) and append_bytes(value, value_length)
 
@@ -116,6 +117,9 @@ module UiState:
                 expected <- 1 if kind == ValueKind.Bool.i32()
                 return false if value_length > expected or (kind != ValueKind.Text.i32() and value_length != expected)
                 return false if length - cursor - RECORD_HEADER_BYTES < value_length
+                if kind == ValueKind.Text.i32() and value_length > 0:
+                    payload: sview = sview(&source[cursor + RECORD_HEADER_BYTES], 0, value_length.i64())
+                    return false if UiText::valid_utf8_prefix(payload, value_length) != value_length
                 return false if duplicate_in(source, HEADER_BYTES, cursor, id)
                 cursor <- cursor + RECORD_HEADER_BYTES + value_length
             return false if cursor != length
