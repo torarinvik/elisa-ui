@@ -64,7 +64,12 @@ module UiTextLayout:
                             finished <- true
                             break
                         width: usize = scalar_bytes(safe_text, cursor, source_length_state)
-                        if is_break(byte):
+                        # Keep the break at the beginning of a whitespace run.
+                        # Updating it for every consecutive space would emit a
+                        # trailing space (for example, `a  b` at a two-column
+                        # limit) before the post-break skip discards only the
+                        # later part of the run.
+                        if is_break(byte) and (cursor == start or not is_break(safe_text.data[cursor - 1])):
                             last_break <- cursor
                             last_break_columns <- columns
                             has_break <- true
