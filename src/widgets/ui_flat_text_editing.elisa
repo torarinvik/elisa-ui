@@ -53,11 +53,17 @@ extend UiFlat:
             # Preserve the fact that the caller exceeded Core's counted-text
             # boundary even though `bounded_text` has already clipped the
             # borrowed view before storage.
-            widgets[index].text_truncated <- text.len > UiCore::MAX_TEXT_BYTES.i64() or text.len != safe_text.len
+            truncated_input: bool = text.len > UiCore::MAX_TEXT_BYTES.i64() or text.len != safe_text.len
+            widgets[index].text_truncated <- truncated_input
             start: usize = selection_start(index)
             stop: usize = selection_end(index)
             if safe_text.len == 0:
                 remove_text(index, start, stop)
+                # Removing a selection clears the edit diagnostic for ordinary
+                # empty input. Restore it when the source itself was malformed
+                # or clipped so failed composition cannot masquerade as a clean
+                # edit.
+                widgets[index].text_truncated <- truncated_input
                 return
             removed: usize = stop - start
             remaining: usize = widgets[index].input_length - removed
@@ -132,13 +138,16 @@ extend UiFlat:
         # adapters responsible only for forwarding protocol calls.
         def commit_text(text: sview, replacement_location: usize, replacement_length: usize, has_replacement: bool) -> void:
             return if text.len < 0 or not accepts_text()
-            safe_text: sview = UiCore::bounded_text(text)
             index: usize = focused_widget
             if composition_history_slot < TEXT_HISTORY_CAPACITY and widgets[index].marked_end > widgets[index].marked_start:
                 history_suppressed <- true
                 set_selection(index, widgets[index].marked_start, widgets[index].marked_end)
                 callback_epoch: usize = widget_epoch
-                insert_text(safe_text)
+                # Keep the original counted view for insertion. `insert_text`
+                # performs the same bounded copy, but also records whether the
+                # source was clipped or malformed; passing `safe_text` here
+                # would erase that diagnostic when the bounded prefix is empty.
+                insert_text(text)
                 return if widget_epoch != callback_epoch
                 history_suppressed <- false
                 store_history_state(composition_history_slot, index, true)
@@ -150,7 +159,9 @@ extend UiFlat:
             elif widgets[index].marked_end > widgets[index].marked_start:
                 set_selection(index, widgets[index].marked_start, widgets[index].marked_end)
             callback_epoch: usize = widget_epoch
-            insert_text(safe_text)
+            # Let the insertion boundary observe the original source length so
+            # malformed/oversized composition commits remain diagnosable.
+            insert_text(text)
             finish_text_history(history_slot, index) if widget_epoch == callback_epoch
 
         def update_marked_text(text: sview, selected_location: usize, selected_length: usize, replacement_location: usize, replacement_length: usize, has_replacement: bool) -> void:
@@ -169,7 +180,10 @@ extend UiFlat:
                 set_selection(index, widgets[index].marked_start, widgets[index].marked_end)
             marked_start: usize = selection_start(index)
             callback_epoch: usize = widget_epoch
-            insert_text(safe_text)
+            # Offset calculations use the bounded prefix below, while
+            # insertion gets the original view so malformed/oversized
+            # composition payloads remain diagnosable.
+            insert_text(text)
             return if widget_epoch != callback_epoch
             marked_stop: usize = widgets[index].caret
             set_marked(index, marked_start, marked_stop)
@@ -210,7 +224,10 @@ extend UiFlat:
                 stop <- stop + utf8_scalar_bytes(safe_text, stop)
                 scalars <- scalars + 1
             selection_length_units: usize = utf16_units_for_prefix(safe_text, stop) - selection_location
-            update_marked_text(safe_text, selection_location, selection_length_units, 0, 0, false)
+            # Offset calculations use the bounded prefix, while insertion gets
+            # the original view so truncation state is not lost for an invalid
+            # or oversized composition payload.
+            update_marked_text(text, selection_location, selection_length_units, 0, 0, false)
             unmark_text() if safe_text.len == 0
 
         def unmark_text() -> void:
