@@ -46,9 +46,20 @@ module UiCapi:
         def dispatch_event(kind: i32, x: f32, y: f32, dx: f32, dy: f32, code: i32) -> void:
             record: UiCore::EventRecord = UiCore::EventRecord{kind: UiCore::WireKind(kind), x: x, y: y, dx: dx, dy: dy, code: code}
             return if not UiEvents::enqueue(UiCore::from_record(record))
+            # Event payloads are copied into the bounded queue, so a callback
+            # may safely submit a synthetic event. Keep that event for the
+            # current outer drain instead of recursively entering app_event;
+            # an app that chains callbacks can therefore not grow the native
+            # stack without bound.
+            return if elisa_ui_event_dispatch_active
+            elisa_ui_event_dispatch_active <- true
             event: mutable UiCore::Event = UiCore::Event.None
             while UiEvents::dequeue(event):
                 app_event(event)
+            elisa_ui_event_dispatch_active <- false
+
+    private:
+        global mutable elisa_ui_event_dispatch_active: bool = false
 
 # The C entry points. Top-level by name, each one a single call.
 def elisa_ui_dispatch_event(kind: i32, x: f32, y: f32, dx: f32, dy: f32, code: i32) -> void:

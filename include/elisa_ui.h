@@ -81,7 +81,9 @@ typedef struct {
 /* ---- A C host driving an Elisa app (src/capi/ui_capi.elisa) ---- */
 
 /* Deliver one event. An ordinal the library does not model arrives as NONE,
- * which an app ignores, rather than as a trap. */
+ * which an app ignores, rather than as a trap. If an application callback
+ * dispatches another event, it is queued for the current drain instead of
+ * recursively entering the callback. */
 void elisa_ui_dispatch_event(int32_t kind, float x, float y,
                              float dx, float dy, int32_t code);
 /* Deliver committed UTF-8 text. The pointer is borrowed for the duration of

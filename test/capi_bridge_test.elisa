@@ -12,16 +12,31 @@ extern puts(text: cstr) -> i64
 global mutable seen_kind: i32 = -1
 global mutable seen_x: f32 = 0.0
 global mutable seen_code: i32 = 0
+global mutable first_seen_kind: i32 = -1
+global mutable first_seen_x: f32 = 0.0
+global mutable first_seen_code: i32 = 0
 global mutable seen_text: bool = false
 global mutable text_callbacks: i32 = 0
 global mutable nested_text_attempted: bool = false
+global mutable event_callbacks: i32 = 0
+global mutable nested_event_attempted: bool = false
+global mutable nested_event_seen: bool = false
 global mutable test_failures: i32 = 0
 
 def app_event(event: UiCore::Event) -> void:
+    event_callbacks <- event_callbacks + 1
     seen_kind <- UiCore::wire_kind(event)
     record: UiCore::EventRecord = UiCore::to_record(event)
     seen_x <- record.x
     seen_code <- record.code
+    if event_callbacks == 1:
+        first_seen_kind <- seen_kind
+        first_seen_x <- record.x
+        first_seen_code <- record.code
+    if not nested_event_attempted and seen_kind == 3:
+        nested_event_attempted <- true
+        elisa_ui_dispatch_event(6, 0.0, 0.0, 0.0, 0.0, 65)
+    nested_event_seen <- true if seen_kind == 6
 
 def app_text_input(text: sview) -> void:
     text_callbacks <- text_callbacks + 1
@@ -38,9 +53,10 @@ def check(name: cstr, ok: bool) -> void:
 def main() -> i64:
     check("C ABI version is packed in Elisa", elisa_ui_abi_version() == 0x000100)
     elisa_ui_dispatch_event(3, 12.0, 34.0, 0.0, 0.0, 2)
-    check("a C pointer-down arrives as kind 3", seen_kind == 3)
-    check("a C pointer-down keeps its position", seen_x == 12.0)
-    check("a C pointer-down keeps its button", seen_code == 2)
+    check("a C pointer-down arrives as kind 3", first_seen_kind == 3)
+    check("a C pointer-down keeps its position", first_seen_x == 12.0)
+    check("a C pointer-down keeps its button", first_seen_code == 2)
+    check("nested C event is queued without recursive loss", nested_event_attempted and nested_event_seen and event_callbacks == 2)
 
     elisa_ui_dispatch_event(6, 0.0, 0.0, 0.0, 0.0, 65)
     check("a C key-down arrives as kind 6", seen_kind == 6)
