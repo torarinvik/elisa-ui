@@ -337,6 +337,16 @@ def main() -> i64:
     check("accessibility navigation keeps explicit middle", UiCore::accessibility_at(1).id == focus_middle)
     check("accessibility navigation ends at explicit last", UiCore::accessibility_at(2).id == focus_late)
 
+    # A leave event has no coordinates. It must not accidentally re-mark a
+    # control at (0,0) when the scratch hit-test point is used internally.
+    UiFlat::reset()
+    origin_button: usize = UiFlat::button(UiFlat::NONE, 40.0, 20.0, UiCore::rgb(20, 20, 20), UiCore::rgb(40, 40, 40), UiCore::rgb(10, 10, 10))
+    UiFlat::layout(40.0, 20.0)
+    UiFlat::pointer((UiCore::PointerEvent.Move(at: UiCore::Vec2(1.0, 1.0))))
+    check("origin control becomes hovered", UiFlat::widget(origin_button).hovered)
+    UiFlat::pointer((UiCore::PointerEvent.Leave))
+    check("pointer leave clears origin hover state", not UiFlat::widget(origin_button).hovered and UiFlat::hot() == UiFlat::NONE)
+
     if test_failures == 0:
         _ = puts("widget layout: all checks passed")
         return 0
