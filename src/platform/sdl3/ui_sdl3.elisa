@@ -119,6 +119,14 @@ module UiSdl3:
         # y@32 as f32).
         global mutable event_buffer: u8[128] = zeroed
 
+        # SDL text events store a borrowed host pointer in this union. Clear
+        # every byte once the event has been decoded so a later frame cannot
+        # retain that pointer (or any other stale native payload) merely because
+        # the next SDL poll has not filled the union yet.
+        def clear_event_buffer() -> void:
+            for index in 0..<128:
+                event_buffer[index] <- 0
+
         def event_button() -> i32:
             # SDL_MouseButtonEvent stores button as Uint8 at byte 24; the
             # following bytes are down/clicks/padding, so reading an i32 here
@@ -310,6 +318,7 @@ module UiSdl3:
                 SDL_DestroyWindow(done_window)
             window <- null
             SDL_Quit()
+            clear_event_buffer()
 
         # Poll one SDL event and translate it. Returns false when the queue is
         # empty; events outside the modeled set come back as `Event.None` for the

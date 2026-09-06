@@ -14,6 +14,7 @@ extend UiSdl3:
             UiCapabilities::use_sdl3()
             UiEvents::reset()
             UiMetrics::reset()
+            clear_event_buffer()
             if not SDL_Init(INIT_VIDEO):
                 _ = puts(SDL_GetError())
                 return 1
@@ -68,6 +69,11 @@ extend UiSdl3:
                         text_editing(event_text_pointer(), event_text_editing_start(), event_text_editing_length())
                     else:
                         _ = UiEvents::enqueue(event)
+                    # `event` is now represented by the typed UiCore value (or
+                    # has already been delivered to the text callback). Do not
+                    # keep SDL's borrowed pointer-bearing union alive while
+                    # application code dispatches the event.
+                    clear_event_buffer()
                     dispatch_queued_events(&running)
                     break if not running
                 break if not running
