@@ -11,8 +11,12 @@ fi
 bash "$ROOT/scripts/build_appkit_canvas.sh" hello >/dev/null
 BIN="$ROOT/build/hello_appkit_canvas"
 APP="$ROOT/build/hello_appkit_canvas.app"
-SNAPSHOT="$(mktemp "${TMPDIR:-/tmp}/elisa-ui-canvas.XXXXXX.png")"
-trap 'rm -f "$SNAPSHOT"' EXIT
+# BSD mktemp only substitutes Xs at the end of its template. Keep the PNG
+# extension in a file inside a unique temporary directory instead of placing it
+# after the template (which would make the Xs literal and fail on reruns).
+SNAPSHOT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/elisa-ui-canvas.XXXXXX")"
+SNAPSHOT="$SNAPSHOT_DIR/frame.png"
+trap 'rm -rf "$SNAPSHOT_DIR"' EXIT
 BRIDGE_TEST="$ROOT/build/appkit_canvas_bridge_test"
 
 # Architecture guard: headless/test configuration belongs to Elisa. The Cocoa
