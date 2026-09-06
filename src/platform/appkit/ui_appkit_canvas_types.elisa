@@ -167,6 +167,13 @@ module UiAppKitCanvas:
             # untrusted range.
             return 0 if length > UiCore::MAX_TEXT_BYTES
             return 0 if length > 0 and bytes == null
+            # CoreFoundation still receives a pointer for an empty range on
+            # some SDKs. Supply the canonical empty string when a foreign
+            # caller has no byte storage at all instead of casting a null
+            # reference into that ABI argument.
+            if length == 0 and bytes == null:
+                empty: sview = ""
+                return native_string(empty)
             # Keep the native bridge's text invariant explicit even when the
             # caller supplies a byte span rather than an `sview`. CoreFoundation
             # rejects malformed UTF-8 today, but making the complete-scalar
@@ -226,6 +233,10 @@ module UiAppKitCanvas:
             return 0
 
         def native_number_value(value: usize, result: mutable f32&) -> bool can Unsafe.PointerCast:
+            # The scalar output is part of this exported Elisa-side helper's
+            # ABI. Reject a missing destination before classifying or reading
+            # the borrowed CoreFoundation object.
+            return false if result == null
             return false if native_accessibility_value_kind(value) != 2
             if CFGetTypeID(value) == CFBooleanGetTypeID():
                 result <- 1.0 if CFBooleanGetValue(value) else 0.0
@@ -302,6 +313,8 @@ module UiAppKitCanvas:
             return CFDictionaryCreate(0, key_pointer, value_pointer, count, 0, 0)
 
         def text_line(text: cstr, length: usize, size: f32, semibold: i32, color: usize) -> usize:
+            text_pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
+            return 0 if length > 0 and text_pointer == 0.uintptr()
             font: usize = text_font(size, semibold)
             return 0 if font == 0
             string: usize = CFStringCreateWithBytes(0, text, length.i64(), UTF8_ENCODING, false)
@@ -330,7 +343,8 @@ module UiAppKitCanvas:
         # intentionally explicit instead of relying on an autorelease pool: the
         # same path is used by the off-screen AppKit smoke renderer.
         def text_width(text: cstr, length: usize, size: f32, semibold: i32) -> f32:
-            return 0.0 if length == 0
+            text_pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
+            return 0.0 if length == 0 or text_pointer == 0.uintptr()
             line: usize = text_line(text, length, size, semibold, 0)
             return 0.0 if line == 0
             ascent: mutable f64 = 0.0
@@ -341,12 +355,17 @@ module UiAppKitCanvas:
             return width
 
         def draw_text_line(text: cstr, length: usize, size: f32, semibold: i32, x: f32, y: f32, color: UiCore::Color) -> void:
-            return if length == 0
+            text_pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
+            return if length == 0 or text_pointer == 0.uintptr()
             color_ref: usize = CGColorCreateGenericRGB(color_component(color.r).f64(), color_component(color.g).f64(), color_component(color.b).f64(), color_component(color.a).f64())
             return if color_ref == 0
             line: usize = text_line(text, length, size, semibold, color_ref)
             if line != 0:
                 context: usize = current_context()
+                if context == 0:
+                    CFRelease(line)
+                    CGColorRelease(color_ref)
+                    return
                 CGContextSaveGState(context)
                 # AppKit's flipped view supplies a y-down CTM while CoreText
                 # lays glyphs out in y-up coordinates. Reflect the drawing
