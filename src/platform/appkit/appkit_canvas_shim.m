@@ -270,8 +270,9 @@ void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) 
 }
 - (void)updateTrackingAreas {
     for (NSTrackingArea *area in [self trackingAreas]) [self removeTrackingArea:area];
-    [self addTrackingArea:[[NSTrackingArea alloc] initWithRect:NSZeroRect
-        options:[self trackingOptions] owner:self userInfo:nil]];
+    NSTrackingArea *area = [[NSTrackingArea alloc] initWithRect:NSZeroRect
+        options:[self trackingOptions] owner:self userInfo:nil];
+    if (area != nil) [self addTrackingArea:area];
     [super updateTrackingAreas];
 }
 - (void)drawRect:(NSRect)dirtyRect {
@@ -619,6 +620,7 @@ size_t elisa_appkit_canvas_menu_add(size_t menuBar, size_t title, size_t emptyKe
     if (value == nil || emptyKey == nil) return 0;
     NSMenuItem *root = [[NSMenuItem alloc] initWithTitle:value action:NULL keyEquivalent:emptyKey];
     NSMenu *menu = [[NSMenu alloc] initWithTitle:value];
+    if (root == nil || menu == nil) return 0;
     [root setSubmenu:menu];
     [bar addItem:root];
     return (size_t)(__bridge void *)menu;
@@ -642,7 +644,7 @@ static void elisa_appkit_canvas_menu_add_item_title(size_t menu, NSString *title
     // framework code.
     SEL action = actionHandle == 0 ? NULL : (SEL)(void *)actionHandle;
     NSMenuItem *item = [value addItemWithTitle:title action:action keyEquivalent:keyEquivalent];
-    item.keyEquivalentModifierMask = (NSEventModifierFlags)modifiers;
+    if (item != nil) item.keyEquivalentModifierMask = (NSEventModifierFlags)modifiers;
 }
 
 void elisa_appkit_canvas_menu_add_item(size_t menu, size_t title,
@@ -833,6 +835,7 @@ size_t elisa_appkit_canvas_accessibility_add(size_t windowHandle, size_t previou
     ElisaAccessibilityElement *element = nil;
     if (isNew != 0) {
         element = [ElisaAccessibilityElement new];
+        if (element == nil) return 0;
         element.accessibilityParent = view;
     } else {
         // Elisa owns semantic identity and explicitly tells the bridge whether
