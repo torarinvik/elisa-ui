@@ -249,6 +249,8 @@ The `.wapp` build needs `wasm-component-ld` (ships with Rust's `wasm32-wasip2`
 target) and the `wasm-browser` CLI for the packing step; set `WASM_BROWSER_CLI`
 or run `cargo build -p wb-cli` in the WasmBrowser checkout. It finds the WIT
 world at `../WasmBrowser/wit/wasmbrowser.wit` (override with `ELISA_UI_WIT`).
+The script stages the pinned Elisa SDK bindings under a stable `sdk/` source
+root before compilation; override the SDK checkout with `ELISA_UI_WASM_SDK`.
 The retained text and edit-history buffers need a 2 MiB initial linear heap;
 `scripts/build_wapp.sh` passes that policy as `ELISA_WASM_INITIAL_PAGES` (default
 `32`) and `ELISA_WASM_MAX_PAGES` (default `32768`) to stage1. The hello manifest

@@ -193,8 +193,10 @@ separate host-enforced security boundary.
   autorelease-scoped bridge wrapper surface as construction and mutation; the
   realization module no longer imports raw Cocoa query symbols.
 - The hosted backend consumes the authoritative SDK-generated host bindings from
-  `../wasm-sdk/sdk/elisa/wasmbrowser/`; Elisa retains only the UI-specific policy
-  and canonical record lowering around that imported ABI.
+  the staged `sdk/elisa/wasmbrowser/` source root; standalone builds select that
+  checkout through `ELISA_UI_WASM_SDK`, while the SDK integration stages its own
+  resolved dependency. Elisa retains only the UI-specific policy and canonical
+  record lowering around that imported ABI.
 - The C boundary now exposes a packed ABI version from Elisa and checks it
   against the public header in `scripts/check_capi.sh`; wire ordinals and field
   meanings remain documented in `include/elisa_ui.h`.
