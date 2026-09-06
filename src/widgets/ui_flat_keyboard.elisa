@@ -5,6 +5,17 @@
 extend UiFlat:
     public:
         def keyboard(event: UiCore::Event) -> void:
+            # Public callers may construct a typed event directly instead of
+            # going through the C/WIT decoder. Reject an unknown key before
+            # touching modifier or keyboard-capture state; an invalid release
+            # must never strand a valid Space/Enter activation.
+            match event:
+                UiCore::KeyEvent.Down(code):
+                    return if not UiCore::key_is_valid(code.i32())
+                UiCore::KeyEvent.Up(code):
+                    return if not UiCore::key_is_valid(code.i32())
+                _:
+                    pass
             mark_state_dirty()
             match event:
                 UiCore::KeyEvent.Down(code):
@@ -276,4 +287,3 @@ extend UiFlat:
             amount: mutable f32 = viewport if page else KEYBOARD_SCROLL_STEP
             amount <- -amount if backward
             return set_scroll_offset(target, widgets[target].scroll_offset + amount)
-
