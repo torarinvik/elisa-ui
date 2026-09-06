@@ -110,11 +110,12 @@ module UiResources:
             # An unrequested slot has no identity. In particular, clear_slot()
             # erases both its bytes and length, so treating an empty key as a
             # match would make a stale/cleared record look live to diagnostics.
+            safe_key: sview = UiCore::bounded_text(key)
             return false if slot >= MAX_RESOURCES or resource_states[slot] == State.Unrequested
-            return false if key.len <= 0 or key.len >= IDENTIFIER_CAPACITY.i64()
-            return false if resource_identifier_lengths[slot] != key.len
-            for offset in 0..<key.len:
-                return false if resource_identifier_storage[slot * IDENTIFIER_CAPACITY + offset] != key.data[offset]
+            return false if safe_key.len <= 0 or safe_key.len >= IDENTIFIER_CAPACITY.i64()
+            return false if resource_identifier_lengths[slot] != safe_key.len.usize()
+            for offset in 0..<safe_key.len:
+                return false if resource_identifier_storage[slot * IDENTIFIER_CAPACITY + offset] != safe_key.data[offset]
             return true
 
         def make_handle(slot: usize) -> Handle:
@@ -144,9 +145,10 @@ module UiResources:
         # therefore rotates its generation so late completion from the cancelled
         # operation cannot mutate the replacement request.
         def request(key: sview, owner: u32) -> Handle:
-            return invalid() if key.len <= 0 or key.len >= IDENTIFIER_CAPACITY
+            safe_key: sview = UiCore::bounded_text(key)
+            return invalid() if safe_key.len <= 0 or safe_key.len >= IDENTIFIER_CAPACITY.i64()
             for slot in 0..<resource_count:
-                if resource_states[slot] != State.Unrequested and key_matches(slot, key):
+                if resource_states[slot] != State.Unrequested and key_matches(slot, safe_key):
                     resource_owners[slot] <- owner
                     if resource_states[slot] == State.Cancelled:
                         next_generation: u32 = resource_generations[slot] + 1
@@ -171,8 +173,8 @@ module UiResources:
             resource_generations[free_slot] <- 1 if generation == 0 else generation
             offset: usize = free_slot * IDENTIFIER_CAPACITY
             for index in 0..<IDENTIFIER_CAPACITY:
-                resource_identifier_storage[offset + index] <- key.data[index] if index < key.len else 0
-            resource_identifier_lengths[free_slot] <- key.len
+                resource_identifier_storage[offset + index] <- safe_key.data[index] if index < safe_key.len else 0
+            resource_identifier_lengths[free_slot] <- safe_key.len.usize()
             resource_owners[free_slot] <- owner
             resource_states[free_slot] <- State.Requested
             resource_downloaded[free_slot] <- 0.0

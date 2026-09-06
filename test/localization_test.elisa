@@ -19,7 +19,9 @@ def main() -> i64:
     first_mask: i32 = UiCore::invalidations()
     check("locale change invalidates layout paint and semantics", first_mask == UiCore::Invalidation.Layout.i32() | UiCore::Invalidation.Paint.i32() | UiCore::Invalidation.Semantics.i32() and first_sequence > 0)
     check("same canonical locale is idempotent", not UiLocalization::set_locale("en-US") and UiLocalization::revision() == 1 and UiCore::invalidation_sequence() == first_sequence)
-    check("region changes are observable", UiLocalization::set_locale("en-GB") and UiLocalization::revision() == 2 and UiLocalization::current_locale() == "en-gb")
+    null_locale: sview = sview(null, 0, 2)
+    check("null-backed locale fails closed", UiLocalization::set_locale(null_locale) and UiLocalization::current_locale().len == 0)
+    check("region changes are observable", UiLocalization::set_locale("en-GB") and UiLocalization::revision() == 3 and UiLocalization::current_locale() == "en-gb")
     check("active locale exposes direction", UiLocalization::set_locale("AR_sa") and UiLocalization::current_direction() == UiLocalization::Direction.RightToLeft and UiLocalization::snapshot().direction == UiLocalization::Direction.RightToLeft)
     check("long locale tags are bounded", UiLocalization::set_locale("abcdefghijklmnopqrstuvwxyz-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789") and UiLocalization::is_truncated() and UiLocalization::current_locale().len.usize() == UiLocalization::MAX_LOCALE_BYTES - 1)
 

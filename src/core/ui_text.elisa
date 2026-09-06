@@ -15,7 +15,7 @@ module UiText:
         # merely looking at the lead byte would skip following ASCII or admit
         # surrogate/out-of-range encodings as one scalar.
         def utf8_scalar_bytes(text: sview, position: usize) -> usize:
-            return 0 if text.len <= 0 or position >= text.len.usize()
+            return 0 if text.len <= 0 or text.data == null or position >= text.len.usize()
             first: u32 = text.data[position].u32()
             return 1 if first < 128 or first >= 248
             width: mutable usize = 1
@@ -40,7 +40,7 @@ module UiText:
         # one-byte recovery for counters; this helper instead stops before the
         # first malformed or truncated scalar.
         def valid_utf8_prefix(text: sview, byte_limit: usize) -> usize:
-            return 0 if text.len <= 0
+            return 0 if text.len <= 0 or text.data == null
             total: usize = text.len.usize()
             limit: usize = byte_limit if byte_limit < total else total
             cursor: mutable usize = 0
@@ -59,7 +59,7 @@ module UiText:
         # emoji ZWJ sequence contributes one unit per encoded scalar, matching
         # SDL's marked-text range convention.
         def utf8_scalar_count(text: sview) -> usize:
-            return 0 if text.len <= 0
+            return 0 if text.len <= 0 or text.data == null
             limit: usize = text.len.usize()
             cursor: mutable usize = 0
             count: mutable usize = 0
@@ -76,7 +76,7 @@ module UiText:
         # or truncated input follows the same one-byte recovery as the scalar
         # counter, keeping hostile payloads bounded and deterministic.
         def utf16_unit_count(text: sview) -> usize:
-            return 0 if text.len <= 0
+            return 0 if text.len <= 0 or text.data == null
             limit: usize = text.len.usize()
             cursor: mutable usize = 0
             count: mutable usize = 0

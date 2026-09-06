@@ -289,7 +289,11 @@ extend UiCore:
         # constructor again. The latter would scan arbitrary foreign memory;
         # StringView is the correct representation for an already-counted view.
         def bounded_text(value: sview) -> sview:
-            return "" if value.len <= 0
+            # A counted view with a positive length is only usable when it also
+            # carries storage. Foreign callers can construct the former by
+            # mistake (or after a failed allocation); fail closed before the
+            # UTF-8 walker dereferences a null pointer.
+            return "" if value.len <= 0 or value.data == null
             limit: usize = MAX_TEXT_BYTES if value.len > MAX_TEXT_BYTES.i64() else value.len.usize()
             prefix: usize = UiText::valid_utf8_prefix(value, limit)
             return "" if prefix == 0

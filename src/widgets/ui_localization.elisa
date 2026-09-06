@@ -41,18 +41,19 @@ module UiLocalization:
         # direction; repeating the same canonical tag is idempotent.
         def set_locale(locale: sview) -> bool:
             return false if locale.len < 0
+            safe_locale: sview = UiCore::bounded_text(locale)
             # Keep the foreign signed extent signed until it has been bounded;
             # narrowing first can wrap a large length on wasm32.
             take: mutable usize = MAX_LOCALE_BYTES - 1
-            take <- locale.len.usize() if locale.len < (MAX_LOCALE_BYTES - 1).i64()
-            was_truncated: bool = locale.len >= MAX_LOCALE_BYTES.i64()
+            take <- safe_locale.len.usize() if safe_locale.len < (MAX_LOCALE_BYTES - 1).i64()
+            was_truncated: bool = locale.len >= MAX_LOCALE_BYTES.i64() or safe_locale.len != locale.len
             same: mutable bool = locale_length_state == take and locale_truncated_state == was_truncated
             for index in 0..<MAX_LOCALE_BYTES - 1:
-                normalized: u8 = normalize_byte(locale.data[index]) if index < take else 0
+                normalized: u8 = normalize_byte(safe_locale.data[index]) if index < take else 0
                 same <- false if locale_storage[index] != normalized
             return false if same
             for index in 0..<MAX_LOCALE_BYTES - 1:
-                locale_storage[index] <- normalize_byte(locale.data[index]) if index < take else 0
+                locale_storage[index] <- normalize_byte(safe_locale.data[index]) if index < take else 0
             locale_storage[take] <- 0
             locale_length_state <- take
             locale_truncated_state <- was_truncated
@@ -90,13 +91,14 @@ module UiLocalization:
                 direction: current_direction(), truncated: locale_truncated_state}
 
         def direction(locale: sview) -> Direction:
-            return Direction.RightToLeft if language_is(locale, 0x61, 0x72) # ar
-            return Direction.RightToLeft if language_is(locale, 0x66, 0x61) # fa
-            return Direction.RightToLeft if language_is(locale, 0x68, 0x65) # he
-            return Direction.RightToLeft if language_is(locale, 0x75, 0x72) # ur
-            return Direction.RightToLeft if language_is(locale, 0x70, 0x73) # ps
-            return Direction.RightToLeft if language_is(locale, 0x64, 0x76) # dv
-            return Direction.RightToLeft if language_is(locale, 0x79, 0x69) # yi
+            safe_locale: sview = UiCore::bounded_text(locale)
+            return Direction.RightToLeft if language_is(safe_locale, 0x61, 0x72) # ar
+            return Direction.RightToLeft if language_is(safe_locale, 0x66, 0x61) # fa
+            return Direction.RightToLeft if language_is(safe_locale, 0x68, 0x65) # he
+            return Direction.RightToLeft if language_is(safe_locale, 0x75, 0x72) # ur
+            return Direction.RightToLeft if language_is(safe_locale, 0x70, 0x73) # ps
+            return Direction.RightToLeft if language_is(safe_locale, 0x64, 0x76) # dv
+            return Direction.RightToLeft if language_is(safe_locale, 0x79, 0x69) # yi
             return Direction.LeftToRight
 
         def is_rtl(locale: sview) -> bool:
@@ -135,19 +137,20 @@ module UiLocalization:
         # formatter; unknown languages use the safe one/other rule.
         def plural(locale: sview, quantity: i64) -> PluralCategory:
             return PluralCategory.Other if quantity < 0
-            if language_is(locale, 0x61, 0x72): # Arabic
+            safe_locale: sview = UiCore::bounded_text(locale)
+            if language_is(safe_locale, 0x61, 0x72): # Arabic
                 return PluralCategory.Zero if quantity == 0
                 return PluralCategory.One if quantity == 1
                 return PluralCategory.Two if quantity == 2
                 return PluralCategory.Few if quantity >= 3 and quantity <= 10
                 return PluralCategory.Many if quantity >= 11 and quantity <= 99
                 return PluralCategory.Other
-            if language_is(locale, 0x66, 0x72): # French
+            if language_is(safe_locale, 0x66, 0x72): # French
                 return PluralCategory.One if quantity == 0 or quantity == 1
                 return PluralCategory.Other
-            if language_is(locale, 0x72, 0x75) or language_is(locale, 0x75, 0x6b): # Russian/Ukrainian
+            if language_is(safe_locale, 0x72, 0x75) or language_is(safe_locale, 0x75, 0x6b): # Russian/Ukrainian
                 return slavic_plural(quantity)
-            if language_is(locale, 0x70, 0x6c): # Polish
+            if language_is(safe_locale, 0x70, 0x6c): # Polish
                 return polish_plural(quantity)
             return PluralCategory.One if quantity == 1 else PluralCategory.Other
 
