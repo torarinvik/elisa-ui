@@ -166,8 +166,15 @@ module UiAppKitCanvas:
             # framework text budget instead of letting CoreFoundation walk an
             # untrusted range.
             return 0 if length > UiCore::MAX_TEXT_BYTES
+            # Keep the native bridge's text invariant explicit even when the
+            # caller supplies a byte span rather than an `sview`. CoreFoundation
+            # rejects malformed UTF-8 today, but making the complete-scalar
+            # prefix decision here prevents future callers from accidentally
+            # handing it a truncated trailing sequence.
+            source: sview = sview(&bytes, 0, length.i64())
+            valid_length: usize = UiText::valid_utf8_prefix(source, length)
             pointer: cstr = (&bytes).cast[cstr] can Unsafe.PointerCast
-            return CFStringCreateWithBytes(0, pointer, length.i64(), UTF8_ENCODING, false)
+            return CFStringCreateWithBytes(0, pointer, valid_length.i64(), UTF8_ENCODING, false)
 
         def native_attributed_string(text: usize) -> usize:
             return 0 if text == 0
