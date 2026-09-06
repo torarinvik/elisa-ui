@@ -59,10 +59,15 @@ def elisa_ui_abi_version() -> u32:
 
 global mutable elisa_ui_text_buffer: u8[UiCore::MAX_TEXT_BYTES + 1] = zeroed
 
+def elisa_ui_scrub_text_buffer() -> void:
+    for index in 0..<UiCore::MAX_TEXT_BYTES + 1:
+        elisa_ui_text_buffer[index] <- 0
+
 # The C entry point receives a counted pointer, which is not required to be
 # NUL-terminated. Copy only the validated bounded prefix into Elisa-owned
 # storage so neither view construction nor the callback boundary can
 def elisa_ui_dispatch_text_input(text: cstr?, length: usize) -> void can Unsafe.PointerCast:
+    elisa_ui_scrub_text_buffer()
     # A C caller may provide a null pointer for an empty payload, or
     # accidentally pair NULL with a non-zero length. Fail closed before
     # dereferencing a pointer that application code could not validate.
@@ -78,6 +83,7 @@ def elisa_ui_dispatch_text_input(text: cstr?, length: usize) -> void can Unsafe.
                 elisa_ui_text_buffer[index] <- byte
         elisa_ui_text_buffer[safe_length.usize()] <- 0
         app_text_input(sview(&elisa_ui_text_buffer[0], 0, safe_length))
+        elisa_ui_scrub_text_buffer()
 
 # The viewport, for a C host that owns the window. State lives in UiCore, so
 # these reach it directly.
