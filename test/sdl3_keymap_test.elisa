@@ -104,6 +104,14 @@ def main() -> i64:
     bounded_title: cstr = UiSdl3Text::bounded_title(oversized_title_pointer)
     check("SDL titles are copied into a bounded buffer", UiSdl3Text::length(bounded_title).i32(), UiCore::MAX_TEXT_BYTES.i32())
     check("bounded SDL titles are terminated", 1 if UiSdl3Text::byte(bounded_title, UiCore::MAX_TEXT_BYTES) == 0 else 0, 1)
+    invalid_title: mutable u8[4] = zeroed
+    invalid_title[0] <- 65
+    invalid_title[1] <- 255
+    invalid_title[2] <- 66
+    invalid_title_pointer: cstr = (&invalid_title[0]).cast[cstr] can Unsafe.PointerCast
+    bounded_invalid_title: cstr = UiSdl3Text::bounded_title(invalid_title_pointer)
+    check("SDL titles reject malformed UTF-8", UiSdl3Text::length(bounded_invalid_title).i32(), 1)
+    check("SDL malformed title suffix is terminated", UiSdl3Text::byte(bounded_invalid_title, 1).i32(), 0)
 
     if keymap_failures == 0:
         _ = puts("sdl3 keymap: all checks passed")
