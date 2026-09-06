@@ -43,6 +43,12 @@ def main() -> i64:
         long_message[index] <- 65
     fourth_token: u32 = UiValidation::begin(field)
     check("long messages are bounded", UiValidation::reject(field, fourth_token, sview(&long_message[0], 0, 400)) and UiValidation::message(field).len.usize() == UiValidation::MESSAGE_CAPACITY - 1 and UiValidation::message_truncated(field))
+    malformed_message: mutable u8[3] = zeroed
+    malformed_message[0] <- 65
+    malformed_message[1] <- 255
+    malformed_message[2] <- 66
+    malformed_token: u32 = UiValidation::begin(field)
+    check("malformed validation messages are rejected", UiValidation::reject(field, malformed_token, sview(&malformed_message[0], 0, 3)) and UiValidation::message(field) == "A" and UiValidation::message_truncated(field))
     boundary_message: mutable u8[UiValidation::MESSAGE_CAPACITY - 1] = zeroed
     for index in 0..<UiValidation::MESSAGE_CAPACITY - 1:
         boundary_message[index] <- 66

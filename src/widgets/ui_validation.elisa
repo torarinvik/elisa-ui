@@ -231,12 +231,14 @@ module UiValidation:
             return if slot >= MAX_FIELDS or value.len < 0
             # Validate the signed foreign length before narrowing it to
             # usize; otherwise a large sview length can wrap on wasm32.
+            safe_value: sview = UiCore::bounded_text(value)
             take: mutable usize = MESSAGE_CAPACITY - 1
-            take <- value.len.usize() if value.len < (MESSAGE_CAPACITY - 1).i64()
+            take <- safe_value.len.usize() if safe_value.len < (MESSAGE_CAPACITY - 1).i64()
+            take <- UiText::valid_utf8_prefix(safe_value, take)
             for index in 0..<MESSAGE_CAPACITY - 1:
-                message_storage[slot * MESSAGE_CAPACITY + index] <- value.data[index] if index < take else 0
+                message_storage[slot * MESSAGE_CAPACITY + index] <- safe_value.data[index] if index < take else 0
             message_storage[slot * MESSAGE_CAPACITY + take] <- 0
             message_lengths[slot] <- take
             # Exactly MESSAGE_CAPACITY - 1 bytes fit beside the sentinel;
-            # only a longer message has actually been truncated.
-            message_truncated_state[slot] <- value.len > (MESSAGE_CAPACITY - 1).i64()
+            # only a longer or malformed message has actually been truncated.
+            message_truncated_state[slot] <- value.len > (MESSAGE_CAPACITY - 1).i64() or value.len != safe_value.len or take < safe_value.len
