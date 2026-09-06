@@ -155,9 +155,16 @@ extend UiFlat:
                 focus(NONE) if focused_widget < widget_count and not effectively_enabled(focused_widget)
 
         def is_enabled(index: usize) -> bool:
+            # Unlike `widget`, this is a checked public query. External
+            # adapters routinely probe stale or optional handles, so an
+            # out-of-range index must fail closed before walking ancestry.
+            return false if index >= widget_count
             return effectively_enabled(index)
 
         def is_visible(index: usize) -> bool:
+            # Keep visibility queries safe for the same stale-handle case as
+            # enabled-state queries; the ancestry walk dereferences the row.
+            return false if index >= widget_count
             return effectively_visible(index)
 
         # Hidden widgets remain in the retained tree but contribute no layout,
