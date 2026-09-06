@@ -18,9 +18,9 @@ extend UiCore:
             return raw.WireKind()
 
         # The packed event boundary accepts raw integers from C and WIT hosts,
-        # while the typed hierarchy promises closed key and gamepad sets. Keep
-        # the membership checks beside the casts so an unknown host ordinal can
-        # never become an invalid `Key`, `Pad`, or `PadAxis` value in an app.
+        # while the typed hierarchy promises closed key, pointer-button and
+        # gamepad sets. Keep the membership checks beside the casts so an
+        # unknown host ordinal can never become an invalid typed value in an app.
         def key_is_valid(raw: i32) -> bool:
             return true if raw == Key.Space.i32() or raw == Key.Apostrophe.i32() or raw == Key.Comma.i32() or raw == Key.Minus.i32() or raw == Key.Period.i32() or raw == Key.Slash.i32()
             return true if raw >= Key.Digit0.i32() and raw <= Key.Digit9.i32()
@@ -36,6 +36,9 @@ extend UiCore:
 
         def pad_axis_is_valid(raw: i32) -> bool:
             return raw >= PadAxis.LeftX.i32() and raw <= PadAxis.DPadY.i32()
+
+        def pointer_button_is_valid(raw: i32) -> bool:
+            return raw >= PointerButton.Primary.i32() and raw <= PointerButton.Forward.i32()
 
         # ---- The flat boundary ----
         #
@@ -92,9 +95,9 @@ extend UiCore:
                 PointerEvent.Move(at):
                     record with { x <- bounded_coordinate(at.x), y <- bounded_coordinate(at.y) }
                 PointerEvent.Down(at, button):
-                    record with { x <- bounded_coordinate(at.x), y <- bounded_coordinate(at.y), code <- button }
+                    record with { x <- bounded_coordinate(at.x), y <- bounded_coordinate(at.y), code <- button if pointer_button_is_valid(button) else NO_POINTER_BUTTON }
                 PointerEvent.Up(at, button):
-                    record with { x <- bounded_coordinate(at.x), y <- bounded_coordinate(at.y), code <- button }
+                    record with { x <- bounded_coordinate(at.x), y <- bounded_coordinate(at.y), code <- button if pointer_button_is_valid(button) else NO_POINTER_BUTTON }
                 PointerEvent.Scroll(at, delta):
                     record with { x <- bounded_coordinate(at.x), y <- bounded_coordinate(at.y), dx <- bounded_coordinate(delta.x), dy <- bounded_coordinate(delta.y) }
                 KeyEvent.Down(code):
@@ -136,9 +139,11 @@ extend UiCore:
                 WireKind.PointerMove:
                     PointerEvent.Move(at: at)
                 WireKind.PointerDown:
-                    PointerEvent.Down(at: at, button: record.code)
+                    return Event.None if not pointer_button_is_valid(record.code)
+                    PointerEvent.Down(at: at, button: record.code.PointerButton())
                 WireKind.PointerUp:
-                    PointerEvent.Up(at: at, button: record.code)
+                    return Event.None if not pointer_button_is_valid(record.code)
+                    PointerEvent.Up(at: at, button: record.code.PointerButton())
                 WireKind.PointerLeave:
                     PointerEvent.Leave
                 WireKind.Scroll:

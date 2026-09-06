@@ -257,7 +257,8 @@ module UiSdl3:
         # SDL button constants are 1-based (left=1); UiCore uses zero for the
         # portable primary button, matching AppKit and browser events.
         def button_from_sdl(button: i32) -> i32:
-            return button - 1 if button > 0 else UiCore::NO_POINTER_BUTTON
+            return UiCore::NO_POINTER_BUTTON if button <= 0 or button > UiCore::PointerButton.Forward.i32() + 1
+            return button - 1
 
         def seconds_from_ticks(ticks: u64) -> f64:
             return ticks.f64() / 1000.0
@@ -332,9 +333,13 @@ module UiSdl3:
             elif kind == EVENT_MOUSE_MOTION:
                 out_event <- (UiCore::PointerEvent.Move(at: UiCore::Vec2(event_x(), event_y())))
             elif kind == EVENT_MOUSE_BUTTON_DOWN:
-                out_event <- (UiCore::PointerEvent.Down(at: UiCore::Vec2(event_x(), event_y()), button: button_from_sdl(event_button())))
+                button: i32 = button_from_sdl(event_button())
+                if button != UiCore::NO_POINTER_BUTTON:
+                    out_event <- (UiCore::PointerEvent.Down(at: UiCore::Vec2(event_x(), event_y()), button: button.PointerButton()))
             elif kind == EVENT_MOUSE_BUTTON_UP:
-                out_event <- (UiCore::PointerEvent.Up(at: UiCore::Vec2(event_x(), event_y()), button: button_from_sdl(event_button())))
+                button: i32 = button_from_sdl(event_button())
+                if button != UiCore::NO_POINTER_BUTTON:
+                    out_event <- (UiCore::PointerEvent.Up(at: UiCore::Vec2(event_x(), event_y()), button: button.PointerButton()))
             elif kind == EVENT_MOUSE_WHEEL:
                 out_event <- (UiCore::PointerEvent.Scroll(at: UiCore::Vec2(event_wheel_mouse_x(), event_wheel_mouse_y()), delta: UiCore::Vec2(event_wheel_x(), event_wheel_y())))
             elif kind == EVENT_KEY_DOWN:

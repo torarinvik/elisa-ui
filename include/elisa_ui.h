@@ -62,7 +62,8 @@ typedef enum {
  * Which fields carry meaning depends on `kind`, and only on `kind`:
  *   POINTER_*, SCROLL   x, y  = position
  *   SCROLL              dx, dy = wheel delta
- *   POINTER_DOWN/UP     code  = button
+ *   POINTER_DOWN/UP     code  = button (0 primary, 1 secondary, 2 middle,
+ *                                      3 back, 4 forward)
  *   KEY_*               code  = key, in GLFW's numbering (see UiCore::Key)
  *   RESIZE              x, y  = width, height
  *   GAMEPAD_BUTTON/AXIS dx    = value, code = button or axis
