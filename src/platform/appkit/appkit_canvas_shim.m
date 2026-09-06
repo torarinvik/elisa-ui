@@ -5,6 +5,7 @@
 // to replay that command batch into the current context.
 
 #import <Cocoa/Cocoa.h>
+#include <stdint.h>
 
 extern void elisa_appkit_canvas_frame(size_t windowHandle, size_t context);
 extern void elisa_appkit_canvas_resize(size_t windowHandle, float width, float height);
@@ -31,7 +32,7 @@ extern int elisa_appkit_canvas_accessibility_decrement_direction(void);
 extern const size_t elisa_appkit_canvas_not_found;
 extern int elisa_appkit_canvas_has_marked_text(size_t windowHandle);
 extern size_t elisa_appkit_canvas_pointer_leave_event(size_t windowHandle);
-extern void elisa_appkit_canvas_timer_fired(size_t windowHandle);
+extern void elisa_appkit_canvas_timer_fired(size_t windowHandle, uint32_t generation);
 extern size_t elisa_appkit_canvas_selection_location(size_t windowHandle);
 extern size_t elisa_appkit_canvas_selection_length(size_t windowHandle);
 extern int elisa_appkit_canvas_set_selected_range(size_t windowHandle, size_t handle, size_t location, size_t length);
@@ -723,17 +724,19 @@ size_t elisa_appkit_canvas_clipboard_read(size_t pasteboard_type) {
 }
 
 size_t elisa_appkit_canvas_schedule_redraw(float delay, size_t run_loop_mode,
-                                           size_t windowHandle) {
+                                           size_t windowHandle,
+                                           uint32_t generation) {
     NSString *mode = elisa_appkit_canvas_string(run_loop_mode);
     if (mode == nil || elisa_appkit_canvas_window(windowHandle) == nil) return 0;
-    // Capture only the opaque root handle in the timer block. The timer is
-    // retained by Elisa until delivery/cancellation, so no native view is
-    // captured or kept alive by the scheduler.
+    // Capture only the opaque root handle and Elisa lifecycle generation in
+    // the timer block. The timer is retained by Elisa until
+    // delivery/cancellation, so no native view is captured or kept alive by
+    // the scheduler.
     NSTimer *timer = [NSTimer timerWithTimeInterval:delay repeats:NO block:^(NSTimer *fired) {
         (void)fired;
         // Timer delivery re-enters Elisa so lifecycle and stale-window policy
         // stay with the retained framework state rather than this block.
-        elisa_appkit_canvas_timer_fired(windowHandle);
+        elisa_appkit_canvas_timer_fired(windowHandle, generation);
     }];
     if (timer == nil) return 0;
     [NSRunLoop.mainRunLoop addTimer:timer forMode:mode];
