@@ -107,7 +107,11 @@ module UiResources:
             # It can be called directly by a host, so relying on request's
             # length guard here would allow an oversized counted view to walk
             # past the fixed identifier arena.
-            return false if slot >= MAX_RESOURCES or key.len < 0 or key.len >= IDENTIFIER_CAPACITY.i64()
+            # An unrequested slot has no identity. In particular, clear_slot()
+            # erases both its bytes and length, so treating an empty key as a
+            # match would make a stale/cleared record look live to diagnostics.
+            return false if slot >= MAX_RESOURCES or resource_states[slot] == State.Unrequested
+            return false if key.len <= 0 or key.len >= IDENTIFIER_CAPACITY.i64()
             return false if resource_identifier_lengths[slot] != key.len
             for offset in 0..<key.len:
                 return false if resource_identifier_storage[slot * IDENTIFIER_CAPACITY + offset] != key.data[offset]
