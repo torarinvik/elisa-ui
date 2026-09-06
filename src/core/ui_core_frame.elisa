@@ -107,13 +107,25 @@ extend UiCore:
             safe_help: sview = bounded_text(help)
             safe_text_value: sview = bounded_text(text_value)
             safe_selected_text: sview = bounded_text(selected_text)
+            # Text ranges are expressed in UTF-16 units by native adapters.
+            # Every valid UTF-16 unit occupies at least one byte in the
+            # bounded UTF-8 view, so its byte length is a conservative upper
+            # bound even when the view contains malformed input. A malformed
+            # producer must not publish an unbounded location/length pair that
+            # can overflow an NSRange or point past the value beside it.
+            selection_limit: usize = safe_text_value.len.usize()
+            safe_selection_location: mutable usize = selection_location
+            safe_selection_location <- selection_limit if safe_selection_location > selection_limit
+            remaining_selection: usize = selection_limit - safe_selection_location
+            safe_selection_length: mutable usize = selection_length
+            safe_selection_length <- remaining_selection if safe_selection_length > remaining_selection
             node: AccessibilityNode = AccessibilityNode{
                 role: normalize_role(role), label: safe_label, help: safe_help, frame: safe_frame, id: id,
                 action: action, enabled: enabled, focused: focused,
                 selected: selected, value: safe_value, text_value: safe_text_value,
                 selected_text: safe_selected_text, revision: revision,
-                selection_location: selection_location,
-                selection_length: selection_length,
+                selection_location: safe_selection_location,
+                selection_length: safe_selection_length,
                 parent_id: safe_parent, first_child_id: safe_first_child,
                 next_sibling_id: safe_next_sibling, has_range: has_range,
                 range_min: safe_range_minimum, range_max: safe_range_maximum,
