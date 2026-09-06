@@ -13,7 +13,7 @@ extern size_t elisa_appkit_canvas_pointer_move_event(float x, float y);
 extern void elisa_appkit_canvas_pointer_button(float x, float y, int button, int down, int clickCount);
 extern void elisa_appkit_canvas_pointer_scroll(float x, float y, float dx, float dy);
 extern void elisa_appkit_canvas_raw_flags(int keyCode, size_t modifiers);
-extern void elisa_appkit_canvas_focus_changed(int focused);
+extern void elisa_appkit_canvas_focus_changed(size_t windowHandle, int focused);
 extern void elisa_appkit_canvas_accessibility_environment_changed(void);
 extern void elisa_appkit_canvas_window_closed(size_t windowHandle);
 extern void elisa_appkit_canvas_rebuild_cursor_rects(void);
@@ -207,12 +207,14 @@ static NSArray *elisa_appkit_canvas_event_array(size_t handle) {
     elisa_appkit_canvas_window_closed(window == nil ? 0 : (size_t)(__bridge void *)window);
 }
 - (void)windowDidResignKey:(NSNotification *)notification {
-    (void)notification;
-    elisa_appkit_canvas_focus_changed(0);
+    id object = notification.object;
+    NSWindow *window = [object isKindOfClass:[NSWindow class]] ? (NSWindow *)object : nil;
+    elisa_appkit_canvas_focus_changed(window == nil ? 0 : (size_t)(__bridge void *)window, 0);
 }
 - (void)windowDidBecomeKey:(NSNotification *)notification {
-    (void)notification;
-    elisa_appkit_canvas_focus_changed(1);
+    id object = notification.object;
+    NSWindow *window = [object isKindOfClass:[NSWindow class]] ? (NSWindow *)object : nil;
+    elisa_appkit_canvas_focus_changed(window == nil ? 0 : (size_t)(__bridge void *)window, 1);
 }
 - (void)windowDidMove:(NSNotification *)notification {
     (void)notification;

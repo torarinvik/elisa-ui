@@ -118,8 +118,12 @@ def appkit_canvas_raw_flags_callback(key_code: i32, modifiers: usize) -> void:
     down <- super_key if key_code == 54 or key_code == 55
     appkit_canvas_raw_key_callback(down, key_code, 0)
 
-def appkit_canvas_focus_changed_callback(focused: i32) -> void:
+def appkit_canvas_focus_changed_callback(window_handle: usize, focused: i32) -> void:
     return if not UiAppKitCanvas::live()
+    # Focus notifications are delivered by the window delegate, and an old
+    # window can emit one while a replacement session is already live. Match
+    # the opaque identity before mutating the current lifecycle's focus state.
+    return if window_handle != UiAppKitCanvas::window_handle()
     changed: bool = UiLifecycle::focus_gained() if focused != 0 else UiLifecycle::focus_lost()
     return if not changed
     event: UiCore::Event = (UiCore::Event.FocusGained) if focused != 0 else (UiCore::Event.FocusLost)
@@ -164,7 +168,7 @@ export fn elisa_appkit_canvas_accessibility_tooltip_text(handle: usize) -> usize
 export fn elisa_appkit_canvas_resize(width: f32, height: f32) -> void = appkit_canvas_resize_callback
 export fn elisa_appkit_canvas_pointer_scroll(x: f32, y: f32, dx: f32, dy: f32) -> void = appkit_canvas_pointer_scroll_callback
 export fn elisa_appkit_canvas_raw_flags(key_code: i32, modifiers: usize) -> void = appkit_canvas_raw_flags_callback
-export fn elisa_appkit_canvas_focus_changed(focused: i32) -> void = appkit_canvas_focus_changed_callback
+export fn elisa_appkit_canvas_focus_changed(window_handle: usize, focused: i32) -> void = appkit_canvas_focus_changed_callback
 export fn elisa_appkit_canvas_accessibility_environment_changed() -> void = appkit_canvas_accessibility_environment_changed_callback
 export fn elisa_appkit_canvas_rebuild_cursor_rects() -> void = appkit_canvas_rebuild_cursor_rects_callback
 export fn elisa_appkit_canvas_timer_fired(window_handle: usize) -> void = appkit_canvas_timer_fired_callback
