@@ -288,6 +288,22 @@ def main() -> i64:
                 pass
     check("hostile metrics still emit text", metric_commands > 0)
 
+    # A wide preceding sibling can place a text field at the edge of the
+    # shared coordinate envelope. Caret geometry is exported directly to the
+    # AppKit text protocol, so the composed origin + inset + measured width
+    # must be bounded after arithmetic, not only at each input.
+    UiFlat::reset()
+    hostile_text_metrics <- true
+    edge_root: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Row, 0.0, 0.0, UiCore::rgb(0, 0, 0))
+    _ = UiFlat::label(edge_root, "wide", 15.0, UiCore::rgb(240, 240, 245))
+    edge_field: usize = UiFlat::text_field(edge_root, "Edge", "", "A", 220.0, 36.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
+    hostile_text_metrics <- false
+    UiFlat::layout(UiCore::MAX_GEOMETRY_EXTENT, 100.0)
+    edge_x: f32 = UiFlat::text_caret_x(edge_field)
+    edge_character_x: f32 = UiFlat::text_character_x(edge_field, 0)
+    check("caret x stays inside the shared coordinate envelope", edge_x <= UiCore::MAX_GEOMETRY_EXTENT and edge_x >= -UiCore::MAX_GEOMETRY_EXTENT and edge_x == edge_x)
+    check("character x stays inside the shared coordinate envelope", edge_character_x <= UiCore::MAX_GEOMETRY_EXTENT and edge_character_x >= -UiCore::MAX_GEOMETRY_EXTENT and edge_character_x == edge_character_x)
+
     UiFlat::reset()
     UiCore::begin_frame()
     UiFlat::paint()

@@ -133,7 +133,12 @@ extend UiFlat:
             available_width: mutable f32 = widgets[index].width - inset * 2.0
             available_width <- 0.0 if available_width < 0.0 else available_width
             visible_start: usize = visible_text_start(index, available_width)
-            return widgets[index].x + inset + measure_text_range(index, visible_start, widgets[index].caret)
+            # The field origin and measured run are each bounded, but their
+            # sum can still cross the shared coordinate envelope when a
+            # translated child sits at an extreme edge. Native text protocol
+            # callers receive this value directly, so bound the final result
+            # after composing all three terms.
+            return UiCore::bounded_coordinate(widgets[index].x + inset + measure_text_range(index, visible_start, widgets[index].caret))
 
         def text_character_x(index: usize, utf16_location: usize) -> f32:
             return 0.0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
@@ -145,18 +150,18 @@ extend UiFlat:
             position <- visible_start if position < visible_start else position
             width: mutable f32 = measure_text_range(index, visible_start, position)
             width <- available_width if width > available_width else width
-            return widgets[index].x + inset + width
+            return UiCore::bounded_coordinate(widgets[index].x + inset + width)
 
         def text_caret_y(index: usize) -> f32:
             return 0.0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
             inset: f32 = clamped_inset(current_theme.text_vertical_padding, widgets[index].height)
-            return widgets[index].y + inset
+            return UiCore::bounded_coordinate(widgets[index].y + inset)
 
         def text_caret_height(index: usize) -> f32:
             return 0.0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
             inset: f32 = clamped_inset(current_theme.text_vertical_padding, widgets[index].height)
             inner: f32 = widgets[index].height - inset * 2.0
-            return inner if inner > 0.0 else 0.0
+            return UiCore::bounded_extent(inner) if inner > 0.0 else 0.0
 
         def text_position_at(index: usize, x: f32) -> usize:
             return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
@@ -204,4 +209,3 @@ extend UiFlat:
             return if target >= widget_count or widgets[target].kind != UiConst::WidgetKind.TextField
             return if scrollbar_target(x, y) != NONE
             select_text_at(x, click_count)
-
