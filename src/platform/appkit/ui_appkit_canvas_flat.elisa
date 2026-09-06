@@ -129,14 +129,24 @@ def appkit_flat_text_click(x: f32, y: f32, button: i32, click_count: i32) -> voi
     UiFlat::select_text_click_at_pointer(x, y, button, click_count)
 
 def appkit_flat_pointer_button(x: f32, y: f32, button: i32, down: i32, click_count: i32) -> void:
-    return if not UiAppKitCanvas::live()
+    return if not UiAppKitCanvas::live() or not UiLifecycle::accepts_input()
     normalized_button: i32 = UiAppKitCanvas::button_from_appkit(button)
     # A press is both a pointer transition and a text-selection click. Keep
     # that ordering in Elisa so every native host reports the same interaction;
     # the Objective-C view only forwards Cocoa's raw button facts.
-    appkit_canvas_pointer_down_callback(x, y, normalized_button) if down != 0
-    appkit_flat_text_click(x, y, normalized_button, click_count) if down != 0
-    appkit_canvas_pointer_up_callback(x, y, normalized_button) if down == 0
+    if down != 0:
+        lifetime: usize = UiFlat::lifetime()
+        appkit_canvas_pointer_down_callback(x, y, normalized_button)
+        # Pointer-down may synchronously dispatch a slider change callback.
+        # If that callback rebuilt the retained tree (or stopped the window),
+        # the original click must not select text in the replacement tree.
+        return if UiFlat::lifetime() != lifetime or not UiAppKitCanvas::live() or not UiLifecycle::accepts_input()
+        appkit_flat_text_click(x, y, normalized_button, click_count)
+        # Text selection runs after the pointer router's redraw, so request one
+        # more paint for the selection change itself.
+        UiAppKitCanvas::redraw() if UiAppKitCanvas::live()
+        return
+    appkit_canvas_pointer_up_callback(x, y, normalized_button)
 
 def appkit_flat_pointer_move_event(x: f32, y: f32) -> usize:
     return UiAppKitCanvas::native_cursor(0) if not UiAppKitCanvas::live()
