@@ -19,9 +19,12 @@ def touch(id: u32, phase: UiGestures::Phase, x: f32, y: f32, time: f32) -> UiGes
 def main() -> i64:
     UiGestures::reset()
     check("reset clears prior overflow", not UiGestures::overflowed())
+    check("begin rejects a non-begin phase", not UiGestures::begin(touch(99, UiGestures::Phase.Ended, 0.0, 0.0, 0.0)) and UiGestures::active_count() == 0)
     check("first contact begins", UiGestures::begin(touch(1, UiGestures::Phase.Began, 10.0, 20.0, 1.0)))
     check("duplicate contact is rejected", not UiGestures::begin(touch(1, UiGestures::Phase.Began, 10.0, 20.0, 1.0)))
+    check("move rejects a non-move phase", not UiGestures::move(touch(1, UiGestures::Phase.Began, 14.0, 20.0, 1.1)) and UiGestures::snapshot().kind == UiGestures::Kind.None)
     check("small movement stays undecided", UiGestures::move(touch(1, UiGestures::Phase.Moved, 14.0, 20.0, 1.1)) and UiGestures::snapshot().kind == UiGestures::Kind.None)
+    check("end rejects a non-end phase", not UiGestures::end(touch(1, UiGestures::Phase.Moved, 14.0, 20.0, 1.2)) and UiGestures::active_count() == 1)
     check("short release is a tap", UiGestures::end(touch(1, UiGestures::Phase.Ended, 14.0, 20.0, 1.2)) and UiGestures::snapshot().kind == UiGestures::Kind.Tap and UiGestures::active_count() == 0)
 
     check("long press contact begins", UiGestures::begin(touch(2, UiGestures::Phase.Began, 0.0, 0.0, 2.0)))

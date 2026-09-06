@@ -75,6 +75,11 @@ module UiGestures:
         # A duplicate contact identity is rejected rather than stealing another
         # contact's capture. Capacity exhaustion is sticky and observable.
         def begin(contact: Contact) -> bool:
+            # The operation and the tagged contact phase must agree. Hosts can
+            # deliver malformed or reordered facts; accepting an Ended/Cancel-
+            # led contact here would create a live capture that no matching
+            # begin event ever established.
+            return false if contact.phase != Phase.Began
             return false if find_slot(contact.id) != NONE_SLOT
             free: usize = free_slot()
             if free == NONE_SLOT:
@@ -101,6 +106,7 @@ module UiGestures:
             return true
 
         def move(contact: Contact) -> bool:
+            return false if contact.phase != Phase.Moved
             slot: usize = find_slot(contact.id)
             return false if slot == NONE_SLOT
             position: UiCore::Vec2 = safe_point(contact.position)
@@ -122,6 +128,7 @@ module UiGestures:
             return true
 
         def end(contact: Contact) -> bool:
+            return false if contact.phase != Phase.Ended
             slot: usize = find_slot(contact.id)
             return false if slot == NONE_SLOT
             position: UiCore::Vec2 = safe_point(contact.position)
