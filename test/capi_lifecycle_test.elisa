@@ -6,6 +6,7 @@ extern puts(text: cstr) -> i64
 
 global mutable callbacks: i32 = 0
 global mutable nested_sent: bool = false
+global mutable begin_on_callback: bool = false
 global mutable failures: i32 = 0
 
 def app_event(event: UiCore::Event) -> void:
@@ -14,7 +15,12 @@ def app_event(event: UiCore::Event) -> void:
         # The queued event is from the old session: a real application callback
         # may stop its window and still submit one last synthetic event before
         # returning to the C adapter.
-        _ = UiLifecycle::stop()
+        if begin_on_callback:
+            _ = UiLifecycle::begin()
+            _ = UiLifecycle::ready()
+            _ = UiLifecycle::focus_gained()
+        else:
+            _ = UiLifecycle::stop()
         nested_sent <- true
         elisa_ui_dispatch_event(6, 0.0, 0.0, 0.0, 0.0, 65)
 
@@ -33,6 +39,17 @@ def main() -> i64:
     check("C adapter delivers the current event before stop", callbacks == 1)
     check("C adapter callback stopped its lifecycle", nested_sent and not UiLifecycle::is_started())
     check("C adapter drops queued input after stop", UiEvents::pending() == 0 and callbacks == 1)
+
+    # A callback that starts a replacement session from the phase-New state
+    # must also invalidate events queued before that generation change.
+    UiLifecycle::reset()
+    UiEvents::reset()
+    callbacks <- 0
+    nested_sent <- false
+    begin_on_callback <- true
+    elisa_ui_dispatch_event(2, 8.0, 9.0, 0.0, 0.0, 0)
+    check("C adapter delivers a phase-New event once", callbacks == 1)
+    check("C adapter drops events across startup generation turnover", nested_sent and UiLifecycle::is_started() and UiEvents::pending() == 0 and callbacks == 1)
 
     if failures == 0:
         _ = puts("capi lifecycle: all checks passed")

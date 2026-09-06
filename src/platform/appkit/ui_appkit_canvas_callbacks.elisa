@@ -12,15 +12,17 @@ def appkit_canvas_dispatch_event(event: UiCore::Event) -> void:
     appkit_canvas_event_dispatch_active <- true
     # A callback can stop the current owner or begin a replacement session
     # before returning. Capture the session identity at drain start so queued
-    # events cannot leak across that lifecycle boundary. The phase-New case is
-    # intentionally left unguarded for isolated keymap/unit tests that exercise
-    # the pure Elisa dispatcher without opening a canvas.
+    # events cannot leak across that lifecycle boundary. The phase-New case
+    # remains usable for isolated keymap/unit tests that exercise the pure
+    # Elisa dispatcher without opening a canvas; starting a session still
+    # rotates the generation and invalidates queued pre-session events.
     drain_started: bool = UiLifecycle::is_started()
     drain_generation: u32 = UiLifecycle::generation()
     queued: mutable UiCore::Event = UiCore::Event.None
     while UiEvents::dequeue(queued):
+        continue if UiLifecycle::generation() != drain_generation
         if drain_started:
-            continue if not UiLifecycle::is_started() or UiLifecycle::generation() != drain_generation
+            continue if not UiLifecycle::is_started()
             continue if UiCore::is_input_event(queued) and not UiLifecycle::accepts_input()
         app_event(queued)
     appkit_canvas_event_dispatch_active <- false
