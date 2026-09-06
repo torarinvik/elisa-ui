@@ -126,7 +126,11 @@ extend UiFlat:
             travel: f32 = scrollbar_track_length(index) - thumb
             thumb_position: f32 = travel * widgets[index].scroll_offset / limit if limit > 0.0 else 0.0
             thumb_start: f32 = start + thumb_position
-            return if coordinate >= thumb_start and coordinate <= thumb_start + thumb
+            # Keep the thumb's far edge half-open, matching `scrollbar_part`.
+            # A pointer exactly on that edge is on the track and should page;
+            # treating it as part of the thumb made the same pixel both a
+            # paging target and a drag target depending on the entry path.
+            return if coordinate >= thumb_start and coordinate < thumb_start + thumb
             viewport: f32 = widgets[index].width if widgets[index].axis == UiConst::Axis.Row else widgets[index].height
             _ = set_scroll_offset(index, widgets[index].scroll_offset - viewport if coordinate < thumb_start else widgets[index].scroll_offset + viewport)
 
@@ -162,4 +166,3 @@ extend UiFlat:
 
         # Pre-order emission gives painter's-algorithm ordering for free: a
         # parent's background is laid down before any of its children.
-
