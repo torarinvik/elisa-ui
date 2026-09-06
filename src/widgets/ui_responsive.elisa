@@ -56,22 +56,22 @@ module UiResponsive:
             return Breakpoints{compact_max: DEFAULT_COMPACT_MAX, medium_max: DEFAULT_MEDIUM_MAX}
 
         def normalize_breakpoints(points: Breakpoints) -> Breakpoints:
-            compact: f32 = UiCore::nonnegative_extent(points.compact_max)
-            medium: mutable f32 = UiCore::nonnegative_extent(points.medium_max)
+            compact: f32 = UiCore::bounded_extent(points.compact_max)
+            medium: mutable f32 = UiCore::bounded_extent(points.medium_max)
             medium <- compact if medium < compact
             return Breakpoints{compact_max: compact, medium_max: medium}
 
         def viewport(width: f32, height: f32, scale: f32) -> Viewport:
-            safe_scale: mutable f32 = UiCore::nonnegative_extent(scale)
+            safe_scale: mutable f32 = UiCore::bounded_extent(scale)
             safe_scale <- 1.0 if safe_scale == 0.0
             return Viewport{
-                width: UiCore::nonnegative_extent(width),
-                height: UiCore::nonnegative_extent(height),
+                width: UiCore::bounded_extent(width),
+                height: UiCore::bounded_extent(height),
                 scale: safe_scale,
             }
 
         def classify(width: f32, points: Breakpoints) -> SizeClass:
-            safe_width: f32 = UiCore::nonnegative_extent(width)
+            safe_width: f32 = UiCore::bounded_extent(width)
             normalized: Breakpoints = normalize_breakpoints(points)
             return SizeClass.Compact if safe_width <= normalized.compact_max
             return SizeClass.Medium if safe_width <= normalized.medium_max
@@ -89,14 +89,14 @@ module UiResponsive:
         # produce a negative content box.
         def insets(top: f32, right: f32, bottom: f32, left: f32) -> Insets:
             return Insets{
-                top: UiCore::nonnegative_extent(top),
-                right: UiCore::nonnegative_extent(right),
-                bottom: UiCore::nonnegative_extent(bottom),
-                left: UiCore::nonnegative_extent(left),
+                top: UiCore::bounded_extent(top),
+                right: UiCore::bounded_extent(right),
+                bottom: UiCore::bounded_extent(bottom),
+                left: UiCore::bounded_extent(left),
             }
 
         def keyboard_insets(bottom: f32, visible: bool) -> KeyboardInsets:
-            return KeyboardInsets{bottom: UiCore::nonnegative_extent(bottom), visible: visible}
+            return KeyboardInsets{bottom: UiCore::bounded_extent(bottom), visible: visible}
 
         def content_area(view: Viewport, safe: Insets) -> ContentArea:
             safe_view: Viewport = viewport(view.width, view.height, view.scale)
@@ -137,9 +137,9 @@ module UiResponsive:
         # is counted only between columns. A zero maximum means one column,
         # while a zero item width intentionally requests the caller's cap.
         def columns(width: f32, minimum_item_width: f32, spacing: f32, maximum: i32) -> i32:
-            safe_width: f32 = UiCore::nonnegative_extent(width)
-            safe_item: f32 = UiCore::nonnegative_extent(minimum_item_width)
-            safe_spacing: f32 = UiCore::nonnegative_extent(spacing)
+            safe_width: f32 = UiCore::bounded_extent(width)
+            safe_item: f32 = UiCore::bounded_extent(minimum_item_width)
+            safe_spacing: f32 = UiCore::bounded_extent(spacing)
             cap: i32 = maximum if maximum > 0 else 1
             return cap if safe_item == 0.0
             # Keep the ratio in f64. Finite f32 inputs can still overflow when
@@ -160,9 +160,9 @@ module UiResponsive:
         # Convert a logical target into a physical touch-safe extent without
         # leaking platform-specific scale policy into widget code.
         def physical_extent(logical: f32, scale: f32, minimum_physical: f32) -> f32:
-            safe_logical: f32 = UiCore::nonnegative_extent(logical)
-            safe_scale: mutable f32 = UiCore::nonnegative_extent(scale)
+            safe_logical: f32 = UiCore::bounded_extent(logical)
+            safe_scale: mutable f32 = UiCore::bounded_extent(scale)
             safe_scale <- 1.0 if safe_scale == 0.0
-            safe_physical: f32 = UiCore::nonnegative_extent(minimum_physical)
-            required: f32 = UiCore::finite_or_zero(safe_physical / safe_scale)
+            safe_physical: f32 = UiCore::bounded_extent(minimum_physical)
+            required: f32 = UiCore::bounded_extent(UiCore::finite_or_zero(safe_physical / safe_scale))
             return required if required > safe_logical else safe_logical
