@@ -353,13 +353,11 @@ module UiSdl3:
             SDL_Quit()
             clear_event_buffer()
 
-        # Poll one SDL event and translate it. Returns false when the queue is
-        # empty; events outside the modeled set come back as `Event.None` for the
-        # app to skip.
-        def next_event(out_event: mutable UiCore::Event&) -> bool:
-            buffer_pointer: void& = (&event_buffer.bytes[0]).cast[void&] can Unsafe.PointerCast
-            has_event: bool = SDL_PollEvent(buffer_pointer)
-            return false if not has_event
+        # Translate the event currently stored in `event_buffer`. Keeping the
+        # decode step separate lets both polling and blocking waits feed the
+        # exact same typed boundary without copying SDL's union or dropping a
+        # waited event.
+        def decode_event(out_event: mutable UiCore::Event&) -> bool:
             kind: u32 = event_type()
             out_event <- (UiCore::Event.None)
             if kind != EVENT_QUIT and not window_event_matches(window_id, event_window_id()):
@@ -397,6 +395,25 @@ module UiSdl3:
                 if UiCore::key_is_valid(translated):
                     out_event <- (UiCore::KeyEvent.Up(code: UiCore::Key(translated)))
             return true
+
+        # Poll one SDL event and translate it. Returns false when the queue is
+        # empty; events outside the modeled set come back as `Event.None` for
+        # the app to skip.
+        def next_event(out_event: mutable UiCore::Event&) -> bool:
+            buffer_pointer: void& = (&event_buffer.bytes[0]).cast[void&] can Unsafe.PointerCast
+            has_event: bool = SDL_PollEvent(buffer_pointer)
+            return false if not has_event
+            return decode_event(out_event)
+
+        # Wait for one event using a valid SDL_Event storage location. SDL's
+        # wait API writes the event before returning; passing null here is not
+        # a non-consuming sleep and can dereference a null pointer when an
+        # event arrives. The already-filled buffer is decoded immediately.
+        def wait_event(timeout_ms: i32, out_event: mutable UiCore::Event&) -> bool:
+            buffer_pointer: void& = (&event_buffer.bytes[0]).cast[void&] can Unsafe.PointerCast
+            has_event: bool = SDL_WaitEventTimeout(buffer_pointer, timeout_ms)
+            return false if not has_event
+            return decode_event(out_event)
 
         # Drain each decoded event before polling borrowed text from SDL. This
         # preserves focus/key/text order and prevents native bursts overflowing

@@ -5,6 +5,25 @@
 # one centralized native teardown path.
 
 extend UiSdl3:
+    private:
+        # Dispatch one event while SDL's borrowed union is still alive. Text
+        # callbacks read pointers from the current buffer, whereas typed
+        # events are queued and delivered through the shared framework queue.
+        # Keeping this in one helper makes polled and waited events identical.
+        def dispatch_current_event(event: UiCore::Event, running: mutable bool&) -> void:
+            if event_type() == EVENT_TEXT_INPUT and UiLifecycle::accepts_input():
+                text_input(event_text_pointer())
+            elif event_type() == EVENT_TEXT_EDITING and UiLifecycle::accepts_input():
+                text_editing(event_text_pointer(), event_text_editing_start(), event_text_editing_length())
+            elif UiCore::wire_kind(event) != UiCore::WireKind.None:
+                _ = UiEvents::enqueue(event)
+            # `event` is now represented by the typed UiCore value (or has
+            # already been delivered to the text callback). Do not keep SDL's
+            # borrowed pointer-bearing union alive while application code
+            # dispatches the event.
+            clear_event_buffer()
+            dispatch_queued_events(running)
+
     public:
         # max_frames <= 0 runs until quit; a positive value exits after that
         # many frames (headless smoke runs use it together with
@@ -66,18 +85,7 @@ extend UiSdl3:
             while running |frames|:
                 event: mutable UiCore::Event = (UiCore::Event.None)
                 while next_event(event) |event, running|:
-                    if event_type() == EVENT_TEXT_INPUT and UiLifecycle::accepts_input():
-                        text_input(event_text_pointer())
-                    elif event_type() == EVENT_TEXT_EDITING and UiLifecycle::accepts_input():
-                        text_editing(event_text_pointer(), event_text_editing_start(), event_text_editing_length())
-                    elif UiCore::wire_kind(event) != UiCore::WireKind.None:
-                        _ = UiEvents::enqueue(event)
-                    # `event` is now represented by the typed UiCore value (or
-                    # has already been delivered to the text callback). Do not
-                    # keep SDL's borrowed pointer-bearing union alive while
-                    # application code dispatches the event.
-                    clear_event_buffer()
-                    dispatch_queued_events(&running)
+                    dispatch_current_event(event, &running)
                     break if not running
                 break if not running
                 # Same retained contract as the component backend: the app
@@ -105,7 +113,8 @@ extend UiSdl3:
                 frames <- frames + 1
                 running <- false if max_frames > 0 and frames >= max_frames
                 if running and max_frames <= 0:
-                    _ = SDL_WaitEventTimeout(null, UiCore::frame_timeout_ms(UiCore::frame_delay()))
+                    if wait_event(UiCore::frame_timeout_ms(UiCore::frame_delay()), event):
+                        dispatch_current_event(event, &running)
             if window is text_window:
                 _ = SDL_StopTextInput(text_window)
             release_native()
