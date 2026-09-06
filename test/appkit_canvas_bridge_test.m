@@ -17,6 +17,7 @@ static int test_click_count;
 static int test_click_button;
 static int test_pointer_kind;
 static int test_pointer_button;
+static size_t test_input_window;
 static int test_window_focused = -1;
 static size_t test_focus_window;
 static size_t test_environment_window;
@@ -133,20 +134,27 @@ void elisa_appkit_canvas_pointer_leave(void) {
     test_pointer_kind = 3;
     test_pointer_button = 0;
 }
-size_t elisa_appkit_canvas_pointer_leave_event(void) {
+size_t elisa_appkit_canvas_pointer_leave_event(size_t windowHandle) {
+    test_input_window = windowHandle;
     elisa_appkit_canvas_pointer_leave();
     return (size_t)(__bridge void *)[NSCursor arrowCursor];
 }
-void elisa_appkit_canvas_pointer_scroll(float x, float y, float dx, float dy) {
+void elisa_appkit_canvas_pointer_scroll(size_t windowHandle, float x, float y, float dx, float dy) {
+    test_input_window = windowHandle;
     (void)x; (void)y; (void)dx; (void)dy;
     test_pointer_kind = 4;
     test_pointer_button = 0;
 }
-void elisa_appkit_canvas_key_down_event(size_t event, int keyCode, size_t character, size_t modifiers) {
+void elisa_appkit_canvas_key_down_event(size_t windowHandle, size_t event, int keyCode, size_t character, size_t modifiers) {
+    test_input_window = windowHandle;
     (void)event; (void)keyCode; (void)character; (void)modifiers;
 }
-void elisa_appkit_canvas_key_up(int keyCode, size_t character) { (void)keyCode; (void)character; }
-void elisa_appkit_canvas_raw_flags(int keyCode, size_t modifiers) {
+void elisa_appkit_canvas_key_up(size_t windowHandle, int keyCode, size_t character) {
+    test_input_window = windowHandle;
+    (void)keyCode; (void)character;
+}
+void elisa_appkit_canvas_raw_flags(size_t windowHandle, int keyCode, size_t modifiers) {
+    test_input_window = windowHandle;
     (void)keyCode; (void)modifiers;
 }
 size_t elisa_appkit_canvas_accessibility_capacity(void) { return 256; }
@@ -273,7 +281,8 @@ size_t elisa_appkit_canvas_cursor_at(float x, float y) {
     (void)x; (void)y;
     return (size_t)(__bridge void *)[NSCursor IBeamCursor];
 }
-size_t elisa_appkit_canvas_pointer_move_event(float x, float y) {
+size_t elisa_appkit_canvas_pointer_move_event(size_t windowHandle, float x, float y) {
+    test_input_window = windowHandle;
     elisa_appkit_canvas_pointer_move(x, y);
     return elisa_appkit_canvas_cursor_at(x, y);
 }
@@ -285,7 +294,8 @@ void elisa_appkit_canvas_text_click(float x, int button, int clickCount) {
     test_click_button = button;
     test_click_count = clickCount;
 }
-void elisa_appkit_canvas_pointer_button(float x, float y, int button, int down, int clickCount) {
+void elisa_appkit_canvas_pointer_button(size_t windowHandle, float x, float y, int button, int down, int clickCount) {
+    test_input_window = windowHandle;
     if (down) {
         elisa_appkit_canvas_pointer_down(x, y, button);
         elisa_appkit_canvas_text_click(x, button, clickCount);
@@ -585,27 +595,32 @@ int main(void) {
             windowNumber:[elisa_appkit_canvas_window(opened) windowNumber] context:nil eventNumber:0
             clickCount:0 pressure:0.0];
         [elisa_appkit_canvas_view(opened) mouseEntered:move];
-        if (require(test_pointer_kind == 0, @"pointer entry did not cross the Elisa event path")) return 1;
+        if (require(test_pointer_kind == 0 && test_input_window == opened,
+                    @"pointer entry did not cross the Elisa event path with its identity")) return 1;
         [elisa_appkit_canvas_view(opened) mouseMoved:move];
-        if (require(test_pointer_kind == 0, @"pointer motion did not cross the Elisa event path")) return 1;
+        if (require(test_pointer_kind == 0 && test_input_window == opened,
+                    @"pointer motion did not cross the Elisa event path with its identity")) return 1;
         NSEvent *singleClick = [NSEvent mouseEventWithType:NSEventTypeLeftMouseDown
             location:NSMakePoint(40, 20) modifierFlags:0 timestamp:0
             windowNumber:[elisa_appkit_canvas_window(opened) windowNumber] context:nil eventNumber:1
             clickCount:1 pressure:1.0];
         [elisa_appkit_canvas_view(opened) mouseDown:singleClick];
-        if (require(test_click_button == 0 && test_click_count == 1, @"single click facts did not reach Elisa")) return 1;
+        if (require(test_click_button == 0 && test_click_count == 1 && test_input_window == opened,
+                    @"single click facts did not reach Elisa with their identity")) return 1;
         NSEvent *doubleClick = [NSEvent mouseEventWithType:NSEventTypeLeftMouseDown
             location:NSMakePoint(40, 20) modifierFlags:0 timestamp:0
             windowNumber:[elisa_appkit_canvas_window(opened) windowNumber] context:nil eventNumber:2
             clickCount:2 pressure:1.0];
         [elisa_appkit_canvas_view(opened) mouseDown:doubleClick];
-        if (require(test_click_button == 0 && test_click_count == 2, @"native click facts did not reach Elisa")) return 1;
+        if (require(test_click_button == 0 && test_click_count == 2 && test_input_window == opened,
+                    @"native click facts did not reach Elisa with their identity")) return 1;
         NSEvent *rightClick = [NSEvent mouseEventWithType:NSEventTypeRightMouseDown
             location:NSMakePoint(40, 20) modifierFlags:0 timestamp:0
             windowNumber:[elisa_appkit_canvas_window(opened) windowNumber] context:nil eventNumber:3
             clickCount:2 pressure:1.0];
         [elisa_appkit_canvas_view(opened) rightMouseDown:rightClick];
-        if (require(test_pointer_kind == 1 && test_pointer_button == (int)rightClick.buttonNumber,
+        if (require(test_pointer_kind == 1 && test_pointer_button == (int)rightClick.buttonNumber &&
+                        test_input_window == opened,
                     @"right-button raw identity did not cross the pointer FFI")) return 1;
         if (require(test_click_button == (int)rightClick.buttonNumber && test_click_count == 2,
                     @"right-button click facts did not reach Elisa")) return 1;
@@ -614,14 +629,15 @@ int main(void) {
             windowNumber:[elisa_appkit_canvas_window(opened) windowNumber] context:nil eventNumber:4
             clickCount:2 pressure:0.0];
         [elisa_appkit_canvas_view(opened) rightMouseUp:rightRelease];
-        if (require(test_pointer_kind == 2 && test_pointer_button == (int)rightRelease.buttonNumber,
+        if (require(test_pointer_kind == 2 && test_pointer_button == (int)rightRelease.buttonNumber &&
+                        test_input_window == opened,
                     @"right-button release did not cross the pointer FFI")) return 1;
         NSEvent *exit = [NSEvent mouseEventWithType:NSEventTypeMouseMoved
             location:NSMakePoint(40, 20) modifierFlags:0 timestamp:0
             windowNumber:[elisa_appkit_canvas_window(opened) windowNumber] context:nil eventNumber:5
             clickCount:0 pressure:0.0];
         [elisa_appkit_canvas_view(opened) mouseExited:exit];
-        if (require(test_pointer_kind == 3 && test_pointer_button == 0,
+        if (require(test_pointer_kind == 3 && test_pointer_button == 0 && test_input_window == opened,
                     @"pointer exit did not cross the Elisa event path")) return 1;
         NSArray *children = [elisa_appkit_canvas_view(opened) accessibilityChildren];
         if (require(children.count == 3, @"semantic children missing")) return 1;

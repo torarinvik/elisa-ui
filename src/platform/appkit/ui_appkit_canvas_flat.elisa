@@ -103,8 +103,9 @@ def appkit_flat_key_down_route(character: i32, modifiers: usize) -> i32:
         UiAppKitCanvas::native_shift(modifiers), UiAppKitCanvas::native_control(modifiers),
         UiAppKitCanvas::native_option(modifiers), UiAppKitCanvas::native_command(modifiers))
 
-def appkit_flat_key_down_event(event: usize, key_code: i32, character_native: usize, modifiers: usize) -> void:
+def appkit_flat_key_down_event(window_handle: usize, event: usize, key_code: i32, character_native: usize, modifiers: usize) -> void:
     return if not UiAppKitCanvas::live() or not UiLifecycle::accepts_input()
+    return if window_handle != UiAppKitCanvas::window_handle()
     character: i32 = UiAppKitCanvas::native_event_character(character_native)
     route: i32 = appkit_flat_key_down_route(character, modifiers)
     if route >= 2:
@@ -113,13 +114,14 @@ def appkit_flat_key_down_event(event: usize, key_code: i32, character_native: us
     if route == 1:
         UiAppKitCanvas::interpret_key_event(event, UiAppKitCanvas::window_handle())
         return
-    appkit_canvas_raw_key_callback(1, key_code, character)
+    appkit_canvas_raw_key_callback(window_handle, 1, key_code, character)
 
-def appkit_flat_key_up(key_code: i32, character_native: usize) -> void:
+def appkit_flat_key_up(window_handle: usize, key_code: i32, character_native: usize) -> void:
     return if not UiAppKitCanvas::live() or not UiLifecycle::accepts_input()
+    return if window_handle != UiAppKitCanvas::window_handle()
     character: i32 = UiAppKitCanvas::native_event_character(character_native)
     return if UiFlat::accepts_text()
-    appkit_canvas_raw_key_callback(0, key_code, character)
+    appkit_canvas_raw_key_callback(window_handle, 0, key_code, character)
 
 def appkit_flat_text_click(x: f32, y: f32, button: i32, click_count: i32) -> void:
     # Text selection is pointer input too. Keep it behind the same lifecycle
@@ -128,15 +130,16 @@ def appkit_flat_text_click(x: f32, y: f32, button: i32, click_count: i32) -> voi
     return if not UiAppKitCanvas::live() or not UiLifecycle::accepts_input()
     UiFlat::select_text_click_at_pointer(x, y, button, click_count)
 
-def appkit_flat_pointer_button(x: f32, y: f32, button: i32, down: i32, click_count: i32) -> void:
+def appkit_flat_pointer_button(window_handle: usize, x: f32, y: f32, button: i32, down: i32, click_count: i32) -> void:
     return if not UiAppKitCanvas::live() or not UiLifecycle::accepts_input()
+    return if window_handle != UiAppKitCanvas::window_handle()
     normalized_button: i32 = UiAppKitCanvas::button_from_appkit(button)
     # A press is both a pointer transition and a text-selection click. Keep
     # that ordering in Elisa so every native host reports the same interaction;
     # the Objective-C view only forwards Cocoa's raw button facts.
     if down != 0:
         lifetime: usize = UiFlat::lifetime()
-        appkit_canvas_pointer_down_callback(x, y, normalized_button)
+        appkit_canvas_pointer_down_callback(window_handle, x, y, normalized_button)
         # Pointer-down may synchronously dispatch a slider change callback.
         # If that callback rebuilt the retained tree (or stopped the window),
         # the original click must not select text in the replacement tree.
@@ -146,22 +149,24 @@ def appkit_flat_pointer_button(x: f32, y: f32, button: i32, down: i32, click_cou
         # more paint for the selection change itself.
         UiAppKitCanvas::redraw() if UiAppKitCanvas::live()
         return
-    appkit_canvas_pointer_up_callback(x, y, normalized_button)
+    appkit_canvas_pointer_up_callback(window_handle, x, y, normalized_button)
 
-def appkit_flat_pointer_move_event(x: f32, y: f32) -> usize:
+def appkit_flat_pointer_move_event(window_handle: usize, x: f32, y: f32) -> usize:
     return UiAppKitCanvas::native_cursor(0) if not UiAppKitCanvas::live()
+    return UiAppKitCanvas::native_cursor(0) if window_handle != UiAppKitCanvas::window_handle()
     # Hover state changes before cursor selection, so the pointer and cursor
     # always describe the same retained frame. Cocoa receives only the opaque
     # cursor object it must install.
-    appkit_canvas_pointer_move_callback(x, y)
+    appkit_canvas_pointer_move_callback(window_handle, x, y)
     return UiAppKitCanvas::native_cursor(0) if not UiAppKitCanvas::live()
     return UiAppKitCanvas::native_cursor(UiFlat::cursor_at(x, y))
 
-def appkit_flat_pointer_leave_event() -> usize:
+def appkit_flat_pointer_leave_event(window_handle: usize) -> usize:
     return UiAppKitCanvas::native_cursor(0) if not UiAppKitCanvas::live()
+    return UiAppKitCanvas::native_cursor(0) if window_handle != UiAppKitCanvas::window_handle()
     # Update retained hover state before returning the cursor Cocoa should
     # install. The native view supplies only the final opaque cursor object.
-    appkit_canvas_pointer_leave_callback()
+    appkit_canvas_pointer_leave_callback(window_handle)
     return UiAppKitCanvas::native_cursor(0)
 
 def appkit_flat_set_text(index: usize, text: usize) -> i32:
@@ -323,14 +328,14 @@ export fn elisa_appkit_canvas_accessibility_activate(handle: usize) -> i32 = app
 export fn elisa_appkit_canvas_accessibility_adjust(handle: usize, direction: i32) -> i32 = appkit_flat_accessibility_adjust_handle
 export fn elisa_appkit_canvas_accessibility_set_value(handle: usize, value: usize) -> usize = appkit_flat_accessibility_set_value_handle
 export fn elisa_appkit_canvas_window_closed(window_handle: usize) -> void = appkit_flat_window_closed
-export fn elisa_appkit_canvas_pointer_move_event(x: f32, y: f32) -> usize = appkit_flat_pointer_move_event
-export fn elisa_appkit_canvas_pointer_button(x: f32, y: f32, button: i32, down: i32, click_count: i32) -> void = appkit_flat_pointer_button
-export fn elisa_appkit_canvas_pointer_leave_event() -> usize = appkit_flat_pointer_leave_event
+export fn elisa_appkit_canvas_pointer_move_event(window_handle: usize, x: f32, y: f32) -> usize = appkit_flat_pointer_move_event
+export fn elisa_appkit_canvas_pointer_button(window_handle: usize, x: f32, y: f32, button: i32, down: i32, click_count: i32) -> void = appkit_flat_pointer_button
+export fn elisa_appkit_canvas_pointer_leave_event(window_handle: usize) -> usize = appkit_flat_pointer_leave_event
 # Cocoa passes charactersIgnoringModifiers as a borrowed CFString handle. Keep
 # the exported ABI pointer-sized, matching the Objective-C `size_t` declaration;
 # Elisa decodes the UTF-16 scalar only after crossing this boundary.
-export fn elisa_appkit_canvas_key_down_event(event: usize, key_code: i32, character: usize, modifiers: usize) -> void = appkit_flat_key_down_event
-export fn elisa_appkit_canvas_key_up(key_code: i32, character: usize) -> void = appkit_flat_key_up
+export fn elisa_appkit_canvas_key_down_event(window_handle: usize, event: usize, key_code: i32, character: usize, modifiers: usize) -> void = appkit_flat_key_down_event
+export fn elisa_appkit_canvas_key_up(window_handle: usize, key_code: i32, character: usize) -> void = appkit_flat_key_up
 export fn elisa_appkit_canvas_selection_location() -> usize = appkit_flat_selection_location
 export fn elisa_appkit_canvas_selection_length() -> usize = appkit_flat_selection_length
 export fn elisa_appkit_canvas_set_selected_range(handle: usize, location: usize, length: usize) -> i32 = appkit_flat_set_selected_range_handle

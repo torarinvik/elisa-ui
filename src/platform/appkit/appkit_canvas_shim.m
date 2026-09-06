@@ -9,10 +9,10 @@
 
 extern void elisa_appkit_canvas_frame(size_t windowHandle, size_t context);
 extern void elisa_appkit_canvas_resize(size_t windowHandle, float width, float height);
-extern size_t elisa_appkit_canvas_pointer_move_event(float x, float y);
-extern void elisa_appkit_canvas_pointer_button(float x, float y, int button, int down, int clickCount);
-extern void elisa_appkit_canvas_pointer_scroll(float x, float y, float dx, float dy);
-extern void elisa_appkit_canvas_raw_flags(int keyCode, size_t modifiers);
+extern size_t elisa_appkit_canvas_pointer_move_event(size_t windowHandle, float x, float y);
+extern void elisa_appkit_canvas_pointer_button(size_t windowHandle, float x, float y, int button, int down, int clickCount);
+extern void elisa_appkit_canvas_pointer_scroll(size_t windowHandle, float x, float y, float dx, float dy);
+extern void elisa_appkit_canvas_raw_flags(size_t windowHandle, int keyCode, size_t modifiers);
 extern void elisa_appkit_canvas_focus_changed(size_t windowHandle, int focused);
 extern void elisa_appkit_canvas_accessibility_environment_changed(size_t windowHandle);
 extern void elisa_appkit_canvas_window_closed(size_t windowHandle);
@@ -21,8 +21,8 @@ extern int elisa_appkit_canvas_render_headless(size_t windowHandle,
                                                size_t snapshot,
                                                int pixelsWidth,
                                                int pixelsHeight);
-extern void elisa_appkit_canvas_key_down_event(size_t event, int keyCode, size_t character, size_t modifiers);
-extern void elisa_appkit_canvas_key_up(int keyCode, size_t character);
+extern void elisa_appkit_canvas_key_down_event(size_t windowHandle, size_t event, int keyCode, size_t character, size_t modifiers);
+extern void elisa_appkit_canvas_key_up(size_t windowHandle, int keyCode, size_t character);
 extern int elisa_appkit_canvas_accessibility_activate(size_t handle);
 extern int elisa_appkit_canvas_accessibility_adjust(size_t handle, int direction);
 extern size_t elisa_appkit_canvas_accessibility_tooltip_text(size_t handle);
@@ -31,7 +31,7 @@ extern int elisa_appkit_canvas_accessibility_increment_direction(void);
 extern int elisa_appkit_canvas_accessibility_decrement_direction(void);
 extern const size_t elisa_appkit_canvas_not_found;
 extern int elisa_appkit_canvas_has_marked_text(void);
-extern size_t elisa_appkit_canvas_pointer_leave_event(void);
+extern size_t elisa_appkit_canvas_pointer_leave_event(size_t windowHandle);
 extern void elisa_appkit_canvas_timer_fired(size_t windowHandle);
 extern size_t elisa_appkit_canvas_selection_location(void);
 extern size_t elisa_appkit_canvas_selection_length(void);
@@ -275,11 +275,13 @@ void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) 
     // The native view reports raw button facts. Elisa decides which framework
     // events a press/release produces and preserves the press-side text-click
     // ordering; this adapter only supplies Cocoa's coordinate and click data.
-    elisa_appkit_canvas_pointer_button(p.x, p.y, button, down, (int)event.clickCount);
+    size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
+    elisa_appkit_canvas_pointer_button(windowHandle, p.x, p.y, button, down, (int)event.clickCount);
 }
 - (void)mouseMoved:(NSEvent *)event {
     NSPoint p = [self eventPoint:event];
-    NSCursor *nativeCursor = elisa_appkit_canvas_cursor(elisa_appkit_canvas_pointer_move_event(p.x, p.y));
+    size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
+    NSCursor *nativeCursor = elisa_appkit_canvas_cursor(elisa_appkit_canvas_pointer_move_event(windowHandle, p.x, p.y));
     if (nativeCursor != nil) [nativeCursor set];
 }
 - (void)mouseEntered:(NSEvent *)event { [self mouseMoved:event]; }
@@ -294,18 +296,25 @@ void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) 
 - (void)otherMouseUp:(NSEvent *)event { [self forwardMouseButton:event down:NO button:(int)event.buttonNumber]; }
 - (void)mouseExited:(NSEvent *)event {
     (void)event;
-    NSCursor *cursor = elisa_appkit_canvas_cursor(elisa_appkit_canvas_pointer_leave_event());
+    size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
+    NSCursor *cursor = elisa_appkit_canvas_cursor(elisa_appkit_canvas_pointer_leave_event(windowHandle));
     if (cursor != nil) [cursor set];
 }
-- (void)scrollWheel:(NSEvent *)event { NSPoint p=[self eventPoint:event]; elisa_appkit_canvas_pointer_scroll(p.x,p.y,[event scrollingDeltaX],[event scrollingDeltaY]); }
+- (void)scrollWheel:(NSEvent *)event {
+    NSPoint p = [self eventPoint:event];
+    size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
+    elisa_appkit_canvas_pointer_scroll(windowHandle, p.x, p.y, [event scrollingDeltaX], [event scrollingDeltaY]);
+}
 - (void)keyDown:(NSEvent *)event {
     NSString *chars = [event charactersIgnoringModifiers];
-    elisa_appkit_canvas_key_down_event((size_t)(__bridge void *)event, event.keyCode,
+    size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
+    elisa_appkit_canvas_key_down_event(windowHandle, (size_t)(__bridge void *)event, event.keyCode,
                                        (size_t)(__bridge void *)chars, (size_t)[event modifierFlags]);
 }
 - (void)keyUp:(NSEvent *)event {
     NSString *chars = [event charactersIgnoringModifiers];
-    elisa_appkit_canvas_key_up(event.keyCode, (size_t)(__bridge void *)chars);
+    size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
+    elisa_appkit_canvas_key_up(windowHandle, event.keyCode, (size_t)(__bridge void *)chars);
 }
 - (void)insertText:(id)input replacementRange:(NSRange)replacementRange {
     // NSTextInputClient permits NSString or NSAttributedString. Pass the
@@ -412,7 +421,8 @@ void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) 
     return [self.window convertRectToScreen:inWindow];
 }
 - (void)flagsChanged:(NSEvent *)event {
-    elisa_appkit_canvas_raw_flags(event.keyCode, (size_t)[event modifierFlags]);
+    size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
+    elisa_appkit_canvas_raw_flags(windowHandle, event.keyCode, (size_t)[event modifierFlags]);
 }
 @end
 

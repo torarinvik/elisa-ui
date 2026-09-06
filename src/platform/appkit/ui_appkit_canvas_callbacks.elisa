@@ -59,8 +59,9 @@ def appkit_canvas_resize_callback(window_handle: usize, width: f32, height: f32)
     appkit_canvas_dispatch_event(UiCore::Event.Resize(size: UiCore::Size(width, height)))
     UiAppKitCanvas::redraw()
 
-def appkit_canvas_pointer_callback(kind: i32, x: f32, y: f32, dx: f32, dy: f32, button: i32) -> void:
+def appkit_canvas_pointer_callback(window_handle: usize, kind: i32, x: f32, y: f32, dx: f32, dy: f32, button: i32) -> void:
     return if not UiAppKitCanvas::live()
+    return if window_handle != UiAppKitCanvas::window_handle()
     return if kind < 0 or kind > 4
     at: UiCore::Vec2 = UiCore::Vec2(x, y)
     event: mutable UiCore::Event = (UiCore::PointerEvent.Move(at: at))
@@ -72,23 +73,24 @@ def appkit_canvas_pointer_callback(kind: i32, x: f32, y: f32, dx: f32, dy: f32, 
     appkit_canvas_dispatch_input_event(event)
     UiAppKitCanvas::redraw()
 
-def appkit_canvas_pointer_move_callback(x: f32, y: f32) -> void:
-    appkit_canvas_pointer_callback(0, x, y, 0.0, 0.0, 0)
+def appkit_canvas_pointer_move_callback(window_handle: usize, x: f32, y: f32) -> void:
+    appkit_canvas_pointer_callback(window_handle, 0, x, y, 0.0, 0.0, 0)
 
-def appkit_canvas_pointer_down_callback(x: f32, y: f32, button: i32) -> void:
-    appkit_canvas_pointer_callback(1, x, y, 0.0, 0.0, button)
+def appkit_canvas_pointer_down_callback(window_handle: usize, x: f32, y: f32, button: i32) -> void:
+    appkit_canvas_pointer_callback(window_handle, 1, x, y, 0.0, 0.0, button)
 
-def appkit_canvas_pointer_up_callback(x: f32, y: f32, button: i32) -> void:
-    appkit_canvas_pointer_callback(2, x, y, 0.0, 0.0, button)
+def appkit_canvas_pointer_up_callback(window_handle: usize, x: f32, y: f32, button: i32) -> void:
+    appkit_canvas_pointer_callback(window_handle, 2, x, y, 0.0, 0.0, button)
 
-def appkit_canvas_pointer_leave_callback() -> void:
-    appkit_canvas_pointer_callback(3, 0.0, 0.0, 0.0, 0.0, 0)
+def appkit_canvas_pointer_leave_callback(window_handle: usize) -> void:
+    appkit_canvas_pointer_callback(window_handle, 3, 0.0, 0.0, 0.0, 0.0, 0)
 
-def appkit_canvas_pointer_scroll_callback(x: f32, y: f32, dx: f32, dy: f32) -> void:
-    appkit_canvas_pointer_callback(4, x, y, dx, dy, 0)
+def appkit_canvas_pointer_scroll_callback(window_handle: usize, x: f32, y: f32, dx: f32, dy: f32) -> void:
+    appkit_canvas_pointer_callback(window_handle, 4, x, y, dx, dy, 0)
 
-def appkit_canvas_key_callback(down: i32, code: i32) -> void:
+def appkit_canvas_key_callback(window_handle: usize, down: i32, code: i32) -> void:
     return if not UiAppKitCanvas::live()
+    return if window_handle != UiAppKitCanvas::window_handle()
     if appkit_canvas_should_close_key(down, code):
         UiAppKitCanvas::close()
         return
@@ -103,12 +105,14 @@ def appkit_canvas_key_callback(down: i32, code: i32) -> void:
 def appkit_canvas_should_close_key(down: i32, code: i32) -> bool:
     return down != 0 and code == UiCore::Key.Escape.i32() and UiLifecycle::accepts_input()
 
-def appkit_canvas_raw_key_callback(down: i32, key_code: i32, character: i32) -> void:
+def appkit_canvas_raw_key_callback(window_handle: usize, down: i32, key_code: i32, character: i32) -> void:
+    return if not UiAppKitCanvas::live() or window_handle != UiAppKitCanvas::window_handle()
     code: i32 = UiAppKitCanvas::key_from_appkit(key_code, character)
     return if code == 0
-    appkit_canvas_key_callback(down, code)
+    appkit_canvas_key_callback(window_handle, down, code)
 
-def appkit_canvas_raw_flags_callback(key_code: i32, modifiers: usize) -> void:
+def appkit_canvas_raw_flags_callback(window_handle: usize, key_code: i32, modifiers: usize) -> void:
+    return if not UiAppKitCanvas::live() or window_handle != UiAppKitCanvas::window_handle()
     shift: i32 = 1 if UiAppKitCanvas::native_shift(modifiers) else 0
     control: i32 = 1 if UiAppKitCanvas::native_control(modifiers) else 0
     alt: i32 = 1 if UiAppKitCanvas::native_option(modifiers) else 0
@@ -118,7 +122,7 @@ def appkit_canvas_raw_flags_callback(key_code: i32, modifiers: usize) -> void:
     down <- control if key_code == 59 or key_code == 62
     down <- alt if key_code == 58 or key_code == 61
     down <- super_key if key_code == 54 or key_code == 55
-    appkit_canvas_raw_key_callback(down, key_code, 0)
+    appkit_canvas_raw_key_callback(window_handle, down, key_code, 0)
 
 def appkit_canvas_focus_changed_callback(window_handle: usize, focused: i32) -> void:
     return if not UiAppKitCanvas::live()
@@ -169,8 +173,8 @@ export fn elisa_appkit_canvas_accessibility_increment_direction() -> i32 = appki
 export fn elisa_appkit_canvas_accessibility_decrement_direction() -> i32 = appkit_canvas_accessibility_decrement_direction
 export fn elisa_appkit_canvas_accessibility_tooltip_text(handle: usize) -> usize = appkit_canvas_accessibility_tooltip_text
 export fn elisa_appkit_canvas_resize(window_handle: usize, width: f32, height: f32) -> void = appkit_canvas_resize_callback
-export fn elisa_appkit_canvas_pointer_scroll(x: f32, y: f32, dx: f32, dy: f32) -> void = appkit_canvas_pointer_scroll_callback
-export fn elisa_appkit_canvas_raw_flags(key_code: i32, modifiers: usize) -> void = appkit_canvas_raw_flags_callback
+export fn elisa_appkit_canvas_pointer_scroll(window_handle: usize, x: f32, y: f32, dx: f32, dy: f32) -> void = appkit_canvas_pointer_scroll_callback
+export fn elisa_appkit_canvas_raw_flags(window_handle: usize, key_code: i32, modifiers: usize) -> void = appkit_canvas_raw_flags_callback
 export fn elisa_appkit_canvas_focus_changed(window_handle: usize, focused: i32) -> void = appkit_canvas_focus_changed_callback
 export fn elisa_appkit_canvas_accessibility_environment_changed(window_handle: usize) -> void = appkit_canvas_accessibility_environment_changed_callback
 export fn elisa_appkit_canvas_rebuild_cursor_rects() -> void = appkit_canvas_rebuild_cursor_rects_callback
