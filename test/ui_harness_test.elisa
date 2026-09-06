@@ -11,6 +11,7 @@ global mutable event_calls: i32 = 0
 global mutable frame_calls: i32 = 0
 global mutable last_event_kind: i32 = -1
 global mutable observed_time: f64 = -1.0
+global mutable stop_during_dispatch: bool = false
 
 def app_init() -> void:
     init_calls <- init_calls + 1
@@ -18,6 +19,10 @@ def app_init() -> void:
 def app_event(event: UiCore::Event) -> void:
     event_calls <- event_calls + 1
     last_event_kind <- UiCore::wire_kind(event).i32()
+    if stop_during_dispatch:
+        stop_during_dispatch <- false
+        _ = UiEvents::enqueue(UiCore::KeyEvent.Down(code: UiCore::Key.A))
+        UiHarness::stop()
 
 def app_frame() -> void:
     frame_calls <- frame_calls + 1
@@ -72,6 +77,12 @@ def main() -> i64:
     UiHarness::frame()
     check("stopped harness ignores late input and frames", event_calls == 3 and frame_calls == 3)
     check("stopped harness invalidates resource callbacks", not UiResources::is_valid(resource) and not UiHarness::set_resource_state(resource, UiResources::State.Failed))
+
+    UiHarness::start(320.0, 200.0)
+    before_turnover_events: i32 = event_calls
+    stop_during_dispatch <- true
+    UiHarness::dispatch(UiCore::Event.FocusGained)
+    check("harness drops queued events after lifecycle stop", event_calls == before_turnover_events + 1 and UiLifecycle::phase() == UiLifecycle::Phase.Stopped)
 
     if failures == 0:
         _ = puts("ui harness: all checks passed")
