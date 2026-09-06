@@ -126,6 +126,13 @@ def main() -> i64:
             check("raw command pushes sanitize geometry", rect.origin.x == 0.0 and rect.origin.y == 0.0 and rect.size.width == UiCore::MAX_GEOMETRY_EXTENT and rect.size.height == UiCore::MAX_GEOMETRY_EXTENT)
         _:
             check("raw command remains a rectangle", false)
+    UiCore::push_command(UiCore::Command.DrawText(UiCore::TextRun{origin: UiCore::Vec2{x: infinity, y: -infinity}, size: huge_extent, text: oversized_text}, UiCore::rgb(1, 2, 3)))
+    match UiCore::command_at(1):
+        UiCore::Command.DrawText(run, color):
+            check("raw text commands sanitize origin and size", run.origin.x == 0.0 and run.origin.y == 0.0 and run.size == UiCore::MAX_GEOMETRY_EXTENT)
+            check("raw text commands bound counted text", run.text.len == UiCore::MAX_TEXT_BYTES.i64())
+        _:
+            check("raw command remains text", false)
     check("invalid command reads fail closed", UiCore::command_if_valid(99) == null)
     check("invalid clip reads fail closed", UiCore::command_clip_if_valid(99) == null)
     UiCore::begin_frame()
