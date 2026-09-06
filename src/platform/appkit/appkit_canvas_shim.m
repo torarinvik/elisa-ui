@@ -16,7 +16,7 @@ extern void elisa_appkit_canvas_raw_flags(size_t windowHandle, int keyCode, size
 extern void elisa_appkit_canvas_focus_changed(size_t windowHandle, int focused);
 extern void elisa_appkit_canvas_accessibility_environment_changed(size_t windowHandle);
 extern void elisa_appkit_canvas_window_closed(size_t windowHandle);
-extern void elisa_appkit_canvas_rebuild_cursor_rects(void);
+extern void elisa_appkit_canvas_rebuild_cursor_rects(size_t windowHandle);
 extern int elisa_appkit_canvas_render_headless(size_t windowHandle,
                                                size_t snapshot,
                                                int pixelsWidth,
@@ -268,7 +268,8 @@ void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) 
     // Cursor eligibility, geometry and native cursor selection live in Elisa;
     // Cocoa only clears its transient regions and asks the framework to add
     // the resolved rectangles through the narrow FFI primitive below.
-    elisa_appkit_canvas_rebuild_cursor_rects();
+    size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
+    elisa_appkit_canvas_rebuild_cursor_rects(windowHandle);
 }
 - (void)forwardMouseButton:(NSEvent *)event down:(BOOL)down button:(int)button {
     NSPoint p = [self eventPoint:event];

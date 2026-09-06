@@ -18,6 +18,7 @@ static int test_click_button;
 static int test_pointer_kind;
 static int test_pointer_button;
 static size_t test_input_window;
+static size_t test_cursor_window;
 static int test_window_focused = -1;
 static size_t test_focus_window;
 static size_t test_environment_window;
@@ -218,7 +219,7 @@ size_t elisa_appkit_canvas_accessibility_set_value(size_t handle, size_t value) 
     return 0;
 }
 void elisa_appkit_canvas_window_closed(size_t windowHandle) { test_closed_window = windowHandle; }
-void elisa_appkit_canvas_rebuild_cursor_rects(void) {}
+void elisa_appkit_canvas_rebuild_cursor_rects(size_t windowHandle) { test_cursor_window = windowHandle; }
 int elisa_appkit_canvas_view_is_flipped(void) { return 1; }
 int elisa_appkit_canvas_view_accepts_first_responder(void) { return 1; }
 int elisa_appkit_canvas_view_is_accessibility_element(void) { return 0; }
@@ -511,6 +512,9 @@ int main(void) {
         [elisa_appkit_canvas_view(opened) drawRect:NSMakeRect(0, 0, 180, 90)];
         if (require(test_frame_window == opened,
                     @"canvas frame did not carry its window identity to Elisa")) return 1;
+        [elisa_appkit_canvas_view(opened) resetCursorRects];
+        if (require(test_cursor_window == opened,
+                    @"cursor rebuild did not carry its window identity to Elisa")) return 1;
         NSObject *invalidEvent = [NSObject new];
         elisa_appkit_canvas_interpret_key_event((size_t)(__bridge void *)invalidEvent, opened);
         NSObject *invalidTimer = [NSObject new];
