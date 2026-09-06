@@ -20,6 +20,7 @@ static int test_pointer_button;
 static int test_window_focused = -1;
 static size_t test_focus_window;
 static size_t test_environment_window;
+static size_t test_resize_window;
 static NSUInteger test_frame_count;
 static int test_allows_readback = 1;
 static int test_text_focused = 1;
@@ -107,7 +108,10 @@ int elisa_appkit_canvas_render_headless(size_t windowHandle, size_t snapshot,
     return 1;
 }
 
-void elisa_appkit_canvas_resize(float width, float height) { (void)width; (void)height; }
+void elisa_appkit_canvas_resize(size_t windowHandle, float width, float height) {
+    test_resize_window = windowHandle;
+    (void)width; (void)height;
+}
 void elisa_appkit_canvas_pointer_move(float x, float y) {
     (void)x; (void)y;
     test_pointer_kind = 0;
@@ -489,6 +493,9 @@ int main(void) {
         if (require([elisa_appkit_canvas_view(opened) isFlipped], @"canvas coordinate policy was not supplied by Elisa")) return 1;
         if (require([elisa_appkit_canvas_view(opened) acceptsFirstResponder], @"canvas focus policy was not supplied by Elisa")) return 1;
         if (require(![elisa_appkit_canvas_view(opened) isAccessibilityElement], @"canvas semantic-root policy was not supplied by Elisa")) return 1;
+        [elisa_appkit_canvas_view(opened) setFrameSize:NSMakeSize(180, 90)];
+        if (require(test_resize_window == opened,
+                    @"canvas resize did not carry its window identity to Elisa")) return 1;
         NSObject *invalidEvent = [NSObject new];
         elisa_appkit_canvas_interpret_key_event((size_t)(__bridge void *)invalidEvent, opened);
         NSObject *invalidTimer = [NSObject new];
