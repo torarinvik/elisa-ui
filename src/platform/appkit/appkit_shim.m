@@ -139,7 +139,9 @@ size_t elisa_appkit_create_window_with_style(int style, int backing,
                     backing:(NSBackingStoreType)backing
                       defer:NO];
     if (window == nil) return 0;
-    [window setContentView:[[ElisaFlippedView alloc] initWithFrame:content]];
+    ElisaFlippedView *view = [[ElisaFlippedView alloc] initWithFrame:content];
+    if (view == nil) return 0;
+    [window setContentView:view];
     return elisa_appkit_retain(window);
 }
 
@@ -155,7 +157,9 @@ size_t elisa_appkit_create_panel_window(int style, int backing,
     if (panel == nil) return 0;
     [panel setFloatingPanel:floating != 0];
     [panel setBecomesKeyOnlyIfNeeded:becomes_key_only != 0];
-    [panel setContentView:[[ElisaFlippedView alloc] initWithFrame:content]];
+    ElisaFlippedView *view = [[ElisaFlippedView alloc] initWithFrame:content];
+    if (view == nil) return 0;
+    [panel setContentView:view];
     return elisa_appkit_retain(panel);
 }
 
@@ -167,9 +171,12 @@ size_t elisa_appkit_create_panel(void) {
 // side only constructs the NSScrollView and applies the already-resolved bits.
 size_t elisa_appkit_create_scroll_view(int vertical, int horizontal) {
     NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSZeroRect];
+    if (scroll == nil) return 0;
     [scroll setHasVerticalScroller:vertical != 0];
     [scroll setHasHorizontalScroller:horizontal != 0];
-    [scroll setDocumentView:[[ElisaFlippedView alloc] initWithFrame:NSZeroRect]];
+    ElisaFlippedView *document = [[ElisaFlippedView alloc] initWithFrame:NSZeroRect];
+    if (document == nil) return 0;
+    [scroll setDocumentView:document];
     return elisa_appkit_retain(scroll);
 }
 

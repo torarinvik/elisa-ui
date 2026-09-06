@@ -220,6 +220,16 @@ static size_t elisa_appkit_canvas_element_window_handle(ElisaAccessibilityElemen
     return window == nil ? 0 : (size_t)(__bridge void *)window;
 }
 
+static BOOL elisa_appkit_canvas_accessibility_children_valid(NSArray *children,
+                                                              size_t windowHandle) {
+    if (children == nil || windowHandle == 0) return NO;
+    for (id object in children) {
+        if (![object isKindOfClass:[ElisaAccessibilityElement class]]) return NO;
+        if (elisa_appkit_canvas_element_window_handle((ElisaAccessibilityElement *)object) != windowHandle) return NO;
+    }
+    return YES;
+}
+
 @interface ElisaCanvasDelegate : NSObject <NSWindowDelegate>
 @end
 @implementation ElisaCanvasDelegate
@@ -669,7 +679,8 @@ const size_t elisa_appkit_canvas_modifier_device_independent_mask = NSEventModif
 void elisa_appkit_canvas_menu_add_separator(size_t menu) {
     NSMenu *value = (__bridge NSMenu *)(void *)menu;
     if (![value isKindOfClass:[NSMenu class]]) return;
-    [value addItem:[NSMenuItem separatorItem]];
+    NSMenuItem *separator = [NSMenuItem separatorItem];
+    if (separator != nil) [value addItem:separator];
 }
 
 void elisa_appkit_canvas_menus_commit(size_t menuBar) {
@@ -724,6 +735,7 @@ size_t elisa_appkit_canvas_schedule_redraw(float delay, size_t run_loop_mode,
         // stay with the retained framework state rather than this block.
         elisa_appkit_canvas_timer_fired(windowHandle);
     }];
+    if (timer == nil) return 0;
     [NSRunLoop.mainRunLoop addTimer:timer forMode:mode];
     // Transfer one retain to Elisa, which releases it through the matching
     // cancellation primitive after the frame is delivered or the window
@@ -890,7 +902,8 @@ void elisa_appkit_canvas_accessibility_add_tooltip(size_t windowHandle, size_t h
                                                    float x, float y, float width, float height) {
     ElisaAccessibilityElement *element = elisa_appkit_canvas_element(handle);
     ElisaCanvasView *view = elisa_appkit_canvas_view(windowHandle);
-    if (element == nil || view == nil) return;
+    if (element == nil || view == nil ||
+        elisa_appkit_canvas_element_window_handle(element) != windowHandle) return;
     [view addToolTipRect:NSMakeRect(x, y, width, height) owner:element userData:NULL];
 }
 
@@ -934,7 +947,7 @@ void elisa_appkit_canvas_accessibility_commit(size_t windowHandle, size_t childr
     if (![object isKindOfClass:[NSArray class]]) return;
     NSArray *children = (NSArray *)object;
     ElisaCanvasView *view = elisa_appkit_canvas_view(windowHandle);
-    if (view == nil) return;
+    if (view == nil || !elisa_appkit_canvas_accessibility_children_valid(children, windowHandle)) return;
     [view setAccessibilityChildren:children];
     [view setAccessibilityChildrenInNavigationOrder:children];
 }
