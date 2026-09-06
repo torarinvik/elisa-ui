@@ -27,6 +27,17 @@ extend UiFlat:
         def allows_text_readback() -> bool:
             return accepts_text() and not widgets[focused_widget].secure
 
+        # Accessibility setters may need to mirror the value they just
+        # accepted back into a native object. Never hand that adapter the raw
+        # application bytes for a secure field; expose the same masked value
+        # used by semantic generation. Plain fields return the retained,
+        # normalized storage rather than the caller's potentially oversized
+        # or otherwise transformed input.
+        def accessibility_text_value(index: usize) -> sview:
+            return "" if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            return secure_display_value(index) if widgets[index].secure
+            return text_value(index)
+
         def selection_start(index: usize) -> usize:
             return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
             return widgets[index].selection_anchor if widgets[index].selection_anchor < widgets[index].caret else widgets[index].caret

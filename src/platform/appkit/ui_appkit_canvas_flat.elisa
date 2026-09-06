@@ -207,7 +207,12 @@ def appkit_flat_accessibility_set_value_handle(window_handle: usize, handle: usi
     if kind == 1:
         accepted: i32 = appkit_flat_set_text(index, value)
         return 0 if accepted == 0
-        return CFRetain(value)
+        # Mirror Elisa's retained result, not the borrowed object supplied by
+        # Cocoa. The edit may have been UTF-8/truncation-normalized, and secure
+        # fields must never put their private bytes back into AppKit's
+        # accessibility value slot.
+        normalized: sview = UiFlat::accessibility_text_value(index)
+        return UiAppKitCanvas::native_string(normalized)
     if kind == 2:
         scalar: mutable f32 = 0.0
         return 0 if not UiAppKitCanvas::native_number_value(value, &scalar)
