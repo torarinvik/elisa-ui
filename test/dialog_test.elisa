@@ -19,6 +19,14 @@ def main() -> i64:
     check("dialog opens with a valid handle", UiDialog::is_valid(first) and UiDialog::is_open(first))
     check("dialog copies title and actions", UiDialog::title(first) == "Delete item" and UiDialog::message(first) == "This cannot be undone." and UiDialog::primary_label(first) == "Delete" and UiDialog::secondary_label(first) == "Keep")
     check("dialog reports owner and kind", UiDialog::owner(first) == 10 and UiDialog::kind(first) == UiDialog::Kind.Confirm)
+    malformed_dialog_text: mutable u8[3] = zeroed
+    malformed_dialog_text[0] <- 65
+    malformed_dialog_text[1] <- 255
+    malformed_dialog_text[2] <- 66
+    malformed_dialog_view: sview = sview(&malformed_dialog_text[0], 0, 3)
+    sanitized: UiDialog::Handle = UiDialog::open(UiDialog::Kind.Alert, malformed_dialog_view, malformed_dialog_view, "OK", "", 11)
+    check("dialog storage rejects malformed UTF-8", UiDialog::title(sanitized) == "A" and UiDialog::message(sanitized) == "A")
+    _ = UiDialog::dispose(sanitized)
     check("snapshot counts open dialog", UiDialog::snapshot().active == 1 and UiDialog::snapshot().closed == 0)
     semantic: UiDialog::Semantics = UiDialog::semantics(first, true)
     check("dialog projects a portable semantic role", semantic.role == UiCore::AccessibilityRole.Dialog and semantic.label == "Delete item" and semantic.help == "This cannot be undone." and semantic.identity == first.slot.usize() + 1 and semantic.focused and semantic.dismissible)

@@ -283,11 +283,13 @@ module UiDialog:
             return if slot >= MAX_DIALOGS or field >= 4 or value.len < 0
             # Keep the signed-length check ahead of the usize narrowing.  A
             # foreign sview may advertise a length wider than wasm32::usize.
+            safe_value: sview = UiCore::bounded_text(value)
             take: mutable usize = TEXT_CAPACITY - 1
-            take <- value.len.usize() if value.len < (TEXT_CAPACITY - 1).i64()
+            take <- safe_value.len.usize() if safe_value.len < (TEXT_CAPACITY - 1).i64()
+            take <- UiText::valid_utf8_prefix(safe_value, take)
             offset: usize = text_offset(slot, field)
             for index in 0..<TEXT_CAPACITY - 1:
-                storage[offset + index] <- value.data[index] if index < take else 0
+                storage[offset + index] <- safe_value.data[index] if index < take else 0
             storage[offset + take] <- 0
             lengths[slot * 4 + field] <- take
 
