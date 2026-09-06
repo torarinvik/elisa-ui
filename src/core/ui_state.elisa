@@ -117,6 +117,12 @@ module UiState:
                 expected <- 1 if kind == ValueKind.Bool.i32()
                 return false if value_length > expected or (kind != ValueKind.Text.i32() and value_length != expected)
                 return false if length - cursor - RECORD_HEADER_BYTES < value_length
+                if kind == ValueKind.Bool.i32():
+                    # Bool records are canonical bytes, not a C truthiness
+                    # field. Reject malformed persisted values instead of
+                    # turning arbitrary nonzero data into `true` on readback.
+                    boolean_value: u8 = source[cursor + RECORD_HEADER_BYTES]
+                    return false if boolean_value != 0 and boolean_value != 1
                 if kind == ValueKind.Text.i32() and value_length > 0:
                     payload: sview = sview(&source[cursor + RECORD_HEADER_BYTES], 0, value_length.i64())
                     return false if UiText::valid_utf8_prefix(payload, value_length) != value_length

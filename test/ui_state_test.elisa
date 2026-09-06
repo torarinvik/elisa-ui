@@ -45,6 +45,14 @@ def main() -> i64:
     check("type mismatch uses fallback", UiState::f32(10, 9.0) == 9.0 and UiState::text(11) == "")
     check("missing field uses fallback", not UiState::has(99) and UiState::bool(99, true))
 
+    # Persisted booleans are a canonical 0/1 byte. A different nonzero value
+    # must invalidate the whole snapshot rather than being accepted as true.
+    UiState::begin()
+    _ = UiState::put_bool(14, true)
+    bool_length: usize = UiState::copy_to(&blob[0], UiState::MAX_BYTES)
+    blob[UiState::HEADER_BYTES + UiState::RECORD_HEADER_BYTES] <- 2
+    check("state rejects noncanonical persisted booleans", not UiState::restore(&blob[0], bool_length) and not UiState::restored().valid)
+
     # Reset invalidates both views and makes the previous serialized bytes
     # unreachable before a later snapshot is started.
     UiState::reset()
