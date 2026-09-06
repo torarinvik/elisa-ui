@@ -194,9 +194,14 @@ extend UiAppKitCanvas:
             # re-enter application state through a dead window handle.
             _ = UiLifecycle::stop()
             cancel_redraw()
-            release_canvas_delegate()
             release_accessibility_handles()
+            # NSWindow's delegate property is non-owning. Keep the delegate's
+            # Elisa retain until after the window is released so a synchronous
+            # close notification cannot message a deallocated delegate. The
+            # lifecycle is already stopped above, so such a callback is still
+            # harmless and is filtered by the shared live predicate.
             release_canvas_window()
+            release_canvas_delegate()
             headless_session <- false
             frame_context <- 0
             frame_rendered <- false
