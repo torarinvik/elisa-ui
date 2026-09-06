@@ -843,6 +843,10 @@ size_t elisa_appkit_canvas_accessibility_add(size_t windowHandle, size_t previou
         // instead of silently creating a second element for the same node.
         element = elisa_appkit_canvas_element(previousHandle);
         if (element == nil) return 0;
+        // Reuse is valid only within the same native window. A stale element
+        // retained by AppKit after teardown must not be repurposed for a new
+        // semantic tree merely because Elisa's bounded ID was reused.
+        if (elisa_appkit_canvas_element_window_handle(element) != windowHandle) return 0;
     }
     NSRect local = NSMakeRect(x, y, width, height);
     element.accessibilityRole = roleValue;
