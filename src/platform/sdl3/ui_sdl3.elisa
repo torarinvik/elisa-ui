@@ -116,8 +116,13 @@ module UiSdl3:
         global mutable window: void&? = null
         # SDL_Event is a 128-byte union; poll into this buffer and read typed
         # fields at their SDL3 offsets (type@0; pointer events keep x@28 and
-        # y@32 as f32).
-        global mutable event_buffer: u8[128] = zeroed
+        # y@32 as f32). The leading word gives the byte storage a guaranteed
+        # 8-byte base alignment before Elisa reinterprets fields as u32/f32;
+        # the padding is not part of the pointer passed to SDL.
+        struct EventStorage:
+            alignment: u64
+            bytes: u8[128]
+        global mutable event_buffer: EventStorage = zeroed
 
         # SDL text events store a borrowed host pointer in this union. Clear
         # every byte once the event has been decoded so a later frame cannot
@@ -125,13 +130,13 @@ module UiSdl3:
         # the next SDL poll has not filled the union yet.
         def clear_event_buffer() -> void:
             for index in 0..<128:
-                event_buffer[index] <- 0
+                event_buffer.bytes[index] <- 0
 
         def event_button() -> i32:
             # SDL_MouseButtonEvent stores button as Uint8 at byte 24; the
             # following bytes are down/clicks/padding, so reading an i32 here
             # would fold those flags into the button ordinal.
-            return event_buffer[24].i32()
+            return event_buffer.bytes[24].i32()
     public:
         # SDL requires positive initial window extents. Keep that native
         # precondition in the framework adapter, and use the same conservative
@@ -162,63 +167,63 @@ module UiSdl3:
 
     private:
         def event_type() -> u32:
-            type_ref: mutable u32& = (&event_buffer[0]).cast[u32&] can Unsafe.PointerCast
+            type_ref: mutable u32& = (&event_buffer.bytes[0]).cast[u32&] can Unsafe.PointerCast
             return type_ref[0]
 
         def event_x() -> f32:
-            x_ref: mutable f32& = (&event_buffer[28]).cast[f32&] can Unsafe.PointerCast
+            x_ref: mutable f32& = (&event_buffer.bytes[28]).cast[f32&] can Unsafe.PointerCast
             return x_ref[0]
 
         def event_y() -> f32:
-            y_ref: mutable f32& = (&event_buffer[32]).cast[f32&] can Unsafe.PointerCast
+            y_ref: mutable f32& = (&event_buffer.bytes[32]).cast[f32&] can Unsafe.PointerCast
             return y_ref[0]
 
         def event_window_data1() -> i32:
             # SDL_WindowEvent is laid out as type@0, reserved@4,
             # timestamp@8, windowID@16, data1@24, data2@28. Byte 20 is
             # padding after the 32-bit window ID, not the first payload.
-            value_ref: mutable i32& = (&event_buffer[24]).cast[i32&] can Unsafe.PointerCast
+            value_ref: mutable i32& = (&event_buffer.bytes[24]).cast[i32&] can Unsafe.PointerCast
             return value_ref[0]
 
         def event_window_data2() -> i32:
-            value_ref: mutable i32& = (&event_buffer[28]).cast[i32&] can Unsafe.PointerCast
+            value_ref: mutable i32& = (&event_buffer.bytes[28]).cast[i32&] can Unsafe.PointerCast
             return value_ref[0]
 
         # SDL_MouseWheelEvent has a different layout from mouse motion:
         # delta at 24/28 and the pointer position at 36/40.
         def event_wheel_x() -> f32:
-            value_ref: mutable f32& = (&event_buffer[24]).cast[f32&] can Unsafe.PointerCast
+            value_ref: mutable f32& = (&event_buffer.bytes[24]).cast[f32&] can Unsafe.PointerCast
             return value_ref[0]
 
         def event_wheel_y() -> f32:
-            value_ref: mutable f32& = (&event_buffer[28]).cast[f32&] can Unsafe.PointerCast
+            value_ref: mutable f32& = (&event_buffer.bytes[28]).cast[f32&] can Unsafe.PointerCast
             return value_ref[0]
 
         def event_wheel_mouse_x() -> f32:
-            value_ref: mutable f32& = (&event_buffer[36]).cast[f32&] can Unsafe.PointerCast
+            value_ref: mutable f32& = (&event_buffer.bytes[36]).cast[f32&] can Unsafe.PointerCast
             return value_ref[0]
 
         def event_wheel_mouse_y() -> f32:
-            value_ref: mutable f32& = (&event_buffer[40]).cast[f32&] can Unsafe.PointerCast
+            value_ref: mutable f32& = (&event_buffer.bytes[40]).cast[f32&] can Unsafe.PointerCast
             return value_ref[0]
 
         # SDL_KeyboardEvent: type 0, reserved 4, timestamp 8, windowID 16,
         # which 20, scancode 24, key 28. The KEYCODE is what carries the layout,
         # so that is what translates into the UiCore::Key space.
         def event_keycode() -> i32:
-            key_ref: mutable i32& = (&event_buffer[28]).cast[i32&] can Unsafe.PointerCast
+            key_ref: mutable i32& = (&event_buffer.bytes[28]).cast[i32&] can Unsafe.PointerCast
             return key_ref[0]
 
         def event_text_pointer() -> cstr:
-            text_ref: mutable cstr& = (&event_buffer[24]).cast[mutable cstr&] can Unsafe.PointerCast
+            text_ref: mutable cstr& = (&event_buffer.bytes[24]).cast[mutable cstr&] can Unsafe.PointerCast
             return text_ref[0]
 
         def event_text_editing_start() -> i32:
-            value_ref: mutable i32& = (&event_buffer[32]).cast[i32&] can Unsafe.PointerCast
+            value_ref: mutable i32& = (&event_buffer.bytes[32]).cast[i32&] can Unsafe.PointerCast
             return value_ref[0]
 
         def event_text_editing_length() -> i32:
-            value_ref: mutable i32& = (&event_buffer[36]).cast[i32&] can Unsafe.PointerCast
+            value_ref: mutable i32& = (&event_buffer.bytes[36]).cast[i32&] can Unsafe.PointerCast
             return value_ref[0]
 
     public:
@@ -330,7 +335,7 @@ module UiSdl3:
         # empty; events outside the modeled set come back as `Event.None` for the
         # app to skip.
         def next_event(out_event: mutable UiCore::Event&) -> bool:
-            buffer_pointer: void& = (&event_buffer[0]).cast[void&] can Unsafe.PointerCast
+            buffer_pointer: void& = (&event_buffer.bytes[0]).cast[void&] can Unsafe.PointerCast
             has_event: bool = SDL_PollEvent(buffer_pointer)
             return false if not has_event
             kind: u32 = event_type()
