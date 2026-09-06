@@ -61,6 +61,16 @@ extend UiAppKitCanvas:
         global mutable accessibility_next_handles: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
         global mutable accessibility_commit_handles: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
         global mutable accessibility_next: AccessibilityState[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        # AccessibilityState is queried after the frame that produced it (for
+        # example by a lazy tooltip callback). Keep the retained labels/help
+        # in Elisa-owned storage instead of preserving borrowed application
+        # views whose backing bytes may have gone out of scope at frame end.
+        const ACCESSIBILITY_TEXT_CAPACITY: usize = UiCore::MAX_TEXT_BYTES
+        const ACCESSIBILITY_TEXT_STORAGE_SIZE: usize = UiCore::MAX_ACCESSIBILITY_NODES * ACCESSIBILITY_TEXT_CAPACITY
+        global mutable accessibility_previous_label_storage: u8[ACCESSIBILITY_TEXT_STORAGE_SIZE] = zeroed
+        global mutable accessibility_previous_help_storage: u8[ACCESSIBILITY_TEXT_STORAGE_SIZE] = zeroed
+        global mutable accessibility_next_label_storage: u8[ACCESSIBILITY_TEXT_STORAGE_SIZE] = zeroed
+        global mutable accessibility_next_help_storage: u8[ACCESSIBILITY_TEXT_STORAGE_SIZE] = zeroed
         global mutable accessibility_previous_count: usize = 0
         global mutable accessibility_force_layout: bool = true
         global mutable headless_session: bool = false
@@ -95,7 +105,26 @@ extend UiAppKitCanvas:
 
         def reset_accessibility_history() -> void:
             release_accessibility_handles()
+            for byte_index in 0..<ACCESSIBILITY_TEXT_STORAGE_SIZE:
+                accessibility_previous_label_storage[byte_index] <- 0
+                accessibility_previous_help_storage[byte_index] <- 0
+                accessibility_next_label_storage[byte_index] <- 0
+                accessibility_next_help_storage[byte_index] <- 0
             accessibility_force_layout <- true
+
+        # Copy one bounded semantic string into a per-node slot and return a
+        # view into that stable storage. The source can be a transient app
+        # buffer; the returned view remains valid until the next semantic
+        # synchronization/reset, which is the lifetime the cache requires.
+        def copy_accessibility_text(value: sview, storage: mutable u8&, slot: usize) -> sview:
+            safe: sview = UiCore::bounded_text(value)
+            offset: usize = slot * ACCESSIBILITY_TEXT_CAPACITY
+            for byte_index in 0..<ACCESSIBILITY_TEXT_CAPACITY:
+                storage[offset + byte_index] <- 0
+            take: usize = safe.len.usize()
+            for byte_index in 0..<take:
+                storage[offset + byte_index] <- safe.data[byte_index]
+            return sview(&storage[offset], 0, take.i64())
 
         # Compact the valid retained element handles and construct the ordered
         # Cocoa child collection through CoreFoundation. The native bridge only

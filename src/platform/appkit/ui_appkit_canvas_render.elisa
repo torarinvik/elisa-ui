@@ -10,6 +10,8 @@ extend UiAppKitCanvas:
                 native_label: usize = native_string(node.label)
                 native_help: mutable usize = 0
                 native_help <- native_string(node.help) if node.help.len > 0
+                stable_label: sview = copy_accessibility_text(node.label, &accessibility_next_label_storage[0], index)
+                stable_help: sview = copy_accessibility_text(node.help, &accessibility_next_help_storage[0], index)
                 enabled: i32 = 1 if node.enabled else 0
                 focused: i32 = 1 if node.focused else 0
                 selected: i32 = 1 if node.selected else 0
@@ -23,7 +25,7 @@ extend UiAppKitCanvas:
                     enabled: node.enabled, focused: node.focused, selected: node.selected,
                     value: node.value, text_revision: node.revision,
                     selection_location: node.selection_location, selection_length: node.selection_length,
-                    label: node.label, help: node.help,
+                    label: stable_label, help: stable_help,
                     x: node.frame.origin.x, y: node.frame.origin.y,
                     width: node.frame.size.width, height: node.frame.size.height,
                     parent_id: node.parent_id, first_child_id: node.first_child_id,
@@ -104,7 +106,12 @@ extend UiAppKitCanvas:
             for index in 0..<accessibility_previous_count:
                 accessibility_previous_ids[index] <- accessibility_next_ids[index]
                 accessibility_previous_handles[index] <- accessibility_next_handles[index]
-                accessibility_previous[index] <- accessibility_next[index]
+                _ = copy_accessibility_text(accessibility_next[index].label, &accessibility_previous_label_storage[0], index)
+                _ = copy_accessibility_text(accessibility_next[index].help, &accessibility_previous_help_storage[0], index)
+                previous_state: mutable AccessibilityState = accessibility_next[index]
+                previous_state.label <- sview(&accessibility_previous_label_storage[index * ACCESSIBILITY_TEXT_CAPACITY], 0, previous_state.label.len)
+                previous_state.help <- sview(&accessibility_previous_help_storage[index * ACCESSIBILITY_TEXT_CAPACITY], 0, previous_state.help.len)
+                accessibility_previous[index] <- previous_state
             commit_accessibility_children()
             if layout_changed:
                 rebuild_accessibility_tooltips(next_count)
