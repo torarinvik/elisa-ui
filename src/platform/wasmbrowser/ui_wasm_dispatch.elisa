@@ -1,0 +1,31 @@
+# Synchronous WasmBrowser event delivery.
+#
+# The host invokes guest exports synchronously. Keeping the queue drain in this
+# small backend module makes re-entrant application callbacks safe without
+# pulling any WIT imports or render state into the testable event policy.
+
+include "../../core/ui_core.elisa"
+include "../../core/ui_lifecycle.elisa"
+
+module UiWasmDispatch:
+    private:
+        global mutable event_dispatch_active: bool = false
+
+        def drain() -> void:
+            return if event_dispatch_active
+            event_dispatch_active <- true
+            queued: mutable UiCore::Event = UiCore::Event.None
+            while UiEvents::dequeue(queued):
+                app_event(queued)
+            event_dispatch_active <- false
+
+    public:
+        def dispatch(event: UiCore::Event) -> void:
+            return if not UiLifecycle::is_started()
+            return if not UiEvents::enqueue(event)
+            drain()
+
+        def dispatch_input(event: UiCore::Event) -> void:
+            return if not UiLifecycle::accepts_input()
+            return if not UiEvents::enqueue(event)
+            drain()

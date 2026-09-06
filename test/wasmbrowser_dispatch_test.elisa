@@ -1,0 +1,55 @@
+# Headless regression for synchronous WasmBrowser callback delivery.
+# Application code is allowed to send another input event from app_event; the
+# backend must queue it for the current drain rather than recurse into itself.
+
+include "../src/platform/wasmbrowser/ui_wasm_dispatch.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable failures: i32 = 0
+global mutable dispatch_count: i32 = 0
+global mutable nested_sent: bool = false
+global mutable nested_seen: bool = false
+
+def app_init() -> void:
+    pass
+
+def app_frame() -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    dispatch_count <- dispatch_count + 1
+    if not nested_sent and UiCore::wire_kind(event) == UiCore::WireKind.PointerMove:
+        nested_sent <- true
+        # A nested input event must join the current drain.
+        UiWasmDispatch::dispatch_input(UiCore::KeyEvent.Down(code: UiCore::Key.A))
+    nested_seen <- true if UiCore::wire_kind(event) == UiCore::WireKind.KeyDown
+
+def app_text_input(text: sview) -> void:
+    pass
+
+def app_text_editing(text: sview, start: i32, length: i32) -> void:
+    pass
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiLifecycle::reset()
+    UiEvents::reset()
+    _ = UiLifecycle::begin()
+    _ = UiLifecycle::ready()
+    _ = UiLifecycle::focus_gained()
+    UiWasmDispatch::dispatch_input(UiCore::PointerEvent.Move(at: UiCore::Vec2(12.0, 14.0)))
+    check("nested WasmBrowser events drain iteratively", nested_sent and nested_seen and dispatch_count == 2)
+    check("WasmBrowser queue is empty after drain", UiEvents::pending() == 0)
+    if failures == 0:
+        _ = puts("wasmbrowser dispatch: all checks passed")
+        return 0
+    _ = puts("wasmbrowser dispatch: FAILURES above")
+    return 1
