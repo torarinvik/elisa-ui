@@ -12,13 +12,14 @@ def appkit_canvas_dispatch_input_event(event: UiCore::Event) -> void:
     return if not UiLifecycle::accepts_input()
     appkit_canvas_dispatch_event(event)
 
-def appkit_canvas_frame_callback(context: usize) -> void:
+def appkit_canvas_frame_callback(window_handle: usize, context: usize) -> void:
     can Ui.Draw, Ui.Text, Unsafe.PointerCast:
         # AppKit may issue a draw request while the view is being constructed
         # or dismantled. Do not enter the retained frame pipeline until the
         # window has completed initialization and a real graphics context was
         # supplied; this keeps late native callbacks harmless after teardown.
         return if context == 0 or not UiAppKitCanvas::live()
+        return if window_handle != UiAppKitCanvas::window_handle()
         autorelease_pool: usize = objc_autoreleasePoolPush()
         # Keep the AppKit graphics context balanced around the entire retained
         # frame. The native view only supplies the context; frame-state policy
@@ -162,7 +163,7 @@ def appkit_canvas_accessibility_tooltip_text(handle: usize) -> usize:
     return 0 if not UiAppKitCanvas::live()
     return UiAppKitCanvas::accessibility_tooltip_text(handle)
 
-export fn elisa_appkit_canvas_frame(context: usize) -> void = appkit_canvas_frame_callback
+export fn elisa_appkit_canvas_frame(window_handle: usize, context: usize) -> void = appkit_canvas_frame_callback
 export fn elisa_appkit_canvas_valid_marked_attributes() -> usize = appkit_canvas_valid_marked_attributes
 export fn elisa_appkit_canvas_accessibility_increment_direction() -> i32 = appkit_canvas_accessibility_increment_direction
 export fn elisa_appkit_canvas_accessibility_decrement_direction() -> i32 = appkit_canvas_accessibility_decrement_direction

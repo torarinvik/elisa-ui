@@ -21,6 +21,7 @@ static int test_window_focused = -1;
 static size_t test_focus_window;
 static size_t test_environment_window;
 static size_t test_resize_window;
+static size_t test_frame_window;
 static NSUInteger test_frame_count;
 static int test_allows_readback = 1;
 static int test_text_focused = 1;
@@ -48,8 +49,9 @@ static size_t test_accessibility_float_value(float value) {
     return (size_t)(void *)CFNumberCreate(NULL, kCFNumberFloat32Type, &value);
 }
 
-void elisa_appkit_canvas_frame(size_t context) {
+void elisa_appkit_canvas_frame(size_t windowHandle, size_t context) {
     (void)context;
+    test_frame_window = windowHandle;
     test_frame_count += 1;
     elisa_appkit_canvas_accessibility_reset(test_window_handle);
     size_t sliderElement = elisa_appkit_canvas_accessibility_add(test_window_handle, test_accessibility_handles[0], test_accessibility_handles[0] == 0, (size_t)(__bridge void *)@"elisa-ui-7", (size_t)(__bridge void *)NSAccessibilitySliderRole, 0,
@@ -104,7 +106,7 @@ int elisa_appkit_canvas_render_headless(size_t windowHandle, size_t snapshot,
         NSString *directory = [(NSString *)object stringByDeletingLastPathComponent];
         if (![[NSFileManager defaultManager] fileExistsAtPath:directory]) return 0;
     }
-    elisa_appkit_canvas_frame(0);
+    elisa_appkit_canvas_frame(test_window_handle, 0);
     return 1;
 }
 
@@ -496,6 +498,9 @@ int main(void) {
         [elisa_appkit_canvas_view(opened) setFrameSize:NSMakeSize(180, 90)];
         if (require(test_resize_window == opened,
                     @"canvas resize did not carry its window identity to Elisa")) return 1;
+        [elisa_appkit_canvas_view(opened) drawRect:NSMakeRect(0, 0, 180, 90)];
+        if (require(test_frame_window == opened,
+                    @"canvas frame did not carry its window identity to Elisa")) return 1;
         NSObject *invalidEvent = [NSObject new];
         elisa_appkit_canvas_interpret_key_event((size_t)(__bridge void *)invalidEvent, opened);
         NSObject *invalidTimer = [NSObject new];

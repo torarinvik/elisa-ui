@@ -7,7 +7,7 @@
 #import <Cocoa/Cocoa.h>
 #import <objc/runtime.h>
 
-extern void elisa_appkit_canvas_frame(size_t context);
+extern void elisa_appkit_canvas_frame(size_t windowHandle, size_t context);
 extern void elisa_appkit_canvas_resize(size_t windowHandle, float width, float height);
 extern size_t elisa_appkit_canvas_pointer_move_event(float x, float y);
 extern void elisa_appkit_canvas_pointer_button(float x, float y, int button, int down, int clickCount);
@@ -252,7 +252,8 @@ void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) 
 - (void)drawRect:(NSRect)dirtyRect {
     (void)dirtyRect;
     CGContextRef context = [[NSGraphicsContext currentContext] CGContext];
-    elisa_appkit_canvas_frame((size_t)context);
+    size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
+    elisa_appkit_canvas_frame(windowHandle, (size_t)context);
 }
 - (void)setFrameSize:(NSSize)size {
     [super setFrameSize:size];
