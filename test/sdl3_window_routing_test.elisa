@@ -9,6 +9,8 @@ extern puts(text: cstr) -> i64
 
 global mutable failures: i32 = 0
 global mutable foreign_pointer_events: i32 = 0
+global mutable foreign_text_events: i32 = 0
+global mutable foreign_text: u8[8] = [102, 111, 114, 101, 105, 103, 110, 0]
 
 def push_foreign_pointer_event() -> void:
     other_opt: void&? = SDL_CreateWindow("foreign", 16, 16, 0)
@@ -27,8 +29,27 @@ def push_foreign_pointer_event() -> void:
     else:
         failures <- failures + 1
 
+def push_foreign_text_event() -> void:
+    other_opt: void&? = SDL_CreateWindow("foreign text", 16, 16, 0)
+    if other_opt is other:
+        foreign_id: u32 = SDL_GetWindowID(other)
+        event: mutable u64[16] = zeroed
+        fields: mutable u32& = (&event[0]).cast[mutable u32&] can Unsafe.PointerCast
+        fields[0] <- 0x303
+        fields[4] <- foreign_id
+        pointers: mutable usize& = (&event[0]).cast[mutable usize&] can Unsafe.PointerCast
+        pointers[3] <- (&foreign_text[0]).cast[usize] can Unsafe.PointerCast
+        bytes: mutable u8& = (&event[0]).cast[mutable u8&] can Unsafe.PointerCast
+        pointer: void& = (&event[0]).cast[void&] can Unsafe.PointerCast
+        if not SDL_PushEvent(pointer):
+            failures <- failures + 1
+        SDL_DestroyWindow(other)
+    else:
+        failures <- failures + 1
+
 def app_init() -> void:
     push_foreign_pointer_event()
+    push_foreign_text_event()
 
 def app_frame() -> void:
     pass
@@ -41,7 +62,7 @@ def app_event(event: UiCore::Event) -> void:
             pass
 
 def app_text_input(text: sview) -> void:
-    pass
+    foreign_text_events <- foreign_text_events + 1
 
 def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
     pass
@@ -49,7 +70,7 @@ def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> 
 def main() -> i64:
     _ = SDL_setenv_unsafe("SDL_VIDEODRIVER", "dummy", 1)
     result: i64 = UiSdl3::run("headless window routing regression", 64, 64, 1)
-    if result != 0 or foreign_pointer_events != 0:
+    if result != 0 or foreign_pointer_events != 0 or foreign_text_events != 0:
         failures <- failures + 1
     if failures == 0:
         _ = puts("SDL window routing: passed")

@@ -11,9 +11,16 @@ extend UiSdl3:
         # events are queued and delivered through the shared framework queue.
         # Keeping this in one helper makes polled and waited events identical.
         def dispatch_current_event(event: UiCore::Event, running: mutable bool&) -> void:
-            if event_type() == EVENT_TEXT_INPUT and UiLifecycle::accepts_input():
+            # `decode_event` returns Event.None for window events addressed to
+            # another SDL window. Text input/editing are the one event family
+            # handled directly from the borrowed SDL union, so also repeat the
+            # ownership check here; otherwise a foreign text event could bypass
+            # the typed queue filter solely because its raw kind is still in
+            # `event_buffer`.
+            belongs_to_window: bool = window_event_matches(window_id, event_window_id())
+            if event_type() == EVENT_TEXT_INPUT and belongs_to_window and UiLifecycle::accepts_input():
                 text_input(event_text_pointer())
-            elif event_type() == EVENT_TEXT_EDITING and UiLifecycle::accepts_input():
+            elif event_type() == EVENT_TEXT_EDITING and belongs_to_window and UiLifecycle::accepts_input():
                 text_editing(event_text_pointer(), event_text_editing_start(), event_text_editing_length())
             elif UiCore::wire_kind(event) != UiCore::WireKind.None:
                 _ = UiEvents::enqueue(event)
