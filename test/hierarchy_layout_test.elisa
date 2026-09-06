@@ -194,6 +194,14 @@ def main() -> i64:
         pointer(stateful_scroll, (UiCore::PointerEvent.Scroll(at: UiCore::Vec2(200.0, 10.0), delta: UiCore::Vec2(0.0, -10.0))))
         check("wheel outside viewport is ignored", scroll_state.offset, 40.0)
 
+        # Direct typed hierarchy events must fail closed just like events that
+        # arrive through UiEvents. A non-finite wheel delta must not turn into a
+        # synthetic jump to either scroll endpoint.
+        invalid_scroll_delta: f32 = 1.0 / 0.0
+        before_invalid_wheel: f32 = scroll_state.offset
+        pointer(stateful_scroll, (UiCore::PointerEvent.Scroll(at: UiCore::Vec2(10.0, 10.0), delta: UiCore::Vec2(0.0, invalid_scroll_delta))))
+        check("typed hierarchy wheel rejects non-finite delta", scroll_state.offset, before_invalid_wheel)
+
         # Nested stateful viewports bubble a wheel delta once the inner one is
         # edge-clamped. The inner viewport is manually constrained here to
         # model the common case where a parent supplies its visible height;

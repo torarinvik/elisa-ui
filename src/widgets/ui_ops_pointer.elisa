@@ -3,6 +3,16 @@ extend UiWidgets:
         global mutable hot_widget: Widget? = null
         global mutable active_widget: Widget? = null
 
+        # Applications may feed typed pointer variants directly, bypassing the
+        # flat event queue's ABI normalization. Reject non-finite coordinates
+        # and deltas before they can alter hover, capture, or scroll state.
+        def pointer_value_is_finite(value: f32) -> bool:
+            difference: f32 = value - value
+            return difference == difference
+
+        def pointer_position_is_finite(at: UiCore::Vec2) -> bool:
+            return pointer_value_is_finite(at.x) and pointer_value_is_finite(at.y)
+
         # Find the innermost viewport under a pointer that can consume this
         # wheel delta. A child is searched first so nested scroll areas consume
         # the wheel before an ancestor; an edge-clamped child is skipped so the
