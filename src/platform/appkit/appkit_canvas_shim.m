@@ -513,6 +513,7 @@ const size_t elisa_appkit_canvas_not_found = NSNotFound;
 size_t elisa_appkit_canvas_open(float width, float height,
                                 int style, int backing, size_t *delegateHandle) {
     if (delegateHandle == NULL) return 0;
+    *delegateHandle = 0;
     [NSApplication sharedApplication];
     NSRect rect = NSMakeRect(0, 0, width, height);
     NSWindowStyleMask styleMask = (NSWindowStyleMask)style;
@@ -525,6 +526,7 @@ size_t elisa_appkit_canvas_open(float width, float height,
     // until app_init has completed.
     ElisaCanvasView *view = [[ElisaCanvasView alloc] initWithFrame:rect];
     ElisaCanvasDelegate *delegate = [ElisaCanvasDelegate new];
+    if (view == nil || delegate == nil) return 0;
     [window setDelegate:delegate];
     [window setContentView:view];
     *delegateHandle = (size_t)(__bridge_retained void *)delegate;
