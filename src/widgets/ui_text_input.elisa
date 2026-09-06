@@ -73,20 +73,23 @@ module UiTextInput:
         # to replace locale-specific decimal formatting or IME composition.
         def allows_scalar(traits: Traits, code: i32) -> bool:
             return false if code < 0
+            purpose: Purpose = normalize_purpose(traits.purpose)
+            secure: bool = traits.secure or purpose == Purpose.Password
+            multiline: bool = traits.multiline and not secure and purpose != Purpose.Number
             if code == 10 or code == 13:
-                return traits.multiline
-            return true if traits.purpose != Purpose.Number and code >= 32
+                return multiline
+            return true if purpose != Purpose.Number and code >= 32
             return true if code >= 48 and code <= 57
             return code == 43 or code == 45 or code == 46 or code == 44
 
         def is_secure(traits: Traits) -> bool:
-            return traits.secure
+            return traits.secure or normalize_purpose(traits.purpose) == Purpose.Password
 
         def allows_clipboard(traits: Traits) -> bool:
-            return traits.clipboard_allowed
+            return traits.clipboard_allowed and not is_secure(traits)
 
         def allows_semantic_value(traits: Traits) -> bool:
-            return traits.semantic_value_allowed
+            return traits.semantic_value_allowed and not is_secure(traits)
 
         # Unknown host/application purpose values must not silently become a
         # clipboard-readable plain-text field. Password is the fail-closed

@@ -37,6 +37,13 @@ def main() -> i64:
     safe_unknown: UiTextInput::Traits = UiTextInput::resolve(UiTextInput::Options{purpose: invalid_purpose, multiline: true, autocorrect: true, suggestions: true})
     check("unknown text purposes fail closed", safe_unknown.purpose == UiTextInput::Purpose.Password and safe_unknown.secure and not safe_unknown.multiline and not safe_unknown.clipboard_allowed and not safe_unknown.semantic_value_allowed)
 
+    forged_password: UiTextInput::Traits = UiTextInput::Traits{
+        purpose: UiTextInput::Purpose.Password, keyboard: UiTextInput::Keyboard.Default,
+        secure: false, multiline: true, autocorrect: true, suggestions: true,
+        clipboard_allowed: true, semantic_value_allowed: true,
+    }
+    check("password purpose hardens forged traits", UiTextInput::is_secure(forged_password) and not UiTextInput::allows_clipboard(forged_password) and not UiTextInput::allows_semantic_value(forged_password) and not UiTextInput::allows_scalar(forged_password, 10))
+
     if failures == 0:
         _ = puts("text input: all checks passed")
         return 0
