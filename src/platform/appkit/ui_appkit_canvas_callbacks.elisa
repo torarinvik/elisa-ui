@@ -86,6 +86,12 @@ def appkit_canvas_pointer_callback(window_handle: usize, kind: i32, x: f32, y: f
     return if not UiAppKitCanvas::live()
     return if window_handle != UiAppKitCanvas::window_handle()
     return if kind < 0 or kind > 4
+    # The Vec2 constructor intentionally sanitizes malformed coordinates for
+    # ordinary typed values. At this native callback boundary, however, turning
+    # a NaN/infinity into (0,0) would deliver an event at a real control. Reject
+    # the whole callback before constructing that sanitized value.
+    return if not UiCore::is_finite(x) or not UiCore::is_finite(y)
+    return if kind == 4 and (not UiCore::is_finite(dx) or not UiCore::is_finite(dy))
     at: UiCore::Vec2 = UiCore::Vec2(x, y)
     event: mutable UiCore::Event = (UiCore::PointerEvent.Move(at: at))
     event <- (UiCore::PointerEvent.Down(at: at, button: button)) if kind == 1
