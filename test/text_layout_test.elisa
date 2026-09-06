@@ -46,6 +46,15 @@ def main() -> i64:
     bytes[1] <- 0xA0
     bytes[2] <- 0x80
     check("surrogate encoding is not a scalar", UiTextLayout::utf8_scalar_bytes(sview(&bytes[0], 0, 3), 0) == 1)
+    bytes[0] <- 0xC2
+    bytes[1] <- 65
+    bytes[2] <- 0
+    malformed: sview = sview(&bytes[0], 0, 2)
+    check("shared scalar counter preserves following ASCII", UiText::utf8_scalar_count(malformed) == 2)
+    bytes[0] <- 0xED
+    bytes[1] <- 0xA0
+    bytes[2] <- 0x80
+    check("shared scalar counter rejects surrogate bytes", UiText::utf8_scalar_count(sview(&bytes[0], 0, 3)) == 3)
     if failures == 0:
         _ = puts("text layout: all checks passed")
         return 0

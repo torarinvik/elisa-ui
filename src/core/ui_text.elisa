@@ -10,15 +10,28 @@ module UiText:
         # Advance over one UTF-8 encoded scalar-sized sequence. Host text is
         # expected to be valid UTF-8, but malformed input still consumes one
         # byte at a time so counting a hostile payload remains bounded and
-        # deterministic instead of reading past the supplied view.
+        # deterministic instead of reading past the supplied view.  Validate
+        # continuation bytes and the boundary-sensitive lead-byte ranges here;
+        # merely looking at the lead byte would skip following ASCII or admit
+        # surrogate/out-of-range encodings as one scalar.
         def utf8_scalar_bytes(text: sview, position: usize) -> usize:
             return 0 if text.len <= 0 or position >= text.len.usize()
             first: u32 = text.data[position].u32()
-            return 1 if first < 128
-            return 2 if first < 224 and position + 1 < text.len.usize()
-            return 3 if first < 240 and position + 2 < text.len.usize()
-            return 4 if first < 248 and position + 3 < text.len.usize()
-            return 1
+            return 1 if first < 128 or first >= 248
+            width: mutable usize = 1
+            width <- 2 if first >= 194 and first <= 223
+            width <- 3 if first >= 224 and first <= 239
+            width <- 4 if first >= 240 and first <= 244
+            return 1 if width == 1 or width > text.len.usize() - position
+            for index in 1..<width:
+                continuation: u32 = text.data[position + index].u32()
+                return 1 if continuation < 128 or continuation > 191
+            second: u32 = text.data[position + 1].u32()
+            return 1 if first == 224 and second < 160
+            return 1 if first == 237 and second >= 160
+            return 1 if first == 240 and second < 144
+            return 1 if first == 244 and second >= 144
+            return width
 
         # Count the scalar-sized units in a bounded UTF-8 view. This is a
         # protocol bound, not a grapheme count: a combining sequence or an
