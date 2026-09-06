@@ -5,6 +5,7 @@
 # so an application entry point needs one include instead of repeating ABI glue.
 
 include "./ui_appkit_canvas.elisa"
+include "./ui_appkit_canvas_text.elisa"
 
 include "../../widgets/ui_handles.elisa"
 
@@ -250,86 +251,6 @@ def appkit_flat_unmark_text() -> void:
     return if not UiAppKitCanvas::live() or not UiLifecycle::accepts_input()
     UiFlat::unmark_text()
     UiAppKitCanvas::redraw()
-
-# NSTextInputClient selectors are reduced to this small FFI vocabulary. Elisa
-# owns the UiCore key mapping and modifier sequencing.
-def appkit_flat_text_command(command: i32, modify_selection: i32) -> void:
-    return if not UiAppKitCanvas::live()
-    if command == 10:
-        UiFlat::move_word_left(modify_selection != 0)
-        return
-    if command == 11:
-        UiFlat::move_word_right(modify_selection != 0)
-        return
-    if command == 12:
-        UiFlat::delete_word_backward()
-        return
-    if command == 13:
-        UiFlat::delete_word_forward()
-        return
-    key: mutable UiCore::Key = UiCore::Key.Escape
-    key <- UiCore::Key.Left if command == 1
-    key <- UiCore::Key.Right if command == 2
-    key <- UiCore::Key.Home if command == 3
-    key <- UiCore::Key.End if command == 4
-    key <- UiCore::Key.Backspace if command == 5
-    key <- UiCore::Key.Delete if command == 6
-    key <- UiCore::Key.Enter if command == 7
-    key <- UiCore::Key.Tab if command == 8 or command == 9
-    return if command < 1 or command > 9
-    shifted: bool = modify_selection != 0 or command == 9
-    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.LeftShift))) if shifted
-    UiFlat::keyboard((UiCore::KeyEvent.Down(code: key)))
-    UiFlat::keyboard((UiCore::KeyEvent.Up(code: key)))
-    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.LeftShift))) if shifted
-
-def appkit_flat_text_selector(selector: cstr) -> void:
-    return if not UiAppKitCanvas::live() or not UiLifecycle::accepts_input()
-    token: i32 = UiAppKitCanvas::text_selector_token(selector)
-    command: i32 = UiAppKitCanvas::text_selector_command(token)
-    return if command == 0
-    appkit_flat_text_command(command, 1 if UiAppKitCanvas::text_selector_modifies_selection(token) else 0)
-    UiAppKitCanvas::redraw()
-
-def appkit_flat_text_action(selector: cstr) -> i32:
-    return 0 if not UiAppKitCanvas::live()
-    return UiAppKitCanvas::text_action_for_selector(selector)
-
-# Cocoa passes selector identity as an opaque SEL handle. Resolve its runtime
-# spelling through the Objective-C runtime C ABI here, so the native shim does
-# not perform selector-to-string conversion before crossing into Elisa.
-def appkit_flat_text_selector_handle(selector: usize) -> void:
-    return if not UiAppKitCanvas::live() or selector == 0
-    appkit_flat_text_selector(sel_getName(selector))
-
-def appkit_flat_text_action_handle(selector: usize) -> i32:
-    return 0 if not UiAppKitCanvas::live() or selector == 0
-    return appkit_flat_text_action(sel_getName(selector))
-
-def appkit_flat_text_action_enabled(action: i32) -> i32:
-    return 0 if not UiAppKitCanvas::live()
-    return 1 if UiFlat::text_action_enabled(action) else 0
-
-def appkit_flat_text_action_valid(action: i32) -> i32:
-    return 0 if not UiAppKitCanvas::live()
-    # Unknown Cocoa actions retain AppKit's default validation behavior; known
-    # framework actions are enabled only when Elisa's retained state allows it.
-    return 1 if action == 0 or UiFlat::text_action_enabled(action) else 0
-
-def appkit_flat_perform_text_action(action: i32) -> i32:
-    return 0 if not UiAppKitCanvas::live()
-    changed: bool = UiFlat::perform_text_action(action)
-    UiAppKitCanvas::redraw() if changed
-    return 1 if changed else 0
-
-def appkit_flat_text_action_selector(selector: usize) -> void:
-    action: i32 = appkit_flat_text_action_handle(selector)
-    return if action == 0
-    _ = appkit_flat_perform_text_action(action)
-
-def appkit_flat_text_action_valid_selector(selector: usize) -> i32:
-    action: i32 = appkit_flat_text_action_handle(selector)
-    return appkit_flat_text_action_valid(action)
 
 def appkit_flat_character_at_x(x: f32) -> usize:
     return UiAppKitCanvas::not_found() if not UiAppKitCanvas::live() or not UiFlat::accepts_text()
