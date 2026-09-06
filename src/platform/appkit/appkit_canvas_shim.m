@@ -5,7 +5,6 @@
 // to replay that command batch into the current context.
 
 #import <Cocoa/Cocoa.h>
-#import <objc/runtime.h>
 
 extern void elisa_appkit_canvas_frame(size_t windowHandle, size_t context);
 extern void elisa_appkit_canvas_resize(size_t windowHandle, float width, float height);
