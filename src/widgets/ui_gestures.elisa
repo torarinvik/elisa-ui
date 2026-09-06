@@ -120,7 +120,7 @@ module UiGestures:
             last_primary <- contact.id
             last_position <- position
             last_delta <- delta
-            last_duration <- last_times[slot] - start_times[slot]
+            last_duration <- elapsed_time(last_times[slot], start_times[slot])
             if pinch_active:
                 return update_pinch()
             # Once a pinch has ended, the remaining contact is an ordinary
@@ -142,7 +142,7 @@ module UiGestures:
             lasts[slot] <- position
             if timestamp >= last_times[slot]:
                 last_times[slot] <- timestamp
-            duration: f32 = last_times[slot] - start_times[slot]
+            duration: f32 = elapsed_time(last_times[slot], start_times[slot])
             moved[slot] <- true if distance_squared(position, starts[slot]) >= MOVE_THRESHOLD * MOVE_THRESHOLD
             last_primary <- contact.id
             last_position <- position
@@ -168,7 +168,7 @@ module UiGestures:
             last_result <- Kind.Cancelled
             last_position <- lasts[slot]
             last_delta <- UiCore::Vec2(0.0, 0.0)
-            last_duration <- last_times[slot] - start_times[slot]
+            last_duration <- elapsed_time(last_times[slot], start_times[slot])
             clear_slot(slot)
             refresh_pinch()
             return true
@@ -222,6 +222,16 @@ module UiGestures:
         def safe_time(value: f32) -> f32:
             safe: f32 = UiCore::finite_or_zero(value)
             return 0.0 if safe < 0.0 else safe
+
+        # Timestamps arrive as finite f32 values, but subtracting a very large
+        # release time from a zero start can overflow that type. Keep the
+        # subtraction wide, then clamp the public duration to the same finite
+        # bound used by geometry so gesture snapshots can never expose +Inf.
+        def elapsed_time(later: f32, earlier: f32) -> f32:
+            return 0.0 if later <= earlier
+            difference: f64 = later.f64() - earlier.f64()
+            return UiCore::MAX_GEOMETRY_EXTENT if difference >= UiCore::MAX_GEOMETRY_EXTENT.f64()
+            return UiCore::finite_or_zero(difference.f32())
 
         def distance_squared(left: UiCore::Vec2, right: UiCore::Vec2) -> f32:
             dx: f32 = left.x - right.x
