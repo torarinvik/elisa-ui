@@ -243,12 +243,20 @@ module UiAppKitCanvas:
         # CFStringGetBytes stops at a complete scalar when the fixed buffer is
         # full, preserving the text layer's well-formed-prefix invariant.
         def copy_native_string(value: usize, buffer: mutable u8&, capacity: usize) -> usize:
-            return 0 if value == 0 or capacity == 0
+            # Native callbacks may reject a value after a previous successful
+            # copy. Clear the destination first so callers never observe that
+            # stale text through a zero-length result or a later retry. Keep
+            # the CoreFoundation length argument inside the framework's text
+            # envelope before narrowing it to i64.
+            safe_capacity: usize = capacity if capacity < UiCore::MAX_TEXT_BYTES else UiCore::MAX_TEXT_BYTES
+            for index in 0..<safe_capacity:
+                buffer[index] <- 0
+            return 0 if value == 0 or safe_capacity == 0
             return 0 if CFGetTypeID(value) != CFStringGetTypeID()
             length: i64 = CFStringGetLength(value)
             return 0 if length <= 0
             used: mutable i64 = 0
-            _ = CFStringGetBytes(value, NativeRange{location: 0, length: length}, UTF8_ENCODING, 0, false, buffer, capacity.i64(), &used)
+            _ = CFStringGetBytes(value, NativeRange{location: 0, length: length}, UTF8_ENCODING, 0, false, buffer, safe_capacity.i64(), &used)
             return used.usize() if used > 0 else 0
 
         # Keyboard callbacks carry Cocoa's borrowed charactersIgnoringModifiers
