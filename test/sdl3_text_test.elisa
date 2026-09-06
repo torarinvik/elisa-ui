@@ -44,7 +44,17 @@ def check(name: cstr, ok: bool) -> void:
     text_failures <- text_failures + 1
     _ = puts(name)
 
+def null_clipboard_write_is_rejected() -> bool can Unsafe.PointerCast:
+    bytes: u8& = 0.uintptr().cast[u8&] can Unsafe.PointerCast
+    return not ui_clipboard_write(bytes, 1)
+
+def null_clipboard_read_is_ignored() -> bool can Unsafe.PointerCast:
+    buffer: mutable u8& = 0.uintptr().cast[mutable u8&] can Unsafe.PointerCast
+    return ui_clipboard_read(buffer, 1) == 0
+
 def main() -> i64:
+    check("SDL rejects a null clipboard write buffer", null_clipboard_write_is_rejected())
+    check("SDL ignores a null clipboard read buffer", null_clipboard_read_is_ignored())
     if not TTF_Init():
         _ = puts(SDL_GetError())
         return 2
