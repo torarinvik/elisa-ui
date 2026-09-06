@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `433458fda727` on branch `work` |
+| elisa-ui revision | `fef7afe2ac10` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -199,6 +199,12 @@ separate host-enforced security boundary.
   covered by `test/widget_reentrancy_test.elisa`; AppKit pointer-down, text
   command, composition, accessibility, and inactive-window adapters now apply
   the same epoch/lifecycle guard before continuing native work.
+- Pointer button ordinals are a closed five-value Elisa vocabulary (primary,
+  secondary, middle, back, forward). C/WIT records and native SDL/AppKit
+  ingress reject unknown values before constructing typed events; the published
+  values and focused key-map regressions live in `include/elisa_ui.h`,
+  `test/event_wire_test.elisa`, `test/sdl3_keymap_test.elisa`, and
+  `test/appkit_canvas_keymap_test.elisa`.
 - `UiFlat` carries the closed `UiConst::WidgetEvent` enum through all control,
   editing, keyboard, and accessibility paths; one private Elisa helper performs
   the final ordinal conversion required by the legacy `app_widget_event` ABI.
