@@ -55,12 +55,12 @@ def appkit_flat_text_action(selector: cstr) -> i32:
 # Cocoa passes selector identity as an opaque SEL handle. Resolve its runtime
 # spelling through the Objective-C runtime C ABI here, so the native shim does
 # not perform selector-to-string conversion before crossing into Elisa.
-def appkit_flat_text_selector_handle(selector: usize) -> void:
-    return if not UiAppKitCanvas::live() or selector == 0
+def appkit_flat_text_selector_handle(window_handle: usize, selector: usize) -> void:
+    return if not UiAppKitCanvas::live() or window_handle != UiAppKitCanvas::window_handle() or selector == 0
     appkit_flat_text_selector(sel_getName(selector))
 
-def appkit_flat_text_action_handle(selector: usize) -> i32:
-    return 0 if not UiAppKitCanvas::live() or selector == 0
+def appkit_flat_text_action_handle(window_handle: usize, selector: usize) -> i32:
+    return 0 if not UiAppKitCanvas::live() or window_handle != UiAppKitCanvas::window_handle() or selector == 0
     return appkit_flat_text_action(sel_getName(selector))
 
 def appkit_flat_text_action_enabled(action: i32) -> i32:
@@ -79,11 +79,12 @@ def appkit_flat_perform_text_action(action: i32) -> i32:
     UiAppKitCanvas::redraw() if changed
     return 1 if changed else 0
 
-def appkit_flat_text_action_selector(selector: usize) -> void:
-    action: i32 = appkit_flat_text_action_handle(selector)
+def appkit_flat_text_action_selector(window_handle: usize, selector: usize) -> void:
+    action: i32 = appkit_flat_text_action_handle(window_handle, selector)
     return if action == 0
     _ = appkit_flat_perform_text_action(action)
 
-def appkit_flat_text_action_valid_selector(selector: usize) -> i32:
-    action: i32 = appkit_flat_text_action_handle(selector)
+def appkit_flat_text_action_valid_selector(window_handle: usize, selector: usize) -> i32:
+    action: i32 = appkit_flat_text_action_handle(window_handle, selector)
+    return 0 if action == 0 and (not UiAppKitCanvas::live() or window_handle != UiAppKitCanvas::window_handle())
     return appkit_flat_text_action_valid(action)

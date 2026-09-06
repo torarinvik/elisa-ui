@@ -30,28 +30,28 @@ extern size_t elisa_appkit_canvas_accessibility_set_value(size_t handle, size_t 
 extern int elisa_appkit_canvas_accessibility_increment_direction(void);
 extern int elisa_appkit_canvas_accessibility_decrement_direction(void);
 extern const size_t elisa_appkit_canvas_not_found;
-extern int elisa_appkit_canvas_has_marked_text(void);
+extern int elisa_appkit_canvas_has_marked_text(size_t windowHandle);
 extern size_t elisa_appkit_canvas_pointer_leave_event(size_t windowHandle);
 extern void elisa_appkit_canvas_timer_fired(size_t windowHandle);
-extern size_t elisa_appkit_canvas_selection_location(void);
-extern size_t elisa_appkit_canvas_selection_length(void);
+extern size_t elisa_appkit_canvas_selection_location(size_t windowHandle);
+extern size_t elisa_appkit_canvas_selection_length(size_t windowHandle);
 extern int elisa_appkit_canvas_set_selected_range(size_t handle, size_t location, size_t length);
-extern size_t elisa_appkit_canvas_marked_location(void);
-extern size_t elisa_appkit_canvas_marked_length(void);
-extern void elisa_appkit_canvas_commit_text(size_t text,
+extern size_t elisa_appkit_canvas_marked_location(size_t windowHandle);
+extern size_t elisa_appkit_canvas_marked_length(size_t windowHandle);
+extern void elisa_appkit_canvas_commit_text(size_t windowHandle, size_t text,
                                             size_t replacementLocation, size_t replacementLength);
-extern void elisa_appkit_canvas_update_marked_text(size_t text,
+extern void elisa_appkit_canvas_update_marked_text(size_t windowHandle, size_t text,
                                                    size_t selectedLocation, size_t selectedLength,
                                                    size_t replacementLocation, size_t replacementLength);
-extern void elisa_appkit_canvas_unmark_text(void);
-extern size_t elisa_appkit_canvas_valid_marked_attributes(void);
-extern void elisa_appkit_canvas_text_selector_handle(size_t selector);
-extern void elisa_appkit_canvas_text_action_selector(size_t selector);
-extern int elisa_appkit_canvas_text_action_valid_selector(size_t selector);
-extern size_t elisa_appkit_canvas_character_at_x(float x);
-extern size_t elisa_appkit_canvas_attributed_substring(size_t location, size_t length,
+extern void elisa_appkit_canvas_unmark_text(size_t windowHandle);
+extern size_t elisa_appkit_canvas_valid_marked_attributes(size_t windowHandle);
+extern void elisa_appkit_canvas_text_selector_handle(size_t windowHandle, size_t selector);
+extern void elisa_appkit_canvas_text_action_selector(size_t windowHandle, size_t selector);
+extern int elisa_appkit_canvas_text_action_valid_selector(size_t windowHandle, size_t selector);
+extern size_t elisa_appkit_canvas_character_at_x(size_t windowHandle, float x);
+extern size_t elisa_appkit_canvas_attributed_substring(size_t windowHandle, size_t location, size_t length,
                                                        size_t *actualLocation, size_t *actualLength);
-extern int elisa_appkit_canvas_first_rect(size_t location, size_t length,
+extern int elisa_appkit_canvas_first_rect(size_t windowHandle, size_t location, size_t length,
                                           size_t *actualLocation, size_t *actualLength,
                                           float *x, float *y, float *width, float *height);
 extern int elisa_appkit_canvas_view_is_flipped(void);
@@ -321,58 +321,77 @@ void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) 
     // NSTextInputClient permits NSString or NSAttributedString. Pass the
     // borrowed protocol object through unchanged; Elisa classifies and
     // extracts its plain string through CoreFoundation FFI.
-    elisa_appkit_canvas_commit_text((size_t)(__bridge void *)input,
+    size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
+    elisa_appkit_canvas_commit_text(windowHandle, (size_t)(__bridge void *)input,
                                     replacementRange.location, replacementRange.length);
 }
 - (void)doCommandBySelector:(SEL)selector {
-    elisa_appkit_canvas_text_selector_handle((size_t)(void *)selector);
+    size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
+    elisa_appkit_canvas_text_selector_handle(windowHandle, (size_t)(void *)selector);
 }
 - (void)selectAll:(id)sender {
     (void)sender;
-    elisa_appkit_canvas_text_action_selector((size_t)(void *)_cmd);
+    size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
+    elisa_appkit_canvas_text_action_selector(windowHandle, (size_t)(void *)_cmd);
 }
 - (void)undo:(id)sender {
     (void)sender;
-    elisa_appkit_canvas_text_action_selector((size_t)(void *)_cmd);
+    size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
+    elisa_appkit_canvas_text_action_selector(windowHandle, (size_t)(void *)_cmd);
 }
 - (void)redo:(id)sender {
     (void)sender;
-    elisa_appkit_canvas_text_action_selector((size_t)(void *)_cmd);
+    size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
+    elisa_appkit_canvas_text_action_selector(windowHandle, (size_t)(void *)_cmd);
 }
 - (BOOL)validateUserInterfaceItem:(id<NSValidatedUserInterfaceItem>)item {
-    return elisa_appkit_canvas_text_action_valid_selector((size_t)(void *)item.action) != 0;
+    size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
+    return elisa_appkit_canvas_text_action_valid_selector(windowHandle, (size_t)(void *)item.action) != 0;
 }
 - (void)copy:(id)sender {
     (void)sender;
-    elisa_appkit_canvas_text_action_selector((size_t)(void *)_cmd);
+    size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
+    elisa_appkit_canvas_text_action_selector(windowHandle, (size_t)(void *)_cmd);
 }
 - (void)cut:(id)sender {
     (void)sender;
-    elisa_appkit_canvas_text_action_selector((size_t)(void *)_cmd);
+    size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
+    elisa_appkit_canvas_text_action_selector(windowHandle, (size_t)(void *)_cmd);
 }
 - (void)paste:(id)sender {
     (void)sender;
-    elisa_appkit_canvas_text_action_selector((size_t)(void *)_cmd);
+    size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
+    elisa_appkit_canvas_text_action_selector(windowHandle, (size_t)(void *)_cmd);
 }
-- (BOOL)hasMarkedText { return elisa_appkit_canvas_has_marked_text() != 0; }
+- (BOOL)hasMarkedText {
+    size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
+    return elisa_appkit_canvas_has_marked_text(windowHandle) != 0;
+}
 - (NSRange)markedRange {
-    return NSMakeRange(elisa_appkit_canvas_marked_location(),
-                       elisa_appkit_canvas_marked_length());
+    size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
+    return NSMakeRange(elisa_appkit_canvas_marked_location(windowHandle),
+                       elisa_appkit_canvas_marked_length(windowHandle));
 }
 - (NSRange)selectedRange {
-    return NSMakeRange(elisa_appkit_canvas_selection_location(),
-                       elisa_appkit_canvas_selection_length());
+    size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
+    return NSMakeRange(elisa_appkit_canvas_selection_location(windowHandle),
+                       elisa_appkit_canvas_selection_length(windowHandle));
 }
 - (void)setMarkedText:(id)text selectedRange:(NSRange)selectedRange replacementRange:(NSRange)replacementRange {
     // Elisa performs the same NSString/NSAttributedString normalization for
     // marked text, keeping this protocol adapter object-agnostic.
-    elisa_appkit_canvas_update_marked_text((size_t)(__bridge void *)text,
+    size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
+    elisa_appkit_canvas_update_marked_text(windowHandle, (size_t)(__bridge void *)text,
                                            selectedRange.location, selectedRange.length,
                                            replacementRange.location, replacementRange.length);
 }
-- (void)unmarkText { elisa_appkit_canvas_unmark_text(); }
+- (void)unmarkText {
+    size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
+    elisa_appkit_canvas_unmark_text(windowHandle);
+}
 - (NSArray<NSAttributedStringKey> *)validAttributesForMarkedText {
-    size_t native = elisa_appkit_canvas_valid_marked_attributes();
+    size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
+    size_t native = elisa_appkit_canvas_valid_marked_attributes(windowHandle);
     // NSTextInputClient declares a nonnull array. Elisa normally returns an
     // empty retained CFArray; preserve that contract even if allocation fails.
     return native == 0 ? [NSArray array] : CFBridgingRelease((CFTypeRef)(void *)native);
@@ -380,7 +399,8 @@ void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) 
 - (NSAttributedString *)attributedSubstringForProposedRange:(NSRange)range actualRange:(NSRangePointer)actualRange {
     size_t actualLocation = elisa_appkit_canvas_not_found;
     size_t actualLength = 0;
-    size_t native = elisa_appkit_canvas_attributed_substring(range.location, range.length,
+    size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
+    size_t native = elisa_appkit_canvas_attributed_substring(windowHandle, range.location, range.length,
                                                              &actualLocation, &actualLength);
     if (native == 0) return nil;
     if (actualRange != NULL) *actualRange = NSMakeRange(actualLocation, actualLength);
@@ -396,9 +416,10 @@ void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) 
 }
 - (NSUInteger)characterIndexForPoint:(NSPoint)point {
     if (self.window == nil) return elisa_appkit_canvas_not_found;
+    size_t windowHandle = (size_t)(__bridge void *)self.window;
     NSPoint inWindow = [self.window convertPointFromScreen:point];
     NSPoint local = [self convertPoint:inWindow fromView:nil];
-    return elisa_appkit_canvas_character_at_x(local.x);
+    return elisa_appkit_canvas_character_at_x(windowHandle, local.x);
 }
 - (NSRect)firstRectForCharacterRange:(NSRange)range actualRange:(NSRangePointer)actualRange {
     if (self.window == nil) {
@@ -411,7 +432,8 @@ void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) 
     float y = 0.0f;
     float width = 0.0f;
     float height = 0.0f;
-    if (!elisa_appkit_canvas_first_rect(range.location, range.length,
+    size_t windowHandle = (size_t)(__bridge void *)self.window;
+    if (!elisa_appkit_canvas_first_rect(windowHandle, range.location, range.length,
                                         &location, &length, &x, &y, &width, &height)) {
         if (actualRange != NULL) *actualRange = NSMakeRange(elisa_appkit_canvas_not_found, 0);
         return NSZeroRect;

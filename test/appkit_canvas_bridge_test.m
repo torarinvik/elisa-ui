@@ -77,7 +77,7 @@ void elisa_appkit_canvas_frame(size_t windowHandle, size_t context) {
                length:test_selection_end - test_selection_start encoding:NSUTF8StringEncoding];
     elisa_appkit_canvas_accessibility_set_text(textElement, (size_t)(__bridge void *)textValue,
         (size_t)(__bridge void *)selectedValue,
-        elisa_appkit_canvas_selection_location(), elisa_appkit_canvas_selection_length());
+        elisa_appkit_canvas_selection_location(test_window_handle), elisa_appkit_canvas_selection_length(test_window_handle));
     const char *masked = "••••";
     size_t secureElement = elisa_appkit_canvas_accessibility_add(test_window_handle, test_accessibility_handles[2], test_accessibility_handles[2] == 0, (size_t)(__bridge void *)@"elisa-ui-9", (size_t)(__bridge void *)NSAccessibilityTextFieldRole, (size_t)(__bridge void *)NSAccessibilitySecureTextFieldSubrole,
         (size_t)(__bridge void *)@"Password", (size_t)(__bridge void *)@"Secure entry",
@@ -334,8 +334,14 @@ static size_t test_byte_from_utf16(NSUInteger offset) {
     NSUInteger safe = MIN(offset, value.length);
     return [[value substringToIndex:safe] lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
 }
-size_t elisa_appkit_canvas_selection_location(void) { return test_utf16_from_byte(test_selection_start); }
-size_t elisa_appkit_canvas_selection_length(void) { return test_utf16_from_byte(test_selection_end) - test_utf16_from_byte(test_selection_start); }
+size_t elisa_appkit_canvas_selection_location(size_t windowHandle) {
+    test_input_window = windowHandle;
+    return test_utf16_from_byte(test_selection_start);
+}
+size_t elisa_appkit_canvas_selection_length(size_t windowHandle) {
+    test_input_window = windowHandle;
+    return test_utf16_from_byte(test_selection_end) - test_utf16_from_byte(test_selection_start);
+}
 static int test_set_selected_range_index(size_t index, size_t location, size_t length) {
     if (index != 8 || !test_allow_text_mutation) return 0;
     test_selection_start = test_byte_from_utf16(location);
@@ -346,12 +352,20 @@ int elisa_appkit_canvas_set_selected_range(size_t handle, size_t location, size_
     if (test_accessibility_index_for_handle(handle) != 8) return 0;
     return test_set_selected_range_index(8, location, length);
 }
-size_t elisa_appkit_canvas_marked_location(void) {
+size_t elisa_appkit_canvas_marked_location(size_t windowHandle) {
+    test_input_window = windowHandle;
     return test_marked_end > test_marked_start ? test_utf16_from_byte(test_marked_start) : NSNotFound;
 }
-size_t elisa_appkit_canvas_marked_length(void) { return test_utf16_from_byte(test_marked_end) - test_utf16_from_byte(test_marked_start); }
-int elisa_appkit_canvas_has_marked_text(void) { return test_marked_end > test_marked_start; }
-void elisa_appkit_canvas_commit_text(size_t native, size_t replacementLocation, size_t replacementLength) {
+size_t elisa_appkit_canvas_marked_length(size_t windowHandle) {
+    test_input_window = windowHandle;
+    return test_utf16_from_byte(test_marked_end) - test_utf16_from_byte(test_marked_start);
+}
+int elisa_appkit_canvas_has_marked_text(size_t windowHandle) {
+    test_input_window = windowHandle;
+    return test_marked_end > test_marked_start;
+}
+void elisa_appkit_canvas_commit_text(size_t windowHandle, size_t native, size_t replacementLocation, size_t replacementLength) {
+    test_input_window = windowHandle;
     char bytes[sizeof(test_text)];
     size_t length = test_native_text_bytes(native, bytes, sizeof(bytes));
     if (replacementLocation != NSNotFound) test_set_selected_range_index(8, replacementLocation, replacementLength);
@@ -362,7 +376,8 @@ void elisa_appkit_canvas_commit_text(size_t native, size_t replacementLocation, 
     elisa_appkit_canvas_insert_text(bytes, length);
     test_marked_start = test_marked_end = 0;
 }
-void elisa_appkit_canvas_update_marked_text(size_t native, size_t selectedLocation, size_t selectedLength, size_t replacementLocation, size_t replacementLength) {
+void elisa_appkit_canvas_update_marked_text(size_t windowHandle, size_t native, size_t selectedLocation, size_t selectedLength, size_t replacementLocation, size_t replacementLength) {
+    test_input_window = windowHandle;
     char bytes[sizeof(test_text)];
     size_t length = test_native_text_bytes(native, bytes, sizeof(bytes));
     if (replacementLocation != NSNotFound) test_set_selected_range_index(8, replacementLocation, replacementLength);
@@ -380,8 +395,12 @@ void elisa_appkit_canvas_update_marked_text(size_t native, size_t selectedLocati
     test_selection_start = start + [[marked substringToIndex:relativeStart] lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
     test_selection_end = start + [[marked substringToIndex:relativeEnd] lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
 }
-void elisa_appkit_canvas_unmark_text(void) { test_marked_start = test_marked_end = 0; }
-size_t elisa_appkit_canvas_valid_marked_attributes(void) {
+void elisa_appkit_canvas_unmark_text(size_t windowHandle) {
+    test_input_window = windowHandle;
+    test_marked_start = test_marked_end = 0;
+}
+size_t elisa_appkit_canvas_valid_marked_attributes(size_t windowHandle) {
+    test_input_window = windowHandle;
     CFArrayRef value = CFArrayCreate(NULL, NULL, 0, NULL);
     return (size_t)(void *)value;
 }
@@ -404,7 +423,8 @@ int elisa_appkit_canvas_text_action(const char *selectorName) {
     if (strcmp(selectorName, "redo:") == 0) return 6;
     return 0;
 }
-void elisa_appkit_canvas_text_selector_handle(size_t selector) {
+void elisa_appkit_canvas_text_selector_handle(size_t windowHandle, size_t selector) {
+    test_input_window = windowHandle;
     if (selector == 0) return;
     elisa_appkit_canvas_text_selector(sel_getName((SEL)(void *)selector));
 }
@@ -412,11 +432,13 @@ int elisa_appkit_canvas_text_action_handle(size_t selector) {
     if (selector == 0) return 0;
     return elisa_appkit_canvas_text_action(sel_getName((SEL)(void *)selector));
 }
-void elisa_appkit_canvas_text_action_selector(size_t selector) {
+void elisa_appkit_canvas_text_action_selector(size_t windowHandle, size_t selector) {
+    test_input_window = windowHandle;
     int action = elisa_appkit_canvas_text_action_handle(selector);
     if (action != 0) (void)elisa_appkit_canvas_perform_text_action(action);
 }
-int elisa_appkit_canvas_text_action_valid_selector(size_t selector) {
+int elisa_appkit_canvas_text_action_valid_selector(size_t windowHandle, size_t selector) {
+    test_input_window = windowHandle;
     int action = elisa_appkit_canvas_text_action_handle(selector);
     return elisa_appkit_canvas_text_action_valid(action);
 }
@@ -424,7 +446,8 @@ float elisa_appkit_canvas_character_x(size_t location) { return 10.0f + (float)l
 float elisa_appkit_canvas_caret_width(void) { return 1.0f; }
 float elisa_appkit_canvas_caret_y(void) { return 50.0f; }
 float elisa_appkit_canvas_caret_height(void) { return 16.0f; }
-size_t elisa_appkit_canvas_character_at_x(float x) {
+size_t elisa_appkit_canvas_character_at_x(size_t windowHandle, float x) {
+    test_input_window = windowHandle;
     if (!test_text_focused) return NSNotFound;
     return x < 40.0f ? 0 : [NSString stringWithUTF8String:test_text].length;
 }
@@ -436,8 +459,9 @@ static size_t test_range_length(size_t location, size_t length) {
     size_t remaining = [NSString stringWithUTF8String:test_text].length - safeLocation;
     return MIN(length, remaining);
 }
-size_t elisa_appkit_canvas_attributed_substring(size_t location, size_t length,
+size_t elisa_appkit_canvas_attributed_substring(size_t windowHandle, size_t location, size_t length,
                                                size_t *actualLocation, size_t *actualLength) {
+    test_input_window = windowHandle;
     if (!test_text_focused || !test_allows_readback || location == NSNotFound) return 0;
     if (test_invalid_attributed_substring) {
         ElisaInvalidAttributedSubstring *invalid = [ElisaInvalidAttributedSubstring new];
@@ -452,9 +476,10 @@ size_t elisa_appkit_canvas_attributed_substring(size_t location, size_t length,
     NSAttributedString *attributed = [[NSAttributedString alloc] initWithString:substring];
     return (size_t)CFBridgingRetain(attributed);
 }
-int elisa_appkit_canvas_first_rect(size_t location, size_t length,
+int elisa_appkit_canvas_first_rect(size_t windowHandle, size_t location, size_t length,
                                    size_t *actualLocation, size_t *actualLength,
                                    float *x, float *y, float *width, float *height) {
+    test_input_window = windowHandle;
     if (!test_text_focused) return 0;
     if (actualLocation != NULL) *actualLocation = test_range_location(location);
     if (actualLength != NULL) *actualLength = test_range_length(location, length);
@@ -687,7 +712,8 @@ int main(void) {
         if (require(markedAttributes != nil && markedAttributes.count == 0,
                     @"marked-text attributes did not come from Elisa")) return 1;
         [elisa_appkit_canvas_view(opened) insertText:@"é" replacementRange:NSMakeRange(NSNotFound, 0)];
-        if (require(strcmp(test_text, "Worldé") == 0, @"Unicode text commit did not reach the app")) return 1;
+        if (require(strcmp(test_text, "Worldé") == 0 && test_input_window == opened,
+                    @"Unicode text commit did not reach the app with its identity")) return 1;
         if (require(NSEqualRanges(elisa_appkit_canvas_view(opened).selectedRange, NSMakeRange(6, 0)), @"UTF-8 caret did not convert to UTF-16")) return 1;
         NSAttributedString *attributedInput = [[NSAttributedString alloc] initWithString:@"!"];
         [elisa_appkit_canvas_view(opened) insertText:attributedInput replacementRange:NSMakeRange(NSNotFound, 0)];
