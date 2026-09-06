@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `fef7afe2ac10` on branch `work` |
+| elisa-ui revision | `e901ad66f05a` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -126,7 +126,7 @@ declared capability respectively, with byte-oriented Elisa adapters above each.
 The following completed headlessly from this checkout:
 
 ```text
-bash scripts/run_tests.sh
+ELISA_UI_STAGE1=/tmp/elisa-ui-stage1-p4 ELISA_ALLOW_STALE_STAGE1=1 bash scripts/run_tests.sh
   capi, appkit, appkit canvas, appkit canvas keymap, capi bridge,
   controls, dialog, drop raii, event wire, gestures, hierarchy build/layout,
   raster, responsive, sdl3 keymap/text, text input, text layout, widget dispatch, widget handles,
@@ -136,16 +136,21 @@ bash scripts/run_tests.sh
 git diff --check: PASS
 ```
 
-The hosted packaging gate also passed with the synchronized compiler:
+The existing hosted package passed the compiler-independent inspection gate:
 
 ```text
-ELISA_UI_STAGE1=../wasm-sdk-compiler bash scripts/build_wapp.sh hello
-wasm-browser inspect build/hello.wapp
+ELISA_UI_WASMBROWSER=../WasmBrowser bash scripts/check_wapp.sh build/hello.wapp
   runtime profile: wasmbrowser:component@1
   language: elisa
   framework: elisa-ui
   format: component
 ```
+
+A fresh `scripts/build_wapp.sh` run is not counted as a pass for this tuple:
+the stable source/object compile completes, but the component linker still
+reports the known `expected i64, found i32` mismatch. The checked-in package
+inspection verifies the profile and import/export surface without invoking that
+linker.
 
 The 2026-09-06 incremental gates also compile the complete AppKit canvas entry
 point with the pinned compiler (`ELISA_UI_STAGE1=/tmp/elisa-ui-stage1-p4
@@ -205,6 +210,10 @@ separate host-enforced security boundary.
   values and focused key-map regressions live in `include/elisa_ui.h`,
   `test/event_wire_test.elisa`, `test/sdl3_keymap_test.elisa`, and
   `test/appkit_canvas_keymap_test.elisa`.
+- Key, gamepad-button, and gamepad-axis enum casts are rejected in both event
+  directions: invalid typed values flatten to a rejected sentinel, while raw
+  records decode to `Event.None`. `test/event_wire_test.elisa` covers the
+  boundary.
 - `UiFlat` carries the closed `UiConst::WidgetEvent` enum through all control,
   editing, keyboard, and accessibility paths; one private Elisa helper performs
   the final ordinal conversion required by the legacy `app_widget_event` ABI.
@@ -213,8 +222,9 @@ separate host-enforced security boundary.
   and idempotent visibility/prefetch demand priorities. Host/SDK layers still
   own verified bytes, transport, cache and decode/upload authority; resource
   transitions raise the shared resource/paint invalidation reasons, and its
-  aggregate snapshot reports bounded loading/ready/failure counts. Coverage
-  lives in `test/resource_state_test.elisa`.
+  aggregate snapshot reports bounded loading/ready/failure counts. Identifier
+  storage is scrubbed when the resource table resets. Coverage lives in
+  `test/resource_state_test.elisa`.
 - `UiResourcePresentation` maps those lifecycle states to explicit
   placeholder/loading/ready/fallback records, reserved geometry, independent
   progress visibility and retry affordances. Kind-specific defaults and all
@@ -252,6 +262,9 @@ separate host-enforced security boundary.
   RTL/plural policy, active-locale revision/invalidation, and revision-safe
   asynchronous field state in shared Elisa modules. Each is opt-in and covered
   by its focused headless test.
+- `UiValidation` clears its fixed diagnostic-message storage on table reset, so
+  retired validation text is not retained across lifecycles; coverage remains
+  in `test/validation_test.elisa`.
 - `UiInspector` is a read-only, allocation-free diagnostic projection of the
   retained tree and semantic buffer. It reports shared lifecycle phase,
   generation, surface/input/render/focus predicates, deferred layout/frame-
@@ -271,7 +284,8 @@ separate host-enforced security boundary.
 - `UiState` is the explicit application-state persistence hook. It emits and
   validates a bounded versioned record stream keyed only by application-owned
   numeric IDs; failed restores clear the prior snapshot and no framework
-  pointer or arena identity crosses the boundary. Coverage lives in
+  pointer or arena identity crosses the boundary. Save/restore buffers are
+  scrubbed on begin, reset, and failed restore. Coverage lives in
   `test/ui_state_test.elisa`.
 - `UiCapabilities` owns conservative, typed backend profiles. Adapters select a
   profile at startup; applications and `UiInspector` consume capability facts
@@ -280,7 +294,12 @@ separate host-enforced security boundary.
 - `UiEvents` owns bounded FIFO ingress after each adapter has translated native
   facts into `UiCore::Event`. Synchronous adapters drain immediately; SDL drains
   poll bursts. Full queues reject incoming events and expose sticky loss facts
-  through `UiInspector`. Coverage lives in `test/event_queue_test.elisa`.
+  through `UiInspector`; reset clears queued variant payloads as well as
+  counters. Coverage lives in `test/event_queue_test.elisa`.
+- `UiCore::begin_frame` clears the previously used command and semantic slots,
+  releasing stale borrowed text views while retaining the fixed allocation-free
+  buffers. The C counted-text bridge and AppKit canvas teardown likewise scrub
+  their Elisa-owned staging strings after use.
 - AppKit read-back helpers expose only native facts. The button-toggle
   introspection path now performs the native click as one primitive while Elisa
   owns the before/after comparison and state restoration; no test behavior is
