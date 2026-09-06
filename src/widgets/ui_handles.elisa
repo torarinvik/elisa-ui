@@ -41,7 +41,13 @@ module UiHandles:
         def parent_is_valid(parent: Handle) -> bool:
             return false if parent.tree_id != UiFlat::lifetime().u32()
             return true if parent.widget_id == UiFlat::NONE.u32()
-            return UiFlat::is_valid(parent.widget_id.usize())
+            return false if not UiFlat::is_valid(parent.widget_id.usize())
+            row: UiFlat::Widget = UiFlat::widget(parent.widget_id.usize())
+            # A valid widget is not automatically a valid container. The
+            # compatibility constructors historically treated a leaf parent as
+            # a detached root; typed handles must reject that loss of hierarchy
+            # instead of returning a handle for a widget in the wrong subtree.
+            return row.kind == UiConst::WidgetKind.Panel or row.kind == UiConst::WidgetKind.Scroll
 
         def parent_index(parent: Handle) -> usize:
             return parent.widget_id.usize() if parent.widget_id != UiFlat::NONE.u32()
