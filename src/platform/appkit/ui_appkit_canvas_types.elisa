@@ -257,6 +257,7 @@ module UiAppKitCanvas:
             # the CoreFoundation length argument inside the framework's text
             # envelope before narrowing it to i64.
             safe_capacity: usize = capacity if capacity < UiCore::MAX_TEXT_BYTES else UiCore::MAX_TEXT_BYTES
+            return 0 if safe_capacity > 0 and buffer == null
             for index in 0..<safe_capacity:
                 buffer[index] <- 0
             return 0 if value == 0 or safe_capacity == 0
@@ -265,7 +266,9 @@ module UiAppKitCanvas:
             return 0 if length <= 0
             used: mutable i64 = 0
             _ = CFStringGetBytes(value, NativeRange{location: 0, length: length}, UTF8_ENCODING, 0, false, buffer, safe_capacity.i64(), &used)
-            return used.usize() if used > 0 else 0
+            return 0 if used <= 0
+            return safe_capacity if used > safe_capacity.i64()
+            return used.usize()
 
         # Keyboard callbacks carry Cocoa's borrowed charactersIgnoringModifiers
         # object across the FFI. Keep the native UTF-16 extraction here rather
