@@ -59,9 +59,11 @@ extern ui_wasm_memory_size_pages(memory_index: u32) -> u32
 
 const UI_WASM_HOST_MAX_ALLOCATION: u32 = 67108864
 # C strings crossing the component boundary are bounded independently of the
-# host result allocation cap. Keeping the same conservative limit avoids an
-# unbounded walk while still accepting ordinary platform strings.
-const UI_WASM_CSTR_SCAN_CAPACITY: u32 = UI_WASM_HOST_MAX_ALLOCATION
+# host result allocation cap. Keep the scan at the framework's counted-text
+# budget: callers that need more data use an explicit pointer/count pair, while
+# a malformed unterminated C string cannot consume tens of megabytes of guest
+# CPU time before being rejected.
+const UI_WASM_CSTR_SCAN_CAPACITY: u32 = UiCore::MAX_TEXT_BYTES.u32()
 const UI_WASM_CLIPBOARD_WIRE_SIZE: usize = 64
 
 global mutable ui_wasm_clipboard_buffer: u8[UiFlat::TEXT_CAPACITY] = zeroed
