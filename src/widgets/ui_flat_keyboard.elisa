@@ -3,6 +3,15 @@
 # compatibility namespace while its implementation is organized by concern.
 
 extend UiFlat:
+    private:
+        # Accessibility and automation callers can construct scalar requests
+        # directly, bypassing the event decoders. Reject NaN and infinity
+        # before normalized_unit() would turn malformed input into a real
+        # slider mutation.
+        def adjustment_value_is_finite(value: f32) -> bool:
+            difference: f32 = value - value
+            return difference == difference
+
     public:
         def keyboard(event: UiCore::Event) -> void:
             # Public callers may construct a typed event directly instead of
@@ -189,7 +198,7 @@ extend UiFlat:
         # Accessibility adapters use the same normalized adjustment path as
         # arrow keys, so assistive actions update app state identically.
         def adjust(index: usize, delta: f32) -> bool:
-            return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider or not effectively_enabled(index) or not effectively_visible(index)
+            return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider or not effectively_enabled(index) or not effectively_visible(index) or not adjustment_value_is_finite(delta)
             before: f32 = widgets[index].value
             set_value(index, before + delta)
             return false if widgets[index].value == before
@@ -203,7 +212,7 @@ extend UiFlat:
         # as pointer and keyboard adjustments, and report whether the request
         # was accepted so native accessibility state can mirror the result.
         def set_accessibility_value(index: usize, value: f32) -> bool:
-            return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider or not effectively_enabled(index) or not effectively_visible(index)
+            return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider or not effectively_enabled(index) or not effectively_visible(index) or not adjustment_value_is_finite(value)
             before: f32 = widgets[index].value
             set_value(index, value)
             return false if widgets[index].value == before
