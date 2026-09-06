@@ -279,6 +279,12 @@ module UiResources:
             # A cancelled generation can only be observed or replaced through
             # request(), which rotates its generation before host work resumes.
             return false if resource_states[slot] == State.Cancelled
+            # Requested is the start of a host operation, not a completion
+            # callback.  Re-entering it through a live handle would reuse the
+            # current generation, allowing a late callback from the previous
+            # operation to mutate the replacement. request() and retry() are
+            # the only APIs that may create a fresh Requested generation.
+            return false if next == State.Requested
             return false if resource_states[slot] == next
             resource_states[slot] <- next
             resource_failure_kinds[slot] <- FailureKind.RetryableTransport if next == State.Failed else FailureKind.Unknown
