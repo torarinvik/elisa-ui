@@ -156,9 +156,10 @@ def ui_wasm_fetch_clipboard() -> usize:
         trusted Unsafe.PointerCast:
             source: u8& = (pointer + index.u32()).cast[u8&]
             ui_wasm_clipboard_buffer[index] <- source
-    ui_wasm_clipboard_length <- take
+    copied: sview = sview(&ui_wasm_clipboard_buffer[0], 0, take.i64())
+    ui_wasm_clipboard_length <- UiText::valid_utf8_prefix(copied, take)
     ui_wasm_release_clipboard_allocation(pointer, length)
-    return take
+    return ui_wasm_clipboard_length
 
 def ui_clipboard_has_text() -> bool:
     return ui_wasm_clipboard_length > 0 if ui_wasm_clipboard_cache_valid
@@ -167,10 +168,19 @@ def ui_clipboard_has_text() -> bool:
 def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
     take: usize = length if length < UiFlat::TEXT_CAPACITY else UiFlat::TEXT_CAPACITY
     result_wire: mutable u8[UI_WASM_CLIPBOARD_WIRE_SIZE] = zeroed
-    pointer: cstr = bytes.cast[cstr] can Unsafe.PointerCast
+    # Keep clipboard payloads on complete UTF-8 scalar boundaries just like
+    # the AppKit and SDL adapters. The selected-text path normally supplies a
+    # valid range already, but this boundary also handles foreign callers that
+    # pass a byte prefix ending in the middle of a scalar.
+    safe_bytes: mutable u8[UiFlat::TEXT_CAPACITY] = zeroed
+    for index in 0..<take:
+        safe_bytes[index] <- bytes[index]
+    copied: sview = sview(&safe_bytes[0], 0, take.i64())
+    valid_length: usize = UiText::valid_utf8_prefix(copied, take)
+    pointer: cstr = (&safe_bytes[0]).cast[cstr] can Unsafe.PointerCast
     can Host.Clipboard:
         trusted [Unsafe.PointerCast]:
-            host_clipboard_set(pointer, take.u32(), (&result_wire[0]).cast[mutable void&])
+            host_clipboard_set(pointer, valid_length.u32(), (&result_wire[0]).cast[mutable void&])
     if ui_wasm_read_wire_u32(result_wire, 0) != 0:
         error_pointer: u32 = ui_wasm_read_wire_u32(result_wire, 4)
         error_length: u32 = ui_wasm_read_wire_u32(result_wire, 8)
