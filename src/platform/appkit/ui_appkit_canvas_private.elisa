@@ -237,11 +237,14 @@ extend UiAppKitCanvas:
         # counted menu title. Labels are bounded to keep this allocation-free;
         # normal application names are far below this limit.
         def application_menu_label(prefix: cstr, prefix_length: usize, application: cstr, application_length: usize) -> sview:
-            prefix_view: sview = sview(prefix, 0, prefix_length.i64())
-            application_view: sview = sview(application, 0, application_length.i64())
             prefix_take: usize = prefix_length if prefix_length < MENU_APPLICATION_LABEL_CAPACITY else MENU_APPLICATION_LABEL_CAPACITY
             remaining: usize = MENU_APPLICATION_LABEL_CAPACITY - prefix_take
             application_take: usize = application_length if application_length < remaining else remaining
+            # Clamp the counted extents before constructing views. Besides
+            # bounding the copy, this keeps a malformed caller from asking the
+            # view constructor to retain an arbitrarily large borrowed range.
+            prefix_view: sview = sview(prefix, 0, prefix_take.i64())
+            application_view: sview = sview(application, 0, application_take.i64())
             for index in 0..<prefix_take:
                 menu_application_label_storage[index] <- prefix_view.data[index]
             for index in 0..<application_take:
