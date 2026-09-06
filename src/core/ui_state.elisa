@@ -33,6 +33,7 @@ module UiState:
         # Start a new application-owned snapshot. Existing bytes are replaced;
         # callers decide when to persist the previous copy.
         def begin() -> void:
+            scrub_buffer(&save_buffer[0], MAX_BYTES)
             save_length <- HEADER_BYTES
             save_count <- 0
             save_overflowed <- false
@@ -43,6 +44,8 @@ module UiState:
             store_u32(&save_buffer[0], 8, 0)
 
         def reset() -> void:
+            scrub_buffer(&save_buffer[0], MAX_BYTES)
+            scrub_buffer(&restore_buffer[0], MAX_BYTES)
             save_length <- 0
             save_count <- 0
             save_overflowed <- false
@@ -90,6 +93,7 @@ module UiState:
         # A failed restore clears the old restored state so callers cannot
         # accidentally continue using a previous session's values.
         def restore(source: u8&, length: usize) -> bool:
+            scrub_buffer(&restore_buffer[0], MAX_BYTES)
             restore_length <- 0
             restore_count <- 0
             restore_valid <- false
@@ -164,6 +168,10 @@ module UiState:
         global mutable restore_length: usize = 0
         global mutable restore_count: usize = 0
         global mutable restore_valid: bool = false
+
+        def scrub_buffer(buffer: mutable u8&, capacity: usize) -> void:
+            for index in 0..<capacity:
+                buffer[index] <- 0
 
         def store_u16(buffer: mutable u8&, offset: usize, value: usize) -> void:
             buffer[offset] <- (value & 255).u8()

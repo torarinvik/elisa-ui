@@ -45,6 +45,12 @@ def main() -> i64:
     check("type mismatch uses fallback", UiState::f32(10, 9.0) == 9.0 and UiState::text(11) == "")
     check("missing field uses fallback", not UiState::has(99) and UiState::bool(99, true))
 
+    # Reset invalidates both views and makes the previous serialized bytes
+    # unreachable before a later snapshot is started.
+    UiState::reset()
+    check("reset clears saved snapshot visibility", not UiState::saved().valid and UiState::copy_to(&blob[0], UiState::MAX_BYTES) == 0)
+    check("reset clears restored snapshot visibility", not UiState::restored().valid and not UiState::has(10) and UiState::text(10) == "")
+
     # Persisted bytes are untrusted input. A non-finite IEEE-754 payload must
     # fail closed just like a non-finite value supplied to put_f32.
     UiState::begin()
