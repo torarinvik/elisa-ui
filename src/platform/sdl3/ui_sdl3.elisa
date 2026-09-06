@@ -419,8 +419,16 @@ module UiSdl3:
         # preserves focus/key/text order and prevents native bursts overflowing
         # the smaller framework queue.
         def dispatch_queued_events(running: mutable bool&) -> void:
+            # An application callback may stop the current session (or start a
+            # replacement one) while handling an event. Capture the owner
+            # generation before draining so the remaining queue cannot cross
+            # that lifecycle boundary into a stale or replacement surface.
+            drain_generation: u32 = UiLifecycle::generation()
             event: mutable UiCore::Event = UiCore::Event.None
             while UiEvents::dequeue(event):
+                if not UiLifecycle::is_started() or UiLifecycle::generation() != drain_generation:
+                    running <- false if not UiLifecycle::is_started()
+                    continue
                 match event:
                     UiCore::Event.Quit:
                         running <- false
