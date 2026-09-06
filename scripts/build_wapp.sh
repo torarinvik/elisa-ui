@@ -10,6 +10,7 @@ set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
 WASMBROWSER="${ELISA_UI_WASMBROWSER:-$ROOT/../WasmBrowser}"
+WASM_SDK="${ELISA_UI_WASM_SDK:-$ROOT/../wasm-sdk}"
 WIT="${ELISA_UI_WIT:-$WASMBROWSER/wit/wasmbrowser.wit}"
 EXAMPLE="${1:-hello}"
 OUTPUT="${2:-$ROOT/build/$EXAMPLE.wapp}"
@@ -18,6 +19,7 @@ WASM_MAX_PAGES="${ELISA_UI_WASM_MAX_PAGES:-32768}"
 
 [[ -x "$STAGE1/bin/elisac-stage1" ]] || { echo "no stage1 product at $STAGE1/bin/elisac-stage1 (run scripts/elisac_stage1.sh --seed there)" >&2; exit 2; }
 [[ -f "$WIT" ]] || { echo "missing WasmBrowser WIT: $WIT (set ELISA_UI_WIT or ELISA_UI_WASMBROWSER)" >&2; exit 2; }
+[[ -f "$WASM_SDK/sdk/elisa/wasmbrowser/host_bindings.elisa" ]] || { echo "missing WasmBrowser Elisa SDK bindings: $WASM_SDK/sdk/elisa/wasmbrowser/host_bindings.elisa (set ELISA_UI_WASM_SDK)" >&2; exit 2; }
 [[ -f "$ROOT/examples/$EXAMPLE/wapp_main.elisa" ]] || { echo "no component entry: examples/$EXAMPLE/wapp_main.elisa" >&2; exit 2; }
 
 mkdir -p "$ROOT/build"
@@ -27,6 +29,18 @@ mkdir -p "$ROOT/build"
 PACKAGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/elisa-ui-wapp.XXXXXX")"
 trap 'rm -rf "$PACKAGE_DIR"' EXIT INT TERM HUP
 cp "$ROOT/examples/$EXAMPLE/manifest.json" "$PACKAGE_DIR/manifest.json"
+
+# Compile from a temporary source tree with the same stable relative layout
+# used by WasmBrowser's SDK build: application sources and the framework live
+# under `elisa-ui`, while the generated SDK bindings live under `sdk`. This
+# keeps the UI source checkout independent of a particular sibling directory
+# name while preserving direct `build_wapp.sh` support.
+SOURCE_DIR="$PACKAGE_DIR/source"
+mkdir -p "$SOURCE_DIR/elisa-ui/examples" "$SOURCE_DIR/sdk"
+cp -R "$ROOT/src" "$SOURCE_DIR/elisa-ui/src"
+cp -R "$ROOT/examples/$EXAMPLE" "$SOURCE_DIR/elisa-ui/examples/$EXAMPLE"
+rm -rf "$SOURCE_DIR/sdk"
+ln -s "$WASM_SDK/sdk" "$SOURCE_DIR/sdk"
 
 # The flat retained layer keeps text, secure-text, and edit-history storage in
 # static linear memory. Pass its package-sized heap policy to stage1 rather than
@@ -38,7 +52,7 @@ ELISA_WASM_MAX_PAGES="$WASM_MAX_PAGES" \
   --wasm-only \
   --component-type "$WIT" \
   -o "$PACKAGE_DIR/main.wasm" \
-  "$ROOT/examples/$EXAMPLE/wapp_main.elisa"
+  "$SOURCE_DIR/elisa-ui/examples/$EXAMPLE/wapp_main.elisa"
 
 # Keep the raw component next to the package for inspection and smoke checks.
 cp "$PACKAGE_DIR/main.wasm" "$ROOT/build/$EXAMPLE.wasm"
