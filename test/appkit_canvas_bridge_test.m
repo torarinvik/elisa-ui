@@ -19,6 +19,7 @@ static int test_pointer_kind;
 static int test_pointer_button;
 static int test_window_focused = -1;
 static size_t test_focus_window;
+static size_t test_environment_window;
 static NSUInteger test_frame_count;
 static int test_allows_readback = 1;
 static int test_text_focused = 1;
@@ -147,7 +148,9 @@ void elisa_appkit_canvas_focus_changed(size_t windowHandle, int focused) {
     test_focus_window = windowHandle;
     test_window_focused = focused;
 }
-void elisa_appkit_canvas_accessibility_environment_changed(void) {}
+void elisa_appkit_canvas_accessibility_environment_changed(size_t windowHandle) {
+    test_environment_window = windowHandle;
+}
 void elisa_appkit_canvas_timer_fired(size_t windowHandle) { test_timer_fired_window = windowHandle; }
 int elisa_appkit_canvas_key_down_route(int character, size_t modifiers) {
     BOOL shift = (modifiers & NSEventModifierFlagShift) != 0;
@@ -553,6 +556,12 @@ int main(void) {
         [delegate windowDidBecomeKey:focusNotification];
         if (require(test_window_focused == 1 && test_focus_window == opened,
                     @"window focus gain did not carry its identity to Elisa")) return 1;
+        [delegate windowDidMove:focusNotification];
+        if (require(test_environment_window == opened,
+                    @"window environment change did not carry its identity to Elisa")) return 1;
+        [delegate windowDidChangeBackingProperties:focusNotification];
+        if (require(test_environment_window == opened,
+                    @"backing change did not carry its identity to Elisa")) return 1;
         test_closed_window = 0;
         NSNotification *closeNotification = [NSNotification notificationWithName:NSWindowWillCloseNotification object:elisa_appkit_canvas_window(opened)];
         [delegate windowWillClose:closeNotification];

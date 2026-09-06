@@ -14,7 +14,7 @@ extern void elisa_appkit_canvas_pointer_button(float x, float y, int button, int
 extern void elisa_appkit_canvas_pointer_scroll(float x, float y, float dx, float dy);
 extern void elisa_appkit_canvas_raw_flags(int keyCode, size_t modifiers);
 extern void elisa_appkit_canvas_focus_changed(size_t windowHandle, int focused);
-extern void elisa_appkit_canvas_accessibility_environment_changed(void);
+extern void elisa_appkit_canvas_accessibility_environment_changed(size_t windowHandle);
 extern void elisa_appkit_canvas_window_closed(size_t windowHandle);
 extern void elisa_appkit_canvas_rebuild_cursor_rects(void);
 extern int elisa_appkit_canvas_render_headless(size_t windowHandle,
@@ -217,12 +217,14 @@ static NSArray *elisa_appkit_canvas_event_array(size_t handle) {
     elisa_appkit_canvas_focus_changed(window == nil ? 0 : (size_t)(__bridge void *)window, 1);
 }
 - (void)windowDidMove:(NSNotification *)notification {
-    (void)notification;
-    elisa_appkit_canvas_accessibility_environment_changed();
+    id object = notification.object;
+    NSWindow *window = [object isKindOfClass:[NSWindow class]] ? (NSWindow *)object : nil;
+    elisa_appkit_canvas_accessibility_environment_changed(window == nil ? 0 : (size_t)(__bridge void *)window);
 }
 - (void)windowDidChangeBackingProperties:(NSNotification *)notification {
-    (void)notification;
-    elisa_appkit_canvas_accessibility_environment_changed();
+    id object = notification.object;
+    NSWindow *window = [object isKindOfClass:[NSWindow class]] ? (NSWindow *)object : nil;
+    elisa_appkit_canvas_accessibility_environment_changed(window == nil ? 0 : (size_t)(__bridge void *)window);
 }
 @end
 void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) {
