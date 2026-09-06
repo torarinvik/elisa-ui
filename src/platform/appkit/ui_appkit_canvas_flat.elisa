@@ -308,6 +308,10 @@ def appkit_flat_first_rect(window_handle: usize, range_location: usize, range_le
                            actual_location: mutable usize&, actual_length: mutable usize&,
                            x: mutable f32&, y: mutable f32&,
                            width: mutable f32&, height: mutable f32&) -> i32:
+    # These output references are part of the exported C ABI. The Cocoa shim
+    # always supplies storage, but foreign callers may pass a null slot; fail
+    # closed before the initial sentinel writes rather than dereferencing it.
+    return 0 if actual_location == null or actual_length == null or x == null or y == null or width == null or height == null
     actual_location <- UiAppKitCanvas::not_found()
     actual_length <- 0
     return 0 if not UiAppKitCanvas::live() or window_handle != UiAppKitCanvas::window_handle() or not UiFlat::accepts_text()
@@ -322,6 +326,10 @@ def appkit_flat_first_rect(window_handle: usize, range_location: usize, range_le
 
 def appkit_flat_attributed_substring(window_handle: usize, location: usize, length: usize,
                                      actual_location: mutable usize&, actual_length: mutable usize&) -> usize:
+    # Keep optional C output storage genuinely optional. The native adapter
+    # passes both addresses, while a direct foreign caller may omit either;
+    # no semantic work should occur before that contract is checked.
+    return 0 if actual_location == null or actual_length == null
     actual_location <- UiAppKitCanvas::not_found()
     actual_length <- 0
     return 0 if not UiAppKitCanvas::live() or window_handle != UiAppKitCanvas::window_handle() or not UiFlat::accepts_text() or not UiFlat::allows_text_readback()

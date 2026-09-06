@@ -87,9 +87,11 @@ typedef struct {
 void elisa_ui_dispatch_event(int32_t kind, float x, float y,
                              float dx, float dy, int32_t code);
 /* Deliver committed UTF-8 text. The pointer is borrowed for the duration of
- * the call; a null pointer or a length that cannot fit Elisa's signed view
- * extent is ignored. A nested dispatch from the callback is ignored while
- * the single Elisa-owned staging buffer is borrowed by the outer call. */
+ * the call; a null pointer paired with a non-zero length is ignored. Lengths
+ * above Elisa's bounded text budget are clipped to that prefix, while a length
+ * that cannot fit the signed view extent is ignored. A nested dispatch from
+ * the callback is ignored while the single Elisa-owned staging buffer is
+ * borrowed by the outer call. */
 void elisa_ui_dispatch_text_input(const char *text, size_t length);
 
 void  elisa_ui_set_viewport(float width, float height);
