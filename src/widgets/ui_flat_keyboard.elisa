@@ -12,6 +12,15 @@ extend UiFlat:
             difference: f32 = value - value
             return difference == difference
 
+        # Avoid overflowing before normalized_unit() can clamp the result. A
+        # finite accessibility delta can still be much larger than the unit
+        # interval, so compare against the remaining headroom first and only
+        # add when the sum is known to stay inside [0, 1].
+        def adjusted_unit(before: f32, delta: f32) -> f32:
+            return 1.0 if delta > 1.0 - before
+            return 0.0 if delta < -before
+            return before + delta
+
     public:
         def keyboard(event: UiCore::Event) -> void:
             # Public callers may construct a typed event directly instead of
@@ -200,7 +209,7 @@ extend UiFlat:
         def adjust(index: usize, delta: f32) -> bool:
             return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Slider or not effectively_enabled(index) or not effectively_visible(index) or not adjustment_value_is_finite(delta)
             before: f32 = widgets[index].value
-            set_value(index, before + delta)
+            set_value(index, adjusted_unit(before, delta))
             return false if widgets[index].value == before
             focus(index)
             callback_epoch: usize = widget_epoch
