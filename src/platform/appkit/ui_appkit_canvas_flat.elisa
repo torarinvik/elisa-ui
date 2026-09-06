@@ -55,7 +55,7 @@ def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
     return take
 
 def appkit_flat_accessibility_activate(index: usize) -> i32:
-    return 0 if not UiAppKitCanvas::live()
+    return 0 if not UiAppKitCanvas::live() or not UiLifecycle::accepts_input()
     activated: bool = UiFlat::activate(index)
     return 0 if activated and not UiAppKitCanvas::live()
     UiAppKitCanvas::redraw() if activated
@@ -64,26 +64,26 @@ def appkit_flat_accessibility_activate(index: usize) -> i32:
 # Native accessibility callbacks carry an opaque element handle. Resolve it to
 # the retained widget action in Elisa before entering UiFlat's index API.
 def appkit_flat_accessibility_activate_handle(handle: usize) -> i32:
-    return 0 if not UiAppKitCanvas::live()
+    return 0 if not UiAppKitCanvas::live() or not UiLifecycle::accepts_input()
     index: usize = UiAppKitCanvas::accessibility_action_for_handle(handle)
     return 0 if index == UiAppKitCanvas::not_found()
     return appkit_flat_accessibility_activate(index)
 
 def appkit_flat_accessibility_adjust(index: usize, direction: i32) -> i32:
-    return 0 if not UiAppKitCanvas::live()
+    return 0 if not UiAppKitCanvas::live() or not UiLifecycle::accepts_input()
     adjusted: bool = UiFlat::adjust_step(index, direction)
     return 0 if adjusted and not UiAppKitCanvas::live()
     UiAppKitCanvas::redraw() if adjusted
     return 1 if adjusted else 0
 
 def appkit_flat_accessibility_adjust_handle(handle: usize, direction: i32) -> i32:
-    return 0 if not UiAppKitCanvas::live()
+    return 0 if not UiAppKitCanvas::live() or not UiLifecycle::accepts_input()
     index: usize = UiAppKitCanvas::accessibility_action_for_handle(handle)
     return 0 if index == UiAppKitCanvas::not_found()
     return appkit_flat_accessibility_adjust(index, direction)
 
 def appkit_flat_accessibility_set_numeric_value(index: usize, value: f32) -> usize can Unsafe.PointerCast:
-    return 0 if not UiAppKitCanvas::live()
+    return 0 if not UiAppKitCanvas::live() or not UiLifecycle::accepts_input()
     accepted: bool = UiFlat::set_accessibility_value(index, value)
     return 0 if not accepted or not UiAppKitCanvas::live()
     UiAppKitCanvas::redraw()
@@ -165,7 +165,7 @@ def appkit_flat_pointer_leave_event() -> usize:
     return UiAppKitCanvas::native_cursor(0)
 
 def appkit_flat_set_text(index: usize, text: usize) -> i32:
-    return 0 if not UiAppKitCanvas::live() or text == 0 or not UiFlat::text_editable(index)
+    return 0 if not UiAppKitCanvas::live() or not UiLifecycle::accepts_input() or text == 0 or not UiFlat::text_editable(index)
     length: usize = UiAppKitCanvas::copy_native_string(text, &appkit_native_text_buffer[0], UiFlat::TEXT_CAPACITY)
     lifetime: usize = UiFlat::lifetime()
     UiFlat::replace_text(index, sview(&appkit_native_text_buffer[0], 0, length.i64()))
@@ -174,12 +174,12 @@ def appkit_flat_set_text(index: usize, text: usize) -> i32:
     # callback rebuilds the flat tree or stops the canvas, the native element
     # that requested the edit is no longer the live source of truth. Do not
     # report success or mirror the stale value back into Cocoa in that case.
-    return 0 if UiFlat::lifetime() != lifetime or not UiAppKitCanvas::live()
+    return 0 if UiFlat::lifetime() != lifetime or not UiAppKitCanvas::live() or not UiLifecycle::accepts_input()
     UiAppKitCanvas::redraw()
     return 1
 
 def appkit_flat_set_text_handle(handle: usize, text: usize) -> i32:
-    return 0 if not UiAppKitCanvas::live()
+    return 0 if not UiAppKitCanvas::live() or not UiLifecycle::accepts_input()
     index: usize = UiAppKitCanvas::accessibility_action_for_handle(handle)
     return 0 if index == UiAppKitCanvas::not_found()
     return appkit_flat_set_text(index, text)
@@ -189,7 +189,7 @@ def appkit_flat_set_text_handle(handle: usize, text: usize) -> i32:
 # native adapter only mirrors the retained object returned for an accepted
 # edit.
 def appkit_flat_accessibility_set_value_handle(handle: usize, value: usize) -> usize can Unsafe.PointerCast:
-    return 0 if not UiAppKitCanvas::live()
+    return 0 if not UiAppKitCanvas::live() or not UiLifecycle::accepts_input()
     index: usize = UiAppKitCanvas::accessibility_action_for_handle(handle)
     return 0 if index == UiAppKitCanvas::not_found()
     kind: i32 = UiAppKitCanvas::native_accessibility_value_kind(value)
