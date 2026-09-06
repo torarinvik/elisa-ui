@@ -105,9 +105,9 @@ extend UiCore:
                 KeyEvent.Up(code):
                     record.code <- code.i32() if key_is_valid(code.i32()) else -1
                 GamepadEvent.Button(button, value):
-                    record with { dx <- finite_or_zero(value), code <- button.i32() if pad_is_valid(button.i32()) else -1 }
+                    record with { dx <- normalized_unit(value), code <- button.i32() if pad_is_valid(button.i32()) else -1 }
                 GamepadEvent.Axis(axis, value):
-                    record with { dx <- finite_or_zero(value), code <- axis.i32() if pad_axis_is_valid(axis.i32()) else -1 }
+                    record with { dx <- normalized_axis(value), code <- axis.i32() if pad_axis_is_valid(axis.i32()) else -1 }
                 Event.None:
                     pass
                 Event.Quit:
@@ -156,9 +156,16 @@ extend UiCore:
                     KeyEvent.Up(code: record.code.Key())
                 WireKind.GamepadButton:
                     return Event.None if not pad_is_valid(record.code)
-                    GamepadEvent.Button(button: record.code.Pad(), value: finite_or_zero(record.dx))
+                    GamepadEvent.Button(button: record.code.Pad(), value: normalized_unit(record.dx))
                 WireKind.GamepadAxis:
                     return Event.None if not pad_axis_is_valid(record.code)
-                    GamepadEvent.Axis(axis: record.code.PadAxis(), value: finite_or_zero(record.dx))
+                    GamepadEvent.Axis(axis: record.code.PadAxis(), value: normalized_axis(record.dx))
                 _:
                     Event.None
+
+    private:
+        def normalized_axis(value: f32) -> f32:
+            safe: f32 = finite_or_zero(value)
+            return -1.0 if safe < -1.0
+            return 1.0 if safe > 1.0
+            return safe

@@ -158,6 +158,11 @@ def main() -> i64:
     malformed_pad: UiCore::Event = UiCore::GamepadEvent.Axis(axis: UiCore::PadAxis.LeftX, value: nan)
     malformed_pad_record: UiCore::EventRecord = UiCore::to_record(malformed_pad)
     check("event flattening sanitizes gamepad values", malformed_pad_record.dx == 0.0)
+    high_button: UiCore::EventRecord = UiCore::to_record((UiCore::GamepadEvent.Button(button: UiCore::Pad.South, value: 4.0)))
+    check("event flattening clamps gamepad button values", high_button.dx == 1.0)
+    high_axis: UiCore::EventRecord = UiCore::to_record((UiCore::GamepadEvent.Axis(axis: UiCore::PadAxis.LeftX, value: 4.0)))
+    low_axis: UiCore::EventRecord = UiCore::to_record((UiCore::GamepadEvent.Axis(axis: UiCore::PadAxis.LeftY, value: -4.0)))
+    check("event flattening clamps gamepad axis values", high_axis.dx == 1.0 and low_axis.dx == -1.0)
     hostile_record: UiCore::EventRecord = UiCore::EventRecord{
         kind: UiCore::WireKind.Scroll, x: nan, y: infinity, dx: infinity, dy: nan, code: 0,
     }
@@ -236,6 +241,18 @@ def main() -> i64:
     check("invalid gamepad button flattening uses a rejected sentinel", invalid_pad_out.code == -1 and UiCore::wire_kind(UiCore::from_record(invalid_pad_out)) == 0)
     invalid_axis_out: UiCore::EventRecord = UiCore::to_record((UiCore::GamepadEvent.Axis(axis: UiCore::PadAxis(-1), value: 1.0)))
     check("invalid gamepad axis flattening uses a rejected sentinel", invalid_axis_out.code == -1 and UiCore::wire_kind(UiCore::from_record(invalid_axis_out)) == 0)
+    hostile_button_value: UiCore::EventRecord = UiCore::EventRecord{kind: UiCore::WireKind.GamepadButton, x: 0.0, y: 0.0, dx: 4.0, dy: 0.0, code: UiCore::Pad.South.i32()}
+    hostile_axis_value: UiCore::EventRecord = UiCore::EventRecord{kind: UiCore::WireKind.GamepadAxis, x: 0.0, y: 0.0, dx: -4.0, dy: 0.0, code: UiCore::PadAxis.LeftX.i32()}
+    match UiCore::from_record(hostile_button_value):
+        UiCore::GamepadEvent.Button(button, value):
+            check("event decoding clamps gamepad button values", value == 1.0)
+        _:
+            check("hostile gamepad button keeps its event kind", false)
+    match UiCore::from_record(hostile_axis_value):
+        UiCore::GamepadEvent.Axis(axis, value):
+            check("event decoding clamps gamepad axis values", value == -1.0)
+        _:
+            check("hostile gamepad axis keeps its event kind", false)
 
     if test_failures == 0:
         _ = puts("event wire: all checks passed")
