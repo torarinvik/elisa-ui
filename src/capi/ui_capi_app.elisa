@@ -58,7 +58,10 @@ module UiCapiApp:
             # the C boundary. A hostile native backend can provide negative or
             # oversized offsets; forwarding them unchanged would make the C
             # app interpret a range that cannot exist in `safe_text`.
-            limit: i32 = safe_text.len.i32()
+            # The public C contract uses UTF-8 scalar offsets for composition;
+            # bound against the number of encoded scalars rather than the
+            # number of bytes in the borrowed payload.
+            limit: i32 = UiText::utf8_scalar_count(safe_text).i32()
             safe_start: mutable i32 = selected_start if selected_start > 0 else 0
             safe_start <- limit if safe_start > limit else safe_start
             remaining: i32 = limit - safe_start

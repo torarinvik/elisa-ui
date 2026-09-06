@@ -1,0 +1,37 @@
+# Small, backend-neutral text indexing helpers.
+#
+# Native text protocols do not all use the same range unit. SDL and the C app
+# boundary describe marked-text offsets as UTF-8 scalar counts, while AppKit
+# uses UTF-16 units. Keep the scalar counter here so byte bounds are never
+# mistaken for the protocol's character bound at one of those seams.
+
+module UiText:
+    public:
+        # Advance over one UTF-8 encoded scalar-sized sequence. Host text is
+        # expected to be valid UTF-8, but malformed input still consumes one
+        # byte at a time so counting a hostile payload remains bounded and
+        # deterministic instead of reading past the supplied view.
+        def utf8_scalar_bytes(text: sview, position: usize) -> usize:
+            return 0 if text.len <= 0 or position >= text.len.usize()
+            first: u32 = text.data[position].u32()
+            return 1 if first < 128
+            return 2 if first < 224 and position + 1 < text.len.usize()
+            return 3 if first < 240 and position + 2 < text.len.usize()
+            return 4 if first < 248 and position + 3 < text.len.usize()
+            return 1
+
+        # Count the scalar-sized units in a bounded UTF-8 view. This is a
+        # protocol bound, not a grapheme count: a combining sequence or an
+        # emoji ZWJ sequence contributes one unit per encoded scalar, matching
+        # SDL's marked-text range convention.
+        def utf8_scalar_count(text: sview) -> usize:
+            return 0 if text.len <= 0
+            limit: usize = text.len.usize()
+            cursor: mutable usize = 0
+            count: mutable usize = 0
+            while cursor < limit |cursor, count, limit|:
+                width: usize = utf8_scalar_bytes(text, cursor)
+                return count if width == 0
+                cursor <- cursor + width
+                count <- count + 1
+            return count
