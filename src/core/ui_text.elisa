@@ -35,3 +35,20 @@ module UiText:
                 cursor <- cursor + width
                 count <- count + 1
             return count
+
+        # Count UTF-16 code units in a bounded UTF-8 view. Native AppKit text
+        # ranges use this unit: BMP scalars consume one unit and supplementary
+        # scalars (four-byte UTF-8 sequences) consume a surrogate pair. Invalid
+        # or truncated input follows the same one-byte recovery as the scalar
+        # counter, keeping hostile payloads bounded and deterministic.
+        def utf16_unit_count(text: sview) -> usize:
+            return 0 if text.len <= 0
+            limit: usize = text.len.usize()
+            cursor: mutable usize = 0
+            count: mutable usize = 0
+            while cursor < limit |cursor, count, limit|:
+                width: usize = utf8_scalar_bytes(text, cursor)
+                return count if width == 0
+                count <- count + (2 if width == 4 else 1)
+                cursor <- cursor + width
+            return count
