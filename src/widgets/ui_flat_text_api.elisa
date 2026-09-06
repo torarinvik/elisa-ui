@@ -92,16 +92,8 @@ extend UiFlat:
         # from their native indexing convention and only pass scalar boundaries.
         def set_selection(index: usize, anchor: usize, caret: usize) -> void:
             return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
-            length: usize = widgets[index].input_length
-            next_anchor: mutable usize = anchor if anchor < length else length
-            next_caret: mutable usize = caret if caret < length else length
-            offset: usize = index * TEXT_CAPACITY
-            while next_anchor > 0 and next_anchor < length and is_utf8_continuation(text_storage[offset + next_anchor]) |next_anchor, offset, length|:
-                next_anchor <- next_anchor - 1
-            while next_caret > 0 and next_caret < length and is_utf8_continuation(text_storage[offset + next_caret]) |next_caret, offset, length|:
-                next_caret <- next_caret - 1
-            next_anchor <- grapheme_boundary_at_or_before(index, next_anchor)
-            next_caret <- grapheme_boundary_at_or_before(index, next_caret)
+            next_anchor: usize = text_boundary_at_or_before(index, anchor)
+            next_caret: usize = text_boundary_at_or_before(index, caret)
             widgets[index] with { selection_anchor <- next_anchor, caret <- next_caret }
             restart_caret_blink() if index == focused_widget
             mark_state_dirty()
@@ -119,9 +111,8 @@ extend UiFlat:
 
         def set_marked(index: usize, start: usize, stop: usize) -> void:
             return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
-            length: usize = widgets[index].input_length
-            widgets[index].marked_start <- start if start < length else length
-            widgets[index].marked_end <- stop if stop < length else length
+            widgets[index].marked_start <- text_boundary_at_or_before(index, start)
+            widgets[index].marked_end <- text_boundary_at_or_before(index, stop)
             if widgets[index].marked_end < widgets[index].marked_start:
                 swap: usize = widgets[index].marked_start
                 widgets[index].marked_start <- widgets[index].marked_end
@@ -213,5 +204,4 @@ extend UiFlat:
             return if target >= widget_count or widgets[target].kind != UiConst::WidgetKind.TextField
             return if scrollbar_target(x, y) != NONE
             select_text_at(x, click_count)
-
 

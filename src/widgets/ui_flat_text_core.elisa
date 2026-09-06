@@ -226,6 +226,11 @@ extend UiFlat:
             units: mutable usize = 0
             while cursor < stop |cursor, units, stop|:
                 scalar_bytes: usize = utf8_scalar_bytes(text, cursor)
+                # A byte offset supplied by a native adapter may land inside
+                # a multi-byte scalar. Count only the complete UTF-8 prefix;
+                # never let a partial scalar advance the UTF-16 position past
+                # the requested boundary.
+                return units if cursor + scalar_bytes > stop
                 units <- units + (2 if scalar_bytes == 4 else 1)
                 cursor <- cursor + scalar_bytes
             return units
@@ -264,6 +269,19 @@ extend UiFlat:
                 return cursor if after > position
                 cursor <- after
             return cursor
+
+        # Native text protocols may provide byte offsets that are merely
+        # clamped, rather than scalar- or grapheme-aligned. Keep every public
+        # marked/selection range on the same user-perceived-character boundary
+        # as keyboard editing and painting.
+        def text_boundary_at_or_before(index: usize, requested: usize) -> usize:
+            return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            length: usize = widgets[index].input_length
+            boundary: mutable usize = requested if requested < length else length
+            offset: usize = index * TEXT_CAPACITY
+            while boundary > 0 and boundary < length and is_utf8_continuation(text_storage[offset + boundary]) |boundary, offset, length|:
+                boundary <- boundary - 1
+            return grapheme_boundary_at_or_before(index, boundary)
 
         def secure_display_offset(index: usize, byte_position: usize) -> usize:
             cursor: mutable usize = 0
