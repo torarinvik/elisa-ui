@@ -145,9 +145,18 @@ module UiDialog:
         # closed record remains readable for its typed result, but is no longer
         # exposed as an active semantic element.
         def semantics(handle: Handle, focused: bool) -> Semantics:
+            accessible_label: mutable sview = title(handle)
+            accessible_help: mutable sview = message(handle)
+            # A title is optional for alerts/sheets, but the dialog must still
+            # have an accessible name when its message is present. Promote the
+            # message to the label in that case; otherwise Core quite
+            # correctly rejects an unlabeled semantic node.
+            if accessible_label.len == 0:
+                accessible_label <- accessible_help
+                accessible_help <- ""
             return Semantics{
                 role: UiCore::AccessibilityRole.Dialog,
-                label: title(handle), help: message(handle),
+                label: accessible_label, help: accessible_help,
                 identity: semantic_id(handle), enabled: is_open(handle),
                 focused: focused and is_open(handle), dismissible: is_open(handle),
                 primary_available: is_open(handle) and primary_label(handle).len > 0,
@@ -165,7 +174,7 @@ module UiDialog:
         # action controls may be emitted separately by the application; the
         # dialog's copied title/message and active state stay authoritative here.
         def emit_accessibility(handle: Handle, frame: UiCore::Rect, focused: bool, parent_id: usize, first_child_id: usize, next_sibling_id: usize) -> void:
-            return if not is_open(handle) or title(handle).len == 0
+            return if not is_open(handle)
             value: Semantics = semantics(handle, focused)
             UiCore::accessibility_with_metadata(value.role, value.label, value.help,
                 frame, value.identity, 0, value.enabled, value.focused, false,

@@ -27,6 +27,18 @@ def main() -> i64:
     node: UiCore::AccessibilityNode = UiCore::accessibility_at(0)
     check("dialog emits copied labels into the semantic frame", UiCore::accessibility_count() == 1 and node.role == UiCore::AccessibilityRole.Dialog and node.label == "Delete item" and node.help == "This cannot be undone." and node.focused)
 
+    # A title is optional, but a message-only dialog still needs an accessible
+    # name so assistive navigation can discover and describe the modal.
+    message_only: UiDialog::Handle = UiDialog::open(UiDialog::Kind.Alert, "", "Network unavailable", "OK", "", 30)
+    message_semantic: UiDialog::Semantics = UiDialog::semantics(message_only, true)
+    check("message-only dialog promotes its message to the semantic label", message_semantic.label == "Network unavailable" and message_semantic.help == "")
+    UiCore::begin_frame()
+    UiDialog::emit_accessibility(message_only, UiCore::Rect(4.0, 8.0, 240.0, 120.0), true, UiCore::MAX_ACCESSIBILITY_NODES, UiCore::MAX_ACCESSIBILITY_NODES, UiCore::MAX_ACCESSIBILITY_NODES)
+    message_node: UiCore::AccessibilityNode = UiCore::accessibility_at(0)
+    check("message-only dialog remains in the semantic frame", UiCore::accessibility_count() == 1 and message_node.role == UiCore::AccessibilityRole.Dialog and message_node.label == "Network unavailable" and message_node.help == "")
+    _ = UiDialog::cancel(message_only)
+    _ = UiDialog::dispose(message_only)
+
     second: UiDialog::Handle = UiDialog::open(UiDialog::Kind.Alert, "Offline", "Try again later.", "OK", "", 20)
     check("top returns newest dialog", UiDialog::top().slot == second.slot)
     check("back closes only the top dialog", UiDialog::back() and UiDialog::result(second) == UiDialog::Result.Back and not UiDialog::is_open(second) and UiDialog::is_open(first))
