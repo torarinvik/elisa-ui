@@ -32,52 +32,27 @@ include "./ui_wasm_input.elisa"
 permission Host:
     Present
     Layout
+    Clock
+    Log
+    Notify
+    Storage
+    Files
+    Navigation
+    Network
     Clipboard
+    Commerce
+    Audio
+
+# These are generated from the pinned WasmBrowser WIT contract in the sibling
+# SDK checkout. Keeping the import surface authoritative prevents this backend
+# from drifting into a second hand-written ABI while the UI-specific policy
+# below remains local to elisa-ui.
+include "../../../../wasm-sdk/sdk/elisa/wasmbrowser/host_bindings.elisa"
 
 # The impl at the foot of this module names `Painter` unqualified: `impl
 # UiPaint::Painter for T:` is rejected by stage0's parser, and this is what makes
 # the bare name resolve.
 using UiPaint
-
-@wasm_import_module("wasmbrowser:window/host@0.1.0")
-@link_name("present-commands")
-extern host_present_commands(width: u32, height: u32, commands: void&, count: u32) -> void can[Host.Present]
-
-# Canonical strings cross as a pointer/length pair. These are the measurement
-# side of the text contract: layout must know a run's extent before anything is
-# drawn, and the host answers from the same font it rasterizes with.
-@wasm_import_module("wasmbrowser:window/host@0.1.0")
-@link_name("measure-text-width")
-extern host_measure_text_width(text: cstr, length: u32, size: f32) -> f32 can[Host.Layout]
-
-@wasm_import_module("wasmbrowser:window/host@0.1.0")
-@link_name("measure-text-height")
-extern host_measure_text_height(text: cstr, length: u32, size: f32) -> f32 can[Host.Layout]
-
-@wasm_import_module("wasmbrowser:window/host@0.1.0")
-@link_name("font-ascent")
-extern host_font_ascent(size: f32) -> f32 can[Host.Layout]
-
-@wasm_import_module("wasmbrowser:window/host@0.1.0")
-@link_name("font-line-height")
-extern host_font_line_height(size: f32) -> f32 can[Host.Layout]
-
-# Clipboard is the only platform service used directly by the shared flat
-# widget layer. Keep its WIT result area and ownership rules at this boundary:
-# UiFlat deals in borrowed bytes, while the host deals in canonical
-# result<string,string> values allocated in guest linear memory.
-@wasm_import_module("wasmbrowser:window/host@0.1.0")
-@link_name("clipboard-get")
-extern host_clipboard_get(result: mutable void&) -> void can[Host.Clipboard]
-
-@wasm_import_module("wasmbrowser:window/host@0.1.0")
-@link_name("clipboard-set")
-extern host_clipboard_set(text: cstr, text_length: u32, result: mutable void&) -> void can[Host.Clipboard]
-
-# Canonical result strings are returned through the component's allocator. A
-# zero-size realloc releases the allocation after Elisa has copied its bytes.
-@link_name("cabi_realloc")
-extern host_component_realloc(old_pointer: u32, old_size: u32, alignment: u32, new_size: u32) -> u32
 
 @intrinsic("llvm.wasm.memory.size.i32")
 extern ui_wasm_memory_size_pages(memory_index: u32) -> u32
