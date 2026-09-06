@@ -34,11 +34,11 @@ extend UiWidgets:
         # own, so a parent gives it exactly the space its children need.
         def column(padding: f32, spacing: f32, fill: UiCore::Color) -> Widget:
             can Memory.Allocate, Abort.Panic:
-                return Container.Box(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, axis: UiConst::Axis.Column, padding: UiCore::nonnegative_extent(padding), spacing: UiCore::nonnegative_extent(spacing), fill: fill)
+                return Container.Box(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, axis: UiConst::Axis.Column, padding: UiCore::bounded_extent(padding), spacing: UiCore::bounded_extent(spacing), fill: fill)
 
         def row(padding: f32, spacing: f32, fill: UiCore::Color) -> Widget:
             can Memory.Allocate, Abort.Panic:
-                return Container.Box(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, axis: UiConst::Axis.Row, padding: UiCore::nonnegative_extent(padding), spacing: UiCore::nonnegative_extent(spacing), fill: fill)
+                return Container.Box(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, axis: UiConst::Axis.Row, padding: UiCore::bounded_extent(padding), spacing: UiCore::bounded_extent(spacing), fill: fill)
 
         # Fixed-column and scrolling containers mirror the corresponding
         # hierarchy variants, including the axis and content offset that the
@@ -46,7 +46,7 @@ extend UiWidgets:
         def grid(columns: i32, padding: f32, spacing: f32, fill: UiCore::Color) -> Widget:
             can Memory.Allocate, Abort.Panic:
                 safe_columns: i32 = columns if columns > 0 else 1
-                return Container.Grid(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, columns: safe_columns, padding: UiCore::nonnegative_extent(padding), spacing: UiCore::nonnegative_extent(spacing), fill: fill)
+                return Container.Grid(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, columns: safe_columns, padding: UiCore::bounded_extent(padding), spacing: UiCore::bounded_extent(spacing), fill: fill)
 
         # Choose a fixed-column grid from logical width at build time. The
         # application can rebuild this small composition when a resize event
@@ -58,14 +58,14 @@ extend UiWidgets:
 
         def scroll(axis: UiConst::Axis, offset: f32, fill: UiCore::Color) -> Widget:
             can Memory.Allocate, Abort.Panic:
-                return Container.Scroll(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, axis: UiConst::normalize_axis(axis), offset: UiCore::nonnegative_extent(offset), fill: fill)
+                return Container.Scroll(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, axis: UiConst::normalize_axis(axis), offset: UiCore::bounded_extent(offset), fill: fill)
 
         # A wheel-driven viewport. Keep the mutable offset in caller-owned
         # state so a packed hierarchy handle does not need a writable payload
         # projection (which the language deliberately does not provide).
         def scroll_with_state(axis: UiConst::Axis, state: mutable ScrollState&, fill: UiCore::Color) -> Widget:
             can Memory.Allocate, Abort.Panic:
-                state.offset <- UiCore::nonnegative_extent(state.offset)
+                state.offset <- UiCore::bounded_extent(state.offset)
                 return Container.ScrollWithState(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, axis: UiConst::normalize_axis(axis), state: &state, fill: fill)
 
         # A label's minimum is the measured extent of its text, so it takes
@@ -88,28 +88,28 @@ extend UiWidgets:
                 safe_caption: sview = normalized_text(caption)
                 text_width: f32 = UiConstraints::bounded(ui_measure_text_width(safe_caption, 14.0))
                 text_height: f32 = UiConstraints::bounded(ui_text_line_height(14.0))
-                return Button.Push(min_width: text_width + 20.0, min_height: text_height + 12.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: safe_caption, rest: base, hover: lighten(base, 30), press: darken(base, 30))
+                return Button.Push(min_width: UiCore::bounded_extent(text_width + 20.0), min_height: UiCore::bounded_extent(text_height + 12.0), grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: safe_caption, rest: base, hover: lighten(base, 30), press: darken(base, 30))
 
         def checkbox(caption: sview, checked: bool, base: UiCore::Color) -> Widget:
             can Memory.Allocate, Abort.Panic:
                 safe_caption: sview = normalized_text(caption)
                 text_width: f32 = UiConstraints::bounded(ui_measure_text_width(safe_caption, 14.0))
                 text_height: f32 = UiConstraints::bounded(ui_text_line_height(14.0))
-                return Button.Check(min_width: text_width + 28.0, min_height: text_height + 8.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: safe_caption, checked: checked, rest: base, hover: lighten(base, 30), press: darken(base, 30))
+                return Button.Check(min_width: UiCore::bounded_extent(text_width + 28.0), min_height: UiCore::bounded_extent(text_height + 8.0), grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: safe_caption, checked: checked, rest: base, hover: lighten(base, 30), press: darken(base, 30))
 
         def toggle(caption: sview, on: bool, base: UiCore::Color) -> Widget:
             can Memory.Allocate, Abort.Panic:
                 safe_caption: sview = normalized_text(caption)
                 text_width: f32 = UiConstraints::bounded(ui_measure_text_width(safe_caption, 14.0))
                 text_height: f32 = UiConstraints::bounded(ui_text_line_height(14.0))
-                return Button.Toggle(min_width: text_width + 28.0, min_height: text_height + 8.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: safe_caption, on: on, rest: base, hover: lighten(base, 30), press: darken(base, 30))
+                return Button.Toggle(min_width: UiCore::bounded_extent(text_width + 28.0), min_height: UiCore::bounded_extent(text_height + 8.0), grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: safe_caption, on: on, rest: base, hover: lighten(base, 30), press: darken(base, 30))
 
         def radio(caption: sview, group: i32, selected: bool, base: UiCore::Color) -> Widget:
             can Memory.Allocate, Abort.Panic:
                 safe_caption: sview = normalized_text(caption)
                 text_width: f32 = UiConstraints::bounded(ui_measure_text_width(safe_caption, 14.0))
                 text_height: f32 = UiConstraints::bounded(ui_text_line_height(14.0))
-                return Button.Radio(min_width: text_width + 28.0, min_height: text_height + 8.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: safe_caption, group: group, selected: selected, rest: base, hover: lighten(base, 30), press: darken(base, 30))
+                return Button.Radio(min_width: UiCore::bounded_extent(text_width + 28.0), min_height: UiCore::bounded_extent(text_height + 8.0), grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: safe_caption, group: group, selected: selected, rest: base, hover: lighten(base, 30), press: darken(base, 30))
 
         def gauge(fraction: f32, track: UiCore::Color, bar: UiCore::Color) -> Widget:
             can Memory.Allocate, Abort.Panic:
@@ -124,7 +124,7 @@ extend UiWidgets:
                 safe_initial: sview = normalized_text(initial)
                 safe_size: f32 = UiConstraints::bounded(size)
                 text_height: f32 = UiConstraints::bounded(ui_text_line_height(safe_size))
-                return Control.TextBox(min_width: 160.0, min_height: text_height + 12.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, text: safe_initial, caret: safe_initial.len.usize(), size: safe_size, ink: ink, fill: fill)
+                return Control.TextBox(min_width: 160.0, min_height: UiCore::bounded_extent(text_height + 12.0), grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, text: safe_initial, caret: safe_initial.len.usize(), size: safe_size, ink: ink, fill: fill)
 
     private:
         # Public enum constructors accept ABI views directly, so keep the
@@ -151,7 +151,7 @@ extend UiWidgets:
         # widget so it can be written inline:
         # `children(row, grow(button("OK", blue), 1.0))`.
         def grow(w: Widget, weight: f32) -> Widget:
-            w.grow <- UiCore::nonnegative_extent(weight)
+            w.grow <- UiCore::bounded_extent(weight)
             return w
 
         # ------------------------------------------------------------------

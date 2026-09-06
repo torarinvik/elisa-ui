@@ -137,6 +137,15 @@ def main() -> i64:
             _:
                 fail("row builder kind")
 
+        huge_geometry: f32 = 3.0e38
+        bounded_row: Widget = row(huge_geometry, huge_geometry, panel)
+        match bounded_row:
+            Container.Box(axis, padding, spacing, fill):
+                if padding != UiCore::MAX_GEOMETRY_EXTENT or spacing != UiCore::MAX_GEOMETRY_EXTENT:
+                    fail("row builder bounds oversized geometry")
+            _:
+                fail("bounded row builder kind")
+
         invalid_grid: Widget = grid(0, -4.0, -2.0, panel)
         match invalid_grid:
             Container.Grid(columns, padding, spacing, fill):
@@ -173,6 +182,10 @@ def main() -> i64:
         if invalid_growth.grow != 0.0:
             fail("grow builder clamps negative weights")
 
+        bounded_growth: Widget = grow(button("Growth", accent), huge_geometry)
+        if bounded_growth.grow != UiCore::MAX_GEOMETRY_EXTENT:
+            fail("grow builder bounds oversized weights")
+
         invalid_scroll: Widget = scroll(UiConst::Axis.Column, -8.0, panel)
         match invalid_scroll:
             Container.Scroll(axis, offset, fill):
@@ -180,5 +193,18 @@ def main() -> i64:
                     fail("scroll builder clamps negative offsets")
             _:
                 fail("scroll builder kind")
+
+        bounded_scroll: Widget = scroll(UiConst::Axis.Column, huge_geometry, panel)
+        match bounded_scroll:
+            Container.Scroll(axis, offset, fill):
+                if offset != UiCore::MAX_GEOMETRY_EXTENT:
+                    fail("scroll builder bounds oversized offsets")
+            _:
+                fail("bounded scroll builder kind")
+
+        bounded_state: ScrollState = ScrollState{offset: huge_geometry}
+        _ = scroll_with_state(UiConst::Axis.Column, &bounded_state, panel)
+        if bounded_state.offset != UiCore::MAX_GEOMETRY_EXTENT:
+            fail("stateful scroll builder bounds oversized offsets")
 
         return failures.i64()
