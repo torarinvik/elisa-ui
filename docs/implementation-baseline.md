@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `cbc92ba6f41385fb6a4e1fc604f56842c0420b7a` on branch `work` |
+| elisa-ui revision | `564d034391bc418c86ef2bbbfa5348b233653f93` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -197,6 +197,9 @@ phase control. Skia font metrics are queryable before surface attachment
 because they do not depend on a live canvas.
 The frame boundary also supports an explicit logical-to-physical scale with a
 balanced save/restore transform, including cleanup of any outstanding clips.
+`UiSkia::surface_lost()` preserves retained Elisa state while invalidating the
+borrowed canvas; a monotonic surface-generation token distinguishes loss and
+recreation for hosts without exposing native pointers to the framework.
 Direct rounded fills and image placement normalize malformed geometry in Elisa
 before crossing the Skia FFI; empty destinations are rejected by the helper
 contract and its headless recorder.
