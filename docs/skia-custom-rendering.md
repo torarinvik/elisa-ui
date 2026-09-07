@@ -81,9 +81,10 @@ wire shape, while `UiPaint::rounded_rect_style()` supplies the shared Elisa
 rounded-corner, hairline, and elevated-control shadow policy to both the Skia
 and CoreGraphics custom painters; custom controls can request an explicit
 radius through `UiSkia::fill_rounded_rect()`. Skia's private
-`ui_skia_style.elisa` extension supplies the shadow offset and blur constants
-through explicit FFI arguments, leaving the C++ bridge to construct only the
-target-specific `SkPaint` effect.
+`ui_skia_style.elisa` extension supplies the shadow offset, blur, and 1px
+hairline constants through explicit FFI arguments, leaving the C++ bridge to
+construct only the target-specific `SkPaint` effect. Non-positive stroke widths
+are rejected by the bridge instead of receiving an undocumented fallback.
 Font fallback, image resources, GPU surface
 creation, and an AppKit `MTKView`/`SkSurface` host are intentionally separate
 follow-ups; they must be chosen with the target's pinned Skia build rather than
