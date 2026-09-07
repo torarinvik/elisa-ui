@@ -33,8 +33,22 @@ bool finite(float value) {
     return std::isfinite(value);
 }
 
+constexpr float max_geometry_extent = 16777216.0f;
+
+bool bounded_coordinate(float value) {
+    return finite(value) && value >= -max_geometry_extent && value <= max_geometry_extent;
+}
+
+bool bounded_extent(float value) {
+    return finite(value) && value > 0.0f && value <= max_geometry_extent;
+}
+
+bool bounded_nonnegative_extent(float value) {
+    return finite(value) && value >= 0.0f && value <= max_geometry_extent;
+}
+
 bool valid_rect(float x, float y, float width, float height) {
-    return finite(x) && finite(y) && finite(width) && finite(height) && width > 0.0f && height > 0.0f;
+    return bounded_coordinate(x) && bounded_coordinate(y) && bounded_extent(width) && bounded_extent(height);
 }
 
 // Retained clips may intentionally be empty after Elisa intersects nested
@@ -42,15 +56,12 @@ bool valid_rect(float x, float y, float width, float height) {
 // zero-sized clip is a valid Skia operation that suppresses subsequent draws,
 // while negative or non-finite geometry remains malformed and is rejected.
 bool valid_clip_rect(float x, float y, float width, float height) {
-    return finite(x) && finite(y) && finite(width) && finite(height) && width >= 0.0f && height >= 0.0f;
-}
-
-bool positive(float value) {
-    return finite(value) && value > 0.0f;
+    return bounded_coordinate(x) && bounded_coordinate(y) && bounded_nonnegative_extent(width) &&
+        bounded_nonnegative_extent(height);
 }
 
 bool valid_scale(float x, float y) {
-    return positive(x) && positive(y);
+    return bounded_extent(x) && bounded_extent(y);
 }
 
 SkColor color(std::uint8_t red, std::uint8_t green, std::uint8_t blue, std::uint8_t alpha) {
@@ -105,13 +116,13 @@ extern "C" void elisa_skia_canvas_scale(std::size_t handle, float x, float y) {
 }
 
 extern "C" void elisa_skia_canvas_translate(std::size_t handle, float x, float y) {
-    if (SkCanvas *target = canvas(handle); target != nullptr && finite(x) && finite(y)) {
+    if (SkCanvas *target = canvas(handle); target != nullptr && bounded_coordinate(x) && bounded_coordinate(y)) {
         target->translate(x, y);
     }
 }
 
 extern "C" void elisa_skia_canvas_rotate(std::size_t handle, float degrees) {
-    if (SkCanvas *target = canvas(handle); target != nullptr && finite(degrees)) {
+    if (SkCanvas *target = canvas(handle); target != nullptr && bounded_coordinate(degrees)) {
         target->rotate(degrees);
     }
 }
@@ -132,7 +143,7 @@ extern "C" void elisa_skia_canvas_fill_round_rect(std::size_t handle, float x, f
                                                     std::uint8_t green, std::uint8_t blue,
                                                     std::uint8_t alpha) {
     if (SkCanvas *target = canvas(handle);
-        target != nullptr && valid_rect(x, y, width, height) && finite(radius) && radius >= 0.0f) {
+        target != nullptr && valid_rect(x, y, width, height) && bounded_nonnegative_extent(radius)) {
         const SkRect rect = SkRect::MakeXYWH(x, y, width, height);
         target->drawRRect(SkRRect::MakeRectXY(rect, radius, radius),
                           fill_paint(red, green, blue, alpha));
@@ -145,8 +156,8 @@ extern "C" void elisa_skia_canvas_stroke_round_rect(std::size_t handle, float x,
                                                       std::uint8_t green, std::uint8_t blue,
                                                       std::uint8_t alpha) {
     if (SkCanvas *target = canvas(handle);
-        target != nullptr && valid_rect(x, y, width, height) && finite(radius) && radius >= 0.0f &&
-        finite(stroke_width) && stroke_width > 0.0f) {
+        target != nullptr && valid_rect(x, y, width, height) && bounded_nonnegative_extent(radius) &&
+        bounded_extent(stroke_width)) {
         const SkRect rect = SkRect::MakeXYWH(x, y, width, height);
         target->drawRRect(SkRRect::MakeRectXY(rect, radius, radius),
                           stroke_paint(red, green, blue, alpha, stroke_width));
@@ -157,8 +168,9 @@ extern "C" void elisa_skia_canvas_shadow_round_rect(std::size_t handle, float x,
                                                       float height, float radius, float offset_x,
                                                       float offset_y, float blur, std::uint8_t alpha) {
     if (SkCanvas *target = canvas(handle);
-        target != nullptr && valid_rect(x, y, width, height) && finite(radius) && radius >= 0.0f &&
-        finite(offset_x) && finite(offset_y) && finite(blur) && blur >= 0.0f && alpha != 0) {
+        target != nullptr && valid_rect(x, y, width, height) && bounded_nonnegative_extent(radius) &&
+        bounded_coordinate(offset_x) && bounded_coordinate(offset_y) && bounded_nonnegative_extent(blur) &&
+        alpha != 0) {
         const SkRect rect = SkRect::MakeXYWH(x, y, width, height);
         // DropShadowOnly keeps the source silhouette out of the result while
         // still using its alpha as the shadow mask. This is the replacement
@@ -199,8 +211,8 @@ extern "C" void elisa_skia_canvas_draw_text_with_font(std::size_t canvas_handle,
                                                         std::uint8_t red, std::uint8_t green,
                                                         std::uint8_t blue, std::uint8_t alpha) {
     if (SkCanvas *target = canvas(canvas_handle);
-        target != nullptr && font_handle != 0 && text != nullptr && length > 0 && finite(x) && finite(y) &&
-        finite(size) && size > 0.0f) {
+        target != nullptr && font_handle != 0 && text != nullptr && length > 0 && bounded_coordinate(x) &&
+        bounded_coordinate(y) && bounded_extent(size)) {
         SkFont font = font_for(size, reinterpret_cast<SkTypeface *>(font_handle));
         target->drawSimpleText(text, length, SkTextEncoding::kUTF8, x, y, font,
                                fill_paint(red, green, blue, alpha));
@@ -210,30 +222,32 @@ extern "C" void elisa_skia_canvas_draw_text_with_font(std::size_t canvas_handle,
 extern "C" float elisa_skia_measure_text_width_with_font(std::size_t font_handle,
                                                            const char *text, std::size_t length,
                                                            float size) {
-    if (font_handle == 0 || text == nullptr || length == 0 || !finite(size) || size <= 0.0f) return 0.0f;
-    return font_for(size, reinterpret_cast<SkTypeface *>(font_handle))
+    if (font_handle == 0 || text == nullptr || length == 0 || !bounded_extent(size)) return 0.0f;
+    const float measured = font_for(size, reinterpret_cast<SkTypeface *>(font_handle))
         .measureText(text, length, SkTextEncoding::kUTF8);
+    return finite(measured) && measured >= 0.0f ? measured : 0.0f;
 }
 
 extern "C" float elisa_skia_font_ascent_with_font(std::size_t font_handle, float size) {
-    if (font_handle == 0 || !finite(size) || size <= 0.0f) return 0.0f;
+    if (font_handle == 0 || !bounded_extent(size)) return 0.0f;
     SkFontMetrics metrics;
     font_for(size, reinterpret_cast<SkTypeface *>(font_handle)).getMetrics(&metrics);
-    return -metrics.fAscent;
+    return finite(metrics.fAscent) ? -metrics.fAscent : 0.0f;
 }
 
 extern "C" float elisa_skia_text_line_height_with_font(std::size_t font_handle, float size) {
-    if (font_handle == 0 || !finite(size) || size <= 0.0f) return 0.0f;
+    if (font_handle == 0 || !bounded_extent(size)) return 0.0f;
     SkFontMetrics metrics;
     font_for(size, reinterpret_cast<SkTypeface *>(font_handle)).getMetrics(&metrics);
-    return metrics.fDescent - metrics.fAscent + metrics.fLeading;
+    const float height = metrics.fDescent - metrics.fAscent + metrics.fLeading;
+    return finite(height) && height >= 0.0f ? height : 0.0f;
 }
 
 extern "C" void elisa_skia_canvas_fill_circle(std::size_t handle, float x, float y, float radius,
                                                 std::uint8_t red, std::uint8_t green, std::uint8_t blue,
                                                 std::uint8_t alpha) {
     if (SkCanvas *target = canvas(handle);
-        target != nullptr && finite(x) && finite(y) && positive(radius)) {
+        target != nullptr && bounded_coordinate(x) && bounded_coordinate(y) && bounded_extent(radius)) {
         target->drawCircle(x, y, radius, fill_paint(red, green, blue, alpha));
     }
 }
@@ -242,7 +256,8 @@ extern "C" void elisa_skia_canvas_fill_triangle(std::size_t handle, float ax, fl
                                                  float cx, float cy, std::uint8_t red, std::uint8_t green,
                                                  std::uint8_t blue, std::uint8_t alpha) {
     if (SkCanvas *target = canvas(handle);
-        target != nullptr && finite(ax) && finite(ay) && finite(bx) && finite(by) && finite(cx) && finite(cy)) {
+        target != nullptr && bounded_coordinate(ax) && bounded_coordinate(ay) && bounded_coordinate(bx) &&
+        bounded_coordinate(by) && bounded_coordinate(cx) && bounded_coordinate(cy)) {
         SkPathBuilder path;
         path.moveTo(ax, ay).lineTo(bx, by).lineTo(cx, cy).close();
         target->drawPath(path.detach(), fill_paint(red, green, blue, alpha));
@@ -254,8 +269,8 @@ extern "C" void elisa_skia_canvas_fill_line(std::size_t handle, float x0, float 
                                               std::uint8_t blue,
                                               std::uint8_t alpha) {
     if (SkCanvas *target = canvas(handle);
-        target != nullptr && finite(x0) && finite(y0) && finite(x1) && finite(y1) &&
-        finite(stroke_width) && stroke_width > 0.0f) {
+        target != nullptr && bounded_coordinate(x0) && bounded_coordinate(y0) && bounded_coordinate(x1) &&
+        bounded_coordinate(y1) && bounded_extent(stroke_width)) {
         target->drawLine(x0, y0, x1, y1, stroke_paint(red, green, blue, alpha, stroke_width));
     }
 }
@@ -264,28 +279,30 @@ extern "C" void elisa_skia_canvas_draw_text(std::size_t handle, const char *text
                                               float x, float y, float size, std::uint8_t red,
                                               std::uint8_t green, std::uint8_t blue, std::uint8_t alpha) {
     if (SkCanvas *target = canvas(handle);
-        target != nullptr && text != nullptr && length > 0 && finite(x) && finite(y) && finite(size) &&
-        size > 0.0f) {
+        target != nullptr && text != nullptr && length > 0 && bounded_coordinate(x) && bounded_coordinate(y) &&
+        bounded_extent(size)) {
         target->drawSimpleText(text, length, SkTextEncoding::kUTF8, x, y, font_for(size),
                                fill_paint(red, green, blue, alpha));
     }
 }
 
 extern "C" float elisa_skia_measure_text_width(const char *text, std::size_t length, float size) {
-    if (text == nullptr || length == 0 || !finite(size) || size <= 0.0f) return 0.0f;
-    return font_for(size).measureText(text, length, SkTextEncoding::kUTF8);
+    if (text == nullptr || length == 0 || !bounded_extent(size)) return 0.0f;
+    const float measured = font_for(size).measureText(text, length, SkTextEncoding::kUTF8);
+    return finite(measured) && measured >= 0.0f ? measured : 0.0f;
 }
 
 extern "C" float elisa_skia_font_ascent(float size) {
-    if (!finite(size) || size <= 0.0f) return 0.0f;
+    if (!bounded_extent(size)) return 0.0f;
     SkFontMetrics metrics;
     font_for(size).getMetrics(&metrics);
-    return -metrics.fAscent;
+    return finite(metrics.fAscent) ? -metrics.fAscent : 0.0f;
 }
 
 extern "C" float elisa_skia_text_line_height(float size) {
-    if (!finite(size) || size <= 0.0f) return 0.0f;
+    if (!bounded_extent(size)) return 0.0f;
     SkFontMetrics metrics;
     font_for(size).getMetrics(&metrics);
-    return metrics.fDescent - metrics.fAscent + metrics.fLeading;
+    const float height = metrics.fDescent - metrics.fAscent + metrics.fLeading;
+    return finite(height) && height >= 0.0f ? height : 0.0f;
 }
