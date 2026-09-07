@@ -32,6 +32,9 @@ in the native shim.
 The semantic buffer remains fixed-capacity and deduplicated by stable ID. A
 duplicate declaration replaces the prior node in its original position, and
 overflow is reported rather than growing an unbounded frame allocation.
+The bounded Elisa-owned ID-to-slot index makes duplicate declarations and
+relationship patches constant-time while retaining a stale-slot validation
+guard at the public lookup boundary.
 
 `UiCore::accessibility_diff` compares two nodes and returns typed change bits
 for identity, structure, geometry, state, value, text, selection, and range.
