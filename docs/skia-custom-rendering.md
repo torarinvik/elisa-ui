@@ -71,6 +71,10 @@ helpers apply the same finite-geometry, alpha, and stroke-width policy as
 retained replay, then forward only primitive arguments through the Skia FFI;
 custom controls never construct or retain Skia C++ objects.
 
+Both immediate helpers and retained replay cull fully transparent fills,
+strokes, and text in Elisa before crossing the FFI; `Clear` remains explicit
+because clearing to transparent is observable surface state.
+
 Immediate custom drawing can also use `UiSkia::push_clip()` and
 `UiSkia::pop_clip()` from `ui_skia_clip.elisa`. Empty clips are rejected before
 Skia, and clip saves share the same ledger as transforms and the attachment
