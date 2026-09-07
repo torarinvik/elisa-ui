@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `b0432f7` (`refactor(core): use scoped loops for text scans`) on branch `work` |
+| elisa-ui revision | `0bb9dca` (`feat(metrics): expose orthogonal work timings`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -99,6 +99,10 @@ decoding (`ui_sdl3_events.elisa`, 145 lines), run-loop policy
 (`ui_sdl3_draw.elisa`, 265 lines). New or changed Elisa source continues
 to use small, single-purpose modules; the existing large modules are
 not split mechanically.
+
+`UiMetrics` keeps its frame-stage facade small and isolates independent
+layout/text/resource timing scopes in `ui_metrics_work.elisa` (148 lines),
+so diagnostics can grow without enlarging the frame-state module.
 
 The modal and navigation input policy remains in the shared `UiBack` module
 over `UiDialog` (305 lines) and `UiNavigation`. Their public tokens are
@@ -546,12 +550,14 @@ separate host-enforced security boundary.
   backend shadow table; coverage lives in `test/widget_inspector_test.elisa`.
 - `UiMetrics` owns the interpretation of application, semantics, and paint
   stages, monotonic-clock normalization, completion state, retained command and
-  semantic counts, overflow flags, and invalidation snapshots. The snapshot
-  includes both the current dirty mask and the shared monotonic invalidation
-  sequence, so repeated requests remain observable without backend state.
-  Backends supply timestamps from their own clocks; no host-specific timing
-  policy is duplicated in the inspector or native bridges. Coverage lives in
-  `test/metrics_test.elisa`.
+  semantic counts, overflow flags, invalidation snapshots, and independent
+  layout/text/resource work timings. The orthogonal work channels live in
+  `ui_metrics_work.elisa`; they support nested kinds with allocation-free,
+  duplicate/unmatched-safe scopes. The snapshot includes both the current dirty
+  mask and the shared monotonic invalidation sequence, so repeated requests
+  remain observable without backend state. Backends supply timestamps from
+  their own clocks; no host-specific timing policy is duplicated in the
+  inspector or native bridges. Coverage lives in `test/metrics_test.elisa`.
 - `UiState` is the explicit application-state persistence hook. It emits and
   validates a bounded versioned record stream keyed only by application-owned
   numeric IDs; failed restores clear the prior snapshot and no framework
