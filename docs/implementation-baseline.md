@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `1f2598d` (`fix(elisa): isolate included module identities`) on branch `work` |
+| elisa-ui revision | `26cf0cd` (`feat(ui): add lifecycle-safe optional feature views`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -27,7 +27,7 @@ profile, Elisa language, and elisa-ui framework explicitly.
 Public framework modules are `UiCore`, `UiLifecycle`, `UiMetrics`, `UiState`, `UiTasks`, `UiCapabilities`, `UiEvents`, `UiPaint`, `UiRaster`,
 `UiConst`, `UiWidgets`, `UiFlat`, `UiHandles`, `UiResources`, `UiResourcePresentation`,
 `UiResponsive`, `UiVirtualList`, `UiConstraints`, `UiIdentity`, `UiTheme`,
-`UiLocalization`, `UiValidation`, `UiDialog`, `UiNavigation`, `UiBack`, `UiGestures`, `UiTextLayout`, `UiTextInput`, `UiControls`, `UiCapi`, `UiAppKit`, `UiSkia`,
+`UiLocalization`, `UiValidation`, `UiFeatureView`, `UiDialog`, `UiNavigation`, `UiBack`, `UiGestures`, `UiTextLayout`, `UiTextInput`, `UiControls`, `UiCapi`, `UiAppKit`, `UiSkia`,
 `UiAppKitNative`, `UiAppKitCanvas`, `UiSdl3`, `UiSdl3Draw`, `UiWasmBrowser`,
 and `UiInspector`. The application contract is
 the top-level `app_init`, `app_event`, `app_text_input`, `app_text_editing`,
@@ -130,6 +130,7 @@ module-private.
 | AppKit native controls | implemented-tested | `scripts/check_appkit.sh` creates and reads real NSWindow/NSView/control objects without ordering a window onscreen. |
 | AppKit custom canvas | implemented-tested | `scripts/check_appkit_canvas.sh` builds/signs the app, renders an off-screen PNG, and exercises semantic-object identity and callbacks. |
 | Skia custom painter | implemented-tested at Elisa boundary; host integration planned | `scripts/check_skia.sh` compiles the painter and records whether `SKIA_ROOT` is configured. The local tuple has no pinned Skia SDK, so the C++ shim is not claimed as runtime-tested. |
+| Optional feature view | implemented-tested at Elisa boundary; host activation integration planned | `test/feature_view_test.elisa` covers typed identity, activation tokens, stale polling, terminal failures, retry generations, cancellation, owner disposal, and invalidation. The SDK/host remains responsible for actual component activation and deactivation. |
 | WasmBrowser hosted | implemented-tested for build/package/inspect | The synchronized compiler, explicit `Host` permission family, and component-memory sizing produce `build/hello.wapp`; WasmBrowser inspect reports the expected profile and imports/exports. Runtime launch and device execution still need dedicated fixtures. |
 | Android standalone | planned | No Android build or device fixture exists in this checkout. |
 | iOS standalone | planned | No iOS build or device fixture exists in this checkout. |
@@ -167,7 +168,7 @@ ELISA_UI_STAGE1=/tmp/elisa-ui-stage1-p4 ELISA_ALLOW_STALE_STAGE1=1 bash scripts/
   controls, dialog, drop raii, event wire, gestures, hierarchy build/layout,
   raster, responsive, sdl3 keymap/text, text input, text layout, widget dispatch, widget handles,
   widget layout, widget inspector, widget reentrancy, ui harness, metrics,
-  resource presentation, core invalidation, lifecycle, constraints, identity,
+  resource presentation, feature view, core invalidation, lifecycle, constraints, identity,
   localization, theme, validation, virtual-list and virtual-list semantics: PASS
 scripts/check_source_sizes.sh
   all tracked Elisa modules are at or below 400 lines: PASS
@@ -477,6 +478,14 @@ separate host-enforced security boundary.
   defaults and all presentation decisions remain in Elisa; hosts only resolve
   verified resource data into renderer objects. Coverage lives in
   `test/resource_presentation_test.elisa`.
+- `UiFeatureView` is the optional-code counterpart to resource presentation:
+  it records a bounded `(feature, interface, package)` identity, requires a
+  nonzero host activation token, accepts only generation-matching poll facts,
+  preserves that token through cancellation for explicit host deactivation,
+  and rotates generations on retry. `UiHarness` and `UiInspector` expose the
+  same state without introducing a downloader, linker, or native pointer;
+  coverage lives in `test/feature_view_test.elisa` and
+  `test/ui_harness_test.elisa`.
 - `UiVirtualList` owns bounded geometry and semantic-window policy for long
   lists. Logical total count, before/after edges, and off-screen focus or
   selection indexes remain available even when row widgets are not realized;
