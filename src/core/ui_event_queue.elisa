@@ -31,6 +31,12 @@ module UiEvents:
         # the finite-geometry and enum checks used by flat ABI records.
         def enqueue(event: UiCore::Event) -> bool:
             return false if not UiCore::input_coordinates_are_finite(event)
+            normalized: UiCore::Event = UiCore::normalize_event(event)
+            # `normalize_event` maps unknown key, pointer-button, and gamepad
+            # ordinals to `Event.None`. Do not claim that such a malformed
+            # typed value was accepted: callers must be able to distinguish a
+            # rejected input from a valid no-op event at the queue boundary.
+            return false if UiCore::wire_kind(normalized) != UiCore::wire_kind(event)
             if queue_count >= EVENT_QUEUE_CAPACITY:
                 dropped_count <- dropped_count + 1
                 overflow_state <- true
@@ -47,10 +53,10 @@ module UiEvents:
                         replacement <- slot
                         break
                 return false if replacement == EVENT_QUEUE_CAPACITY
-                queue[replacement] <- UiCore::normalize_event(event)
+                queue[replacement] <- normalized
                 return true
             slot: usize = (queue_head + queue_count) % EVENT_QUEUE_CAPACITY
-            queue[slot] <- UiCore::normalize_event(event)
+            queue[slot] <- normalized
             queue_count <- queue_count + 1
             return true
 
