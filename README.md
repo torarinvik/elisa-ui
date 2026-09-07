@@ -202,6 +202,10 @@ because a module member's symbol carries its module and those names cannot move.
   New application code can use [UiHandles](docs/ui-handles.md) for typed u32
   handles with retained-tree lifetime checks; the older index API remains for
   compatibility and low-level adapters.
+- Applications that want to persist control state can opt into
+  `src/widgets/ui_handles_persistence.elisa`; its `UiHandlesPersistence`
+  helpers bind ordinary text, numeric, and selection controls to `UiState`
+  record IDs while rejecting secure-field values and stale handles.
 - **Resources** ([src/widgets/ui_resources.elisa](src/widgets/ui_resources.elisa)) —
   a bounded, typed logical-resource state machine. Requests deduplicate by key,
   keep owner/generation lifetimes, separate network and decode progress, expose
