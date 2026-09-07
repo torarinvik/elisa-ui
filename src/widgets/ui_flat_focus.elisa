@@ -1,0 +1,65 @@
+# UiFlat pointer cancellation and keyboard-focus policy.
+
+extend UiFlat:
+    private:
+        def clear_hover() -> void:
+            for index in 0..<widget_count:
+                widgets[index].hovered <- false
+            mark_paint_dirty()
+
+        def release_active_press() -> void:
+            if flat_active_widget < widget_count:
+                widgets[flat_active_widget].pressed <- false
+            flat_active_widget <- NONE
+            active_scroll <- NONE
+            active_scroll_pointer <- 0.0
+            active_scroll_offset <- 0.0
+            active_pointer_button <- UiCore::NO_POINTER_BUTTON
+            active_key <- -1
+            mark_paint_dirty()
+
+        def focus(index: usize) -> void:
+            target: mutable usize = index
+            target <- NONE if target < widget_count and (not widgets[target].interactive or not effectively_enabled(target) or not effectively_visible(target))
+            changed: bool = target != focused_widget
+            release_active_press() if target != focused_widget
+            if focused_widget < widget_count:
+                widgets[focused_widget].focused <- false
+            focused_widget <- target
+            if focused_widget < widget_count:
+                widgets[focused_widget].focused <- true
+                restart_caret_blink() if widgets[focused_widget].kind == UiConst::WidgetKind.TextField
+                ensure_visible(focused_widget)
+            mark_state_dirty() if changed
+
+        def focus_next() -> void:
+            return if widget_count == 0
+            next: mutable usize = NONE
+            current_order: usize = widgets[focused_widget].focus_order if focused_widget < widget_count else 0
+            for candidate in 0..<widget_count:
+                eligible: bool = widgets[candidate].interactive and effectively_enabled(candidate) and effectively_visible(candidate)
+                follows: bool = focused_widget >= widget_count or widgets[candidate].focus_order > current_order or (widgets[candidate].focus_order == current_order and candidate > focused_widget)
+                if eligible and follows:
+                    next <- candidate if next >= widget_count or widgets[candidate].focus_order < widgets[next].focus_order or (widgets[candidate].focus_order == widgets[next].focus_order and candidate < next) else next
+            if next >= widget_count:
+                for candidate in 0..<widget_count:
+                    eligible: bool = widgets[candidate].interactive and effectively_enabled(candidate) and effectively_visible(candidate)
+                    if eligible:
+                        next <- candidate if next >= widget_count or widgets[candidate].focus_order < widgets[next].focus_order or (widgets[candidate].focus_order == widgets[next].focus_order and candidate < next) else next
+            focus(next) if next < widget_count
+
+        def focus_previous() -> void:
+            return if widget_count == 0
+            previous: mutable usize = NONE
+            current_order: usize = widgets[focused_widget].focus_order if focused_widget < widget_count else 0
+            for candidate in 0..<widget_count:
+                eligible: bool = widgets[candidate].interactive and effectively_enabled(candidate) and effectively_visible(candidate)
+                precedes: bool = focused_widget < widget_count and (widgets[candidate].focus_order < current_order or (widgets[candidate].focus_order == current_order and candidate < focused_widget))
+                if eligible and precedes:
+                    previous <- candidate if previous >= widget_count or widgets[candidate].focus_order > widgets[previous].focus_order or (widgets[candidate].focus_order == widgets[previous].focus_order and candidate > previous) else previous
+            if previous >= widget_count:
+                for candidate in 0..<widget_count:
+                    eligible: bool = widgets[candidate].interactive and effectively_enabled(candidate) and effectively_visible(candidate)
+                    if eligible:
+                        previous <- candidate if previous >= widget_count or widgets[candidate].focus_order > widgets[previous].focus_order or (widgets[candidate].focus_order == widgets[previous].focus_order and candidate > previous) else previous
+            focus(previous) if previous < widget_count
