@@ -195,14 +195,16 @@ extend UiFlat:
             position: mutable usize = caret_from_pointer(index, x)
             position <- previous_character(index, position) if position == length
             word: bool = is_word_character(index, position)
-            start: mutable usize = position
-            while start > 0 |start, word|:
-                before: usize = previous_character(index, start)
-                break if is_word_character(index, before) != word
-                start <- before
-            stop: mutable usize = next_character(index, position)
-            while stop < length and is_word_character(index, stop) == word |stop, length, word|:
-                stop <- next_character(index, stop)
+            start: usize =
+                for _ in 0..<position |start: usize = position| -> start:
+                    break if start == 0
+                    before: usize = previous_character(index, start)
+                    break if is_word_character(index, before) != word
+                    start <- before
+            stop: usize =
+                for _ in 0..<length |stop: usize = next_character(index, position)| -> stop:
+                    break if stop >= length or is_word_character(index, stop) != word
+                    stop <- next_character(index, stop)
             set_selection(index, start, stop)
 
         # Platform adapters should use this raw-click entry point. Keeping the

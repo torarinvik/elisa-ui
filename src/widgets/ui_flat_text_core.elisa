@@ -45,35 +45,7 @@ extend UiFlat:
         # Invalid, overlong, surrogate and out-of-range sequences terminate the
         # prefix, keeping stored values safe for painters and native strings.
         def valid_utf8_prefix(text: sview, byte_limit: usize) -> usize:
-            limit: usize = byte_limit if byte_limit < text.len else text.len
-            cursor: mutable usize = 0
-            while cursor < limit |cursor, limit|:
-                first: u32 = text.data[cursor].u32()
-                if first <= 127:
-                    cursor <- cursor + 1
-                    continue
-                if first >= 194 and first <= 223:
-                    return cursor if cursor + 1 >= limit or not is_utf8_continuation(text.data[cursor + 1])
-                    cursor <- cursor + 2
-                    continue
-                if first >= 224 and first <= 239:
-                    return cursor if cursor + 2 >= limit
-                    second: u32 = text.data[cursor + 1].u32()
-                    return cursor if not is_utf8_continuation(text.data[cursor + 1]) or not is_utf8_continuation(text.data[cursor + 2])
-                    return cursor if first == 224 and second < 160
-                    return cursor if first == 237 and second > 159
-                    cursor <- cursor + 3
-                    continue
-                if first >= 240 and first <= 244:
-                    return cursor if cursor + 3 >= limit
-                    second: u32 = text.data[cursor + 1].u32()
-                    return cursor if not is_utf8_continuation(text.data[cursor + 1]) or not is_utf8_continuation(text.data[cursor + 2]) or not is_utf8_continuation(text.data[cursor + 3])
-                    return cursor if first == 240 and second < 144
-                    return cursor if first == 244 and second > 143
-                    cursor <- cursor + 4
-                    continue
-                return cursor
-            return cursor
+            return UiText::valid_utf8_prefix(text, byte_limit)
 
         # The ranges that most often extend a user-perceived character: Unicode
         # combining marks, variation selectors, emoji skin tones and emoji tag
