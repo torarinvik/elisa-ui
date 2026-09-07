@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `3f4dfb649b560578779d33f693c0be8e806d20eb` on branch `work` |
+| elisa-ui revision | `3463c19042c61d481facc042b9dfa1fc05078795` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -204,7 +204,8 @@ headless FFI shim, including clip and scale balancing and stale-handle cleanup.
 Skia retained rectangles use an Elisa-bounded rounded-corner policy and a
 narrow `SkRRect` primitive without changing the six-command wire format.
 The same policy emits a narrow white hairline stroke; shadows remain explicitly
-unclaimed until a target-specific Skia blur/GPU surface contract is pinned.
+implemented as a target-specific Skia blur primitive with opacity/radius policy
+still owned by Elisa.
 Attaching a live `UiSkia` canvas upgrades a custom profile to `Renderer.Skia`.
 That selection also enables the `scale_changes` capability used by the
 balanced logical-to-physical frame transform.
