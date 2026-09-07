@@ -59,7 +59,10 @@ extend UiFlat:
         def set_scroll_offset(index: usize, requested: f32) -> bool:
             ensure_layout()
             return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Scroll
-            wanted: mutable f32 = UiConstraints::bounded(UiCore::finite_or_zero(requested))
+            # Scroll offsets are distances, never signed coordinates. Clamp the
+            # lower bound here as well as during arrange so callers cannot
+            # observe a negative retained offset before the first layout pass.
+            wanted: mutable f32 = UiConstraints::bounded(UiCore::nonnegative_extent(requested))
             limit: f32 = scroll_limit(index)
             wanted <- limit if wanted > limit else wanted
             current: f32 = widgets[index].scroll_offset
