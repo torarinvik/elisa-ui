@@ -57,6 +57,12 @@ def main() -> i64:
     bytes[1] <- 0xA0
     bytes[2] <- 0x80
     check("shared scalar counter rejects surrogate bytes", UiText::utf8_scalar_count(sview(&bytes[0], 0, 3)) == 3)
+    large_bytes: mutable u8[UiCore::MAX_TEXT_BYTES + 8] = zeroed
+    for index in 0..<UiCore::MAX_TEXT_BYTES + 8:
+        large_bytes[index] <- 65
+    large_view: sview = sview(&large_bytes[0], 0, (UiCore::MAX_TEXT_BYTES + 8).i64())
+    check("shared scalar counter applies the text work cap", UiText::utf8_scalar_count(large_view) == UiCore::MAX_TEXT_BYTES and UiText::utf16_unit_count(large_view) == UiCore::MAX_TEXT_BYTES)
+    check("shared scalar walker stops at the text work cap", UiText::utf8_scalar_bytes(large_view, UiCore::MAX_TEXT_BYTES) == 0)
     if failures == 0:
         _ = puts("text layout: all checks passed")
         return 0
