@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `265a9b6` (`style(capi): use scoped expression for buffer scan`) on branch `work` |
+| elisa-ui revision | `b53ebfd` (`fix(capabilities): reject Skia on hosted profiles`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -325,6 +325,10 @@ separate host-enforced security boundary.
   expressions where an early result is the only loop state; the C text-buffer
   scrub check is covered by the existing bridge tests and keeps mutable state
   local to the expression.
+- `UiCapabilities::select_skia_renderer()` now requires a genuinely local
+  custom-paint profile: hosted WasmBrowser and native-control profiles retain
+  their authoritative renderer instead of being relabeled as Skia. The
+  capability regression checks both the rejection and the unchanged renderer.
 - The Skia direct-painter path now shares one private Elisa geometry policy with
   command replay. Coordinates/extents are bounded, empty primitive geometry is
   rejected, and rounded radii are clamped to half the shortest edge before FFI;
