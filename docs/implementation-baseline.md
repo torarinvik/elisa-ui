@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `79ff5d7` (`fix(layout): bound weighted distribution`) on branch `work` |
+| elisa-ui revision | `7638bd6` (`refactor(ui): scope sibling link scans`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -409,7 +409,9 @@ separate host-enforced security boundary.
   budgets. The persistence duplicate-ID scan and retained visible-text scan are
   also scoped and fail closed on malformed record bounds. The C text-buffer
   scrub check is covered by the existing bridge tests and keeps mutable state
-  local to the expression.
+  local to the expression. Retained sibling-link insertion now uses the same
+  scoped traversal form with an explicit exhaustion guard, so malformed child
+  chains cannot append after a bounded scan has lost its terminator.
 - The shared event queue now rejects typed key, pointer-button, and gamepad
   ordinals that normalize to `Event.None`, instead of reporting a successful
   enqueue for a silently discarded no-op. The queue retains its existing
