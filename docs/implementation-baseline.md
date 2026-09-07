@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `ac417e4` (`test(skia): verify explicit rectangle elevation`) on branch `work` |
+| elisa-ui revision | `4e40990` (`refactor(skia): move backing scale policy into Elisa`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -513,6 +513,10 @@ separate host-enforced security boundary.
   `UiPaint` policy, and SDL3/Wasm preserve their existing wire payloads while
   ignoring the visual hint. The Skia fixture verifies same-sized plain and
   elevated rectangles remain visually distinct at replay time.
+- The AppKit/Skia compositor now forwards logical and backing-pixel dimensions
+  to Elisa, where `UiCore::backing_scale` selects the finite
+  aspect-preserving scale. The C++ host retains only pixel-extent validation,
+  temporary-surface allocation, and CoreGraphics presentation.
 - Direct Skia text drawing now goes through the same Elisa sanitization as
   retained replay, keeping custom-control escape hatches bounded and UTF-8
   safe without duplicating policy in the bridge.

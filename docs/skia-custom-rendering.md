@@ -28,6 +28,11 @@ independent of the borrowed canvas, so layout can query Skia before surface
 attachment. That makes surface recreation and headless rendering ordinary
 lifecycle transitions instead of retained native pointer state.
 
+The AppKit compositor forwards logical and backing-pixel dimensions to the
+Elisa replay callback; `UiCore::backing_scale()` selects the finite
+aspect-preserving scale there. The C++ host only rounds/limits pixel extents
+for its temporary allocation and no longer embeds a rendering-scale policy.
+
 When a host has a resolved system or bundled typeface, the one-shot
 `elisa_skia_render_frame_with_font_status(canvas, font)` boundary supplies it
 for the current replay only. The `SkTypeface*` remains host-owned; Elisa uses
