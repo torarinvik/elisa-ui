@@ -215,17 +215,20 @@ extend UiFlat:
             safe_text: sview = UiCore::bounded_text(text)
             start_count: usize = selected_start.usize() if selected_start > 0 else 0
             length_count: usize = selected_length.usize() if selected_length > 0 else 0
-            cursor: mutable usize = 0
-            scalars: mutable usize = 0
-            while cursor < safe_text.len and scalars < start_count |cursor, scalars, start_count|:
-                cursor <- cursor + utf8_scalar_bytes(safe_text, cursor)
-                scalars <- scalars + 1
+            byte_limit: usize = safe_text.len.usize()
+            start_limit: usize = start_count if start_count < byte_limit else byte_limit
+            cursor: usize =
+                for _ in 0..<start_limit |cursor: usize = 0, scalars: usize = 0| -> cursor:
+                    break if cursor >= byte_limit or scalars >= start_count
+                    cursor <- cursor + utf8_scalar_bytes(safe_text, cursor)
+                    scalars <- scalars + 1
             selection_location: usize = utf16_units_for_prefix(safe_text, cursor)
-            stop: mutable usize = cursor
-            scalars <- 0
-            while stop < safe_text.len and scalars < length_count |stop, scalars, length_count|:
-                stop <- stop + utf8_scalar_bytes(safe_text, stop)
-                scalars <- scalars + 1
+            length_limit: usize = length_count if length_count < byte_limit else byte_limit
+            stop: usize =
+                for _ in 0..<length_limit |stop: usize = cursor, scalars: usize = 0| -> stop:
+                    break if stop >= byte_limit or scalars >= length_count
+                    stop <- stop + utf8_scalar_bytes(safe_text, stop)
+                    scalars <- scalars + 1
             selection_length_units: usize = utf16_units_for_prefix(safe_text, stop) - selection_location
             # Offset calculations use the bounded prefix, while insertion gets
             # the original view so truncation state is not lost for an invalid

@@ -13,15 +13,16 @@ extend UiFlat:
             available_width <- 0.0 if available_width < 0.0 else available_width
             visible_start: usize = visible_text_start(index, available_width)
             return visible_start if local_x <= 0.0 or widgets[index].input_length == 0
-            cursor: mutable usize = visible_start
-            previous_width: mutable f32 = 0.0
-            while cursor < widgets[index].input_length |cursor, previous_width, local_x|:
-                after: usize = next_character(index, cursor)
-                width: f32 = measure_text_range(index, visible_start, after)
-                return cursor if local_x < (previous_width + width) * 0.5
-                previous_width <- width
-                cursor <- after
-            return widgets[index].input_length
+            input_length: usize = widgets[index].input_length
+            result: usize =
+                for _ in 0..<input_length |cursor: usize = visible_start, previous_width: f32 = 0.0| -> cursor:
+                    break if cursor >= input_length
+                    after: usize = next_character(index, cursor)
+                    width: f32 = measure_text_range(index, visible_start, after)
+                    break if local_x < (previous_width + width) * 0.5
+                    previous_width <- width
+                    cursor <- after
+            return result
 
         def clear_history_slot(slot: usize) -> void:
             offset: usize = slot * TEXT_CAPACITY

@@ -153,14 +153,14 @@ extend UiFlat:
 
         def previous_character(index: usize, position: usize) -> usize:
             return 0 if position == 0
-            cursor: mutable usize = 0
-            previous: mutable usize = 0
-            while cursor < position |cursor, previous, position|:
-                previous <- cursor
-                after: usize = next_character(index, cursor)
-                return previous if after >= position
-                cursor <- after
-            return previous
+            result: usize =
+                for _ in 0..<position |cursor: usize = 0, previous: usize = 0| -> previous:
+                    break if cursor >= position
+                    previous <- cursor
+                    after: usize = next_character(index, cursor)
+                    break if after >= position
+                    cursor <- after
+            return result
 
         def next_character(index: usize, position: usize) -> usize:
             value: sview = text_value(index)
@@ -184,31 +184,34 @@ extend UiFlat:
             length: usize = widgets[index].input_length
             boundary: mutable usize = requested if requested < length else length
             offset: usize = index * TEXT_CAPACITY
-            while boundary > 0 and boundary < length and is_utf8_continuation(text_storage[offset + boundary]) |boundary, offset, length|:
-                boundary <- boundary - 1
-            return grapheme_boundary_at_or_before(index, boundary)
+            aligned: usize =
+                for _ in 0..<boundary |boundary| -> boundary:
+                    break if boundary == 0 or boundary >= length or not is_utf8_continuation(text_storage[offset + boundary])
+                    boundary <- boundary - 1
+            return grapheme_boundary_at_or_before(index, aligned)
 
         def secure_display_offset(index: usize, byte_position: usize) -> usize:
-            cursor: mutable usize = 0
-            output: mutable usize = 0
             stop: usize = byte_position if byte_position < widgets[index].input_length else widgets[index].input_length
-            while cursor < stop |cursor, output, stop|:
-                cursor <- next_character(index, cursor)
-                output <- output + 3
-            return output
+            result: usize =
+                for _ in 0..<stop |cursor: usize = 0, output: usize = 0| -> output:
+                    break if cursor >= stop
+                    cursor <- next_character(index, cursor)
+                    output <- output + 3
+            return result
 
         def secure_display_value(index: usize) -> sview:
             output_base: usize = index * SECURE_TEXT_CAPACITY
-            cursor: mutable usize = 0
-            output: mutable usize = 0
-            while cursor < widgets[index].input_length |cursor, output, output_base|:
-                # U+2022 BULLET in UTF-8. The mask reveals scalar count but
-                # never the original bytes or grapheme widths.
-                secure_text_storage[output_base + output] <- 226
-                secure_text_storage[output_base + output + 1] <- 128
-                secure_text_storage[output_base + output + 2] <- 162
-                output <- output + 3
-                cursor <- next_character(index, cursor)
+            input_length: usize = widgets[index].input_length
+            output: usize =
+                for _ in 0..<input_length |cursor: usize = 0, output: usize = 0, secure_text_storage| -> output:
+                    break if cursor >= input_length
+                    # U+2022 BULLET in UTF-8. The mask reveals scalar count but
+                    # never the original bytes or grapheme widths.
+                    secure_text_storage[output_base + output] <- 226
+                    secure_text_storage[output_base + output + 1] <- 128
+                    secure_text_storage[output_base + output + 2] <- 162
+                    output <- output + 3
+                    cursor <- next_character(index, cursor)
             # Keep the mask tied to this field's retained arena row.  Commands
             # and semantic nodes may outlive this helper until frame delivery.
             return sview(&secure_text_storage[output_base], 0, output.i64())
@@ -244,28 +247,37 @@ extend UiFlat:
 
         def previous_word(index: usize, position: usize) -> usize:
             return 0 if position == 0
-            cursor: mutable usize = previous_character(index, position)
-            while cursor > 0 and not is_word_character(index, cursor) |cursor|:
-                cursor <- previous_character(index, cursor)
-            while cursor > 0 |cursor|:
-                before: usize = previous_character(index, cursor)
-                return cursor if not is_word_character(index, before)
-                cursor <- before
-            return 0
+            first: usize = previous_character(index, position)
+            separator_cursor: usize =
+                for _ in 0..<position |cursor: usize = first| -> cursor:
+                    break if cursor == 0 or is_word_character(index, cursor)
+                    cursor <- previous_character(index, cursor)
+            result: usize =
+                for _ in 0..<position |cursor: usize = separator_cursor| -> cursor:
+                    break if cursor == 0
+                    before: usize = previous_character(index, cursor)
+                    break if not is_word_character(index, before)
+                    cursor <- before
+            return result
 
         def next_word(index: usize, position: usize) -> usize:
             length: usize = widgets[index].input_length
-            cursor: mutable usize = position if position < length else length
-            while cursor < length and not is_word_character(index, cursor) |cursor, length|:
-                cursor <- next_character(index, cursor)
-            while cursor < length and is_word_character(index, cursor) |cursor, length|:
-                cursor <- next_character(index, cursor)
-            return cursor
+            start: usize = position if position < length else length
+            word_start: usize =
+                for _ in 0..<length |cursor: usize = start| -> cursor:
+                    break if cursor >= length or is_word_character(index, cursor)
+                    cursor <- next_character(index, cursor)
+            result: usize =
+                for _ in 0..<length |cursor: usize = word_start| -> cursor:
+                    break if cursor >= length or not is_word_character(index, cursor)
+                    cursor <- next_character(index, cursor)
+            return result
 
         def visible_text_start(index: usize, available_width: f32) -> usize:
-            visible_start: mutable usize = 0
-            return visible_start if widgets[index].caret == 0
-            while visible_start < widgets[index].caret |visible_start, available_width|:
-                return visible_start if measure_text_range(index, visible_start, widgets[index].caret) <= available_width
-                visible_start <- next_character(index, visible_start)
-            return visible_start
+            caret: usize = widgets[index].caret
+            result: usize =
+                for _ in 0..<caret |visible_start: usize = 0| -> visible_start:
+                    break if visible_start >= caret
+                    break if measure_text_range(index, visible_start, caret) <= available_width
+                    visible_start <- next_character(index, visible_start)
+            return result
