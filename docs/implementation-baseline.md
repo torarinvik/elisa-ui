@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `7adbf066d20e07497fed6733b1c64fe78a035db7` on branch `work` |
+| elisa-ui revision | `9899fe9ff1fce9b558f8d3f4d5f91cb82594fd51` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -27,7 +27,7 @@ profile, Elisa language, and elisa-ui framework explicitly.
 Public framework modules are `UiCore`, `UiLifecycle`, `UiMetrics`, `UiState`, `UiTasks`, `UiCapabilities`, `UiEvents`, `UiPaint`, `UiRaster`,
 `UiConst`, `UiWidgets`, `UiFlat`, `UiHandles`, `UiResources`, `UiResourcePresentation`,
 `UiResponsive`, `UiVirtualList`, `UiConstraints`, `UiIdentity`, `UiTheme`,
-`UiLocalization`, `UiValidation`, `UiDialog`, `UiNavigation`, `UiBack`, `UiGestures`, `UiTextLayout`, `UiTextInput`, `UiControls`, `UiCapi`, `UiAppKit`,
+`UiLocalization`, `UiValidation`, `UiDialog`, `UiNavigation`, `UiBack`, `UiGestures`, `UiTextLayout`, `UiTextInput`, `UiControls`, `UiCapi`, `UiAppKit`, `UiSkia`,
 `UiAppKitNative`, `UiAppKitCanvas`, `UiSdl3`, `UiSdl3Draw`, `UiWasmBrowser`,
 and `UiInspector`. The application contract is
 the top-level `app_init`, `app_event`, `app_text_input`, `app_text_editing`,
@@ -46,6 +46,9 @@ Externally imposed symbols are kept at the edges:
   `src/platform/wasmbrowser/ui_wasmbrowser.elisa`.
 - Cocoa object/protocol/selector entry points in
   `src/platform/appkit/appkit_shim.m` and `appkit_canvas_shim.m`.
+- Skia custom-rendering primitives in `src/platform/skia/skia_canvas_shim.cpp`;
+  the C++ bridge is intentionally unbuilt until a target supplies a pinned
+  Skia SDK, while `ui_skia.elisa` remains compiler- and headless-testable.
 
 The two Objective-C files total 1,486 lines, but the custom canvas shim has no
 framework state table, widget/layout traversal, rendering path, text policy,
@@ -110,6 +113,7 @@ module-private.
 | SDL3 native | implemented-tested | `scripts/run_tests.sh`; SDL keymap/text tests and dummy-video smoke path pass. |
 | AppKit native controls | implemented-tested | `scripts/check_appkit.sh` creates and reads real NSWindow/NSView/control objects without ordering a window onscreen. |
 | AppKit custom canvas | implemented-tested | `scripts/check_appkit_canvas.sh` builds/signs the app, renders an off-screen PNG, and exercises semantic-object identity and callbacks. |
+| Skia custom painter | implemented-tested at Elisa boundary; host integration planned | `scripts/check_skia.sh` compiles the painter and records whether `SKIA_ROOT` is configured. The local tuple has no pinned Skia SDK, so the C++ shim is not claimed as runtime-tested. |
 | WasmBrowser hosted | implemented-tested for build/package/inspect | The synchronized compiler, explicit `Host` permission family, and component-memory sizing produce `build/hello.wapp`; WasmBrowser inspect reports the expected profile and imports/exports. Runtime launch and device execution still need dedicated fixtures. |
 | Android standalone | planned | No Android build or device fixture exists in this checkout. |
 | iOS standalone | planned | No iOS build or device fixture exists in this checkout. |
@@ -175,6 +179,9 @@ off-screen canvas fixture through `scripts/check_appkit_canvas.sh`; the bridge,
 semantic callbacks, bundle/signature checks, and PNG frame all pass without
 ordering a window onscreen. The full `bash scripts/run_tests.sh` suite also
 passes from this revision, including the AppKit canvas keymap and text paths.
+The Skia custom painter boundary also compiles headlessly through
+`scripts/check_skia.sh`; no foreground window or local Skia installation is
+required for that contract check.
 
 The shared `examples/hello/app.elisa` now uses `UiHandles::Handle` values for
 every retained widget on SDL3, AppKit canvas, and WasmBrowser; only the
