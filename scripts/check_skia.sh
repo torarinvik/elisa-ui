@@ -13,6 +13,11 @@ STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
 mkdir -p "$ROOT/build"
 bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ROOT/build/ui_skia.o" "$ROOT/src/platform/skia/ui_skia.elisa"
 
+if rg -n '#include[[:space:]]*[<"](Cocoa|AppKit)' "$ROOT/src/platform/skia/skia_canvas_shim.cpp"; then
+  echo "skia: host shim must not import AppKit" >&2
+  exit 1
+fi
+
 if [[ -n "${SKIA_ROOT:-}" && -f "$SKIA_ROOT/include/core/SkCanvas.h" ]]; then
   cxx="${CXX:-clang++}"
   skia_cxxflags=()
@@ -26,10 +31,6 @@ if [[ -n "${SKIA_ROOT:-}" && -f "$SKIA_ROOT/include/core/SkCanvas.h" ]]; then
   "$cxx" -std=c++17 -fPIC -I"$SKIA_ROOT" "${skia_cxxflags[@]}" \
     -c "$ROOT/src/platform/skia/skia_canvas_shim.cpp" \
     -o "$ROOT/build/skia_canvas_shim.o"
-  if rg -n '#include[[:space:]]*[<"](Cocoa|AppKit)' "$ROOT/src/platform/skia/skia_canvas_shim.cpp"; then
-    echo "skia: host shim must not import AppKit" >&2
-    exit 1
-  fi
   echo "skia: Elisa painter and C++ host shim compile"
 else
   echo "skia: Elisa painter compiles; C++ shim deferred until SKIA_ROOT is configured"
