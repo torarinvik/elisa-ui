@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `b53ebfd` (`fix(capabilities): reject Skia on hosted profiles`) on branch `work` |
+| elisa-ui revision | `b76e09e` (`fix(sdl3): avoid double incrementing circle scanlines`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -329,6 +329,10 @@ separate host-enforced security boundary.
   custom-paint profile: hosted WasmBrowser and native-control profiles retain
   their authoritative renderer instead of being relabeled as Skia. The
   capability regression checks both the rejection and the unchanged renderer.
+- The SDL3 scanline range conversion now lets the range advance its circle row
+  index exactly once; a leftover manual increment had been skipping alternate
+  rows after the earlier integer-loop safety refactor. The native hello build
+  and dummy-video smoke path pass with the corrected raster loop.
 - The Skia direct-painter path now shares one private Elisa geometry policy with
   command replay. Coordinates/extents are bounded, empty primitive geometry is
   rejected, and rounded radii are clamped to half the shortest edge before FFI;
