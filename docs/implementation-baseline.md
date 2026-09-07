@@ -312,7 +312,8 @@ separate host-enforced security boundary.
   against the public header in `scripts/check_capi.sh`; wire ordinals, record
   layout, counted committed text, and counted IME composition (with scalar-range
   clamping) remain documented in `include/elisa_ui.h` and are exercised by the
-  C bridge checks.
+  C bridge checks. The same header is compiled as C11 and C++17 in that gate,
+  preserving the opaque boundary for either host language.
 - The Skia direct-painter path now shares one private Elisa geometry policy with
   command replay. Coordinates/extents are bounded, empty primitive geometry is
   rejected, and rounded radii are clamped to half the shortest edge before FFI;

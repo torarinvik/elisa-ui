@@ -121,6 +121,18 @@ int main(void) {
 EOF
 
 clang -std=c11 -Wall -Wextra -I"$ROOT/include" -c -o "$WORK/host.o" "$WORK/host.c"
+cat > "$WORK/header_cpp.cc" <<'EOF'
+#include <cstddef>
+#include "elisa_ui.h"
+
+static_assert(sizeof(elisa_ui_event) == 24, "event record size changed");
+static_assert(offsetof(elisa_ui_event, code) == 20, "event code offset changed");
+static_assert(ELISA_UI_EVENT_FOCUS_LOST == 13, "event ordinals changed");
+
+int main() { return ELISA_UI_ABI_VERSION == 0x000100u ? 0 : 1; }
+EOF
+clang++ -std=c++17 -Wall -Wextra -Werror -I"$ROOT/include" \
+  -c -o "$WORK/header_cpp.o" "$WORK/header_cpp.cc"
 clang -Wl,-dead_strip -o "$WORK/capi_host" "$WORK/host.o" "$WORK/bridge.o" "$RUNTIME"
 rm -f "$ROOT/build/capi_bridge_link.elisa"
 "$WORK/capi_host"
