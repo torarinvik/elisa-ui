@@ -3,6 +3,10 @@ extend UiAppKitCanvas:
             next_count: usize = UiCore::accessibility_count()
             previous_count: usize = accessibility_previous_count
             layout_changed: mutable bool = accessibility_force_layout or next_count != accessibility_previous_count
+            retained_index: mutable usize = 0
+            while retained_index < previous_count:
+                accessibility_previous_retained[retained_index] <- false
+                retained_index <- retained_index + 1
             for index in 0..<UiCore::accessibility_count():
                 node: UiCore::AccessibilityNode = UiCore::accessibility_at(index)
                 identifier: sview = accessibility_identifier(node.id)
@@ -47,6 +51,10 @@ extend UiAppKitCanvas:
                 is_new: i32 = 1 if not existed or previous_handle == 0 else 0
                 handle: usize = elisa_appkit_canvas_accessibility_add(canvas_window, previous_handle, is_new, native_identifier, native_role, native_subrole, native_label, native_help, node.frame.origin.x, node.frame.origin.y, node.frame.size.width, node.frame.size.height, enabled, focused)
                 accessibility_next_handles[index] <- handle
+                # `previous_accessibility_index` is the canonical stable-ID
+                # lookup. Mark the exact slot only when Cocoa returned the
+                # same object, so an ID replacement is released below.
+                accessibility_previous_retained[previous_index] <- true if existed and previous_handle != 0 and handle == previous_handle
                 # New elements are not reachable from Cocoa's committed list,
                 # so their role-specific values can be staged immediately. A
                 # reused element must stay untouched until the child-list
@@ -84,12 +92,8 @@ extend UiAppKitCanvas:
             # element; replacement handles must not be confused with reuse.
             accessibility_stale_count <- 0
             for previous_index in 0..<previous_count:
-                previous_id: usize = accessibility_previous_ids[previous_index]
                 previous_handle: usize = accessibility_previous_handles[previous_index]
-                retained: mutable bool = false
-                for next_index in 0..<next_count:
-                    retained <- true if accessibility_next_ids[next_index] == previous_id and previous_handle != 0 and accessibility_next_handles[next_index] == previous_handle
-                if not retained and accessibility_stale_count < UiCore::MAX_ACCESSIBILITY_NODES:
+                if not accessibility_previous_retained[previous_index] and accessibility_stale_count < UiCore::MAX_ACCESSIBILITY_NODES:
                     accessibility_stale_handles[accessibility_stale_count] <- previous_handle
                     accessibility_stale_count <- accessibility_stale_count + 1
 
