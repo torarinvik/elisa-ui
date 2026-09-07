@@ -23,6 +23,14 @@ if ! nm -g "$ROOT/build/ui_skia.o" | grep -Eq 'elisa_skia_render_frame_with_font
   echo "skia: scoped-font render symbol is not exported by the Elisa object" >&2
   exit 1
 fi
+if ! nm -g "$ROOT/build/ui_skia.o" | grep -Eq 'elisa_skia_render_frame$'; then
+  echo "skia: one-shot render symbol is not exported by the Elisa object" >&2
+  exit 1
+fi
+if ! nm -g "$ROOT/build/ui_skia.o" | grep -Eq 'elisa_skia_render_frame_scaled$'; then
+  echo "skia: scaled one-shot render symbol is not exported by the Elisa object" >&2
+  exit 1
+fi
 
 if rg -n '#include[[:space:]]*[<"](Cocoa|AppKit)' "$ROOT/src/platform/skia/skia_canvas_shim.cpp"; then
   echo "skia: host shim must not import AppKit" >&2

@@ -27,9 +27,13 @@ extern "C" {
 #endif
 
 uint32_t elisa_skia_abi_version(void);
+/* One-shot replay boundaries. Elisa attaches, renders, and detaches the
+ * borrowed canvas before returning. */
+void elisa_skia_render_frame(size_t canvas);
 int32_t elisa_skia_render_frame_status(size_t canvas);
 /* Uses one borrowed SkTypeface for text commands in this replay only. */
 int32_t elisa_skia_render_frame_with_font_status(size_t canvas, size_t font);
+void elisa_skia_render_frame_scaled(size_t canvas, float scale);
 int32_t elisa_skia_render_frame_scaled_status(size_t canvas, float scale);
 
 void elisa_skia_canvas_save(size_t canvas);
