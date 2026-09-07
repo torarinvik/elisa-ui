@@ -59,6 +59,17 @@ def main() -> i64:
     huge: UiMetrics::Snapshot = UiMetrics::snapshot()
     check("metrics keeps huge timestamp sums finite", UiCore::finite_or_zero_f64(huge.started_at) == huge.started_at and UiCore::finite_or_zero_f64(huge.completed_at) == huge.completed_at and UiCore::finite_or_zero_f64(huge.frame_duration) == huge.frame_duration and UiCore::finite_or_zero_f64(huge.application_duration) == huge.application_duration and UiCore::finite_or_zero_f64(huge.semantics_duration) == huge.semantics_duration and UiCore::finite_or_zero_f64(huge.paint_duration) == huge.paint_duration)
 
+    # Stage boundaries are retained as timestamps rather than reconstructed by
+    # adding durations to the frame start. That keeps the individual durations
+    # correct even when the host clock is close to f64's finite limit.
+    UiMetrics::begin_frame(1.5e308)
+    UiMetrics::mark_application(1.6e308)
+    UiMetrics::mark_semantics(1.7e308)
+    UiMetrics::mark_paint(1.75e308)
+    UiMetrics::finish_frame(1.7e308)
+    extreme: UiMetrics::Snapshot = UiMetrics::snapshot()
+    check("metrics retain large stage boundaries without overflow", extreme.complete and extreme.completed_at == 1.75e308 and extreme.frame_duration > 0.0 and extreme.application_duration > 0.0 and extreme.semantics_duration > 0.0 and extreme.paint_duration > 0.0 and UiCore::finite_or_zero_f64(extreme.paint_duration) == extreme.paint_duration)
+
     UiMetrics::reset()
     idle: UiMetrics::Snapshot = UiMetrics::snapshot()
     check("metrics reset clears sample", idle.sequence == 0 and idle.stage == UiMetrics::Stage.Idle and not idle.complete)

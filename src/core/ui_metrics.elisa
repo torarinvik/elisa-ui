@@ -37,6 +37,9 @@ module UiMetrics:
             stage_state <- Stage.Idle
             sequence_state <- 0
             started_at_state <- 0.0
+            application_at_state <- 0.0
+            semantics_at_state <- 0.0
+            paint_at_state <- 0.0
             completed_at_state <- 0.0
             frame_duration_state <- 0.0
             application_duration_state <- 0.0
@@ -50,6 +53,9 @@ module UiMetrics:
         def begin_frame(at: f64) -> void:
             sequence_state <- next_sequence(sequence_state)
             started_at_state <- safe_time(at)
+            application_at_state <- started_at_state
+            semantics_at_state <- started_at_state
+            paint_at_state <- started_at_state
             completed_at_state <- started_at_state
             frame_duration_state <- 0.0
             application_duration_state <- 0.0
@@ -61,23 +67,27 @@ module UiMetrics:
         def mark_application(at: f64) -> void:
             return if stage_state != Stage.Application
             now: f64 = safe_time(at)
-            application_duration_state <- elapsed(started_at_state, now)
+            boundary: f64 = now if now >= started_at_state else started_at_state
+            application_duration_state <- elapsed(started_at_state, boundary)
+            application_at_state <- boundary
             stage_state <- Stage.Semantics
 
         def mark_semantics(at: f64) -> void:
             mark_application(at) if stage_state == Stage.Application
             return if stage_state != Stage.Semantics
             now: f64 = safe_time(at)
-            semantics_start: f64 = safe_sum(started_at_state, application_duration_state)
-            semantics_duration_state <- elapsed(semantics_start, now)
+            boundary: f64 = now if now >= application_at_state else application_at_state
+            semantics_duration_state <- elapsed(application_at_state, boundary)
+            semantics_at_state <- boundary
             stage_state <- Stage.Paint
 
         def mark_paint(at: f64) -> void:
             mark_semantics(at) if stage_state == Stage.Application or stage_state == Stage.Semantics
             return if stage_state != Stage.Paint
             now: f64 = safe_time(at)
-            paint_start: f64 = safe_sum(safe_sum(started_at_state, application_duration_state), semantics_duration_state)
-            paint_duration_state <- elapsed(paint_start, now)
+            boundary: f64 = now if now >= semantics_at_state else semantics_at_state
+            paint_duration_state <- elapsed(semantics_at_state, boundary)
+            paint_at_state <- boundary
             stage_state <- Stage.Complete
 
         # Finish is forgiving by design: a backend that has no distinct
@@ -88,8 +98,7 @@ module UiMetrics:
             mark_paint(at)
             return if stage_state != Stage.Complete
             now: f64 = safe_time(at)
-            last_stage: f64 = safe_sum(safe_sum(started_at_state, application_duration_state), safe_sum(semantics_duration_state, paint_duration_state))
-            completed_at_state <- last_stage if now < last_stage else now
+            completed_at_state <- paint_at_state if now < paint_at_state else now
             frame_duration_state <- elapsed(started_at_state, completed_at_state)
             complete_state <- true
 
@@ -116,6 +125,9 @@ module UiMetrics:
         global mutable stage_state: Stage = Stage.Idle
         global mutable sequence_state: u64 = 0
         global mutable started_at_state: f64 = 0.0
+        global mutable application_at_state: f64 = 0.0
+        global mutable semantics_at_state: f64 = 0.0
+        global mutable paint_at_state: f64 = 0.0
         global mutable completed_at_state: f64 = 0.0
         global mutable frame_duration_state: f64 = 0.0
         global mutable application_duration_state: f64 = 0.0
@@ -129,13 +141,6 @@ module UiMetrics:
 
         def elapsed(start: f64, finish: f64) -> f64:
             return UiCore::finite_or_zero_f64(finish - start) if finish > start else 0.0
-
-        # Timestamp arithmetic can overflow even when every individual host
-        # value is finite (for example, two 1e308 stage samples). Keep those
-        # derived boundaries finite so diagnostics never expose an infinity or
-        # poison a later comparison.
-        def safe_sum(left: f64, right: f64) -> f64:
-            return UiCore::finite_or_zero_f64(left + right)
 
         def next_sequence(value: u64) -> u64:
             next: u64 = value + 1
