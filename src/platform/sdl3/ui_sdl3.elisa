@@ -134,11 +134,6 @@ module UiSdl3:
             for index in 0..<128:
                 event_buffer.bytes[index] <- 0
 
-        def event_button() -> i32:
-            # SDL_MouseButtonEvent stores button as Uint8 at byte 24; the
-            # following bytes are down/clicks/padding, so reading an i32 here
-            # would fold those flags into the button ordinal.
-            return event_buffer.bytes[24].i32()
     public:
         # SDL requires positive initial window extents. Keep that native
         # precondition in the framework adapter, and use the same conservative
@@ -166,74 +161,6 @@ module UiSdl3:
         def text_line_height(size: f32) -> f32:
             return UiSdl3Draw::text_line_height(size)
 
-
-    private:
-        def event_type() -> u32:
-            type_ref: mutable u32& = (&event_buffer.bytes[0]).cast[u32&] can Unsafe.PointerCast
-            return type_ref[0]
-
-        def event_x() -> f32:
-            x_ref: mutable f32& = (&event_buffer.bytes[28]).cast[f32&] can Unsafe.PointerCast
-            return x_ref[0]
-
-        def event_y() -> f32:
-            y_ref: mutable f32& = (&event_buffer.bytes[32]).cast[f32&] can Unsafe.PointerCast
-            return y_ref[0]
-
-        def event_window_data1() -> i32:
-            # SDL_WindowEvent is laid out as type@0, reserved@4,
-            # timestamp@8, windowID@16, data1@24, data2@28. Byte 20 is
-            # padding after the 32-bit window ID, not the first payload.
-            value_ref: mutable i32& = (&event_buffer.bytes[24]).cast[i32&] can Unsafe.PointerCast
-            return value_ref[0]
-
-        def event_window_data2() -> i32:
-            value_ref: mutable i32& = (&event_buffer.bytes[28]).cast[i32&] can Unsafe.PointerCast
-            return value_ref[0]
-
-        def event_window_id() -> u32:
-            # SDL window-bearing events place their 32-bit window ID at byte
-            # 16, immediately after the timestamp. Keep this read in Elisa so
-            # a second native window cannot feed the current retained tree.
-            value_ref: mutable u32& = (&event_buffer.bytes[16]).cast[u32&] can Unsafe.PointerCast
-            return value_ref[0]
-
-        # SDL_MouseWheelEvent has a different layout from mouse motion:
-        # delta at 24/28 and the pointer position at 36/40.
-        def event_wheel_x() -> f32:
-            value_ref: mutable f32& = (&event_buffer.bytes[24]).cast[f32&] can Unsafe.PointerCast
-            return value_ref[0]
-
-        def event_wheel_y() -> f32:
-            value_ref: mutable f32& = (&event_buffer.bytes[28]).cast[f32&] can Unsafe.PointerCast
-            return value_ref[0]
-
-        def event_wheel_mouse_x() -> f32:
-            value_ref: mutable f32& = (&event_buffer.bytes[36]).cast[f32&] can Unsafe.PointerCast
-            return value_ref[0]
-
-        def event_wheel_mouse_y() -> f32:
-            value_ref: mutable f32& = (&event_buffer.bytes[40]).cast[f32&] can Unsafe.PointerCast
-            return value_ref[0]
-
-        # SDL_KeyboardEvent: type 0, reserved 4, timestamp 8, windowID 16,
-        # which 20, scancode 24, key 28. The KEYCODE is what carries the layout,
-        # so that is what translates into the UiCore::Key space.
-        def event_keycode() -> i32:
-            key_ref: mutable i32& = (&event_buffer.bytes[28]).cast[i32&] can Unsafe.PointerCast
-            return key_ref[0]
-
-        def event_text_pointer() -> cstr:
-            text_ref: mutable cstr& = (&event_buffer.bytes[24]).cast[mutable cstr&] can Unsafe.PointerCast
-            return text_ref[0]
-
-        def event_text_editing_start() -> i32:
-            value_ref: mutable i32& = (&event_buffer.bytes[32]).cast[i32&] can Unsafe.PointerCast
-            return value_ref[0]
-
-        def event_text_editing_length() -> i32:
-            value_ref: mutable i32& = (&event_buffer.bytes[36]).cast[i32&] can Unsafe.PointerCast
-            return value_ref[0]
 
     public:
         # SDL's keycode -> the UiCore::Key space, which is GLFW's numbering (Escape 256,
@@ -348,70 +275,6 @@ module UiSdl3:
             SDL_Quit()
             clear_event_buffer()
 
-        # Translate the event currently stored in `event_buffer`. Keeping the
-        # decode step separate lets both polling and blocking waits feed the
-        # exact same typed boundary without copying SDL's union or dropping a
-        # waited event.
-        def decode_event(out_event: mutable UiCore::Event&) -> bool:
-            kind: u32 = event_type()
-            out_event <- (UiCore::Event.None)
-            if kind != EVENT_QUIT and not window_event_matches(window_id, event_window_id()):
-                return true
-            if kind == EVENT_QUIT:
-                out_event <- (UiCore::Event.Quit)
-            elif kind == EVENT_WINDOW_RESIZED:
-                out_event <- (UiCore::Event.Resize(size: UiCore::Size(event_window_data1().f32(), event_window_data2().f32())))
-            elif kind == EVENT_WINDOW_MOUSE_LEAVE:
-                out_event <- (UiCore::PointerEvent.Leave)
-            elif kind == EVENT_WINDOW_FOCUS_GAINED:
-                out_event <- (UiCore::Event.FocusGained)
-            elif kind == EVENT_WINDOW_FOCUS_LOST:
-                out_event <- (UiCore::Event.FocusLost)
-            elif kind == EVENT_WINDOW_CLOSE_REQUESTED:
-                out_event <- (UiCore::Event.Quit)
-            elif kind == EVENT_MOUSE_MOTION:
-                if UiCore::is_finite(event_x()) and UiCore::is_finite(event_y()):
-                    out_event <- (UiCore::PointerEvent.Move(at: UiCore::Vec2(event_x(), event_y())))
-            elif kind == EVENT_MOUSE_BUTTON_DOWN:
-                button: i32 = button_from_sdl(event_button())
-                if button != UiCore::NO_POINTER_BUTTON and UiCore::is_finite(event_x()) and UiCore::is_finite(event_y()):
-                    out_event <- (UiCore::PointerEvent.Down(at: UiCore::Vec2(event_x(), event_y()), button: button.PointerButton()))
-            elif kind == EVENT_MOUSE_BUTTON_UP:
-                button: i32 = button_from_sdl(event_button())
-                if button != UiCore::NO_POINTER_BUTTON and UiCore::is_finite(event_x()) and UiCore::is_finite(event_y()):
-                    out_event <- (UiCore::PointerEvent.Up(at: UiCore::Vec2(event_x(), event_y()), button: button.PointerButton()))
-            elif kind == EVENT_MOUSE_WHEEL:
-                if UiCore::is_finite(event_wheel_mouse_x()) and UiCore::is_finite(event_wheel_mouse_y()) and UiCore::is_finite(event_wheel_x()) and UiCore::is_finite(event_wheel_y()):
-                    out_event <- (UiCore::PointerEvent.Scroll(at: UiCore::Vec2(event_wheel_mouse_x(), event_wheel_mouse_y()), delta: UiCore::Vec2(event_wheel_x(), event_wheel_y())))
-            elif kind == EVENT_KEY_DOWN:
-                translated: i32 = key_from_sdl(event_keycode())
-                if UiCore::key_is_valid(translated):
-                    out_event <- (UiCore::KeyEvent.Down(code: UiCore::Key(translated)))
-            elif kind == EVENT_KEY_UP:
-                translated: i32 = key_from_sdl(event_keycode())
-                if UiCore::key_is_valid(translated):
-                    out_event <- (UiCore::KeyEvent.Up(code: UiCore::Key(translated)))
-            return true
-
-        # Poll one SDL event and translate it. Returns false when the queue is
-        # empty; events outside the modeled set come back as `Event.None` for
-        # the app to skip.
-        def next_event(out_event: mutable UiCore::Event&) -> bool:
-            buffer_pointer: void& = (&event_buffer.bytes[0]).cast[void&] can Unsafe.PointerCast
-            has_event: bool = SDL_PollEvent(buffer_pointer)
-            return false if not has_event
-            return decode_event(out_event)
-
-        # Wait for one event using a valid SDL_Event storage location. SDL's
-        # wait API writes the event before returning; passing null here is not
-        # a non-consuming sleep and can dereference a null pointer when an
-        # event arrives. The already-filled buffer is decoded immediately.
-        def wait_event(timeout_ms: i32, out_event: mutable UiCore::Event&) -> bool:
-            buffer_pointer: void& = (&event_buffer.bytes[0]).cast[void&] can Unsafe.PointerCast
-            has_event: bool = SDL_WaitEventTimeout(buffer_pointer, timeout_ms)
-            return false if not has_event
-            return decode_event(out_event)
-
         # Drain each decoded event before polling borrowed text from SDL. This
         # preserves focus/key/text order and prevents native bursts overflowing
         # the smaller framework queue.
@@ -463,4 +326,5 @@ module UiSdl3:
                     _:
                         app_event(event)
 
+include "./ui_sdl3_events.elisa"
 include "./ui_sdl3_run.elisa"
