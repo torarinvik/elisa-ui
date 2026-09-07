@@ -111,7 +111,12 @@ extern "C" void elisa_skia_canvas_shadow_round_rect(std::size_t handle, float x,
     if (SkCanvas *target = canvas(handle); alpha != 0) {
         const SkRect rect = SkRect::MakeXYWH(x, y, width, height);
         const SkScalar safe_radius = radius > 0.0f ? radius : 0.0f;
-        SkPaint paint = fill_paint(0, 0, 0, alpha);
+        // The shadow layer is the only visible effect. A black fill here would
+        // paint over the retained control before the hairline is emitted.
+        SkPaint paint;
+        paint.setAntiAlias(true);
+        paint.setStyle(SkPaint::kFill_Style);
+        paint.setColor(SK_ColorTRANSPARENT);
         paint.setShadowLayer(5.0f, 0.0f, 2.0f, color(0, 0, 0, alpha));
         target->drawRRect(SkRRect::MakeRectXY(rect, safe_radius, safe_radius), paint);
     }
