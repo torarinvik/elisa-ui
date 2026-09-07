@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `31dfee3` (`perf(ui): measure retained text input`) on branch `work` |
+| elisa-ui revision | `8cecd8b` (`perf(appkit): linearize semantic stale detection`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -123,7 +123,7 @@ over `UiDialog` (305 lines) and `UiNavigation`. Their public tokens are
 module-specific (`DialogHandle`, `NavigationHandle`), as are resource tokens
 (`ResourceHandle`); identity queries use explicit `dialog_*`, `navigation_*`,
 and `resource_*` names so the current compiler cannot confuse included module
-records or helper bodies. AppKit canvas callbacks (258
+records or helper bodies. AppKit canvas callbacks (255
 lines), SDL3 event delivery, and the WasmBrowser dispatcher (45 lines) translate
 Escape into that shared policy before invoking application code; modal dialogs
 take precedence, followed by application-owned consume/confirm/navigation
@@ -209,8 +209,8 @@ scripts/check_skia.sh
 scripts/check_appkit_skia.sh (with the pinned checkout configured)
   optional AppKit/Skia compositor and bitmap-context fixture: PASS
 ELISA_UI_STAGE1=../wasm-sdk-compiler bash scripts/check_performance.sh
-  retained-tree build, relayout, paint, Unicode text, large-tree capacity,
-  and RSS safety gate: PASS
+  retained-tree build, relayout, paint, Unicode text, UTF-8 input,
+  large-tree capacity, and RSS safety gate: PASS
 git diff --check: PASS
 ```
 
