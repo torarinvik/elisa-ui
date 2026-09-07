@@ -50,6 +50,10 @@ def main() -> i64:
     UiLifecycle::reset()
     check("reset keeps generation monotonic", UiLifecycle::generation() == 1 and UiLifecycle::phase() == UiLifecycle::Phase.New)
     check("a new begin advances generation", UiLifecycle::begin() and UiLifecycle::generation() == 2)
+    replacement_task: UiTasks::Handle = UiTasks::start(41)
+    check("replacement session accepts a fresh task", UiTasks::is_valid(replacement_task) and replacement_task.generation != task.generation)
+    UiLifecycle::reset()
+    check("reset invalidates replacement task callbacks", not UiTasks::is_valid(replacement_task) and UiTasks::state(replacement_task) == UiTasks::TaskState.Idle and UiLifecycle::phase() == UiLifecycle::Phase.New)
 
     if failures == 0:
         _ = puts("lifecycle: all checks passed")
