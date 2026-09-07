@@ -1,0 +1,67 @@
+# Typed persistence helpers for application-owned widget state.
+#
+# UiState owns the versioned byte format. This adapter only supplies the
+# handle/type policy: stale handles fail closed, secure fields never enter a
+# snapshot, and restores target the current retained tree rather than a slot
+# that may have been recycled.
+
+# Optional extension: include this file when an application wants persistence
+# bindings. Keeping it outside the base facade avoids pulling UiState's generic
+# Snapshot type into every diagnostic-only build.
+include "./ui_handles.elisa"
+include "../core/ui_state.elisa"
+
+module UiHandlesPersistence:
+    public:
+        def begin() -> void:
+            UiState::begin()
+
+        def saved() -> UiState::Snapshot:
+            return UiState::saved()
+
+        def copy_to(destination: mutable u8&, capacity: usize) -> usize:
+            return UiState::copy_to(destination, capacity)
+
+        def restore(source: u8&, length: usize) -> bool:
+            return UiState::restore(source, length)
+
+        def put_text(handle: UiHandles::Handle, id: u32) -> bool:
+            return false if not UiHandles::is_valid(handle)
+            row: UiFlat::Widget = UiFlat::widget(handle.widget_id.usize())
+            # Secure values are intentionally excluded from application
+            # snapshots, including the generic UiState path.
+            return false if row.kind != UiConst::WidgetKind.TextField or row.secure
+            return UiState::put_text(id, UiHandles::text_value(handle))
+
+        def put_value(handle: UiHandles::Handle, id: u32) -> bool:
+            return false if not UiHandles::is_valid(handle)
+            row: UiFlat::Widget = UiFlat::widget(handle.widget_id.usize())
+            return false if row.kind != UiConst::WidgetKind.Slider and row.kind != UiConst::WidgetKind.ProgressBar
+            return UiState::put_f32(id, UiHandles::value(handle))
+
+        def put_selected(handle: UiHandles::Handle, id: u32) -> bool:
+            return false if not UiHandles::is_valid(handle)
+            row: UiFlat::Widget = UiFlat::widget(handle.widget_id.usize())
+            return false if row.kind != UiConst::WidgetKind.RadioButton and row.kind != UiConst::WidgetKind.CheckBox
+            return UiState::put_bool(id, UiHandles::selected(handle))
+
+        def restore_text(handle: UiHandles::Handle, id: u32) -> bool:
+            return false if not UiHandles::is_valid(handle) or not UiState::has(id)
+            row: UiFlat::Widget = UiFlat::widget(handle.widget_id.usize())
+            return false if row.kind != UiConst::WidgetKind.TextField or row.secure
+            UiHandles::replace_text(handle, UiState::text(id))
+            return true
+
+        def restore_value(handle: UiHandles::Handle, id: u32) -> bool:
+            return false if not UiHandles::is_valid(handle) or not UiState::has(id)
+            row: UiFlat::Widget = UiFlat::widget(handle.widget_id.usize())
+            return false if row.kind != UiConst::WidgetKind.Slider and row.kind != UiConst::WidgetKind.ProgressBar
+            UiHandles::set_value(handle, UiState::f32(id, UiHandles::value(handle)))
+            return true
+
+        def restore_selected(handle: UiHandles::Handle, id: u32) -> bool:
+            return false if not UiHandles::is_valid(handle) or not UiState::has(id)
+            row: UiFlat::Widget = UiFlat::widget(handle.widget_id.usize())
+            return false if row.kind != UiConst::WidgetKind.RadioButton and row.kind != UiConst::WidgetKind.CheckBox
+            UiHandles::set_selected(handle, UiState::bool(id, UiHandles::selected(handle)))
+            return true
