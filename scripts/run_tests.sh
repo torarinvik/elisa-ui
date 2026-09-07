@@ -15,6 +15,11 @@ SDL_LIB="${ELISA_UI_SDL_LIB:-/opt/homebrew/lib}"
 mkdir -p "$ROOT/build"
 status=0
 
+if ! bash "$ROOT/scripts/check_source_sizes.sh"; then
+  echo "FAIL source sizes"
+  status=1
+fi
+
 # The C boundary is checked by building a real C program against the library --
 # the header and the Elisa side are two hand-written descriptions of one ABI, and
 # nothing in the Elisa suite sees the header.
