@@ -24,3 +24,17 @@ extend UiSkia:
             skia_clip_depth <- skia_clip_depth - 1
             skia_save_depth <- skia_save_depth - 1
             return true
+
+    private:
+        # Retained commands carry a clip flag even when their normalized box
+        # has zero area. That is a valid empty clip (and must suppress the
+        # command), unlike the public custom-drawing helper above, which
+        # rejects degenerate input as a caller error. Keep this replay path
+        # separate so the two contracts do not silently change each other.
+        def push_replay_clip(box: UiCore::Rect) -> void can[Ui.Draw]:
+            return if canvas_state == 0
+            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+            elisa_skia_canvas_save(canvas_state)
+            elisa_skia_canvas_clip_rect(canvas_state, safe_box.origin.x, safe_box.origin.y, safe_box.size.width, safe_box.size.height)
+            skia_clip_depth <- skia_clip_depth + 1
+            skia_save_depth <- skia_save_depth + 1
