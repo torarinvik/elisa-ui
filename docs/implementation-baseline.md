@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `e23f9ac31a35327ace4aa45fd94799469fe31b38` on branch `work` |
+| elisa-ui revision | `7adbf066d20e07497fed6733b1c64fe78a035db7` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -27,7 +27,7 @@ profile, Elisa language, and elisa-ui framework explicitly.
 Public framework modules are `UiCore`, `UiLifecycle`, `UiMetrics`, `UiState`, `UiTasks`, `UiCapabilities`, `UiEvents`, `UiPaint`, `UiRaster`,
 `UiConst`, `UiWidgets`, `UiFlat`, `UiHandles`, `UiResources`, `UiResourcePresentation`,
 `UiResponsive`, `UiVirtualList`, `UiConstraints`, `UiIdentity`, `UiTheme`,
-`UiLocalization`, `UiValidation`, `UiDialog`, `UiNavigation`, `UiGestures`, `UiTextLayout`, `UiTextInput`, `UiControls`, `UiCapi`, `UiAppKit`,
+`UiLocalization`, `UiValidation`, `UiDialog`, `UiNavigation`, `UiBack`, `UiGestures`, `UiTextLayout`, `UiTextInput`, `UiControls`, `UiCapi`, `UiAppKit`,
 `UiAppKitNative`, `UiAppKitCanvas`, `UiSdl3`, `UiSdl3Draw`, `UiWasmBrowser`,
 and `UiInspector`. The application contract is
 the top-level `app_init`, `app_event`, `app_text_input`, `app_text_editing`,
@@ -82,11 +82,14 @@ decoding (`ui_sdl3_events.elisa`, 145 lines), run-loop policy
 to use small, single-purpose modules; the existing large modules are
 not split mechanically.
 
-The modal input policy remains in the shared `UiDialog` module (305 lines).
-AppKit canvas callbacks (258 lines), SDL3 event delivery, and the WasmBrowser
-dispatcher (45 lines) translate Escape into `UiDialog::back()` before invoking
-application code when a modal is live; otherwise the original key path is
-preserved.
+The modal and navigation input policy remains in the shared `UiBack` module
+over `UiDialog` (305 lines) and `UiNavigation`. AppKit canvas callbacks (258
+lines), SDL3 event delivery, and the WasmBrowser dispatcher (45 lines) translate
+Escape into that shared policy before invoking application code; modal dialogs
+take precedence, followed by application-owned consume/confirm/navigation
+decisions, and only an unhandled fact reaches the host close action. Dialog and
+navigation private state uses module-unique names because Elisa's current
+compiler resolves colliding private globals across included modules.
 
 The core and widget operation facades follow the same boundary: `ui_core.elisa`
 is an 11-line include surface over typed, frame, geometry, event, and retained
@@ -178,10 +181,11 @@ every retained widget on SDL3, AppKit canvas, and WasmBrowser; only the
 backend callback's legacy widget index is converted through the explicit
 `UiHandles::index` escape hatch.
 
-The modal back-policy fixtures also run headlessly: AppKit canvas Escape gives
-an active `UiDialog` first refusal, SDL3 consumes a queued Escape before it
-reaches `app_event`, and WasmBrowser applies the same policy in its synchronous
-dispatcher. `test/appkit_canvas_keymap_test.elisa`,
+The modal/back-policy fixtures also run headlessly: AppKit canvas Escape gives
+an active `UiDialog` first refusal, SDL3 consumes queued Escape facts for both
+the modal and a `Consume` navigation entry before they reach `app_event`, and
+WasmBrowser applies the same policy in its synchronous dispatcher.
+`test/appkit_canvas_keymap_test.elisa`,
 `test/sdl3_event_order_test.elisa`, and `test/wasmbrowser_dispatch_test.elisa`
 cover the typed `Back` result and ensure unmodalized input remains unchanged.
 
