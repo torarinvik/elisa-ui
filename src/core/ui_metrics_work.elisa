@@ -1,0 +1,148 @@
+# Orthogonal work timings for UiMetrics.
+#
+# Frame stages (application, semantics, paint) are sequential. Layout, text,
+# and resource work can occur inside those stages, so they use independent
+# host-clock scopes and aggregate into a small diagnostic snapshot instead of
+# pretending to be extra frame phases.
+
+extend UiMetrics:
+    public:
+        const enum WorkKind of i32:
+            Layout = 0
+            Text = 1
+            Resources = 2
+
+        struct WorkSnapshot:
+            layout_duration: f64
+            text_duration: f64
+            resource_duration: f64
+            layout_active: bool
+            text_active: bool
+            resource_active: bool
+            completed_scopes: u32
+            overflowed: bool
+
+        # A new frame clears unfinished scopes and their aggregate. Hosts can
+        # still record work before or after the frame-stage marks; the work
+        # snapshot remains independent of stage ordering.
+        def reset_work() -> void:
+            metrics_work_layout_started <- 0.0
+            metrics_work_text_started <- 0.0
+            metrics_work_resources_started <- 0.0
+            metrics_work_layout_active <- false
+            metrics_work_text_active <- false
+            metrics_work_resources_active <- false
+            metrics_work_layout_duration <- 0.0
+            metrics_work_text_duration <- 0.0
+            metrics_work_resources_duration <- 0.0
+            metrics_work_completed_scopes <- 0
+            metrics_work_overflowed <- false
+
+        # Begin/finish are deliberately paired by kind, allowing a text
+        # measurement scope to nest inside a layout scope without a stack or
+        # allocation. A duplicate begin or unmatched finish fails closed.
+        def begin_work(kind: WorkKind, at: f64) -> bool:
+            return false if not work_kind_valid(kind) or work_active(kind)
+            work_started_set(kind, safe_time(at))
+            work_active_set(kind, true)
+            return true
+
+        def finish_work(kind: WorkKind, at: f64) -> bool:
+            return false if not work_kind_valid(kind) or not work_active(kind)
+            started: f64 = work_started(kind)
+            delta: f64 = elapsed(started, safe_time(at))
+            work_duration_add(kind, delta)
+            work_active_set(kind, false)
+            next_completed: u32 = metrics_work_completed_scopes + 1
+            if next_completed == 0:
+                metrics_work_completed_scopes <- 0xffffffff
+                metrics_work_overflowed <- true
+            else:
+                metrics_work_completed_scopes <- next_completed
+            return true
+
+        # Convenience records cover one-shot host callbacks that do not need
+        # an open scope. Both timestamps are normalized through UiMetrics'
+        # monotonic policy, so backwards or non-finite host clocks contribute
+        # zero rather than poisoning the inspector.
+        def record_work(kind: WorkKind, started: f64, finished: f64) -> bool:
+            return false if not begin_work(kind, started)
+            return finish_work(kind, finished)
+
+        def record_layout(started: f64, finished: f64) -> bool:
+            return record_work(WorkKind.Layout, started, finished)
+
+        def record_text(started: f64, finished: f64) -> bool:
+            return record_work(WorkKind.Text, started, finished)
+
+        def record_resources(started: f64, finished: f64) -> bool:
+            return record_work(WorkKind.Resources, started, finished)
+
+        def work_snapshot() -> WorkSnapshot:
+            return WorkSnapshot{
+                layout_duration: metrics_work_layout_duration,
+                text_duration: metrics_work_text_duration,
+                resource_duration: metrics_work_resources_duration,
+                layout_active: metrics_work_layout_active,
+                text_active: metrics_work_text_active,
+                resource_active: metrics_work_resources_active,
+                completed_scopes: metrics_work_completed_scopes,
+                overflowed: metrics_work_overflowed,
+            }
+
+    private:
+        global mutable metrics_work_layout_started: f64 = 0.0
+        global mutable metrics_work_text_started: f64 = 0.0
+        global mutable metrics_work_resources_started: f64 = 0.0
+        global mutable metrics_work_layout_active: bool = false
+        global mutable metrics_work_text_active: bool = false
+        global mutable metrics_work_resources_active: bool = false
+        global mutable metrics_work_layout_duration: f64 = 0.0
+        global mutable metrics_work_text_duration: f64 = 0.0
+        global mutable metrics_work_resources_duration: f64 = 0.0
+        global mutable metrics_work_completed_scopes: u32 = 0
+        global mutable metrics_work_overflowed: bool = false
+
+        def work_kind_valid(kind: WorkKind) -> bool:
+            return kind == WorkKind.Layout or kind == WorkKind.Text or kind == WorkKind.Resources
+
+        def work_active(kind: WorkKind) -> bool:
+            return metrics_work_layout_active if kind == WorkKind.Layout
+            return metrics_work_text_active if kind == WorkKind.Text
+            return metrics_work_resources_active
+
+        def work_active_set(kind: WorkKind, active: bool) -> void:
+            metrics_work_layout_active <- active if kind == WorkKind.Layout
+            metrics_work_text_active <- active if kind == WorkKind.Text
+            metrics_work_resources_active <- active if kind == WorkKind.Resources
+
+        def work_started(kind: WorkKind) -> f64:
+            return metrics_work_layout_started if kind == WorkKind.Layout
+            return metrics_work_text_started if kind == WorkKind.Text
+            return metrics_work_resources_started
+
+        def work_started_set(kind: WorkKind, at: f64) -> void:
+            metrics_work_layout_started <- at if kind == WorkKind.Layout
+            metrics_work_text_started <- at if kind == WorkKind.Text
+            metrics_work_resources_started <- at if kind == WorkKind.Resources
+
+        def work_duration_add(kind: WorkKind, delta: f64) -> void:
+            return if delta <= 0.0
+            if kind == WorkKind.Layout:
+                candidate: f64 = metrics_work_layout_duration + delta
+                if UiCore::finite_or_zero_f64(candidate) == candidate:
+                    metrics_work_layout_duration <- candidate
+                else:
+                    metrics_work_overflowed <- true
+            elif kind == WorkKind.Text:
+                candidate: f64 = metrics_work_text_duration + delta
+                if UiCore::finite_or_zero_f64(candidate) == candidate:
+                    metrics_work_text_duration <- candidate
+                else:
+                    metrics_work_overflowed <- true
+            else:
+                candidate: f64 = metrics_work_resources_duration + delta
+                if UiCore::finite_or_zero_f64(candidate) == candidate:
+                    metrics_work_resources_duration <- candidate
+                else:
+                    metrics_work_overflowed <- true

@@ -205,7 +205,9 @@ because a module member's symbol carries its module and those names cannot move.
   It also exposes the raw invalidation mask and sequence so tooling can observe
   repeated updates even when a dirty bit remains set, a task snapshot for
   lifecycle diagnostics, and the active locale snapshot (canonical tag,
-  direction, revision, and truncation state).
+  direction, revision, and truncation state). `UiMetrics` adds independent,
+  host-clock-driven layout, text, and resource work scopes to the inspector
+  without changing the sequential frame-stage contract.
   New application code can use [UiHandles](docs/ui-handles.md) for typed u32
   handles with retained-tree lifetime checks; the older index API remains for
   compatibility and low-level adapters.

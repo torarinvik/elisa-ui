@@ -13,8 +13,9 @@ node: UiInspector::Node? = UiInspector::inspect(save)
 
 `Frame` reports the viewport, shared lifecycle phase/generation and its input
 and rendering predicates, deferred layout state, frame clock/deadline,
-stage timing metrics (application, semantics, and paint), command/semantic
-buffer counts and overflow flags, and the five typed
+stage timing metrics (application, semantics, and paint), independent
+layout/text/resource work timings, command/semantic buffer counts and overflow
+flags, and the five typed
 invalidation reasons (`Layout`, `Paint`, `Semantics`, `Resources`, and
 `Animation`). `Node` reports a typed
 lifetime handle, parent/child/sibling relationships, resolved bounds,
@@ -30,6 +31,12 @@ rebuild without keeping a second native or tooling-side locale table.
 `Frame.theme` likewise exposes the normalized `UiTheme::Snapshot`, including
 the active preferences and monotonic revision, so runtime appearance changes
 are visible to diagnostics without a backend shadow state.
+
+`Frame.work` contains host-clock-driven scopes for layout, text, and resource
+work. Each kind can be measured independently (including nested kinds), while
+duplicate begins and unmatched finishes fail closed. Scope durations are
+allocation-free, reset at each frame, and retain an overflow flag rather than
+emitting a non-finite diagnostic value.
 
 Secure text is redacted as `[secure]` in diagnostic nodes and semantic copies;
 selected text is cleared. This keeps inspector output safe for logs, snapshots,
