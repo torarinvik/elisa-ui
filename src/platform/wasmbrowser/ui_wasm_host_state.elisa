@@ -1,0 +1,179 @@
+# WasmBrowser host-state adapters kept behind a private Elisa module.
+#
+# Host imports remain the boundary, but clipboard staging, guest-memory
+# validation, and text-metric normalization are framework policy rather than
+# ABI declarations. Keeping those buffers and helpers here prevents mutable
+# implementation state from becoming top-level component symbols.
+
+module UiWasmHostState:
+    public:
+        def reset_clipboard() -> void:
+            ui_wasm_clipboard_cache_valid <- false
+            ui_wasm_clipboard_length <- 0
+            scrub_clipboard_buffer()
+
+        def cstring_length(text: cstr) -> usize:
+            pointer_value: uintptr = text.cast[uintptr] can Unsafe.PointerCast
+            return 0 if pointer_value == 0.uintptr()
+            pointer: u32 = pointer_value.u32()
+            memory_end: u64 = host_memory_end()
+            length: u32 =
+                for index in 0..<UI_WASM_CSTR_SCAN_CAPACITY |length = UI_WASM_CSTR_SCAN_CAPACITY| -> length:
+                    # Compute in u64 before converting back to a wasm32
+                    # pointer. This prevents pointer+length wraparound from
+                    # turning a malformed string into a read near address zero.
+                    address: u64 = pointer.u64() + index.u64()
+                    length <- index if address >= memory_end
+                    break if address >= memory_end
+                    value: u8 = memory_byte(address.u32())
+                    length <- index if value == 0
+                    break if value == 0
+            return length.usize()
+
+        def clipboard_has_text() -> bool:
+            return ui_wasm_clipboard_length > 0 if ui_wasm_clipboard_cache_valid
+            return fetch_clipboard() > 0
+
+        def clipboard_write(bytes: u8&, length: usize) -> bool:
+            return false if length > 0 and bytes == null
+            take: usize = length if length < UiCore::MAX_TEXT_BYTES else UiCore::MAX_TEXT_BYTES
+            result_wire: mutable u8[UI_WASM_CLIPBOARD_WIRE_SIZE] = zeroed
+            # Keep clipboard payloads on complete UTF-8 scalar boundaries just
+            # like the AppKit and SDL adapters. The selected-text path normally
+            # supplies a valid range already, but this boundary also handles
+            # foreign callers that pass a prefix ending in a partial scalar.
+            safe_bytes: mutable u8[UiCore::MAX_TEXT_BYTES] = zeroed
+            for index in 0..<take:
+                safe_bytes[index] <- bytes[index]
+            copied: sview = safe_bytes[0:take]
+            valid_length: usize = UiText::valid_utf8_prefix(copied, take)
+            pointer: cstr = (&safe_bytes[0]).cast[cstr] can Unsafe.PointerCast
+            can Host.Clipboard:
+                trusted [Unsafe.PointerCast]:
+                    host_clipboard_set(pointer, valid_length.u32(), (&result_wire[0]).cast[mutable void&])
+            if read_wire_u32(result_wire, 0) != 0:
+                error_pointer: u32 = read_wire_u32(result_wire, 4)
+                error_length: u32 = read_wire_u32(result_wire, 8)
+                release_clipboard_allocation(error_pointer, error_length)
+                ui_wasm_clipboard_cache_valid <- false
+                return false
+            ui_wasm_clipboard_cache_valid <- false
+            return true
+
+        def clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+            return 0 if capacity > 0 and buffer == null
+            available: usize = fetch_clipboard() if not ui_wasm_clipboard_cache_valid else ui_wasm_clipboard_length
+            take: mutable usize = available if available < capacity else capacity
+            source: sview = ui_wasm_clipboard_buffer[0:take]
+            take <- UiText::valid_utf8_prefix(source, take)
+            for index in 0..<take:
+                buffer[index] <- ui_wasm_clipboard_buffer[index]
+            ui_wasm_clipboard_cache_valid <- false
+            ui_wasm_clipboard_length <- 0
+            scrub_clipboard_buffer()
+            return take
+
+        def measure_text_width(text: sview, size: f32) -> f32:
+            return 0.0 if text.len <= 0 or text.data == null
+            safe_text: sview = UiCore::bounded_text(text)
+            return 0.0 if safe_text.len <= 0 or safe_text.data == null
+            pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
+            measured: mutable f32 = 0.0
+            can Host.Layout:
+                measured <- host_measure_text_width(pointer, safe_text.len.u32(), UiCore::bounded_extent(size))
+            return UiCore::bounded_extent(measured)
+
+        def measure_text_height(text: sview, size: f32) -> f32:
+            return 0.0 if text.len <= 0 or text.data == null
+            safe_text: sview = UiCore::bounded_text(text)
+            return 0.0 if safe_text.len <= 0 or safe_text.data == null
+            pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
+            measured: mutable f32 = 0.0
+            can Host.Layout:
+                measured <- host_measure_text_height(pointer, safe_text.len.u32(), UiCore::bounded_extent(size))
+            return UiCore::bounded_extent(measured)
+
+        def font_ascent(size: f32) -> f32:
+            measured: mutable f32 = 0.0
+            can Host.Layout:
+                measured <- host_font_ascent(UiCore::bounded_extent(size))
+            return UiCore::bounded_extent(measured)
+
+        def text_line_height(size: f32) -> f32:
+            measured: mutable f32 = 0.0
+            can Host.Layout:
+                measured <- host_font_line_height(UiCore::bounded_extent(size))
+            return UiCore::bounded_extent(measured)
+
+    private:
+        const UI_WASM_HOST_MAX_ALLOCATION: u32 = 67108864
+        const UI_WASM_CSTR_SCAN_CAPACITY: u32 = UiCore::MAX_TEXT_BYTES.u32()
+        const UI_WASM_CLIPBOARD_WIRE_SIZE: usize = 64
+
+        global mutable ui_wasm_clipboard_buffer: u8[UiCore::MAX_TEXT_BYTES] = zeroed
+        global mutable ui_wasm_clipboard_length: usize = 0
+        global mutable ui_wasm_clipboard_cache_valid: bool = false
+
+        def scrub_clipboard_buffer() -> void:
+            for index in 0..<UiCore::MAX_TEXT_BYTES:
+                ui_wasm_clipboard_buffer[index] <- 0
+
+        def read_wire_u32(wire: mutable u8[UI_WASM_CLIPBOARD_WIRE_SIZE]&, offset: usize) -> u32:
+            trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic, Unsafe.UncheckedIndex]:
+                slot: u32& = (&wire[offset]).cast[u32&]
+                return slot
+
+        def host_memory_end() -> u64:
+            return ui_wasm_memory_size_pages(0).u64() * 65536
+
+        def host_memory_range_valid(pointer: u32, byte_count: u32) -> bool:
+            start: u64 = pointer.u64()
+            end: u64 = start + byte_count.u64()
+            memory_end: u64 = host_memory_end()
+            return end >= start and end <= memory_end and (byte_count == 0 or pointer != 0)
+
+        def memory_byte(pointer: u32) -> u8:
+            trusted Unsafe.PointerCast:
+                slot: u8& = pointer.cast[u8&]
+                return slot
+
+        def release_clipboard_allocation(pointer: u32, length: u32) -> void:
+            if length <= UI_WASM_HOST_MAX_ALLOCATION and pointer != 0 and host_memory_range_valid(pointer, length):
+                host_component_realloc(pointer, length, 1, 0)
+
+        def fetch_clipboard() -> usize:
+            scrub_clipboard_buffer()
+            result_wire: mutable u8[UI_WASM_CLIPBOARD_WIRE_SIZE] = zeroed
+            ui_wasm_clipboard_length <- 0
+            ui_wasm_clipboard_cache_valid <- true
+            can Host.Clipboard:
+                trusted [Unsafe.PointerCast]:
+                    host_clipboard_get((&result_wire[0]).cast[mutable void&])
+            if read_wire_u32(result_wire, 0) != 0:
+                error_pointer: u32 = read_wire_u32(result_wire, 4)
+                error_length: u32 = read_wire_u32(result_wire, 8)
+                release_clipboard_allocation(error_pointer, error_length)
+                ui_wasm_clipboard_cache_valid <- false
+                return 0
+            pointer: u32 = read_wire_u32(result_wire, 4)
+            length: u32 = read_wire_u32(result_wire, 8)
+            if length == 0:
+                release_clipboard_allocation(pointer, length)
+                ui_wasm_clipboard_cache_valid <- false
+                return 0
+            if pointer == 0:
+                ui_wasm_clipboard_cache_valid <- false
+                return 0
+            if length > UI_WASM_HOST_MAX_ALLOCATION or not host_memory_range_valid(pointer, length):
+                release_clipboard_allocation(pointer, length)
+                ui_wasm_clipboard_cache_valid <- false
+                return 0
+            take: usize = length.usize() if length.usize() < UiCore::MAX_TEXT_BYTES else UiCore::MAX_TEXT_BYTES
+            for index in 0..<take:
+                trusted Unsafe.PointerCast:
+                    source: u8& = (pointer + index.u32()).cast[u8&]
+                    ui_wasm_clipboard_buffer[index] <- source
+            copied: sview = ui_wasm_clipboard_buffer[0:take]
+            ui_wasm_clipboard_length <- UiText::valid_utf8_prefix(copied, take)
+            release_clipboard_allocation(pointer, length)
+            return ui_wasm_clipboard_length
