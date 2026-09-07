@@ -6,69 +6,9 @@
 
 include "./ui_appkit_canvas.elisa"
 include "./ui_appkit_canvas_text.elisa"
+include "./ui_appkit_canvas_clipboard.elisa"
 
 include "../../widgets/ui_handles.elisa"
-
-global mutable appkit_clipboard_buffer: u8[UiFlat::TEXT_CAPACITY] = zeroed
-global mutable appkit_native_text_buffer: u8[UiFlat::TEXT_CAPACITY] = zeroed
-global mutable appkit_clipboard_length: usize = 0
-global mutable appkit_clipboard_cache_valid: bool = false
-global mutable appkit_clipboard_generation: u32 = 0
-
-def appkit_scrub_buffer(buffer: mutable u8&, capacity: usize) -> void:
-    for index in 0..<capacity:
-        buffer[index] <- 0
-
-def ui_clipboard_has_text() -> bool:
-    if appkit_clipboard_cache_valid and appkit_clipboard_generation != UiLifecycle::generation():
-        appkit_scrub_buffer(&appkit_clipboard_buffer[0], UiFlat::TEXT_CAPACITY)
-        appkit_clipboard_length <- 0
-        appkit_clipboard_cache_valid <- false
-    return appkit_clipboard_length > 0 if appkit_clipboard_cache_valid
-    # Read once and retain the bytes so UiFlat's enabled check and Paste action
-    # observe one native snapshot, matching the Wasm adapter's host cache.
-    appkit_scrub_buffer(&appkit_clipboard_buffer[0], UiFlat::TEXT_CAPACITY)
-    native_text: usize = elisa_appkit_canvas_clipboard_read(NSPasteboardTypeString)
-    appkit_clipboard_length <- UiAppKitCanvas::copy_native_string(native_text, &appkit_clipboard_buffer[0], UiFlat::TEXT_CAPACITY)
-    CFRelease(native_text) if native_text != 0
-    appkit_clipboard_cache_valid <- true
-    appkit_clipboard_generation <- UiLifecycle::generation()
-    return appkit_clipboard_length > 0
-
-def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
-    return false if length > 0 and bytes == null
-    native_text: usize = UiAppKitCanvas::native_string_bytes(bytes, length)
-    return false if native_text == 0
-    written: bool = elisa_appkit_canvas_clipboard_write(native_text, NSPasteboardTypeString) != 0
-    CFRelease(native_text)
-    appkit_scrub_buffer(&appkit_clipboard_buffer[0], UiFlat::TEXT_CAPACITY)
-    appkit_clipboard_cache_valid <- false
-    appkit_clipboard_length <- 0
-    appkit_clipboard_generation <- UiLifecycle::generation()
-    return written
-
-def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
-    return 0 if capacity > 0 and buffer == null
-    if appkit_clipboard_cache_valid and appkit_clipboard_generation != UiLifecycle::generation():
-        appkit_scrub_buffer(&appkit_clipboard_buffer[0], UiFlat::TEXT_CAPACITY)
-        appkit_clipboard_length <- 0
-        appkit_clipboard_cache_valid <- false
-    available: mutable usize = appkit_clipboard_length if appkit_clipboard_cache_valid else 0
-    if not appkit_clipboard_cache_valid:
-        appkit_scrub_buffer(&appkit_clipboard_buffer[0], UiFlat::TEXT_CAPACITY)
-        native_text: usize = elisa_appkit_canvas_clipboard_read(NSPasteboardTypeString)
-        available <- UiAppKitCanvas::copy_native_string(native_text, &appkit_clipboard_buffer[0], UiFlat::TEXT_CAPACITY)
-        CFRelease(native_text) if native_text != 0
-    take: mutable usize = available if available < capacity else capacity
-    source: sview = appkit_clipboard_buffer[0:take]
-    take <- UiText::valid_utf8_prefix(source, take)
-    for index in 0..<take:
-        buffer[index] <- appkit_clipboard_buffer[index]
-    appkit_clipboard_cache_valid <- false
-    appkit_clipboard_length <- 0
-    appkit_clipboard_generation <- UiLifecycle::generation()
-    appkit_scrub_buffer(&appkit_clipboard_buffer[0], UiFlat::TEXT_CAPACITY)
-    return take
 
 def appkit_flat_accessibility_activate(index: usize) -> i32:
     return 0 if not UiAppKitCanvas::live() or not UiLifecycle::accepts_input()
