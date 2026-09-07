@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cmath>
 
 #include "../../../include/elisa_skia.h"
 #include "include/core/SkCanvas.h"
@@ -26,6 +27,18 @@ namespace {
 
 SkCanvas *canvas(std::size_t handle) {
     return reinterpret_cast<SkCanvas *>(handle);
+}
+
+bool finite(float value) {
+    return std::isfinite(value);
+}
+
+bool valid_rect(float x, float y, float width, float height) {
+    return finite(x) && finite(y) && finite(width) && finite(height) && width > 0.0f && height > 0.0f;
+}
+
+bool positive(float value) {
+    return finite(value) && value > 0.0f;
 }
 
 SkColor color(std::uint8_t red, std::uint8_t green, std::uint8_t blue, std::uint8_t alpha) {
@@ -86,7 +99,7 @@ extern "C" void elisa_skia_canvas_rotate(std::size_t handle, float degrees) {
 }
 
 extern "C" void elisa_skia_canvas_clip_rect(std::size_t handle, float x, float y, float width, float height) {
-    if (SkCanvas *target = canvas(handle)) {
+    if (SkCanvas *target = canvas(handle); target != nullptr && valid_rect(x, y, width, height)) {
         target->clipRect(SkRect::MakeXYWH(x, y, width, height), SkClipOp::kIntersect, true);
     }
 }
@@ -100,7 +113,8 @@ extern "C" void elisa_skia_canvas_fill_round_rect(std::size_t handle, float x, f
                                                     float height, float radius, std::uint8_t red,
                                                     std::uint8_t green, std::uint8_t blue,
                                                     std::uint8_t alpha) {
-    if (SkCanvas *target = canvas(handle); target != nullptr && radius >= 0.0f) {
+    if (SkCanvas *target = canvas(handle);
+        target != nullptr && valid_rect(x, y, width, height) && finite(radius) && radius >= 0.0f) {
         const SkRect rect = SkRect::MakeXYWH(x, y, width, height);
         target->drawRRect(SkRRect::MakeRectXY(rect, radius, radius),
                           fill_paint(red, green, blue, alpha));
@@ -112,7 +126,9 @@ extern "C" void elisa_skia_canvas_stroke_round_rect(std::size_t handle, float x,
                                                       std::uint8_t red,
                                                       std::uint8_t green, std::uint8_t blue,
                                                       std::uint8_t alpha) {
-    if (SkCanvas *target = canvas(handle); target != nullptr && radius >= 0.0f && stroke_width > 0.0f) {
+    if (SkCanvas *target = canvas(handle);
+        target != nullptr && valid_rect(x, y, width, height) && finite(radius) && radius >= 0.0f &&
+        finite(stroke_width) && stroke_width > 0.0f) {
         const SkRect rect = SkRect::MakeXYWH(x, y, width, height);
         target->drawRRect(SkRRect::MakeRectXY(rect, radius, radius),
                           stroke_paint(red, green, blue, alpha, stroke_width));
@@ -122,7 +138,9 @@ extern "C" void elisa_skia_canvas_stroke_round_rect(std::size_t handle, float x,
 extern "C" void elisa_skia_canvas_shadow_round_rect(std::size_t handle, float x, float y, float width,
                                                       float height, float radius, float offset_x,
                                                       float offset_y, float blur, std::uint8_t alpha) {
-    if (SkCanvas *target = canvas(handle); target != nullptr && radius >= 0.0f && alpha != 0) {
+    if (SkCanvas *target = canvas(handle);
+        target != nullptr && valid_rect(x, y, width, height) && finite(radius) && radius >= 0.0f &&
+        finite(offset_x) && finite(offset_y) && finite(blur) && blur >= 0.0f && alpha != 0) {
         const SkRect rect = SkRect::MakeXYWH(x, y, width, height);
         // DropShadowOnly keeps the source silhouette out of the result while
         // still using its alpha as the shadow mask. This is the replacement
@@ -144,7 +162,7 @@ extern "C" void elisa_skia_canvas_draw_image_sampling(std::size_t canvas_handle,
                                                         float x, float y, float width, float height,
                                                         std::uint8_t alpha, std::int32_t sampling) {
     if (SkCanvas *target = canvas(canvas_handle);
-        target != nullptr && image_handle != 0 && width > 0.0f && height > 0.0f && alpha != 0) {
+        target != nullptr && image_handle != 0 && valid_rect(x, y, width, height) && alpha != 0) {
         SkImage *image = reinterpret_cast<SkImage *>(image_handle);
         SkPaint paint;
         paint.setAntiAlias(true);
@@ -163,7 +181,8 @@ extern "C" void elisa_skia_canvas_draw_text_with_font(std::size_t canvas_handle,
                                                         std::uint8_t red, std::uint8_t green,
                                                         std::uint8_t blue, std::uint8_t alpha) {
     if (SkCanvas *target = canvas(canvas_handle);
-        target != nullptr && font_handle != 0 && text != nullptr && length > 0 && size > 0.0f) {
+        target != nullptr && font_handle != 0 && text != nullptr && length > 0 && finite(x) && finite(y) &&
+        finite(size) && size > 0.0f) {
         SkFont font = font_for(size, reinterpret_cast<SkTypeface *>(font_handle));
         target->drawSimpleText(text, length, SkTextEncoding::kUTF8, x, y, font,
                                fill_paint(red, green, blue, alpha));
@@ -173,20 +192,20 @@ extern "C" void elisa_skia_canvas_draw_text_with_font(std::size_t canvas_handle,
 extern "C" float elisa_skia_measure_text_width_with_font(std::size_t font_handle,
                                                            const char *text, std::size_t length,
                                                            float size) {
-    if (font_handle == 0 || text == nullptr || length == 0 || size <= 0.0f) return 0.0f;
+    if (font_handle == 0 || text == nullptr || length == 0 || !finite(size) || size <= 0.0f) return 0.0f;
     return font_for(size, reinterpret_cast<SkTypeface *>(font_handle))
         .measureText(text, length, SkTextEncoding::kUTF8);
 }
 
 extern "C" float elisa_skia_font_ascent_with_font(std::size_t font_handle, float size) {
-    if (font_handle == 0 || size <= 0.0f) return 0.0f;
+    if (font_handle == 0 || !finite(size) || size <= 0.0f) return 0.0f;
     SkFontMetrics metrics;
     font_for(size, reinterpret_cast<SkTypeface *>(font_handle)).getMetrics(&metrics);
     return -metrics.fAscent;
 }
 
 extern "C" float elisa_skia_text_line_height_with_font(std::size_t font_handle, float size) {
-    if (font_handle == 0 || size <= 0.0f) return 0.0f;
+    if (font_handle == 0 || !finite(size) || size <= 0.0f) return 0.0f;
     SkFontMetrics metrics;
     font_for(size, reinterpret_cast<SkTypeface *>(font_handle)).getMetrics(&metrics);
     return metrics.fDescent - metrics.fAscent + metrics.fLeading;
@@ -195,7 +214,8 @@ extern "C" float elisa_skia_text_line_height_with_font(std::size_t font_handle, 
 extern "C" void elisa_skia_canvas_fill_circle(std::size_t handle, float x, float y, float radius,
                                                 std::uint8_t red, std::uint8_t green, std::uint8_t blue,
                                                 std::uint8_t alpha) {
-    if (SkCanvas *target = canvas(handle)) {
+    if (SkCanvas *target = canvas(handle);
+        target != nullptr && finite(x) && finite(y) && positive(radius)) {
         target->drawCircle(x, y, radius, fill_paint(red, green, blue, alpha));
     }
 }
@@ -203,7 +223,8 @@ extern "C" void elisa_skia_canvas_fill_circle(std::size_t handle, float x, float
 extern "C" void elisa_skia_canvas_fill_triangle(std::size_t handle, float ax, float ay, float bx, float by,
                                                  float cx, float cy, std::uint8_t red, std::uint8_t green,
                                                  std::uint8_t blue, std::uint8_t alpha) {
-    if (SkCanvas *target = canvas(handle)) {
+    if (SkCanvas *target = canvas(handle);
+        target != nullptr && finite(ax) && finite(ay) && finite(bx) && finite(by) && finite(cx) && finite(cy)) {
         SkPathBuilder path;
         path.moveTo(ax, ay).lineTo(bx, by).lineTo(cx, cy).close();
         target->drawPath(path.detach(), fill_paint(red, green, blue, alpha));
@@ -214,7 +235,9 @@ extern "C" void elisa_skia_canvas_fill_line(std::size_t handle, float x0, float 
                                               float stroke_width, std::uint8_t red, std::uint8_t green,
                                               std::uint8_t blue,
                                               std::uint8_t alpha) {
-    if (SkCanvas *target = canvas(handle); target != nullptr && stroke_width > 0.0f) {
+    if (SkCanvas *target = canvas(handle);
+        target != nullptr && finite(x0) && finite(y0) && finite(x1) && finite(y1) &&
+        finite(stroke_width) && stroke_width > 0.0f) {
         target->drawLine(x0, y0, x1, y1, stroke_paint(red, green, blue, alpha, stroke_width));
     }
 }
@@ -222,26 +245,28 @@ extern "C" void elisa_skia_canvas_fill_line(std::size_t handle, float x0, float 
 extern "C" void elisa_skia_canvas_draw_text(std::size_t handle, const char *text, std::size_t length,
                                               float x, float y, float size, std::uint8_t red,
                                               std::uint8_t green, std::uint8_t blue, std::uint8_t alpha) {
-    if (SkCanvas *target = canvas(handle); target != nullptr && text != nullptr && length > 0 && size > 0.0f) {
+    if (SkCanvas *target = canvas(handle);
+        target != nullptr && text != nullptr && length > 0 && finite(x) && finite(y) && finite(size) &&
+        size > 0.0f) {
         target->drawSimpleText(text, length, SkTextEncoding::kUTF8, x, y, font_for(size),
                                fill_paint(red, green, blue, alpha));
     }
 }
 
 extern "C" float elisa_skia_measure_text_width(const char *text, std::size_t length, float size) {
-    if (text == nullptr || length == 0 || size <= 0.0f) return 0.0f;
+    if (text == nullptr || length == 0 || !finite(size) || size <= 0.0f) return 0.0f;
     return font_for(size).measureText(text, length, SkTextEncoding::kUTF8);
 }
 
 extern "C" float elisa_skia_font_ascent(float size) {
-    if (size <= 0.0f) return 0.0f;
+    if (!finite(size) || size <= 0.0f) return 0.0f;
     SkFontMetrics metrics;
     font_for(size).getMetrics(&metrics);
     return -metrics.fAscent;
 }
 
 extern "C" float elisa_skia_text_line_height(float size) {
-    if (size <= 0.0f) return 0.0f;
+    if (!finite(size) || size <= 0.0f) return 0.0f;
     SkFontMetrics metrics;
     font_for(size).getMetrics(&metrics);
     return metrics.fDescent - metrics.fAscent + metrics.fLeading;

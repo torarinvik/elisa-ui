@@ -4,7 +4,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <limits>
 
+#include "include/elisa_skia.h"
+#include "include/core/SkCanvas.h"
 #include "include/core/SkColor.h"
 #include "include/core/SkImageInfo.h"
 #include "include/core/SkPixmap.h"
@@ -35,8 +38,22 @@ int main(int argc, char** argv) {
         return 2;
     }
 
+    // Direct foreign callers do not pass through Elisa's geometry helpers.
+    // The native ABI must still fail closed for malformed values.
+    SkCanvas* canvas = surface->getCanvas();
+    canvas->clear(SkColorSetARGB(255, 18, 24, 32));
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    elisa_skia_canvas_fill_circle(reinterpret_cast<std::size_t>(canvas), 80.0f, 130.0f, -1.0f, 60, 180, 140, 255);
+    elisa_skia_canvas_fill_round_rect(reinterpret_cast<std::size_t>(canvas), 20.0f, 20.0f, nan, 60.0f, 8.0f, 220, 80, 100, 255);
+    elisa_skia_canvas_fill_line(reinterpret_cast<std::size_t>(canvas), 0.0f, nan, 20.0f, 20.0f, 1.0f, 240, 240, 245, 255);
+    SkPixmap malformed_pixels;
+    if (!surface->peekPixels(&malformed_pixels) ||
+        !expect_color(malformed_pixels, 80, 130, SkColorSetARGB(255, 18, 24, 32), "malformed no-op")) {
+        return 6;
+    }
+
     const std::int32_t status = elisa_skia_offscreen_render(
-        reinterpret_cast<std::size_t>(surface->getCanvas()));
+        reinterpret_cast<std::size_t>(canvas));
     if (status != 1) {
         std::fprintf(stderr, "skia offscreen: Elisa returned status %d\n", status);
         return 3;
