@@ -69,7 +69,10 @@ because a module member's symbol carries its module and those names cannot move.
   accessibility objects and byte-oriented pasteboard primitives through a thin
   Objective-C FFI shim while Elisa owns event translation, visual policy, edit
   command execution, CoreText text shaping, text editing and every rendered
-  control), plus
+  control). The custom-rendering primitive path is being moved to the Skia
+  painter in [docs/skia-custom-rendering.md](docs/skia-custom-rendering.md):
+  `UiSkia` keeps the same command protocol and crosses only a narrow C FFI,
+  while AppKit controls remain native, plus
   [wasmbrowser](src/platform/wasmbrowser/ui_wasmbrowser.elisa) (a component
   implementing `world app`; the host drives the loop through the exported guest
   interface, and canonical-ABI encoding is confined to this file; its clipboard
@@ -280,10 +283,12 @@ backends, so layout agrees even though the rasterizers differ.
 SDL supplies monotonic frame time and waits for either input or the earliest
 animation deadline requested by the retained tree, keeping idle windows from
 busy-spinning while preserving caret animation.
-The AppKit renderer likewise calls libSystem, CoreGraphics, CoreText and
-ImageIO directly from Elisa for its monotonic clock, path rendering, colors,
-shadows, font metrics and off-screen PNG snapshots; Objective-C remains only
-where Cocoa requires objects, delegates, protocols, and selectors.
+The current AppKit canvas calls libSystem, CoreGraphics, CoreText and ImageIO
+directly from Elisa for its monotonic clock, path rendering, colors, shadows,
+font metrics and off-screen PNG snapshots; Objective-C remains only where
+Cocoa requires objects, delegates, protocols, and selectors. New custom
+rendering work targets the Skia FFI described above; the native-controls path
+continues to use AppKit directly.
 
 ### Elisascript ports (not yet runnable)
 

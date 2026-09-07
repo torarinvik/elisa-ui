@@ -1,0 +1,31 @@
+# Skia custom rendering
+
+The custom-painted backend is moving to Skia while the native-control backend
+remains AppKit. The split is intentional:
+
+- AppKit owns native controls, text services, accessibility protocol objects,
+  windows, and event delivery in the native profile.
+- Elisa owns retained widgets, layout, semantic nodes, clipping decisions, and
+  the portable `UiCore::Command` batch in both profiles.
+- Skia owns custom pixels only. `src/platform/skia/ui_skia.elisa` is the Elisa
+  painter specialization; `skia_canvas_shim.cpp` is the narrow C ABI that
+  accepts an opaque borrowed `SkCanvas*` and exposes primitive operations.
+
+The FFI deliberately does not expose `SkPaint`, `SkFont`, `SkPath`, or any
+other C++ object to Elisa. A host attaches one canvas for a frame, replays the
+same command batch through `UiPaint::replay[UiSkia::SkiaPainter]()`, and then
+detaches it before the surface is destroyed. That makes surface recreation and
+headless rendering ordinary lifecycle transitions instead of retained native
+pointer state.
+
+The first slice covers clear, clipping, rectangles, circles, triangles, lines,
+UTF-8 text, and text metrics. Font fallback, image resources, GPU surface
+creation, and an AppKit `MTKView`/`SkSurface` host are intentionally separate
+follow-ups; they must be chosen with the target's pinned Skia build rather than
+smuggled into the Elisa ABI.
+
+The checkout does not currently pin or vendor a Skia SDK. Build the C++ shim
+only in a target that supplies Skia headers and libraries, then pass its
+`SkCanvas*` through the opaque FFI handle. The Elisa module itself compiles
+without Skia installed, so layout, command generation, and all existing
+headless tests remain independent of the renderer choice.

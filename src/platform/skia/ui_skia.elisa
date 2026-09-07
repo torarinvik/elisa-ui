@@ -1,0 +1,100 @@
+# Skia custom-rendering service.
+#
+# Elisa owns the retained command list and the painter protocol. This module
+# owns only the opaque SkCanvas handle and translates the six portable paint
+# primitives into a deliberately tiny C ABI. A host may provide that canvas
+# from an AppKit view, an SDL surface, a Metal-backed surface, or a headless
+# raster target without changing widget/layout code.
+
+include "../../core/ui_core.elisa"
+include "../../core/ui_paint.elisa"
+
+using UiPaint
+
+extern elisa_skia_canvas_save(canvas: usize) -> void
+extern elisa_skia_canvas_restore(canvas: usize) -> void
+extern elisa_skia_canvas_clip_rect(canvas: usize, x: f32, y: f32, width: f32, height: f32) -> void
+extern elisa_skia_canvas_clear(canvas: usize, red: u8, green: u8, blue: u8, alpha: u8) -> void
+extern elisa_skia_canvas_fill_rect(canvas: usize, x: f32, y: f32, width: f32, height: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
+extern elisa_skia_canvas_fill_circle(canvas: usize, x: f32, y: f32, radius: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
+extern elisa_skia_canvas_fill_triangle(canvas: usize, ax: f32, ay: f32, bx: f32, by: f32, cx: f32, cy: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
+extern elisa_skia_canvas_fill_line(canvas: usize, x0: f32, y0: f32, x1: f32, y1: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
+extern elisa_skia_canvas_draw_text(canvas: usize, text: cstr, length: usize, x: f32, y: f32, size: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
+extern elisa_skia_measure_text_width(text: cstr, length: usize, size: f32) -> f32
+extern elisa_skia_font_ascent(size: f32) -> f32
+extern elisa_skia_text_line_height(size: f32) -> f32
+
+module UiSkia:
+    public:
+        # The host passes an opaque SkCanvas* as usize. Elisa never dereferences
+        # or stores a Skia C++ object; detach() invalidates the handle at the
+        # end of every surface lifetime.
+        def attach(canvas: usize) -> void:
+            canvas_state <- canvas
+            clip_depth <- 0
+
+        def detach() -> void:
+            canvas_state <- 0
+            clip_depth <- 0
+
+        def is_attached() -> bool:
+            return canvas_state != 0
+
+        def measure_text_width(text: sview, size: f32) -> f32:
+            return 0.0 if text.len <= 0 or text.data == null or not UiCore::is_finite(size)
+            safe_text: sview = UiCore::bounded_text(text)
+            return 0.0 if safe_text.len <= 0 or safe_text.data == null
+            pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
+            return UiCore::bounded_extent(elisa_skia_measure_text_width(pointer, safe_text.len.usize(), UiCore::bounded_extent(size)))
+
+        def font_ascent(size: f32) -> f32:
+            return UiCore::bounded_extent(elisa_skia_font_ascent(UiCore::bounded_extent(size)))
+
+        def text_line_height(size: f32) -> f32:
+            return UiCore::bounded_extent(elisa_skia_text_line_height(UiCore::bounded_extent(size)))
+
+        struct SkiaPainter:
+            unused: i32
+
+        impl Painter for SkiaPainter:
+            def push_clip(box: UiCore::Rect) -> void can[Ui.Draw]:
+                return if canvas_state == 0
+                elisa_skia_canvas_save(canvas_state)
+                elisa_skia_canvas_clip_rect(canvas_state, box.origin.x, box.origin.y, box.size.width, box.size.height)
+                clip_depth <- clip_depth + 1
+
+            def pop_clip() -> void can[Ui.Draw]:
+                return if canvas_state == 0 or clip_depth == 0
+                elisa_skia_canvas_restore(canvas_state)
+                clip_depth <- clip_depth - 1
+
+            def clear(color: UiCore::Color) -> void can[Ui.Draw]:
+                return if canvas_state == 0
+                elisa_skia_canvas_clear(canvas_state, color.r, color.g, color.b, color.a)
+
+            def fill_rect(box: UiCore::Rect, color: UiCore::Color) -> void can[Ui.Draw]:
+                return if canvas_state == 0
+                elisa_skia_canvas_fill_rect(canvas_state, box.origin.x, box.origin.y, box.size.width, box.size.height, color.r, color.g, color.b, color.a)
+
+            def fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> void can[Ui.Draw]:
+                return if canvas_state == 0
+                elisa_skia_canvas_fill_circle(canvas_state, disc.center.x, disc.center.y, disc.radius, color.r, color.g, color.b, color.a)
+
+            def fill_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]:
+                return if canvas_state == 0
+                elisa_skia_canvas_fill_triangle(canvas_state, tri.a.x, tri.a.y, tri.b.x, tri.b.y, tri.c.x, tri.c.y, color.r, color.g, color.b, color.a)
+
+            def fill_line(segment: UiCore::Line, color: UiCore::Color) -> void can[Ui.Draw]:
+                return if canvas_state == 0
+                elisa_skia_canvas_fill_line(canvas_state, segment.from_point.x, segment.from_point.y, segment.to_point.x, segment.to_point.y, color.r, color.g, color.b, color.a)
+
+            def draw_text(run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
+                return if canvas_state == 0 or run.text.len <= 0 or run.text.data == null
+                safe_text: sview = UiCore::bounded_text(run.text)
+                return if safe_text.len <= 0 or safe_text.data == null
+                pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
+                elisa_skia_canvas_draw_text(canvas_state, pointer, safe_text.len.usize(), run.origin.x, run.origin.y, UiCore::bounded_extent(run.size), color.r, color.g, color.b, color.a)
+
+    private:
+        global mutable canvas_state: usize = 0
+        global mutable clip_depth: usize = 0
