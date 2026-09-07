@@ -58,6 +58,9 @@ int main(int argc, char** argv) {
     SkCanvas* canvas = surface->getCanvas();
     canvas->clear(SkColorSetARGB(255, 18, 24, 32));
     const float nan = std::numeric_limits<float>::quiet_NaN();
+    elisa_skia_canvas_scale(reinterpret_cast<std::size_t>(canvas), 0.0f, 1.0f);
+    elisa_skia_canvas_translate(reinterpret_cast<std::size_t>(canvas), nan, 0.0f);
+    elisa_skia_canvas_rotate(reinterpret_cast<std::size_t>(canvas), nan);
     elisa_skia_canvas_fill_circle(reinterpret_cast<std::size_t>(canvas), 80.0f, 130.0f, -1.0f, 60, 180, 140, 255);
     elisa_skia_canvas_fill_round_rect(reinterpret_cast<std::size_t>(canvas), 20.0f, 20.0f, nan, 60.0f, 8.0f, 220, 80, 100, 255);
     elisa_skia_canvas_fill_line(reinterpret_cast<std::size_t>(canvas), 0.0f, nan, 20.0f, 20.0f, 1.0f, 240, 240, 245, 255);

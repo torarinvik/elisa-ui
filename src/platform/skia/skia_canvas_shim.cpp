@@ -49,6 +49,10 @@ bool positive(float value) {
     return finite(value) && value > 0.0f;
 }
 
+bool valid_scale(float x, float y) {
+    return positive(x) && positive(y);
+}
+
 SkColor color(std::uint8_t red, std::uint8_t green, std::uint8_t blue, std::uint8_t alpha) {
     return SkColorSetARGB(alpha, red, green, blue);
 }
@@ -95,15 +99,21 @@ extern "C" void elisa_skia_canvas_restore(std::size_t handle) {
 }
 
 extern "C" void elisa_skia_canvas_scale(std::size_t handle, float x, float y) {
-    if (SkCanvas *target = canvas(handle)) target->scale(x, y);
+    if (SkCanvas *target = canvas(handle); target != nullptr && valid_scale(x, y)) {
+        target->scale(x, y);
+    }
 }
 
 extern "C" void elisa_skia_canvas_translate(std::size_t handle, float x, float y) {
-    if (SkCanvas *target = canvas(handle)) target->translate(x, y);
+    if (SkCanvas *target = canvas(handle); target != nullptr && finite(x) && finite(y)) {
+        target->translate(x, y);
+    }
 }
 
 extern "C" void elisa_skia_canvas_rotate(std::size_t handle, float degrees) {
-    if (SkCanvas *target = canvas(handle)) target->rotate(degrees);
+    if (SkCanvas *target = canvas(handle); target != nullptr && finite(degrees)) {
+        target->rotate(degrees);
+    }
 }
 
 extern "C" void elisa_skia_canvas_clip_rect(std::size_t handle, float x, float y, float width, float height) {
