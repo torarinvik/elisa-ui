@@ -204,7 +204,8 @@ or policy branch. Tooltip rectangles
 receive the node frame
 directly when a semantic layout rebuild is required; the native element does
 not cache a second frame or cursor identity. Elisa also
-diffs semantic state between frames;
+diffs semantic state between frames; previous-frame ID reuse is resolved through
+an Elisa-owned bounded index rather than a native lookup table.
 AppKit receives explicit value, focus, text-selection and layout notification
 bits instead of inferring framework behavior from native objects. Text changes
 use explicit widget edit revisions rather than per-frame string hashing.
