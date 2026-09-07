@@ -40,6 +40,9 @@ advances on loss and every new attachment, giving a host a cheap stale-surface
 token while the Elisa widget tree survives device/surface recreation. Passing a
 zero canvas to `attach()`/`attach_scaled()` follows the same loss path and
 advances the token instead of silently reusing the prior generation.
+Surface loss also clears all borrowed image/typeface bindings; a recreated
+surface must explicitly bind fresh renderer objects while logical resources
+remain available to the view.
 
 Hosts that need an explicit completeness signal can call
 `UiSkia::render_checked()`: it replays the bounded batch but returns `false`
