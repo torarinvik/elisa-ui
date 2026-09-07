@@ -1,9 +1,12 @@
 # Typed widget handles
 
-`src/widgets/ui_handles.elisa` is the application-facing builder layer over
-the allocation-free `UiFlat` widgets. It keeps the old index functions
-available for compatibility, but a normal application can retain a small
-`UiHandles::Handle` value instead:
+`src/widgets/ui_handles.elisa` is the small facade for the application-facing
+typed-handle layer over the allocation-free `UiFlat` widgets. Its implementation
+is split into `ui_handles_types.elisa` (identity and tree lifetime),
+`ui_handles_build.elisa` (constructors), `ui_handles_style.elisa` (mutations and
+queries), and `ui_handles_input.elisa` (interaction, editing, layout, and
+painting). The facade keeps the old index functions available for compatibility,
+but a normal application can retain a small `UiHandles::Handle` value instead:
 
 ```elisa
 include "src/widgets/ui_handles.elisa"

@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `483b2c9477f8195db7fce53f7c06b7e3158d8803` on branch `work` |
+| elisa-ui revision | `c01c34a11f0a8036923e49e7515450e82793af75` (`refactor(widgets): split typed handle surface by concern`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -515,6 +515,11 @@ separate host-enforced security boundary.
   work remain blocked on sibling host/SDK execution fixtures rather than being
   simulated here; the hosted adapter now consumes generated SDK bindings while
   retaining only its UI-specific lowering in Elisa.
+- The typed `UiHandles` facade is now split into four cohesive Elisa modules:
+  identity/tree lifetime, builders, styling/queries, and interaction/editing.
+  The public include path and stale-handle behavior are unchanged; all modules
+  remain below the 400-line source hygiene limit and the existing handle test
+  covers the assembled surface.
 
 The authoritative generated WasmBrowser Elisa bindings are staged in
 `../wasm-sdk/sdk/elisa/wasmbrowser/`; the hosted adapter includes those bindings
