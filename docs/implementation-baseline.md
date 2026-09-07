@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `8797089` (`refactor(example): consume shared theme adapter`) on branch `work` |
+| elisa-ui revision | `b0432f7` (`refactor(core): use scoped loops for text scans`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -337,9 +337,11 @@ separate host-enforced security boundary.
   examples instead of generating temporary source, so the documented boundary
   remains runnable and reviewable.
 - Bounded Elisa scans that return a derived value now use scoped `for`
-  expressions where an early result is the only loop state; the C text-buffer
-  scrub check is covered by the existing bridge tests and keeps mutable state
-  local to the expression.
+  expressions where an early result is the only loop state, including the
+  UTF-8 prefix, scalar-count, and UTF-16-count walks in `UiText`; structural
+  tree traversals remain explicit `while` loops because they follow mutable
+  links and carry traversal budgets. The C text-buffer scrub check is covered
+  by the existing bridge tests and keeps mutable state local to the expression.
 - The shared event queue now rejects typed key, pointer-button, and gamepad
   ordinals that normalize to `Event.None`, instead of reporting a successful
   enqueue for a silently discarded no-op. The queue retains its existing
