@@ -194,7 +194,10 @@ extend UiFlat:
         # Give any painted widget a caption. Buttons keep their declared minimum
         # hit target; labels still use `label`, which derives its minimum from text.
         def set_text(index: usize, text: sview, size: f32, color: UiCore::Color) -> void:
-            return if index >= widget_count or text.len < 0
+            # A positive counted length with no storage is malformed foreign
+            # input, not an instruction to erase a live caption. Preserve the
+            # existing value just like the text-editing boundary does.
+            return if index >= widget_count or text.len < 0 or (text.len > 0 and text.data == null)
             safe_text: sview = UiCore::bounded_text(text)
             safe_size: f32 = UiConstraints::bounded(size)
             widgets[index] with { text <- safe_text, text_size <- safe_size, text_color <- color }
@@ -208,7 +211,9 @@ extend UiFlat:
             mark_layout_dirty()
 
         def set_help(index: usize, help: sview) -> void:
-            return if index >= widget_count or help.len < 0
+            # Keep malformed counted views from silently clearing retained
+            # accessibility help text.
+            return if index >= widget_count or help.len < 0 or (help.len > 0 and help.data == null)
             widgets[index].help <- UiCore::bounded_text(help)
             mark_semantics_dirty()
 
