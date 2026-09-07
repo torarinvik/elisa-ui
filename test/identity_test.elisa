@@ -55,13 +55,26 @@ def main() -> i64:
     duplicate: UiIdentity::Handle = UiIdentity::claim(303)
     duplicate_again: UiIdentity::Handle = UiIdentity::claim(303)
     duplicate_snapshot: UiIdentity::Snapshot = UiIdentity::finish()
-    check("duplicate keys are rejected", duplicate_again.slot == UiIdentity::NONE.u32() and duplicate_snapshot.duplicate)
+    check("duplicate keys are rejected atomically", duplicate_again.slot == UiIdentity::NONE.u32() and duplicate_snapshot.duplicate and not duplicate_snapshot.complete and UiIdentity::active() == 3)
     check("duplicate rejection does not alias the first handle", duplicate.slot != UiIdentity::NONE.u32() and UiIdentity::is_valid(duplicate))
+    check("failed identity rebuild preserves omitted records", UiIdentity::is_valid(replacement) and UiIdentity::is_valid(recycled))
 
     # Calling claim outside a transaction fails closed rather than mutating the
     # committed model.
     outside: UiIdentity::Handle = UiIdentity::claim(606)
-    check("out-of-transaction claim is rejected", outside.slot == UiIdentity::NONE.u32() and UiIdentity::active() == 1)
+    check("out-of-transaction claim is rejected", outside.slot == UiIdentity::NONE.u32() and UiIdentity::active() == 3)
+
+    # A nested begin abandons only the uncommitted additions from the previous
+    # attempt; the committed identity set remains unchanged.
+    UiIdentity::begin()
+    abandoned: UiIdentity::Handle = UiIdentity::claim(606)
+    UiIdentity::begin()
+    check("nested begin rolls back abandoned additions", not UiIdentity::is_valid(abandoned) and UiIdentity::active() == 3)
+    _ = UiIdentity::claim(303)
+    _ = UiIdentity::claim(404)
+    _ = UiIdentity::claim(505)
+    nested_snapshot: UiIdentity::Snapshot = UiIdentity::finish()
+    check("replacement transaction can commit after nested begin", nested_snapshot.complete and UiIdentity::active() == 3)
 
     if failures == 0:
         _ = puts("identity: all checks passed")

@@ -42,6 +42,7 @@ module UiIdentity:
             for slot in 0..<MAX_KEYS:
                 occupied[slot] <- false
                 seen[slot] <- false
+                was_occupied[slot] <- false
                 keys[slot] <- 0
                 generations[slot] <- next_generation(generations[slot])
             frame_active <- false
@@ -56,9 +57,14 @@ module UiIdentity:
 
         # Start a model transaction. Existing keys remain live until finish so
         # a failed/partial rebuild can still reject stale input deterministically.
+        # Starting again while a transaction is open first rolls back any keys
+        # inserted by the abandoned attempt; otherwise those keys would become
+        # indistinguishable from the committed baseline.
         def begin() -> void:
+            rollback_uncommitted() if frame_active
             for slot in 0..<MAX_KEYS:
                 seen[slot] <- false
+                was_occupied[slot] <- occupied[slot]
             frame_active <- true
             transaction_complete <- false
             claimed_count <- 0
@@ -67,6 +73,7 @@ module UiIdentity:
             retired_count <- 0
             overflowed_state <- false
             duplicate_state <- false
+            transaction_failed_state <- false
 
         # Claim one logical key. A duplicate in one transaction is rejected:
         # two rows with one key would otherwise share focus and edit state.
@@ -83,6 +90,7 @@ module UiIdentity:
                     break
             if free_slot == NONE:
                 overflowed_state <- true
+                transaction_failed_state <- true
                 return invalid()
 
             occupied[free_slot] <- true
@@ -99,6 +107,16 @@ module UiIdentity:
         # a late callback carrying an old handle can never touch a new record.
         def finish() -> Snapshot:
             return snapshot(false) if not frame_active
+            # A malformed transaction must not partially commit. In
+            # particular, dropping omitted keys after a duplicate/overflow
+            # would make a transient builder error destroy unrelated state.
+            # Roll back only slots inserted after begin(); existing identities
+            # remain live and continue rejecting stale handles deterministically.
+            if transaction_failed_state:
+                rollback_uncommitted()
+                frame_active <- false
+                transaction_complete <- false
+                return snapshot(false)
             for slot in 0..<MAX_KEYS:
                 if occupied[slot] and not seen[slot]:
                     occupied[slot] <- false
@@ -131,6 +149,7 @@ module UiIdentity:
         global mutable generations: u32[MAX_KEYS] = zeroed
         global mutable occupied: bool[MAX_KEYS] = zeroed
         global mutable seen: bool[MAX_KEYS] = zeroed
+        global mutable was_occupied: bool[MAX_KEYS] = zeroed
         global mutable frame_active: bool = false
         global mutable transaction_complete: bool = false
         global mutable active_count: usize = 0
@@ -140,6 +159,7 @@ module UiIdentity:
         global mutable retired_count: usize = 0
         global mutable overflowed_state: bool = false
         global mutable duplicate_state: bool = false
+        global mutable transaction_failed_state: bool = false
 
         def next_generation(value: u32) -> u32:
             next: u32 = value + 1
@@ -150,11 +170,23 @@ module UiIdentity:
             # second claim of that key in one transaction is a duplicate.
             if seen[slot]:
                 duplicate_state <- true
+                transaction_failed_state <- true
                 return invalid()
             seen[slot] <- true
             claimed_count <- claimed_count + 1
             reused_count <- reused_count + 1
             return Handle{slot: slot.u32(), generation: generations[slot]}
+
+        # Remove only records created after the current transaction began.
+        # Advancing each generation invalidates handles already handed to the
+        # caller before the transaction later failed or was abandoned.
+        def rollback_uncommitted() -> void:
+            for slot in 0..<MAX_KEYS:
+                if occupied[slot] and not was_occupied[slot]:
+                    occupied[slot] <- false
+                    keys[slot] <- 0
+                    generations[slot] <- next_generation(generations[slot])
+                    active_count <- active_count - 1 if active_count > 0
 
         def snapshot(complete: bool) -> Snapshot:
             return Snapshot{active: active_count, claimed: claimed_count,

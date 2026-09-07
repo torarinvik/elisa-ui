@@ -16,7 +16,10 @@ keyed by the handle can preserve focus, selection, scroll anchors, and edit
 history. A key omitted from the next transaction is retired; its generation is
 advanced before the slot is reusable, so late callbacks carrying an old handle
 fail closed. Duplicate keys are rejected instead of aliasing two rows to one
-state record.
+state record. A transaction containing a duplicate or capacity overflow fails
+closed: `finish()` leaves the previously committed set intact and rolls back
+keys inserted by that failed attempt. Calling `begin()` again while a
+transaction is open likewise abandons and rolls back that incomplete attempt.
 
 The registry is fixed-capacity (`MAX_KEYS = 1024`) and allocation-free. If a
 model exceeds the bound, `Snapshot::overflowed` is set and the new claim
