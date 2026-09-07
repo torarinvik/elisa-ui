@@ -17,7 +17,11 @@ other C++ object to Elisa. A host can call the one-shot exported
 replays the retained batch, and detaches it before returning. Elisa owns
 command replay and normalizes direct painter geometry before any value crosses
 the FFI. Hosts that need explicit phases may use `UiSkia::attach()`,
-`UiSkia::render()`, and `UiSkia::detach()` directly. Font metrics are
+`UiSkia::render()`, and `UiSkia::detach()` directly; scaled hosts can use
+`UiSkia::attach_scaled()` or the exported
+`elisa_skia_render_frame_scaled(canvas, scale)` boundary. The scale transform
+is wrapped in a balanced frame save/restore, so surface recreation cannot
+accumulate transforms. Font metrics are
 independent of the borrowed canvas, so layout can query Skia before surface
 attachment. That makes surface recreation and headless rendering ordinary
 lifecycle transitions instead of retained native pointer state.
