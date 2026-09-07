@@ -129,10 +129,6 @@ extern "C" void elisa_skia_canvas_shadow_round_rect(std::size_t handle, float x,
     }
 }
 
-extern "C" void elisa_skia_canvas_draw_image_sampling(std::size_t canvas_handle, std::size_t image_handle,
-                                                        float x, float y, float width, float height,
-                                                        std::uint8_t alpha, std::int32_t sampling);
-
 extern "C" void elisa_skia_canvas_draw_image(std::size_t canvas_handle, std::size_t image_handle,
                                                float x, float y, float width, float height,
                                                std::uint8_t alpha) {
