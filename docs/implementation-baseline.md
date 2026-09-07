@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `0dbcf6b` (`refactor(core): use scoped semantic lookup`) on branch `work` |
+| elisa-ui revision | `393ac71` (`feat(skia): version the custom painter ABI`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -348,7 +348,9 @@ separate host-enforced security boundary.
   pop its transform.
 - The narrow Skia declarations are now published in `include/elisa_skia.h` and
   included by both the production C++ bridge and headless recorder, so host ABI
-  drift is caught at compile time without widening the Elisa boundary.
+  drift is caught at compile time without widening the Elisa boundary. The
+  header and Elisa module now also expose a packed `elisa_skia_abi_version()`
+  check before an opaque canvas, image, or typeface handle is submitted.
 - Generation-safe Skia image helpers preserve the typed nearest/linear sampling
   choice through both ready-resource and bound-resource draw paths; the
   headless painter fixture covers each form.
