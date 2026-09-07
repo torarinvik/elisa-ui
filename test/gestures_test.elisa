@@ -16,12 +16,22 @@ def point(x: f32, y: f32) -> UiCore::Vec2:
 def touch(id: u32, phase: UiGestures::Phase, x: f32, y: f32, time: f32) -> UiGestures::Contact:
     return UiGestures::Contact{id: id, phase: phase, position: point(x, y), timestamp: time}
 
+def raw_touch(id: u32, phase: UiGestures::Phase, x: f32, y: f32, time: f32) -> UiGestures::Contact:
+    return UiGestures::Contact{id: id, phase: phase, position: UiCore::Vec2{x: x, y: y}, timestamp: time}
+
 def main() -> i64:
     UiGestures::reset()
     check("reset clears prior overflow", not UiGestures::overflowed())
     check("begin rejects a non-begin phase", not UiGestures::begin(touch(99, UiGestures::Phase.Ended, 0.0, 0.0, 0.0)) and UiGestures::active_count() == 0)
+    zero: f32 = 0.0
+    nan: f32 = zero / zero
+    infinity: f32 = 1.0 / zero
+    check("begin rejects non-finite contact coordinates", not UiGestures::begin(raw_touch(98, UiGestures::Phase.Began, nan, 0.0, 0.0)) and UiGestures::active_count() == 0)
+    check("begin rejects non-finite contact timestamps", not UiGestures::begin(raw_touch(97, UiGestures::Phase.Began, 0.0, 0.0, infinity)) and UiGestures::active_count() == 0)
     check("first contact begins", UiGestures::begin(touch(1, UiGestures::Phase.Began, 10.0, 20.0, 1.0)))
     check("duplicate contact is rejected", not UiGestures::begin(touch(1, UiGestures::Phase.Began, 10.0, 20.0, 1.0)))
+    check("move rejects non-finite contact without losing capture", not UiGestures::move(raw_touch(1, UiGestures::Phase.Moved, nan, 20.0, 1.1)) and UiGestures::active_count() == 1)
+    check("end rejects non-finite contact without losing capture", not UiGestures::end(raw_touch(1, UiGestures::Phase.Ended, 10.0, 20.0, infinity)) and UiGestures::active_count() == 1)
     check("move rejects a non-move phase", not UiGestures::move(touch(1, UiGestures::Phase.Began, 14.0, 20.0, 1.1)) and UiGestures::snapshot().kind == UiGestures::Kind.None)
     check("small movement stays undecided", UiGestures::move(touch(1, UiGestures::Phase.Moved, 14.0, 20.0, 1.1)) and UiGestures::snapshot().kind == UiGestures::Kind.None)
     check("end rejects a non-end phase", not UiGestures::end(touch(1, UiGestures::Phase.Moved, 14.0, 20.0, 1.2)) and UiGestures::active_count() == 1)
