@@ -21,6 +21,7 @@ def main() -> i64:
     check("metadata preserves stable identity", node.id == 7 and node.action == 7)
     check("metadata preserves relationships", node.parent_id == 2 and node.first_child_id == 8 and node.next_sibling_id == 9)
     check("metadata preserves numeric range", node.has_range and node.range_min == -1.0 and node.range_max == 1.0 and not node.range_conflict)
+    check("semantic identity index resolves the retained slot", UiCore::accessibility_index_for_id(7) == 0)
 
     changed: mutable UiCore::AccessibilityNode = node
     changed.frame <- UiCore::Rect(5.0, 8.0, 100.0, 24.0)
@@ -48,6 +49,7 @@ def main() -> i64:
     check("range patch bounds extreme maximum", node.range_max == UiCore::MAX_GEOMETRY_EXTENT)
 
     UiCore::begin_frame()
+    check("semantic identity index clears at frame boundaries", UiCore::accessibility_index_for_id(7) == UiCore::MAX_ACCESSIBILITY_NODES)
     UiCore::accessibility_with_metadata(
         UiCore::AccessibilityRole.Slider, "Extreme range", "", UiCore::Rect(0.0, 0.0, 10.0, 10.0),
         20, 20, true, false, false, huge, "", "", 0, 0, 0,
@@ -109,6 +111,7 @@ def main() -> i64:
         0, 0, 0, 0.0, 1.0, false)
     stable_after: UiCore::AccessibilityNode = UiCore::accessibility_at(6)
     check("null-backed semantic metadata is rejected without erasing a node", stable_after.help == stable_before.help and stable_after.text_value == stable_before.text_value and stable_after.selected_text == stable_before.selected_text and stable_after.revision == stable_before.revision)
+    check("semantic identity index survives duplicate updates", UiCore::accessibility_index_for_id(14) == 6)
 
     malformed_label_bytes: mutable u8[1] = zeroed
     malformed_label_bytes[0] <- 255

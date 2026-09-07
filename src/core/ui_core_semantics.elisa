@@ -40,15 +40,11 @@ extend UiCore:
         # Keep one node per ID in the frame buffer so a malformed declaration
         # cannot make a backend reuse one native object at two positions.
         def accessibility_index_for_id(id: usize) -> usize:
-            # This lookup runs once or twice for every semantic node in a
-            # frame. Keep it iterative: a scoped `for` expression is ideal for
-            # small reductions, but lowering a 256-entry search to nested
-            # closures consumed one stack frame per element and made a large
-            # retained tree overflow the native thread stack while painting.
-            index: mutable usize = 0
-            while index < accessibility_total.usize() |index|:
-                return index if accessibility_nodes[index].id == id
-                index <- index + 1
+            return MAX_ACCESSIBILITY_NODES if id >= MAX_ACCESSIBILITY_NODES
+            index: usize = accessibility_slot_by_id[id]
+            # Validate the indexed slot as a fail-closed guard against a stale
+            # map entry after frame disposal or a future arena mutation.
+            return index if index < accessibility_total.usize() and accessibility_nodes[index].id == id
             return MAX_ACCESSIBILITY_NODES
 
         def accessibility_set_relationships(id: usize, parent_id: usize, first_child_id: usize, next_sibling_id: usize) -> void:
