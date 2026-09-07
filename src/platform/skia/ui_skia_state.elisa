@@ -1,0 +1,29 @@
+# Read-only diagnostics for the Skia custom renderer.
+#
+# Hosts can inspect lifecycle balance without seeing the borrowed canvas or
+# mutating any save/resource state. The snapshot is plain Elisa data and works
+# in the same headless fixtures as the painter itself.
+
+extend UiSkia:
+    public:
+        struct Snapshot:
+            attached: bool
+            surface_generation: u32
+            save_depth: usize
+            clip_depth: usize
+            transform_depth: usize
+            image_bindings: usize
+            font_bindings: usize
+
+        def snapshot() -> Snapshot:
+            return Snapshot{
+                attached: canvas_state != 0,
+                surface_generation: skia_surface_generation,
+                save_depth: skia_save_depth,
+                clip_depth: skia_clip_depth,
+                transform_depth: skia_transform_depth,
+                image_bindings: UiSkia::image_binding_count(),
+                font_bindings: UiSkia::font_binding_count()}
+
+        def is_balanced() -> bool:
+            return canvas_state == 0 or (skia_save_depth == 1 and skia_clip_depth == 0 and skia_transform_depth == 0)
