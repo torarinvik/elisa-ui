@@ -207,7 +207,10 @@ because a module member's symbol carries its module and those names cannot move.
   lifecycle diagnostics, and the active locale snapshot (canonical tag,
   direction, revision, and truncation state). `UiMetrics` adds independent,
   host-clock-driven layout, text, and resource work scopes to the inspector
-  without changing the sequential frame-stage contract.
+  without changing the sequential frame-stage contract. The portable
+  `UiRemote` policy negotiates typed-command, framebuffer, or video presentation
+  and keeps remote scale, lifecycle, and input acknowledgement facts in Elisa;
+  transport remains host-owned.
   New application code can use [UiHandles](docs/ui-handles.md) for typed u32
   handles with retained-tree lifetime checks; the older index API remains for
   compatibility and low-level adapters.

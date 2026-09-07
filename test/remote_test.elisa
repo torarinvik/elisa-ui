@@ -1,0 +1,61 @@
+# Headless regression for the portable remote presentation contract.
+
+include "../src/platform/remote/ui_remote.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiRemote::reset()
+    initial: UiRemote::Snapshot = UiRemote::snapshot()
+    check("remote starts disconnected", initial.state == UiRemote::ConnectionState.Disconnected and initial.generation == 0 and initial.overlay_visible and not initial.selection.accepted)
+
+    offer: UiRemote::Offer = UiRemote::Offer{
+        typed_commands: true, framebuffer: true, video: true,
+        physical_width: 1920, physical_height: 1080, scale: 2.0,
+    }
+    preferred_framebuffer: UiRemote::Selection = UiRemote::negotiate(offer, UiRemote::Presentation.Framebuffer)
+    check("remote honors a supported presentation preference", preferred_framebuffer.accepted and preferred_framebuffer.presentation == UiRemote::Presentation.Framebuffer and preferred_framebuffer.scale == 2.0 and preferred_framebuffer.logical_width == 960.0 and preferred_framebuffer.logical_height == 540.0)
+    fallback: UiRemote::Selection = UiRemote::negotiate(UiRemote::Offer{
+        typed_commands: true, framebuffer: false, video: true,
+        physical_width: 800, physical_height: 600, scale: -2.0,
+    }, UiRemote::Presentation.Framebuffer)
+    check("remote falls back to typed commands and normalizes scale", fallback.accepted and fallback.presentation == UiRemote::Presentation.TypedCommands and fallback.scale == 1.0 and fallback.logical_width == 800.0 and fallback.logical_height == 600.0)
+    unsupported: UiRemote::Offer = UiRemote::Offer{
+        typed_commands: false, framebuffer: false, video: false,
+        physical_width: 640, physical_height: 480, scale: 1.0,
+    }
+    rejected: UiRemote::Selection = UiRemote::negotiate(unsupported, UiRemote::Presentation.TypedCommands)
+    check("remote rejects an offer with no presentation", not rejected.accepted and rejected.presentation == UiRemote::Presentation.Unknown)
+
+    check("remote connects with negotiated presentation", UiRemote::connect(offer, UiRemote::Presentation.TypedCommands))
+    connected: UiRemote::Snapshot = UiRemote::snapshot()
+    check("remote connection owns a generation", connected.state == UiRemote::ConnectionState.Connected and connected.generation > 0 and connected.selection.presentation == UiRemote::Presentation.TypedCommands and not connected.overlay_visible)
+    resized: UiCore::Size = UiRemote::logical_size(connected.selection, 1280, 720)
+    check("remote converts physical resize through negotiated scale", resized.width == 640.0 and resized.height == 360.0)
+
+    first_input: UiRemote::InputResult = UiRemote::submit_input(1)
+    duplicate_input: UiRemote::InputResult = UiRemote::submit_input(1)
+    check("remote accepts a new input sequence", first_input.accepted and not first_input.stale)
+    check("remote rejects duplicate input as stale", not duplicate_input.accepted and duplicate_input.stale and UiRemote::snapshot().stale_input)
+    check("remote acknowledges an in-flight input", UiRemote::acknowledge_input(1) and not UiRemote::snapshot().input_pending)
+    check("remote rejects an unknown acknowledgement", not UiRemote::acknowledge_input(2))
+
+    check("remote suspension blocks input", UiRemote::suspend() and not UiRemote::accepts_input() and UiRemote::snapshot().overlay_visible)
+    check("remote resume restores input", UiRemote::resume() and UiRemote::accepts_input() and not UiRemote::snapshot().overlay_visible)
+    generation_before_disconnect: u32 = UiRemote::snapshot().generation
+    UiRemote::disconnect()
+    disconnected: UiRemote::Snapshot = UiRemote::snapshot()
+    check("remote disconnect clears selection and advances generation", disconnected.state == UiRemote::ConnectionState.Disconnected and disconnected.generation != generation_before_disconnect and disconnected.overlay_visible and not disconnected.selection.accepted and not disconnected.input_pending)
+    check("remote rejects unsupported connection", not UiRemote::connect(unsupported, UiRemote::Presentation.Video) and UiRemote::snapshot().state == UiRemote::ConnectionState.Disconnected)
+
+    if failures == 0:
+        _ = puts("remote: all checks passed")
+        return 0
+    _ = puts("remote: FAILURES above")
+    return 1

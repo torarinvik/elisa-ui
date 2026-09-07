@@ -1,0 +1,59 @@
+# Pure negotiation and scale policy for UiRemote.
+
+extend UiRemote:
+    public:
+        # Select the caller's preference when the host offers it, then fall
+        # back to typed commands, framebuffer, and video in that order. This
+        # ordering keeps the most inspectable representation authoritative.
+        def negotiate(offer: Offer, preferred: Presentation) -> Selection:
+            choice: Presentation = choose_presentation(offer, preferred)
+            safe_scale: f32 = normalized_scale(offer.scale)
+            physical_width: f32 = UiCore::bounded_extent(offer.physical_width.f32())
+            physical_height: f32 = UiCore::bounded_extent(offer.physical_height.f32())
+            return Selection{
+                accepted: false,
+                presentation: Presentation.Unknown,
+                scale: safe_scale,
+                physical_width: physical_width,
+                physical_height: physical_height,
+                logical_width: 0.0,
+                logical_height: 0.0,
+            } if choice == Presentation.Unknown
+            return Selection{
+                accepted: true,
+                presentation: choice,
+                scale: safe_scale,
+                physical_width: physical_width,
+                physical_height: physical_height,
+                logical_width: logical_extent(physical_width, safe_scale),
+                logical_height: logical_extent(physical_height, safe_scale),
+            }
+
+        def logical_size(selection: Selection, physical_width: u32, physical_height: u32) -> UiCore::Size:
+            return UiCore::Size(
+                logical_extent(UiCore::bounded_extent(physical_width.f32()), normalized_scale(selection.scale)),
+                logical_extent(UiCore::bounded_extent(physical_height.f32()), normalized_scale(selection.scale)))
+
+    private:
+        def choose_presentation(offer: Offer, preferred: Presentation) -> Presentation:
+            return preferred if presentation_is_supported(offer, preferred)
+            return Presentation.TypedCommands if offer.typed_commands
+            return Presentation.Framebuffer if offer.framebuffer
+            return Presentation.Video if offer.video
+            return Presentation.Unknown
+
+        def presentation_is_supported(offer: Offer, presentation: Presentation) -> bool:
+            return offer.typed_commands if presentation == Presentation.TypedCommands
+            return offer.framebuffer if presentation == Presentation.Framebuffer
+            return offer.video if presentation == Presentation.Video
+            return false
+
+        def normalized_scale(value: f32) -> f32:
+            safe: f32 = UiCore::bounded_extent(value)
+            return 1.0 if safe <= 0.0
+            return MAX_SCALE if safe > MAX_SCALE else safe
+
+        def logical_extent(physical: f32, scale: f32) -> f32:
+            safe_physical: f32 = UiCore::bounded_extent(physical)
+            safe_scale: f32 = normalized_scale(scale)
+            return UiCore::bounded_extent(safe_physical / safe_scale)

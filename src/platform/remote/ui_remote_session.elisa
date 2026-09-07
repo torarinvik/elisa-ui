@@ -1,0 +1,101 @@
+# Lifecycle and input acknowledgement state for UiRemote.
+
+extend UiRemote:
+    public:
+        def reset() -> void:
+            remote_state <- ConnectionState.Disconnected
+            remote_generation <- 0
+            remote_selection <- Selection{
+                accepted: false, presentation: Presentation.Unknown, scale: 1.0,
+                physical_width: 0.0, physical_height: 0.0,
+                logical_width: 0.0, logical_height: 0.0,
+            }
+            remote_input_sent <- 0
+            remote_input_acked <- 0
+            remote_stale_input <- false
+
+        def connect(offer: Offer, preferred: Presentation) -> bool:
+            selection: Selection = negotiate(offer, preferred)
+            remote_state <- ConnectionState.Connecting
+            if not selection.accepted:
+                remote_state <- ConnectionState.Disconnected
+                return false
+            remote_selection <- selection
+            remote_input_sent <- 0
+            remote_input_acked <- 0
+            remote_stale_input <- false
+            remote_state <- ConnectionState.Connected
+            remote_generation <- next_generation(remote_generation)
+            return true
+
+        def suspend() -> bool:
+            return false if remote_state != ConnectionState.Connected
+            remote_state <- ConnectionState.Suspended
+            return true
+
+        def resume() -> bool:
+            return false if remote_state != ConnectionState.Suspended
+            remote_state <- ConnectionState.Connected
+            return true
+
+        def disconnect() -> void:
+            remote_state <- ConnectionState.Disconnected
+            remote_selection <- Selection{
+                accepted: false, presentation: Presentation.Unknown, scale: 1.0,
+                physical_width: 0.0, physical_height: 0.0,
+                logical_width: 0.0, logical_height: 0.0,
+            }
+            remote_input_sent <- 0
+            remote_input_acked <- 0
+            remote_stale_input <- false
+            remote_generation <- next_generation(remote_generation)
+
+        # Sequence numbers belong to the transport adapter, while ordering and
+        # stale-input rejection stay in Elisa. A duplicate or old packet never
+        # reaches the application event policy.
+        def submit_input(sequence: u64) -> InputResult:
+            return InputResult{accepted: false, stale: false} if remote_state != ConnectionState.Connected
+            if sequence == 0 or sequence <= remote_input_sent:
+                remote_stale_input <- true
+                return InputResult{accepted: false, stale: true}
+            remote_input_sent <- sequence
+            return InputResult{accepted: true, stale: false}
+
+        def acknowledge_input(sequence: u64) -> bool:
+            return false if sequence == 0 or sequence > remote_input_sent
+            if sequence < remote_input_acked:
+                remote_stale_input <- true
+                return false
+            remote_input_acked <- sequence
+            return true
+
+        def accepts_input() -> bool:
+            return remote_state == ConnectionState.Connected
+
+        def snapshot() -> Snapshot:
+            return Snapshot{
+                state: remote_state,
+                generation: remote_generation,
+                selection: remote_selection,
+                input_sent: remote_input_sent,
+                input_acked: remote_input_acked,
+                input_pending: remote_input_sent > remote_input_acked,
+                stale_input: remote_stale_input,
+                overlay_visible: remote_state != ConnectionState.Connected,
+            }
+
+    private:
+        global mutable remote_state: ConnectionState = ConnectionState.Disconnected
+        global mutable remote_generation: u32 = 0
+        global mutable remote_selection: Selection = Selection{
+            accepted: false, presentation: Presentation.Unknown, scale: 1.0,
+            physical_width: 0.0, physical_height: 0.0,
+            logical_width: 0.0, logical_height: 0.0,
+        }
+        global mutable remote_input_sent: u64 = 0
+        global mutable remote_input_acked: u64 = 0
+        global mutable remote_stale_input: bool = false
+
+        def next_generation(value: u32) -> u32:
+            next: u32 = value + 1
+            return 1 if next == 0 else next
