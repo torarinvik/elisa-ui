@@ -13,30 +13,26 @@ extend UiFlat:
 
         def semantic_parent_id(index: usize) -> usize:
             cursor: mutable usize = widgets[index].parent
-            steps: mutable usize = 0
-            while cursor < widget_count |cursor, steps|:
+            for _ in 0..<MAX_TRAVERSAL_DEPTH:
+                break if cursor >= widget_count
                 return cursor if semantic_kind(cursor) and effectively_visible(cursor) and intersects_scroll_viewports(cursor)
-                return UiCore::MAX_ACCESSIBILITY_NODES if steps >= MAX_TRAVERSAL_DEPTH
-                steps <- steps + 1
                 cursor <- widgets[cursor].parent
             return UiCore::MAX_ACCESSIBILITY_NODES
 
         def semantic_child_id(index: usize) -> usize:
             cursor: mutable usize = widgets[index].first_child
-            steps: mutable usize = 0
-            while cursor != NONE |cursor, steps|:
-                return UiCore::MAX_ACCESSIBILITY_NODES if steps >= MAX_TRAVERSAL_SIBLINGS or cursor >= widget_count
-                steps <- steps + 1
+            for _ in 0..<MAX_TRAVERSAL_SIBLINGS:
+                break if cursor == NONE
+                return UiCore::MAX_ACCESSIBILITY_NODES if cursor >= widget_count
                 return cursor if semantic_kind(cursor) and effectively_visible(cursor) and intersects_scroll_viewports(cursor)
                 cursor <- widgets[cursor].next_sibling
             return UiCore::MAX_ACCESSIBILITY_NODES
 
         def semantic_next_sibling_id(index: usize) -> usize:
             cursor: mutable usize = widgets[index].next_sibling
-            steps: mutable usize = 0
-            while cursor != NONE |cursor, steps|:
-                return UiCore::MAX_ACCESSIBILITY_NODES if steps >= MAX_TRAVERSAL_SIBLINGS or cursor >= widget_count
-                steps <- steps + 1
+            for _ in 0..<MAX_TRAVERSAL_SIBLINGS:
+                break if cursor == NONE
+                return UiCore::MAX_ACCESSIBILITY_NODES if cursor >= widget_count
                 return cursor if semantic_kind(cursor) and effectively_visible(cursor) and intersects_scroll_viewports(cursor)
                 cursor <- widgets[cursor].next_sibling
             return UiCore::MAX_ACCESSIBILITY_NODES
@@ -46,10 +42,8 @@ extend UiFlat:
         # unscrolled edge and request the smallest offset that reveals it.
         def ensure_visible(index: usize) -> void:
             cursor: mutable usize = widgets[index].parent
-            steps: mutable usize = 0
-            while cursor < widget_count |cursor, index, steps|:
-                return if steps >= MAX_TRAVERSAL_DEPTH
-                steps <- steps + 1
+            for _ in 0..<MAX_TRAVERSAL_DEPTH:
+                break if cursor >= widget_count
                 if widgets[cursor].kind == UiConst::WidgetKind.Scroll:
                     current: f32 = widgets[cursor].scroll_offset
                     requested: mutable f32 = current
