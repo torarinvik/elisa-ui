@@ -9,6 +9,14 @@ deterministic scalar-column boundary.
 The planner stores at most `MAX_LINES` ranges and reports overflow instead of
 allocating without bound. `line_view` returns a borrowed slice of the original
 text, so no text copy or backend-specific string object crosses the policy
-layer. The current budget is scalar columns; a future measured-width planner
-can reuse the same ranges and replacement rules with CoreText, SDL_ttf, or a
-host font authority.
+layer. `UiTextLayout` remains the allocation-free scalar-column planner used by
+portable wire paths.
+
+`UiTextMeasureLayout` is the measured-width companion for native and custom
+painters. It walks the same grapheme boundaries, asks `UiTextMetrics` for the
+active backend's width for each cluster, and stores pixel-width ranges without
+copying the source text. It prefers whitespace-run breaks, honors LF/CRLF,
+normalizes hostile geometry, and emits a single oversized grapheme so malformed
+or unusually large glyphs cannot stall the planner. The metric cache and font
+fallback policy therefore stay with the renderer while line ownership remains
+in Elisa.

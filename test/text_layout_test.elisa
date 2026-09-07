@@ -3,6 +3,16 @@
 include "../src/widgets/ui_text_layout.elisa"
 
 extern puts(text: cstr) -> i64
+
+# Pixel-measured layout uses the same backend metric hooks as widgets. Keep
+# this fixture deterministic with one unit-width scalar and a unit line height;
+# production backends replace these hooks with CoreText, SDL_ttf, or Skia.
+def ui_measure_text_width(text: sview, size: f32) -> f32:
+    return UiText::utf8_scalar_count(text).f32() * size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
 global mutable failures: i32 = 0
 
 def check(name: cstr, ok: bool) -> void:
@@ -72,6 +82,18 @@ def main() -> i64:
     large_view: sview = sview(&large_bytes[0], 0, (UiCore::MAX_TEXT_BYTES + 8).i64())
     check("shared scalar counter applies the text work cap", UiText::utf8_scalar_count(large_view) == UiCore::MAX_TEXT_BYTES and UiText::utf16_unit_count(large_view) == UiCore::MAX_TEXT_BYTES)
     check("shared scalar walker stops at the text work cap", UiText::utf8_scalar_bytes(large_view, UiCore::MAX_TEXT_BYTES) == 0)
+
+    measured: UiTextMeasureLayout::Layout = UiTextMeasureLayout::layout("one two three", 5.0, 1.0)
+    check("pixel layout wraps using backend width", measured.line_count == 3 and not measured.overflowed and measured.max_width == 5.0)
+    check("pixel layout preserves measured ranges", UiTextMeasureLayout::line_view("one two three", 0) == "one" and UiTextMeasureLayout::line_view("one two three", 1) == "two" and UiTextMeasureLayout::line_at(2).width == 5.0)
+    measured_unicode: UiTextMeasureLayout::Layout = UiTextMeasureLayout::layout("éx 👩‍💻", 2.0, 1.0)
+    check("pixel layout keeps grapheme clusters intact", measured_unicode.line_count == 3 and UiTextMeasureLayout::line_view("éx 👩‍💻", 0) == "é" and UiTextMeasureLayout::line_view("éx 👩‍💻", 1) == "x" and UiTextMeasureLayout::line_view("éx 👩‍💻", 2) == "👩‍💻")
+    oversized_cluster: UiTextMeasureLayout::Layout = UiTextMeasureLayout::layout("👩‍💻", 1.0, 1.0)
+    check("pixel layout consumes an oversized cluster", oversized_cluster.line_count == 1 and UiTextMeasureLayout::line_at(0).width > 1.0)
+    measured_newline: UiTextMeasureLayout::Layout = UiTextMeasureLayout::layout("top\r\nbottom", 20.0, 1.0)
+    check("pixel layout preserves CRLF lines", measured_newline.line_count == 2 and UiTextMeasureLayout::line_view("top\r\nbottom", 1) == "bottom")
+    measured_empty: UiTextMeasureLayout::Layout = UiTextMeasureLayout::layout("", 0.0, 0.0)
+    check("pixel layout normalizes empty geometry", measured_empty.line_count == 1 and measured_empty.max_width == 1.0 and measured_empty.text_size == 1.0)
     if failures == 0:
         _ = puts("text layout: all checks passed")
         return 0
