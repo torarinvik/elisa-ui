@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `454924968f104d2195c1308d0a215f5c4108989c` on branch `work` |
+| elisa-ui revision | `e23f9ac31a35327ace4aa45fd94799469fe31b38` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -75,12 +75,18 @@ facade (`ui_widget.elisa`, 23 lines) now delegates to cohesive state, layout,
 input, text, scrolling, and painting modules, each below 400 lines. The AppKit controls backend is
 now split into realization/policy (`ui_appkit.elisa`, 305 lines) and typed
 native bridge wrappers (`ui_appkit_native.elisa`, 399 lines). The SDL3 backend
-is split into lifecycle/state (`ui_sdl3.elisa`, 330 lines), event-union
+is split into lifecycle/state (`ui_sdl3.elisa`, 335 lines), event-union
 decoding (`ui_sdl3_events.elisa`, 145 lines), run-loop policy
 (`ui_sdl3_run.elisa`, 139 lines), and drawing/font state
 (`ui_sdl3_draw.elisa`, 265 lines). New or changed Elisa source continues
 to use small, single-purpose modules; the existing large modules are
 not split mechanically.
+
+The modal input policy remains in the shared `UiDialog` module (305 lines).
+AppKit canvas callbacks (258 lines), SDL3 event delivery, and the WasmBrowser
+dispatcher (45 lines) translate Escape into `UiDialog::back()` before invoking
+application code when a modal is live; otherwise the original key path is
+preserved.
 
 The core and widget operation facades follow the same boundary: `ui_core.elisa`
 is an 11-line include surface over typed, frame, geometry, event, and retained
@@ -172,6 +178,13 @@ every retained widget on SDL3, AppKit canvas, and WasmBrowser; only the
 backend callback's legacy widget index is converted through the explicit
 `UiHandles::index` escape hatch.
 
+The modal back-policy fixtures also run headlessly: AppKit canvas Escape gives
+an active `UiDialog` first refusal, SDL3 consumes a queued Escape before it
+reaches `app_event`, and WasmBrowser applies the same policy in its synchronous
+dispatcher. `test/appkit_canvas_keymap_test.elisa`,
+`test/sdl3_event_order_test.elisa`, and `test/wasmbrowser_dispatch_test.elisa`
+cover the typed `Back` result and ensure unmodalized input remains unchanged.
+
 The AppKit checks use activation policy prohibited and the custom canvas smoke
 path; no window is shown or foregrounded. The hello app's new
 `UiFlat::handle` entry point is covered by `test/widget_dispatch_test.elisa`.
@@ -248,8 +261,10 @@ separate host-enforced security boundary.
   every widget handle. Coverage lives in `test/constraints_test.elisa`.
 - `UiDialog` owns bounded modal ordering, typed result persistence, owner-scoped
   cancellation, back navigation, and a portable Dialog semantic projection;
-  AppKit maps that role to its stable group-container token. Coverage lives in
-  `test/dialog_test.elisa`.
+  AppKit maps that role to its stable group-container token. The AppKit canvas,
+  SDL3, and WasmBrowser input adapters consume Escape through this same policy
+  before delivering it to application code. Coverage lives in
+  `test/dialog_test.elisa` plus the backend dispatch fixtures above.
 - `UiGestures` owns deterministic eight-contact capture, tap/long-press/drag/
   pinch classification, duplicate/capacity rejection, and lifecycle
   cancellation. Native/hosted adapters still need to translate device facts;
