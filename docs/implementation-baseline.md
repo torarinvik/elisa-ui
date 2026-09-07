@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `ff452448b7ceb57d04665d9894c0d6599fdf4459` on branch `work` |
+| elisa-ui revision | `bba7e8b0856e34a3a0d01382b3ed73cc00029e07` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -365,6 +365,9 @@ separate host-enforced security boundary.
 - Skia font-size normalization now lives in `ui_skia_text.elisa` and is shared
   by default and bound metric/draw calls; the C++ bridge rejects non-positive
   sizes instead of silently selecting an implicit fallback.
+- Direct Skia text drawing now goes through the same Elisa sanitization as
+  retained replay, keeping custom-control escape hatches bounded and UTF-8
+  safe without duplicating policy in the bridge.
 - Callback entry points are lifetime-guarded: if an application handler resets
   the flat tree, post-callback history, composition, activation, adjustment, and
   radio state updates are abandoned instead of touching recycled slots. This is
