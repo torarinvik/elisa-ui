@@ -10,7 +10,7 @@ module UiTasks:
         const MAX_TASKS: usize = 128
         const NONE_SLOT: usize = MAX_TASKS
 
-        const enum State of i32:
+        const enum TaskState of i32:
             Idle = 0
             Pending = 1
             Completed = 2
@@ -38,7 +38,7 @@ module UiTasks:
                 task_generations[slot] <- next_generation(task_generations[slot])
                 task_owners[slot] <- 0
                 tokens[slot] <- 0
-                states[slot] <- State.Idle
+                states[slot] <- TaskState.Idle
             task_count <- 0
             task_overflowed_state <- false
 
@@ -50,10 +50,10 @@ module UiTasks:
             for slot in 0..<MAX_TASKS:
                 return_count: bool = task_active[slot]
                 continue if not return_count
-                pending_count <- pending_count + 1 if states[slot] == State.Pending
-                completed_count <- completed_count + 1 if states[slot] == State.Completed
-                failed_count <- failed_count + 1 if states[slot] == State.Failed
-                cancelled_count <- cancelled_count + 1 if states[slot] == State.Cancelled
+                pending_count <- pending_count + 1 if states[slot] == TaskState.Pending
+                completed_count <- completed_count + 1 if states[slot] == TaskState.Completed
+                failed_count <- failed_count + 1 if states[slot] == TaskState.Failed
+                cancelled_count <- cancelled_count + 1 if states[slot] == TaskState.Cancelled
             return Snapshot{total: task_count, pending: pending_count,
                 completed: completed_count, failed: failed_count,
                 cancelled: cancelled_count, overflowed: task_overflowed_state}
@@ -79,7 +79,7 @@ module UiTasks:
             task_generations[free_slot] <- next_generation(task_generations[free_slot])
             task_owners[free_slot] <- owner
             tokens[free_slot] <- next_token(tokens[free_slot])
-            states[free_slot] <- State.Pending
+            states[free_slot] <- TaskState.Pending
             task_count <- task_count + 1
             return Handle{slot: free_slot.u32(), generation: task_generations[free_slot]}
 
@@ -91,25 +91,25 @@ module UiTasks:
             return 0 if not is_valid(handle)
             return tokens[handle.slot.usize()]
 
-        def state(handle: Handle) -> State:
-            return State.Idle if not is_valid(handle)
+        def state(handle: Handle) -> TaskState:
+            return TaskState.Idle if not is_valid(handle)
             return states[handle.slot.usize()]
 
         def is_pending(handle: Handle) -> bool:
-            return is_valid(handle) and states[handle.slot.usize()] == State.Pending
+            return is_valid(handle) and states[handle.slot.usize()] == TaskState.Pending
 
         # A completion must prove both identity and the token returned by
         # start(). A cancelled, already-resolved, or stale task is a no-op.
         def complete(handle: Handle, task_token: u32, succeeded: bool) -> bool:
             return false if not is_valid(handle) or task_token == 0
             slot: usize = handle.slot.usize()
-            return false if states[slot] != State.Pending or tokens[slot] != task_token
-            states[slot] <- State.Completed if succeeded else State.Failed
+            return false if states[slot] != TaskState.Pending or tokens[slot] != task_token
+            states[slot] <- TaskState.Completed if succeeded else TaskState.Failed
             return true
 
         def cancel(handle: Handle) -> bool:
-            return false if not is_valid(handle) or states[handle.slot.usize()] != State.Pending
-            states[handle.slot.usize()] <- State.Cancelled
+            return false if not is_valid(handle) or states[handle.slot.usize()] != TaskState.Pending
+            states[handle.slot.usize()] <- TaskState.Cancelled
             return true
 
         # Cancellation leaves the record readable for diagnostics, while
@@ -117,8 +117,8 @@ module UiTasks:
         def cancel_owner(owner_id: u32) -> usize:
             cancelled: mutable usize = 0
             for slot in 0..<MAX_TASKS:
-                if task_active[slot] and task_owners[slot] == owner_id and states[slot] == State.Pending:
-                    states[slot] <- State.Cancelled
+                if task_active[slot] and task_owners[slot] == owner_id and states[slot] == TaskState.Pending:
+                    states[slot] <- TaskState.Cancelled
                     cancelled <- cancelled + 1
             return cancelled
 
@@ -140,7 +140,7 @@ module UiTasks:
         global mutable task_generations: u32[MAX_TASKS] = zeroed
         global mutable task_owners: u32[MAX_TASKS] = zeroed
         global mutable tokens: u32[MAX_TASKS] = zeroed
-        global mutable states: State[MAX_TASKS] = zeroed
+        global mutable states: TaskState[MAX_TASKS] = zeroed
         global mutable task_count: usize = 0
         global mutable task_overflowed_state: bool = false
 
@@ -158,5 +158,5 @@ module UiTasks:
             task_generations[slot] <- next_generation(task_generations[slot])
             task_owners[slot] <- 0
             tokens[slot] <- 0
-            states[slot] <- State.Idle
+            states[slot] <- TaskState.Idle
             task_count <- task_count - 1 if task_count > 0

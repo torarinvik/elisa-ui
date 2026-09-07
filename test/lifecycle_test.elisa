@@ -18,6 +18,8 @@ def main() -> i64:
     check("lifecycle rejects ready before begin", not UiLifecycle::ready())
 
     check("lifecycle begins once", UiLifecycle::begin())
+    task: UiTasks::Handle = UiTasks::start(41)
+    check("task belongs to the active lifecycle", UiTasks::is_valid(task) and UiTasks::is_pending(task))
     started: UiLifecycle::Snapshot = UiLifecycle::snapshot()
     check("begin enters starting", started.phase == UiLifecycle::Phase.Starting and started.generation == 1 and not started.accepts_input)
     check("lifecycle rejects duplicate begin", not UiLifecycle::begin())
@@ -40,6 +42,7 @@ def main() -> i64:
     check("surface loss can be restored", UiLifecycle::surface_lost() and UiLifecycle::surface_restored() and UiLifecycle::phase() == UiLifecycle::Phase.Active)
 
     check("stop is accepted", UiLifecycle::stop() and UiLifecycle::phase() == UiLifecycle::Phase.Stopped)
+    check("stopping invalidates task callbacks", not UiTasks::is_valid(task) and UiTasks::state(task) == UiTasks::TaskState.Idle)
     check("stop is idempotent", not UiLifecycle::stop() and not UiLifecycle::is_started())
     check("stopped state rejects callbacks", not UiLifecycle::focus_lost() and not UiLifecycle::surface_restored())
     invalid_signal: UiLifecycle::Signal = (-1).i32().Signal()

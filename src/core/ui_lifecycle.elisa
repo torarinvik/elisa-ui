@@ -6,6 +6,8 @@
 # ignored. Every backend can therefore share one transition vocabulary without
 # duplicating booleans such as `running` or `initialized`.
 
+include "./ui_tasks.elisa"
+
 module UiLifecycle:
     public:
         const enum Phase of i32:
@@ -39,6 +41,10 @@ module UiLifecycle:
         def reset() -> void:
             phase_state <- Phase.New
             focused_state <- false
+            # A reset starts a fresh owner/session. Invalidate every pending
+            # task token before a new app can create work, so callbacks from a
+            # previous surface cannot target recycled view state.
+            UiTasks::reset()
 
         # Begin a new owner/session. The generation changes here, before any
         # host object is created, so callbacks from a previous run cannot be
@@ -99,6 +105,10 @@ module UiLifecycle:
             return false if phase_state == Phase.New or phase_state == Phase.Stopped
             phase_state <- Phase.Stopped
             focused_state <- false
+            # Stopping is a teardown boundary, not merely a phase label. Drop
+            # all task generations so late host completions fail closed even if
+            # the application never had an owner-specific disposal hook.
+            UiTasks::reset()
             return true
 
         def apply(signal: Signal) -> bool:

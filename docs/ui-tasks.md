@@ -12,6 +12,12 @@ every generation and releases the records, so a callback from an old surface
 cannot update a recycled slot. Individual `cancel` and `dispose` provide the
 same distinction for one operation.
 
+`UiLifecycle::reset()` and `UiLifecycle::stop()` are global teardown boundaries:
+they call `UiTasks::reset()` so every outstanding handle becomes invalid before
+the next surface/session can reuse view storage. `state(handle)` returns the
+explicit `UiTasks::TaskState` enum; the descriptive name avoids collisions with
+other framework modules when a backend combines multiple resource/state layers.
+
 The fixed table is intentionally bounded and allocation-free. `snapshot()`
 reports the total live records, pending, completed, failed, and cancelled counts
 plus sticky capacity overflow. The module stores no native task pointer, callback, future, or result;
