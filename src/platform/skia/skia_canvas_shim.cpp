@@ -38,10 +38,11 @@ SkPaint fill_paint(std::uint8_t red, std::uint8_t green, std::uint8_t blue, std:
     return paint;
 }
 
-SkPaint stroke_paint(std::uint8_t red, std::uint8_t green, std::uint8_t blue, std::uint8_t alpha) {
+SkPaint stroke_paint(std::uint8_t red, std::uint8_t green, std::uint8_t blue, std::uint8_t alpha,
+                     float width) {
     SkPaint paint = fill_paint(red, green, blue, alpha);
     paint.setStyle(SkPaint::kStroke_Style);
-    paint.setStrokeWidth(1.0f);
+    paint.setStrokeWidth(width);
     return paint;
 }
 
@@ -106,14 +107,15 @@ extern "C" void elisa_skia_canvas_fill_round_rect(std::size_t handle, float x, f
 }
 
 extern "C" void elisa_skia_canvas_stroke_round_rect(std::size_t handle, float x, float y, float width,
-                                                      float height, float radius, std::uint8_t red,
+                                                      float height, float radius, float stroke_width,
+                                                      std::uint8_t red,
                                                       std::uint8_t green, std::uint8_t blue,
                                                       std::uint8_t alpha) {
-    if (SkCanvas *target = canvas(handle)) {
+    if (SkCanvas *target = canvas(handle); target != nullptr && stroke_width > 0.0f) {
         const SkRect rect = SkRect::MakeXYWH(x, y, width, height);
         const SkScalar safe_radius = radius > 0.0f ? radius : 0.0f;
         target->drawRRect(SkRRect::MakeRectXY(rect, safe_radius, safe_radius),
-                          stroke_paint(red, green, blue, alpha));
+                          stroke_paint(red, green, blue, alpha, stroke_width));
     }
 }
 
@@ -214,10 +216,11 @@ extern "C" void elisa_skia_canvas_fill_triangle(std::size_t handle, float ax, fl
 }
 
 extern "C" void elisa_skia_canvas_fill_line(std::size_t handle, float x0, float y0, float x1, float y1,
-                                              std::uint8_t red, std::uint8_t green, std::uint8_t blue,
+                                              float stroke_width, std::uint8_t red, std::uint8_t green,
+                                              std::uint8_t blue,
                                               std::uint8_t alpha) {
-    if (SkCanvas *target = canvas(handle)) {
-        target->drawLine(x0, y0, x1, y1, stroke_paint(red, green, blue, alpha));
+    if (SkCanvas *target = canvas(handle); target != nullptr && stroke_width > 0.0f) {
+        target->drawLine(x0, y0, x1, y1, stroke_paint(red, green, blue, alpha, stroke_width));
     }
 }
 

@@ -31,7 +31,8 @@ void elisa_skia_canvas_fill_round_rect(size_t canvas, float x, float y, float wi
                                        float radius, uint8_t red, uint8_t green, uint8_t blue,
                                        uint8_t alpha);
 void elisa_skia_canvas_stroke_round_rect(size_t canvas, float x, float y, float width, float height,
-                                         float radius, uint8_t red, uint8_t green, uint8_t blue,
+                                         float radius, float stroke_width, uint8_t red,
+                                         uint8_t green, uint8_t blue,
                                          uint8_t alpha);
 void elisa_skia_canvas_shadow_round_rect(size_t canvas, float x, float y, float width, float height,
                                          float radius, float offset_x, float offset_y, float blur,
@@ -52,7 +53,8 @@ void elisa_skia_canvas_fill_triangle(size_t canvas, float ax, float ay, float bx
                                      float cx, float cy, uint8_t red, uint8_t green,
                                      uint8_t blue, uint8_t alpha);
 void elisa_skia_canvas_fill_line(size_t canvas, float x0, float y0, float x1, float y1,
-                                 uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha);
+                                 float stroke_width, uint8_t red, uint8_t green, uint8_t blue,
+                                 uint8_t alpha);
 
 float elisa_skia_measure_text_width(const char *text, size_t length, float size);
 float elisa_skia_font_ascent(float size);
