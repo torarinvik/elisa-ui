@@ -82,6 +82,8 @@ The default `draw_image()` path uses linear filtering; custom controls can call
 `draw_image_with_sampling()` with the typed Elisa `ImageSampling.Nearest` policy
 for crisp pixel art. Invalid enum values normalize back to linear before the
 sampling code reaches Skia.
+The ready and generation-bound image helpers expose matching
+`*_with_sampling()` forms, so filtering survives the resource-binding path.
 Hosts can use `bind_image`/`draw_bound_image` to associate that pointer with an
 exact `(slot,generation)` token; recycled resource generations cannot reuse an
 old image binding. Elisa stores the opaque value only and exposes explicit
