@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `e07764a` (`test(skia): verify ABI export symbol`) on branch `work` |
+| elisa-ui revision | `cbfe2de` (`fix(resources): reject stale ready revival`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -422,6 +422,9 @@ separate host-enforced security boundary.
   extension records validated intrinsic image/document dimensions per live
   generation, preserving them across retry and clearing them on disposal so
   presentation can reserve stable geometry without backend-specific state.
+  A terminal/offline/denied generation cannot be revived to `Ready` in place;
+  only an in-flight `Requested` operation may complete successfully, so late
+  host results must cross an explicit retry generation boundary.
   Coverage lives in `test/resource_state_test.elisa`.
 - `UiResourcePresentation` maps those lifecycle states to explicit
   placeholder/loading/ready/fallback records, declared-or-intrinsic reserved
