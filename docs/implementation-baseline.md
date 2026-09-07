@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `cb6e8654621ea70af6d4e542d5199cc12b43f9ac` on branch `work` |
+| elisa-ui revision | `b025cb7f107ac3df00e885a300aa71f9d2a04c55` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -185,7 +185,9 @@ ordering a window onscreen. The full `bash scripts/run_tests.sh` suite also
 passes from this revision, including the AppKit canvas keymap and text paths.
 The Skia custom painter boundary also compiles headlessly through
 `scripts/check_skia.sh`; no foreground window or local Skia installation is
-required for that contract check.
+required for that contract check. Its Elisa-owned `UiSkia::render()` entry
+point now owns command replay and normalizes direct painter geometry before the
+opaque canvas FFI, leaving the C++ shim with primitive SkCanvas calls only.
 
 The shared `examples/hello/app.elisa` now uses `UiHandles::Handle` values for
 every retained widget on SDL3, AppKit canvas, and WasmBrowser; only the
