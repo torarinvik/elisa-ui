@@ -1,0 +1,33 @@
+# Scoped transform helpers for custom Skia controls.
+#
+# The canvas remains borrowed; Elisa owns the save-depth ledger and guarantees
+# that surface loss restores every outstanding transform before detaching.
+
+include "../../core/ui_core.elisa"
+
+extern elisa_skia_canvas_save(canvas: usize) -> void
+extern elisa_skia_canvas_restore(canvas: usize) -> void
+extern elisa_skia_canvas_scale(canvas: usize, x: f32, y: f32) -> void
+extern elisa_skia_canvas_translate(canvas: usize, x: f32, y: f32) -> void
+
+extend UiSkia:
+    public:
+        # Push a translation and positive scale for custom drawing. Callers
+        # must pop in LIFO order; detach() still restores any forgotten scopes.
+        def push_transform(offset: UiCore::Vec2, scale: UiCore::Vec2) -> void can[Ui.Draw]:
+            return if canvas_state == 0
+            safe_offset: UiCore::Vec2 = UiCore::Vec2(
+                UiCore::bounded_coordinate(offset.x), UiCore::bounded_coordinate(offset.y))
+            safe_scale_x: f32 = skia_scale_value(scale.x)
+            safe_scale_y: f32 = skia_scale_value(scale.y)
+            elisa_skia_canvas_save(canvas_state)
+            elisa_skia_canvas_translate(canvas_state, safe_offset.x, safe_offset.y)
+            elisa_skia_canvas_scale(canvas_state, safe_scale_x, safe_scale_y)
+            skia_transform_depth <- skia_transform_depth + 1
+            skia_save_depth <- skia_save_depth + 1
+
+        def pop_transform() -> void can[Ui.Draw]:
+            return if canvas_state == 0 or skia_transform_depth == 0
+            elisa_skia_canvas_restore(canvas_state)
+            skia_transform_depth <- skia_transform_depth - 1
+            skia_save_depth <- skia_save_depth - 1

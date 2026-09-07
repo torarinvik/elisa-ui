@@ -73,6 +73,10 @@ extern "C" void elisa_skia_canvas_scale(std::size_t handle, float x, float y) {
     if (SkCanvas *target = canvas(handle)) target->scale(x, y);
 }
 
+extern "C" void elisa_skia_canvas_translate(std::size_t handle, float x, float y) {
+    if (SkCanvas *target = canvas(handle)) target->translate(x, y);
+}
+
 extern "C" void elisa_skia_canvas_clip_rect(std::size_t handle, float x, float y, float width, float height) {
     if (SkCanvas *target = canvas(handle)) {
         target->clipRect(SkRect::MakeXYWH(x, y, width, height), SkClipOp::kIntersect, true);

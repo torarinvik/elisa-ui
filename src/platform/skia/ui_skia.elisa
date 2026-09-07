@@ -50,6 +50,7 @@ module UiSkia:
             UiSkia::detach() if canvas_state != 0
             canvas_state <- canvas
             skia_clip_depth <- 0
+            skia_save_depth <- 1
             skia_surface_generation <- skia_surface_generation + 1
             skia_surface_generation <- 1 if skia_surface_generation == 0
             safe_scale: f32 = skia_scale_value(scale)
@@ -59,12 +60,12 @@ module UiSkia:
 
         def detach() -> void:
             if canvas_state != 0:
-                while skia_clip_depth > 0:
+                while skia_save_depth > 0:
                     elisa_skia_canvas_restore(canvas_state)
-                    skia_clip_depth <- skia_clip_depth - 1
-                elisa_skia_canvas_restore(canvas_state)
+                    skia_save_depth <- skia_save_depth - 1
             canvas_state <- 0
             skia_clip_depth <- 0
+            skia_transform_depth <- 0
 
         def is_attached() -> bool:
             return canvas_state != 0
@@ -138,11 +139,13 @@ module UiSkia:
                 elisa_skia_canvas_save(canvas_state)
                 elisa_skia_canvas_clip_rect(canvas_state, safe_box.origin.x, safe_box.origin.y, safe_box.size.width, safe_box.size.height)
                 skia_clip_depth <- skia_clip_depth + 1
+                skia_save_depth <- skia_save_depth + 1
 
             def pop_clip() -> void can[Ui.Draw]:
                 return if canvas_state == 0 or skia_clip_depth == 0
                 elisa_skia_canvas_restore(canvas_state)
                 skia_clip_depth <- skia_clip_depth - 1
+                skia_save_depth <- skia_save_depth - 1
 
             def clear(color: UiCore::Color) -> void can[Ui.Draw]:
                 return if canvas_state == 0
@@ -184,9 +187,13 @@ module UiSkia:
     private:
         global mutable canvas_state: usize = 0
         global mutable skia_clip_depth: usize = 0
+        global mutable skia_transform_depth: usize = 0
+        global mutable skia_save_depth: usize = 0
         global mutable skia_surface_generation: u32 = 0
 
 include "./ui_skia_geometry.elisa"
+
+include "./ui_skia_transform.elisa"
 
 include "./ui_skia_text.elisa"
 
