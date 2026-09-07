@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `c01c34a11f0a8036923e49e7515450e82793af75` (`refactor(widgets): split typed handle surface by concern`) on branch `work` |
+| elisa-ui revision | `bb770332c9297206e34788903e7e3d943000e2ed` (`feat(widgets): add typed callback helpers`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -520,6 +520,10 @@ separate host-enforced security boundary.
   The public include path and stale-handle behavior are unchanged; all modules
   remain below the 400-line source hygiene limit and the existing handle test
   covers the assembled surface.
+- `UiHandles::event_is` and `UiHandles::callback_matches` keep the unavoidable
+  legacy widget-event ordinal/slot callback seam typed and stale-safe for
+  applications, so the shared hello view no longer repeats raw integer/index
+  comparisons.
 
 The authoritative generated WasmBrowser Elisa bindings are staged in
 `../wasm-sdk/sdk/elisa/wasmbrowser/`; the hosted adapter includes those bindings

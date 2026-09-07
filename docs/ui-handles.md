@@ -51,6 +51,12 @@ clipboard actions, and undo/redo) remain in Elisa; native adapters only forward
 their protocol facts. Queries such as `value`, `selected`, `text_value`,
 `is_focused`, and `scroll_offset` return neutral values for stale handles.
 
+At the legacy `app_widget_event(widget, event)` seam, use
+`event_is(event, UiConst::WidgetEvent.Change)` and
+`callback_matches(widget, handle)`. These keep event ordinals and callback
+identity checks typed at the application boundary without exposing a raw arena
+slot to ordinary view code.
+
 `parent`, `first_child`, and `next_sibling` keep tree traversal typed. Theme
 tokens are available through `theme`/`set_theme`; selection and marked-text
 ranges are exposed in UTF-16 units, with `selected_text` applying the secure
