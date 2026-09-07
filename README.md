@@ -207,10 +207,12 @@ because a module member's symbol carries its module and those names cannot move.
   helpers bind ordinary text, numeric, and selection controls to `UiState`
   record IDs while rejecting secure-field values and stale handles.
 - **Resources** ([src/widgets/ui_resources.elisa](src/widgets/ui_resources.elisa)) —
-  a bounded, typed logical-resource state machine. Requests deduplicate by key,
-  keep owner/generation lifetimes, separate network and decode progress, expose
-  retry/cancel/dispose transitions, and raise resource/paint invalidation while
-  hosts and SDKs retain authority over bytes, caching and decoding.
+  a bounded, typed logical-resource state machine. The small public facade is
+  backed by cohesive identity, query, demand/progress, transition, and metadata
+  modules. Requests deduplicate by key, keep owner/generation lifetimes,
+  separate network and decode progress, expose retry/cancel/dispose transitions,
+  and raise resource/paint invalidation while hosts and SDKs retain authority
+  over bytes, caching and decoding.
 - **Resource presentation** ([src/widgets/ui_resource_presentation.elisa](src/widgets/ui_resource_presentation.elisa)) —
   maps resource lifecycle into explicit placeholder/loading/ready/fallback
   records with declared-or-intrinsic reserved geometry, independent progress,

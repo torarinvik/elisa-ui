@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `3fd0534d284cbeb2cd3b1dbbe60d235461ec4039` (`feat(example): demonstrate typed state persistence`) on branch `work` |
+| elisa-ui revision | `00dc42f` (`refactor(resources): split logical resource state modules`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -393,7 +393,8 @@ separate host-enforced security boundary.
 - `UiFlat` carries the closed `UiConst::WidgetEvent` enum through all control,
   editing, keyboard, and accessibility paths; one private Elisa helper performs
   the final ordinal conversion required by the legacy `app_widget_event` ABI.
-- `UiResources` owns bounded logical-resource identity, progress, cancellation,
+- `UiResources` is a small public facade over cohesive Elisa modules for
+  bounded logical-resource identity, progress, cancellation,
   retry and generation-safe disposal, including owner-scoped teardown helpers
   and idempotent visibility/prefetch demand priorities. Host/SDK layers still
   own verified bytes, transport, cache and decode/upload authority; resource

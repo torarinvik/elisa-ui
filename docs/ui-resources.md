@@ -5,6 +5,16 @@ does not fetch bytes, verify packages, manage a cache, decode images, upload
 fonts, or grant capabilities; those remain host/SDK responsibilities. It keeps
 the state that a live view can safely present while that work happens elsewhere.
 
+The public include is intentionally a small facade over cohesive Elisa modules:
+`ui_resources_types.elisa` owns the fixed-capacity records and enums,
+`ui_resources_identity.elisa` owns generation-safe identity and key matching,
+`ui_resources_queries.elisa` owns read-only projections,
+`ui_resources_demand.elisa` owns visibility hints and progress, and
+`ui_resources_transitions.elisa` owns requests, completion, retry, and teardown.
+Intrinsic dimensions remain an opt-in `ui_resource_metadata.elisa` extension.
+Applications keep including `ui_resources.elisa`; the module layout is an
+internal hygiene boundary, not a second public API.
+
 ```elisa
 include "src/widgets/ui_resources.elisa"
 
