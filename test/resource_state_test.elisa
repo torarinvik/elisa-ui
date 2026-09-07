@@ -87,7 +87,7 @@ def main() -> i64:
     check("snapshot counts failed resources", failed_snapshot.total == 1 and failed_snapshot.failed == 1 and failed_snapshot.ready == 0)
     check("offline state is counted", UiResources::set_state(image, UiResources::State.UnavailableOffline) and UiResources::snapshot().unavailable_offline == 1)
     check("denied state is counted", UiResources::set_state(image, UiResources::State.Denied) and UiResources::snapshot().denied == 1)
-    check("cancel transition is accepted", UiResources::cancel(image) and UiResources::state(image) == UiResources::State.Cancelled)
+    check("cancel transition is accepted", UiResources::set_demand(image, 55) and UiResources::cancel(image) and UiResources::state(image) == UiResources::State.Cancelled)
     cancelled_snapshot: UiResources::Snapshot = UiResources::snapshot()
     check("snapshot counts cancelled resources", cancelled_snapshot.total == 1 and cancelled_snapshot.cancelled == 1 and cancelled_snapshot.requested == 0)
     check("cancelled resource rejects late progress", not UiResources::set_progress(image, 0.25, 0.75) and UiResources::downloaded_progress(image) == 0.0 and UiResources::decoded_progress(image) == 0.0)
@@ -97,6 +97,7 @@ def main() -> i64:
     requested_again: UiResources::Handle = UiResources::request("images/logo", 77)
     check("cancelled key can be requested again", requested_again.slot == image.slot and UiResources::state(requested_again) == UiResources::State.Requested and UiResources::owner(requested_again) == 77)
     check("cancelled re-request rotates generation", requested_again.generation != cancelled_generation and not UiResources::is_valid(image))
+    check("cancelled re-request drops stale demand", not UiResources::is_demanded(requested_again) and UiResources::demand_priority(requested_again) == 0)
     check("cancelled completion cannot touch replacement", not UiResources::set_state(image, UiResources::State.Ready) and UiResources::state(requested_again) == UiResources::State.Requested)
 
     old_generation: u32 = requested_again.generation
