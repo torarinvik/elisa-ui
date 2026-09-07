@@ -67,6 +67,10 @@ The small [examples/hello/catalog.elisa](../examples/hello/catalog.elisa)
 module adds a typed list/detail flow and persists the selected item alongside
 the form state, so the same interaction is exercised by SDL3, AppKit canvas,
 and WasmBrowser entry points.
+The [examples/hello/resource_demo.elisa](../examples/hello/resource_demo.elisa)
+module demonstrates optional-resource progress, completion, retryable failure,
+and recovery actions using `UiResources`; the host remains responsible for
+verified bytes and decode/upload.
 
 ## Flat widgets
 

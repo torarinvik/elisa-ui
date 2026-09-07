@@ -210,6 +210,9 @@ because a module member's symbol carries its module and those names cannot move.
   record IDs while rejecting secure-field values and stale handles.
   The shared hello reference app adds a small typed list/detail catalog in
   `examples/hello/catalog.elisa` and persists its selected item with the form.
+  Its `examples/hello/resource_demo.elisa` module exercises loading progress,
+  completion, retryable failure, and recovery without taking resource authority
+  away from the host.
 - **Resources** ([src/widgets/ui_resources.elisa](src/widgets/ui_resources.elisa)) —
   a bounded, typed logical-resource state machine. The small public facade is
   backed by cohesive identity, query, demand/progress, transition, and metadata
