@@ -58,7 +58,11 @@ dirty in Elisa and reflow automatically before painting or hit testing against
 the remembered viewport; explicit `layout` remains the way to adopt a new
 viewport size.
 The complete working version is
-[examples/hello/app.elisa](../examples/hello/app.elisa).
+[examples/hello/app.elisa](../examples/hello/app.elisa). Its companion
+[examples/hello/state.elisa](../examples/hello/state.elisa) demonstrates an
+application-owned, in-memory save/restore flow (P/R) through the typed
+`UiHandlesPersistence` extension; the serialized blob contains IDs and values,
+never widget handles or arena indexes.
 
 ## Flat widgets
 
