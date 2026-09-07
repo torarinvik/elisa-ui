@@ -1,0 +1,50 @@
+# Frame-local text metric cache.
+#
+# Backends remain the authority for font metrics, but repeated queries during a
+# single paint should not cross the FFI for every widget. The cache is bounded,
+# allocation-free, and reset at each paint boundary so a host that changes its
+# active font or scale between frames cannot observe stale values.
+
+include "./ui_constraints.elisa"
+
+module UiTextMetrics:
+    public:
+        const MAX_LINE_HEIGHT_ENTRIES: usize = 32
+
+        # A paint boundary owns the cache lifetime. Keeping this explicit also
+        # gives deterministic tests and future font/scale adapters a cheap
+        # invalidation hook without reaching into backend state.
+        def reset() -> void:
+            for index in 0..<MAX_LINE_HEIGHT_ENTRIES:
+                line_height_valid[index] <- false
+            line_height_next <- 0
+            line_height_queries <- 0
+            line_height_misses <- 0
+
+        def line_height(size: f32) -> f32:
+            safe_size: f32 = UiConstraints::bounded(size)
+            line_height_queries <- line_height_queries + 1
+            for index in 0..<MAX_LINE_HEIGHT_ENTRIES:
+                return line_height_values[index] if line_height_valid[index] and line_height_sizes[index] == safe_size
+            measured: f32 = UiConstraints::bounded(ui_text_line_height(safe_size))
+            slot: usize = line_height_next
+            line_height_sizes[slot] <- safe_size
+            line_height_values[slot] <- measured
+            line_height_valid[slot] <- true
+            line_height_next <- (slot + 1) % MAX_LINE_HEIGHT_ENTRIES
+            line_height_misses <- line_height_misses + 1
+            return measured
+
+        def query_count() -> usize:
+            return line_height_queries
+
+        def miss_count() -> usize:
+            return line_height_misses
+
+    private:
+        global mutable line_height_sizes: f32[MAX_LINE_HEIGHT_ENTRIES] = zeroed
+        global mutable line_height_values: f32[MAX_LINE_HEIGHT_ENTRIES] = zeroed
+        global mutable line_height_valid: bool[MAX_LINE_HEIGHT_ENTRIES] = zeroed
+        global mutable line_height_next: usize = 0
+        global mutable line_height_queries: usize = 0
+        global mutable line_height_misses: usize = 0

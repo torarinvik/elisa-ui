@@ -1,0 +1,36 @@
+# Headless regression for the Elisa-owned frame-local text metric cache.
+
+include "../src/widgets/ui_text_metrics.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable failures: i32 = 0
+global mutable backend_calls: usize = 0
+
+def ui_text_line_height(size: f32) -> f32:
+    backend_calls <- backend_calls + 1
+    return size * 1.25
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiTextMetrics::reset()
+    first: f32 = UiTextMetrics::line_height(16.0)
+    second: f32 = UiTextMetrics::line_height(16.0)
+    check("line-height cache preserves the backend metric", first == 20.0 and second == 20.0)
+    check("repeated size crosses FFI once", backend_calls == 1 and UiTextMetrics::query_count() == 2 and UiTextMetrics::miss_count() == 1)
+
+    _ = UiTextMetrics::line_height(20.0)
+    check("new size fills one cache entry", backend_calls == 2 and UiTextMetrics::miss_count() == 2)
+    UiTextMetrics::reset()
+    _ = UiTextMetrics::line_height(16.0)
+    check("reset invalidates frame-local metrics", backend_calls == 3 and UiTextMetrics::miss_count() == 1)
+
+    if failures == 0:
+        _ = puts("text metrics cache: all checks passed")
+        return 0
+    _ = puts("text metrics cache: FAILURES above")
+    return 1
