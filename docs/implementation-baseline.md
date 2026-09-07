@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `1aec6306b962d930a0fe6c694969014007cf5635` (`refactor(flat): isolate text semantic projection`) on branch `work` |
+| elisa-ui revision | `09155829c83a3600d4395207c68f7d3f3c17c83f` (`refactor(appkit): isolate flat canvas exports`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -80,7 +80,9 @@ input, focus, style, callback, text, scrolling, and painting modules, each below
 lines), with keyboard focus/capture policy in `ui_flat_focus.elisa`, text
 semantic projection and focus visibility in `ui_flat_text_semantics.elisa`, visual
 color policy in `ui_flat_style.elisa`, and legacy callback lowering in
-`ui_flat_events.elisa`. The AppKit controls backend is
+`ui_flat_events.elisa`. The AppKit canvas flat adapter keeps its externally
+mandated export declarations in `ui_appkit_canvas_flat_exports.elisa`, separate
+from callback policy. The AppKit controls backend is
 now split into realization/policy (`ui_appkit.elisa`, 305 lines), typed native
 bridge wrappers (`ui_appkit_native.elisa`, 212 lines), ABI declarations
 (`ui_appkit_native_ffi.elisa`, 75 lines), and read-back inspection wrappers
