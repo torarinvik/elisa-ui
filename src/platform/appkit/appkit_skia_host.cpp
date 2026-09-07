@@ -39,6 +39,21 @@ bool valid_context(CGContextRef context, float pixel_width, float pixel_height) 
     return context != nullptr && valid_dimension(pixel_width) && valid_dimension(pixel_height);
 }
 
+// The Elisa snapshot path already bounds bitmap extents before narrowing them
+// to its i32 CoreGraphics ABI. Keep the optional compositor fail-closed for
+// direct foreign callers too: never cast an out-of-range float to int or let a
+// hostile pair request an unbounded temporary SkSurface allocation.
+bool valid_pixel_extent(float value) {
+    constexpr float max_extent = 2147483520.0f;  // largest safe f32 below 2^31
+    return valid_dimension(value) && value <= max_extent;
+}
+
+bool valid_pixel_area(int width, int height) {
+    constexpr std::size_t max_pixels = 67108864;
+    return width > 0 && height > 0 && static_cast<std::size_t>(width) <=
+        max_pixels / static_cast<std::size_t>(height);
+}
+
 CGImageRef image_from_pixels(const SkPixmap& pixels) {
     CGColorSpaceRef color_space = CGColorSpaceCreateDeviceRGB();
     if (color_space == nullptr) return nullptr;
@@ -68,13 +83,14 @@ extern "C" std::int32_t elisa_appkit_canvas_skia_present(std::size_t window_hand
                                                            float pixel_height_value) {
     CGContextRef context = reinterpret_cast<CGContextRef>(context_handle);
     if (!valid_context(context, pixel_width_value, pixel_height_value) || !valid_dimension(logical_width) ||
-        !valid_dimension(logical_height)) {
+        !valid_dimension(logical_height) || !valid_pixel_extent(pixel_width_value) ||
+        !valid_pixel_extent(pixel_height_value)) {
         return 0;
     }
 
     const int pixel_width = static_cast<int>(std::lround(pixel_width_value));
     const int pixel_height = static_cast<int>(std::lround(pixel_height_value));
-    if (pixel_width <= 0 || pixel_height <= 0) return 0;
+    if (!valid_pixel_area(pixel_width, pixel_height)) return 0;
     const float scale_x = static_cast<float>(pixel_width) / logical_width;
     const float scale_y = static_cast<float>(pixel_height) / logical_height;
     if (!valid_dimension(scale_x) || !valid_dimension(scale_y)) return 0;

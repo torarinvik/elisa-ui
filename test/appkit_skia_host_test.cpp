@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <limits>
 
 #include "../include/elisa_appkit_skia.h"
 
@@ -50,6 +51,15 @@ int main() {
         return 2;
     }
 
+    const std::int32_t malformed_status = elisa_appkit_canvas_skia_present(
+        0, reinterpret_cast<std::size_t>(context), 320.0f, 200.0f,
+        std::numeric_limits<float>::max(), 1.0f);
+    if (malformed_status != 0) {
+        std::fprintf(stderr, "appkit skia host: accepted an out-of-range backing extent\n");
+        CGContextRelease(context);
+        return 3;
+    }
+
     const std::int32_t status = elisa_appkit_canvas_skia_present(
         0, reinterpret_cast<std::size_t>(context), 320.0f, 200.0f,
         static_cast<float>(width), static_cast<float>(height));
@@ -62,7 +72,7 @@ int main() {
     if (ok) ok = expect_rgba(pixels, row_bytes, 230, 50, 70, 120, 220, "triangle") && ok;
     if (ok) ok = expect_ink(pixels, row_bytes, 15, 158, 110, 198) && ok;
     CGContextRelease(context);
-    if (!ok) return 3;
+    if (!ok) return 4;
     std::printf("appkit skia host: off-screen CoreGraphics presentation passed\n");
     return 0;
 }
