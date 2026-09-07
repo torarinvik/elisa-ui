@@ -14,8 +14,18 @@ module UiCapabilities:
             AppKitCanvas = 4
             WasmBrowser = 5
 
+        const enum Renderer of i32:
+            Unknown = 0
+            Headless = 1
+            Native = 2
+            Sdl3 = 3
+            CoreGraphics = 4
+            Skia = 5
+            Hosted = 6
+
         struct Snapshot:
             backend: Backend
+            renderer: Renderer
             surface: bool
             native_window: bool
             custom_paint: bool
@@ -32,6 +42,7 @@ module UiCapabilities:
 
         def reset() -> void:
             backend_state <- Backend.Unknown
+            renderer_state <- Renderer.Unknown
             surface_state <- false
             native_window_state <- false
             custom_paint_state <- false
@@ -50,42 +61,42 @@ module UiCapabilities:
         # must be selected here for every backend instead of defaulting to an
         # optimistic value that an adapter cannot fulfill.
         def use_harness() -> void:
-            set_profile(Snapshot{backend: Backend.Harness, surface: false,
+            set_profile(Snapshot{backend: Backend.Harness, renderer: Renderer.Headless, surface: false,
                 native_window: false, custom_paint: false, native_controls: false,
                 hosted: false, text_input: true, composition: true, clipboard: true,
                 semantics: true, offscreen: true, multiple_windows: false,
                 scale_changes: false, deterministic_clock: true})
 
         def use_sdl3() -> void:
-            set_profile(Snapshot{backend: Backend.Sdl3, surface: true,
+            set_profile(Snapshot{backend: Backend.Sdl3, renderer: Renderer.Sdl3, surface: true,
                 native_window: true, custom_paint: true, native_controls: false,
                 hosted: false, text_input: true, composition: true, clipboard: true,
                 semantics: false, offscreen: false, multiple_windows: false,
                 scale_changes: false, deterministic_clock: false})
 
         def use_appkit() -> void:
-            set_profile(Snapshot{backend: Backend.AppKit, surface: true,
+            set_profile(Snapshot{backend: Backend.AppKit, renderer: Renderer.Native, surface: true,
                 native_window: true, custom_paint: false, native_controls: true,
                 hosted: false, text_input: true, composition: true, clipboard: false,
                 semantics: true, offscreen: false, multiple_windows: false,
                 scale_changes: false, deterministic_clock: false})
 
         def use_appkit_canvas() -> void:
-            set_profile(Snapshot{backend: Backend.AppKitCanvas, surface: true,
+            set_profile(Snapshot{backend: Backend.AppKitCanvas, renderer: Renderer.CoreGraphics, surface: true,
                 native_window: true, custom_paint: true, native_controls: false,
                 hosted: false, text_input: true, composition: true, clipboard: true,
                 semantics: true, offscreen: true, multiple_windows: false,
                 scale_changes: false, deterministic_clock: false})
 
         def use_wasm_browser() -> void:
-            set_profile(Snapshot{backend: Backend.WasmBrowser, surface: true,
+            set_profile(Snapshot{backend: Backend.WasmBrowser, renderer: Renderer.Hosted, surface: true,
                 native_window: false, custom_paint: true, native_controls: false,
                 hosted: true, text_input: true, composition: true, clipboard: true,
                 semantics: false, offscreen: false, multiple_windows: false,
                 scale_changes: false, deterministic_clock: false})
 
         def snapshot() -> Snapshot:
-            return Snapshot{backend: backend_state, surface: surface_state,
+            return Snapshot{backend: backend_state, renderer: renderer_state, surface: surface_state,
                 native_window: native_window_state, custom_paint: custom_paint_state,
                 native_controls: native_controls_state, hosted: hosted_state,
                 text_input: text_input_state, composition: composition_state,
@@ -95,6 +106,19 @@ module UiCapabilities:
 
         def backend() -> Backend:
             return backend_state
+
+        def renderer() -> Renderer:
+            return renderer_state
+
+        def supports_skia() -> bool:
+            return renderer_state == Renderer.Skia
+
+        # A custom renderer may be selected after the host profile is known.
+        # Native-control and hosted profiles cannot silently claim Skia pixels.
+        def select_skia_renderer() -> bool:
+            return false if not custom_paint_state
+            renderer_state <- Renderer.Skia
+            return true
 
         def has_surface() -> bool:
             return surface_state
@@ -116,6 +140,7 @@ module UiCapabilities:
 
     private:
         global mutable backend_state: Backend = Backend.Unknown
+        global mutable renderer_state: Renderer = Renderer.Unknown
         global mutable surface_state: bool = false
         global mutable native_window_state: bool = false
         global mutable custom_paint_state: bool = false
@@ -132,6 +157,7 @@ module UiCapabilities:
 
         def set_profile(profile: Snapshot) -> void:
             backend_state <- profile.backend
+            renderer_state <- profile.renderer
             surface_state <- profile.surface
             native_window_state <- profile.native_window
             custom_paint_state <- profile.custom_paint

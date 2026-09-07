@@ -3,7 +3,9 @@
 `UiCapabilities` is the portable fact surface for backend differences. The
 selected adapter calls one profile constructor during startup; applications can
 read the resulting `Snapshot` without checking an OS name or touching a native
-object.
+object. The snapshot also identifies the renderer that owns custom pixels:
+native controls, SDL3, CoreGraphics fallback, Skia, hosted commands, or the
+headless test renderer.
 
 Profiles distinguish native windows, custom painting, native controls, hosted
 presentation, text input and composition, clipboard, semantics, off-screen
@@ -19,15 +21,19 @@ lifecycle in a non-rendering phase.
 
 Current profiles:
 
-- `Harness`: no native surface, deterministic clock, and inspectable semantics.
+- `Harness`: no native surface, deterministic clock, and inspectable semantics;
+  renderer `Headless`.
 - `Sdl3`: native window and custom painting, with SDL text input and clipboard;
-  semantic publication and scale-change handling are not claimed yet.
+  semantic publication and scale-change handling are not claimed yet; renderer
+  `Sdl3`.
 - `AppKit`: native controls and native semantics, without the custom canvas or
-  canvas snapshot path.
+  canvas snapshot path; renderer `Native`.
 - `AppKitCanvas`: custom painting, native text/IME, native semantics, and
-  off-screen snapshots.
+  off-screen snapshots; the current fallback reports `CoreGraphics`, while a
+  live `UiSkia` canvas selects renderer `Skia`.
 - `WasmBrowser`: hosted command presentation and host-mediated text/IME and
-  clipboard; native-window and local-semantic capabilities are not claimed.
+  clipboard; native-window and local-semantic capabilities are not claimed;
+  renderer `Hosted`.
 
 The read-only projection is also included in `UiInspector::Frame` so diagnostics
 can record both the selected profile and the live lifecycle state.
