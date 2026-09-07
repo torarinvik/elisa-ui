@@ -111,6 +111,13 @@ if grep -Eq '\bappendApplicationName\b' "$ROOT/src/platform/appkit/appkit_canvas
   echo "appkit canvas: menu title policy leaked back into Objective-C" >&2
   exit 1
 fi
+# Application titles are counted Elisa views. Reconstructing one through
+# `sview(cstr, ...)` would scan past a non-NUL-terminated view, so keep the
+# menu-label helper's application argument typed as sview at the source seam.
+if grep -Eq 'application_menu_label\(prefix: cstr[^)]*application: cstr' "$ROOT/src/platform/appkit/ui_appkit_canvas_private.elisa"; then
+  echo "appkit canvas: counted menu title was narrowed to cstr" >&2
+  exit 1
+fi
 if grep -Eq 'stringWithFormat:@"elisa-ui-' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
   echo "appkit canvas: accessibility identifier policy leaked back into Objective-C" >&2
   exit 1
