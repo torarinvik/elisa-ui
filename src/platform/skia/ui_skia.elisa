@@ -107,8 +107,18 @@ module UiSkia:
             _ = UiSkia::render_status()
 
         def render_status() -> RenderStatus can[Ui.Draw, Ui.Text]:
+            return UiSkia::render_status_with_font(0)
+
+        # A host may provide one borrowed SkTypeface for the retained text
+        # batch. The handle is scoped to this replay and is never retained by
+        # the framework; resource-bound text APIs remain available when a
+        # longer-lived generation contract is needed.
+        def render_status_with_font(font: usize) -> RenderStatus can[Ui.Draw, Ui.Text]:
             return RenderStatus.SkippedNoSurface if canvas_state == 0
+            previous_font: usize = skia_frame_font
+            skia_frame_font <- font
             UiPaint::replay[SkiaPainter]()
+            skia_frame_font <- previous_font
             return RenderStatus.CommandOverflow if UiCore::command_overflowed()
             return RenderStatus.Complete
 
@@ -163,7 +173,10 @@ module UiSkia:
             safe_text: sview = safe_run.text
             return if safe_text.len <= 0 or safe_text.data == null
             pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
-            elisa_skia_canvas_draw_text(canvas_state, pointer, safe_text.len.usize(), safe_run.origin.x, safe_run.origin.y, safe_run.size, color.r, color.g, color.b, color.a)
+            if skia_frame_font != 0:
+                elisa_skia_canvas_draw_text_with_font(canvas_state, skia_frame_font, pointer, safe_text.len.usize(), safe_run.origin.x, safe_run.origin.y, safe_run.size, color.r, color.g, color.b, color.a)
+            else:
+                elisa_skia_canvas_draw_text(canvas_state, pointer, safe_text.len.usize(), safe_run.origin.x, safe_run.origin.y, safe_run.size, color.r, color.g, color.b, color.a)
 
         struct SkiaPainter:
             unused: i32
@@ -213,6 +226,7 @@ module UiSkia:
         global mutable skia_transform_depth: usize = 0
         global mutable skia_save_depth: usize = 0
         global mutable skia_surface_generation: u32 = 0
+        global mutable skia_frame_font: usize = 0
 
 include "./ui_skia_geometry.elisa"
 
@@ -256,6 +270,17 @@ def skia_render_frame_status_export(canvas: usize) -> i32 can[Ui.Draw, Ui.Text]:
     return status.i32()
 
 export fn elisa_skia_render_frame_status(canvas: usize) -> i32 = skia_render_frame_status_export
+
+def skia_render_frame_with_font_status_export(canvas: usize, font: usize) -> i32 can[Ui.Draw, Ui.Text]:
+    if canvas == 0:
+        UiSkia::surface_lost()
+        return UiSkia::RenderStatus.SkippedNoSurface.i32()
+    UiSkia::attach(canvas)
+    status: UiSkia::RenderStatus = UiSkia::render_status_with_font(font)
+    UiSkia::detach()
+    return status.i32()
+
+export fn elisa_skia_render_frame_with_font_status(canvas: usize, font: usize) -> i32 = skia_render_frame_with_font_status_export
 
 def skia_render_scaled_frame_export(canvas: usize, scale: f32) -> void can[Ui.Draw, Ui.Text]:
     if canvas == 0:

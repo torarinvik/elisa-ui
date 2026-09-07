@@ -19,7 +19,7 @@ HOST_OBJECT="$ROOT/build/skia_offscreen_host.o"
 HOST_BINARY="$ROOT/build/skia_offscreen_test"
 SHIM_OBJECT="$ROOT/build/skia_canvas_shim.o"
 bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ELISA_OBJECT" "$ROOT/test/skia_offscreen_test.elisa"
-clang++ -std=c++20 -fPIC -I"$ROOT" -I"$SKIA_ROOT" -c \
+clang++ -std=c++20 -DSK_BUILD_FOR_MAC -fPIC -I"$ROOT" -I"$SKIA_ROOT" -c \
   "$ROOT/test/skia_offscreen_host.cpp" -o "$HOST_OBJECT"
 clang++ -std=c++17 -fPIC -I"$SKIA_ROOT" -c \
   "$ROOT/src/platform/skia/skia_canvas_shim.cpp" -o "$SHIM_OBJECT"

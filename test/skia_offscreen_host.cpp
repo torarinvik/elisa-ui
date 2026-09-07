@@ -12,10 +12,14 @@
 #include "include/core/SkImageInfo.h"
 #include "include/core/SkPixmap.h"
 #include "include/core/SkSurface.h"
+#include "include/core/SkFontMgr.h"
+#include "include/core/SkFontStyle.h"
+#include "include/core/SkTypeface.h"
 #include "include/encode/SkPngEncoder.h"
 #include "include/core/SkStream.h"
+#include "include/ports/SkFontMgr_mac_ct.h"
 
-extern "C" std::int32_t elisa_skia_offscreen_render(std::size_t canvas);
+extern "C" std::int32_t elisa_skia_offscreen_render(std::size_t canvas, std::size_t font);
 
 namespace {
 
@@ -23,6 +27,17 @@ bool expect_color(const SkPixmap& pixels, int x, int y, SkColor expected, const 
     const SkColor actual = pixels.getColor(x, y);
     if (actual == expected) return true;
     std::fprintf(stderr, "%s: expected 0x%08x, got 0x%08x\n", label, expected, actual);
+    return false;
+}
+
+bool expect_ink(const SkPixmap& pixels, int left, int top, int right, int bottom,
+                SkColor background, const char* label) {
+    for (int y = top; y < bottom; ++y) {
+        for (int x = left; x < right; ++x) {
+            if (pixels.getColor(x, y) != background) return true;
+        }
+    }
+    std::fprintf(stderr, "%s: no rasterized glyphs in the expected region\n", label);
     return false;
 }
 
@@ -52,8 +67,16 @@ int main(int argc, char** argv) {
         return 6;
     }
 
+    const auto font_manager = SkFontMgr_New_CoreText(nullptr);
+    const auto typeface = font_manager == nullptr
+        ? nullptr
+        : font_manager->matchFamilyStyle(nullptr, SkFontStyle::Normal());
+    if (typeface == nullptr) {
+        std::fprintf(stderr, "skia offscreen: failed to resolve the CoreText default typeface\n");
+        return 7;
+    }
     const std::int32_t status = elisa_skia_offscreen_render(
-        reinterpret_cast<std::size_t>(canvas));
+        reinterpret_cast<std::size_t>(canvas), reinterpret_cast<std::size_t>(typeface.get()));
     if (status != 1) {
         std::fprintf(stderr, "skia offscreen: Elisa returned status %d\n", status);
         return 3;
@@ -69,6 +92,7 @@ int main(int argc, char** argv) {
     ok = expect_color(pixels, 40, 40, SkColorSetARGB(255, 220, 80, 100), "rounded fill") && ok;
     ok = expect_color(pixels, 80, 130, SkColorSetARGB(255, 60, 180, 140), "circle") && ok;
     ok = expect_color(pixels, 230, 50, SkColorSetARGB(255, 70, 120, 220), "triangle") && ok;
+    ok = expect_ink(pixels, 15, 158, 110, 198, SkColorSetARGB(255, 18, 24, 32), "text") && ok;
 
     SkFILEWStream stream(output);
     SkPngEncoder::Options options;

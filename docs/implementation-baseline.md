@@ -227,7 +227,8 @@ The Skia custom painter boundary compiles headlessly through
 the pinned revision and the lockfile's CPU-raster archive, the same gate also
 links the production C++ host shim and runs
 `test/skia_offscreen_test.elisa` against a real off-screen `SkSurface`, checking
-background, rounded-fill, circle, and triangle pixels before writing a PNG.
+background, rounded-fill, circle, triangle, and CoreText-backed glyph pixels
+before writing a PNG.
 The gate rejects AppKit imports in that shim even when no SDK is installed.
 The repository intentionally keeps the SDK/build output external because it is
 multi-gigabyte; the lockfile and GN arguments make the host fetch reproducible.

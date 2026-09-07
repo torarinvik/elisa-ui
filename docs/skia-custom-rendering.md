@@ -28,6 +28,13 @@ independent of the borrowed canvas, so layout can query Skia before surface
 attachment. That makes surface recreation and headless rendering ordinary
 lifecycle transitions instead of retained native pointer state.
 
+When a host has a resolved system or bundled typeface, the one-shot
+`elisa_skia_render_frame_with_font_status(canvas, font)` boundary supplies it
+for the current replay only. The `SkTypeface*` remains host-owned; Elisa uses
+the handle to route retained text through Skia and releases no native object.
+Generation-bound `draw_ready_text` remains the preferred form for long-lived
+font resources.
+
 The public header also exposes `elisa_skia_abi_version()` and the packed
 `ELISA_SKIA_ABI_VERSION` constant. Hosts can reject a major mismatch before
 passing any opaque canvas, image, or typeface handle across the boundary.
@@ -86,8 +93,8 @@ repository, but a host can fetch Skia's DEPS, build `libskia.a`, and run
 `SKIA_ROOT=/path/to/skia SKIA_OUT=/path/to/skia/out/elisa bash
 scripts/check_skia.sh`. That command compiles the real bridge, links the
 production shim with the Elisa fixture, renders a real off-screen `SkSurface`,
-checks representative pixels, and saves a PNG; it never orders an AppKit
-window onscreen. The AppKit canvas host still uses its CoreGraphics fallback,
+checks representative shape and glyph pixels, and saves a PNG; it never orders
+an AppKit window onscreen. The AppKit canvas host still uses its CoreGraphics fallback,
 so wiring an AppKit `MTKView`/`SkSurface` host remains a separate integration
 milestone.
 
