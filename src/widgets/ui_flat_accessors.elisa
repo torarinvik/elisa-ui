@@ -248,7 +248,10 @@ extend UiFlat:
         def text_value(index: usize) -> sview:
             return "" if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
             offset: usize = index * TEXT_CAPACITY
-            return text_storage[offset:offset + widgets[index].input_length]
+            # Build the borrowed view from the retained byte address directly;
+            # an intermediate slice can become a temporary when this value is
+            # stored in a semantic node or draw command.
+            return sview(&text_storage[offset], 0, widgets[index].input_length.i64())
 
         # Whether the most recent input operation retained only a prefix due
         # to malformed UTF-8 or fixed-capacity exhaustion.

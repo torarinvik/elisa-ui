@@ -254,6 +254,19 @@ def main() -> i64:
     UiFlat::paint()
     check("same-length secure edits advance semantic revision", UiCore::accessibility_at(0).revision > before_revision)
 
+    # Each secure field needs a stable mask for retained semantics and paint
+    # commands.  A shared scratch view would make an earlier field change when
+    # a later field is painted.
+    UiFlat::reset()
+    secure_root: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 0.0, 0.0, UiCore::rgb(30, 34, 44))
+    short_secret: usize = UiFlat::secure_text_field(secure_root, "Short", "", "a", 220.0, 36.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
+    long_secret: usize = UiFlat::secure_text_field(secure_root, "Long", "", "abcdef", 220.0, 36.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
+    UiFlat::layout(220.0, 80.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("multiple secure semantics retain independent masks", UiCore::accessibility_at(0).text_value == "•" and UiCore::accessibility_at(1).text_value == "••••••")
+    check("multiple secure paint commands retain independent masks", frame_contains_text("•") and frame_contains_text("••••••"))
+
     UiFlat::reset()
     check("reset discards secure undo history", not UiFlat::can_undo_text())
 

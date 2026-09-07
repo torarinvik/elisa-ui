@@ -91,8 +91,10 @@ extend UiFlat:
                 UiCore::accessibility(UiCore::AccessibilityRole.ProgressBar, widgets[index].text, widgets[index].help, frame, index, NONE, enabled, false, false, widgets[index].value, "", "", 0, 0, 0)
             elif widgets[index].kind == UiConst::WidgetKind.TextField:
                 semantic_role: UiCore::AccessibilityRole = UiCore::AccessibilityRole.PasswordField if widgets[index].secure else UiCore::AccessibilityRole.TextField
-                semantic_value: sview = secure_display_value(index) if widgets[index].secure else text_value(index)
-                UiCore::accessibility(semantic_role, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, false, 0.0, semantic_value, selected_text_value(index), widgets[index].text_revision, selection_utf16_location(index), selection_utf16_length(index))
+                if widgets[index].secure:
+                    UiCore::accessibility(semantic_role, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, false, 0.0, secure_display_value(index), selected_text_value(index), widgets[index].text_revision, selection_utf16_location(index), selection_utf16_length(index))
+                else:
+                    UiCore::accessibility(semantic_role, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, false, 0.0, text_value(index), selected_text_value(index), widgets[index].text_revision, selection_utf16_location(index), selection_utf16_length(index))
             elif widgets[index].kind == UiConst::WidgetKind.Label:
                 UiCore::accessibility(UiCore::AccessibilityRole.Label, widgets[index].text, widgets[index].help, frame, index, NONE, enabled, false, false, 0.0, "", "", 0, 0, 0)
             UiCore::accessibility_set_relationships(index, semantic_parent_id(index), semantic_child_id(index), semantic_next_sibling_id(index))
@@ -298,7 +300,9 @@ extend UiFlat:
                 secure_text_storage[output_base + output + 2] <- 162
                 output <- output + 3
                 cursor <- next_character(index, cursor)
-            return secure_text_storage[output_base:output_base + output]
+            # Keep the mask tied to this field's retained arena row.  Commands
+            # and semantic nodes may outlive this helper until frame delivery.
+            return sview(&secure_text_storage[output_base], 0, output.i64())
 
         def display_range(index: usize, start: usize, stop: usize) -> sview:
             value: sview = text_value(index)
@@ -306,7 +310,7 @@ extend UiFlat:
             masked: sview = secure_display_value(index)
             masked_start: usize = secure_display_offset(index, start)
             masked_stop: usize = secure_display_offset(index, stop)
-            return masked[masked_start:masked_stop]
+            return sview(&masked.data[masked_start], 0, (masked_stop - masked_start).i64())
 
         def measure_text_range(index: usize, start: usize, stop: usize) -> f32:
             safe_size: f32 = UiConstraints::bounded(widgets[index].text_size)
