@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `873b567` (`perf(skia): index resource bindings by identity`) on branch `work` |
+| elisa-ui revision | `2d4557e` (`refactor(wasmbrowser): encapsulate host adapter state`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -48,8 +48,10 @@ Externally imposed symbols are kept at the edges:
 - CoreGraphics, CoreText, CoreFoundation, ImageIO, libobjc, and AppKit fact
   globals in `src/platform/appkit/ui_appkit_canvas_native.elisa`; typed controls
   bridge wrappers in `src/platform/appkit/ui_appkit_native.elisa`.
-- WasmBrowser WIT imports/exports and canonical record encoding in
-  `src/platform/wasmbrowser/ui_wasmbrowser.elisa`.
+- WasmBrowser WIT imports/exports and canonical record encoding in the
+  `src/platform/wasmbrowser/` backend modules; private clipboard staging,
+  guest-memory validation, and text metric normalization live in
+  `ui_wasm_host_state.elisa`.
 - Cocoa object/protocol/selector entry points in
   `src/platform/appkit/appkit_shim.m` and `appkit_canvas_shim.m`.
 - Skia custom-rendering primitives in `src/platform/skia/skia_canvas_shim.cpp`;
@@ -478,6 +480,10 @@ separate host-enforced security boundary.
 - Generation-safe Skia image helpers preserve the typed nearest/linear sampling
   choice through both ready-resource and bound-resource draw paths; the
   headless painter fixture covers each form.
+- WasmBrowser clipboard staging and guest-memory/text-metric policy now live in
+  the private `ui_wasm_host_state.elisa` module. Only the required top-level
+  hook names and WIT guest exports remain at the component boundary; the
+  hosted package build and inspection fixture continue to pass.
 - The Skia C boundary no longer publishes an unused raw rectangle primitive;
   retained rectangles always use Elisa's shared rounded-style policy, keeping
   the host shim and public header limited to exercised operations.

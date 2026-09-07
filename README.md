@@ -78,8 +78,10 @@ because a module member's symbol carries its module and those names cannot move.
   plus
   [wasmbrowser](src/platform/wasmbrowser/ui_wasmbrowser.elisa) (a component
   implementing `world app`; the host drives the loop through the exported guest
-  interface, and canonical-ABI encoding is confined to this file; its clipboard
-  bridge is also a byte-only Elisa adapter over the WIT host capability). Both
+  interface, canonical-ABI encoding stays in the backend modules, and its
+  clipboard staging/text metrics live in the private
+  [ui_wasm_host_state](src/platform/wasmbrowser/ui_wasm_host_state.elisa)
+  adapter over WIT host capabilities). Both
   render real text: WasmBrowser through its host font, SDL3 through SDL_ttf.
 - **Responsive layout** ([src/widgets/ui_responsive.elisa](src/widgets/ui_responsive.elisa)) —
   backend-neutral compact/medium/expanded size classes, adaptive axis choice,
