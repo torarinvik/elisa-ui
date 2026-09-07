@@ -55,7 +55,7 @@ def main() -> i64:
     UiSkia::push_transform(UiCore::Vec2(3.0, 4.0), UiCore::Vec2(1.5, 0.75))
     UiSkia::pop_transform()
     check("scoped transform crosses the narrow FFI", skia_test_translate_count() == 1 and skia_test_scale_count() == 2)
-    UiSkia::render()
+    check("render status reports a complete batch", UiSkia::render_status() == UiSkia::RenderStatus.Complete)
     UiSkia::fill_rounded_rect(UiCore::Rect(12.0, 13.0, 40.0, 20.0), 6.0, UiCore::rgb(20, 30, 40))
     UiSkia::fill_rounded_rect(UiCore::Rect(12.0, 13.0, 40.0, 20.0), 100.0, UiCore::rgb(20, 30, 40))
     check("direct rounded radius is constrained to its box", skia_test_last_round_radius() > 9.9 and skia_test_last_round_radius() < 10.1)
@@ -96,6 +96,7 @@ def main() -> i64:
     check("clip crosses the boundary once", skia_test_clip_count() == 1)
     check("all commands replay through Skia", skia_test_clear_count() == 1 and skia_test_round_rect_count() == 3 and skia_test_stroke_round_rect_count() == 1 and skia_test_shadow_round_rect_count() == 1 and skia_test_image_count() == 6 and skia_test_circle_count() == 1 and skia_test_triangle_count() == 1 and skia_test_line_count() == 1 and skia_test_text_count() == 3)
     check("detach clears the borrowed state", not UiSkia::is_attached())
+    check("detached render status is explicit", UiSkia::render_status() == UiSkia::RenderStatus.SkippedNoSurface)
 
     UiSkia::attach(9)
     generation_before_invalid_attach: u32 = UiSkia::surface_generation()
@@ -113,7 +114,7 @@ def main() -> i64:
     for index in 0..<limit:
         UiCore::clear(UiCore::rgb(1, 2, 3))
     UiSkia::attach(13)
-    check("checked render reports command overflow", not UiSkia::render_checked())
+    check("render status reports command overflow", UiSkia::render_status() == UiSkia::RenderStatus.CommandOverflow and not UiSkia::render_checked())
     surface_resource: UiResources::Handle = UiResources::request("images/surface", 7)
     _ = UiResources::set_state(surface_resource, UiResources::State.Ready)
     _ = UiSkia::bind_image(surface_resource, 0xBEEF)
