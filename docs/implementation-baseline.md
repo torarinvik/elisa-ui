@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `7b48256877daf600e5e5006f8c586ecd2167c758` on branch `work` |
+| elisa-ui revision | `53bc6ccfcae9e53272bd38be99a577151e4874f2` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -74,8 +74,10 @@ facade (`ui_widget.elisa`, 23 lines) now delegates to cohesive state, layout,
 input, text, scrolling, and painting modules, each below 400 lines. The AppKit controls backend is
 now split into realization/policy (`ui_appkit.elisa`, 305 lines) and typed
 native bridge wrappers (`ui_appkit_native.elisa`, 399 lines). The SDL3 backend
-is split into lifecycle/event (`ui_sdl3.elisa`, 466 lines) and drawing/font
-state (`ui_sdl3_draw.elisa`, 265 lines). New or changed Elisa source continues
+is split into lifecycle/state (`ui_sdl3.elisa`, 330 lines), event-union
+decoding (`ui_sdl3_events.elisa`, 145 lines), run-loop policy
+(`ui_sdl3_run.elisa`, 139 lines), and drawing/font state
+(`ui_sdl3_draw.elisa`, 265 lines). New or changed Elisa source continues
 to use small, single-purpose modules; the existing large modules are
 not split mechanically.
 
