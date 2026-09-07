@@ -61,15 +61,7 @@ extend UiCore:
         # fixable; the alternative is growing the buffer while making the
         # component's monotonic heap grow without bound.
         def push_command(command: Command) -> void:
-            if command_total >= MAX_COMMANDS.u32():
-                command_dropped <- true
-                return
-            slot: usize = command_total.usize()
-            command_has_clip_flag[slot] <- current_clip_active
-            command_clip[slot] <- current_clip if current_clip_active
-            command_buffer[slot] <- normalized_command(command)
-            command_total <- command_total + 1
-            invalidate(Invalidation.Paint)
+            push_command_with_style(command, false)
 
         # The batch a backend consumes at frame end.
         def command_count() -> usize:
@@ -87,6 +79,12 @@ extend UiCore:
 
         def command_overflowed() -> bool:
             return command_dropped
+
+        # Generic rectangles are intentionally not elevated. The optional
+        # style bit is kept beside the command so native/custom painters can
+        # render an intentional control surface without changing wire payloads.
+        def command_is_elevated(index: usize) -> bool:
+            return index < command_total.usize() and command_elevated[index]
 
         # Clip state is deliberately side-band metadata. A backend that can
         # clip natively applies it around one command; a wire backend can keep
@@ -235,10 +233,23 @@ extend UiCore:
             return 1 if milliseconds < 1 else milliseconds
 
     private:
+        def push_command_with_style(command: Command, elevated: bool) -> void:
+            if command_total >= MAX_COMMANDS.u32():
+                command_dropped <- true
+                return
+            slot: usize = command_total.usize()
+            command_has_clip_flag[slot] <- current_clip_active
+            command_clip[slot] <- current_clip if current_clip_active
+            command_elevated[slot] <- elevated
+            command_buffer[slot] <- normalized_command(command)
+            command_total <- command_total + 1
+            invalidate(Invalidation.Paint)
+
         def clear_command_slot(index: usize) -> void:
             command_buffer[index] <- Command.Clear(Color{r: 0, g: 0, b: 0, a: 0})
             command_clip[index] <- Rect(0.0, 0.0, 0.0, 0.0)
             command_has_clip_flag[index] <- false
+            command_elevated[index] <- false
 
         def clear_accessibility_slot(index: usize) -> void:
             accessibility_nodes[index] <- AccessibilityNode{
