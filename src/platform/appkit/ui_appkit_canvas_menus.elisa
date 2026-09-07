@@ -1,0 +1,162 @@
+# Elisa-owned AppKit menu policy.
+#
+# Labels, selectors, shortcuts, and modifier combinations belong to the
+# framework. The native shim receives only opaque menu/selector handles and
+# performs the Cocoa object operations required by that policy.
+
+extend UiAppKitCanvas:
+    private:
+        const enum MenuAction of i32:
+            About = 1
+            Hide = 2
+            HideOthers = 3
+            ShowAll = 4
+            Quit = 5
+            Undo = 6
+            Redo = 7
+            Cut = 8
+            Copy = 9
+            Paste = 10
+            SelectAll = 11
+            Minimize = 12
+            Zoom = 13
+            BringAllToFront = 14
+
+        def menu_action_name(action: MenuAction) -> cstr:
+            return "orderFrontStandardAboutPanel:" if action == MenuAction.About
+            return "hide:" if action == MenuAction.Hide
+            return "hideOtherApplications:" if action == MenuAction.HideOthers
+            return "unhideAllApplications:" if action == MenuAction.ShowAll
+            return "terminate:" if action == MenuAction.Quit
+            return "undo:" if action == MenuAction.Undo
+            return "redo:" if action == MenuAction.Redo
+            return "cut:" if action == MenuAction.Cut
+            return "copy:" if action == MenuAction.Copy
+            return "paste:" if action == MenuAction.Paste
+            return "selectAll:" if action == MenuAction.SelectAll
+            return "performMiniaturize:" if action == MenuAction.Minimize
+            return "performZoom:" if action == MenuAction.Zoom
+            return "arrangeInFront:" if action == MenuAction.BringAllToFront
+            return ""
+
+        # Register Cocoa selectors through the runtime C ABI from Elisa. The
+        # native shim receives only the opaque SEL token and never owns the
+        # framework's action-name mapping or registration branch.
+        def menu_action_selector(action: cstr) -> usize:
+            return 0 if action == ""
+            return sel_registerName(action)
+
+        const enum MenuModifiers of i32:
+            None = 0
+            Command = 1
+            CommandShift = 3
+            CommandOption = 5
+
+        def menu_modifiers(modifiers: MenuModifiers) -> usize:
+            return 0 if modifiers == MenuModifiers.None
+            command: usize = elisa_appkit_canvas_modifier_command
+            return command if modifiers == MenuModifiers.Command
+            shift: usize = elisa_appkit_canvas_modifier_shift
+            return command | shift if modifiers == MenuModifiers.CommandShift
+            return command | elisa_appkit_canvas_modifier_option
+
+        const MENU_APPLICATION_LABEL_CAPACITY: usize = 4096
+        global mutable menu_application_label_storage: u8[MENU_APPLICATION_LABEL_CAPACITY] = zeroed
+
+        def menu_key(key: UiCore::Key) -> i32:
+            # Cocoa menu equivalents use lowercase scalar values; UiCore's
+            # named alphabet keys intentionally use GLFW's uppercase values.
+            return key.i32() + 32
+
+        # Standard application-menu labels are framework policy. Compose the
+        # UTF-8 bytes in Elisa so the native bridge only receives a complete,
+        # counted menu title. Labels are bounded to keep this allocation-free;
+        # normal application names are far below this limit.
+        def application_menu_label(prefix: cstr, prefix_length: usize, application: sview, application_length: usize) -> sview:
+            # `sview(cstr, ...)` scans for NUL before applying its range. The
+            # application title is an already-counted view and is not required
+            # to be terminated, so never rebuild it from a cstr here. Clamp
+            # both lengths against their actual views before copying.
+            prefix_view: sview = sview(prefix, 0, prefix_length.i64())
+            prefix_take: mutable usize = prefix_view.len.usize()
+            prefix_take <- MENU_APPLICATION_LABEL_CAPACITY if prefix_take > MENU_APPLICATION_LABEL_CAPACITY
+            remaining: usize = MENU_APPLICATION_LABEL_CAPACITY - prefix_take
+            application_available: usize = application.len.usize() if application.len > 0 else 0
+            application_take: mutable usize = application_length if application_length < application_available else application_available
+            application_take <- remaining if application_take > remaining
+            for index in 0..<prefix_take:
+                menu_application_label_storage[index] <- prefix_view.data[index]
+            for index in 0..<application_take:
+                menu_application_label_storage[prefix_take + index] <- application.data[index]
+            return sview(&menu_application_label_storage[0], 0, (prefix_take + application_take).i64())
+
+        def add_menu(menu_bar: usize, title: sview) -> usize can Unsafe.PointerCast:
+            native_title: usize = native_string(title)
+            return 0 if native_title == 0
+            empty: sview = sview("", 0, 0)
+            native_empty: usize = native_string(empty)
+            if native_empty == 0:
+                CFRelease(native_title)
+                return 0
+            menu: usize = elisa_appkit_canvas_menu_add(menu_bar, native_title, native_empty)
+            CFRelease(native_empty)
+            CFRelease(native_title)
+            return menu
+
+        def add_menu_item(menu: usize, title: sview, action: cstr, key: i32, modifiers: usize) -> void can Unsafe.PointerCast:
+            native_title: usize = native_string(title)
+            return if native_title == 0
+            empty: sview = sview("", 0, 0)
+            native_key: mutable usize = native_string(empty)
+            if native_key == 0:
+                CFRelease(native_title)
+                return
+            if key > 0 and key <= 255:
+                key_byte: mutable u8[1] = zeroed
+                key_byte[0] <- key.u8()
+                CFRelease(native_key)
+                native_key <- native_string_bytes(&key_byte[0], 1)
+                if native_key == 0:
+                    CFRelease(native_title)
+                    return
+            elisa_appkit_canvas_menu_add_item(menu, native_title, native_key, menu_action_selector(action), modifiers)
+            CFRelease(native_key) if native_key != 0
+            CFRelease(native_title)
+
+        def add_application_menu_item(menu: usize, prefix: cstr, prefix_length: usize,
+                                      application: sview, application_length: usize,
+                                      action: cstr, key: i32, modifiers: usize) -> void can Unsafe.PointerCast:
+            label: sview = application_menu_label(prefix, prefix_length, application, application_length)
+            add_menu_item(menu, label, action, key, modifiers)
+
+        # Menu layout, labels, shortcuts and modifier policy belong to Elisa.
+        # Objective-C maps these action tokens to Cocoa selectors and creates
+        # the required NSMenu objects.
+        def install_standard_menus(title: sview) -> void can Unsafe.PointerCast:
+            menu_bar: usize = elisa_appkit_canvas_menus_begin()
+            application: usize = add_menu(menu_bar, title)
+            add_application_menu_item(application, "About ", 6, title, title.len.usize(), menu_action_name(MenuAction.About), 0, menu_modifiers(MenuModifiers.None))
+            elisa_appkit_canvas_menu_add_separator(application)
+            add_application_menu_item(application, "Hide ", 5, title, title.len.usize(), menu_action_name(MenuAction.Hide), menu_key(UiCore::Key.H), menu_modifiers(MenuModifiers.Command))
+            add_menu_item(application, "Hide Others", menu_action_name(MenuAction.HideOthers), menu_key(UiCore::Key.H), menu_modifiers(MenuModifiers.CommandOption))
+            add_menu_item(application, "Show All", menu_action_name(MenuAction.ShowAll), 0, menu_modifiers(MenuModifiers.None))
+            elisa_appkit_canvas_menu_add_separator(application)
+            add_application_menu_item(application, "Quit ", 5, title, title.len.usize(), menu_action_name(MenuAction.Quit), menu_key(UiCore::Key.Q), menu_modifiers(MenuModifiers.Command))
+
+            edit: usize = add_menu(menu_bar, "Edit")
+            add_menu_item(edit, "Undo", menu_action_name(MenuAction.Undo), menu_key(UiCore::Key.Z), menu_modifiers(MenuModifiers.Command))
+            add_menu_item(edit, "Redo", menu_action_name(MenuAction.Redo), menu_key(UiCore::Key.Z), menu_modifiers(MenuModifiers.CommandShift))
+            elisa_appkit_canvas_menu_add_separator(edit)
+            add_menu_item(edit, "Cut", menu_action_name(MenuAction.Cut), menu_key(UiCore::Key.X), menu_modifiers(MenuModifiers.Command))
+            add_menu_item(edit, "Copy", menu_action_name(MenuAction.Copy), menu_key(UiCore::Key.C), menu_modifiers(MenuModifiers.Command))
+            add_menu_item(edit, "Paste", menu_action_name(MenuAction.Paste), menu_key(UiCore::Key.V), menu_modifiers(MenuModifiers.Command))
+            elisa_appkit_canvas_menu_add_separator(edit)
+            add_menu_item(edit, "Select All", menu_action_name(MenuAction.SelectAll), menu_key(UiCore::Key.A), menu_modifiers(MenuModifiers.Command))
+
+            window: usize = add_menu(menu_bar, "Window")
+            elisa_appkit_canvas_menu_set_windows(window)
+            add_menu_item(window, "Minimize", menu_action_name(MenuAction.Minimize), menu_key(UiCore::Key.M), menu_modifiers(MenuModifiers.Command))
+            add_menu_item(window, "Zoom", menu_action_name(MenuAction.Zoom), 0, menu_modifiers(MenuModifiers.None))
+            elisa_appkit_canvas_menu_add_separator(window)
+            add_menu_item(window, "Bring All to Front", menu_action_name(MenuAction.BringAllToFront), 0, menu_modifiers(MenuModifiers.None))
+            elisa_appkit_canvas_menus_commit(menu_bar)
