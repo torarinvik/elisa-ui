@@ -286,11 +286,18 @@ scripts/build_appkit_skia.sh    # -> build/hello_appkit_skia.app (macOS + pinned
 scripts/build_wapp.sh     # -> build/hello.wapp (+ build/hello.wasm)
 scripts/check_wapp.sh      # inspect an existing package without recompiling
 scripts/run_tests.sh      # builds and runs test/*_test.elisa
+scripts/check_performance.sh # headless retained-tree CPU/memory safety gate
 ```
 
 Headless interaction and frame tests can use the deterministic Elisa-side
 [`UiHarness`](docs/ui-test-harness.md), which injects time and typed events
 without opening a native surface.
+
+The performance fixture is documented in
+[`docs/ui-performance.md`](docs/ui-performance.md). It measures framework-owned
+build, relayout, paint, text-layout, and retained-memory work without
+foregrounding a window; GPU, mobile-energy, and transport measurements require
+their respective hosts.
 
 The `.wapp` build needs `wasm-component-ld` (ships with Rust's `wasm32-wasip2`
 target) and the `wasm-browser` CLI for the packing step; set `WASM_BROWSER_CLI`

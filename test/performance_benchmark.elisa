@@ -1,0 +1,134 @@
+# Headless retained-tree workload used by scripts/check_performance.sh.
+#
+# The C harness owns wall-clock and process-memory measurement. This Elisa
+# fixture owns the workload itself, so the benchmark exercises the same typed
+# builders, layout, paint and text policy used by applications.
+
+include "../src/widgets/ui_handles.elisa"
+include "../src/widgets/ui_text_layout.elisa"
+
+def ui_measure_text_width(text: sview, size: f32) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size
+
+def ui_font_ascent(size: f32) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def app_init() -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    pass
+
+def app_text_input(text: sview) -> void:
+    pass
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    pass
+
+def app_frame() -> void:
+    pass
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return 0
+
+module UiPerformanceBenchmark:
+    private:
+        global mutable root: UiHandles::Handle = UiHandles::invalid()
+        global mutable probe: UiHandles::Handle = UiHandles::invalid()
+        global mutable margin_phase: bool = false
+
+    public:
+        def reset() -> void:
+            UiHandles::reset()
+            UiTextLayout::reset()
+            UiCore::set_viewport(1024.0, 768.0)
+            margin_phase <- false
+
+        def build(count: i32) -> i32:
+            reset()
+            root <- UiHandles::column(UiHandles::root_parent(), 12.0, 6.0, UiCore::rgb(18, 22, 30))
+            safe_count: mutable usize = count.usize() if count > 0 else 0
+            safe_count <- 220 if safe_count > 220 else safe_count
+            for index in 0..<safe_count:
+                row: UiHandles::Handle = UiHandles::label(root, "A retained benchmark row with Unicode • café 👋", 14.0, UiCore::rgb(230, 235, 245))
+                UiHandles::set_grow(row, 1.0) if index % 4 == 0
+                probe <- row if index == 0
+            UiHandles::layout(1024.0, 768.0)
+            return UiHandles::count().i32()
+
+        def mutate() -> void:
+            return if not UiHandles::is_valid(probe)
+            margin_phase <- not margin_phase
+            UiHandles::set_margin(probe, 2.0 if margin_phase else 3.0)
+
+        def layout() -> void:
+            UiHandles::layout(1024.0, 768.0)
+
+        def paint() -> void:
+            UiCore::begin_frame()
+            UiHandles::paint()
+
+        def text() -> void:
+            for _ in 0..<64:
+                _ = UiTextLayout::layout("A retained benchmark row with Unicode • café 👋 and a long wrapping suffix", 32)
+
+        def widget_count() -> i32:
+            return UiHandles::count().i32()
+
+        def command_count() -> i32:
+            return UiCore::command_count().i32()
+
+export fn elisa_ui_benchmark_reset() -> void = benchmark_reset
+
+def benchmark_reset() -> void:
+    UiPerformanceBenchmark::reset()
+
+export fn elisa_ui_benchmark_build(count: i32) -> i32 = benchmark_build
+
+def benchmark_build(count: i32) -> i32:
+    return UiPerformanceBenchmark::build(count)
+
+export fn elisa_ui_benchmark_mutate() -> void = benchmark_mutate
+
+def benchmark_mutate() -> void:
+    UiPerformanceBenchmark::mutate()
+
+export fn elisa_ui_benchmark_layout() -> void = benchmark_layout
+
+def benchmark_layout() -> void:
+    UiPerformanceBenchmark::layout()
+
+export fn elisa_ui_benchmark_paint() -> void = benchmark_paint
+
+def benchmark_paint() -> void:
+    UiPerformanceBenchmark::paint()
+
+export fn elisa_ui_benchmark_text() -> void = benchmark_text
+
+def benchmark_text() -> void:
+    UiPerformanceBenchmark::text()
+
+export fn elisa_ui_benchmark_widget_count() -> i32 = benchmark_widget_count
+
+def benchmark_widget_count() -> i32:
+    return UiPerformanceBenchmark::widget_count()
+
+export fn elisa_ui_benchmark_command_count() -> i32 = benchmark_command_count
+
+def benchmark_command_count() -> i32:
+    return UiPerformanceBenchmark::command_count()
