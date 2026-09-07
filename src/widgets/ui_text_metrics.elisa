@@ -10,6 +10,8 @@ include "./ui_constraints.elisa"
 module UiTextMetrics:
     public:
         const MAX_LINE_HEIGHT_ENTRIES: usize = 32
+        const MAX_WIDTH_ENTRIES: usize = 64
+        const WIDTH_TEXT_CAPACITY: usize = 128
 
         # A paint boundary owns the cache lifetime. Keeping this explicit also
         # gives deterministic tests and future font/scale adapters a cheap
@@ -17,9 +19,14 @@ module UiTextMetrics:
         def reset() -> void:
             for index in 0..<MAX_LINE_HEIGHT_ENTRIES:
                 line_height_valid[index] <- false
+            for index in 0..<MAX_WIDTH_ENTRIES:
+                width_valid[index] <- false
             line_height_next <- 0
             line_height_queries <- 0
             line_height_misses <- 0
+            width_next <- 0
+            width_queries <- 0
+            width_misses <- 0
 
         def line_height(size: f32) -> f32:
             safe_size: f32 = UiConstraints::bounded(size)
@@ -41,6 +48,47 @@ module UiTextMetrics:
         def miss_count() -> usize:
             return line_height_misses
 
+        # Width keys are copied into a bounded Elisa-owned table. This avoids
+        # retaining a transient application view while still allowing repeated
+        # caption/range measurements to reuse the renderer's result.
+        def width(text: sview, size: f32) -> f32:
+            safe_text: sview = UiCore::bounded_text(text)
+            safe_size: f32 = UiConstraints::bounded(size)
+            length: usize = safe_text.len.usize() if safe_text.len > 0 else 0
+            width_queries <- width_queries + 1
+            return 0.0 if length == 0
+            if length > WIDTH_TEXT_CAPACITY:
+                width_misses <- width_misses + 1
+                return measure_width(safe_text, safe_size)
+            hash: u64 = text_hash(safe_text, length)
+            for index in 0..<MAX_WIDTH_ENTRIES:
+                if width_valid[index] and width_lengths[index] == length and width_sizes[index] == safe_size and width_hashes[index] == hash:
+                    offset: usize = index * WIDTH_TEXT_CAPACITY
+                    matches: bool =
+                        for compare in 0..<length |matches = true| -> matches:
+                            matches <- false if width_text_storage[offset + compare] != safe_text.data[compare]
+                            break if not matches
+                    return width_values[index] if matches
+            measured: f32 = measure_width(safe_text, safe_size)
+            slot: usize = width_next
+            offset: usize = slot * WIDTH_TEXT_CAPACITY
+            for index in 0..<WIDTH_TEXT_CAPACITY:
+                width_text_storage[offset + index] <- safe_text.data[index] if index < length else 0
+            width_lengths[slot] <- length
+            width_sizes[slot] <- safe_size
+            width_hashes[slot] <- hash
+            width_values[slot] <- measured
+            width_valid[slot] <- true
+            width_next <- (slot + 1) % MAX_WIDTH_ENTRIES
+            width_misses <- width_misses + 1
+            return measured
+
+        def width_query_count() -> usize:
+            return width_queries
+
+        def width_miss_count() -> usize:
+            return width_misses
+
     private:
         global mutable line_height_sizes: f32[MAX_LINE_HEIGHT_ENTRIES] = zeroed
         global mutable line_height_values: f32[MAX_LINE_HEIGHT_ENTRIES] = zeroed
@@ -48,3 +96,21 @@ module UiTextMetrics:
         global mutable line_height_next: usize = 0
         global mutable line_height_queries: usize = 0
         global mutable line_height_misses: usize = 0
+        global mutable width_hashes: u64[MAX_WIDTH_ENTRIES] = zeroed
+        global mutable width_lengths: usize[MAX_WIDTH_ENTRIES] = zeroed
+        global mutable width_sizes: f32[MAX_WIDTH_ENTRIES] = zeroed
+        global mutable width_values: f32[MAX_WIDTH_ENTRIES] = zeroed
+        global mutable width_valid: bool[MAX_WIDTH_ENTRIES] = zeroed
+        global mutable width_text_storage: u8[MAX_WIDTH_ENTRIES * WIDTH_TEXT_CAPACITY] = zeroed
+        global mutable width_next: usize = 0
+        global mutable width_queries: usize = 0
+        global mutable width_misses: usize = 0
+
+        def measure_width(text: sview, size: f32) -> f32:
+            return UiConstraints::bounded(ui_measure_text_width(text, size))
+
+        def text_hash(text: sview, length: usize) -> u64:
+            result: mutable u64 = 14695981039346656037
+            for index in 0..<length:
+                result <- (result ^ text.data[index].u64()) * 1099511628211
+            return result
