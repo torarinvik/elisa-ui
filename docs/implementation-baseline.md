@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `eb5e7a7` (`docs(skia): record native geometry guards`) on branch `work` |
+| elisa-ui revision | `48cc151` (`feat(text): complete common spacing mark ranges`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -372,6 +372,10 @@ separate host-enforced security boundary.
   common Indic SpacingMarks/linkers, supplementary variation selectors, and
   Extended-Pictographic ZWJ context are covered by deterministic text tests;
   non-emoji ZWJ sequences no longer swallow their following scalar.
+- The common Indic SpacingMark ranges now include their extended vowel-sign
+  forms while preserving virama/linker precedence, so longer Devanagari,
+  Bengali, Gujarati, Tamil, Telugu, Kannada, and Malayalam clusters retain
+  atomic caret and deletion behavior.
 - Bounded Elisa scans that return a derived value now use scoped `for`
   expressions where an early result is the only loop state, including the
   UTF-8 prefix, scalar-count, and UTF-16-count walks in `UiText`, plus
