@@ -11,8 +11,10 @@ extern puts(text: cstr) -> i64
 global mutable stop_in_init: bool = true
 global mutable stop_in_frame: bool = false
 global mutable stop_on_event: bool = false
+global mutable stop_in_text: bool = false
 global mutable frame_calls: i32 = 0
 global mutable event_calls: i32 = 0
+global mutable text_calls: i32 = 0
 global mutable init_commands: usize = 0
 global mutable init_semantics: usize = 0
 global mutable init_frame_delay: f32 = -1.0
@@ -27,6 +29,22 @@ def push_key() -> void:
     if not SDL_PushEvent(pointer):
         failures <- failures + 1
 
+struct TextEvent:
+    kind: u32
+    reserved: u32
+    timestamp: u64
+    window: u32
+    padding: u32
+    text: cstr
+
+def push_text() -> void:
+    event: mutable u64[16] = zeroed
+    text_event: mutable TextEvent& = (&event[0]).cast[mutable TextEvent&] can Unsafe.PointerCast
+    text_event[0] <- TextEvent{kind: 0x303, reserved: 0, timestamp: 0, window: 0, padding: 0, text: "stop"}
+    pointer: void& = (&event[0]).cast[void&] can Unsafe.PointerCast
+    if not SDL_PushEvent(pointer):
+        failures <- failures + 1
+
 def app_init() -> void:
     init_commands <- UiCore::command_count()
     init_semantics <- UiCore::accessibility_count()
@@ -35,6 +53,7 @@ def app_init() -> void:
     if stop_on_event:
         push_key()
         push_key()
+    push_text() if stop_in_text
 
 def app_frame() -> void:
     frame_calls <- frame_calls + 1
@@ -49,7 +68,8 @@ def app_event(event: UiCore::Event) -> void:
             pass
 
 def app_text_input(text: sview) -> void:
-    pass
+    text_calls <- text_calls + 1
+    UiLifecycle::stop() if stop_in_text
 
 def app_text_editing(text: sview, start: i32, length: i32) -> void:
     pass
@@ -91,6 +111,16 @@ def main() -> i64:
     check("event stop delivers only the current event", event_calls == 1)
     check("event stop skips the following frame", frame_calls == 0)
     check("event stop leaves lifecycle stopped", UiLifecycle::phase() == UiLifecycle::Phase.Stopped)
+
+    stop_on_event <- false
+    stop_in_text <- true
+    frame_calls <- 0
+    text_calls <- 0
+    fourth: i64 = UiSdl3::run("text stop", 64, 64, 1)
+    check("text stop returns cleanly", fourth == 0)
+    check("text callback is delivered once", text_calls == 1)
+    check("text stop skips the following frame", frame_calls == 0)
+    check("text stop leaves lifecycle stopped", UiLifecycle::phase() == UiLifecycle::Phase.Stopped)
 
     if failures == 0:
         _ = puts("SDL lifecycle stop: passed")

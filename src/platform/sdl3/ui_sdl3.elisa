@@ -337,6 +337,13 @@ module UiSdl3:
                         app_event(event) if UiLifecycle::accepts_input()
                     _:
                         app_event(event)
+                # An application callback may stop the session without
+                # leaving another queued event behind. Check immediately so
+                # the outer loop cannot enter one stale frame after the final
+                # callback, and treat a replacement generation as ownership
+                # of a different run that this loop must not drive.
+                if not UiLifecycle::is_started() or UiLifecycle::generation() != drain_generation:
+                    running <- false
 
 include "./ui_sdl3_events.elisa"
 include "./ui_sdl3_run.elisa"

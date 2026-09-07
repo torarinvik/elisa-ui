@@ -17,6 +17,7 @@ extend UiSdl3:
             # ownership check here; otherwise a foreign text event could bypass
             # the typed queue filter solely because its raw kind is still in
             # `event_buffer`.
+            callback_generation: u32 = UiLifecycle::generation()
             belongs_to_window: bool = window_event_matches(window_id, event_window_id())
             if event_type() == EVENT_TEXT_INPUT and belongs_to_window and UiLifecycle::accepts_input():
                 text_input(event_text_pointer())
@@ -29,6 +30,13 @@ extend UiSdl3:
             # borrowed pointer-bearing union alive while application code
             # dispatches the event.
             clear_event_buffer()
+            # Text callbacks are synchronous application calls just like
+            # queued event callbacks. If one stops the session or starts a
+            # replacement generation, end this native loop before it can
+            # dispatch queued facts or enter a stale frame.
+            if not UiLifecycle::is_started() or UiLifecycle::generation() != callback_generation:
+                running <- false
+                return
             dispatch_queued_events(running)
 
     public:
