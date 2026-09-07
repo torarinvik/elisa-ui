@@ -469,4 +469,21 @@ def main() -> i64:
         check("sibling cycle keeps the parent box", sibling_parent.width, 80.0)
         _ = hit(sibling_parent, 1.0, 1.0)
 
+        # A public raw constructor can still write a child into a leaf's
+        # mutable common link. The builder rejects that shape, and the typed
+        # traversals must fail closed in the same way instead of laying out,
+        # painting, or hit-testing an unreachable descendant.
+        malformed_leaf_child: Widget = Button.Push(min_width: 10.0, min_height: 10.0, grow: 0.0, x: 4.0, y: 4.0, width: 10.0, height: 10.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "hidden", rest: grey(30), hover: grey(40), press: grey(20))
+        malformed_leaf: Widget = Control.Label(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: malformed_leaf_child, next_sibling: null, text: "leaf", size: 12.0, ink: grey(200))
+        layout(malformed_leaf, 40.0, 20.0)
+        check("leaf layout ignores raw child", malformed_leaf_child.x, 4.0)
+        if hit(malformed_leaf, 6.0, 6.0) != null:
+            test_failures <- test_failures + 1
+            _ = puts("leaf hit exposed raw child")
+        UiCore::begin_frame()
+        paint(malformed_leaf)
+        if UiCore::command_count() != 1:
+            test_failures <- test_failures + 1
+            _ = puts("leaf paint exposed raw child")
+
         return test_failures.i64()
