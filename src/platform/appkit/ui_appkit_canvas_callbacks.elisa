@@ -1,5 +1,7 @@
 # C callbacks from ElisaCanvasView. Top-level because the Objective-C ABI names them.
 
+include "../../widgets/ui_dialog.elisa"
+
 # AppKit callbacks are synchronous. An application callback can therefore
 # dispatch another event before the outer callback has returned. Keep one
 # iterative drain active at a time so nested events are queued for the current
@@ -159,7 +161,14 @@ def appkit_canvas_key_callback(window_handle: usize, down: i32, code: i32) -> vo
 # it behind the same active-session predicate as every other input mutation so
 # an inactive/background window cannot close itself from a late key callback.
 def appkit_canvas_should_close_key(down: i32, code: i32) -> bool:
-    return down == 1 and code == UiCore::Key.Escape.i32() and UiLifecycle::accepts_input()
+    return false if down != 1 or code != UiCore::Key.Escape.i32() or not UiLifecycle::accepts_input()
+    # Escape is the desktop spelling of back navigation. A live modal gets the
+    # first chance to consume it; only an unmodalized canvas reaches the native
+    # close action. The dialog state and its typed Back result stay in Elisa.
+    if UiDialog::snapshot().active > 0:
+        _ = UiDialog::back()
+        return false
+    return true
 
 def appkit_canvas_raw_key_callback(window_handle: usize, down: i32, key_code: i32, character: i32) -> void:
     return if not UiAppKitCanvas::live() or window_handle != UiAppKitCanvas::window_handle()

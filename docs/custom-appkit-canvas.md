@@ -38,7 +38,10 @@ def main() -> i64:
 ```
 
 The adapter supplies the native accessibility activation, slider adjustment and
-window-deactivation callbacks required by `UiFlat`. An application supplies:
+window-deactivation callbacks required by `UiFlat`. Desktop Escape is treated
+as the framework's back action: a live `UiDialog` consumes it and records a typed
+`Back` result; only an unmodalized canvas reaches the native close operation.
+An application supplies:
 
 ```elisa
 def app_init() -> void
