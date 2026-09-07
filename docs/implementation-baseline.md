@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `f9b67ee62eee0a5df3df85c7e47f2b7520856031` on branch `work` |
+| elisa-ui revision | `e5893905ca4daf5f820c3aa76f6c055de456ad11` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -328,6 +328,9 @@ separate host-enforced security boundary.
 - Generation-safe Skia image helpers preserve the typed nearest/linear sampling
   choice through both ready-resource and bound-resource draw paths; the
   headless painter fixture covers each form.
+- The Skia C boundary no longer publishes an unused raw rectangle primitive;
+  retained rectangles always use Elisa's shared rounded-style policy, keeping
+  the host shim and public header limited to exercised operations.
 - Callback entry points are lifetime-guarded: if an application handler resets
   the flat tree, post-callback history, composition, activation, adjustment, and
   radio state updates are abandoned instead of touching recycled slots. This is
