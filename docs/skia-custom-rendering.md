@@ -28,6 +28,10 @@ independent of the borrowed canvas, so layout can query Skia before surface
 attachment. That makes surface recreation and headless rendering ordinary
 lifecycle transitions instead of retained native pointer state.
 
+The public header also exposes `elisa_skia_abi_version()` and the packed
+`ELISA_SKIA_ABI_VERSION` constant. Hosts can reject a major mismatch before
+passing any opaque canvas, image, or typeface handle across the boundary.
+
 Canvas-independent Skia text metrics live in the focused
 `ui_skia_text.elisa` extension. The facade keeps only replay-time text drawing,
 while measurement, ascent, and line-height queries share one bounded FFI

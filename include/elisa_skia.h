@@ -13,10 +13,20 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* Packed as 0xMMmmpp (major, minor, patch). Hosts should check this before
+ * submitting an opaque canvas or renderer object to the Skia boundary. */
+#define ELISA_SKIA_ABI_VERSION_MAJOR 0u
+#define ELISA_SKIA_ABI_VERSION_MINOR 1u
+#define ELISA_SKIA_ABI_VERSION_PATCH 0u
+#define ELISA_SKIA_ABI_VERSION \
+    ((ELISA_SKIA_ABI_VERSION_MAJOR << 16) | \
+     (ELISA_SKIA_ABI_VERSION_MINOR << 8) | ELISA_SKIA_ABI_VERSION_PATCH)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+uint32_t elisa_skia_abi_version(void);
 int32_t elisa_skia_render_frame_status(size_t canvas);
 int32_t elisa_skia_render_frame_scaled_status(size_t canvas, float scale);
 
