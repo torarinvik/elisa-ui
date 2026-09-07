@@ -310,10 +310,15 @@ void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) 
     size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
 #if defined(ELISA_UI_USE_SKIA)
     NSRect backing = [self convertRectToBacking:self.bounds];
-    if (
-        elisa_appkit_canvas_skia_present(windowHandle, (size_t)context,
-                                         self.bounds.size.width, self.bounds.size.height,
-                                         backing.size.width, backing.size.height) > 0) {
+    const int32_t skiaStatus = elisa_appkit_canvas_skia_present(
+        windowHandle, (size_t)context,
+        self.bounds.size.width, self.bounds.size.height,
+        backing.size.width, backing.size.height);
+    if (skiaStatus != 0) {
+        // A negative status means Elisa already consumed this frame but the
+        // temporary native presentation failed. Do not execute the fallback
+        // frame a second time; application callbacks are synchronous and may
+        // have changed the retained model.
         return;
     }
 #endif

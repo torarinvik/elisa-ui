@@ -109,12 +109,15 @@ extern "C" std::int32_t elisa_appkit_canvas_skia_present(std::size_t window_hand
     const std::int32_t status = elisa_appkit_canvas_skia_replay(
         window_handle, reinterpret_cast<std::size_t>(surface->getCanvas()),
         std::min(scale_x, scale_y), reinterpret_cast<std::size_t>(typeface.get()));
-    if (status <= 0) return 0;
+    // Elisa has already executed app_frame once the callback returns. Even a
+    // skipped/failed replay may have synchronously mutated application state,
+    // so never ask AppKit to run the CoreGraphics frame a second time.
+    if (status <= 0) return -1;
 
     SkPixmap pixels;
-    if (!surface->peekPixels(&pixels)) return 0;
+    if (!surface->peekPixels(&pixels)) return -1;
     CGImageRef image = image_from_pixels(pixels);
-    if (image == nullptr) return 0;
+    if (image == nullptr) return -1;
     CGContextSaveGState(context);
     CGContextSetBlendMode(context, kCGBlendModeCopy);
     CGContextDrawImage(context, CGRectMake(0, 0, pixel_width, pixel_height), image);

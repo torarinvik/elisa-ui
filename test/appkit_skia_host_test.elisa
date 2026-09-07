@@ -3,6 +3,8 @@
 
 include "../src/platform/skia/ui_skia.elisa"
 
+global mutable appkit_skia_force_presentation_failure: bool = false
+
 def appkit_skia_replay(window_handle: usize, canvas: usize, scale: f32, font: usize) -> i32 can[Ui.Draw, Ui.Text]:
     _ = window_handle
     UiCapabilities::use_appkit_canvas()
@@ -15,6 +17,16 @@ def appkit_skia_replay(window_handle: usize, canvas: usize, scale: f32, font: us
     UiSkia::attach_scaled(canvas, scale)
     status: UiSkia::RenderStatus = UiSkia::render_status_with_font(font)
     UiSkia::detach()
+    # The native compositor uses a negative status to model a presentation
+    # failure after this callback has already consumed app_frame. That lets a
+    # host distinguish it from a pre-frame Skia rejection without replaying
+    # application mutations through the CoreGraphics fallback.
+    return -1 if appkit_skia_force_presentation_failure
     return status.i32()
 
 export fn elisa_appkit_canvas_skia_replay(window_handle: usize, canvas: usize, scale: f32, font: usize) -> i32 = appkit_skia_replay
+
+def set_appkit_skia_force_presentation_failure(value: i32) -> void:
+    appkit_skia_force_presentation_failure <- value == 1
+
+export fn elisa_appkit_skia_test_force_failure(value: i32) -> void = set_appkit_skia_force_presentation_failure

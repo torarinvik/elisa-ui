@@ -9,6 +9,8 @@
 
 #include "../include/elisa_appkit_skia.h"
 
+extern "C" void elisa_appkit_skia_test_force_failure(std::int32_t enabled);
+
 namespace {
 
 bool expect_rgba(const std::uint8_t* pixels, int row_bytes, int x, int y,
@@ -71,6 +73,25 @@ int main() {
     if (ok) ok = expect_rgba(pixels, row_bytes, 80, 130, 60, 180, 140, "circle") && ok;
     if (ok) ok = expect_rgba(pixels, row_bytes, 230, 50, 70, 120, 220, "triangle") && ok;
     if (ok) ok = expect_ink(pixels, row_bytes, 15, 158, 110, 198) && ok;
+
+    // The callback has already consumed app_frame before a late presentation
+    // failure is known. Its negative status is distinct from the zero
+    // pre-frame fallback result, and the borrowed CoreGraphics target remains
+    // untouched so an AppKit caller cannot accidentally replay the frame.
+    CGContextSetRGBFillColor(context, 0.0, 0.0, 0.0, 1.0);
+    CGContextFillRect(context, CGRectMake(0, 0, width, height));
+    elisa_appkit_skia_test_force_failure(1);
+    const std::int32_t failed_status = elisa_appkit_canvas_skia_present(
+        0, reinterpret_cast<std::size_t>(context), 320.0f, 200.0f,
+        static_cast<float>(width), static_cast<float>(height));
+    elisa_appkit_skia_test_force_failure(0);
+    const auto* failed_pixels = static_cast<const std::uint8_t*>(CGBitmapContextGetData(context));
+    if (failed_status >= 0 || failed_pixels == nullptr ||
+        !expect_rgba(failed_pixels, row_bytes, 0, 0, 0, 0, 0, "post-frame failure")) {
+        std::fprintf(stderr, "appkit skia host: post-frame failure was replayable\n");
+        CGContextRelease(context);
+        return 5;
+    }
     CGContextRelease(context);
     if (!ok) return 4;
     std::printf("appkit skia host: off-screen CoreGraphics presentation passed\n");
