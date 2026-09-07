@@ -52,14 +52,12 @@ extend UiAppKitCanvas:
             return UiCore::MAX_ACCESSIBILITY_NODES
 
         def release_accessibility_handles() -> void:
-            index: mutable usize = 0
-            while index < accessibility_previous_count:
+            for index in 0..<accessibility_previous_count:
                 handle: usize = accessibility_previous_handles[index]
                 old_id: usize = accessibility_previous_ids[index]
                 accessibility_previous_slot_by_id[old_id] <- UiCore::MAX_ACCESSIBILITY_NODES if old_id < UiCore::MAX_ACCESSIBILITY_NODES
                 elisa_appkit_canvas_accessibility_release(handle) if handle != 0
                 accessibility_previous_handles[index] <- 0
-                index <- index + 1
             accessibility_previous_count <- 0
 
         def reset_accessibility_history() -> void:
@@ -83,15 +81,11 @@ extend UiAppKitCanvas:
         def copy_accessibility_text(value: sview, storage: mutable u8&, slot: usize) -> sview:
             safe: sview = UiCore::bounded_text(value)
             offset: usize = slot * ACCESSIBILITY_TEXT_CAPACITY
-            byte_index: mutable usize = 0
-            while byte_index < ACCESSIBILITY_TEXT_CAPACITY:
+            for byte_index in 0..<ACCESSIBILITY_TEXT_CAPACITY:
                 storage[offset + byte_index] <- 0
-                byte_index <- byte_index + 1
             take: usize = safe.len.usize()
-            byte_index <- 0
-            while byte_index < take:
+            for byte_index in 0..<take:
                 storage[offset + byte_index] <- safe.data[byte_index]
-                byte_index <- byte_index + 1
             return sview(&storage[offset], 0, take.i64())
 
         # Compact the valid retained element handles and construct the ordered
@@ -101,8 +95,7 @@ extend UiAppKitCanvas:
         def commit_accessibility_children(requested_count: usize) -> bool can Unsafe.PointerCast:
             return false if requested_count > UiCore::MAX_ACCESSIBILITY_NODES
             count: mutable usize = 0
-            index: mutable usize = 0
-            while index < requested_count:
+            for index in 0..<requested_count:
                 handle: usize = accessibility_next_handles[index]
                 # A semantic frame is all-or-nothing. Silently compacting a
                 # missing native handle would let Cocoa accept a shorter child
@@ -113,7 +106,6 @@ extend UiAppKitCanvas:
                 return false if handle == 0
                 accessibility_commit_handles[count] <- handle
                 count <- count + 1
-                index <- index + 1
             # The semantic arena is bounded, but keep the boundary invariant
             # explicit at the construction site too. Objective-C receives only
             # an already-bounded immutable child list and therefore does not
