@@ -34,7 +34,21 @@ module UiEvents:
             if queue_count >= EVENT_QUEUE_CAPACITY:
                 dropped_count <- dropped_count + 1
                 overflow_state <- true
-                return false
+                # Lifecycle transitions are authoritative: losing focus must
+                # be observable even when a synchronous callback has filled
+                # the ring with stale pointer/key traffic. Replace the first
+                # queued physical-input event, preserving the bounded ring and
+                # making the loss visible through the existing diagnostics.
+                return false if not is_authoritative(event)
+                replacement: mutable usize = EVENT_QUEUE_CAPACITY
+                for offset in 0..<EVENT_QUEUE_CAPACITY:
+                    slot: usize = (queue_head + offset) % EVENT_QUEUE_CAPACITY
+                    if UiCore::is_input_event(queue[slot]):
+                        replacement <- slot
+                        break
+                return false if replacement == EVENT_QUEUE_CAPACITY
+                queue[replacement] <- UiCore::normalize_event(event)
+                return true
             slot: usize = (queue_head + queue_count) % EVENT_QUEUE_CAPACITY
             queue[slot] <- UiCore::normalize_event(event)
             queue_count <- queue_count + 1
@@ -72,3 +86,17 @@ module UiEvents:
         global mutable queue_count: usize = 0
         global mutable dropped_count: usize = 0
         global mutable overflow_state: bool = false
+
+        def is_authoritative(event: UiCore::Event) -> bool:
+            match event:
+                UiCore::Event.Quit:
+                    return true
+                UiCore::Event.Resize(size):
+                    return true
+                UiCore::Event.FocusGained:
+                    return true
+                UiCore::Event.FocusLost:
+                    return true
+                _:
+                    pass
+            return false

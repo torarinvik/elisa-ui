@@ -52,6 +52,17 @@ def main() -> i64:
     check("queue rejects overflow without replacement", not UiEvents::enqueue(UiCore::Event.Quit) and UiEvents::pending() == UiEvents::EVENT_QUEUE_CAPACITY)
     full: UiEvents::Snapshot = UiEvents::snapshot()
     check("queue exposes loss", full.overflowed and full.dropped == 1)
+
+    # Lifecycle transitions have priority over stale physical input when a
+    # synchronous callback fills the bounded ring. The input loss remains
+    # visible, but focus loss itself must still reach the dispatcher so a
+    # flat tree can release pointer/keyboard capture.
+    UiEvents::reset()
+    for index in 0..<UiEvents::EVENT_QUEUE_CAPACITY:
+        _ = UiEvents::enqueue(UiCore::PointerEvent.Move(at: UiCore::Vec2(index.f32(), 0.0)))
+    check("full queue admits authoritative focus loss", UiEvents::enqueue(UiCore::Event.FocusLost) and UiEvents::pending() == UiEvents::EVENT_QUEUE_CAPACITY and UiEvents::dropped() == 1)
+    check("authoritative focus loss replaces the oldest input", UiEvents::dequeue(out) and UiCore::wire_kind(out) == UiCore::WireKind.FocusLost)
+
     UiEvents::reset()
     check("reset clears loss state", UiEvents::pending() == 0 and not UiEvents::overflowed())
 
