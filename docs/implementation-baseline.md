@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `ea2d6a4` (`perf(appkit): index semantic history ids`) on branch `work` |
+| elisa-ui revision | `fc157d7` (`perf(text): cache frame-local line metrics`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -94,6 +94,9 @@ color policy in `ui_flat_style.elisa`, shared `UiTheme` palette adaptation in
 boundary walker in `ui_text_grapheme.elisa` (199 lines), and legacy callback lowering in
 `ui_flat_events.elisa`. The flat editor and line planner both use that single
 UiText-owned walker, so wrapping cannot split a combining or ZWJ cluster. The
+frame-local line-height cache in `ui_text_metrics.elisa` keeps repeated widget
+painting metrics in Elisa while resetting at each paint boundary. The AppKit
+canvas flat adapter keeps its externally
 AppKit canvas flat adapter keeps its externally
 mandated export declarations in `ui_appkit_canvas_flat_exports.elisa`, separate
 from callback policy. The AppKit controls backend is

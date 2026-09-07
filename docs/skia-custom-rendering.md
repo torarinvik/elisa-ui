@@ -50,7 +50,11 @@ passing any opaque canvas, image, or typeface handle across the boundary.
 Canvas-independent Skia text metrics live in the focused
 `ui_skia_text.elisa` extension. The facade keeps only replay-time text drawing,
 while measurement, ascent, and line-height queries share one bounded FFI
-authority that layout can call before a surface exists.
+authority that layout can call before a surface exists. Widget painting wraps
+the line-height query in the frame-local Elisa-owned `UiTextMetrics` cache, so
+repeated controls reuse the backend result without retaining a font or Skia
+object across frames; a paint reset is the explicit invalidation boundary for
+font and scale changes.
 
 Direct geometry calls and replayed commands share the private
 `ui_skia_geometry.elisa` policy. Coordinates and extents are finite and capped,

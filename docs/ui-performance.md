@@ -24,6 +24,11 @@ links the checked-in Elisa runtime, and reports nanoseconds for five phases:
 - text input: focus a retained field and commit a UTF-8 `é👋` sequence 16 times
   per iteration, repeated 32 times (including edit-history bookkeeping).
 
+Typography queries are cached in Elisa for the duration of each paint. The
+bounded `UiTextMetrics` table removes repeated line-height FFI calls while its
+paint-boundary reset keeps a new font or scale from reusing a prior frame's
+metric.
+
 The large-tree assertion verifies 221 retained widgets and at least one paint
 command per widget; its semantic pass also exercises the Elisa-owned ID index.
 `peak_rss_bytes` is the process high-water mark (Darwin's
