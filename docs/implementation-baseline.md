@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `1dfaa2405a53a64505ddffb5684bdd72f8aad745` on branch `work` |
+| elisa-ui revision | `b9f4b8bfda9d05ba5f65bd3f275f45ef08ec4199` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -67,8 +67,9 @@ accessibility, input, render, window, and callback modules are all below 400
 lines; the ready-to-use flat adapter is 348 lines (with text-command routing
 isolated in `ui_appkit_canvas_text.elisa`, 90 lines). The clipboard cache and
 transient text buffers are isolated in `ui_appkit_canvas_clipboard.elisa`, 66
-lines. The retained native-control adapter (`ui_controls.elisa`) is 401 lines
-and owns bounded caption storage.
+lines. The retained native-control arena (`ui_controls.elisa`) is 290 lines;
+its widget-to-control policy is isolated in `ui_controls_policy.elisa`, 102
+lines. Together they own bounded caption storage and native-control state.
 The flat widget compatibility
 facade (`ui_widget.elisa`, 23 lines) now delegates to cohesive state, layout,
 input, text, scrolling, and painting modules, each below 400 lines. The AppKit controls backend is
