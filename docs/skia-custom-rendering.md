@@ -56,6 +56,9 @@ borrowed `SkTypeface*` only for a ready font generation, while bounded text
 geometry and resource lifetime remain Elisa/SDK responsibilities. The matching
 `measure_ready_text_width`, `ready_font_ascent`, and `ready_font_line_height`
 queries use that same borrowed typeface, avoiding a default-font metric mismatch.
+`bind_font`/`draw_bound_text` provide the stricter generation-keyed form for
+hosts that keep decoded typefaces in a resource cache; bound metric queries use
+the same association.
 
 The checkout does not currently pin or vendor a Skia SDK. Build the C++ shim
 only in a target that supplies Skia headers and libraries, then pass its
