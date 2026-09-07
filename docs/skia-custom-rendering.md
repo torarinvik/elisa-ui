@@ -42,8 +42,9 @@ primitive adapter rather than a second, drifting geometry policy.
 Custom controls can use `UiSkia::push_transform()` and
 `UiSkia::pop_transform()` for translated/scaled drawing scopes. The
 `ui_skia_transform.elisa` extension owns finite offset/positive-scale
-normalization and a shared save-depth ledger; detach and surface loss restore
-any forgotten scopes before the borrowed canvas is released.
+normalization, plus `push_rotation()` for finite degree-based rotation, and a
+shared save-depth ledger; detach and surface loss restore any forgotten scopes
+before the borrowed canvas is released.
 
 `UiSkia::surface_lost()` explicitly invalidates the borrowed canvas without
 discarding retained commands or logical resources. `surface_generation()`
