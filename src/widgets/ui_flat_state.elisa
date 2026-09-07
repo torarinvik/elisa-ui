@@ -265,13 +265,13 @@ extend UiFlat:
                 return
             cursor: mutable usize = widgets[parent].first_child
             return if cursor == child
-            sibling_steps: mutable usize = 0
-            while cursor < widget_count and widgets[cursor].next_sibling != NONE |cursor, sibling_steps|:
-                return if sibling_steps >= MAX_TRAVERSAL_SIBLINGS
-                sibling_steps <- sibling_steps + 1
+            for _ in 0..<MAX_TRAVERSAL_SIBLINGS:
+                break if cursor >= widget_count or widgets[cursor].next_sibling == NONE
                 cursor <- widgets[cursor].next_sibling
                 return if cursor == child
-            return if cursor >= widget_count
+            # A valid chain that still has a successor exhausted the bounded
+            # scan. Do not append after a possible cycle or malformed tail.
+            return if cursor >= widget_count or widgets[cursor].next_sibling != NONE
             widgets[cursor].next_sibling <- child
             widgets[child].parent <- parent
 
