@@ -1,0 +1,159 @@
+# Resource requests, completion transitions, retry, and owner teardown.
+
+extend UiResources:
+    public:
+        def reset() -> void:
+            for slot in 0..<MAX_RESOURCES:
+                next_generation: u32 = resource_generations[slot] + 1
+                resource_generations[slot] <- 1 if next_generation == 0 else next_generation
+                resource_states[slot] <- State.Unrequested
+                resource_failure_kinds[slot] <- FailureKind.Unknown
+                resource_owners[slot] <- 0
+                resource_identifier_lengths[slot] <- 0
+                for byte_index in 0..<IDENTIFIER_CAPACITY:
+                    resource_identifier_storage[slot * IDENTIFIER_CAPACITY + byte_index] <- 0
+                UiResources::clear_metadata(slot)
+                resource_downloaded[slot] <- 0.0
+                resource_decoded[slot] <- 0.0
+                resource_demanded[slot] <- false
+                resource_priorities[slot] <- 0
+            resource_count <- 0
+            resource_overflowed <- false
+            UiCore::clear_invalidations(UiCore::Invalidation.Resources)
+            UiCore::invalidate(UiCore::Invalidation.Resources)
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+
+        # Requesting a key is idempotent while its record is alive. This keeps
+        # per-frame view rebuilds from starting duplicate host work. A
+        # cancelled record can be requested again, but that starts a new host
+        # operation and therefore rotates its generation.
+        def request(key: sview, owner: u32) -> Handle:
+            safe_key: sview = UiCore::bounded_text(key)
+            return invalid() if safe_key.len <= 0 or safe_key.len >= IDENTIFIER_CAPACITY.i64()
+            for slot in 0..<resource_count:
+                if resource_states[slot] != State.Unrequested and key_matches(slot, safe_key):
+                    resource_owners[slot] <- owner
+                    if resource_states[slot] == State.Cancelled:
+                        next_generation: u32 = resource_generations[slot] + 1
+                        resource_generations[slot] <- 1 if next_generation == 0 else next_generation
+                        resource_states[slot] <- State.Requested
+                        resource_failure_kinds[slot] <- FailureKind.Unknown
+                        resource_downloaded[slot] <- 0.0
+                        resource_decoded[slot] <- 0.0
+                        # Demand hints belong to the cancelled host operation.
+                        resource_demanded[slot] <- false
+                        resource_priorities[slot] <- 0
+                        mark_changed()
+                    return make_handle(slot)
+
+            free_slot: mutable usize = MAX_RESOURCES
+            for slot in 0..<MAX_RESOURCES:
+                if resource_states[slot] == State.Unrequested:
+                    free_slot <- slot
+                    break
+            if free_slot == MAX_RESOURCES:
+                resource_overflowed <- true
+                return invalid()
+
+            generation: u32 = resource_generations[free_slot]
+            resource_generations[free_slot] <- 1 if generation == 0 else generation
+            offset: usize = free_slot * IDENTIFIER_CAPACITY
+            for index in 0..<IDENTIFIER_CAPACITY:
+                resource_identifier_storage[offset + index] <- safe_key.data[index] if index < safe_key.len else 0
+            resource_identifier_lengths[free_slot] <- safe_key.len.usize()
+            resource_owners[free_slot] <- owner
+            resource_states[free_slot] <- State.Requested
+            resource_downloaded[free_slot] <- 0.0
+            resource_decoded[free_slot] <- 0.0
+            resource_demanded[free_slot] <- false
+            resource_priorities[free_slot] <- 0
+            resource_count <- free_slot + 1 if free_slot >= resource_count else resource_count
+            mark_changed()
+            return make_handle(free_slot)
+
+        # Transport failures may be retried; corrupt or incompatible bytes
+        # require a package update or host/toolchain change.
+        def fail(handle: Handle, kind: FailureKind) -> bool:
+            return false if not is_valid(handle) or not failure_kind_is_valid(kind)
+            slot: usize = handle.slot.usize()
+            return false if resource_states[slot] == State.Ready or resource_states[slot] == State.Cancelled
+            resource_states[slot] <- State.Failed
+            resource_failure_kinds[slot] <- kind
+            mark_changed()
+            return true
+
+        def set_state(handle: Handle, next: State) -> bool:
+            return false if not is_valid(handle) or not state_is_valid(next)
+            slot: usize = handle.slot.usize()
+            return false if resource_states[slot] == State.Cancelled
+            # Requested starts a new host operation and must rotate its
+            # generation through request() or retry(), never in place.
+            return false if next == State.Requested
+            return false if resource_states[slot] == next
+            resource_states[slot] <- next
+            if next == State.Cancelled:
+                resource_demanded[slot] <- false
+                resource_priorities[slot] <- 0
+            resource_failure_kinds[slot] <- FailureKind.RetryableTransport if next == State.Failed else FailureKind.Unknown
+            if next == State.Ready:
+                resource_downloaded[slot] <- 1.0
+                resource_decoded[slot] <- 1.0
+            mark_changed()
+            return true
+
+        def cancel(handle: Handle) -> bool:
+            return set_state(handle, State.Cancelled)
+
+        # Start a recoverable resource operation with a fresh generation. The
+        # returned handle must replace the caller's old handle.
+        def retry(handle: Handle) -> Handle:
+            return invalid() if not is_valid(handle) or not can_retry(handle)
+            slot: usize = handle.slot.usize()
+            next_generation: u32 = resource_generations[slot] + 1
+            resource_generations[slot] <- 1 if next_generation == 0 else next_generation
+            resource_states[slot] <- State.Requested
+            resource_failure_kinds[slot] <- FailureKind.Unknown
+            resource_downloaded[slot] <- 0.0
+            resource_decoded[slot] <- 0.0
+            resource_demanded[slot] <- false
+            resource_priorities[slot] <- 0
+            mark_changed()
+            return make_handle(slot)
+
+        # Disposal invalidates the generation before releasing the identifier.
+        def dispose(handle: Handle) -> bool:
+            return false if not is_valid(handle)
+            slot: usize = handle.slot.usize()
+            clear_slot(slot)
+            while resource_count > 0 and resource_states[resource_count - 1] == State.Unrequested:
+                resource_count <- resource_count - 1
+            mark_changed()
+            return true
+
+        # View teardown commonly owns several assets. Dispose them together so
+        # every token is invalidated before a slot can be reused.
+        def dispose_owner(owner: u32) -> usize:
+            released: mutable usize = 0
+            for slot in 0..<resource_count:
+                if resource_states[slot] != State.Unrequested and resource_owners[slot] == owner:
+                    clear_slot(slot)
+                    released <- released + 1
+            while resource_count > 0 and resource_states[resource_count - 1] == State.Unrequested:
+                resource_count <- resource_count - 1
+            mark_changed() if released > 0
+            return released
+
+        # Cancellation keeps the logical record available for a re-request.
+        def cancel_owner(owner: u32) -> usize:
+            cancelled: mutable usize = 0
+            for slot in 0..<resource_count:
+                if resource_states[slot] != State.Unrequested and resource_owners[slot] == owner and resource_states[slot] != State.Cancelled:
+                    resource_states[slot] <- State.Cancelled
+                    resource_failure_kinds[slot] <- FailureKind.Unknown
+                    resource_downloaded[slot] <- 0.0
+                    resource_decoded[slot] <- 0.0
+                    resource_demanded[slot] <- false
+                    resource_priorities[slot] <- 0
+                    cancelled <- cancelled + 1
+            mark_changed() if cancelled > 0
+            return cancelled

@@ -1,0 +1,68 @@
+# Resource counts and read-only state queries.
+
+extend UiResources:
+    public:
+        def count() -> usize:
+            total: mutable usize = 0
+            for slot in 0..<resource_count:
+                total <- total + 1 if resource_states[slot] != State.Unrequested
+            return total
+
+        def overflowed() -> bool:
+            return resource_overflowed
+
+        def snapshot() -> Snapshot:
+            requested_count: mutable usize = 0
+            ready_count: mutable usize = 0
+            offline_count: mutable usize = 0
+            denied_count: mutable usize = 0
+            failed_count: mutable usize = 0
+            cancelled_count: mutable usize = 0
+            for slot in 0..<resource_count:
+                if resource_states[slot] == State.Requested:
+                    requested_count <- requested_count + 1
+                elif resource_states[slot] == State.Ready:
+                    ready_count <- ready_count + 1
+                elif resource_states[slot] == State.UnavailableOffline:
+                    offline_count <- offline_count + 1
+                elif resource_states[slot] == State.Denied:
+                    denied_count <- denied_count + 1
+                elif resource_states[slot] == State.Failed:
+                    failed_count <- failed_count + 1
+                elif resource_states[slot] == State.Cancelled:
+                    cancelled_count <- cancelled_count + 1
+            return Snapshot{total: count(), requested: requested_count,
+                ready: ready_count, unavailable_offline: offline_count,
+                denied: denied_count, failed: failed_count,
+                cancelled: cancelled_count, overflowed: resource_overflowed}
+
+        def state(handle: Handle) -> State:
+            return State.Unrequested if not is_valid(handle)
+            return resource_states[handle.slot.usize()]
+
+        def failure(handle: Handle) -> FailureKind:
+            return FailureKind.Unknown if not is_valid(handle)
+            return resource_failure_kinds[handle.slot.usize()]
+
+        def can_retry(handle: Handle) -> bool:
+            return false if not is_valid(handle)
+            current: State = resource_states[handle.slot.usize()]
+            return current == State.UnavailableOffline or current == State.Denied or (current == State.Failed and resource_failure_kinds[handle.slot.usize()] == FailureKind.RetryableTransport)
+
+        def owner(handle: Handle) -> u32:
+            return 0 if not is_valid(handle)
+            return resource_owners[handle.slot.usize()]
+
+        def identifier(handle: Handle) -> sview:
+            return "" if not is_valid(handle)
+            slot: usize = handle.slot.usize()
+            offset: usize = slot * IDENTIFIER_CAPACITY
+            return sview(&resource_identifier_storage[offset], 0, resource_identifier_lengths[slot].i64())
+
+        def downloaded_progress(handle: Handle) -> f32:
+            return 0.0 if not is_valid(handle)
+            return resource_downloaded[handle.slot.usize()]
+
+        def decoded_progress(handle: Handle) -> f32:
+            return 0.0 if not is_valid(handle)
+            return resource_decoded[handle.slot.usize()]

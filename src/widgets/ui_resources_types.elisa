@@ -1,0 +1,51 @@
+# Resource identities, lifecycle values, and fixed-capacity storage.
+
+include "../core/ui_core.elisa"
+
+module UiResources:
+    public:
+        const MAX_RESOURCES: usize = 128
+        const IDENTIFIER_CAPACITY: usize = 256
+
+        const enum State of i32:
+            Unrequested = 0
+            Requested = 1
+            Ready = 2
+            UnavailableOffline = 3
+            Denied = 4
+            Failed = 5
+            Cancelled = 6
+
+        const enum FailureKind of i32:
+            Unknown = 0
+            RetryableTransport = 1
+            Corrupt = 2
+            Incompatible = 3
+
+        struct Handle:
+            slot: u32
+            generation: u32
+
+        struct Snapshot:
+            total: usize
+            requested: usize
+            ready: usize
+            unavailable_offline: usize
+            denied: usize
+            failed: usize
+            cancelled: usize
+            overflowed: bool
+
+    private:
+        global mutable resource_count: usize = 0
+        global mutable resource_overflowed: bool = false
+        global mutable resource_generations: u32[MAX_RESOURCES] = zeroed
+        global mutable resource_states: State[MAX_RESOURCES] = zeroed
+        global mutable resource_failure_kinds: FailureKind[MAX_RESOURCES] = zeroed
+        global mutable resource_owners: u32[MAX_RESOURCES] = zeroed
+        global mutable resource_identifier_lengths: usize[MAX_RESOURCES] = zeroed
+        global mutable resource_identifier_storage: u8[MAX_RESOURCES * IDENTIFIER_CAPACITY] = zeroed
+        global mutable resource_downloaded: f32[MAX_RESOURCES] = zeroed
+        global mutable resource_decoded: f32[MAX_RESOURCES] = zeroed
+        global mutable resource_demanded: bool[MAX_RESOURCES] = zeroed
+        global mutable resource_priorities: u32[MAX_RESOURCES] = zeroed
