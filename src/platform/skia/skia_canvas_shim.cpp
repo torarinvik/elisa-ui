@@ -53,7 +53,9 @@ SkFont font_for(float size) {
 
 SkFont font_for(float size, SkTypeface *typeface) {
     SkFont font = font_for(size);
-    font.setTypeface(typeface);
+    // The FFI handle is borrowed, while SkFont stores an owning sk_sp. Hold a
+    // temporary ref for the font's lifetime without transferring host ownership.
+    font.setTypeface(sk_ref_sp(typeface));
     return font;
 }
 
