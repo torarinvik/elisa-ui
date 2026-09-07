@@ -55,6 +55,16 @@ def null_clipboard_read_is_ignored() -> bool can Unsafe.PointerCast:
 def main() -> i64:
     check("SDL rejects a null clipboard write buffer", null_clipboard_write_is_rejected())
     check("SDL ignores a null clipboard read buffer", null_clipboard_read_is_ignored())
+    # A cached native snapshot belongs to the lifecycle generation that read
+    # it. Starting a replacement session must scrub and invalidate that cache
+    # before another `has_text`/paste decision can observe it.
+    UiLifecycle::reset()
+    sdl_flat_clipboard_read[0] <- 115
+    sdl_flat_clipboard_length <- 1
+    sdl_flat_clipboard_cache_valid <- true
+    sdl_flat_clipboard_generation <- UiLifecycle::generation()
+    _ = UiLifecycle::begin()
+    check("SDL clipboard cache is generation-scoped", not sdl_flat_clipboard_cache_current() and not sdl_flat_clipboard_cache_valid and sdl_flat_clipboard_length == 0 and sdl_flat_clipboard_read[0] == 0)
     if not TTF_Init():
         _ = puts(SDL_GetError())
         return 2
