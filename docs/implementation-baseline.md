@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `467f2a8` (`fix(skia): present into logical AppKit bounds`) on branch `work` |
+| elisa-ui revision | `197e763` (`perf(ui): add headless retained-tree benchmark gate`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -207,6 +207,9 @@ scripts/check_skia.sh
   Elisa painter and pinned Skia host bridge compile headlessly: PASS
 scripts/check_appkit_skia.sh (with the pinned checkout configured)
   optional AppKit/Skia compositor and bitmap-context fixture: PASS
+ELISA_UI_STAGE1=../wasm-sdk-compiler bash scripts/check_performance.sh
+  retained-tree build, relayout, paint, Unicode text, large-tree capacity,
+  and RSS safety gate: PASS
 git diff --check: PASS
 ```
 
