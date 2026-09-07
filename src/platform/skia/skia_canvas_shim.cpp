@@ -89,14 +89,6 @@ extern "C" void elisa_skia_canvas_clear(std::size_t handle, std::uint8_t red, st
     if (SkCanvas *target = canvas(handle)) target->clear(color(red, green, blue, alpha));
 }
 
-extern "C" void elisa_skia_canvas_fill_rect(std::size_t handle, float x, float y, float width, float height,
-                                             std::uint8_t red, std::uint8_t green, std::uint8_t blue,
-                                             std::uint8_t alpha) {
-    if (SkCanvas *target = canvas(handle)) {
-        target->drawRect(SkRect::MakeXYWH(x, y, width, height), fill_paint(red, green, blue, alpha));
-    }
-}
-
 extern "C" void elisa_skia_canvas_fill_round_rect(std::size_t handle, float x, float y, float width,
                                                     float height, float radius, std::uint8_t red,
                                                     std::uint8_t green, std::uint8_t blue,

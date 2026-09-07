@@ -12,7 +12,6 @@ static int scale_count;
 static int translate_count;
 static int clip_count;
 static int clear_count;
-static int rect_count;
 static int round_rect_count;
 static int stroke_round_rect_count;
 static int shadow_round_rect_count;
@@ -41,12 +40,6 @@ void elisa_skia_canvas_clip_rect(size_t canvas, float x, float y, float width, f
 void elisa_skia_canvas_clear(size_t canvas, uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha) {
     (void)red; (void)green; (void)blue; (void)alpha;
     if (canvas != 0) clear_count += 1;
-}
-void elisa_skia_canvas_fill_rect(size_t canvas, float x, float y, float width, float height,
-                                 uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha) {
-    (void)x; (void)y; (void)width; (void)height;
-    (void)red; (void)green; (void)blue; (void)alpha;
-    if (canvas != 0) rect_count += 1;
 }
 void elisa_skia_canvas_fill_round_rect(size_t canvas, float x, float y, float width,
                                        float height, float radius, uint8_t red,
@@ -124,7 +117,7 @@ float elisa_skia_text_line_height_with_font(size_t font, float size) { return fo
 
 void skia_test_reset(void) {
     save_count = 0; restore_count = 0; scale_count = 0; translate_count = 0; clip_count = 0;
-    clear_count = 0; rect_count = 0; round_rect_count = 0; stroke_round_rect_count = 0; shadow_round_rect_count = 0; image_count = 0; circle_count = 0; triangle_count = 0;
+    clear_count = 0; round_rect_count = 0; stroke_round_rect_count = 0; shadow_round_rect_count = 0; image_count = 0; circle_count = 0; triangle_count = 0;
     line_count = 0; text_count = 0; last_round_radius = 0.0f; last_image_sampling = 1;
 }
 int skia_test_save_count(void) { return save_count; }
@@ -133,7 +126,6 @@ int skia_test_scale_count(void) { return scale_count; }
 int skia_test_translate_count(void) { return translate_count; }
 int skia_test_clip_count(void) { return clip_count; }
 int skia_test_clear_count(void) { return clear_count; }
-int skia_test_rect_count(void) { return rect_count; }
 int skia_test_round_rect_count(void) { return round_rect_count; }
 int skia_test_stroke_round_rect_count(void) { return stroke_round_rect_count; }
 int skia_test_shadow_round_rect_count(void) { return shadow_round_rect_count; }
