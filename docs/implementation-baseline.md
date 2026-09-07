@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `b4a92cc9d310ee53980e7d5548c41292af241a63` on branch `work` |
+| elisa-ui revision | `77bb378e114ee8a86eaf58714b6c320203f1465e` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -337,6 +337,10 @@ separate host-enforced security boundary.
 - Immediate Skia custom drawing now has a dedicated `ui_skia_clip.elisa`
   extension. It rejects empty clips before FFI and shares the transform/frame
   save-depth ledger, with headless coverage for direct clip balance and cleanup.
+- `ui_skia_state.elisa` now exposes an immutable Skia renderer snapshot and
+  balance predicate covering attachment generation, save/clip/transform depth,
+  and active image/font bindings; the headless fixture verifies detached
+  surface state and cleared bindings without exposing native pointers.
 - Callback entry points are lifetime-guarded: if an application handler resets
   the flat tree, post-callback history, composition, activation, adjustment, and
   radio state updates are abandoned instead of touching recycled slots. This is

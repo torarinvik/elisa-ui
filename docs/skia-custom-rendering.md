@@ -52,6 +52,12 @@ Skia, and clip saves share the same ledger as transforms and the attachment
 frame, so retained replay and custom scopes cannot drift in their restoration
 rules.
 
+`UiSkia::snapshot()` is a read-only diagnostic record for attachment/generation,
+save depth, clip/transform depth, and active image/font bindings;
+`UiSkia::is_balanced()` provides the corresponding invariant check. These
+diagnostics expose lifecycle facts without handing hosts mutable state or native
+object pointers.
+
 `UiSkia::surface_lost()` explicitly invalidates the borrowed canvas without
 discarding retained commands or logical resources. `surface_generation()`
 advances on loss and every new attachment, giving a host a cheap stale-surface
