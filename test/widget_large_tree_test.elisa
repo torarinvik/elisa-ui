@@ -1,0 +1,50 @@
+# Capacity and adversarial-geometry regression for the fixed retained arena.
+# This deliberately paints the maximum semantic tree headlessly so a change to
+# semantic ordering or stack usage cannot hide behind the small visual samples.
+
+include "./widget_layout_support.elisa"
+
+def main() -> i64:
+    UiFlat::reset()
+    root: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 4.0, 1.0, UiCore::rgb(12, 16, 24))
+    for index in 0..<UiFlat::MAX_WIDGETS - 1:
+        row: usize = UiFlat::label(root, "retained row • café 👋", 14.0, UiCore::rgb(230, 235, 245))
+        UiFlat::set_margin(row, 1.0) if index % 3 == 0
+    UiFlat::layout(1024.0, 4096.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("large tree reaches fixed widget capacity", UiFlat::count() == UiFlat::MAX_WIDGETS)
+    check("large semantic tree remains bounded", UiCore::accessibility_count() == UiFlat::MAX_WIDGETS - 1)
+    check("large tree paints every retained row", UiCore::command_count() == UiFlat::MAX_WIDGETS)
+    dropped: usize = UiFlat::label(root, "overflow", 14.0, UiCore::rgb(230, 235, 245))
+    check("arena overflow returns the missing sentinel", dropped == UiFlat::NONE and UiFlat::count() == UiFlat::MAX_WIDGETS and UiFlat::overflowed())
+
+    # Hostile extents are normalized before layout and paint, so a malformed
+    # foreign value cannot create a negative frame or a non-finite command.
+    UiFlat::reset()
+    hostile_root: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Row, -3.0e38, 3.0e38, UiCore::rgb(1, 2, 3))
+    hostile_child: usize = UiFlat::button(hostile_root, -3.0e38, 3.0e38, UiCore::rgb(4, 5, 6), UiCore::rgb(7, 8, 9), UiCore::rgb(10, 11, 12))
+    UiFlat::layout(640.0, 480.0)
+    hostile: UiFlat::Widget = UiFlat::widget(hostile_child)
+    check("hostile geometry clamps to finite nonnegative extents", hostile.width >= 0.0 and hostile.height >= 0.0 and hostile.width <= UiCore::MAX_GEOMETRY_EXTENT and hostile.height <= UiCore::MAX_GEOMETRY_EXTENT)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("hostile geometry still produces a bounded frame", UiCore::command_count() <= UiCore::MAX_COMMANDS)
+
+    # Rebuilding repeatedly must scrub the previous tree and keep the lifetime
+    # token advancing, without requiring a native surface or allocator.
+    previous_lifetime: usize = UiFlat::lifetime()
+    for _ in 0..<8:
+        UiFlat::reset()
+        rebuilt: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 0.0, 0.0, UiCore::rgb(20, 20, 20))
+        _ = UiFlat::label(rebuilt, "rebuild", 12.0, UiCore::rgb(255, 255, 255))
+        UiFlat::layout(320.0, 200.0)
+        UiCore::begin_frame()
+        UiFlat::paint()
+    check("repeated view creation advances lifetime", UiFlat::lifetime() > previous_lifetime)
+
+    if test_failures == 0:
+        _ = puts("widget large tree: all checks passed")
+        return 0
+    _ = puts("widget large tree: FAILURES above")
+    return 1
