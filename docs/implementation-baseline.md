@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `93d56bb66bb0dd30558df66fec0c5ae5ea0a53cf` on branch `work` |
+| elisa-ui revision | `6d96ebacc32ffaaa129c08c9f092cd3809ee7474` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -215,8 +215,8 @@ headless FFI shim, including clip and scale balancing and stale-handle cleanup.
 Skia retained rectangles use an Elisa-bounded rounded-corner policy and a
 narrow `SkRRect` primitive without changing the six-command wire format.
 The same policy emits a narrow white hairline stroke; shadows remain explicitly
-implemented as a target-specific Skia blur primitive with opacity/radius policy
-still owned by Elisa.
+implemented as a target-specific Skia blur primitive with opacity, offset, and
+blur constants owned by the private `ui_skia_style.elisa` extension.
 `UiPaint::rounded_rect_style` is the single Elisa-owned style policy consumed
 by both the Skia painter and the CoreGraphics fallback, so radius/elevation and
 hairline values cannot drift between custom backends.
@@ -354,6 +354,9 @@ separate host-enforced security boundary.
 - The typed Skia render status is also exported through normal and scaled
   one-shot C entry points, preserving legacy void exports while making
   no-surface and command-overflow outcomes observable to hosts.
+- Skia shadow blur and offsets now cross the FFI as explicit arguments selected
+  by Elisa; the C++ bridge constructs only the target-specific `SkPaint` effect
+  and no longer embeds appearance defaults.
 - Callback entry points are lifetime-guarded: if an application handler resets
   the flat tree, post-callback history, composition, activation, adjustment, and
   radio state updates are abandoned instead of touching recycled slots. This is
