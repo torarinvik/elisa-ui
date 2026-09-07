@@ -113,10 +113,11 @@ call records an Elisa-owned side-band style bit, and replay passes that bit to
 `UiPaint::rounded_rect_style()` so only intentional control surfaces receive
 the elevated shadow. The same style policy is consumed by both the Skia and
 CoreGraphics custom painters; custom controls can request an explicit radius
-through `UiSkia::fill_rounded_rect()`. Skia's private
-`ui_skia_style.elisa` extension supplies the shadow offset, blur, and 1px
-hairline constants through explicit FFI arguments, leaving the C++ bridge to
-construct only the target-specific `SkPaint` effect. Non-positive stroke widths
+through `UiSkia::fill_rounded_rect()`. `UiPaint::RoundedRectStyle` owns the
+shadow offset, blur, hairline width, and alpha values shared by both custom
+painters; the private `ui_skia_style.elisa` extension only translates that
+record into explicit FFI arguments, leaving the C++ bridge to construct the
+target-specific `SkPaint` effect. Non-positive stroke widths
 are rejected by the bridge instead of receiving an undocumented fallback.
 Rounded radii are constrained by `ui_skia_geometry.elisa` before crossing the
 ABI; the bridge forwards those values directly to `SkRRect` without a second

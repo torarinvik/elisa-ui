@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `4e40990` (`refactor(skia): move backing scale policy into Elisa`) on branch `work` |
+| elisa-ui revision | `9b7e88b` (`refactor(paint): share custom style constants in Elisa`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -270,9 +270,9 @@ Skia retained rectangles use an Elisa-bounded rounded-corner policy and a
 narrow `SkRRect` primitive without changing the six-command wire format.
 The same policy emits a narrow white hairline stroke; shadows remain explicitly
 implemented as a target-specific Skia blur primitive with opacity, offset, and
-blur constants owned by the private `ui_skia_style.elisa` extension. Hairline
-width is passed through that same extension, so stroke weight is not invented
-by the C++ bridge.
+blur values selected by the shared Elisa style record. The private
+`ui_skia_style.elisa` extension lowers those values to FFI arguments, so neither
+stroke weight nor shadow appearance is invented by the C++ bridge.
 `UiPaint::rounded_rect_style` is the single Elisa-owned style policy consumed
 by both the Skia painter and the CoreGraphics fallback, so radius/elevation and
 hairline values cannot drift between custom backends. Elevation is now an
@@ -517,6 +517,9 @@ separate host-enforced security boundary.
   to Elisa, where `UiCore::backing_scale` selects the finite
   aspect-preserving scale. The C++ host retains only pixel-extent validation,
   temporary-surface allocation, and CoreGraphics presentation.
+- Shared custom-painter constants now live in `UiPaint::RoundedRectStyle`.
+  CoreGraphics and Skia consume the same Elisa-owned shadow, hairline, radius,
+  and alpha values; the Skia extension only lowers them to its primitive FFI.
 - Direct Skia text drawing now goes through the same Elisa sanitization as
   retained replay, keeping custom-control escape hatches bounded and UTF-8
   safe without duplicating policy in the bridge.
