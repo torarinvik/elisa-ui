@@ -1,0 +1,27 @@
+# Shared back-fact translation for native and hosted adapters.
+#
+# A platform reports one raw back fact (Escape, a button, or a gesture). Modal
+# dialogs take precedence, then the application-owned navigation stack decides
+# whether the fact is unhandled, navigates, asks for confirmation, or is
+# consumed. Adapters only map this result to their host-specific action.
+
+include "./ui_dialog.elisa"
+include "./ui_navigation.elisa"
+
+module UiBack:
+    public:
+        const enum Action of i32:
+            Unhandled = 0
+            Navigate = 1
+            Confirm = 2
+            Consumed = 3
+
+        def request() -> Action:
+            if UiDialog::snapshot().active > 0:
+                _ = UiDialog::back()
+                return Action.Consumed
+            decision: UiNavigation::BackDecision = UiNavigation::request_back()
+            return Action.Navigate if decision == UiNavigation::BackDecision.Navigate
+            return Action.Confirm if decision == UiNavigation::BackDecision.Confirm
+            return Action.Consumed if decision == UiNavigation::BackDecision.Consumed
+            return Action.Unhandled

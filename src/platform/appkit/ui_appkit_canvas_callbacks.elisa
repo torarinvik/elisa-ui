@@ -1,6 +1,6 @@
 # C callbacks from ElisaCanvasView. Top-level because the Objective-C ABI names them.
 
-include "../../widgets/ui_dialog.elisa"
+include "../../widgets/ui_back.elisa"
 
 # AppKit callbacks are synchronous. An application callback can therefore
 # dispatch another event before the outer callback has returned. Keep one
@@ -149,9 +149,12 @@ def appkit_canvas_key_callback(window_handle: usize, down: i32, code: i32) -> vo
     # malformed foreign value cannot turn into an accidental key-down (and,
     # in particular, cannot close the window through Escape).
     return if not appkit_canvas_boolean_flag_is_valid(down)
-    if appkit_canvas_should_close_key(down, code):
-        UiAppKitCanvas::close()
-        return
+    if down == 1 and code == UiCore::Key.Escape.i32() and UiLifecycle::accepts_input():
+        back_action: UiBack::Action = UiBack::request()
+        if back_action == UiBack::Action.Unhandled:
+            UiAppKitCanvas::close()
+            return
+        return if back_action == UiBack::Action.Consumed
     return if not UiCore::key_is_valid(code)
     event: UiCore::Event = (UiCore::KeyEvent.Down(code: UiCore::Key(code))) if down == 1 else (UiCore::KeyEvent.Up(code: UiCore::Key(code)))
     appkit_canvas_dispatch_input_event(event)
@@ -162,13 +165,7 @@ def appkit_canvas_key_callback(window_handle: usize, down: i32, code: i32) -> vo
 # an inactive/background window cannot close itself from a late key callback.
 def appkit_canvas_should_close_key(down: i32, code: i32) -> bool:
     return false if down != 1 or code != UiCore::Key.Escape.i32() or not UiLifecycle::accepts_input()
-    # Escape is the desktop spelling of back navigation. A live modal gets the
-    # first chance to consume it; only an unmodalized canvas reaches the native
-    # close action. The dialog state and its typed Back result stay in Elisa.
-    if UiDialog::snapshot().active > 0:
-        _ = UiDialog::back()
-        return false
-    return true
+    return UiBack::request() == UiBack::Action.Unhandled
 
 def appkit_canvas_raw_key_callback(window_handle: usize, down: i32, key_code: i32, character: i32) -> void:
     return if not UiAppKitCanvas::live() or window_handle != UiAppKitCanvas::window_handle()

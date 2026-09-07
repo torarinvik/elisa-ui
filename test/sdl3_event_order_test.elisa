@@ -17,6 +17,7 @@ global mutable failures: i32 = 0
 global mutable saw_text: bool = false
 global mutable saw_quit: bool = false
 global mutable modal: UiDialog::Handle = zeroed
+global mutable nav: UiNavigation::Handle = zeroed
 
 def push_key() -> void:
     event: mutable u64[16] = zeroed
@@ -39,6 +40,9 @@ def push_escape() -> void:
 def app_init() -> void:
     UiDialog::reset()
     modal <- UiDialog::open(UiDialog::Kind.Alert, "Close", "Dismiss", "OK", "", 4)
+    push_escape()
+    UiNavigation::reset()
+    nav <- UiNavigation::push(5, UiNavigation::BackPolicy.Consume, false)
     push_escape()
     for index in 0..<300:
         push_key()
@@ -77,9 +81,10 @@ def app_frame() -> void:
 def main() -> i64:
     _ = SDL_setenv_unsafe("SDL_VIDEODRIVER", "dummy", 1)
     result: i64 = UiSdl3::run("headless event regression", 64, 64, 1)
-    if result != 0 or not saw_text or not saw_quit or received_keys != 300 or UiEvents::dropped() != 0 or UiDialog::result(modal) != UiDialog::Result.Back or UiDialog::is_open(modal):
+    if result != 0 or not saw_text or not saw_quit or received_keys != 300 or UiEvents::dropped() != 0 or UiDialog::result(modal) != UiDialog::Result.Back or UiDialog::is_open(modal) or not UiNavigation::is_valid(nav):
         failures <- failures + 1
     _ = UiDialog::dispose(modal)
+    _ = UiNavigation::dismiss_owner(5)
     if failures == 0:
         _ = puts("SDL event ordering: passed")
     return failures.i64()
