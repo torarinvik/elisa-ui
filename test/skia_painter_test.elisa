@@ -1,0 +1,60 @@
+# Headless runtime contract for the Skia painter boundary. The C recorder is
+# deliberately test-only; production hosts provide the same narrow symbols
+# from Skia without changing this Elisa command/replay path.
+
+include "../src/platform/skia/ui_skia.elisa"
+
+extern puts(text: cstr) -> i64
+extern skia_test_reset() -> void
+extern skia_test_save_count() -> i32
+extern skia_test_restore_count() -> i32
+extern skia_test_scale_count() -> i32
+extern skia_test_clip_count() -> i32
+extern skia_test_clear_count() -> i32
+extern skia_test_rect_count() -> i32
+extern skia_test_circle_count() -> i32
+extern skia_test_triangle_count() -> i32
+extern skia_test_line_count() -> i32
+extern skia_test_text_count() -> i32
+
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiCapabilities::use_appkit_canvas()
+    check("custom profile starts with CoreGraphics fallback", UiCapabilities::renderer() == UiCapabilities::Renderer.CoreGraphics)
+    UiCore::begin_frame()
+    UiCore::clear(UiCore::rgb(10, 20, 30))
+    UiCore::set_clip(UiCore::Rect(1.0, 2.0, 30.0, 40.0))
+    UiCore::fill(UiCore::Rect(2.0, 3.0, 20.0, 10.0), UiCore::rgb(40, 50, 60))
+    UiCore::clear_clip()
+    UiCore::fill(UiCore::Circle{center: UiCore::Vec2{ x: 20.0, y: 20.0 }, radius: 4.0}, UiCore::rgb(70, 80, 90))
+    UiCore::fill(UiCore::Triangle{a: UiCore::Vec2{ x: 1.0, y: 1.0 }, b: UiCore::Vec2{ x: 4.0, y: 1.0 }, c: UiCore::Vec2{ x: 2.0, y: 5.0 }}, UiCore::rgb(100, 110, 120))
+    UiCore::fill(UiCore::Line{from_point: UiCore::Vec2{ x: 0.0, y: 0.0 }, to_point: UiCore::Vec2{ x: 8.0, y: 8.0 }}, UiCore::rgb(130, 140, 150))
+    UiCore::draw(UiCore::TextRun(UiCore::Vec2(2.0, 12.0), 14.0, "Skia"), UiCore::rgb(160, 170, 180))
+
+    skia_test_reset()
+    UiSkia::attach_scaled(7, 2.0)
+    check("Skia attachment selects the renderer", UiSkia::is_attached() and UiCapabilities::supports_skia())
+    UiSkia::render()
+    check("frame save and clip save are balanced", skia_test_save_count() == 2 and skia_test_restore_count() == 1)
+    UiSkia::detach()
+    check("detach restores the frame transform", skia_test_restore_count() == 2)
+    check("scale crosses the boundary once", skia_test_scale_count() == 1)
+    check("clip crosses the boundary once", skia_test_clip_count() == 1)
+    check("all commands replay through Skia", skia_test_clear_count() == 1 and skia_test_rect_count() == 1 and skia_test_circle_count() == 1 and skia_test_triangle_count() == 1 and skia_test_line_count() == 1 and skia_test_text_count() == 1)
+    check("detach clears the borrowed state", not UiSkia::is_attached())
+
+    UiSkia::attach(9)
+    skia_render_frame_export(0)
+    check("invalid one-shot frame clears stale state", not UiSkia::is_attached())
+
+    if failures == 0:
+        _ = puts("skia painter: all checks passed")
+        return 0
+    _ = puts("skia painter: FAILURES above")
+    return 1

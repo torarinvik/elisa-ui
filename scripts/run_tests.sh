@@ -15,6 +15,9 @@ SDL_LIB="${ELISA_UI_SDL_LIB:-/opt/homebrew/lib}"
 mkdir -p "$ROOT/build"
 status=0
 
+SKIA_TEST_SHIM="$ROOT/build/skia_painter_shim.o"
+clang -c -Wall -Wextra -Werror -o "$SKIA_TEST_SHIM" "$ROOT/test/skia_painter_shim.c"
+
 if ! bash "$ROOT/scripts/check_source_sizes.sh"; then
   echo "FAIL source sizes"
   status=1
@@ -52,7 +55,11 @@ for source in "$ROOT"/test/*_test.elisa; do
   bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ROOT/build/$name.o" "$source"
   # Link SDL for tests that exercise the native backend; the others simply
   # do not reference these symbols.
-  clang -Wl,-dead_strip -o "$ROOT/build/$name" "$ROOT/build/$name.o" "$RUNTIME" -L"$SDL_LIB" -lSDL3 -lSDL3_ttf -Wl,-rpath,"$SDL_LIB"
+  link_inputs=("$RUNTIME")
+  if [[ "$name" == "skia_painter_test" ]]; then
+    link_inputs=("$SKIA_TEST_SHIM" "$RUNTIME")
+  fi
+  clang -Wl,-dead_strip -o "$ROOT/build/$name" "$ROOT/build/$name.o" "${link_inputs[@]}" -L"$SDL_LIB" -lSDL3 -lSDL3_ttf -Wl,-rpath,"$SDL_LIB"
   if "$ROOT/build/$name"; then
     echo "PASS $name"
   else
