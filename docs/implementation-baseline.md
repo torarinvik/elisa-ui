@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `d560c5fbcd12406feaf014afc5a87653f5e62e36` on branch `work` |
+| elisa-ui revision | `961d28cfd4b6237b3b99a24046ff14fe6edf9ba7` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -224,6 +224,9 @@ disposal.
 `UiSkia::draw_ready_text` applies the same gate to borrowed host `SkTypeface*`
 handles before drawing text, keeping font lifetime and fallback ownership out of
 the framework ABI.
+The optional generation-keyed font binding table provides the same strict form
+for draw and metric queries, preventing a ready logical font from being paired
+with another cached typeface.
 The corresponding ready-font width, ascent, and line-height queries use the
 same borrowed typeface, so custom layout metrics and Skia text rasterization
 share one font authority.
