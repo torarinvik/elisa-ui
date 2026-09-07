@@ -137,7 +137,7 @@ module-private.
 | AppKit custom canvas | implemented-tested | `scripts/check_appkit_canvas.sh` builds/signs the app, renders an off-screen PNG, and exercises semantic-object identity and callbacks. |
 | Skia custom painter | implemented-tested at Elisa boundary; host integration planned | `scripts/check_skia.sh` compiles the painter and records whether `SKIA_ROOT` is configured. The local tuple has no pinned Skia SDK, so the C++ shim is not claimed as runtime-tested. |
 | Optional feature view | implemented-tested at Elisa boundary; host activation integration planned | `test/feature_view_test.elisa` covers typed identity, activation tokens, stale polling, terminal failures, retry generations, cancellation, owner disposal, and invalidation. The SDK/host remains responsible for actual component activation and deactivation. |
-| WasmBrowser hosted | implemented-tested for build/package/inspect | The synchronized compiler, explicit `Host` permission family, and component-memory sizing produce `build/hello.wapp`; WasmBrowser inspect reports the expected profile and imports/exports. Runtime launch and device execution still need dedicated fixtures. |
+| WasmBrowser hosted | implemented-tested for package/inspect; fresh build blocked | The existing `build/hello.wapp` artifact passes WasmBrowser's profile/import/export inspection, but a fresh component build currently fails linker validation with `expected i64, found i32`; runtime launch and device execution still need dedicated fixtures. |
 | Android standalone | planned | No Android build or device fixture exists in this checkout. |
 | iOS standalone | planned | No iOS build or device fixture exists in this checkout. |
 | Remote rendering/input | planned | Capability negotiation belongs to WasmBrowser/SDK; no elisa-ui remote fixture exists yet. |
@@ -194,12 +194,15 @@ ELISA_UI_WASMBROWSER=../WasmBrowser bash scripts/check_wapp.sh build/hello.wapp
   format: component
 ```
 
-The 2026-09-07 hosted build also completes from this tuple:
-`bash scripts/build_wapp.sh hello` writes and packs `build/hello.wapp`, and
-`bash scripts/check_wapp.sh build/hello.wapp` passes the compiler-independent
-profile/import/export inspection. The earlier `expected i64, found i32`
-component-linker mismatch is not reproduced with the staged compiler/runtime;
-actual WasmBrowser runtime launch and device execution remain separate fixtures.
+The existing `build/hello.wapp` artifact passes the compiler-independent
+profile/import/export inspection. A fresh
+`ELISA_UI_STAGE1=/tmp/elisa-ui-stage1-p4 ELISA_ALLOW_STALE_STAGE1=1 bash
+scripts/build_wapp.sh hello` currently fails in `wasm-component-ld` with
+`expected i64, found i32` during component validation. Reproducing the same
+failure at the pre-theme `26cf0cd` source revision shows that this is a
+compiler/WIT integration blocker rather than a `UiTheme` regression; the
+artifact must not be treated as proof of a fresh source build. Runtime launch
+and device execution remain separate fixtures.
 
 `bash scripts/build_native.sh hello` likewise produces `build/hello_native`.
 
@@ -290,9 +293,9 @@ The AppKit checks use activation policy prohibited and the custom canvas smoke
 path; no window is shown or foregrounded. The hello app's new
 `UiFlat::handle` entry point is covered by `test/widget_dispatch_test.elisa`.
 
-The previous hosted blocker (`expected i64, found i32` during component
-validation) was resolved for this tuple by consuming the current compiler
-work fixes and the component-memory sizing fix from the UI compiler worktree.
+The hosted component still has a reproducible `expected i64, found i32`
+validation blocker in the current `wasm-component-ld` path; it is reproduced
+at the pre-theme source revision and therefore remains outside this UI change.
 The framework now declares its `Host.Present`, `Host.Layout`, and
 `Host.Clipboard` permission family explicitly; manifest capabilities remain a
 separate host-enforced security boundary.
