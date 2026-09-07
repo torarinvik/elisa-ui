@@ -681,9 +681,11 @@ separate host-enforced security boundary.
   `test/capabilities_test.elisa`.
 - `UiEvents` owns bounded FIFO ingress after each adapter has translated native
   facts into `UiCore::Event`. Synchronous adapters drain immediately; SDL drains
-  poll bursts. Full queues reject incoming events and expose sticky loss facts
-  through `UiInspector`; reset clears queued variant payloads as well as
-  counters. Coverage lives in `test/event_queue_test.elisa`.
+  poll bursts. Full queues reject ordinary physical input, while authoritative
+  quit/resize/focus facts may replace the oldest stale input so teardown cannot
+  be stranded; sticky loss facts remain visible through `UiInspector`; reset
+  clears queued variant payloads as well as counters. Coverage lives in
+  `test/event_queue_test.elisa`.
 - `UiCore::begin_frame` clears the previously used command and semantic slots,
   releasing stale borrowed text views while retaining the fixed allocation-free
   buffers. The C counted-text bridge and AppKit canvas teardown likewise scrub
