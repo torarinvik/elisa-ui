@@ -82,6 +82,12 @@ module UiCapi:
         # Keep the counted text staging slot private to this adapter. It is an
         # implementation detail, not another symbol in the public C ABI.
         def dispatch_text_input(text: cstr?, length: usize) -> void can Unsafe.PointerCast:
+            # Committed text is physical input too. Keep the ownerless phase-
+            # New compatibility mode used by the pure C adapter tests, but
+            # reject text from inactive, background, surface-lost and stopped
+            # sessions before borrowing the caller's pointer.
+            allow_unowned_dispatch: bool = UiLifecycle::phase() == UiLifecycle::Phase.New
+            return if not allow_unowned_dispatch and (not UiLifecycle::is_started() or not UiLifecycle::accepts_input())
             # The staging buffer is intentionally single-slot and the
             # application callback is synchronous. Reject a nested dispatch
             # rather than allowing an inner call to overwrite the bytes
