@@ -6,13 +6,14 @@
 
 #import <Cocoa/Cocoa.h>
 #include <stdint.h>
+#include "../../../include/elisa_appkit_skia.h"
 
 extern void elisa_appkit_canvas_frame(size_t windowHandle, size_t context);
 #if defined(ELISA_UI_USE_SKIA)
 // The Skia build profile links the real compositor from appkit_skia_host.cpp.
-extern int elisa_appkit_canvas_skia_present(size_t windowHandle, size_t context,
-                                            float logicalWidth, float logicalHeight,
-                                            int pixelWidth, int pixelHeight);
+// Its shared header is the source of truth for the floating-point backing
+// dimensions; keeping a second prototype here would permit an arm64 ABI
+// mismatch between the Objective-C caller and C++ implementation.
 #endif
 extern void elisa_appkit_canvas_resize(size_t windowHandle, float width, float height);
 extern size_t elisa_appkit_canvas_pointer_move_event(size_t windowHandle, float x, float y);
