@@ -151,7 +151,13 @@ extend UiFlat:
             remaining: mutable f32 = free if free > 0.0 and scale == 1.0 else 0.0
             remaining_weight: mutable f32 = weight
             distributing: mutable bool = remaining > 0.0 and remaining_weight > 0.0
-            while distributing |remaining, remaining_weight, distributing, is_row|:
+            distribution_steps: mutable usize = 0
+            while distributing |remaining, remaining_weight, distributing, is_row, distribution_steps|:
+                # Every capped child removes its weight, so a valid pass is
+                # bounded by the fixed arena. Keep a guard for hostile public
+                # Widget values that defeat progress through non-finite math.
+                return if distribution_steps >= MAX_TRAVERSAL_SIBLINGS
+                distribution_steps <- distribution_steps + 1
                 capped_any: mutable bool = false
                 candidate: mutable usize = first
                 cap_steps: mutable usize = 0
