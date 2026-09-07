@@ -148,6 +148,16 @@ def main() -> i64:
     UiSkia::push_rotation(45.0)
     UiSkia::detach()
     check("detach restores forgotten clip and transform scopes", skia_test_save_count() == 4 and skia_test_restore_count() == 4 and skia_test_rotate_count() == 1)
+    skia_test_reset()
+    UiSkia::attach(23)
+    scope_attempts: usize = UiSkia::MAX_SCOPE_DEPTH + 2
+    for _ in 0..<scope_attempts:
+        UiSkia::push_transform(UiCore::Vec2(1.0, 1.0), UiCore::Vec2(1.0, 1.0))
+    bounded_scope_state: UiSkia::Snapshot = UiSkia::snapshot()
+    check("direct Skia scopes stop at the depth budget", bounded_scope_state.save_depth == UiSkia::MAX_SCOPE_DEPTH and bounded_scope_state.transform_depth == UiSkia::MAX_SCOPE_DEPTH - 1)
+    check("scope overflow does not cross the FFI", skia_test_save_count() == UiSkia::MAX_SCOPE_DEPTH.i32())
+    UiSkia::detach()
+    check("bounded scopes still detach cleanly", skia_test_restore_count() == UiSkia::MAX_SCOPE_DEPTH.i32() and UiSkia::is_balanced())
     UiCore::begin_frame()
     UiCore::set_clip(UiCore::Rect(1.0, 2.0, 0.0, 4.0))
     UiCore::fill(UiCore::Rect(1.0, 2.0, 8.0, 9.0), UiCore::rgb(4, 5, 6))
