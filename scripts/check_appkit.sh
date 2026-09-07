@@ -133,6 +133,7 @@ nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_activation_poli
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_create_window_with_style$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_create_panel_window$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_create_scroll_view$'
+nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_release$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_view_is_flipped$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_scroll_document_frame$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_attach_to_window$'

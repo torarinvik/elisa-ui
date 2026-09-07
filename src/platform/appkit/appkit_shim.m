@@ -79,6 +79,16 @@ static size_t elisa_appkit_retain(id object) {
     return object == nil ? 0 : (size_t)(__bridge_retained void *)object;
 }
 
+// Control handles are retained Objective-C objects, not CoreFoundation
+// objects. Transfer the retained bridge back to ARC so the matching release
+// uses objc_release for NSWindow/NSView controls instead of treating an
+// arbitrary AppKit object as a CFTypeRef.
+void elisa_appkit_release(size_t handle) {
+    if (handle == 0) return;
+    id object = (__bridge_transfer id)(void *)handle;
+    (void)object;
+}
+
 void elisa_appkit_attach_to_window(size_t handle, size_t parent) {
     id child = elisa_appkit_object(handle);
     NSView *view = [child isKindOfClass:[NSView class]] ? (NSView *)child : nil;
