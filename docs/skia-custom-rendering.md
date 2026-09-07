@@ -53,8 +53,8 @@ while measurement, ascent, and line-height queries share one bounded FFI
 authority that layout can call before a surface exists. Widget painting wraps
 the line-height query in the frame-local Elisa-owned `UiTextMetrics` cache, so
 repeated controls reuse the backend result without retaining a font or Skia
-object across frames; a paint reset is the explicit invalidation boundary for
-font and scale changes.
+object across frames; paint and retained-tree resets are the explicit
+invalidation boundaries for font and scale changes.
 
 Direct geometry calls and replayed commands share the private
 `ui_skia_geometry.elisa` policy. Coordinates and extents are finite and capped,
