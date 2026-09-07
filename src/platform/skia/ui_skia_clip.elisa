@@ -1,0 +1,26 @@
+# Direct clip scopes for custom Skia controls.
+#
+# Retained commands already carry clip metadata. This extension exposes the
+# same bounded policy to immediate custom drawing while sharing UiSkia's save
+# depth with transforms and the attachment frame.
+
+include "../../core/ui_core.elisa"
+
+extend UiSkia:
+    public:
+        def push_clip(box: UiCore::Rect) -> bool can[Ui.Draw]:
+            return false if canvas_state == 0
+            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+            return false if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
+            elisa_skia_canvas_save(canvas_state)
+            elisa_skia_canvas_clip_rect(canvas_state, safe_box.origin.x, safe_box.origin.y, safe_box.size.width, safe_box.size.height)
+            skia_clip_depth <- skia_clip_depth + 1
+            skia_save_depth <- skia_save_depth + 1
+            return true
+
+        def pop_clip() -> bool can[Ui.Draw]:
+            return false if canvas_state == 0 or skia_clip_depth == 0
+            elisa_skia_canvas_restore(canvas_state)
+            skia_clip_depth <- skia_clip_depth - 1
+            skia_save_depth <- skia_save_depth - 1
+            return true
