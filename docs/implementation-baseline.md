@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `b9f4b8bfda9d05ba5f65bd3f275f45ef08ec4199` on branch `work` |
+| elisa-ui revision | `454924968f104d2195c1308d0a215f5c4108989c` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -133,12 +133,15 @@ The following completed headlessly from this checkout:
 
 ```text
 ELISA_UI_STAGE1=/tmp/elisa-ui-stage1-p4 ELISA_ALLOW_STALE_STAGE1=1 bash scripts/run_tests.sh
+  source-size gate,
   capi, appkit, appkit canvas, appkit canvas keymap, capi bridge,
   controls, dialog, drop raii, event wire, gestures, hierarchy build/layout,
   raster, responsive, sdl3 keymap/text, text input, text layout, widget dispatch, widget handles,
   widget layout, widget inspector, widget reentrancy, ui harness, metrics,
   resource presentation, core invalidation, lifecycle, constraints, identity,
   localization, theme, validation, virtual-list and virtual-list semantics: PASS
+scripts/check_source_sizes.sh
+  all tracked Elisa modules are at or below 400 lines: PASS
 git diff --check: PASS
 ```
 
