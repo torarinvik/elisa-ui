@@ -188,12 +188,15 @@ extend UiAppKitCanvas:
             for index in 0..<prefix.len.usize():
                 accessibility_identifier_storage[index] <- prefix.data[index]
             value: mutable usize = id
-            digits: mutable usize = 1
-            if value > 0:
-                digits <- 0
-                while value > 0:
-                    digits <- digits + 1
-                    value <- value / 10
+            # An identifier is a bounded decimal value. Count its digits as a
+            # scoped result so the conversion itself cannot become an open
+            # loop if a foreign caller supplies an extreme usize.
+            digits: mutable usize =
+                for _ in 0..<20 |remaining: usize = value, count: usize = 0| -> count:
+                    break if remaining == 0
+                    count <- count + 1
+                    remaining <- remaining / 10
+            digits <- 1 if digits == 0
             value <- id
             for index in 0..<digits:
                 position: usize = prefix.len.usize() + digits - 1 - index
