@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `7a5d277` (`fix(sdl3): stop loop after callback lifecycle changes`) on branch `work` |
+| elisa-ui revision | `1f2598d` (`fix(elisa): isolate included module identities`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -95,7 +95,11 @@ to use small, single-purpose modules; the existing large modules are
 not split mechanically.
 
 The modal and navigation input policy remains in the shared `UiBack` module
-over `UiDialog` (305 lines) and `UiNavigation`. AppKit canvas callbacks (258
+over `UiDialog` (305 lines) and `UiNavigation`. Their public tokens are
+module-specific (`DialogHandle`, `NavigationHandle`), as are resource tokens
+(`ResourceHandle`); identity queries use explicit `dialog_*`, `navigation_*`,
+and `resource_*` names so the current compiler cannot confuse included module
+records or helper bodies. AppKit canvas callbacks (258
 lines), SDL3 event delivery, and the WasmBrowser dispatcher (45 lines) translate
 Escape into that shared policy before invoking application code; modal dialogs
 take precedence, followed by application-owned consume/confirm/navigation
