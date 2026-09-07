@@ -82,103 +82,10 @@ module UiCapi:
                 app_event(event)
             elisa_ui_event_dispatch_active <- false
 
-        # Keep the counted text staging slot private to this adapter. It is an
-        # implementation detail, not another symbol in the public C ABI.
-        def dispatch_text_input(text: cstr?, length: usize) -> void can Unsafe.PointerCast:
-            # Committed text is physical input too. Keep the ownerless phase-
-            # New compatibility mode used by the pure C adapter tests, but
-            # reject text from inactive, background, surface-lost and stopped
-            # sessions before borrowing the caller's pointer.
-            allow_unowned_dispatch: bool = UiLifecycle::phase() == UiLifecycle::Phase.New
-            return if not allow_unowned_dispatch and (not UiLifecycle::is_started() or not UiLifecycle::accepts_input())
-            # The staging buffer is intentionally single-slot and the
-            # application callback is synchronous. Reject a nested dispatch
-            # rather than allowing an inner call to overwrite the bytes
-            # borrowed by the outer callback.
-            return if text_dispatch_active
-            text_dispatch_active <- true
-            scrub_text_buffer()
-            # A C caller may provide a null pointer for an empty payload, or
-            # accidentally pair NULL with a non-zero length. Fail closed
-            # before dereferencing a pointer that application code could not
-            # validate.
-            if length == 0:
-                text_dispatch_active <- false
-                return
-            if text is value:
-                safe_length: mutable i64 = length.i64()
-                if safe_length >= 0:
-                    safe_length <- UiCore::MAX_TEXT_BYTES.i64() if safe_length > UiCore::MAX_TEXT_BYTES.i64()
-                    pointer: uintptr = value.cast[uintptr] can Unsafe.PointerCast
-                    # Keep the invariant explicit even if an unsafe cast wraps
-                    # a null address in an optional `cstr` value. A counted
-                    # length never grants permission to dereference address 0.
-                    if pointer == 0.uintptr():
-                        text_dispatch_active <- false
-                        return
-                    for index in 0..<safe_length.usize():
-                        trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic]:
-                            byte: u8& = (pointer + index.uintptr()).cast[u8&]
-                            text_buffer[index] <- byte
-                    text_buffer[safe_length.usize()] <- 0
-                    copied_text: sview = text_buffer[0:safe_length.usize()]
-                    app_text_input(UiCore::bounded_text(copied_text))
-                    scrub_text_buffer()
-            text_dispatch_active <- false
-
-        # Deliver live IME composition through the same Elisa-owned staging
-        # slot as committed text. Unlike committed input, an empty composition
-        # is meaningful (it represents cancellation), so it still reaches the
-        # application with a zero-length view.
-        def dispatch_text_editing(text: cstr?, length: usize, selected_start: i32, selected_length: i32) -> void can Unsafe.PointerCast:
-            allow_unowned_dispatch: bool = UiLifecycle::phase() == UiLifecycle::Phase.New
-            return if not allow_unowned_dispatch and (not UiLifecycle::is_started() or not UiLifecycle::accepts_input())
-            return if text_dispatch_active
-            text_dispatch_active <- true
-            scrub_text_buffer()
-            safe_length: mutable usize = UiCore::MAX_TEXT_BYTES if length > UiCore::MAX_TEXT_BYTES else length
-            if safe_length > 0:
-                if text is value:
-                    pointer: uintptr = value.cast[uintptr] can Unsafe.PointerCast
-                    if pointer == 0.uintptr():
-                        text_dispatch_active <- false
-                        return
-                    for index in 0..<safe_length:
-                        trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic]:
-                            byte: u8& = (pointer + index.uintptr()).cast[u8&]
-                            text_buffer[index] <- byte
-                else:
-                    text_dispatch_active <- false
-                    return
-            text_buffer[safe_length] <- 0
-            composed: sview = text_buffer[0:safe_length]
-            bounded: sview = UiCore::bounded_text(composed)
-            limit: i32 = UiText::utf8_scalar_count(bounded).i32()
-            safe_start: mutable i32 = selected_start if selected_start > 0 else 0
-            safe_start <- limit if safe_start > limit else safe_start
-            remaining: i32 = limit - safe_start
-            safe_selection: mutable i32 = selected_length if selected_length > 0 else 0
-            safe_selection <- remaining if safe_selection > remaining else safe_selection
-            app_text_editing(bounded, safe_start, safe_selection)
-            scrub_text_buffer()
-            text_dispatch_active <- false
-
-        # Test and diagnostics helper for the transient-input invariant. This
-        # remains a module member, so it cannot be mistaken for a C ABI entry
-        # point or accessed by native code accidentally.
-        def text_buffer_cleared() -> bool:
-            for index in 0..<UiCore::MAX_TEXT_BYTES + 1:
-                return false if text_buffer[index] != 0
-            return true
-
     private:
         global mutable elisa_ui_event_dispatch_active: bool = false
-        global mutable text_buffer: u8[UiCore::MAX_TEXT_BYTES + 1] = zeroed
-        global mutable text_dispatch_active: bool = false
 
-        def scrub_text_buffer() -> void:
-            for index in 0..<UiCore::MAX_TEXT_BYTES + 1:
-                text_buffer[index] <- 0
+include "./ui_capi_text.elisa"
 
 # The C entry points. Top-level by name, each one a single call.
 def elisa_ui_dispatch_event(kind: i32, x: f32, y: f32, dx: f32, dy: f32, code: i32) -> void:
