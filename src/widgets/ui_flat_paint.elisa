@@ -92,13 +92,14 @@ extend UiFlat:
                     available_width <- 0.0 if available_width < 0.0 else available_width
                     visible_start: mutable usize = 0
                     visible_start <- visible_text_start(index, available_width) if widgets[index].focused
-                    visible_stop: mutable usize = visible_start
-                    scan: mutable usize = visible_start
-                    while scan < widgets[index].input_length |scan, visible_stop, visible_start, available_width|:
-                        after: usize = next_character(index, scan)
-                        break if measure_text_range(index, visible_start, after) > available_width
-                        visible_stop <- after
-                        scan <- after
+                    input_length: usize = widgets[index].input_length
+                    visible_stop: usize =
+                        for _ in 0..<input_length |scan: usize = visible_start, stop: usize = visible_start| -> stop:
+                            break if scan >= input_length
+                            after: usize = next_character(index, scan)
+                            break if measure_text_range(index, visible_start, after) > available_width
+                            stop <- after
+                            scan <- after
                     visible_value: sview = display_range(index, visible_start, visible_stop)
                     display_text: sview = visible_value if field_value.len > 0 else widgets[index].placeholder
                     field_ink: mutable UiCore::Color = widgets[index].text_color

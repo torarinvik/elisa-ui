@@ -212,12 +212,16 @@ module UiState:
             return buffer[offset].u32() | (buffer[offset + 1].u32() << 8) | (buffer[offset + 2].u32() << 16) | (buffer[offset + 3].u32() << 24)
 
         def duplicate_in(buffer: u8&, first: usize, limit: usize, id: u32) -> bool:
-            cursor: mutable usize = first
-            while cursor < limit |cursor|:
-                return true if load_u32(buffer, cursor) == id
-                length: usize = load_u16(buffer, cursor + 6).usize()
-                cursor <- cursor + RECORD_HEADER_BYTES + length
-            return false
+            result: bool =
+                for _ in 0..<limit |found: bool = false, cursor: usize = first| -> found:
+                    break if cursor > limit or limit - cursor < RECORD_HEADER_BYTES
+                    if load_u32(buffer, cursor) == id:
+                        found <- true
+                        break
+                    length: usize = load_u16(buffer, cursor + 6).usize()
+                    break if length > limit - cursor - RECORD_HEADER_BYTES
+                    cursor <- cursor + RECORD_HEADER_BYTES + length
+            return result
 
         def ready_for_put(value_length: usize) -> bool:
             if not save_started:
