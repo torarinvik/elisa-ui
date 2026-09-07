@@ -37,6 +37,11 @@ creation, and an AppKit `MTKView`/`SkSurface` host are intentionally separate
 follow-ups; they must be chosen with the target's pinned Skia build rather than
 smuggled into the Elisa ABI.
 
+Image presentation follows the same boundary: the host decodes and owns an
+opaque `SkImage*`, while Elisa validates the destination rectangle and alpha
+before issuing a borrowed `drawImageRect` call. `UiSkia` never retains or frees
+the image handle, so resource lifetime remains with the host/SDK.
+
 The checkout does not currently pin or vendor a Skia SDK. Build the C++ shim
 only in a target that supplies Skia headers and libraries, then pass its
 `SkCanvas*` through the opaque FFI handle. The Elisa module itself compiles

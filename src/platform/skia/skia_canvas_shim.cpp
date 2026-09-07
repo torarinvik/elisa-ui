@@ -11,6 +11,7 @@
 #include "include/core/SkCanvas.h"
 #include "include/core/SkColor.h"
 #include "include/core/SkFont.h"
+#include "include/core/SkImage.h"
 #include "include/core/SkPaint.h"
 #include "include/core/SkRect.h"
 #include "include/core/SkRRect.h"
@@ -113,6 +114,21 @@ extern "C" void elisa_skia_canvas_shadow_round_rect(std::size_t handle, float x,
         SkPaint paint = fill_paint(0, 0, 0, alpha);
         paint.setShadowLayer(5.0f, 0.0f, 2.0f, color(0, 0, 0, alpha));
         target->drawRRect(SkRRect::MakeRectXY(rect, safe_radius, safe_radius), paint);
+    }
+}
+
+extern "C" void elisa_skia_canvas_draw_image(std::size_t canvas_handle, std::size_t image_handle,
+                                               float x, float y, float width, float height,
+                                               std::uint8_t alpha) {
+    if (SkCanvas *target = canvas(canvas_handle);
+        target != nullptr && image_handle != 0 && width > 0.0f && height > 0.0f && alpha != 0) {
+        SkImage *image = reinterpret_cast<SkImage *>(image_handle);
+        SkPaint paint;
+        paint.setAntiAlias(true);
+        paint.setAlphaf(static_cast<float>(alpha) / 255.0f);
+        target->drawImageRect(image, SkRect::MakeXYWH(x, y, width, height),
+                              SkSamplingOptions(SkFilterMode::kLinear, SkMipmapMode::kNone),
+                              &paint);
     }
 }
 

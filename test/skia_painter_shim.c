@@ -13,6 +13,7 @@ static int rect_count;
 static int round_rect_count;
 static int stroke_round_rect_count;
 static int shadow_round_rect_count;
+static int image_count;
 static int circle_count;
 static int triangle_count;
 static int line_count;
@@ -57,6 +58,11 @@ void elisa_skia_canvas_shadow_round_rect(size_t canvas, float x, float y, float 
     (void)x; (void)y; (void)width; (void)height; (void)radius; (void)alpha;
     if (canvas != 0) shadow_round_rect_count += 1;
 }
+void elisa_skia_canvas_draw_image(size_t canvas, size_t image, float x, float y,
+                                  float width, float height, uint8_t alpha) {
+    (void)image; (void)x; (void)y; (void)width; (void)height; (void)alpha;
+    if (canvas != 0) image_count += 1;
+}
 void elisa_skia_canvas_fill_circle(size_t canvas, float x, float y, float radius,
                                    uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha) {
     (void)x; (void)y; (void)radius;
@@ -92,7 +98,7 @@ float elisa_skia_text_line_height(float size) { return size * 1.2f; }
 
 void skia_test_reset(void) {
     save_count = 0; restore_count = 0; scale_count = 0; clip_count = 0;
-    clear_count = 0; rect_count = 0; round_rect_count = 0; stroke_round_rect_count = 0; shadow_round_rect_count = 0; circle_count = 0; triangle_count = 0;
+    clear_count = 0; rect_count = 0; round_rect_count = 0; stroke_round_rect_count = 0; shadow_round_rect_count = 0; image_count = 0; circle_count = 0; triangle_count = 0;
     line_count = 0; text_count = 0;
 }
 int skia_test_save_count(void) { return save_count; }
@@ -104,6 +110,7 @@ int skia_test_rect_count(void) { return rect_count; }
 int skia_test_round_rect_count(void) { return round_rect_count; }
 int skia_test_stroke_round_rect_count(void) { return stroke_round_rect_count; }
 int skia_test_shadow_round_rect_count(void) { return shadow_round_rect_count; }
+int skia_test_image_count(void) { return image_count; }
 int skia_test_circle_count(void) { return circle_count; }
 int skia_test_triangle_count(void) { return triangle_count; }
 int skia_test_line_count(void) { return line_count; }

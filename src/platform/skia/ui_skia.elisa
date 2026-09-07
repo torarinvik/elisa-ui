@@ -21,6 +21,7 @@ extern elisa_skia_canvas_fill_rect(canvas: usize, x: f32, y: f32, width: f32, he
 extern elisa_skia_canvas_fill_round_rect(canvas: usize, x: f32, y: f32, width: f32, height: f32, radius: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
 extern elisa_skia_canvas_stroke_round_rect(canvas: usize, x: f32, y: f32, width: f32, height: f32, radius: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
 extern elisa_skia_canvas_shadow_round_rect(canvas: usize, x: f32, y: f32, width: f32, height: f32, radius: f32, alpha: u8) -> void
+extern elisa_skia_canvas_draw_image(canvas: usize, image: usize, x: f32, y: f32, width: f32, height: f32, alpha: u8) -> void
 extern elisa_skia_canvas_fill_circle(canvas: usize, x: f32, y: f32, radius: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
 extern elisa_skia_canvas_fill_triangle(canvas: usize, ax: f32, ay: f32, bx: f32, by: f32, cx: f32, cy: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
 extern elisa_skia_canvas_fill_line(canvas: usize, x0: f32, y0: f32, x1: f32, y1: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
@@ -77,6 +78,19 @@ module UiSkia:
             safe_box: UiCore::Rect = UiCore::Rect(box.origin.x, box.origin.y, box.size.width, box.size.height)
             safe_radius: f32 = UiCore::bounded_extent(radius)
             elisa_skia_canvas_fill_round_rect(canvas_state, safe_box.origin.x, safe_box.origin.y, safe_box.size.width, safe_box.size.height, safe_radius, color.r, color.g, color.b, color.a)
+
+        # Hosts decode and retain images; Elisa owns only placement and
+        # visibility policy. The handle is borrowed for this call and never
+        # retained by UiSkia, so resource disposal stays host-owned.
+        def draw_image(image: usize, box: UiCore::Rect, alpha: u8) -> void can[Ui.Draw]:
+            return if canvas_state == 0 or image == 0 or alpha == 0
+            safe_box: UiCore::Rect = UiCore::Rect(
+                UiCore::bounded_coordinate(box.origin.x),
+                UiCore::bounded_coordinate(box.origin.y),
+                UiCore::bounded_extent(box.size.width),
+                UiCore::bounded_extent(box.size.height))
+            return if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
+            elisa_skia_canvas_draw_image(canvas_state, image, safe_box.origin.x, safe_box.origin.y, safe_box.size.width, safe_box.size.height, alpha)
 
         def measure_text_width(text: sview, size: f32) -> f32:
             # Metrics are pure font queries and do not require a live canvas.
