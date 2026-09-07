@@ -1,0 +1,53 @@
+# Immediate shape primitives for custom Skia controls.
+#
+# Retained widgets continue to use UiCore::Command replay. These helpers are
+# the deliberate escape hatch for a custom control that needs one extra shape
+# during its paint callback; geometry and alpha policy still stay in Elisa.
+
+include "../../core/ui_core.elisa"
+
+extend UiSkia:
+    public:
+        def stroke_rounded_rect(box: UiCore::Rect, radius: f32, stroke_width: f32, color: UiCore::Color) -> void can[Ui.Draw]:
+            return if canvas_state == 0 or color.a == 0
+            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+            return if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
+            safe_radius: f32 = UiSkia::skia_safe_radius(safe_box, radius)
+            safe_width: f32 = UiCore::bounded_extent(stroke_width)
+            return if safe_width <= 0.0
+            elisa_skia_canvas_stroke_round_rect(
+                canvas_state,
+                safe_box.origin.x, safe_box.origin.y,
+                safe_box.size.width, safe_box.size.height,
+                safe_radius, safe_width,
+                color.r, color.g, color.b, color.a)
+
+        def fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> void can[Ui.Draw]:
+            return if canvas_state == 0 or color.a == 0
+            safe_disc: UiCore::Circle = UiSkia::skia_safe_circle(disc)
+            return if safe_disc.radius <= 0.0
+            elisa_skia_canvas_fill_circle(
+                canvas_state,
+                safe_disc.center.x, safe_disc.center.y, safe_disc.radius,
+                color.r, color.g, color.b, color.a)
+
+        def fill_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]:
+            return if canvas_state == 0 or color.a == 0
+            safe_tri: UiCore::Triangle = UiSkia::skia_safe_triangle(tri)
+            elisa_skia_canvas_fill_triangle(
+                canvas_state,
+                safe_tri.a.x, safe_tri.a.y,
+                safe_tri.b.x, safe_tri.b.y,
+                safe_tri.c.x, safe_tri.c.y,
+                color.r, color.g, color.b, color.a)
+
+        def stroke_line(segment: UiCore::Line, stroke_width: f32, color: UiCore::Color) -> void can[Ui.Draw]:
+            return if canvas_state == 0 or color.a == 0
+            safe_line: UiCore::Line = UiSkia::skia_safe_line(segment)
+            safe_width: f32 = UiCore::bounded_extent(stroke_width)
+            return if safe_width <= 0.0
+            elisa_skia_canvas_fill_line(
+                canvas_state,
+                safe_line.from_point.x, safe_line.from_point.y,
+                safe_line.to_point.x, safe_line.to_point.y,
+                safe_width, color.r, color.g, color.b, color.a)
