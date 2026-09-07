@@ -57,6 +57,13 @@ def main() -> i64:
     check("nested WasmBrowser events drain iteratively", nested_sent and nested_seen and dispatch_count == 2)
     check("WasmBrowser queue is empty after drain", UiEvents::pending() == 0)
 
+    UiDialog::reset()
+    modal: UiDialog::Handle = UiDialog::open(UiDialog::Kind.Alert, "Close", "Dismiss", "OK", "", 4)
+    before_dialog_dispatch: i32 = dispatch_count
+    UiWasmDispatch::dispatch_input(UiCore::KeyEvent.Down(code: UiCore::Key.Escape))
+    check("WasmBrowser Escape consumes a live dialog", dispatch_count == before_dialog_dispatch and UiDialog::result(modal) == UiDialog::Result.Back and not UiDialog::is_open(modal))
+    _ = UiDialog::dispose(modal)
+
     UiLifecycle::reset()
     UiEvents::reset()
     _ = UiLifecycle::begin()

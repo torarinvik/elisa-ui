@@ -6,6 +6,7 @@
 
 include "../../core/ui_core.elisa"
 include "../../core/ui_lifecycle.elisa"
+include "../../widgets/ui_dialog.elisa"
 
 module UiWasmDispatch:
     private:
@@ -22,7 +23,14 @@ module UiWasmDispatch:
             while UiEvents::dequeue(queued):
                 continue if not UiLifecycle::is_started() or UiLifecycle::generation() != drain_generation
                 continue if UiCore::is_input_event(queued) and not UiLifecycle::accepts_input()
-                app_event(queued)
+                match queued:
+                    UiCore::KeyEvent.Down(code):
+                        if code == UiCore::Key.Escape and UiDialog::snapshot().active > 0:
+                            _ = UiDialog::back()
+                        else:
+                            app_event(queued)
+                    _:
+                        app_event(queued)
             event_dispatch_active <- false
 
     public:
