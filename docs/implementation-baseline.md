@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `a808bfa` (`fix(resources): reject malformed identity keys`) on branch `work` |
+| elisa-ui revision | `613c865` (`fix(handles): make parent index stale-safe`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -583,6 +583,10 @@ separate host-enforced security boundary.
   The public include path and stale-handle behavior are unchanged; all modules
   remain below the 400-line source hygiene limit and the existing handle test
   covers the assembled surface.
+- `UiHandles::parent_index` now applies the same stale/container validation as
+  the typed builders before exposing its legacy slot escape hatch; stale or
+  leaf parents return `UiFlat::NONE` instead of a potentially recycled index.
+  Coverage lives in `test/widget_handles_test.elisa`.
 - `UiHandles::event_is` and `UiHandles::callback_matches` keep the unavoidable
   legacy widget-event ordinal/slot callback seam typed and stale-safe for
   applications, so the shared hello view no longer repeats raw integer/index
