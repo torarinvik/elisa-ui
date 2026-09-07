@@ -29,7 +29,10 @@ extend UiResources:
         # operation and therefore rotates its generation.
         def request(key: sview, owner: u32) -> Handle:
             safe_key: sview = UiCore::bounded_text(key)
-            return invalid() if safe_key.len <= 0 or safe_key.len >= IDENTIFIER_CAPACITY.i64()
+            # Resource keys are identities, not display text. Do not let a
+            # malformed or overlong counted view collapse to a valid prefix
+            # and alias an existing package asset.
+            return invalid() if safe_key.len <= 0 or safe_key.len != key.len or safe_key.len >= IDENTIFIER_CAPACITY.i64()
             for slot in 0..<resource_count:
                 if resource_states[slot] != State.Unrequested and key_matches(slot, safe_key):
                     resource_owners[slot] <- owner

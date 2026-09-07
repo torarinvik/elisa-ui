@@ -18,7 +18,10 @@ extend UiResources:
             # match would make a stale/cleared record look live to diagnostics.
             safe_key: sview = UiCore::bounded_text(key)
             return false if slot >= MAX_RESOURCES or resource_states[slot] == State.Unrequested
-            return false if safe_key.len <= 0 or safe_key.len >= IDENTIFIER_CAPACITY.i64()
+            # A diagnostic comparison must use the complete identity supplied
+            # by the caller. Comparing only a bounded/malformed prefix could
+            # report a false match for a different resource key.
+            return false if safe_key.len <= 0 or safe_key.len != key.len or safe_key.len >= IDENTIFIER_CAPACITY.i64()
             return false if resource_identifier_lengths[slot] != safe_key.len.usize()
             for offset in 0..<safe_key.len:
                 return false if resource_identifier_storage[slot * IDENTIFIER_CAPACITY + offset] != safe_key.data[offset]

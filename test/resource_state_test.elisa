@@ -50,6 +50,11 @@ def main() -> i64:
     check("resource key is retained in Elisa", UiResources::identifier(image) == "images/logo")
     null_key: sview = sview(null, 0, 4)
     check("null-backed resource key is rejected", not UiResources::is_valid(UiResources::request(null_key, 11)) and not UiResources::key_matches(image.slot.usize(), null_key))
+    malformed_key_bytes: mutable u8[2] = zeroed
+    malformed_key_bytes[0] <- 105
+    malformed_key_bytes[1] <- 255
+    malformed_key: sview = sview(&malformed_key_bytes[0], 0, 2)
+    check("malformed resource key cannot alias its valid prefix", not UiResources::is_valid(UiResources::request(malformed_key, 11)) and not UiResources::key_matches(image.slot.usize(), malformed_key))
     check("request raises resource invalidation", UiCore::is_invalidated(UiCore::Invalidation.Resources))
     check("resource demand hint is accepted", UiResources::set_demand(image, 10) and UiResources::is_demanded(image) and UiResources::demand_priority(image) == 10)
     check("repeated demand hint is idempotent", not UiResources::set_demand(image, 10))
