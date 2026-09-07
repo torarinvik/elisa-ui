@@ -80,6 +80,12 @@ module UiDialog:
         # and copied before the handle is returned.
         def open(kind: Kind, title: sview, message: sview, primary: sview, secondary: sview, owner: u32) -> Handle:
             return invalid() if not kind_is_valid(kind) or title.len < 0 or message.len < 0 or primary.len < 0 or secondary.len < 0
+            # A positive counted extent without backing storage is malformed
+            # foreign input, not an empty optional label. Reject it before the
+            # dialog becomes visible; otherwise write_text() would normalize
+            # the value to an empty string and create an unlabeled modal that
+            # cannot be represented consistently by accessibility adapters.
+            return invalid() if (title.len > 0 and title.data == null) or (message.len > 0 and message.data == null) or (primary.len > 0 and primary.data == null) or (secondary.len > 0 and secondary.data == null)
             free_slot: mutable usize = NONE_SLOT
             for slot in 0..<MAX_DIALOGS:
                 if not active[slot] and not closed[slot]:

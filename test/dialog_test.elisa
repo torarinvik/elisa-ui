@@ -15,6 +15,12 @@ def main() -> i64:
     invalid_kind: UiDialog::Kind = (-1).i32().Kind()
     rejected_kind: UiDialog::Handle = UiDialog::open(invalid_kind, "Invalid", "", "OK", "", 1)
     check("invalid dialog kinds are rejected", not UiDialog::is_valid(rejected_kind) and UiDialog::snapshot().active == 0)
+    malformed_storage_words: mutable u64[2] = zeroed
+    malformed_storage_words[1] <- 3
+    malformed_storage_ref: mutable sview& = (&malformed_storage_words[0]).cast[mutable sview&] can Unsafe.PointerCast
+    malformed_dialog_storage: sview = malformed_storage_ref[0]
+    rejected_storage: UiDialog::Handle = UiDialog::open(UiDialog::Kind.Alert, malformed_dialog_storage, "", "OK", "", 2)
+    check("null-backed counted dialog text is rejected", not UiDialog::is_valid(rejected_storage) and UiDialog::snapshot().active == 0)
     first: UiDialog::Handle = UiDialog::open(UiDialog::Kind.Confirm, "Delete item", "This cannot be undone.", "Delete", "Keep", 10)
     check("dialog opens with a valid handle", UiDialog::is_valid(first) and UiDialog::is_open(first))
     check("dialog copies title and actions", UiDialog::title(first) == "Delete item" and UiDialog::message(first) == "This cannot be undone." and UiDialog::primary_label(first) == "Delete" and UiDialog::secondary_label(first) == "Keep")
