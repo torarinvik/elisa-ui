@@ -15,8 +15,10 @@ The FFI deliberately does not expose `SkPaint`, `SkFont`, `SkPath`, or any
 other C++ object to Elisa. A host attaches one canvas for a frame, calls
 `UiSkia::render()`, and then detaches it before the surface is destroyed. Elisa
 owns command replay and normalizes direct painter geometry before any value
-crosses the FFI. That makes surface recreation and headless rendering ordinary
-lifecycle transitions instead of retained native pointer state.
+crosses the FFI. Font metrics are independent of the borrowed canvas, so
+layout can query Skia before surface attachment. That makes surface recreation
+and headless rendering ordinary lifecycle transitions instead of retained
+native pointer state.
 
 The first slice covers clear, clipping, rectangles, circles, triangles, lines,
 UTF-8 text, and text metrics. Font fallback, image resources, GPU surface
