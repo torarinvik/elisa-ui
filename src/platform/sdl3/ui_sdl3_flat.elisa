@@ -29,7 +29,7 @@ def sdl_flat_fetch_clipboard() -> usize:
         take: usize = length if length < UiFlat::TEXT_CAPACITY else UiFlat::TEXT_CAPACITY
         for index in 0..<take:
             sdl_flat_clipboard_read[index] <- UiSdl3Text::byte(text, index)
-        copied: sview = sview(&sdl_flat_clipboard_read[0], 0, take.i64())
+        copied: sview = sdl_flat_clipboard_read[0:take]
         sdl_flat_clipboard_length <- UiText::valid_utf8_prefix(copied, take)
         SDL_free(text)
     return sdl_flat_clipboard_length
@@ -55,7 +55,7 @@ def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
     take: usize = length if length < UiFlat::TEXT_CAPACITY else UiFlat::TEXT_CAPACITY
     for index in 0..<take:
         sdl_flat_clipboard_write[index] <- bytes[index]
-    copied: sview = sview(&sdl_flat_clipboard_write[0], 0, take.i64())
+    copied: sview = sdl_flat_clipboard_write[0:take]
     valid_length: usize = UiText::valid_utf8_prefix(copied, take)
     sdl_flat_clipboard_write[valid_length] <- 0
     pointer: cstr = (&sdl_flat_clipboard_write[0]).cast[cstr] can Unsafe.PointerCast
@@ -73,7 +73,7 @@ def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
     if not cached:
         available <- sdl_flat_fetch_clipboard()
     take: mutable usize = available if available < capacity else capacity
-    source: sview = sview(&sdl_flat_clipboard_read[0], 0, take.i64())
+    source: sview = sdl_flat_clipboard_read[0:take]
     take <- UiText::valid_utf8_prefix(source, take)
     for index in 0..<take:
         buffer[index] <- sdl_flat_clipboard_read[index]

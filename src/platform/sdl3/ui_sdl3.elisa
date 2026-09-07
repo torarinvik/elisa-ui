@@ -311,17 +311,12 @@ module UiSdl3:
         # key events and text separate: key codes express navigation/shortcuts,
         # while this path preserves composed and non-ASCII text verbatim.
         def text_input(text: cstr) -> void:
-            length: usize = UiSdl3Text::length(text)
-            return if length == 0
-            # SDL's text buffer is NUL-terminated but still host-owned. Keep
-            # the counted view inside the shared framework limit before it can
-            # reach an application callback that does not use UiFlat.
-            safe_text: sview = UiCore::bounded_text(sview(text, 0, length.i64()))
+            safe_text: sview = UiSdl3Text::bounded_view(text)
+            return if safe_text.len <= 0
             app_text_input(safe_text)
 
         def text_editing(text: cstr, selected_start: i32, selected_length: i32) -> void:
-            length: usize = UiSdl3Text::length(text)
-            safe_text: sview = UiCore::bounded_text(sview(text, 0, length.i64()))
+            safe_text: sview = UiSdl3Text::bounded_view(text)
             # SDL reports marked-text offsets as scalar counts. A malformed
             # event can still carry negative or arbitrarily large integers;
             # cap them to the bounded text view before an application callback

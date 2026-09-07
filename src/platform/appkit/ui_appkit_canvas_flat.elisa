@@ -60,7 +60,7 @@ def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
         available <- UiAppKitCanvas::copy_native_string(native_text, &appkit_clipboard_buffer[0], UiFlat::TEXT_CAPACITY)
         CFRelease(native_text) if native_text != 0
     take: mutable usize = available if available < capacity else capacity
-    source: sview = sview(&appkit_clipboard_buffer[0], 0, take.i64())
+    source: sview = appkit_clipboard_buffer[0:take]
     take <- UiText::valid_utf8_prefix(source, take)
     for index in 0..<take:
         buffer[index] <- appkit_clipboard_buffer[index]
@@ -197,7 +197,7 @@ def appkit_flat_set_text(index: usize, text: usize) -> i32:
     return 0 if not UiAppKitCanvas::live() or not UiLifecycle::accepts_input() or text == 0 or not UiFlat::text_editable(index)
     length: usize = UiAppKitCanvas::copy_native_string(text, &appkit_native_text_buffer[0], UiFlat::TEXT_CAPACITY)
     lifetime: usize = UiFlat::lifetime()
-    UiFlat::replace_text(index, sview(&appkit_native_text_buffer[0], 0, length.i64()))
+    UiFlat::replace_text(index, appkit_native_text_buffer[0:length])
     appkit_scrub_buffer(&appkit_native_text_buffer[0], UiFlat::TEXT_CAPACITY)
     # Text replacement emits the application callback synchronously. If that
     # callback rebuilds the flat tree or stops the canvas, the native element
@@ -295,7 +295,7 @@ def appkit_flat_commit_text(window_handle: usize, text: usize, replacement_locat
     length: usize = UiAppKitCanvas::copy_native_string(plain, &appkit_native_text_buffer[0], UiFlat::TEXT_CAPACITY)
     has_replacement: bool = replacement_location != UiAppKitCanvas::not_found()
     lifetime: usize = UiFlat::lifetime()
-    UiFlat::commit_text(sview(&appkit_native_text_buffer[0], 0, length.i64()), replacement_location, replacement_length, has_replacement)
+    UiFlat::commit_text(appkit_native_text_buffer[0:length], replacement_location, replacement_length, has_replacement)
     appkit_scrub_buffer(&appkit_native_text_buffer[0], UiFlat::TEXT_CAPACITY)
     # Text insertion emits the application callback synchronously. A callback
     # may replace the retained tree or stop the window, so do not repaint a
@@ -310,7 +310,7 @@ def appkit_flat_update_marked_text(window_handle: usize, text: usize, selected_l
     length: usize = UiAppKitCanvas::copy_native_string(plain, &appkit_native_text_buffer[0], UiFlat::TEXT_CAPACITY)
     has_replacement: bool = replacement_location != UiAppKitCanvas::not_found()
     lifetime: usize = UiFlat::lifetime()
-    UiFlat::update_marked_text(sview(&appkit_native_text_buffer[0], 0, length.i64()), selected_location, selected_length, replacement_location, replacement_length, has_replacement)
+    UiFlat::update_marked_text(appkit_native_text_buffer[0:length], selected_location, selected_length, replacement_location, replacement_length, has_replacement)
     appkit_scrub_buffer(&appkit_native_text_buffer[0], UiFlat::TEXT_CAPACITY)
     # Composition updates can also run the application callback. Keep the
     # native redraw tied to the same live retained session as the edit.

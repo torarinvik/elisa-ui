@@ -179,7 +179,10 @@ module UiAppKitCanvas:
             # rejects malformed UTF-8 today, but making the complete-scalar
             # prefix decision here prevents future callers from accidentally
             # handing it a truncated trailing sequence.
-            source: sview = sview(&bytes, 0, length.i64())
+            # `bytes` is a counted foreign span and may be unterminated. A
+            # compiler slice preserves the caller's explicit extent without
+            # making a second unbounded NUL scan.
+            source: sview = bytes[0:length]
             valid_length: usize = UiText::valid_utf8_prefix(source, length)
             pointer: cstr = (&bytes).cast[cstr] can Unsafe.PointerCast
             return CFStringCreateWithBytes(0, pointer, valid_length.i64(), UTF8_ENCODING, false)

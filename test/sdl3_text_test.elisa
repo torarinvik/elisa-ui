@@ -14,6 +14,7 @@ global mutable bounded_editing_selection_seen: bool = false
 global mutable negative_editing_selection_seen: bool = false
 global mutable scalar_editing_selection_seen: bool = false
 global mutable oversized_text: u8[4097] = zeroed
+global mutable unterminated_text: u8[UiCore::MAX_TEXT_BYTES] = zeroed
 
 # The backend calls into the app contract; a measurement test has no app.
 def app_init() -> void:
@@ -108,6 +109,15 @@ def main() -> i64:
     check("SDL committed text bounds hostile NUL strings", bounded_committed_text_seen)
     check("SDL marked text bounds hostile NUL strings", bounded_editing_text_seen)
     check("SDL marked selection stays inside bounded text", bounded_editing_selection_seen)
+    for index in 0..<UiCore::MAX_TEXT_BYTES:
+        unterminated_text[index] <- 121
+    unterminated_pointer: cstr = (&unterminated_text[0]).cast[cstr] can Unsafe.PointerCast
+    unterminated_view: sview = UiSdl3Text::bounded_view(unterminated_pointer)
+    check("SDL bounded view handles an unterminated text span", unterminated_view.len == UiCore::MAX_TEXT_BYTES.i64())
+    UiSdl3::text_input(unterminated_pointer)
+    UiSdl3::text_editing(unterminated_pointer, 2147483647, 2147483647)
+    check("SDL committed input bounds an unterminated span", bounded_committed_text_seen)
+    check("SDL marked input bounds an unterminated span", bounded_editing_text_seen and bounded_editing_selection_seen)
     UiSdl3::text_editing("x", -1, -1)
     check("SDL rejects negative marked selection offsets", negative_editing_selection_seen)
 

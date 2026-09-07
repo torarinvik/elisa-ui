@@ -117,7 +117,7 @@ module UiTextLayout:
             range: LineRange = line_at(index)
             return "" if range.offset > safe_text.len.usize()
             return "" if range.length > safe_text.len.usize() - range.offset
-            return sview(safe_text.data + range.offset, 0, range.length.i64())
+            return safe_text[range.offset:range.offset + range.length]
 
         def utf8_scalar_bytes(text: sview, offset: usize) -> usize:
             # This low-level query intentionally retains one-byte recovery for
@@ -127,8 +127,11 @@ module UiTextLayout:
             return 0 if text.len <= 0 or text.data == null
             limit: usize = UiCore::MAX_TEXT_BYTES if text.len > UiCore::MAX_TEXT_BYTES.i64() else text.len.usize()
             return 0 if offset >= limit
-            capped: sview = sview(text.data, 0, limit.i64())
-            return scalar_bytes(capped, offset, limit)
+            # `text` is already a counted view; rebuilding it from its raw
+            # pointer would scan for a NUL before applying `limit`. The scalar
+            # walker accepts an explicit end, so keep the original view and
+            # never read beyond that bound.
+            return scalar_bytes(text, offset, limit)
 
     private:
         global mutable line_offsets: usize[MAX_LINES] = zeroed

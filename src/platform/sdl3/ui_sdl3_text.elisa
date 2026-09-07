@@ -16,11 +16,27 @@ module UiSdl3Text:
                 title_storage[index] <- 0
             for index in 0..<safe_length:
                 title_storage[index] <- byte(title, index)
-            copied: sview = sview(&title_storage[0], 0, safe_length.i64())
+            copied: sview = title_storage[0:safe_length]
             valid_length: usize = UiText::valid_utf8_prefix(copied, safe_length)
             title_storage[valid_length] <- 0
             pointer: cstr = (&title_storage[0]).cast[cstr] can Unsafe.PointerCast
             return pointer
+
+        # SDL text callbacks expose a borrowed NUL-terminated pointer, but a
+        # malformed host event may omit that terminator. Copy the bounded
+        # prefix into framework-owned storage and return a counted slice; this
+        # keeps the callback path from rebuilding a view through the scanning
+        # `sview(cstr, ...)` constructor.
+        def bounded_view(text: cstr) -> sview:
+            length_value: usize = length(text)
+            safe_length: usize = length_value if length_value < EVENT_TEXT_CAPACITY else EVENT_TEXT_CAPACITY
+            for index in 0..<EVENT_TEXT_STORAGE_CAPACITY:
+                event_text_storage[index] <- 0
+            for index in 0..<safe_length:
+                event_text_storage[index] <- byte(text, index)
+            copied: sview = event_text_storage[0:safe_length]
+            valid_length: usize = UiText::valid_utf8_prefix(copied, safe_length)
+            return event_text_storage[0:valid_length]
 
         def byte(text: cstr, index: usize) -> u8:
             pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
@@ -44,7 +60,10 @@ module UiSdl3Text:
         const MAX_SCAN_BYTES: usize = UiCore::MAX_TEXT_BYTES
         const TITLE_CAPACITY: usize = UiCore::MAX_TEXT_BYTES
         const TITLE_STORAGE_CAPACITY: usize = TITLE_CAPACITY + 1
+        const EVENT_TEXT_CAPACITY: usize = UiCore::MAX_TEXT_BYTES
+        const EVENT_TEXT_STORAGE_CAPACITY: usize = EVENT_TEXT_CAPACITY + 1
         global mutable title_storage: u8[TITLE_STORAGE_CAPACITY] = zeroed
+        global mutable event_text_storage: u8[EVENT_TEXT_STORAGE_CAPACITY] = zeroed
 
         def byte_at(pointer: uintptr, index: usize) -> u8:
             trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic]:
