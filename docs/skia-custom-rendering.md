@@ -1,7 +1,9 @@
 # Skia custom rendering
 
-The custom-painted backend is moving to Skia while the native-control backend
-remains AppKit. The split is intentional:
+The native-control backend remains AppKit, while the custom-painted backend is
+Skia. The split is intentional. The current AppKit canvas still has a
+CoreGraphics fallback for off-screen and legacy hosts until a pinned Skia
+surface is supplied; that fallback is not the native-control path:
 
 - AppKit owns native controls, text services, accessibility protocol objects,
   windows, and event delivery in the native profile.

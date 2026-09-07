@@ -69,10 +69,13 @@ because a module member's symbol carries its module and those names cannot move.
   accessibility objects and byte-oriented pasteboard primitives through a thin
   Objective-C FFI shim while Elisa owns event translation, visual policy, edit
   command execution, CoreText text shaping, text editing and every rendered
-  control). The custom-rendering primitive path is being moved to the Skia
-  painter in [docs/skia-custom-rendering.md](docs/skia-custom-rendering.md):
-  `UiSkia` keeps the same command protocol and crosses only a narrow C FFI,
-  while AppKit controls remain native, plus
+  control). The backend split is deliberate: AppKit controls remain native,
+  while custom pixels use the Skia painter in
+  [docs/skia-custom-rendering.md](docs/skia-custom-rendering.md) whenever a
+  host supplies a pinned Skia surface. `UiSkia` keeps the same command protocol
+  and crosses only a narrow C FFI; the current AppKit canvas's CoreGraphics
+  path is retained as an explicit fallback until that host integration is
+  available, plus
   [wasmbrowser](src/platform/wasmbrowser/ui_wasmbrowser.elisa) (a component
   implementing `world app`; the host drives the loop through the exported guest
   interface, and canonical-ABI encoding is confined to this file; its clipboard
