@@ -41,6 +41,22 @@ def main() -> i64:
     check("relationship patch updates the retained node", node.parent_id == 3 and node.first_child_id == 4 and node.next_sibling_id == 5)
     check("reversed range fails closed", node.has_range and node.range_min == 10.0 and node.range_max == 10.0 and node.range_conflict and node.value == 10.0)
 
+    huge: f32 = 3.0e38
+    UiCore::accessibility_set_range(7, -huge, huge)
+    node <- UiCore::accessibility_at(0)
+    check("range patch bounds extreme minimum", node.range_min == -UiCore::MAX_GEOMETRY_EXTENT)
+    check("range patch bounds extreme maximum", node.range_max == UiCore::MAX_GEOMETRY_EXTENT)
+
+    UiCore::begin_frame()
+    UiCore::accessibility_with_metadata(
+        UiCore::AccessibilityRole.Slider, "Extreme range", "", UiCore::Rect(0.0, 0.0, 10.0, 10.0),
+        20, 20, true, false, false, huge, "", "", 0, 0, 0,
+        0, 0, 0, -huge, huge, true)
+    extreme: UiCore::AccessibilityNode = UiCore::accessibility_at(0)
+    check("range construction bounds extreme minimum", extreme.range_min == -UiCore::MAX_GEOMETRY_EXTENT)
+    check("range construction bounds extreme maximum", extreme.range_max == UiCore::MAX_GEOMETRY_EXTENT)
+    check("range construction bounds extreme value", extreme.value == UiCore::MAX_GEOMETRY_EXTENT)
+
     UiCore::accessibility_with_metadata(
         UiCore::AccessibilityRole.Button, "Apply", "", UiCore::Rect(0.0, 0.0, 20.0, 20.0),
         8, 8, true, false, false, 0.0, "", "", 0, 0, 0,
