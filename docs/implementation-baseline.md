@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `bba7e8b0856e34a3a0d01382b3ed73cc00029e07` on branch `work` |
+| elisa-ui revision | `e496de251ca8561522017d15881b445162e168f4` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -368,6 +368,9 @@ separate host-enforced security boundary.
 - Direct Skia text drawing now goes through the same Elisa sanitization as
   retained replay, keeping custom-control escape hatches bounded and UTF-8
   safe without duplicating policy in the bridge.
+- AppKit custom-canvas CoreText shaping and metrics now live in their own
+  `ui_appkit_canvas_coretext.elisa` extension; window/snapshot ABI types and
+  text-command routing remain separate modules with the same public contract.
 - Callback entry points are lifetime-guarded: if an application handler resets
   the flat tree, post-callback history, composition, activation, adjustment, and
   radio state updates are abandoned instead of touching recycled slots. This is
