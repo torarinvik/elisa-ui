@@ -47,6 +47,10 @@ the image handle, so resource lifetime remains with the host/SDK. The
 `draw_ready_image` helper additionally requires a live `UiResources` generation
 in the `Ready` state before a host image can be painted.
 
+The same rule applies to host-provided typefaces: `draw_ready_text` accepts a
+borrowed `SkTypeface*` only for a ready font generation, while bounded text
+geometry and resource lifetime remain Elisa/SDK responsibilities.
+
 The checkout does not currently pin or vendor a Skia SDK. Build the C++ shim
 only in a target that supplies Skia headers and libraries, then pass its
 `SkCanvas*` through the opaque FFI handle. The Elisa module itself compiles

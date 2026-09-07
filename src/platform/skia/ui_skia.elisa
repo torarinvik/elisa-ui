@@ -23,6 +23,7 @@ extern elisa_skia_canvas_fill_round_rect(canvas: usize, x: f32, y: f32, width: f
 extern elisa_skia_canvas_stroke_round_rect(canvas: usize, x: f32, y: f32, width: f32, height: f32, radius: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
 extern elisa_skia_canvas_shadow_round_rect(canvas: usize, x: f32, y: f32, width: f32, height: f32, radius: f32, alpha: u8) -> void
 extern elisa_skia_canvas_draw_image(canvas: usize, image: usize, x: f32, y: f32, width: f32, height: f32, alpha: u8) -> void
+extern elisa_skia_canvas_draw_text_with_font(canvas: usize, font: usize, text: cstr, length: usize, x: f32, y: f32, size: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
 extern elisa_skia_canvas_fill_circle(canvas: usize, x: f32, y: f32, radius: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
 extern elisa_skia_canvas_fill_triangle(canvas: usize, ax: f32, ay: f32, bx: f32, by: f32, cx: f32, cy: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
 extern elisa_skia_canvas_fill_line(canvas: usize, x0: f32, y0: f32, x1: f32, y1: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
@@ -101,6 +102,21 @@ module UiSkia:
             return false if UiResources::state(resource) != UiResources::State.Ready
             return false if image == 0 or canvas_state == 0 or alpha == 0
             UiSkia::draw_image(image, box, alpha)
+            return true
+
+        # Font decoding/fallback remains host-owned, but a ready logical font
+        # resource must still be checked in Elisa before its borrowed SkTypeface
+        # can affect a frame.
+        def draw_ready_text(font: usize, resource: UiResources::Handle, run: UiCore::TextRun, color: UiCore::Color) -> bool can[Ui.Draw, Ui.Text]:
+            return false if UiResources::state(resource) != UiResources::State.Ready
+            return false if font == 0 or canvas_state == 0 or run.text.len <= 0 or run.text.data == null
+            safe_run: UiCore::TextRun = UiCore::TextRun(
+                UiCore::Vec2(UiCore::bounded_coordinate(run.origin.x), UiCore::bounded_coordinate(run.origin.y)),
+                UiCore::bounded_extent(run.size),
+                UiCore::bounded_text(run.text))
+            return false if safe_run.text.len <= 0 or safe_run.text.data == null
+            pointer: cstr = safe_run.text.data.cast[cstr] can Unsafe.PointerCast
+            elisa_skia_canvas_draw_text_with_font(canvas_state, font, pointer, safe_run.text.len.usize(), safe_run.origin.x, safe_run.origin.y, safe_run.size, color.r, color.g, color.b, color.a)
             return true
 
         def measure_text_width(text: sview, size: f32) -> f32:

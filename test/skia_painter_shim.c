@@ -63,6 +63,13 @@ void elisa_skia_canvas_draw_image(size_t canvas, size_t image, float x, float y,
     (void)image; (void)x; (void)y; (void)width; (void)height; (void)alpha;
     if (canvas != 0) image_count += 1;
 }
+void elisa_skia_canvas_draw_text_with_font(size_t canvas, size_t font, const char *text,
+                                           size_t length, float x, float y, float size,
+                                           uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha) {
+    (void)font; (void)text; (void)length; (void)x; (void)y; (void)size;
+    (void)red; (void)green; (void)blue; (void)alpha;
+    if (canvas != 0) text_count += 1;
+}
 void elisa_skia_canvas_fill_circle(size_t canvas, float x, float y, float radius,
                                    uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha) {
     (void)x; (void)y; (void)radius;

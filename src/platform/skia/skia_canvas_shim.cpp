@@ -17,6 +17,7 @@
 #include "include/core/SkRRect.h"
 #include "include/core/SkPath.h"
 #include "include/core/SkSamplingOptions.h"
+#include "include/core/SkTypeface.h"
 
 namespace {
 
@@ -135,6 +136,21 @@ extern "C" void elisa_skia_canvas_draw_image(std::size_t canvas_handle, std::siz
         target->drawImageRect(image, SkRect::MakeXYWH(x, y, width, height),
                               SkSamplingOptions(SkFilterMode::kLinear, SkMipmapMode::kNone),
                               &paint);
+    }
+}
+
+extern "C" void elisa_skia_canvas_draw_text_with_font(std::size_t canvas_handle,
+                                                        std::size_t font_handle,
+                                                        const char *text, std::size_t length,
+                                                        float x, float y, float size,
+                                                        std::uint8_t red, std::uint8_t green,
+                                                        std::uint8_t blue, std::uint8_t alpha) {
+    if (SkCanvas *target = canvas(canvas_handle);
+        target != nullptr && font_handle != 0 && text != nullptr && length > 0) {
+        SkFont font = font_for(size);
+        font.setTypeface(reinterpret_cast<SkTypeface *>(font_handle));
+        target->drawSimpleText(text, length, SkTextEncoding::kUTF8, x, y, font,
+                               fill_paint(red, green, blue, alpha));
     }
 }
 
