@@ -37,6 +37,8 @@ extern elisa_skia_text_line_height_with_font(font: usize, size: f32) -> f32
 
 module UiSkia:
     public:
+        const MAX_IMAGE_BINDINGS: usize = 128
+
         # The host passes an opaque SkCanvas* as usize. Elisa never dereferences
         # or stores a Skia C++ object; detach() invalidates the handle at the
         # end of every surface lifetime.
@@ -109,6 +111,48 @@ module UiSkia:
             return false if safe_width <= 0.0 or safe_height <= 0.0
             UiSkia::draw_image(image, box, alpha)
             return true
+
+        # Associate a host-owned decoded image with one exact logical resource
+        # generation. Elisa stores only the opaque pointer and never retains or
+        # releases it; unbind before the host disposes the renderer object.
+        def bind_image(resource: UiResources::Handle, image: usize) -> bool:
+            return false if UiResources::state(resource) != UiResources::State.Ready or image == 0
+            for index in 0..<MAX_IMAGE_BINDINGS:
+                if skia_image_binding_active[index] and skia_image_binding_matches(index, resource):
+                    skia_image_binding_images[index] <- image
+                    return true
+            free_index: mutable usize = MAX_IMAGE_BINDINGS
+            for index in 0..<MAX_IMAGE_BINDINGS:
+                if not skia_image_binding_active[index]:
+                    free_index <- index
+                    break
+            return false if free_index == MAX_IMAGE_BINDINGS
+            skia_image_binding_resources[free_index] <- resource
+            skia_image_binding_images[free_index] <- image
+            skia_image_binding_active[free_index] <- true
+            return true
+
+        def unbind_image(resource: UiResources::Handle) -> bool:
+            for index in 0..<MAX_IMAGE_BINDINGS:
+                if skia_image_binding_active[index] and skia_image_binding_matches(index, resource):
+                    skia_image_binding_active[index] <- false
+                    skia_image_binding_resources[index] <- UiResources::invalid()
+                    skia_image_binding_images[index] <- 0
+                    return true
+            return false
+
+        def clear_image_bindings() -> void:
+            for index in 0..<MAX_IMAGE_BINDINGS:
+                skia_image_binding_active[index] <- false
+                skia_image_binding_resources[index] <- UiResources::invalid()
+                skia_image_binding_images[index] <- 0
+
+        def draw_bound_image(resource: UiResources::Handle, box: UiCore::Rect, alpha: u8) -> bool can[Ui.Draw]:
+            return false if UiResources::state(resource) != UiResources::State.Ready
+            for index in 0..<MAX_IMAGE_BINDINGS:
+                if skia_image_binding_active[index] and skia_image_binding_matches(index, resource):
+                    return UiSkia::draw_ready_image(skia_image_binding_images[index], resource, box, alpha)
+            return false
 
         # Font decoding/fallback remains host-owned, but a ready logical font
         # resource must still be checked in Elisa before its borrowed SkTypeface
@@ -211,6 +255,12 @@ module UiSkia:
     private:
         global mutable canvas_state: usize = 0
         global mutable skia_clip_depth: usize = 0
+        global mutable skia_image_binding_resources: UiResources::Handle[MAX_IMAGE_BINDINGS] = zeroed
+        global mutable skia_image_binding_images: usize[MAX_IMAGE_BINDINGS] = zeroed
+        global mutable skia_image_binding_active: bool[MAX_IMAGE_BINDINGS] = zeroed
+
+        def skia_image_binding_matches(index: usize, resource: UiResources::Handle) -> bool:
+            return skia_image_binding_resources[index].slot == resource.slot and skia_image_binding_resources[index].generation == resource.generation
 
 # C/Objective-C hosts should prefer this one-shot boundary when they do not
 # need to interleave custom work with replay. Elisa owns the borrowed-canvas

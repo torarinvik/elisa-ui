@@ -46,6 +46,10 @@ before issuing a borrowed `drawImageRect` call. `UiSkia` never retains or frees
 the image handle, so resource lifetime remains with the host/SDK. The
 `draw_ready_image` helper additionally requires a live `UiResources` generation
 in the `Ready` state before a host image can be painted.
+Hosts can use `bind_image`/`draw_bound_image` to associate that pointer with an
+exact `(slot,generation)` token; recycled resource generations cannot reuse an
+old image binding. Elisa stores the opaque value only and exposes explicit
+unbind/clear operations before host disposal.
 
 The same rule applies to host-provided typefaces: `draw_ready_text` accepts a
 borrowed `SkTypeface*` only for a ready font generation, while bounded text
