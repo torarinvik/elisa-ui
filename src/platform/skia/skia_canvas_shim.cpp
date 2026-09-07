@@ -12,13 +12,15 @@
 #include "include/core/SkCanvas.h"
 #include "include/core/SkColor.h"
 #include "include/core/SkFont.h"
+#include "include/core/SkFontMetrics.h"
 #include "include/core/SkImage.h"
 #include "include/core/SkPaint.h"
 #include "include/core/SkRect.h"
 #include "include/core/SkRRect.h"
-#include "include/core/SkPath.h"
+#include "include/core/SkPathBuilder.h"
 #include "include/core/SkSamplingOptions.h"
 #include "include/core/SkTypeface.h"
+#include "include/effects/SkImageFilters.h"
 
 namespace {
 
@@ -122,13 +124,12 @@ extern "C" void elisa_skia_canvas_shadow_round_rect(std::size_t handle, float x,
                                                       float offset_y, float blur, std::uint8_t alpha) {
     if (SkCanvas *target = canvas(handle); target != nullptr && radius >= 0.0f && alpha != 0) {
         const SkRect rect = SkRect::MakeXYWH(x, y, width, height);
-        // The shadow layer is the only visible effect. A black fill here would
-        // paint over the retained control before the hairline is emitted.
-        SkPaint paint;
-        paint.setAntiAlias(true);
-        paint.setStyle(SkPaint::kFill_Style);
-        paint.setColor(SK_ColorTRANSPARENT);
-        paint.setShadowLayer(blur, offset_x, offset_y, color(0, 0, 0, alpha));
+        // DropShadowOnly keeps the source silhouette out of the result while
+        // still using its alpha as the shadow mask. This is the replacement
+        // for the removed SkPaint::setShadowLayer API in current Skia.
+        SkPaint paint = fill_paint(0, 0, 0, 255);
+        paint.setImageFilter(SkImageFilters::DropShadowOnly(
+            offset_x, offset_y, blur, blur, color(0, 0, 0, alpha), nullptr));
         target->drawRRect(SkRRect::MakeRectXY(rect, radius, radius), paint);
     }
 }
@@ -203,12 +204,9 @@ extern "C" void elisa_skia_canvas_fill_triangle(std::size_t handle, float ax, fl
                                                  float cx, float cy, std::uint8_t red, std::uint8_t green,
                                                  std::uint8_t blue, std::uint8_t alpha) {
     if (SkCanvas *target = canvas(handle)) {
-        SkPath path;
-        path.moveTo(ax, ay);
-        path.lineTo(bx, by);
-        path.lineTo(cx, cy);
-        path.close();
-        target->drawPath(path, fill_paint(red, green, blue, alpha));
+        SkPathBuilder path;
+        path.moveTo(ax, ay).lineTo(bx, by).lineTo(cx, cy).close();
+        target->drawPath(path.detach(), fill_paint(red, green, blue, alpha));
     }
 }
 

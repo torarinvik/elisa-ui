@@ -12,6 +12,7 @@ parity on untested platforms.
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
+| Skia source pin | `chrome/m150` at `9c7b2dffb2433f5a0cc2b77f06025a09126807ed`; build contract in `third_party/skia.lock` |
 | Elisa runtime | `../wasm-sdk-compiler/build/runtime/elisacore_runtime.o`; SHA-256 `cb06532f0c37540284de4ceaa622d0da9193f113877ac391fb00bad4bf9ff1e9` |
 | WasmBrowser checkout | revision `b40bb17a3141` (host worktree has unrelated local runtime edits) |
 | WasmBrowser WIT | `../WasmBrowser/wit/wasmbrowser.wit`; SHA-256 `9032a1c59a5495d4868bc7cdf494153096708ff6f2321b4ea2ffeff752c627d6` |
@@ -52,8 +53,9 @@ Externally imposed symbols are kept at the edges:
 - Cocoa object/protocol/selector entry points in
   `src/platform/appkit/appkit_shim.m` and `appkit_canvas_shim.m`.
 - Skia custom-rendering primitives in `src/platform/skia/skia_canvas_shim.cpp`;
-  the C++ bridge is intentionally unbuilt until a target supplies a pinned
-  Skia SDK, while `ui_skia.elisa` remains compiler- and headless-testable.
+  the source revision and CPU-raster build contract are pinned in
+  `third_party/skia.lock`. A host still supplies the fetched SDK/build output;
+  `ui_skia.elisa` remains compiler- and headless-testable without it.
 
 The two Objective-C files total 1,486 lines, but the custom canvas shim has no
 framework state table, widget/layout traversal, rendering path, text policy,
@@ -145,7 +147,7 @@ module-private.
 | SDL3 native | implemented-tested | `scripts/run_tests.sh`; SDL keymap/text tests and dummy-video smoke path pass. |
 | AppKit native controls | implemented-tested | `scripts/check_appkit.sh` creates and reads real NSWindow/NSView/control objects without ordering a window onscreen. |
 | AppKit custom canvas | implemented-tested | `scripts/check_appkit_canvas.sh` builds/signs the app, renders an off-screen PNG, and exercises semantic-object identity and callbacks. |
-| Skia custom painter | implemented-tested at Elisa boundary; host integration planned | `scripts/check_skia.sh` compiles the painter and records whether `SKIA_ROOT` is configured. The local tuple has no pinned Skia SDK, so the C++ shim is not claimed as runtime-tested. |
+| Skia custom painter | implemented-tested with a real off-screen surface; AppKit host integration planned | `third_party/skia.lock` pins the source/build tuple. With that checkout and `libskia.a`, `scripts/check_skia.sh` links the production C++ bridge, renders the Elisa fixture into a CPU-raster `SkSurface`, checks exact pixels, and writes a PNG without foregrounding a window. The repository does not vendor the multi-gigabyte SDK/build output. |
 | Optional feature view | implemented-tested at Elisa boundary; host activation integration planned | `test/feature_view_test.elisa` covers typed identity, activation tokens, stale polling, terminal failures, retry generations, cancellation, owner disposal, and invalidation. The SDK/host remains responsible for actual component activation and deactivation. |
 | WasmBrowser hosted | implemented-tested for fresh package/inspect; runtime launch planned | `ELISA_UI_STAGE1=../wasm-sdk-compiler bash scripts/build_wapp.sh hello` now emits and packs the component, and `scripts/check_wapp.sh` passes profile/import/export inspection. Runtime launch and device execution still need dedicated fixtures. |
 | Android standalone | planned | No Android build or device fixture exists in this checkout. |
@@ -221,10 +223,14 @@ semantic callbacks, bundle/signature checks, and PNG frame all pass without
 ordering a window onscreen. The full `bash scripts/run_tests.sh` suite also
 passes from this revision, including the AppKit canvas keymap and text paths.
 The Skia custom painter boundary compiles headlessly through
-`scripts/check_skia.sh`; no foreground window or local Skia installation is
-required for the Elisa contract check. When `SKIA_ROOT` is configured, the
-same gate also compiles the real C++ host shim without linking a target surface.
+`scripts/check_skia.sh`; no foreground window is required. With a checkout at
+the pinned revision and the lockfile's CPU-raster archive, the same gate also
+links the production C++ host shim and runs
+`test/skia_offscreen_test.elisa` against a real off-screen `SkSurface`, checking
+background, rounded-fill, circle, and triangle pixels before writing a PNG.
 The gate rejects AppKit imports in that shim even when no SDK is installed.
+The repository intentionally keeps the SDK/build output external because it is
+multi-gigabyte; the lockfile and GN arguments make the host fetch reproducible.
 Its Elisa-owned `UiSkia::render()` entry
 point now owns command replay and normalizes direct painter geometry before the
 opaque canvas FFI, leaving the C++ shim with primitive SkCanvas calls only.

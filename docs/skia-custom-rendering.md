@@ -79,6 +79,18 @@ observable without allowing an unbounded render allocation.
 `UiSkia::render_status()` exposes the typed result behind that compatibility
 boolean: `SkippedNoSurface`, `Complete`, or `CommandOverflow`.
 
+The checked-in source pin is `third_party/skia.lock`: Skia `chrome/m150` at
+`9c7b2dffb2433f5a0cc2b77f06025a09126807ed`, with a deterministic macOS arm64
+CPU-raster GN configuration. The SDK and generated archive are kept out of the
+repository, but a host can fetch Skia's DEPS, build `libskia.a`, and run
+`SKIA_ROOT=/path/to/skia SKIA_OUT=/path/to/skia/out/elisa bash
+scripts/check_skia.sh`. That command compiles the real bridge, links the
+production shim with the Elisa fixture, renders a real off-screen `SkSurface`,
+checks representative pixels, and saves a PNG; it never orders an AppKit
+window onscreen. The AppKit canvas host still uses its CoreGraphics fallback,
+so wiring an AppKit `MTKView`/`SkSurface` host remains a separate integration
+milestone.
+
 The first slice covers clear, clipping, rounded rectangles, circles, triangles,
 lines, UTF-8 text, and text metrics. The portable `FillRect` command keeps its
 wire shape, while `UiPaint::rounded_rect_style()` supplies the shared Elisa
@@ -132,8 +144,9 @@ size to every framework draw and metric query; direct native calls with a
 non-positive size are rejected by the bridge instead of selecting an implicit
 fallback.
 
-The checkout does not currently pin or vendor a Skia SDK. Build the C++ shim
-only in a target that supplies Skia headers and libraries, then pass its
+The checkout pins the Skia source/build contract but does not vendor the SDK
+or generated archive. Build the C++ shim only in a target that supplies Skia
+headers and libraries, then pass its
 `SkCanvas*` through the opaque FFI handle. The Elisa module itself compiles
 without Skia installed, so layout, command generation, and all existing
 headless tests remain independent of the renderer choice.
