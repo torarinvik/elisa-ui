@@ -59,8 +59,11 @@ module UiSdl3Draw:
         def __drop__(self: Texture) -> void:
             SDL_DestroyTexture(self.handle)
 
-        def packed_color(color: UiCore::Color) -> u32:
-            return color.r.u32() | (color.g.u32() << 8) | (color.b.u32() << 16) | (color.a.u32() << 24)
+        def sdl_color(color: UiCore::Color) -> SdlColor:
+            # SDL3_ttf declares SDL_Color as four Uint8 fields. Keep that
+            # aggregate in the FFI signature instead of relying on a target-
+            # specific integer packing convention.
+            return SdlColor{r: color.r, g: color.g, b: color.b, a: color.a}
 
         def blit_text(run: UiCore::TextRun, color: UiCore::Color) -> void:
             return if run.text.len <= 0 or run.text.data == null
@@ -68,7 +71,7 @@ module UiSdl3Draw:
             return if safe_text.len <= 0 or safe_text.data == null
             if font_for(run.size) is font:
                 pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
-                surface_opt: void&? = TTF_RenderText_Blended(font, pointer, safe_text.len.usize(), packed_color(color))
+                surface_opt: void&? = TTF_RenderText_Blended(font, pointer, safe_text.len.usize(), sdl_color(color))
                 if surface_opt is surface_handle:
                     surface: Surface = Surface{handle: surface_handle}
                     texture_opt: void&? = SDL_CreateTextureFromSurface(ren(), surface.handle)
