@@ -108,6 +108,23 @@ extend UiCore:
                     pass
             return false
 
+        # Typed callers can construct pointer variants directly, bypassing the
+        # C/WIT decoders that normally reject non-finite coordinates. Keep the
+        # shared queue fail-closed too: replacing NaN/∞ with zero here would
+        # turn malformed input into a real hit at the origin.
+        def input_coordinates_are_finite(event: Event) -> bool:
+            match event:
+                PointerEvent.Move(at):
+                    return is_finite(at.x) and is_finite(at.y)
+                PointerEvent.Down(at, button):
+                    return is_finite(at.x) and is_finite(at.y)
+                PointerEvent.Up(at, button):
+                    return is_finite(at.x) and is_finite(at.y)
+                PointerEvent.Scroll(at, delta):
+                    return is_finite(at.x) and is_finite(at.y) and is_finite(delta.x) and is_finite(delta.y)
+                _:
+                    return true
+
         # Flatten. Fields a kind does not use stay zero, which is what the flat
         # record always meant.
         def to_record(event: Event) -> EventRecord:
