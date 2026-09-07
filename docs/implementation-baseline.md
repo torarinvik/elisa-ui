@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `ff448a2e9e140f5aed4aebc734c0069637353162` on branch `work` |
+| elisa-ui revision | `66affcc2fe576b5846dbcc1892e9f6f63bf4ef2f` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -190,8 +190,10 @@ same gate also compiles the real C++ host shim without linking a target surface.
 Its Elisa-owned `UiSkia::render()` entry
 point now owns command replay and normalizes direct painter geometry before the
 opaque canvas FFI, leaving the C++ shim with primitive SkCanvas calls only.
-Skia font metrics are now queryable before surface attachment because they do
-not depend on a live canvas.
+The custom host can use the exported one-shot `elisa_skia_render_frame` entry
+point, while explicit attach/render/detach remains available to hosts that need
+phase control. Skia font metrics are queryable before surface attachment
+because they do not depend on a live canvas.
 
 The shared `examples/hello/app.elisa` now uses `UiHandles::Handle` values for
 every retained widget on SDL3, AppKit canvas, and WasmBrowser; only the
