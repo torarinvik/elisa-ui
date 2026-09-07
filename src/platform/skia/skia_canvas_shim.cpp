@@ -100,8 +100,7 @@ extern "C" void elisa_skia_canvas_fill_round_rect(std::size_t handle, float x, f
                                                     std::uint8_t alpha) {
     if (SkCanvas *target = canvas(handle)) {
         const SkRect rect = SkRect::MakeXYWH(x, y, width, height);
-        const SkScalar safe_radius = radius > 0.0f ? radius : 0.0f;
-        target->drawRRect(SkRRect::MakeRectXY(rect, safe_radius, safe_radius),
+        target->drawRRect(SkRRect::MakeRectXY(rect, radius, radius),
                           fill_paint(red, green, blue, alpha));
     }
 }
@@ -113,8 +112,7 @@ extern "C" void elisa_skia_canvas_stroke_round_rect(std::size_t handle, float x,
                                                       std::uint8_t alpha) {
     if (SkCanvas *target = canvas(handle); target != nullptr && stroke_width > 0.0f) {
         const SkRect rect = SkRect::MakeXYWH(x, y, width, height);
-        const SkScalar safe_radius = radius > 0.0f ? radius : 0.0f;
-        target->drawRRect(SkRRect::MakeRectXY(rect, safe_radius, safe_radius),
+        target->drawRRect(SkRRect::MakeRectXY(rect, radius, radius),
                           stroke_paint(red, green, blue, alpha, stroke_width));
     }
 }
@@ -124,7 +122,6 @@ extern "C" void elisa_skia_canvas_shadow_round_rect(std::size_t handle, float x,
                                                       float offset_y, float blur, std::uint8_t alpha) {
     if (SkCanvas *target = canvas(handle); alpha != 0) {
         const SkRect rect = SkRect::MakeXYWH(x, y, width, height);
-        const SkScalar safe_radius = radius > 0.0f ? radius : 0.0f;
         // The shadow layer is the only visible effect. A black fill here would
         // paint over the retained control before the hairline is emitted.
         SkPaint paint;
@@ -132,7 +129,7 @@ extern "C" void elisa_skia_canvas_shadow_round_rect(std::size_t handle, float x,
         paint.setStyle(SkPaint::kFill_Style);
         paint.setColor(SK_ColorTRANSPARENT);
         paint.setShadowLayer(blur, offset_x, offset_y, color(0, 0, 0, alpha));
-        target->drawRRect(SkRRect::MakeRectXY(rect, safe_radius, safe_radius), paint);
+        target->drawRRect(SkRRect::MakeRectXY(rect, radius, radius), paint);
     }
 }
 

@@ -18,6 +18,11 @@ if rg -n '#include[[:space:]]*[<"](Cocoa|AppKit)' "$ROOT/src/platform/skia/skia_
   exit 1
 fi
 
+if rg -n 'safe_radius|radius[[:space:]]*>[[:space:]]*0\.0f' "$ROOT/src/platform/skia/skia_canvas_shim.cpp"; then
+  echo "skia: rounded-corner policy leaked back into the C++ bridge" >&2
+  exit 1
+fi
+
 if [[ -n "${SKIA_ROOT:-}" && -f "$SKIA_ROOT/include/core/SkCanvas.h" ]]; then
   cxx="${CXX:-clang++}"
   skia_cxxflags=()
