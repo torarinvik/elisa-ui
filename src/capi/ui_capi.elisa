@@ -22,6 +22,9 @@
 #   void elisa_ui_dispatch_event(int32_t kind, float x, float y,
 #                                float dx, float dy, int32_t code);
 #   void elisa_ui_dispatch_text_input(const char *text, size_t length);
+#   void elisa_ui_dispatch_text_editing(const char *text, size_t length,
+#                                       int32_t selected_start,
+#                                       int32_t selected_length);
 #   void elisa_ui_set_viewport(float width, float height);
 #   float elisa_ui_viewport_width(void);
 #   float elisa_ui_viewport_height(void);
@@ -123,6 +126,43 @@ module UiCapi:
                     scrub_text_buffer()
             text_dispatch_active <- false
 
+        # Deliver live IME composition through the same Elisa-owned staging
+        # slot as committed text. Unlike committed input, an empty composition
+        # is meaningful (it represents cancellation), so it still reaches the
+        # application with a zero-length view.
+        def dispatch_text_editing(text: cstr?, length: usize, selected_start: i32, selected_length: i32) -> void can Unsafe.PointerCast:
+            allow_unowned_dispatch: bool = UiLifecycle::phase() == UiLifecycle::Phase.New
+            return if not allow_unowned_dispatch and (not UiLifecycle::is_started() or not UiLifecycle::accepts_input())
+            return if text_dispatch_active
+            text_dispatch_active <- true
+            scrub_text_buffer()
+            safe_length: mutable usize = UiCore::MAX_TEXT_BYTES if length > UiCore::MAX_TEXT_BYTES else length
+            if safe_length > 0:
+                if text is value:
+                    pointer: uintptr = value.cast[uintptr] can Unsafe.PointerCast
+                    if pointer == 0.uintptr():
+                        text_dispatch_active <- false
+                        return
+                    for index in 0..<safe_length:
+                        trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic]:
+                            byte: u8& = (pointer + index.uintptr()).cast[u8&]
+                            text_buffer[index] <- byte
+                else:
+                    text_dispatch_active <- false
+                    return
+            text_buffer[safe_length] <- 0
+            composed: sview = text_buffer[0:safe_length]
+            bounded: sview = UiCore::bounded_text(composed)
+            limit: i32 = UiText::utf8_scalar_count(bounded).i32()
+            safe_start: mutable i32 = selected_start if selected_start > 0 else 0
+            safe_start <- limit if safe_start > limit else safe_start
+            remaining: i32 = limit - safe_start
+            safe_selection: mutable i32 = selected_length if selected_length > 0 else 0
+            safe_selection <- remaining if safe_selection > remaining else safe_selection
+            app_text_editing(bounded, safe_start, safe_selection)
+            scrub_text_buffer()
+            text_dispatch_active <- false
+
         # Test and diagnostics helper for the transient-input invariant. This
         # remains a module member, so it cannot be mistaken for a C ABI entry
         # point or accessed by native code accidentally.
@@ -153,6 +193,9 @@ def elisa_ui_abi_version() -> u32:
 # foreign pointer.
 def elisa_ui_dispatch_text_input(text: cstr?, length: usize) -> void can Unsafe.PointerCast:
     UiCapi::dispatch_text_input(text, length)
+
+def elisa_ui_dispatch_text_editing(text: cstr?, length: usize, selected_start: i32, selected_length: i32) -> void can Unsafe.PointerCast:
+    UiCapi::dispatch_text_editing(text, length, selected_start, selected_length)
 
 # The viewport, for a C host that owns the window. State lives in UiCore, so
 # these reach it directly.

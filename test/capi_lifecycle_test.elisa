@@ -28,6 +28,9 @@ def app_event(event: UiCore::Event) -> void:
 def app_text_input(text: sview) -> void:
     text_callbacks <- text_callbacks + 1
 
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    text_callbacks <- text_callbacks + 1
+
 def check(name: cstr, ok: bool) -> void:
     return if ok
     failures <- failures + 1
@@ -44,6 +47,8 @@ def main() -> i64:
     check("C adapter rejects callbacks after stop", callbacks == 1 and UiEvents::pending() == 0)
     elisa_ui_dispatch_text_input("late", 4)
     check("C adapter rejects text after stop", text_callbacks == 0)
+    elisa_ui_dispatch_text_editing("late", 4, 0, 0)
+    check("C adapter rejects IME after stop", text_callbacks == 0)
 
     UiLifecycle::reset()
     _ = UiLifecycle::begin()
@@ -51,9 +56,13 @@ def main() -> i64:
     check("C adapter blocks text without focus", not UiLifecycle::accepts_input())
     elisa_ui_dispatch_text_input("inactive", 8)
     check("C adapter rejects text while inactive", text_callbacks == 0)
+    elisa_ui_dispatch_text_editing("inactive", 8, 0, 0)
+    check("C adapter rejects IME while inactive", text_callbacks == 0)
     _ = UiLifecycle::focus_gained()
     elisa_ui_dispatch_text_input("active", 6)
     check("C adapter delivers text while active", text_callbacks == 1)
+    elisa_ui_dispatch_text_editing("active", 6, 0, 0)
+    check("C adapter delivers IME while active", text_callbacks == 2)
     _ = UiLifecycle::stop()
 
     # A callback that starts a replacement session from the phase-New state

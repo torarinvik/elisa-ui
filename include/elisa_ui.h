@@ -93,6 +93,12 @@ void elisa_ui_dispatch_event(int32_t kind, float x, float y,
  * the callback is ignored while the single Elisa-owned staging buffer is
  * borrowed by the outer call. */
 void elisa_ui_dispatch_text_input(const char *text, size_t length);
+/* Deliver live IME composition text. The pointer is borrowed for the duration
+ * of the call; selection offsets are UTF-8 scalar positions inside the
+ * bounded payload and are clamped before the Elisa callback is reached. */
+void elisa_ui_dispatch_text_editing(const char *text, size_t length,
+                                    int32_t selected_start,
+                                    int32_t selected_length);
 
 void  elisa_ui_set_viewport(float width, float height);
 float elisa_ui_viewport_width(void);

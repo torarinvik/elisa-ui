@@ -16,6 +16,10 @@ global mutable first_seen_kind: i32 = -1
 global mutable first_seen_x: f32 = 0.0
 global mutable first_seen_code: i32 = 0
 global mutable seen_text: bool = false
+global mutable seen_editing: bool = false
+global mutable editing_callbacks: i32 = 0
+global mutable editing_start: i32 = -1
+global mutable editing_length: i32 = -1
 global mutable malformed_text_seen: bool = false
 global mutable text_callbacks: i32 = 0
 global mutable nested_text_attempted: bool = false
@@ -46,6 +50,12 @@ def app_text_input(text: sview) -> void:
     if not nested_text_attempted:
         nested_text_attempted <- true
         elisa_ui_dispatch_text_input("nested", "nested".len)
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    editing_callbacks <- editing_callbacks + 1
+    seen_editing <- text == "é👋"
+    editing_start <- selected_start
+    editing_length <- selected_length
 
 def check(name: cstr, ok: bool) -> void:
     return if ok
@@ -81,6 +91,12 @@ def main() -> i64:
     check("C committed UTF-8 reaches the Elisa application intact", seen_text)
     check("nested C text dispatch is rejected", nested_text_attempted and text_callbacks == 1)
     check("C text staging buffer is scrubbed after callback", UiCapi::text_buffer_cleared())
+    elisa_ui_dispatch_text_editing("é👋", "é👋".len, 99, 99)
+    check("C IME composition reaches the Elisa application", seen_editing)
+    check("C IME scalar selection is bounded", editing_start == 2 and editing_length == 0)
+    check("C IME staging buffer is scrubbed after callback", UiCapi::text_buffer_cleared())
+    elisa_ui_dispatch_text_editing(null, 0, 4, 4)
+    check("an empty C IME composition is delivered", editing_callbacks == 2 and editing_start == 0 and editing_length == 0)
     before_null_text_callbacks: i32 = text_callbacks
     elisa_ui_dispatch_text_input(null, 4)
     check("C host ignores a null text pointer with a counted length", text_callbacks == before_null_text_callbacks and UiCapi::text_buffer_cleared())

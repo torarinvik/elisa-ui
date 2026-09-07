@@ -309,8 +309,10 @@ separate host-enforced security boundary.
   resolved dependency. Elisa retains only the UI-specific policy and canonical
   record lowering around that imported ABI.
 - The C boundary now exposes a packed ABI version from Elisa and checks it
-  against the public header in `scripts/check_capi.sh`; wire ordinals and field
-  meanings remain documented in `include/elisa_ui.h`.
+  against the public header in `scripts/check_capi.sh`; wire ordinals, record
+  layout, counted committed text, and counted IME composition (with scalar-range
+  clamping) remain documented in `include/elisa_ui.h` and are exercised by the
+  C bridge checks.
 - The Skia direct-painter path now shares one private Elisa geometry policy with
   command replay. Coordinates/extents are bounded, empty primitive geometry is
   rejected, and rounded radii are clamped to half the shortest edge before FFI;

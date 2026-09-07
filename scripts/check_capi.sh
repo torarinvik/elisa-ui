@@ -25,13 +25,26 @@ bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$WORK/bridge.o" "$ROOT/build/cap
 
 cat > "$WORK/host.c" <<'EOF'
 #include <stdio.h>
+#include <stddef.h>
 #include <string.h>
 #include "elisa_ui.h"
+
+_Static_assert(sizeof(elisa_ui_event) == 24, "event record size changed");
+_Static_assert(offsetof(elisa_ui_event, kind) == 0, "event kind offset changed");
+_Static_assert(offsetof(elisa_ui_event, x) == 4, "event x offset changed");
+_Static_assert(offsetof(elisa_ui_event, y) == 8, "event y offset changed");
+_Static_assert(offsetof(elisa_ui_event, dx) == 12, "event dx offset changed");
+_Static_assert(offsetof(elisa_ui_event, dy) == 16, "event dy offset changed");
+_Static_assert(offsetof(elisa_ui_event, code) == 20, "event code offset changed");
+_Static_assert(ELISA_UI_EVENT_FOCUS_LOST == 13, "event ordinals changed");
 
 static elisa_ui_event seen;
 static int events;
 static int text_events;
 static size_t last_text_length;
+static int editing_events;
+static int32_t editing_start;
+static int32_t editing_length;
 
 void elisa_ui_on_init(void) {}
 void elisa_ui_on_frame(void) {}
@@ -42,7 +55,9 @@ void elisa_ui_on_text_input(const char *text, size_t length) {
     if (length == strlen("Hé 👋") && memcmp(text, "Hé 👋", length) == 0) text_events++;
 }
 void elisa_ui_on_text_editing(const char *text, size_t length, int32_t selected_start, int32_t selected_length) {
-    (void)text; (void)length; (void)selected_start; (void)selected_length;
+    if (length == strlen("é 👋") && memcmp(text, "é 👋", length) == 0) editing_events++;
+    editing_start = selected_start;
+    editing_length = selected_length;
 }
 
 int main(void) {
@@ -69,6 +84,14 @@ int main(void) {
 
     elisa_ui_dispatch_text_input("Hé 👋", strlen("Hé 👋"));
     if (text_events != 1) { puts("UTF-8 text did not survive"); failures++; }
+    elisa_ui_dispatch_text_editing("é 👋", strlen("é 👋"), 99, 99);
+    if (editing_events != 1 || editing_start != 3 || editing_length != 0) {
+        puts("UTF-8 IME composition did not survive"); failures++;
+    }
+    elisa_ui_dispatch_text_editing(NULL, 0, 4, 4);
+    if (editing_start != 0 || editing_length != 0) {
+        puts("empty IME composition was not bounded"); failures++;
+    }
     elisa_ui_dispatch_text_input(NULL, 4);
     if (text_events != 1) { puts("null text pointer was not ignored"); failures++; }
     char oversized_text[1032];
