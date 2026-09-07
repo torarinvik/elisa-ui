@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `7051578` (`harden(skia): report rejected transform scopes`) on branch `work` |
+| elisa-ui revision | `82e0fa0` (`refactor(paint): make elevation an explicit Elisa style`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -275,7 +275,9 @@ width is passed through that same extension, so stroke weight is not invented
 by the C++ bridge.
 `UiPaint::rounded_rect_style` is the single Elisa-owned style policy consumed
 by both the Skia painter and the CoreGraphics fallback, so radius/elevation and
-hairline values cannot drift between custom backends.
+hairline values cannot drift between custom backends. Elevation is now an
+explicit `UiCore::fill_elevated` side-band bit; ordinary rectangles remain
+plain regardless of their dimensions.
 The Skia shadow pass uses a transparent source paint, so the blur cannot tint or
 cover the retained control silhouette.
 The custom painter also accepts a borrowed opaque `SkImage*` for destination
@@ -418,6 +420,9 @@ separate host-enforced security boundary.
   canvas text adapters return their capacity sentinel so `UiFlat` retains its
   truncation diagnostic instead of treating the clipped IME/accessibility edit
   as complete; the key-map test covers the 1023-byte-plus-`é` boundary.
+- AppKit c-string equality now rejects either null pointer before entering the
+  bounded byte scan, so malformed native titles cannot alias an empty string;
+  the key-map regression covers both null-left and null-right cases.
 - Skia command replay now applies zero-area retained clips through a private
   replay-only save/clip scope, matching SDL3 and CoreGraphics empty-clip
   behavior while preserving the public direct-clip helper's fail-closed input
@@ -502,6 +507,11 @@ separate host-enforced security boundary.
 - Skia font-size normalization now lives in `ui_skia_text.elisa` and is shared
   by default and bound metric/draw calls; the C++ bridge rejects non-positive
   sizes instead of silently selecting an implicit fallback.
+- Rectangle elevation is now explicit in Elisa: `UiCore::fill` records a plain
+  surface while `UiCore::fill_elevated` marks intentional control surfaces in
+  side-band command metadata. Skia and CoreGraphics consume the same
+  `UiPaint` policy, and SDL3/Wasm preserve their existing wire payloads while
+  ignoring the visual hint.
 - Direct Skia text drawing now goes through the same Elisa sanitization as
   retained replay, keeping custom-control escape hatches bounded and UTF-8
   safe without duplicating policy in the bridge.
