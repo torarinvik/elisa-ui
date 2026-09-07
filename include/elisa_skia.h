@@ -21,6 +21,7 @@ void elisa_skia_canvas_save(size_t canvas);
 void elisa_skia_canvas_restore(size_t canvas);
 void elisa_skia_canvas_scale(size_t canvas, float x, float y);
 void elisa_skia_canvas_translate(size_t canvas, float x, float y);
+void elisa_skia_canvas_rotate(size_t canvas, float degrees);
 void elisa_skia_canvas_clip_rect(size_t canvas, float x, float y, float width, float height);
 void elisa_skia_canvas_clear(size_t canvas, uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha);
 void elisa_skia_canvas_fill_round_rect(size_t canvas, float x, float y, float width, float height,
