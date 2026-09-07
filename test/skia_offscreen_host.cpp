@@ -69,9 +69,16 @@ int main(int argc, char** argv) {
     elisa_skia_canvas_fill_circle(reinterpret_cast<std::size_t>(canvas), hostile, 130.0f, 10.0f, 60, 180, 140, 255);
     elisa_skia_canvas_fill_round_rect(reinterpret_cast<std::size_t>(canvas), 20.0f, 20.0f, nan, 60.0f, 8.0f, 220, 80, 100, 255);
     elisa_skia_canvas_fill_round_rect(reinterpret_cast<std::size_t>(canvas), hostile, 20.0f, 60.0f, 40.0f, 8.0f, 220, 80, 100, 255);
+    elisa_skia_canvas_fill_round_rect(reinterpret_cast<std::size_t>(canvas), 20.0f, 20.0f, 60.0f, 40.0f, hostile, 220, 80, 100, 255);
+    elisa_skia_canvas_stroke_round_rect(reinterpret_cast<std::size_t>(canvas), 20.0f, 20.0f, 60.0f, 40.0f, 8.0f, hostile, 220, 80, 100, 255);
+    elisa_skia_canvas_shadow_round_rect(reinterpret_cast<std::size_t>(canvas), 20.0f, 20.0f, 60.0f, 40.0f, 8.0f, 0.0f, 0.0f, hostile, 255);
+    elisa_skia_canvas_clip_rect(reinterpret_cast<std::size_t>(canvas), 0.0f, 0.0f, hostile, 100.0f);
+    elisa_skia_canvas_draw_text(reinterpret_cast<std::size_t>(canvas), "x", 1, 20.0f, 40.0f, hostile, 255, 255, 255, 255);
     elisa_skia_canvas_fill_line(reinterpret_cast<std::size_t>(canvas), 0.0f, nan, 20.0f, 20.0f, 1.0f, 240, 240, 245, 255);
     SkPixmap malformed_pixels;
-    if (!surface->peekPixels(&malformed_pixels) ||
+    if (elisa_skia_measure_text_width("x", 1, hostile) != 0.0f ||
+        elisa_skia_font_ascent(hostile) != 0.0f || elisa_skia_text_line_height(hostile) != 0.0f ||
+        !surface->peekPixels(&malformed_pixels) ||
         !expect_color(malformed_pixels, 80, 130, SkColorSetARGB(255, 18, 24, 32), "malformed no-op")) {
         return 6;
     }
