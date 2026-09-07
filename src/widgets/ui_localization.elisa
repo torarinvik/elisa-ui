@@ -41,6 +41,11 @@ module UiLocalization:
         # direction; repeating the same canonical tag is idempotent.
         def set_locale(locale: sview) -> bool:
             return false if locale.len < 0
+            # A positive counted extent without backing storage is malformed
+            # foreign input, not an empty locale. Reject it before the
+            # canonicalization path can erase a valid active tag and report a
+            # spurious locale change to every dependent subsystem.
+            return false if locale.len > 0 and locale.data == null
             safe_locale: sview = UiCore::bounded_text(locale)
             # Keep the foreign signed extent signed until it has been bounded;
             # narrowing first can wrap a large length on wasm32.
