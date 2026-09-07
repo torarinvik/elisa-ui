@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `fcf18b917fb6dc2550d7c8e014e812754a47d463` on branch `work` |
+| elisa-ui revision | `5c79dad937ffce69e543139cd98de7eceeb01dcc` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -212,6 +212,8 @@ The custom painter also accepts a borrowed opaque `SkImage*` for destination
 placement and alpha compositing; Elisa validates the rectangle and never retains
 or frees the host-owned image handle. The headless Skia recorder covers valid
 image draws and rejects null, zero-sized, and fully transparent requests.
+`UiSkia::draw_ready_image` additionally checks the generation-safe logical
+resource state, so loading, failed, cancelled, and recycled handles cannot paint.
 Attaching a live `UiSkia` canvas upgrades a custom profile to `Renderer.Skia`.
 That selection also enables the `scale_changes` capability used by the
 balanced logical-to-physical frame transform.
