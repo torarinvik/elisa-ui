@@ -62,3 +62,10 @@ tokens are available through `theme`/`set_theme`; selection and marked-text
 ranges are exposed in UTF-16 units, with `selected_text` applying the secure
 field privacy rule. `overflowed` reports fixed-arena exhaustion so an app can
 render an explicit recovery state instead of silently losing a subtree.
+
+Applications that persist control state can opt into
+`src/widgets/ui_handles_persistence.elisa`. It includes the base handle facade
+and adds `UiHandlesPersistence::put_text`, `put_value`, and `put_selected`, plus
+matching restore functions and the bounded `UiState` blob operations. Secure
+text handles are rejected for both save and restore, and all other operations
+require a live handle of the matching widget kind.

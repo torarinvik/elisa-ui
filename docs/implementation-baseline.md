@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `bb770332c9297206e34788903e7e3d943000e2ed` (`feat(widgets): add typed callback helpers`) on branch `work` |
+| elisa-ui revision | `e58b6d45c28d195cb698f370fd4098593da72872` (`feat(widgets): add typed handle persistence adapter`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -524,6 +524,10 @@ separate host-enforced security boundary.
   legacy widget-event ordinal/slot callback seam typed and stale-safe for
   applications, so the shared hello view no longer repeats raw integer/index
   comparisons.
+- `UiHandlesPersistence` is an optional Elisa extension over `UiState` that
+  binds text, numeric, and selection values to live typed handles. It rejects
+  secure fields, mismatched widget kinds, stale identities, and missing IDs;
+  `test/widget_handles_test.elisa` covers save/restore and the privacy rule.
 
 The authoritative generated WasmBrowser Elisa bindings are staged in
 `../wasm-sdk/sdk/elisa/wasmbrowser/`; the hosted adapter includes those bindings
