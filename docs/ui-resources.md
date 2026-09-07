@@ -37,6 +37,19 @@ Visible views can add an idempotent `set_demand(handle, priority)` hint and
 remove it with `clear_demand`. The priority is framework state for host/SDK
 coalescing; it does not grant bandwidth, bypass cache policy, or force a fetch.
 
+Hosts may provide validated intrinsic geometry before decode/upload completes:
+
+```elisa
+UiResources::set_intrinsic_size(logo, 128.0, 72.0)
+```
+
+The dimensions are bounded, retained with the live logical generation, preserved
+across `retry`, and cleared by `dispose`/`reset`. Presentation uses an intrinsic
+dimension only when the corresponding `Options.reserved_width` or
+`reserved_height` is exactly zero, so an explicit reservation always wins.
+This keeps loading placeholders stable without giving a backend ownership of
+layout metadata.
+
 `snapshot()` returns bounded counts for the total live records and each
 loading/ready/offline/denied/failed/cancelled state, plus the sticky overflow
 flag. Diagnostic consumers can use that aggregate without inspecting resource

@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `e4e78589bb96ccd2081c03cae35ad053116e3917` on branch `work` |
+| elisa-ui revision | `93d56bb66bb0dd30558df66fec0c5ae5ea0a53cf` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -379,13 +379,16 @@ separate host-enforced security boundary.
   own verified bytes, transport, cache and decode/upload authority; resource
   transitions raise the shared resource/paint invalidation reasons, and its
   aggregate snapshot reports bounded loading/ready/failure counts. Identifier
-  storage is scrubbed when the resource table resets. Coverage lives in
-  `test/resource_state_test.elisa`.
+  storage is scrubbed when the resource table resets. A focused metadata
+  extension records validated intrinsic image/document dimensions per live
+  generation, preserving them across retry and clearing them on disposal so
+  presentation can reserve stable geometry without backend-specific state.
+  Coverage lives in `test/resource_state_test.elisa`.
 - `UiResourcePresentation` maps those lifecycle states to explicit
-  placeholder/loading/ready/fallback records, reserved geometry, independent
-  progress visibility and retry affordances. Kind-specific defaults and all
-  presentation decisions remain in Elisa; hosts only resolve verified resource
-  data into renderer objects. Coverage lives in
+  placeholder/loading/ready/fallback records, declared-or-intrinsic reserved
+  geometry, independent progress visibility and retry affordances. Kind-specific
+  defaults and all presentation decisions remain in Elisa; hosts only resolve
+  verified resource data into renderer objects. Coverage lives in
   `test/resource_presentation_test.elisa`.
 - `UiVirtualList` owns bounded geometry and semantic-window policy for long
   lists. Logical total count, before/after edges, and off-screen focus or

@@ -209,9 +209,9 @@ because a module member's symbol carries its module and those names cannot move.
   hosts and SDKs retain authority over bytes, caching and decoding.
 - **Resource presentation** ([src/widgets/ui_resource_presentation.elisa](src/widgets/ui_resource_presentation.elisa)) —
   maps resource lifecycle into explicit placeholder/loading/ready/fallback
-  records with reserved geometry, independent progress, retry affordances, and
-  kind-specific defaults. It keeps presentation policy in Elisa; hosts only
-  resolve verified resources into renderer objects.
+  records with declared-or-intrinsic reserved geometry, independent progress,
+  retry affordances, and kind-specific defaults. It keeps presentation policy
+  in Elisa; hosts only resolve verified resources into renderer objects.
 - **Apps** implement `app_init` / `app_event(UiCore::Event)` /
   `app_text_input(sview)` / `app_text_editing(sview, i32, i32)` / `app_frame`, plus
   `app_widget_event(widget, event)` when using the widget layer. Physical keys
