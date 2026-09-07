@@ -13,39 +13,43 @@ module HelloState:
         const DARK_THEME_ID: u32 = 3
         const ACCENT_ID: u32 = 4
         const CLICKS_ID: u32 = 5
+        const CATALOG_ID: u32 = 6
 
         struct Snapshot:
             valid: bool
             dark_theme: bool
             accent_index: i32
             clicks: i32
+            catalog_index: i32
 
         def reset() -> void:
             for index in 0..<UiState::MAX_BYTES:
                 state_blob[index] <- 0
             state_length <- 0
 
-        def save(project: UiHandles::Handle, intensity: UiHandles::Handle, dark_theme: bool, accent_index: i32, clicks: i32) -> bool can Unsafe.PointerCast:
+        def save(project: UiHandles::Handle, intensity: UiHandles::Handle, dark_theme: bool, accent_index: i32, clicks: i32, catalog_index: i32) -> bool can Unsafe.PointerCast:
             UiHandlesPersistence::begin()
             _ = UiHandlesPersistence::put_text(project, PROJECT_ID)
             _ = UiHandlesPersistence::put_value(intensity, INTENSITY_ID)
             _ = UiState::put_bool(DARK_THEME_ID, dark_theme)
             _ = UiState::put_i32(ACCENT_ID, accent_index)
             _ = UiState::put_i32(CLICKS_ID, clicks)
+            _ = UiState::put_i32(CATALOG_ID, catalog_index)
             return false if UiHandlesPersistence::saved().failed
             state_length <- UiHandlesPersistence::copy_to(&state_blob[0], UiState::MAX_BYTES)
             return state_length > UiState::HEADER_BYTES
 
         def restore(project: UiHandles::Handle, intensity: UiHandles::Handle) -> Snapshot can Unsafe.PointerCast:
-            return Snapshot{valid: false, dark_theme: false, accent_index: 2, clicks: 0} if state_length <= UiState::HEADER_BYTES
-            return Snapshot{valid: false, dark_theme: false, accent_index: 2, clicks: 0} if not UiHandlesPersistence::restore(&state_blob[0], state_length)
-            return Snapshot{valid: false, dark_theme: false, accent_index: 2, clicks: 0} if not UiHandlesPersistence::restore_text(project, PROJECT_ID)
-            return Snapshot{valid: false, dark_theme: false, accent_index: 2, clicks: 0} if not UiHandlesPersistence::restore_value(intensity, INTENSITY_ID)
+            return Snapshot{valid: false, dark_theme: false, accent_index: 2, clicks: 0, catalog_index: 0} if state_length <= UiState::HEADER_BYTES
+            return Snapshot{valid: false, dark_theme: false, accent_index: 2, clicks: 0, catalog_index: 0} if not UiHandlesPersistence::restore(&state_blob[0], state_length)
+            return Snapshot{valid: false, dark_theme: false, accent_index: 2, clicks: 0, catalog_index: 0} if not UiHandlesPersistence::restore_text(project, PROJECT_ID)
+            return Snapshot{valid: false, dark_theme: false, accent_index: 2, clicks: 0, catalog_index: 0} if not UiHandlesPersistence::restore_value(intensity, INTENSITY_ID)
             return Snapshot{
                 valid: true,
                 dark_theme: UiState::bool(DARK_THEME_ID, true),
                 accent_index: UiState::i32(ACCENT_ID, 2),
                 clicks: UiState::i32(CLICKS_ID, 0),
+                catalog_index: UiState::i32(CATALOG_ID, 0),
             }
 
     private:
