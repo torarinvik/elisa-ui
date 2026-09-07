@@ -1,6 +1,6 @@
 # elisa-ui implementation baseline
 
-Recorded 2026-09-07 on macOS arm64. This is the durable UI-00 audit for the
+Recorded 2026-09-08 on macOS arm64. This is the durable UI-00 audit for the
 local implementation plan; it records observed behavior, not an assumption of
 parity on untested platforms.
 
@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `2d4557e` (`refactor(wasmbrowser): encapsulate host adapter state`) on branch `work` |
+| elisa-ui revision | `dfcd4c8` (`test(lifecycle): cover reset task invalidation`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -647,6 +647,12 @@ separate host-enforced security boundary.
   a bounded task snapshot plus active locale and theme snapshots so lifecycle,
   localization, and appearance-driven rebuilds can be inspected without a
   backend shadow table; coverage lives in `test/widget_inspector_test.elisa`.
+- `UiLifecycle::reset()` and `UiLifecycle::stop()` are task-teardown
+  boundaries: they reset the bounded `UiTasks` table before a new surface can
+  reuse view storage, so a late completion observes an invalid handle. The
+  task enum is named `TaskState` to remain unambiguous when resource state is
+  included in the same compiler unit; `test/lifecycle_test.elisa` covers both
+  stop and restart invalidation.
 - `UiMetrics` owns the interpretation of application, semantics, and paint
   stages, monotonic-clock normalization, completion state, retained command and
   semantic counts, overflow flags, invalidation snapshots, and independent
