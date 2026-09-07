@@ -66,9 +66,9 @@ def main() -> i64:
     check("Skia draw policy clamps non-positive sizes", skia_test_last_text_size() == 1.0)
     initial_state: UiSkia::Snapshot = UiSkia::snapshot()
     check("Skia state snapshot starts balanced", initial_state.attached and initial_state.save_depth == 1 and initial_state.clip_depth == 0 and initial_state.transform_depth == 0 and UiSkia::is_balanced())
-    UiSkia::push_transform(UiCore::Vec2(3.0, 4.0), UiCore::Vec2(1.5, 0.75))
+    transform_pushed: bool = UiSkia::push_transform(UiCore::Vec2(3.0, 4.0), UiCore::Vec2(1.5, 0.75))
     UiSkia::pop_transform()
-    check("scoped transform crosses the narrow FFI", skia_test_translate_count() == 1 and skia_test_scale_count() == 2)
+    check("scoped transform crosses the narrow FFI", transform_pushed and skia_test_translate_count() == 1 and skia_test_scale_count() == 2)
     check("render status reports a complete batch", UiSkia::render_status() == UiSkia::RenderStatus.Complete)
     UiSkia::fill_rounded_rect(UiCore::Rect(12.0, 13.0, 40.0, 20.0), 6.0, UiCore::rgb(20, 30, 40))
     UiSkia::fill_rounded_rect(UiCore::Rect(12.0, 13.0, 40.0, 20.0), 100.0, UiCore::rgb(20, 30, 40))
@@ -151,10 +151,12 @@ def main() -> i64:
     skia_test_reset()
     UiSkia::attach(23)
     scope_attempts: usize = UiSkia::MAX_SCOPE_DEPTH + 2
-    for _ in 0..<scope_attempts:
-        UiSkia::push_transform(UiCore::Vec2(1.0, 1.0), UiCore::Vec2(1.0, 1.0))
+    accepted_scopes: usize =
+        for _ in 0..<scope_attempts |accepted: usize = 0| -> accepted:
+            accepted <- accepted + 1 if UiSkia::push_transform(UiCore::Vec2(1.0, 1.0), UiCore::Vec2(1.0, 1.0))
     bounded_scope_state: UiSkia::Snapshot = UiSkia::snapshot()
-    check("direct Skia scopes stop at the depth budget", bounded_scope_state.save_depth == UiSkia::MAX_SCOPE_DEPTH and bounded_scope_state.transform_depth == UiSkia::MAX_SCOPE_DEPTH - 1)
+    check("direct Skia scopes stop at the depth budget", accepted_scopes == UiSkia::MAX_SCOPE_DEPTH - 1 and bounded_scope_state.save_depth == UiSkia::MAX_SCOPE_DEPTH and bounded_scope_state.transform_depth == accepted_scopes)
+    check("rotation push reports budget rejection", not UiSkia::push_rotation(90.0) and skia_test_rotate_count() == 0)
     check("scope overflow does not cross the FFI", skia_test_save_count() == UiSkia::MAX_SCOPE_DEPTH.i32())
     UiSkia::detach()
     check("bounded scopes still detach cleanly", skia_test_restore_count() == UiSkia::MAX_SCOPE_DEPTH.i32() and UiSkia::is_balanced())

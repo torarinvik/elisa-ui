@@ -12,9 +12,11 @@ extend UiSkia:
     public:
         # Push a translation and positive scale for custom drawing. Callers
         # must pop in LIFO order; detach() still restores any forgotten scopes.
-        def push_transform(offset: UiCore::Vec2, scale: UiCore::Vec2) -> void can[Ui.Draw]:
-            return if canvas_state == 0
-            return if skia_save_depth >= UiSkia::MAX_SCOPE_DEPTH
+        # A false result means the bounded scope budget rejected the push, so
+        # callers can avoid pairing it with a pop for an older scope.
+        def push_transform(offset: UiCore::Vec2, scale: UiCore::Vec2) -> bool can[Ui.Draw]:
+            return false if canvas_state == 0
+            return false if skia_save_depth >= UiSkia::MAX_SCOPE_DEPTH
             safe_offset: UiCore::Vec2 = UiCore::Vec2(
                 UiCore::bounded_coordinate(offset.x), UiCore::bounded_coordinate(offset.y))
             safe_scale_x: f32 = skia_scale_value(scale.x)
@@ -24,6 +26,7 @@ extend UiSkia:
             elisa_skia_canvas_scale(canvas_state, safe_scale_x, safe_scale_y)
             skia_transform_depth <- skia_transform_depth + 1
             skia_save_depth <- skia_save_depth + 1
+            return true
 
         def pop_transform() -> void can[Ui.Draw]:
             return if canvas_state == 0 or skia_transform_depth == 0
@@ -31,11 +34,12 @@ extend UiSkia:
             skia_transform_depth <- skia_transform_depth - 1
             skia_save_depth <- skia_save_depth - 1
 
-        def push_rotation(degrees: f32) -> void can[Ui.Draw]:
-            return if canvas_state == 0
-            return if skia_save_depth >= UiSkia::MAX_SCOPE_DEPTH
+        def push_rotation(degrees: f32) -> bool can[Ui.Draw]:
+            return false if canvas_state == 0
+            return false if skia_save_depth >= UiSkia::MAX_SCOPE_DEPTH
             safe_degrees: f32 = UiCore::bounded_coordinate(degrees)
             elisa_skia_canvas_save(canvas_state)
             elisa_skia_canvas_rotate(canvas_state, safe_degrees)
             skia_transform_depth <- skia_transform_depth + 1
             skia_save_depth <- skia_save_depth + 1
+            return true
