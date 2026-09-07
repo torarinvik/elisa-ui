@@ -72,14 +72,14 @@ decisions.
 Tracked Elisa file lengths at this baseline include the custom canvas facade
 (`ui_appkit_canvas.elisa`, 14 lines), whose native, retained-state,
 accessibility, input, render, window, and callback modules are all below 400
-lines; the ready-to-use flat adapter is 348 lines (with text-command routing
+lines; the ready-to-use flat adapter is 321 lines (with text-command routing
 isolated in `ui_appkit_canvas_text.elisa`, 90 lines). The clipboard cache and
 transient text buffers are isolated in `ui_appkit_canvas_clipboard.elisa`, 66
 lines. The retained native-control arena (`ui_controls.elisa`) is 290 lines;
 its widget-to-control policy is isolated in `ui_controls_policy.elisa`, 102
 lines. Together they own bounded caption storage and native-control state.
 The flat widget compatibility
-facade (`ui_widget.elisa`, 23 lines) now delegates to cohesive state, layout,
+facade (`ui_widget.elisa`, 28 lines) now delegates to cohesive state, layout,
 input, focus, style, callback, text, scrolling, and painting modules, each below
 400 lines. The layout implementation is kept in `ui_flat_layout.elisa` (320
 lines), with keyboard focus/capture policy in `ui_flat_focus.elisa`, text
@@ -89,7 +89,7 @@ color policy in `ui_flat_style.elisa`, shared `UiTheme` palette adaptation in
 `ui_flat_events.elisa`. The AppKit canvas flat adapter keeps its externally
 mandated export declarations in `ui_appkit_canvas_flat_exports.elisa`, separate
 from callback policy. The AppKit controls backend is
-now split into realization/policy (`ui_appkit.elisa`, 305 lines), typed native
+now split into realization/policy (`ui_appkit.elisa`, 306 lines), typed native
 bridge wrappers (`ui_appkit_native.elisa`, 212 lines), ABI declarations
 (`ui_appkit_native_ffi.elisa`, 75 lines), and read-back inspection wrappers
 (`ui_appkit_native_inspection.elisa`, 121 lines). The SDL3 backend
