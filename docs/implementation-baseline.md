@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `158b943732a7e36863cbdf82507c6afad33c6322` on branch `work` |
+| elisa-ui revision | `f6bffe6a4ebb0c974af95a7c012310dbcb807b29` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -292,6 +292,11 @@ separate host-enforced security boundary.
 - The C boundary now exposes a packed ABI version from Elisa and checks it
   against the public header in `scripts/check_capi.sh`; wire ordinals and field
   meanings remain documented in `include/elisa_ui.h`.
+- The Skia direct-painter path now shares one private Elisa geometry policy with
+  command replay. Coordinates/extents are bounded, empty primitive geometry is
+  rejected, and rounded radii are clamped to half the shortest edge before FFI;
+  `test/skia_painter_test.elisa` records the radius clamp and the source-size
+  gate keeps `ui_skia_geometry.elisa` cohesive.
 - Callback entry points are lifetime-guarded: if an application handler resets
   the flat tree, post-callback history, composition, activation, adjustment, and
   radio state updates are abandoned instead of touching recycled slots. This is

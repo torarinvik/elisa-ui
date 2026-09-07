@@ -28,6 +28,12 @@ independent of the borrowed canvas, so layout can query Skia before surface
 attachment. That makes surface recreation and headless rendering ordinary
 lifecycle transitions instead of retained native pointer state.
 
+Direct geometry calls and replayed commands share the private
+`ui_skia_geometry.elisa` policy. Coordinates and extents are finite and capped,
+empty rectangles/circles are rejected, and corner radii are clamped to half the
+shortest box edge before reaching Skia. The C++ bridge therefore remains a
+primitive adapter rather than a second, drifting geometry policy.
+
 `UiSkia::surface_lost()` explicitly invalidates the borrowed canvas without
 discarding retained commands or logical resources. `surface_generation()`
 advances on loss and every new attachment, giving a host a cheap stale-surface
