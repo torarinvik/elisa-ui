@@ -34,3 +34,54 @@ extend UiCore:
             changes <- changes | AccessibilityChange.Range.i32() if before.has_range != after.has_range or before.range_min != after.range_min or before.range_max != after.range_max or before.range_conflict != after.range_conflict
             return changes
 
+extend UiCore:
+    public:
+        # Semantic IDs are the retained identity key used by every backend.
+        # Keep one node per ID in the frame buffer so a malformed declaration
+        # cannot make a backend reuse one native object at two positions.
+        def accessibility_index_for_id(id: usize) -> usize:
+            for index in 0..<accessibility_total.usize():
+                return index if accessibility_nodes[index].id == id
+            return MAX_ACCESSIBILITY_NODES
+
+        def accessibility_set_relationships(id: usize, parent_id: usize, first_child_id: usize, next_sibling_id: usize) -> void:
+            existing: usize = accessibility_index_for_id(id)
+            return if existing >= accessibility_total.usize()
+            accessibility_nodes[existing].parent_id <- relationship_id(parent_id)
+            accessibility_nodes[existing].first_child_id <- relationship_id(first_child_id)
+            accessibility_nodes[existing].next_sibling_id <- relationship_id(next_sibling_id)
+            invalidate(Invalidation.Semantics)
+
+        def accessibility_set_range(id: usize, minimum: f32, maximum: f32) -> void:
+            existing: usize = accessibility_index_for_id(id)
+            return if existing >= accessibility_total.usize()
+            safe_minimum: f32 = bounded_coordinate(minimum)
+            safe_maximum: mutable f32 = bounded_coordinate(maximum)
+            conflict: mutable bool = false
+            if safe_maximum < safe_minimum:
+                safe_maximum <- safe_minimum
+                conflict <- true
+            accessibility_nodes[existing].has_range <- true
+            accessibility_nodes[existing].range_min <- safe_minimum
+            accessibility_nodes[existing].range_max <- safe_maximum
+            accessibility_nodes[existing].range_conflict <- conflict
+            value: mutable f32 = finite_or_zero(accessibility_nodes[existing].value)
+            value <- safe_minimum if value < safe_minimum
+            value <- safe_maximum if value > safe_maximum
+            accessibility_nodes[existing].value <- value
+            invalidate(Invalidation.Semantics)
+
+        def accessibility_count() -> usize:
+            return accessibility_total.usize()
+
+        # The indexed reader is the zero-overhead path used by bounded backend
+        # loops. External callers should use the optional form when needed.
+        def accessibility_at(index: usize) -> AccessibilityNode:
+            return accessibility_nodes[index]
+
+        def accessibility_if_valid(index: usize) -> AccessibilityNode?:
+            return null if index >= accessibility_total.usize()
+            return accessibility_nodes[index]
+
+        def accessibility_overflowed() -> bool:
+            return accessibility_dropped

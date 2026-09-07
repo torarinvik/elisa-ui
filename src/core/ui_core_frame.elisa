@@ -56,15 +56,6 @@ extend UiCore:
         def clear_all_invalidations() -> void:
             invalidation_flags <- 0
 
-        # Semantic IDs are the retained identity key used by every backend.
-        # Keep one node per ID in the frame buffer so a malformed or overly
-        # eager app declaration cannot make a backend reuse one native object
-        # at two positions in its accessibility child list.
-        def accessibility_index_for_id(id: usize) -> usize:
-            for index in 0..<accessibility_total.usize():
-                return index if accessibility_nodes[index].id == id
-            return MAX_ACCESSIBILITY_NODES
-
         # Compatibility builder for ordinary controls. Metadata-aware callers
         # can use `accessibility_with_metadata`; keeping this signature stable
         # avoids forcing every existing widget to learn relationship/range
@@ -167,52 +158,6 @@ extend UiCore:
             accessibility_nodes[accessibility_total.usize()] <- node
             accessibility_total <- accessibility_total + 1
             invalidate(Invalidation.Semantics)
-
-        # Patch metadata after a compatibility declaration. This is useful for
-        # retained widget emitters that already share one role/value branch but
-        # can derive relationships from their tree only after the node exists.
-        def accessibility_set_relationships(id: usize, parent_id: usize, first_child_id: usize, next_sibling_id: usize) -> void:
-            existing: usize = accessibility_index_for_id(id)
-            return if existing >= accessibility_total.usize()
-            accessibility_nodes[existing].parent_id <- relationship_id(parent_id)
-            accessibility_nodes[existing].first_child_id <- relationship_id(first_child_id)
-            accessibility_nodes[existing].next_sibling_id <- relationship_id(next_sibling_id)
-            invalidate(Invalidation.Semantics)
-
-        def accessibility_set_range(id: usize, minimum: f32, maximum: f32) -> void:
-            existing: usize = accessibility_index_for_id(id)
-            return if existing >= accessibility_total.usize()
-            safe_minimum: f32 = bounded_coordinate(minimum)
-            safe_maximum: mutable f32 = bounded_coordinate(maximum)
-            conflict: mutable bool = false
-            if safe_maximum < safe_minimum:
-                safe_maximum <- safe_minimum
-                conflict <- true
-            accessibility_nodes[existing].has_range <- true
-            accessibility_nodes[existing].range_min <- safe_minimum
-            accessibility_nodes[existing].range_max <- safe_maximum
-            accessibility_nodes[existing].range_conflict <- conflict
-            value: mutable f32 = finite_or_zero(accessibility_nodes[existing].value)
-            value <- safe_minimum if value < safe_minimum
-            value <- safe_maximum if value > safe_maximum
-            accessibility_nodes[existing].value <- value
-            invalidate(Invalidation.Semantics)
-
-        def accessibility_count() -> usize:
-            return accessibility_total.usize()
-
-        # The indexed reader is the zero-overhead path used by bounded backend
-        # loops. External callers should use the optional form below when the
-        # index did not come from accessibility_count().
-        def accessibility_at(index: usize) -> AccessibilityNode:
-            return accessibility_nodes[index]
-
-        def accessibility_if_valid(index: usize) -> AccessibilityNode?:
-            return null if index >= accessibility_total.usize()
-            return accessibility_nodes[index]
-
-        def accessibility_overflowed() -> bool:
-            return accessibility_dropped
 
         # Commands past the buffer's capacity are dropped rather than growing
         # it. A frame that overflows draws incompletely, which is visible and
