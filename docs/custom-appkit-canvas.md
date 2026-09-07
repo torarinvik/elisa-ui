@@ -315,6 +315,9 @@ CoreText text rendering now live in Elisa.
 Menu action names are registered through the Objective-C runtime's C ABI from
 Elisa; text-input selector names are decoded there as well. The shim receives
 only opaque `SEL` tokens and forwards them across the FFI.
+The menu schema and bounded application-title composition are kept in the
+private `ui_appkit_canvas_menus.elisa` extension, separate from canvas drawing,
+window, and accessibility state.
 
 Elisa keeps one retained opaque handle to its root `NSWindow` for the duration of
 each run. Every operation that needs the root window or canvas view receives

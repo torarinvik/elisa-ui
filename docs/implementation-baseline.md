@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `e58b6d45c28d195cb698f370fd4098593da72872` (`feat(widgets): add typed handle persistence adapter`) on branch `work` |
+| elisa-ui revision | `00f8a0a6663a090575ecc52cfb65b06f71e5a586` (`refactor(appkit): isolate canvas menu policy`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -528,6 +528,11 @@ separate host-enforced security boundary.
   binds text, numeric, and selection values to live typed handles. It rejects
   secure fields, mismatched widget kinds, stale identities, and missing IDs;
   `test/widget_handles_test.elisa` covers save/restore and the privacy rule.
+- AppKit canvas menu labels, selector mapping, shortcuts, modifier policy, and
+  bounded title composition now live in the dedicated private
+  `ui_appkit_canvas_menus.elisa` extension. The remaining canvas private module
+  contains accessibility, drawing, and window helpers; the native shim remains
+  unchanged.
 
 The authoritative generated WasmBrowser Elisa bindings are staged in
 `../wasm-sdk/sdk/elisa/wasmbrowser/`; the hosted adapter includes those bindings
