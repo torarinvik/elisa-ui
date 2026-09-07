@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "../../../include/elisa_skia.h"
 #include "include/core/SkCanvas.h"
 #include "include/core/SkColor.h"
 #include "include/core/SkFont.h"

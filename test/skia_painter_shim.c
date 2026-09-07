@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "../include/elisa_skia.h"
+
 static int save_count;
 static int restore_count;
 static int scale_count;
