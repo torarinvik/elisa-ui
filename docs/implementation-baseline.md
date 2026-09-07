@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `fbcea6c209493e5f9e32758ed2a0649befd7d840` on branch `work` |
+| elisa-ui revision | `3d87d32bf69a2718fef7558715e38ca6daff89e9` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -196,6 +196,9 @@ phase control. Skia font metrics are queryable before surface attachment
 because they do not depend on a live canvas.
 The frame boundary also supports an explicit logical-to-physical scale with a
 balanced save/restore transform, including cleanup of any outstanding clips.
+`UiCapabilities::Snapshot` now reports a typed renderer profile: native
+controls, SDL3, CoreGraphics fallback, Skia, hosted commands, or headless.
+Attaching a live `UiSkia` canvas upgrades a custom profile to `Renderer.Skia`.
 
 The shared `examples/hello/app.elisa` now uses `UiHandles::Handle` values for
 every retained widget on SDL3, AppKit canvas, and WasmBrowser; only the
