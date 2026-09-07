@@ -4,6 +4,8 @@
 # testing, focus, editing, painting and stale-view protection stay in Elisa's
 # UiHandles layer, so this example never stores a raw arena index.
 
+include "state.elisa"
+
 module HelloApp:
     private:
         global mutable swatch_red: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
@@ -21,6 +23,7 @@ module HelloApp:
         global mutable intensity_slider: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
         global mutable intensity_progress: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
         global mutable clicks: i32 = 0
+        global mutable accent_index: i32 = 2
         global mutable accent: UiCore::Color = UiCore::Color{r: 64, g: 112, b: 224, a: 255}
         global mutable dark_theme: bool = true
         global mutable canvas_color: UiCore::Color = UiCore::Color{r: 12, g: 14, b: 20, a: 255}
@@ -50,6 +53,9 @@ module HelloApp:
             accent <- next
             apply_framework_theme()
             selected_index: usize = UiHandles::index(selected)
+            accent_index <- 0 if selected_index == UiHandles::index(swatch_red)
+            accent_index <- 1 if selected_index == UiHandles::index(swatch_green)
+            accent_index <- 2 if selected_index == UiHandles::index(swatch_blue)
             UiHandles::set_selected(swatch_red, selected_index == UiHandles::index(swatch_red))
             UiHandles::set_selected(swatch_green, selected_index == UiHandles::index(swatch_green))
             UiHandles::set_selected(swatch_blue, selected_index == UiHandles::index(swatch_blue))
@@ -69,7 +75,7 @@ module HelloApp:
                 UiHandles::set_colors(project_field, color(27, 32, 43), color(27, 32, 43), color(27, 32, 43))
                 UiHandles::set_text(project_field, "Project name", 15.0, color(232, 236, 246))
                 UiHandles::set_text(preview_label, "Canvas preview", 20.0, color(238, 241, 248))
-                UiHandles::set_text(help_label, "Choose a palette above. Keys 1-3 switch colour; T changes theme.", 14.0, color(166, 175, 196))
+                UiHandles::set_text(help_label, "Choose a palette above. Keys 1-3 switch colour; T theme; P/R save/restore.", 14.0, color(166, 175, 196))
                 UiHandles::set_text(intensity_label, "Preview intensity", 13.0, color(148, 158, 180))
                 UiHandles::set_colors(intensity_slider, color(54, 61, 78), accent, color(238, 242, 252))
                 UiHandles::set_colors(intensity_progress, color(54, 61, 78), accent, accent)
@@ -85,7 +91,7 @@ module HelloApp:
                 UiHandles::set_colors(project_field, color(250, 251, 254), color(250, 251, 254), color(250, 251, 254))
                 UiHandles::set_text(project_field, "Project name", 15.0, color(35, 43, 58))
                 UiHandles::set_text(preview_label, "Canvas preview", 20.0, color(31, 39, 54))
-                UiHandles::set_text(help_label, "Choose a palette above. Keys 1-3 switch colour; T changes theme.", 14.0, color(98, 110, 132))
+                UiHandles::set_text(help_label, "Choose a palette above. Keys 1-3 switch colour; T theme; P/R save/restore.", 14.0, color(98, 110, 132))
                 UiHandles::set_text(intensity_label, "Preview intensity", 13.0, color(91, 103, 126))
                 UiHandles::set_colors(intensity_slider, color(198, 205, 220), accent, color(255, 255, 255))
                 UiHandles::set_colors(intensity_progress, color(198, 205, 220), accent, accent)
@@ -130,8 +136,28 @@ module HelloApp:
                             c: UiCore::Vec2(centre_x - radius * 0.34, centre_y + radius * 0.56),
                         }, UiCore::rgba(246, 248, 255, 185))
 
+        def save_state() -> void can Unsafe.PointerCast:
+            _ = HelloState::save(project_field, intensity_slider, dark_theme, accent_index, clicks)
+            UiHandles::set_text(help_label, "State saved. Press R to restore it.", 14.0, color(166, 175, 196))
+
+        def restore_state() -> void can Unsafe.PointerCast:
+            snapshot: HelloState::Snapshot = HelloState::restore(project_field, intensity_slider)
+            return if not snapshot.valid
+            dark_theme <- snapshot.dark_theme
+            clicks <- snapshot.clicks
+            if snapshot.accent_index == 0:
+                select_palette(swatch_red, color(204, 76, 92))
+            elif snapshot.accent_index == 1:
+                select_palette(swatch_green, color(54, 166, 118))
+            else:
+                select_palette(swatch_blue, color(64, 112, 224))
+            UiHandles::set_value(intensity_progress, UiHandles::value(intensity_slider))
+            apply_theme()
+            UiHandles::set_text(help_label, "State restored. Press P to save it again.", 14.0, color(166, 175, 196))
+
     public:
         def init() -> void:
+            HelloState::reset()
             UiHandles::reset()
             root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 28.0, 18.0, color(17, 20, 27))
             root_panel <- root
@@ -160,7 +186,7 @@ module HelloApp:
             content <- UiHandles::column(root, 24.0, 10.0, color(31, 36, 48))
             UiHandles::set_grow(content, 1.0)
             preview_label <- UiHandles::label(content, "Canvas preview", 20.0, color(238, 241, 248))
-            help_label <- UiHandles::label(content, "Choose a palette above. Keys 1-3 switch colour; T changes theme.", 14.0, color(166, 175, 196))
+            help_label <- UiHandles::label(content, "Choose a palette above. Keys 1-3 switch colour; T theme; P/R save/restore.", 14.0, color(166, 175, 196))
             intensity_label <- UiHandles::label(content, "Preview intensity", 13.0, color(148, 158, 180))
             intensity_slider <- UiHandles::slider_labeled(content, "Preview intensity", 180.0, 24.0, 0.72, color(54, 61, 78), accent, color(238, 242, 252))
             UiHandles::set_help(intensity_slider, "Adjust the scale of the canvas artwork with drag or arrow keys")
@@ -193,6 +219,10 @@ module HelloApp:
                     if code == UiCore::Key.T:
                         dark_theme <- not dark_theme
                         apply_theme()
+                    if code == UiCore::Key.P:
+                        save_state()
+                    if code == UiCore::Key.R:
+                        restore_state()
                 _:
                     pass
             UiHandles::handle(incoming)
