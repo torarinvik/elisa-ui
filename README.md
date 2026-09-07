@@ -74,8 +74,8 @@ because a module member's symbol carries its module and those names cannot move.
   [docs/skia-custom-rendering.md](docs/skia-custom-rendering.md) whenever a
   host supplies a pinned Skia surface. `UiSkia` keeps the same command protocol
   and crosses only a narrow C FFI; the current AppKit canvas's CoreGraphics
-  path is retained as an explicit fallback until that host integration is
-  available, plus
+  path remains an explicit fallback when the optional Skia host is not linked,
+  plus
   [wasmbrowser](src/platform/wasmbrowser/ui_wasmbrowser.elisa) (a component
   implementing `world app`; the host drives the loop through the exported guest
   interface, and canonical-ABI encoding is confined to this file; its clipboard

@@ -200,6 +200,10 @@ scripts/check_source_sizes.sh
   all tracked Elisa modules are at or below 400 lines: PASS
 scripts/check_global_names.sh
   all mutable module-global names are unique across the source tree: PASS
+scripts/check_skia.sh
+  Elisa painter and pinned Skia host bridge compile headlessly: PASS
+scripts/check_appkit_skia.sh (with the pinned checkout configured)
+  optional AppKit/Skia compositor and bitmap-context fixture: PASS
 git diff --check: PASS
 ```
 
