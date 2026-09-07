@@ -211,10 +211,20 @@ def main() -> i64:
         check("slider state preserves finite high", malformed_state.high == 10.0)
         check("slider state sanitizes NaN value", malformed_state.value == 0.0)
 
+        # Finite f32 values can still be far outside the coordinate range a
+        # native control can represent safely. Slider ranges use the same
+        # signed cap as frames so hostile FFI data cannot reach AppKit with an
+        # enormous min/max/value.
+        huge: f32 = 3.0e38
+        extreme_slider: Widget = Control.Slider(min_width: 1.0, min_height: 1.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, value: huge, low: -huge, high: huge, track: grey(20), knob: grey(200))
+        extreme_state: UiControls::ControlState = UiControls::state_of(extreme_slider)
+        check("slider state bounds extreme low", extreme_state.low == -UiCore::MAX_GEOMETRY_EXTENT)
+        check("slider state bounds extreme high", extreme_state.high == UiCore::MAX_GEOMETRY_EXTENT)
+        check("slider state bounds extreme value", extreme_state.value == UiCore::MAX_GEOMETRY_EXTENT)
+
         # The shared box projection is also the native-control boundary. A
         # raw hierarchy value must not pass a giant finite extent through to a
         # platform frame setter when realization happens before layout.
-        huge: f32 = 3.0e38
         malformed_box: Widget = Control.Label(min_width: 0.0, min_height: 0.0, grow: 0.0, x: huge, y: -huge, width: huge, height: huge, hovered: false, pressed: false, first_child: null, next_sibling: null, text: "raw", size: 12.0, ink: grey(200))
         safe_box: UiCore::Rect = UiWidgets::box_of(malformed_box)
         check("raw box bounds origin", safe_box.origin.x == UiCore::MAX_GEOMETRY_EXTENT and safe_box.origin.y == -UiCore::MAX_GEOMETRY_EXTENT)

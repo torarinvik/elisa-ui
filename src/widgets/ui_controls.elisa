@@ -128,13 +128,17 @@ module UiControls:
         # Resolve that contract once while recording the control list so every
         # backend receives identical, safe state instead of reimplementing it.
         def normalized_slider(value: f32, low: f32, high: f32) -> ControlState:
-            lower: mutable f32 = UiCore::finite_or_zero(low)
-            upper: mutable f32 = UiCore::finite_or_zero(high)
+            # A finite f32 can still be enormous (for example, a value read
+            # directly from an untrusted FFI struct). Keep the signed range
+            # within the same geometry envelope used by native frames before
+            # passing it to a platform slider setter.
+            lower: mutable f32 = UiCore::bounded_coordinate(low)
+            upper: mutable f32 = UiCore::bounded_coordinate(high)
             if upper < lower:
                 swap: f32 = lower
                 lower <- upper
                 upper <- swap
-            candidate: f32 = UiCore::finite_or_zero(value)
+            candidate: f32 = UiCore::bounded_coordinate(value)
             safe_value: f32 = lower if candidate < lower else (upper if candidate > upper else candidate)
             return ControlState{value: safe_value, low: lower, high: upper, selected: false}
 
