@@ -137,9 +137,15 @@ extend UiAppKitCanvas:
             count: mutable usize = 0
             for index in 0..<requested_count:
                 handle: usize = accessibility_next_handles[index]
-                if handle != 0:
-                    accessibility_commit_handles[count] <- handle
-                    count <- count + 1
+                # A semantic frame is all-or-nothing. Silently compacting a
+                # missing native handle would let Cocoa accept a shorter child
+                # list while Elisa published the full semantic table, leaving
+                # assistive clients with nodes that can never be queried or
+                # activated. Treat any allocation/validation failure as a
+                # failed transaction and preserve the previous committed list.
+                return false if handle == 0
+                accessibility_commit_handles[count] <- handle
+                count <- count + 1
             # The semantic arena is bounded, but keep the boundary invariant
             # explicit at the construction site too. Objective-C receives only
             # an already-bounded immutable child list and therefore does not
