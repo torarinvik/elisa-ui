@@ -179,13 +179,14 @@ def appkit_cstr_byte(text: cstr, index: usize) -> u8:
 def snapshot_path_length(text: cstr) -> usize:
     pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
     return 0 if pointer == 0.uintptr()
-    length: mutable usize = 0
-    while length < SNAPSHOT_PATH_SCAN_CAPACITY |length|:
-        return length if appkit_cstr_byte(text, length) == 0
-        length <- length + 1
+    length: usize =
+        for index in 0..<SNAPSHOT_PATH_SCAN_CAPACITY |length = SNAPSHOT_PATH_SCAN_CAPACITY| -> length:
+            value: u8 = appkit_cstr_byte(text, index)
+            length <- index if value == 0
+            break if value == 0
     # CAPACITY + 1 is an explicit invalid sentinel: a valid path can be exactly
     # CAPACITY bytes long, but this value had no terminator in the scan window.
-    return SNAPSHOT_PATH_SCAN_CAPACITY + 1
+    return SNAPSHOT_PATH_SCAN_CAPACITY + 1 if length == SNAPSHOT_PATH_SCAN_CAPACITY else length
 
 # CoreFoundation strings created by `native_string` share the framework's
 # counted-text budget. Keep the environment scan's larger memory-safety bound,
@@ -194,14 +195,15 @@ def snapshot_path_within_budget(length: usize) -> bool:
     return length <= UiCore::MAX_TEXT_BYTES
 
 def appkit_cstr_equals(left: cstr, right: cstr) -> bool:
-    index: mutable usize = 0
-    while index < SNAPSHOT_PATH_SCAN_CAPACITY |index|:
-        left_byte: u8 = appkit_cstr_byte(left, index)
-        right_byte: u8 = appkit_cstr_byte(right, index)
-        return false if left_byte != right_byte
-        return true if left_byte == 0
-        index <- index + 1
-    return false
+    condition: bool =
+        for index in 0..<SNAPSHOT_PATH_SCAN_CAPACITY |condition = false| -> condition:
+            left_byte: u8 = appkit_cstr_byte(left, index)
+            right_byte: u8 = appkit_cstr_byte(right, index)
+            condition <- false if left_byte != right_byte
+            break if left_byte != right_byte
+            condition <- true if left_byte == 0
+            break if left_byte == 0
+    return condition
 
 def ui_measure_text_width(text: sview, size: f32) -> f32:
     return 0.0 if text.len <= 0 or text.data == null

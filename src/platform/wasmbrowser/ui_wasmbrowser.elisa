@@ -104,16 +104,18 @@ def strlen(text: cstr) -> usize:
     pointer_value: uintptr = text.cast[uintptr] can Unsafe.PointerCast
     return 0 if pointer_value == 0.uintptr()
     pointer: u32 = pointer_value.u32()
-    length: mutable u32 = 0
     memory_end: u64 = ui_wasm_host_memory_end()
-    while length < UI_WASM_CSTR_SCAN_CAPACITY |length|:
-        # Compute in u64 before converting back to a wasm32 pointer. This
-        # prevents pointer+length wraparound from turning a malformed string
-        # into a read near address zero.
-        address: u64 = pointer.u64() + length.u64()
-        return length.usize() if address >= memory_end
-        return length.usize() if ui_wasm_memory_byte(address.u32()) == 0
-        length <- length + 1
+    length: u32 =
+        for index in 0..<UI_WASM_CSTR_SCAN_CAPACITY |length = UI_WASM_CSTR_SCAN_CAPACITY| -> length:
+            # Compute in u64 before converting back to a wasm32 pointer. This
+            # prevents pointer+length wraparound from turning a malformed string
+            # into a read near address zero.
+            address: u64 = pointer.u64() + index.u64()
+            length <- index if address >= memory_end
+            break if address >= memory_end
+            value: u8 = ui_wasm_memory_byte(address.u32())
+            length <- index if value == 0
+            break if value == 0
     return length.usize()
 
 def ui_wasm_release_clipboard_allocation(pointer: u32, length: u32) -> void:
