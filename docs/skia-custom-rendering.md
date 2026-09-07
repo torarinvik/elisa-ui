@@ -61,7 +61,9 @@ Immediate custom drawing can also use `UiSkia::push_clip()` and
 `UiSkia::pop_clip()` from `ui_skia_clip.elisa`. Empty clips are rejected before
 Skia, and clip saves share the same ledger as transforms and the attachment
 frame, so retained replay and custom scopes cannot drift in their restoration
-rules.
+rules. Retained replay intentionally submits zero-area intersections to Skia so
+an empty nested viewport suppresses its commands; only the immediate helper's
+caller-facing input contract rejects them.
 
 `UiSkia::snapshot()` is a read-only diagnostic record for attachment/generation,
 save depth, clip/transform depth, and active image/font bindings;

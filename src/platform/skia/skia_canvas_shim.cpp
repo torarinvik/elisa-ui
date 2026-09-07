@@ -37,6 +37,14 @@ bool valid_rect(float x, float y, float width, float height) {
     return finite(x) && finite(y) && finite(width) && finite(height) && width > 0.0f && height > 0.0f;
 }
 
+// Retained clips may intentionally be empty after Elisa intersects nested
+// viewports. Keep that semantic distinction at the primitive boundary: a
+// zero-sized clip is a valid Skia operation that suppresses subsequent draws,
+// while negative or non-finite geometry remains malformed and is rejected.
+bool valid_clip_rect(float x, float y, float width, float height) {
+    return finite(x) && finite(y) && finite(width) && finite(height) && width >= 0.0f && height >= 0.0f;
+}
+
 bool positive(float value) {
     return finite(value) && value > 0.0f;
 }
@@ -99,7 +107,7 @@ extern "C" void elisa_skia_canvas_rotate(std::size_t handle, float degrees) {
 }
 
 extern "C" void elisa_skia_canvas_clip_rect(std::size_t handle, float x, float y, float width, float height) {
-    if (SkCanvas *target = canvas(handle); target != nullptr && valid_rect(x, y, width, height)) {
+    if (SkCanvas *target = canvas(handle); target != nullptr && valid_clip_rect(x, y, width, height)) {
         target->clipRect(SkRect::MakeXYWH(x, y, width, height), SkClipOp::kIntersect, true);
     }
 }
