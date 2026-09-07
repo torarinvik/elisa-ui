@@ -75,6 +75,15 @@ def main() -> i64:
     check("relative clock injection is deterministic", observed_time == 1.5)
     check("each frame starts with a fresh command batch", UiHarness::command_count() == 1)
 
+    # Starting a replacement session must discard the old frame before the
+    # new app has produced any commands or semantic nodes.
+    UiCore::accessibility(UiCore::AccessibilityRole.Label, "retired", "", UiCore::Rect(0.0, 0.0, 20.0, 20.0), 7, 0, true, false, false, 0.0, "", "", 0, 0, 0)
+    UiCore::request_frame_after(0.5)
+    UiHarness::start(320.0, 200.0)
+    check("restarting harness discards retired commands", UiHarness::command_count() == 0)
+    check("restarting harness discards retired semantics", UiHarness::semantic_count() == 0)
+    check("restarting harness clears retired frame scheduling", UiHarness::next_frame_delay() == 0.0)
+
     UiHarness::focus_lost()
     check("lifecycle helper forwards focus loss", event_calls == 3 and last_event_kind == UiCore::WireKind.FocusLost.i32())
     UiHarness::stop()
