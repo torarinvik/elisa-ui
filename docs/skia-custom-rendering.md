@@ -32,6 +32,9 @@ The AppKit compositor forwards logical and backing-pixel dimensions to the
 Elisa replay callback; `UiCore::backing_scale()` selects the finite
 aspect-preserving scale there. The C++ host only rounds/limits pixel extents
 for its temporary allocation and no longer embeds a rendering-scale policy.
+When presenting the completed raster, it draws into the logical view bounds so
+AppKit's device transform performs the one logical-to-backing conversion; this
+keeps Retina and other non-1x contexts from scaling the image twice.
 
 When a host has a resolved system or bundled typeface, the one-shot
 `elisa_skia_render_frame_with_font_status(canvas, font)` boundary supplies it
