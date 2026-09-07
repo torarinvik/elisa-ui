@@ -347,6 +347,21 @@ def main() -> i64:
     UiFlat::pointer((UiCore::PointerEvent.Leave))
     check("pointer leave clears origin hover state", not UiFlat::widget(origin_button).hovered and UiFlat::hot() == UiFlat::NONE)
 
+    # Detached roots are valid in the compatibility API (and the paint-order
+    # builder already preserves every one).  Layout must give each root the
+    # viewport rather than silently leaving roots after slot zero at 0x0.
+    UiFlat::reset()
+    first_root: usize = UiFlat::button(UiFlat::NONE, 40.0, 20.0, UiCore::rgb(20, 20, 20), UiCore::rgb(40, 40, 40), UiCore::rgb(10, 10, 10))
+    second_root: usize = UiFlat::button(UiFlat::NONE, 40.0, 20.0, UiCore::rgb(30, 30, 30), UiCore::rgb(50, 50, 50), UiCore::rgb(15, 15, 15))
+    UiFlat::set_text(first_root, "First", 14.0, UiCore::rgb(240, 240, 240))
+    UiFlat::set_text(second_root, "Second", 14.0, UiCore::rgb(240, 240, 240))
+    UiFlat::layout(80.0, 40.0)
+    check("layout covers every detached root", rect_is(first_root, 0.0, 0.0, 80.0, 40.0) and rect_is(second_root, 0.0, 0.0, 80.0, 40.0))
+    check("detached roots keep painter and hit order", UiFlat::hit(20.0, 20.0) == second_root)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("detached roots remain semantic after layout", UiCore::accessibility_count() == 2 and UiCore::accessibility_at(0).id == first_root and UiCore::accessibility_at(1).id == second_root)
+
     if test_failures == 0:
         _ = puts("widget layout: all checks passed")
         return 0

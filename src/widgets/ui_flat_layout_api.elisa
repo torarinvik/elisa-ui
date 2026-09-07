@@ -12,14 +12,24 @@ extend UiFlat:
             layout_dirty <- false
             UiCore::clear_invalidations(UiCore::Invalidation.Layout)
             return if widget_count == 0
-            measure(0, 0)
+            # A flat tree may contain more than one detached root.  This is
+            # useful for compatibility callers that build independent
+            # surfaces, and it is already the contract used by paint-order
+            # construction.  Laying out only slot zero left later roots with
+            # their construction-time zero frame: they were present in paint
+            # and accessibility order but could never be hit or seen.
+            for index in 0..<widget_count:
+                parent: usize = widgets[index].parent
+                measure(index, 0) if parent == NONE or parent >= widget_count
             # Aggregating several individually bounded children can still
             # produce a finite value larger than the shared geometry envelope
             # (for example, two maximum-sized controls in one row). Clamp the
             # measured minima/content extents before arrangement and before a
             # caller can observe the retained rows directly.
             normalize_widget_enums()
-            arrange(0, 0.0, 0.0, last_layout_width, last_layout_height, 0)
+            for index in 0..<widget_count:
+                parent: usize = widgets[index].parent
+                arrange(index, 0.0, 0.0, last_layout_width, last_layout_height, 0) if parent == NONE or parent >= widget_count
 
         # Geometry consumers share paint's deferred retained reflow. Keeping
         # this in Elisa means a mutation followed immediately by hit testing
