@@ -51,6 +51,12 @@ SkFont font_for(float size) {
     return font;
 }
 
+SkFont font_for(float size, SkTypeface *typeface) {
+    SkFont font = font_for(size);
+    font.setTypeface(typeface);
+    return font;
+}
+
 }
 
 extern "C" void elisa_skia_canvas_save(std::size_t handle) {
@@ -147,11 +153,32 @@ extern "C" void elisa_skia_canvas_draw_text_with_font(std::size_t canvas_handle,
                                                         std::uint8_t blue, std::uint8_t alpha) {
     if (SkCanvas *target = canvas(canvas_handle);
         target != nullptr && font_handle != 0 && text != nullptr && length > 0) {
-        SkFont font = font_for(size);
-        font.setTypeface(reinterpret_cast<SkTypeface *>(font_handle));
+        SkFont font = font_for(size, reinterpret_cast<SkTypeface *>(font_handle));
         target->drawSimpleText(text, length, SkTextEncoding::kUTF8, x, y, font,
                                fill_paint(red, green, blue, alpha));
     }
+}
+
+extern "C" float elisa_skia_measure_text_width_with_font(std::size_t font_handle,
+                                                           const char *text, std::size_t length,
+                                                           float size) {
+    if (font_handle == 0 || text == nullptr || length == 0) return 0.0f;
+    return font_for(size, reinterpret_cast<SkTypeface *>(font_handle))
+        .measureText(text, length, SkTextEncoding::kUTF8);
+}
+
+extern "C" float elisa_skia_font_ascent_with_font(std::size_t font_handle, float size) {
+    if (font_handle == 0) return 0.0f;
+    SkFontMetrics metrics;
+    font_for(size, reinterpret_cast<SkTypeface *>(font_handle)).getMetrics(&metrics);
+    return -metrics.fAscent;
+}
+
+extern "C" float elisa_skia_text_line_height_with_font(std::size_t font_handle, float size) {
+    if (font_handle == 0) return 0.0f;
+    SkFontMetrics metrics;
+    font_for(size, reinterpret_cast<SkTypeface *>(font_handle)).getMetrics(&metrics);
+    return metrics.fDescent - metrics.fAscent + metrics.fLeading;
 }
 
 extern "C" void elisa_skia_canvas_fill_circle(std::size_t handle, float x, float y, float radius,

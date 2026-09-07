@@ -102,6 +102,11 @@ float elisa_skia_measure_text_width(const char *text, size_t length, float size)
 }
 float elisa_skia_font_ascent(float size) { return size * 0.8f; }
 float elisa_skia_text_line_height(float size) { return size * 1.2f; }
+float elisa_skia_measure_text_width_with_font(size_t font, const char *text, size_t length, float size) {
+    return font == 0 || text == NULL ? 0.0f : (float)length * size * 0.6f;
+}
+float elisa_skia_font_ascent_with_font(size_t font, float size) { return font == 0 ? 0.0f : size * 0.85f; }
+float elisa_skia_text_line_height_with_font(size_t font, float size) { return font == 0 ? 0.0f : size * 1.25f; }
 
 void skia_test_reset(void) {
     save_count = 0; restore_count = 0; scale_count = 0; clip_count = 0;
