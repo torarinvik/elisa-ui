@@ -427,6 +427,7 @@ nm -g "$BIN" | grep -q ' U _NSAccessibilityPostNotification$'
 nm -g "$BIN" | grep ' T _elisa_appkit_canvas_window_closed$' >/dev/null
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_selection_location$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_set_selected_range$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_selected_range$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_marked_location$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_has_marked_text$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_commit_text$'

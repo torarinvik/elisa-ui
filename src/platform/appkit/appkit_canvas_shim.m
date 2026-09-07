@@ -36,6 +36,8 @@ extern void elisa_appkit_canvas_timer_fired(size_t windowHandle, uint32_t genera
 extern size_t elisa_appkit_canvas_selection_location(size_t windowHandle);
 extern size_t elisa_appkit_canvas_selection_length(size_t windowHandle);
 extern int elisa_appkit_canvas_set_selected_range(size_t windowHandle, size_t handle, size_t location, size_t length);
+extern int elisa_appkit_canvas_selected_range(size_t windowHandle, size_t handle,
+                                              size_t *actualLocation, size_t *actualLength);
 extern size_t elisa_appkit_canvas_marked_location(size_t windowHandle);
 extern size_t elisa_appkit_canvas_marked_length(size_t windowHandle);
 extern void elisa_appkit_canvas_commit_text(size_t windowHandle, size_t text,
@@ -122,10 +124,19 @@ static size_t elisa_appkit_canvas_element_window_handle(ElisaAccessibilityElemen
     CFRelease((CFTypeRef)(void *)native);
 }
 - (void)setAccessibilitySelectedTextRange:(NSRange)value {
-    if (elisa_appkit_canvas_set_selected_range(elisa_appkit_canvas_element_window_handle(self),
-                                               (size_t)(__bridge void *)self,
+    size_t windowHandle = elisa_appkit_canvas_element_window_handle(self);
+    size_t handle = (size_t)(__bridge void *)self;
+    if (elisa_appkit_canvas_set_selected_range(windowHandle, handle,
                                                value.location, value.length) != 0) {
-        [super setAccessibilitySelectedTextRange:value];
+        size_t actualLocation = elisa_appkit_canvas_not_found;
+        size_t actualLength = 0;
+        // Elisa owns UTF-16 range clamping. Mirror its normalized result so
+        // AppKit's retained accessibility state cannot diverge from the
+        // framework's text model when a client sends an oversized range.
+        if (elisa_appkit_canvas_selected_range(windowHandle, handle,
+                                               &actualLocation, &actualLength) != 0) {
+            [super setAccessibilitySelectedTextRange:NSMakeRange(actualLocation, actualLength)];
+        }
     }
 }
 - (void)elisaSetAccessibilityValue:(id)value {

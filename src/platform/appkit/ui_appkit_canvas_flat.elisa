@@ -235,6 +235,23 @@ def appkit_flat_set_selected_range(index: usize, location: usize, length: usize)
     UiAppKitCanvas::redraw()
     return 1
 
+# Return the range after Elisa has normalized it to the retained field's
+# UTF-16 boundaries. AppKit's accessibility setter must mirror this result,
+# rather than the caller's potentially oversized request, or Cocoa can retain a
+# selection that disagrees with the framework's text state.
+def appkit_flat_selected_range_handle(window_handle: usize, handle: usize,
+                                       actual_location: mutable usize&,
+                                       actual_length: mutable usize&) -> i32:
+    return 0 if actual_location == null or actual_length == null
+    actual_location <- UiAppKitCanvas::not_found()
+    actual_length <- 0
+    return 0 if not UiAppKitCanvas::live() or window_handle != UiAppKitCanvas::window_handle()
+    index: usize = UiAppKitCanvas::accessibility_action_for_handle(handle)
+    return 0 if index == UiAppKitCanvas::not_found() or not UiFlat::text_editable(index)
+    actual_location <- UiFlat::selection_utf16_location(index)
+    actual_length <- UiFlat::selection_utf16_length(index)
+    return 1
+
 def appkit_flat_set_selected_range_handle(window_handle: usize, handle: usize, location: usize, length: usize) -> i32:
     return 0 if not UiAppKitCanvas::live() or window_handle != UiAppKitCanvas::window_handle()
     index: usize = UiAppKitCanvas::accessibility_action_for_handle(handle)
@@ -360,6 +377,7 @@ export fn elisa_appkit_canvas_key_up(window_handle: usize, key_code: i32, charac
 export fn elisa_appkit_canvas_selection_location(window_handle: usize) -> usize = appkit_flat_selection_location
 export fn elisa_appkit_canvas_selection_length(window_handle: usize) -> usize = appkit_flat_selection_length
 export fn elisa_appkit_canvas_set_selected_range(window_handle: usize, handle: usize, location: usize, length: usize) -> i32 = appkit_flat_set_selected_range_handle
+export fn elisa_appkit_canvas_selected_range(window_handle: usize, handle: usize, actual_location: mutable usize&, actual_length: mutable usize&) -> i32 = appkit_flat_selected_range_handle
 export fn elisa_appkit_canvas_marked_location(window_handle: usize) -> usize = appkit_flat_marked_location
 export fn elisa_appkit_canvas_marked_length(window_handle: usize) -> usize = appkit_flat_marked_length
 export fn elisa_appkit_canvas_has_marked_text(window_handle: usize) -> i32 = appkit_flat_has_marked_text

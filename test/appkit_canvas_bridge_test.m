@@ -363,6 +363,15 @@ int elisa_appkit_canvas_set_selected_range(size_t windowHandle, size_t handle, s
     if (test_accessibility_index_for_handle(handle) != 8) return 0;
     return test_set_selected_range_index(8, location, length);
 }
+int elisa_appkit_canvas_selected_range(size_t windowHandle, size_t handle,
+                                       size_t *actualLocation, size_t *actualLength) {
+    test_input_window = windowHandle;
+    if (test_accessibility_index_for_handle(handle) != 8 ||
+        actualLocation == NULL || actualLength == NULL) return 0;
+    *actualLocation = elisa_appkit_canvas_selection_location(windowHandle);
+    *actualLength = elisa_appkit_canvas_selection_length(windowHandle);
+    return 1;
+}
 size_t elisa_appkit_canvas_marked_location(size_t windowHandle) {
     test_input_window = windowHandle;
     return test_marked_end > test_marked_start ? test_utf16_from_byte(test_marked_start) : NSNotFound;
@@ -710,6 +719,10 @@ int main(void) {
         textField.accessibilitySelectedTextRange = NSMakeRange(1, 3);
         if (require(test_selection_start == 1 && test_selection_end == 4, @"writable accessibility selection did not reach Elisa")) return 1;
         textField.accessibilitySelectedTextRange = NSMakeRange(5, 0);
+        textField.accessibilitySelectedTextRange = NSMakeRange(999, 999);
+        if (require(test_selection_start == 5 && test_selection_end == 5 &&
+                        NSEqualRanges(textField.accessibilitySelectedTextRange, NSMakeRange(5, 0)),
+                    @"oversized accessibility selection was not normalized by Elisa")) return 1;
         test_allow_text_mutation = 0;
         textField.accessibilityValue = @"rejected";
         if (require(strcmp(test_text, "World") == 0 && [textField.accessibilityValue isEqualToString:@"World"],
