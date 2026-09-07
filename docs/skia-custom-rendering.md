@@ -131,12 +131,13 @@ the ordinary AppKit build still uses its CoreGraphics fallback.
 
 The first slice covers clear, clipping, rounded rectangles, circles, triangles,
 lines, UTF-8 text, and text metrics. The portable `FillRect` command keeps its
-wire shape. Generic fills remain plain; an explicit `UiCore::fill_elevated()`
-call records an Elisa-owned side-band style bit, and replay passes that bit to
+wire shape. Generic fills use the shared rounded-corner and subtle hairline
+policy; an explicit `UiCore::fill_elevated()` call records an Elisa-owned
+side-band style bit, and replay passes that bit to
 `UiPaint::rounded_rect_style()` so only intentional control surfaces receive
-the elevated shadow. The same style policy is consumed by both the Skia and
-CoreGraphics custom painters; custom controls can request an explicit radius
-through `UiSkia::fill_rounded_rect()`. `UiPaint::RoundedRectStyle` owns the
+the stronger elevation shadow. The same style policy is consumed by both the
+Skia and CoreGraphics custom painters; custom controls can request an explicit
+radius through `UiSkia::fill_rounded_rect()`. `UiPaint::RoundedRectStyle` owns the
 shadow offset, blur, hairline width, and alpha values shared by both custom
 painters; the private `ui_skia_style.elisa` extension only translates that
 record into explicit FFI arguments, leaving the C++ bridge to construct the

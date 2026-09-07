@@ -284,9 +284,10 @@ blur values selected by the shared Elisa style record. The private
 stroke weight nor shadow appearance is invented by the C++ bridge.
 `UiPaint::rounded_rect_style` is the single Elisa-owned style policy consumed
 by both the Skia painter and the CoreGraphics fallback, so radius/elevation and
-hairline values cannot drift between custom backends. Elevation is now an
-explicit `UiCore::fill_elevated` side-band bit; ordinary rectangles remain
-plain regardless of their dimensions.
+hairline values cannot drift between custom backends. Custom fills retain the
+shared rounded-corner and subtle hairline treatment; elevation is an explicit
+`UiCore::fill_elevated` side-band bit that additionally enables the stronger
+shadow treatment.
 The Skia shadow pass uses a transparent source paint, so the blur cannot tint or
 cover the retained control silhouette.
 The custom painter also accepts a borrowed opaque `SkImage*` for destination

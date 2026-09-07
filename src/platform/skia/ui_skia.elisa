@@ -39,6 +39,11 @@ module UiSkia:
         # consumes one save; direct clip/transform helpers may use the rest.
         # Retained replay is separately bounded by UiCore::MAX_COMMANDS.
         const MAX_SCOPE_DEPTH: usize = 256
+        # Retained replay wraps each clipped command in a short-lived save
+        # scope. Reserve one extra ledger slot for that scope so a custom
+        # control that uses the full direct budget cannot make replay pop one
+        # of its own transforms when the clip push is rejected.
+        const MAX_SCOPE_STACK: usize = MAX_SCOPE_DEPTH + 1
 
         def abi_version() -> u32:
             return (ABI_VERSION_MAJOR << 16) | (ABI_VERSION_MINOR << 8) | ABI_VERSION_PATCH
@@ -228,7 +233,7 @@ module UiSkia:
         const SKIA_SCOPE_FRAME: u8 = 0
         const SKIA_SCOPE_CLIP: u8 = 1
         const SKIA_SCOPE_TRANSFORM: u8 = 2
-        global mutable skia_scope_kinds: u8[MAX_SCOPE_DEPTH] = zeroed
+        global mutable skia_scope_kinds: u8[MAX_SCOPE_STACK] = zeroed
         global mutable skia_surface_generation: u32 = 0
         global mutable skia_frame_font: usize = 0
 

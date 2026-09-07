@@ -36,7 +36,10 @@ extend UiSkia:
         # separate so the two contracts do not silently change each other.
         def push_replay_clip(box: UiCore::Rect) -> void can[Ui.Draw]:
             return if canvas_state == 0
-            return if skia_save_depth >= UiSkia::MAX_SCOPE_DEPTH
+            # Replay owns one reserved stack slot beyond the direct custom
+            # scope budget. Each retained command pops immediately, so this
+            # does not allow an unbounded native save depth.
+            return if skia_save_depth >= UiSkia::MAX_SCOPE_STACK
             safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
             elisa_skia_canvas_save(canvas_state)
             elisa_skia_canvas_clip_rect(canvas_state, safe_box.origin.x, safe_box.origin.y, safe_box.size.width, safe_box.size.height)
