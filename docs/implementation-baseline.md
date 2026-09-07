@@ -8,10 +8,10 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `c852026` (`refactor(core): scope bounded persistence scans`) on branch `work` |
+| elisa-ui revision | `17cb952` (`feat(remote): add negotiated presentation policy`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
-| Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
+| Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
 | Elisa runtime | `../wasm-sdk-compiler/build/runtime/elisacore_runtime.o`; SHA-256 `cb06532f0c37540284de4ceaa622d0da9193f113877ac391fb00bad4bf9ff1e9` |
 | WasmBrowser checkout | revision `b40bb17a3141` (host worktree has unrelated local runtime edits) |
 | WasmBrowser WIT | `../WasmBrowser/wit/wasmbrowser.wit`; SHA-256 `9032a1c59a5495d4868bc7cdf494153096708ff6f2321b4ea2ffeff752c627d6` |
@@ -32,7 +32,7 @@ colors and geometry.
 Public framework modules are `UiCore`, `UiLifecycle`, `UiMetrics`, `UiState`, `UiTasks`, `UiCapabilities`, `UiEvents`, `UiPaint`, `UiRaster`,
 `UiConst`, `UiWidgets`, `UiFlat`, `UiHandles`, `UiResources`, `UiResourcePresentation`,
 `UiResponsive`, `UiVirtualList`, `UiConstraints`, `UiIdentity`, `UiTheme`,
-`UiLocalization`, `UiValidation`, `UiFeatureView`, `UiDialog`, `UiNavigation`, `UiBack`, `UiGestures`, `UiTextLayout`, `UiTextInput`, `UiControls`, `UiCapi`, `UiAppKit`, `UiSkia`,
+`UiLocalization`, `UiValidation`, `UiFeatureView`, `UiDialog`, `UiNavigation`, `UiBack`, `UiGestures`, `UiTextLayout`, `UiTextInput`, `UiControls`, `UiCapi`, `UiAppKit`, `UiSkia`, `UiRemote`,
 `UiAppKitNative`, `UiAppKitCanvas`, `UiSdl3`, `UiSdl3Draw`, `UiWasmBrowser`,
 and `UiInspector`. The application contract is
 the top-level `app_init`, `app_event`, `app_text_input`, `app_text_editing`,
@@ -104,6 +104,12 @@ not split mechanically.
 layout/text/resource timing scopes in `ui_metrics_work.elisa` (148 lines),
 so diagnostics can grow without enlarging the frame-state module.
 
+The remote facade (`ui_remote.elisa`) is a 10-line include surface over typed
+offer/selection records, pure presentation and scale negotiation, and session
+lifecycle/input-acknowledgement state. The transport host still owns sockets,
+packets, and video/framebuffer objects; `UiRemote` exposes only bounded,
+inspectable policy facts to the retained framework.
+
 The modal and navigation input policy remains in the shared `UiBack` module
 over `UiDialog` (305 lines) and `UiNavigation`. Their public tokens are
 module-specific (`DialogHandle`, `NavigationHandle`), as are resource tokens
@@ -141,10 +147,10 @@ module-private.
 | AppKit custom canvas | implemented-tested | `scripts/check_appkit_canvas.sh` builds/signs the app, renders an off-screen PNG, and exercises semantic-object identity and callbacks. |
 | Skia custom painter | implemented-tested at Elisa boundary; host integration planned | `scripts/check_skia.sh` compiles the painter and records whether `SKIA_ROOT` is configured. The local tuple has no pinned Skia SDK, so the C++ shim is not claimed as runtime-tested. |
 | Optional feature view | implemented-tested at Elisa boundary; host activation integration planned | `test/feature_view_test.elisa` covers typed identity, activation tokens, stale polling, terminal failures, retry generations, cancellation, owner disposal, and invalidation. The SDK/host remains responsible for actual component activation and deactivation. |
-| WasmBrowser hosted | implemented-tested for package/inspect; fresh build blocked | The existing `build/hello.wapp` artifact passes WasmBrowser's profile/import/export inspection, but a fresh component build currently fails linker validation with `expected i64, found i32`; runtime launch and device execution still need dedicated fixtures. |
+| WasmBrowser hosted | implemented-tested for fresh package/inspect; runtime launch planned | `ELISA_UI_STAGE1=../wasm-sdk-compiler bash scripts/build_wapp.sh hello` now emits and packs the component, and `scripts/check_wapp.sh` passes profile/import/export inspection. Runtime launch and device execution still need dedicated fixtures. |
 | Android standalone | planned | No Android build or device fixture exists in this checkout. |
 | iOS standalone | planned | No iOS build or device fixture exists in this checkout. |
-| Remote rendering/input | planned | Capability negotiation belongs to WasmBrowser/SDK; no elisa-ui remote fixture exists yet. |
+| Remote rendering/input | implemented-tested at Elisa policy boundary; transport integration planned | `test/remote_test.elisa` covers typed-command/framebuffer/video negotiation, bounded scale conversion, lifecycle generations/overlays, and input sequencing/acknowledgements headlessly. A future WasmBrowser/SDK adapter still owns transport and presentation objects. |
 
 Implemented-tested in the current native corpus: retained layout and dirty
 relayout, responsive size classes/adaptive axes/bounded grid columns/safe-area
@@ -172,7 +178,7 @@ declared capability respectively, with byte-oriented Elisa adapters above each.
 The following completed headlessly from this checkout:
 
 ```text
-ELISA_UI_STAGE1=/tmp/elisa-ui-stage1-p4 ELISA_ALLOW_STALE_STAGE1=1 bash scripts/run_tests.sh
+ELISA_UI_STAGE1=../wasm-sdk-compiler bash scripts/run_tests.sh
   source-size gate,
   capi, appkit, appkit canvas, appkit canvas keymap, capi bridge,
   controls, dialog, drop raii, event wire, gestures, hierarchy build/layout,
@@ -188,25 +194,20 @@ scripts/check_global_names.sh
 git diff --check: PASS
 ```
 
-The existing hosted package passed the compiler-independent inspection gate:
+The current stage1 product also builds the hosted package end to end:
 
 ```text
+ELISA_UI_STAGE1=../wasm-sdk-compiler bash scripts/build_wapp.sh hello
+  wasm: wrote .../main.wasm and .../main.json
+  packed .../build/hello.wapp
 ELISA_UI_WASMBROWSER=../WasmBrowser bash scripts/check_wapp.sh build/hello.wapp
-  runtime profile: wasmbrowser:component@1
-  language: elisa
-  framework: elisa-ui
-  format: component
+  hosted package: compiler-independent profile/import/export inspection passed
 ```
 
-The existing `build/hello.wapp` artifact passes the compiler-independent
-profile/import/export inspection. A fresh
-`ELISA_UI_STAGE1=/tmp/elisa-ui-stage1-p4 ELISA_ALLOW_STALE_STAGE1=1 bash
-scripts/build_wapp.sh hello` currently fails in `wasm-component-ld` with
-`expected i64, found i32` during component validation. Reproducing the same
-failure at the pre-theme `26cf0cd` source revision shows that this is a
-compiler/WIT integration blocker rather than a `UiTheme` regression; the
-artifact must not be treated as proof of a fresh source build. Runtime launch
-and device execution remain separate fixtures.
+This supersedes the older `/tmp/elisa-ui-stage1-p4` validation note: the
+clean sibling checkout at `c6948142f19d` is the selected compiler product and
+the fresh component build now passes. Runtime launch and device execution
+remain separate fixtures.
 
 `bash scripts/build_native.sh hello` likewise produces `build/hello_native`.
 
@@ -297,9 +298,10 @@ The AppKit checks use activation policy prohibited and the custom canvas smoke
 path; no window is shown or foregrounded. The hello app's new
 `UiFlat::handle` entry point is covered by `test/widget_dispatch_test.elisa`.
 
-The hosted component still has a reproducible `expected i64, found i32`
-validation blocker in the current `wasm-component-ld` path; it is reproduced
-at the pre-theme source revision and therefore remains outside this UI change.
+The hosted component's earlier `expected i64, found i32` validation failure was
+caused by the stale `/tmp/elisa-ui-stage1-p4` product. The clean sibling
+compiler at `c6948142f19d` now emits a component that passes the linker and
+package inspection; runtime launch and device execution remain separate gates.
 The framework now declares its `Host.Present`, `Host.Layout`, and
 `Host.Clipboard` permission family explicitly; manifest capabilities remain a
 separate host-enforced security boundary.
