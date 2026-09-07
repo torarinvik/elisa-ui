@@ -50,6 +50,13 @@ def main() -> i64:
     check("pinch end remains observable", UiGestures::end(touch(10, UiGestures::Phase.Ended, 0.0, 0.0, 4.2)) and UiGestures::snapshot().kind == UiGestures::Kind.Pinch)
     _ = UiGestures::end(touch(11, UiGestures::Phase.Ended, 20.0, 0.0, 4.2))
 
+    _ = UiGestures::reset()
+    _ = UiGestures::begin(touch(12, UiGestures::Phase.Began, 0.0, 0.0, 4.5))
+    _ = UiGestures::begin(touch(13, UiGestures::Phase.Began, 10.0, 0.0, 4.5))
+    _ = UiGestures::move(touch(13, UiGestures::Phase.Moved, 20.0, 0.0, 4.6))
+    check("pinch cancellation clears stale scale", UiGestures::cancel(12) and UiGestures::snapshot().kind == UiGestures::Kind.Cancelled and UiGestures::snapshot().scale == 1.0 and UiGestures::snapshot().active == 1)
+    check("cancel-all clears the remaining contact and scale", UiGestures::cancel_all() == 1 and UiGestures::snapshot().kind == UiGestures::Kind.Cancelled and UiGestures::snapshot().scale == 1.0 and UiGestures::snapshot().active == 0)
+
     check("cancel all clears capture", UiGestures::begin(touch(20, UiGestures::Phase.Began, 0.0, 0.0, 5.0)) and UiGestures::begin(touch(21, UiGestures::Phase.Began, 1.0, 0.0, 5.0)) and UiGestures::cancel_all() == 2 and UiGestures::active_count() == 0 and UiGestures::snapshot().kind == UiGestures::Kind.Cancelled)
     check("cancelled identity is gone", not UiGestures::cancel(20))
 
