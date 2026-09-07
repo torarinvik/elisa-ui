@@ -1,8 +1,11 @@
 /* elisa-ui: the narrow Skia custom-rendering ABI.
  *
- * A host owns every SkCanvas, SkImage and SkTypeface object. Handles are
- * borrowed for the duration of a call; lifecycle, geometry, text policy and
- * resource generations remain in Elisa's UiSkia modules.
+ * A host owns every SkCanvas, SkImage and SkTypeface object. Canvas and direct
+ * image/font calls borrow handles for the call (or attached-canvas lifetime).
+ * Generation binding APIs store only opaque values until explicit unbind/clear
+ * or surface loss, so the host must keep those native objects alive until then.
+ * Lifecycle, geometry, text policy and resource generations remain in Elisa's
+ * UiSkia modules.
  */
 #ifndef ELISA_SKIA_H
 #define ELISA_SKIA_H
