@@ -355,6 +355,14 @@ def main() -> i64:
         check("nested layout bounds child y", nested_huge_inner.y, UiConstraints::MAX_EXTENT)
         check("nested layout bounds grandchild y", nested_huge_leaf.y, UiConstraints::MAX_EXTENT)
 
+        # Scroll-range arithmetic must sanitize raw coordinates before
+        # subtraction. Opposite-signed finite f32 values otherwise overflow to
+        # infinity and are misread as an empty content extent.
+        extreme_scroll_state: ScrollState = ScrollState{offset: 0.0}
+        extreme_scroll_child: Widget = Button.Push(min_width: 0.0, min_height: 0.0, grow: 0.0, x: huge, y: huge, width: huge, height: huge, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "extreme", rest: grey(30), hover: grey(40), press: grey(20))
+        extreme_scroll: Widget = Container.ScrollWithState(min_width: 0.0, min_height: 0.0, grow: 0.0, x: -huge, y: -huge, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: extreme_scroll_child, next_sibling: null, axis: UiConst::Axis.Column, state: &extreme_scroll_state, fill: grey(18))
+        check("scroll range survives extreme raw coordinates", scroll_limit(extreme_scroll), UiConstraints::MAX_EXTENT)
+
         # Growth weights are layout metrics too. A hostile negative weight must
         # not steal space from a valid sibling or poison the weighted pass.
         invalid_grow: Widget = Button.Push(min_width: 20.0, min_height: 8.0, grow: -4.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "invalid grow", rest: grey(30), hover: grey(40), press: grey(20))

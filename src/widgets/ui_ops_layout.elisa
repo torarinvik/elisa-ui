@@ -38,13 +38,21 @@ extend UiWidgets:
         def scroll_content_extent(w: Widget) -> f32:
             is_row: bool = axis_of(w) == UiConst::Axis.Row
             translated: f32 = bounded_extent(scroll_offset_of(w))
+            parent_origin: f32 = UiCore::bounded_coordinate(w.x if is_row else w.y)
             extent: mutable f32 = 0.0
             content_steps: mutable i32 = 0
             cursor: mutable Widget? = w.first_child if can_nest(w) else null
             while cursor is node |extent, cursor, is_row, translated, w, content_steps|:
                 break if content_steps >= MAX_HIERARCHY_SIBLINGS
                 content_steps <- content_steps + 1
-                end: f32 = bounded_extent(node.x - w.x + node.width + translated) if is_row else bounded_extent(node.y - w.y + node.height + translated)
+                # Sanitize each term before subtraction. Raw sealed-enum
+                # constructors can carry finite f32 coordinates near the
+                # numeric limit; subtracting opposite-signed values first can
+                # overflow to infinity, which `bounded_extent` would turn
+                # into zero and lose the entire scroll range.
+                child_origin: f32 = UiCore::bounded_coordinate(node.x if is_row else node.y)
+                child_extent: f32 = bounded_extent(node.width if is_row else node.height)
+                end: f32 = bounded_extent(child_origin - parent_origin + child_extent + translated)
                 extent <- end if end > extent
                 cursor <- node.next_sibling
             return extent
