@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `26cf0cd` (`feat(ui): add lifecycle-safe optional feature views`) on branch `work` |
+| elisa-ui revision | `a779fe5` (`feat(ui): bridge shared palettes into retained widgets`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -79,7 +79,8 @@ input, focus, style, callback, text, scrolling, and painting modules, each below
 400 lines. The layout implementation is kept in `ui_flat_layout.elisa` (320
 lines), with keyboard focus/capture policy in `ui_flat_focus.elisa`, text
 semantic projection and focus visibility in `ui_flat_text_semantics.elisa`, visual
-color policy in `ui_flat_style.elisa`, and legacy callback lowering in
+color policy in `ui_flat_style.elisa`, shared `UiTheme` palette adaptation in
+`ui_flat_theme.elisa` (37 lines), and legacy callback lowering in
 `ui_flat_events.elisa`. The AppKit canvas flat adapter keeps its externally
 mandated export declarations in `ui_appkit_canvas_flat_exports.elisa`, separate
 from callback policy. The AppKit controls backend is
@@ -167,7 +168,8 @@ ELISA_UI_STAGE1=/tmp/elisa-ui-stage1-p4 ELISA_ALLOW_STALE_STAGE1=1 bash scripts/
   capi, appkit, appkit canvas, appkit canvas keymap, capi bridge,
   controls, dialog, drop raii, event wire, gestures, hierarchy build/layout,
   raster, responsive, sdl3 keymap/text, text input, text layout, widget dispatch, widget handles,
-  widget layout, widget inspector, widget reentrancy, ui harness, metrics,
+  widget layout, widget inspector, widget reentrancy, widget theme adapter,
+  ui harness, metrics,
   resource presentation, feature view, core invalidation, lifecycle, constraints, identity,
   localization, theme, validation, virtual-list and virtual-list semantics: PASS
 scripts/check_source_sizes.sh
@@ -517,8 +519,10 @@ separate host-enforced security boundary.
 - `UiIdentity` owns bounded keyed generation transactions for dynamic lists and
   forms, while `UiTheme`, `UiLocalization`, and `UiValidation` keep appearance,
   RTL/plural policy, active-locale revision/invalidation, and revision-safe
-  asynchronous field state in shared Elisa modules. Each is opt-in and covered
-  by its focused headless test.
+  asynchronous field state in shared Elisa modules. The `UiFlat`/`UiHandles`
+  palette adapter applies only shared appearance tokens and is idempotent, so
+  host refreshes cannot create a dirty loop; per-widget colors and geometry
+  remain application-owned. Each policy is covered by a focused headless test.
 - `UiValidation` clears its fixed diagnostic-message storage on table reset, so
   retired validation text is not retained across lifecycles; coverage remains
   in `test/validation_test.elisa`.
