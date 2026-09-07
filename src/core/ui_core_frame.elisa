@@ -331,7 +331,10 @@ extend UiCore:
             limit: usize = MAX_TEXT_BYTES if value.len > MAX_TEXT_BYTES.i64() else value.len.usize()
             prefix: usize = UiText::valid_utf8_prefix(value, limit)
             return "" if prefix == 0
-            return value[0:prefix.i64()]
+            # Keep the caller's retained address explicit. Returning a slice
+            # expression here can materialize a temporary view when the result
+            # is stored in a semantic node or backend-owned record.
+            return sview(&value.data[0], 0, prefix.i64())
 
         # Normalize values that represent a fraction or progress amount. The
         # Sanitize malformed host values before applying the ordinary lower and
