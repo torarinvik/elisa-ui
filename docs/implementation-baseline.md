@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `613c865` (`fix(handles): make parent index stale-safe`) on branch `work` |
+| elisa-ui revision | `39cb811` (`fix(core): sanitize raw text draw commands`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -544,6 +544,9 @@ separate host-enforced security boundary.
   releasing stale borrowed text views while retaining the fixed allocation-free
   buffers. The C counted-text bridge and AppKit canvas teardown likewise scrub
   their Elisa-owned staging strings after use.
+- Raw `UiCore::Command.DrawText` values are normalized again at the retained
+  frame boundary, covering callers that bypass the convenience constructor and
+  keeping origin, font size, and counted UTF-8 text safe for every backend.
 - AppKit read-back helpers expose only native facts. The button-toggle
   introspection path now performs the native click as one primitive while Elisa
   owns the before/after comparison and state restoration; no test behavior is
