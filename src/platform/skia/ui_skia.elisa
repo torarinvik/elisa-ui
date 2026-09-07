@@ -58,6 +58,14 @@ module UiSkia:
             if canvas == 0:
                 UiSkia::surface_lost()
                 return
+            # Capability selection is the authoritative profile gate. A host
+            # may expose a borrowed canvas handle while the active profile is
+            # hosted or native-control-only; do not let that opaque pointer
+            # bypass the renderer policy merely because attachment is a lower
+            # level entry point.
+            if not UiCapabilities::select_skia_renderer():
+                UiSkia::surface_lost()
+                return
             UiSkia::detach() if canvas_state != 0
             canvas_state <- canvas
             skia_clip_depth <- 0
@@ -65,7 +73,6 @@ module UiSkia:
             skia_surface_generation <- skia_surface_generation + 1
             skia_surface_generation <- 1 if skia_surface_generation == 0
             safe_scale: f32 = skia_scale_value(scale)
-            _ = UiCapabilities::select_skia_renderer()
             elisa_skia_canvas_save(canvas_state)
             elisa_skia_canvas_scale(canvas_state, safe_scale, safe_scale)
 
