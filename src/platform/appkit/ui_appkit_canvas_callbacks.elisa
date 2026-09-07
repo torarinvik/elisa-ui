@@ -135,11 +135,16 @@ def appkit_canvas_pointer_scroll_callback(window_handle: usize, x: f32, y: f32, 
 def appkit_canvas_key_callback(window_handle: usize, down: i32, code: i32) -> void:
     return if not UiAppKitCanvas::live()
     return if window_handle != UiAppKitCanvas::window_handle()
+    # Objective-C supplies a BOOL, but this exported callback is also callable
+    # through the C ABI. Accept only its canonical 0/1 representation so a
+    # malformed foreign value cannot turn into an accidental key-down (and,
+    # in particular, cannot close the window through Escape).
+    return if down != 0 and down != 1
     if appkit_canvas_should_close_key(down, code):
         UiAppKitCanvas::close()
         return
     return if not UiCore::key_is_valid(code)
-    event: UiCore::Event = (UiCore::KeyEvent.Down(code: UiCore::Key(code))) if down != 0 else (UiCore::KeyEvent.Up(code: UiCore::Key(code)))
+    event: UiCore::Event = (UiCore::KeyEvent.Down(code: UiCore::Key(code))) if down == 1 else (UiCore::KeyEvent.Up(code: UiCore::Key(code)))
     appkit_canvas_dispatch_input_event(event)
     UiAppKitCanvas::redraw()
 
@@ -147,7 +152,7 @@ def appkit_canvas_key_callback(window_handle: usize, down: i32, code: i32) -> vo
 # it behind the same active-session predicate as every other input mutation so
 # an inactive/background window cannot close itself from a late key callback.
 def appkit_canvas_should_close_key(down: i32, code: i32) -> bool:
-    return down != 0 and code == UiCore::Key.Escape.i32() and UiLifecycle::accepts_input()
+    return down == 1 and code == UiCore::Key.Escape.i32() and UiLifecycle::accepts_input()
 
 def appkit_canvas_raw_key_callback(window_handle: usize, down: i32, key_code: i32, character: i32) -> void:
     return if not UiAppKitCanvas::live() or window_handle != UiAppKitCanvas::window_handle()
@@ -170,13 +175,17 @@ def appkit_canvas_raw_flags_callback(window_handle: usize, key_code: i32, modifi
 
 def appkit_canvas_focus_changed_callback(window_handle: usize, focused: i32) -> void:
     return if not UiAppKitCanvas::live()
+    # Keep the BOOL ABI strict at the Elisa boundary. Native AppKit emits 0/1;
+    # rejecting other values avoids treating an arbitrary integer from a
+    # foreign caller as a lifecycle transition.
+    return if focused != 0 and focused != 1
     # Focus notifications are delivered by the window delegate, and an old
     # window can emit one while a replacement session is already live. Match
     # the opaque identity before mutating the current lifecycle's focus state.
     return if window_handle != UiAppKitCanvas::window_handle()
-    changed: bool = UiLifecycle::focus_gained() if focused != 0 else UiLifecycle::focus_lost()
+    changed: bool = UiLifecycle::focus_gained() if focused == 1 else UiLifecycle::focus_lost()
     return if not changed
-    event: UiCore::Event = (UiCore::Event.FocusGained) if focused != 0 else (UiCore::Event.FocusLost)
+    event: UiCore::Event = (UiCore::Event.FocusGained) if focused == 1 else (UiCore::Event.FocusLost)
     appkit_canvas_dispatch_event(event)
     UiAppKitCanvas::redraw()
 
