@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `a779fe5` (`feat(ui): bridge shared palettes into retained widgets`) on branch `work` |
+| elisa-ui revision | `8797089` (`refactor(example): consume shared theme adapter`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -21,6 +21,11 @@ parity on untested platforms.
 
 The hello manifest now declares the versioned `wasmbrowser:component@1`
 profile, Elisa language, and elisa-ui framework explicitly.
+
+The hello reference app resolves its dark/light palette through `UiTheme` and
+applies framework-wide tokens with `UiHandles::apply_palette`; its custom
+accent remains application-owned while the adapter preserves retained widget
+colors and geometry.
 
 ## Source and boundary inventory
 
