@@ -37,7 +37,6 @@ extend UiAppKitCanvas:
                 existed: bool = previous_index < accessibility_previous_count
                 previous_handle: usize = accessibility_previous_handles[previous_index] if existed else 0
                 before: AccessibilityState = accessibility_previous[previous_index] if existed else state
-                notifications: i32 = accessibility_notifications(existed, before, state)
                 layout_changed <- true if accessibility_layout_changed(existed, before, state)
                 layout_changed <- true if index >= accessibility_previous_count or accessibility_previous_ids[index] != node.id
                 accessibility_next_ids[index] <- node.id
@@ -48,34 +47,34 @@ extend UiAppKitCanvas:
                 is_new: i32 = 1 if not existed or previous_handle == 0 else 0
                 handle: usize = elisa_appkit_canvas_accessibility_add(canvas_window, previous_handle, is_new, native_identifier, native_role, native_subrole, native_label, native_help, node.frame.origin.x, node.frame.origin.y, node.frame.size.width, node.frame.size.height, enabled, focused)
                 accessibility_next_handles[index] <- handle
-                # Reused native elements retain Cocoa's role-specific value
-                # slots. Elisa owns the semantic transition, so clear only
-                # when the node is new or its value kind changed; the native
-                # side remains a typed property primitive with no frame policy.
-                value_kind_changed: bool = not existed or before.value_kind != value_kind
-                elisa_appkit_canvas_accessibility_clear_value(handle, not_found(), 0) if handle != 0 and value_kind_changed
-                if value_kind == 1 and handle != 0:
-                    native_selected: usize = native_boolean_value(selected)
-                    elisa_appkit_canvas_accessibility_set_boolean_value(handle, native_selected)
-                    CFRelease(native_selected) if native_selected != 0
-                if value_kind == 2 and handle != 0:
-                    native_value: usize = native_float_value(node.value)
-                    native_minimum: usize = native_float_value(node.range_min if node.has_range else ACCESSIBILITY_RANGE_MINIMUM)
-                    native_maximum: usize = native_float_value(node.range_max if node.has_range else ACCESSIBILITY_RANGE_MAXIMUM)
-                    elisa_appkit_canvas_accessibility_set_range_values(handle, native_value, native_minimum, native_maximum)
-                    CFRelease(native_value) if native_value != 0
-                    CFRelease(native_minimum) if native_minimum != 0
-                    CFRelease(native_maximum) if native_maximum != 0
-                if value_kind == 3 and handle != 0:
-                    # Always pass counted strings, including empty values. The
-                    # native bridge only assigns these objects and never
-                    # manufactures an Objective-C empty-string fallback.
-                    native_value: usize = native_string(node.text_value)
-                    native_selected: usize = native_string(node.selected_text)
-                    elisa_appkit_canvas_accessibility_set_text(handle, native_value, native_selected, node.selection_location, node.selection_length)
-                    CFRelease(native_value) if native_value != 0
-                    CFRelease(native_selected) if native_selected != 0
-                accessibility_notify(handle, notifications) if handle != 0
+                # New elements are not reachable from Cocoa's committed list,
+                # so their role-specific values can be staged immediately. A
+                # reused element must stay untouched until the child-list
+                # transaction below succeeds; otherwise a later allocation
+                # failure would leave the old list with new values.
+                if is_new != 0 and handle != 0:
+                    elisa_appkit_canvas_accessibility_clear_value(handle, not_found(), 0)
+                    if value_kind == 1:
+                        native_selected: usize = native_boolean_value(selected)
+                        elisa_appkit_canvas_accessibility_set_boolean_value(handle, native_selected)
+                        CFRelease(native_selected) if native_selected != 0
+                    if value_kind == 2:
+                        native_value: usize = native_float_value(node.value)
+                        native_minimum: usize = native_float_value(node.range_min if node.has_range else ACCESSIBILITY_RANGE_MINIMUM)
+                        native_maximum: usize = native_float_value(node.range_max if node.has_range else ACCESSIBILITY_RANGE_MAXIMUM)
+                        elisa_appkit_canvas_accessibility_set_range_values(handle, native_value, native_minimum, native_maximum)
+                        CFRelease(native_value) if native_value != 0
+                        CFRelease(native_minimum) if native_minimum != 0
+                        CFRelease(native_maximum) if native_maximum != 0
+                    if value_kind == 3:
+                        # Always pass counted strings, including empty values.
+                        # The native bridge only assigns these objects and
+                        # never manufactures an Objective-C empty fallback.
+                        native_value: usize = native_string(node.text_value)
+                        native_selected: usize = native_string(node.selected_text)
+                        elisa_appkit_canvas_accessibility_set_text(handle, native_value, native_selected, node.selection_location, node.selection_length)
+                        CFRelease(native_value) if native_value != 0
+                        CFRelease(native_selected) if native_selected != 0
                 CFRelease(native_identifier) if native_identifier != 0
                 CFRelease(native_label) if native_label != 0
                 CFRelease(native_help) if native_help != 0
@@ -96,6 +95,56 @@ extend UiAppKitCanvas:
 
             committed: bool = commit_accessibility_children(next_count)
             if committed:
+                # The child list is now accepted by Cocoa. Apply metadata and
+                # value state to reused elements only after that point, then
+                # emit notifications against the committed identities. Any
+                # failure before the commit therefore leaves the old semantic
+                # objects completely unchanged.
+                for index in 0..<next_count:
+                    handle: usize = accessibility_next_handles[index]
+                    continue if handle == 0
+                    node: UiCore::AccessibilityNode = UiCore::accessibility_at(index)
+                    identifier: sview = accessibility_identifier(node.id)
+                    native_identifier: usize = native_string(identifier)
+                    native_label: usize = native_string(node.label)
+                    native_help: mutable usize = 0
+                    native_help <- native_string(node.help) if node.help.len > 0
+                    _ = elisa_appkit_canvas_accessibility_update(canvas_window, handle,
+                        native_identifier, accessibility_native_role(node.role),
+                        accessibility_native_subrole(node.role), native_label,
+                        native_help, node.frame.origin.x, node.frame.origin.y,
+                        node.frame.size.width, node.frame.size.height,
+                        1 if node.enabled else 0, 1 if node.focused else 0)
+                    previous_index: usize = previous_accessibility_index(node.id)
+                    existed: bool = previous_index < previous_count
+                    before: AccessibilityState = accessibility_previous[previous_index] if existed else accessibility_next[index]
+                    value_kind: i32 = accessibility_value_kind(node.role)
+                    if existed:
+                        value_kind_changed: bool = before.value_kind != value_kind
+                        elisa_appkit_canvas_accessibility_clear_value(handle, not_found(), 0) if value_kind_changed
+                        if value_kind == 1:
+                            native_selected: usize = native_boolean_value(1 if node.selected else 0)
+                            elisa_appkit_canvas_accessibility_set_boolean_value(handle, native_selected)
+                            CFRelease(native_selected) if native_selected != 0
+                        if value_kind == 2:
+                            native_value: usize = native_float_value(node.value)
+                            native_minimum: usize = native_float_value(node.range_min if node.has_range else ACCESSIBILITY_RANGE_MINIMUM)
+                            native_maximum: usize = native_float_value(node.range_max if node.has_range else ACCESSIBILITY_RANGE_MAXIMUM)
+                            elisa_appkit_canvas_accessibility_set_range_values(handle, native_value, native_minimum, native_maximum)
+                            CFRelease(native_value) if native_value != 0
+                            CFRelease(native_minimum) if native_minimum != 0
+                            CFRelease(native_maximum) if native_maximum != 0
+                        if value_kind == 3:
+                            native_value: usize = native_string(node.text_value)
+                            native_selected: usize = native_string(node.selected_text)
+                            elisa_appkit_canvas_accessibility_set_text(handle, native_value, native_selected, node.selection_location, node.selection_length)
+                            CFRelease(native_value) if native_value != 0
+                            CFRelease(native_selected) if native_selected != 0
+                    notifications: i32 = accessibility_notifications(existed, before, accessibility_next[index])
+                    accessibility_notify(handle, notifications) if notifications != 0
+                    CFRelease(native_identifier) if native_identifier != 0
+                    CFRelease(native_label) if native_label != 0
+                    CFRelease(native_help) if native_help != 0
                 # Publish the new history only after Cocoa has accepted the
                 # replacement list. The CFArray has no retain callbacks, so
                 # stale handles remain live through the native commit itself.

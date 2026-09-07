@@ -801,8 +801,8 @@ void elisa_appkit_canvas_accessibility_reset(size_t windowHandle) {
     if (view != nil) [view removeAllToolTips];
 }
 
-// Elisa owns semantic identity and calls the typed setters immediately after
-// adding a node. Return a retained native object for a new element so the
+// Elisa owns semantic identity and stages typed metadata around the child-list
+// commit. Return a retained native object for a new element so the
 // bridge does not maintain a second identifier lookup table for the in-flight
 // frame. Elisa retains each element handle; AppKit's accessibility children
 // property retains the currently committed ordered list.
@@ -824,6 +824,40 @@ static NSAttributedString *elisa_appkit_canvas_attributed_string(size_t handle) 
     return [object isKindOfClass:[NSAttributedString class]] ? (NSAttributedString *)object : nil;
 }
 
+// Apply the frame/role metadata for one semantic element. Keeping this as a
+// separate primitive lets Elisa stage a replacement tree without mutating
+// elements that are still referenced by Cocoa's currently committed list.
+static BOOL elisa_appkit_canvas_configure_accessibility_element(
+    ElisaAccessibilityElement *element, ElisaCanvasView *view, NSWindow *window,
+    size_t identifierString, size_t role, size_t subrole,
+    size_t label, size_t help,
+    float x, float y, float width, float height,
+    int enabled, int focused) {
+    if (element == nil || view == nil || window == nil || label == 0) return NO;
+    NSString *labelValue = elisa_appkit_canvas_string(label);
+    NSString *helpValue = help == 0 ? nil : elisa_appkit_canvas_string(help);
+    NSString *identifierValue = identifierString == 0 ? nil : elisa_appkit_canvas_string(identifierString);
+    NSAccessibilityRole roleValue = role == 0 ? nil : (NSAccessibilityRole)elisa_appkit_canvas_string(role);
+    NSAccessibilitySubrole subroleValue = subrole == 0 ? nil : (NSAccessibilitySubrole)elisa_appkit_canvas_string(subrole);
+    if (labelValue == nil) return NO;
+    if (role != 0 && roleValue == nil) return NO;
+    if (subrole != 0 && subroleValue == nil) return NO;
+    if (help != 0 && helpValue == nil) return NO;
+    if (identifierString != 0 && identifierValue == nil) return NO;
+
+    element.accessibilityRole = roleValue;
+    element.accessibilitySubrole = subroleValue;
+    element.accessibilityLabel = labelValue;
+    element.accessibilityHelp = helpValue;
+    element.accessibilityIdentifier = identifierValue;
+    element.accessibilityEnabled = enabled != 0;
+    element.accessibilityFocused = focused != 0;
+    NSRect local = NSMakeRect(x, y, width, height);
+    NSRect inWindow = [view convertRect:local toView:nil];
+    element.accessibilityFrame = [window convertRectToScreen:inWindow];
+    return YES;
+}
+
 size_t elisa_appkit_canvas_accessibility_add(size_t windowHandle, size_t previousHandle,
                                             int isNew, size_t identifierString, size_t role,
                                             size_t subrole,
@@ -832,16 +866,14 @@ size_t elisa_appkit_canvas_accessibility_add(size_t windowHandle, size_t previou
                                             int enabled, int focused) {
     ElisaCanvasView *view = elisa_appkit_canvas_view(windowHandle);
     if (label == 0 || view == nil) return 0;
-    NSString *labelValue = elisa_appkit_canvas_string(label);
-    if (labelValue == nil) return 0;
-    NSString *helpValue = help == 0 ? nil : elisa_appkit_canvas_string(help);
-    NSString *identifierValue = identifierString == 0 ? nil : elisa_appkit_canvas_string(identifierString);
-    NSAccessibilityRole roleValue = role == 0 ? nil : (NSAccessibilityRole)elisa_appkit_canvas_string(role);
-    NSAccessibilitySubrole subroleValue = subrole == 0 ? nil : (NSAccessibilitySubrole)elisa_appkit_canvas_string(subrole);
-    if (role != 0 && roleValue == nil) return 0;
-    if (subrole != 0 && subroleValue == nil) return 0;
-    if (help != 0 && helpValue == nil) return 0;
-    if (identifierString != 0 && identifierValue == nil) return 0;
+    // Preserve the add primitive's fail-closed validation even when this is a
+    // reuse probe. Reused elements are not mutated here, but malformed
+    // metadata must still prevent a caller from treating the slot as valid.
+    if (elisa_appkit_canvas_string(label) == nil) return 0;
+    if (help != 0 && elisa_appkit_canvas_string(help) == nil) return 0;
+    if (identifierString != 0 && elisa_appkit_canvas_string(identifierString) == nil) return 0;
+    if (role != 0 && elisa_appkit_canvas_string(role) == nil) return 0;
+    if (subrole != 0 && elisa_appkit_canvas_string(subrole) == nil) return 0;
     // Resolve the owning window before allocating a new element. The view is
     // normally backed by this window, but a close notification can race a
     // late accessibility rebuild; validating first keeps that failure path
@@ -863,21 +895,38 @@ size_t elisa_appkit_canvas_accessibility_add(size_t windowHandle, size_t previou
         // retained by AppKit after teardown must not be repurposed for a new
         // semantic tree merely because Elisa's bounded ID was reused.
         if (elisa_appkit_canvas_element_window_handle(element) != windowHandle) return 0;
+        // Existing elements remain untouched until Elisa has committed the
+        // replacement child list. The post-commit update primitive applies
+        // the staged metadata once failure can no longer leave Cocoa pointing
+        // at the previous tree.
+        return (size_t)(__bridge void *)element;
     }
-    NSRect local = NSMakeRect(x, y, width, height);
-    element.accessibilityRole = roleValue;
-    element.accessibilitySubrole = subroleValue;
-    element.accessibilityLabel = labelValue;
-    element.accessibilityHelp = helpValue;
-    element.accessibilityIdentifier = identifierValue;
-    element.accessibilityEnabled = enabled != 0;
-    element.accessibilityFocused = focused != 0;
-    NSRect inWindow = [view convertRect:local toView:nil];
-    element.accessibilityFrame = [window convertRectToScreen:inWindow];
+    if (!elisa_appkit_canvas_configure_accessibility_element(element, view, window,
+            identifierString, role, subrole, label, help,
+            x, y, width, height, enabled, focused)) return 0;
     // Elisa retains newly-created elements through the returned +1 handle;
     // identity/reuse itself is selected by Elisa from the previous-frame
     // handles rather than by a native semantic-ID dictionary.
     return isNew != 0 ? (size_t)(__bridge_retained void *)element : (size_t)(__bridge void *)element;
+}
+
+// Commit-time metadata update for an element that was already present in the
+// previous semantic tree. This is deliberately separate from `add`: the
+// replacement child list is installed first, so a validation failure here can
+// only reject the new metadata rather than corrupt the still-visible old list.
+int elisa_appkit_canvas_accessibility_update(size_t windowHandle, size_t handle,
+                                             size_t identifierString, size_t role,
+                                             size_t subrole, size_t label, size_t help,
+                                             float x, float y, float width, float height,
+                                             int enabled, int focused) {
+    ElisaCanvasView *view = elisa_appkit_canvas_view(windowHandle);
+    ElisaAccessibilityElement *element = elisa_appkit_canvas_element(handle);
+    NSWindow *window = elisa_appkit_canvas_window(windowHandle);
+    if (view == nil || window == nil || element == nil) return 0;
+    if (elisa_appkit_canvas_element_window_handle(element) != windowHandle) return 0;
+    return elisa_appkit_canvas_configure_accessibility_element(element, view, window,
+        identifierString, role, subrole, label, help,
+        x, y, width, height, enabled, focused) ? 1 : 0;
 }
 
 void elisa_appkit_canvas_accessibility_release(size_t handle) {
