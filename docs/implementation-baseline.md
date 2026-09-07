@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `1cd5e46` (`refactor(ui): scope ancestry cycle checks`) on branch `work` |
+| elisa-ui revision | `79e4264` (`feat(skia): add Elisa font fallback selection`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -467,6 +467,10 @@ separate host-enforced security boundary.
 - Canvas-independent Skia metrics are isolated in `ui_skia_text.elisa`, keeping
   text authority separate from surface lifecycle and replay primitives while
   preserving the bounded FFI contract and headless metric coverage.
+- Generation-bound Skia text now has Elisa-owned primary/fallback selection for
+  drawing, width, ascent, and line-height queries. A fallback is used only
+  when the primary resource is not ready or has no live typeface binding;
+  per-glyph shaping fallback remains the host typeface/shaper's authority.
 - Skia custom controls now have explicit Elisa-owned translation/scale scopes in
   `ui_skia_transform.elisa`. A shared save-depth ledger restores frame, clip,
   and transform state on detach/surface loss; the headless recorder verifies the
