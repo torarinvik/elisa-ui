@@ -120,7 +120,11 @@ extern "C" std::int32_t elisa_appkit_canvas_skia_present(std::size_t window_hand
     if (image == nullptr) return -1;
     CGContextSaveGState(context);
     CGContextSetBlendMode(context, kCGBlendModeCopy);
-    CGContextDrawImage(context, CGRectMake(0, 0, pixel_width, pixel_height), image);
+    // AppKit's drawing context is expressed in view points; its device CTM
+    // maps those points to the backing pixels. Draw the raster into the
+    // logical view bounds so a Retina context does not scale the already
+    // pixel-sized image a second time.
+    CGContextDrawImage(context, CGRectMake(0, 0, logical_width, logical_height), image);
     CGContextRestoreGState(context);
     CGImageRelease(image);
     return status;
