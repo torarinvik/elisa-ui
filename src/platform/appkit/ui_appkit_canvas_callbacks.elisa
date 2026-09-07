@@ -53,13 +53,15 @@ def appkit_canvas_frame_callback(window_handle: usize, context: usize) -> void:
         CGContextSetShouldSmoothFonts(context, true)
         UiMetrics::begin_frame(UiCore::frame_time())
         UiCore::begin_frame()
+        frame_generation: u32 = UiLifecycle::generation()
         app_frame()
         # `app_frame` is application-owned and may close the window (or stop
         # the lifecycle) synchronously. In that case the current CGContext is
         # still balanced below, but semantic synchronization, native redraw
         # scheduling and command replay must not target a surface that has
         # already become unavailable.
-        if UiAppKitCanvas::live():
+        same_session: bool = UiLifecycle::generation() == frame_generation
+        if same_session and UiAppKitCanvas::live() and window_handle == UiAppKitCanvas::window_handle():
             UiMetrics::mark_application(UiAppKitCanvas::monotonic_time())
             UiAppKitCanvas::sync_accessibility()
             UiMetrics::mark_semantics(UiAppKitCanvas::monotonic_time())
@@ -68,7 +70,10 @@ def appkit_canvas_frame_callback(window_handle: usize, context: usize) -> void:
             UiAppKitCanvas::schedule_next_frame(UiCore::frame_delay())
         UiAppKitCanvas::end_native_frame()
         CGContextRestoreGState(context)
-        UiMetrics::finish_frame(UiAppKitCanvas::monotonic_time())
+        # A replacement session resets the shared metrics accumulator during
+        # startup. Do not finish the old sample into that new session.
+        if same_session:
+            UiMetrics::finish_frame(UiAppKitCanvas::monotonic_time())
         objc_autoreleasePoolPop(autorelease_pool)
 
 def appkit_canvas_valid_marked_attributes(window_handle: usize) -> usize:

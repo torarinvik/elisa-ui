@@ -102,12 +102,17 @@ extend UiSdl3:
                 UiCore::set_frame_time(frame_start)
                 UiMetrics::begin_frame(frame_start)
                 UiCore::begin_frame()
+                frame_generation: u32 = UiLifecycle::generation()
                 app_frame()
                 # Application code may stop the session synchronously while
                 # building its frame. Finish the diagnostic sample, but do
                 # not replay or present commands after the lifecycle has
-                # made the native renderer unavailable.
-                if UiLifecycle::can_render():
+                # made the native renderer unavailable. A callback may also
+                # start a replacement session; its generation owns the new
+                # metrics and command batch, so the old loop must not publish
+                # into it.
+                same_session: bool = UiLifecycle::generation() == frame_generation
+                if same_session and UiLifecycle::can_render():
                     UiMetrics::mark_application(seconds_from_ticks(SDL_GetTicks()))
                     UiMetrics::mark_semantics(seconds_from_ticks(SDL_GetTicks()))
                     UiPaint::replay[UiSdl3Draw::Sdl3Painter]()
@@ -115,7 +120,8 @@ extend UiSdl3:
                     UiSdl3Draw::present()
                 else:
                     running <- false
-                UiMetrics::finish_frame(seconds_from_ticks(SDL_GetTicks()))
+                if same_session:
+                    UiMetrics::finish_frame(seconds_from_ticks(SDL_GetTicks()))
                 break if not running
                 frames <- frames + 1
                 running <- false if max_frames > 0 and frames >= max_frames

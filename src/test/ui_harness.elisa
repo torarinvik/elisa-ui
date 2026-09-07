@@ -106,11 +106,16 @@ module UiHarness:
             UiCore::set_frame_time(test_time)
             UiMetrics::begin_frame(test_time)
             UiCore::begin_frame()
+            frame_generation: u32 = UiLifecycle::generation()
             app_frame()
-            UiMetrics::mark_application(test_time)
-            UiMetrics::mark_semantics(test_time)
-            UiMetrics::mark_paint(test_time)
-            UiMetrics::finish_frame(test_time)
+            # Keep the deterministic host aligned with production backends:
+            # if app_frame starts a replacement session, its old frame must
+            # not mark or finish the replacement metrics sample.
+            if UiLifecycle::generation() == frame_generation:
+                UiMetrics::mark_application(test_time)
+                UiMetrics::mark_semantics(test_time)
+                UiMetrics::mark_paint(test_time)
+                UiMetrics::finish_frame(test_time)
 
         def run_frames(count: usize, delta: f64) -> void:
             return if not UiLifecycle::can_render()
