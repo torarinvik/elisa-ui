@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `b7e0f6a` (`fix(events): reject invalid typed variants`) on branch `work` |
+| elisa-ui revision | `a808bfa` (`fix(resources): reject malformed identity keys`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -463,7 +463,10 @@ separate host-enforced security boundary.
   A terminal/offline/denied generation cannot be revived to `Ready` in place;
   only an in-flight `Requested` operation may complete successfully, so late
   host results must cross an explicit retry generation boundary.
-  Coverage lives in `test/resource_state_test.elisa`.
+  Counted resource keys are identities rather than display text: malformed
+  UTF-8, null-backed, clipped, and over-capacity views are rejected before
+  lookup or storage, so a bad key cannot alias a valid prefix. Coverage lives
+  in `test/resource_state_test.elisa`.
 - `UiResourcePresentation` maps those lifecycle states to explicit
   placeholder/loading/ready/fallback records, declared-or-intrinsic reserved
   geometry, independent progress visibility and retry affordances. Kind-specific
