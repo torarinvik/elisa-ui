@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `a4a4868` (`fix(sdl3): model SDL_ttf color ABI explicitly`) on branch `work` |
+| elisa-ui revision | `3f1f1bc` (`fix(skia): enforce capability gate during attach`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -337,6 +337,10 @@ separate host-enforced security boundary.
   matching the library's `SDL_Color` parameter instead of depending on a
   packed-integer calling convention; the native hello build and dummy-video
   smoke path pass with that ABI declaration.
+- The Skia attachment entry point now enforces the same capability gate as the
+  profile selector: hosted WasmBrowser and native-control profiles detach and
+  reject a borrowed canvas instead of silently claiming local Skia. The Skia
+  painter regression covers the rejected hosted attach.
 - The Skia direct-painter path now shares one private Elisa geometry policy with
   command replay. Coordinates/extents are bounded, empty primitive geometry is
   rejected, and rounded radii are clamped to half the shortest edge before FFI;
