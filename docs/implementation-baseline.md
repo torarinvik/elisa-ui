@@ -178,6 +178,10 @@ declared capability respectively, with byte-oriented Elisa adapters above each.
 The following completed headlessly from this checkout:
 
 ```text
+ELISA_UI_STAGE1=../wasm-sdk-compiler bash scripts/check_toolchain.sh
+  stage1 branch=codex/wasm-sdk revision=c6948142f19d0fa66089ca33ab5718c435738f15 (ahead=85 behind=0 vs origin/main)
+  product_sha256=56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574
+  runtime_sha256=cb06532f0c37540284de4ceaa622d0da9193f113877ac391fb00bad4bf9ff1e9
 ELISA_UI_STAGE1=../wasm-sdk-compiler bash scripts/run_tests.sh
   source-size gate,
   capi, appkit, appkit canvas, appkit canvas keymap, capi bridge,

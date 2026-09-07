@@ -11,6 +11,7 @@ SDL_LIB="${ELISA_UI_SDL_LIB:-/opt/homebrew/lib}"
 
 [[ -x "$STAGE1/bin/elisac-stage1" ]] || { echo "no stage1 product at $STAGE1/bin/elisac-stage1" >&2; exit 2; }
 [[ -f "$RUNTIME" ]] || { echo "no runtime object at $RUNTIME" >&2; exit 2; }
+bash "$ROOT/scripts/check_toolchain.sh"
 
 mkdir -p "$ROOT/build"
 status=0
