@@ -2,18 +2,19 @@
 
 extend UiResources:
     public:
-        def invalid() -> Handle:
-            return Handle{slot: MAX_RESOURCES.u32(), generation: 0}
+        def resource_invalid() -> ResourceHandle:
+            return ResourceHandle{slot: MAX_RESOURCES.u32(), generation: 0}
 
-        def is_valid(handle: Handle) -> bool:
+        def resource_is_valid(handle: ResourceHandle) -> bool:
             return handle.slot.usize() < resource_count and handle.generation == resource_generations[handle.slot.usize()] and resource_states[handle.slot.usize()] != State.Unrequested
 
-        def key_matches(slot: usize, key: sview) -> bool:
+        def resource_key_matches(slot: usize, key: sview) -> bool:
             # Keep this public diagnostic helper bounded just like request().
             # It can be called directly by a host, so relying on request's
             # length guard here would allow an oversized counted view to walk
             # past the fixed identifier arena.
-            # An unrequested slot has no identity. In particular, clear_slot()
+            # An unrequested slot has no identity. In particular,
+            # resource_clear_slot()
             # erases both its bytes and length, so treating an empty key as a
             # match would make a stale/cleared record look live to diagnostics.
             safe_key: sview = UiCore::bounded_text(key)
@@ -28,10 +29,10 @@ extend UiResources:
             return true
 
     private:
-        def make_handle(slot: usize) -> Handle:
-            return Handle{slot: slot.u32(), generation: resource_generations[slot]}
+        def resource_make_handle(slot: usize) -> ResourceHandle:
+            return ResourceHandle{slot: slot.u32(), generation: resource_generations[slot]}
 
-        def clear_slot(slot: usize) -> void:
+        def resource_clear_slot(slot: usize) -> void:
             next_generation: u32 = resource_generations[slot] + 1
             resource_generations[slot] <- 1 if next_generation == 0 else next_generation
             resource_states[slot] <- State.Unrequested
@@ -46,12 +47,12 @@ extend UiResources:
             resource_demanded[slot] <- false
             resource_priorities[slot] <- 0
 
-        def mark_changed() -> void:
+        def resource_mark_changed() -> void:
             UiCore::invalidate(UiCore::Invalidation.Resources)
             UiCore::invalidate(UiCore::Invalidation.Paint)
 
-        def failure_kind_is_valid(value: FailureKind) -> bool:
+        def resource_failure_kind_is_valid(value: FailureKind) -> bool:
             return value == FailureKind.RetryableTransport or value == FailureKind.Corrupt or value == FailureKind.Incompatible
 
-        def state_is_valid(value: State) -> bool:
+        def resource_state_is_valid(value: State) -> bool:
             return value == State.Requested or value == State.Ready or value == State.UnavailableOffline or value == State.Denied or value == State.Failed or value == State.Cancelled

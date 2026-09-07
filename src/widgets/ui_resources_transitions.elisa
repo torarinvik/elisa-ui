@@ -27,14 +27,14 @@ extend UiResources:
         # per-frame view rebuilds from starting duplicate host work. A
         # cancelled record can be requested again, but that starts a new host
         # operation and therefore rotates its generation.
-        def request(key: sview, owner: u32) -> Handle:
+        def request(key: sview, owner: u32) -> ResourceHandle:
             safe_key: sview = UiCore::bounded_text(key)
             # Resource keys are identities, not display text. Do not let a
             # malformed or overlong counted view collapse to a valid prefix
             # and alias an existing package asset.
-            return invalid() if safe_key.len <= 0 or safe_key.len != key.len or safe_key.len >= IDENTIFIER_CAPACITY.i64()
+            return UiResources::resource_invalid() if safe_key.len <= 0 or safe_key.len != key.len or safe_key.len >= IDENTIFIER_CAPACITY.i64()
             for slot in 0..<resource_count:
-                if resource_states[slot] != State.Unrequested and key_matches(slot, safe_key):
+                if resource_states[slot] != State.Unrequested and resource_key_matches(slot, safe_key):
                     resource_owners[slot] <- owner
                     if resource_states[slot] == State.Cancelled:
                         next_generation: u32 = resource_generations[slot] + 1
@@ -46,8 +46,8 @@ extend UiResources:
                         # Demand hints belong to the cancelled host operation.
                         resource_demanded[slot] <- false
                         resource_priorities[slot] <- 0
-                        mark_changed()
-                    return make_handle(slot)
+                        resource_mark_changed()
+                    return resource_make_handle(slot)
 
             free_slot: mutable usize = MAX_RESOURCES
             for slot in 0..<MAX_RESOURCES:
@@ -56,7 +56,7 @@ extend UiResources:
                     break
             if free_slot == MAX_RESOURCES:
                 resource_overflowed <- true
-                return invalid()
+                return UiResources::resource_invalid()
 
             generation: u32 = resource_generations[free_slot]
             resource_generations[free_slot] <- 1 if generation == 0 else generation
@@ -71,22 +71,22 @@ extend UiResources:
             resource_demanded[free_slot] <- false
             resource_priorities[free_slot] <- 0
             resource_count <- free_slot + 1 if free_slot >= resource_count else resource_count
-            mark_changed()
-            return make_handle(free_slot)
+            resource_mark_changed()
+            return resource_make_handle(free_slot)
 
         # Transport failures may be retried; corrupt or incompatible bytes
         # require a package update or host/toolchain change.
-        def fail(handle: Handle, kind: FailureKind) -> bool:
-            return false if not is_valid(handle) or not failure_kind_is_valid(kind)
+        def fail(handle: ResourceHandle, kind: FailureKind) -> bool:
+            return false if not UiResources::resource_is_valid(handle) or not resource_failure_kind_is_valid(kind)
             slot: usize = handle.slot.usize()
             return false if resource_states[slot] == State.Ready or resource_states[slot] == State.Cancelled
             resource_states[slot] <- State.Failed
             resource_failure_kinds[slot] <- kind
-            mark_changed()
+            resource_mark_changed()
             return true
 
-        def set_state(handle: Handle, next: State) -> bool:
-            return false if not is_valid(handle) or not state_is_valid(next)
+        def set_state(handle: ResourceHandle, next: State) -> bool:
+            return false if not UiResources::resource_is_valid(handle) or not resource_state_is_valid(next)
             slot: usize = handle.slot.usize()
             return false if resource_states[slot] == State.Cancelled
             # Requested starts a new host operation and must rotate its
@@ -105,16 +105,16 @@ extend UiResources:
             if next == State.Ready:
                 resource_downloaded[slot] <- 1.0
                 resource_decoded[slot] <- 1.0
-            mark_changed()
+            resource_mark_changed()
             return true
 
-        def cancel(handle: Handle) -> bool:
+        def cancel(handle: ResourceHandle) -> bool:
             return set_state(handle, State.Cancelled)
 
         # Start a recoverable resource operation with a fresh generation. The
         # returned handle must replace the caller's old handle.
-        def retry(handle: Handle) -> Handle:
-            return invalid() if not is_valid(handle) or not can_retry(handle)
+        def retry(handle: ResourceHandle) -> ResourceHandle:
+            return UiResources::resource_invalid() if not UiResources::resource_is_valid(handle) or not can_retry(handle)
             slot: usize = handle.slot.usize()
             next_generation: u32 = resource_generations[slot] + 1
             resource_generations[slot] <- 1 if next_generation == 0 else next_generation
@@ -124,17 +124,17 @@ extend UiResources:
             resource_decoded[slot] <- 0.0
             resource_demanded[slot] <- false
             resource_priorities[slot] <- 0
-            mark_changed()
-            return make_handle(slot)
+            resource_mark_changed()
+            return resource_make_handle(slot)
 
         # Disposal invalidates the generation before releasing the identifier.
-        def dispose(handle: Handle) -> bool:
-            return false if not is_valid(handle)
+        def dispose(handle: ResourceHandle) -> bool:
+            return false if not UiResources::resource_is_valid(handle)
             slot: usize = handle.slot.usize()
-            clear_slot(slot)
+            resource_clear_slot(slot)
             while resource_count > 0 and resource_states[resource_count - 1] == State.Unrequested:
                 resource_count <- resource_count - 1
-            mark_changed()
+            resource_mark_changed()
             return true
 
         # View teardown commonly owns several assets. Dispose them together so
@@ -143,11 +143,11 @@ extend UiResources:
             released: mutable usize = 0
             for slot in 0..<resource_count:
                 if resource_states[slot] != State.Unrequested and resource_owners[slot] == owner:
-                    clear_slot(slot)
+                    resource_clear_slot(slot)
                     released <- released + 1
             while resource_count > 0 and resource_states[resource_count - 1] == State.Unrequested:
                 resource_count <- resource_count - 1
-            mark_changed() if released > 0
+            resource_mark_changed() if released > 0
             return released
 
         # Cancellation keeps the logical record available for a re-request.
@@ -162,5 +162,5 @@ extend UiResources:
                     resource_demanded[slot] <- false
                     resource_priorities[slot] <- 0
                     cancelled <- cancelled + 1
-            mark_changed() if cancelled > 0
+            resource_mark_changed() if cancelled > 0
             return cancelled

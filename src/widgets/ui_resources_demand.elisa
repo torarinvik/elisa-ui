@@ -6,34 +6,34 @@ extend UiResources:
         # whether a hint can be serviced under bandwidth/cache constraints.
         # A repeated hint is idempotent and only invalidates when its value
         # changes, so scrolling cannot create a request storm.
-        def set_demand(handle: Handle, priority: u32) -> bool:
-            return false if not is_valid(handle)
+        def set_demand(handle: ResourceHandle, priority: u32) -> bool:
+            return false if not UiResources::resource_is_valid(handle)
             slot: usize = handle.slot.usize()
             return false if resource_demanded[slot] and resource_priorities[slot] == priority
             resource_demanded[slot] <- true
             resource_priorities[slot] <- priority
-            mark_changed()
+            resource_mark_changed()
             return true
 
-        def clear_demand(handle: Handle) -> bool:
-            return false if not is_valid(handle) or not resource_demanded[handle.slot.usize()]
+        def clear_demand(handle: ResourceHandle) -> bool:
+            return false if not UiResources::resource_is_valid(handle) or not resource_demanded[handle.slot.usize()]
             resource_demanded[handle.slot.usize()] <- false
             resource_priorities[handle.slot.usize()] <- 0
-            mark_changed()
+            resource_mark_changed()
             return true
 
-        def is_demanded(handle: Handle) -> bool:
-            return is_valid(handle) and resource_demanded[handle.slot.usize()]
+        def is_demanded(handle: ResourceHandle) -> bool:
+            return UiResources::resource_is_valid(handle) and resource_demanded[handle.slot.usize()]
 
-        def demand_priority(handle: Handle) -> u32:
-            return 0 if not is_valid(handle) or not resource_demanded[handle.slot.usize()]
+        def demand_priority(handle: ResourceHandle) -> u32:
+            return 0 if not UiResources::resource_is_valid(handle) or not resource_demanded[handle.slot.usize()]
             return resource_priorities[handle.slot.usize()]
 
         # Hosts report transport/decode progress independently. Both fractions
         # are normalized before storage; network completion therefore does not
         # imply a resource is ready to paint.
-        def set_progress(handle: Handle, network: f32, decode: f32) -> bool:
-            return false if not is_valid(handle)
+        def set_progress(handle: ResourceHandle, network: f32, decode: f32) -> bool:
+            return false if not UiResources::resource_is_valid(handle)
             slot: usize = handle.slot.usize()
             # Progress belongs to the currently requested operation only. Once
             # it is cancelled or resolved, late host reports are stale and
@@ -44,5 +44,5 @@ extend UiResources:
             return false if resource_downloaded[slot] == next_network and resource_decoded[slot] == next_decode
             resource_downloaded[slot] <- next_network
             resource_decoded[slot] <- next_decode
-            mark_changed()
+            resource_mark_changed()
             return true

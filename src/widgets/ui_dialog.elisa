@@ -25,7 +25,7 @@ module UiDialog:
             Cancelled = 3
             Back = 4
 
-        struct Handle:
+        struct DialogHandle:
             slot: u32
             generation: u32
 
@@ -50,8 +50,8 @@ module UiDialog:
             secondary_available: bool
             result: Result
 
-        def invalid() -> Handle:
-            return Handle{slot: NONE_SLOT.u32(), generation: 0}
+        def dialog_invalid() -> DialogHandle:
+            return DialogHandle{slot: NONE_SLOT.u32(), generation: 0}
 
         def reset() -> void:
             for slot in 0..<MAX_DIALOGS:
@@ -72,20 +72,20 @@ module UiDialog:
         def snapshot() -> Snapshot:
             return Snapshot{active: dialog_active_count, closed: closed_count, overflowed: dialog_overflowed_state}
 
-        def is_valid(handle: Handle) -> bool:
+        def dialog_is_valid(handle: DialogHandle) -> bool:
             return handle.slot.usize() < MAX_DIALOGS and dialog_active[handle.slot.usize()] and dialog_generations[handle.slot.usize()] == handle.generation
 
         # Open pushes a modal record above every previous record. Empty labels
         # are allowed for secondary actions but the title/message are bounded
         # and copied before the handle is returned.
-        def open(kind: Kind, title: sview, message: sview, primary: sview, secondary: sview, owner: u32) -> Handle:
-            return invalid() if not kind_is_valid(kind) or title.len < 0 or message.len < 0 or primary.len < 0 or secondary.len < 0
+        def open(kind: Kind, title: sview, message: sview, primary: sview, secondary: sview, owner: u32) -> DialogHandle:
+            return dialog_invalid() if not kind_is_valid(kind) or title.len < 0 or message.len < 0 or primary.len < 0 or secondary.len < 0
             # A positive counted extent without backing storage is malformed
             # foreign input, not an empty optional label. Reject it before the
             # dialog becomes visible; otherwise write_text() would normalize
             # the value to an empty string and create an unlabeled modal that
             # cannot be represented consistently by accessibility adapters.
-            return invalid() if (title.len > 0 and title.data == null) or (message.len > 0 and message.data == null) or (primary.len > 0 and primary.data == null) or (secondary.len > 0 and secondary.data == null)
+            return dialog_invalid() if (title.len > 0 and title.data == null) or (message.len > 0 and message.data == null) or (primary.len > 0 and primary.data == null) or (secondary.len > 0 and secondary.data == null)
             free_slot: mutable usize = NONE_SLOT
             for slot in 0..<MAX_DIALOGS:
                 if not dialog_active[slot] and not closed[slot]:
@@ -93,7 +93,7 @@ module UiDialog:
                     break
             if free_slot == NONE_SLOT:
                 dialog_overflowed_state <- true
-                return invalid()
+                return dialog_invalid()
             dialog_active[free_slot] <- true
             closed[free_slot] <- false
             dialog_generations[free_slot] <- next_generation(dialog_generations[free_slot])
@@ -108,49 +108,49 @@ module UiDialog:
             write_text(free_slot, 3, secondary)
             dialog_active_count <- dialog_active_count + 1
             mark_changed()
-            return Handle{slot: free_slot.u32(), generation: dialog_generations[free_slot]}
+            return DialogHandle{slot: free_slot.u32(), generation: dialog_generations[free_slot]}
 
-        def top() -> Handle:
+        def dialog_top() -> DialogHandle:
             selected: mutable usize = NONE_SLOT
             newest: mutable u64 = 0
             for slot in 0..<MAX_DIALOGS:
                 if dialog_active[slot] and not closed[slot] and dialog_sequence[slot] >= newest:
                     selected <- slot
                     newest <- dialog_sequence[slot]
-            return invalid() if selected == NONE_SLOT
-            return make_handle(selected)
+            return dialog_invalid() if selected == NONE_SLOT
+            return make_dialog_handle(selected)
 
-        def kind(handle: Handle) -> Kind:
-            return Kind.Alert if not is_valid(handle)
+        def kind(handle: DialogHandle) -> Kind:
+            return Kind.Alert if not dialog_is_valid(handle)
             return kinds[handle.slot.usize()]
 
-        def title(handle: Handle) -> sview:
+        def title(handle: DialogHandle) -> sview:
             return text_value(handle, 0)
 
-        def message(handle: Handle) -> sview:
+        def message(handle: DialogHandle) -> sview:
             return text_value(handle, 1)
 
-        def primary_label(handle: Handle) -> sview:
+        def primary_label(handle: DialogHandle) -> sview:
             return text_value(handle, 2)
 
-        def secondary_label(handle: Handle) -> sview:
+        def secondary_label(handle: DialogHandle) -> sview:
             return text_value(handle, 3)
 
-        def owner(handle: Handle) -> u32:
-            return 0 if not is_valid(handle)
+        def owner(handle: DialogHandle) -> u32:
+            return 0 if not dialog_is_valid(handle)
             return dialog_owners[handle.slot.usize()]
 
-        def is_open(handle: Handle) -> bool:
-            return is_valid(handle) and not closed[handle.slot.usize()]
+        def is_open(handle: DialogHandle) -> bool:
+            return dialog_is_valid(handle) and not closed[handle.slot.usize()]
 
-        def result(handle: Handle) -> Result:
-            return Result.None if not is_valid(handle)
+        def result(handle: DialogHandle) -> Result:
+            return Result.None if not dialog_is_valid(handle)
             return results[handle.slot.usize()]
 
         # Project the current dialog into the portable semantic vocabulary. A
         # closed record remains readable for its typed result, but is no longer
         # exposed as an active semantic element.
-        def semantics(handle: Handle, focused: bool) -> Semantics:
+        def semantics(handle: DialogHandle, focused: bool) -> Semantics:
             accessible_label: mutable sview = title(handle)
             accessible_help: mutable sview = message(handle)
             # A title is optional for alerts/sheets, but the dialog must still
@@ -172,14 +172,14 @@ module UiDialog:
 
         # Dialog identity is stable while its generation is live and remains in
         # the bounded semantic-ID space expected by UiCore relationship fields.
-        def semantic_id(handle: Handle) -> usize:
-            return UiCore::MAX_ACCESSIBILITY_NODES if not is_valid(handle)
+        def semantic_id(handle: DialogHandle) -> usize:
+            return UiCore::MAX_ACCESSIBILITY_NODES if not dialog_is_valid(handle)
             return handle.slot.usize() + 1
 
         # Emit one dialog node directly into the retained semantic frame. Child
         # action controls may be emitted separately by the application; the
         # dialog's copied title/message and active state stay authoritative here.
-        def emit_accessibility(handle: Handle, frame: UiCore::Rect, focused: bool, parent_id: usize, first_child_id: usize, next_sibling_id: usize) -> void:
+        def emit_accessibility(handle: DialogHandle, frame: UiCore::Rect, focused: bool, parent_id: usize, first_child_id: usize, next_sibling_id: usize) -> void:
             return if not is_open(handle)
             value: Semantics = semantics(handle, focused)
             UiCore::accessibility_with_metadata(value.role, value.label, value.help,
@@ -190,8 +190,8 @@ module UiDialog:
         # Choosing any typed result closes the record but keeps its handle valid
         # until `dispose`, allowing the application to read the result after a
         # native surface has already gone away.
-        def choose(handle: Handle, next: Result) -> bool:
-            return false if not is_valid(handle) or closed[handle.slot.usize()]
+        def choose(handle: DialogHandle, next: Result) -> bool:
+            return false if not dialog_is_valid(handle) or closed[handle.slot.usize()]
             return false if not result_is_valid(next)
             slot: usize = handle.slot.usize()
             results[slot] <- next
@@ -201,27 +201,27 @@ module UiDialog:
             mark_changed()
             return true
 
-        def cancel(handle: Handle) -> bool:
+        def cancel(handle: DialogHandle) -> bool:
             return choose(handle, Result.Cancelled)
 
         # OS back navigation is a framework action: it dismisses only the
         # newest open dialog and reports `Back` to its owner.
         def back() -> bool:
-            dialog: Handle = top()
+            dialog: DialogHandle = dialog_top()
             return choose(dialog, Result.Back)
 
         def dismiss_owner(owner_id: u32) -> usize:
             dismissed: mutable usize = 0
             for slot in 0..<MAX_DIALOGS:
                 if dialog_active[slot] and not closed[slot] and dialog_owners[slot] == owner_id:
-                    _ = choose(make_handle(slot), Result.Cancelled)
+                    _ = choose(make_dialog_handle(slot), Result.Cancelled)
                     dismissed <- dismissed + 1
             return dismissed
 
         # Disposal is separate from choosing a result, so a late callback can
         # still inspect a closed result but cannot use a recycled slot.
-        def dispose(handle: Handle) -> bool:
-            return false if not is_valid(handle)
+        def dispose(handle: DialogHandle) -> bool:
+            return false if not dialog_is_valid(handle)
             slot: usize = handle.slot.usize()
             dialog_active[slot] <- false
             if closed[slot] and closed_count > 0:
@@ -267,8 +267,8 @@ module UiDialog:
             next: u64 = value + 1
             return 1 if next == 0 else next
 
-        def make_handle(slot: usize) -> Handle:
-            return Handle{slot: slot.u32(), generation: dialog_generations[slot]}
+        def make_dialog_handle(slot: usize) -> DialogHandle:
+            return DialogHandle{slot: slot.u32(), generation: dialog_generations[slot]}
 
         def kind_is_valid(value: Kind) -> bool:
             return value == Kind.Alert or value == Kind.Confirm or value == Kind.Sheet
@@ -299,7 +299,7 @@ module UiDialog:
             storage[offset + take] <- 0
             lengths[slot * 4 + field] <- take
 
-        def text_value(handle: Handle, field: usize) -> sview:
-            return "" if not is_valid(handle) or field >= 4
+        def text_value(handle: DialogHandle, field: usize) -> sview:
+            return "" if not dialog_is_valid(handle) or field >= 4
             slot: usize = handle.slot.usize()
             return sview(&storage[text_offset(slot, field)], 0, lengths[slot * 4 + field].i64())

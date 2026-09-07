@@ -2,8 +2,8 @@
 
 `UiDialog` is the backend-neutral modal state machine. It keeps a bounded stack
 of typed `Alert`, `Confirm`, and `Sheet` records, copies labels into fixed
-storage, and returns generation-checked handles. The application owns the
-content and decides how to render it; a native or hosted adapter only displays
+storage, and returns generation-checked `UiDialog::DialogHandle` values. The
+application owns the content and decides how to render it; a native or hosted adapter only displays
 the current record and reports `Primary`, `Secondary`, `Cancelled`, or `Back`.
 
 `back()` always targets the newest open dialog, which gives mobile back buttons
@@ -19,6 +19,10 @@ role with copied title/message text, stable bounded identity, action availabilit
 and the current result. `emit_accessibility(...)` appends that projection to the
 same `UiCore` semantic frame as its buttons and content, so applications do not
 need a backend-specific accessibility shadow model.
+
+Use `dialog_invalid()` and `dialog_is_valid()` for explicit stale-safe identity
+checks; the module-specific names keep this API unambiguous when dialog,
+navigation, widget, and resource modules are included together.
 
 The fixed `MAX_DIALOGS` and `TEXT_CAPACITY` bounds make exhaustion and label
 truncation observable and allocation-free. The module does not create native

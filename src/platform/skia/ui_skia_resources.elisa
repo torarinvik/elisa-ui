@@ -19,13 +19,13 @@ extend UiSkia:
             for index in 0..<MAX_IMAGE_BINDINGS:
                 if skia_image_binding_active[index] and UiResources::state(skia_image_binding_resources[index]) != UiResources::State.Ready:
                     skia_image_binding_active[index] <- false
-                    skia_image_binding_resources[index] <- UiResources::invalid()
+                    skia_image_binding_resources[index] <- UiResources::resource_invalid()
                     skia_image_binding_images[index] <- 0
                     removed <- removed + 1
             for index in 0..<MAX_FONT_BINDINGS:
                 if skia_font_binding_active[index] and UiResources::state(skia_font_binding_resources[index]) != UiResources::State.Ready:
                     skia_font_binding_active[index] <- false
-                    skia_font_binding_resources[index] <- UiResources::invalid()
+                    skia_font_binding_resources[index] <- UiResources::resource_invalid()
                     skia_font_binding_fonts[index] <- 0
                     removed <- removed + 1
             return removed
@@ -33,7 +33,7 @@ extend UiSkia:
         # Teardown can clear both resource kinds with one exact generation key.
         # The returned count lets a host verify that its borrowed handles were
         # removed before freeing the corresponding native objects.
-        def clear_resource_bindings(resource: UiResources::Handle) -> usize:
+        def clear_resource_bindings(resource: UiResources::ResourceHandle) -> usize:
             removed: mutable usize = 0
             removed <- removed + 1 if UiSkia::unbind_image(resource)
             removed <- removed + 1 if UiSkia::unbind_font(resource)
@@ -58,10 +58,10 @@ extend UiSkia:
                 count <- count + 1 if skia_font_binding_active[index]
             return count
 
-        def draw_ready_image(image: usize, resource: UiResources::Handle, box: UiCore::Rect, alpha: u8) -> bool can[Ui.Draw]:
+        def draw_ready_image(image: usize, resource: UiResources::ResourceHandle, box: UiCore::Rect, alpha: u8) -> bool can[Ui.Draw]:
             return UiSkia::draw_ready_image_with_sampling(image, resource, box, alpha, UiSkia::ImageSampling.Linear)
 
-        def draw_ready_image_with_sampling(image: usize, resource: UiResources::Handle, box: UiCore::Rect, alpha: u8, sampling: UiSkia::ImageSampling) -> bool can[Ui.Draw]:
+        def draw_ready_image_with_sampling(image: usize, resource: UiResources::ResourceHandle, box: UiCore::Rect, alpha: u8, sampling: UiSkia::ImageSampling) -> bool can[Ui.Draw]:
             return false if UiResources::state(resource) != UiResources::State.Ready
             return false if image == 0 or canvas_state == 0 or alpha == 0
             safe_width: f32 = UiCore::bounded_extent(box.size.width)
@@ -70,7 +70,7 @@ extend UiSkia:
             UiSkia::draw_image_with_sampling(image, box, alpha, sampling)
             return true
 
-        def bind_image(resource: UiResources::Handle, image: usize) -> bool:
+        def bind_image(resource: UiResources::ResourceHandle, image: usize) -> bool:
             _ = UiSkia::prune_bindings()
             return false if UiResources::state(resource) != UiResources::State.Ready or image == 0
             for index in 0..<MAX_IMAGE_BINDINGS:
@@ -88,11 +88,11 @@ extend UiSkia:
             skia_image_binding_active[free_index] <- true
             return true
 
-        def unbind_image(resource: UiResources::Handle) -> bool:
+        def unbind_image(resource: UiResources::ResourceHandle) -> bool:
             for index in 0..<MAX_IMAGE_BINDINGS:
                 if skia_image_binding_active[index] and skia_image_binding_matches(index, resource):
                     skia_image_binding_active[index] <- false
-                    skia_image_binding_resources[index] <- UiResources::invalid()
+                    skia_image_binding_resources[index] <- UiResources::resource_invalid()
                     skia_image_binding_images[index] <- 0
                     return true
             return false
@@ -100,13 +100,13 @@ extend UiSkia:
         def clear_image_bindings() -> void:
             for index in 0..<MAX_IMAGE_BINDINGS:
                 skia_image_binding_active[index] <- false
-                skia_image_binding_resources[index] <- UiResources::invalid()
+                skia_image_binding_resources[index] <- UiResources::resource_invalid()
                 skia_image_binding_images[index] <- 0
 
-        def draw_bound_image(resource: UiResources::Handle, box: UiCore::Rect, alpha: u8) -> bool can[Ui.Draw]:
+        def draw_bound_image(resource: UiResources::ResourceHandle, box: UiCore::Rect, alpha: u8) -> bool can[Ui.Draw]:
             return UiSkia::draw_bound_image_with_sampling(resource, box, alpha, UiSkia::ImageSampling.Linear)
 
-        def draw_bound_image_with_sampling(resource: UiResources::Handle, box: UiCore::Rect, alpha: u8, sampling: UiSkia::ImageSampling) -> bool can[Ui.Draw]:
+        def draw_bound_image_with_sampling(resource: UiResources::ResourceHandle, box: UiCore::Rect, alpha: u8, sampling: UiSkia::ImageSampling) -> bool can[Ui.Draw]:
             _ = UiSkia::prune_bindings()
             return false if UiResources::state(resource) != UiResources::State.Ready
             for index in 0..<MAX_IMAGE_BINDINGS:
@@ -114,7 +114,7 @@ extend UiSkia:
                     return UiSkia::draw_ready_image_with_sampling(skia_image_binding_images[index], resource, box, alpha, sampling)
             return false
 
-        def bind_font(resource: UiResources::Handle, font: usize) -> bool:
+        def bind_font(resource: UiResources::ResourceHandle, font: usize) -> bool:
             _ = UiSkia::prune_bindings()
             return false if UiResources::state(resource) != UiResources::State.Ready or font == 0
             for index in 0..<MAX_FONT_BINDINGS:
@@ -132,11 +132,11 @@ extend UiSkia:
             skia_font_binding_active[free_index] <- true
             return true
 
-        def unbind_font(resource: UiResources::Handle) -> bool:
+        def unbind_font(resource: UiResources::ResourceHandle) -> bool:
             for index in 0..<MAX_FONT_BINDINGS:
                 if skia_font_binding_active[index] and skia_font_binding_matches(index, resource):
                     skia_font_binding_active[index] <- false
-                    skia_font_binding_resources[index] <- UiResources::invalid()
+                    skia_font_binding_resources[index] <- UiResources::resource_invalid()
                     skia_font_binding_fonts[index] <- 0
                     return true
             return false
@@ -144,10 +144,10 @@ extend UiSkia:
         def clear_font_bindings() -> void:
             for index in 0..<MAX_FONT_BINDINGS:
                 skia_font_binding_active[index] <- false
-                skia_font_binding_resources[index] <- UiResources::invalid()
+                skia_font_binding_resources[index] <- UiResources::resource_invalid()
                 skia_font_binding_fonts[index] <- 0
 
-        def draw_bound_text(resource: UiResources::Handle, run: UiCore::TextRun, color: UiCore::Color) -> bool can[Ui.Draw, Ui.Text]:
+        def draw_bound_text(resource: UiResources::ResourceHandle, run: UiCore::TextRun, color: UiCore::Color) -> bool can[Ui.Draw, Ui.Text]:
             _ = UiSkia::prune_bindings()
             return false if UiResources::state(resource) != UiResources::State.Ready
             for index in 0..<MAX_FONT_BINDINGS:
@@ -155,7 +155,7 @@ extend UiSkia:
                     return UiSkia::draw_ready_text(skia_font_binding_fonts[index], resource, run, color)
             return false
 
-        def measure_bound_text_width(resource: UiResources::Handle, text: sview, size: f32) -> f32:
+        def measure_bound_text_width(resource: UiResources::ResourceHandle, text: sview, size: f32) -> f32:
             _ = UiSkia::prune_bindings()
             return 0.0 if UiResources::state(resource) != UiResources::State.Ready
             for index in 0..<MAX_FONT_BINDINGS:
@@ -163,7 +163,7 @@ extend UiSkia:
                     return UiSkia::measure_ready_text_width(skia_font_binding_fonts[index], resource, text, size)
             return 0.0
 
-        def bound_font_ascent(resource: UiResources::Handle, size: f32) -> f32:
+        def bound_font_ascent(resource: UiResources::ResourceHandle, size: f32) -> f32:
             _ = UiSkia::prune_bindings()
             return 0.0 if UiResources::state(resource) != UiResources::State.Ready
             for index in 0..<MAX_FONT_BINDINGS:
@@ -171,7 +171,7 @@ extend UiSkia:
                     return UiSkia::ready_font_ascent(skia_font_binding_fonts[index], resource, size)
             return 0.0
 
-        def bound_font_line_height(resource: UiResources::Handle, size: f32) -> f32:
+        def bound_font_line_height(resource: UiResources::ResourceHandle, size: f32) -> f32:
             _ = UiSkia::prune_bindings()
             return 0.0 if UiResources::state(resource) != UiResources::State.Ready
             for index in 0..<MAX_FONT_BINDINGS:
@@ -182,7 +182,7 @@ extend UiSkia:
         # Font decoding/fallback remains host-owned, but a ready logical font
         # resource must still be checked in Elisa before its borrowed SkTypeface
         # can affect a frame.
-        def draw_ready_text(font: usize, resource: UiResources::Handle, run: UiCore::TextRun, color: UiCore::Color) -> bool can[Ui.Draw, Ui.Text]:
+        def draw_ready_text(font: usize, resource: UiResources::ResourceHandle, run: UiCore::TextRun, color: UiCore::Color) -> bool can[Ui.Draw, Ui.Text]:
             return false if UiResources::state(resource) != UiResources::State.Ready
             return false if font == 0 or canvas_state == 0 or run.text.len <= 0 or run.text.data == null
             safe_run: UiCore::TextRun = UiCore::TextRun(
@@ -194,7 +194,7 @@ extend UiSkia:
             elisa_skia_canvas_draw_text_with_font(canvas_state, font, pointer, safe_run.text.len.usize(), safe_run.origin.x, safe_run.origin.y, safe_run.size, color.r, color.g, color.b, color.a)
             return true
 
-        def measure_ready_text_width(font: usize, resource: UiResources::Handle, text: sview, size: f32) -> f32:
+        def measure_ready_text_width(font: usize, resource: UiResources::ResourceHandle, text: sview, size: f32) -> f32:
             return 0.0 if UiResources::state(resource) != UiResources::State.Ready or font == 0
             return 0.0 if text.len <= 0 or text.data == null or not UiCore::is_finite(size)
             safe_text: sview = UiCore::bounded_text(text)
@@ -202,24 +202,24 @@ extend UiSkia:
             pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
             return UiCore::bounded_extent(elisa_skia_measure_text_width_with_font(font, pointer, safe_text.len.usize(), UiSkia::safe_font_size(size)))
 
-        def ready_font_ascent(font: usize, resource: UiResources::Handle, size: f32) -> f32:
+        def ready_font_ascent(font: usize, resource: UiResources::ResourceHandle, size: f32) -> f32:
             return 0.0 if UiResources::state(resource) != UiResources::State.Ready or font == 0
             return UiCore::bounded_extent(elisa_skia_font_ascent_with_font(font, UiSkia::safe_font_size(size)))
 
-        def ready_font_line_height(font: usize, resource: UiResources::Handle, size: f32) -> f32:
+        def ready_font_line_height(font: usize, resource: UiResources::ResourceHandle, size: f32) -> f32:
             return 0.0 if UiResources::state(resource) != UiResources::State.Ready or font == 0
             return UiCore::bounded_extent(elisa_skia_text_line_height_with_font(font, UiSkia::safe_font_size(size)))
 
     private:
-        global mutable skia_image_binding_resources: UiResources::Handle[MAX_IMAGE_BINDINGS] = zeroed
+        global mutable skia_image_binding_resources: UiResources::ResourceHandle[MAX_IMAGE_BINDINGS] = zeroed
         global mutable skia_image_binding_images: usize[MAX_IMAGE_BINDINGS] = zeroed
         global mutable skia_image_binding_active: bool[MAX_IMAGE_BINDINGS] = zeroed
-        global mutable skia_font_binding_resources: UiResources::Handle[MAX_FONT_BINDINGS] = zeroed
+        global mutable skia_font_binding_resources: UiResources::ResourceHandle[MAX_FONT_BINDINGS] = zeroed
         global mutable skia_font_binding_fonts: usize[MAX_FONT_BINDINGS] = zeroed
         global mutable skia_font_binding_active: bool[MAX_FONT_BINDINGS] = zeroed
 
-        def skia_image_binding_matches(index: usize, resource: UiResources::Handle) -> bool:
+        def skia_image_binding_matches(index: usize, resource: UiResources::ResourceHandle) -> bool:
             return skia_image_binding_resources[index].slot == resource.slot and skia_image_binding_resources[index].generation == resource.generation
 
-        def skia_font_binding_matches(index: usize, resource: UiResources::Handle) -> bool:
+        def skia_font_binding_matches(index: usize, resource: UiResources::ResourceHandle) -> bool:
             return skia_font_binding_resources[index].slot == resource.slot and skia_font_binding_resources[index].generation == resource.generation

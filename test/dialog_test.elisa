@@ -13,16 +13,16 @@ def check(name: cstr, ok: bool) -> void:
 def main() -> i64:
     UiDialog::reset()
     invalid_kind: UiDialog::Kind = (-1).i32().Kind()
-    rejected_kind: UiDialog::Handle = UiDialog::open(invalid_kind, "Invalid", "", "OK", "", 1)
-    check("invalid dialog kinds are rejected", not UiDialog::is_valid(rejected_kind) and UiDialog::snapshot().active == 0)
+    rejected_kind: UiDialog::DialogHandle = UiDialog::open(invalid_kind, "Invalid", "", "OK", "", 1)
+    check("invalid dialog kinds are rejected", not UiDialog::dialog_is_valid(rejected_kind) and UiDialog::snapshot().active == 0)
     malformed_storage_words: mutable u64[2] = zeroed
     malformed_storage_words[1] <- 3
     malformed_storage_ref: mutable sview& = (&malformed_storage_words[0]).cast[mutable sview&] can Unsafe.PointerCast
     malformed_dialog_storage: sview = malformed_storage_ref[0]
-    rejected_storage: UiDialog::Handle = UiDialog::open(UiDialog::Kind.Alert, malformed_dialog_storage, "", "OK", "", 2)
-    check("null-backed counted dialog text is rejected", not UiDialog::is_valid(rejected_storage) and UiDialog::snapshot().active == 0)
-    first: UiDialog::Handle = UiDialog::open(UiDialog::Kind.Confirm, "Delete item", "This cannot be undone.", "Delete", "Keep", 10)
-    check("dialog opens with a valid handle", UiDialog::is_valid(first) and UiDialog::is_open(first))
+    rejected_storage: UiDialog::DialogHandle = UiDialog::open(UiDialog::Kind.Alert, malformed_dialog_storage, "", "OK", "", 2)
+    check("null-backed counted dialog text is rejected", not UiDialog::dialog_is_valid(rejected_storage) and UiDialog::snapshot().active == 0)
+    first: UiDialog::DialogHandle = UiDialog::open(UiDialog::Kind.Confirm, "Delete item", "This cannot be undone.", "Delete", "Keep", 10)
+    check("dialog opens with a valid handle", UiDialog::dialog_is_valid(first) and UiDialog::is_open(first))
     check("dialog copies title and actions", UiDialog::title(first) == "Delete item" and UiDialog::message(first) == "This cannot be undone." and UiDialog::primary_label(first) == "Delete" and UiDialog::secondary_label(first) == "Keep")
     check("dialog reports owner and kind", UiDialog::owner(first) == 10 and UiDialog::kind(first) == UiDialog::Kind.Confirm)
     malformed_dialog_text: mutable u8[3] = zeroed
@@ -30,7 +30,7 @@ def main() -> i64:
     malformed_dialog_text[1] <- 255
     malformed_dialog_text[2] <- 66
     malformed_dialog_view: sview = sview(&malformed_dialog_text[0], 0, 3)
-    sanitized: UiDialog::Handle = UiDialog::open(UiDialog::Kind.Alert, malformed_dialog_view, malformed_dialog_view, "OK", "", 11)
+    sanitized: UiDialog::DialogHandle = UiDialog::open(UiDialog::Kind.Alert, malformed_dialog_view, malformed_dialog_view, "OK", "", 11)
     check("dialog storage rejects malformed UTF-8", UiDialog::title(sanitized) == "A" and UiDialog::message(sanitized) == "A")
     _ = UiDialog::dispose(sanitized)
     check("snapshot counts open dialog", UiDialog::snapshot().active == 1 and UiDialog::snapshot().closed == 0)
@@ -43,7 +43,7 @@ def main() -> i64:
 
     # A title is optional, but a message-only dialog still needs an accessible
     # name so assistive navigation can discover and describe the modal.
-    message_only: UiDialog::Handle = UiDialog::open(UiDialog::Kind.Alert, "", "Network unavailable", "OK", "", 30)
+    message_only: UiDialog::DialogHandle = UiDialog::open(UiDialog::Kind.Alert, "", "Network unavailable", "OK", "", 30)
     message_semantic: UiDialog::Semantics = UiDialog::semantics(message_only, true)
     check("message-only dialog promotes its message to the semantic label", message_semantic.label == "Network unavailable" and message_semantic.help == "")
     UiCore::begin_frame()
@@ -53,10 +53,10 @@ def main() -> i64:
     _ = UiDialog::cancel(message_only)
     _ = UiDialog::dispose(message_only)
 
-    second: UiDialog::Handle = UiDialog::open(UiDialog::Kind.Alert, "Offline", "Try again later.", "OK", "", 20)
-    check("top returns newest dialog", UiDialog::top().slot == second.slot)
+    second: UiDialog::DialogHandle = UiDialog::open(UiDialog::Kind.Alert, "Offline", "Try again later.", "OK", "", 20)
+    check("top returns newest dialog", UiDialog::dialog_top().slot == second.slot)
     check("back closes only the top dialog", UiDialog::back() and UiDialog::result(second) == UiDialog::Result.Back and not UiDialog::is_open(second) and UiDialog::is_open(first))
-    check("top skips closed results", UiDialog::top().slot == first.slot)
+    check("top skips closed results", UiDialog::dialog_top().slot == first.slot)
     check("closed result remains readable", UiDialog::snapshot().active == 1 and UiDialog::snapshot().closed == 1)
     check("closed dialog rejects a second result", not UiDialog::cancel(second))
     invalid_result: UiDialog::Result = (-1).i32().Result()
@@ -66,14 +66,14 @@ def main() -> i64:
     check("owner dismissal has no already-closed work", UiDialog::dismiss_owner(10) == 0)
     check("owner dismissal cancels open dialogs", UiDialog::dismiss_owner(20) == 0)
     check("disposing closed handles frees them", UiDialog::dispose(first) and UiDialog::dispose(second) and UiDialog::snapshot().active == 0 and UiDialog::snapshot().closed == 0)
-    check("disposed handles are stale", not UiDialog::is_valid(first) and UiDialog::result(first) == UiDialog::Result.None)
+    check("disposed handles are stale", not UiDialog::dialog_is_valid(first) and UiDialog::result(first) == UiDialog::Result.None)
 
     # Capacity exhaustion is explicit, never an alias to an existing modal.
-    handles: UiDialog::Handle[UiDialog::MAX_DIALOGS] = zeroed
+    handles: UiDialog::DialogHandle[UiDialog::MAX_DIALOGS] = zeroed
     for index in 0..<UiDialog::MAX_DIALOGS:
         handles[index] <- UiDialog::open(UiDialog::Kind.Sheet, "Sheet", "", "Close", "", index.u32())
-    overflow: UiDialog::Handle = UiDialog::open(UiDialog::Kind.Alert, "Overflow", "", "OK", "", 99)
-    check("dialog capacity reports overflow", not UiDialog::is_valid(overflow) and UiDialog::snapshot().overflowed and UiDialog::snapshot().active == UiDialog::MAX_DIALOGS)
+    overflow: UiDialog::DialogHandle = UiDialog::open(UiDialog::Kind.Alert, "Overflow", "", "OK", "", 99)
+    check("dialog capacity reports overflow", not UiDialog::dialog_is_valid(overflow) and UiDialog::snapshot().overflowed and UiDialog::snapshot().active == UiDialog::MAX_DIALOGS)
     for index in 0..<UiDialog::MAX_DIALOGS:
         _ = UiDialog::cancel(handles[index])
         _ = UiDialog::dispose(handles[index])

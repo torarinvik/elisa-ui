@@ -32,11 +32,11 @@ def check(name: cstr, ok: bool) -> void:
 def main() -> i64:
     UiResources::reset()
     options: UiResourcePresentation::Options = UiResourcePresentation::default_options(UiResourcePresentation::Kind.Image)
-    missing: UiResources::Handle = UiResources::invalid()
+    missing: UiResources::ResourceHandle = UiResources::resource_invalid()
     missing_record: UiResourcePresentation::Record = UiResourcePresentation::record(missing, options)
     check("invalid resource presents a placeholder", missing_record.state == UiResourcePresentation::DisplayState.Placeholder and missing_record.placeholder_visible and not missing_record.fallback_visible)
 
-    image: mutable UiResources::Handle = UiResources::request("images/preview", 3)
+    image: mutable UiResources::ResourceHandle = UiResources::request("images/preview", 3)
     _ = UiResources::set_intrinsic_size(image, 128.0, 72.0)
     loading: mutable UiResourcePresentation::Record = UiResourcePresentation::record(image, options)
     check("requested resource presents loading", loading.state == UiResourcePresentation::DisplayState.Loading and loading.placeholder_visible and loading.progress_visible)
@@ -66,8 +66,8 @@ def main() -> i64:
 
     UiResources::set_state(image, UiResources::State.Failed)
     failed: UiResourcePresentation::Record = UiResourcePresentation::record(image, options)
-    retried_image: UiResources::Handle = UiResourcePresentation::retry(image)
-    check("failed resource exposes typed retry", failed.state == UiResourcePresentation::DisplayState.Failed and failed.failure == UiResources::FailureKind.RetryableTransport and failed.fallback_visible and failed.retry_available and UiResources::is_valid(retried_image) and UiResources::state(retried_image) == UiResources::State.Requested and not UiResources::is_valid(image))
+    retried_image: UiResources::ResourceHandle = UiResourcePresentation::retry(image)
+    check("failed resource exposes typed retry", failed.state == UiResourcePresentation::DisplayState.Failed and failed.failure == UiResources::FailureKind.RetryableTransport and failed.fallback_visible and failed.retry_available and UiResources::resource_is_valid(retried_image) and UiResources::state(retried_image) == UiResources::State.Requested and not UiResources::resource_is_valid(image))
     image <- retried_image
     UiResources::fail(image, UiResources::FailureKind.Corrupt)
     corrupt: UiResourcePresentation::Record = UiResourcePresentation::record(image, options)
@@ -83,7 +83,7 @@ def main() -> i64:
     check("cancelled resource stops loading presentation", cancelled.state == UiResourcePresentation::DisplayState.Cancelled and cancelled.fallback_visible and not cancelled.progress_visible)
 
     font_options: UiResourcePresentation::Options = UiResourcePresentation::default_options(UiResourcePresentation::Kind.Font)
-    font: UiResources::Handle = UiResources::request("fonts/body", 4)
+    font: UiResources::ResourceHandle = UiResources::request("fonts/body", 4)
     font_record: UiResourcePresentation::Record = UiResourcePresentation::record(font, font_options)
     check("font policy avoids artificial progress and geometry", not font_record.progress_visible and font_record.reserved_size.width == 0.0 and font_record.reserved_size.height == 0.0)
 

@@ -20,8 +20,11 @@ entry appears while a confirmation is pending, accepting the older prompt is
 consumed without removing the newer view; the application can request back
 again for the new top entry.
 
-Entries and confirmation state use generation-checked handles. `dismiss_owner`
-releases every entry belonging to a disposed view/task and invalidates its
+Entries and confirmation state use generation-checked `UiNavigation::NavigationHandle`
+values. Use `navigation_invalid()` and `navigation_is_valid()` for explicit
+stale-safe identity checks; module-specific names avoid collisions in a shared
+include graph. `dismiss_owner` releases every entry belonging to a disposed
+view/task and invalidates its
 handles, so a late callback cannot pop a recycled surface. Capacity exhaustion
 is sticky and observable through `snapshot()`/`overflowed()`.
 

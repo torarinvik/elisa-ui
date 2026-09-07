@@ -34,7 +34,7 @@ module UiResourcePresentation:
             allow_retry: bool
 
         struct Record:
-            handle: UiResources::Handle
+            handle: UiResources::ResourceHandle
             kind: Kind
             state: DisplayState
             failure: UiResources::FailureKind
@@ -77,7 +77,7 @@ module UiResourcePresentation:
                 show_progress: true, allow_retry: false,
             }
 
-        def display_state(handle: UiResources::Handle) -> DisplayState:
+        def display_state(handle: UiResources::ResourceHandle) -> DisplayState:
             match UiResources::state(handle):
                 UiResources::State.Unrequested:
                     return DisplayState.Placeholder
@@ -94,24 +94,24 @@ module UiResourcePresentation:
                 UiResources::State.Cancelled:
                     return DisplayState.Cancelled
 
-        def is_placeholder(handle: UiResources::Handle) -> bool:
+        def is_placeholder(handle: UiResources::ResourceHandle) -> bool:
             current: DisplayState = display_state(handle)
             return current == DisplayState.Placeholder or current == DisplayState.Loading
 
-        def is_fallback(handle: UiResources::Handle) -> bool:
+        def is_fallback(handle: UiResources::ResourceHandle) -> bool:
             current: DisplayState = display_state(handle)
             return current == DisplayState.Offline or current == DisplayState.Denied or current == DisplayState.Failed or current == DisplayState.Cancelled
 
-        def can_retry(handle: UiResources::Handle) -> bool:
+        def can_retry(handle: UiResources::ResourceHandle) -> bool:
             return UiResources::can_retry(handle)
 
         # A retry starts a new resource generation. Callers must store the
         # returned handle so late callbacks from the failed operation cannot
         # update the replacement request.
-        def retry(handle: UiResources::Handle) -> UiResources::Handle:
+        def retry(handle: UiResources::ResourceHandle) -> UiResources::ResourceHandle:
             return UiResources::retry(handle)
 
-        def cancel(handle: UiResources::Handle) -> bool:
+        def cancel(handle: UiResources::ResourceHandle) -> bool:
             return UiResources::cancel(handle)
 
         # Emit the stable visual fallback owned by the framework. Ready assets
@@ -146,7 +146,7 @@ module UiResourcePresentation:
                 to_point: UiCore::Vec2(safe_box.origin.x, UiCore::bottom_edge(safe_box)),
             }, mark)
 
-        def record(handle: UiResources::Handle, options: Options) -> Record:
+        def record(handle: UiResources::ResourceHandle, options: Options) -> Record:
             current: DisplayState = display_state(handle)
             retryable: bool = options.allow_retry and can_retry(handle)
             intrinsic: UiCore::Size = UiResources::intrinsic_size(handle)

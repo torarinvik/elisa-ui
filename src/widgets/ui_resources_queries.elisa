@@ -36,33 +36,33 @@ extend UiResources:
                 denied: denied_count, failed: failed_count,
                 cancelled: cancelled_count, overflowed: resource_overflowed}
 
-        def state(handle: Handle) -> State:
-            return State.Unrequested if not is_valid(handle)
+        def state(handle: ResourceHandle) -> State:
+            return State.Unrequested if not UiResources::resource_is_valid(handle)
             return resource_states[handle.slot.usize()]
 
-        def failure(handle: Handle) -> FailureKind:
-            return FailureKind.Unknown if not is_valid(handle)
+        def failure(handle: ResourceHandle) -> FailureKind:
+            return FailureKind.Unknown if not UiResources::resource_is_valid(handle)
             return resource_failure_kinds[handle.slot.usize()]
 
-        def can_retry(handle: Handle) -> bool:
-            return false if not is_valid(handle)
+        def can_retry(handle: ResourceHandle) -> bool:
+            return false if not UiResources::resource_is_valid(handle)
             current: State = resource_states[handle.slot.usize()]
             return current == State.UnavailableOffline or current == State.Denied or (current == State.Failed and resource_failure_kinds[handle.slot.usize()] == FailureKind.RetryableTransport)
 
-        def owner(handle: Handle) -> u32:
-            return 0 if not is_valid(handle)
+        def owner(handle: ResourceHandle) -> u32:
+            return 0 if not UiResources::resource_is_valid(handle)
             return resource_owners[handle.slot.usize()]
 
-        def identifier(handle: Handle) -> sview:
-            return "" if not is_valid(handle)
+        def identifier(handle: ResourceHandle) -> sview:
+            return "" if not UiResources::resource_is_valid(handle)
             slot: usize = handle.slot.usize()
             offset: usize = slot * IDENTIFIER_CAPACITY
             return sview(&resource_identifier_storage[offset], 0, resource_identifier_lengths[slot].i64())
 
-        def downloaded_progress(handle: Handle) -> f32:
-            return 0.0 if not is_valid(handle)
+        def downloaded_progress(handle: ResourceHandle) -> f32:
+            return 0.0 if not UiResources::resource_is_valid(handle)
             return resource_downloaded[handle.slot.usize()]
 
-        def decoded_progress(handle: Handle) -> f32:
-            return 0.0 if not is_valid(handle)
+        def decoded_progress(handle: ResourceHandle) -> f32:
+            return 0.0 if not UiResources::resource_is_valid(handle)
             return resource_decoded[handle.slot.usize()]

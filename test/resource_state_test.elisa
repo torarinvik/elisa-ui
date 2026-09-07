@@ -34,12 +34,12 @@ def check(name: cstr, ok: bool) -> void:
 def main() -> i64:
     UiResources::reset()
     UiCore::clear_all_invalidations()
-    missing: UiResources::Handle = UiResources::invalid()
-    check("invalid resource handle is rejected", not UiResources::is_valid(missing) and UiResources::state(missing) == UiResources::State.Unrequested)
+    missing: UiResources::ResourceHandle = UiResources::resource_invalid()
+    check("invalid resource handle is rejected", not UiResources::resource_is_valid(missing) and UiResources::state(missing) == UiResources::State.Unrequested)
     check("resource table starts empty", UiResources::count() == 0 and not UiResources::overflowed())
 
-    image: mutable UiResources::Handle = UiResources::request("images/logo", 11)
-    check("request creates a typed resource", UiResources::is_valid(image) and UiResources::count() == 1)
+    image: mutable UiResources::ResourceHandle = UiResources::request("images/logo", 11)
+    check("request creates a typed resource", UiResources::resource_is_valid(image) and UiResources::count() == 1)
     check("new resource starts requested", UiResources::state(image) == UiResources::State.Requested and UiResources::owner(image) == 11)
     check("intrinsic resource size is accepted", UiResources::set_intrinsic_size(image, 128.0, 72.0) and UiResources::intrinsic_size(image).width == 128.0 and UiResources::intrinsic_size(image).height == 72.0)
     check("repeated intrinsic resource size is idempotent", not UiResources::set_intrinsic_size(image, 128.0, 72.0))
@@ -49,19 +49,19 @@ def main() -> i64:
     check("snapshot counts requested resources", requested_snapshot.total == 1 and requested_snapshot.requested == 1 and requested_snapshot.ready == 0 and requested_snapshot.failed == 0 and not requested_snapshot.overflowed)
     check("resource key is retained in Elisa", UiResources::identifier(image) == "images/logo")
     null_key: sview = sview(null, 0, 4)
-    check("null-backed resource key is rejected", not UiResources::is_valid(UiResources::request(null_key, 11)) and not UiResources::key_matches(image.slot.usize(), null_key))
+    check("null-backed resource key is rejected", not UiResources::resource_is_valid(UiResources::request(null_key, 11)) and not UiResources::resource_key_matches(image.slot.usize(), null_key))
     malformed_key_bytes: mutable u8[2] = zeroed
     malformed_key_bytes[0] <- 105
     malformed_key_bytes[1] <- 255
     malformed_key: sview = sview(&malformed_key_bytes[0], 0, 2)
-    check("malformed resource key cannot alias its valid prefix", not UiResources::is_valid(UiResources::request(malformed_key, 11)) and not UiResources::key_matches(image.slot.usize(), malformed_key))
+    check("malformed resource key cannot alias its valid prefix", not UiResources::resource_is_valid(UiResources::request(malformed_key, 11)) and not UiResources::resource_key_matches(image.slot.usize(), malformed_key))
     check("request raises resource invalidation", UiCore::is_invalidated(UiCore::Invalidation.Resources))
     check("resource demand hint is accepted", UiResources::set_demand(image, 10) and UiResources::is_demanded(image) and UiResources::demand_priority(image) == 10)
     check("repeated demand hint is idempotent", not UiResources::set_demand(image, 10))
     check("demand priority can be raised", UiResources::set_demand(image, 90) and UiResources::demand_priority(image) == 90)
     check("demand hint can be cleared", UiResources::clear_demand(image) and not UiResources::is_demanded(image) and UiResources::demand_priority(image) == 0)
 
-    duplicate: UiResources::Handle = UiResources::request("images/logo", 42)
+    duplicate: UiResources::ResourceHandle = UiResources::request("images/logo", 42)
     check("duplicate request reuses identity", duplicate.slot == image.slot and duplicate.generation == image.generation and UiResources::count() == 1)
     check("duplicate request updates the live owner", UiResources::owner(image) == 42)
 
@@ -73,8 +73,8 @@ def main() -> i64:
     check("snapshot counts ready resources", ready_snapshot.total == 1 and ready_snapshot.ready == 1 and ready_snapshot.requested == 0)
     ready_generation: u32 = image.generation
     check("live resource cannot restart requested in place", not UiResources::set_state(image, UiResources::State.Requested) and UiResources::state(image) == UiResources::State.Ready and image.generation == ready_generation)
-    not_retried: UiResources::Handle = UiResources::retry(image)
-    check("ready is not retried", not UiResources::is_valid(not_retried))
+    not_retried: UiResources::ResourceHandle = UiResources::retry(image)
+    check("ready is not retried", not UiResources::resource_is_valid(not_retried))
 
     check("failed transition is accepted", UiResources::set_state(image, UiResources::State.Failed))
     check("terminal resource rejects in-place ready completion", not UiResources::set_state(image, UiResources::State.Ready) and UiResources::state(image) == UiResources::State.Failed)
@@ -82,16 +82,16 @@ def main() -> i64:
     check("failed transition defaults to retryable transport", UiResources::failure(image) == UiResources::FailureKind.RetryableTransport and UiResources::can_retry(image))
     check("retry accepts a new demand hint", UiResources::set_demand(image, 77) and UiResources::is_demanded(image))
     failed_generation: u32 = image.generation
-    retried_image: UiResources::Handle = UiResources::retry(image)
-    check("failed resource can retry", UiResources::is_valid(retried_image) and UiResources::state(retried_image) == UiResources::State.Requested and UiResources::downloaded_progress(retried_image) == 0.0)
-    check("retry rotates generation", retried_image.generation != failed_generation and not UiResources::is_valid(image))
+    retried_image: UiResources::ResourceHandle = UiResources::retry(image)
+    check("failed resource can retry", UiResources::resource_is_valid(retried_image) and UiResources::state(retried_image) == UiResources::State.Requested and UiResources::downloaded_progress(retried_image) == 0.0)
+    check("retry rotates generation", retried_image.generation != failed_generation and not UiResources::resource_is_valid(image))
     check("retry drops stale demand hints", not UiResources::is_demanded(retried_image) and UiResources::demand_priority(retried_image) == 0)
     check("retry preserves intrinsic resource metadata", UiResources::intrinsic_size(retried_image).width == 128.0 and UiResources::intrinsic_size(retried_image).height == 72.0)
     check("late failed callback cannot touch retry", not UiResources::set_state(image, UiResources::State.Ready) and UiResources::state(retried_image) == UiResources::State.Requested)
     image <- retried_image
     check("corrupt resource exposes a terminal failure", UiResources::fail(image, UiResources::FailureKind.Corrupt) and not UiResources::can_retry(image) and UiResources::failure(image) == UiResources::FailureKind.Corrupt)
-    incompatible_retry: UiResources::Handle = UiResources::retry(image)
-    check("incompatible resource also stays terminal", UiResources::fail(image, UiResources::FailureKind.Incompatible) and not UiResources::is_valid(incompatible_retry) and UiResources::failure(image) == UiResources::FailureKind.Incompatible)
+    incompatible_retry: UiResources::ResourceHandle = UiResources::retry(image)
+    check("incompatible resource also stays terminal", UiResources::fail(image, UiResources::FailureKind.Incompatible) and not UiResources::resource_is_valid(incompatible_retry) and UiResources::failure(image) == UiResources::FailureKind.Incompatible)
     check("unknown failure kind is rejected", not UiResources::fail(image, UiResources::FailureKind.Unknown))
     invalid_failure: UiResources::FailureKind = (-1).i32().FailureKind()
     check("invalid failure kind is rejected", not UiResources::fail(image, invalid_failure) and UiResources::failure(image) == UiResources::FailureKind.Incompatible)
@@ -109,42 +109,42 @@ def main() -> i64:
     check("cancelled resource rejects late failure", not UiResources::fail(image, UiResources::FailureKind.RetryableTransport) and UiResources::state(image) == UiResources::State.Cancelled)
     check("cancelled resource rejects late state", not UiResources::set_state(image, UiResources::State.Ready) and UiResources::state(image) == UiResources::State.Cancelled)
     cancelled_generation: u32 = image.generation
-    requested_again: UiResources::Handle = UiResources::request("images/logo", 77)
+    requested_again: UiResources::ResourceHandle = UiResources::request("images/logo", 77)
     check("cancelled key can be requested again", requested_again.slot == image.slot and UiResources::state(requested_again) == UiResources::State.Requested and UiResources::owner(requested_again) == 77)
-    check("cancelled re-request rotates generation", requested_again.generation != cancelled_generation and not UiResources::is_valid(image))
+    check("cancelled re-request rotates generation", requested_again.generation != cancelled_generation and not UiResources::resource_is_valid(image))
     check("cancelled re-request drops stale demand", not UiResources::is_demanded(requested_again) and UiResources::demand_priority(requested_again) == 0)
     check("cancelled completion cannot touch replacement", not UiResources::set_state(image, UiResources::State.Ready) and UiResources::state(requested_again) == UiResources::State.Requested)
 
     old_generation: u32 = requested_again.generation
     check("dispose releases the resource", UiResources::dispose(requested_again) and UiResources::count() == 0)
     check("dispose clears intrinsic resource metadata", UiResources::intrinsic_size(requested_again).width == 0.0 and UiResources::intrinsic_size(requested_again).height == 0.0)
-    check("disposed identity becomes stale", not UiResources::is_valid(requested_again) and requested_again.generation == old_generation)
+    check("disposed identity becomes stale", not UiResources::resource_is_valid(requested_again) and requested_again.generation == old_generation)
     check("late completion cannot revive disposed identity", not UiResources::set_state(requested_again, UiResources::State.Ready))
 
-    fresh: mutable UiResources::Handle = UiResources::request("images/new-logo", 88)
-    check("slot reuse gets a new generation", UiResources::is_valid(fresh) and fresh.slot == image.slot and fresh.generation != old_generation)
+    fresh: mutable UiResources::ResourceHandle = UiResources::request("images/new-logo", 88)
+    check("slot reuse gets a new generation", UiResources::resource_is_valid(fresh) and fresh.slot == image.slot and fresh.generation != old_generation)
     check("old completion still cannot touch reused slot", UiResources::state(image) == UiResources::State.Unrequested and UiResources::identifier(fresh) == "images/new-logo")
 
     check("offline fallback transition is accepted", UiResources::set_state(fresh, UiResources::State.UnavailableOffline))
-    retried_fresh: UiResources::Handle = UiResources::retry(fresh)
-    check("offline failure can retry", UiResources::is_valid(retried_fresh) and UiResources::state(retried_fresh) == UiResources::State.Requested)
+    retried_fresh: UiResources::ResourceHandle = UiResources::retry(fresh)
+    check("offline failure can retry", UiResources::resource_is_valid(retried_fresh) and UiResources::state(retried_fresh) == UiResources::State.Requested)
     fresh <- retried_fresh
-    second: UiResources::Handle = UiResources::request("images/second", 88)
+    second: UiResources::ResourceHandle = UiResources::request("images/second", 88)
     _ = UiResources::set_progress(fresh, 0.75, 0.5)
     _ = UiResources::fail(second, UiResources::FailureKind.Corrupt)
     check("owner cancellation covers every live resource", UiResources::cancel_owner(88) == 2 and UiResources::state(fresh) == UiResources::State.Cancelled and UiResources::state(second) == UiResources::State.Cancelled)
     check("owner cancellation clears progress", UiResources::downloaded_progress(fresh) == 0.0 and UiResources::decoded_progress(fresh) == 0.0)
     check("owner cancellation clears failure kind", UiResources::failure(second) == UiResources::FailureKind.Unknown)
     check("owner cancellation is idempotent", UiResources::cancel_owner(88) == 0)
-    check("owner disposal invalidates every resource", UiResources::dispose_owner(88) == 2 and not UiResources::is_valid(fresh) and not UiResources::is_valid(second))
+    check("owner disposal invalidates every resource", UiResources::dispose_owner(88) == 2 and not UiResources::resource_is_valid(fresh) and not UiResources::resource_is_valid(second))
     check("resource invalidation can be consumed", UiCore::is_invalidated(UiCore::Invalidation.Resources))
     UiCore::clear_invalidations(UiCore::Invalidation.Resources)
     check("resource invalidation clears explicitly", not UiCore::is_invalidated(UiCore::Invalidation.Resources))
 
     UiResources::reset()
-    check("reset invalidates live resource handles", not UiResources::is_valid(fresh) and UiResources::count() == 0)
-    hole: UiResources::Handle = UiResources::request("first", 1)
-    survivor: UiResources::Handle = UiResources::request("second", 2)
+    check("reset invalidates live resource handles", not UiResources::resource_is_valid(fresh) and UiResources::count() == 0)
+    hole: UiResources::ResourceHandle = UiResources::request("first", 1)
+    survivor: UiResources::ResourceHandle = UiResources::request("second", 2)
     oversized_bytes: u8[UiResources::IDENTIFIER_CAPACITY + 1] = zeroed
     for index in 0..<UiResources::IDENTIFIER_CAPACITY + 1:
         oversized_bytes[index] <- 120
@@ -155,10 +155,10 @@ def main() -> i64:
     oversized_bytes[4] <- 116
     oversized_key: sview = sview(&oversized_bytes[0], 0, (UiResources::IDENTIFIER_CAPACITY + 1).i64())
     check("oversized key keeps counted length", oversized_key.len == (UiResources::IDENTIFIER_CAPACITY + 1).i64())
-    check("oversized key comparison fails closed", not UiResources::key_matches(hole.slot.usize(), oversized_key))
+    check("oversized key comparison fails closed", not UiResources::resource_key_matches(hole.slot.usize(), oversized_key))
     _ = UiResources::dispose(hole)
-    check("cleared resource key comparison fails closed", not UiResources::key_matches(hole.slot.usize(), ""))
-    check("resource counts exclude disposed interior slots", UiResources::count() == 1 and UiResources::snapshot().total == 1 and UiResources::snapshot().requested == 1 and UiResources::is_valid(survivor))
+    check("cleared resource key comparison fails closed", not UiResources::resource_key_matches(hole.slot.usize(), ""))
+    check("resource counts exclude disposed interior slots", UiResources::count() == 1 and UiResources::snapshot().total == 1 and UiResources::snapshot().requested == 1 and UiResources::resource_is_valid(survivor))
     if failures == 0:
         _ = puts("resource state: all checks passed")
     return failures.i64()

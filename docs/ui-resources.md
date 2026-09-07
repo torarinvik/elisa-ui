@@ -19,7 +19,7 @@ internal hygiene boundary, not a second public API.
 include "src/widgets/ui_resources.elisa"
 
 UiResources::reset()
-logo: UiResources::Handle = UiResources::request("images/logo", 7)
+logo: UiResources::ResourceHandle = UiResources::request("images/logo", 7)
 UiResources::set_progress(logo, network_fraction, decode_fraction)
 UiResources::set_demand(logo, 10) # visibility/prefetch priority hint
 if UiResources::state(logo) == UiResources::State.Ready:
@@ -67,7 +67,7 @@ handles or keeping a native shadow table.
 
 The fixed 128-record table and 256-byte logical identifier limit are deliberate
 bounded behavior for native and Wasm tests. `overflowed` reports exhaustion;
-invalid or oversized identifiers return `invalid()` and do not create a record.
+invalid or oversized identifiers return `resource_invalid()` and do not create a record; use `resource_is_valid()` for stale-safe checks and `resource_key_matches()` for bounded diagnostics.
 
 ## Presentation policy
 
