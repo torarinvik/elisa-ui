@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `10e31029877d9209b28cee0138d84dcefd24785c` on branch `work` |
+| elisa-ui revision | `7047022c59cf689350864c1bb351efec09f2b351` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -217,6 +217,9 @@ or frees the host-owned image handle. The headless Skia recorder covers valid
 image draws and rejects null, zero-sized, and fully transparent requests.
 `UiSkia::draw_ready_image` additionally checks the generation-safe logical
 resource state, so loading, failed, cancelled, and recycled handles cannot paint.
+`UiSkia::draw_ready_text` applies the same gate to borrowed host `SkTypeface*`
+handles before drawing text, keeping font lifetime and fallback ownership out of
+the framework ABI.
 Attaching a live `UiSkia` canvas upgrades a custom profile to `Renderer.Skia`.
 That selection also enables the `scale_changes` capability used by the
 balanced logical-to-physical frame transform.
