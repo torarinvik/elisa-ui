@@ -101,13 +101,9 @@ module UiSkia:
         # portable six-command wire ABI.
         def fill_rounded_rect(box: UiCore::Rect, radius: f32, color: UiCore::Color) -> void can[Ui.Draw]:
             return if canvas_state == 0
-            safe_box: UiCore::Rect = UiCore::Rect(
-                UiCore::bounded_coordinate(box.origin.x),
-                UiCore::bounded_coordinate(box.origin.y),
-                UiCore::bounded_extent(box.size.width),
-                UiCore::bounded_extent(box.size.height))
+            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
             return if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
-            safe_radius: f32 = UiCore::bounded_extent(radius)
+            safe_radius: f32 = UiSkia::skia_safe_radius(safe_box, radius)
             elisa_skia_canvas_fill_round_rect(canvas_state, safe_box.origin.x, safe_box.origin.y, safe_box.size.width, safe_box.size.height, safe_radius, color.r, color.g, color.b, color.a)
 
         # Hosts decode and retain images; Elisa owns only placement and
@@ -115,11 +111,7 @@ module UiSkia:
         # retained by UiSkia, so resource disposal stays host-owned.
         def draw_image(image: usize, box: UiCore::Rect, alpha: u8) -> void can[Ui.Draw]:
             return if canvas_state == 0 or image == 0 or alpha == 0
-            safe_box: UiCore::Rect = UiCore::Rect(
-                UiCore::bounded_coordinate(box.origin.x),
-                UiCore::bounded_coordinate(box.origin.y),
-                UiCore::bounded_extent(box.size.width),
-                UiCore::bounded_extent(box.size.height))
+            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
             return if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
             elisa_skia_canvas_draw_image(canvas_state, image, safe_box.origin.x, safe_box.origin.y, safe_box.size.width, safe_box.size.height, alpha)
 
@@ -145,7 +137,8 @@ module UiSkia:
         impl Painter for SkiaPainter:
             def push_clip(box: UiCore::Rect) -> void can[Ui.Draw]:
                 return if canvas_state == 0
-                safe_box: UiCore::Rect = UiCore::Rect(box.origin.x, box.origin.y, box.size.width, box.size.height)
+                safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+                return if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
                 elisa_skia_canvas_save(canvas_state)
                 elisa_skia_canvas_clip_rect(canvas_state, safe_box.origin.x, safe_box.origin.y, safe_box.size.width, safe_box.size.height)
                 skia_clip_depth <- skia_clip_depth + 1
@@ -161,25 +154,27 @@ module UiSkia:
 
             def fill_rect(box: UiCore::Rect, color: UiCore::Color) -> void can[Ui.Draw]:
                 return if canvas_state == 0
-                style: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style(box)
-                UiSkia::fill_rounded_rect(box, style.radius, color)
-                safe_box: UiCore::Rect = UiCore::Rect(box.origin.x, box.origin.y, box.size.width, box.size.height)
+                safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+                return if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
+                style: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style(safe_box)
+                UiSkia::fill_rounded_rect(safe_box, style.radius, color)
                 elisa_skia_canvas_shadow_round_rect(canvas_state, safe_box.origin.x, safe_box.origin.y, safe_box.size.width, safe_box.size.height, style.radius, style.shadow_alpha) if style.shadow_alpha > 0
                 elisa_skia_canvas_stroke_round_rect(canvas_state, safe_box.origin.x, safe_box.origin.y, safe_box.size.width, safe_box.size.height, style.radius, 255, 255, 255, style.hairline_alpha)
 
             def fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> void can[Ui.Draw]:
                 return if canvas_state == 0
-                safe_disc: UiCore::Circle = UiCore::Circle{center: UiCore::Vec2(disc.center.x, disc.center.y), radius: UiCore::bounded_extent(disc.radius)}
+                safe_disc: UiCore::Circle = UiSkia::skia_safe_circle(disc)
+                return if safe_disc.radius <= 0.0
                 elisa_skia_canvas_fill_circle(canvas_state, safe_disc.center.x, safe_disc.center.y, safe_disc.radius, color.r, color.g, color.b, color.a)
 
             def fill_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]:
                 return if canvas_state == 0
-                safe_tri: UiCore::Triangle = UiCore::Triangle{a: UiCore::Vec2(tri.a.x, tri.a.y), b: UiCore::Vec2(tri.b.x, tri.b.y), c: UiCore::Vec2(tri.c.x, tri.c.y)}
+                safe_tri: UiCore::Triangle = UiSkia::skia_safe_triangle(tri)
                 elisa_skia_canvas_fill_triangle(canvas_state, safe_tri.a.x, safe_tri.a.y, safe_tri.b.x, safe_tri.b.y, safe_tri.c.x, safe_tri.c.y, color.r, color.g, color.b, color.a)
 
             def fill_line(segment: UiCore::Line, color: UiCore::Color) -> void can[Ui.Draw]:
                 return if canvas_state == 0
-                safe_line: UiCore::Line = UiCore::Line{from_point: UiCore::Vec2(segment.from_point.x, segment.from_point.y), to_point: UiCore::Vec2(segment.to_point.x, segment.to_point.y)}
+                safe_line: UiCore::Line = UiSkia::skia_safe_line(segment)
                 elisa_skia_canvas_fill_line(canvas_state, safe_line.from_point.x, safe_line.from_point.y, safe_line.to_point.x, safe_line.to_point.y, color.r, color.g, color.b, color.a)
 
             def draw_text(run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
@@ -196,6 +191,8 @@ module UiSkia:
         global mutable skia_surface_generation: u32 = 0
 
 include "./ui_skia_resources.elisa"
+
+include "./ui_skia_geometry.elisa"
 
 # C/Objective-C hosts should prefer this one-shot boundary when they do not
 # need to interleave custom work with replay. Elisa owns the borrowed-canvas

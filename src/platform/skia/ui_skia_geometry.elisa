@@ -1,0 +1,41 @@
+# Private geometry policy for the Skia painter.
+#
+# Core commands are already normalized when they enter the retained arena, but
+# custom controls can call the direct UiSkia methods too. Keep that second path
+# equally defensive without making the C++ bridge repeat framework policy.
+
+include "../../core/ui_core.elisa"
+
+extend UiSkia:
+    private:
+        def skia_safe_rect(box: UiCore::Rect) -> UiCore::Rect:
+            return UiCore::Rect(
+                UiCore::bounded_coordinate(box.origin.x),
+                UiCore::bounded_coordinate(box.origin.y),
+                UiCore::bounded_extent(box.size.width),
+                UiCore::bounded_extent(box.size.height))
+
+        def skia_safe_radius(box: UiCore::Rect, radius: f32) -> f32:
+            safe_radius: mutable f32 = UiCore::bounded_extent(radius)
+            shortest: f32 = box.size.width if box.size.width < box.size.height else box.size.height
+            maximum: f32 = UiCore::bounded_extent(shortest * 0.5)
+            safe_radius <- maximum if safe_radius > maximum else safe_radius
+            return safe_radius
+
+        def skia_safe_circle(disc: UiCore::Circle) -> UiCore::Circle:
+            return UiCore::Circle{
+                center: UiCore::Vec2(
+                    UiCore::bounded_coordinate(disc.center.x),
+                    UiCore::bounded_coordinate(disc.center.y)),
+                radius: UiCore::bounded_extent(disc.radius)}
+
+        def skia_safe_triangle(tri: UiCore::Triangle) -> UiCore::Triangle:
+            return UiCore::Triangle{
+                a: UiCore::Vec2(UiCore::bounded_coordinate(tri.a.x), UiCore::bounded_coordinate(tri.a.y)),
+                b: UiCore::Vec2(UiCore::bounded_coordinate(tri.b.x), UiCore::bounded_coordinate(tri.b.y)),
+                c: UiCore::Vec2(UiCore::bounded_coordinate(tri.c.x), UiCore::bounded_coordinate(tri.c.y))}
+
+        def skia_safe_line(segment: UiCore::Line) -> UiCore::Line:
+            return UiCore::Line{
+                from_point: UiCore::Vec2(UiCore::bounded_coordinate(segment.from_point.x), UiCore::bounded_coordinate(segment.from_point.y)),
+                to_point: UiCore::Vec2(UiCore::bounded_coordinate(segment.to_point.x), UiCore::bounded_coordinate(segment.to_point.y))}
