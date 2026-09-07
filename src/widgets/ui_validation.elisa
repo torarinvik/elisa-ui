@@ -108,6 +108,11 @@ module UiValidation:
         # cannot roll back edits or selection state.
         def resolve(handle: Handle, token: u32, next: Status, message: sview) -> bool:
             return false if not is_valid(handle) or token == 0 or message.len < 0
+            # A counted view with bytes but no storage is malformed foreign
+            # input, not an empty diagnostic. Reject it before resolving the
+            # revision so a bad callback cannot silently clear a live error
+            # message or advance the field out of its validating state.
+            return false if message.len > 0 and message.data == null
             slot: usize = handle.slot.usize()
             return false if statuses[slot] != Status.Validating or revisions[slot] != token
             return false if next != Status.Valid and next != Status.Invalid and next != Status.Unavailable

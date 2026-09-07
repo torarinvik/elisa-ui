@@ -55,6 +55,13 @@ def main() -> i64:
     boundary_token: u32 = UiValidation::begin(field)
     check("maximum fitting message is not marked truncated", UiValidation::reject(field, boundary_token, sview(&boundary_message[0], 0, (UiValidation::MESSAGE_CAPACITY - 1).i64())) and UiValidation::message(field).len.usize() == UiValidation::MESSAGE_CAPACITY - 1 and not UiValidation::message_truncated(field))
 
+    malformed_message_words: mutable u64[2] = zeroed
+    malformed_message_words[1] <- 4
+    malformed_message_ref: mutable sview& = (&malformed_message_words[0]).cast[mutable sview&] can Unsafe.PointerCast
+    null_message: sview = malformed_message_ref[0]
+    null_message_token: u32 = UiValidation::begin(field)
+    check("null-backed validation messages are rejected without resolving", not UiValidation::reject(field, null_message_token, null_message) and UiValidation::status(field) == UiValidation::Status.Validating and UiValidation::revision(field) == null_message_token and UiValidation::message(field).len == 0)
+
     old_generation: u32 = field.generation
     check("dispose invalidates a field", UiValidation::dispose(field) and not UiValidation::is_valid(field))
     fresh: UiValidation::Handle = UiValidation::bind(8)
