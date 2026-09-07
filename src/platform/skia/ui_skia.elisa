@@ -135,6 +135,22 @@ module UiSkia:
             safe_sampling: i32 = ImageSampling.Linear.i32() if raw_sampling != ImageSampling.Nearest.i32() and raw_sampling != ImageSampling.Linear.i32() else raw_sampling
             elisa_skia_canvas_draw_image_sampling(canvas_state, image, safe_box.origin.x, safe_box.origin.y, safe_box.size.width, safe_box.size.height, alpha, safe_sampling)
 
+        # Custom controls may draw text directly, outside the retained command
+        # replay path. Keep that escape hatch on the same bounded geometry,
+        # UTF-8, and minimum-font policy as ordinary commands.
+        def draw_text_run(run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
+            return if canvas_state == 0 or run.text.len <= 0 or run.text.data == null
+            safe_run: UiCore::TextRun = UiCore::TextRun(
+                UiCore::Vec2(
+                    UiCore::bounded_coordinate(run.origin.x),
+                    UiCore::bounded_coordinate(run.origin.y)),
+                UiSkia::safe_font_size(run.size),
+                UiCore::bounded_text(run.text))
+            safe_text: sview = safe_run.text
+            return if safe_text.len <= 0 or safe_text.data == null
+            pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
+            elisa_skia_canvas_draw_text(canvas_state, pointer, safe_text.len.usize(), safe_run.origin.x, safe_run.origin.y, safe_run.size, color.r, color.g, color.b, color.a)
+
         struct SkiaPainter:
             unused: i32
 
@@ -175,12 +191,7 @@ module UiSkia:
                 UiSkia::draw_line(safe_line, color)
 
             def draw_text(run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
-                return if canvas_state == 0 or run.text.len <= 0 or run.text.data == null
-                safe_run: UiCore::TextRun = UiCore::TextRun(run.origin, UiSkia::safe_font_size(run.size), run.text)
-                safe_text: sview = safe_run.text
-                return if safe_text.len <= 0 or safe_text.data == null
-                pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
-                elisa_skia_canvas_draw_text(canvas_state, pointer, safe_text.len.usize(), safe_run.origin.x, safe_run.origin.y, safe_run.size, color.r, color.g, color.b, color.a)
+                UiSkia::draw_text_run(run, color)
 
     private:
         global mutable canvas_state: usize = 0
