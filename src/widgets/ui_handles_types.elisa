@@ -1,0 +1,81 @@
+# Typed identity, tree lifetime, and compatibility queries for UiHandles.
+
+include "./ui_widget.elisa"
+
+module UiHandles:
+    public:
+        struct Handle:
+            # Flat widget slots and tree lifetimes are bounded by the Wasm
+            # ABI's u32 address space. Keeping the token u32 also makes its
+            # representation stable when it is passed through a component.
+            widget_id: u32
+            tree_id: u32
+
+        # A handle is valid only for the tree lifetime that created it and for
+        # a currently allocated slot. UiFlat::reset advances the lifetime
+        # before any slot can be reused.
+        def is_valid(handle: Handle) -> bool:
+            return handle.tree_id == UiFlat::lifetime().u32() and UiFlat::is_valid(handle.widget_id.usize())
+
+        def invalid() -> Handle:
+            return Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
+
+        def root_parent() -> Handle:
+            return Handle{widget_id: UiFlat::NONE.u32(), tree_id: UiFlat::lifetime().u32()}
+
+        def from_index(index: usize) -> Handle:
+            return invalid() if not UiFlat::is_valid(index)
+            return Handle{widget_id: index.u32(), tree_id: UiFlat::lifetime().u32()}
+
+        # Compatibility escape hatch for adapters that need the legacy index;
+        # stale values map to the same unallocated sentinel as UiFlat overflow.
+        def index(handle: Handle) -> usize:
+            return handle.widget_id.usize() if is_valid(handle) else UiFlat::NONE
+
+        def parent_is_valid(parent: Handle) -> bool:
+            return false if parent.tree_id != UiFlat::lifetime().u32()
+            return true if parent.widget_id == UiFlat::NONE.u32()
+            return false if not UiFlat::is_valid(parent.widget_id.usize())
+            row: UiFlat::Widget = UiFlat::widget(parent.widget_id.usize())
+            # A valid widget is not automatically a valid container. The
+            # compatibility constructors historically treated a leaf parent as
+            # a detached root; typed handles reject that hierarchy loss.
+            return row.kind == UiConst::WidgetKind.Panel or row.kind == UiConst::WidgetKind.Scroll
+
+        def parent_index(parent: Handle) -> usize:
+            return parent.widget_id.usize() if parent.widget_id != UiFlat::NONE.u32()
+            return UiFlat::NONE
+
+        def reset() -> void:
+            UiFlat::reset()
+
+        def count() -> usize:
+            return UiFlat::count()
+
+        def overflowed() -> bool:
+            return UiFlat::overflowed()
+
+        def theme() -> UiFlat::Theme:
+            return UiFlat::theme()
+
+        def set_theme(next: UiFlat::Theme) -> void:
+            UiFlat::set_theme(next)
+
+        def widget(handle: Handle) -> UiFlat::Widget?:
+            return null if not is_valid(handle)
+            return UiFlat::widget(handle.widget_id.usize())
+
+        # Tree navigation returns typed tokens too, so an application can
+        # inspect a retained subtree without exposing an unchecked arena index.
+        def parent(handle: Handle) -> Handle:
+            return invalid() if not is_valid(handle)
+            row: UiFlat::Widget = UiFlat::widget(handle.widget_id.usize())
+            return root_parent() if row.parent == UiFlat::NONE else from_index(row.parent)
+
+        def first_child(handle: Handle) -> Handle:
+            return invalid() if not is_valid(handle)
+            return from_index(UiFlat::widget(handle.widget_id.usize()).first_child)
+
+        def next_sibling(handle: Handle) -> Handle:
+            return invalid() if not is_valid(handle)
+            return from_index(UiFlat::widget(handle.widget_id.usize()).next_sibling)
