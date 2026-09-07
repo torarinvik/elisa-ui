@@ -115,7 +115,11 @@ def main() -> i64:
     check("offline failure can retry", UiResources::is_valid(retried_fresh) and UiResources::state(retried_fresh) == UiResources::State.Requested)
     fresh <- retried_fresh
     second: UiResources::Handle = UiResources::request("images/second", 88)
+    _ = UiResources::set_progress(fresh, 0.75, 0.5)
+    _ = UiResources::fail(second, UiResources::FailureKind.Corrupt)
     check("owner cancellation covers every live resource", UiResources::cancel_owner(88) == 2 and UiResources::state(fresh) == UiResources::State.Cancelled and UiResources::state(second) == UiResources::State.Cancelled)
+    check("owner cancellation clears progress", UiResources::downloaded_progress(fresh) == 0.0 and UiResources::decoded_progress(fresh) == 0.0)
+    check("owner cancellation clears failure kind", UiResources::failure(second) == UiResources::FailureKind.Unknown)
     check("owner cancellation is idempotent", UiResources::cancel_owner(88) == 0)
     check("owner disposal invalidates every resource", UiResources::dispose_owner(88) == 2 and not UiResources::is_valid(fresh) and not UiResources::is_valid(second))
     check("resource invalidation can be consumed", UiCore::is_invalidated(UiCore::Invalidation.Resources))
