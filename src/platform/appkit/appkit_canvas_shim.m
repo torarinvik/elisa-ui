@@ -8,6 +8,12 @@
 #include <stdint.h>
 
 extern void elisa_appkit_canvas_frame(size_t windowHandle, size_t context);
+#if defined(ELISA_UI_USE_SKIA)
+// The Skia build profile links the real compositor from appkit_skia_host.cpp.
+extern int elisa_appkit_canvas_skia_present(size_t windowHandle, size_t context,
+                                            float logicalWidth, float logicalHeight,
+                                            int pixelWidth, int pixelHeight);
+#endif
 extern void elisa_appkit_canvas_resize(size_t windowHandle, float width, float height);
 extern size_t elisa_appkit_canvas_pointer_move_event(size_t windowHandle, float x, float y);
 extern void elisa_appkit_canvas_pointer_button(size_t windowHandle, float x, float y, int button, int down, int clickCount);
@@ -301,6 +307,15 @@ void elisa_appkit_canvas_interpret_key_event(size_t event, size_t windowHandle) 
     (void)dirtyRect;
     CGContextRef context = [[NSGraphicsContext currentContext] CGContext];
     size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
+#if defined(ELISA_UI_USE_SKIA)
+    NSRect backing = [self convertRectToBacking:self.bounds];
+    if (
+        elisa_appkit_canvas_skia_present(windowHandle, (size_t)context,
+                                         self.bounds.size.width, self.bounds.size.height,
+                                         backing.size.width, backing.size.height) > 0) {
+        return;
+    }
+#endif
     elisa_appkit_canvas_frame(windowHandle, (size_t)context);
 }
 - (void)setFrameSize:(NSSize)size {

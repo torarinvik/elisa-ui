@@ -1,0 +1,42 @@
+# Optional Skia frame path for the AppKit custom canvas.
+#
+# AppKit still owns the window/context. The C++ host creates a temporary Skia
+# surface and calls this Elisa export while that surface is borrowed; Elisa
+# keeps frame preparation, semantics, command replay, and scheduling here.
+
+include "../skia/ui_skia.elisa"
+
+extend UiAppKitCanvas:
+    public:
+        def skia_replay(window_handle: usize, canvas: usize, scale: f32, font: usize) -> i32 can[Ui.Draw, Ui.Text, Unsafe.PointerCast]:
+            return 0 if canvas == 0 or not UiAppKitCanvas::live()
+            return 0 if window_handle != UiAppKitCanvas::window_handle()
+            return 0 if not UiCapabilities::select_skia_renderer()
+            autorelease_pool: usize = objc_autoreleasePoolPush()
+            UiAppKitCanvas::begin_native_frame(0)
+            UiCore::set_frame_time(UiAppKitCanvas::monotonic_time())
+            UiMetrics::begin_frame(UiCore::frame_time())
+            UiCore::begin_frame()
+            frame_generation: u32 = UiLifecycle::generation()
+            app_frame()
+            same_session: bool = UiLifecycle::generation() == frame_generation
+            status: mutable i32 = UiSkia::RenderStatus.SkippedNoSurface.i32()
+            if same_session and UiAppKitCanvas::live() and window_handle == UiAppKitCanvas::window_handle():
+                UiMetrics::mark_application(UiAppKitCanvas::monotonic_time())
+                UiAppKitCanvas::sync_accessibility()
+                UiMetrics::mark_semantics(UiAppKitCanvas::monotonic_time())
+                UiSkia::attach_scaled(canvas, scale)
+                status <- UiSkia::render_status_with_font(font).i32()
+                UiSkia::detach()
+                UiMetrics::mark_paint(UiAppKitCanvas::monotonic_time())
+                UiAppKitCanvas::schedule_next_frame(UiCore::frame_delay())
+            UiAppKitCanvas::end_native_frame()
+            if same_session:
+                UiMetrics::finish_frame(UiAppKitCanvas::monotonic_time())
+            objc_autoreleasePoolPop(autorelease_pool)
+            return status
+
+def appkit_canvas_skia_replay_callback(window_handle: usize, canvas: usize, scale: f32, font: usize) -> i32 can[Ui.Draw, Ui.Text, Unsafe.PointerCast]:
+    return UiAppKitCanvas::skia_replay(window_handle, canvas, scale, font)
+
+export fn elisa_appkit_canvas_skia_replay(window_handle: usize, canvas: usize, scale: f32, font: usize) -> i32 = appkit_canvas_skia_replay_callback

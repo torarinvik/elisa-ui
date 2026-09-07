@@ -94,9 +94,10 @@ repository, but a host can fetch Skia's DEPS, build `libskia.a`, and run
 scripts/check_skia.sh`. That command compiles the real bridge, links the
 production shim with the Elisa fixture, renders a real off-screen `SkSurface`,
 checks representative shape and glyph pixels, and saves a PNG; it never orders
-an AppKit window onscreen. The AppKit canvas host still uses its CoreGraphics fallback,
-so wiring an AppKit `MTKView`/`SkSurface` host remains a separate integration
-milestone.
+an AppKit window onscreen. `src/platform/appkit/appkit_skia_host.cpp` provides
+the optional AppKit compositor: when linked, `drawRect` hands its borrowed
+CoreGraphics context to this bridge, which presents the temporary Skia surface;
+the ordinary AppKit build still uses its CoreGraphics fallback.
 
 The first slice covers clear, clipping, rounded rectangles, circles, triangles,
 lines, UTF-8 text, and text metrics. The portable `FillRect` command keeps its

@@ -280,6 +280,7 @@ The scripts use the synchronized `../wasm-sdk-compiler` checkout by default
 ```sh
 scripts/build_native.sh   # -> build/hello_native (needs brew's sdl3 and sdl3_ttf)
 scripts/build_appkit_canvas.sh # -> build/hello_appkit_canvas.app (macOS)
+scripts/build_appkit_skia.sh    # -> build/hello_appkit_skia.app (macOS + pinned Skia)
 scripts/build_wapp.sh     # -> build/hello.wapp (+ build/hello.wasm)
 scripts/check_wapp.sh      # inspect an existing package without recompiling
 scripts/run_tests.sh      # builds and runs test/*_test.elisa
@@ -317,6 +318,13 @@ AppKit view and renders one frame off-screen without showing or activating a
 window; `scripts/check_appkit_canvas.sh` uses this mode automatically. Add
 `ELISA_UI_SNAPSHOT=/absolute/path/frame.png` to save that frame for visual
 regression inspection without foregrounding the application.
+
+The optional Skia custom-canvas product uses the pinned CPU-raster bridge and
+can be built/checked headlessly with
+`SKIA_ROOT=/path/to/skia SKIA_OUT=/path/to/skia/out/elisa scripts/check_appkit_skia.sh`.
+It presents the Elisa command batch through Skia into an AppKit/CoreGraphics
+context; the ordinary canvas build retains its CoreGraphics fallback when no
+Skia SDK is supplied.
 
 The native backend loads a font with SDL_ttf; set `ELISA_UI_FONT` to override
 the default. Text still measures through the platform contract on both

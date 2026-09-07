@@ -56,6 +56,9 @@ Externally imposed symbols are kept at the edges:
   the source revision and CPU-raster build contract are pinned in
   `third_party/skia.lock`. A host still supplies the fetched SDK/build output;
   `ui_skia.elisa` remains compiler- and headless-testable without it.
+- The optional AppKit/Skia compositor in
+  `src/platform/appkit/appkit_skia_host.cpp` is linked only by the Skia canvas
+  product; the standard AppKit product keeps its CoreGraphics fallback.
 
 The two Objective-C files total 1,486 lines, but the custom canvas shim has no
 framework state table, widget/layout traversal, rendering path, text policy,
@@ -147,7 +150,7 @@ module-private.
 | SDL3 native | implemented-tested | `scripts/run_tests.sh`; SDL keymap/text tests and dummy-video smoke path pass. |
 | AppKit native controls | implemented-tested | `scripts/check_appkit.sh` creates and reads real NSWindow/NSView/control objects without ordering a window onscreen. |
 | AppKit custom canvas | implemented-tested | `scripts/check_appkit_canvas.sh` builds/signs the app, renders an off-screen PNG, and exercises semantic-object identity and callbacks. |
-| Skia custom painter | implemented-tested with a real off-screen surface; AppKit host integration planned | `third_party/skia.lock` pins the source/build tuple. With that checkout and `libskia.a`, `scripts/check_skia.sh` links the production C++ bridge, renders the Elisa fixture into a CPU-raster `SkSurface`, checks exact pixels, and writes a PNG without foregrounding a window. The repository does not vendor the multi-gigabyte SDK/build output. |
+| Skia custom painter | implemented-tested with real off-screen and AppKit/CG contexts; foreground window verification pending | `third_party/skia.lock` pins the source/build tuple. `scripts/check_skia.sh` verifies the CPU-raster surface; `scripts/check_appkit_skia.sh` additionally builds the optional AppKit compositor and presents the fixture into a headless CoreGraphics bitmap context, checking exact shape and glyph pixels. The repository does not vendor the multi-gigabyte SDK/build output. |
 | Optional feature view | implemented-tested at Elisa boundary; host activation integration planned | `test/feature_view_test.elisa` covers typed identity, activation tokens, stale polling, terminal failures, retry generations, cancellation, owner disposal, and invalidation. The SDK/host remains responsible for actual component activation and deactivation. |
 | WasmBrowser hosted | implemented-tested for fresh package/inspect; runtime launch planned | `ELISA_UI_STAGE1=../wasm-sdk-compiler bash scripts/build_wapp.sh hello` now emits and packs the component, and `scripts/check_wapp.sh` passes profile/import/export inspection. Runtime launch and device execution still need dedicated fixtures. |
 | Android standalone | planned | No Android build or device fixture exists in this checkout. |
@@ -228,7 +231,9 @@ the pinned revision and the lockfile's CPU-raster archive, the same gate also
 links the production C++ host shim and runs
 `test/skia_offscreen_test.elisa` against a real off-screen `SkSurface`, checking
 background, rounded-fill, circle, triangle, and CoreText-backed glyph pixels
-before writing a PNG.
+before writing a PNG. `scripts/check_appkit_skia.sh` also builds the optional
+Skia AppKit product and verifies its CoreGraphics compositor against a bitmap
+context without opening or activating a window.
 The gate rejects AppKit imports in that shim even when no SDK is installed.
 The repository intentionally keeps the SDK/build output external because it is
 multi-gigabyte; the lockfile and GN arguments make the host fetch reproducible.

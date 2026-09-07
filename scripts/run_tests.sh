@@ -55,7 +55,7 @@ for source in "$ROOT"/test/*_test.elisa; do
   name="$(basename "$source" .elisa)"
   # The real Skia fixture is a library entry point driven by its C++ host;
   # check_skia_offscreen.sh owns its compile/link/run lifecycle.
-  if [[ "$name" == "skia_offscreen_test" ]]; then
+  if [[ "$name" == "skia_offscreen_test" || "$name" == "appkit_skia_host_test" ]]; then
     continue
   fi
   bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ROOT/build/$name.o" "$source"
