@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `f1a4bfd49c78be57dc80cb6078452b64135358fc` on branch `work` |
+| elisa-ui revision | `6b024b3aad73918067332106b29f32a2c0aed00e` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -200,6 +200,8 @@ balanced save/restore transform, including cleanup of any outstanding clips.
 controls, SDL3, CoreGraphics fallback, Skia, hosted commands, or headless.
 `test/skia_painter_test.elisa` records the full six-command replay through a
 headless FFI shim, including clip and scale balancing and stale-handle cleanup.
+Skia retained rectangles use an Elisa-bounded rounded-corner policy and a
+narrow `SkRRect` primitive without changing the six-command wire format.
 Attaching a live `UiSkia` canvas upgrades a custom profile to `Renderer.Skia`.
 
 The shared `examples/hello/app.elisa` now uses `UiHandles::Handle` values for
