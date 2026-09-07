@@ -91,17 +91,19 @@ extend UiAppKitCanvas:
                 CFRelease(native_identifier) if native_identifier != 0
                 CFRelease(native_label) if native_label != 0
                 CFRelease(native_help) if native_help != 0
-            # Drop Elisa's ownership for semantic nodes that disappeared. The
-            # committed AppKit array has already switched to the new list, so
-            # releasing these handles cannot invalidate a current child.
+            # Capture handles that are leaving the semantic tree before the
+            # previous-frame arrays are overwritten. They cannot be released
+            # until after Cocoa receives the replacement child list.
+            accessibility_stale_count <- 0
             for previous_index in 0..<previous_count:
                 previous_id: usize = accessibility_previous_ids[previous_index]
                 retained: mutable bool = false
                 for next_index in 0..<next_count:
                     retained <- true if accessibility_next_ids[next_index] == previous_id
-                if not retained:
-                    stale_handle: usize = accessibility_previous_handles[previous_index]
-                    elisa_appkit_canvas_accessibility_release(stale_handle) if stale_handle != 0
+                if not retained and accessibility_stale_count < UiCore::MAX_ACCESSIBILITY_NODES:
+                    accessibility_stale_handles[accessibility_stale_count] <- accessibility_previous_handles[previous_index]
+                    accessibility_stale_count <- accessibility_stale_count + 1
+
             accessibility_previous_count <- next_count
             for index in 0..<accessibility_previous_count:
                 accessibility_previous_ids[index] <- accessibility_next_ids[index]
@@ -113,6 +115,16 @@ extend UiAppKitCanvas:
                 previous_state.help <- sview(&accessibility_previous_help_storage[index * ACCESSIBILITY_TEXT_CAPACITY], 0, previous_state.help.len)
                 accessibility_previous[index] <- previous_state
             commit_accessibility_children()
+            # Install the replacement child list before dropping Elisa's
+            # ownership for semantic nodes that disappeared. The CFArray passed
+            # to Cocoa intentionally has no retain callbacks; Elisa's handle
+            # table is therefore the lifetime that keeps each element alive
+            # while it remains in the view's currently committed list.
+            for stale_index in 0..<accessibility_stale_count:
+                stale_handle: usize = accessibility_stale_handles[stale_index]
+                elisa_appkit_canvas_accessibility_release(stale_handle) if stale_handle != 0
+                accessibility_stale_handles[stale_index] <- 0
+            accessibility_stale_count <- 0
             if layout_changed:
                 rebuild_accessibility_tooltips(next_count)
                 elisa_appkit_canvas_accessibility_invalidate_cursor_rects(canvas_window)
