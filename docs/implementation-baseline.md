@@ -135,8 +135,8 @@ names across the source tree, covering all backend and test include graphs.
 
 The core and widget operation facades follow the same boundary: `ui_core.elisa`
 is a 12-line include surface over typed, frame, accessibility, geometry, event,
-and retained state modules; the frame implementation is now 291 lines and the
-semantic-node builder is 106 lines, with semantic diff/relationship queries in
+and retained state modules; the frame implementation is now 310 lines and the
+semantic-node builder is 94 lines, with semantic diff/relationship queries in
 `ui_core_semantics.elisa`. `ui_ops.elisa` is a 10-line include surface over query,
 layout, scrolling, hit, paint, and pointer modules. The WasmBrowser adapter is
 now an example of the intended refactoring boundary:
