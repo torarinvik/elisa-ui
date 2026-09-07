@@ -164,10 +164,34 @@ extend UiSkia:
             return false if index >= MAX_FONT_BINDINGS
             return UiSkia::draw_ready_text(skia_font_binding_fonts[index], resource, run, color)
 
+        # Font fallback is a framework policy, not a Skia or host decision.
+        # Prefer the primary generation when it is ready and bound; otherwise
+        # use the optional fallback generation without exposing native font
+        # handles to the caller. An invalid fallback simply fails closed.
+        def draw_bound_text_with_fallback(primary: UiResources::ResourceHandle, fallback: UiResources::ResourceHandle, run: UiCore::TextRun, color: UiCore::Color) -> bool can[Ui.Draw, Ui.Text]:
+            _ = UiSkia::prune_bindings()
+            index: mutable usize = font_binding_index(primary) if UiResources::state(primary) == UiResources::State.Ready else MAX_FONT_BINDINGS
+            resource: mutable UiResources::ResourceHandle = primary
+            if index >= MAX_FONT_BINDINGS:
+                index <- font_binding_index(fallback) if UiResources::state(fallback) == UiResources::State.Ready else MAX_FONT_BINDINGS
+                resource <- fallback
+            return false if index >= MAX_FONT_BINDINGS
+            return UiSkia::draw_ready_text(skia_font_binding_fonts[index], resource, run, color)
+
         def measure_bound_text_width(resource: UiResources::ResourceHandle, text: sview, size: f32) -> f32:
             _ = UiSkia::prune_bindings()
             return 0.0 if UiResources::state(resource) != UiResources::State.Ready
             index: usize = font_binding_index(resource)
+            return 0.0 if index >= MAX_FONT_BINDINGS
+            return UiSkia::measure_ready_text_width(skia_font_binding_fonts[index], resource, text, size)
+
+        def measure_bound_text_width_with_fallback(primary: UiResources::ResourceHandle, fallback: UiResources::ResourceHandle, text: sview, size: f32) -> f32:
+            _ = UiSkia::prune_bindings()
+            index: mutable usize = font_binding_index(primary) if UiResources::state(primary) == UiResources::State.Ready else MAX_FONT_BINDINGS
+            resource: mutable UiResources::ResourceHandle = primary
+            if index >= MAX_FONT_BINDINGS:
+                index <- font_binding_index(fallback) if UiResources::state(fallback) == UiResources::State.Ready else MAX_FONT_BINDINGS
+                resource <- fallback
             return 0.0 if index >= MAX_FONT_BINDINGS
             return UiSkia::measure_ready_text_width(skia_font_binding_fonts[index], resource, text, size)
 
@@ -178,10 +202,30 @@ extend UiSkia:
             return 0.0 if index >= MAX_FONT_BINDINGS
             return UiSkia::ready_font_ascent(skia_font_binding_fonts[index], resource, size)
 
+        def bound_font_ascent_with_fallback(primary: UiResources::ResourceHandle, fallback: UiResources::ResourceHandle, size: f32) -> f32:
+            _ = UiSkia::prune_bindings()
+            index: mutable usize = font_binding_index(primary) if UiResources::state(primary) == UiResources::State.Ready else MAX_FONT_BINDINGS
+            resource: mutable UiResources::ResourceHandle = primary
+            if index >= MAX_FONT_BINDINGS:
+                index <- font_binding_index(fallback) if UiResources::state(fallback) == UiResources::State.Ready else MAX_FONT_BINDINGS
+                resource <- fallback
+            return 0.0 if index >= MAX_FONT_BINDINGS
+            return UiSkia::ready_font_ascent(skia_font_binding_fonts[index], resource, size)
+
         def bound_font_line_height(resource: UiResources::ResourceHandle, size: f32) -> f32:
             _ = UiSkia::prune_bindings()
             return 0.0 if UiResources::state(resource) != UiResources::State.Ready
             index: usize = font_binding_index(resource)
+            return 0.0 if index >= MAX_FONT_BINDINGS
+            return UiSkia::ready_font_line_height(skia_font_binding_fonts[index], resource, size)
+
+        def bound_font_line_height_with_fallback(primary: UiResources::ResourceHandle, fallback: UiResources::ResourceHandle, size: f32) -> f32:
+            _ = UiSkia::prune_bindings()
+            index: mutable usize = font_binding_index(primary) if UiResources::state(primary) == UiResources::State.Ready else MAX_FONT_BINDINGS
+            resource: mutable UiResources::ResourceHandle = primary
+            if index >= MAX_FONT_BINDINGS:
+                index <- font_binding_index(fallback) if UiResources::state(fallback) == UiResources::State.Ready else MAX_FONT_BINDINGS
+                resource <- fallback
             return 0.0 if index >= MAX_FONT_BINDINGS
             return UiSkia::ready_font_line_height(skia_font_binding_fonts[index], resource, size)
 

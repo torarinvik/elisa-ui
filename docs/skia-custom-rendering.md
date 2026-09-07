@@ -186,10 +186,12 @@ geometry and resource lifetime remain Elisa/SDK responsibilities. The matching
 queries use that same borrowed typeface, avoiding a default-font metric mismatch.
 `bind_font`/`draw_bound_text` provide the stricter generation-keyed form for
 hosts that keep decoded typefaces in a resource cache; bound metric queries use
-the same association. `ui_skia_text.elisa` applies a bounded 1pt minimum font
-size to every framework draw and metric query; direct native calls with a
-non-positive size are rejected by the bridge instead of selecting an implicit
-fallback.
+the same association. `*_with_fallback` forms keep primary/fallback selection
+in Elisa and apply the same choice to drawing and metrics; per-glyph shaping
+fallback remains the host's typeface/shaper responsibility. `ui_skia_text.elisa`
+applies a bounded 1pt minimum font size to every framework draw and metric
+query; direct native calls with a non-positive size are rejected by the bridge
+instead of selecting an implicit fallback.
 
 The checkout pins the Skia source/build contract but does not vendor the SDK
 or generated archive. Build the C++ shim only in a target that supplies Skia
