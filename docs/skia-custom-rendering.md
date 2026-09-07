@@ -104,3 +104,8 @@ only in a target that supplies Skia headers and libraries, then pass its
 `SkCanvas*` through the opaque FFI handle. The Elisa module itself compiles
 without Skia installed, so layout, command generation, and all existing
 headless tests remain independent of the renderer choice.
+
+Native hosts can include [`include/elisa_skia.h`](../include/elisa_skia.h) for
+the exact C declarations. It documents borrowed-handle ownership and keeps the
+production bridge and headless recorder on the same ABI without exposing Skia
+objects to Elisa.
