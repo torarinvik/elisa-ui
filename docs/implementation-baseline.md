@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `3463c19042c61d481facc042b9dfa1fc05078795` on branch `work` |
+| elisa-ui revision | `fa84aa95d1bd792ed374e5fd1fe699a2257c1dee` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -206,6 +206,10 @@ narrow `SkRRect` primitive without changing the six-command wire format.
 The same policy emits a narrow white hairline stroke; shadows remain explicitly
 implemented as a target-specific Skia blur primitive with opacity/radius policy
 still owned by Elisa.
+The custom painter also accepts a borrowed opaque `SkImage*` for destination
+placement and alpha compositing; Elisa validates the rectangle and never retains
+or frees the host-owned image handle. The headless Skia recorder covers valid
+image draws and rejects null, zero-sized, and fully transparent requests.
 Attaching a live `UiSkia` canvas upgrades a custom profile to `Renderer.Skia`.
 That selection also enables the `scale_changes` capability used by the
 balanced logical-to-physical frame transform.
