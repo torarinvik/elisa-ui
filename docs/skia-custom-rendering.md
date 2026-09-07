@@ -37,7 +37,9 @@ primitive adapter rather than a second, drifting geometry policy.
 `UiSkia::surface_lost()` explicitly invalidates the borrowed canvas without
 discarding retained commands or logical resources. `surface_generation()`
 advances on loss and every new attachment, giving a host a cheap stale-surface
-token while the Elisa widget tree survives device/surface recreation.
+token while the Elisa widget tree survives device/surface recreation. Passing a
+zero canvas to `attach()`/`attach_scaled()` follows the same loss path and
+advances the token instead of silently reusing the prior generation.
 
 Hosts that need an explicit completeness signal can call
 `UiSkia::render_checked()`: it replays the bounded batch but returns `false`
