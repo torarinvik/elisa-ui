@@ -78,6 +78,16 @@ def main() -> i64:
     unicode_selection: UiCore::AccessibilityNode = UiCore::accessibility_at(5)
     check("semantic selection ranges use UTF-16 units", unicode_selection.selection_location == 3 and unicode_selection.selection_length == 0)
 
+    malformed_label_bytes: mutable u8[1] = zeroed
+    malformed_label_bytes[0] <- 255
+    malformed_label: sview = sview(&malformed_label_bytes[0], 0, 1)
+    UiCore::begin_frame()
+    UiCore::accessibility_with_metadata(
+        UiCore::AccessibilityRole.Button, malformed_label, "", UiCore::Rect(0.0, 0.0, 10.0, 10.0),
+        13, 13, true, false, false, 0.0, "", "", 0, 0, 0,
+        0, 0, 0, 0.0, 1.0, false)
+    check("malformed labels are dropped before semantic storage", UiCore::accessibility_count() == 0 and UiCore::accessibility_overflowed())
+
     if failures == 0:
         _ = puts("accessibility metadata: all checks passed")
         return 0

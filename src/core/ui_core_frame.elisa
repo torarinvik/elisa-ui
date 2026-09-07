@@ -75,6 +75,14 @@ extend UiCore:
             # Views carry a signed extent. A negative extent is malformed and
             # must not reach a backend's counted-string or pointer arithmetic.
             return if label.len < 0 or help.len < 0 or text_value.len < 0 or selected_text.len < 0
+            # Sanitize the label before deciding whether the node is nameable.
+            # A foreign counted view can advertise bytes while carrying null
+            # storage (or malformed UTF-8); retaining it would publish an empty
+            # accessibility element despite the non-empty raw length check.
+            safe_label: sview = bounded_text(label)
+            if safe_label.len == 0:
+                accessibility_dropped <- true
+                return
             # `MAX_ACCESSIBILITY_NODES` is also the relationship sentinel. Do
             # not let a caller publish that sentinel (or an arbitrary large
             # pointer-sized identity) as a real node ID; native adapters use
@@ -103,7 +111,6 @@ extend UiCore:
             if has_range:
                 safe_value <- safe_range_minimum if safe_value < safe_range_minimum
                 safe_value <- safe_range_maximum if safe_value > safe_range_maximum
-            safe_label: sview = bounded_text(label)
             safe_help: sview = bounded_text(help)
             safe_text_value: sview = bounded_text(text_value)
             safe_selected_text: sview = bounded_text(selected_text)
