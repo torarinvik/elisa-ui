@@ -100,6 +100,12 @@ module UiCapi:
                 if safe_length >= 0:
                     safe_length <- UiCore::MAX_TEXT_BYTES.i64() if safe_length > UiCore::MAX_TEXT_BYTES.i64()
                     pointer: uintptr = value.cast[uintptr] can Unsafe.PointerCast
+                    # Keep the invariant explicit even if an unsafe cast wraps
+                    # a null address in an optional `cstr` value. A counted
+                    # length never grants permission to dereference address 0.
+                    if pointer == 0.uintptr():
+                        text_dispatch_active <- false
+                        return
                     for index in 0..<safe_length.usize():
                         trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic]:
                             byte: u8& = (pointer + index.uintptr()).cast[u8&]
