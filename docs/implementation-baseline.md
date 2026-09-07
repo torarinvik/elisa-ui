@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `f1755be` (`fix(appkit): avoid duplicate frame replay after skia failure`) on branch `work` |
+| elisa-ui revision | `bc0a83b` (`feat(text): strengthen grapheme boundaries`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -366,6 +366,11 @@ separate host-enforced security boundary.
   rules in the shared grapheme walker, so decomposed Jamo and precomposed
   syllables keep atomic caret/deletion behavior; `widget_layout_text_test.elisa`
   covers both forms alongside the existing emoji and combining-mark cases.
+- The grapheme walker now keeps its bounded Unicode property tables in the
+  private `ui_flat_grapheme.elisa` module. Controls, Prepend characters,
+  common Indic SpacingMarks/linkers, supplementary variation selectors, and
+  Extended-Pictographic ZWJ context are covered by deterministic text tests;
+  non-emoji ZWJ sequences no longer swallow their following scalar.
 - Bounded Elisa scans that return a derived value now use scoped `for`
   expressions where an early result is the only loop state, including the
   UTF-8 prefix, scalar-count, and UTF-16-count walks in `UiText`, plus
