@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `e681ad3d1f03eb2963eb73abf1243ae253df3aa3` on branch `work` |
+| elisa-ui revision | `93fd9b59119563d15d34bd4c6462559d6d953c47` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -223,6 +223,9 @@ the framework ABI.
 The corresponding ready-font width, ascent, and line-height queries use the
 same borrowed typeface, so custom layout metrics and Skia text rasterization
 share one font authority.
+The C++ bridge wraps each borrowed typeface in a temporary `sk_sp` reference
+for SkFont's ownership contract without transferring disposal authority from
+the host.
 Attaching a live `UiSkia` canvas upgrades a custom profile to `Renderer.Skia`.
 That selection also enables the `scale_changes` capability used by the
 balanced logical-to-physical frame transform.
