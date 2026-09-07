@@ -48,7 +48,7 @@ SkPaint stroke_paint(std::uint8_t red, std::uint8_t green, std::uint8_t blue, st
 
 SkFont font_for(float size) {
     SkFont font;
-    font.setSize(size > 0.0f ? size : 1.0f);
+    font.setSize(size);
     font.setEdging(SkFont::Edging::kAntiAlias);
     return font;
 }
@@ -165,7 +165,7 @@ extern "C" void elisa_skia_canvas_draw_text_with_font(std::size_t canvas_handle,
                                                         std::uint8_t red, std::uint8_t green,
                                                         std::uint8_t blue, std::uint8_t alpha) {
     if (SkCanvas *target = canvas(canvas_handle);
-        target != nullptr && font_handle != 0 && text != nullptr && length > 0) {
+        target != nullptr && font_handle != 0 && text != nullptr && length > 0 && size > 0.0f) {
         SkFont font = font_for(size, reinterpret_cast<SkTypeface *>(font_handle));
         target->drawSimpleText(text, length, SkTextEncoding::kUTF8, x, y, font,
                                fill_paint(red, green, blue, alpha));
@@ -175,20 +175,20 @@ extern "C" void elisa_skia_canvas_draw_text_with_font(std::size_t canvas_handle,
 extern "C" float elisa_skia_measure_text_width_with_font(std::size_t font_handle,
                                                            const char *text, std::size_t length,
                                                            float size) {
-    if (font_handle == 0 || text == nullptr || length == 0) return 0.0f;
+    if (font_handle == 0 || text == nullptr || length == 0 || size <= 0.0f) return 0.0f;
     return font_for(size, reinterpret_cast<SkTypeface *>(font_handle))
         .measureText(text, length, SkTextEncoding::kUTF8);
 }
 
 extern "C" float elisa_skia_font_ascent_with_font(std::size_t font_handle, float size) {
-    if (font_handle == 0) return 0.0f;
+    if (font_handle == 0 || size <= 0.0f) return 0.0f;
     SkFontMetrics metrics;
     font_for(size, reinterpret_cast<SkTypeface *>(font_handle)).getMetrics(&metrics);
     return -metrics.fAscent;
 }
 
 extern "C" float elisa_skia_text_line_height_with_font(std::size_t font_handle, float size) {
-    if (font_handle == 0) return 0.0f;
+    if (font_handle == 0 || size <= 0.0f) return 0.0f;
     SkFontMetrics metrics;
     font_for(size, reinterpret_cast<SkTypeface *>(font_handle)).getMetrics(&metrics);
     return metrics.fDescent - metrics.fAscent + metrics.fLeading;
@@ -227,24 +227,26 @@ extern "C" void elisa_skia_canvas_fill_line(std::size_t handle, float x0, float 
 extern "C" void elisa_skia_canvas_draw_text(std::size_t handle, const char *text, std::size_t length,
                                               float x, float y, float size, std::uint8_t red,
                                               std::uint8_t green, std::uint8_t blue, std::uint8_t alpha) {
-    if (SkCanvas *target = canvas(handle); target != nullptr && text != nullptr && length > 0) {
+    if (SkCanvas *target = canvas(handle); target != nullptr && text != nullptr && length > 0 && size > 0.0f) {
         target->drawSimpleText(text, length, SkTextEncoding::kUTF8, x, y, font_for(size),
                                fill_paint(red, green, blue, alpha));
     }
 }
 
 extern "C" float elisa_skia_measure_text_width(const char *text, std::size_t length, float size) {
-    if (text == nullptr || length == 0) return 0.0f;
+    if (text == nullptr || length == 0 || size <= 0.0f) return 0.0f;
     return font_for(size).measureText(text, length, SkTextEncoding::kUTF8);
 }
 
 extern "C" float elisa_skia_font_ascent(float size) {
+    if (size <= 0.0f) return 0.0f;
     SkFontMetrics metrics;
     font_for(size).getMetrics(&metrics);
     return -metrics.fAscent;
 }
 
 extern "C" float elisa_skia_text_line_height(float size) {
+    if (size <= 0.0f) return 0.0f;
     SkFontMetrics metrics;
     font_for(size).getMetrics(&metrics);
     return metrics.fDescent - metrics.fAscent + metrics.fLeading;
