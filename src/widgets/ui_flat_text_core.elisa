@@ -63,24 +63,49 @@ extend UiFlat:
         def regional_indicator(scalar: u32) -> bool:
             return scalar >= 127462 and scalar <= 127487
 
+        # Hangul syllable composition is another grapheme rule that cannot be
+        # reduced to a generic combining-mark range. Keep the small UAX #29
+        # L/V/T/LV/LVT property partition here so decomposed Korean text has
+        # the same caret and deletion behavior as precomposed syllables.
+        def hangul_kind(scalar: u32) -> u32:
+            return 1 if (scalar >= 4352 and scalar <= 4447) or (scalar >= 43360 and scalar <= 43388)
+            return 2 if (scalar >= 4448 and scalar <= 4519) or (scalar >= 55216 and scalar <= 55238)
+            return 3 if (scalar >= 4520 and scalar <= 4607) or (scalar >= 55243 and scalar <= 55291)
+            if scalar >= 44032 and scalar <= 55203:
+                return 4 if (scalar - 44032) % 28 == 0 else 5
+            return 0
+
+        def hangul_joins(previous: u32, current: u32) -> bool:
+            previous_kind: u32 = hangul_kind(previous)
+            current_kind: u32 = hangul_kind(current)
+            return true if previous_kind == 1 and (current_kind == 1 or current_kind == 2 or current_kind == 4 or current_kind == 5)
+            return true if (previous_kind == 4 or previous_kind == 2) and (current_kind == 2 or current_kind == 3)
+            return true if (previous_kind == 5 or previous_kind == 3) and current_kind == 3
+            return false
+
         def next_grapheme(text: sview, position: usize) -> usize:
             return text.len if position >= text.len
             first: u32 = utf8_scalar_value(text, position)
             cursor: mutable usize = position + utf8_scalar_bytes(text, position)
+            previous_scalar: mutable u32 = first
             if first == 13 and cursor < text.len and utf8_scalar_value(text, cursor) == 10:
                 return cursor + 1
             if regional_indicator(first) and cursor < text.len and regional_indicator(utf8_scalar_value(text, cursor)):
+                previous_scalar <- utf8_scalar_value(text, cursor)
                 cursor <- cursor + utf8_scalar_bytes(text, cursor)
             limit: usize = text.len.usize()
             result: usize =
-                for _ in 0..<limit |cursor| -> cursor:
+                for _ in 0..<limit |cursor, previous_scalar| -> cursor:
                     break if cursor >= limit
                     scalar: u32 = utf8_scalar_value(text, cursor)
-                    if extends_grapheme(scalar):
+                    if extends_grapheme(scalar) or hangul_joins(previous_scalar, scalar):
                         cursor <- cursor + utf8_scalar_bytes(text, cursor)
+                        previous_scalar <- scalar
                     elif scalar == 8205:
                         cursor <- cursor + utf8_scalar_bytes(text, cursor)
-                        cursor <- cursor + utf8_scalar_bytes(text, cursor) if cursor < limit
+                        if cursor < limit:
+                            previous_scalar <- utf8_scalar_value(text, cursor)
+                            cursor <- cursor + utf8_scalar_bytes(text, cursor)
                     else:
                         break
             return result

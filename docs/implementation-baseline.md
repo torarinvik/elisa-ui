@@ -362,6 +362,10 @@ separate host-enforced security boundary.
   header consumer is tracked beside it; the check script compiles those real
   examples instead of generating temporary source, so the documented boundary
   remains runnable and reviewable.
+- Elisa text navigation now applies the UAX-style Hangul L/V/T/LV/LVT join
+  rules in the shared grapheme walker, so decomposed Jamo and precomposed
+  syllables keep atomic caret/deletion behavior; `widget_layout_text_test.elisa`
+  covers both forms alongside the existing emoji and combining-mark cases.
 - Bounded Elisa scans that return a derived value now use scoped `for`
   expressions where an early result is the only loop state, including the
   UTF-8 prefix, scalar-count, and UTF-16-count walks in `UiText`, plus

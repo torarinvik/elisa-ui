@@ -114,7 +114,8 @@ verified bytes and decode/upload.
   bounded, allocation-free 32-step undo/redo history across fields. A complete
   IME composition is coalesced into one history entry. Character movement and
   deletion preserve combining sequences, variation selectors, emoji modifiers,
-  regional-indicator flags and zero-width-joiner emoji as atomic clusters; the
+  regional-indicator flags, zero-width-joiner emoji, and Hangul L/V/T syllable
+  composition as atomic clusters; the
   fixed-capacity storage boundary uses the same cluster rules. Public text APIs
   retain only a well-formed UTF-8 prefix, rejecting invalid, overlong, surrogate
   and out-of-range sequences before they reach a painter or native bridge.
