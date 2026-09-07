@@ -13,6 +13,7 @@
 #include "include/core/SkFont.h"
 #include "include/core/SkPaint.h"
 #include "include/core/SkRect.h"
+#include "include/core/SkRRect.h"
 #include "include/core/SkPath.h"
 
 namespace {
@@ -77,6 +78,18 @@ extern "C" void elisa_skia_canvas_fill_rect(std::size_t handle, float x, float y
                                              std::uint8_t alpha) {
     if (SkCanvas *target = canvas(handle)) {
         target->drawRect(SkRect::MakeXYWH(x, y, width, height), fill_paint(red, green, blue, alpha));
+    }
+}
+
+extern "C" void elisa_skia_canvas_fill_round_rect(std::size_t handle, float x, float y, float width,
+                                                    float height, float radius, std::uint8_t red,
+                                                    std::uint8_t green, std::uint8_t blue,
+                                                    std::uint8_t alpha) {
+    if (SkCanvas *target = canvas(handle)) {
+        const SkRect rect = SkRect::MakeXYWH(x, y, width, height);
+        const SkScalar safe_radius = radius > 0.0f ? radius : 0.0f;
+        target->drawRRect(SkRRect::MakeRectXY(rect, safe_radius, safe_radius),
+                          fill_paint(red, green, blue, alpha));
     }
 }
 
