@@ -1,0 +1,24 @@
+# Opaque widget tokens for the C application adapter.
+#
+# The retained flat layer still uses a bounded slot internally, but that slot
+# is not a public C ABI. Elisa combines it with the current tree lifetime into
+# an opaque scalar before the callback crosses the language boundary. C callers
+# may retain and compare the token while the tree is live; they must not decode
+# or persist its representation.
+
+include "../widgets/ui_flat_identity.elisa"
+
+module UiCapiWidget:
+    public:
+        const INVALID: u64 = 0
+        const SLOT_RADIX: u64 = 4294967296
+
+        def token_for_index(index: usize) -> u64:
+            return INVALID if not UiFlat::identity_is_valid(index)
+            lifetime: u64 = UiFlat::identity_lifetime().u64()
+            token: u64 = lifetime * SLOT_RADIX + index.u64()
+            # Zero is reserved for an invalid callback target. The epoch starts
+            # at one and is monotonic, but keep this guard explicit so a future
+            # lifetime policy cannot turn a valid slot into the sentinel.
+            return INVALID if token == INVALID
+            return token

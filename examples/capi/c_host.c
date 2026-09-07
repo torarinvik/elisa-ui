@@ -24,7 +24,7 @@ static int32_t editing_length;
 
 void elisa_ui_on_init(void) {}
 void elisa_ui_on_frame(void) {}
-void elisa_ui_on_widget_event(size_t widget, int32_t event) {
+void elisa_ui_on_widget_event(elisa_ui_widget_handle widget, int32_t event) {
     (void)widget;
     (void)event;
 }

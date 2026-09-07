@@ -18,6 +18,7 @@
 # the six contract functions are one delegating call each.
 
 include "../core/ui_core.elisa"
+include "./ui_capi_widget.elisa"
 
 # The C app's half. `EventRecord&` is a borrow, so C sees `const elisa_ui_event *`.
 extern elisa_ui_on_init() -> void
@@ -25,7 +26,7 @@ extern elisa_ui_on_event(event: UiCore::EventRecord&) -> void
 extern elisa_ui_on_text_input(text: cstr, length: usize) -> void
 extern elisa_ui_on_text_editing(text: cstr, length: usize, selected_start: i32, selected_length: i32) -> void
 extern elisa_ui_on_frame() -> void
-extern elisa_ui_on_widget_event(widget: usize, event: i32) -> void
+extern elisa_ui_on_widget_event(widget: u64, event: i32) -> void
 
 # The forwarding, named for the C callbacks it reaches. Public rather than
 # private because the shims below are top-level and therefore outside this
@@ -73,7 +74,10 @@ module UiCapiApp:
             elisa_ui_on_frame()
 
         def on_widget_event(widget: usize, code: i32) -> void:
-            elisa_ui_on_widget_event(widget, code)
+            # Convert the compatibility layer's internal slot exactly once.
+            # The C callback receives an opaque generation-scoped token, never
+            # a retained-arena index that could be mistaken for a stable ABI.
+            elisa_ui_on_widget_event(UiCapiWidget::token_for_index(widget), code)
 
 # The application half of the contract from ui_core.elisa. Top-level by name,
 # like the platform half in each backend, and delegating into the module.

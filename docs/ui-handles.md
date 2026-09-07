@@ -51,11 +51,13 @@ clipboard actions, and undo/redo) remain in Elisa; native adapters only forward
 their protocol facts. Queries such as `value`, `selected`, `text_value`,
 `is_focused`, and `scroll_offset` return neutral values for stale handles.
 
-At the legacy `app_widget_event(widget, event)` seam, use
+At the legacy Elisa `app_widget_event(widget, event)` seam, use
 `event_is(event, UiConst::WidgetEvent.Change)` and
 `callback_matches(widget, handle)`. These keep event ordinals and callback
-identity checks typed at the application boundary without exposing a raw arena
-slot to ordinary view code.
+identity checks typed at the application boundary. The optional C app adapter
+converts that internal slot exactly once to an opaque `elisa_ui_widget_handle`
+token carrying the tree lifetime; C code stores and compares the token but
+never decodes a retained-arena index. A reset/rebuild invalidates old tokens.
 
 `parent`, `first_child`, and `next_sibling` keep tree traversal typed. Theme
 tokens are available through `theme`/`set_theme`; selection and marked-text

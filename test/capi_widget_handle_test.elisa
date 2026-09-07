@@ -1,0 +1,84 @@
+# The C app adapter must never expose a raw retained-arena index. Its callback
+# receives an opaque token whose generation changes when the retained tree is
+# reset and rebuilt.
+
+include "../src/capi/ui_capi_app.elisa"
+include "../src/widgets/ui_handles.elisa"
+
+extern puts(text: cstr) -> i64
+
+def ui_measure_text_width(text: sview, size: f32) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size
+
+def ui_font_ascent(size: f32) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return 0
+
+global mutable failures: i32 = 0
+global mutable callback_count: i32 = 0
+global mutable last_widget: u64 = 0
+global mutable last_event: i32 = -1
+
+def elisa_ui_on_init() -> void:
+    pass
+
+def elisa_ui_on_event(event: UiCore::EventRecord&) -> void:
+    pass
+
+def elisa_ui_on_text_input(text: cstr, length: usize) -> void:
+    pass
+
+def elisa_ui_on_text_editing(text: cstr, length: usize, selected_start: i32, selected_length: i32) -> void:
+    pass
+
+def elisa_ui_on_frame() -> void:
+    pass
+
+def elisa_ui_on_widget_event(widget: u64, event: i32) -> void:
+    callback_count <- callback_count + 1
+    last_widget <- widget
+    last_event <- event
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiHandles::reset()
+    first_root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 4.0, 2.0, UiCore::rgb(20, 20, 24))
+    first_button: UiHandles::Handle = UiHandles::button(first_root, 80.0, 24.0, UiCore::rgb(40, 40, 44), UiCore::rgb(60, 60, 68), UiCore::rgb(80, 80, 90))
+    app_widget_event(UiHandles::index(first_button), UiConst::WidgetEvent.Click.i32())
+    first_token: u64 = last_widget
+    check("first widget callback reaches C app", callback_count == 1)
+    check("first widget callback is opaque and nonzero", first_token != UiCapiWidget::INVALID)
+    check("first widget callback keeps its event", last_event == UiConst::WidgetEvent.Click.i32())
+
+    UiHandles::reset()
+    second_root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 4.0, 2.0, UiCore::rgb(20, 20, 24))
+    second_button: UiHandles::Handle = UiHandles::button(second_root, 80.0, 24.0, UiCore::rgb(40, 40, 44), UiCore::rgb(60, 60, 68), UiCore::rgb(80, 80, 90))
+    app_widget_event(UiHandles::index(second_button), UiConst::WidgetEvent.Click.i32())
+    check("rebuilt widget callback reaches C app", callback_count == 2)
+    check("tree reset changes opaque widget identity", last_widget != first_token)
+    check("new widget callback remains nonzero", last_widget != UiCapiWidget::INVALID)
+    check("old typed handle is stale after reset", not UiHandles::is_valid(first_button))
+
+    if failures == 0:
+        _ = puts("capi widget handle: all checks passed")
+        return 0
+    _ = puts("capi widget handle: FAILURES above")
+    return 1

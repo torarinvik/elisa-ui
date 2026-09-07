@@ -371,6 +371,11 @@ separate host-enforced security boundary.
   preserving the opaque boundary for either host language. Event/viewport
   conversion remains in `ui_capi.elisa`, while the bounded text staging slot
   and committed/IME policies live in the focused `ui_capi_text.elisa` extension.
+  The C app callback now receives an opaque, generation-scoped
+  `elisa_ui_widget_handle`; the adapter converts the legacy Elisa slot in
+  `ui_capi_widget.elisa`, so raw retained-arena indexes are no longer a stable
+  public ABI. `test/capi_widget_handle_test.elisa` covers token changes across
+  tree reset/rebuild.
   The executable C host is now the tracked
   [`examples/capi/c_host.c`](../examples/capi/c_host.c) example, and the C++17
   header consumer is tracked beside it; the check script compiles those real

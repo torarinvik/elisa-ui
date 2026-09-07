@@ -13,7 +13,8 @@
  *
  *   A C APP driven by a native backend links src/capi/ui_capi_app.elisa and
  *   IMPLEMENTS the elisa_ui_on_* callbacks below. That file supplies the Elisa
- *   app contract and forwards to them, so a C app never sees an Elisa type.
+ *   app contract and forwards to them, so a C app never sees an Elisa type or
+ *   retained-arena index.
  */
 #ifndef ELISA_UI_H
 #define ELISA_UI_H
@@ -28,8 +29,8 @@ extern "C" {
 /* Packed as 0xMMmmpp (major, minor, patch). The version is returned by Elisa's
  * boundary implementation before any host events are sent. A major mismatch
  * is incompatible; minor/patch changes preserve the existing wire records. */
-#define ELISA_UI_ABI_VERSION_MAJOR 0u
-#define ELISA_UI_ABI_VERSION_MINOR 1u
+#define ELISA_UI_ABI_VERSION_MAJOR 1u
+#define ELISA_UI_ABI_VERSION_MINOR 0u
 #define ELISA_UI_ABI_VERSION_PATCH 0u
 #define ELISA_UI_ABI_VERSION \
     ((ELISA_UI_ABI_VERSION_MAJOR << 16) | \
@@ -118,7 +119,13 @@ void elisa_ui_on_text_input(const char *text, size_t length);
 void elisa_ui_on_text_editing(const char *text, size_t length,
                               int32_t selected_start, int32_t selected_length);
 void elisa_ui_on_frame(void);
-void elisa_ui_on_widget_event(size_t widget, int32_t event);
+/* Opaque retained-widget identity. The token is valid only for the current
+ * retained tree lifetime; zero means that the target was invalid or no longer
+ * addressable. Store and compare it as an opaque value. Do not decode its
+ * representation or persist it across a tree reset/rebuild. */
+typedef uint64_t elisa_ui_widget_handle;
+#define ELISA_UI_WIDGET_HANDLE_INVALID UINT64_C(0)
+void elisa_ui_on_widget_event(elisa_ui_widget_handle widget, int32_t event);
 
 #ifdef __cplusplus
 }
