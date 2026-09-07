@@ -15,7 +15,7 @@ include "../widgets/ui_resources.elisa"
 module UiHarness:
     private:
         global mutable test_time: f64 = 0.0
-        global mutable event_dispatch_active: bool = false
+        global mutable harness_event_dispatch_active: bool = false
 
     public:
         # Start a deterministic application session. The application still
@@ -77,8 +77,8 @@ module UiHarness:
             # Application callbacks may synchronously inject another event.
             # Keep one iterative drain active so the nested event joins the
             # current queue instead of recursively growing the host stack.
-            return if event_dispatch_active
-            event_dispatch_active <- true
+            return if harness_event_dispatch_active
+            harness_event_dispatch_active <- true
             # An app callback may stop this session (or rotate to a new one)
             # while handling the first event. Capture the owner generation
             # before draining so a queued follow-up cannot cross that
@@ -89,7 +89,7 @@ module UiHarness:
                 continue if not UiLifecycle::is_started() or UiLifecycle::generation() != drain_generation
                 continue if UiCore::is_input_event(queued) and not UiLifecycle::accepts_input()
                 app_event(queued)
-            event_dispatch_active <- false
+            harness_event_dispatch_active <- false
 
         def resize(width: f32, height: f32) -> void:
             return if not UiLifecycle::is_started()

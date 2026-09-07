@@ -36,27 +36,27 @@ module UiNavigation:
 
         def reset() -> void:
             for slot in 0..<MAX_ENTRIES:
-                occupied[slot] <- false
-                generations[slot] <- next_generation(generations[slot])
-                owners[slot] <- 0
-                policies[slot] <- BackPolicy.Allow
-                dirty[slot] <- false
-                sequence[slot] <- 0
-            entry_count <- 0
+                navigation_occupied[slot] <- false
+                navigation_generations[slot] <- next_generation(navigation_generations[slot])
+                navigation_owners[slot] <- 0
+                navigation_policies[slot] <- BackPolicy.Allow
+                navigation_dirty[slot] <- false
+                navigation_sequence[slot] <- 0
+            navigation_entry_count <- 0
             navigation_sequence_state <- 0
-            pending_slot <- NONE_SLOT
-            overflowed_state <- false
+            navigation_pending_slot <- NONE_SLOT
+            navigation_overflowed_state <- false
 
         def snapshot() -> Snapshot:
-            return Snapshot{entries: entry_count,
-                pending_confirmation: pending_slot != NONE_SLOT,
-                overflowed: overflowed_state}
+            return Snapshot{entries: navigation_entry_count,
+                pending_confirmation: navigation_pending_slot != NONE_SLOT,
+                overflowed: navigation_overflowed_state}
 
         def overflowed() -> bool:
-            return overflowed_state
+            return navigation_overflowed_state
 
         def is_valid(handle: Handle) -> bool:
-            return handle.slot.usize() < MAX_ENTRIES and occupied[handle.slot.usize()] and generations[handle.slot.usize()] == handle.generation
+            return handle.slot.usize() < MAX_ENTRIES and navigation_occupied[handle.slot.usize()] and navigation_generations[handle.slot.usize()] == handle.generation
 
         # Push records the current view/surface. The owner is application state,
         # not a native pointer; disposing an owner can therefore pop its entries
@@ -65,48 +65,48 @@ module UiNavigation:
             return invalid() if not policy_is_valid(policy)
             free_slot: mutable usize = NONE_SLOT
             for slot in 0..<MAX_ENTRIES:
-                if not occupied[slot]:
+                if not navigation_occupied[slot]:
                     free_slot <- slot
                     break
             if free_slot == NONE_SLOT:
-                overflowed_state <- true
+                navigation_overflowed_state <- true
                 return invalid()
-            occupied[free_slot] <- true
-            generations[free_slot] <- next_generation(generations[free_slot])
-            owners[free_slot] <- owner
-            policies[free_slot] <- policy
-            dirty[free_slot] <- is_dirty
+            navigation_occupied[free_slot] <- true
+            navigation_generations[free_slot] <- next_generation(navigation_generations[free_slot])
+            navigation_owners[free_slot] <- owner
+            navigation_policies[free_slot] <- policy
+            navigation_dirty[free_slot] <- is_dirty
             navigation_sequence_state <- next_sequence(navigation_sequence_state)
-            sequence[free_slot] <- navigation_sequence_state
-            entry_count <- entry_count + 1
-            return Handle{slot: free_slot.u32(), generation: generations[free_slot]}
+            navigation_sequence[free_slot] <- navigation_sequence_state
+            navigation_entry_count <- navigation_entry_count + 1
+            return Handle{slot: free_slot.u32(), generation: navigation_generations[free_slot]}
 
         def top() -> Handle:
             selected: mutable usize = NONE_SLOT
             newest: mutable u64 = 0
             for slot in 0..<MAX_ENTRIES:
-                if occupied[slot] and sequence[slot] >= newest:
+                if navigation_occupied[slot] and navigation_sequence[slot] >= newest:
                     selected <- slot
-                    newest <- sequence[slot]
+                    newest <- navigation_sequence[slot]
             return invalid() if selected == NONE_SLOT
-            return Handle{slot: selected.u32(), generation: generations[selected]}
+            return Handle{slot: selected.u32(), generation: navigation_generations[selected]}
 
         def owner(handle: Handle) -> u32:
             return 0 if not is_valid(handle)
-            return owners[handle.slot.usize()]
+            return navigation_owners[handle.slot.usize()]
 
         def policy(handle: Handle) -> BackPolicy:
             return BackPolicy.Allow if not is_valid(handle)
-            return policies[handle.slot.usize()]
+            return navigation_policies[handle.slot.usize()]
 
         def is_dirty(handle: Handle) -> bool:
-            return is_valid(handle) and dirty[handle.slot.usize()]
+            return is_valid(handle) and navigation_dirty[handle.slot.usize()]
 
         def set_dirty(handle: Handle, value: bool) -> bool:
             return false if not is_valid(handle)
             slot: usize = handle.slot.usize()
-            return false if dirty[slot] == value
-            dirty[slot] <- value
+            return false if navigation_dirty[slot] == value
+            navigation_dirty[slot] <- value
             return true
 
         # Request only reports the policy. Allow/Confirm never silently pop a
@@ -115,13 +115,13 @@ module UiNavigation:
         def request_back() -> BackDecision:
             current: Handle = top()
             return BackDecision.Unhandled if not is_valid(current)
-            if pending_slot != NONE_SLOT:
+            if navigation_pending_slot != NONE_SLOT:
                 return BackDecision.Confirm
             slot: usize = current.slot.usize()
-            if policies[slot] == BackPolicy.Consume:
+            if navigation_policies[slot] == BackPolicy.Consume:
                 return BackDecision.Consumed
-            if policies[slot] == BackPolicy.Confirm and dirty[slot]:
-                pending_slot <- slot
+            if navigation_policies[slot] == BackPolicy.Confirm and navigation_dirty[slot]:
+                navigation_pending_slot <- slot
                 return BackDecision.Confirm
             return BackDecision.Navigate
 
@@ -129,54 +129,54 @@ module UiNavigation:
         # otherwise accepted it. A stale handle cannot pop a recycled entry.
         def commit(handle: Handle) -> bool:
             return false if not is_valid(handle)
-            return false if pending_slot != NONE_SLOT and pending_slot != handle.slot.usize()
+            return false if navigation_pending_slot != NONE_SLOT and navigation_pending_slot != handle.slot.usize()
             current: Handle = top()
             return false if not is_valid(current) or current.slot != handle.slot or current.generation != handle.generation
-            pending_slot <- NONE_SLOT if pending_slot == handle.slot.usize()
+            navigation_pending_slot <- NONE_SLOT if navigation_pending_slot == handle.slot.usize()
             clear_slot(handle.slot.usize())
             return true
 
         # Resolve the confirmation requested by request_back(). Rejecting it
         # consumes the prompt but leaves the view and its dirty state intact.
         def resolve_confirmation(accept: bool) -> BackDecision:
-            return BackDecision.Unhandled if pending_slot == NONE_SLOT
-            slot: usize = pending_slot
-            pending_slot <- NONE_SLOT
+            return BackDecision.Unhandled if navigation_pending_slot == NONE_SLOT
+            slot: usize = navigation_pending_slot
+            navigation_pending_slot <- NONE_SLOT
             return BackDecision.Consumed if not accept
-            return BackDecision.Unhandled if not occupied[slot]
-            handle: Handle = Handle{slot: slot.u32(), generation: generations[slot]}
+            return BackDecision.Unhandled if not navigation_occupied[slot]
+            handle: Handle = Handle{slot: slot.u32(), generation: navigation_generations[slot]}
             return BackDecision.Consumed if top().slot != handle.slot or top().generation != handle.generation
             return BackDecision.Consumed if not commit(handle)
             return BackDecision.Navigate
 
         def cancel_confirmation() -> bool:
-            return false if pending_slot == NONE_SLOT
-            pending_slot <- NONE_SLOT
+            return false if navigation_pending_slot == NONE_SLOT
+            navigation_pending_slot <- NONE_SLOT
             return true
 
         def dismiss_owner(owner_id: u32) -> usize:
             released: mutable usize = 0
             for slot in 0..<MAX_ENTRIES:
-                if occupied[slot] and owners[slot] == owner_id:
-                    pending_slot <- NONE_SLOT if pending_slot == slot
+                if navigation_occupied[slot] and navigation_owners[slot] == owner_id:
+                    navigation_pending_slot <- NONE_SLOT if navigation_pending_slot == slot
                     clear_slot(slot)
                     released <- released + 1
             return released
 
     private:
-        global mutable occupied: bool[MAX_ENTRIES] = zeroed
-        global mutable generations: u32[MAX_ENTRIES] = zeroed
-        global mutable owners: u32[MAX_ENTRIES] = zeroed
-        global mutable policies: BackPolicy[MAX_ENTRIES] = zeroed
-        global mutable dirty: bool[MAX_ENTRIES] = zeroed
+        global mutable navigation_occupied: bool[MAX_ENTRIES] = zeroed
+        global mutable navigation_generations: u32[MAX_ENTRIES] = zeroed
+        global mutable navigation_owners: u32[MAX_ENTRIES] = zeroed
+        global mutable navigation_policies: BackPolicy[MAX_ENTRIES] = zeroed
+        global mutable navigation_dirty: bool[MAX_ENTRIES] = zeroed
         # Sequence numbers are private ordering facts. Keep them wider than
         # the compact handle generation so pushing views for a long-running
         # session cannot make an older entry appear newer after wraparound.
-        global mutable sequence: u64[MAX_ENTRIES] = zeroed
-        global mutable entry_count: usize = 0
+        global mutable navigation_sequence: u64[MAX_ENTRIES] = zeroed
+        global mutable navigation_entry_count: usize = 0
         global mutable navigation_sequence_state: u64 = 0
-        global mutable pending_slot: usize = NONE_SLOT
-        global mutable overflowed_state: bool = false
+        global mutable navigation_pending_slot: usize = NONE_SLOT
+        global mutable navigation_overflowed_state: bool = false
 
         def next_generation(value: u32) -> u32:
             next: u32 = value + 1
@@ -187,15 +187,15 @@ module UiNavigation:
             return 1 if next == 0 else next
 
         def clear_slot(slot: usize) -> void:
-            return if slot >= MAX_ENTRIES or not occupied[slot]
-            pending_slot <- NONE_SLOT if pending_slot == slot
-            occupied[slot] <- false
-            generations[slot] <- next_generation(generations[slot])
-            owners[slot] <- 0
-            policies[slot] <- BackPolicy.Allow
-            dirty[slot] <- false
-            sequence[slot] <- 0
-            entry_count <- entry_count - 1 if entry_count > 0
+            return if slot >= MAX_ENTRIES or not navigation_occupied[slot]
+            navigation_pending_slot <- NONE_SLOT if navigation_pending_slot == slot
+            navigation_occupied[slot] <- false
+            navigation_generations[slot] <- next_generation(navigation_generations[slot])
+            navigation_owners[slot] <- 0
+            navigation_policies[slot] <- BackPolicy.Allow
+            navigation_dirty[slot] <- false
+            navigation_sequence[slot] <- 0
+            navigation_entry_count <- navigation_entry_count - 1 if navigation_entry_count > 0
 
         def policy_is_valid(value: BackPolicy) -> bool:
             return value == BackPolicy.Allow or value == BackPolicy.Confirm or value == BackPolicy.Consume

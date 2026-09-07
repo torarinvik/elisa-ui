@@ -20,6 +20,11 @@ if ! bash "$ROOT/scripts/check_source_sizes.sh"; then
   status=1
 fi
 
+if ! bash "$ROOT/scripts/check_global_names.sh"; then
+  echo "FAIL global names"
+  status=1
+fi
+
 # The C boundary is checked by building a real C program against the library --
 # the header and the Elisa side are two hand-written descriptions of one ABI, and
 # nothing in the Elisa suite sees the header.

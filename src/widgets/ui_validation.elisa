@@ -32,19 +32,19 @@ module UiValidation:
             return Handle{slot: NONE.u32(), generation: 0}
 
         def is_valid(handle: Handle) -> bool:
-            return handle.slot.usize() < MAX_FIELDS and active[handle.slot.usize()] and generations[handle.slot.usize()] == handle.generation
+            return handle.slot.usize() < MAX_FIELDS and validation_active[handle.slot.usize()] and validation_generations[handle.slot.usize()] == handle.generation
 
         def reset() -> void:
             for slot in 0..<MAX_FIELDS:
-                active[slot] <- false
+                validation_active[slot] <- false
                 field_ids[slot] <- 0
-                owners[slot] <- 0
-                generations[slot] <- next_generation(generations[slot])
+                validation_owners[slot] <- 0
+                validation_generations[slot] <- next_generation(validation_generations[slot])
                 revisions[slot] <- 0
                 statuses[slot] <- Status.Idle
                 clear_message(slot)
             field_count <- 0
-            overflowed_state <- false
+            validation_overflowed_state <- false
             mark_changed()
 
         # Bind one application field to a stable validation record. Rebinding
@@ -58,21 +58,21 @@ module UiValidation:
         # revision and user-visible status.
         def bind_owned(field_id: u32, owner: u32) -> Handle:
             for slot in 0..<field_count:
-                if active[slot] and field_ids[slot] == field_id:
-                    owners[slot] <- owner
+                if validation_active[slot] and field_ids[slot] == field_id:
+                    validation_owners[slot] <- owner
                     return make_handle(slot)
             free_slot: mutable usize = NONE
             for slot in 0..<MAX_FIELDS:
-                if not active[slot]:
+                if not validation_active[slot]:
                     free_slot <- slot
                     break
             if free_slot == NONE:
-                overflowed_state <- true
+                validation_overflowed_state <- true
                 return invalid()
-            active[free_slot] <- true
+            validation_active[free_slot] <- true
             field_ids[free_slot] <- field_id
-            owners[free_slot] <- owner
-            generations[free_slot] <- next_generation(generations[free_slot])
+            validation_owners[free_slot] <- owner
+            validation_generations[free_slot] <- next_generation(validation_generations[free_slot])
             revisions[free_slot] <- 0
             statuses[free_slot] <- Status.Idle
             clear_message(free_slot)
@@ -83,8 +83,8 @@ module UiValidation:
         def snapshot() -> Snapshot:
             total: mutable usize = 0
             for slot in 0..<field_count:
-                total <- total + 1 if active[slot]
-            return Snapshot{fields: total, overflowed: overflowed_state}
+                total <- total + 1 if validation_active[slot]
+            return Snapshot{fields: total, overflowed: validation_overflowed_state}
 
         def status(handle: Handle) -> Status:
             return Status.Idle if not is_valid(handle)
@@ -144,7 +144,7 @@ module UiValidation:
 
         def owner(handle: Handle) -> u32:
             return 0 if not is_valid(handle)
-            return owners[handle.slot.usize()]
+            return validation_owners[handle.slot.usize()]
 
         def message(handle: Handle) -> sview:
             return "" if not is_valid(handle)
@@ -167,7 +167,7 @@ module UiValidation:
             return false if not is_valid(handle)
             slot: usize = handle.slot.usize()
             clear_slot(slot)
-            while field_count > 0 and not active[field_count - 1]:
+            while field_count > 0 and not validation_active[field_count - 1]:
                 field_count <- field_count - 1
             mark_changed()
             return true
@@ -178,26 +178,26 @@ module UiValidation:
         def dispose_owner(owner_id: u32) -> usize:
             released: mutable usize = 0
             for slot in 0..<field_count:
-                if active[slot] and owners[slot] == owner_id:
+                if validation_active[slot] and validation_owners[slot] == owner_id:
                     clear_slot(slot)
                     released <- released + 1
-            while field_count > 0 and not active[field_count - 1]:
+            while field_count > 0 and not validation_active[field_count - 1]:
                 field_count <- field_count - 1
             mark_changed() if released > 0
             return released
 
     private:
         global mutable field_ids: u32[MAX_FIELDS] = zeroed
-        global mutable generations: u32[MAX_FIELDS] = zeroed
+        global mutable validation_generations: u32[MAX_FIELDS] = zeroed
         global mutable revisions: u32[MAX_FIELDS] = zeroed
         global mutable statuses: Status[MAX_FIELDS] = zeroed
-        global mutable active: bool[MAX_FIELDS] = zeroed
-        global mutable owners: u32[MAX_FIELDS] = zeroed
+        global mutable validation_active: bool[MAX_FIELDS] = zeroed
+        global mutable validation_owners: u32[MAX_FIELDS] = zeroed
         global mutable message_lengths: usize[MAX_FIELDS] = zeroed
         global mutable message_truncated_state: bool[MAX_FIELDS] = zeroed
         global mutable message_storage: u8[MAX_FIELDS * MESSAGE_CAPACITY] = zeroed
         global mutable field_count: usize = 0
-        global mutable overflowed_state: bool = false
+        global mutable validation_overflowed_state: bool = false
 
         # Validation messages and pending/error affordances are visible UI
         # state. Keep their redraw and semantic invalidation in the shared
@@ -215,17 +215,17 @@ module UiValidation:
             return 1 if next == 0 else next
 
         def clear_slot(slot: usize) -> void:
-            return if slot >= MAX_FIELDS or not active[slot]
-            active[slot] <- false
+            return if slot >= MAX_FIELDS or not validation_active[slot]
+            validation_active[slot] <- false
             field_ids[slot] <- 0
-            owners[slot] <- 0
-            generations[slot] <- next_generation(generations[slot])
+            validation_owners[slot] <- 0
+            validation_generations[slot] <- next_generation(validation_generations[slot])
             revisions[slot] <- 0
             statuses[slot] <- Status.Idle
             clear_message(slot)
 
         def make_handle(slot: usize) -> Handle:
-            return Handle{slot: slot.u32(), generation: generations[slot]}
+            return Handle{slot: slot.u32(), generation: validation_generations[slot]}
 
         def clear_message(slot: usize) -> void:
             message_lengths[slot] <- 0

@@ -1,7 +1,7 @@
 extend UiWidgets:
     private:
-        global mutable hot_widget: Widget? = null
-        global mutable active_widget: Widget? = null
+        global mutable pointer_hot_widget: Widget? = null
+        global mutable pointer_active_widget: Widget? = null
 
         # Applications may feed typed pointer variants directly, bypassing the
         # flat event queue's ABI normalization. Reject non-finite coordinates
@@ -62,9 +62,9 @@ extend UiWidgets:
         # Move the hover to whatever is under `at`, and report it.
         def hover_at(root: Widget, at: UiCore::Vec2) -> Widget?:
             target: Widget? = hit(root, at.x, at.y)
-            if hot_widget is previous:
+            if pointer_hot_widget is previous:
                 previous.hovered <- false
-            hot_widget <- target
+            pointer_hot_widget <- target
             if target is over:
                 over.hovered <- true
             return target
@@ -73,7 +73,7 @@ extend UiWidgets:
             return if button != UiCore::PointerButton.Primary.i32()
             target: Widget? = hover_at(root, at)
             if target is pressed_now:
-                active_widget <- target
+                pointer_active_widget <- target
                 pressed_now.pressed <- true
 
         # A click is a release ON the widget that holds the press, which is exactly
@@ -84,17 +84,17 @@ extend UiWidgets:
             clicked: mutable bool = false
             if target is released_on:
                 clicked <- released_on.pressed
-            if active_widget is held:
+            if pointer_active_widget is held:
                 held.pressed <- false
-            active_widget <- null
+            pointer_active_widget <- null
             if clicked and target is clicked_widget:
                 app_widget_event(clicked_widget, UiConst::WidgetEvent.Click.i32())
 
         def leave_all(root: Widget) -> void:
             _ = hover_at(root, UiCore::Vec2(0.0, 0.0))
-            if active_widget is held:
+            if pointer_active_widget is held:
                 held.pressed <- false
-            active_widget <- null
-            if hot_widget is left:
+            pointer_active_widget <- null
+            if pointer_hot_widget is left:
                 left.hovered <- false
-            hot_widget <- null
+            pointer_hot_widget <- null

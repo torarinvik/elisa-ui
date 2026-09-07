@@ -46,7 +46,7 @@ module UiGestures:
 
         def reset() -> void:
             for slot in 0..<MAX_TOUCHES:
-                active[slot] <- false
+                gesture_active[slot] <- false
                 identifiers[slot] <- 0
                 starts[slot] <- UiCore::Vec2(0.0, 0.0)
                 lasts[slot] <- UiCore::Vec2(0.0, 0.0)
@@ -54,7 +54,7 @@ module UiGestures:
                 last_times[slot] <- 0.0
                 moved[slot] <- false
             active_total <- 0
-            overflowed_state <- false
+            gesture_overflowed_state <- false
             pinch_active <- false
             pinch_start_distance <- 0.0
             pinch_last_distance <- 0.0
@@ -70,7 +70,7 @@ module UiGestures:
             return active_total
 
         def overflowed() -> bool:
-            return overflowed_state
+            return gesture_overflowed_state
 
         # A duplicate contact identity is rejected rather than stealing another
         # contact's capture. Capacity exhaustion is sticky and observable.
@@ -83,11 +83,11 @@ module UiGestures:
             return false if find_slot(contact.id) != NONE_SLOT
             free: usize = free_slot()
             if free == NONE_SLOT:
-                overflowed_state <- true
+                gesture_overflowed_state <- true
                 return false
             position: UiCore::Vec2 = safe_point(contact.position)
             timestamp: f32 = safe_time(contact.timestamp)
-            active[free] <- true
+            gesture_active[free] <- true
             identifiers[free] <- contact.id
             starts[free] <- position
             lasts[free] <- position
@@ -178,7 +178,7 @@ module UiGestures:
         def cancel_all() -> usize:
             cancelled: mutable usize = 0
             for slot in 0..<MAX_TOUCHES:
-                if active[slot]:
+                if gesture_active[slot]:
                     last_primary <- identifiers[slot]
                     last_position <- lasts[slot]
                     last_duration <- elapsed_time(last_times[slot], start_times[slot])
@@ -200,7 +200,7 @@ module UiGestures:
             }
 
     private:
-        global mutable active: bool[MAX_TOUCHES] = zeroed
+        global mutable gesture_active: bool[MAX_TOUCHES] = zeroed
         global mutable identifiers: u32[MAX_TOUCHES] = zeroed
         global mutable starts: UiCore::Vec2[MAX_TOUCHES] = zeroed
         global mutable lasts: UiCore::Vec2[MAX_TOUCHES] = zeroed
@@ -208,7 +208,7 @@ module UiGestures:
         global mutable last_times: f32[MAX_TOUCHES] = zeroed
         global mutable moved: bool[MAX_TOUCHES] = zeroed
         global mutable active_total: usize = 0
-        global mutable overflowed_state: bool = false
+        global mutable gesture_overflowed_state: bool = false
         global mutable pinch_active: bool = false
         global mutable pinch_start_distance: f32 = 0.0
         global mutable pinch_last_distance: f32 = 0.0
@@ -269,16 +269,16 @@ module UiGestures:
 
         def find_slot(id: u32) -> usize:
             for slot in 0..<MAX_TOUCHES:
-                return slot if active[slot] and identifiers[slot] == id
+                return slot if gesture_active[slot] and identifiers[slot] == id
             return NONE_SLOT
 
         def free_slot() -> usize:
             for slot in 0..<MAX_TOUCHES:
-                return slot if not active[slot]
+                return slot if not gesture_active[slot]
             return NONE_SLOT
 
         def clear_slot(slot: usize) -> void:
-            active[slot] <- false
+            gesture_active[slot] <- false
             identifiers[slot] <- 0
             moved[slot] <- false
             if active_total > 0:
@@ -288,7 +288,7 @@ module UiGestures:
             first: mutable usize = NONE_SLOT
             second: mutable usize = NONE_SLOT
             for slot in 0..<MAX_TOUCHES:
-                if active[slot]:
+                if gesture_active[slot]:
                     if first == NONE_SLOT:
                         first <- slot
                     elif second == NONE_SLOT:
@@ -311,7 +311,7 @@ module UiGestures:
             first: mutable usize = NONE_SLOT
             second: mutable usize = NONE_SLOT
             for slot in 0..<MAX_TOUCHES:
-                if active[slot]:
+                if gesture_active[slot]:
                     if first == NONE_SLOT:
                         first <- slot
                     elif second == NONE_SLOT:

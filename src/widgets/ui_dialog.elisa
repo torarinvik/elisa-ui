@@ -55,7 +55,7 @@ module UiDialog:
 
         def reset() -> void:
             for slot in 0..<MAX_DIALOGS:
-                active[slot] <- false
+                dialog_active[slot] <- false
                 closed[slot] <- false
                 dialog_generations[slot] <- next_generation(dialog_generations[slot])
                 dialog_owners[slot] <- 0
@@ -63,17 +63,17 @@ module UiDialog:
                 kinds[slot] <- Kind.Alert
                 results[slot] <- Result.None
                 clear_text(slot)
-            active_count <- 0
+            dialog_active_count <- 0
             closed_count <- 0
             dialog_sequence_state <- 0
             dialog_overflowed_state <- false
             mark_changed()
 
         def snapshot() -> Snapshot:
-            return Snapshot{active: active_count, closed: closed_count, overflowed: dialog_overflowed_state}
+            return Snapshot{active: dialog_active_count, closed: closed_count, overflowed: dialog_overflowed_state}
 
         def is_valid(handle: Handle) -> bool:
-            return handle.slot.usize() < MAX_DIALOGS and active[handle.slot.usize()] and dialog_generations[handle.slot.usize()] == handle.generation
+            return handle.slot.usize() < MAX_DIALOGS and dialog_active[handle.slot.usize()] and dialog_generations[handle.slot.usize()] == handle.generation
 
         # Open pushes a modal record above every previous record. Empty labels
         # are allowed for secondary actions but the title/message are bounded
@@ -88,13 +88,13 @@ module UiDialog:
             return invalid() if (title.len > 0 and title.data == null) or (message.len > 0 and message.data == null) or (primary.len > 0 and primary.data == null) or (secondary.len > 0 and secondary.data == null)
             free_slot: mutable usize = NONE_SLOT
             for slot in 0..<MAX_DIALOGS:
-                if not active[slot] and not closed[slot]:
+                if not dialog_active[slot] and not closed[slot]:
                     free_slot <- slot
                     break
             if free_slot == NONE_SLOT:
                 dialog_overflowed_state <- true
                 return invalid()
-            active[free_slot] <- true
+            dialog_active[free_slot] <- true
             closed[free_slot] <- false
             dialog_generations[free_slot] <- next_generation(dialog_generations[free_slot])
             dialog_owners[free_slot] <- owner
@@ -106,7 +106,7 @@ module UiDialog:
             write_text(free_slot, 1, message)
             write_text(free_slot, 2, primary)
             write_text(free_slot, 3, secondary)
-            active_count <- active_count + 1
+            dialog_active_count <- dialog_active_count + 1
             mark_changed()
             return Handle{slot: free_slot.u32(), generation: dialog_generations[free_slot]}
 
@@ -114,7 +114,7 @@ module UiDialog:
             selected: mutable usize = NONE_SLOT
             newest: mutable u64 = 0
             for slot in 0..<MAX_DIALOGS:
-                if active[slot] and not closed[slot] and dialog_sequence[slot] >= newest:
+                if dialog_active[slot] and not closed[slot] and dialog_sequence[slot] >= newest:
                     selected <- slot
                     newest <- dialog_sequence[slot]
             return invalid() if selected == NONE_SLOT
@@ -196,7 +196,7 @@ module UiDialog:
             slot: usize = handle.slot.usize()
             results[slot] <- next
             closed[slot] <- true
-            active_count <- active_count - 1 if active_count > 0
+            dialog_active_count <- dialog_active_count - 1 if dialog_active_count > 0
             closed_count <- closed_count + 1
             mark_changed()
             return true
@@ -213,7 +213,7 @@ module UiDialog:
         def dismiss_owner(owner_id: u32) -> usize:
             dismissed: mutable usize = 0
             for slot in 0..<MAX_DIALOGS:
-                if active[slot] and not closed[slot] and dialog_owners[slot] == owner_id:
+                if dialog_active[slot] and not closed[slot] and dialog_owners[slot] == owner_id:
                     _ = choose(make_handle(slot), Result.Cancelled)
                     dismissed <- dismissed + 1
             return dismissed
@@ -223,11 +223,11 @@ module UiDialog:
         def dispose(handle: Handle) -> bool:
             return false if not is_valid(handle)
             slot: usize = handle.slot.usize()
-            active[slot] <- false
+            dialog_active[slot] <- false
             if closed[slot] and closed_count > 0:
                 closed_count <- closed_count - 1
-            if not closed[slot] and active_count > 0:
-                active_count <- active_count - 1
+            if not closed[slot] and dialog_active_count > 0:
+                dialog_active_count <- dialog_active_count - 1
             closed[slot] <- false
             dialog_generations[slot] <- next_generation(dialog_generations[slot])
             dialog_owners[slot] <- 0
@@ -238,7 +238,7 @@ module UiDialog:
             return true
 
     private:
-        global mutable active: bool[MAX_DIALOGS] = zeroed
+        global mutable dialog_active: bool[MAX_DIALOGS] = zeroed
         global mutable closed: bool[MAX_DIALOGS] = zeroed
         global mutable dialog_generations: u32[MAX_DIALOGS] = zeroed
         global mutable dialog_owners: u32[MAX_DIALOGS] = zeroed
@@ -250,7 +250,7 @@ module UiDialog:
         global mutable results: Result[MAX_DIALOGS] = zeroed
         global mutable lengths: usize[MAX_DIALOGS * 4] = zeroed
         global mutable storage: u8[MAX_DIALOGS * 4 * TEXT_CAPACITY] = zeroed
-        global mutable active_count: usize = 0
+        global mutable dialog_active_count: usize = 0
         global mutable closed_count: usize = 0
         global mutable dialog_sequence_state: u64 = 0
         global mutable dialog_overflowed_state: bool = false

@@ -117,7 +117,7 @@ extend UiFlat:
 
             target: usize = hit(at.x, at.y)
             clear_hover()
-            hot_widget <- target
+            flat_hot_widget <- target
             if target != NONE:
                 widgets[target].hovered <- true
 
@@ -137,7 +137,7 @@ extend UiFlat:
                         return
                     return if target == NONE
                     focus(target)
-                    active_widget <- target
+                    flat_active_widget <- target
                     active_pointer_button <- press_button
                     widgets[target].pressed <- true
                     if widgets[target].kind == UiConst::WidgetKind.TextField:
@@ -155,16 +155,16 @@ extend UiFlat:
                         requested: f32 = active_scroll_offset + (coordinate - active_scroll_pointer) * limit / travel if travel > 0.0 else active_scroll_offset
                         _ = set_scroll_offset(active_scroll, requested)
                         return
-                    if active_pointer_button >= 0 and active_widget < widget_count:
-                        if widgets[active_widget].kind == UiConst::WidgetKind.Slider:
-                            widgets[active_widget].pressed <- true
-                            update_slider(active_widget, move_at.x)
-                        elif widgets[active_widget].kind == UiConst::WidgetKind.TextField:
-                            widgets[active_widget].pressed <- true
-                            widgets[active_widget].caret <- caret_from_pointer(active_widget, move_at.x)
+                    if active_pointer_button >= 0 and flat_active_widget < widget_count:
+                        if widgets[flat_active_widget].kind == UiConst::WidgetKind.Slider:
+                            widgets[flat_active_widget].pressed <- true
+                            update_slider(flat_active_widget, move_at.x)
+                        elif widgets[flat_active_widget].kind == UiConst::WidgetKind.TextField:
+                            widgets[flat_active_widget].pressed <- true
+                            widgets[flat_active_widget].caret <- caret_from_pointer(flat_active_widget, move_at.x)
                             restart_caret_blink()
                         else:
-                            widgets[active_widget].pressed <- target == active_widget
+                            widgets[flat_active_widget].pressed <- target == flat_active_widget
                 UiCore::PointerEvent.Up(release_at, release_button):
                     if active_scroll < widget_count:
                         return if release_button != UiCore::PointerButton.Primary.i32()
@@ -173,9 +173,9 @@ extend UiFlat:
                         active_scroll_offset <- 0.0
                         active_pointer_button <- UiCore::NO_POINTER_BUTTON
                         return
-                    return if active_pointer_button < 0 or active_widget == NONE or release_button != active_pointer_button
-                    held: usize = active_widget
-                    active_widget <- NONE
+                    return if active_pointer_button < 0 or flat_active_widget == NONE or release_button != active_pointer_button
+                    held: usize = flat_active_widget
+                    flat_active_widget <- NONE
                     active_pointer_button <- UiCore::NO_POINTER_BUTTON
                     active_key <- -1
                     widgets[held].pressed <- false
@@ -192,13 +192,13 @@ extend UiFlat:
                     # after clear_hover() has run. Clear the visual hover
                     # state again before retaining capture for a drag.
                     clear_hover()
-                    hot_widget <- NONE
+                    flat_hot_widget <- NONE
                     return if active_scroll < widget_count
-                    return if active_pointer_button < 0 or active_widget == NONE
+                    return if active_pointer_button < 0 or flat_active_widget == NONE
                     # Keep capture until mouse-up. Sliders continue to receive
                     # clamped drag updates outside the view; buttons can regain
                     # their pressed appearance if the pointer comes back.
-                    widgets[active_widget].pressed <- widgets[active_widget].kind == UiConst::WidgetKind.Slider
+                    widgets[flat_active_widget].pressed <- widgets[flat_active_widget].kind == UiConst::WidgetKind.Slider
                 _:
                     pass
 

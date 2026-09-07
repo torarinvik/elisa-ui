@@ -10,7 +10,7 @@ module UiSdl3Draw:
         global mutable renderer: void&? = null
         global mutable saved_clip_rect: i32[4] = zeroed
         global mutable saved_clip_enabled: bool = false
-        global mutable clip_depth: usize = 0
+        global mutable sdl3_clip_depth: usize = 0
 
         def ren() -> void&:
             if renderer is active_renderer:
@@ -176,7 +176,7 @@ module UiSdl3Draw:
             if renderer is done_renderer:
                 SDL_DestroyRenderer(done_renderer)
             renderer <- null
-            clip_depth <- 0
+            sdl3_clip_depth <- 0
 
         def present() -> void:
             _ = SDL_RenderPresent(ren())
@@ -225,10 +225,10 @@ module UiSdl3Draw:
 
         impl Painter for Sdl3Painter:
             def push_clip(box: UiCore::Rect) -> void can[Ui.Draw]:
-                if clip_depth == 0:
+                if sdl3_clip_depth == 0:
                     saved_clip_enabled <- SDL_RenderClipEnabled(ren())
                     _ = SDL_GetRenderClipRect(ren(), (&saved_clip_rect[0]).cast[void&] can Unsafe.PointerCast)
-                clip_depth <- clip_depth + 1
+                sdl3_clip_depth <- sdl3_clip_depth + 1
                 left: f32 = floorf(box.origin.x)
                 top: f32 = floorf(box.origin.y)
                 right: f32 = ceilf(box.origin.x + box.size.width)
@@ -237,9 +237,9 @@ module UiSdl3Draw:
                 _ = SDL_SetRenderClipRect(ren(), (&clip[0]).cast[void&] can Unsafe.PointerCast)
 
             def pop_clip() -> void can[Ui.Draw]:
-                return if clip_depth == 0
-                clip_depth <- clip_depth - 1
-                return if clip_depth != 0
+                return if sdl3_clip_depth == 0
+                sdl3_clip_depth <- sdl3_clip_depth - 1
+                return if sdl3_clip_depth != 0
                 if saved_clip_enabled:
                     _ = SDL_SetRenderClipRect(ren(), (&saved_clip_rect[0]).cast[void&] can Unsafe.PointerCast)
                 else:

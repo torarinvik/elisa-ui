@@ -36,24 +36,24 @@ module UiIdentity:
             return Handle{slot: NONE.u32(), generation: 0}
 
         def is_valid(handle: Handle) -> bool:
-            return handle.slot.usize() < MAX_KEYS and occupied[handle.slot.usize()] and generations[handle.slot.usize()] == handle.generation
+            return handle.slot.usize() < MAX_KEYS and identity_occupied[handle.slot.usize()] and identity_generations[handle.slot.usize()] == handle.generation
 
         def reset() -> void:
             for slot in 0..<MAX_KEYS:
-                occupied[slot] <- false
+                identity_occupied[slot] <- false
                 seen[slot] <- false
                 was_occupied[slot] <- false
                 keys[slot] <- 0
-                generations[slot] <- next_generation(generations[slot])
+                identity_generations[slot] <- next_generation(identity_generations[slot])
             frame_active <- false
             transaction_complete <- false
             claimed_count <- 0
             reused_count <- 0
             inserted_count <- 0
             retired_count <- 0
-            overflowed_state <- false
+            identity_overflowed_state <- false
             duplicate_state <- false
-            active_count <- 0
+            identity_active_count <- 0
 
         # Start a model transaction. Existing keys remain live until finish so
         # a failed/partial rebuild can still reject stale input deterministically.
@@ -64,14 +64,14 @@ module UiIdentity:
             rollback_uncommitted() if frame_active
             for slot in 0..<MAX_KEYS:
                 seen[slot] <- false
-                was_occupied[slot] <- occupied[slot]
+                was_occupied[slot] <- identity_occupied[slot]
             frame_active <- true
             transaction_complete <- false
             claimed_count <- 0
             reused_count <- 0
             inserted_count <- 0
             retired_count <- 0
-            overflowed_state <- false
+            identity_overflowed_state <- false
             duplicate_state <- false
             transaction_failed_state <- false
 
@@ -80,27 +80,27 @@ module UiIdentity:
         def claim(key: u64) -> Handle:
             return invalid() if not frame_active
             for slot in 0..<MAX_KEYS:
-                if occupied[slot] and keys[slot] == key:
+                if identity_occupied[slot] and keys[slot] == key:
                     return claim_existing(slot)
 
             free_slot: mutable usize = NONE
             for slot in 0..<MAX_KEYS:
-                if not occupied[slot]:
+                if not identity_occupied[slot]:
                     free_slot <- slot
                     break
             if free_slot == NONE:
-                overflowed_state <- true
+                identity_overflowed_state <- true
                 transaction_failed_state <- true
                 return invalid()
 
-            occupied[free_slot] <- true
+            identity_occupied[free_slot] <- true
             seen[free_slot] <- true
             keys[free_slot] <- key
-            generations[free_slot] <- next_generation(generations[free_slot])
+            identity_generations[free_slot] <- next_generation(identity_generations[free_slot])
             claimed_count <- claimed_count + 1
             inserted_count <- inserted_count + 1
-            active_count <- active_count + 1
-            return Handle{slot: free_slot.u32(), generation: generations[free_slot]}
+            identity_active_count <- identity_active_count + 1
+            return Handle{slot: free_slot.u32(), generation: identity_generations[free_slot]}
 
         # Finish the transaction and retire keys omitted from the new model.
         # Retiring advances the slot generation before it becomes reusable, so
@@ -118,12 +118,12 @@ module UiIdentity:
                 transaction_complete <- false
                 return snapshot(false)
             for slot in 0..<MAX_KEYS:
-                if occupied[slot] and not seen[slot]:
-                    occupied[slot] <- false
+                if identity_occupied[slot] and not seen[slot]:
+                    identity_occupied[slot] <- false
                     keys[slot] <- 0
-                    generations[slot] <- next_generation(generations[slot])
+                    identity_generations[slot] <- next_generation(identity_generations[slot])
                     retired_count <- retired_count + 1
-                    active_count <- active_count - 1
+                    identity_active_count <- identity_active_count - 1
             frame_active <- false
             transaction_complete <- true
             return snapshot(true)
@@ -136,28 +136,28 @@ module UiIdentity:
             return keys[handle.slot.usize()]
 
         def active() -> usize:
-            return active_count
+            return identity_active_count
 
         def overflowed() -> bool:
-            return overflowed_state
+            return identity_overflowed_state
 
         def duplicate() -> bool:
             return duplicate_state
 
     private:
         global mutable keys: u64[MAX_KEYS] = zeroed
-        global mutable generations: u32[MAX_KEYS] = zeroed
-        global mutable occupied: bool[MAX_KEYS] = zeroed
+        global mutable identity_generations: u32[MAX_KEYS] = zeroed
+        global mutable identity_occupied: bool[MAX_KEYS] = zeroed
         global mutable seen: bool[MAX_KEYS] = zeroed
         global mutable was_occupied: bool[MAX_KEYS] = zeroed
         global mutable frame_active: bool = false
         global mutable transaction_complete: bool = false
-        global mutable active_count: usize = 0
+        global mutable identity_active_count: usize = 0
         global mutable claimed_count: usize = 0
         global mutable reused_count: usize = 0
         global mutable inserted_count: usize = 0
         global mutable retired_count: usize = 0
-        global mutable overflowed_state: bool = false
+        global mutable identity_overflowed_state: bool = false
         global mutable duplicate_state: bool = false
         global mutable transaction_failed_state: bool = false
 
@@ -175,21 +175,21 @@ module UiIdentity:
             seen[slot] <- true
             claimed_count <- claimed_count + 1
             reused_count <- reused_count + 1
-            return Handle{slot: slot.u32(), generation: generations[slot]}
+            return Handle{slot: slot.u32(), generation: identity_generations[slot]}
 
         # Remove only records created after the current transaction began.
         # Advancing each generation invalidates handles already handed to the
         # caller before the transaction later failed or was abandoned.
         def rollback_uncommitted() -> void:
             for slot in 0..<MAX_KEYS:
-                if occupied[slot] and not was_occupied[slot]:
-                    occupied[slot] <- false
+                if identity_occupied[slot] and not was_occupied[slot]:
+                    identity_occupied[slot] <- false
                     keys[slot] <- 0
-                    generations[slot] <- next_generation(generations[slot])
-                    active_count <- active_count - 1 if active_count > 0
+                    identity_generations[slot] <- next_generation(identity_generations[slot])
+                    identity_active_count <- identity_active_count - 1 if identity_active_count > 0
 
         def snapshot(complete: bool) -> Snapshot:
-            return Snapshot{active: active_count, claimed: claimed_count,
+            return Snapshot{active: identity_active_count, claimed: claimed_count,
                 reused: reused_count, inserted: inserted_count,
-                retired: retired_count, overflowed: overflowed_state,
+                retired: retired_count, overflowed: identity_overflowed_state,
                 duplicate: duplicate_state, complete: complete}
