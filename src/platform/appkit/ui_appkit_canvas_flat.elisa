@@ -135,10 +135,10 @@ def appkit_flat_pointer_leave_event(window_handle: usize) -> usize:
 
 def appkit_flat_set_text(index: usize, text: usize) -> i32:
     return 0 if not UiAppKitCanvas::live() or not UiLifecycle::accepts_input() or text == 0 or not UiFlat::text_editable(index)
-    length: usize = UiAppKitCanvas::copy_native_string(text, &appkit_native_text_buffer[0], UiFlat::TEXT_CAPACITY)
+    length: usize = UiAppKitCanvasClipboard::copy_native_text(text)
     lifetime: usize = UiFlat::lifetime()
-    UiFlat::replace_text(index, appkit_native_text_buffer[0:length])
-    appkit_scrub_buffer(&appkit_native_text_buffer[0], UiFlat::TEXT_CAPACITY)
+    UiFlat::replace_text(index, UiAppKitCanvasClipboard::native_text_view(length))
+    UiAppKitCanvasClipboard::scrub_native_text()
     # Text replacement emits the application callback synchronously. If that
     # callback rebuilds the flat tree or stops the canvas, the native element
     # that requested the edit is no longer the live source of truth. Do not
@@ -232,11 +232,11 @@ def appkit_flat_commit_text(window_handle: usize, text: usize, replacement_locat
     return if not UiAppKitCanvas::live() or window_handle != UiAppKitCanvas::window_handle() or not UiLifecycle::accepts_input()
     plain: usize = UiAppKitCanvas::native_input_string(text)
     return if plain == 0
-    length: usize = UiAppKitCanvas::copy_native_string(plain, &appkit_native_text_buffer[0], UiFlat::TEXT_CAPACITY)
+    length: usize = UiAppKitCanvasClipboard::copy_native_text(plain)
     has_replacement: bool = replacement_location != UiAppKitCanvas::not_found()
     lifetime: usize = UiFlat::lifetime()
-    UiFlat::commit_text(appkit_native_text_buffer[0:length], replacement_location, replacement_length, has_replacement)
-    appkit_scrub_buffer(&appkit_native_text_buffer[0], UiFlat::TEXT_CAPACITY)
+    UiFlat::commit_text(UiAppKitCanvasClipboard::native_text_view(length), replacement_location, replacement_length, has_replacement)
+    UiAppKitCanvasClipboard::scrub_native_text()
     # Text insertion emits the application callback synchronously. A callback
     # may replace the retained tree or stop the window, so do not repaint a
     # stale surface after that callback returns.
@@ -247,11 +247,11 @@ def appkit_flat_update_marked_text(window_handle: usize, text: usize, selected_l
     return if not UiAppKitCanvas::live() or window_handle != UiAppKitCanvas::window_handle() or not UiLifecycle::accepts_input()
     plain: usize = UiAppKitCanvas::native_input_string(text)
     return if plain == 0
-    length: usize = UiAppKitCanvas::copy_native_string(plain, &appkit_native_text_buffer[0], UiFlat::TEXT_CAPACITY)
+    length: usize = UiAppKitCanvasClipboard::copy_native_text(plain)
     has_replacement: bool = replacement_location != UiAppKitCanvas::not_found()
     lifetime: usize = UiFlat::lifetime()
-    UiFlat::update_marked_text(appkit_native_text_buffer[0:length], selected_location, selected_length, replacement_location, replacement_length, has_replacement)
-    appkit_scrub_buffer(&appkit_native_text_buffer[0], UiFlat::TEXT_CAPACITY)
+    UiFlat::update_marked_text(UiAppKitCanvasClipboard::native_text_view(length), selected_location, selected_length, replacement_location, replacement_length, has_replacement)
+    UiAppKitCanvasClipboard::scrub_native_text()
     # Composition updates can also run the application callback. Keep the
     # native redraw tied to the same live retained session as the edit.
     return if UiFlat::lifetime() != lifetime or not UiAppKitCanvas::live() or not UiLifecycle::accepts_input()
