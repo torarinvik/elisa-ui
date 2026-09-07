@@ -89,6 +89,10 @@ extend UiResources:
             # Requested starts a new host operation and must rotate its
             # generation through request() or retry(), never in place.
             return false if next == State.Requested
+            # A terminal/offline/denied record cannot be revived in place by a
+            # late host completion. Retry rotates the generation first, so a
+            # ready result is valid only for the operation that was Requested.
+            return false if next == State.Ready and resource_states[slot] != State.Requested
             return false if resource_states[slot] == next
             resource_states[slot] <- next
             if next == State.Cancelled:
