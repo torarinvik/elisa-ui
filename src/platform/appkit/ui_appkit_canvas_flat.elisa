@@ -137,11 +137,15 @@ def appkit_flat_text_click(x: f32, y: f32, button: i32, click_count: i32) -> voi
 def appkit_flat_pointer_button(window_handle: usize, x: f32, y: f32, button: i32, down: i32, click_count: i32) -> void:
     return if not UiAppKitCanvas::live() or not UiLifecycle::accepts_input()
     return if window_handle != UiAppKitCanvas::window_handle()
+    # The native view forwards a BOOL, but this export is also an FFI seam.
+    # Reject non-canonical values instead of treating every nonzero integer as
+    # a press and mutating focus, capture, or text selection.
+    return if not appkit_canvas_boolean_flag_is_valid(down)
     normalized_button: i32 = UiAppKitCanvas::button_from_appkit(button)
     # A press is both a pointer transition and a text-selection click. Keep
     # that ordering in Elisa so every native host reports the same interaction;
     # the Objective-C view only forwards Cocoa's raw button facts.
-    if down != 0:
+    if down == 1:
         lifetime: usize = UiFlat::lifetime()
         appkit_canvas_pointer_down_callback(window_handle, x, y, normalized_button)
         # Pointer-down may synchronously dispatch a slider change callback.

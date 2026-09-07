@@ -6,6 +6,12 @@
 # drain instead of recursively re-entering application code.
 global mutable appkit_canvas_event_dispatch_active: bool = false
 
+# Native BOOLs cross the C ABI as i32 values. Keep one shared validator for
+# every callback that receives one so the AppKit and flat adapters cannot drift
+# into different truthiness rules.
+def appkit_canvas_boolean_flag_is_valid(value: i32) -> bool:
+    return value == 0 or value == 1
+
 def appkit_canvas_dispatch_event(event: UiCore::Event) -> void:
     return if not UiEvents::enqueue(event)
     return if appkit_canvas_event_dispatch_active
@@ -139,7 +145,7 @@ def appkit_canvas_key_callback(window_handle: usize, down: i32, code: i32) -> vo
     # through the C ABI. Accept only its canonical 0/1 representation so a
     # malformed foreign value cannot turn into an accidental key-down (and,
     # in particular, cannot close the window through Escape).
-    return if down != 0 and down != 1
+    return if not appkit_canvas_boolean_flag_is_valid(down)
     if appkit_canvas_should_close_key(down, code):
         UiAppKitCanvas::close()
         return
@@ -178,7 +184,7 @@ def appkit_canvas_focus_changed_callback(window_handle: usize, focused: i32) -> 
     # Keep the BOOL ABI strict at the Elisa boundary. Native AppKit emits 0/1;
     # rejecting other values avoids treating an arbitrary integer from a
     # foreign caller as a lifecycle transition.
-    return if focused != 0 and focused != 1
+    return if not appkit_canvas_boolean_flag_is_valid(focused)
     # Focus notifications are delivered by the window delegate, and an old
     # window can emit one while a replacement session is already live. Match
     # the opaque identity before mutating the current lifecycle's focus state.
