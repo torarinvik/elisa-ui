@@ -13,6 +13,11 @@ STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
 mkdir -p "$ROOT/build"
 bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ROOT/build/ui_skia.o" "$ROOT/src/platform/skia/ui_skia.elisa"
 
+if ! nm -g "$ROOT/build/ui_skia.o" | grep -Eq 'elisa_skia_abi_version$'; then
+  echo "skia: ABI version symbol is not exported by the Elisa object" >&2
+  exit 1
+fi
+
 if rg -n '#include[[:space:]]*[<"](Cocoa|AppKit)' "$ROOT/src/platform/skia/skia_canvas_shim.cpp"; then
   echo "skia: host shim must not import AppKit" >&2
   exit 1
