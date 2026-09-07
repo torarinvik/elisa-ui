@@ -47,42 +47,6 @@ extend UiFlat:
         def valid_utf8_prefix(text: sview, byte_limit: usize) -> usize:
             return UiText::valid_utf8_prefix(text, byte_limit)
 
-        # The ranges that most often extend a user-perceived character: Unicode
-        # combining marks, variation selectors, emoji skin tones and emoji tag
-        # characters. ZWJ and regional-indicator pairing are handled separately.
-        def extends_grapheme(scalar: u32) -> bool:
-            return true if scalar >= 768 and scalar <= 879
-            return true if scalar >= 6832 and scalar <= 6911
-            return true if scalar >= 7616 and scalar <= 7679
-            return true if scalar >= 8400 and scalar <= 8447
-            return true if scalar >= 65024 and scalar <= 65039
-            return true if scalar >= 127995 and scalar <= 127999
-            return true if scalar >= 917536 and scalar <= 917631
-            return scalar >= 65056 and scalar <= 65071
-
-        def regional_indicator(scalar: u32) -> bool:
-            return scalar >= 127462 and scalar <= 127487
-
-        # Hangul syllable composition is another grapheme rule that cannot be
-        # reduced to a generic combining-mark range. Keep the small UAX #29
-        # L/V/T/LV/LVT property partition here so decomposed Korean text has
-        # the same caret and deletion behavior as precomposed syllables.
-        def hangul_kind(scalar: u32) -> u32:
-            return 1 if (scalar >= 4352 and scalar <= 4447) or (scalar >= 43360 and scalar <= 43388)
-            return 2 if (scalar >= 4448 and scalar <= 4519) or (scalar >= 55216 and scalar <= 55238)
-            return 3 if (scalar >= 4520 and scalar <= 4607) or (scalar >= 55243 and scalar <= 55291)
-            if scalar >= 44032 and scalar <= 55203:
-                return 4 if (scalar - 44032) % 28 == 0 else 5
-            return 0
-
-        def hangul_joins(previous: u32, current: u32) -> bool:
-            previous_kind: u32 = hangul_kind(previous)
-            current_kind: u32 = hangul_kind(current)
-            return true if previous_kind == 1 and (current_kind == 1 or current_kind == 2 or current_kind == 4 or current_kind == 5)
-            return true if (previous_kind == 4 or previous_kind == 2) and (current_kind == 2 or current_kind == 3)
-            return true if (previous_kind == 5 or previous_kind == 3) and current_kind == 3
-            return false
-
         def next_grapheme(text: sview, position: usize) -> usize:
             return text.len if position >= text.len
             first: u32 = utf8_scalar_value(text, position)
@@ -90,22 +54,55 @@ extend UiFlat:
             previous_scalar: mutable u32 = first
             if first == 13 and cursor < text.len and utf8_scalar_value(text, cursor) == 10:
                 return cursor + 1
+            return cursor if grapheme_control(first)
             if regional_indicator(first) and cursor < text.len and regional_indicator(utf8_scalar_value(text, cursor)):
                 previous_scalar <- utf8_scalar_value(text, cursor)
                 cursor <- cursor + utf8_scalar_bytes(text, cursor)
             limit: usize = text.len.usize()
             result: usize =
-                for _ in 0..<limit |cursor, previous_scalar| -> cursor:
+                for _ in 0..<limit |cursor, previous_scalar, emoji_base: bool = grapheme_extended_pictographic(first), emoji_zwj: bool = false, indic_context: u32 = (1 if grapheme_consonant(first) else 0)| -> cursor:
                     break if cursor >= limit
                     scalar: u32 = utf8_scalar_value(text, cursor)
-                    if extends_grapheme(scalar) or hangul_joins(previous_scalar, scalar):
-                        cursor <- cursor + utf8_scalar_bytes(text, cursor)
-                        previous_scalar <- scalar
+                    if grapheme_control(scalar):
+                        break
                     elif scalar == 8205:
                         cursor <- cursor + utf8_scalar_bytes(text, cursor)
-                        if cursor < limit:
-                            previous_scalar <- utf8_scalar_value(text, cursor)
-                            cursor <- cursor + utf8_scalar_bytes(text, cursor)
+                        emoji_zwj <- emoji_base
+                        emoji_base <- false
+                        previous_scalar <- scalar
+                    elif emoji_zwj and grapheme_extended_pictographic(scalar):
+                        cursor <- cursor + utf8_scalar_bytes(text, cursor)
+                        emoji_zwj <- false
+                        emoji_base <- true
+                        previous_scalar <- scalar
+                    elif grapheme_linker(scalar):
+                        cursor <- cursor + utf8_scalar_bytes(text, cursor)
+                        indic_context <- 2 if indic_context == 1 else 0
+                        emoji_base <- false
+                        previous_scalar <- scalar
+                    elif extends_grapheme(scalar):
+                        cursor <- cursor + utf8_scalar_bytes(text, cursor)
+                        previous_scalar <- scalar
+                    elif grapheme_spacing_mark(scalar):
+                        cursor <- cursor + utf8_scalar_bytes(text, cursor)
+                        indic_context <- 0
+                        emoji_base <- false
+                        previous_scalar <- scalar
+                    elif grapheme_prepend(previous_scalar):
+                        cursor <- cursor + utf8_scalar_bytes(text, cursor)
+                        indic_context <- 0
+                        emoji_base <- false
+                        previous_scalar <- scalar
+                    elif hangul_joins(previous_scalar, scalar):
+                        cursor <- cursor + utf8_scalar_bytes(text, cursor)
+                        indic_context <- 0
+                        emoji_base <- false
+                        previous_scalar <- scalar
+                    elif indic_context == 2 and grapheme_consonant(scalar):
+                        cursor <- cursor + utf8_scalar_bytes(text, cursor)
+                        indic_context <- 1
+                        emoji_base <- false
+                        previous_scalar <- scalar
                     else:
                         break
             return result
