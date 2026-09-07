@@ -122,7 +122,12 @@ because a module member's symbol carries its module and those names cannot move.
   contrast, bounded text scaling, and reduced-motion animation timing for every
   backend. Runtime preferences have a normalized revision/snapshot and
   invalidate layout, paint, and semantics together; the policy is opt-in and
-  applications can override resolved tokens.
+  applications can override resolved tokens. The `UiFlat`/`UiHandles` palette
+  adapter ([src/widgets/ui_flat_theme.elisa](src/widgets/ui_flat_theme.elisa))
+  applies resolved colors to shared focus, selection, control-mark, and
+  scrollbar tokens without overwriting per-widget colors or geometry. Repeated
+  palette application is idempotent, so hosts may refresh appearance facts at
+  every frame without creating a dirty-loop.
 - **Localization and RTL policy** ([src/widgets/ui_localization.elisa](src/widgets/ui_localization.elisa)) —
   locale direction, logical start/end alignment, mirrored coordinates, typed
   plural categories, and a bounded active-locale revision are resolved once in

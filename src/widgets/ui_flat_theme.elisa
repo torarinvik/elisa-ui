@@ -1,0 +1,37 @@
+# UiFlat adapter for the backend-neutral UiTheme palette.
+#
+# UiTheme resolves appearance facts and accessibility preferences without
+# knowing widget storage. This module is the deliberate bridge: it updates
+# only shared framework color tokens, preserving each widget's application-
+# chosen surfaces, hover colors, text colors, and geometry metrics.
+
+include "./ui_theme.elisa"
+
+extend UiFlat:
+    public:
+        # Apply one resolved palette without replacing application-specific
+        # widget colors or layout metrics. The return value lets a frame skip
+        # work when a host repeats the same appearance facts.
+        def apply_palette(palette: UiTheme::Palette) -> bool:
+            current: mutable Theme = theme()
+            current.focus_ring <- palette.focus_ring
+            current.selection <- palette.selection
+            current.control_mark <- themed_alpha(palette.text, 185)
+            current.control_mark_strong <- palette.accent
+            current.scrollbar_track <- themed_alpha(palette.disabled_surface, 165)
+            current.scrollbar_thumb <- themed_alpha(palette.muted_text, 175)
+            current.scrollbar_thumb_hover <- themed_alpha(palette.text, 220)
+            current.scrollbar_thumb_active <- palette.accent
+            return false if themes_equal(theme(), current)
+            set_theme(current)
+            return true
+
+        # Resolve and apply in one call when the host supplies system facts.
+        # The resolved palette remains inspectable through UiTheme and the
+        # framework theme remains overrideable through set_theme.
+        def apply_system_theme(preferences: UiTheme::Preferences, system_dark: bool, system_high_contrast: bool) -> bool:
+            return apply_palette(UiTheme::resolve(preferences, system_dark, system_high_contrast))
+
+    private:
+        def themed_alpha(color: UiCore::Color, alpha: u8) -> UiCore::Color:
+            return UiCore::Color{r: color.r, g: color.g, b: color.b, a: alpha}

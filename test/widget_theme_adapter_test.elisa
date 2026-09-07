@@ -1,0 +1,94 @@
+# Headless regression for the UiTheme -> UiFlat palette adapter.
+#
+# The adapter must update shared framework tokens without erasing application
+# widget styling, and repeated host appearance facts must be idempotent.
+
+include "../src/widgets/ui_handles.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable failures: i32 = 0
+
+def ui_measure_text_width(text: sview, size: f32) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size
+
+def ui_font_ascent(size: f32) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return 0
+
+def app_init() -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    pass
+
+def app_text_input(text: sview) -> void:
+    pass
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    pass
+
+def app_frame() -> void:
+    pass
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiHandles::reset()
+    UiCore::clear_all_invalidations()
+    root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 8.0, 4.0, UiCore::rgb(22, 24, 30))
+    button: UiHandles::Handle = UiHandles::button(root, 120.0, 32.0, UiCore::rgb(40, 50, 60), UiCore::rgb(50, 60, 70), UiCore::rgb(30, 40, 50))
+    UiHandles::set_colors(button, UiCore::rgb(9, 10, 11), UiCore::rgb(12, 13, 14), UiCore::rgb(15, 16, 17))
+
+    original: mutable UiFlat::Theme = UiHandles::theme()
+    original.slider_track_height <- 19.0
+    UiHandles::set_theme(original)
+    UiCore::clear_all_invalidations()
+
+    dark_preferences: UiTheme::Preferences = UiTheme::Preferences{mode: UiTheme::ColorMode.Dark, contrast: UiTheme::Contrast.Normal, text_scale: 1.0, reduced_motion: false}
+    dark_palette: UiTheme::Palette = UiTheme::resolve(dark_preferences, false, false)
+    check("palette adapter reports a change", UiHandles::apply_palette(dark_palette))
+    applied: UiFlat::Theme = UiHandles::theme()
+    check("palette maps focus ring", applied.focus_ring.r == dark_palette.focus_ring.r and applied.focus_ring.g == dark_palette.focus_ring.g)
+    check("palette maps selection", applied.selection.r == dark_palette.selection.r and applied.selection.b == dark_palette.selection.b)
+    check("palette derives control mark alpha", applied.control_mark.a == 185 and applied.control_mark.r == dark_palette.text.r)
+    check("palette maps active control mark", applied.control_mark_strong.r == dark_palette.accent.r and applied.control_mark_strong.a == dark_palette.accent.a)
+    check("palette preserves custom metrics", applied.slider_track_height == 19.0)
+    if UiHandles::widget(button) is row:
+        check("palette preserves widget colors", row.color.r == 9 and row.hover_color.g == 13 and row.press_color.b == 17)
+    else:
+        check("palette preserves widget colors", false)
+
+    UiCore::clear_all_invalidations()
+    sequence: u32 = UiCore::invalidation_sequence()
+    check("repeated palette is idempotent", not UiHandles::apply_palette(dark_palette) and UiCore::invalidations() == 0 and UiCore::invalidation_sequence() == sequence)
+
+    high_preferences: UiTheme::Preferences = UiTheme::Preferences{mode: UiTheme::ColorMode.Light, contrast: UiTheme::Contrast.High, text_scale: 2.0, reduced_motion: true}
+    check("system theme resolves and applies", UiHandles::apply_system_theme(high_preferences, false, false))
+    high_applied: UiFlat::Theme = UiHandles::theme()
+    check("high contrast uses resolved accent", high_applied.focus_ring.r == 0 and high_applied.focus_ring.g == 64 and high_applied.control_mark_strong.r == 0)
+    check("system theme still preserves metrics", high_applied.slider_track_height == 19.0)
+
+    if failures == 0:
+        _ = puts("widget theme adapter: all checks passed")
+    return failures.i64()
