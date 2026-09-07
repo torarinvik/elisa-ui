@@ -64,15 +64,16 @@ module UiCapi:
             # session before returning. Capture the session identity at drain
             # start so queued events cannot cross that lifecycle boundary.
             # The phase-New case remains usable for embedders that use this
-            # pure C adapter without a lifecycle owner, but a callback that
-            # starts a session still rotates the generation and invalidates
-            # every event queued before that transition.
-            drain_started: bool = UiLifecycle::is_started()
+            # pure C adapter without a lifecycle owner. Once a session has
+            # stopped, however, late callbacks must be discarded just like
+            # callbacks from any other dead owner; only the explicit New
+            # compatibility mode may dispatch without a live lifecycle.
+            allow_unowned_dispatch: bool = UiLifecycle::phase() == UiLifecycle::Phase.New
             drain_generation: u32 = UiLifecycle::generation()
             event: mutable UiCore::Event = UiCore::Event.None
             while UiEvents::dequeue(event):
                 continue if UiLifecycle::generation() != drain_generation
-                if drain_started:
+                if not allow_unowned_dispatch:
                     continue if not UiLifecycle::is_started()
                     continue if UiCore::is_input_event(event) and not UiLifecycle::accepts_input()
                 app_event(event)
