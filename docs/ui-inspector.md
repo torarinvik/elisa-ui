@@ -9,6 +9,7 @@ include "src/widgets/ui_inspector.elisa"
 
 snapshot: UiInspector::Frame = UiInspector::frame()
 node: UiInspector::Node? = UiInspector::inspect(save)
+first: UiInspector::Node? = UiInspector::node_at(0)
 ```
 
 `Frame` reports the viewport, shared lifecycle phase/generation and its input
@@ -22,6 +23,8 @@ lifetime handle, parent/child/sibling relationships, resolved bounds,
 min/max/grow/margin constraints, visibility/enabled/focus/selection state,
 value, text, help, and its matching semantic node. Tree navigation remains
 typed, so a stale handle produces no record and cannot inspect a recycled slot.
+`node_at` offers a bounded ordinal snapshot for tooling enumeration; it returns
+the same typed record and never exposes the retained arena index as a handle.
 
 `Frame.localization` is the same bounded `UiLocalization::Snapshot` used by
 the application: it includes the canonical active tag, direction, monotonic
