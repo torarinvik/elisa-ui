@@ -17,6 +17,10 @@ module UiGestures:
         # geometry bound inside this hot helper triggers a selector failure in
         # the current stage1 backend.
         const MAX_GESTURE_DURATION_F64: f64 = 16777216.0
+        # A finite f32 spans fewer than 128 powers of four in either
+        # direction. Keep square-root normalization explicitly bounded even if
+        # a future caller stops using the shared geometry sanitizer first.
+        const MAX_SQRT_NORMALIZATION_STEPS: usize = 128
 
         const enum Kind of i32:
             None = 0
@@ -260,10 +264,12 @@ module UiGestures:
             # value takes far more than eight iterations at screen distances.
             scaled: mutable f32 = value
             factor: mutable f32 = 1.0
-            while scaled > 4.0 |scaled, factor|:
+            for _ in 0..<MAX_SQRT_NORMALIZATION_STEPS:
+                break if scaled <= 4.0
                 scaled <- scaled * 0.25
                 factor <- factor * 2.0
-            while scaled < 1.0 |scaled, factor|:
+            for _ in 0..<MAX_SQRT_NORMALIZATION_STEPS:
+                break if scaled >= 1.0
                 scaled <- scaled * 4.0
                 factor <- factor * 0.5
             estimate: f32 =
