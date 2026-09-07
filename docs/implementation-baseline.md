@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `48cc151` (`feat(text): complete common spacing mark ranges`) on branch `work` |
+| elisa-ui revision | `e2181c3` (`fix(text): keep regional flags out of emoji joins`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -91,7 +91,7 @@ lines), with keyboard focus/capture policy in `ui_flat_focus.elisa`, text
 semantic projection and focus visibility in `ui_flat_text_semantics.elisa`, visual
 color policy in `ui_flat_style.elisa`, shared `UiTheme` palette adaptation in
 `ui_flat_theme.elisa` (37 lines), the private Unicode property tables in
-`ui_flat_grapheme.elisa` (124 lines), and legacy callback lowering in
+`ui_flat_grapheme.elisa` (137 lines), and legacy callback lowering in
 `ui_flat_events.elisa`. The AppKit canvas flat adapter keeps its externally
 mandated export declarations in `ui_appkit_canvas_flat_exports.elisa`, separate
 from callback policy. The AppKit controls backend is
