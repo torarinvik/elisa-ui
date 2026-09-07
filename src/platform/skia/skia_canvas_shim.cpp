@@ -105,6 +105,17 @@ extern "C" void elisa_skia_canvas_stroke_round_rect(std::size_t handle, float x,
     }
 }
 
+extern "C" void elisa_skia_canvas_shadow_round_rect(std::size_t handle, float x, float y, float width,
+                                                      float height, float radius, std::uint8_t alpha) {
+    if (SkCanvas *target = canvas(handle); alpha != 0) {
+        const SkRect rect = SkRect::MakeXYWH(x, y, width, height);
+        const SkScalar safe_radius = radius > 0.0f ? radius : 0.0f;
+        SkPaint paint = fill_paint(0, 0, 0, alpha);
+        paint.setShadowLayer(5.0f, 0.0f, 2.0f, color(0, 0, 0, alpha));
+        target->drawRRect(SkRRect::MakeRectXY(rect, safe_radius, safe_radius), paint);
+    }
+}
+
 extern "C" void elisa_skia_canvas_fill_circle(std::size_t handle, float x, float y, float radius,
                                                 std::uint8_t red, std::uint8_t green, std::uint8_t blue,
                                                 std::uint8_t alpha) {
