@@ -132,17 +132,28 @@ extern "C" void elisa_skia_canvas_shadow_round_rect(std::size_t handle, float x,
     }
 }
 
+extern "C" void elisa_skia_canvas_draw_image_sampling(std::size_t canvas_handle, std::size_t image_handle,
+                                                        float x, float y, float width, float height,
+                                                        std::uint8_t alpha, std::int32_t sampling);
+
 extern "C" void elisa_skia_canvas_draw_image(std::size_t canvas_handle, std::size_t image_handle,
                                                float x, float y, float width, float height,
                                                std::uint8_t alpha) {
+    elisa_skia_canvas_draw_image_sampling(canvas_handle, image_handle, x, y, width, height, alpha, 1);
+}
+
+extern "C" void elisa_skia_canvas_draw_image_sampling(std::size_t canvas_handle, std::size_t image_handle,
+                                                        float x, float y, float width, float height,
+                                                        std::uint8_t alpha, std::int32_t sampling) {
     if (SkCanvas *target = canvas(canvas_handle);
         target != nullptr && image_handle != 0 && width > 0.0f && height > 0.0f && alpha != 0) {
         SkImage *image = reinterpret_cast<SkImage *>(image_handle);
         SkPaint paint;
         paint.setAntiAlias(true);
         paint.setAlphaf(static_cast<float>(alpha) / 255.0f);
+        const SkFilterMode filter = sampling == 0 ? SkFilterMode::kNearest : SkFilterMode::kLinear;
         target->drawImageRect(image, SkRect::MakeXYWH(x, y, width, height),
-                              SkSamplingOptions(SkFilterMode::kLinear, SkMipmapMode::kNone),
+                              SkSamplingOptions(filter, SkMipmapMode::kNone),
                               &paint);
     }
 }

@@ -22,6 +22,7 @@ extern elisa_skia_canvas_fill_round_rect(canvas: usize, x: f32, y: f32, width: f
 extern elisa_skia_canvas_stroke_round_rect(canvas: usize, x: f32, y: f32, width: f32, height: f32, radius: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
 extern elisa_skia_canvas_shadow_round_rect(canvas: usize, x: f32, y: f32, width: f32, height: f32, radius: f32, alpha: u8) -> void
 extern elisa_skia_canvas_draw_image(canvas: usize, image: usize, x: f32, y: f32, width: f32, height: f32, alpha: u8) -> void
+extern elisa_skia_canvas_draw_image_sampling(canvas: usize, image: usize, x: f32, y: f32, width: f32, height: f32, alpha: u8, sampling: i32) -> void
 extern elisa_skia_canvas_draw_text_with_font(canvas: usize, font: usize, text: cstr, length: usize, x: f32, y: f32, size: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
 extern elisa_skia_canvas_fill_circle(canvas: usize, x: f32, y: f32, radius: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
 extern elisa_skia_canvas_fill_triangle(canvas: usize, ax: f32, ay: f32, bx: f32, by: f32, cx: f32, cy: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
@@ -36,6 +37,10 @@ extern elisa_skia_text_line_height_with_font(font: usize, size: f32) -> f32
 
 module UiSkia:
     public:
+        const enum ImageSampling of i32:
+            Nearest = 0
+            Linear = 1
+
         # The host passes an opaque SkCanvas* as usize. Elisa never dereferences
         # or stores a Skia C++ object; detach() invalidates the handle at the
         # end of every surface lifetime.
@@ -114,6 +119,16 @@ module UiSkia:
             safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
             return if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
             elisa_skia_canvas_draw_image(canvas_state, image, safe_box.origin.x, safe_box.origin.y, safe_box.size.width, safe_box.size.height, alpha)
+
+        # Custom controls can opt into nearest-neighbour filtering for crisp
+        # pixel art; ordinary image commands retain the smoother linear default.
+        def draw_image_with_sampling(image: usize, box: UiCore::Rect, alpha: u8, sampling: ImageSampling) -> void can[Ui.Draw]:
+            return if canvas_state == 0 or image == 0 or alpha == 0
+            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+            return if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
+            raw_sampling: i32 = sampling.i32()
+            safe_sampling: i32 = ImageSampling.Linear.i32() if raw_sampling != ImageSampling.Nearest.i32() and raw_sampling != ImageSampling.Linear.i32() else raw_sampling
+            elisa_skia_canvas_draw_image_sampling(canvas_state, image, safe_box.origin.x, safe_box.origin.y, safe_box.size.width, safe_box.size.height, alpha, safe_sampling)
 
         def measure_text_width(text: sview, size: f32) -> f32:
             # Metrics are pure font queries and do not require a live canvas.
