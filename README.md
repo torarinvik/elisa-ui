@@ -208,6 +208,8 @@ because a module member's symbol carries its module and those names cannot move.
   `src/widgets/ui_handles_persistence.elisa`; its `UiHandlesPersistence`
   helpers bind ordinary text, numeric, and selection controls to `UiState`
   record IDs while rejecting secure-field values and stale handles.
+  The shared hello reference app adds a small typed list/detail catalog in
+  `examples/hello/catalog.elisa` and persists its selected item with the form.
 - **Resources** ([src/widgets/ui_resources.elisa](src/widgets/ui_resources.elisa)) —
   a bounded, typed logical-resource state machine. The small public facade is
   backed by cohesive identity, query, demand/progress, transition, and metadata

@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `09155829c83a3600d4395207c68f7d3f3c17c83f` (`refactor(appkit): isolate flat canvas exports`) on branch `work` |
+| elisa-ui revision | `d500210` (`feat(example): add typed list detail flow`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -548,7 +548,9 @@ separate host-enforced security boundary.
 - The shared hello reference app now keeps its application state adapter in
   `examples/hello/state.elisa` and demonstrates typed P/R save/restore through
   `UiHandlesPersistence`; the in-memory blob is ID/value-only and never stores
-  widget handles or secure text.
+  widget handles or secure text. Its `examples/hello/catalog.elisa` module
+  provides a typed list/detail interaction and persists the selected item with
+  the form state across restore.
 
 The authoritative generated WasmBrowser Elisa bindings are staged in
 `../wasm-sdk/sdk/elisa/wasmbrowser/`; the hosted adapter includes those bindings

@@ -63,6 +63,10 @@ The complete working version is
 application-owned, in-memory save/restore flow (P/R) through the typed
 `UiHandlesPersistence` extension; the serialized blob contains IDs and values,
 never widget handles or arena indexes.
+The small [examples/hello/catalog.elisa](../examples/hello/catalog.elisa)
+module adds a typed list/detail flow and persists the selected item alongside
+the form state, so the same interaction is exercised by SDL3, AppKit canvas,
+and WasmBrowser entry points.
 
 ## Flat widgets
 
