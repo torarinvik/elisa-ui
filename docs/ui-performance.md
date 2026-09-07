@@ -25,8 +25,9 @@ links the checked-in Elisa runtime, and reports nanoseconds for five phases:
   per iteration, repeated 32 times (including edit-history bookkeeping).
 
 Typography queries are cached in Elisa for the duration of each paint. The
-bounded `UiTextMetrics` table removes repeated line-height FFI calls while its
-paint/tree-boundary reset keeps a new font or scale from reusing an old metric.
+bounded `UiTextMetrics` table removes repeated line-height and caption/range
+width FFI calls; copied width keys and the paint/tree-boundary reset keep cache
+memory bounded and prevent a new font or scale from reusing an old metric.
 
 The large-tree assertion verifies 221 retained widgets and at least one paint
 command per widget; its semantic pass also exercises the Elisa-owned ID index.
