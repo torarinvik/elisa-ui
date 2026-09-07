@@ -1,0 +1,100 @@
+# UiFlat semantic projection and focus visibility policy.
+
+extend UiFlat:
+    private:
+        # Semantic links are derived from the same retained tree that drives
+        # paint and hit testing. Non-semantic layout wrappers are skipped for
+        # parents, while direct semantic siblings remain cheap to discover in
+        # the bounded flat arena.
+        def semantic_kind(index: usize) -> bool:
+            return false if index >= widget_count
+            kind: UiConst::WidgetKind = widgets[index].kind
+            return kind == UiConst::WidgetKind.Button or kind == UiConst::WidgetKind.RadioButton or kind == UiConst::WidgetKind.CheckBox or kind == UiConst::WidgetKind.Slider or kind == UiConst::WidgetKind.ProgressBar or kind == UiConst::WidgetKind.TextField or kind == UiConst::WidgetKind.Label
+
+        def semantic_parent_id(index: usize) -> usize:
+            cursor: mutable usize = widgets[index].parent
+            steps: mutable usize = 0
+            while cursor < widget_count |cursor, steps|:
+                return cursor if semantic_kind(cursor) and effectively_visible(cursor) and intersects_scroll_viewports(cursor)
+                return UiCore::MAX_ACCESSIBILITY_NODES if steps >= MAX_TRAVERSAL_DEPTH
+                steps <- steps + 1
+                cursor <- widgets[cursor].parent
+            return UiCore::MAX_ACCESSIBILITY_NODES
+
+        def semantic_child_id(index: usize) -> usize:
+            cursor: mutable usize = widgets[index].first_child
+            steps: mutable usize = 0
+            while cursor != NONE |cursor, steps|:
+                return UiCore::MAX_ACCESSIBILITY_NODES if steps >= MAX_TRAVERSAL_SIBLINGS or cursor >= widget_count
+                steps <- steps + 1
+                return cursor if semantic_kind(cursor) and effectively_visible(cursor) and intersects_scroll_viewports(cursor)
+                cursor <- widgets[cursor].next_sibling
+            return UiCore::MAX_ACCESSIBILITY_NODES
+
+        def semantic_next_sibling_id(index: usize) -> usize:
+            cursor: mutable usize = widgets[index].next_sibling
+            steps: mutable usize = 0
+            while cursor != NONE |cursor, steps|:
+                return UiCore::MAX_ACCESSIBILITY_NODES if steps >= MAX_TRAVERSAL_SIBLINGS or cursor >= widget_count
+                steps <- steps + 1
+                return cursor if semantic_kind(cursor) and effectively_visible(cursor) and intersects_scroll_viewports(cursor)
+                cursor <- widgets[cursor].next_sibling
+            return UiCore::MAX_ACCESSIBILITY_NODES
+
+        # Keyboard focus must never disappear into a translated viewport. The
+        # child frame already contains the current offset, so recover its
+        # unscrolled edge and request the smallest offset that reveals it.
+        def ensure_visible(index: usize) -> void:
+            cursor: mutable usize = widgets[index].parent
+            steps: mutable usize = 0
+            while cursor < widget_count |cursor, index, steps|:
+                return if steps >= MAX_TRAVERSAL_DEPTH
+                steps <- steps + 1
+                if widgets[cursor].kind == UiConst::WidgetKind.Scroll:
+                    current: f32 = widgets[cursor].scroll_offset
+                    requested: mutable f32 = current
+                    if widgets[cursor].axis == UiConst::Axis.Row:
+                        viewport_start: f32 = widgets[cursor].x
+                        viewport_end: f32 = viewport_start + widgets[cursor].width
+                        child_start: f32 = widgets[index].x
+                        child_end: f32 = child_start + widgets[index].width
+                        unscrolled_start: f32 = child_start + current
+                        unscrolled_end: f32 = child_end + current
+                        requested <- unscrolled_start - viewport_start if child_start < viewport_start
+                        requested <- unscrolled_end - viewport_end if child_end > viewport_end and child_start >= viewport_start
+                    else:
+                        viewport_start: f32 = widgets[cursor].y
+                        viewport_end: f32 = viewport_start + widgets[cursor].height
+                        child_start: f32 = widgets[index].y
+                        child_end: f32 = child_start + widgets[index].height
+                        unscrolled_start: f32 = child_start + current
+                        unscrolled_end: f32 = child_end + current
+                        requested <- unscrolled_start - viewport_start if child_start < viewport_start
+                        requested <- unscrolled_end - viewport_end if child_end > viewport_end and child_start >= viewport_start
+                    _ = set_scroll_offset(cursor, requested)
+                cursor <- widgets[cursor].parent
+
+        def emit_accessibility(index: usize) -> void:
+            enabled: bool = effectively_enabled(index)
+            frame: UiCore::Rect = UiCore::Rect(widgets[index].x, widgets[index].y, widgets[index].width, widgets[index].height)
+            if widgets[index].kind == UiConst::WidgetKind.Button:
+                UiCore::accessibility(UiCore::AccessibilityRole.Button, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, false, 0.0, "", "", 0, 0, 0)
+            elif widgets[index].kind == UiConst::WidgetKind.RadioButton:
+                UiCore::accessibility(UiCore::AccessibilityRole.RadioButton, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, widgets[index].selected, 0.0, "", "", 0, 0, 0)
+            elif widgets[index].kind == UiConst::WidgetKind.CheckBox:
+                UiCore::accessibility(UiCore::AccessibilityRole.CheckBox, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, widgets[index].selected, 0.0, "", "", 0, 0, 0)
+            elif widgets[index].kind == UiConst::WidgetKind.Slider:
+                UiCore::accessibility(UiCore::AccessibilityRole.Slider, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, false, widgets[index].value, "", "", 0, 0, 0)
+            elif widgets[index].kind == UiConst::WidgetKind.ProgressBar:
+                UiCore::accessibility(UiCore::AccessibilityRole.ProgressBar, widgets[index].text, widgets[index].help, frame, index, NONE, enabled, false, false, widgets[index].value, "", "", 0, 0, 0)
+            elif widgets[index].kind == UiConst::WidgetKind.TextField:
+                semantic_role: UiCore::AccessibilityRole = UiCore::AccessibilityRole.PasswordField if widgets[index].secure else UiCore::AccessibilityRole.TextField
+                if widgets[index].secure:
+                    UiCore::accessibility(semantic_role, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, false, 0.0, secure_display_value(index), selected_text_value(index), widgets[index].text_revision, selection_utf16_location(index), selection_utf16_length(index))
+                else:
+                    UiCore::accessibility(semantic_role, widgets[index].text, widgets[index].help, frame, index, index, enabled, widgets[index].focused, false, 0.0, text_value(index), selected_text_value(index), widgets[index].text_revision, selection_utf16_location(index), selection_utf16_length(index))
+            elif widgets[index].kind == UiConst::WidgetKind.Label:
+                UiCore::accessibility(UiCore::AccessibilityRole.Label, widgets[index].text, widgets[index].help, frame, index, NONE, enabled, false, false, 0.0, "", "", 0, 0, 0)
+            UiCore::accessibility_set_relationships(index, semantic_parent_id(index), semantic_child_id(index), semantic_next_sibling_id(index))
+            if widgets[index].kind == UiConst::WidgetKind.Slider or widgets[index].kind == UiConst::WidgetKind.ProgressBar:
+                UiCore::accessibility_set_range(index, 0.0, 1.0)
