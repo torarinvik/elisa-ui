@@ -17,6 +17,9 @@
 extern "C" {
 #endif
 
+int32_t elisa_skia_render_frame_status(size_t canvas);
+int32_t elisa_skia_render_frame_scaled_status(size_t canvas, float scale);
+
 void elisa_skia_canvas_save(size_t canvas);
 void elisa_skia_canvas_restore(size_t canvas);
 void elisa_skia_canvas_scale(size_t canvas, float x, float y);
