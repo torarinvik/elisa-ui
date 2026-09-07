@@ -16,6 +16,7 @@
 #include "include/core/SkRect.h"
 #include "include/core/SkRRect.h"
 #include "include/core/SkPath.h"
+#include "include/core/SkSamplingOptions.h"
 
 namespace {
 
