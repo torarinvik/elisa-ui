@@ -3,22 +3,17 @@
 extend UiRemote:
     public:
         def reset() -> void:
-            remote_state <- ConnectionState.Disconnected
             remote_generation <- 0
-            remote_selection <- Selection{
-                accepted: false, presentation: Presentation.Unknown, scale: 1.0,
-                physical_width: 0.0, physical_height: 0.0,
-                logical_width: 0.0, logical_height: 0.0,
-            }
-            remote_input_sent <- 0
-            remote_input_acked <- 0
-            remote_stale_input <- false
+            clear_disconnected_state()
 
         def connect(offer: Offer, preferred: Presentation) -> bool:
             selection: Selection = negotiate(offer, preferred)
             remote_state <- ConnectionState.Connecting
             if not selection.accepted:
-                remote_state <- ConnectionState.Disconnected
+                # A failed reconnect is still a lifecycle turnover. Clear the
+                # old presentation and acknowledgements so callers cannot
+                # observe a dead session as though it were still negotiated.
+                UiRemote::disconnect()
                 return false
             remote_selection <- selection
             remote_input_sent <- 0
@@ -39,15 +34,7 @@ extend UiRemote:
             return true
 
         def disconnect() -> void:
-            remote_state <- ConnectionState.Disconnected
-            remote_selection <- Selection{
-                accepted: false, presentation: Presentation.Unknown, scale: 1.0,
-                physical_width: 0.0, physical_height: 0.0,
-                logical_width: 0.0, logical_height: 0.0,
-            }
-            remote_input_sent <- 0
-            remote_input_acked <- 0
-            remote_stale_input <- false
+            clear_disconnected_state()
             remote_generation <- next_generation(remote_generation)
 
         # Sequence numbers belong to the transport adapter, while ordering and
@@ -99,3 +86,14 @@ extend UiRemote:
         def next_generation(value: u32) -> u32:
             next: u32 = value + 1
             return 1 if next == 0 else next
+
+        def clear_disconnected_state() -> void:
+            remote_state <- ConnectionState.Disconnected
+            remote_selection <- Selection{
+                accepted: false, presentation: Presentation.Unknown, scale: 1.0,
+                physical_width: 0.0, physical_height: 0.0,
+                logical_width: 0.0, logical_height: 0.0,
+            }
+            remote_input_sent <- 0
+            remote_input_acked <- 0
+            remote_stale_input <- false

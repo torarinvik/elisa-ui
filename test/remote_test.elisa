@@ -52,7 +52,13 @@ def main() -> i64:
     UiRemote::disconnect()
     disconnected: UiRemote::Snapshot = UiRemote::snapshot()
     check("remote disconnect clears selection and advances generation", disconnected.state == UiRemote::ConnectionState.Disconnected and disconnected.generation != generation_before_disconnect and disconnected.overlay_visible and not disconnected.selection.accepted and not disconnected.input_pending)
-    check("remote rejects unsupported connection", not UiRemote::connect(unsupported, UiRemote::Presentation.Video) and UiRemote::snapshot().state == UiRemote::ConnectionState.Disconnected)
+    check("remote reconnects before a failed offer", UiRemote::connect(offer, UiRemote::Presentation.TypedCommands) and UiRemote::snapshot().selection.accepted)
+    _ = UiRemote::submit_input(9)
+    generation_before_failed_reconnect: u32 = UiRemote::snapshot().generation
+    failed_reconnect: mutable UiRemote::Snapshot = UiRemote::snapshot()
+    check("remote rejects unsupported connection", not UiRemote::connect(unsupported, UiRemote::Presentation.Video))
+    failed_reconnect <- UiRemote::snapshot()
+    check("failed reconnect clears stale presentation and input", failed_reconnect.state == UiRemote::ConnectionState.Disconnected and not failed_reconnect.selection.accepted and not failed_reconnect.input_pending and failed_reconnect.generation != generation_before_failed_reconnect)
 
     if failures == 0:
         _ = puts("remote: all checks passed")
