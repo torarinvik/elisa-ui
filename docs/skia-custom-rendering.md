@@ -65,7 +65,10 @@ in the `Ready` state before a host image can be painted.
 Hosts can use `bind_image`/`draw_bound_image` to associate that pointer with an
 exact `(slot,generation)` token; recycled resource generations cannot reuse an
 old image binding. Elisa stores the opaque value only and exposes explicit
-unbind/clear operations before host disposal.
+unbind/clear operations before host disposal. `prune_bindings()` also removes
+entries whose logical resource is no longer `Ready`; draw, bind, and metric
+queries invoke it automatically, while `clear_resource_bindings()` provides one
+teardown call for a resource that may have both image and font bindings.
 
 The same rule applies to host-provided typefaces: `draw_ready_text` accepts a
 borrowed `SkTypeface*` only for a ready font generation, while bounded text

@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `f6bffe6a4ebb0c974af95a7c012310dbcb807b29` on branch `work` |
+| elisa-ui revision | `2ae663a424341088c8b50aa5f10964b92c94b51a` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -297,6 +297,11 @@ separate host-enforced security boundary.
   rejected, and rounded radii are clamped to half the shortest edge before FFI;
   `test/skia_painter_test.elisa` records the radius clamp and the source-size
   gate keeps `ui_skia_geometry.elisa` cohesive.
+- Skia image/typeface bindings now expose generation-safe `prune_bindings()` and
+  `clear_resource_bindings()` teardown paths. Draw, bind, and metric queries
+  automatically discard non-ready or disposed logical resources before any
+  borrowed pointer can be used; the headless Skia fixture covers both resource
+  kinds and the combined teardown helper.
 - Callback entry points are lifetime-guarded: if an application handler resets
   the flat tree, post-callback history, composition, activation, adjustment, and
   radio state updates are abandoned instead of touching recycled slots. This is
