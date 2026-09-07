@@ -85,6 +85,9 @@ radius through `UiSkia::fill_rounded_rect()`. Skia's private
 hairline constants through explicit FFI arguments, leaving the C++ bridge to
 construct only the target-specific `SkPaint` effect. Non-positive stroke widths
 are rejected by the bridge instead of receiving an undocumented fallback.
+Rounded radii are constrained by `ui_skia_geometry.elisa` before crossing the
+ABI; the bridge forwards those values directly to `SkRRect` without a second
+appearance default.
 Custom controls that need immediate text use `UiSkia::draw_text_run()`, which
 shares the retained path's bounded coordinates, UTF-8 prefix, and 1pt minimum
 font-size policy before crossing the ABI.
