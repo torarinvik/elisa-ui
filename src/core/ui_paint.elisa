@@ -59,6 +59,27 @@ permission Ui:
 # why the contract lives in a module at all.
 module UiPaint:
     public:
+        # Shared custom-painter styling. Native controls do not consume this
+        # record; each custom backend translates the same Elisa policy into its
+        # own primitive API, keeping AppKit fallback and Skia visually aligned.
+        struct RoundedRectStyle:
+            radius: f32
+            elevated: bool
+            shadow_alpha: u8
+            hairline_alpha: u8
+
+        def rounded_rect_style(box: UiCore::Rect) -> RoundedRectStyle:
+            shortest: f32 = box.size.width if box.size.width < box.size.height else box.size.height
+            radius: mutable f32 = UiCore::bounded_extent(shortest * 0.22)
+            radius <- 10.0 if radius > 10.0 else radius
+            elevated: bool = box.size.height <= 64.0 and box.size.width >= 72.0
+            return RoundedRectStyle{
+                radius: radius,
+                elevated: elevated,
+                shadow_alpha: 61 if elevated else 0,
+                hairline_alpha: 33 if elevated else 14,
+            }
+
         # One command, one method. A painter is a TYPE, not a value: its state is
         # the backend's own (SDL3's renderer handle, the component's wire cursor),
         # so the methods are static and the specialization inlines them.

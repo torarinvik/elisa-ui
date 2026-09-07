@@ -30,11 +30,12 @@ lifecycle transitions instead of retained native pointer state.
 
 The first slice covers clear, clipping, rounded rectangles, circles, triangles,
 lines, UTF-8 text, and text metrics. The portable `FillRect` command keeps its
-wire shape, while the Skia painter applies Elisa's bounded rounded-corner,
-hairline, and elevated-control shadow policy; custom controls can request an
-explicit radius through `UiSkia::fill_rounded_rect()`. The shadow FFI remains a
-single geometry primitive, so target-specific blur/GPU behavior stays inside
-Skia. Font fallback, image resources, GPU surface
+wire shape, while `UiPaint::rounded_rect_style()` supplies the shared Elisa
+rounded-corner, hairline, and elevated-control shadow policy to both the Skia
+and CoreGraphics custom painters; custom controls can request an explicit
+radius through `UiSkia::fill_rounded_rect()`. The shadow FFI remains a single
+geometry primitive, so target-specific blur/GPU behavior stays inside Skia.
+Font fallback, image resources, GPU surface
 creation, and an AppKit `MTKView`/`SkSurface` host are intentionally separate
 follow-ups; they must be chosen with the target's pinned Skia build rather than
 smuggled into the Elisa ABI.
