@@ -51,6 +51,16 @@ if ! bash "$ROOT/scripts/check_appkit_canvas.sh"; then
   status=1
 fi
 
+# When a pinned Skia checkout is supplied, include the optional AppKit/Skia
+# compositor in the same headless regression run. Without SKIA_ROOT the
+# ordinary suite remains independent of the multi-gigabyte SDK.
+if [[ -n "${SKIA_ROOT:-}" ]]; then
+  if ! bash "$ROOT/scripts/check_appkit_skia.sh"; then
+    echo "FAIL appkit skia"
+    status=1
+  fi
+fi
+
 for source in "$ROOT"/test/*_test.elisa; do
   name="$(basename "$source" .elisa)"
   # The real Skia fixture is a library entry point driven by its C++ host;
