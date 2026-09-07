@@ -156,7 +156,7 @@ def ui_wasm_fetch_clipboard() -> usize:
         trusted Unsafe.PointerCast:
             source: u8& = (pointer + index.u32()).cast[u8&]
             ui_wasm_clipboard_buffer[index] <- source
-    copied: sview = sview(&ui_wasm_clipboard_buffer[0], 0, take.i64())
+    copied: sview = ui_wasm_clipboard_buffer[0:take]
     ui_wasm_clipboard_length <- UiText::valid_utf8_prefix(copied, take)
     ui_wasm_release_clipboard_allocation(pointer, length)
     return ui_wasm_clipboard_length
@@ -176,7 +176,7 @@ def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
     safe_bytes: mutable u8[UiFlat::TEXT_CAPACITY] = zeroed
     for index in 0..<take:
         safe_bytes[index] <- bytes[index]
-    copied: sview = sview(&safe_bytes[0], 0, take.i64())
+    copied: sview = safe_bytes[0:take]
     valid_length: usize = UiText::valid_utf8_prefix(copied, take)
     pointer: cstr = (&safe_bytes[0]).cast[cstr] can Unsafe.PointerCast
     can Host.Clipboard:
@@ -195,7 +195,7 @@ def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
     return 0 if capacity > 0 and buffer == null
     available: usize = ui_wasm_fetch_clipboard() if not ui_wasm_clipboard_cache_valid else ui_wasm_clipboard_length
     take: mutable usize = available if available < capacity else capacity
-    source: sview = sview(&ui_wasm_clipboard_buffer[0], 0, take.i64())
+    source: sview = ui_wasm_clipboard_buffer[0:take]
     take <- UiText::valid_utf8_prefix(source, take)
     for index in 0..<take:
         buffer[index] <- ui_wasm_clipboard_buffer[index]
