@@ -50,6 +50,7 @@ module UiPerformanceBenchmark:
     private:
         global mutable root: UiHandles::Handle = UiHandles::invalid()
         global mutable probe: UiHandles::Handle = UiHandles::invalid()
+        global mutable field: UiHandles::Handle = UiHandles::invalid()
         global mutable margin_phase: bool = false
 
     public:
@@ -87,6 +88,17 @@ module UiPerformanceBenchmark:
             for _ in 0..<64:
                 _ = UiTextLayout::layout("A retained benchmark row with Unicode • café 👋 and a long wrapping suffix", 32)
 
+        def prepare_text() -> void:
+            reset()
+            root <- UiHandles::column(UiHandles::root_parent(), 12.0, 6.0, UiCore::rgb(18, 22, 30))
+            field <- UiHandles::text_field(root, "Input", "type here", "", 320.0, 28.0, 14.0, UiCore::rgb(230, 235, 245), UiCore::rgb(30, 34, 44))
+            _ = UiHandles::request_focus(field)
+
+        def text_input() -> void:
+            return if not UiHandles::is_valid(field)
+            for _ in 0..<16:
+                UiHandles::commit_text("é👋", 0, 0, false)
+
         def widget_count() -> i32:
             return UiHandles::count().i32()
 
@@ -122,6 +134,16 @@ export fn elisa_ui_benchmark_text() -> void = benchmark_text
 
 def benchmark_text() -> void:
     UiPerformanceBenchmark::text()
+
+export fn elisa_ui_benchmark_prepare_text() -> void = benchmark_prepare_text
+
+def benchmark_prepare_text() -> void:
+    UiPerformanceBenchmark::prepare_text()
+
+export fn elisa_ui_benchmark_text_input() -> void = benchmark_text_input
+
+def benchmark_text_input() -> void:
+    UiPerformanceBenchmark::text_input()
 
 export fn elisa_ui_benchmark_widget_count() -> i32 = benchmark_widget_count
 

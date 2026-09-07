@@ -295,7 +295,7 @@ without opening a native surface.
 
 The performance fixture is documented in
 [`docs/ui-performance.md`](docs/ui-performance.md). It measures framework-owned
-build, relayout, paint, text-layout, and retained-memory work without
+build, relayout, paint, text-layout, UTF-8 text-input, and retained-memory work without
 foregrounding a window; GPU, mobile-energy, and transport measurements require
 their respective hosts.
 

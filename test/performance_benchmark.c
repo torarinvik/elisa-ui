@@ -10,6 +10,8 @@ extern void elisa_ui_benchmark_mutate(void);
 extern void elisa_ui_benchmark_layout(void);
 extern void elisa_ui_benchmark_paint(void);
 extern void elisa_ui_benchmark_text(void);
+extern void elisa_ui_benchmark_prepare_text(void);
+extern void elisa_ui_benchmark_text_input(void);
 extern int32_t elisa_ui_benchmark_widget_count(void);
 extern int32_t elisa_ui_benchmark_command_count(void);
 
@@ -64,6 +66,13 @@ static uint64_t measure_text(int iterations) {
     return elapsed_ns(start, monotonic_ns());
 }
 
+static uint64_t measure_text_input(int iterations) {
+    elisa_ui_benchmark_prepare_text();
+    uint64_t start = monotonic_ns();
+    for (int index = 0; index < iterations; ++index) elisa_ui_benchmark_text_input();
+    return elapsed_ns(start, monotonic_ns());
+}
+
 int main(void) {
     const int iterations = 32;
     elisa_ui_benchmark_reset();
@@ -77,12 +86,15 @@ int main(void) {
         puts("performance: large-tree paint emitted too few commands");
         return 3;
     }
+    const int large_tree_widgets = elisa_ui_benchmark_widget_count();
+    const int large_tree_commands = elisa_ui_benchmark_command_count();
 
     /* Warm the compiler/runtime path before recording the reported samples. */
     (void)measure_first_frame(2);
     (void)measure_layout(2);
     (void)measure_paint(2);
     (void)measure_text(2);
+    (void)measure_text_input(2);
 
     struct rusage before;
     struct rusage after;
@@ -91,6 +103,7 @@ int main(void) {
     uint64_t layout_ns = measure_layout(iterations);
     uint64_t paint_ns = measure_paint(iterations);
     uint64_t text_ns = measure_text(iterations);
+    uint64_t text_input_ns = measure_text_input(iterations);
     (void)getrusage(RUSAGE_SELF, &after);
     uint64_t before_rss_bytes = peak_rss_bytes(&before);
     uint64_t after_rss_bytes = peak_rss_bytes(&after);
@@ -105,11 +118,15 @@ int main(void) {
         puts("performance: benchmark exceeded safety ceiling");
         return 4;
     }
-    printf("performance: iterations=%d first_frame_ns=%llu layout_ns=%llu paint_ns=%llu text_ns=%llu large_tree_widgets=%d large_tree_commands=%d peak_rss_bytes=%llu\n",
+    if (text_input_ns > phase_limit) {
+        puts("performance: benchmark exceeded safety ceiling");
+        return 4;
+    }
+    printf("performance: iterations=%d first_frame_ns=%llu layout_ns=%llu paint_ns=%llu text_ns=%llu text_input_ns=%llu large_tree_widgets=%d large_tree_commands=%d peak_rss_bytes=%llu\n",
            iterations, (unsigned long long)first_frame_ns,
            (unsigned long long)layout_ns, (unsigned long long)paint_ns,
-           (unsigned long long)text_ns, elisa_ui_benchmark_widget_count(),
-           elisa_ui_benchmark_command_count(), (unsigned long long)peak_rss);
+           (unsigned long long)text_ns, (unsigned long long)text_input_ns,
+           large_tree_widgets, large_tree_commands, (unsigned long long)peak_rss);
     puts("performance: benchmark passed");
     return 0;
 }
