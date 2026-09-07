@@ -54,18 +54,6 @@ extend UiAppKitCanvas:
                 # side remains a typed property primitive with no frame policy.
                 value_kind_changed: bool = not existed or before.value_kind != value_kind
                 elisa_appkit_canvas_accessibility_clear_value(handle, not_found(), 0) if handle != 0 and value_kind_changed
-                # A failed native replacement leaves the semantic ID present in
-                # the next frame, so the stale-ID sweep deliberately will not
-                # release its old handle. Drop that ownership here instead of
-                # losing it when the next-frame handle is zero.
-                elisa_appkit_canvas_accessibility_release(previous_handle) if handle == 0 and previous_handle != 0
-                # A native adapter may also replace an old element with a new
-                # retained object (for example after an external native view
-                # reset). The semantic ID is still present, so the stale-ID
-                # sweep cannot see the old handle; release that superseded
-                # ownership explicitly while keeping the new one for the next
-                # frame.
-                elisa_appkit_canvas_accessibility_release(previous_handle) if handle != 0 and previous_handle != 0 and handle != previous_handle
                 if value_kind == 1 and handle != 0:
                     native_selected: usize = native_boolean_value(selected)
                     elisa_appkit_canvas_accessibility_set_boolean_value(handle, native_selected)
@@ -92,45 +80,63 @@ extend UiAppKitCanvas:
                 CFRelease(native_label) if native_label != 0
                 CFRelease(native_help) if native_help != 0
             # Capture handles that are leaving the semantic tree before the
-            # previous-frame arrays are overwritten. They cannot be released
-            # until after Cocoa receives the replacement child list.
+            # previous-frame arrays are overwritten. A handle is retained only
+            # when the same semantic ID still points at that exact native
+            # element; replacement handles must not be confused with reuse.
             accessibility_stale_count <- 0
             for previous_index in 0..<previous_count:
                 previous_id: usize = accessibility_previous_ids[previous_index]
+                previous_handle: usize = accessibility_previous_handles[previous_index]
                 retained: mutable bool = false
                 for next_index in 0..<next_count:
-                    retained <- true if accessibility_next_ids[next_index] == previous_id
+                    retained <- true if accessibility_next_ids[next_index] == previous_id and previous_handle != 0 and accessibility_next_handles[next_index] == previous_handle
                 if not retained and accessibility_stale_count < UiCore::MAX_ACCESSIBILITY_NODES:
-                    accessibility_stale_handles[accessibility_stale_count] <- accessibility_previous_handles[previous_index]
+                    accessibility_stale_handles[accessibility_stale_count] <- previous_handle
                     accessibility_stale_count <- accessibility_stale_count + 1
 
-            accessibility_previous_count <- next_count
-            for index in 0..<accessibility_previous_count:
-                accessibility_previous_ids[index] <- accessibility_next_ids[index]
-                accessibility_previous_handles[index] <- accessibility_next_handles[index]
-                _ = copy_accessibility_text(accessibility_next[index].label, &accessibility_previous_label_storage[0], index)
-                _ = copy_accessibility_text(accessibility_next[index].help, &accessibility_previous_help_storage[0], index)
-                previous_state: mutable AccessibilityState = accessibility_next[index]
-                previous_state.label <- sview(&accessibility_previous_label_storage[index * ACCESSIBILITY_TEXT_CAPACITY], 0, previous_state.label.len)
-                previous_state.help <- sview(&accessibility_previous_help_storage[index * ACCESSIBILITY_TEXT_CAPACITY], 0, previous_state.help.len)
-                accessibility_previous[index] <- previous_state
-            commit_accessibility_children()
-            # Install the replacement child list before dropping Elisa's
-            # ownership for semantic nodes that disappeared. The CFArray passed
-            # to Cocoa intentionally has no retain callbacks; Elisa's handle
-            # table is therefore the lifetime that keeps each element alive
-            # while it remains in the view's currently committed list.
-            for stale_index in 0..<accessibility_stale_count:
-                stale_handle: usize = accessibility_stale_handles[stale_index]
-                elisa_appkit_canvas_accessibility_release(stale_handle) if stale_handle != 0
-                accessibility_stale_handles[stale_index] <- 0
+            committed: bool = commit_accessibility_children(next_count)
+            if committed:
+                # Publish the new history only after Cocoa has accepted the
+                # replacement list. The CFArray has no retain callbacks, so
+                # stale handles remain live through the native commit itself.
+                accessibility_previous_count <- next_count
+                for index in 0..<accessibility_previous_count:
+                    accessibility_previous_ids[index] <- accessibility_next_ids[index]
+                    accessibility_previous_handles[index] <- accessibility_next_handles[index]
+                    _ = copy_accessibility_text(accessibility_next[index].label, &accessibility_previous_label_storage[0], index)
+                    _ = copy_accessibility_text(accessibility_next[index].help, &accessibility_previous_help_storage[0], index)
+                    previous_state: mutable AccessibilityState = accessibility_next[index]
+                    previous_state.label <- sview(&accessibility_previous_label_storage[index * ACCESSIBILITY_TEXT_CAPACITY], 0, previous_state.label.len)
+                    previous_state.help <- sview(&accessibility_previous_help_storage[index * ACCESSIBILITY_TEXT_CAPACITY], 0, previous_state.help.len)
+                    accessibility_previous[index] <- previous_state
+                # Now that the view references the new list, release old or
+                # superseded handles that are no longer reachable from it.
+                for stale_index in 0..<accessibility_stale_count:
+                    stale_handle: usize = accessibility_stale_handles[stale_index]
+                    elisa_appkit_canvas_accessibility_release(stale_handle) if stale_handle != 0
+                    accessibility_stale_handles[stale_index] <- 0
+            else:
+                # Keep the old semantic list and ownership when allocation or
+                # native validation fails. Newly-created elements are not in
+                # that old list, so they can be released immediately; reused
+                # handles remain owned by the previous-frame table.
+                for next_index in 0..<next_count:
+                    candidate: usize = accessibility_next_handles[next_index]
+                    known: mutable bool = false
+                    for previous_index in 0..<previous_count:
+                        known <- true if candidate != 0 and candidate == accessibility_previous_handles[previous_index]
+                    if candidate != 0 and not known:
+                        elisa_appkit_canvas_accessibility_release(candidate)
+                    accessibility_next_handles[next_index] <- 0
+                for stale_index in 0..<accessibility_stale_count:
+                    accessibility_stale_handles[stale_index] <- 0
             accessibility_stale_count <- 0
-            if layout_changed:
+            if committed and layout_changed:
                 rebuild_accessibility_tooltips(next_count)
                 elisa_appkit_canvas_accessibility_invalidate_cursor_rects(canvas_window)
                 root_view: usize = elisa_appkit_canvas_accessibility_root(canvas_window)
                 NSAccessibilityPostNotification(root_view, NSAccessibilityLayoutChangedNotification) if root_view != 0
-            accessibility_force_layout <- false
+            accessibility_force_layout <- false if committed
 
         struct AppKitPainter:
             unused: i32

@@ -132,11 +132,11 @@ extend UiAppKitCanvas:
         # Cocoa child collection through CoreFoundation. The native bridge only
         # validates and assigns this immutable array; it owns no semantic-list
         # filtering or mutable collection state.
-        def commit_accessibility_children() -> void can Unsafe.PointerCast:
-            return if accessibility_previous_count > UiCore::MAX_ACCESSIBILITY_NODES
+        def commit_accessibility_children(requested_count: usize) -> bool can Unsafe.PointerCast:
+            return false if requested_count > UiCore::MAX_ACCESSIBILITY_NODES
             count: mutable usize = 0
-            for index in 0..<accessibility_previous_count:
-                handle: usize = accessibility_previous_handles[index]
+            for index in 0..<requested_count:
+                handle: usize = accessibility_next_handles[index]
                 if handle != 0:
                     accessibility_commit_handles[count] <- handle
                     count <- count + 1
@@ -144,12 +144,13 @@ extend UiAppKitCanvas:
             # explicit at the construction site too. Objective-C receives only
             # an already-bounded immutable child list and therefore does not
             # need to know the framework's capacity policy.
-            return if count > UiCore::MAX_ACCESSIBILITY_NODES
+            return false if count > UiCore::MAX_ACCESSIBILITY_NODES
             values_pointer: usize& = (&accessibility_commit_handles[0]).cast[usize&] can Unsafe.PointerCast
             children: usize = CFArrayCreate(0, values_pointer, count.i64(), 0)
-            return if children == 0
-            elisa_appkit_canvas_accessibility_commit(canvas_window, children)
+            return false if children == 0
+            committed: bool = elisa_appkit_canvas_accessibility_commit(canvas_window, children) != 0
             CFRelease(children)
+            return committed
 
         def color_component(value: u8) -> f32:
             return value.f32() / 255.0

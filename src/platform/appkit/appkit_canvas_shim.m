@@ -945,15 +945,16 @@ void elisa_appkit_canvas_accessibility_set_text(size_t handle,
     element.accessibilitySelectedText = selected;
 }
 
-void elisa_appkit_canvas_accessibility_commit(size_t windowHandle, size_t childrenHandle) {
-    if (childrenHandle == 0) return;
+int elisa_appkit_canvas_accessibility_commit(size_t windowHandle, size_t childrenHandle) {
+    if (childrenHandle == 0) return 0;
     id object = (__bridge id)(void *)childrenHandle;
-    if (![object isKindOfClass:[NSArray class]]) return;
+    if (![object isKindOfClass:[NSArray class]]) return 0;
     NSArray *children = (NSArray *)object;
     ElisaCanvasView *view = elisa_appkit_canvas_view(windowHandle);
-    if (view == nil || !elisa_appkit_canvas_accessibility_children_valid(children, windowHandle)) return;
+    if (view == nil || !elisa_appkit_canvas_accessibility_children_valid(children, windowHandle)) return 0;
     [view setAccessibilityChildren:children];
     [view setAccessibilityChildrenInNavigationOrder:children];
+    return 1;
 }
 
 void elisa_appkit_canvas_accessibility_invalidate_cursor_rects(size_t windowHandle) {
