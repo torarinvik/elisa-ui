@@ -172,6 +172,11 @@ unbind/clear operations before host disposal. `prune_bindings()` also removes
 entries whose logical resource is no longer `Ready`; draw, bind, and metric
 queries invoke it automatically, while `clear_resource_bindings()` provides one
 teardown call for a resource that may have both image and font bindings.
+Per-resource image and font lookups use Elisa-owned reverse indexes keyed by
+the resource slot, then validate the generation before returning the borrowed
+handle. This keeps hot draw/metric queries independent of the binding-table
+length while the bounded prune sweep still cleans up stale entries and clears
+their index slots.
 
 The same rule applies to host-provided typefaces: `draw_ready_text` accepts a
 borrowed `SkTypeface*` only for a ready font generation, while bounded text
