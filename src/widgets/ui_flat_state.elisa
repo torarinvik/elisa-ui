@@ -20,6 +20,7 @@ extend UiFlat:
         global mutable paint_order_seen: bool[MAX_WIDGETS] = zeroed
         global mutable paint_order_count: usize = 0
         global mutable text_storage: u8[TEXT_STORAGE_SIZE] = zeroed
+        global mutable retained_text_storage: u8[RETAINED_TEXT_STORAGE_SIZE] = zeroed
         global mutable secure_text_storage: u8[SECURE_TEXT_STORAGE_SIZE] = zeroed
         global mutable widget_count: usize = 0
         # A monotonically changing arena lifetime makes an index-backed handle
@@ -106,6 +107,20 @@ extend UiFlat:
         def mark_state_dirty() -> void:
             mark_paint_dirty()
             mark_semantics_dirty()
+
+        # Copy retained captions and metadata into Elisa-owned storage before
+        # the widget can be painted or queried after the caller's view expires.
+        # The returned counted view points at the stable per-widget slot.
+        def copy_retained_text(index: usize, field: usize, value: sview) -> sview:
+            return "" if index >= MAX_WIDGETS or field >= RETAINED_TEXT_FIELDS
+            safe: sview = UiCore::bounded_text(value)
+            offset: usize = (index * RETAINED_TEXT_FIELDS + field) * TEXT_CAPACITY
+            for byte_index in 0..<TEXT_CAPACITY:
+                retained_text_storage[offset + byte_index] <- 0
+            take: usize = safe.len.usize()
+            for byte_index in 0..<take:
+                retained_text_storage[offset + byte_index] <- safe.data[byte_index]
+            return sview(&retained_text_storage[offset], 0, take.i64())
 
         # Widget rows are public value types for compatibility, so callers can
         # construct or mutate one without going through a builder. Canonicalize

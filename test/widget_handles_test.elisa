@@ -100,6 +100,35 @@ def main() -> i64:
     else:
         check("slider caption stays in Elisa state", false)
 
+    # Labeled builders copy caller-owned views into the retained Elisa arena;
+    # changing the source bytes must not mutate a live widget's caption,
+    # placeholder, or accessibility help.
+    borrowed_caption: mutable u8[8] = zeroed
+    borrowed_caption[0] <- 79
+    borrowed_caption[1] <- 114
+    borrowed_caption[2] <- 105
+    borrowed_caption[3] <- 103
+    borrowed_caption[4] <- 105
+    borrowed_caption[5] <- 110
+    borrowed_caption[6] <- 97
+    borrowed_caption[7] <- 108
+    borrowed_view: sview = sview(&borrowed_caption[0], 0, 8)
+    owned_label: UiHandles::Handle = UiHandles::label(root, borrowed_view, 12.0, UiCore::rgb(230, 230, 230))
+    owned_field: UiHandles::Handle = UiHandles::text_field(root, borrowed_view, borrowed_view, "", 120.0, 24.0, 12.0, UiCore::rgb(230, 230, 230), UiCore::rgb(30, 30, 36))
+    UiHandles::set_help(owned_field, borrowed_view)
+    for byte_index in 0..<8:
+        borrowed_caption[byte_index] <- 88
+    if UiHandles::widget(owned_label) is owned_label_row:
+        check("label caption is retained", owned_label_row.text == "Original")
+    else:
+        check("label caption is retained", false)
+    if UiHandles::widget(owned_field) is owned_field_row:
+        check("text placeholder is retained", owned_field_row.placeholder == "Original")
+        check("help text is retained", owned_field_row.help == "Original")
+    else:
+        check("text placeholder is retained", false)
+        check("help text is retained", false)
+
     UiHandles::set_selected(radio, true)
     UiHandles::set_selection_group(radio, 7)
     UiHandles::set_selected(check_box, true)

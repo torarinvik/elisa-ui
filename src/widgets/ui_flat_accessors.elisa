@@ -198,7 +198,7 @@ extend UiFlat:
             # input, not an instruction to erase a live caption. Preserve the
             # existing value just like the text-editing boundary does.
             return if index >= widget_count or text.len < 0 or (text.len > 0 and text.data == null)
-            safe_text: sview = UiCore::bounded_text(text)
+            safe_text: sview = copy_retained_text(index, 0, text)
             safe_size: f32 = UiConstraints::bounded(size)
             widgets[index] with { text <- safe_text, text_size <- safe_size, text_color <- color }
             if widgets[index].kind == UiConst::WidgetKind.Label:
@@ -214,7 +214,7 @@ extend UiFlat:
             # Keep malformed counted views from silently clearing retained
             # accessibility help text.
             return if index >= widget_count or help.len < 0 or (help.len > 0 and help.data == null)
-            widgets[index].help <- UiCore::bounded_text(help)
+            widgets[index].help <- copy_retained_text(index, 2, help)
             mark_semantics_dirty()
 
         def set_secure(index: usize, secure: bool) -> void:
@@ -272,6 +272,8 @@ extend UiFlat:
             # by undo/redo snapshots.
             for byte_index in 0..<TEXT_STORAGE_SIZE:
                 text_storage[byte_index] <- 0
+            for byte_index in 0..<RETAINED_TEXT_STORAGE_SIZE:
+                retained_text_storage[byte_index] <- 0
             for byte_index in 0..<SECURE_TEXT_STORAGE_SIZE:
                 secure_text_storage[byte_index] <- 0
             for byte_index in 0..<TEXT_HISTORY_STORAGE_SIZE:
