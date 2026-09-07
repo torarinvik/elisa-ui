@@ -75,6 +75,12 @@ extend UiCore:
             # Views carry a signed extent. A negative extent is malformed and
             # must not reach a backend's counted-string or pointer arithmetic.
             return if label.len < 0 or help.len < 0 or text_value.len < 0 or selected_text.len < 0
+            # A counted view with bytes but no backing storage is malformed
+            # foreign input, not an instruction to clear semantic metadata.
+            # Reject every text-bearing field before `bounded_text` turns it
+            # into an indistinguishable empty view; otherwise a repeated
+            # declaration could erase help/value/selection text on a live ID.
+            return if (label.len > 0 and label.data == null) or (help.len > 0 and help.data == null) or (text_value.len > 0 and text_value.data == null) or (selected_text.len > 0 and selected_text.data == null)
             # Sanitize the label before deciding whether the node is nameable.
             # A foreign counted view can advertise bytes while carrying null
             # storage (or malformed UTF-8); retaining it would publish an empty

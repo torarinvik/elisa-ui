@@ -94,6 +94,22 @@ def main() -> i64:
     unicode_selection: UiCore::AccessibilityNode = UiCore::accessibility_at(5)
     check("semantic selection ranges use UTF-16 units", unicode_selection.selection_location == 3 and unicode_selection.selection_length == 0)
 
+    stable_help_words: mutable u64[2] = zeroed
+    stable_help_words[1] <- 4
+    stable_help_ref: mutable sview& = (&stable_help_words[0]).cast[mutable sview&] can Unsafe.PointerCast
+    null_help: sview = stable_help_ref[0]
+    UiCore::accessibility_with_metadata(
+        UiCore::AccessibilityRole.TextField, "Stable metadata", "Keep this help", UiCore::Rect(0.0, 0.0, 10.0, 10.0),
+        14, 14, true, false, false, 0.0, "value", "selected", 1, 0, 0,
+        0, 0, 0, 0.0, 1.0, false)
+    stable_before: UiCore::AccessibilityNode = UiCore::accessibility_at(6)
+    UiCore::accessibility_with_metadata(
+        UiCore::AccessibilityRole.TextField, "Stable metadata", null_help, UiCore::Rect(0.0, 0.0, 10.0, 10.0),
+        14, 14, true, false, false, 0.0, "replacement", "replacement", 2, 0, 0,
+        0, 0, 0, 0.0, 1.0, false)
+    stable_after: UiCore::AccessibilityNode = UiCore::accessibility_at(6)
+    check("null-backed semantic metadata is rejected without erasing a node", stable_after.help == stable_before.help and stable_after.text_value == stable_before.text_value and stable_after.selected_text == stable_before.selected_text and stable_after.revision == stable_before.revision)
+
     malformed_label_bytes: mutable u8[1] = zeroed
     malformed_label_bytes[0] <- 255
     malformed_label: sview = sview(&malformed_label_bytes[0], 0, 1)
