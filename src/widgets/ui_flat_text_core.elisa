@@ -29,18 +29,6 @@ extend UiFlat:
         def utf8_scalar_bytes(text: sview, position: usize) -> usize:
             return UiText::utf8_scalar_bytes(text, position)
 
-        def utf8_scalar_value(text: sview, position: usize) -> u32:
-            return 0 if position >= text.len
-            first: u32 = text.data[position].u32()
-            bytes: usize = utf8_scalar_bytes(text, position)
-            return first if bytes == 1
-            second: u32 = text.data[position + 1].u32() & 63
-            return ((first & 31) << 6) | second if bytes == 2
-            third: u32 = text.data[position + 2].u32() & 63
-            return ((first & 15) << 12) | (second << 6) | third if bytes == 3
-            fourth: u32 = text.data[position + 3].u32() & 63
-            return ((first & 7) << 18) | (second << 12) | (third << 6) | fourth
-
         # Return the longest well-formed UTF-8 prefix that fits byte_limit.
         # Invalid, overlong, surrogate and out-of-range sequences terminate the
         # prefix, keeping stored values safe for painters and native strings.
@@ -48,64 +36,7 @@ extend UiFlat:
             return UiText::valid_utf8_prefix(text, byte_limit)
 
         def next_grapheme(text: sview, position: usize) -> usize:
-            return text.len if position >= text.len
-            first: u32 = utf8_scalar_value(text, position)
-            cursor: mutable usize = position + utf8_scalar_bytes(text, position)
-            previous_scalar: mutable u32 = first
-            if first == 13 and cursor < text.len and utf8_scalar_value(text, cursor) == 10:
-                return cursor + 1
-            return cursor if grapheme_control(first)
-            if regional_indicator(first) and cursor < text.len and regional_indicator(utf8_scalar_value(text, cursor)):
-                previous_scalar <- utf8_scalar_value(text, cursor)
-                cursor <- cursor + utf8_scalar_bytes(text, cursor)
-            limit: usize = text.len.usize()
-            result: usize =
-                for _ in 0..<limit |cursor, previous_scalar, emoji_base: bool = grapheme_extended_pictographic(first), emoji_zwj: bool = false, indic_context: u32 = (1 if grapheme_consonant(first) else 0)| -> cursor:
-                    break if cursor >= limit
-                    scalar: u32 = utf8_scalar_value(text, cursor)
-                    if grapheme_control(scalar):
-                        break
-                    elif scalar == 8205:
-                        cursor <- cursor + utf8_scalar_bytes(text, cursor)
-                        emoji_zwj <- emoji_base
-                        emoji_base <- false
-                        previous_scalar <- scalar
-                    elif emoji_zwj and grapheme_extended_pictographic(scalar):
-                        cursor <- cursor + utf8_scalar_bytes(text, cursor)
-                        emoji_zwj <- false
-                        emoji_base <- true
-                        previous_scalar <- scalar
-                    elif grapheme_linker(scalar):
-                        cursor <- cursor + utf8_scalar_bytes(text, cursor)
-                        indic_context <- 2 if indic_context == 1 else 0
-                        emoji_base <- false
-                        previous_scalar <- scalar
-                    elif extends_grapheme(scalar):
-                        cursor <- cursor + utf8_scalar_bytes(text, cursor)
-                        previous_scalar <- scalar
-                    elif grapheme_spacing_mark(scalar):
-                        cursor <- cursor + utf8_scalar_bytes(text, cursor)
-                        indic_context <- 0
-                        emoji_base <- false
-                        previous_scalar <- scalar
-                    elif grapheme_prepend(previous_scalar):
-                        cursor <- cursor + utf8_scalar_bytes(text, cursor)
-                        indic_context <- 0
-                        emoji_base <- false
-                        previous_scalar <- scalar
-                    elif hangul_joins(previous_scalar, scalar):
-                        cursor <- cursor + utf8_scalar_bytes(text, cursor)
-                        indic_context <- 0
-                        emoji_base <- false
-                        previous_scalar <- scalar
-                    elif indic_context == 2 and grapheme_consonant(scalar):
-                        cursor <- cursor + utf8_scalar_bytes(text, cursor)
-                        indic_context <- 1
-                        emoji_base <- false
-                        previous_scalar <- scalar
-                    else:
-                        break
-            return result
+            return UiText::next_grapheme(text, position)
 
         def grapheme_prefix_length(text: sview, byte_limit: usize) -> usize:
             limit: usize = byte_limit if byte_limit < text.len else text.len

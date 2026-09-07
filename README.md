@@ -108,7 +108,9 @@ because a module member's symbol carries its module and those names cannot move.
   lifecycle cancellation policy shared by native and hosted adapters.
 - **Text layout** ([src/widgets/ui_text_layout.elisa](src/widgets/ui_text_layout.elisa)) —
   bounded UTF-8-safe line ranges, newline and whitespace breaks, and
-  deterministic long-word fallback independent of the renderer's shaping API.
+  deterministic long-word fallback independent of the renderer's shaping API;
+  wrapping advances over the shared `UiText` grapheme walker so combining and
+  emoji ZWJ clusters stay intact.
 - **Text input policy** ([src/widgets/ui_text_input.elisa](src/widgets/ui_text_input.elisa)) —
   purpose-driven keyboard/multiline traits with secure-field hardening and
   explicit clipboard and semantic-value privacy.

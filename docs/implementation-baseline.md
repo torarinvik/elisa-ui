@@ -91,8 +91,10 @@ lines), with keyboard focus/capture policy in `ui_flat_focus.elisa`, text
 semantic projection and focus visibility in `ui_flat_text_semantics.elisa`, visual
 color policy in `ui_flat_style.elisa`, shared `UiTheme` palette adaptation in
 `ui_flat_theme.elisa` (37 lines), the private Unicode property tables in
-`ui_flat_grapheme.elisa` (137 lines), and legacy callback lowering in
-`ui_flat_events.elisa`. The AppKit canvas flat adapter keeps its externally
+the shared `ui_text_grapheme.elisa` (198 lines), and legacy callback lowering in
+`ui_flat_events.elisa`. The flat editor and line planner both use that single
+UiText-owned walker, so wrapping cannot split a combining or ZWJ cluster. The
+AppKit canvas flat adapter keeps its externally
 mandated export declarations in `ui_appkit_canvas_flat_exports.elisa`, separate
 from callback policy. The AppKit controls backend is
 now split into realization/policy (`ui_appkit.elisa`, 306 lines), typed native
@@ -367,11 +369,14 @@ separate host-enforced security boundary.
   rules in the shared grapheme walker, so decomposed Jamo and precomposed
   syllables keep atomic caret/deletion behavior; `widget_layout_text_test.elisa`
   covers both forms alongside the existing emoji and combining-mark cases.
-- The grapheme walker now keeps its bounded Unicode property tables in the
-  private `ui_flat_grapheme.elisa` module. Controls, Prepend characters,
-  common Indic SpacingMarks/linkers, supplementary variation selectors, and
+- The grapheme walker now keeps its bounded Unicode property tables and public
+  next-boundary operation in the backend-neutral `ui_text_grapheme.elisa`
+  module. Both flat editing and `ui_text_layout.elisa` call that one
+  Elisa-owned implementation. Controls, Prepend characters, common Indic
+  SpacingMarks/linkers, supplementary variation selectors, and
   Extended-Pictographic ZWJ context are covered by deterministic text tests;
-  non-emoji ZWJ sequences no longer swallow their following scalar.
+  non-emoji ZWJ sequences no longer swallow their following scalar, and line
+  wrapping cannot split combining or emoji ZWJ clusters.
 - The common Indic SpacingMark ranges now include their extended vowel-sign
   forms while preserving virama/linker precedence, so longer Devanagari,
   Bengali, Gujarati, Tamil, Telugu, Kannada, and Malayalam clusters retain

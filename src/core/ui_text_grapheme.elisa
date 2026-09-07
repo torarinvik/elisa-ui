@@ -1,13 +1,92 @@
-# UiFlat grapheme property tables.
+# Backend-neutral grapheme navigation.
 #
-# The navigation walker lives in ui_flat_text_core.elisa; this private module
-# keeps the bounded Unicode property vocabulary independently reviewable.
+# The retained editor, line planner, and native range adapters all need the
+# same user-perceived-character boundaries. Keep the compact UAX #29 property
+# vocabulary beside UiText so no backend has to duplicate caret policy.
 
-extend UiFlat:
+extend UiText:
+    public:
+        # Advance to the next extended grapheme boundary. The input is a
+        # counted UTF-8 view and the result is a byte offset into that view.
+        # Malformed bytes recover one byte at a time through utf8_scalar_bytes.
+        def next_grapheme(text: sview, position: usize) -> usize:
+            return 0 if text.len <= 0 or text.data == null
+            limit: usize = MAX_TEXT_BYTES if text.len > MAX_TEXT_BYTES.i64() else text.len.usize()
+            return limit if position >= limit
+            first: u32 = scalar_value(text, position)
+            first_width: usize = utf8_scalar_bytes(text, position)
+            cursor: mutable usize = position + first_width
+            return limit if cursor > limit
+            previous_scalar: mutable u32 = first
+            if first == 13 and cursor < limit and scalar_value(text, cursor) == 10:
+                return cursor + 1
+            return cursor if grapheme_control(first)
+            if regional_indicator(first) and cursor < limit and regional_indicator(scalar_value(text, cursor)):
+                previous_scalar <- scalar_value(text, cursor)
+                cursor <- cursor + utf8_scalar_bytes(text, cursor)
+            result: usize =
+                for _ in 0..<limit |cursor, previous_scalar, emoji_base: bool = grapheme_extended_pictographic(first), emoji_zwj: bool = false, indic_context: u32 = (1 if grapheme_consonant(first) else 0)| -> cursor:
+                    break if cursor >= limit
+                    scalar: u32 = scalar_value(text, cursor)
+                    width: usize = utf8_scalar_bytes(text, cursor)
+                    break if width == 0 or cursor + width > limit
+                    if grapheme_control(scalar):
+                        break
+                    elif scalar == 8205:
+                        cursor <- cursor + width
+                        emoji_zwj <- emoji_base
+                        emoji_base <- false
+                        previous_scalar <- scalar
+                    elif emoji_zwj and grapheme_extended_pictographic(scalar):
+                        cursor <- cursor + width
+                        emoji_zwj <- false
+                        emoji_base <- true
+                        previous_scalar <- scalar
+                    elif grapheme_linker(scalar):
+                        cursor <- cursor + width
+                        indic_context <- 2 if indic_context == 1 else 0
+                        emoji_base <- false
+                        previous_scalar <- scalar
+                    elif extends_grapheme(scalar):
+                        cursor <- cursor + width
+                        previous_scalar <- scalar
+                    elif grapheme_spacing_mark(scalar):
+                        cursor <- cursor + width
+                        indic_context <- 0
+                        emoji_base <- false
+                        previous_scalar <- scalar
+                    elif grapheme_prepend(previous_scalar):
+                        cursor <- cursor + width
+                        indic_context <- 0
+                        emoji_base <- false
+                        previous_scalar <- scalar
+                    elif hangul_joins(previous_scalar, scalar):
+                        cursor <- cursor + width
+                        indic_context <- 0
+                        emoji_base <- false
+                        previous_scalar <- scalar
+                    elif indic_context == 2 and grapheme_consonant(scalar):
+                        cursor <- cursor + width
+                        indic_context <- 1
+                        emoji_base <- false
+                        previous_scalar <- scalar
+                    else:
+                        break
+            return result
+
     private:
-        # The ranges that most often extend a user-perceived character: Unicode
-        # combining marks, variation selectors, emoji skin tones and emoji tag
-        # characters. ZWJ and regional-indicator pairing are handled separately.
+        def scalar_value(text: sview, position: usize) -> u32:
+            return 0 if text.data == null or position >= text.len.usize()
+            first: u32 = text.data[position].u32()
+            width: usize = utf8_scalar_bytes(text, position)
+            return first if width == 1
+            second: u32 = text.data[position + 1].u32() & 63
+            return ((first & 31) << 6) | second if width == 2
+            third: u32 = text.data[position + 2].u32() & 63
+            return ((first & 15) << 12) | (second << 6) | third if width == 3
+            fourth: u32 = text.data[position + 3].u32() & 63
+            return ((first & 7) << 18) | (second << 12) | (third << 6) | fourth
+
         def extends_grapheme(scalar: u32) -> bool:
             return true if scalar >= 768 and scalar <= 879
             return true if scalar >= 6832 and scalar <= 6911
@@ -20,10 +99,6 @@ extend UiFlat:
             return true if scalar == 8204
             return scalar >= 65056 and scalar <= 65071
 
-        # UAX #29 keeps controls isolated and lets Prepend characters carry
-        # the following scalar into the same cluster. These are deliberately
-        # explicit ranges so the editor does not mistake arbitrary symbols for
-        # layout-extending marks.
         def grapheme_control(scalar: u32) -> bool:
             return true if scalar <= 31
             return scalar >= 127 and scalar <= 159
@@ -37,10 +112,6 @@ extend UiFlat:
             return true if scalar == 71999 or scalar == 72001 or scalar == 72250
             return scalar >= 72324 and scalar <= 72329
 
-        # SpacingMarks are not covered by the compact combining-mark ranges
-        # above. Keep the common Indic/SE-Asian vowel-sign ranges here; the
-        # linker ranges below are checked first so viramas still participate in
-        # Indic conjuncts.
         def grapheme_spacing_mark(scalar: u32) -> bool:
             return true if scalar >= 2366 and scalar <= 2380
             return true if scalar >= 2382 and scalar <= 2383
@@ -69,9 +140,6 @@ extend UiFlat:
             return true if scalar >= 4155 and scalar <= 4158
             return scalar >= 4159 and scalar <= 4169
 
-        # Indic_Conjunct_Break uses a small linker vocabulary in the scripts
-        # most often encountered by text fields. Consonant ranges are kept
-        # narrow so punctuation and vowel signs cannot create false joins.
         def grapheme_linker(scalar: u32) -> bool:
             return true if scalar == 2381 or scalar == 2509 or scalar == 2637 or scalar == 2765
             return true if scalar == 2893 or scalar == 3021 or scalar == 3149 or scalar == 3277
@@ -103,8 +171,6 @@ extend UiFlat:
             return true if scalar >= 4096 and scalar <= 4129
             return scalar >= 6016 and scalar <= 6050
 
-        # This broad-but-bounded property is used only for GB11's ZWJ rule;
-        # it does not merge adjacent pictographs without a ZWJ.
         def grapheme_extended_pictographic(scalar: u32) -> bool:
             return true if scalar == 169 or scalar == 174 or scalar == 8252 or scalar == 8265
             return false if scalar >= 127462 and scalar <= 127487
@@ -116,10 +182,6 @@ extend UiFlat:
         def regional_indicator(scalar: u32) -> bool:
             return scalar >= 127462 and scalar <= 127487
 
-        # Hangul syllable composition is another grapheme rule that cannot be
-        # reduced to a generic combining-mark range. Keep the small UAX #29
-        # L/V/T/LV/LVT property partition here so decomposed Korean text has
-        # the same caret and deletion behavior as precomposed syllables.
         def hangul_kind(scalar: u32) -> u32:
             return 1 if (scalar >= 4352 and scalar <= 4447) or (scalar >= 43360 and scalar <= 43388)
             return 2 if (scalar >= 4448 and scalar <= 4519) or (scalar >= 55216 and scalar <= 55238)
