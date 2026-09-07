@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `42047e7` (`feat(capi): expose bounded IME composition input`) on branch `work` |
+| elisa-ui revision | `45beed8` (`refactor(capi): isolate counted text adapter`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -313,7 +313,9 @@ separate host-enforced security boundary.
   layout, counted committed text, and counted IME composition (with scalar-range
   clamping) remain documented in `include/elisa_ui.h` and are exercised by the
   C bridge checks. The same header is compiled as C11 and C++17 in that gate,
-  preserving the opaque boundary for either host language.
+  preserving the opaque boundary for either host language. Event/viewport
+  conversion remains in `ui_capi.elisa`, while the bounded text staging slot
+  and committed/IME policies live in the focused `ui_capi_text.elisa` extension.
 - The Skia direct-painter path now shares one private Elisa geometry policy with
   command replay. Coordinates/extents are bounded, empty primitive geometry is
   rejected, and rounded radii are clamped to half the shortest edge before FFI;
