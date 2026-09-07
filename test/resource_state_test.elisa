@@ -69,10 +69,12 @@ def main() -> i64:
 
     check("failed transition is accepted", UiResources::set_state(image, UiResources::State.Failed))
     check("failed transition defaults to retryable transport", UiResources::failure(image) == UiResources::FailureKind.RetryableTransport and UiResources::can_retry(image))
+    check("retry accepts a new demand hint", UiResources::set_demand(image, 77) and UiResources::is_demanded(image))
     failed_generation: u32 = image.generation
     retried_image: UiResources::Handle = UiResources::retry(image)
     check("failed resource can retry", UiResources::is_valid(retried_image) and UiResources::state(retried_image) == UiResources::State.Requested and UiResources::downloaded_progress(retried_image) == 0.0)
     check("retry rotates generation", retried_image.generation != failed_generation and not UiResources::is_valid(image))
+    check("retry drops stale demand hints", not UiResources::is_demanded(retried_image) and UiResources::demand_priority(retried_image) == 0)
     check("late failed callback cannot touch retry", not UiResources::set_state(image, UiResources::State.Ready) and UiResources::state(retried_image) == UiResources::State.Requested)
     image <- retried_image
     check("corrupt resource exposes a terminal failure", UiResources::fail(image, UiResources::FailureKind.Corrupt) and not UiResources::can_retry(image) and UiResources::failure(image) == UiResources::FailureKind.Corrupt)
