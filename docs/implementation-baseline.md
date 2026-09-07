@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `8e15d244885214f9300fc3f9c05e936dbbf26720` on branch `work` |
+| elisa-ui revision | `b4a92cc9d310ee53980e7d5548c41292af241a63` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -334,6 +334,9 @@ separate host-enforced security boundary.
 - Skia transform scopes now include finite degree-based rotation alongside
   translation/scale. All three scopes share the Elisa save-depth recovery path,
   including detach-time restoration of forgotten rotation scopes.
+- Immediate Skia custom drawing now has a dedicated `ui_skia_clip.elisa`
+  extension. It rejects empty clips before FFI and shares the transform/frame
+  save-depth ledger, with headless coverage for direct clip balance and cleanup.
 - Callback entry points are lifetime-guarded: if an application handler resets
   the flat tree, post-callback history, composition, activation, adjustment, and
   radio state updates are abandoned instead of touching recycled slots. This is

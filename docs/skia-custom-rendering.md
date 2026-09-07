@@ -46,6 +46,12 @@ normalization, plus `push_rotation()` for finite degree-based rotation, and a
 shared save-depth ledger; detach and surface loss restore any forgotten scopes
 before the borrowed canvas is released.
 
+Immediate custom drawing can also use `UiSkia::push_clip()` and
+`UiSkia::pop_clip()` from `ui_skia_clip.elisa`. Empty clips are rejected before
+Skia, and clip saves share the same ledger as transforms and the attachment
+frame, so retained replay and custom scopes cannot drift in their restoration
+rules.
+
 `UiSkia::surface_lost()` explicitly invalidates the borrowed canvas without
 discarding retained commands or logical resources. `surface_generation()`
 advances on loss and every new attachment, giving a host a cheap stale-surface
