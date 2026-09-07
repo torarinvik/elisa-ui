@@ -62,6 +62,10 @@ before issuing a borrowed `drawImageRect` call. `UiSkia` never retains or frees
 the image handle, so resource lifetime remains with the host/SDK. The
 `draw_ready_image` helper additionally requires a live `UiResources` generation
 in the `Ready` state before a host image can be painted.
+The default `draw_image()` path uses linear filtering; custom controls can call
+`draw_image_with_sampling()` with the typed Elisa `ImageSampling.Nearest` policy
+for crisp pixel art. Invalid enum values normalize back to linear before the
+sampling code reaches Skia.
 Hosts can use `bind_image`/`draw_bound_image` to associate that pointer with an
 exact `(slot,generation)` token; recycled resource generations cannot reuse an
 old image binding. Elisa stores the opaque value only and exposes explicit

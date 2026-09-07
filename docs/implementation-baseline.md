@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `2ae663a424341088c8b50aa5f10964b92c94b51a` on branch `work` |
+| elisa-ui revision | `647602045551bbc249dea2827ec165988a1298bd` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -302,6 +302,11 @@ separate host-enforced security boundary.
   automatically discard non-ready or disposed logical resources before any
   borrowed pointer can be used; the headless Skia fixture covers both resource
   kinds and the combined teardown helper.
+- Skia image filtering is an explicit Elisa `ImageSampling` policy with a linear
+  default and an opt-in nearest-neighbour path. The FFI carries only the small
+  enum ordinal; the C++ shim translates it to `SkSamplingOptions` while invalid
+  values are normalized in Elisa. `test/skia_painter_test.elisa` verifies the
+  nearest path without opening a surface.
 - Callback entry points are lifetime-guarded: if an application handler resets
   the flat tree, post-callback history, composition, activation, adjustment, and
   radio state updates are abandoned instead of touching recycled slots. This is
