@@ -295,6 +295,12 @@ module UiResources:
             return false if next == State.Requested
             return false if resource_states[slot] == next
             resource_states[slot] <- next
+            if next == State.Cancelled:
+                # A cancellation ends the host operation represented by this
+                # generation. Its demand hint must not keep advertising a
+                # prefetch request after that operation has been withdrawn.
+                resource_demanded[slot] <- false
+                resource_priorities[slot] <- 0
             resource_failure_kinds[slot] <- FailureKind.RetryableTransport if next == State.Failed else FailureKind.Unknown
             if next == State.Ready:
                 resource_downloaded[slot] <- 1.0
@@ -355,6 +361,8 @@ module UiResources:
             for slot in 0..<resource_count:
                 if resource_states[slot] != State.Unrequested and resource_owners[slot] == owner and resource_states[slot] != State.Cancelled:
                     resource_states[slot] <- State.Cancelled
+                    resource_demanded[slot] <- false
+                    resource_priorities[slot] <- 0
                     cancelled <- cancelled + 1
             mark_changed() if cancelled > 0
             return cancelled
