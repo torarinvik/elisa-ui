@@ -88,6 +88,18 @@ def main() -> i64:
     check("snapshot budget accepts a normal frame", 1 if UiAppKitCanvas::snapshot_dimensions_safe(800, 680) else 0, 1)
     check("snapshot budget rejects oversized frames", 1 if UiAppKitCanvas::snapshot_dimensions_safe(8192, 8193) else 0, 0)
     check("snapshot budget rejects non-positive dimensions", 1 if UiAppKitCanvas::snapshot_dimensions_safe(0, 680) else 0, 0)
+    native_bytes: mutable u8[UiCore::MAX_TEXT_BYTES + 1] = zeroed
+    for index in 0..<UiCore::MAX_TEXT_BYTES - 1:
+        native_bytes[index] <- 97
+    native_bytes[UiCore::MAX_TEXT_BYTES - 1] <- 195
+    native_bytes[UiCore::MAX_TEXT_BYTES] <- 169
+    native_pointer: cstr = (&native_bytes[0]).cast[cstr] can Unsafe.PointerCast
+    native_value: usize = CFStringCreateWithBytes(0, native_pointer, (UiCore::MAX_TEXT_BYTES + 1).i64(), UiAppKitCanvas::UTF8_ENCODING, false)
+    native_copy: mutable u8[UiCore::MAX_TEXT_BYTES] = zeroed
+    native_copy_length: usize = UiAppKitCanvas::copy_native_string(native_value, &native_copy[0], UiCore::MAX_TEXT_BYTES)
+    check("AppKit UTF-8 copy preserves truncation sentinel at scalar boundary", native_copy_length.i32(), UiCore::MAX_TEXT_BYTES.i32())
+    check("AppKit UTF-8 copy keeps the incomplete scalar out of storage", native_copy[UiCore::MAX_TEXT_BYTES - 1].i32(), 0)
+    CFRelease(native_value) if native_value != 0
     check("snapshot path length stays in Elisa", snapshot_path_length("frame.png").i32(), 9)
     oversized_path: mutable u8[UiCore::MAX_TEXT_BYTES + 2] = zeroed
     for index in 0..<UiCore::MAX_TEXT_BYTES + 1:

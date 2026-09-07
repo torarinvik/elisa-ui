@@ -59,7 +59,11 @@ for source in "$ROOT"/test/*_test.elisa; do
   if [[ "$name" == "skia_painter_test" ]]; then
     link_inputs=("$SKIA_TEST_SHIM" "$RUNTIME")
   fi
-  clang -Wl,-dead_strip -o "$ROOT/build/$name" "$ROOT/build/$name.o" "${link_inputs[@]}" -L"$SDL_LIB" -lSDL3 -lSDL3_ttf -Wl,-rpath,"$SDL_LIB"
+  if [[ "$name" == "appkit_canvas_keymap_test" && "$(uname -s)" == "Darwin" ]]; then
+    clang -Wl,-dead_strip -o "$ROOT/build/$name" "$ROOT/build/$name.o" "${link_inputs[@]}" -L"$SDL_LIB" -lSDL3 -lSDL3_ttf -Wl,-rpath,"$SDL_LIB" -framework CoreFoundation
+  else
+    clang -Wl,-dead_strip -o "$ROOT/build/$name" "$ROOT/build/$name.o" "${link_inputs[@]}" -L"$SDL_LIB" -lSDL3 -lSDL3_ttf -Wl,-rpath,"$SDL_LIB"
+  fi
   if "$ROOT/build/$name"; then
     echo "PASS $name"
   else

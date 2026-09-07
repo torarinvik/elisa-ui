@@ -261,8 +261,18 @@ module UiAppKitCanvas:
             length: i64 = CFStringGetLength(value)
             return 0 if length <= 0
             used: mutable i64 = 0
-            _ = CFStringGetBytes(value, NativeRange{location: 0, length: length}, UTF8_ENCODING, 0, false, buffer, safe_capacity.i64(), &used)
+            # CFStringGetBytes reports both the UTF-16 characters converted
+            # and the UTF-8 bytes written. A fixed byte buffer can stop before
+            # the final scalar (for example, 1023 ASCII bytes followed by a
+            # two-byte character), so `used == safe_capacity` is not enough
+            # to tell whether the native string was fully consumed. Preserve
+            # the capacity sentinel whenever the native character count is
+            # incomplete; text-editing callers then pass the bounded prefix
+            # through UiFlat, which records the truncation instead of silently
+            # clearing that diagnostic at the AppKit boundary.
+            converted: i64 = CFStringGetBytes(value, NativeRange{location: 0, length: length}, UTF8_ENCODING, 0, false, buffer, safe_capacity.i64(), &used)
             return 0 if used <= 0
+            return safe_capacity if converted < length
             return safe_capacity if used > safe_capacity.i64()
             return used.usize()
 
