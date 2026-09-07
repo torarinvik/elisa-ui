@@ -1,6 +1,10 @@
 extend UiAppKitCanvas:
     private:
         global mutable accessibility_previous_ids: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        # Stable IDs are bounded by UiCore's semantic arena. Keep a reverse
+        # index for the previous committed frame so each next-node reuse probe
+        # is constant-time instead of rescanning every previous element.
+        global mutable accessibility_previous_slot_by_id: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
         global mutable accessibility_previous: AccessibilityState[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
         global mutable accessibility_previous_handles: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
         # Retention is decided while the next semantic frame resolves each
@@ -42,16 +46,17 @@ extend UiAppKitCanvas:
         const ACCESSIBILITY_RANGE_MAXIMUM: f32 = 1.0
 
         def previous_accessibility_index(id: usize) -> usize:
-            index: mutable usize = 0
-            while index < accessibility_previous_count:
-                return index if accessibility_previous_ids[index] == id
-                index <- index + 1
+            return UiCore::MAX_ACCESSIBILITY_NODES if id >= UiCore::MAX_ACCESSIBILITY_NODES
+            index: usize = accessibility_previous_slot_by_id[id]
+            return index if index < accessibility_previous_count and accessibility_previous_ids[index] == id
             return UiCore::MAX_ACCESSIBILITY_NODES
 
         def release_accessibility_handles() -> void:
             index: mutable usize = 0
             while index < accessibility_previous_count:
                 handle: usize = accessibility_previous_handles[index]
+                old_id: usize = accessibility_previous_ids[index]
+                accessibility_previous_slot_by_id[old_id] <- UiCore::MAX_ACCESSIBILITY_NODES if old_id < UiCore::MAX_ACCESSIBILITY_NODES
                 elisa_appkit_canvas_accessibility_release(handle) if handle != 0
                 accessibility_previous_handles[index] <- 0
                 index <- index + 1
