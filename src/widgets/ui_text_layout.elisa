@@ -78,8 +78,10 @@ module UiTextLayout:
                             if has_break and last_break >= start:
                                 emit_line(start, last_break - start, last_break_columns)
                                 cursor <- last_break + scalar_bytes(safe_text, last_break, source_length_state)
-                                while cursor < source_length_state and is_break(safe_text.data[cursor]):
-                                    cursor <- cursor + scalar_bytes(safe_text, cursor, source_length_state)
+                                cursor <-
+                                    for _ in 0..<source_length_state |skip: usize = cursor| -> skip:
+                                        break if skip >= source_length_state or not is_break(safe_text.data[skip])
+                                        skip <- skip + scalar_bytes(safe_text, skip, source_length_state)
                                 start <- cursor
                                 finished <- true
                                 break
