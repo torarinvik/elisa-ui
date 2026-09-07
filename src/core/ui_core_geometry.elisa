@@ -45,6 +45,18 @@ extend UiCore:
             safe_point: Vec2 = Vec2(point.x, point.y)
             return safe_point.x >= safe_box.origin.x and safe_point.y >= safe_box.origin.y and safe_point.x < right_edge(safe_box) and safe_point.y < bottom_edge(safe_box)
 
+        # Select one finite backing scale for a logical surface. Keeping this
+        # decision in shared Elisa geometry makes AppKit/Skia and other hosts
+        # agree on aspect-preserving scaling without embedding policy in C++.
+        def backing_scale(logical_width: f32, logical_height: f32, pixel_width: f32, pixel_height: f32) -> f32:
+            return 0.0 if not is_finite(logical_width) or not is_finite(logical_height) or not is_finite(pixel_width) or not is_finite(pixel_height)
+            return 0.0 if logical_width <= 0.0 or logical_height <= 0.0 or pixel_width <= 0.0 or pixel_height <= 0.0
+            scale_x: f32 = pixel_width / logical_width
+            scale_y: f32 = pixel_height / logical_height
+            return 0.0 if not is_finite(scale_x) or not is_finite(scale_y)
+            smaller: f32 = scale_x if scale_x < scale_y else scale_y
+            return bounded_extent(smaller)
+
         def clear(color: Color) -> void:
             push_command(Command.Clear(color))
 

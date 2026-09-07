@@ -8,7 +8,6 @@
 
 #include <CoreGraphics/CoreGraphics.h>
 
-#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -26,7 +25,10 @@
 
 extern "C" std::int32_t elisa_appkit_canvas_skia_replay(std::size_t window_handle,
                                                           std::size_t canvas,
-                                                          float scale,
+                                                          float logical_width,
+                                                          float logical_height,
+                                                          float pixel_width,
+                                                          float pixel_height,
                                                           std::size_t font);
 
 namespace {
@@ -91,10 +93,6 @@ extern "C" std::int32_t elisa_appkit_canvas_skia_present(std::size_t window_hand
     const int pixel_width = static_cast<int>(std::lround(pixel_width_value));
     const int pixel_height = static_cast<int>(std::lround(pixel_height_value));
     if (!valid_pixel_area(pixel_width, pixel_height)) return 0;
-    const float scale_x = static_cast<float>(pixel_width) / logical_width;
-    const float scale_y = static_cast<float>(pixel_height) / logical_height;
-    if (!valid_dimension(scale_x) || !valid_dimension(scale_y)) return 0;
-
     const SkImageInfo info = SkImageInfo::Make(
         pixel_width, pixel_height, kRGBA_8888_SkColorType, kPremul_SkAlphaType);
     sk_sp<SkSurface> surface = SkSurfaces::Raster(info);
@@ -108,7 +106,9 @@ extern "C" std::int32_t elisa_appkit_canvas_skia_present(std::size_t window_hand
 
     const std::int32_t status = elisa_appkit_canvas_skia_replay(
         window_handle, reinterpret_cast<std::size_t>(surface->getCanvas()),
-        std::min(scale_x, scale_y), reinterpret_cast<std::size_t>(typeface.get()));
+        logical_width, logical_height,
+        static_cast<float>(pixel_width), static_cast<float>(pixel_height),
+        reinterpret_cast<std::size_t>(typeface.get()));
     // Elisa has already executed app_frame once the callback returns. Even a
     // skipped/failed replay may have synchronously mutated application state,
     // so never ask AppKit to run the CoreGraphics frame a second time.
