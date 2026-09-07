@@ -75,6 +75,10 @@ Both immediate helpers and retained replay cull fully transparent fills,
 strokes, and text in Elisa before crossing the FFI; `Clear` remains explicit
 because clearing to transparent is observable surface state.
 
+Clip and transform saves share a bounded Elisa-owned kind stack. A mismatched
+typed pop is rejected without restoring the wrong native state, and detach
+still unwinds any remaining scopes before releasing the borrowed canvas.
+
 Immediate custom drawing can also use `UiSkia::push_clip()` and
 `UiSkia::pop_clip()` from `ui_skia_clip.elisa`. Empty clips are rejected before
 Skia, and clip saves share the same ledger as transforms and the attachment
