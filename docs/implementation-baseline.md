@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `7175487` (`harden(skia): bound immediate scope depth`) on branch `work` |
+| elisa-ui revision | `7051578` (`harden(skia): report rejected transform scopes`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -453,9 +453,11 @@ separate host-enforced security boundary.
   transform FFI calls, balanced saves, and recovery when a control forgets to
   pop its transform.
 - Immediate Skia clip and transform scopes now fail closed at an Elisa-owned
-  depth budget. Rejected pushes make no native calls, while detach still
-  restores every accepted scope; retained replay remains bounded separately by
-  `UiCore::MAX_COMMANDS` so empty-clip command balance is unchanged.
+  depth budget. Rejected pushes make no native calls; transform pushes report
+  rejection so callers cannot accidentally pop an older scope, while detach
+  still restores every accepted scope. Retained replay remains bounded
+  separately by `UiCore::MAX_COMMANDS` so empty-clip command balance is
+  unchanged.
 - The narrow Skia declarations are now published in `include/elisa_skia.h` and
   included by both the production C++ bridge and headless recorder, so host ABI
   drift is caught at compile time without widening the Elisa boundary. The
