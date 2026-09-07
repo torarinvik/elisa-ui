@@ -98,7 +98,7 @@ extern "C" void elisa_skia_canvas_fill_round_rect(std::size_t handle, float x, f
                                                     float height, float radius, std::uint8_t red,
                                                     std::uint8_t green, std::uint8_t blue,
                                                     std::uint8_t alpha) {
-    if (SkCanvas *target = canvas(handle)) {
+    if (SkCanvas *target = canvas(handle); target != nullptr && radius >= 0.0f) {
         const SkRect rect = SkRect::MakeXYWH(x, y, width, height);
         target->drawRRect(SkRRect::MakeRectXY(rect, radius, radius),
                           fill_paint(red, green, blue, alpha));
@@ -110,7 +110,7 @@ extern "C" void elisa_skia_canvas_stroke_round_rect(std::size_t handle, float x,
                                                       std::uint8_t red,
                                                       std::uint8_t green, std::uint8_t blue,
                                                       std::uint8_t alpha) {
-    if (SkCanvas *target = canvas(handle); target != nullptr && stroke_width > 0.0f) {
+    if (SkCanvas *target = canvas(handle); target != nullptr && radius >= 0.0f && stroke_width > 0.0f) {
         const SkRect rect = SkRect::MakeXYWH(x, y, width, height);
         target->drawRRect(SkRRect::MakeRectXY(rect, radius, radius),
                           stroke_paint(red, green, blue, alpha, stroke_width));
@@ -120,7 +120,7 @@ extern "C" void elisa_skia_canvas_stroke_round_rect(std::size_t handle, float x,
 extern "C" void elisa_skia_canvas_shadow_round_rect(std::size_t handle, float x, float y, float width,
                                                       float height, float radius, float offset_x,
                                                       float offset_y, float blur, std::uint8_t alpha) {
-    if (SkCanvas *target = canvas(handle); alpha != 0) {
+    if (SkCanvas *target = canvas(handle); target != nullptr && radius >= 0.0f && alpha != 0) {
         const SkRect rect = SkRect::MakeXYWH(x, y, width, height);
         // The shadow layer is the only visible effect. A black fill here would
         // paint over the retained control before the hairline is emitted.
