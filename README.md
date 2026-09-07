@@ -225,6 +225,12 @@ because a module member's symbol carries its module and those names cannot move.
   records with declared-or-intrinsic reserved geometry, independent progress,
   retry affordances, and kind-specific defaults. It keeps presentation policy
   in Elisa; hosts only resolve verified resources into renderer objects.
+- **Optional feature views** ([src/widgets/ui_feature_view.elisa](src/widgets/ui_feature_view.elisa)) —
+  a host-agnostic activation state machine for optional code components. The
+  SDK/host remains authoritative for package identity, verification, component
+  memories, permissions, and activation handles; Elisa owns only the typed
+  loading/ready/error/cancelled state shown by the view. See
+  [docs/ui-feature-views.md](docs/ui-feature-views.md).
 - **Apps** implement `app_init` / `app_event(UiCore::Event)` /
   `app_text_input(sview)` / `app_text_editing(sview, i32, i32)` / `app_frame`, plus
   `app_widget_event(widget, event)` when using the widget layer. Physical keys

@@ -11,6 +11,7 @@ include "../core/ui_capabilities.elisa"
 include "../core/ui_lifecycle.elisa"
 include "../core/ui_metrics.elisa"
 include "../widgets/ui_resources.elisa"
+include "../widgets/ui_feature_view.elisa"
 
 module UiHarness:
     private:
@@ -35,6 +36,7 @@ module UiHarness:
             UiMetrics::reset()
             test_time <- 0.0
             UiResources::reset()
+            UiFeatureView::reset()
             UiCore::set_viewport(width, height)
             UiCore::set_frame_time(test_time)
             app_init()
@@ -42,6 +44,7 @@ module UiHarness:
 
         def stop() -> void:
             UiResources::reset()
+            UiFeatureView::reset()
             _ = UiLifecycle::stop()
 
         def is_running() -> bool:
@@ -185,3 +188,28 @@ module UiHarness:
         def dispose_resources_for_owner(owner: u32) -> usize:
             return 0 if not UiLifecycle::is_started()
             return UiResources::dispose_owner(owner)
+
+        # Optional feature activation is host-owned, but its visible state can
+        # be injected deterministically through the same harness seam as
+        # resources. The harness never manufactures an activation handle.
+        def request_feature(feature_id: u32, interface_version: u32, package_version: sview, owner: u32) -> UiFeatureView::FeatureHandle:
+            return UiFeatureView::invalid() if not UiLifecycle::is_started()
+            return UiFeatureView::request(feature_id, interface_version, package_version, owner)
+
+        def activate_feature(handle: UiFeatureView::FeatureHandle, activation_id: u64) -> bool:
+            return UiLifecycle::is_started() and UiFeatureView::activate(handle, activation_id)
+
+        def resolve_feature(handle: UiFeatureView::FeatureHandle, activation_id: u64, state: UiFeatureView::FeatureState, failure: UiFeatureView::FeatureFailureKind) -> bool:
+            return false if not UiLifecycle::is_started()
+            return UiFeatureView::resolve(handle, activation_id, state, failure)
+
+        def retry_feature(handle: UiFeatureView::FeatureHandle) -> UiFeatureView::FeatureHandle:
+            return UiFeatureView::invalid() if not UiLifecycle::is_started()
+            return UiFeatureView::retry(handle)
+
+        def cancel_feature(handle: UiFeatureView::FeatureHandle) -> bool:
+            return UiLifecycle::is_started() and UiFeatureView::cancel(handle)
+
+        def dispose_features_for_owner(owner: u32) -> usize:
+            return 0 if not UiLifecycle::is_started()
+            return UiFeatureView::dispose_owner(owner)

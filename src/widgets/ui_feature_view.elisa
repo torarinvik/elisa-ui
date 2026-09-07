@@ -1,0 +1,295 @@
+# Lifecycle-safe optional feature views.
+#
+# The SDK/host owns feature identity, package verification, activation
+# authority, and component memories. This module owns only the application-
+# visible view state and its generation-safe handle. It deliberately contains
+# no downloader, linker, or native pointer: hosts report typed activation and
+# poll results through the small transition API below.
+
+include "../core/ui_core.elisa"
+
+module UiFeatureView:
+    public:
+        const MAX_FEATURES: usize = 64
+        const PACKAGE_VERSION_CAPACITY: usize = 96
+        const NONE_SLOT: usize = MAX_FEATURES
+
+        const enum FeatureState of i32:
+            Unrequested = 0
+            Requested = 1
+            Loading = 2
+            Ready = 3
+            UnavailableOffline = 4
+            Denied = 5
+            Incompatible = 6
+            Failed = 7
+            Cancelled = 8
+
+        const enum FeatureFailureKind of i32:
+            Unknown = 0
+            Retryable = 1
+            Corrupt = 2
+            Incompatible = 3
+            Denied = 4
+            Offline = 5
+
+        struct FeatureHandle:
+            slot: u32
+            generation: u32
+
+        struct FeatureSnapshot:
+            total: usize
+            requested: usize
+            loading: usize
+            ready: usize
+            unavailable_offline: usize
+            denied: usize
+            incompatible: usize
+            failed: usize
+            cancelled: usize
+            overflowed: bool
+
+        def invalid() -> FeatureHandle:
+            return FeatureHandle{slot: NONE_SLOT.u32(), generation: 0}
+
+        def is_valid(handle: FeatureHandle) -> bool:
+            return handle.slot.usize() < feature_count_state and feature_active[handle.slot.usize()] and feature_generations[handle.slot.usize()] == handle.generation
+
+        def reset() -> void:
+            for slot in 0..<MAX_FEATURES:
+                feature_active[slot] <- false
+                feature_generations[slot] <- next_generation(feature_generations[slot])
+                feature_ids[slot] <- 0
+                feature_interfaces[slot] <- 0
+                feature_owners[slot] <- 0
+                feature_activation_ids[slot] <- 0
+                feature_states[slot] <- FeatureState.Unrequested
+                feature_failures[slot] <- FeatureFailureKind.Unknown
+                feature_package_lengths[slot] <- 0
+                for index in 0..<PACKAGE_VERSION_CAPACITY:
+                    feature_package_storage[slot * PACKAGE_VERSION_CAPACITY + index] <- 0
+            feature_count_state <- 0
+            feature_overflowed_state <- false
+            mark_changed()
+
+        # A request is idempotent for one feature/interface/package tuple. The
+        # package version is copied because a caller may pass a transient view.
+        def request(feature_id: u32, interface_version: u32, package_version: sview, owner: u32) -> FeatureHandle:
+            safe_package: sview = UiCore::bounded_text(package_version)
+            return invalid() if safe_package.len <= 0 or safe_package.len != package_version.len or safe_package.len >= PACKAGE_VERSION_CAPACITY.i64()
+            for slot in 0..<feature_count_state:
+                if feature_active[slot] and feature_ids[slot] == feature_id and feature_interfaces[slot] == interface_version and package_matches(slot, safe_package):
+                    feature_owners[slot] <- owner
+                    if feature_states[slot] == FeatureState.Cancelled:
+                        feature_generations[slot] <- next_generation(feature_generations[slot])
+                        feature_states[slot] <- FeatureState.Requested
+                        feature_failures[slot] <- FeatureFailureKind.Unknown
+                        feature_activation_ids[slot] <- 0
+                        mark_changed()
+                    return make_handle(slot)
+
+            free_slot: mutable usize = NONE_SLOT
+            for slot in 0..<MAX_FEATURES:
+                if not feature_active[slot]:
+                    free_slot <- slot
+                    break
+            if free_slot == NONE_SLOT:
+                feature_overflowed_state <- true
+                return invalid()
+
+            feature_active[free_slot] <- true
+            feature_generations[free_slot] <- next_generation(feature_generations[free_slot])
+            feature_ids[free_slot] <- feature_id
+            feature_interfaces[free_slot] <- interface_version
+            feature_owners[free_slot] <- owner
+            feature_activation_ids[free_slot] <- 0
+            feature_states[free_slot] <- FeatureState.Requested
+            feature_failures[free_slot] <- FeatureFailureKind.Unknown
+            copy_package(free_slot, safe_package)
+            feature_count_state <- free_slot + 1 if free_slot >= feature_count_state else feature_count_state
+            mark_changed()
+            return make_handle(free_slot)
+
+        # The host returns its opaque activation token after it has accepted a
+        # request. A nonzero token is required before polling or deactivation.
+        def activate(handle: FeatureHandle, activation_id: u64) -> bool:
+            return false if not is_valid(handle) or activation_id == 0 or feature_states[handle.slot.usize()] != FeatureState.Requested
+            slot: usize = handle.slot.usize()
+            feature_activation_ids[slot] <- activation_id
+            feature_states[slot] <- FeatureState.Loading
+            feature_failures[slot] <- FeatureFailureKind.Unknown
+            mark_changed()
+            return true
+
+        # Poll results are facts from the SDK/host. Terminal states cannot be
+        # revived in place; retry() creates a fresh generation instead.
+        def resolve(handle: FeatureHandle, activation_id: u64, next: FeatureState, failure: FeatureFailureKind) -> bool:
+            return false if not is_valid(handle) or activation_id == 0
+            slot: usize = handle.slot.usize()
+            return false if feature_activation_ids[slot] != activation_id or feature_states[slot] != FeatureState.Loading
+            return false if next != FeatureState.Loading and next != FeatureState.Ready and next != FeatureState.UnavailableOffline and next != FeatureState.Denied and next != FeatureState.Incompatible and next != FeatureState.Failed
+            return false if next == FeatureState.Failed and not failure_is_valid(failure)
+            feature_states[slot] <- next
+            feature_failures[slot] <- failure if next == FeatureState.Failed else FeatureFailureKind.Unknown
+            mark_changed()
+            return true
+
+        def retry(handle: FeatureHandle) -> FeatureHandle:
+            return invalid() if not is_valid(handle) or not can_retry(handle)
+            slot: usize = handle.slot.usize()
+            feature_generations[slot] <- next_generation(feature_generations[slot])
+            feature_activation_ids[slot] <- 0
+            feature_states[slot] <- FeatureState.Requested
+            feature_failures[slot] <- FeatureFailureKind.Unknown
+            mark_changed()
+            return make_handle(slot)
+
+        def cancel(handle: FeatureHandle) -> bool:
+            return false if not is_valid(handle) or (feature_states[handle.slot.usize()] != FeatureState.Requested and feature_states[handle.slot.usize()] != FeatureState.Loading)
+            feature_states[handle.slot.usize()] <- FeatureState.Cancelled
+            # Keep the host token readable until the host has acknowledged
+            # deactivation. A caller may still need it to release the
+            # component; a subsequent request rotates the generation and
+            # clears the old token before reuse.
+            feature_failures[handle.slot.usize()] <- FeatureFailureKind.Unknown
+            mark_changed()
+            return true
+
+        def dispose(handle: FeatureHandle) -> bool:
+            return false if not is_valid(handle)
+            clear_slot(handle.slot.usize())
+            trim_count()
+            mark_changed()
+            return true
+
+        def dispose_owner(owner: u32) -> usize:
+            released: mutable usize = 0
+            for slot in 0..<feature_count_state:
+                if feature_active[slot] and feature_owners[slot] == owner:
+                    clear_slot(slot)
+                    released <- released + 1
+            trim_count()
+            mark_changed() if released > 0
+            return released
+
+        def snapshot() -> FeatureSnapshot:
+            requested_count: mutable usize = 0
+            loading_count: mutable usize = 0
+            ready_count: mutable usize = 0
+            offline_count: mutable usize = 0
+            denied_count: mutable usize = 0
+            incompatible_count: mutable usize = 0
+            failed_count: mutable usize = 0
+            cancelled_count: mutable usize = 0
+            for slot in 0..<feature_count_state:
+                continue if not feature_active[slot]
+                requested_count <- requested_count + 1 if feature_states[slot] == FeatureState.Requested
+                loading_count <- loading_count + 1 if feature_states[slot] == FeatureState.Loading
+                ready_count <- ready_count + 1 if feature_states[slot] == FeatureState.Ready
+                offline_count <- offline_count + 1 if feature_states[slot] == FeatureState.UnavailableOffline
+                denied_count <- denied_count + 1 if feature_states[slot] == FeatureState.Denied
+                incompatible_count <- incompatible_count + 1 if feature_states[slot] == FeatureState.Incompatible
+                failed_count <- failed_count + 1 if feature_states[slot] == FeatureState.Failed
+                cancelled_count <- cancelled_count + 1 if feature_states[slot] == FeatureState.Cancelled
+            return FeatureSnapshot{total: requested_count + loading_count + ready_count + offline_count + denied_count + incompatible_count + failed_count + cancelled_count,
+                requested: requested_count, loading: loading_count, ready: ready_count,
+                unavailable_offline: offline_count, denied: denied_count,
+                incompatible: incompatible_count, failed: failed_count,
+                cancelled: cancelled_count, overflowed: feature_overflowed_state}
+
+        def state(handle: FeatureHandle) -> FeatureState:
+            return FeatureState.Unrequested if not is_valid(handle)
+            return feature_states[handle.slot.usize()]
+
+        def failure(handle: FeatureHandle) -> FeatureFailureKind:
+            return FeatureFailureKind.Unknown if not is_valid(handle)
+            return feature_failures[handle.slot.usize()]
+
+        def feature_id(handle: FeatureHandle) -> u32:
+            return 0 if not is_valid(handle)
+            return feature_ids[handle.slot.usize()]
+
+        def interface_version(handle: FeatureHandle) -> u32:
+            return 0 if not is_valid(handle)
+            return feature_interfaces[handle.slot.usize()]
+
+        def package_version(handle: FeatureHandle) -> sview:
+            return "" if not is_valid(handle)
+            slot: usize = handle.slot.usize()
+            return sview(&feature_package_storage[slot * PACKAGE_VERSION_CAPACITY], 0, feature_package_lengths[slot].i64())
+
+        def owner(handle: FeatureHandle) -> u32:
+            return 0 if not is_valid(handle)
+            return feature_owners[handle.slot.usize()]
+
+        def activation_id(handle: FeatureHandle) -> u64:
+            return 0 if not is_valid(handle)
+            return feature_activation_ids[handle.slot.usize()]
+
+        def can_retry(handle: FeatureHandle) -> bool:
+            return false if not is_valid(handle)
+            current: FeatureState = feature_states[handle.slot.usize()]
+            return current == FeatureState.UnavailableOffline or current == FeatureState.Denied or current == FeatureState.Incompatible or (current == FeatureState.Failed and feature_failures[handle.slot.usize()] == FeatureFailureKind.Retryable)
+
+        def is_ready(handle: FeatureHandle) -> bool:
+            return is_valid(handle) and feature_states[handle.slot.usize()] == FeatureState.Ready
+
+        def overflowed() -> bool:
+            return feature_overflowed_state
+
+    private:
+        global mutable feature_count_state: usize = 0
+        global mutable feature_overflowed_state: bool = false
+        global mutable feature_active: bool[MAX_FEATURES] = zeroed
+        global mutable feature_generations: u32[MAX_FEATURES] = zeroed
+        global mutable feature_ids: u32[MAX_FEATURES] = zeroed
+        global mutable feature_interfaces: u32[MAX_FEATURES] = zeroed
+        global mutable feature_owners: u32[MAX_FEATURES] = zeroed
+        global mutable feature_activation_ids: u64[MAX_FEATURES] = zeroed
+        global mutable feature_states: FeatureState[MAX_FEATURES] = zeroed
+        global mutable feature_failures: FeatureFailureKind[MAX_FEATURES] = zeroed
+        global mutable feature_package_lengths: usize[MAX_FEATURES] = zeroed
+        global mutable feature_package_storage: u8[MAX_FEATURES * PACKAGE_VERSION_CAPACITY] = zeroed
+
+        def next_generation(value: u32) -> u32:
+            next: u32 = value + 1
+            return 1 if next == 0 else next
+
+        def make_handle(slot: usize) -> FeatureHandle:
+            return FeatureHandle{slot: slot.u32(), generation: feature_generations[slot]}
+
+        def package_matches(slot: usize, value: sview) -> bool:
+            return false if feature_package_lengths[slot] != value.len.usize()
+            for index in 0..<value.len:
+                return false if feature_package_storage[slot * PACKAGE_VERSION_CAPACITY + index] != value.data[index]
+            return true
+
+        def copy_package(slot: usize, value: sview) -> void:
+            offset: usize = slot * PACKAGE_VERSION_CAPACITY
+            for index in 0..<PACKAGE_VERSION_CAPACITY:
+                feature_package_storage[offset + index] <- value.data[index] if index < value.len else 0
+            feature_package_lengths[slot] <- value.len.usize()
+
+        def failure_is_valid(value: FeatureFailureKind) -> bool:
+            return value == FeatureFailureKind.Retryable or value == FeatureFailureKind.Corrupt or value == FeatureFailureKind.Incompatible or value == FeatureFailureKind.Denied or value == FeatureFailureKind.Offline
+
+        def clear_slot(slot: usize) -> void:
+            feature_active[slot] <- false
+            feature_generations[slot] <- next_generation(feature_generations[slot])
+            feature_ids[slot] <- 0
+            feature_interfaces[slot] <- 0
+            feature_owners[slot] <- 0
+            feature_activation_ids[slot] <- 0
+            feature_states[slot] <- FeatureState.Unrequested
+            feature_failures[slot] <- FeatureFailureKind.Unknown
+            feature_package_lengths[slot] <- 0
+            for index in 0..<PACKAGE_VERSION_CAPACITY:
+                feature_package_storage[slot * PACKAGE_VERSION_CAPACITY + index] <- 0
+
+        def trim_count() -> void:
+            while feature_count_state > 0 and not feature_active[feature_count_state - 1]:
+                feature_count_state <- feature_count_state - 1
+
+        def mark_changed() -> void:
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+            UiCore::invalidate(UiCore::Invalidation.Semantics)

@@ -56,6 +56,10 @@ def main() -> i64:
     check("harness cancels resources by owner", UiHarness::cancel_resources_for_owner(5) == 2 and UiHarness::resource_state(resource) == UiResources::State.Cancelled and UiHarness::resource_state(second_resource) == UiResources::State.Cancelled)
     check("harness disposes resources by owner", UiHarness::dispose_resources_for_owner(5) == 2 and not UiResources::resource_is_valid(resource) and not UiResources::resource_is_valid(second_resource))
 
+    feature: UiFeatureView::FeatureHandle = UiHarness::request_feature(3, 1, "1.0.0", 6)
+    check("harness injects a feature request", UiFeatureView::is_valid(feature) and UiFeatureView::state(feature) == UiFeatureView::FeatureState.Requested)
+    check("harness injects activation and polling", UiHarness::activate_feature(feature, 44) and UiHarness::resolve_feature(feature, 44, UiFeatureView::FeatureState.Ready, UiFeatureView::FeatureFailureKind.Unknown) and UiFeatureView::is_ready(feature))
+
     UiHarness::dispatch(UiCore::Event.FocusGained)
     check("harness forwards typed events", event_calls == 1 and last_event_kind == UiCore::WireKind.FocusGained.i32())
     UiHarness::resize(640.0, 480.0)
@@ -91,6 +95,7 @@ def main() -> i64:
     UiHarness::frame()
     check("stopped harness ignores late input and frames", event_calls == 3 and frame_calls == 3)
     check("stopped harness invalidates resource callbacks", not UiResources::resource_is_valid(resource) and not UiHarness::set_resource_state(resource, UiResources::State.Failed))
+    check("stopped harness invalidates feature callbacks", not UiFeatureView::is_valid(feature) and not UiHarness::resolve_feature(feature, 44, UiFeatureView::FeatureState.Ready, UiFeatureView::FeatureFailureKind.Unknown))
 
     UiHarness::start(320.0, 200.0)
     before_turnover_events: i32 = event_calls
