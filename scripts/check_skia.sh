@@ -14,7 +14,23 @@ mkdir -p "$ROOT/build"
 bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ROOT/build/ui_skia.o" "$ROOT/src/platform/skia/ui_skia.elisa"
 
 if [[ -n "${SKIA_ROOT:-}" && -f "$SKIA_ROOT/include/core/SkCanvas.h" ]]; then
-  echo "skia: Elisa painter compiles; SKIA_ROOT is available for the host shim"
+  cxx="${CXX:-clang++}"
+  skia_cxxflags=()
+  if [[ -n "${SKIA_CXXFLAGS:-}" ]]; then
+    read -r -a skia_cxxflags <<< "$SKIA_CXXFLAGS"
+  fi
+  # Compile, but do not link, the real host bridge. Linking belongs to the
+  # target's pinned Skia/Metal/GPU packaging; this check still catches stale
+  # headers, C++ API drift, and accidental platform imports without opening a
+  # window or requiring a surface.
+  "$cxx" -std=c++17 -fPIC -I"$SKIA_ROOT" "${skia_cxxflags[@]}" \
+    -c "$ROOT/src/platform/skia/skia_canvas_shim.cpp" \
+    -o "$ROOT/build/skia_canvas_shim.o"
+  if rg -n '#include[[:space:]]*[<"](Cocoa|AppKit)' "$ROOT/src/platform/skia/skia_canvas_shim.cpp"; then
+    echo "skia: host shim must not import AppKit" >&2
+    exit 1
+  fi
+  echo "skia: Elisa painter and C++ host shim compile"
 else
   echo "skia: Elisa painter compiles; C++ shim deferred until SKIA_ROOT is configured"
 fi
