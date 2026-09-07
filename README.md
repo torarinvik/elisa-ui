@@ -149,6 +149,8 @@ because a module member's symbol carries its module and those names cannot move.
   identity, so selection and shortcut state are portable.
   Portable focus lifecycle events release transient capture state when a window
   deactivates without discarding the application’s logical keyboard focus.
+  The public `ui_widget.elisa` include is a small facade over separate retained
+  state, layout, focus, style, callback, text, scrolling, and painting modules.
   Layout is wxWidgets'
   sizer idea reduced to its load-bearing
   parts: a container distributes its inner box along one axis, each child

@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `00dc42f` (`refactor(resources): split logical resource state modules`) on branch `work` |
+| elisa-ui revision | `effa752f99736c2f8bfc231d0e8b25c1785fb67d` (`refactor(flat): isolate focus and callback policy`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -75,7 +75,11 @@ its widget-to-control policy is isolated in `ui_controls_policy.elisa`, 102
 lines. Together they own bounded caption storage and native-control state.
 The flat widget compatibility
 facade (`ui_widget.elisa`, 23 lines) now delegates to cohesive state, layout,
-input, text, scrolling, and painting modules, each below 400 lines. The AppKit controls backend is
+input, focus, style, callback, text, scrolling, and painting modules, each below
+400 lines. The layout implementation is kept in `ui_flat_layout.elisa` (320
+lines), with keyboard focus/capture policy in `ui_flat_focus.elisa`, visual
+color policy in `ui_flat_style.elisa`, and legacy callback lowering in
+`ui_flat_events.elisa`. The AppKit controls backend is
 now split into realization/policy (`ui_appkit.elisa`, 305 lines), typed native
 bridge wrappers (`ui_appkit_native.elisa`, 212 lines), ABI declarations
 (`ui_appkit_native_ffi.elisa`, 75 lines), and read-back inspection wrappers
