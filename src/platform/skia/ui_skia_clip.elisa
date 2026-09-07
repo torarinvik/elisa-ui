@@ -15,12 +15,14 @@ extend UiSkia:
             return false if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
             elisa_skia_canvas_save(canvas_state)
             elisa_skia_canvas_clip_rect(canvas_state, safe_box.origin.x, safe_box.origin.y, safe_box.size.width, safe_box.size.height)
+            skia_scope_kinds[skia_save_depth] <- SKIA_SCOPE_CLIP
             skia_clip_depth <- skia_clip_depth + 1
             skia_save_depth <- skia_save_depth + 1
             return true
 
         def pop_clip() -> bool can[Ui.Draw]:
             return false if canvas_state == 0 or skia_clip_depth == 0
+            return false if skia_save_depth == 0 or skia_scope_kinds[skia_save_depth - 1] != SKIA_SCOPE_CLIP
             elisa_skia_canvas_restore(canvas_state)
             skia_clip_depth <- skia_clip_depth - 1
             skia_save_depth <- skia_save_depth - 1
@@ -34,8 +36,10 @@ extend UiSkia:
         # separate so the two contracts do not silently change each other.
         def push_replay_clip(box: UiCore::Rect) -> void can[Ui.Draw]:
             return if canvas_state == 0
+            return if skia_save_depth >= UiSkia::MAX_SCOPE_DEPTH
             safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
             elisa_skia_canvas_save(canvas_state)
             elisa_skia_canvas_clip_rect(canvas_state, safe_box.origin.x, safe_box.origin.y, safe_box.size.width, safe_box.size.height)
+            skia_scope_kinds[skia_save_depth] <- SKIA_SCOPE_CLIP
             skia_clip_depth <- skia_clip_depth + 1
             skia_save_depth <- skia_save_depth + 1

@@ -24,12 +24,14 @@ extend UiSkia:
             elisa_skia_canvas_save(canvas_state)
             elisa_skia_canvas_translate(canvas_state, safe_offset.x, safe_offset.y)
             elisa_skia_canvas_scale(canvas_state, safe_scale_x, safe_scale_y)
+            skia_scope_kinds[skia_save_depth] <- SKIA_SCOPE_TRANSFORM
             skia_transform_depth <- skia_transform_depth + 1
             skia_save_depth <- skia_save_depth + 1
             return true
 
         def pop_transform() -> void can[Ui.Draw]:
             return if canvas_state == 0 or skia_transform_depth == 0
+            return if skia_save_depth == 0 or skia_scope_kinds[skia_save_depth - 1] != SKIA_SCOPE_TRANSFORM
             elisa_skia_canvas_restore(canvas_state)
             skia_transform_depth <- skia_transform_depth - 1
             skia_save_depth <- skia_save_depth - 1
@@ -40,6 +42,7 @@ extend UiSkia:
             safe_degrees: f32 = UiCore::bounded_coordinate(degrees)
             elisa_skia_canvas_save(canvas_state)
             elisa_skia_canvas_rotate(canvas_state, safe_degrees)
+            skia_scope_kinds[skia_save_depth] <- SKIA_SCOPE_TRANSFORM
             skia_transform_depth <- skia_transform_depth + 1
             skia_save_depth <- skia_save_depth + 1
             return true

@@ -76,6 +76,7 @@ module UiSkia:
             canvas_state <- canvas
             skia_clip_depth <- 0
             skia_save_depth <- 1
+            skia_scope_kinds[0] <- SKIA_SCOPE_FRAME
             skia_surface_generation <- skia_surface_generation + 1
             skia_surface_generation <- 1 if skia_surface_generation == 0
             safe_scale: f32 = skia_scale_value(scale)
@@ -220,6 +221,14 @@ module UiSkia:
         global mutable skia_clip_depth: usize = 0
         global mutable skia_transform_depth: usize = 0
         global mutable skia_save_depth: usize = 0
+        # A shared save-depth counter is not enough to validate typed pops:
+        # restoring a transform through pop_clip would leave the two public
+        # depth counters lying about the borrowed canvas state. Keep one byte
+        # per bounded scope so mismatched pops fail closed in Elisa.
+        const SKIA_SCOPE_FRAME: u8 = 0
+        const SKIA_SCOPE_CLIP: u8 = 1
+        const SKIA_SCOPE_TRANSFORM: u8 = 2
+        global mutable skia_scope_kinds: u8[MAX_SCOPE_DEPTH] = zeroed
         global mutable skia_surface_generation: u32 = 0
         global mutable skia_frame_font: usize = 0
 
