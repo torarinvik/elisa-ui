@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `7638bd6` (`refactor(ui): scope sibling link scans`) on branch `work` |
+| elisa-ui revision | `e93b341` (`feat(text): add pixel-measured layout`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -33,7 +33,7 @@ colors and geometry.
 Public framework modules are `UiCore`, `UiLifecycle`, `UiMetrics`, `UiState`, `UiTasks`, `UiCapabilities`, `UiEvents`, `UiPaint`, `UiRaster`,
 `UiConst`, `UiWidgets`, `UiFlat`, `UiHandles`, `UiResources`, `UiResourcePresentation`,
 `UiResponsive`, `UiVirtualList`, `UiConstraints`, `UiIdentity`, `UiTheme`,
-`UiLocalization`, `UiValidation`, `UiFeatureView`, `UiDialog`, `UiNavigation`, `UiBack`, `UiGestures`, `UiTextLayout`, `UiTextInput`, `UiControls`, `UiCapi`, `UiAppKit`, `UiSkia`, `UiRemote`,
+`UiLocalization`, `UiValidation`, `UiFeatureView`, `UiDialog`, `UiNavigation`, `UiBack`, `UiGestures`, `UiTextLayout`, `UiTextMeasureLayout`, `UiTextInput`, `UiControls`, `UiCapi`, `UiAppKit`, `UiSkia`, `UiRemote`,
 `UiAppKitNative`, `UiAppKitCanvas`, `UiSdl3`, `UiSdl3Draw`, `UiWasmBrowser`,
 and `UiInspector`. The application contract is
 the top-level `app_init`, `app_event`, `app_text_input`, `app_text_editing`,
@@ -398,6 +398,11 @@ separate host-enforced security boundary.
   forms while preserving virama/linker precedence, so longer Devanagari,
   Bengali, Gujarati, Tamil, Telugu, Kannada, and Malayalam clusters retain
   atomic caret and deletion behavior.
+- `UiTextMeasureLayout` adds a bounded pixel-width planner beside the
+  scalar-column `UiTextLayout`. It measures each grapheme through
+  `UiTextMetrics`, preserves source ranges and CRLF handling, prefers complete
+  whitespace-run breaks, and emits an oversized grapheme as one line instead
+  of stalling; the active backend remains the authority for font metrics.
 - Bounded Elisa scans that return a derived value now use scoped `for`
   expressions where an early result is the only loop state, including the
   UTF-8 prefix, scalar-count, and UTF-16-count walks in `UiText`, plus
