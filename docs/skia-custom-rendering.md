@@ -40,7 +40,9 @@ smuggled into the Elisa ABI.
 Image presentation follows the same boundary: the host decodes and owns an
 opaque `SkImage*`, while Elisa validates the destination rectangle and alpha
 before issuing a borrowed `drawImageRect` call. `UiSkia` never retains or frees
-the image handle, so resource lifetime remains with the host/SDK.
+the image handle, so resource lifetime remains with the host/SDK. The
+`draw_ready_image` helper additionally requires a live `UiResources` generation
+in the `Ready` state before a host image can be painted.
 
 The checkout does not currently pin or vendor a Skia SDK. Build the C++ shim
 only in a target that supplies Skia headers and libraries, then pass its

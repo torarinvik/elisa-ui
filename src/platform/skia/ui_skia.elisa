@@ -9,6 +9,7 @@
 include "../../core/ui_core.elisa"
 include "../../core/ui_paint.elisa"
 include "../../core/ui_capabilities.elisa"
+include "../../widgets/ui_resources.elisa"
 
 using UiPaint
 
@@ -91,6 +92,16 @@ module UiSkia:
                 UiCore::bounded_extent(box.size.height))
             return if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
             elisa_skia_canvas_draw_image(canvas_state, image, safe_box.origin.x, safe_box.origin.y, safe_box.size.width, safe_box.size.height, alpha)
+
+        # Couple a renderer handle to the logical generation that authorized
+        # it. Hosts still own decode/upload and the opaque SkImage lifetime;
+        # this gate prevents a stale or not-yet-ready resource from reaching
+        # the custom painter.
+        def draw_ready_image(image: usize, resource: UiResources::Handle, box: UiCore::Rect, alpha: u8) -> bool can[Ui.Draw]:
+            return false if UiResources::state(resource) != UiResources::State.Ready
+            return false if image == 0 or canvas_state == 0 or alpha == 0
+            UiSkia::draw_image(image, box, alpha)
+            return true
 
         def measure_text_width(text: sview, size: f32) -> f32:
             # Metrics are pure font queries and do not require a live canvas.
