@@ -47,7 +47,11 @@ extend UiFlat:
         def insert_text(text: sview) -> void:
             # `sview.len` is signed at the ABI boundary. Reject malformed
             # negative extents before storage arithmetic converts them to usize.
-            return if text.len < 0 or not accepts_text()
+            # A positive counted length without backing storage is malformed
+            # foreign input, not an empty edit. Reject it before touching
+            # selection, history, or the retained value; a zero-length null
+            # view remains a valid composition-clear operation.
+            return if text.len < 0 or (text.len > 0 and text.data == null) or not accepts_text()
             safe_text: sview = UiCore::bounded_text(text)
             index: usize = focused_widget
             # Preserve the fact that the caller exceeded Core's counted-text
@@ -102,7 +106,10 @@ extend UiFlat:
             finish_text_history(history_slot, index) if widget_epoch == callback_epoch
 
         def replace_text(index: usize, text: sview) -> void:
-            return if text.len < 0 or not text_editable(index)
+            # Do not let a null-backed counted view masquerade as an empty
+            # replacement and clear a live field. Empty views are still valid
+            # when their length is explicitly zero.
+            return if text.len < 0 or (text.len > 0 and text.data == null) or not text_editable(index)
             safe_text: sview = UiCore::bounded_text(text)
             byte_limit: usize = safe_text.len if safe_text.len < TEXT_CAPACITY - 1 else TEXT_CAPACITY - 1
             take: usize = grapheme_prefix_length(safe_text, valid_utf8_prefix(safe_text, byte_limit))
@@ -137,7 +144,7 @@ extend UiFlat:
         # this conversion and all replacement policy in Elisa leaves native
         # adapters responsible only for forwarding protocol calls.
         def commit_text(text: sview, replacement_location: usize, replacement_length: usize, has_replacement: bool) -> void:
-            return if text.len < 0 or not accepts_text()
+            return if text.len < 0 or (text.len > 0 and text.data == null) or not accepts_text()
             index: usize = focused_widget
             if composition_history_slot < TEXT_HISTORY_CAPACITY and widgets[index].marked_end > widgets[index].marked_start:
                 history_suppressed <- true
@@ -165,7 +172,7 @@ extend UiFlat:
             finish_text_history(history_slot, index) if widget_epoch == callback_epoch
 
         def update_marked_text(text: sview, selected_location: usize, selected_length: usize, replacement_location: usize, replacement_length: usize, has_replacement: bool) -> void:
-            return if text.len < 0 or not accepts_text()
+            return if text.len < 0 or (text.len > 0 and text.data == null) or not accepts_text()
             safe_text: sview = UiCore::bounded_text(text)
             index: usize = focused_widget
             continuing_slot: usize = composition_history_slot
@@ -208,7 +215,7 @@ extend UiFlat:
         # counts, whereas AppKit uses UTF-16 units. Normalize both at this
         # framework boundary so the editing engine has one internal protocol.
         def update_marked_text_utf8_characters(text: sview, selected_start: i32, selected_length: i32) -> void:
-            return if text.len < 0
+            return if text.len < 0 or (text.len > 0 and text.data == null)
             safe_text: sview = UiCore::bounded_text(text)
             start_count: usize = selected_start.usize() if selected_start > 0 else 0
             length_count: usize = selected_length.usize() if selected_length > 0 else 0
