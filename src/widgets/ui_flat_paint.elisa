@@ -9,11 +9,10 @@ extend UiFlat:
             normalize_widget_enums()
             layout(last_layout_width, last_layout_height) if layout_initialized and layout_dirty
             build_paint_order()
-            semantic_index: mutable usize = 0
             semantic_sorted: mutable bool = true
             have_semantic_order: mutable bool = false
             previous_semantic_order: mutable usize = 0
-            while semantic_index < widget_count:
+            for semantic_index in 0..<widget_count:
                 visible_semantic: bool = semantic_kind(semantic_index) and effectively_visible(semantic_index) and intersects_scroll_viewports(semantic_index)
                 semantic_emitted[semantic_index] <- not visible_semantic
                 if visible_semantic:
@@ -21,32 +20,23 @@ extend UiFlat:
                     semantic_sorted <- false if have_semantic_order and current_semantic_order < previous_semantic_order
                     previous_semantic_order <- current_semantic_order
                     have_semantic_order <- true
-                semantic_index <- semantic_index + 1
             # Most retained trees use the allocation order as their focus
             # order. Emit that common case in one pass; the bounded selection
             # fallback remains for applications that explicitly reorder focus.
             if semantic_sorted:
-                semantic_index <- 0
-                while semantic_index < widget_count:
+                for semantic_index in 0..<widget_count:
                     emit_accessibility(semantic_index) if not semantic_emitted[semantic_index]
-                    semantic_index <- semantic_index + 1
             else:
-                emitted_count: mutable usize = 0
-                while emitted_count < widget_count:
+                for _ in 0..<widget_count:
                     next_semantic: mutable usize = NONE
-                    candidate: mutable usize = 0
-                    while candidate < widget_count:
+                    for candidate in 0..<widget_count:
                         if not semantic_emitted[candidate]:
                             next_semantic <- candidate if next_semantic >= widget_count or widgets[candidate].focus_order < widgets[next_semantic].focus_order or (widgets[candidate].focus_order == widgets[next_semantic].focus_order and candidate < next_semantic) else next_semantic
-                        candidate <- candidate + 1
                     if next_semantic < widget_count:
                         emit_accessibility(next_semantic)
                         semantic_emitted[next_semantic] <- true
-                    emitted_count <- emitted_count + 1
-            order_index: mutable usize = 0
-            while order_index < paint_order_count:
+            for order_index in 0..<paint_order_count:
                 index: usize = paint_order[order_index]
-                order_index <- order_index + 1
                 continue if not effectively_visible(index) or not intersects_scroll_viewports(index)
                 set_scroll_clip(index)
                 enabled: bool = effectively_enabled(index)
@@ -179,10 +169,8 @@ extend UiFlat:
                 UiCore::draw(UiCore::TextRun(UiCore::Vec2(text_x, text_y), widgets[index].text_size, widgets[index].text), ink)
             # Indicators are emitted after content so they remain readable over
             # translated children and nested scroll areas.
-            order_index <- 0
-            while order_index < paint_order_count:
+            for order_index in 0..<paint_order_count:
                 index: usize = paint_order[order_index]
-                order_index <- order_index + 1
                 continue if not effectively_visible(index) or not intersects_scroll_viewports(index)
                 set_scroll_clip(index)
                 paint_scrollbar(index)
