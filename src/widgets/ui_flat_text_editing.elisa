@@ -80,16 +80,13 @@ extend UiFlat:
             offset: usize = index * TEXT_CAPACITY
             old_length: usize = widgets[index].input_length
             tail_length: usize = widgets[index].input_length - stop
-            cursor: mutable usize = 0
             if start + take > stop:
-                cursor <- tail_length
-                while cursor > 0 |cursor, offset, start, stop, take|:
-                    cursor <- cursor - 1
-                    text_storage[offset + start + take + cursor] <- text_storage[offset + stop + cursor]
+                for cursor in 0..<tail_length:
+                    reverse_cursor: usize = tail_length - cursor - 1
+                    text_storage[offset + start + take + reverse_cursor] <- text_storage[offset + stop + reverse_cursor]
             else:
-                while cursor < tail_length |cursor, offset, start, stop, take, tail_length|:
+                for cursor in 0..<tail_length:
                     text_storage[offset + start + take + cursor] <- text_storage[offset + stop + cursor]
-                    cursor <- cursor + 1
             for byte_index in 0..<take:
                 text_storage[offset + start + byte_index] <- single_line_byte(safe_text, byte_index)
             widgets[index].caret <- start + take
@@ -121,11 +118,10 @@ extend UiFlat:
 
             offset: usize = index * TEXT_CAPACITY
             old_length: usize = widgets[index].input_length
-            changed: mutable bool = widgets[index].input_length != take
-            compare: mutable usize = 0
-            while not changed and compare < take |compare, changed, offset|:
-                changed <- true if text_storage[offset + compare] != single_line_byte(safe_text, compare)
-                compare <- compare + 1
+            changed: bool =
+                for compare in 0..<take |changed = widgets[index].input_length != take| -> changed:
+                    changed <- true if text_storage[offset + compare] != single_line_byte(safe_text, compare)
+                    break if changed
 
             history_slot: usize = begin_text_history(index) if changed else TEXT_HISTORY_CAPACITY
             for byte_index in 0..<take:
