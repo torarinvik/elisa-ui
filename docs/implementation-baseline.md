@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `ae45d5713bea23b6a1c8f9f7c4947c3c7466ccb6` on branch `work` |
+| elisa-ui revision | `e4e78589bb96ccd2081c03cae35ad053116e3917` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -76,8 +76,10 @@ lines. Together they own bounded caption storage and native-control state.
 The flat widget compatibility
 facade (`ui_widget.elisa`, 23 lines) now delegates to cohesive state, layout,
 input, text, scrolling, and painting modules, each below 400 lines. The AppKit controls backend is
-now split into realization/policy (`ui_appkit.elisa`, 305 lines) and typed
-native bridge wrappers (`ui_appkit_native.elisa`, 399 lines). The SDL3 backend
+now split into realization/policy (`ui_appkit.elisa`, 305 lines), typed native
+bridge wrappers (`ui_appkit_native.elisa`, 212 lines), ABI declarations
+(`ui_appkit_native_ffi.elisa`, 75 lines), and read-back inspection wrappers
+(`ui_appkit_native_inspection.elisa`, 121 lines). The SDL3 backend
 is split into lifecycle/state (`ui_sdl3.elisa`, 335 lines), event-union
 decoding (`ui_sdl3_events.elisa`, 145 lines), run-loop policy
 (`ui_sdl3_run.elisa`, 139 lines), and drawing/font state
@@ -284,6 +286,10 @@ separate host-enforced security boundary.
 - AppKit native-control read-back is routed through the same Elisa-owned,
   autorelease-scoped bridge wrapper surface as construction and mutation; the
   realization module no longer imports raw Cocoa query symbols.
+- The AppKit native bridge keeps ABI declarations, autorelease-scoped control
+  operations, and diagnostic read-back in separate Elisa modules, so adding a
+  native fact cannot silently widen realization policy or push framework state
+  into Objective-C.
 - The hosted backend consumes the authoritative SDK-generated host bindings from
   the staged `sdk/elisa/wasmbrowser/` source root; standalone builds select that
   checkout through `ELISA_UI_WASM_SDK`, while the SDK integration stages its own
