@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `92f4f6e` (`refactor(appkit): use shared Elisa hairline width`) on branch `work` |
+| elisa-ui revision | `0d64a6a` (`fix(flat): preserve elevated choice surfaces`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -520,6 +520,10 @@ separate host-enforced security boundary.
 - Shared custom-painter constants now live in `UiPaint::RoundedRectStyle`.
   CoreGraphics and Skia consume the same Elisa-owned shadow, hairline, radius,
   and alpha values; the Skia extension only lowers them to its primitive FFI.
+- The Flat compatibility painter explicitly elevates radio-button and checkbox
+  surfaces alongside push/toggle buttons and text fields, preserving the
+  control appearance that the old dimensional heuristic provided without
+  making sliders, progress tracks, or containers look elevated.
 - Direct Skia text drawing now goes through the same Elisa sanitization as
   retained replay, keeping custom-control escape hatches bounded and UTF-8
   safe without duplicating policy in the bridge.
