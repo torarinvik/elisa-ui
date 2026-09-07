@@ -48,6 +48,11 @@ def main() -> i64:
     bytes[1] <- 0xA0
     bytes[2] <- 0x80
     check("surrogate encoding is not a scalar", UiTextLayout::utf8_scalar_bytes(sview(&bytes[0], 0, 3), 0) == 1)
+    malformed_view_words: mutable u64[2] = zeroed
+    malformed_view_words[1] <- 4
+    malformed_view_ref: mutable sview& = (&malformed_view_words[0]).cast[mutable sview&] can Unsafe.PointerCast
+    null_view: sview = malformed_view_ref[0]
+    check("text layout rejects null-backed scalar views", UiTextLayout::utf8_scalar_bytes(null_view, 0) == 0)
     bytes[0] <- 0xC2
     bytes[1] <- 65
     bytes[2] <- 0
