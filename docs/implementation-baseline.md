@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `26e9c616239d6101f7b0edd88bc82ee20f1dcfde` on branch `work` |
+| elisa-ui revision | `90ad8eec1ff71491fd05bce606f75e2d5892d0da` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -187,6 +187,7 @@ The Skia custom painter boundary compiles headlessly through
 `scripts/check_skia.sh`; no foreground window or local Skia installation is
 required for the Elisa contract check. When `SKIA_ROOT` is configured, the
 same gate also compiles the real C++ host shim without linking a target surface.
+The gate rejects AppKit imports in that shim even when no SDK is installed.
 Its Elisa-owned `UiSkia::render()` entry
 point now owns command replay and normalizes direct painter geometry before the
 opaque canvas FFI, leaving the C++ shim with primitive SkCanvas calls only.
