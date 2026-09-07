@@ -37,12 +37,14 @@ extend UiAppKitCanvas:
         # accessibility and hit testing.
         def rebuild_cursor_rects() -> void:
             return if canvas_window == 0
-            for index in 0..<UiCore::accessibility_count():
+            index: mutable usize = 0
+            while index < UiCore::accessibility_count():
                 node: UiCore::AccessibilityNode = UiCore::accessibility_at(index)
                 cursor: usize = native_cursor(accessibility_cursor(node.role, node.enabled))
                 elisa_appkit_canvas_add_cursor_rect(canvas_window,
                     node.frame.origin.x, node.frame.origin.y,
                     node.frame.size.width, node.frame.size.height, cursor)
+                index <- index + 1
 
         def accessibility_notify(handle: usize, notifications: i32) -> void:
             NSAccessibilityPostNotification(handle, NSAccessibilityValueChangedNotification) if notifications & 1 != 0
@@ -135,12 +137,14 @@ extend UiAppKitCanvas:
         def rebuild_accessibility_tooltips(count: usize) -> void:
             return if canvas_window == 0
             elisa_appkit_canvas_accessibility_reset(canvas_window)
-            for index in 0..<count:
+            index: mutable usize = 0
+            while index < count:
                 state: AccessibilityState = accessibility_previous[index]
                 handle: usize = accessibility_previous_handles[index]
                 if handle != 0 and state.help.len > 0 and state.interaction != 0:
                     elisa_appkit_canvas_accessibility_add_tooltip(canvas_window, handle,
                         state.x, state.y, state.width, state.height)
+                index <- index + 1
 
         # Window movement/backing changes alter screen-relative accessibility
         # frames without changing local widget geometry. Native code reports

@@ -7,7 +7,8 @@ extend UiAppKitCanvas:
             while retained_index < previous_count:
                 accessibility_previous_retained[retained_index] <- false
                 retained_index <- retained_index + 1
-            for index in 0..<UiCore::accessibility_count():
+            index: mutable usize = 0
+            while index < UiCore::accessibility_count():
                 node: UiCore::AccessibilityNode = UiCore::accessibility_at(index)
                 identifier: sview = accessibility_identifier(node.id)
                 native_identifier: usize = native_string(identifier)
@@ -86,16 +87,19 @@ extend UiAppKitCanvas:
                 CFRelease(native_identifier) if native_identifier != 0
                 CFRelease(native_label) if native_label != 0
                 CFRelease(native_help) if native_help != 0
+                index <- index + 1
             # Capture handles that are leaving the semantic tree before the
             # previous-frame arrays are overwritten. A handle is retained only
             # when the same semantic ID still points at that exact native
             # element; replacement handles must not be confused with reuse.
             accessibility_stale_count <- 0
-            for previous_index in 0..<previous_count:
+            previous_index: mutable usize = 0
+            while previous_index < previous_count:
                 previous_handle: usize = accessibility_previous_handles[previous_index]
                 if not accessibility_previous_retained[previous_index] and accessibility_stale_count < UiCore::MAX_ACCESSIBILITY_NODES:
                     accessibility_stale_handles[accessibility_stale_count] <- previous_handle
                     accessibility_stale_count <- accessibility_stale_count + 1
+                previous_index <- previous_index + 1
 
             committed: bool = commit_accessibility_children(next_count)
             if committed:
@@ -153,36 +157,46 @@ extend UiAppKitCanvas:
                 # replacement list. The CFArray has no retain callbacks, so
                 # stale handles remain live through the native commit itself.
                 accessibility_previous_count <- next_count
-                for index in 0..<accessibility_previous_count:
-                    accessibility_previous_ids[index] <- accessibility_next_ids[index]
-                    accessibility_previous_handles[index] <- accessibility_next_handles[index]
-                    _ = copy_accessibility_text(accessibility_next[index].label, &accessibility_previous_label_storage[0], index)
-                    _ = copy_accessibility_text(accessibility_next[index].help, &accessibility_previous_help_storage[0], index)
-                    previous_state: mutable AccessibilityState = accessibility_next[index]
-                    previous_state.label <- sview(&accessibility_previous_label_storage[index * ACCESSIBILITY_TEXT_CAPACITY], 0, previous_state.label.len)
-                    previous_state.help <- sview(&accessibility_previous_help_storage[index * ACCESSIBILITY_TEXT_CAPACITY], 0, previous_state.help.len)
-                    accessibility_previous[index] <- previous_state
+                history_index: mutable usize = 0
+                while history_index < accessibility_previous_count:
+                    accessibility_previous_ids[history_index] <- accessibility_next_ids[history_index]
+                    accessibility_previous_handles[history_index] <- accessibility_next_handles[history_index]
+                    _ = copy_accessibility_text(accessibility_next[history_index].label, &accessibility_previous_label_storage[0], history_index)
+                    _ = copy_accessibility_text(accessibility_next[history_index].help, &accessibility_previous_help_storage[0], history_index)
+                    previous_state: mutable AccessibilityState = accessibility_next[history_index]
+                    previous_state.label <- sview(&accessibility_previous_label_storage[history_index * ACCESSIBILITY_TEXT_CAPACITY], 0, previous_state.label.len)
+                    previous_state.help <- sview(&accessibility_previous_help_storage[history_index * ACCESSIBILITY_TEXT_CAPACITY], 0, previous_state.help.len)
+                    accessibility_previous[history_index] <- previous_state
+                    history_index <- history_index + 1
                 # Now that the view references the new list, release old or
                 # superseded handles that are no longer reachable from it.
-                for stale_index in 0..<accessibility_stale_count:
+                stale_index: mutable usize = 0
+                while stale_index < accessibility_stale_count:
                     stale_handle: usize = accessibility_stale_handles[stale_index]
                     elisa_appkit_canvas_accessibility_release(stale_handle) if stale_handle != 0
                     accessibility_stale_handles[stale_index] <- 0
+                    stale_index <- stale_index + 1
             else:
                 # Keep the old semantic list and ownership when allocation or
                 # native validation fails. Newly-created elements are not in
                 # that old list, so they can be released immediately; reused
                 # handles remain owned by the previous-frame table.
-                for next_index in 0..<next_count:
+                next_index: mutable usize = 0
+                while next_index < next_count:
                     candidate: usize = accessibility_next_handles[next_index]
                     known: mutable bool = false
-                    for previous_index in 0..<previous_count:
-                        known <- true if candidate != 0 and candidate == accessibility_previous_handles[previous_index]
+                    known_index: mutable usize = 0
+                    while known_index < previous_count:
+                        known <- true if candidate != 0 and candidate == accessibility_previous_handles[known_index]
+                        known_index <- known_index + 1
                     if candidate != 0 and not known:
                         elisa_appkit_canvas_accessibility_release(candidate)
                     accessibility_next_handles[next_index] <- 0
-                for stale_index in 0..<accessibility_stale_count:
+                    next_index <- next_index + 1
+                stale_index: mutable usize = 0
+                while stale_index < accessibility_stale_count:
                     accessibility_stale_handles[stale_index] <- 0
+                    stale_index <- stale_index + 1
             accessibility_stale_count <- 0
             if committed and layout_changed:
                 rebuild_accessibility_tooltips(next_count)
