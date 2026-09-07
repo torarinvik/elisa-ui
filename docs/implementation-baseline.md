@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `cc1e0ab1e9ab9055e8c4c2e97855f842199753b6` on branch `work` |
+| elisa-ui revision | `cb6e8654621ea70af6d4e542d5199cc12b43f9ac` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -92,7 +92,9 @@ Escape into that shared policy before invoking application code; modal dialogs
 take precedence, followed by application-owned consume/confirm/navigation
 decisions, and only an unhandled fact reaches the host close action. Dialog and
 navigation private state uses module-unique names because Elisa's current
-compiler resolves colliding private globals across included modules.
+compiler resolves colliding private globals across included modules. The
+`scripts/check_global_names.sh` gate now rejects duplicate mutable module-global
+names across the source tree, covering all backend and test include graphs.
 
 The core and widget operation facades follow the same boundary: `ui_core.elisa`
 is an 11-line include surface over typed, frame, geometry, event, and retained
@@ -155,6 +157,8 @@ ELISA_UI_STAGE1=/tmp/elisa-ui-stage1-p4 ELISA_ALLOW_STALE_STAGE1=1 bash scripts/
   localization, theme, validation, virtual-list and virtual-list semantics: PASS
 scripts/check_source_sizes.sh
   all tracked Elisa modules are at or below 400 lines: PASS
+scripts/check_global_names.sh
+  all mutable module-global names are unique across the source tree: PASS
 git diff --check: PASS
 ```
 
