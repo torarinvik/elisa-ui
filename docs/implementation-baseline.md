@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `564d034391bc418c86ef2bbbfa5348b233653f93` on branch `work` |
+| elisa-ui revision | `8225cd97cc133f12a55b5ace84b344bef4f576d5` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -203,6 +203,9 @@ recreation for hosts without exposing native pointers to the framework.
 Direct rounded fills and image placement normalize malformed geometry in Elisa
 before crossing the Skia FFI; empty destinations are rejected by the helper
 contract and its headless recorder.
+`UiSkia::render_checked()` replays only the bounded retained batch and reports
+when `UiCore` dropped commands at capacity, so oversize frames are observable
+without an unbounded allocation.
 `UiCapabilities::Snapshot` now reports a typed renderer profile: native
 controls, SDL3, CoreGraphics fallback, Skia, hosted commands, or headless.
 `test/skia_painter_test.elisa` records the full six-command replay through a
