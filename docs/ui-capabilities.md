@@ -5,7 +5,9 @@ selected adapter calls one profile constructor during startup; applications can
 read the resulting `Snapshot` without checking an OS name or touching a native
 object. The snapshot also identifies the renderer that owns custom pixels:
 native controls, SDL3, CoreGraphics fallback, Skia, hosted commands, or the
-headless test renderer.
+headless test renderer. Scale-change support is reported independently and is
+enabled when the selected custom renderer can accept a new logical-to-physical
+scale without rebuilding retained widget state.
 
 Profiles distinguish native windows, custom painting, native controls, hosted
 presentation, text input and composition, clipboard, semantics, off-screen
@@ -30,7 +32,7 @@ Current profiles:
   canvas snapshot path; renderer `Native`.
 - `AppKitCanvas`: custom painting, native text/IME, native semantics, and
   off-screen snapshots; the current fallback reports `CoreGraphics`, while a
-  live `UiSkia` canvas selects renderer `Skia`.
+  live `UiSkia` canvas selects renderer `Skia` and enables scale changes.
 - `WasmBrowser`: hosted command presentation and host-mediated text/IME and
   clipboard; native-window and local-semantic capabilities are not claimed;
   renderer `Hosted`.
