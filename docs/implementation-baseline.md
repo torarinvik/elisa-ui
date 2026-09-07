@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `77bb378e114ee8a86eaf58714b6c320203f1465e` on branch `work` |
+| elisa-ui revision | `62804f2829be6dd8b4d23fc363fedf04e390a8ba` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -341,6 +341,10 @@ separate host-enforced security boundary.
   balance predicate covering attachment generation, save/clip/transform depth,
   and active image/font bindings; the headless fixture verifies detached
   surface state and cleared bindings without exposing native pointers.
+- Skia replay now returns a typed `RenderStatus` (`SkippedNoSurface`, `Complete`,
+  or `CommandOverflow`) while retaining `render()`/`render_checked()`
+  compatibility; the headless fixture distinguishes detached and overflowed
+  frames.
 - Callback entry points are lifetime-guarded: if an application handler resets
   the flat tree, post-callback history, composition, activation, adjustment, and
   radio state updates are abandoned instead of touching recycled slots. This is

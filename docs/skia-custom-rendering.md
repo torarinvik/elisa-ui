@@ -72,6 +72,8 @@ Hosts that need an explicit completeness signal can call
 `UiSkia::render_checked()`: it replays the bounded batch but returns `false`
 when `UiCore` dropped commands at its fixed capacity, making incomplete frames
 observable without allowing an unbounded render allocation.
+`UiSkia::render_status()` exposes the typed result behind that compatibility
+boolean: `SkippedNoSurface`, `Complete`, or `CommandOverflow`.
 
 The first slice covers clear, clipping, rounded rectangles, circles, triangles,
 lines, UTF-8 text, and text metrics. The portable `FillRect` command keeps its
