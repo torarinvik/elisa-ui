@@ -12,11 +12,11 @@ remains AppKit. The split is intentional:
   accepts an opaque borrowed `SkCanvas*` and exposes primitive operations.
 
 The FFI deliberately does not expose `SkPaint`, `SkFont`, `SkPath`, or any
-other C++ object to Elisa. A host attaches one canvas for a frame, replays the
-same command batch through `UiPaint::replay[UiSkia::SkiaPainter]()`, and then
-detaches it before the surface is destroyed. That makes surface recreation and
-headless rendering ordinary lifecycle transitions instead of retained native
-pointer state.
+other C++ object to Elisa. A host attaches one canvas for a frame, calls
+`UiSkia::render()`, and then detaches it before the surface is destroyed. Elisa
+owns command replay and normalizes direct painter geometry before any value
+crosses the FFI. That makes surface recreation and headless rendering ordinary
+lifecycle transitions instead of retained native pointer state.
 
 The first slice covers clear, clipping, rectangles, circles, triangles, lines,
 UTF-8 text, and text metrics. Font fallback, image resources, GPU surface

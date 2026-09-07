@@ -40,6 +40,13 @@ module UiSkia:
         def is_attached() -> bool:
             return canvas_state != 0
 
+        # Replay the retained command batch through this backend's painter.
+        # Hosts only manage the borrowed canvas lifetime; command traversal and
+        # all geometry normalization stay in Elisa.
+        def render() -> void can[Ui.Draw, Ui.Text]:
+            return if canvas_state == 0
+            UiPaint::replay[SkiaPainter]()
+
         def measure_text_width(text: sview, size: f32) -> f32:
             return 0.0 if canvas_state == 0 or text.len <= 0 or text.data == null or not UiCore::is_finite(size)
             safe_text: sview = UiCore::bounded_text(text)
@@ -61,8 +68,9 @@ module UiSkia:
         impl Painter for SkiaPainter:
             def push_clip(box: UiCore::Rect) -> void can[Ui.Draw]:
                 return if canvas_state == 0
+                safe_box: UiCore::Rect = UiCore::Rect(box.origin.x, box.origin.y, box.size.width, box.size.height)
                 elisa_skia_canvas_save(canvas_state)
-                elisa_skia_canvas_clip_rect(canvas_state, box.origin.x, box.origin.y, box.size.width, box.size.height)
+                elisa_skia_canvas_clip_rect(canvas_state, safe_box.origin.x, safe_box.origin.y, safe_box.size.width, safe_box.size.height)
                 skia_clip_depth <- skia_clip_depth + 1
 
             def pop_clip() -> void can[Ui.Draw]:
@@ -76,26 +84,31 @@ module UiSkia:
 
             def fill_rect(box: UiCore::Rect, color: UiCore::Color) -> void can[Ui.Draw]:
                 return if canvas_state == 0
-                elisa_skia_canvas_fill_rect(canvas_state, box.origin.x, box.origin.y, box.size.width, box.size.height, color.r, color.g, color.b, color.a)
+                safe_box: UiCore::Rect = UiCore::Rect(box.origin.x, box.origin.y, box.size.width, box.size.height)
+                elisa_skia_canvas_fill_rect(canvas_state, safe_box.origin.x, safe_box.origin.y, safe_box.size.width, safe_box.size.height, color.r, color.g, color.b, color.a)
 
             def fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> void can[Ui.Draw]:
                 return if canvas_state == 0
-                elisa_skia_canvas_fill_circle(canvas_state, disc.center.x, disc.center.y, disc.radius, color.r, color.g, color.b, color.a)
+                safe_disc: UiCore::Circle = UiCore::Circle{center: UiCore::Vec2(disc.center.x, disc.center.y), radius: UiCore::bounded_extent(disc.radius)}
+                elisa_skia_canvas_fill_circle(canvas_state, safe_disc.center.x, safe_disc.center.y, safe_disc.radius, color.r, color.g, color.b, color.a)
 
             def fill_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]:
                 return if canvas_state == 0
-                elisa_skia_canvas_fill_triangle(canvas_state, tri.a.x, tri.a.y, tri.b.x, tri.b.y, tri.c.x, tri.c.y, color.r, color.g, color.b, color.a)
+                safe_tri: UiCore::Triangle = UiCore::Triangle{a: UiCore::Vec2(tri.a.x, tri.a.y), b: UiCore::Vec2(tri.b.x, tri.b.y), c: UiCore::Vec2(tri.c.x, tri.c.y)}
+                elisa_skia_canvas_fill_triangle(canvas_state, safe_tri.a.x, safe_tri.a.y, safe_tri.b.x, safe_tri.b.y, safe_tri.c.x, safe_tri.c.y, color.r, color.g, color.b, color.a)
 
             def fill_line(segment: UiCore::Line, color: UiCore::Color) -> void can[Ui.Draw]:
                 return if canvas_state == 0
-                elisa_skia_canvas_fill_line(canvas_state, segment.from_point.x, segment.from_point.y, segment.to_point.x, segment.to_point.y, color.r, color.g, color.b, color.a)
+                safe_line: UiCore::Line = UiCore::Line{from_point: UiCore::Vec2(segment.from_point.x, segment.from_point.y), to_point: UiCore::Vec2(segment.to_point.x, segment.to_point.y)}
+                elisa_skia_canvas_fill_line(canvas_state, safe_line.from_point.x, safe_line.from_point.y, safe_line.to_point.x, safe_line.to_point.y, color.r, color.g, color.b, color.a)
 
             def draw_text(run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
                 return if canvas_state == 0 or run.text.len <= 0 or run.text.data == null
-                safe_text: sview = UiCore::bounded_text(run.text)
+                safe_run: UiCore::TextRun = UiCore::TextRun(run.origin, run.size, run.text)
+                safe_text: sview = safe_run.text
                 return if safe_text.len <= 0 or safe_text.data == null
                 pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
-                elisa_skia_canvas_draw_text(canvas_state, pointer, safe_text.len.usize(), run.origin.x, run.origin.y, UiCore::bounded_extent(run.size), color.r, color.g, color.b, color.a)
+                elisa_skia_canvas_draw_text(canvas_state, pointer, safe_text.len.usize(), safe_run.origin.x, safe_run.origin.y, safe_run.size, color.r, color.g, color.b, color.a)
 
     private:
         global mutable canvas_state: usize = 0
