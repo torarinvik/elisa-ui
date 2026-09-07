@@ -149,6 +149,14 @@ module UiResourcePresentation:
         def record(handle: UiResources::Handle, options: Options) -> Record:
             current: DisplayState = display_state(handle)
             retryable: bool = options.allow_retry and can_retry(handle)
+            intrinsic: UiCore::Size = UiResources::intrinsic_size(handle)
+            reserved_width: mutable f32 = UiCore::bounded_extent(options.reserved_width)
+            reserved_height: mutable f32 = UiCore::bounded_extent(options.reserved_height)
+            # A declared reservation wins. Zero means the caller has no
+            # opinion, so a host-provided intrinsic dimension can stabilize
+            # loading geometry without overriding an intentional size.
+            reserved_width <- intrinsic.width if options.reserved_width == 0.0
+            reserved_height <- intrinsic.height if options.reserved_height == 0.0
             return Record{
                 handle: handle,
                 kind: normalize_kind(options.kind),
@@ -161,9 +169,7 @@ module UiResourcePresentation:
                 progress_visible: options.show_progress and current == DisplayState.Loading,
                 retry_available: retryable,
                 interaction_enabled: current == DisplayState.Ready or retryable,
-                reserved_size: UiCore::Size(
-                    UiCore::bounded_extent(options.reserved_width),
-                    UiCore::bounded_extent(options.reserved_height)),
+                reserved_size: UiCore::Size(reserved_width, reserved_height),
             }
 
         def normalize_kind(kind: Kind) -> Kind:

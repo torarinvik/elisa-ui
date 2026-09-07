@@ -37,8 +37,15 @@ def main() -> i64:
     check("invalid resource presents a placeholder", missing_record.state == UiResourcePresentation::DisplayState.Placeholder and missing_record.placeholder_visible and not missing_record.fallback_visible)
 
     image: mutable UiResources::Handle = UiResources::request("images/preview", 3)
+    _ = UiResources::set_intrinsic_size(image, 128.0, 72.0)
     loading: mutable UiResourcePresentation::Record = UiResourcePresentation::record(image, options)
     check("requested resource presents loading", loading.state == UiResourcePresentation::DisplayState.Loading and loading.placeholder_visible and loading.progress_visible)
+    intrinsic_options: mutable UiResourcePresentation::Options = options
+    intrinsic_options.reserved_width <- 0.0
+    intrinsic_options.reserved_height <- 0.0
+    intrinsic_loading: UiResourcePresentation::Record = UiResourcePresentation::record(image, intrinsic_options)
+    check("presentation uses intrinsic size when reservation is unspecified", intrinsic_loading.reserved_size.width == 128.0 and intrinsic_loading.reserved_size.height == 72.0)
+    check("explicit reservation overrides intrinsic size", loading.reserved_size.width == 64.0 and loading.reserved_size.height == 64.0)
     UiResources::set_progress(image, 0.8, 0.25)
     loading <- UiResourcePresentation::record(image, options)
     check("presentation preserves independent progress", loading.network_progress == 0.8 and loading.decode_progress == 0.25 and loading.state == UiResourcePresentation::DisplayState.Loading)

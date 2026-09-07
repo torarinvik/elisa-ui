@@ -41,6 +41,10 @@ def main() -> i64:
     image: mutable UiResources::Handle = UiResources::request("images/logo", 11)
     check("request creates a typed resource", UiResources::is_valid(image) and UiResources::count() == 1)
     check("new resource starts requested", UiResources::state(image) == UiResources::State.Requested and UiResources::owner(image) == 11)
+    check("intrinsic resource size is accepted", UiResources::set_intrinsic_size(image, 128.0, 72.0) and UiResources::intrinsic_size(image).width == 128.0 and UiResources::intrinsic_size(image).height == 72.0)
+    check("repeated intrinsic resource size is idempotent", not UiResources::set_intrinsic_size(image, 128.0, 72.0))
+    check("negative intrinsic resource size is rejected", not UiResources::set_intrinsic_size(image, -1.0, 72.0) and UiResources::intrinsic_size(image).width == 128.0)
+    check("oversized intrinsic resource size is rejected", not UiResources::set_intrinsic_size(image, UiCore::MAX_GEOMETRY_EXTENT + 4.0, 72.0) and UiResources::intrinsic_size(image).width == 128.0)
     requested_snapshot: UiResources::Snapshot = UiResources::snapshot()
     check("snapshot counts requested resources", requested_snapshot.total == 1 and requested_snapshot.requested == 1 and requested_snapshot.ready == 0 and requested_snapshot.failed == 0 and not requested_snapshot.overflowed)
     check("resource key is retained in Elisa", UiResources::identifier(image) == "images/logo")
@@ -68,6 +72,7 @@ def main() -> i64:
     check("ready is not retried", not UiResources::is_valid(not_retried))
 
     check("failed transition is accepted", UiResources::set_state(image, UiResources::State.Failed))
+    check("failed resource retains intrinsic metadata", UiResources::intrinsic_size(image).width == 128.0 and UiResources::intrinsic_size(image).height == 72.0)
     check("failed transition defaults to retryable transport", UiResources::failure(image) == UiResources::FailureKind.RetryableTransport and UiResources::can_retry(image))
     check("retry accepts a new demand hint", UiResources::set_demand(image, 77) and UiResources::is_demanded(image))
     failed_generation: u32 = image.generation
@@ -75,6 +80,7 @@ def main() -> i64:
     check("failed resource can retry", UiResources::is_valid(retried_image) and UiResources::state(retried_image) == UiResources::State.Requested and UiResources::downloaded_progress(retried_image) == 0.0)
     check("retry rotates generation", retried_image.generation != failed_generation and not UiResources::is_valid(image))
     check("retry drops stale demand hints", not UiResources::is_demanded(retried_image) and UiResources::demand_priority(retried_image) == 0)
+    check("retry preserves intrinsic resource metadata", UiResources::intrinsic_size(retried_image).width == 128.0 and UiResources::intrinsic_size(retried_image).height == 72.0)
     check("late failed callback cannot touch retry", not UiResources::set_state(image, UiResources::State.Ready) and UiResources::state(retried_image) == UiResources::State.Requested)
     image <- retried_image
     check("corrupt resource exposes a terminal failure", UiResources::fail(image, UiResources::FailureKind.Corrupt) and not UiResources::can_retry(image) and UiResources::failure(image) == UiResources::FailureKind.Corrupt)
@@ -105,6 +111,7 @@ def main() -> i64:
 
     old_generation: u32 = requested_again.generation
     check("dispose releases the resource", UiResources::dispose(requested_again) and UiResources::count() == 0)
+    check("dispose clears intrinsic resource metadata", UiResources::intrinsic_size(requested_again).width == 0.0 and UiResources::intrinsic_size(requested_again).height == 0.0)
     check("disposed identity becomes stale", not UiResources::is_valid(requested_again) and requested_again.generation == old_generation)
     check("late completion cannot revive disposed identity", not UiResources::set_state(requested_again, UiResources::State.Ready))
 
