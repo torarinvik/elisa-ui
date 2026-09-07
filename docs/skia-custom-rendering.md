@@ -33,6 +33,11 @@ discarding retained commands or logical resources. `surface_generation()`
 advances on loss and every new attachment, giving a host a cheap stale-surface
 token while the Elisa widget tree survives device/surface recreation.
 
+Hosts that need an explicit completeness signal can call
+`UiSkia::render_checked()`: it replays the bounded batch but returns `false`
+when `UiCore` dropped commands at its fixed capacity, making incomplete frames
+observable without allowing an unbounded render allocation.
+
 The first slice covers clear, clipping, rounded rectangles, circles, triangles,
 lines, UTF-8 text, and text metrics. The portable `FillRect` command keeps its
 wire shape, while `UiPaint::rounded_rect_style()` supplies the shared Elisa
