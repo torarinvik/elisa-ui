@@ -244,6 +244,15 @@ surface and text colors remain independently configurable. Its text controls
 include a secure-field variant whose value stays masked across painting,
 accessibility and clipboard export.
 
+The optional C boundary is demonstrated by the small
+[examples/capi/c_host.c](examples/capi/c_host.c) program. It drives the Elisa
+adapter through the versioned header and receives typed event, committed text,
+and IME callbacks without seeing retained widget storage. The adjacent
+[examples/capi/cpp_header_check.cc](examples/capi/cpp_header_check.cc) keeps
+the same header C++17-compatible. `scripts/check_capi.sh` compiles both
+examples and links the C host against the Elisa adapter; this path is optional
+and does not add a dependency to native SDL, AppKit, Skia, or WasmBrowser apps.
+
 wxWidgets serves as an architectural reference (widget hierarchy, sizers, event
 routing) — studied, not ported.
 
