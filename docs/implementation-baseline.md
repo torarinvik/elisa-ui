@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `d500210` (`feat(example): add typed list detail flow`) on branch `work` |
+| elisa-ui revision | `aca7b3a` (`feat(example): demonstrate resource recovery states`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -550,7 +550,10 @@ separate host-enforced security boundary.
   `UiHandlesPersistence`; the in-memory blob is ID/value-only and never stores
   widget handles or secure text. Its `examples/hello/catalog.elisa` module
   provides a typed list/detail interaction and persists the selected item with
-  the form state across restore.
+  the form state across restore. Its `examples/hello/resource_demo.elisa`
+  module drives optional-resource loading progress, completion, retryable
+  failure, and recovery through the lower-level `UiResources` state API; the
+  host still owns verified bytes and decoding.
 
 The authoritative generated WasmBrowser Elisa bindings are staged in
 `../wasm-sdk/sdk/elisa/wasmbrowser/`; the hosted adapter includes those bindings
