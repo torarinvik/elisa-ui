@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `b4670dc` (`fix(skia): bound direct primitive geometry`) on branch `work` |
+| elisa-ui revision | `eb5e7a7` (`docs(skia): record native geometry guards`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -60,7 +60,7 @@ Externally imposed symbols are kept at the edges:
   `src/platform/appkit/appkit_skia_host.cpp` is linked only by the Skia canvas
   product; the standard AppKit product keeps its CoreGraphics fallback.
 
-The two Objective-C files total 1,486 lines, but the custom canvas shim has no
+The two Objective-C files total 1,507 lines, but the custom canvas shim has no
 framework state table, widget/layout traversal, rendering path, text policy,
 semantic diff, selector map, menu schema, clipboard policy, or headless mode.
 Those decisions are made in Elisa and cross the boundary as typed values or
@@ -90,7 +90,8 @@ input, focus, style, callback, text, scrolling, and painting modules, each below
 lines), with keyboard focus/capture policy in `ui_flat_focus.elisa`, text
 semantic projection and focus visibility in `ui_flat_text_semantics.elisa`, visual
 color policy in `ui_flat_style.elisa`, shared `UiTheme` palette adaptation in
-`ui_flat_theme.elisa` (37 lines), and legacy callback lowering in
+`ui_flat_theme.elisa` (37 lines), the private Unicode property tables in
+`ui_flat_grapheme.elisa` (124 lines), and legacy callback lowering in
 `ui_flat_events.elisa`. The AppKit canvas flat adapter keeps its externally
 mandated export declarations in `ui_appkit_canvas_flat_exports.elisa`, separate
 from callback policy. The AppKit controls backend is
