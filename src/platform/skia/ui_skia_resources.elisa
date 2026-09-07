@@ -39,6 +39,13 @@ extend UiSkia:
             removed <- removed + 1 if UiSkia::unbind_font(resource)
             return removed
 
+        # A lost GPU surface invalidates every renderer object at once. Keep
+        # logical resources alive, but drop all borrowed image/typeface handles
+        # so a recreated surface cannot accidentally draw through stale objects.
+        def clear_bindings() -> void:
+            UiSkia::clear_image_bindings()
+            UiSkia::clear_font_bindings()
+
         def draw_ready_image(image: usize, resource: UiResources::Handle, box: UiCore::Rect, alpha: u8) -> bool can[Ui.Draw]:
             return false if UiResources::state(resource) != UiResources::State.Ready
             return false if image == 0 or canvas_state == 0 or alpha == 0
