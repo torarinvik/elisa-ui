@@ -180,11 +180,14 @@ ELISA_UI_WASMBROWSER=../WasmBrowser bash scripts/check_wapp.sh build/hello.wapp
   format: component
 ```
 
-A fresh `scripts/build_wapp.sh` run is not counted as a pass for this tuple:
-the stable source/object compile completes, but the component linker still
-reports the known `expected i64, found i32` mismatch. The checked-in package
-inspection verifies the profile and import/export surface without invoking that
-linker.
+The 2026-09-07 hosted build also completes from this tuple:
+`bash scripts/build_wapp.sh hello` writes and packs `build/hello.wapp`, and
+`bash scripts/check_wapp.sh build/hello.wapp` passes the compiler-independent
+profile/import/export inspection. The earlier `expected i64, found i32`
+component-linker mismatch is not reproduced with the staged compiler/runtime;
+actual WasmBrowser runtime launch and device execution remain separate fixtures.
+
+`bash scripts/build_native.sh hello` likewise produces `build/hello_native`.
 
 The 2026-09-07 gates compile the complete AppKit canvas entry point and run the
 off-screen canvas fixture through `scripts/check_appkit_canvas.sh`; the bridge,
