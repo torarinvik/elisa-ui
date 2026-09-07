@@ -45,7 +45,8 @@ def main() -> i64:
 
     skia_test_reset()
     UiSkia::attach_scaled(7, 2.0)
-    check("Skia attachment selects the renderer", UiSkia::is_attached() and UiCapabilities::supports_skia() and UiCapabilities::supports_scale_changes())
+    first_surface_generation: u32 = UiSkia::surface_generation()
+    check("Skia attachment selects the renderer", UiSkia::is_attached() and first_surface_generation > 0 and UiCapabilities::supports_skia() and UiCapabilities::supports_scale_changes())
     UiSkia::render()
     UiSkia::fill_rounded_rect(UiCore::Rect(12.0, 13.0, 40.0, 20.0), 6.0, UiCore::rgb(20, 30, 40))
     UiSkia::fill_rounded_rect(UiCore::Rect(12.0, 13.0, 0.0, 20.0), 6.0, UiCore::rgb(20, 30, 40))
@@ -78,7 +79,12 @@ def main() -> i64:
 
     UiSkia::attach(9)
     skia_render_frame_export(0)
-    check("invalid one-shot frame clears stale state", not UiSkia::is_attached())
+    lost_surface_generation: u32 = UiSkia::surface_generation()
+    check("invalid one-shot frame clears stale state", not UiSkia::is_attached() and lost_surface_generation != first_surface_generation)
+    UiSkia::attach(11)
+    check("surface recreation receives a new generation", UiSkia::is_attached() and UiSkia::surface_generation() != lost_surface_generation)
+    UiSkia::surface_lost()
+    check("explicit surface loss preserves renderer state", not UiSkia::is_attached() and UiCapabilities::supports_skia())
 
     if failures == 0:
         _ = puts("skia painter: all checks passed")

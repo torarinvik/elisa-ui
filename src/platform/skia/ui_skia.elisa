@@ -53,6 +53,8 @@ module UiSkia:
             canvas_state <- canvas
             skia_clip_depth <- 0
             return if canvas == 0
+            skia_surface_generation <- skia_surface_generation + 1
+            skia_surface_generation <- 1 if skia_surface_generation == 0
             safe_scale: f32 = skia_scale_value(scale)
             _ = UiCapabilities::select_skia_renderer()
             elisa_skia_canvas_save(canvas_state)
@@ -69,6 +71,17 @@ module UiSkia:
 
         def is_attached() -> bool:
             return canvas_state != 0
+
+        # Surface loss is a logical lifecycle event, not a widget-tree reset.
+        # Keep retained commands/resources intact while invalidating only the
+        # borrowed canvas and advancing a token that hosts can compare.
+        def surface_lost() -> void:
+            UiSkia::detach()
+            skia_surface_generation <- skia_surface_generation + 1
+            skia_surface_generation <- 1 if skia_surface_generation == 0
+
+        def surface_generation() -> u32:
+            return skia_surface_generation
 
         # Replay the retained command batch through this backend's painter.
         # Hosts only manage the borrowed canvas lifetime; command traversal and
@@ -321,6 +334,7 @@ module UiSkia:
     private:
         global mutable canvas_state: usize = 0
         global mutable skia_clip_depth: usize = 0
+        global mutable skia_surface_generation: u32 = 0
         global mutable skia_image_binding_resources: UiResources::Handle[MAX_IMAGE_BINDINGS] = zeroed
         global mutable skia_image_binding_images: usize[MAX_IMAGE_BINDINGS] = zeroed
         global mutable skia_image_binding_active: bool[MAX_IMAGE_BINDINGS] = zeroed
@@ -339,7 +353,7 @@ module UiSkia:
 # lifetime and always detaches it before returning.
 def skia_render_frame_export(canvas: usize) -> void can[Ui.Draw, Ui.Text]:
     if canvas == 0:
-        UiSkia::detach()
+        UiSkia::surface_lost()
         return
     UiSkia::attach(canvas)
     UiSkia::render()
@@ -349,7 +363,7 @@ export fn elisa_skia_render_frame(canvas: usize) -> void = skia_render_frame_exp
 
 def skia_render_scaled_frame_export(canvas: usize, scale: f32) -> void can[Ui.Draw, Ui.Text]:
     if canvas == 0:
-        UiSkia::detach()
+        UiSkia::surface_lost()
         return
     UiSkia::attach_scaled(canvas, scale)
     UiSkia::render()

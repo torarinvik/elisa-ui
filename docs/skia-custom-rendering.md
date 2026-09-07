@@ -28,6 +28,11 @@ independent of the borrowed canvas, so layout can query Skia before surface
 attachment. That makes surface recreation and headless rendering ordinary
 lifecycle transitions instead of retained native pointer state.
 
+`UiSkia::surface_lost()` explicitly invalidates the borrowed canvas without
+discarding retained commands or logical resources. `surface_generation()`
+advances on loss and every new attachment, giving a host a cheap stale-surface
+token while the Elisa widget tree survives device/surface recreation.
+
 The first slice covers clear, clipping, rounded rectangles, circles, triangles,
 lines, UTF-8 text, and text metrics. The portable `FillRect` command keeps its
 wire shape, while `UiPaint::rounded_rect_style()` supplies the shared Elisa
