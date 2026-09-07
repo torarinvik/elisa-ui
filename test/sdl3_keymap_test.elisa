@@ -113,6 +113,14 @@ def main() -> i64:
     check("SDL titles reject malformed UTF-8", UiSdl3Text::length(bounded_invalid_title).i32(), 1)
     check("SDL malformed title suffix is terminated", UiSdl3Text::byte(bounded_invalid_title, 1).i32(), 0)
 
+    # Shape rasterization must be a no-op while SDL is minimized or before the
+    # first resize establishes a drawable surface. This also protects the
+    # integer scanline loops from traversing the full geometry envelope.
+    UiCore::set_viewport(0.0, 0.0)
+    check("an empty viewport is not drawable", 1 if not UiSdl3Draw::has_drawable_viewport() else 0, 1)
+    UiCore::set_viewport(640.0, 480.0)
+    check("a positive viewport is drawable", 1 if UiSdl3Draw::has_drawable_viewport() else 0, 1)
+
     if keymap_failures == 0:
         _ = puts("sdl3 keymap: all checks passed")
         return 0
