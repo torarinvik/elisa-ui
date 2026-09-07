@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `2ed82d4` (`refactor(text): centralize UTF-8 validation`) on branch `work` |
+| elisa-ui revision | `c852026` (`refactor(core): scope bounded persistence scans`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -348,8 +348,10 @@ separate host-enforced security boundary.
   validation to `UiText`, leaving one malformed-input policy for every text
   owner. Structural tree traversals and editing state machines remain explicit
   `while` loops because they follow mutable links or carry multi-step mutation
-  budgets. The C text-buffer scrub check is covered by the existing bridge
-  tests and keeps mutable state local to the expression.
+  budgets. The persistence duplicate-ID scan and retained visible-text scan are
+  also scoped and fail closed on malformed record bounds. The C text-buffer
+  scrub check is covered by the existing bridge tests and keeps mutable state
+  local to the expression.
 - The shared event queue now rejects typed key, pointer-button, and gamepad
   ordinals that normalize to `Event.None`, instead of reporting a successful
   enqueue for a silently discarded no-op. The queue retains its existing
