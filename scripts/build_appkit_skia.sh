@@ -8,6 +8,7 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
 SKIA_ROOT="${SKIA_ROOT:?set SKIA_ROOT to the pinned checkout from third_party/skia.lock}"
 SKIA_OUT="${SKIA_OUT:-$SKIA_ROOT/out/elisa}"
+SKIA_LOCK="$ROOT/third_party/skia.lock"
 RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
 EXAMPLE="${1:-hello}"
 ENTRY="$ROOT/examples/$EXAMPLE/appkit_skia_canvas_main.elisa"
@@ -17,6 +18,13 @@ ENTRY="$ROOT/examples/$EXAMPLE/appkit_skia_canvas_main.elisa"
 [[ -f "$RUNTIME" ]] || { echo "no runtime object at $RUNTIME" >&2; exit 2; }
 [[ -f "$ENTRY" ]] || { echo "no AppKit Skia entry: $ENTRY" >&2; exit 2; }
 [[ -f "$SKIA_OUT/libskia.a" ]] || { echo "no Skia archive at $SKIA_OUT/libskia.a" >&2; exit 2; }
+[[ -f "$SKIA_ROOT/include/core/SkCanvas.h" ]] || { echo "no Skia headers at $SKIA_ROOT" >&2; exit 2; }
+expected_revision="$(awk -F= '$1 == "revision" { print $2; exit }' "$SKIA_LOCK")"
+actual_revision="$(git -C "$SKIA_ROOT" rev-parse HEAD 2>/dev/null || true)"
+[[ -n "$expected_revision" && "$actual_revision" == "$expected_revision" ]] || {
+  echo "Skia checkout is not pinned to $expected_revision (found ${actual_revision:-unknown})" >&2
+  exit 2
+}
 bash "$ROOT/scripts/check_toolchain.sh"
 
 mkdir -p "$ROOT/build"

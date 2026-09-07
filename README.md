@@ -332,12 +332,13 @@ backends, so layout agrees even though the rasterizers differ.
 SDL supplies monotonic frame time and waits for either input or the earliest
 animation deadline requested by the retained tree, keeping idle windows from
 busy-spinning while preserving caret animation.
-The current AppKit canvas calls libSystem, CoreGraphics, CoreText and ImageIO
+The standard AppKit canvas calls libSystem, CoreGraphics, CoreText and ImageIO
 directly from Elisa for its monotonic clock, path rendering, colors, shadows,
 font metrics and off-screen PNG snapshots; Objective-C remains only where
-Cocoa requires objects, delegates, protocols, and selectors. New custom
-rendering work targets the Skia FFI described above; the native-controls path
-continues to use AppKit directly.
+Cocoa requires objects, delegates, protocols, and selectors. The optional
+Skia AppKit product moves custom pixels through the pinned Skia compositor
+while preserving that same Elisa frame/lifecycle policy; the native-controls
+path continues to use AppKit directly.
 
 ### Elisascript ports (not yet runnable)
 
