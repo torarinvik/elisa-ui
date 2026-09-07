@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `53bc6ccfcae9e53272bd38be99a577151e4874f2` on branch `work` |
+| elisa-ui revision | `1dfaa2405a53a64505ddffb5684bdd72f8aad745` on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `d4a5616835497cb172077b684b93b86304491019fc44edfa7e7bc2c8fa4dfcf0` |
@@ -83,7 +83,8 @@ not split mechanically.
 
 The core and widget operation facades follow the same boundary: `ui_core.elisa`
 is an 11-line include surface over typed, frame, geometry, event, and retained
-state modules, and `ui_ops.elisa` is a 10-line include surface over query,
+state modules; the frame implementation is now 394 lines and the semantic
+extension is 87 lines. `ui_ops.elisa` is a 10-line include surface over query,
 layout, scrolling, hit, paint, and pointer modules. The WasmBrowser adapter is
 now an example of the intended refactoring boundary:
 `ui_wasmbrowser.elisa` contains the host-facing declarations and WIT export
