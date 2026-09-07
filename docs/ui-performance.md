@@ -25,7 +25,8 @@ links the checked-in Elisa runtime, and reports nanoseconds for five phases:
   per iteration, repeated 32 times (including edit-history bookkeeping).
 
 The large-tree assertion verifies 221 retained widgets and at least one paint
-command per widget. `peak_rss_bytes` is the process high-water mark (Darwin's
+command per widget; its semantic pass also exercises the Elisa-owned ID index.
+`peak_rss_bytes` is the process high-water mark (Darwin's
 `ru_maxrss` is already bytes; platforms that report KiB are normalized by the
 harness). The 15-second per-phase ceilings are intentionally generous safety
 limits for CI and catch accidental unbounded work; they are not product-frame
