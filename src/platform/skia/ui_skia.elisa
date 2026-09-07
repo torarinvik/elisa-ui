@@ -28,12 +28,6 @@ extern elisa_skia_canvas_fill_circle(canvas: usize, x: f32, y: f32, radius: f32,
 extern elisa_skia_canvas_fill_triangle(canvas: usize, ax: f32, ay: f32, bx: f32, by: f32, cx: f32, cy: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
 extern elisa_skia_canvas_fill_line(canvas: usize, x0: f32, y0: f32, x1: f32, y1: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
 extern elisa_skia_canvas_draw_text(canvas: usize, text: cstr, length: usize, x: f32, y: f32, size: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
-extern elisa_skia_measure_text_width(text: cstr, length: usize, size: f32) -> f32
-extern elisa_skia_font_ascent(size: f32) -> f32
-extern elisa_skia_text_line_height(size: f32) -> f32
-extern elisa_skia_measure_text_width_with_font(font: usize, text: cstr, length: usize, size: f32) -> f32
-extern elisa_skia_font_ascent_with_font(font: usize, size: f32) -> f32
-extern elisa_skia_text_line_height_with_font(font: usize, size: f32) -> f32
 
 module UiSkia:
     public:
@@ -133,22 +127,6 @@ module UiSkia:
             safe_sampling: i32 = ImageSampling.Linear.i32() if raw_sampling != ImageSampling.Nearest.i32() and raw_sampling != ImageSampling.Linear.i32() else raw_sampling
             elisa_skia_canvas_draw_image_sampling(canvas_state, image, safe_box.origin.x, safe_box.origin.y, safe_box.size.width, safe_box.size.height, alpha, safe_sampling)
 
-        def measure_text_width(text: sview, size: f32) -> f32:
-            # Metrics are pure font queries and do not require a live canvas.
-            # Layout can therefore use Skia's authority before a surface is
-            # attached; only draw methods are gated by canvas_state.
-            return 0.0 if text.len <= 0 or text.data == null or not UiCore::is_finite(size)
-            safe_text: sview = UiCore::bounded_text(text)
-            return 0.0 if safe_text.len <= 0 or safe_text.data == null
-            pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
-            return UiCore::bounded_extent(elisa_skia_measure_text_width(pointer, safe_text.len.usize(), UiCore::bounded_extent(size)))
-
-        def font_ascent(size: f32) -> f32:
-            return UiCore::bounded_extent(elisa_skia_font_ascent(UiCore::bounded_extent(size)))
-
-        def text_line_height(size: f32) -> f32:
-            return UiCore::bounded_extent(elisa_skia_text_line_height(UiCore::bounded_extent(size)))
-
         struct SkiaPainter:
             unused: i32
 
@@ -208,9 +186,11 @@ module UiSkia:
         global mutable skia_clip_depth: usize = 0
         global mutable skia_surface_generation: u32 = 0
 
-include "./ui_skia_resources.elisa"
-
 include "./ui_skia_geometry.elisa"
+
+include "./ui_skia_text.elisa"
+
+include "./ui_skia_resources.elisa"
 
 # C/Objective-C hosts should prefer this one-shot boundary when they do not
 # need to interleave custom work with replay. Elisa owns the borrowed-canvas
