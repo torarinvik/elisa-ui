@@ -1,0 +1,18 @@
+# Re-entrant AppKit callback guard.
+#
+# AppKit invokes callbacks synchronously, so the adapter drains one Elisa event
+# queue at a time. The guard is framework state, not an ABI symbol; keeping it
+# private prevents a native callback name from becoming a mutable global.
+
+module UiAppKitCanvasCallbackState:
+    public:
+        def begin_dispatch() -> bool:
+            return false if dispatch_active
+            dispatch_active <- true
+            return true
+
+        def end_dispatch() -> void:
+            dispatch_active <- false
+
+    private:
+        global mutable dispatch_active: bool = false

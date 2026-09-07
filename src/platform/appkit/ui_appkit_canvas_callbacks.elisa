@@ -1,13 +1,12 @@
 # C callbacks from ElisaCanvasView. Top-level because the Objective-C ABI names them.
 
 include "../../widgets/ui_back.elisa"
+include "./ui_appkit_canvas_callback_state.elisa"
 
 # AppKit callbacks are synchronous. An application callback can therefore
 # dispatch another event before the outer callback has returned. Keep one
 # iterative drain active at a time so nested events are queued for the current
 # drain instead of recursively re-entering application code.
-global mutable appkit_canvas_event_dispatch_active: bool = false
-
 # Native BOOLs cross the C ABI as i32 values. Keep one shared validator for
 # every callback that receives one so the AppKit and flat adapters cannot drift
 # into different truthiness rules.
@@ -16,8 +15,7 @@ def appkit_canvas_boolean_flag_is_valid(value: i32) -> bool:
 
 def appkit_canvas_dispatch_event(event: UiCore::Event) -> void:
     return if not UiEvents::enqueue(event)
-    return if appkit_canvas_event_dispatch_active
-    appkit_canvas_event_dispatch_active <- true
+    return if not UiAppKitCanvasCallbackState::begin_dispatch()
     # A callback can stop the current owner or begin a replacement session
     # before returning. Capture the session identity at drain start so queued
     # events cannot leak across that lifecycle boundary. The phase-New case
@@ -34,7 +32,7 @@ def appkit_canvas_dispatch_event(event: UiCore::Event) -> void:
             continue if not UiLifecycle::is_started()
             continue if UiCore::is_input_event(queued) and not UiLifecycle::accepts_input()
         app_event(queued)
-    appkit_canvas_event_dispatch_active <- false
+    UiAppKitCanvasCallbackState::end_dispatch()
 
 def appkit_canvas_dispatch_input_event(event: UiCore::Event) -> void:
     # Focus transitions and resize notifications use the broader dispatch
