@@ -47,12 +47,15 @@ extend UiSkia:
             UiSkia::clear_font_bindings()
 
         def draw_ready_image(image: usize, resource: UiResources::Handle, box: UiCore::Rect, alpha: u8) -> bool can[Ui.Draw]:
+            return UiSkia::draw_ready_image_with_sampling(image, resource, box, alpha, UiSkia::ImageSampling.Linear)
+
+        def draw_ready_image_with_sampling(image: usize, resource: UiResources::Handle, box: UiCore::Rect, alpha: u8, sampling: UiSkia::ImageSampling) -> bool can[Ui.Draw]:
             return false if UiResources::state(resource) != UiResources::State.Ready
             return false if image == 0 or canvas_state == 0 or alpha == 0
             safe_width: f32 = UiCore::bounded_extent(box.size.width)
             safe_height: f32 = UiCore::bounded_extent(box.size.height)
             return false if safe_width <= 0.0 or safe_height <= 0.0
-            UiSkia::draw_image(image, box, alpha)
+            UiSkia::draw_image_with_sampling(image, box, alpha, sampling)
             return true
 
         def bind_image(resource: UiResources::Handle, image: usize) -> bool:
@@ -89,11 +92,14 @@ extend UiSkia:
                 skia_image_binding_images[index] <- 0
 
         def draw_bound_image(resource: UiResources::Handle, box: UiCore::Rect, alpha: u8) -> bool can[Ui.Draw]:
+            return UiSkia::draw_bound_image_with_sampling(resource, box, alpha, UiSkia::ImageSampling.Linear)
+
+        def draw_bound_image_with_sampling(resource: UiResources::Handle, box: UiCore::Rect, alpha: u8, sampling: UiSkia::ImageSampling) -> bool can[Ui.Draw]:
             _ = UiSkia::prune_bindings()
             return false if UiResources::state(resource) != UiResources::State.Ready
             for index in 0..<MAX_IMAGE_BINDINGS:
                 if skia_image_binding_active[index] and skia_image_binding_matches(index, resource):
-                    return UiSkia::draw_ready_image(skia_image_binding_images[index], resource, box, alpha)
+                    return UiSkia::draw_ready_image_with_sampling(skia_image_binding_images[index], resource, box, alpha, sampling)
             return false
 
         def bind_font(resource: UiResources::Handle, font: usize) -> bool:
