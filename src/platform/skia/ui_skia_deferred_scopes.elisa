@@ -1,0 +1,79 @@
+# Elisa-owned deferred clip and transform scopes for Skia custom controls.
+#
+# AppKit queues these commands before borrowing a SkCanvas. The queue keeps a
+# typed LIFO ledger, then reuses UiSkia's immediate scope helpers during replay;
+# no native save state or transform object is retained by the callback path.
+
+include "../../core/ui_core.elisa"
+
+extend UiSkia:
+    public:
+        def defer_push_clip(box: UiCore::Rect) -> bool can[Ui.Draw]:
+            return false if not deferred_frame_active
+            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+            return false if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
+            return false if not UiSkia::reserve_deferred_scope(SKIA_SCOPE_CLIP)
+            command: DeferredCommand = UiSkia::empty_deferred(DeferredKind.PushClip)
+            command.box <- safe_box
+            return UiSkia::enqueue_deferred_scope(command, SKIA_SCOPE_CLIP)
+
+        def defer_push_rounded_clip(box: UiCore::Rect, radius: f32) -> bool can[Ui.Draw]:
+            return false if not deferred_frame_active
+            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+            return false if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
+            return false if not UiSkia::reserve_deferred_scope(SKIA_SCOPE_CLIP)
+            command: DeferredCommand = UiSkia::empty_deferred(DeferredKind.PushRoundedClip)
+            command.box <- safe_box
+            command.radius <- radius
+            return UiSkia::enqueue_deferred_scope(command, SKIA_SCOPE_CLIP)
+
+        def defer_push_transform(offset: UiCore::Vec2, scale: UiCore::Vec2) -> bool can[Ui.Draw]:
+            return false if not deferred_frame_active
+            return false if not UiSkia::reserve_deferred_scope(SKIA_SCOPE_TRANSFORM)
+            command: DeferredCommand = UiSkia::empty_deferred(DeferredKind.PushTransform)
+            command.text_origin <- UiCore::Vec2(
+                UiCore::bounded_coordinate(offset.x), UiCore::bounded_coordinate(offset.y))
+            command.transform_scale <- UiCore::Vec2(
+                skia_scale_value(scale.x), skia_scale_value(scale.y))
+            return UiSkia::enqueue_deferred_scope(command, SKIA_SCOPE_TRANSFORM)
+
+        def defer_push_rotation(degrees: f32) -> bool can[Ui.Draw]:
+            return false if not deferred_frame_active
+            return false if not UiSkia::reserve_deferred_scope(SKIA_SCOPE_TRANSFORM)
+            command: DeferredCommand = UiSkia::empty_deferred(DeferredKind.PushRotation)
+            command.text_size <- UiCore::bounded_coordinate(degrees)
+            return UiSkia::enqueue_deferred_scope(command, SKIA_SCOPE_TRANSFORM)
+
+        def defer_pop_clip() -> bool can[Ui.Draw]:
+            return UiSkia::defer_pop_scope(SKIA_SCOPE_CLIP, DeferredKind.PopClip)
+
+        def defer_pop_transform() -> bool can[Ui.Draw]:
+            return UiSkia::defer_pop_scope(SKIA_SCOPE_TRANSFORM, DeferredKind.PopTransform)
+
+        def deferred_scope_depth() -> usize:
+            return deferred_scope_depth_state
+
+    private:
+        const MAX_DEFERRED_SCOPE_DEPTH: usize = UiSkia::MAX_SCOPE_DEPTH - 1
+        global mutable deferred_scope_depth_state: usize = 0
+        global mutable deferred_scope_kinds: u8[MAX_DEFERRED_SCOPE_DEPTH] = zeroed
+
+        def reserve_deferred_scope(kind: u8) -> bool:
+            return false if not deferred_frame_active or deferred_scope_depth_state >= MAX_DEFERRED_SCOPE_DEPTH
+            return false if not UiSkia::reserve_deferred(1)
+            return true
+
+        def enqueue_deferred_scope(command: DeferredCommand, kind: u8) -> bool can[Ui.Draw]:
+            return false if not UiSkia::enqueue_deferred(command)
+            deferred_scope_kinds[deferred_scope_depth_state] <- kind
+            deferred_scope_depth_state <- deferred_scope_depth_state + 1
+            return true
+
+        def defer_pop_scope(kind: u8, command_kind: UiSkia::DeferredKind) -> bool can[Ui.Draw]:
+            return false if not deferred_frame_active or deferred_scope_depth_state == 0
+            return false if deferred_scope_kinds[deferred_scope_depth_state - 1] != kind
+            return false if not UiSkia::reserve_deferred(1)
+            command: DeferredCommand = UiSkia::empty_deferred(command_kind)
+            return false if not UiSkia::enqueue_deferred(command)
+            deferred_scope_depth_state <- deferred_scope_depth_state - 1
+            return true

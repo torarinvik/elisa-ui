@@ -497,6 +497,10 @@ separate host-enforced security boundary.
 - Deferred convex-polygon helpers now reserve their full triangle/line
   expansion before enqueueing, so a fixed-queue overflow rejects a complete
   custom shape rather than presenting a partial fan or outline.
+- Deferred clip and transform scopes now carry a typed Elisa-side LIFO ledger
+  and replay through the immediate save/clip/transform helpers. Mismatched pops
+  and depth exhaustion are rejected before any native restore can target the
+  wrong scope.
 - The shared event queue now rejects typed key, pointer-button, and gamepad
   ordinals that normalize to `Event.None`, instead of reporting a successful
   enqueue for a silently discarded no-op. The queue retains its existing

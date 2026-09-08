@@ -458,6 +458,20 @@ def main() -> i64:
     UiSkia::detach()
     UiSkia::end_deferred_frame()
 
+    UiCore::begin_frame()
+    skia_test_reset()
+    UiSkia::begin_deferred_frame()
+    check("deferred Skia scopes validate typed nesting", UiSkia::defer_push_clip(UiCore::Rect(2.0, 3.0, 40.0, 30.0)) and UiSkia::defer_push_rounded_clip(UiCore::Rect(4.0, 5.0, 30.0, 20.0), 6.0) and UiSkia::defer_push_transform(UiCore::Vec2(1.0, 2.0), UiCore::Vec2(1.5, 0.75)) and UiSkia::defer_push_rotation(15.0) and UiSkia::deferred_scope_depth() == 4)
+    check("deferred Skia scopes reject mismatched pops", not UiSkia::defer_pop_clip() and UiSkia::deferred_scope_depth() == 4)
+    _ = UiSkia::defer_fill_circle(UiCore::Circle{center: UiCore::Vec2(20.0, 20.0), radius: 4.0}, UiCore::rgb(20, 30, 40))
+    check("deferred Skia scopes unwind in LIFO order", UiSkia::defer_pop_transform() and UiSkia::defer_pop_transform() and UiSkia::defer_pop_clip() and UiSkia::defer_pop_clip() and UiSkia::deferred_scope_depth() == 0)
+    UiSkia::attach(40)
+    check("deferred Skia scopes replay through immediate ledger", UiSkia::render_status() == UiSkia::RenderStatus.Complete and skia_test_clip_count() == 1 and skia_test_rounded_clip_count() == 1 and skia_test_translate_count() == 1 and skia_test_rotate_count() == 1 and skia_test_circle_count() == 1 and skia_test_save_count() == 5 and skia_test_restore_count() == 4 and UiSkia::is_balanced())
+    UiSkia::detach()
+    check("deferred Skia scopes detach cleanly", skia_test_restore_count() == 5 and UiSkia::is_balanced())
+    UiSkia::end_deferred_frame()
+
+    skia_test_reset()
     UiSkia::begin_deferred_frame()
     accepted_deferred: usize =
         for _ in 0..<UiSkia::MAX_DEFERRED_COMMANDS + 1 |accepted: usize = 0| -> accepted:

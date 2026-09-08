@@ -25,6 +25,12 @@ extend UiSkia:
             StrokeLine = 9
             DrawImage = 10
             DrawText = 11
+            PushClip = 12
+            PushRoundedClip = 13
+            PushTransform = 14
+            PushRotation = 15
+            PopClip = 16
+            PopTransform = 17
 
         # The scope is explicit so the same app can use the Skia helpers in a
         # backend-neutral frame without silently accumulating work when no
@@ -33,11 +39,13 @@ extend UiSkia:
             deferred_count_state <- 0
             deferred_overflow_state <- false
             deferred_frame_active <- true
+            deferred_scope_depth_state <- 0
 
         def end_deferred_frame() -> void:
             deferred_frame_active <- false
             deferred_count_state <- 0
             deferred_overflow_state <- false
+            deferred_scope_depth_state <- 0
 
         # Surface loss is allowed to abort a frame before the host reaches its
         # normal end hook. Drop copied text and commands with the borrowed
@@ -61,7 +69,8 @@ extend UiSkia:
                 triangle: UiCore::Triangle{a: UiCore::Vec2(0.0, 0.0), b: UiCore::Vec2(0.0, 0.0), c: UiCore::Vec2(0.0, 0.0)},
                 line: UiCore::Line{from_point: UiCore::Vec2(0.0, 0.0), to_point: UiCore::Vec2(0.0, 0.0)},
                 radius: radius, stroke_width: 0.0, image: 0, alpha: 0, sampling: UiSkia::ImageSampling.Linear,
-                text_offset: 0, text_length: 0, text_origin: UiCore::Vec2(0.0, 0.0), text_size: 0.0})
+                text_offset: 0, text_length: 0, text_origin: UiCore::Vec2(0.0, 0.0), text_size: 0.0,
+                transform_scale: UiCore::Vec2(1.0, 1.0)})
 
         def defer_stroke_rounded_rect(box: UiCore::Rect, radius: f32, stroke_width: f32, color: UiCore::Color) -> bool can[Ui.Draw]:
             return false if not deferred_frame_active or color.a == 0
@@ -225,6 +234,7 @@ extend UiSkia:
             text_length: mutable usize
             text_origin: mutable UiCore::Vec2
             text_size: mutable f32
+            transform_scale: mutable UiCore::Vec2
 
         global mutable deferred_commands: DeferredCommand[MAX_DEFERRED_COMMANDS] = zeroed
         global mutable deferred_text_storage: u8[MAX_DEFERRED_COMMANDS * MAX_DEFERRED_TEXT_BYTES] = zeroed
@@ -240,7 +250,8 @@ extend UiSkia:
                 line: UiCore::Line{from_point: UiCore::Vec2(0.0, 0.0), to_point: UiCore::Vec2(0.0, 0.0)},
                 color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, secondary: UiCore::Color{r: 0, g: 0, b: 0, a: 0},
                 radius: 0.0, stroke_width: 0.0, image: 0, alpha: 0, sampling: UiSkia::ImageSampling.Linear,
-                text_offset: 0, text_length: 0, text_origin: UiCore::Vec2(0.0, 0.0), text_size: 0.0}
+                text_offset: 0, text_length: 0, text_origin: UiCore::Vec2(0.0, 0.0), text_size: 0.0,
+                transform_scale: UiCore::Vec2(1.0, 1.0)}
 
         def enqueue_deferred(command: DeferredCommand) -> bool can[Ui.Draw]:
             return false if not deferred_frame_active
@@ -286,5 +297,17 @@ extend UiSkia:
                     UiSkia::DeferredKind.DrawText:
                         UiSkia::draw_text_run(UiCore::TextRun(command.text_origin, command.text_size,
                             sview(&deferred_text_storage[command.text_offset], 0, command.text_length.i64())), command.color)
+                    UiSkia::DeferredKind.PushClip:
+                        _ = UiSkia::push_clip(command.box)
+                    UiSkia::DeferredKind.PushRoundedClip:
+                        _ = UiSkia::push_rounded_clip(command.box, command.radius)
+                    UiSkia::DeferredKind.PushTransform:
+                        _ = UiSkia::push_transform(command.text_origin, command.transform_scale)
+                    UiSkia::DeferredKind.PushRotation:
+                        _ = UiSkia::push_rotation(command.text_size)
+                    UiSkia::DeferredKind.PopClip:
+                        _ = UiSkia::pop_clip()
+                    UiSkia::DeferredKind.PopTransform:
+                        UiSkia::pop_transform()
                     UiSkia::DeferredKind.None:
                         pass
