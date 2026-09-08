@@ -50,6 +50,9 @@ Hosts can inspect the bounded `demand_count()` / `demand_at(index)` snapshot or
 select `highest_priority_demand()`. Each returned `DemandHint` includes the
 generation-safe handle, owner, and priority; enumeration is deterministic and
 does not expose resource-arena indexes or require a second native table.
+When a view becomes hidden, `clear_demand_owner(owner)` releases all of that
+owner's hints without cancelling its logical records; disposal can still use
+the owner-scoped cancellation/release APIs when the view is gone.
 
 Hosts may provide validated intrinsic geometry before decode/upload completes:
 

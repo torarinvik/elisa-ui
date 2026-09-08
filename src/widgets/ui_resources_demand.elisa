@@ -27,6 +27,20 @@ extend UiResources:
             resource_mark_changed()
             return true
 
+        # Hiding a view should release its visibility/prefetch hints without
+        # cancelling the logical records. A later show can set fresh demand,
+        # while owner disposal remains responsible for cancelling or releasing
+        # the resources themselves.
+        def clear_demand_owner(owner: u32) -> usize:
+            cleared: mutable usize = 0
+            for slot in 0..<resource_count:
+                if resource_states[slot] != State.Unrequested and resource_owners[slot] == owner and resource_demanded[slot]:
+                    resource_demanded[slot] <- false
+                    resource_priorities[slot] <- 0
+                    cleared <- cleared + 1
+            resource_mark_changed() if cleared > 0
+            return cleared
+
         def is_demanded(handle: ResourceHandle) -> bool:
             return UiResources::resource_is_valid(handle) and resource_demanded[handle.slot.usize()]
 
