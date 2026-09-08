@@ -151,8 +151,10 @@ the previous ABI.
 The deferred API has matching `defer_fill_rounded_linear_gradient()` and
 `defer_shadow_rounded_rect()` helpers. Rounded gradients replay through the
 same temporary clip scope as immediate drawing, while shadows carry explicit
-offset, blur, radius, and alpha values in the Elisa queue; neither operation
-adds a native object or an implicit style default.
+offset, blur, radius, and color values in the Elisa queue; the color-aware
+`defer_shadow_rounded_rect_with_color()` form keeps custom effects consistent
+with immediate drawing. Neither operation adds a native object or an implicit
+style default.
 
 Convex custom shapes can use `defer_fill_convex_polygon()` and
 `defer_stroke_convex_polygon()`. Elisa expands each bounded polygon into the

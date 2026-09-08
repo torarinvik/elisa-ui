@@ -116,7 +116,10 @@ extend UiSkia:
             return UiSkia::enqueue_deferred(command)
 
         def defer_shadow_rounded_rect(box: UiCore::Rect, radius: f32, offset_x: f32, offset_y: f32, blur: f32, alpha: u8) -> bool can[Ui.Draw]:
-            return false if not deferred_frame_active or alpha == 0
+            return UiSkia::defer_shadow_rounded_rect_with_color(box, radius, offset_x, offset_y, blur, UiCore::rgba(0, 0, 0, alpha))
+
+        def defer_shadow_rounded_rect_with_color(box: UiCore::Rect, radius: f32, offset_x: f32, offset_y: f32, blur: f32, color: UiCore::Color) -> bool can[Ui.Draw]:
+            return false if not deferred_frame_active or color.a == 0
             safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
             return false if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
             command: DeferredCommand = UiSkia::empty_deferred(DeferredKind.ShadowRoundedRect)
@@ -125,7 +128,7 @@ extend UiSkia:
             command.text_origin <- UiCore::Vec2(
                 UiCore::bounded_coordinate(offset_x), UiCore::bounded_coordinate(offset_y))
             command.text_size <- UiCore::bounded_extent(blur)
-            command.alpha <- alpha
+            command.color <- color
             return UiSkia::enqueue_deferred(command)
 
         def defer_fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> bool can[Ui.Draw]:
@@ -298,7 +301,7 @@ extend UiSkia:
                     UiSkia::DeferredKind.FillRoundedLinearGradient:
                         UiSkia::fill_rounded_linear_gradient(command.box, command.radius, command.color, command.secondary, command.alpha != 0)
                     UiSkia::DeferredKind.ShadowRoundedRect:
-                        UiSkia::draw_shadow_rounded_rect(command.box, command.radius, command.text_origin.x, command.text_origin.y, command.text_size, command.alpha)
+                        UiSkia::draw_shadow_rounded_rect_with_color(command.box, command.radius, command.text_origin.x, command.text_origin.y, command.text_size, command.color)
                     UiSkia::DeferredKind.FillCircle:
                         UiSkia::fill_circle(command.circle, command.color)
                     UiSkia::DeferredKind.StrokeCircle:
