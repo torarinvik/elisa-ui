@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `460c77a` (`feat(skia): add fallback text interaction scopes`) on branch `work` |
+| elisa-ui revision | `4c8bac1` (`feat(skia): cache bounded text metrics in Elisa`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -345,6 +345,9 @@ Ready generation-bound typefaces can now scope selection and caret painting
 through the same font binding gate as text blocks, including primary/fallback
 selection; unavailable or stale resources return empty layouts without
 crossing the Skia boundary.
+The Skia adapter also keeps a bounded byte-keyed grapheme-width cache in Elisa,
+keyed by active font handle and normalized size; scale/binding resets clear it
+and oversized clusters bypass the copy budget.
 The C++ bridge wraps each borrowed typeface in a temporary `sk_sp` reference
 for SkFont's ownership contract without transferring disposal authority from
 the host.
