@@ -291,6 +291,17 @@ extern "C" void elisa_skia_canvas_fill_circle(std::size_t handle, float x, float
     }
 }
 
+extern "C" void elisa_skia_canvas_stroke_circle(std::size_t handle, float x, float y, float radius,
+                                                  float stroke_width, std::uint8_t red,
+                                                  std::uint8_t green, std::uint8_t blue,
+                                                  std::uint8_t alpha) {
+    if (SkCanvas *target = canvas(handle);
+        target != nullptr && bounded_coordinate(x) && bounded_coordinate(y) && bounded_extent(radius) &&
+        bounded_extent(stroke_width)) {
+        target->drawCircle(x, y, radius, stroke_paint(red, green, blue, alpha, stroke_width));
+    }
+}
+
 extern "C" void elisa_skia_canvas_fill_triangle(std::size_t handle, float ax, float ay, float bx, float by,
                                                  float cx, float cy, std::uint8_t red, std::uint8_t green,
                                                  std::uint8_t blue, std::uint8_t alpha) {

@@ -16,7 +16,7 @@
 /* Packed as 0xMMmmpp (major, minor, patch). Hosts should check this before
  * submitting an opaque canvas or renderer object to the Skia boundary. */
 #define ELISA_SKIA_ABI_VERSION_MAJOR 0u
-#define ELISA_SKIA_ABI_VERSION_MINOR 2u
+#define ELISA_SKIA_ABI_VERSION_MINOR 3u
 #define ELISA_SKIA_ABI_VERSION_PATCH 0u
 #define ELISA_SKIA_ABI_VERSION \
     ((ELISA_SKIA_ABI_VERSION_MAJOR << 16) | \
@@ -71,6 +71,9 @@ void elisa_skia_canvas_draw_text_with_font(size_t canvas, size_t font, const cha
                                            uint8_t blue, uint8_t alpha);
 void elisa_skia_canvas_fill_circle(size_t canvas, float x, float y, float radius,
                                    uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha);
+void elisa_skia_canvas_stroke_circle(size_t canvas, float x, float y, float radius,
+                                     float stroke_width, uint8_t red, uint8_t green,
+                                     uint8_t blue, uint8_t alpha);
 void elisa_skia_canvas_fill_triangle(size_t canvas, float ax, float ay, float bx, float by,
                                      float cx, float cy, uint8_t red, uint8_t green,
                                      uint8_t blue, uint8_t alpha);

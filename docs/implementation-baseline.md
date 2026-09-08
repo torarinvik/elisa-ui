@@ -515,8 +515,12 @@ separate host-enforced security boundary.
   unchanged.
 - Rounded custom clips now use the same typed save/pop ledger, with Elisa
   clamping the radius before the bridge calls Skia's `clipRRect`. The Skia ABI
-  minor version is `2` for this additive entry point, and rounded gradients are
-  composed entirely in Elisa from the clip and two-stop gradient helpers.
+  minor version moved to `2` for that additive entry point, and rounded
+  gradients are composed entirely in Elisa from the clip and two-stop gradient
+  helpers.
+- Immediate custom circles now have a true Elisa-validated stroke path in
+  addition to fills; the Skia bridge only selects its existing stroke paint and
+  draws the circle, with ABI minor version `3` recorded by the C++ header check.
 - The narrow Skia declarations are now published in `include/elisa_skia.h` and
   included by both the production C++ bridge and headless recorder, so host ABI
   drift is caught at compile time without widening the Elisa boundary. The

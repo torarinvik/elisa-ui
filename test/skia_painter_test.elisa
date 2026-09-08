@@ -23,9 +23,11 @@ extern skia_test_last_shadow_offset_x() -> f32
 extern skia_test_last_shadow_offset_y() -> f32
 extern skia_test_last_shadow_blur() -> f32
 extern skia_test_last_stroke_width() -> f32
+extern skia_test_last_circle_stroke_width() -> f32
 extern skia_test_last_line_width() -> f32
 extern skia_test_image_count() -> i32
 extern skia_test_circle_count() -> i32
+extern skia_test_stroke_circle_count() -> i32
 extern skia_test_triangle_count() -> i32
 extern skia_test_line_count() -> i32
 extern skia_test_text_count() -> i32
@@ -42,7 +44,7 @@ def check(name: cstr, ok: bool) -> void:
     _ = puts(name)
 
 def main() -> i64:
-    check("Skia ABI version is packed in Elisa", UiSkia::abi_version() == 0x000200 and elisa_skia_abi_version() == 0x000200)
+    check("Skia ABI version is packed in Elisa", UiSkia::abi_version() == 0x000300 and elisa_skia_abi_version() == 0x000300)
     check("backing scale stays in Elisa", UiCore::backing_scale(320.0, 200.0, 640.0, 300.0) == 1.5 and UiCore::backing_scale(320.0, 200.0, 0.0, 300.0) == 0.0)
     UiCapabilities::use_appkit_canvas()
     check("custom profile starts with CoreGraphics fallback", UiCapabilities::renderer() == UiCapabilities::Renderer.CoreGraphics)
@@ -96,9 +98,11 @@ def main() -> i64:
     check("direct rounded radius is constrained to its box", skia_test_last_round_radius() > 9.9 and skia_test_last_round_radius() < 10.1)
     UiSkia::stroke_rounded_rect(UiCore::Rect(12.0, 13.0, 40.0, 20.0), 100.0, 1.0, UiCore::rgb(20, 30, 40))
     UiSkia::fill_circle(UiCore::Circle{center: UiCore::Vec2(20.0, 24.0), radius: 5.0}, UiCore::rgb(20, 30, 40))
+    UiSkia::stroke_circle(UiCore::Circle{center: UiCore::Vec2(20.0, 24.0), radius: 5.0}, 2.0, UiCore::rgb(20, 30, 40))
+    UiSkia::stroke_circle(UiCore::Circle{center: UiCore::Vec2(20.0, 24.0), radius: 5.0}, 0.0, UiCore::rgb(20, 30, 40))
     UiSkia::fill_triangle(UiCore::Triangle{a: UiCore::Vec2(1.0, 1.0), b: UiCore::Vec2(4.0, 1.0), c: UiCore::Vec2(2.0, 5.0)}, UiCore::rgb(20, 30, 40))
     UiSkia::stroke_line(UiCore::Line{from_point: UiCore::Vec2(1.0, 2.0), to_point: UiCore::Vec2(8.0, 9.0)}, 1.0, UiCore::rgb(20, 30, 40))
-    check("immediate custom shapes cross the Elisa-owned API", skia_test_stroke_round_rect_count() == 3 and skia_test_circle_count() == 2 and skia_test_triangle_count() == 2 and skia_test_line_count() == 2)
+    check("immediate custom shapes cross the Elisa-owned API", skia_test_stroke_round_rect_count() == 3 and skia_test_circle_count() == 2 and skia_test_stroke_circle_count() == 1 and skia_test_last_circle_stroke_width() == 2.0 and skia_test_triangle_count() == 2 and skia_test_line_count() == 2)
     UiSkia::fill_rounded_rect(UiCore::Rect(12.0, 13.0, 0.0, 20.0), 6.0, UiCore::rgb(20, 30, 40))
     UiResources::reset()
     logical_image: UiResources::ResourceHandle = UiResources::request("images/skia", 7)

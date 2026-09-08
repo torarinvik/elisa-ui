@@ -72,10 +72,11 @@ shared save-depth ledger; detach and surface loss restore any forgotten scopes
 before the borrowed canvas is released.
 
 Immediate custom drawing can also call `stroke_rounded_rect`, `fill_circle`,
-`fill_triangle`, and `stroke_line` from `ui_skia_primitives.elisa`. These
-helpers apply the same finite-geometry, alpha, and stroke-width policy as
-retained replay, then forward only primitive arguments through the Skia FFI;
-custom controls never construct or retain Skia C++ objects.
+`stroke_circle`, `fill_triangle`, and `stroke_line` from
+`ui_skia_primitives.elisa`. These helpers apply the same finite-geometry,
+alpha, and stroke-width policy as retained replay, then forward only primitive
+arguments through the Skia FFI; custom controls never construct or retain Skia
+C++ objects.
 
 `UiSkia::fill_linear_gradient()` adds a bounded two-stop horizontal or vertical
 surface fill. Elisa owns the colors, orientation, transparency, and rectangle
