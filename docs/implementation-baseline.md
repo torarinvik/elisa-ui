@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `f1858da` (`docs: record Skia worktree compatibility`) on branch `work` |
+| elisa-ui revision | `262847c` (`test(skia): compare fresh-process render digests`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -627,7 +627,9 @@ separate host-enforced security boundary.
   reports render total/average nanoseconds, while `docs/ui-performance.md`
   records the distinction between retained-tree safety ceilings and actual
   raster evidence. The host rejects zero-duration samples and the showcase
-  host checks rasterized title ink in addition to shape pixels.
+  host checks rasterized title ink in addition to shape pixels. The required
+  shell gates run each host in two fresh processes and compare logical pixel
+  digests, making the evidence reproducible beyond one process lifetime.
 - `test/showcase_skia_test.elisa` and `test/showcase_skia_host.cpp` extend that
   evidence to the shipped hello application: the required real-Skia gate drives
   its public text/input, state, and resource-replacement workflow, then checks
