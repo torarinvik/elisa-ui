@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `72a16a8` (`docs: record adaptive accessibility fixture`) on branch `work` |
+| elisa-ui revision | `ac35e71` (`feat: let inspector consume host contrast facts`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -55,6 +55,9 @@ High-contrast geometry also enlarges checkbox and radio markers so choice
 controls retain visible affordances at the selected contrast level.
 The typed accessible-button fixture also verifies the combined high-contrast
 and 2x text-scale target path without opening a window.
+`UiInspector::frame_with_system_contrast` accepts the host contrast fact so
+diagnostic geometry reflects the active platform profile instead of assuming
+normal contrast.
 
 ## Source and boundary inventory
 
