@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `fbd975c` (`feat(skia): add rounded source image crops`) on branch `work` |
+| elisa-ui revision | `dddd1a7` (`fix(skia): bound rectangle far edges`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -380,6 +380,11 @@ Elisa scope ledger for avatar/card presentation.
 Fitted bound-image entry points prune disposed generations before their state
 checks, so an invalid request cannot strand an opaque image handle in the
 bounded binding table.
+Skia rectangle normalization now also bounds the derived far edge: Elisa
+clamps positive-edge extents before the FFI, while the native bridge rejects
+out-of-envelope sums and negative source-crop origins from direct foreign
+callers. The headless painter and off-screen host fixtures cover these
+fail-closed cases without presenting a window.
 The optional AppKit/Skia compositor now checks the packed Skia ABI major before
 allocating a surface or invoking the Elisa callback; an incompatible runtime
 returns the pre-frame rejection sentinel so CoreGraphics fallback remains safe.
