@@ -196,6 +196,10 @@ def main() -> i64:
     check("typed persistence restores numeric value", UiHandlesPersistence::restore_value(slider, 103) and UiHandles::value(slider) == 0.35)
     check("typed persistence restores selection", UiHandlesPersistence::restore_selected(radio, 104) and UiHandles::selected(radio))
     check("typed persistence never restores secure text", not UiHandlesPersistence::restore_text(secret, 102) and UiHandles::text_value(secret) == "changed")
+    UiState::begin()
+    _ = UiState::put_f32(105, 4.0)
+    out_of_range_length: usize = UiHandlesPersistence::copy_to(&state_blob[0], UiState::MAX_BYTES)
+    check("typed persistence rejects clamped numeric restore", UiHandlesPersistence::restore(&state_blob[0], out_of_range_length) and not UiHandlesPersistence::restore_value(slider, 105))
 
     UiHandles::reset()
     check("reset invalidates the old root", not UiHandles::is_valid(old_root))

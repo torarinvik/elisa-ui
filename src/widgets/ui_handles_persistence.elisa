@@ -60,8 +60,11 @@ module UiHandlesPersistence:
             return false if not UiHandles::is_valid(handle) or not UiState::has(id)
             row: UiFlat::Widget = UiFlat::widget(handle.widget_id.usize())
             return false if row.kind != UiConst::WidgetKind.Slider and row.kind != UiConst::WidgetKind.ProgressBar
-            UiHandles::set_value(handle, UiState::f32(id, UiHandles::value(handle)))
-            return true
+            restored: f32 = UiState::f32(id, UiHandles::value(handle))
+            UiHandles::set_value(handle, restored)
+            # Numeric controls clamp through the flat setter. Refuse to claim
+            # success when that normalization changed the persisted value.
+            return UiHandles::value(handle) == restored
 
         def restore_selected(handle: UiHandles::Handle, id: u32) -> bool:
             return false if not UiHandles::is_valid(handle) or not UiState::has(id)
