@@ -75,7 +75,10 @@ module UiState:
             return append_header(id, ValueKind.Text, value_length) and append_bytes(safe_value, value_length)
 
         def put_f32(id: u32, value: f32) -> bool can Unsafe.PointerCast:
-            safe: mutable f32 = UiCore::finite_or_zero(value)
+            # Persistence is a validation boundary: do not silently turn a
+            # malformed application value into a different saved state.
+            return false if not UiCore::is_finite(value)
+            safe: mutable f32 = value
             bits: mutable u32& = (&safe).cast[mutable u32&] can Unsafe.PointerCast
             return append_u32_record(id, ValueKind.F32, bits[0])
 
