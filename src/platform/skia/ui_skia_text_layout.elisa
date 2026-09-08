@@ -21,6 +21,15 @@ extend UiSkia:
             Center = 1
             Bottom = 2
 
+        struct TextInteraction:
+            selection_start: usize
+            selection_end: usize
+            selection_color: UiCore::Color
+            caret_line: usize
+            caret_offset: usize
+            caret_width: f32
+            caret_color: UiCore::Color
+
         # Layout uses the same Skia metric path as direct text drawing. The
         # returned ranges still borrow the caller's source view and remain
         # bounded by UiTextMeasureLayout::MAX_LINES.
@@ -188,7 +197,7 @@ extend UiSkia:
         # Compose selection, text, and caret painting in one measured pass.
         # Selection is emitted before glyphs and the caret after them, while a
         # single clip scope keeps all three layers inside the destination.
-        def draw_text_block_interactive(text: sview, box: UiCore::Rect, size: f32, text_color: UiCore::Color, selection_start: usize, selection_end: usize, selection_color: UiCore::Color, caret_line: usize, caret_offset: usize, caret_width: f32, caret_color: UiCore::Color, horizontal: UiSkia::HorizontalTextAlignment, vertical: UiSkia::VerticalTextAlignment, vertical_inset: f32) -> UiTextMeasureLayout::Layout can[Ui.Draw, Ui.Text]:
+        def draw_text_block_interactive(text: sview, box: UiCore::Rect, size: f32, text_color: UiCore::Color, interaction: UiSkia::TextInteraction, horizontal: UiSkia::HorizontalTextAlignment, vertical: UiSkia::VerticalTextAlignment, vertical_inset: f32) -> UiTextMeasureLayout::Layout can[Ui.Draw, Ui.Text]:
             safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
             planned: UiTextMeasureLayout::Layout = UiSkia::layout_text(text, safe_box.size.width, size)
             return planned if canvas_state == 0
@@ -199,19 +208,39 @@ extend UiSkia:
             line_step <- planned.text_size if line_step <= 0.0
             first_baseline: f32 = UiSkia::aligned_text_baseline(safe_box, ascent, line_step, planned.line_count, vertical)
             for index in 0..<planned.line_count:
-                if selection_start != selection_end and selection_color.a != 0:
-                    selection_box: UiCore::Rect = UiSkia::selection_rect_for_layout(text, planned, safe_box, index, selection_start, selection_end, horizontal, vertical, vertical_inset)
-                    UiSkia::fill_rounded_rect(selection_box, 2.0, selection_color) if selection_box.size.width > 0.0 and selection_box.size.height > 0.0
+                if interaction.selection_start != interaction.selection_end and interaction.selection_color.a != 0:
+                    selection_box: UiCore::Rect = UiSkia::selection_rect_for_layout(text, planned, safe_box, index, interaction.selection_start, interaction.selection_end, horizontal, vertical, vertical_inset)
+                    UiSkia::fill_rounded_rect(selection_box, 2.0, interaction.selection_color) if selection_box.size.width > 0.0 and selection_box.size.height > 0.0
                 line: sview = UiTextMeasureLayout::line_view(text, index)
                 line_y: f32 = UiCore::bounded_coordinate(first_baseline + line_step * index.f32())
                 if line.len > 0 and line_y + line_step >= safe_box.origin.y and line_y - ascent <= UiCore::bottom_edge(safe_box) and text_color.a != 0:
                     line_width: f32 = UiTextMeasureLayout::line_at(index).width
                     line_x: f32 = UiSkia::aligned_text_origin(safe_box, line_width, horizontal)
                     UiSkia::draw_text_run(UiCore::TextRun(UiCore::Vec2(line_x, line_y), planned.text_size, line), text_color)
-                if index == caret_line and caret_color.a != 0:
-                    caret_box: UiCore::Rect = UiSkia::caret_rect_for_layout(text, planned, safe_box, index, caret_offset, horizontal, vertical, caret_width, vertical_inset)
-                    UiSkia::fill_rounded_rect(caret_box, caret_box.size.width * 0.5, caret_color) if caret_box.size.width > 0.0 and caret_box.size.height > 0.0
+                if index == interaction.caret_line and interaction.caret_color.a != 0:
+                    caret_box: UiCore::Rect = UiSkia::caret_rect_for_layout(text, planned, safe_box, index, interaction.caret_offset, horizontal, vertical, interaction.caret_width, vertical_inset)
+                    UiSkia::fill_rounded_rect(caret_box, caret_box.size.width * 0.5, interaction.caret_color) if caret_box.size.width > 0.0 and caret_box.size.height > 0.0
             _ = UiSkia::pop_clip()
+            return planned
+
+        def draw_bound_text_block_interactive(resource: UiResources::ResourceHandle, text: sview, box: UiCore::Rect, size: f32, text_color: UiCore::Color, interaction: UiSkia::TextInteraction, horizontal: UiSkia::HorizontalTextAlignment, vertical: UiSkia::VerticalTextAlignment, vertical_inset: f32) -> UiTextMeasureLayout::Layout can[Ui.Draw, Ui.Text]:
+            _ = UiSkia::prune_bindings()
+            return UiSkia::empty_text_layout(text, box.size.width, size) if UiResources::state(resource) != UiResources::State.Ready
+            index: usize = UiSkia::font_binding_index(resource)
+            return UiSkia::empty_text_layout(text, box.size.width, size) if index >= UiSkia::MAX_FONT_BINDINGS
+            previous_font: usize = skia_frame_font
+            skia_frame_font <- skia_font_binding_fonts[index]
+            planned: UiTextMeasureLayout::Layout = UiSkia::draw_text_block_interactive(text, box, size, text_color, interaction, horizontal, vertical, vertical_inset)
+            skia_frame_font <- previous_font
+            return planned
+
+        def draw_bound_text_block_interactive_with_fallback(primary: UiResources::ResourceHandle, fallback: UiResources::ResourceHandle, text: sview, box: UiCore::Rect, size: f32, text_color: UiCore::Color, interaction: UiSkia::TextInteraction, horizontal: UiSkia::HorizontalTextAlignment, vertical: UiSkia::VerticalTextAlignment, vertical_inset: f32) -> UiTextMeasureLayout::Layout can[Ui.Draw, Ui.Text]:
+            font: usize = UiSkia::bound_font_handle(primary, fallback)
+            return UiSkia::empty_text_layout(text, box.size.width, size) if font == 0
+            previous_font: usize = skia_frame_font
+            skia_frame_font <- font
+            planned: UiTextMeasureLayout::Layout = UiSkia::draw_text_block_interactive(text, box, size, text_color, interaction, horizontal, vertical, vertical_inset)
+            skia_frame_font <- previous_font
             return planned
 
         def draw_bound_text_block(resource: UiResources::ResourceHandle, text: sview, box: UiCore::Rect, size: f32, color: UiCore::Color, horizontal: UiSkia::HorizontalTextAlignment, vertical: UiSkia::VerticalTextAlignment) -> UiTextMeasureLayout::Layout can[Ui.Draw, Ui.Text]:

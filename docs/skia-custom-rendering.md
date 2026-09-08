@@ -188,7 +188,9 @@ smuggled into the Elisa ABI.
 `draw_text_block_interactive()` composes selection, glyphs, and caret painting
 in one measured pass, preserving selection-before-text/caret-after-text order
 and sharing one clip scope. Blink visibility remains widget state; the compound
-operation only consumes the caller's explicit caret range and colors.
+operation only consumes the caller's explicit `TextInteraction` range/colors.
+Generation-bound typefaces have matching primary and fallback forms, so this
+single-pass path does not require a control to expose or duplicate font scopes.
 
 Ready generation-bound typefaces can use `layout_bound_text()` and
 `draw_bound_text_block()` (or their fallback forms), which scope the selected
