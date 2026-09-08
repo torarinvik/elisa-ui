@@ -58,3 +58,8 @@ and font metrics, clips the rectangle to its destination, and
 short-lived clip scope. Call the fill helper before the corresponding text
 block so the selection remains behind glyphs; the host supplies no selection
 state or geometry policy.
+
+`UiSkia::text_caret_rect()` and `UiSkia::draw_text_caret()` use the same
+positioned line metrics for a grapheme-safe caret. Blink timing and visibility
+remain application/widget state, while the helper bounds the caret to the
+destination and paints it through the existing Elisa rounded-rectangle path.

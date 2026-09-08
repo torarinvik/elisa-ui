@@ -64,6 +64,29 @@ extend UiSkia:
             _ = UiSkia::pop_clip()
             return planned
 
+        # Return the clipped rectangle for one grapheme-safe caret position.
+        # Blink/visibility belongs to the caller; this helper only maps the
+        # logical offset through the active Skia metrics and placement policy.
+        def text_caret_rect(text: sview, box: UiCore::Rect, size: f32, line_index: usize, byte_offset: usize, horizontal: UiSkia::HorizontalTextAlignment, vertical: UiSkia::VerticalTextAlignment, caret_width: f32, vertical_inset: f32) -> UiCore::Rect:
+            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+            planned: UiTextMeasureLayout::Layout = UiSkia::layout_text(text, safe_box.size.width, size)
+            return UiSkia::caret_rect_for_layout(text, planned, safe_box, line_index, byte_offset, horizontal, vertical, caret_width, vertical_inset)
+
+        # Paint one caret inside a temporary clip. The caller can use the same
+        # layout record for text and selection, keeping blink state outside the
+        # renderer and avoiding any native text-field object.
+        def draw_text_caret(text: sview, box: UiCore::Rect, size: f32, line_index: usize, byte_offset: usize, color: UiCore::Color, horizontal: UiSkia::HorizontalTextAlignment, vertical: UiSkia::VerticalTextAlignment, caret_width: f32, vertical_inset: f32) -> UiTextMeasureLayout::Layout can[Ui.Draw, Ui.Text]:
+            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+            planned: UiTextMeasureLayout::Layout = UiSkia::layout_text(text, safe_box.size.width, size)
+            return planned if canvas_state == 0 or color.a == 0
+            return planned if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
+            return planned if not UiSkia::push_clip(safe_box)
+            caret_box: UiCore::Rect = UiSkia::caret_rect_for_layout(text, planned, safe_box, line_index, byte_offset, horizontal, vertical, caret_width, vertical_inset)
+            if caret_box.size.width > 0.0 and caret_box.size.height > 0.0:
+                UiSkia::fill_rounded_rect(caret_box, caret_box.size.width * 0.5, color)
+            _ = UiSkia::pop_clip()
+            return planned
+
         # A bound logical font keeps measurement and replay on one generation
         # without exposing its borrowed SkTypeface to the caller. The frame
         # font slot is restored even when a control nests another text scope.
@@ -167,6 +190,33 @@ extend UiSkia:
             return UiTextMeasureLayout::empty_layout(text, max_width, size)
 
     private:
+        def caret_rect_for_layout(text: sview, planned: UiTextMeasureLayout::Layout, safe_box: UiCore::Rect, line_index: usize, byte_offset: usize, horizontal: UiSkia::HorizontalTextAlignment, vertical: UiSkia::VerticalTextAlignment, caret_width: f32, vertical_inset: f32) -> UiCore::Rect:
+            empty: UiCore::Rect = UiCore::Rect(0.0, 0.0, 0.0, 0.0)
+            return empty if line_index >= planned.line_count
+            ascent: f32 = UiCore::bounded_extent(UiSkia::active_font_ascent(planned.text_size))
+            line_step: mutable f32 = UiCore::bounded_extent(UiSkia::active_text_line_height(planned.text_size))
+            line_step <- planned.text_size if line_step <= 0.0
+            first_baseline: f32 = UiSkia::aligned_text_baseline(safe_box, ascent, line_step, planned.line_count, vertical)
+            line_width: f32 = UiTextMeasureLayout::line_at(line_index).width
+            line_x: f32 = UiSkia::aligned_text_origin(safe_box, line_width, horizontal)
+            local_x: f32 = UiTextMeasureLayout::caret_x_for_line(text, line_index, byte_offset, planned.text_size, ui_skia_measure_layout_width)
+            raw_x: f32 = UiCore::bounded_coordinate(line_x + local_x)
+            left_edge: f32 = safe_box.origin.x
+            right_edge: f32 = UiCore::right_edge(safe_box)
+            safe_width: mutable f32 = UiCore::bounded_extent(caret_width)
+            safe_width <- 1.0 if safe_width <= 0.0
+            safe_width <- safe_box.size.width if safe_width > safe_box.size.width else safe_width
+            return empty if safe_width <= 0.0
+            clipped_x: mutable f32 = raw_x if raw_x >= left_edge else left_edge
+            clipped_x <- right_edge - safe_width if clipped_x + safe_width > right_edge else clipped_x
+            clipped_x <- left_edge if clipped_x < left_edge else clipped_x
+            safe_inset: mutable f32 = UiCore::bounded_extent(vertical_inset)
+            maximum_inset: f32 = line_step * 0.5
+            safe_inset <- maximum_inset if safe_inset > maximum_inset
+            line_top: f32 = UiCore::bounded_coordinate(first_baseline + line_step * line_index.f32() - ascent)
+            line_height: f32 = line_step - safe_inset * 2.0 if line_step > safe_inset * 2.0 else 0.0
+            return UiCore::Rect(clipped_x, line_top + safe_inset, safe_width, UiCore::bounded_extent(line_height))
+
         def selection_rect_for_layout(text: sview, planned: UiTextMeasureLayout::Layout, safe_box: UiCore::Rect, line_index: usize, selection_start: usize, selection_end: usize, horizontal: UiSkia::HorizontalTextAlignment, vertical: UiSkia::VerticalTextAlignment, vertical_inset: f32) -> UiCore::Rect:
             empty: UiCore::Rect = UiCore::Rect(0.0, 0.0, 0.0, 0.0)
             return empty if line_index >= planned.line_count
