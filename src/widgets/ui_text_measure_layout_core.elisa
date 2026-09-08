@@ -23,6 +23,12 @@ module UiTextMeasureLayout:
             text_size: f32
             overflowed: bool
 
+        struct SelectionRange:
+            start: usize
+            end: usize
+            x: f32
+            width: f32
+
         # Wrap one bounded text view only between grapheme clusters. The
         # callback keeps the planner reusable by every backend profile. A
         # zero/negative width means one logical pixel, which keeps the planner
@@ -188,7 +194,51 @@ module UiTextMeasureLayout:
                 cursor <- cursor + cluster_length
             return accumulated
 
+        # Intersect a UTF-8 byte selection with one measured line and return
+        # geometry in that line's local coordinate space. Both endpoints are
+        # normalized to grapheme starts by the caret helper, so a selection can
+        # never split a combining sequence or multi-codepoint emoji.
+        def selection_for_line(text: sview, index: usize, selection_start: usize, selection_end: usize, size: f32, width_provider: fn(sview, f32) -> f32) -> SelectionRange:
+            safe_text: sview = UiCore::bounded_text(text)
+            empty: SelectionRange = SelectionRange{start: 0, end: 0, x: 0.0, width: 0.0}
+            return empty if safe_text.len <= 0 or index >= measured_line_count
+            range: LineRange = line_at(index)
+            source_length: usize = safe_text.len.usize()
+            return empty if range.offset > source_length or range.length > source_length - range.offset
+            line_end: usize = range.offset + range.length
+            first: mutable usize = selection_start if selection_start <= selection_end else selection_end
+            second: mutable usize = selection_end if selection_end >= selection_start else selection_start
+            first <- line_end if first > line_end else first
+            second <- line_end if second > line_end else second
+            first <- range.offset if first < range.offset else first
+            second <- range.offset if second < range.offset else second
+            first <- floor_offset_for_line(safe_text, index, first)
+            second <- floor_offset_for_line(safe_text, index, second)
+            return SelectionRange{start: first, end: second, x: 0.0, width: 0.0} if second <= first
+            leading: f32 = caret_x_for_line(safe_text, index, first, size, width_provider)
+            trailing: f32 = caret_x_for_line(safe_text, index, second, size, width_provider)
+            width: f32 = trailing - leading if trailing > leading else 0.0
+            return SelectionRange{start: first, end: second, x: leading, width: UiCore::bounded_extent(width)}
+
     private:
+        def floor_offset_for_line(text: sview, index: usize, byte_offset: usize) -> usize:
+            safe_text: sview = UiCore::bounded_text(text)
+            return 0 if safe_text.len <= 0 or index >= measured_line_count
+            range: LineRange = line_at(index)
+            source_length: usize = safe_text.len.usize()
+            return range.offset if range.offset > source_length or range.length > source_length - range.offset
+            end: usize = range.offset + range.length
+            target: mutable usize = byte_offset if byte_offset >= range.offset else range.offset
+            target <- end if target > end
+            cursor: mutable usize = range.offset
+            while cursor < end:
+                return cursor if target <= cursor
+                cluster_end: usize = UiText::next_grapheme(safe_text, cursor)
+                cluster_length: usize = cluster_end - cursor if cluster_end > cursor and cluster_end <= end else 1
+                return cursor if target < cursor + cluster_length
+                cursor <- cursor + cluster_length
+            return end
+
         global mutable measured_line_offsets: usize[MAX_LINES] = zeroed
         global mutable measured_line_lengths: usize[MAX_LINES] = zeroed
         global mutable measured_line_widths: f32[MAX_LINES] = zeroed

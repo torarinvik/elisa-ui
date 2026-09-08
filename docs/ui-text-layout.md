@@ -49,3 +49,12 @@ contract through the active platform metric hook for non-Skia painters.
 `UiTextMeasureLayout::caret_x()` and `UiSkia::caret_x_text_line()` perform the
 inverse mapping for a source offset, flooring offsets inside a grapheme to its
 leading edge before summing measured cluster widths.
+
+`UiTextMeasureLayout::selection()` intersects a byte range with one measured
+line and returns grapheme-normalized start/end offsets plus local x/width
+geometry. `UiSkia::text_selection_rect()` adds the selected block's alignment
+and font metrics, clips the rectangle to its destination, and
+`UiSkia::fill_text_selection()` paints every non-empty line fragment inside a
+short-lived clip scope. Call the fill helper before the corresponding text
+block so the selection remains behind glyphs; the host supplies no selection
+state or geometry policy.
