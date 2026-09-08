@@ -80,6 +80,21 @@ bool expect_color(const SkPixmap& pixels, int x, int y, SkColor expected,
     return false;
 }
 
+// Hash logical pixels rather than raw row bytes. Skia may pad rows, and those
+// padding bytes are not part of the rendered frame contract. The digest is
+// used to prove that repeated retained/deferred replays are deterministic and
+// do not accumulate transforms, clips, or stale resource state.
+std::uint64_t pixel_digest(const SkPixmap& pixels) {
+    std::uint64_t hash = UINT64_C(1469598103934665603);
+    for (int y = 0; y < pixels.height(); ++y) {
+        for (int x = 0; x < pixels.width(); ++x) {
+            hash ^= static_cast<std::uint32_t>(pixels.getColor(x, y));
+            hash *= UINT64_C(1099511628211);
+        }
+    }
+    return hash;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -220,6 +235,8 @@ int main(int argc, char** argv) {
                           "replacement resource generation rendered") && ok;
     }
 
+    const std::uint64_t initial_digest = pixel_digest(pixels);
+
     const int iterations = configured_iterations();
     const auto render_start = std::chrono::steady_clock::now();
     for (int index = 0; index < iterations; ++index) {
@@ -237,6 +254,15 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "skia showcase: renderer timing did not produce a positive sample\n");
         ok = false;
     }
+    const std::uint64_t repeated_digest = pixel_digest(pixels);
+    if (repeated_digest != initial_digest) {
+        std::fprintf(stderr,
+                     "skia showcase: repeated replay changed the pixel digest "
+                     "(initial=%016llx repeated=%016llx)\n",
+                     static_cast<unsigned long long>(initial_digest),
+                     static_cast<unsigned long long>(repeated_digest));
+        ok = false;
+    }
 
     SkFILEWStream stream(output);
     SkPngEncoder::Options options;
@@ -245,10 +271,11 @@ int main(int argc, char** argv) {
         return 11;
     }
     if (!ok) return 12;
-    std::printf("skia showcase: rendered and verified %s renderer=cpu-raster commands=%d semantics=%d art=%d deferred=%d resource_deferred=%d generations=%d->%d accent_pixels=%zu probe_x=%d probe_y=%d resource_x=%d resource_y=%d render_iterations=%d render_total_ns=%lld render_average_ns=%lld\n",
+    std::printf("skia showcase: rendered and verified %s renderer=cpu-raster commands=%d semantics=%d art=%d deferred=%d resource_deferred=%d generations=%d->%d accent_pixels=%zu probe_x=%d probe_y=%d resource_x=%d resource_y=%d render_iterations=%d render_total_ns=%lld render_average_ns=%lld pixel_digest=%016llx\n",
                 output, commands, semantics, art, deferred, resource_deferred,
                 generation_before, generation_after, accent_pixels, probe_x, probe_y,
                 resource_x, resource_y, iterations,
-                static_cast<long long>(total_ns), static_cast<long long>(average_ns));
+                static_cast<long long>(total_ns), static_cast<long long>(average_ns),
+                static_cast<unsigned long long>(repeated_digest));
     return 0;
 }

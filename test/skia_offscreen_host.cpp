@@ -55,6 +55,20 @@ bool expect_ink(const SkPixmap& pixels, int left, int top, int right, int bottom
     return false;
 }
 
+// Hash logical pixels rather than row padding so the value is stable across
+// SkSurface row-byte choices. Repeated renders must reproduce this digest;
+// otherwise a leaked save/clip/transform scope could silently alter frames.
+std::uint64_t pixel_digest(const SkPixmap& pixels) {
+    std::uint64_t hash = UINT64_C(1469598103934665603);
+    for (int y = 0; y < pixels.height(); ++y) {
+        for (int x = 0; x < pixels.width(); ++x) {
+            hash ^= static_cast<std::uint32_t>(pixels.getColor(x, y));
+            hash *= UINT64_C(1099511628211);
+        }
+    }
+    return hash;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -134,6 +148,7 @@ int main(int argc, char** argv) {
     ok = expect_color(pixels, 120, 130, SkColorSetARGB(255, 20, 40, 80), "gradient start") && ok;
     ok = expect_color_near(pixels, 219, 130, SkColorSetARGB(255, 100, 180, 220), 2, "gradient end") && ok;
     ok = expect_ink(pixels, 15, 158, 110, 198, SkColorSetARGB(255, 18, 24, 32), "text") && ok;
+    const std::uint64_t initial_digest = pixel_digest(pixels);
 
     int iterations = 16;
     if (const char* configured = std::getenv("ELISA_UI_SKIA_RENDER_ITERATIONS")) {
@@ -156,6 +171,15 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "skia offscreen: renderer timing did not produce a positive sample\n");
         return 9;
     }
+    const std::uint64_t repeated_digest = pixel_digest(pixels);
+    if (repeated_digest != initial_digest) {
+        std::fprintf(stderr,
+                     "skia offscreen: repeated replay changed the pixel digest "
+                     "(initial=%016llx repeated=%016llx)\n",
+                     static_cast<unsigned long long>(initial_digest),
+                     static_cast<unsigned long long>(repeated_digest));
+        return 10;
+    }
 
     SkFILEWStream stream(output);
     SkPngEncoder::Options options;
@@ -164,8 +188,9 @@ int main(int argc, char** argv) {
         return 5;
     }
     if (!ok) return 6;
-    std::printf("skia offscreen: rendered and verified %s render_iterations=%d render_total_ns=%lld render_average_ns=%lld\n",
+    std::printf("skia offscreen: rendered and verified %s render_iterations=%d render_total_ns=%lld render_average_ns=%lld pixel_digest=%016llx\n",
                 output, iterations, static_cast<long long>(render_total_ns),
-                static_cast<long long>(render_average_ns));
+                static_cast<long long>(render_average_ns),
+                static_cast<unsigned long long>(repeated_digest));
     return 0;
 }
