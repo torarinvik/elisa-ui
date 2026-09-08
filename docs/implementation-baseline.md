@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `9ea400f` (`feat(resources): combine presentation demand requests`) on branch `work` |
+| elisa-ui revision | `6d7aaf7` (`fix(theme): retain system appearance preferences`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -776,7 +776,10 @@ separate host-enforced security boundary.
   asynchronous field state in shared Elisa modules. The `UiFlat`/`UiHandles`
   palette adapter applies only shared appearance tokens and is idempotent, so
   host refreshes cannot create a dirty loop; per-widget colors and geometry
-  remain application-owned. Each policy is covered by a focused headless test.
+  remain application-owned. Applying a system theme now also retains the
+  normalized preferences/revision used by text-scale and reduced-motion
+  consumers, while direct palette overrides remain separate. Each policy is
+  covered by a focused headless test.
 - `UiValidation` clears its fixed diagnostic-message storage on table reset, so
   retired validation text is not retained across lifecycles; coverage remains
   in `test/validation_test.elisa`.
