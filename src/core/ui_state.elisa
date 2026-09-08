@@ -125,6 +125,13 @@ module UiState:
                 expected <- 1 if kind == ValueKind.Bool.i32()
                 return false if value_length > expected or (kind != ValueKind.Text.i32() and value_length != expected)
                 return false if length - cursor - RECORD_HEADER_BYTES < value_length
+                if kind == ValueKind.F32.i32():
+                    # Reject NaN/infinity at the persistence boundary. The
+                    # exponent-all-ones test is representation-level and
+                    # avoids reinterpreting untrusted bytes through a pointer
+                    # cast merely to validate a record.
+                    float_bits: u32 = load_u32(source, cursor + RECORD_HEADER_BYTES)
+                    return false if (float_bits & 0x7f800000) == 0x7f800000
                 if kind == ValueKind.Bool.i32():
                     # Bool records are canonical bytes, not a C truthiness
                     # field. Reject malformed persisted values instead of

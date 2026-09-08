@@ -31,6 +31,7 @@ The format is capped at 4 KiB and 128 records. Text fields are capped at 1024
 bytes, IDs must be unique within one snapshot, and values are typed (`Text`,
 `F32`, `I32`, or `Bool`). Bad magic/version, truncation, malformed lengths,
 duplicate IDs, unsupported kinds, and capacity exhaustion fail closed. A failed
-restore clears the previously queryable snapshot. This is application data,
+restore clears the previously queryable snapshot; non-finite IEEE-754 `F32`
+payloads are rejected rather than silently coerced to zero. This is application data,
 not a framework heap checkpoint; widget handles must be rebuilt and reacquired
 after restoration.
