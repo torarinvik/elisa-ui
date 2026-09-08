@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `c5489e1` (`fix: distinguish zero touch IDs from empty pinch state`) on branch `work` |
+| elisa-ui revision | `cf7054b` (`feat: resolve bounded text base direction`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -27,6 +27,10 @@ The hello reference app resolves its dark/light palette through `UiTheme` and
 applies framework-wide tokens with `UiHandles::apply_palette`; its custom
 accent remains application-owned while the adapter preserves retained widget
 colors and geometry.
+
+`UiLocalization::text_direction` now resolves a bounded paragraph base
+direction from the first strong Unicode scalar, with locale fallback for
+neutral-only text; bidi shaping and reordering remain renderer-owned.
 
 ## Source and boundary inventory
 
