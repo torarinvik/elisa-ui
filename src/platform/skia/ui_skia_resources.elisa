@@ -229,6 +229,17 @@ extend UiSkia:
             return 0.0 if index >= MAX_FONT_BINDINGS
             return UiSkia::ready_font_line_height(skia_font_binding_fonts[index], resource, size)
 
+        # Resolve the native handle once for a compound text operation. The
+        # caller still scopes it to one layout/draw call and never receives a
+        # mutable binding slot or a host-owned pointer directly.
+        def bound_font_handle(primary: UiResources::ResourceHandle, fallback: UiResources::ResourceHandle) -> usize:
+            _ = UiSkia::prune_bindings()
+            index: mutable usize = UiSkia::font_binding_index(primary) if UiResources::state(primary) == UiResources::State.Ready else MAX_FONT_BINDINGS
+            if index >= MAX_FONT_BINDINGS:
+                index <- UiSkia::font_binding_index(fallback) if UiResources::state(fallback) == UiResources::State.Ready else MAX_FONT_BINDINGS
+            return 0 if index >= MAX_FONT_BINDINGS
+            return skia_font_binding_fonts[index]
+
         # Font decoding/fallback remains host-owned, but a ready logical font
         # resource must still be checked in Elisa before its borrowed SkTypeface
         # can affect a frame.

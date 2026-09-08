@@ -30,3 +30,9 @@ adds explicit start/center/end and top/center/bottom placement without moving
 baseline policy into a host. Both return the layout record even when the
 surface, color, or clip is unavailable, making overflow and line counts
 observable without coupling application state to a native canvas.
+
+When a logical `UiResources::ResourceHandle` is bound to a ready SkTypeface,
+`UiSkia::layout_bound_text` and `UiSkia::draw_bound_text_block` scope that
+generation for the whole operation. Their fallback forms choose the first
+ready, bound generation and otherwise return an empty layout without crossing
+the native boundary.

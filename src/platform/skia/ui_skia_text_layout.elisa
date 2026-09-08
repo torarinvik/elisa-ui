@@ -27,6 +27,29 @@ extend UiSkia:
         def layout_text(text: sview, max_width: f32, size: f32) -> UiTextMeasureLayout::Layout:
             return UiTextMeasureLayout::layout_with_measure(text, max_width, size, ui_skia_measure_layout_width)
 
+        # A bound logical font keeps measurement and replay on one generation
+        # without exposing its borrowed SkTypeface to the caller. The frame
+        # font slot is restored even when a control nests another text scope.
+        def layout_bound_text(resource: UiResources::ResourceHandle, text: sview, max_width: f32, size: f32) -> UiTextMeasureLayout::Layout:
+            _ = UiSkia::prune_bindings()
+            return UiSkia::empty_text_layout(text, max_width, size) if UiResources::state(resource) != UiResources::State.Ready
+            index: usize = UiSkia::font_binding_index(resource)
+            return UiSkia::empty_text_layout(text, max_width, size) if index >= UiSkia::MAX_FONT_BINDINGS
+            previous_font: usize = skia_frame_font
+            skia_frame_font <- skia_font_binding_fonts[index]
+            planned: UiTextMeasureLayout::Layout = UiSkia::layout_text(text, max_width, size)
+            skia_frame_font <- previous_font
+            return planned
+
+        def layout_bound_text_with_fallback(primary: UiResources::ResourceHandle, fallback: UiResources::ResourceHandle, text: sview, max_width: f32, size: f32) -> UiTextMeasureLayout::Layout:
+            font: usize = UiSkia::bound_font_handle(primary, fallback)
+            return UiSkia::empty_text_layout(text, max_width, size) if font == 0
+            previous_font: usize = skia_frame_font
+            skia_frame_font <- font
+            planned: UiTextMeasureLayout::Layout = UiSkia::layout_text(text, max_width, size)
+            skia_frame_font <- previous_font
+            return planned
+
         def draw_text_block(text: sview, box: UiCore::Rect, size: f32, color: UiCore::Color) -> UiTextMeasureLayout::Layout can[Ui.Draw, Ui.Text]:
             return UiSkia::draw_text_block_aligned(text, box, size, color, UiSkia::HorizontalTextAlignment.Start)
 
@@ -57,6 +80,26 @@ extend UiSkia:
             _ = UiSkia::pop_clip()
             return planned
 
+        def draw_bound_text_block(resource: UiResources::ResourceHandle, text: sview, box: UiCore::Rect, size: f32, color: UiCore::Color, horizontal: UiSkia::HorizontalTextAlignment, vertical: UiSkia::VerticalTextAlignment) -> UiTextMeasureLayout::Layout can[Ui.Draw, Ui.Text]:
+            _ = UiSkia::prune_bindings()
+            return UiSkia::empty_text_layout(text, box.size.width, size) if UiResources::state(resource) != UiResources::State.Ready
+            index: usize = UiSkia::font_binding_index(resource)
+            return UiSkia::empty_text_layout(text, box.size.width, size) if index >= UiSkia::MAX_FONT_BINDINGS
+            previous_font: usize = skia_frame_font
+            skia_frame_font <- skia_font_binding_fonts[index]
+            planned: UiTextMeasureLayout::Layout = UiSkia::draw_text_block_positioned(text, box, size, color, horizontal, vertical)
+            skia_frame_font <- previous_font
+            return planned
+
+        def draw_bound_text_block_with_fallback(primary: UiResources::ResourceHandle, fallback: UiResources::ResourceHandle, text: sview, box: UiCore::Rect, size: f32, color: UiCore::Color, horizontal: UiSkia::HorizontalTextAlignment, vertical: UiSkia::VerticalTextAlignment) -> UiTextMeasureLayout::Layout can[Ui.Draw, Ui.Text]:
+            font: usize = UiSkia::bound_font_handle(primary, fallback)
+            return UiSkia::empty_text_layout(text, box.size.width, size) if font == 0
+            previous_font: usize = skia_frame_font
+            skia_frame_font <- font
+            planned: UiTextMeasureLayout::Layout = UiSkia::draw_text_block_positioned(text, box, size, color, horizontal, vertical)
+            skia_frame_font <- previous_font
+            return planned
+
         def aligned_text_origin(box: UiCore::Rect, line_width: f32, alignment: UiSkia::HorizontalTextAlignment) -> f32:
             safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
             safe_line_width: f32 = UiCore::bounded_extent(line_width)
@@ -80,3 +123,12 @@ extend UiSkia:
             offset <- remaining * 0.5 if alignment == UiSkia::VerticalTextAlignment.Center
             offset <- remaining if alignment == UiSkia::VerticalTextAlignment.Bottom
             return UiCore::bounded_coordinate(safe_box.origin.y + offset + safe_ascent)
+
+        def empty_text_layout(text: sview, max_width: f32, size: f32) -> UiTextMeasureLayout::Layout:
+            safe_text: sview = UiCore::bounded_text(text)
+            return UiTextMeasureLayout::Layout{
+                line_count: 0,
+                max_width: UiCore::bounded_extent(max_width),
+                source_length: safe_text.len.usize(),
+                text_size: UiCore::bounded_extent(size),
+                overflowed: false}
