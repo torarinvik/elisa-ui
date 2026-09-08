@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `e93b341` (`feat(text): add pixel-measured layout`) on branch `work` |
+| elisa-ui revision | `a31d0c6` (`feat(skia): route layout metrics through backend provider`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -399,10 +399,12 @@ separate host-enforced security boundary.
   Bengali, Gujarati, Tamil, Telugu, Kannada, and Malayalam clusters retain
   atomic caret and deletion behavior.
 - `UiTextMeasureLayout` adds a bounded pixel-width planner beside the
-  scalar-column `UiTextLayout`. It measures each grapheme through
-  `UiTextMetrics`, preserves source ranges and CRLF handling, prefers complete
-  whitespace-run breaks, and emits an oversized grapheme as one line instead
-  of stalling; the active backend remains the authority for font metrics.
+  scalar-column `UiTextLayout`. Its core accepts an Elisa width-provider
+  function, the default facade uses `UiTextMetrics`, and `UiSkia::layout_text`
+  supplies Skia's own metric query. It preserves source ranges and CRLF
+  handling, prefers complete whitespace-run breaks, and emits an oversized
+  grapheme as one line instead of stalling; the active backend remains the
+  authority for font metrics.
 - Bounded Elisa scans that return a derived value now use scoped `for`
   expressions where an early result is the only loop state, including the
   UTF-8 prefix, scalar-count, and UTF-16-count walks in `UiText`, plus
