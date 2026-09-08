@@ -48,6 +48,7 @@ typed handle setters.
 button's minimum height from `UiTheme::scaled_metrics`, including high-contrast
 and large-text preferences. The explicit-size `button` constructor remains
 application-owned and unchanged.
+`text_field_accessible` applies the same policy to editable text controls.
 
 Use `handle(event)` to forward the portable event stream, `hit`/`cursor_at` for
 pointer policy, and `activate`/`adjust`/`radio_move` for accessibility actions.
