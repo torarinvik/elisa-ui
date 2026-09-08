@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `8bcb387` (`test: assert themed Skia radius propagation`) on branch `work` |
+| elisa-ui revision | `e20e7e0` (`refactor: use scoped loop for accessibility storage clear`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -794,6 +794,9 @@ separate host-enforced security boundary.
   radius reaches the recorder-backed round-rect primitive unchanged after
   normalization, making themed custom-surface styling reproducible without
   foregrounding a window.
+- AppKit canvas accessibility storage reset now uses a bounded scoped `for`
+  expression, keeping fixed-capacity cleanup in Elisa without loop-counter
+  mutation; the off-screen canvas bridge check remains green.
 - AppKit custom-canvas CoreText shaping and metrics now live in their own
   `ui_appkit_canvas_coretext.elisa` extension; window/snapshot ABI types and
   text-command routing remain separate modules with the same public contract.
