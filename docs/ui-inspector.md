@@ -34,6 +34,8 @@ rebuild without keeping a second native or tooling-side locale table.
 `Frame.theme` likewise exposes the normalized `UiTheme::Snapshot`, including
 the active preferences and monotonic revision, so runtime appearance changes
 are visible to diagnostics without a backend shadow state.
+`Frame.theme_metrics` reports the resolved geometry tokens used by the flat
+renderer, including effective touch-target and focus-ring sizes.
 
 `Frame.work` contains host-clock-driven scopes for layout, text, and resource
 work. Each kind can be measured independently (including nested kinds), while
