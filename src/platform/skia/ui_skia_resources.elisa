@@ -73,6 +73,18 @@ extend UiSkia:
             UiSkia::draw_image_with_sampling(image, box, alpha, sampling)
             return true
 
+        def draw_ready_image_source(image: usize, resource: UiResources::ResourceHandle, source: UiCore::Rect, destination: UiCore::Rect, alpha: u8) -> bool can[Ui.Draw]:
+            return UiSkia::draw_ready_image_source_with_sampling(image, resource, source, destination, alpha, UiSkia::ImageSampling.Linear)
+
+        def draw_ready_image_source_with_sampling(image: usize, resource: UiResources::ResourceHandle, source: UiCore::Rect, destination: UiCore::Rect, alpha: u8, sampling: UiSkia::ImageSampling) -> bool can[Ui.Draw]:
+            return false if UiResources::state(resource) != UiResources::State.Ready
+            return false if image == 0 or canvas_state == 0 or alpha == 0
+            safe_source: UiCore::Rect = UiSkia::skia_safe_source_rect(source)
+            safe_destination: UiCore::Rect = UiSkia::skia_safe_rect(destination)
+            return false if safe_source.size.width <= 0.0 or safe_source.size.height <= 0.0 or safe_destination.size.width <= 0.0 or safe_destination.size.height <= 0.0
+            UiSkia::draw_image_source_with_sampling(image, safe_source, safe_destination, alpha, sampling)
+            return true
+
         def bind_image(resource: UiResources::ResourceHandle, image: usize) -> bool:
             _ = UiSkia::prune_bindings()
             return false if UiResources::state(resource) != UiResources::State.Ready or image == 0
@@ -119,6 +131,16 @@ extend UiSkia:
             index: usize = image_binding_index(resource)
             return false if index >= MAX_IMAGE_BINDINGS
             return UiSkia::draw_ready_image_with_sampling(skia_image_binding_images[index], resource, box, alpha, sampling)
+
+        def draw_bound_image_source(resource: UiResources::ResourceHandle, source: UiCore::Rect, destination: UiCore::Rect, alpha: u8) -> bool can[Ui.Draw]:
+            return UiSkia::draw_bound_image_source_with_sampling(resource, source, destination, alpha, UiSkia::ImageSampling.Linear)
+
+        def draw_bound_image_source_with_sampling(resource: UiResources::ResourceHandle, source: UiCore::Rect, destination: UiCore::Rect, alpha: u8, sampling: UiSkia::ImageSampling) -> bool can[Ui.Draw]:
+            _ = UiSkia::prune_bindings()
+            return false if UiResources::state(resource) != UiResources::State.Ready
+            index: usize = image_binding_index(resource)
+            return false if index >= MAX_IMAGE_BINDINGS
+            return UiSkia::draw_ready_image_source_with_sampling(skia_image_binding_images[index], resource, source, destination, alpha, sampling)
 
         def bind_font(resource: UiResources::ResourceHandle, font: usize) -> bool:
             _ = UiSkia::prune_bindings()
