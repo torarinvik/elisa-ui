@@ -28,3 +28,5 @@ override any resolved token through their stable theme API after resolution.
 `UiTheme::metrics` resolves shared geometry tokens for spacing, minimum touch
 targets, focus-ring width, and corner radius. High-contrast mode raises touch
 and focus affordances and adjusts spacing consistently across controls.
+`UiTheme::scaled_metrics` applies the normalized text scale to spacing and touch
+targets with the same finite extent cap used by text sizing.

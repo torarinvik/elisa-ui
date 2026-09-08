@@ -122,6 +122,20 @@ module UiTheme:
                 focus_ring_width: 2.0 if not high else 3.0,
                 corner_radius: 8.0 if not high else 6.0}
 
+        # Scale only geometry tokens that affect readability and activation;
+        # focus thickness and corner radii remain visual style decisions. This
+        # keeps large-text layouts usable without allowing unbounded values.
+        def scaled_metrics(preferences: Preferences, system_high_contrast: bool) -> Metrics:
+            base: Metrics = metrics(preferences, system_high_contrast)
+            normalized: Preferences = normalize(preferences)
+            scale: f32 = normalized.text_scale
+            spacing: mutable f32 = UiCore::bounded_extent(base.spacing_unit * scale)
+            target: mutable f32 = UiCore::bounded_extent(base.minimum_touch_target * scale)
+            spacing <- MAX_SCALED_EXTENT if spacing > MAX_SCALED_EXTENT
+            target <- MAX_SCALED_EXTENT if target > MAX_SCALED_EXTENT
+            return Metrics{spacing_unit: spacing, minimum_touch_target: target,
+                focus_ring_width: base.focus_ring_width, corner_radius: base.corner_radius}
+
         def scaled_text_size(preferences: Preferences, base: f32) -> f32:
             normalized: Preferences = normalize(preferences)
             safe_base: f32 = UiCore::nonnegative_extent(base)
