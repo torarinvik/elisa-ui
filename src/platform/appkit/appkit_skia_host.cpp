@@ -14,6 +14,7 @@
 
 #include "../../../include/elisa_appkit_skia.h"
 #include "../../../include/elisa_skia.h"
+#include "../../../include/elisa_skia.h"
 #include "include/core/SkColor.h"
 #include "include/core/SkFontMgr.h"
 #include "include/core/SkFontStyle.h"
@@ -39,6 +40,12 @@ bool valid_dimension(float value) {
 
 bool valid_context(CGContextRef context, float pixel_width, float pixel_height) {
     return context != nullptr && valid_dimension(pixel_width) && valid_dimension(pixel_height);
+}
+
+bool skia_abi_compatible() {
+    constexpr std::uint32_t major_mask = 0xffff0000u;
+    return (elisa_skia_abi_version() & major_mask) ==
+        (ELISA_SKIA_ABI_VERSION & major_mask);
 }
 
 // The Elisa snapshot path already bounds bitmap extents before narrowing them
@@ -83,6 +90,11 @@ extern "C" std::int32_t elisa_appkit_canvas_skia_present(std::size_t window_hand
                                                            float logical_height,
                                                            float pixel_width_value,
                                                            float pixel_height_value) {
+    // Reject an incompatible Elisa painter before creating a surface or
+    // handing any borrowed Skia object across the callback boundary. Zero is
+    // the documented pre-frame result, so the Objective-C caller may use its
+    // CoreGraphics fallback safely.
+    if (!skia_abi_compatible()) return ELISA_APPKIT_SKIA_PRESENT_REJECTED;
     CGContextRef context = reinterpret_cast<CGContextRef>(context_handle);
     if (!valid_context(context, pixel_width_value, pixel_height_value) || !valid_dimension(logical_width) ||
         !valid_dimension(logical_height) || !valid_pixel_extent(pixel_width_value) ||

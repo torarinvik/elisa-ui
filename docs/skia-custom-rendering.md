@@ -40,7 +40,9 @@ application state into the native shim.
 These sentinels are published as `ELISA_APPKIT_SKIA_PRESENT_REJECTED` and
 `ELISA_APPKIT_SKIA_PRESENT_CONSUMED_NO_PRESENTATION` in
 `include/elisa_appkit_skia.h`, so host callers do not duplicate numeric status
-policy.
+policy. The optional AppKit host also checks the packed `ELISA_SKIA_ABI_VERSION`
+major before creating a surface or passing borrowed handles to Elisa; a
+mismatch returns the same pre-frame rejection and remains fallback-safe.
 When presenting the completed raster, it draws into the logical view bounds so
 AppKit's device transform performs the one logical-to-backing conversion; this
 keeps Retina and other non-1x contexts from scaling the image twice.

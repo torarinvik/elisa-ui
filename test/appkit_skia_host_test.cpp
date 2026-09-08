@@ -8,6 +8,7 @@
 #include <limits>
 
 #include "../include/elisa_appkit_skia.h"
+#include "../include/elisa_skia.h"
 
 extern "C" void elisa_appkit_skia_test_force_failure(std::int32_t enabled);
 extern "C" void elisa_appkit_skia_test_force_preframe_rejection(std::int32_t enabled);
@@ -39,6 +40,10 @@ bool expect_ink(const std::uint8_t* pixels, int row_bytes, int left, int top,
 }  // namespace
 
 int main() {
+    if (elisa_skia_abi_version() != ELISA_SKIA_ABI_VERSION) {
+        std::fprintf(stderr, "appkit skia host: Elisa/Skia ABI version mismatch\n");
+        return 9;
+    }
     constexpr int width = 320;
     constexpr int height = 200;
     constexpr int row_bytes = width * 4;
