@@ -473,6 +473,17 @@ def main() -> i64:
 
     skia_test_reset()
     UiSkia::begin_deferred_frame()
+    bounded_deferred_scopes: usize =
+        for _ in 0..<UiSkia::MAX_SCOPE_DEPTH |accepted: usize = 0| -> accepted:
+            accepted <- accepted + 1 if UiSkia::defer_push_transform(UiCore::Vec2(1.0, 1.0), UiCore::Vec2(1.0, 1.0))
+    check("deferred scope depth reports bounded overflow", bounded_deferred_scopes == UiSkia::MAX_SCOPE_DEPTH - 1 and UiSkia::deferred_overflowed())
+    UiSkia::attach(41)
+    check("deferred scope overflow reports incomplete rendering", UiSkia::render_status() == UiSkia::RenderStatus.CommandOverflow)
+    UiSkia::detach()
+    UiSkia::end_deferred_frame()
+
+    skia_test_reset()
+    UiSkia::begin_deferred_frame()
     accepted_deferred: usize =
         for _ in 0..<UiSkia::MAX_DEFERRED_COMMANDS + 1 |accepted: usize = 0| -> accepted:
             accepted <- accepted + 1 if UiSkia::defer_fill_circle(UiCore::Circle{center: UiCore::Vec2(20.0, 20.0), radius: 4.0}, UiCore::rgb(20, 30, 40))

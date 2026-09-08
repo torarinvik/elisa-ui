@@ -158,7 +158,8 @@ Deferred scopes (`defer_push_clip()`, `defer_push_rounded_clip()`,
 `defer_push_transform()`, `defer_push_rotation()`, and their typed pops) keep an
 Elisa-side LIFO ledger. Replay reuses the immediate save/clip/transform helpers,
 and mismatched or over-budget pops are rejected before they can restore the
-wrong native state.
+wrong native state. Scope-depth exhaustion marks the frame incomplete through
+the same `CommandOverflow` status as command-capacity exhaustion.
 
 `UiSkia::snapshot()` is a read-only diagnostic record for attachment/generation,
 save depth, clip/transform depth, and active image/font bindings;

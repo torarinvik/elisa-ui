@@ -500,7 +500,8 @@ separate host-enforced security boundary.
 - Deferred clip and transform scopes now carry a typed Elisa-side LIFO ledger
   and replay through the immediate save/clip/transform helpers. Mismatched pops
   and depth exhaustion are rejected before any native restore can target the
-  wrong scope.
+  wrong scope; depth exhaustion also reports `CommandOverflow` so callback
+  content cannot be silently dropped.
 - The shared event queue now rejects typed key, pointer-button, and gamepad
   ordinals that normalize to `Event.None`, instead of reporting a successful
   enqueue for a silently discarded no-op. The queue retains its existing
