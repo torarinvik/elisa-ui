@@ -60,6 +60,13 @@ def widget_with_kind(kind: UiConst::WidgetKind) -> UiHandles::Handle:
             return handle if row.kind == kind
     return UiHandles::invalid()
 
+def widget_with_kind_and_text(kind: UiConst::WidgetKind, expected: sview) -> UiHandles::Handle:
+    for index in 0..<UiHandles::count():
+        handle: UiHandles::Handle = UiHandles::from_index(index)
+        if UiHandles::widget(handle) is row:
+            return handle if row.kind == kind and row.text == expected
+    return UiHandles::invalid()
+
 def has_widget_text(expected: sview) -> bool:
     for index in 0..<UiHandles::count():
         handle: UiHandles::Handle = UiHandles::from_index(index)
@@ -157,6 +164,20 @@ def prepare_public_workflow() -> i32:
     check_workflow(custom_art_command_count() >= 6)
     check_workflow(UiCore::accessibility_count() > 10)
 
+    # Exercise the reference app's public list/detail and value-change paths
+    # before the frame is handed to Skia. These callbacks mutate retained
+    # labels and progress state; a later layout/paint must preserve them.
+    HelloCatalog::select(1)
+    check_workflow(has_widget_text("Mint study — balanced spacing for calm dashboards."))
+    slider: UiHandles::Handle = widget_with_kind(UiConst::WidgetKind.Slider)
+    progress: UiHandles::Handle = widget_with_kind_and_text(UiConst::WidgetKind.ProgressBar, "Preview level")
+    previous_value: f32 = UiHandles::value(slider)
+    check_workflow(UiHandles::is_valid(slider) and UiHandles::is_valid(progress))
+    adjusted_slider: bool = UiHandles::adjust_step(slider, 1)
+    check_workflow(adjusted_slider)
+    check_workflow(UiHandles::value(slider) > previous_value)
+    check_workflow(UiHandles::value(progress) == UiHandles::value(slider))
+
     field: UiHandles::Handle = widget_with_kind(UiConst::WidgetKind.TextField)
     check_workflow(UiHandles::is_valid(field))
     if UiHandles::widget(field) is field_row:
@@ -178,6 +199,7 @@ def prepare_public_workflow() -> i32:
     app_event(UiCore::KeyEvent.Down(UiCore::Key.T))
     app_event(UiCore::KeyEvent.Down(UiCore::Key.P))
     app_event(UiCore::KeyEvent.Down(UiCore::Key.R))
+    check_workflow(has_widget_text("Mint study — balanced spacing for calm dashboards."))
     app_event(UiCore::KeyEvent.Down(UiCore::Key.F))
     check_workflow(has_widget_text("Preview failed — retry or keep working offline."))
     app_event(UiCore::KeyEvent.Down(UiCore::Key.Y))

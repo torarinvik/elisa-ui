@@ -44,6 +44,13 @@ def widget_with_kind(kind: UiConst::WidgetKind) -> UiHandles::Handle:
             return handle if row.kind == kind
     return UiHandles::invalid()
 
+def widget_with_kind_and_text(kind: UiConst::WidgetKind, expected: sview) -> UiHandles::Handle:
+    for index in 0..<UiHandles::count():
+        handle: UiHandles::Handle = UiHandles::from_index(index)
+        if UiHandles::widget(handle) is row:
+            return handle if row.kind == kind and row.text == expected
+    return UiHandles::invalid()
+
 def has_widget_text(expected: sview) -> bool:
     for index in 0..<UiHandles::count():
         handle: UiHandles::Handle = UiHandles::from_index(index)
@@ -60,6 +67,20 @@ def main() -> i64:
     check("showcase builds a retained application tree", UiHandles::count() > 20 and UiCore::command_count() > 20)
     check("showcase emits custom vector art inside the retained frame", custom_art_command_count() >= 6)
     check("showcase publishes semantic controls", UiCore::accessibility_count() > 10)
+
+    # The shipped catalog and slider are public application callbacks over the
+    # retained tree. Keep their state changes in this workflow fixture rather
+    # than hiding them in a helper-only widget test.
+    HelloCatalog::select(1)
+    check("showcase selects a retained list/detail item", has_widget_text("Mint study — balanced spacing for calm dashboards."))
+    slider: UiHandles::Handle = widget_with_kind(UiConst::WidgetKind.Slider)
+    progress: UiHandles::Handle = widget_with_kind_and_text(UiConst::WidgetKind.ProgressBar, "Preview level")
+    previous_value: f32 = UiHandles::value(slider)
+    check("showcase exposes typed slider and progress handles", UiHandles::is_valid(slider) and UiHandles::is_valid(progress))
+    adjusted_slider: bool = UiHandles::adjust_step(slider, 1)
+    check("showcase slider callback is accepted", adjusted_slider)
+    check("showcase slider callback updates retained value", UiHandles::value(slider) > previous_value)
+    check("showcase slider callback updates progress", UiHandles::value(progress) == UiHandles::value(slider))
 
     field: UiHandles::Handle = widget_with_kind(UiConst::WidgetKind.TextField)
     check("showcase exposes an editable text field", UiHandles::is_valid(field))
@@ -86,6 +107,7 @@ def main() -> i64:
     UiCore::begin_frame()
     app_frame()
     check("showcase state callbacks rebuild a paintable frame", UiCore::command_count() > 20 and UiCore::accessibility_count() > 10)
+    check("showcase restore preserves selected detail", has_widget_text("Mint study — balanced spacing for calm dashboards."))
 
     # F/Y exercise failure followed by a fresh resource generation. Rendering
     # the replacement frame immediately catches stale presentation state that
