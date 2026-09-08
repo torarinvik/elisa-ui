@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `3a19e3b` (`feat: add current-theme Skia surface helper`) on branch `work` |
+| elisa-ui revision | `e9dd928` (`feat: expose theme-aware Skia surfaces`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -58,6 +58,9 @@ and 2x text-scale target path without opening a window.
 `UiInspector::frame_with_system_contrast` accepts the host contrast fact so
 diagnostic geometry reflects the active platform profile instead of assuming
 normal contrast.
+`UiSkia::fill_themed_surface` and `fill_current_themed_surface` consume
+Elisa-owned corner-radius/theme metrics through the narrow Skia bridge; the
+full headless suite, including the recorder-backed Skia test, passes.
 `UiSkia::fill_current_themed_surface` resolves the same Elisa preferences and
 host contrast fact before emitting rounded surfaces; the full off-screen Skia
 recorder suite passes.
