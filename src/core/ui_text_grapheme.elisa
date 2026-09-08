@@ -25,7 +25,7 @@ extend UiText:
                 previous_scalar <- scalar_value(text, cursor)
                 cursor <- cursor + utf8_scalar_bytes(text, cursor)
             result: usize =
-                for _ in 0..<limit |cursor, previous_scalar, emoji_base: bool = grapheme_extended_pictographic(first), emoji_zwj: bool = false, indic_context: u32 = (1 if grapheme_consonant(first) else 0)| -> cursor:
+                for _ in 0..<limit |cursor, previous_scalar, emoji_base: bool = grapheme_extended_pictographic(first), emoji_zwj: bool = false, indic_context: u32 = (1 if grapheme_consonant(first) else 0), prepend_context: bool = grapheme_prepend(first)| -> cursor:
                     break if cursor >= limit
                     scalar: u32 = scalar_value(text, cursor)
                     width: usize = utf8_scalar_bytes(text, cursor)
@@ -36,39 +36,47 @@ extend UiText:
                         cursor <- cursor + width
                         emoji_zwj <- emoji_base
                         emoji_base <- false
+                        prepend_context <- false
                         previous_scalar <- scalar
                     elif emoji_zwj and grapheme_extended_pictographic(scalar):
                         cursor <- cursor + width
                         emoji_zwj <- false
                         emoji_base <- true
+                        prepend_context <- false
                         previous_scalar <- scalar
                     elif grapheme_linker(scalar):
                         cursor <- cursor + width
                         indic_context <- 2 if indic_context == 1 else 0
                         emoji_base <- false
+                        prepend_context <- false
                         previous_scalar <- scalar
                     elif extends_grapheme(scalar):
                         cursor <- cursor + width
+                        prepend_context <- false
                         previous_scalar <- scalar
                     elif grapheme_spacing_mark(scalar):
                         cursor <- cursor + width
                         indic_context <- 0
                         emoji_base <- false
+                        prepend_context <- false
                         previous_scalar <- scalar
-                    elif grapheme_prepend(previous_scalar):
+                    elif prepend_context:
                         cursor <- cursor + width
                         indic_context <- 0
                         emoji_base <- false
+                        prepend_context <- grapheme_prepend(scalar)
                         previous_scalar <- scalar
                     elif hangul_joins(previous_scalar, scalar):
                         cursor <- cursor + width
                         indic_context <- 0
                         emoji_base <- false
+                        prepend_context <- false
                         previous_scalar <- scalar
                     elif indic_context == 2 and grapheme_consonant(scalar):
                         cursor <- cursor + width
                         indic_context <- 1
                         emoji_base <- false
+                        prepend_context <- false
                         previous_scalar <- scalar
                     else:
                         break

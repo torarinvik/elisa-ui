@@ -214,7 +214,7 @@ ELISA_UI_STAGE1=../wasm-sdk-compiler bash scripts/check_toolchain.sh
   stage1 branch=codex/wasm-sdk revision=c6948142f19d0fa66089ca33ab5718c435738f15 (ahead=85 behind=0 vs origin/main)
   product_sha256=56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574
   runtime_sha256=cb06532f0c37540284de4ceaa622d0da9193f113877ac391fb00bad4bf9ff1e9
-ELISA_UI_STAGE1=../wasm-sdk-compiler bash scripts/run_tests.sh
+ELISA_UI_REQUIRE_REAL_SKIA=0 ELISA_UI_STAGE1=../wasm-sdk-compiler bash scripts/run_tests.sh
   source-size gate,
   capi, appkit, appkit canvas, appkit canvas keymap, capi bridge,
   controls, dialog, drop raii, event wire, gestures, hierarchy build/layout,
@@ -228,8 +228,10 @@ scripts/check_source_sizes.sh
   all tracked Elisa modules are at or below 400 lines: PASS
 scripts/check_global_names.sh
   all mutable module-global names are unique across the source tree: PASS
-scripts/check_skia.sh
-  Elisa painter and pinned Skia host bridge compile headlessly: PASS
+scripts/check_skia.sh (strict default, no SKIA_ROOT in this checkout)
+  required real-renderer dependency gate: EXIT 2 (expected; pinned SDK/archive not installed)
+ELISA_UI_REQUIRE_REAL_SKIA=0 ELISA_UI_STAGE1=../wasm-sdk-compiler bash scripts/check_skia.sh
+  Elisa painter compile-only edit loop: PASS (not renderer evidence)
 scripts/check_appkit_skia.sh (with the pinned checkout configured)
   optional AppKit/Skia compositor and bitmap-context fixture: PASS
 ELISA_UI_STAGE1=../wasm-sdk-compiler bash scripts/check_performance.sh
