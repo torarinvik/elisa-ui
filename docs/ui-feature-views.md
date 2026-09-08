@@ -20,6 +20,12 @@ states (`Ready`, offline, denied, incompatible, and failed) cannot be revived
 in place. `retry()` rotates the generation and returns a replacement handle,
 so late host results cannot update a newly requested feature.
 
+`resolve()` accepts only a terminal result (a repeated `Loading` report is
+rejected) and requires failure metadata to match the terminal state: offline,
+denied, and incompatible results use their corresponding failure kind, while a
+successful result uses `Unknown`. This keeps retry and error presentation
+decisions deterministic at the framework boundary.
+
 The visible states are `Requested`, `Loading`, `Ready`,
 `UnavailableOffline`, `Denied`, `Incompatible`, `Failed`, and `Cancelled`.
 `FeatureFailureKind` distinguishes retryable transport errors from corrupt,

@@ -139,10 +139,20 @@ module UiFeatureView:
             return false if not is_valid(handle) or activation_id == 0
             slot: usize = handle.slot.usize()
             return false if feature_activation_ids[slot] != activation_id or feature_states[slot] != FeatureState.Loading
-            return false if next != FeatureState.Loading and next != FeatureState.Ready and next != FeatureState.UnavailableOffline and next != FeatureState.Denied and next != FeatureState.Incompatible and next != FeatureState.Failed
+            # Polling resolves a loading operation to a terminal fact. A
+            # repeated Loading result is not progress and must not generate a
+            # spurious presentation invalidation.
+            return false if next != FeatureState.Ready and next != FeatureState.UnavailableOffline and next != FeatureState.Denied and next != FeatureState.Incompatible and next != FeatureState.Failed
+            # Keep state and failure metadata coherent. Otherwise a host could
+            # report an offline state with a retryable failure (or vice versa),
+            # leaving application policy to infer contradictory actions.
             return false if next == FeatureState.Failed and not failure_is_valid(failure)
+            return false if next == FeatureState.UnavailableOffline and failure != FeatureFailureKind.Offline
+            return false if next == FeatureState.Denied and failure != FeatureFailureKind.Denied
+            return false if next == FeatureState.Incompatible and failure != FeatureFailureKind.Incompatible
+            return false if next == FeatureState.Ready and failure != FeatureFailureKind.Unknown
             feature_states[slot] <- next
-            feature_failures[slot] <- failure if next == FeatureState.Failed else FeatureFailureKind.Unknown
+            feature_failures[slot] <- failure if next != FeatureState.Ready else FeatureFailureKind.Unknown
             mark_changed()
             return true
 
