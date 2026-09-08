@@ -331,12 +331,15 @@ window; `scripts/check_appkit_canvas.sh` uses this mode automatically. Add
 `ELISA_UI_SNAPSHOT=/absolute/path/frame.png` to save that frame for visual
 regression inspection without foregrounding the application.
 
-The optional Skia custom-canvas product uses the pinned CPU-raster bridge and
-can be built/checked headlessly with
+The Skia custom-canvas product uses the pinned CPU-raster bridge and can be
+reproduced headlessly with depot_tools: first run
+`SKIA_ROOT=/path/to/skia SKIA_OUT=/path/to/skia/out/elisa scripts/build_skia.sh`,
+then run
 `SKIA_ROOT=/path/to/skia SKIA_OUT=/path/to/skia/out/elisa scripts/check_appkit_skia.sh`.
 It presents the Elisa command batch through Skia into an AppKit/CoreGraphics
-context; the ordinary canvas build retains its CoreGraphics fallback when no
-Skia SDK is supplied.
+context. `scripts/run_tests.sh` requires the same real renderer gate by default;
+set `ELISA_UI_REQUIRE_REAL_SKIA=0` only for a compiler-only edit loop when the
+large SDK is not available.
 
 The native backend loads a font with SDL_ttf; set `ELISA_UI_FONT` to override
 the default. Text still measures through the platform contract on both

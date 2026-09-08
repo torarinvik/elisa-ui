@@ -246,12 +246,15 @@ boolean: `SkippedNoSurface`, `Complete`, or `CommandOverflow`.
 The checked-in source pin is `third_party/skia.lock`: Skia `chrome/m150` at
 `9c7b2dffb2433f5a0cc2b77f06025a09126807ed`, with a deterministic macOS arm64
 CPU-raster GN configuration. The SDK and generated archive are kept out of the
-repository, but a host can fetch Skia's DEPS, build `libskia.a`, and run
+repository. With depot_tools installed, the lockfile-driven
 `SKIA_ROOT=/path/to/skia SKIA_OUT=/path/to/skia/out/elisa bash
-scripts/check_skia.sh`. That command compiles the real bridge, links the
-production shim with the Elisa fixture, renders a real off-screen `SkSurface`,
-checks representative shape and glyph pixels, and saves a PNG; it never orders
-an AppKit window onscreen. `src/platform/appkit/appkit_skia_host.cpp` provides
+scripts/build_skia.sh` command fetches the exact revision, syncs DEPS, runs the
+pinned GN arguments, and builds `libskia.a`; then
+`SKIA_ROOT=/path/to/skia SKIA_OUT=/path/to/skia/out/elisa bash
+scripts/check_skia.sh` compiles the real bridge, links the production shim with
+the Elisa fixture, renders a real off-screen `SkSurface`, checks representative
+shape and glyph pixels, and saves a PNG; it never orders an AppKit window onscreen.
+`src/platform/appkit/appkit_skia_host.cpp` provides
 the optional AppKit compositor: when linked, `drawRect` hands its borrowed
 CoreGraphics context to this bridge, which presents the temporary Skia surface;
 the ordinary AppKit build still uses its CoreGraphics fallback.

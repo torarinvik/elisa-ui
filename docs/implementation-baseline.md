@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `a25ec38` (`fix(skia): bound stroked circle geometry`) on branch `work` |
+| elisa-ui revision | `7ded9cc` (`test(skia): require ordered renderer evidence`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -177,7 +177,7 @@ module-private.
 | SDL3 native | implemented-tested | `scripts/run_tests.sh`; SDL keymap/text tests and dummy-video smoke path pass. |
 | AppKit native controls | implemented-tested | `scripts/check_appkit.sh` creates and reads real NSWindow/NSView/control objects without ordering a window onscreen. |
 | AppKit custom canvas | implemented-tested | `scripts/check_appkit_canvas.sh` builds/signs the app, renders an off-screen PNG, and exercises semantic-object identity and callbacks. |
-| Skia custom painter | implemented-tested with real off-screen and AppKit/CG contexts; foreground window verification pending | `third_party/skia.lock` pins the source/build tuple. `scripts/check_skia.sh` verifies the CPU-raster surface; `scripts/check_appkit_skia.sh` additionally builds the optional AppKit compositor and presents the fixture into a headless CoreGraphics bitmap context, checking exact shape and glyph pixels. The repository does not vendor the multi-gigabyte SDK/build output. |
+| Skia custom painter | implemented-tested when the pinned SDK/archive is present; required gate | `scripts/build_skia.sh` reproduces the checkout/archive from `third_party/skia.lock`; strict `scripts/check_skia.sh` and `scripts/check_appkit_skia.sh` render headlessly and report pixel/timing evidence. This checkout intentionally does not vendor the multi-gigabyte SDK/build output, so a local run without `SKIA_ROOT` is an explicit non-passing dependency failure. |
 | Optional feature view | implemented-tested at Elisa boundary; host activation integration planned | `test/feature_view_test.elisa` covers typed identity, activation tokens, stale polling, terminal failures, retry generations, cancellation, owner disposal, and invalidation. The SDK/host remains responsible for actual component activation and deactivation. |
 | WasmBrowser hosted | implemented-tested for fresh package/inspect; runtime launch planned | `ELISA_UI_STAGE1=../wasm-sdk-compiler bash scripts/build_wapp.sh hello` now emits and packs the component, and `scripts/check_wapp.sh` passes profile/import/export inspection. Runtime launch and device execution still need dedicated fixtures. |
 | Android standalone | planned | No Android build or device fixture exists in this checkout. |
@@ -606,6 +606,20 @@ separate host-enforced security boundary.
   anchors, and replay interleaves the two streams in application order. Queue
   overflow reports `CommandOverflow`, while surface loss cancels copied work;
   the hosted six-command ABI and native object ownership remain unchanged.
+- The real showcase now has an application-level headless workflow in
+  `test/showcase_workflow_test.elisa`: it builds the shared `examples/hello`
+  tree, verifies retained custom vector commands and semantics, drives pointer
+  focus plus UTF-8/IME editing, saves/restores application state, and replaces
+  a failed resource generation before the next frame.
+- `test/unicode_conformance_test.elisa` carries a data-driven UAX #29 corpus
+  for combining marks, emoji ZWJ/modifier and regional-indicator sequences,
+  Indic and Hangul joins, CRLF, RTL text, and malformed-byte recovery. The
+  retained editor and layout walkers now have conformance evidence separate
+  from renderer-specific helper tests.
+- `test/skia_offscreen_host.cpp` repeats complete real SkSurface frames and
+  reports render total/average nanoseconds, while `docs/ui-performance.md`
+  records the distinction between retained-tree safety ceilings and actual
+  raster evidence.
 - Immediate Skia clip and transform scopes now fail closed at an Elisa-owned
   depth budget. Rejected pushes make no native calls; transform pushes report
   rejection so callers cannot accidentally pop an older scope, while detach
