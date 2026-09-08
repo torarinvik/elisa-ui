@@ -49,6 +49,14 @@ if ! bash "$ROOT/scripts/check_unicode_conformance.sh"; then
   status=1
 fi
 
+# Keep a measured retained-tree workload in the required suite. This is a
+# safety/performance gate for application-scale layout, paint, text and editing
+# work; it never opens a native window and reports its own timing/RSS evidence.
+if ! bash "$ROOT/scripts/check_performance.sh"; then
+  echo "FAIL performance benchmark"
+  status=1
+fi
+
 # The C boundary is checked by building a real C program against the library --
 # the header and the Elisa side are two hand-written descriptions of one ABI, and
 # nothing in the Elisa suite sees the header.
