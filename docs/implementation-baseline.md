@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `8e73552` (`refactor(skia): centralize style primitives`) on branch `work` |
+| elisa-ui revision | `a25ec38` (`fix(skia): bound stroked circle geometry`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -646,9 +646,9 @@ separate host-enforced security boundary.
   stroke widths, shadow offsets/blur, and text sizes outside Elisa's bounded
   geometry domain; hostile direct calls are covered by the real raster host.
 - Skia circle normalization now also bounds the radius against both center
-  axes, keeping the full disk inside the finite geometry envelope before the
-  FFI; the native bridge applies the same derived-edge rejection to direct
-  foreign circle calls.
+  axes, accounting for half the stroke width on stroked circles so the full
+  disk stays inside the finite geometry envelope before the FFI; the native
+  bridge applies the same derived-edge rejection to direct foreign calls.
 - Retained Skia replay now routes circle, triangle, and hairline-line commands
   through the same Elisa primitive helpers as immediate custom drawing, so
   geometry and alpha validation cannot drift between paint entry points.
