@@ -47,8 +47,10 @@ application-owned.
 `UiFlat::apply_metrics` and its typed-handle forwarding apply those tokens to
 focus, text, slider, and choice painter state; corner-radius remains reserved
 until a flat rounded-primitive path exists.
-`apply_system_theme` now applies palette and geometry atomically, so runtime
-contrast and text-scale changes cannot leave stale control affordances behind.
+`apply_system_theme` now applies palette and geometry in one coordinated API,
+so runtime contrast and text-scale changes cannot leave stale control
+affordances behind; the underlying preference and theme setters retain their
+documented invalidation semantics.
 
 ## Source and boundary inventory
 
