@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `d684161` (`feat(skia): derive image fit from resource metadata`) on branch `work` |
+| elisa-ui revision | `39348e7` (`feat(skia): compose interactive text painting`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -355,6 +355,9 @@ the borrowed `SkImage*` crosses the narrow bridge, and bound-resource variants
 reuse the same generation-safe image gate. A bound image can also consume its
 generation-scoped `UiResources::intrinsic_size()` metadata directly, keeping
 decoded dimensions out of application widget state.
+Interactive text blocks now compose selection, glyphs, and caret painting in
+one measured pass with one clip scope, preserving selection-before-text and
+caret-after-text ordering while leaving blink scheduling in widget state.
 The C++ bridge wraps each borrowed typeface in a temporary `sk_sp` reference
 for SkFont's ownership contract without transferring disposal authority from
 the host.
