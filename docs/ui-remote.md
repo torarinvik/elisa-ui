@@ -14,7 +14,8 @@ layout. The selected record contains both physical and logical dimensions so a
 host can resize without changing widget state.
 Viewport conversion is fail-closed: `logical_size()` returns a zero size until
 the selection is accepted, so rejected or disconnected offers cannot inject a
-plausible layout viewport.
+plausible layout viewport. Negotiation also rejects zero-sized physical surface
+offers before entering the connected state.
 
 `connect`, `suspend`, `resume`, and `disconnect` form the lifecycle contract.
 Each successful connection and disconnect advances a generation; a suspended
