@@ -76,7 +76,8 @@ the cache, and clusters larger than its copy budget bypass it.
 
 Direct geometry calls and replayed commands share the private
 `ui_skia_geometry.elisa` policy. Coordinates and extents are finite and capped,
-empty rectangles/circles are rejected, and corner radii are clamped to half the
+empty rectangles/circles are rejected, circle radii are clamped so the full
+disk stays inside the shared envelope, and corner radii are clamped to half the
 shortest box edge before reaching Skia. The C++ bridge therefore remains a
 primitive adapter rather than a second, drifting geometry policy.
 

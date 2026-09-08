@@ -70,6 +70,13 @@ bool valid_source_rect(float x, float y, float width, float height) {
     return x >= 0.0f && y >= 0.0f && valid_rect(x, y, width, height);
 }
 
+bool valid_circle(float x, float y, float radius) {
+    return bounded_coordinate(x) && bounded_coordinate(y) && bounded_extent(radius) &&
+        finite(x - radius) && finite(x + radius) && finite(y - radius) && finite(y + radius) &&
+        x - radius >= -max_geometry_extent && x + radius <= max_geometry_extent &&
+        y - radius >= -max_geometry_extent && y + radius <= max_geometry_extent;
+}
+
 bool valid_scale(float x, float y) {
     return bounded_extent(x) && bounded_extent(y);
 }
@@ -328,7 +335,7 @@ extern "C" void elisa_skia_canvas_fill_circle(std::size_t handle, float x, float
                                                 std::uint8_t red, std::uint8_t green, std::uint8_t blue,
                                                 std::uint8_t alpha) {
     if (SkCanvas *target = canvas(handle);
-        target != nullptr && bounded_coordinate(x) && bounded_coordinate(y) && bounded_extent(radius)) {
+        target != nullptr && valid_circle(x, y, radius)) {
         target->drawCircle(x, y, radius, fill_paint(red, green, blue, alpha));
     }
 }
@@ -338,7 +345,7 @@ extern "C" void elisa_skia_canvas_stroke_circle(std::size_t handle, float x, flo
                                                   std::uint8_t green, std::uint8_t blue,
                                                   std::uint8_t alpha) {
     if (SkCanvas *target = canvas(handle);
-        target != nullptr && bounded_coordinate(x) && bounded_coordinate(y) && bounded_extent(radius) &&
+        target != nullptr && valid_circle(x, y, radius) &&
         bounded_extent(stroke_width)) {
         target->drawCircle(x, y, radius, stroke_paint(red, green, blue, alpha, stroke_width));
     }

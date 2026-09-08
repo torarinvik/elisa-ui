@@ -65,11 +65,16 @@ extend UiSkia:
             return safe_radius
 
         def skia_safe_circle(disc: UiCore::Circle) -> UiCore::Circle:
+            safe_x: f32 = UiCore::bounded_coordinate(disc.center.x)
+            safe_y: f32 = UiCore::bounded_coordinate(disc.center.y)
+            safe_radius: mutable f32 = UiCore::bounded_extent(disc.radius)
+            horizontal_room: f32 = UiCore::MAX_GEOMETRY_EXTENT - safe_x if safe_x >= 0.0 else UiCore::MAX_GEOMETRY_EXTENT + safe_x
+            vertical_room: f32 = UiCore::MAX_GEOMETRY_EXTENT - safe_y if safe_y >= 0.0 else UiCore::MAX_GEOMETRY_EXTENT + safe_y
+            radius_room: f32 = horizontal_room if horizontal_room < vertical_room else vertical_room
+            safe_radius <- radius_room if safe_radius > radius_room else safe_radius
             return UiCore::Circle{
-                center: UiCore::Vec2(
-                    UiCore::bounded_coordinate(disc.center.x),
-                    UiCore::bounded_coordinate(disc.center.y)),
-                radius: UiCore::bounded_extent(disc.radius)}
+                center: UiCore::Vec2(safe_x, safe_y),
+                radius: safe_radius}
 
         def skia_safe_triangle(tri: UiCore::Triangle) -> UiCore::Triangle:
             return UiCore::Triangle{
