@@ -112,9 +112,14 @@ def prepare_public_workflow() -> i32:
 
 def showcase_skia_render(canvas: usize, font: usize) -> i32 can[Ui.Draw, Ui.Text]:
     ensure_showcase()
-    build_headless_frame()
-    return UiSkia::RenderStatus.SkippedNoSurface.i32() if canvas == 0
     UiSkia::begin_deferred_frame()
+    # The real AppKit/Skia host brackets app_frame before borrowing its
+    # canvas. Keep that order here so any showcase control using a deferred
+    # Skia primitive is captured and replayed rather than silently dropped.
+    build_headless_frame()
+    if canvas == 0:
+        UiSkia::end_deferred_frame()
+        return UiSkia::RenderStatus.SkippedNoSurface.i32()
     UiSkia::attach(canvas)
     status: UiSkia::RenderStatus = UiSkia::render_status_with_font(font)
     UiSkia::detach()
