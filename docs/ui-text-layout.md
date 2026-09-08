@@ -66,6 +66,10 @@ line-height and width caches.
 `UiTextMetrics::snapshot()` exposes the active generations and bounded query/miss
 counters for inspector and performance diagnostics.
 
+Measured layouts also provide opt-in `*_direction` hit-test, caret, and
+selection helpers. They mirror a single base-direction line for RTL; mixed
+bidirectional runs remain the selected renderer's shaped-run responsibility.
+
 `UiSkia::text_caret_rect()` and `UiSkia::draw_text_caret()` use the same
 positioned line metrics for a grapheme-safe caret. Blink timing and visibility
 remain application/widget state, while the helper bounds the caret to the

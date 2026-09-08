@@ -6,6 +6,7 @@
 # of Elisa.
 
 include "../core/ui_core.elisa"
+include "./ui_localization.elisa"
 
 module UiTextMeasureLayout:
     public:
@@ -171,6 +172,15 @@ module UiTextMeasureLayout:
                     cursor <- cursor + cluster_length
             return result
 
+        # Direction-aware hit testing for a single base-direction line. This
+        # mirrors the local coordinate before applying grapheme hit testing;
+        # mixed bidi runs still require the renderer's shaped-run authority.
+        def hit_test_line_direction(text: sview, index: usize, local_x: f32, size: f32, direction: UiLocalization::Direction, width_provider: fn(sview, f32) -> f32) -> usize:
+            return hit_test_line(text, index, local_x, size, width_provider) if direction == UiLocalization::Direction.LeftToRight
+            range: LineRange = line_at(index)
+            mirrored_x: f32 = range.width - UiCore::bounded_coordinate(local_x)
+            return hit_test_line(text, index, mirrored_x, size, width_provider)
+
         # Return the local x coordinate for a requested byte offset. Offsets
         # that land inside a grapheme are normalized to that cluster's leading
         # edge, matching hit testing and preventing caret rendering from
@@ -194,6 +204,12 @@ module UiTextMeasureLayout:
                     accumulated <- UiCore::bounded_extent(accumulated + UiCore::bounded_extent(width_provider(cluster, size)))
                     cursor <- cursor + cluster_length
             return result
+
+        def caret_x_for_line_direction(text: sview, index: usize, byte_offset: usize, size: f32, direction: UiLocalization::Direction, width_provider: fn(sview, f32) -> f32) -> f32:
+            logical_x: f32 = caret_x_for_line(text, index, byte_offset, size, width_provider)
+            return logical_x if direction == UiLocalization::Direction.LeftToRight
+            range: LineRange = line_at(index)
+            return UiCore::bounded_coordinate(range.width - logical_x)
 
         # Intersect a UTF-8 byte selection with one measured line and return
         # geometry in that line's local coordinate space. Both endpoints are
@@ -220,6 +236,13 @@ module UiTextMeasureLayout:
             trailing: f32 = caret_x_for_line(safe_text, index, second, size, width_provider)
             width: f32 = trailing - leading if trailing > leading else 0.0
             return SelectionRange{start: first, end: second, x: leading, width: UiCore::bounded_extent(width)}
+
+        def selection_for_line_direction(text: sview, index: usize, selection_start: usize, selection_end: usize, size: f32, direction: UiLocalization::Direction, width_provider: fn(sview, f32) -> f32) -> SelectionRange:
+            selection: SelectionRange = selection_for_line(text, index, selection_start, selection_end, size, width_provider)
+            return selection if direction == UiLocalization::Direction.LeftToRight or selection.width <= 0.0
+            range: LineRange = line_at(index)
+            return SelectionRange{start: selection.start, end: selection.end,
+                x: UiCore::bounded_coordinate(range.width - selection.x - selection.width), width: selection.width}
 
     private:
         def floor_offset_for_line(text: sview, index: usize, byte_offset: usize) -> usize:
