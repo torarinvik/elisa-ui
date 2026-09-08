@@ -1,0 +1,217 @@
+# Elisa-owned deferred primitives for Skia custom controls.
+#
+# AppKit prepares `app_frame` before it can borrow a SkCanvas. This bounded
+# side-band queue lets a Skia-specific custom control issue richer primitives
+# during that callback without widening UiCore's six-command hosted ABI. The
+# queue copies text into Elisa storage and never retains host pointers.
+
+include "../../core/ui_core.elisa"
+
+extend UiSkia:
+    public:
+        const MAX_DEFERRED_COMMANDS: usize = 256
+        const MAX_DEFERRED_TEXT_BYTES: usize = 256
+
+        const enum DeferredKind of i32:
+            None = 0
+            FillRoundedRect = 1
+            StrokeRoundedRect = 2
+            FillLinearGradient = 3
+            FillCircle = 4
+            StrokeCircle = 5
+            FillTriangle = 6
+            StrokeLine = 7
+            DrawImage = 8
+            DrawText = 9
+
+        # The scope is explicit so the same app can use the Skia helpers in a
+        # backend-neutral frame without silently accumulating work when no
+        # Skia host is active. Hosts must bracket the application callback.
+        def begin_deferred_frame() -> void:
+            deferred_count_state <- 0
+            deferred_overflow_state <- false
+            deferred_frame_active <- true
+
+        def end_deferred_frame() -> void:
+            deferred_frame_active <- false
+            deferred_count_state <- 0
+            deferred_overflow_state <- false
+
+        # Surface loss is allowed to abort a frame before the host reaches its
+        # normal end hook. Drop copied text and commands with the borrowed
+        # canvas rather than carrying them into a replacement generation.
+        def cancel_deferred_frame() -> void:
+            UiSkia::end_deferred_frame()
+
+        def deferred_count() -> usize:
+            return deferred_count_state
+
+        def deferred_overflowed() -> bool:
+            return deferred_overflow_state
+
+        def defer_fill_rounded_rect(box: UiCore::Rect, radius: f32, color: UiCore::Color) -> bool can[Ui.Draw]:
+            return false if not deferred_frame_active or color.a == 0
+            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+            return false if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
+            return UiSkia::enqueue_deferred(DeferredCommand{
+                kind: DeferredKind.FillRoundedRect, box: safe_box, color: color, secondary: UiCore::Color{r: 0, g: 0, b: 0, a: 0},
+                circle: UiCore::Circle{center: UiCore::Vec2(0.0, 0.0), radius: 0.0},
+                triangle: UiCore::Triangle{a: UiCore::Vec2(0.0, 0.0), b: UiCore::Vec2(0.0, 0.0), c: UiCore::Vec2(0.0, 0.0)},
+                line: UiCore::Line{from_point: UiCore::Vec2(0.0, 0.0), to_point: UiCore::Vec2(0.0, 0.0)},
+                radius: radius, stroke_width: 0.0, image: 0, alpha: 0, sampling: UiSkia::ImageSampling.Linear,
+                text_offset: 0, text_length: 0, text_origin: UiCore::Vec2(0.0, 0.0), text_size: 0.0})
+
+        def defer_stroke_rounded_rect(box: UiCore::Rect, radius: f32, stroke_width: f32, color: UiCore::Color) -> bool can[Ui.Draw]:
+            return false if not deferred_frame_active or color.a == 0
+            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+            return false if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0 or UiCore::bounded_extent(stroke_width) <= 0.0
+            command: DeferredCommand = UiSkia::empty_deferred(DeferredKind.StrokeRoundedRect)
+            command.box <- safe_box
+            command.radius <- radius
+            command.stroke_width <- stroke_width
+            command.color <- color
+            return UiSkia::enqueue_deferred(command)
+
+        def defer_fill_linear_gradient(box: UiCore::Rect, start: UiCore::Color, end: UiCore::Color, horizontal: bool) -> bool can[Ui.Draw]:
+            return false if not deferred_frame_active or (start.a == 0 and end.a == 0)
+            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+            return false if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
+            command: DeferredCommand = UiSkia::empty_deferred(DeferredKind.FillLinearGradient)
+            command.box <- safe_box
+            command.color <- start
+            command.secondary <- end
+            command.alpha <- 1 if horizontal else 0
+            return UiSkia::enqueue_deferred(command)
+
+        def defer_fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> bool can[Ui.Draw]:
+            return false if not deferred_frame_active or color.a == 0 or UiCore::bounded_extent(disc.radius) <= 0.0
+            command: DeferredCommand = UiSkia::empty_deferred(DeferredKind.FillCircle)
+            command.circle <- disc
+            command.color <- color
+            return UiSkia::enqueue_deferred(command)
+
+        def defer_stroke_circle(disc: UiCore::Circle, stroke_width: f32, color: UiCore::Color) -> bool can[Ui.Draw]:
+            return false if not deferred_frame_active or color.a == 0 or UiCore::bounded_extent(disc.radius) <= 0.0 or UiCore::bounded_extent(stroke_width) <= 0.0
+            command: DeferredCommand = UiSkia::empty_deferred(DeferredKind.StrokeCircle)
+            command.circle <- disc
+            command.stroke_width <- stroke_width
+            command.color <- color
+            return UiSkia::enqueue_deferred(command)
+
+        def defer_fill_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> bool can[Ui.Draw]:
+            return false if not deferred_frame_active or color.a == 0
+            command: DeferredCommand = UiSkia::empty_deferred(DeferredKind.FillTriangle)
+            command.triangle <- tri
+            command.color <- color
+            return UiSkia::enqueue_deferred(command)
+
+        def defer_stroke_line(segment: UiCore::Line, stroke_width: f32, color: UiCore::Color) -> bool can[Ui.Draw]:
+            return false if not deferred_frame_active or color.a == 0 or UiCore::bounded_extent(stroke_width) <= 0.0
+            command: DeferredCommand = UiSkia::empty_deferred(DeferredKind.StrokeLine)
+            command.line <- segment
+            command.stroke_width <- stroke_width
+            command.color <- color
+            return UiSkia::enqueue_deferred(command)
+
+        def defer_image_with_sampling(image: usize, box: UiCore::Rect, alpha: u8, sampling: UiSkia::ImageSampling) -> bool can[Ui.Draw]:
+            return false if not deferred_frame_active or image == 0 or alpha == 0
+            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+            return false if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
+            command: DeferredCommand = UiSkia::empty_deferred(DeferredKind.DrawImage)
+            command.box <- safe_box
+            command.image <- image
+            command.alpha <- alpha
+            command.sampling <- sampling
+            return UiSkia::enqueue_deferred(command)
+
+        def defer_image(image: usize, box: UiCore::Rect, alpha: u8) -> bool can[Ui.Draw]:
+            return UiSkia::defer_image_with_sampling(image, box, alpha, UiSkia::ImageSampling.Linear)
+
+        def defer_text_run(run: UiCore::TextRun, color: UiCore::Color) -> bool can[Ui.Draw, Ui.Text]:
+            return false if not deferred_frame_active or color.a == 0 or run.text.len <= 0 or run.text.data == null
+            if deferred_count_state >= MAX_DEFERRED_COMMANDS:
+                deferred_overflow_state <- true
+                return false
+            safe_text: sview = UiCore::bounded_text(run.text)
+            return false if safe_text.len <= 0 or safe_text.data == null
+            length: usize = MAX_DEFERRED_TEXT_BYTES if safe_text.len.usize() > MAX_DEFERRED_TEXT_BYTES else safe_text.len.usize()
+            command: DeferredCommand = UiSkia::empty_deferred(DeferredKind.DrawText)
+            command.text_offset <- deferred_count_state * MAX_DEFERRED_TEXT_BYTES
+            command.text_length <- length
+            command.text_origin <- UiCore::Vec2(UiCore::bounded_coordinate(run.origin.x), UiCore::bounded_coordinate(run.origin.y))
+            command.text_size <- UiSkia::safe_font_size(run.size)
+            command.color <- color
+            for index in 0..<length:
+                deferred_text_storage[command.text_offset + index] <- safe_text.data[index]
+            return UiSkia::enqueue_deferred(command)
+
+    private:
+        struct DeferredCommand:
+            kind: mutable DeferredKind
+            box: mutable UiCore::Rect
+            circle: mutable UiCore::Circle
+            triangle: mutable UiCore::Triangle
+            line: mutable UiCore::Line
+            color: mutable UiCore::Color
+            secondary: mutable UiCore::Color
+            radius: mutable f32
+            stroke_width: mutable f32
+            image: mutable usize
+            alpha: mutable u8
+            sampling: mutable UiSkia::ImageSampling
+            text_offset: mutable usize
+            text_length: mutable usize
+            text_origin: mutable UiCore::Vec2
+            text_size: mutable f32
+
+        global mutable deferred_commands: DeferredCommand[MAX_DEFERRED_COMMANDS] = zeroed
+        global mutable deferred_text_storage: u8[MAX_DEFERRED_COMMANDS * MAX_DEFERRED_TEXT_BYTES] = zeroed
+        global mutable deferred_count_state: usize = 0
+        global mutable deferred_overflow_state: bool = false
+        global mutable deferred_frame_active: bool = false
+
+        def empty_deferred(kind: UiSkia::DeferredKind) -> DeferredCommand:
+            return DeferredCommand{
+                kind: kind, box: UiCore::Rect(0.0, 0.0, 0.0, 0.0),
+                circle: UiCore::Circle{center: UiCore::Vec2(0.0, 0.0), radius: 0.0},
+                triangle: UiCore::Triangle{a: UiCore::Vec2(0.0, 0.0), b: UiCore::Vec2(0.0, 0.0), c: UiCore::Vec2(0.0, 0.0)},
+                line: UiCore::Line{from_point: UiCore::Vec2(0.0, 0.0), to_point: UiCore::Vec2(0.0, 0.0)},
+                color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, secondary: UiCore::Color{r: 0, g: 0, b: 0, a: 0},
+                radius: 0.0, stroke_width: 0.0, image: 0, alpha: 0, sampling: UiSkia::ImageSampling.Linear,
+                text_offset: 0, text_length: 0, text_origin: UiCore::Vec2(0.0, 0.0), text_size: 0.0}
+
+        def enqueue_deferred(command: DeferredCommand) -> bool can[Ui.Draw]:
+            return false if not deferred_frame_active
+            if deferred_count_state >= MAX_DEFERRED_COMMANDS:
+                deferred_overflow_state <- true
+                return false
+            deferred_commands[deferred_count_state] <- command
+            deferred_count_state <- deferred_count_state + 1
+            return true
+
+        def replay_deferred() -> void can[Ui.Draw, Ui.Text]:
+            return if not deferred_frame_active or canvas_state == 0
+            for index in 0..<deferred_count_state:
+                command: DeferredCommand = deferred_commands[index]
+                match command.kind:
+                    UiSkia::DeferredKind.FillRoundedRect:
+                        UiSkia::fill_rounded_rect(command.box, command.radius, command.color)
+                    UiSkia::DeferredKind.StrokeRoundedRect:
+                        UiSkia::stroke_rounded_rect(command.box, command.radius, command.stroke_width, command.color)
+                    UiSkia::DeferredKind.FillLinearGradient:
+                        UiSkia::fill_linear_gradient(command.box, command.color, command.secondary, command.alpha != 0)
+                    UiSkia::DeferredKind.FillCircle:
+                        UiSkia::fill_circle(command.circle, command.color)
+                    UiSkia::DeferredKind.StrokeCircle:
+                        UiSkia::stroke_circle(command.circle, command.stroke_width, command.color)
+                    UiSkia::DeferredKind.FillTriangle:
+                        UiSkia::fill_triangle(command.triangle, command.color)
+                    UiSkia::DeferredKind.StrokeLine:
+                        UiSkia::stroke_line(command.line, command.stroke_width, command.color)
+                    UiSkia::DeferredKind.DrawImage:
+                        UiSkia::draw_image_with_sampling(command.image, command.box, command.alpha, command.sampling)
+                    UiSkia::DeferredKind.DrawText:
+                        UiSkia::draw_text_run(UiCore::TextRun(command.text_origin, command.text_size,
+                            sview(&deferred_text_storage[command.text_offset], 0, command.text_length.i64())), command.color)
+                    UiSkia::DeferredKind.None:
+                        pass

@@ -551,6 +551,13 @@ separate host-enforced security boundary.
   and transform state on detach/surface loss; the headless recorder verifies the
   transform FFI calls, balanced saves, and recovery when a control forgets to
   pop its transform.
+- AppKit creates its temporary SkCanvas after `app_frame`; the Skia adapter now
+  provides an explicit Elisa-owned deferred side-band queue in
+  `ui_skia_deferred.elisa`. `begin_deferred_frame()` brackets the callback,
+  `defer_*` helpers copy bounded values/text, and replay appends them after the
+  portable retained batch. Queue overflow reports `CommandOverflow`, while
+  surface loss cancels copied work; the hosted six-command ABI and native
+  object ownership remain unchanged.
 - Immediate Skia clip and transform scopes now fail closed at an Elisa-owned
   depth budget. Rejected pushes make no native calls; transform pushes report
   rejection so callers cannot accidentally pop an older scope, while detach

@@ -412,6 +412,34 @@ def main() -> i64:
     UiSkia::detach()
     _ = UiResources::dispose(rounded_image)
 
+    # AppKit creates the borrowed SkCanvas after app_frame. The explicit
+    # deferred scope keeps richer Skia-only primitives in Elisa until retained
+    # commands have been replayed, without changing the hosted six-command ABI.
+    UiCore::begin_frame()
+    skia_test_reset()
+    UiSkia::begin_deferred_frame()
+    check("deferred Skia scope accepts custom primitives", UiSkia::defer_fill_rounded_rect(UiCore::Rect(8.0, 9.0, 40.0, 20.0), 6.0, UiCore::rgb(20, 30, 40)) and UiSkia::defer_fill_linear_gradient(UiCore::Rect(8.0, 9.0, 40.0, 20.0), UiCore::rgb(20, 30, 40), UiCore::rgb(90, 100, 110), true) and UiSkia::defer_text_run(UiCore::TextRun(UiCore::Vec2(8.0, 24.0), 10.0, "queued"), UiCore::rgb(220, 220, 220)) and UiSkia::deferred_count() == 3)
+    check("deferred Skia scope rejects malformed primitives", not UiSkia::defer_fill_rounded_rect(UiCore::Rect(8.0, 9.0, 0.0, 20.0), 6.0, UiCore::rgb(20, 30, 40)) and not UiSkia::defer_image(0, UiCore::Rect(8.0, 9.0, 40.0, 20.0), 255) and UiSkia::deferred_count() == 3)
+    UiSkia::attach(36)
+    check("deferred Skia primitives replay after retained commands", UiSkia::render_status() == UiSkia::RenderStatus.Complete and skia_test_round_rect_count() == 1 and skia_test_gradient_count() == 1 and skia_test_text_count() == 1)
+    UiSkia::detach()
+    UiSkia::end_deferred_frame()
+    check("deferred Skia scope clears copied state", UiSkia::deferred_count() == 0 and not UiSkia::deferred_overflowed())
+
+    UiSkia::begin_deferred_frame()
+    accepted_deferred: usize =
+        for _ in 0..<UiSkia::MAX_DEFERRED_COMMANDS + 1 |accepted: usize = 0| -> accepted:
+            accepted <- accepted + 1 if UiSkia::defer_fill_circle(UiCore::Circle{center: UiCore::Vec2(20.0, 20.0), radius: 4.0}, UiCore::rgb(20, 30, 40))
+    check("deferred Skia queue exposes bounded overflow", accepted_deferred == UiSkia::MAX_DEFERRED_COMMANDS and UiSkia::deferred_count() == UiSkia::MAX_DEFERRED_COMMANDS and UiSkia::deferred_overflowed())
+    UiSkia::attach(37)
+    check("deferred overflow reports incomplete rendering", UiSkia::render_status() == UiSkia::RenderStatus.CommandOverflow and skia_test_circle_count() == UiSkia::MAX_DEFERRED_COMMANDS.i32())
+    UiSkia::detach()
+    UiSkia::end_deferred_frame()
+    UiSkia::begin_deferred_frame()
+    _ = UiSkia::defer_text_run(UiCore::TextRun(UiCore::Vec2(2.0, 12.0), 10.0, "cancelled"), UiCore::rgb(220, 220, 220))
+    UiSkia::surface_lost()
+    check("surface loss cancels deferred Skia work", UiSkia::deferred_count() == 0 and not UiSkia::deferred_overflowed() and not UiSkia::is_attached())
+
     if failures == 0:
         _ = puts("skia painter: all checks passed")
         return 0

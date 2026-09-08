@@ -94,6 +94,16 @@ alpha, and stroke-width policy as retained replay, then forward only primitive
 arguments through the Skia FFI; custom controls never construct or retain Skia
 C++ objects.
 
+AppKit creates its temporary SkCanvas after the application frame callback.
+Skia-specific controls that need richer primitives during that callback can use
+the explicit `UiSkia::begin_deferred_frame()` / `end_deferred_frame()` scope
+and the `defer_*` helpers in `ui_skia_deferred.elisa`. Elisa copies bounded
+command values (including text) into a fixed side-band queue, replays them after
+the portable retained batch, and reports queue overflow through the same
+`CommandOverflow` status. Surface loss cancels the queue. The hosted
+six-command protocol remains unchanged, and no Skia object or native save scope
+can outlive the frame.
+
 `UiSkia::fill_linear_gradient()` adds a bounded two-stop horizontal or vertical
 surface fill. Elisa owns the colors, orientation, transparency, and rectangle
 validation; the C++ boundary only creates the Skia shader and draws the rect.

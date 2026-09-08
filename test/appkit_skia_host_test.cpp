@@ -78,6 +78,7 @@ int main() {
     if (ok) ok = expect_rgba(pixels, row_bytes, 40, 40, 220, 80, 100, "rounded fill") && ok;
     if (ok) ok = expect_rgba(pixels, row_bytes, 80, 130, 60, 180, 140, "circle") && ok;
     if (ok) ok = expect_rgba(pixels, row_bytes, 230, 50, 70, 120, 220, "triangle") && ok;
+    if (ok) ok = expect_rgba(pixels, row_bytes, 290, 160, 240, 180, 70, "deferred custom fill") && ok;
     if (ok) ok = expect_ink(pixels, row_bytes, 15, 158, 110, 198) && ok;
 
     // AppKit supplies a point-based CGContext whose device transform maps
