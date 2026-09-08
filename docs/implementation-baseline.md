@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `30f9b30` (`feat(text): add grapheme-safe selection painting`) on branch `work` |
+| elisa-ui revision | `1d26b2c` (`feat(skia): add Elisa caret painting`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -338,6 +338,9 @@ normalizes both endpoints to grapheme boundaries, and clips aligned rectangles
 to the destination before Skia paints them. `UiSkia::fill_text_selection()`
 keeps that fill behind text and owns its temporary clip scope; no selection
 policy or range arithmetic crosses the native boundary.
+`UiSkia::text_caret_rect()` and `UiSkia::draw_text_caret()` share that layout
+and metric path for caret placement, leaving blink scheduling in widget state
+and clipping the painted caret to its destination.
 The C++ bridge wraps each borrowed typeface in a temporary `sk_sp` reference
 for SkFont's ownership contract without transferring disposal authority from
 the host.
