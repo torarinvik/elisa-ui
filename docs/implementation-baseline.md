@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `2b23482` (`feat: expose RTL geometry in text layout facade`) on branch `work` |
+| elisa-ui revision | `da1475e` (`feat: add explicit theme geometry tokens`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -38,6 +38,9 @@ headless diagnostics.
 
 The public `UiTextMeasureLayout` facade now exposes opt-in RTL hit-testing,
 caret, and selection geometry while leaving mixed-run shaping to the renderer.
+
+`UiTheme::metrics` now provides shared spacing, touch-target, focus-ring, and
+corner-radius tokens, with enlarged interaction affordances in high contrast.
 
 ## Source and boundary inventory
 
