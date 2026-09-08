@@ -53,6 +53,10 @@ void elisa_skia_canvas_stroke_round_rect(size_t canvas, float x, float y, float 
 void elisa_skia_canvas_shadow_round_rect(size_t canvas, float x, float y, float width, float height,
                                          float radius, float offset_x, float offset_y, float blur,
                                          uint8_t alpha);
+void elisa_skia_canvas_fill_linear_gradient(size_t canvas, float x, float y, float width, float height,
+                                            uint8_t start_red, uint8_t start_green, uint8_t start_blue,
+                                            uint8_t start_alpha, uint8_t end_red, uint8_t end_green,
+                                            uint8_t end_blue, uint8_t end_alpha, int32_t horizontal);
 void elisa_skia_canvas_draw_image(size_t canvas, size_t image, float x, float y, float width,
                                   float height, uint8_t alpha);
 void elisa_skia_canvas_draw_image_sampling(size_t canvas, size_t image, float x, float y,

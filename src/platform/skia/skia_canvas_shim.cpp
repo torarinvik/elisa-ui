@@ -22,6 +22,7 @@
 #include "include/core/SkSamplingOptions.h"
 #include "include/core/SkTypeface.h"
 #include "include/effects/SkImageFilters.h"
+#include "include/effects/SkGradientShader.h"
 
 namespace {
 
@@ -179,6 +180,35 @@ extern "C" void elisa_skia_canvas_shadow_round_rect(std::size_t handle, float x,
         paint.setImageFilter(SkImageFilters::DropShadowOnly(
             offset_x, offset_y, blur, blur, color(0, 0, 0, alpha), nullptr));
         target->drawRRect(SkRRect::MakeRectXY(rect, radius, radius), paint);
+    }
+}
+
+extern "C" void elisa_skia_canvas_fill_linear_gradient(std::size_t handle, float x, float y,
+                                                         float width, float height,
+                                                         std::uint8_t start_red,
+                                                         std::uint8_t start_green,
+                                                         std::uint8_t start_blue,
+                                                         std::uint8_t start_alpha,
+                                                         std::uint8_t end_red,
+                                                         std::uint8_t end_green,
+                                                         std::uint8_t end_blue,
+                                                         std::uint8_t end_alpha,
+                                                         std::int32_t horizontal) {
+    if (SkCanvas *target = canvas(handle);
+        target != nullptr && valid_rect(x, y, width, height) && (start_alpha != 0 || end_alpha != 0)) {
+        const SkPoint points[] = {
+            {x, y},
+            {horizontal != 0 ? x + width : x, horizontal != 0 ? y : y + height},
+        };
+        const SkColor colors[] = {
+            color(start_red, start_green, start_blue, start_alpha),
+            color(end_red, end_green, end_blue, end_alpha),
+        };
+        SkPaint paint;
+        paint.setAntiAlias(true);
+        paint.setShader(SkGradientShader::MakeLinear(points, colors, nullptr, 2,
+                                                      SkTileMode::kClamp));
+        target->drawRect(SkRect::MakeXYWH(x, y, width, height), paint);
     }
 }
 
