@@ -108,6 +108,11 @@ PY
 # count the corpus from its source so a truncated generation cannot pass.
 row_count="$(rg -c '^def unicode_case_' "$WORK/full.elisa")"
 [[ "$row_count" -gt 0 ]] || { echo "unicode: generated corpus is empty" >&2; exit 2; }
+expected_rows="$(awk -F= '/^grapheme_break_test_rows[[:space:]]*=/{gsub(/[[:space:]]/, "", $2); print $2}' "$LOCK")"
+[[ "$row_count" == "$expected_rows" ]] || {
+  echo "unicode: generated row count mismatch (expected $expected_rows, got $row_count)" >&2
+  exit 2
+}
 
 bash "$STAGE1/scripts/elisac_stage1.sh" -O2 -o "$WORK/full.o" "$WORK/full.elisa"
 clang -x c -std=c11 -Wall -Wextra -Werror -c -o "$WORK/runner.o" - <<'EOF'
