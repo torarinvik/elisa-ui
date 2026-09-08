@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `2fa32b1` (`feat(skia): bind source crops to resources`) on branch `work` |
+| elisa-ui revision | `d034ac9` (`feat(skia): move shadow color policy into Elisa`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -71,6 +71,10 @@ Externally imposed symbols are kept at the edges:
   destination rectangle, while the native bridge only forwards those sanitized
   rectangles to `SkCanvas::drawImageRect`. Generation-bound crop helpers retain
   only `(slot,generation)` resource identity through deferred replay.
+- Skia shadow color is now an explicit Elisa `Color` on the additive bridge;
+  the original black-only symbol remains a compatibility wrapper for older
+  hosts, while framework rendering no longer relies on a native appearance
+  default.
 - The optional AppKit/Skia compositor in
   `src/platform/appkit/appkit_skia_host.cpp` is linked only by the Skia canvas
   product; the standard AppKit product keeps its CoreGraphics fallback.
