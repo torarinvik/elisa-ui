@@ -7,7 +7,10 @@ SKIA_ROOT="${SKIA_ROOT:?set SKIA_ROOT to the pinned checkout from third_party/sk
 LOCK="$ROOT/third_party/skia.lock"
 
 [[ -f "$LOCK" ]] || { echo "skia pin: missing lockfile $LOCK" >&2; exit 2; }
-[[ -d "$SKIA_ROOT/.git" ]] || { echo "skia pin: not a git checkout: $SKIA_ROOT" >&2; exit 2; }
+[[ -d "$SKIA_ROOT" ]] && git -C "$SKIA_ROOT" rev-parse --git-dir >/dev/null 2>&1 || {
+  echo "skia pin: not a git checkout: $SKIA_ROOT" >&2
+  exit 2
+}
 [[ -f "$SKIA_ROOT/include/core/SkCanvas.h" ]] || {
   echo "skia pin: checkout has no include/core/SkCanvas.h: $SKIA_ROOT" >&2
   exit 2
