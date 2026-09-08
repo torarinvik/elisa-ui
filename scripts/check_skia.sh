@@ -5,6 +5,13 @@ set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
 require_real="${ELISA_UI_REQUIRE_REAL_SKIA:-1}"
+case "$require_real" in
+  0|1) ;;
+  *)
+    echo "skia: ELISA_UI_REQUIRE_REAL_SKIA must be 0 or 1 (got $require_real)" >&2
+    exit 2
+    ;;
+esac
 
 [[ -x "$STAGE1/bin/elisac-stage1" ]] || {
   echo "no stage1 product at $STAGE1/bin/elisac-stage1" >&2

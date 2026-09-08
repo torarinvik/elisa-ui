@@ -8,6 +8,15 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
 RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
 SDL_LIB="${ELISA_UI_SDL_LIB:-/opt/homebrew/lib}"
+require_real_skia="${ELISA_UI_REQUIRE_REAL_SKIA:-1}"
+
+case "$require_real_skia" in
+  0|1) ;;
+  *)
+    echo "ELISA_UI_REQUIRE_REAL_SKIA must be 0 or 1 (got $require_real_skia)" >&2
+    exit 2
+    ;;
+esac
 
 [[ -x "$STAGE1/bin/elisac-stage1" ]] || { echo "no stage1 product at $STAGE1/bin/elisac-stage1" >&2; exit 2; }
 [[ -f "$RUNTIME" ]] || { echo "no runtime object at $RUNTIME" >&2; exit 2; }
@@ -22,7 +31,7 @@ clang -c -Wall -Wextra -Werror -o "$SKIA_TEST_SHIM" "$ROOT/test/skia_painter_shi
 # The real custom renderer is a required gate by default. Run it before the
 # longer portable/native matrix so a missing pinned SDK fails immediately and
 # cannot be mistaken for a complete test run.
-if [[ "${ELISA_UI_REQUIRE_REAL_SKIA:-1}" == "1" ]]; then
+if [[ "$require_real_skia" == "1" ]]; then
   if ! bash "$ROOT/scripts/check_skia.sh"; then
     echo "FAIL required skia renderer" >&2
     echo "run ELISA_UI_REQUIRE_REAL_SKIA=0 only for a non-passing compiler-only edit loop" >&2
@@ -81,7 +90,7 @@ fi
 
 # The AppKit/Skia compositor extends the required CPU-raster gate when it is
 # available on macOS; its fixture remains headless and never foregrounds a UI.
-if [[ "${ELISA_UI_REQUIRE_REAL_SKIA:-1}" == "1" ]]; then
+if [[ "$require_real_skia" == "1" ]]; then
   if ! bash "$ROOT/scripts/check_appkit_skia.sh"; then
     echo "FAIL appkit skia"
     status=1

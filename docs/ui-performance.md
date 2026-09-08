@@ -73,5 +73,7 @@ resource-generation, edited-text-ink, and frame timing counts, so a passing rend
 demonstrates an application workflow rather than only isolated primitive calls.
 
 The only supported local escape hatch is explicit and non-passing:
-`ELISA_UI_REQUIRE_REAL_SKIA=0`. It is useful while editing Elisa code on a
-machine without the pinned SDK, but CI and release checks must leave it unset.
+`ELISA_UI_REQUIRE_REAL_SKIA=0`. The gate rejects any other value, so a typo
+cannot silently disable the required renderer check. The opt-out is useful
+while editing Elisa code on a machine without the pinned SDK, but CI and
+release checks must leave it unset.
