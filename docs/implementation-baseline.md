@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `e4e151f` (`feat(skia): scope bound interactive text`) on branch `work` |
+| elisa-ui revision | `cf090f6` (`feat(skia): add rounded image composition`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -354,7 +354,9 @@ centers a crop inside a temporary clip. Source dimensions are validated before
 the borrowed `SkImage*` crosses the narrow bridge, and bound-resource variants
 reuse the same generation-safe image gate. A bound image can also consume its
 generation-scoped `UiResources::intrinsic_size()` metadata directly, keeping
-decoded dimensions out of application widget state.
+decoded dimensions out of application widget state. Rounded image helpers
+compose a typed rounded clip around that fitted destination, reusing the same
+Elisa scope ledger for avatar/card presentation.
 Interactive text blocks now compose selection, glyphs, and caret painting in
 one measured pass with one clip scope, preserving selection-before-text and
 caret-after-text ordering while leaving blink scheduling in widget state.
