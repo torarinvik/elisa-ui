@@ -42,6 +42,8 @@ for network progress never implies that a resource is ready to paint. State or
 progress changes raise `UiCore::Invalidation.Resources` and
 `UiCore::Invalidation.Paint`; a host or diagnostic consumer can clear the
 resource reason after it has consumed the change.
+Progress is monotonic within one resource generation; out-of-order decreases
+are rejected, while `retry` starts a fresh operation with zeroed progress.
 
 Visible views can add an idempotent `set_demand(handle, priority)` hint and
 remove it with `clear_demand`. The priority is framework state for host/SDK
