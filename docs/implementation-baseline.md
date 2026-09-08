@@ -287,6 +287,9 @@ orientation, alpha, and destination geometry.
 Convex custom polygons are bounded to 32 points and fan-triangulated in Elisa
 through the existing triangle primitive, so no native path object or lifetime
 enters the custom backend.
+Custom controls can also push a rounded clip through the same bounded typed
+scope ledger; Elisa clamps its radius and the bridge forwards only the resulting
+rectangle/radius to Skia's `clipRRect`.
 `UiSkia::render_checked()` replays only the bounded retained batch and reports
 when `UiCore` dropped commands at capacity, so oversize frames are observable
 without an unbounded allocation.

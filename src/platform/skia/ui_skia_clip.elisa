@@ -20,6 +20,26 @@ extend UiSkia:
             skia_save_depth <- skia_save_depth + 1
             return true
 
+        # Rounded clips keep custom surfaces visually consistent with the
+        # framework's rounded fills while retaining the same typed save/pop
+        # contract as rectangular clips. Elisa owns radius normalization;
+        # Skia only receives the already-bounded geometry.
+        def push_rounded_clip(box: UiCore::Rect, radius: f32) -> bool can[Ui.Draw]:
+            return false if canvas_state == 0
+            return false if skia_save_depth >= UiSkia::MAX_SCOPE_DEPTH
+            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+            return false if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
+            safe_radius: f32 = UiSkia::skia_safe_radius(safe_box, radius)
+            elisa_skia_canvas_save(canvas_state)
+            elisa_skia_canvas_clip_round_rect(
+                canvas_state,
+                safe_box.origin.x, safe_box.origin.y,
+                safe_box.size.width, safe_box.size.height, safe_radius)
+            skia_scope_kinds[skia_save_depth] <- SKIA_SCOPE_CLIP
+            skia_clip_depth <- skia_clip_depth + 1
+            skia_save_depth <- skia_save_depth + 1
+            return true
+
         def pop_clip() -> bool can[Ui.Draw]:
             return false if canvas_state == 0 or skia_clip_depth == 0
             return false if skia_save_depth == 0 or skia_scope_kinds[skia_save_depth - 1] != SKIA_SCOPE_CLIP

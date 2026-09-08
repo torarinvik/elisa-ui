@@ -103,6 +103,12 @@ rules. Retained replay intentionally submits zero-area intersections to Skia so
 an empty nested viewport suppresses its commands; only the immediate helper's
 caller-facing input contract rejects them.
 
+When a custom control needs a shaped viewport, `UiSkia::push_rounded_clip()`
+uses the same typed pop and detach guarantees while clamping the radius to the
+box in Elisa. The bridge only receives the bounded rectangle and radius and
+clips with Skia's `clipRRect`; it does not choose a visual default or retain a
+native path object.
+
 `UiSkia::snapshot()` is a read-only diagnostic record for attachment/generation,
 save depth, clip/transform depth, and active image/font bindings;
 `UiSkia::is_balanced()` provides the corresponding invariant check. These
@@ -142,7 +148,7 @@ the optional AppKit compositor: when linked, `drawRect` hands its borrowed
 CoreGraphics context to this bridge, which presents the temporary Skia surface;
 the ordinary AppKit build still uses its CoreGraphics fallback.
 
-The first slice covers clear, clipping, rounded rectangles, two-stop gradients,
+The first slice covers clear, rectangular and rounded clipping, rounded rectangles, two-stop gradients,
 circles, triangles, lines, UTF-8 text, and text metrics. The portable `FillRect` command keeps its
 wire shape. Generic fills use the shared rounded-corner and subtle hairline
 policy; an explicit `UiCore::fill_elevated()` call records an Elisa-owned

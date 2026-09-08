@@ -12,6 +12,7 @@ extern skia_test_scale_count() -> i32
 extern skia_test_translate_count() -> i32
 extern skia_test_rotate_count() -> i32
 extern skia_test_clip_count() -> i32
+extern skia_test_rounded_clip_count() -> i32
 extern skia_test_clear_count() -> i32
 extern skia_test_round_rect_count() -> i32
 extern skia_test_stroke_round_rect_count() -> i32
@@ -30,6 +31,7 @@ extern skia_test_line_count() -> i32
 extern skia_test_text_count() -> i32
 extern skia_test_last_text_size() -> f32
 extern skia_test_last_round_radius() -> f32
+extern skia_test_last_clip_radius() -> f32
 extern skia_test_last_image_sampling() -> i32
 
 global mutable failures: i32 = 0
@@ -276,6 +278,13 @@ def main() -> i64:
     check("retained empty clips still cross the Skia boundary", UiSkia::render_status() == UiSkia::RenderStatus.Complete and skia_test_clip_count() == 1)
     UiSkia::detach()
     check("retained empty clip restores its save scope", skia_test_save_count() == 2 and skia_test_restore_count() == 2 and UiSkia::is_balanced())
+    skia_test_reset()
+    UiSkia::attach(25)
+    check("rounded clip rejects empty geometry", not UiSkia::push_rounded_clip(UiCore::Rect(1.0, 2.0, 0.0, 4.0), 4.0))
+    check("rounded clip bounds radius in Elisa", UiSkia::push_rounded_clip(UiCore::Rect(1.0, 2.0, 8.0, 9.0), 100.0) and skia_test_rounded_clip_count() == 1 and not UiSkia::is_balanced() and UiSkia::snapshot().clip_depth == 1 and skia_test_last_clip_radius() == 4.0)
+    check("rounded clip restores through the typed pop", UiSkia::pop_clip() and UiSkia::is_balanced())
+    UiSkia::detach()
+    check("rounded clip scope detaches cleanly", skia_test_save_count() == 2 and skia_test_restore_count() == 2)
     UiCore::begin_frame()
     UiCore::clear(UiCore::rgb(4, 5, 6))
     check("one-shot status export reports complete", skia_render_frame_status_export(31) == UiSkia::RenderStatus.Complete.i32() and not UiSkia::is_attached())

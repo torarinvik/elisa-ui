@@ -134,6 +134,15 @@ extern "C" void elisa_skia_canvas_clip_rect(std::size_t handle, float x, float y
     }
 }
 
+extern "C" void elisa_skia_canvas_clip_round_rect(std::size_t handle, float x, float y, float width,
+                                                     float height, float radius) {
+    if (SkCanvas *target = canvas(handle);
+        target != nullptr && valid_clip_rect(x, y, width, height) && bounded_nonnegative_extent(radius)) {
+        const SkRect rect = SkRect::MakeXYWH(x, y, width, height);
+        target->clipRRect(SkRRect::MakeRectXY(rect, radius, radius), SkClipOp::kIntersect, true);
+    }
+}
+
 extern "C" void elisa_skia_canvas_clear(std::size_t handle, std::uint8_t red, std::uint8_t green,
                                          std::uint8_t blue, std::uint8_t alpha) {
     if (SkCanvas *target = canvas(handle)) target->clear(color(red, green, blue, alpha));
