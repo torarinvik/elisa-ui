@@ -82,6 +82,7 @@ module UiNavigation:
             navigation_sequence_state <- navigation_next_sequence(navigation_sequence_state)
             navigation_sequence[free_slot] <- navigation_sequence_state
             navigation_entry_count <- navigation_entry_count + 1
+            navigation_mark_changed()
             return NavigationHandle{slot: free_slot.u32(), generation: navigation_generations[free_slot]}
 
         def top() -> NavigationHandle:
@@ -129,6 +130,7 @@ module UiNavigation:
                 return BackDecision.Consumed
             if navigation_policies[slot] == BackPolicy.Confirm and navigation_dirty[slot]:
                 navigation_pending_slot <- slot
+                navigation_mark_changed()
                 return BackDecision.Confirm
             return BackDecision.Navigate
 
@@ -141,6 +143,7 @@ module UiNavigation:
             return false if not navigation_is_valid(current) or current.slot != handle.slot or current.generation != handle.generation
             navigation_pending_slot <- NAVIGATION_NONE_SLOT if navigation_pending_slot == handle.slot.usize()
             navigation_clear_slot(handle.slot.usize())
+            navigation_mark_changed()
             return true
 
         # Resolve the confirmation requested by request_back(). Rejecting it
@@ -149,6 +152,7 @@ module UiNavigation:
             return BackDecision.Unhandled if navigation_pending_slot == NAVIGATION_NONE_SLOT
             slot: usize = navigation_pending_slot
             navigation_pending_slot <- NAVIGATION_NONE_SLOT
+            navigation_mark_changed()
             return BackDecision.Consumed if not accept
             return BackDecision.Unhandled if not navigation_occupied[slot]
             handle: NavigationHandle = NavigationHandle{slot: slot.u32(), generation: navigation_generations[slot]}
@@ -159,6 +163,7 @@ module UiNavigation:
         def cancel_confirmation() -> bool:
             return false if navigation_pending_slot == NAVIGATION_NONE_SLOT
             navigation_pending_slot <- NAVIGATION_NONE_SLOT
+            navigation_mark_changed()
             return true
 
         def dismiss_owner(owner_id: u32) -> usize:
@@ -168,6 +173,7 @@ module UiNavigation:
                     navigation_pending_slot <- NAVIGATION_NONE_SLOT if navigation_pending_slot == slot
                     navigation_clear_slot(slot)
                     released <- released + 1
+            navigation_mark_changed() if released > 0
             return released
 
     private:
@@ -203,6 +209,10 @@ module UiNavigation:
             navigation_dirty[slot] <- false
             navigation_sequence[slot] <- 0
             navigation_entry_count <- navigation_entry_count - 1 if navigation_entry_count > 0
+
+        def navigation_mark_changed() -> void:
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+            UiCore::invalidate(UiCore::Invalidation.Semantics)
 
         def navigation_policy_is_valid(value: BackPolicy) -> bool:
             return value == BackPolicy.Allow or value == BackPolicy.Confirm or value == BackPolicy.Consume

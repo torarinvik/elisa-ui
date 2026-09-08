@@ -14,17 +14,21 @@ def check(name: cstr, ok: bool) -> void:
 def main() -> i64:
     UiNavigation::reset()
     check("empty navigation is unhandled", UiNavigation::request_back() == UiNavigation::BackDecision.Unhandled)
+    UiCore::clear_all_invalidations()
     invalid_policy: UiNavigation::BackPolicy = (-1).i32().BackPolicy()
     rejected: UiNavigation::NavigationHandle = UiNavigation::push(1, invalid_policy, false)
     check("invalid navigation policies are rejected", not UiNavigation::navigation_is_valid(rejected) and UiNavigation::snapshot().entries == 0)
 
     root: UiNavigation::NavigationHandle = UiNavigation::push(10, UiNavigation::BackPolicy.Allow, false)
+    check("pushing an entry invalidates presentation", UiCore::is_invalidated(UiCore::Invalidation.Paint) and UiCore::is_invalidated(UiCore::Invalidation.Semantics))
     check("allow entry is valid", UiNavigation::navigation_is_valid(root) and UiNavigation::owner(root) == 10)
     check("allow entry requests navigation", UiNavigation::request_back() == UiNavigation::BackDecision.Navigate)
     check("commit pops allowed entry", UiNavigation::commit(root) and UiNavigation::snapshot().entries == 0 and not UiNavigation::navigation_is_valid(root))
 
     dirty: UiNavigation::NavigationHandle = UiNavigation::push(20, UiNavigation::BackPolicy.Confirm, true)
+    UiCore::clear_all_invalidations()
     check("dirty confirm requests prompt", UiNavigation::request_back() == UiNavigation::BackDecision.Confirm and UiNavigation::snapshot().pending_confirmation)
+    check("confirmation request invalidates presentation", UiCore::is_invalidated(UiCore::Invalidation.Paint) and UiCore::is_invalidated(UiCore::Invalidation.Semantics))
     check("repeated back keeps prompt pending", UiNavigation::request_back() == UiNavigation::BackDecision.Confirm)
     check("direct commit clears a pending confirmation", UiNavigation::commit(dirty) and not UiNavigation::snapshot().pending_confirmation and not UiNavigation::navigation_is_valid(dirty))
     dirty_after: UiNavigation::NavigationHandle = UiNavigation::push(20, UiNavigation::BackPolicy.Confirm, true)
