@@ -83,6 +83,17 @@ module UiPaint:
             shortest: f32 = box.size.width if box.size.width < box.size.height else box.size.height
             radius: mutable f32 = UiCore::bounded_extent(shortest * 0.22)
             radius <- 10.0 if radius > 10.0 else radius
+            return rounded_rect_style_with_radius(box, elevated, radius)
+
+        # Theme-aware variant for custom painters. The supplied radius is
+        # normalized against the box so a malformed style cannot escape the
+        # same finite geometry envelope as the default policy.
+        def rounded_rect_style_with_radius(box: UiCore::Rect, elevated: bool, requested_radius: f32) -> RoundedRectStyle:
+            shortest: f32 = box.size.width if box.size.width < box.size.height else box.size.height
+            limit: f32 = UiCore::bounded_extent(shortest / 2.0)
+            radius: mutable f32 = UiCore::bounded_extent(requested_radius)
+            radius <- 0.0 if radius < 0.0
+            radius <- limit if radius > limit
             return RoundedRectStyle{
                 radius: radius,
                 elevated: elevated,
