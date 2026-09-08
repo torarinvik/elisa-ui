@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `d034ac9` (`feat(skia): move shadow color policy into Elisa`) on branch `work` |
+| elisa-ui revision | `99499a8` (`feat(skia): preserve deferred shadow colors`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -74,7 +74,8 @@ Externally imposed symbols are kept at the edges:
 - Skia shadow color is now an explicit Elisa `Color` on the additive bridge;
   the original black-only symbol remains a compatibility wrapper for older
   hosts, while framework rendering no longer relies on a native appearance
-  default.
+  default. Deferred shadows carry the same color record through the bounded
+  queue, keeping immediate and callback-time custom effects equivalent.
 - The optional AppKit/Skia compositor in
   `src/platform/appkit/appkit_skia_host.cpp` is linked only by the Skia canvas
   product; the standard AppKit product keeps its CoreGraphics fallback.
