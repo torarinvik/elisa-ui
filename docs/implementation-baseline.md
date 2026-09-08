@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `5c0bf73` (`feat: add shared mobile surface lifecycle contract`) on branch `work` |
+| elisa-ui revision | `c5489e1` (`fix: distinguish zero touch IDs from empty pinch state`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -192,8 +192,8 @@ windows, normalized min/preferred/max constraints, stable keyed identities,
 typed widget lifetimes, hit testing and scrolling, control state, Unicode text
 editing/IME and bounded undo history, shared themes/localization/RTL/plurals,
 revision-safe async validation, bounded dialog ordering/results/semantics,
-deterministic touch gesture classification, explicit back-navigation
-allow/consume/confirm policy, scalar-safe text line breaking,
+deterministic touch gesture classification, zero-safe touch identities,
+explicit back-navigation allow/consume/confirm policy, scalar-safe text line breaking,
 purpose-driven text-input/privacy traits, clipping and raster commands, C API
 shape, AppKit semantics, and SDL/AppKit key maps. Implemented
 but not yet device-verified: actual VoiceOver interaction, non-ASCII IMEs on a
