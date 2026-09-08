@@ -36,6 +36,10 @@ extern skia_test_last_text_size() -> f32
 extern skia_test_last_round_radius() -> f32
 extern skia_test_last_clip_radius() -> f32
 extern skia_test_last_image_sampling() -> i32
+extern skia_test_last_image_x() -> f32
+extern skia_test_last_image_y() -> f32
+extern skia_test_last_image_width() -> f32
+extern skia_test_last_image_height() -> f32
 
 global mutable failures: i32 = 0
 
@@ -349,6 +353,16 @@ def main() -> i64:
     UiCore::clear(UiCore::rgb(4, 5, 6))
     check("one-shot status export reports complete", skia_render_frame_status_export(31) == UiSkia::RenderStatus.Complete.i32() and not UiSkia::is_attached())
     check("one-shot status export reports no surface", skia_render_frame_status_export(0) == UiSkia::RenderStatus.SkippedNoSurface.i32() and not UiSkia::is_attached())
+
+    skia_test_reset()
+    UiSkia::attach(30)
+    source_size: UiCore::Size = UiCore::Size(100.0, 50.0)
+    fit_box: UiCore::Rect = UiCore::Rect(10.0, 20.0, 100.0, 100.0)
+    check("contain fit preserves aspect ratio in Elisa", UiSkia::draw_image_fitted(0xCAFE, fit_box, source_size, 255, UiSkia::ImageFit.Contain) and skia_test_last_image_x() == 10.0 and skia_test_last_image_y() == 45.0 and skia_test_last_image_width() == 100.0 and skia_test_last_image_height() == 50.0 and skia_test_clip_count() == 0)
+    check("cover fit preserves aspect ratio and clips in Elisa", UiSkia::draw_image_fitted_with_sampling(0xCAFE, fit_box, source_size, 255, UiSkia::ImageFit.Cover, UiSkia::ImageSampling.Nearest) and skia_test_last_image_x() == -40.0 and skia_test_last_image_y() == 20.0 and skia_test_last_image_width() == 200.0 and skia_test_last_image_height() == 100.0 and skia_test_last_image_sampling() == 0 and skia_test_clip_count() == 1)
+    check("invalid image source dimensions fail closed", not UiSkia::draw_image_fitted(0xCAFE, fit_box, UiCore::Size(0.0, 50.0), 255, UiSkia::ImageFit.Contain) and skia_test_image_count() == 2)
+    UiSkia::detach()
+    check("fitted image clip scope is balanced", skia_test_save_count() == 2 and skia_test_restore_count() == 2 and UiSkia::is_balanced())
 
     if failures == 0:
         _ = puts("skia painter: all checks passed")

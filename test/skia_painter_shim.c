@@ -35,6 +35,10 @@ static float last_stroke_width;
 static float last_circle_stroke_width;
 static float last_line_width;
 static float last_text_size;
+static float last_image_x;
+static float last_image_y;
+static float last_image_width;
+static float last_image_height;
 static int last_image_sampling;
 
 void elisa_skia_canvas_save(size_t canvas) { if (canvas != 0) save_count += 1; }
@@ -98,13 +102,19 @@ void elisa_skia_canvas_fill_linear_gradient(size_t canvas, float x, float y, flo
 }
 void elisa_skia_canvas_draw_image(size_t canvas, size_t image, float x, float y,
                                   float width, float height, uint8_t alpha) {
-    (void)image; (void)x; (void)y; (void)width; (void)height; (void)alpha;
-    if (canvas != 0) { image_count += 1; last_image_sampling = 1; }
+    (void)image; (void)alpha;
+    if (canvas != 0) {
+        image_count += 1; last_image_sampling = 1;
+        last_image_x = x; last_image_y = y; last_image_width = width; last_image_height = height;
+    }
 }
 void elisa_skia_canvas_draw_image_sampling(size_t canvas, size_t image, float x, float y,
                                            float width, float height, uint8_t alpha, int sampling) {
-    (void)image; (void)x; (void)y; (void)width; (void)height; (void)alpha;
-    if (canvas != 0) { image_count += 1; last_image_sampling = sampling; }
+    (void)image; (void)alpha;
+    if (canvas != 0) {
+        image_count += 1; last_image_sampling = sampling;
+        last_image_x = x; last_image_y = y; last_image_width = width; last_image_height = height;
+    }
 }
 void elisa_skia_canvas_draw_text_with_font(size_t canvas, size_t font, const char *text,
                                            size_t length, float x, float y, float size,
@@ -164,7 +174,7 @@ void skia_test_reset(void) {
     save_count = 0; restore_count = 0; scale_count = 0; translate_count = 0; rotate_count = 0; clip_count = 0; rounded_clip_count = 0;
     clear_count = 0; round_rect_count = 0; stroke_round_rect_count = 0; shadow_round_rect_count = 0; gradient_count = 0; image_count = 0; circle_count = 0; stroke_circle_count = 0; triangle_count = 0;
     last_shadow_offset_x = 0.0f; last_shadow_offset_y = 0.0f; last_shadow_blur = 0.0f;
-    line_count = 0; text_count = 0; measure_width_count = 0; last_round_radius = 0.0f; last_clip_radius = 0.0f; last_stroke_width = 0.0f; last_circle_stroke_width = 0.0f; last_line_width = 0.0f; last_text_size = 0.0f; last_image_sampling = 1; last_gradient_horizontal = 0;
+    line_count = 0; text_count = 0; measure_width_count = 0; last_round_radius = 0.0f; last_clip_radius = 0.0f; last_stroke_width = 0.0f; last_circle_stroke_width = 0.0f; last_line_width = 0.0f; last_text_size = 0.0f; last_image_x = 0.0f; last_image_y = 0.0f; last_image_width = 0.0f; last_image_height = 0.0f; last_image_sampling = 1; last_gradient_horizontal = 0;
 }
 int skia_test_save_count(void) { return save_count; }
 int skia_test_restore_count(void) { return restore_count; }
@@ -196,3 +206,7 @@ float skia_test_last_text_size(void) { return last_text_size; }
 float skia_test_last_round_radius(void) { return last_round_radius; }
 float skia_test_last_clip_radius(void) { return last_clip_radius; }
 int skia_test_last_image_sampling(void) { return last_image_sampling; }
+float skia_test_last_image_x(void) { return last_image_x; }
+float skia_test_last_image_y(void) { return last_image_y; }
+float skia_test_last_image_width(void) { return last_image_width; }
+float skia_test_last_image_height(void) { return last_image_height; }

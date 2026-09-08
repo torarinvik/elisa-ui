@@ -200,6 +200,12 @@ The default `draw_image()` path uses linear filtering; custom controls can call
 `draw_image_with_sampling()` with the typed Elisa `ImageSampling.Nearest` policy
 for crisp pixel art. Invalid enum values normalize back to linear before the
 sampling code reaches Skia.
+For non-stretching layouts, `draw_image_fitted()` and its resource-bound
+variants apply the Elisa `ImageFit.Contain` or `ImageFit.Cover` policy using
+verified source dimensions. Contain centers the complete image; Cover centers
+the crop and opens a temporary destination clip so pixels cannot bleed outside
+the caller's box. The native bridge still receives only the final rectangle,
+sampling ordinal, and borrowed image handle.
 The ready and generation-bound image helpers expose matching
 `*_with_sampling()` forms, so filtering survives the resource-binding path.
 Hosts can use `bind_image`/`draw_bound_image` to associate that pointer with an
