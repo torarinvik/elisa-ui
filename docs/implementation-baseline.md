@@ -595,6 +595,9 @@ separate host-enforced security boundary.
 - Direct Skia text drawing now goes through the same Elisa sanitization as
   retained replay, keeping custom-control escape hatches bounded and UTF-8
   safe without duplicating policy in the bridge.
+- Measured Skia text now exposes Elisa-owned line hit testing that returns only
+  grapheme-boundary byte offsets, reusing the active backend width authority so
+  caret/selection coordinates cannot split combining marks or emoji clusters.
 - Skia rounded-corner radii now cross the FFI after Elisa geometry
   normalization; the C++ bridge forwards them to `SkRRect` without a duplicate
   radius fallback and rejects malformed direct values.

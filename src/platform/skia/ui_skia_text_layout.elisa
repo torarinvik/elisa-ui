@@ -27,6 +27,14 @@ extend UiSkia:
         def layout_text(text: sview, max_width: f32, size: f32) -> UiTextMeasureLayout::Layout:
             return UiTextMeasureLayout::layout_with_measure(text, max_width, size, ui_skia_measure_layout_width)
 
+        # Map a local x coordinate back to a grapheme-safe byte offset using
+        # the same Skia width authority that produced the line ranges. The
+        # layout is recomputed in this call so hit testing remains correct
+        # after a font, scale, or text change.
+        def hit_test_text_line(text: sview, max_width: f32, size: f32, line_index: usize, local_x: f32) -> usize:
+            planned: UiTextMeasureLayout::Layout = UiSkia::layout_text(text, max_width, size)
+            return UiTextMeasureLayout::hit_test_line(text, line_index, local_x, planned.text_size, ui_skia_measure_layout_width)
+
         # A bound logical font keeps measurement and replay on one generation
         # without exposing its borrowed SkTypeface to the caller. The frame
         # font slot is restored even when a control nests another text scope.

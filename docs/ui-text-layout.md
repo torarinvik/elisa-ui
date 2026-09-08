@@ -39,3 +39,8 @@ When a logical `UiResources::ResourceHandle` is bound to a ready SkTypeface,
 generation for the whole operation. Their fallback forms choose the first
 ready, bound generation and otherwise return an empty layout without crossing
 the native boundary.
+
+`UiSkia::hit_test_text_line()` maps a local pixel coordinate to the nearest
+UTF-8 byte offset on a measured line. It reuses the active Skia width authority
+and advances only grapheme clusters, so combining marks and multi-codepoint
+emoji remain indivisible for caret and selection callers.

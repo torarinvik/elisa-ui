@@ -138,6 +138,31 @@ module UiTextMeasureLayout:
             return "" if range.length > safe_text.len.usize() - range.offset
             return sview(&safe_text.data[range.offset], 0, range.length.i64())
 
+        # Return the UTF-8 byte offset of the nearest grapheme caret on a
+        # measured line. `local_x` is relative to that line's origin; the
+        # provider is called only for complete grapheme clusters, so a hit can
+        # never split a combining sequence or multi-codepoint emoji.
+        def hit_test_line(text: sview, index: usize, local_x: f32, size: f32, width_provider: fn(sview, f32) -> f32) -> usize:
+            safe_text: sview = UiCore::bounded_text(text)
+            return 0 if safe_text.len <= 0 or index >= measured_line_count
+            range: LineRange = line_at(index)
+            source_length: usize = safe_text.len.usize()
+            return range.offset if range.offset > source_length or range.length > source_length - range.offset
+            end: usize = range.offset + range.length
+            cursor: mutable usize = range.offset
+            accumulated: mutable f32 = 0.0
+            target: f32 = UiCore::bounded_coordinate(local_x)
+            while cursor < end:
+                cluster_end: usize = UiText::next_grapheme(safe_text, cursor)
+                cluster_length: usize = cluster_end - cursor if cluster_end > cursor and cluster_end <= end else 1
+                cluster: sview = sview(&safe_text.data[cursor], 0, cluster_length.i64())
+                cluster_width: f32 = UiCore::bounded_extent(width_provider(cluster, size))
+                midpoint: f32 = accumulated + cluster_width * 0.5
+                return cursor if target < midpoint
+                accumulated <- UiCore::bounded_extent(accumulated + cluster_width)
+                cursor <- cursor + cluster_length
+            return end
+
     private:
         global mutable measured_line_offsets: usize[MAX_LINES] = zeroed
         global mutable measured_line_lengths: usize[MAX_LINES] = zeroed
