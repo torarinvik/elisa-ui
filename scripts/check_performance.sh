@@ -7,6 +7,7 @@ STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
 RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
 [[ -x "$STAGE1/bin/elisac-stage1" ]] || { echo "performance: no stage1 product at $STAGE1/bin/elisac-stage1" >&2; exit 2; }
 [[ -f "$RUNTIME" ]] || { echo "performance: no runtime object at $RUNTIME" >&2; exit 2; }
+bash "$ROOT/scripts/check_toolchain.sh"
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/elisa-ui-performance.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT INT TERM HUP
