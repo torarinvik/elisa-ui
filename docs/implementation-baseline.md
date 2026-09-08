@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `5fd7125` (`test(skia): verify pinned checkout in every fixture`) on branch `work` |
+| elisa-ui revision | `98a0da8` (`test(showcase): require edited text raster ink`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -636,7 +636,8 @@ separate host-enforced security boundary.
   deterministic decoded image; Elisa queues the old resource generation,
   rotates it through retry, and queues the replacement before replay. Pixel
   checks require the stale generation to remain the Elisa placeholder and the
-  replacement generation to paint. The same application fixture anchors
+  replacement generation to paint and requires ink from the edited text field
+  inside its live retained bounds. The same application fixture anchors
   deferred orange/cyan/magenta artwork to the live content card and checks the
   overlap pixels, proving deferred work is ordered before, between, and after
   retained commands rather than being an overlay-only pass.
