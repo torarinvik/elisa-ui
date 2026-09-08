@@ -80,4 +80,19 @@ def main() -> i64:
     check("non-pointer input is a true pointer no-op", UiCore::invalidations() == 0)
     UiFlat::keyboard(UiCore::Event.FocusLost)
     check("non-key input is a true keyboard no-op", UiCore::invalidations() == 0)
+
+    # Once a host has entered its lifecycle, inactive/background phases must
+    # not let stale physical input mutate retained controls. Standalone tests
+    # above intentionally run before Begin; production paths are gated here.
+    UiLifecycle::reset()
+    _ = UiLifecycle::begin()
+    _ = UiLifecycle::ready()
+    UiFlat::handle((UiCore::PointerEvent.Down(at: UiCore::Vec2(20.0, 20.0), button: UiCore::PointerButton.Primary.i32())))
+    check("inactive lifecycle blocks pointer input", UiFlat::active() == UiFlat::NONE and not UiFlat::widget(button).pressed)
+    _ = UiLifecycle::focus_gained()
+    UiFlat::handle((UiCore::PointerEvent.Down(at: UiCore::Vec2(20.0, 20.0), button: UiCore::PointerButton.Primary.i32())))
+    check("active lifecycle accepts pointer input", UiFlat::active() == button and UiFlat::widget(button).pressed)
+    _ = UiLifecycle::focus_lost()
+    UiFlat::handle((UiCore::Event.FocusLost))
+    check("focus loss still clears active input", UiFlat::active() == UiFlat::NONE and not UiFlat::widget(button).pressed)
     return failures.i64()
