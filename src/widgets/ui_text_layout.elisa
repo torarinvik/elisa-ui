@@ -65,22 +65,19 @@ module UiTextLayout:
                             break
                         cluster_end: usize = UiText::next_grapheme(safe_text, cursor)
                         width: usize = cluster_end - cursor if cluster_end > cursor and cluster_end <= source_length_state else scalar_bytes(safe_text, cursor, source_length_state)
-                        # Keep the break at the beginning of a whitespace run.
-                        # Updating it for every consecutive space would emit a
-                        # trailing space (for example, `a  b` at a two-column
-                        # limit) before the post-break skip discards only the
-                        # later part of the run.
                         if is_break(byte) and (cursor == start or not is_break(safe_text.data[cursor - 1])):
-                            last_break <- cursor
-                            last_break_columns <- columns
+                            break_after: usize = cursor + width if is_punctuation_break(byte) else cursor
+                            last_break <- break_after
+                            last_break_columns <- columns + 1 if break_after > cursor else columns
                             has_break <- true
                         if columns >= max_columns_state:
                             if has_break and last_break >= start:
                                 emit_line(start, last_break - start, last_break_columns)
-                                cursor <- last_break + scalar_bytes(safe_text, last_break, source_length_state)
+                                cursor <- last_break
+                                cursor <- cursor + scalar_bytes(safe_text, cursor, source_length_state) if cursor < source_length_state and is_discardable_break(safe_text.data[cursor])
                                 cursor <-
                                     for _ in 0..<source_length_state |skip: usize = cursor| -> skip:
-                                        break if skip >= source_length_state or not is_break(safe_text.data[skip])
+                                        break if skip >= source_length_state or not is_discardable_break(safe_text.data[skip])
                                         skip <- skip + scalar_bytes(safe_text, skip, source_length_state)
                                 start <- cursor
                                 finished <- true
@@ -156,9 +153,13 @@ module UiTextLayout:
             return byte == 10 or byte == 13
 
         def is_break(byte: u8) -> bool:
-            # Only whitespace may be discarded when wrapping. Treating '-' or
-            # '/' as whitespace silently removed characters from paths/words.
+            return is_discardable_break(byte) or is_punctuation_break(byte)
+
+        def is_discardable_break(byte: u8) -> bool:
             return byte == 9 or byte == 32
+
+        def is_punctuation_break(byte: u8) -> bool:
+            return byte == 45 or byte == 47
 
         def scalar_bytes(text: sview, offset: usize, end: usize) -> usize:
             return 1 if offset >= end
