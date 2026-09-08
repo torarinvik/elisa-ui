@@ -808,6 +808,9 @@ separate host-enforced security boundary.
   accumulator plumbing from the public policy module.
 - Resource live-count inspection now uses a scoped bounded reduction as well,
   keeping resource queries allocation-free and free of mutable counter setup.
+- `UiInspector::Frame` now includes the aggregate `UiResources::Snapshot`, so
+  requested/ready/failure/cancellation pressure is visible to diagnostics
+  without exposing resource storage or borrowed renderer handles.
 - AppKit custom-canvas CoreText shaping and metrics now live in their own
   `ui_appkit_canvas_coretext.elisa` extension; window/snapshot ABI types and
   text-command routing remain separate modules with the same public contract.

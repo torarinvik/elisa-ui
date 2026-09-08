@@ -50,6 +50,10 @@ emitting a non-finite diagnostic value.
 line-height/width query and miss counters from `UiTextMetrics`, making cache
 invalidations and metric pressure visible in the same diagnostic snapshot.
 
+`Frame.resources` reports aggregate requested, ready, offline, denied, failed,
+and cancelled resource counts plus overflow state. It keeps resource diagnostics
+available without exposing the resource arena or borrowed renderer handles.
+
 Secure text is redacted as `[secure]` in diagnostic nodes and semantic copies;
 selected text is cleared. This keeps inspector output safe for logs, snapshots,
 and future source-linked tooling. The module is allocation-free and can be
