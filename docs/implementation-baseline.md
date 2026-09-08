@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `6d7aaf7` (`fix(theme): retain system appearance preferences`) on branch `work` |
+| elisa-ui revision | `4ea8e6e` (`feat(skia): add source image cropping`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -66,6 +66,10 @@ Externally imposed symbols are kept at the edges:
   scans, and skip disposed generations without retaining a native image pointer.
   Direct generation-bound image commands are available when a control already
   has its final destination rectangle.
+- Skia source-crop drawing is also Elisa-owned: immediate and deferred image
+  commands carry a bounded pixel-space source rectangle plus a logical
+  destination rectangle, while the native bridge only forwards those sanitized
+  rectangles to `SkCanvas::drawImageRect`.
 - The optional AppKit/Skia compositor in
   `src/platform/appkit/appkit_skia_host.cpp` is linked only by the Skia canvas
   product; the standard AppKit product keeps its CoreGraphics fallback.
