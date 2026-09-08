@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `dbc9f4d` (`feat: expose text metrics through inspector`) on branch `work` |
+| elisa-ui revision | `2b23482` (`feat: expose RTL geometry in text layout facade`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -35,6 +35,9 @@ neutral-only text; bidi shaping and reordering remain renderer-owned.
 `UiInspector::Frame.text_metrics` now carries the active text metric generations
 and bounded query/miss counters, keeping font/scale cache evidence available to
 headless diagnostics.
+
+The public `UiTextMeasureLayout` facade now exposes opt-in RTL hit-testing,
+caret, and selection geometry while leaving mixed-run shaping to the renderer.
 
 ## Source and boundary inventory
 
