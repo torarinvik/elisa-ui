@@ -12,6 +12,7 @@ DATA="${ELISA_UI_UNICODE_DATA:-$ROOT/third_party/unicode/GraphemeBreakTest-15.1.
 [[ -f "$RUNTIME" ]] || { echo "unicode: no runtime object at $RUNTIME" >&2; exit 2; }
 [[ -f "$LOCK" ]] || { echo "unicode: missing lock at $LOCK" >&2; exit 2; }
 
+mkdir -p "$ROOT/build"
 WORK="$(mktemp -d "$ROOT/build/unicode-conformance.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT INT TERM HUP
 

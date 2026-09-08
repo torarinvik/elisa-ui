@@ -89,6 +89,8 @@ def main() -> i64:
         app_event(UiCore::PointerEvent.Down(centre, UiCore::PointerButton.Primary.i32()))
         app_event(UiCore::PointerEvent.Up(centre, UiCore::PointerButton.Primary.i32()))
         check("showcase pointer flow focuses the text field", UiHandles::is_focused(field))
+        app_event(UiCore::KeyEvent.Down(UiCore::Key.F))
+        check("typing a shortcut letter does not fail the preview", not has_widget_text("Preview failed — retry or keep working offline."))
         app_text_input(" • café 👋")
         check("showcase commits UTF-8 text through its public callback", UiHandles::text_value(field) == "Canvas study • café 👋")
         app_text_editing("候補", 0, 1)
@@ -98,8 +100,16 @@ def main() -> i64:
         UiHandles::set_selection_utf16(field, 0, 5)
         check("showcase exposes grapheme-safe selection", UiHandles::selected_text(field) == "Canva" and UiHandles::selection_length(field) == 5)
         UiHandles::replace_text(field, "x")
-        app_validate()
         check("showcase retains invalid validation state", has_widget_text("Project name needs at least 3 characters."))
+        UiHandles::replace_text(field, "👩‍💻é")
+        check("validation counts graphemes rather than UTF-8 bytes", HelloValidation::status() == UiValidation::Status.Invalid)
+        UiHandles::replace_text(field, "👩‍💻éa")
+        check("three Unicode graphemes pass validation", HelloValidation::status() == UiValidation::Status.Valid)
+        UiHandles::set_selection(field, 0, UiHandles::text_value(field).len)
+        app_event(UiCore::KeyEvent.Down(UiCore::Key.Backspace))
+        check("deletion refreshes validation", HelloValidation::status() == UiValidation::Status.Invalid)
+        restored_edit: bool = UiHandles::undo_text()
+        check("undo refreshes validation", restored_edit and HelloValidation::status() == UiValidation::Status.Valid)
         UiHandles::replace_text(field, "Canvas study • café 👋候補")
         app_validate()
         check("showcase resolves validation after an edit", has_widget_text("Project name looks good."))
@@ -109,6 +119,7 @@ def main() -> i64:
 
     # The palette, theme, save, and restore paths are all application callbacks;
     # they must leave the same retained tree paintable after state changes.
+    UiHandles::clear_focus()
     app_event(UiCore::KeyEvent.Down(UiCore::Key.Digit1))
     app_event(UiCore::KeyEvent.Down(UiCore::Key.T))
     app_event(UiCore::KeyEvent.Down(UiCore::Key.P))
@@ -136,6 +147,11 @@ def main() -> i64:
     replacement_field: UiHandles::Handle = widget_with_kind(UiConst::WidgetKind.TextField)
     check("showcase restart retires old field identity", not UiHandles::is_valid(old_field) and UiHandles::is_valid(replacement_field))
     check("showcase restart revalidates replacement field", has_widget_text("Project name looks good."))
+    theme: UiHandles::Handle = widget_with_kind_and_text(UiConst::WidgetKind.CheckBox, "Dark mode")
+    if UiHandles::widget(theme) is theme_row:
+        check("showcase restart resets the theme control", theme_row.selected)
+    else:
+        check("showcase restart retains the theme control", false)
 
     return failures.i64()
 

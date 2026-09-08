@@ -176,6 +176,11 @@ module HelloApp:
             HelloValidation::dispose()
             HelloState::reset()
             UiHandles::reset()
+            clicks <- 0
+            accent_index <- 2
+            accent <- color(64, 112, 224)
+            dark_theme <- true
+            canvas_color <- color(12, 14, 20)
             root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 28.0, 18.0, color(17, 20, 27))
             root_panel <- root
 
@@ -212,10 +217,14 @@ module HelloApp:
             UiHandles::set_help(intensity_slider, "Adjust the scale of the canvas artwork with drag or arrow keys")
             intensity_progress <- UiHandles::progress_bar_labeled(content, "Preview level", 180.0, 10.0, 0.72, color(54, 61, 78), accent)
 
+            apply_theme()
             UiHandles::layout(UiCore::viewport_width(), UiCore::viewport_height())
             HelloValidation::validate()
 
         def widget_event(widget: usize, event: i32) -> void:
+            if UiHandles::event_is(event, UiConst::WidgetEvent.Change) and UiHandles::callback_matches(widget, project_field):
+                HelloValidation::validate()
+                return
             return if HelloCatalog::widget_event(widget, event)
             return if HelloResourceDemo::widget_event(widget, event)
             if UiHandles::event_is(event, UiConst::WidgetEvent.Change) and UiHandles::callback_matches(widget, intensity_slider):
@@ -234,6 +243,10 @@ module HelloApp:
                 apply_theme()
 
         def event(incoming: UiCore::Event) -> void:
+            # Printable keys belong to the editor while it owns focus.
+            if UiHandles::is_focused(project_field):
+                UiHandles::handle(incoming)
+                return
             match incoming:
                 UiCore::KeyEvent.Down(code):
                     select_palette(swatch_red, color(204, 76, 92)) if code == UiCore::Key.Digit1
@@ -269,7 +282,6 @@ def app_event(event: UiCore::Event) -> void:
 
 def app_text_input(text: sview) -> void:
     UiHandles::insert_text(text)
-    HelloValidation::validate()
 
 def app_validate() -> void:
     HelloValidation::validate()
