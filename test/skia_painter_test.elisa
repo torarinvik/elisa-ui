@@ -383,6 +383,18 @@ def main() -> i64:
     UiSkia::detach()
     check("interactive text scope restores its frame", skia_test_restore_count() == 2 and UiSkia::is_balanced())
 
+    interactive_fallback_font: UiResources::ResourceHandle = UiResources::request("fonts/interactive-fallback", 7)
+    _ = UiResources::set_state(interactive_fallback_font, UiResources::State.Ready)
+    _ = UiSkia::bind_font(interactive_fallback_font, 0x1FA11)
+    interactive_primary_font: UiResources::ResourceHandle = UiResources::request("fonts/interactive-primary", 7)
+    skia_test_reset()
+    UiSkia::attach(34)
+    bound_interactive_layout: UiTextMeasureLayout::Layout = UiSkia::draw_bound_text_block_interactive_with_fallback(interactive_primary_font, interactive_fallback_font, "A\nB", UiCore::Rect(0.0, 0.0, 30.0, 30.0), 10.0, UiCore::rgb(220, 220, 220), interaction, UiSkia::HorizontalTextAlignment.Start, UiSkia::VerticalTextAlignment.Top, 1.0)
+    check("fallback bound text composes one interactive font scope", bound_interactive_layout.line_count == 2 and skia_test_round_rect_count() == 2 and skia_test_text_count() == 2 and skia_test_clip_count() == 1 and skia_test_save_count() == 2 and skia_test_restore_count() == 1 and UiSkia::is_balanced())
+    UiSkia::detach()
+    _ = UiResources::dispose(interactive_primary_font)
+    _ = UiResources::dispose(interactive_fallback_font)
+
     if failures == 0:
         _ = puts("skia painter: all checks passed")
         return 0
