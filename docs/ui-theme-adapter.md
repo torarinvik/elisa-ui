@@ -18,7 +18,8 @@ The adapter changes only framework-wide visual tokens:
 - focus ring and selection colors;
 - checkbox/radio control marks;
 - scrollbar track, thumb, hover, and active colors;
-- focus inset, text padding, slider track height, and choice spacing metrics.
+- focus inset, text padding, slider track height, choice spacing, and choice
+  marker metrics.
 
 Per-widget surfaces, hover/press colors, text colors, and declared widget frames
 remain application-owned. Applications that need a custom token can still copy
