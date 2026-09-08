@@ -129,6 +129,14 @@ def main() -> i64:
     app_frame()
     check("replacement resource frame remains semantically complete", UiCore::command_count() > 20 and UiCore::accessibility_count() > 10)
 
+    # Reinitialization is a real lifecycle boundary. The old typed field and
+    # its validation owner must be stale before the replacement tree is used.
+    old_field: UiHandles::Handle = field
+    app_init()
+    replacement_field: UiHandles::Handle = widget_with_kind(UiConst::WidgetKind.TextField)
+    check("showcase restart retires old field identity", not UiHandles::is_valid(old_field) and UiHandles::is_valid(replacement_field))
+    check("showcase restart revalidates replacement field", has_widget_text("Project name looks good."))
+
     return failures.i64()
 
 def custom_art_command_count() -> i32:
