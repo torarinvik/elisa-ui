@@ -77,6 +77,10 @@ helpers apply the same finite-geometry, alpha, and stroke-width policy as
 retained replay, then forward only primitive arguments through the Skia FFI;
 custom controls never construct or retain Skia C++ objects.
 
+`UiSkia::fill_linear_gradient()` adds a bounded two-stop horizontal or vertical
+surface fill. Elisa owns the colors, orientation, transparency, and rectangle
+validation; the C++ boundary only creates the Skia shader and draws the rect.
+
 Both immediate helpers and retained replay cull fully transparent fills,
 strokes, and text in Elisa before crossing the FFI; `Clear` remains explicit
 because clearing to transparent is observable surface state.
@@ -129,8 +133,8 @@ the optional AppKit compositor: when linked, `drawRect` hands its borrowed
 CoreGraphics context to this bridge, which presents the temporary Skia surface;
 the ordinary AppKit build still uses its CoreGraphics fallback.
 
-The first slice covers clear, clipping, rounded rectangles, circles, triangles,
-lines, UTF-8 text, and text metrics. The portable `FillRect` command keeps its
+The first slice covers clear, clipping, rounded rectangles, two-stop gradients,
+circles, triangles, lines, UTF-8 text, and text metrics. The portable `FillRect` command keeps its
 wire shape. Generic fills use the shared rounded-corner and subtle hairline
 policy; an explicit `UiCore::fill_elevated()` call records an Elisa-owned
 side-band style bit, and replay passes that bit to
@@ -148,9 +152,10 @@ ABI; the bridge forwards those values directly to `SkRRect` without a second
 appearance default and rejects malformed negative/NaN direct calls.
 Custom controls that need immediate text use `UiSkia::draw_text_run()`, which
 shares the retained path's bounded coordinates, UTF-8 prefix, and 1pt minimum
-font-size policy before crossing the ABI.
-Font fallback, image resources, GPU surface
-creation, and an AppKit `MTKView`/`SkSurface` host are intentionally separate
+font-size policy before crossing the ABI. Wrapped blocks use the same measured
+Skia authority through `UiSkia::draw_text_block_positioned()`, with explicit
+horizontal and vertical alignment and an Elisa-owned clip scope. GPU surface
+creation and an AppKit `MTKView`/`SkSurface` host are intentionally separate
 follow-ups; they must be chosen with the target's pinned Skia build rather than
 smuggled into the Elisa ABI.
 
