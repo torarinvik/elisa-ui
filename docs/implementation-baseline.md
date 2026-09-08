@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `4c8bac1` (`feat(skia): cache bounded text metrics in Elisa`) on branch `work` |
+| elisa-ui revision | `3b93316` (`feat(skia): add Elisa image fit policies`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -348,6 +348,11 @@ crossing the Skia boundary.
 The Skia adapter also keeps a bounded byte-keyed grapheme-width cache in Elisa,
 keyed by active font handle and normalized size; scale/binding resets clear it
 and oversized clusters bypass the copy budget.
+Image placement now has an Elisa-owned `ImageFit` policy: Stretch preserves the
+legacy destination, Contain centers an aspect-preserving image, and Cover
+centers a crop inside a temporary clip. Source dimensions are validated before
+the borrowed `SkImage*` crosses the narrow bridge, and bound-resource variants
+reuse the same generation-safe image gate.
 The C++ bridge wraps each borrowed typeface in a temporary `sk_sp` reference
 for SkFont's ownership contract without transferring disposal authority from
 the host.
