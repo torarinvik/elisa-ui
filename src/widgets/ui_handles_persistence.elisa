@@ -49,8 +49,12 @@ module UiHandlesPersistence:
             return false if not UiHandles::is_valid(handle) or not UiState::has(id)
             row: UiFlat::Widget = UiFlat::widget(handle.widget_id.usize())
             return false if row.kind != UiConst::WidgetKind.TextField or row.secure
-            UiHandles::replace_text(handle, UiState::text(id))
-            return true
+            restored: sview = UiState::text(id)
+            UiHandles::replace_text(handle, restored)
+            # The flat text API is deliberately void; verify its bounded
+            # normalization at the typed facade so a rejected/oversized
+            # snapshot cannot be reported as successfully restored.
+            return UiHandles::text_value(handle) == restored
 
         def restore_value(handle: UiHandles::Handle, id: u32) -> bool:
             return false if not UiHandles::is_valid(handle) or not UiState::has(id)

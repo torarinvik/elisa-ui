@@ -79,4 +79,6 @@ Applications that persist control state can opt into
 and adds `UiHandlesPersistence::put_text`, `put_value`, and `put_selected`, plus
 matching restore functions and the bounded `UiState` blob operations. Secure
 text handles are rejected for both save and restore, and all other operations
-require a live handle of the matching widget kind.
+require a live handle of the matching widget kind. Text restore also verifies
+the post-normalization value, so rejected or truncated snapshots return false
+instead of being reported as applied.
