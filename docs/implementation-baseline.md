@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `1c48f3c` (`feat(skia): bind resource fonts to text blocks`) on branch `work` |
+| elisa-ui revision | `19553e1` (`fix(text): clear unavailable measured layouts`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -265,7 +265,8 @@ frame typeface for width, ascent, and line spacing, then applies explicit
 horizontal and vertical alignment before clipping and replaying each line from
 Elisa-owned layout state. Ready generation-bound typefaces can use the bound
 layout/block helpers, including primary/fallback selection, without exposing
-native font handles to widget code.
+native font handles to widget code. Unavailable-font layouts reset shared line
+ranges before returning, so stale measurements cannot leak into diagnostics.
 The frame boundary also supports an explicit logical-to-physical scale with a
 balanced save/restore transform, including cleanup of any outstanding clips.
 `UiSkia::surface_lost()` preserves retained Elisa state while invalidating the
