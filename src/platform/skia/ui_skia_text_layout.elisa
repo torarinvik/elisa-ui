@@ -6,6 +6,11 @@
 
 include "../../widgets/ui_text_measure_layout_core.elisa"
 
+const enum HorizontalTextAlignment of i32:
+    Start = 0
+    Center = 1
+    End = 2
+
 def ui_skia_measure_layout_width(text: sview, size: f32) -> f32:
     return UiSkia::active_measure_text_width(text, size)
 
@@ -17,14 +22,17 @@ extend UiSkia:
         def layout_text(text: sview, max_width: f32, size: f32) -> UiTextMeasureLayout::Layout:
             return UiTextMeasureLayout::layout_with_measure(text, max_width, size, ui_skia_measure_layout_width)
 
+        def draw_text_block(text: sview, box: UiCore::Rect, size: f32, color: UiCore::Color) -> UiTextMeasureLayout::Layout can[Ui.Draw, Ui.Text]:
+            return UiSkia::draw_text_block_aligned(text, box, size, color, HorizontalTextAlignment.Start)
+
         # Draw a wrapped text block directly into a bounded rectangle. Layout
         # happens first, so a caller can inspect overflow even when the canvas
         # is unavailable or the clip scope is rejected. Text remains borrowed
         # from the caller; each line crosses the narrow FFI exactly once.
-        def draw_text_block(text: sview, box: UiCore::Rect, size: f32, color: UiCore::Color) -> UiTextMeasureLayout::Layout can[Ui.Draw, Ui.Text]:
-            planned: UiTextMeasureLayout::Layout = UiSkia::layout_text(text, box.size.width, size)
-            return planned if canvas_state == 0 or color.a == 0
+        def draw_text_block_aligned(text: sview, box: UiCore::Rect, size: f32, color: UiCore::Color, alignment: HorizontalTextAlignment) -> UiTextMeasureLayout::Layout can[Ui.Draw, Ui.Text]:
             safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+            planned: UiTextMeasureLayout::Layout = UiSkia::layout_text(text, safe_box.size.width, size)
+            return planned if canvas_state == 0 or color.a == 0
             return planned if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
             return planned if not UiSkia::push_clip(safe_box)
             ascent: f32 = UiCore::bounded_extent(UiSkia::active_font_ascent(planned.text_size))
@@ -35,6 +43,18 @@ extend UiSkia:
                 line: sview = UiTextMeasureLayout::line_view(text, index)
                 continue if line.len <= 0
                 line_y: f32 = UiCore::bounded_coordinate(first_baseline + line_step * index.f32())
-                UiSkia::draw_text_run(UiCore::TextRun(UiCore::Vec2(safe_box.origin.x, line_y), planned.text_size, line), color)
+                line_width: f32 = UiTextMeasureLayout::line_at(index).width
+                line_x: f32 = UiSkia::aligned_text_origin(safe_box, line_width, alignment)
+                UiSkia::draw_text_run(UiCore::TextRun(UiCore::Vec2(line_x, line_y), planned.text_size, line), color)
             _ = UiSkia::pop_clip()
             return planned
+
+        def aligned_text_origin(box: UiCore::Rect, line_width: f32, alignment: HorizontalTextAlignment) -> f32:
+            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+            safe_line_width: f32 = UiCore::bounded_extent(line_width)
+            remaining: mutable f32 = safe_box.size.width - safe_line_width
+            remaining <- 0.0 if remaining < 0.0
+            offset: mutable f32 = 0.0
+            offset <- remaining * 0.5 if alignment == HorizontalTextAlignment.Center
+            offset <- remaining if alignment == HorizontalTextAlignment.End
+            return UiCore::bounded_coordinate(safe_box.origin.x + offset)
