@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `4fc14b8` (`feat(skia): clamp resource image crops`) on branch `work` |
+| elisa-ui revision | `c28e645` (`fix(skia): bound circle geometry`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -645,6 +645,10 @@ separate host-enforced security boundary.
 - The same native boundary now rejects finite coordinates, extents, radii,
   stroke widths, shadow offsets/blur, and text sizes outside Elisa's bounded
   geometry domain; hostile direct calls are covered by the real raster host.
+- Skia circle normalization now also bounds the radius against both center
+  axes, keeping the full disk inside the finite geometry envelope before the
+  FFI; the native bridge applies the same derived-edge rejection to direct
+  foreign circle calls.
 - Immediate Skia custom drawing now has a dedicated `ui_skia_clip.elisa`
   extension. It rejects empty clips before FFI and shares the transform/frame
   save-depth ledger, with headless coverage for direct clip balance and cleanup.
