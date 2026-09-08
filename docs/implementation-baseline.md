@@ -28,6 +28,22 @@ applies framework-wide tokens with `UiHandles::apply_palette`; its custom
 accent remains application-owned while the adapter preserves retained widget
 colors and geometry.
 
+## Renderer verification status
+
+The reproducible compiler-only command is:
+
+```
+ELISA_UI_REQUIRE_REAL_SKIA=0 ELISA_UI_STAGE1=../wasm-sdk-compiler bash scripts/run_tests.sh
+```
+
+It passes the complete headless suite, including the recorder-backed Skia
+fixture. The required real-raster showcase gate is not locally executable yet:
+`scripts/check_showcase_skia.sh` requires `SKIA_ROOT` at the pinned checkout,
+and the host currently has neither that checkout nor the `gn`/`autoninja`
+tooling needed to build it. This is an environment prerequisite, not evidence
+of a renderer failure; CI or a provisioned host must run the strict gate before
+claiming real-Skia pixel evidence.
+
 `UiLocalization::text_direction` now resolves a bounded paragraph base
 direction from the first strong Unicode scalar, with locale fallback for
 neutral-only text; bidi shaping and reordering remain renderer-owned.
