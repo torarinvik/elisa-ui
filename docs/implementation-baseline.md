@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `ff9794a` (`fix(skia): invalidate bindings when scale changes`) on branch `work` |
+| elisa-ui revision | `e52aea6` (`feat(skia): add Elisa-owned convex polygons`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -284,6 +284,9 @@ contract and its headless recorder.
 Immediate custom surfaces also support an Elisa-owned two-stop linear gradient;
 the narrow bridge only constructs the backend shader after Elisa validates the
 orientation, alpha, and destination geometry.
+Convex custom polygons are bounded to 32 points and fan-triangulated in Elisa
+through the existing triangle primitive, so no native path object or lifetime
+enters the custom backend.
 `UiSkia::render_checked()` replays only the bounded retained batch and reports
 when `UiCore` dropped commands at capacity, so oversize frames are observable
 without an unbounded allocation.
