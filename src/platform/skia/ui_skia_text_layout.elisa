@@ -87,6 +87,31 @@ extend UiSkia:
             _ = UiSkia::pop_clip()
             return planned
 
+        # Resource-bound variants scope the exact ready typeface for both
+        # metric queries and paint. A loading/disposed generation returns an
+        # empty layout without crossing the canvas boundary.
+        def fill_bound_text_selection(resource: UiResources::ResourceHandle, text: sview, box: UiCore::Rect, size: f32, selection_start: usize, selection_end: usize, color: UiCore::Color, horizontal: UiSkia::HorizontalTextAlignment, vertical: UiSkia::VerticalTextAlignment, vertical_inset: f32) -> UiTextMeasureLayout::Layout can[Ui.Draw, Ui.Text]:
+            _ = UiSkia::prune_bindings()
+            return UiSkia::empty_text_layout(text, box.size.width, size) if UiResources::state(resource) != UiResources::State.Ready
+            index: usize = UiSkia::font_binding_index(resource)
+            return UiSkia::empty_text_layout(text, box.size.width, size) if index >= UiSkia::MAX_FONT_BINDINGS
+            previous_font: usize = skia_frame_font
+            skia_frame_font <- skia_font_binding_fonts[index]
+            planned: UiTextMeasureLayout::Layout = UiSkia::fill_text_selection(text, box, size, selection_start, selection_end, color, horizontal, vertical, vertical_inset)
+            skia_frame_font <- previous_font
+            return planned
+
+        def draw_bound_text_caret(resource: UiResources::ResourceHandle, text: sview, box: UiCore::Rect, size: f32, line_index: usize, byte_offset: usize, color: UiCore::Color, horizontal: UiSkia::HorizontalTextAlignment, vertical: UiSkia::VerticalTextAlignment, caret_width: f32, vertical_inset: f32) -> UiTextMeasureLayout::Layout can[Ui.Draw, Ui.Text]:
+            _ = UiSkia::prune_bindings()
+            return UiSkia::empty_text_layout(text, box.size.width, size) if UiResources::state(resource) != UiResources::State.Ready
+            index: usize = UiSkia::font_binding_index(resource)
+            return UiSkia::empty_text_layout(text, box.size.width, size) if index >= UiSkia::MAX_FONT_BINDINGS
+            previous_font: usize = skia_frame_font
+            skia_frame_font <- skia_font_binding_fonts[index]
+            planned: UiTextMeasureLayout::Layout = UiSkia::draw_text_caret(text, box, size, line_index, byte_offset, color, horizontal, vertical, caret_width, vertical_inset)
+            skia_frame_font <- previous_font
+            return planned
+
         # A bound logical font keeps measurement and replay on one generation
         # without exposing its borrowed SkTypeface to the caller. The frame
         # font slot is restored even when a control nests another text scope.

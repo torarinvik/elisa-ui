@@ -63,3 +63,7 @@ state or geometry policy.
 positioned line metrics for a grapheme-safe caret. Blink timing and visibility
 remain application/widget state, while the helper bounds the caret to the
 destination and paints it through the existing Elisa rounded-rectangle path.
+`UiSkia::fill_bound_text_selection()` and `UiSkia::draw_bound_text_caret()`
+scope a ready generation-bound typeface for those operations, returning an
+empty layout for loading, failed, cancelled, or stale resources just like the
+bound text-block helpers.
