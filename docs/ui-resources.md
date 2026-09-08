@@ -46,6 +46,10 @@ resource reason after it has consumed the change.
 Visible views can add an idempotent `set_demand(handle, priority)` hint and
 remove it with `clear_demand`. The priority is framework state for host/SDK
 coalescing; it does not grant bandwidth, bypass cache policy, or force a fetch.
+Hosts can inspect the bounded `demand_count()` / `demand_at(index)` snapshot or
+select `highest_priority_demand()`. Each returned `DemandHint` includes the
+generation-safe handle, owner, and priority; enumeration is deterministic and
+does not expose resource-arena indexes or require a second native table.
 
 Hosts may provide validated intrinsic geometry before decode/upload completes:
 

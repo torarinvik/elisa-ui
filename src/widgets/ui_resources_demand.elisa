@@ -2,6 +2,11 @@
 
 extend UiResources:
     public:
+        struct DemandHint:
+            handle: ResourceHandle
+            owner: u32
+            priority: u32
+
         # Visibility and prefetch policy stays in Elisa, while the host decides
         # whether a hint can be serviced under bandwidth/cache constraints.
         # A repeated hint is idempotent and only invalidates when its value
@@ -28,6 +33,38 @@ extend UiResources:
         def demand_priority(handle: ResourceHandle) -> u32:
             return 0 if not UiResources::resource_is_valid(handle) or not resource_demanded[handle.slot.usize()]
             return resource_priorities[handle.slot.usize()]
+
+        # Hosts enumerate a bounded snapshot of visibility/prefetch work rather
+        # than reaching into the resource arena. Results are ordered by slot so
+        # repeated polling is deterministic; each hint carries its priority for
+        # host-side coalescing and scheduling policy.
+        def demand_count() -> usize:
+            count: mutable usize = 0
+            for slot in 0..<resource_count:
+                count <- count + 1 if resource_states[slot] != State.Unrequested and resource_demanded[slot]
+            return count
+
+        def demand_at(index: usize) -> DemandHint:
+            found: mutable usize = 0
+            for slot in 0..<resource_count:
+                continue if resource_states[slot] == State.Unrequested or not resource_demanded[slot]
+                return DemandHint{handle: resource_make_handle(slot), owner: resource_owners[slot], priority: resource_priorities[slot]} if found == index
+                found <- found + 1
+            return DemandHint{handle: UiResources::resource_invalid(), owner: 0, priority: 0}
+
+        # A host that services one hint at a time can select the highest
+        # priority without sorting or allocating. Ties use the lowest slot for
+        # stable ordering across polls.
+        def highest_priority_demand() -> DemandHint:
+            selected: mutable usize = MAX_RESOURCES
+            selected_priority: mutable u32 = 0
+            for slot in 0..<resource_count:
+                continue if resource_states[slot] == State.Unrequested or not resource_demanded[slot]
+                if selected == MAX_RESOURCES or resource_priorities[slot] > selected_priority:
+                    selected <- slot
+                    selected_priority <- resource_priorities[slot]
+            return DemandHint{handle: resource_invalid(), owner: 0, priority: 0} if selected == MAX_RESOURCES
+            return DemandHint{handle: resource_make_handle(selected), owner: resource_owners[selected], priority: selected_priority}
 
         # Hosts report transport/decode progress independently. Both fractions
         # are normalized before storage; network completion therefore does not
