@@ -50,6 +50,17 @@ std::size_t count_color(const SkPixmap& pixels, SkColor expected,
     return count;
 }
 
+bool expect_ink(const SkPixmap& pixels, SkColor background,
+                int left, int top, int right, int bottom, const char* label) {
+    for (int y = top; y < bottom; ++y) {
+        for (int x = left; x < right; ++x) {
+            if (pixels.getColor(x, y) != background) return true;
+        }
+    }
+    std::fprintf(stderr, "%s: no rasterized glyphs in the expected region\n", label);
+    return false;
+}
+
 bool expect_color(const SkPixmap& pixels, int x, int y, SkColor expected,
                   const char* label) {
     const SkColor actual = pixels.getColor(x, y);
@@ -112,6 +123,8 @@ int main(int argc, char** argv) {
     }
     bool ok = true;
     ok = expect_color(pixels, 0, 0, SkColorSetARGB(255, 226, 231, 241), "light-theme background") && ok;
+    ok = expect_ink(pixels, SkColorSetARGB(255, 238, 241, 247),
+                    36, 18, 360, 58, "showcase title text") && ok;
     const std::size_t accent_pixels = count_color(
         pixels, SkColorSetARGB(255, 204, 76, 92), 40, 180, width - 40, height - 20);
     if (accent_pixels < 100) {
@@ -153,6 +166,10 @@ int main(int argc, char** argv) {
     const auto total_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
         render_finish - render_start).count();
     const auto average_ns = total_ns / iterations;
+    if (total_ns <= 0 || average_ns <= 0) {
+        std::fprintf(stderr, "skia showcase: renderer timing did not produce a positive sample\n");
+        ok = false;
+    }
 
     SkFILEWStream stream(output);
     SkPngEncoder::Options options;
@@ -161,7 +178,7 @@ int main(int argc, char** argv) {
         return 9;
     }
     if (!ok) return 10;
-    std::printf("skia showcase: rendered and verified %s commands=%d semantics=%d art=%d deferred=%d accent_pixels=%zu probe_x=%d probe_y=%d render_iterations=%d render_total_ns=%lld render_average_ns=%lld\n",
+    std::printf("skia showcase: rendered and verified %s renderer=cpu-raster commands=%d semantics=%d art=%d deferred=%d accent_pixels=%zu probe_x=%d probe_y=%d render_iterations=%d render_total_ns=%lld render_average_ns=%lld\n",
                 output, commands, semantics, art, deferred, accent_pixels, probe_x, probe_y, iterations,
                 static_cast<long long>(total_ns), static_cast<long long>(average_ns));
     return 0;

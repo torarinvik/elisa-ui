@@ -59,6 +59,9 @@ Elisa painter into a headless SkSurface, verifies pixels and text, and repeats
 the complete frame through the same public export. Its output includes
 `render_iterations`, `render_total_ns`, and `render_average_ns`, providing a
 reproducible CPU-rendering datapoint alongside the retained-tree timings.
+The host rejects a zero-duration sample, and the showcase host additionally
+checks rasterized title ink, so a nominally successful call cannot satisfy the
+gate without producing measured pixels.
 The same required gate then runs `scripts/check_showcase_skia.sh`: it drives
 the shipped `examples/hello/app.elisa` public callbacks (focus, UTF-8/IME
 editing, state save/restore, and resource replacement) and verifies that the

@@ -152,6 +152,10 @@ int main(int argc, char** argv) {
     const auto render_finish = std::chrono::steady_clock::now();
     const auto render_total_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(render_finish - render_start).count();
     const auto render_average_ns = render_total_ns / iterations;
+    if (render_total_ns <= 0 || render_average_ns <= 0) {
+        std::fprintf(stderr, "skia offscreen: renderer timing did not produce a positive sample\n");
+        return 9;
+    }
 
     SkFILEWStream stream(output);
     SkPngEncoder::Options options;
