@@ -28,6 +28,10 @@ the compatibility forms bind to the current generation. This prevents packets
 buffered before reconnect from becoming valid in a new session. The sticky
 `stale_input` fact lets a host render a reconnect or latency diagnostic without
 maintaining a second policy table.
+
+Connection and suspend/resume transitions invalidate paint and semantics so a
+disconnect overlay and its assistive representation update with the same state
+change.
 Malformed acknowledgements (zero, beyond the sent frontier, or older than the
 acknowledged frontier) also set that sticky diagnostic before being rejected.
 

@@ -40,7 +40,9 @@ def main() -> i64:
     }, UiRemote::Presentation.TypedCommands)
     check("remote rejects a zero-sized surface offer", not zero_offer.accepted and zero_offer.presentation == UiRemote::Presentation.Unknown)
 
+    UiCore::clear_all_invalidations()
     check("remote connects with negotiated presentation", UiRemote::connect(offer, UiRemote::Presentation.TypedCommands))
+    check("remote connection invalidates overlay presentation", UiCore::is_invalidated(UiCore::Invalidation.Paint) and UiCore::is_invalidated(UiCore::Invalidation.Semantics))
     connected: UiRemote::Snapshot = UiRemote::snapshot()
     check("remote connection owns a generation", connected.state == UiRemote::ConnectionState.Connected and connected.generation > 0 and connected.selection.presentation == UiRemote::Presentation.TypedCommands and not connected.overlay_visible)
     resized: UiCore::Size = UiRemote::logical_size(connected.selection, 1280, 720)
@@ -57,8 +59,10 @@ def main() -> i64:
     check("generation-aware input accepts the current session", UiRemote::submit_input_for_generation(first_generation, 9).accepted)
     _ = UiRemote::acknowledge_input_for_generation(first_generation, 9)
 
-    check("remote suspension blocks input", UiRemote::suspend() and not UiRemote::accepts_input() and UiRemote::snapshot().overlay_visible)
-    check("remote resume restores input", UiRemote::resume() and UiRemote::accepts_input() and not UiRemote::snapshot().overlay_visible)
+    UiCore::clear_all_invalidations()
+    check("remote suspension blocks input", UiRemote::suspend() and not UiRemote::accepts_input() and UiRemote::snapshot().overlay_visible and UiCore::is_invalidated(UiCore::Invalidation.Paint) and UiCore::is_invalidated(UiCore::Invalidation.Semantics))
+    UiCore::clear_all_invalidations()
+    check("remote resume restores input", UiRemote::resume() and UiRemote::accepts_input() and not UiRemote::snapshot().overlay_visible and UiCore::is_invalidated(UiCore::Invalidation.Paint) and UiCore::is_invalidated(UiCore::Invalidation.Semantics))
     generation_before_disconnect: u32 = UiRemote::snapshot().generation
     UiRemote::disconnect()
     disconnected: UiRemote::Snapshot = UiRemote::snapshot()

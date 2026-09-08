@@ -23,21 +23,25 @@ extend UiRemote:
             remote_stale_input <- false
             remote_state <- ConnectionState.Connected
             remote_generation <- next_generation(remote_generation)
+            mark_changed()
             return true
 
         def suspend() -> bool:
             return false if remote_state != ConnectionState.Connected
             remote_state <- ConnectionState.Suspended
+            mark_changed()
             return true
 
         def resume() -> bool:
             return false if remote_state != ConnectionState.Suspended
             remote_state <- ConnectionState.Connected
+            mark_changed()
             return true
 
         def disconnect() -> void:
             clear_disconnected_state()
             remote_generation <- next_generation(remote_generation)
+            mark_changed()
 
         # Sequence numbers belong to the transport adapter, while ordering and
         # stale-input rejection stay in Elisa. A duplicate or old packet never
@@ -117,3 +121,7 @@ extend UiRemote:
             remote_input_sent <- 0
             remote_input_acked <- 0
             remote_stale_input <- false
+
+        def mark_changed() -> void:
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+            UiCore::invalidate(UiCore::Invalidation.Semantics)
