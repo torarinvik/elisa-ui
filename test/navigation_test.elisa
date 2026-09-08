@@ -1,5 +1,6 @@
 # Headless regression for shared back-navigation decisions.
 
+include "../src/core/ui_core.elisa"
 include "../src/widgets/ui_navigation.elisa"
 
 extern puts(text: cstr) -> i64
@@ -47,7 +48,9 @@ def main() -> i64:
     _ = UiNavigation::commit(pending)
 
     stale: UiNavigation::NavigationHandle = UiNavigation::push(40, UiNavigation::BackPolicy.Allow, false)
+    UiCore::clear_all_invalidations()
     check("dirty mutation is explicit", UiNavigation::set_dirty(stale, true) and UiNavigation::is_dirty(stale) and not UiNavigation::set_dirty(stale, true))
+    check("dirty mutation invalidates presentation and semantics", UiCore::is_invalidated(UiCore::Invalidation.Paint) and UiCore::is_invalidated(UiCore::Invalidation.Semantics))
     check("stale commit is rejected", UiNavigation::commit(UiNavigation::NavigationHandle{slot: stale.slot, generation: stale.generation + 1}) == false and UiNavigation::navigation_is_valid(stale))
     _ = UiNavigation::commit(stale)
 
