@@ -37,6 +37,26 @@ extend UiSkia:
             safe_height <- height_room if safe_height > height_room else safe_height
             return UiCore::Rect(safe_x, safe_y, safe_width, safe_height)
 
+        # A ready logical image may publish verified decoded dimensions. Use
+        # them to keep generation-bound crops inside the actual image while
+        # retaining the envelope-only policy for resources without metadata.
+        def skia_safe_source_rect_for_size(source: UiCore::Rect, intrinsic: UiCore::Size) -> UiCore::Rect:
+            safe: UiCore::Rect = UiSkia::skia_safe_source_rect(source)
+            limit_width: f32 = UiCore::bounded_extent(intrinsic.width)
+            limit_height: f32 = UiCore::bounded_extent(intrinsic.height)
+            return safe if limit_width <= 0.0 or limit_height <= 0.0
+            safe_x: mutable f32 = safe.origin.x
+            safe_y: mutable f32 = safe.origin.y
+            safe_x <- limit_width if safe_x > limit_width
+            safe_y <- limit_height if safe_y > limit_height
+            remaining_width: f32 = limit_width - safe_x
+            remaining_height: f32 = limit_height - safe_y
+            safe_width: mutable f32 = safe.size.width
+            safe_height: mutable f32 = safe.size.height
+            safe_width <- remaining_width if safe_width > remaining_width else safe_width
+            safe_height <- remaining_height if safe_height > remaining_height else safe_height
+            return UiCore::Rect(safe_x, safe_y, safe_width, safe_height)
+
         def skia_safe_radius(box: UiCore::Rect, radius: f32) -> f32:
             safe_radius: mutable f32 = UiCore::bounded_extent(radius)
             shortest: f32 = box.size.width if box.size.width < box.size.height else box.size.height
