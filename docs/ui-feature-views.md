@@ -32,8 +32,10 @@ The visible states are `Requested`, `Loading`, `Ready`,
 incompatible, denied, and offline results. `dispose_owner()` releases all
 feature views owned by a dismissed screen; the old handles then fail closed.
 `cancel()` keeps the host activation token readable until the host has
-acknowledged deactivation, while a subsequent request rotates the generation
-and clears that old token.
+acknowledged deactivation. The host then calls
+`acknowledge_deactivation(handle, activation_id)`; both the handle generation
+and original token must match before Elisa clears it. A subsequent request also
+rotates the generation and clears that old token.
 
 For an application screen, `view(handle)` returns a stable projection with the
 current state, failure kind, activation token, and a single explicit action.

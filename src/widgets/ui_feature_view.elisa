@@ -177,6 +177,18 @@ module UiFeatureView:
             mark_changed()
             return true
 
+        # The host calls this after it has released the component associated
+        # with a cancelled activation. Requiring the original token prevents a
+        # late acknowledgement from clearing a newer activation on a reused
+        # feature slot.
+        def acknowledge_deactivation(handle: FeatureHandle, activation_id: u64) -> bool:
+            return false if not is_valid(handle) or activation_id == 0
+            slot: usize = handle.slot.usize()
+            return false if feature_states[slot] != FeatureState.Cancelled or feature_activation_ids[slot] != activation_id
+            feature_activation_ids[slot] <- 0
+            mark_changed()
+            return true
+
         def dispose(handle: FeatureHandle) -> bool:
             return false if not is_valid(handle)
             clear_slot(handle.slot.usize())
