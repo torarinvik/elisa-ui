@@ -59,6 +59,9 @@ Elisa painter into a headless SkSurface, verifies pixels and text, and repeats
 the complete frame through the same public export. Its output includes
 `render_iterations`, `render_total_ns`, and `render_average_ns`, providing a
 reproducible CPU-rendering datapoint alongside the retained-tree timings.
+The renderer scripts accept only an explicit integer iteration count in
+`1..10000`; malformed values fail before timing starts instead of silently
+changing the sample size.
 The host rejects a zero-duration sample, checks rasterized title ink, and
 compares a logical-pixel digest before and after repeated replays. A nominally
 successful call therefore cannot satisfy the gate without producing measured,

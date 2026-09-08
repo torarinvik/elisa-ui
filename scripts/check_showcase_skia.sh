@@ -34,6 +34,10 @@ clang++ -Wl,-dead_strip -o "$HOST_BINARY" "${link_inputs[@]}" \
 
 snapshot="${ELISA_UI_SKIA_SHOWCASE_SNAPSHOT:-}"
 render_iterations="${ELISA_UI_SKIA_RENDER_ITERATIONS:-16}"
+if [[ ! "$render_iterations" =~ ^[1-9][0-9]*$ ]] || (( render_iterations > 10000 )); then
+  echo "skia showcase: ELISA_UI_SKIA_RENDER_ITERATIONS must be an integer in 1..10000 (got $render_iterations)" >&2
+  exit 2
+fi
 temporary_snapshot=""
 if [[ -z "$snapshot" ]]; then
   temporary_dir="$(mktemp -d "${TMPDIR:-/tmp}/elisa-ui-skia-showcase.XXXXXX")"
