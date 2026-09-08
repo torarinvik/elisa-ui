@@ -12,6 +12,7 @@ include "../core/ui_lifecycle.elisa"
 include "../core/ui_metrics.elisa"
 include "../widgets/ui_resources.elisa"
 include "../widgets/ui_feature_view.elisa"
+include "../platform/remote/ui_remote.elisa"
 
 module UiHarness:
     private:
@@ -37,6 +38,7 @@ module UiHarness:
             test_time <- 0.0
             UiResources::reset()
             UiFeatureView::reset()
+            UiRemote::reset()
             UiCore::set_viewport(width, height)
             UiCore::set_frame_time(test_time)
             app_init()
@@ -45,6 +47,7 @@ module UiHarness:
         def stop() -> void:
             UiResources::reset()
             UiFeatureView::reset()
+            UiRemote::disconnect()
             _ = UiLifecycle::stop()
 
         def is_running() -> bool:
@@ -217,3 +220,29 @@ module UiHarness:
         def dispose_features_for_owner(owner: u32) -> usize:
             return 0 if not UiLifecycle::is_started()
             return UiFeatureView::dispose_owner(owner)
+
+        # Remote lifecycle and input are injected through the same deterministic
+        # seam. Transport remains host-owned; these helpers exercise only the
+        # generation, negotiation, and acknowledgement policy in Elisa.
+        def connect_remote(offer: UiRemote::Offer, preferred: UiRemote::Presentation) -> bool:
+            return false if not UiLifecycle::is_started()
+            return UiRemote::connect(offer, preferred)
+
+        def suspend_remote() -> bool:
+            return UiLifecycle::is_started() and UiRemote::suspend()
+
+        def resume_remote() -> bool:
+            return UiLifecycle::is_started() and UiRemote::resume()
+
+        def disconnect_remote() -> void:
+            return if not UiLifecycle::is_started()
+            UiRemote::disconnect()
+
+        def remote_snapshot() -> UiRemote::Snapshot:
+            return UiRemote::snapshot()
+
+        def submit_remote_input(generation: u32, sequence: u64) -> UiRemote::InputResult:
+            return UiRemote::submit_input_for_generation(generation, sequence) if UiLifecycle::is_started() else UiRemote::InputResult{accepted: false, stale: false}
+
+        def acknowledge_remote_input(generation: u32, sequence: u64) -> bool:
+            return UiLifecycle::is_started() and UiRemote::acknowledge_input_for_generation(generation, sequence)

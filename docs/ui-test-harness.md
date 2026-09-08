@@ -39,6 +39,11 @@ and `acknowledge_feature_deactivation`. The acknowledgement requires the
 original activation token, matching the production host contract, and makes
 cancel/release tests possible without opening a window.
 
+Remote policy can likewise be injected with `connect_remote`,
+`suspend_remote`, `resume_remote`, `submit_remote_input`, and
+`acknowledge_remote_input`. These helpers reset and expose the negotiated
+session generation, so reconnect and stale-packet behavior is deterministic.
+
 `set_time` accepts monotonic absolute seconds; `advance_time` adds a positive
 delta and ignores negative, NaN, or infinite input. The clock never moves
 backwards. `resize`, `focus_lost`, and `focus_gained` are convenience helpers

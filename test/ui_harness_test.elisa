@@ -46,6 +46,13 @@ def main() -> i64:
     check("harness starts the app once", init_calls == 1)
     check("harness starts at deterministic time zero", UiHarness::time() == 0.0 and UiCore::frame_time() == 0.0)
     check("harness stores the injected viewport", UiCore::viewport_width() == 320.0 and UiCore::viewport_height() == 200.0)
+    remote_offer: UiRemote::Offer = UiRemote::Offer{typed_commands: true, framebuffer: false, video: false, physical_width: 640, physical_height: 400, scale: 2.0}
+    check("harness injects remote negotiation", UiHarness::connect_remote(remote_offer, UiRemote::Presentation.TypedCommands) and UiHarness::remote_snapshot().selection.logical_width == 320.0)
+    remote_generation: u32 = UiHarness::remote_snapshot().generation
+    remote_input: UiRemote::InputResult = UiHarness::submit_remote_input(remote_generation, 1)
+    check("harness injects generation-safe remote input", remote_input.accepted and UiHarness::acknowledge_remote_input(remote_generation, 1))
+    check("harness injects remote suspension", UiHarness::suspend_remote() and UiHarness::remote_snapshot().overlay_visible)
+    check("harness resumes remote input", UiHarness::resume_remote() and UiHarness::remote_snapshot().state == UiRemote::ConnectionState.Connected)
 
     resource: UiResources::ResourceHandle = UiHarness::request_resource("images/test", 5)
     check("harness injects a logical resource request", UiResources::resource_is_valid(resource) and UiHarness::resource_state(resource) == UiResources::State.Requested)
