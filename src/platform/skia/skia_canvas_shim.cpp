@@ -18,7 +18,6 @@
 #include "include/core/SkPaint.h"
 #include "include/core/SkRect.h"
 #include "include/core/SkRRect.h"
-#include "include/core/SkPathBuilder.h"
 #include "include/core/SkSamplingOptions.h"
 #include "include/core/SkTypeface.h"
 #include "include/effects/SkImageFilters.h"

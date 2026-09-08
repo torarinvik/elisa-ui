@@ -14,7 +14,6 @@
 
 #include "../../../include/elisa_appkit_skia.h"
 #include "../../../include/elisa_skia.h"
-#include "../../../include/elisa_skia.h"
 #include "include/core/SkColor.h"
 #include "include/core/SkFontMgr.h"
 #include "include/core/SkFontStyle.h"
