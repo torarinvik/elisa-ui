@@ -502,6 +502,9 @@ separate host-enforced security boundary.
   and depth exhaustion are rejected before any native restore can target the
   wrong scope; depth exhaustion also reports `CommandOverflow` so callback
   content cannot be silently dropped.
+- `UiSkia::Snapshot` now includes deferred activity, count, overflow, and scope
+  depth alongside attachment/save/resource diagnostics, keeping callback
+  failures observable without exposing a canvas or mutable queue storage.
 - The shared event queue now rejects typed key, pointer-button, and gamepad
   ordinals that normalize to `Event.None`, instead of reporting a successful
   enqueue for a silently discarded no-op. The queue retains its existing

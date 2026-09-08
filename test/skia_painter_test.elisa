@@ -97,7 +97,7 @@ def main() -> i64:
     UiSkia::draw_text_run(UiCore::TextRun(UiCore::Vec2(0.0, 0.0), 12.0, "transparent"), UiCore::rgba(220, 220, 220, 0))
     check("transparent direct text stays off the FFI", skia_test_text_count() == text_calls_before_transparent)
     initial_state: UiSkia::Snapshot = UiSkia::snapshot()
-    check("Skia state snapshot starts balanced", initial_state.attached and initial_state.save_depth == 1 and initial_state.clip_depth == 0 and initial_state.transform_depth == 0 and UiSkia::is_balanced())
+    check("Skia state snapshot starts balanced", initial_state.attached and initial_state.save_depth == 1 and initial_state.clip_depth == 0 and initial_state.transform_depth == 0 and not initial_state.deferred_active and initial_state.deferred_count == 0 and not initial_state.deferred_overflowed and initial_state.deferred_scope_depth == 0 and UiSkia::is_balanced())
     transform_pushed: bool = UiSkia::push_transform(UiCore::Vec2(3.0, 4.0), UiCore::Vec2(1.5, 0.75))
     UiSkia::pop_transform()
     check("scoped transform crosses the narrow FFI", transform_pushed and skia_test_translate_count() == 1 and skia_test_scale_count() == 2)
@@ -423,13 +423,13 @@ def main() -> i64:
     UiCore::begin_frame()
     skia_test_reset()
     UiSkia::begin_deferred_frame()
-    check("deferred Skia scope accepts custom primitives", UiSkia::defer_fill_rounded_rect(UiCore::Rect(8.0, 9.0, 40.0, 20.0), 6.0, UiCore::rgb(20, 30, 40)) and UiSkia::defer_fill_linear_gradient(UiCore::Rect(8.0, 9.0, 40.0, 20.0), UiCore::rgb(20, 30, 40), UiCore::rgb(90, 100, 110), true) and UiSkia::defer_text_run(UiCore::TextRun(UiCore::Vec2(8.0, 24.0), 10.0, "queued"), UiCore::rgb(220, 220, 220)) and UiSkia::deferred_count() == 3)
+    check("deferred Skia scope accepts custom primitives", UiSkia::defer_fill_rounded_rect(UiCore::Rect(8.0, 9.0, 40.0, 20.0), 6.0, UiCore::rgb(20, 30, 40)) and UiSkia::defer_fill_linear_gradient(UiCore::Rect(8.0, 9.0, 40.0, 20.0), UiCore::rgb(20, 30, 40), UiCore::rgb(90, 100, 110), true) and UiSkia::defer_text_run(UiCore::TextRun(UiCore::Vec2(8.0, 24.0), 10.0, "queued"), UiCore::rgb(220, 220, 220)) and UiSkia::deferred_count() == 3 and UiSkia::snapshot().deferred_active and UiSkia::snapshot().deferred_count == 3 and not UiSkia::snapshot().deferred_overflowed)
     check("deferred Skia scope rejects malformed primitives", not UiSkia::defer_fill_rounded_rect(UiCore::Rect(8.0, 9.0, 0.0, 20.0), 6.0, UiCore::rgb(20, 30, 40)) and not UiSkia::defer_image(0, UiCore::Rect(8.0, 9.0, 40.0, 20.0), 255) and UiSkia::deferred_count() == 3)
     UiSkia::attach(36)
     check("deferred Skia primitives replay after retained commands", UiSkia::render_status() == UiSkia::RenderStatus.Complete and skia_test_round_rect_count() == 1 and skia_test_gradient_count() == 1 and skia_test_text_count() == 1)
     UiSkia::detach()
     UiSkia::end_deferred_frame()
-    check("deferred Skia scope clears copied state", UiSkia::deferred_count() == 0 and not UiSkia::deferred_overflowed())
+    check("deferred Skia scope clears copied state", UiSkia::deferred_count() == 0 and not UiSkia::deferred_overflowed() and not UiSkia::snapshot().deferred_active and UiSkia::snapshot().deferred_scope_depth == 0)
 
     UiCore::begin_frame()
     skia_test_reset()
@@ -476,7 +476,7 @@ def main() -> i64:
     bounded_deferred_scopes: usize =
         for _ in 0..<UiSkia::MAX_SCOPE_DEPTH |accepted: usize = 0| -> accepted:
             accepted <- accepted + 1 if UiSkia::defer_push_transform(UiCore::Vec2(1.0, 1.0), UiCore::Vec2(1.0, 1.0))
-    check("deferred scope depth reports bounded overflow", bounded_deferred_scopes == UiSkia::MAX_SCOPE_DEPTH - 1 and UiSkia::deferred_overflowed())
+    check("deferred scope depth reports bounded overflow", bounded_deferred_scopes == UiSkia::MAX_SCOPE_DEPTH - 1 and UiSkia::deferred_overflowed() and UiSkia::snapshot().deferred_scope_depth == UiSkia::MAX_SCOPE_DEPTH - 1)
     UiSkia::attach(41)
     check("deferred scope overflow reports incomplete rendering", UiSkia::render_status() == UiSkia::RenderStatus.CommandOverflow)
     UiSkia::detach()

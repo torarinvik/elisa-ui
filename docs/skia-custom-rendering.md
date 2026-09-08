@@ -162,7 +162,8 @@ wrong native state. Scope-depth exhaustion marks the frame incomplete through
 the same `CommandOverflow` status as command-capacity exhaustion.
 
 `UiSkia::snapshot()` is a read-only diagnostic record for attachment/generation,
-save depth, clip/transform depth, and active image/font bindings;
+save depth, clip/transform depth, active image/font bindings, and deferred
+queue activity/count/overflow/scope depth;
 `UiSkia::is_balanced()` provides the corresponding invariant check. These
 diagnostics expose lifecycle facts without handing hosts mutable state or native
 object pointers.
