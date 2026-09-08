@@ -242,6 +242,27 @@ extern "C" void elisa_skia_canvas_draw_image_sampling(std::size_t canvas_handle,
     }
 }
 
+extern "C" void elisa_skia_canvas_draw_image_source_sampling(
+    std::size_t canvas_handle, std::size_t image_handle,
+    float source_x, float source_y, float source_width, float source_height,
+    float x, float y, float width, float height,
+    std::uint8_t alpha, std::int32_t sampling) {
+    if (SkCanvas *target = canvas(canvas_handle);
+        target != nullptr && image_handle != 0 &&
+        valid_rect(source_x, source_y, source_width, source_height) &&
+        valid_rect(x, y, width, height) && alpha != 0) {
+        SkImage *image = reinterpret_cast<SkImage *>(image_handle);
+        SkPaint paint;
+        paint.setAntiAlias(true);
+        paint.setAlphaf(static_cast<float>(alpha) / 255.0f);
+        const SkFilterMode filter = sampling == 0 ? SkFilterMode::kNearest : SkFilterMode::kLinear;
+        target->drawImageRect(image,
+                              SkRect::MakeXYWH(source_x, source_y, source_width, source_height),
+                              SkRect::MakeXYWH(x, y, width, height),
+                              SkSamplingOptions(filter, SkMipmapMode::kNone), &paint);
+    }
+}
+
 extern "C" void elisa_skia_canvas_draw_text_with_font(std::size_t canvas_handle,
                                                         std::size_t font_handle,
                                                         const char *text, std::size_t length,

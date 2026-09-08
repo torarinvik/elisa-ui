@@ -40,6 +40,10 @@ static float last_image_y;
 static float last_image_width;
 static float last_image_height;
 static int last_image_sampling;
+static float last_image_source_x;
+static float last_image_source_y;
+static float last_image_source_width;
+static float last_image_source_height;
 
 void elisa_skia_canvas_save(size_t canvas) { if (canvas != 0) save_count += 1; }
 void elisa_skia_canvas_restore(size_t canvas) { if (canvas != 0) restore_count += 1; }
@@ -116,6 +120,19 @@ void elisa_skia_canvas_draw_image_sampling(size_t canvas, size_t image, float x,
         last_image_x = x; last_image_y = y; last_image_width = width; last_image_height = height;
     }
 }
+void elisa_skia_canvas_draw_image_source_sampling(size_t canvas, size_t image,
+                                                  float source_x, float source_y,
+                                                  float source_width, float source_height,
+                                                  float x, float y, float width, float height,
+                                                  uint8_t alpha, int sampling) {
+    (void)image; (void)alpha;
+    if (canvas != 0) {
+        image_count += 1; last_image_sampling = sampling;
+        last_image_source_x = source_x; last_image_source_y = source_y;
+        last_image_source_width = source_width; last_image_source_height = source_height;
+        last_image_x = x; last_image_y = y; last_image_width = width; last_image_height = height;
+    }
+}
 void elisa_skia_canvas_draw_text_with_font(size_t canvas, size_t font, const char *text,
                                            size_t length, float x, float y, float size,
                                            uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha) {
@@ -174,7 +191,7 @@ void skia_test_reset(void) {
     save_count = 0; restore_count = 0; scale_count = 0; translate_count = 0; rotate_count = 0; clip_count = 0; rounded_clip_count = 0;
     clear_count = 0; round_rect_count = 0; stroke_round_rect_count = 0; shadow_round_rect_count = 0; gradient_count = 0; image_count = 0; circle_count = 0; stroke_circle_count = 0; triangle_count = 0;
     last_shadow_offset_x = 0.0f; last_shadow_offset_y = 0.0f; last_shadow_blur = 0.0f;
-    line_count = 0; text_count = 0; measure_width_count = 0; last_round_radius = 0.0f; last_clip_radius = 0.0f; last_stroke_width = 0.0f; last_circle_stroke_width = 0.0f; last_line_width = 0.0f; last_text_size = 0.0f; last_image_x = 0.0f; last_image_y = 0.0f; last_image_width = 0.0f; last_image_height = 0.0f; last_image_sampling = 1; last_gradient_horizontal = 0;
+    line_count = 0; text_count = 0; measure_width_count = 0; last_round_radius = 0.0f; last_clip_radius = 0.0f; last_stroke_width = 0.0f; last_circle_stroke_width = 0.0f; last_line_width = 0.0f; last_text_size = 0.0f; last_image_x = 0.0f; last_image_y = 0.0f; last_image_width = 0.0f; last_image_height = 0.0f; last_image_source_x = 0.0f; last_image_source_y = 0.0f; last_image_source_width = 0.0f; last_image_source_height = 0.0f; last_image_sampling = 1; last_gradient_horizontal = 0;
 }
 int skia_test_save_count(void) { return save_count; }
 int skia_test_restore_count(void) { return restore_count; }
@@ -210,3 +227,7 @@ float skia_test_last_image_x(void) { return last_image_x; }
 float skia_test_last_image_y(void) { return last_image_y; }
 float skia_test_last_image_width(void) { return last_image_width; }
 float skia_test_last_image_height(void) { return last_image_height; }
+float skia_test_last_image_source_x(void) { return last_image_source_x; }
+float skia_test_last_image_source_y(void) { return last_image_source_y; }
+float skia_test_last_image_source_width(void) { return last_image_source_width; }
+float skia_test_last_image_source_height(void) { return last_image_source_height; }

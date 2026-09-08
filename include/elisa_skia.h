@@ -64,6 +64,11 @@ void elisa_skia_canvas_draw_image(size_t canvas, size_t image, float x, float y,
 void elisa_skia_canvas_draw_image_sampling(size_t canvas, size_t image, float x, float y,
                                            float width, float height, uint8_t alpha,
                                            int32_t sampling);
+void elisa_skia_canvas_draw_image_source_sampling(size_t canvas, size_t image,
+                                                  float source_x, float source_y,
+                                                  float source_width, float source_height,
+                                                  float x, float y, float width, float height,
+                                                  uint8_t alpha, int32_t sampling);
 void elisa_skia_canvas_draw_text(size_t canvas, const char *text, size_t length, float x, float y,
                                  float size, uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha);
 void elisa_skia_canvas_draw_text_with_font(size_t canvas, size_t font, const char *text, size_t length,

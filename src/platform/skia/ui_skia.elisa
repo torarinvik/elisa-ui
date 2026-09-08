@@ -24,6 +24,7 @@ extern elisa_skia_canvas_shadow_round_rect(canvas: usize, x: f32, y: f32, width:
 extern elisa_skia_canvas_fill_linear_gradient(canvas: usize, x: f32, y: f32, width: f32, height: f32, start_red: u8, start_green: u8, start_blue: u8, start_alpha: u8, end_red: u8, end_green: u8, end_blue: u8, end_alpha: u8, horizontal: i32) -> void
 extern elisa_skia_canvas_draw_image(canvas: usize, image: usize, x: f32, y: f32, width: f32, height: f32, alpha: u8) -> void
 extern elisa_skia_canvas_draw_image_sampling(canvas: usize, image: usize, x: f32, y: f32, width: f32, height: f32, alpha: u8, sampling: i32) -> void
+extern elisa_skia_canvas_draw_image_source_sampling(canvas: usize, image: usize, source_x: f32, source_y: f32, source_width: f32, source_height: f32, x: f32, y: f32, width: f32, height: f32, alpha: u8, sampling: i32) -> void
 extern elisa_skia_canvas_draw_text_with_font(canvas: usize, font: usize, text: cstr, length: usize, x: f32, y: f32, size: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
 extern elisa_skia_canvas_fill_circle(canvas: usize, x: f32, y: f32, radius: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
 extern elisa_skia_canvas_stroke_circle(canvas: usize, x: f32, y: f32, radius: f32, stroke_width: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
@@ -172,6 +173,26 @@ module UiSkia:
             raw_sampling: i32 = sampling.i32()
             safe_sampling: i32 = ImageSampling.Linear.i32() if raw_sampling != ImageSampling.Nearest.i32() and raw_sampling != ImageSampling.Linear.i32() else raw_sampling
             elisa_skia_canvas_draw_image_sampling(canvas_state, image, safe_box.origin.x, safe_box.origin.y, safe_box.size.width, safe_box.size.height, alpha, safe_sampling)
+
+        # Draw a source crop into a logical destination. Both rectangles are
+        # normalized in Elisa; the native bridge receives no image policy or
+        # unchecked geometry beyond the final Skia primitive arguments.
+        def draw_image_source(image: usize, source: UiCore::Rect, destination: UiCore::Rect, alpha: u8) -> void can[Ui.Draw]:
+            UiSkia::draw_image_source_with_sampling(image, source, destination, alpha, ImageSampling.Linear)
+
+        def draw_image_source_with_sampling(image: usize, source: UiCore::Rect, destination: UiCore::Rect, alpha: u8, sampling: ImageSampling) -> void can[Ui.Draw]:
+            return if canvas_state == 0 or image == 0 or alpha == 0
+            safe_source: UiCore::Rect = UiSkia::skia_safe_source_rect(source)
+            safe_destination: UiCore::Rect = UiSkia::skia_safe_rect(destination)
+            return if safe_source.size.width <= 0.0 or safe_source.size.height <= 0.0 or safe_destination.size.width <= 0.0 or safe_destination.size.height <= 0.0
+            raw_sampling: i32 = sampling.i32()
+            safe_sampling: i32 = ImageSampling.Linear.i32() if raw_sampling != ImageSampling.Nearest.i32() and raw_sampling != ImageSampling.Linear.i32() else raw_sampling
+            elisa_skia_canvas_draw_image_source_sampling(canvas_state, image,
+                safe_source.origin.x, safe_source.origin.y,
+                safe_source.size.width, safe_source.size.height,
+                safe_destination.origin.x, safe_destination.origin.y,
+                safe_destination.size.width, safe_destination.size.height,
+                alpha, safe_sampling)
 
         # Custom controls may draw text directly, outside the retained command
         # replay path. Keep that escape hatch on the same bounded geometry,

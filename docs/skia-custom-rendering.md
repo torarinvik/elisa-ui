@@ -167,6 +167,11 @@ and radius in the Elisa queue. Replay calls the immediate fitted-image helpers,
 so contain/cover/scale-down placement and temporary clip scopes stay identical
 between controls that draw during the callback and controls that draw after a
 SkCanvas is attached. Only the opaque image handle crosses the boundary.
+Immediate and deferred `draw_image_source*()` / `defer_image_source*()` helpers
+add an explicit pixel-space source rectangle for sprite sheets, thumbnails, and
+pan/zoom views while keeping a separate logical destination rectangle. Elisa
+normalizes both rectangles and the sampling policy; the native bridge only
+forwards the two sanitized rectangles to `SkCanvas::drawImageRect`.
 
 Generation-bound deferred image helpers (`defer_bound_image_fitted*()` and
 their intrinsic/rounded variants) store a logical resource slot and generation,

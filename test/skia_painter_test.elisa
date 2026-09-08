@@ -40,6 +40,10 @@ extern skia_test_last_image_x() -> f32
 extern skia_test_last_image_y() -> f32
 extern skia_test_last_image_width() -> f32
 extern skia_test_last_image_height() -> f32
+extern skia_test_last_image_source_x() -> f32
+extern skia_test_last_image_source_y() -> f32
+extern skia_test_last_image_source_width() -> f32
+extern skia_test_last_image_source_height() -> f32
 
 global mutable failures: i32 = 0
 
@@ -172,6 +176,11 @@ def main() -> i64:
     UiSkia::draw_image(0xBEEF, UiCore::Rect(8.0, 9.0, 64.0, 48.0), 220)
     UiSkia::draw_image_with_sampling(0xBEEF, UiCore::Rect(8.0, 9.0, 64.0, 48.0), 220, UiSkia::ImageSampling.Nearest)
     check("image sampling policy crosses FFI explicitly", skia_test_last_image_sampling() == 0)
+    UiSkia::draw_image_source_with_sampling(0xBEEF, UiCore::Rect(4.0, 8.0, 32.0, 24.0), UiCore::Rect(12.0, 14.0, 96.0, 72.0), 220, UiSkia::ImageSampling.Nearest)
+    check("source image crop keeps Elisa rectangles", skia_test_last_image_source_x() == 4.0 and skia_test_last_image_source_y() == 8.0 and skia_test_last_image_source_width() == 32.0 and skia_test_last_image_source_height() == 24.0 and skia_test_last_image_x() == 12.0 and skia_test_last_image_width() == 96.0 and skia_test_last_image_sampling() == 0)
+    source_images_before_empty: i32 = skia_test_image_count()
+    UiSkia::draw_image_source(0xBEEF, UiCore::Rect(4.0, 8.0, 0.0, 24.0), UiCore::Rect(12.0, 14.0, 96.0, 72.0), 220)
+    check("source image crop rejects empty source", skia_test_image_count() == source_images_before_empty)
     UiSkia::draw_image(0, UiCore::Rect(8.0, 9.0, 64.0, 48.0), 220)
     UiSkia::draw_image(0xBEEF, UiCore::Rect(8.0, 9.0, 0.0, 48.0), 220)
     check("frame, transform, and clip saves are balanced", skia_test_save_count() == 3 and skia_test_restore_count() == 2)
@@ -179,7 +188,7 @@ def main() -> i64:
     check("detach restores the frame transform", skia_test_restore_count() == 3)
     check("scale crosses the boundary for attachment and transform", skia_test_scale_count() == 2)
     check("clip crosses the boundary once", skia_test_clip_count() == 1)
-    check("all commands replay through Skia", skia_test_clear_count() == 1 and skia_test_round_rect_count() == 4 and skia_test_stroke_round_rect_count() == 3 and skia_test_shadow_round_rect_count() == 1 and skia_test_image_count() == 8 and skia_test_circle_count() == 2 and skia_test_triangle_count() == 2 and skia_test_line_count() == 2 and skia_test_text_count() == 6)
+    check("all commands replay through Skia", skia_test_clear_count() == 1 and skia_test_round_rect_count() == 4 and skia_test_stroke_round_rect_count() == 3 and skia_test_shadow_round_rect_count() == 1 and skia_test_image_count() == 9 and skia_test_circle_count() == 2 and skia_test_triangle_count() == 2 and skia_test_line_count() == 2 and skia_test_text_count() == 6)
     check("Skia shadow policy stays in Elisa", skia_test_last_shadow_offset_x() == 0.0 and skia_test_last_shadow_offset_y() == 2.0 and skia_test_last_shadow_blur() == 5.0)
     check("Skia hairline policy stays in Elisa", skia_test_last_stroke_width() == 1.0 and skia_test_last_line_width() == 1.0)
     check("detach clears the borrowed state", not UiSkia::is_attached())
@@ -423,6 +432,15 @@ def main() -> i64:
     check("deferred fitted image stores Elisa placement policy", UiSkia::defer_image_fitted_with_sampling(0xD00D, fit_box, source_size, 255, UiSkia::ImageFit.Cover, UiSkia::ImageSampling.Nearest) and UiSkia::deferred_count() == 1)
     UiSkia::attach(35)
     check("deferred fitted image replays through a bounded clip", UiSkia::render_status() == UiSkia::RenderStatus.Complete and skia_test_image_count() == 1 and skia_test_clip_count() == 1 and skia_test_last_image_x() == -40.0 and skia_test_last_image_y() == 20.0 and skia_test_last_image_width() == 200.0 and skia_test_last_image_height() == 100.0 and skia_test_last_image_sampling() == 0)
+    UiSkia::detach()
+    UiSkia::end_deferred_frame()
+
+    UiCore::begin_frame()
+    skia_test_reset()
+    UiSkia::begin_deferred_frame()
+    check("deferred source image stores Elisa crop", UiSkia::defer_image_source_with_sampling(0xD00D, UiCore::Rect(2.0, 3.0, 20.0, 10.0), UiCore::Rect(10.0, 20.0, 80.0, 40.0), 255, UiSkia::ImageSampling.Nearest) and UiSkia::deferred_count() == 1)
+    UiSkia::attach(35)
+    check("deferred source image replays crop", UiSkia::render_status() == UiSkia::RenderStatus.Complete and skia_test_image_count() == 1 and skia_test_last_image_source_x() == 2.0 and skia_test_last_image_source_y() == 3.0 and skia_test_last_image_source_width() == 20.0 and skia_test_last_image_source_height() == 10.0 and skia_test_last_image_x() == 10.0 and skia_test_last_image_width() == 80.0 and skia_test_last_image_sampling() == 0)
     UiSkia::detach()
     UiSkia::end_deferred_frame()
 
