@@ -16,6 +16,7 @@ APP="$ROOT/build/hello_appkit_canvas.app"
 # after the template (which would make the Xs literal and fail on reruns).
 SNAPSHOT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/elisa-ui-canvas.XXXXXX")"
 SNAPSHOT="$SNAPSHOT_DIR/frame.png"
+SNAPSHOT_SECOND="$SNAPSHOT_DIR/frame-second.png"
 trap 'rm -rf "$SNAPSHOT_DIR"' EXIT
 BRIDGE_TEST="$ROOT/build/appkit_canvas_bridge_test"
 
@@ -485,6 +486,16 @@ codesign --verify --deep --strict "$APP"
 ELISA_UI_SMOKE_FRAMES=1 ELISA_UI_SNAPSHOT="$SNAPSHOT" "$BIN"
 [[ -s "$SNAPSHOT" ]]
 file "$SNAPSHOT" | grep -q 'PNG image data, 800 x 680'
+ELISA_UI_SMOKE_FRAMES=1 ELISA_UI_SNAPSHOT="$SNAPSHOT_SECOND" "$BIN"
+[[ -s "$SNAPSHOT_SECOND" ]]
+file "$SNAPSHOT_SECOND" | grep -q 'PNG image data, 800 x 680'
+first_digest="$(shasum -a 256 "$SNAPSHOT" | awk '{print $1}')"
+second_digest="$(shasum -a 256 "$SNAPSHOT_SECOND" | awk '{print $1}')"
+[[ -n "$first_digest" && "$first_digest" == "$second_digest" ]] || {
+  echo "appkit canvas: fresh-process PNG digest mismatch (first=$first_digest second=$second_digest)" >&2
+  exit 12
+}
+echo "appkit canvas: fresh-process PNG digest verified sha256=$second_digest"
 clang -fobjc-arc -Wall -Wextra -Werror -o "$BRIDGE_TEST" \
   "$ROOT/test/appkit_canvas_bridge_test.m" -framework Cocoa
 "$BRIDGE_TEST"

@@ -331,7 +331,9 @@ For a non-interrupting runtime check, run
 AppKit view and renders one frame off-screen without showing or activating a
 window; `scripts/check_appkit_canvas.sh` uses this mode automatically. Add
 `ELISA_UI_SNAPSHOT=/absolute/path/frame.png` to save that frame for visual
-regression inspection without foregrounding the application.
+regression inspection without foregrounding the application. The required
+check renders that smoke frame in two fresh processes and compares their PNG
+digests before accepting the fallback renderer.
 
 The Skia custom-canvas product uses the pinned CPU-raster bridge and can be
 reproduced headlessly with depot_tools: first run

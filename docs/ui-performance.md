@@ -85,6 +85,12 @@ view, and the Skia host requires ink from its final status label, so a passing
 renderer check demonstrates an application workflow rather than only isolated
 primitive calls.
 
+The AppKit/CoreGraphics fallback is also checked headlessly by
+`scripts/check_appkit_canvas.sh`; it renders the 800x680 smoke frame in two
+fresh processes and compares the PNG SHA-256 before running its semantic bridge
+fixture. This keeps the native fallback reproducible without opening or
+activating a window.
+
 The only supported local escape hatch is explicit and non-passing:
 `ELISA_UI_REQUIRE_REAL_SKIA=0`. The gate rejects any other value, so a typo
 cannot silently disable the required renderer check. The opt-out is useful
