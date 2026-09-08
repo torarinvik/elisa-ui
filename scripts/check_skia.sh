@@ -72,6 +72,7 @@ if [[ -n "${SKIA_ROOT:-}" ]]; then
   echo "skia: Elisa painter and C++ host shim compile"
   skia_out="${SKIA_OUT:-$SKIA_ROOT/out/elisa}"
   if [[ -f "$skia_out/libskia.a" ]]; then
+    SKIA_ROOT="$SKIA_ROOT" SKIA_OUT="$skia_out" SKIA_LIB="$skia_out/libskia.a" bash "$ROOT/scripts/verify_skia_build.sh"
     SKIA_ROOT="$SKIA_ROOT" SKIA_OUT="$skia_out" bash "$ROOT/scripts/check_skia_offscreen.sh"
     SKIA_ROOT="$SKIA_ROOT" SKIA_OUT="$skia_out" bash "$ROOT/scripts/check_showcase_skia.sh"
   elif [[ "$require_real" == "1" ]]; then

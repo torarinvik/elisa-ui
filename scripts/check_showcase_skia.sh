@@ -11,6 +11,7 @@ SKIA_LIB="${SKIA_LIB:-$SKIA_OUT/libskia.a}"
 
 bash "$ROOT/scripts/check_toolchain.sh"
 bash "$ROOT/scripts/verify_skia_pin.sh"
+SKIA_ROOT="$SKIA_ROOT" SKIA_OUT="$SKIA_OUT" SKIA_LIB="$SKIA_LIB" bash "$ROOT/scripts/verify_skia_build.sh"
 [[ -f "$SKIA_LIB" ]] || { echo "skia showcase: no Skia library at $SKIA_LIB" >&2; exit 2; }
 [[ -f "$RUNTIME" ]] || { echo "skia showcase: no runtime object at $RUNTIME" >&2; exit 2; }
 

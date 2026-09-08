@@ -79,4 +79,11 @@ actual_revision="$(git -C "$SKIA_ROOT" rev-parse HEAD)"
   echo "skia build: build completed without $SKIA_OUT/libskia.a" >&2
   exit 2
 }
-echo "skia build: $actual_revision -> $SKIA_OUT/libskia.a"
+manifest="$SKIA_OUT/elisa-ui-skia-build.lock"
+{
+  printf 'revision=%s\n' "$actual_revision"
+  printf 'lock_sha256=%s\n' "$(shasum -a 256 "$LOCK" | awk '{print $1}')"
+  printf 'libskia_sha256=%s\n' "$(shasum -a 256 "$SKIA_OUT/libskia.a" | awk '{print $1}')"
+} > "$manifest"
+SKIA_ROOT="$SKIA_ROOT" SKIA_OUT="$SKIA_OUT" bash "$ROOT/scripts/verify_skia_build.sh"
+echo "skia build: $actual_revision -> $SKIA_OUT/libskia.a (provenance=$manifest)"
