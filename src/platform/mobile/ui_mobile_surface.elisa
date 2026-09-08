@@ -1,0 +1,86 @@
+# Portable mobile surface facts layered over the shared lifecycle policy.
+#
+# Android and iOS adapters report facts here; they do not own a second set of
+# visibility, keyboard, or surface-loss booleans. Logical geometry stays in
+# UiResponsive and application state survives surface recreation.
+
+include "../../core/ui_lifecycle.elisa"
+include "../../widgets/ui_responsive.elisa"
+
+module UiMobileSurface:
+    public:
+        struct Snapshot:
+            lifecycle: UiLifecycle::Phase
+            generation: u32
+            viewport: UiResponsive::Viewport
+            safe_area: UiResponsive::Insets
+            keyboard: UiResponsive::KeyboardInsets
+            content: UiResponsive::ContentArea
+            orientation: UiResponsive::Orientation
+
+        def reset() -> void:
+            UiLifecycle::reset()
+            viewport_state <- UiResponsive::viewport(0.0, 0.0, 1.0)
+            safe_area_state <- UiResponsive::insets(0.0, 0.0, 0.0, 0.0)
+            keyboard_state <- UiResponsive::keyboard_insets(0.0, false)
+
+        # A mobile host calls start after it has a logical surface. The
+        # lifecycle transition is completed before the first frame is allowed.
+        def start(width: f32, height: f32, scale: f32, safe: UiResponsive::Insets) -> bool:
+            return false if not UiLifecycle::begin()
+            viewport_state <- UiResponsive::viewport(width, height, scale)
+            safe_area_state <- UiResponsive::insets(safe.top, safe.right, safe.bottom, safe.left)
+            keyboard_state <- UiResponsive::keyboard_insets(0.0, false)
+            return UiLifecycle::ready()
+
+        def resize(width: f32, height: f32, scale: f32) -> bool:
+            return false if not UiLifecycle::surface_available()
+            viewport_state <- UiResponsive::viewport(width, height, scale)
+            return true
+
+        def set_safe_area(safe: UiResponsive::Insets) -> bool:
+            return false if UiLifecycle::phase() == UiLifecycle::Phase.New or UiLifecycle::phase() == UiLifecycle::Phase.Stopped
+            safe_area_state <- UiResponsive::insets(safe.top, safe.right, safe.bottom, safe.left)
+            return true
+
+        def set_keyboard(bottom: f32, visible: bool) -> bool:
+            return false if UiLifecycle::phase() == UiLifecycle::Phase.New or UiLifecycle::phase() == UiLifecycle::Phase.Stopped
+            keyboard_state <- UiResponsive::keyboard_insets(bottom, visible)
+            return true
+
+        def focus_gained() -> bool:
+            return UiLifecycle::focus_gained()
+
+        def focus_lost() -> bool:
+            return UiLifecycle::focus_lost()
+
+        def background() -> bool:
+            return UiLifecycle::suspend()
+
+        def foreground() -> bool:
+            return UiLifecycle::resume()
+
+        def surface_lost() -> bool:
+            return UiLifecycle::surface_lost()
+
+        def surface_restored() -> bool:
+            return UiLifecycle::surface_restored()
+
+        def stop() -> bool:
+            return UiLifecycle::stop()
+
+        def snapshot() -> Snapshot:
+            return Snapshot{
+                lifecycle: UiLifecycle::phase(),
+                generation: UiLifecycle::generation(),
+                viewport: viewport_state,
+                safe_area: safe_area_state,
+                keyboard: keyboard_state,
+                content: UiResponsive::content_area_with_keyboard(viewport_state, safe_area_state, keyboard_state),
+                orientation: UiResponsive::orientation(viewport_state),
+            }
+
+    private:
+        global mutable viewport_state: UiResponsive::Viewport = UiResponsive::Viewport{width: 0.0, height: 0.0, scale: 1.0}
+        global mutable safe_area_state: UiResponsive::Insets = UiResponsive::Insets{top: 0.0, right: 0.0, bottom: 0.0, left: 0.0}
+        global mutable keyboard_state: UiResponsive::KeyboardInsets = UiResponsive::KeyboardInsets{bottom: 0.0, visible: false}

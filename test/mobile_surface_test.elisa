@@ -1,0 +1,33 @@
+# Headless mobile surface/lifecycle contract.
+
+include "../src/platform/mobile/ui_mobile_surface.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiMobileSurface::reset()
+    check("mobile surface starts new", UiMobileSurface::snapshot().lifecycle == UiLifecycle::Phase.New)
+    safe: UiResponsive::Insets = UiResponsive::insets(24.0, 8.0, 16.0, 12.0)
+    check("mobile surface starts with normalized facts", UiMobileSurface::start(400.0, 800.0, 2.0, safe))
+    current: UiMobileSurface::Snapshot = UiMobileSurface::snapshot()
+    check("mobile surface reports portrait geometry", current.orientation == UiResponsive::Orientation.Portrait and current.content.size.width == 380.0)
+    check("mobile focus enters active lifecycle", UiMobileSurface::focus_gained() and UiMobileSurface::snapshot().lifecycle == UiLifecycle::Phase.Active)
+    check("keyboard inset updates content", UiMobileSurface::set_keyboard(300.0, true) and UiMobileSurface::snapshot().content.size.height == 476.0)
+    check("resize preserves session", UiMobileSurface::resize(800.0, 400.0, 3.0) and UiMobileSurface::snapshot().orientation == UiResponsive::Orientation.Landscape)
+    generation: u32 = UiMobileSurface::snapshot().generation
+    check("surface loss blocks rendering", UiMobileSurface::surface_lost() and UiLifecycle::phase() == UiLifecycle::Phase.SurfaceLost)
+    check("surface recreation preserves generation", UiMobileSurface::surface_restored() and UiMobileSurface::snapshot().generation == generation)
+    check("background suspends input", UiMobileSurface::background() and not UiLifecycle::accepts_input())
+    check("foreground restores active input", UiMobileSurface::foreground() and UiLifecycle::accepts_input())
+    check("stop ends mobile session", UiMobileSurface::stop() and not UiMobileSurface::resize(320.0, 640.0, 2.0))
+    if failures == 0:
+        _ = puts("mobile surface: all checks passed")
+        return 0
+    _ = puts("mobile surface: FAILURES above")
+    return 1

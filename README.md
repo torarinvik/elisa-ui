@@ -89,6 +89,10 @@ because a module member's symbol carries its module and those names cannot move.
   bounded grid-column calculation, and physical touch-target normalization,
   safe-area and software-keyboard insets, and orientation, all driven by
   logical space rather than OS-name branches.
+- **Mobile surface facts** ([src/platform/mobile/ui_mobile_surface.elisa](src/platform/mobile/ui_mobile_surface.elisa)) —
+  one lifecycle-aware contract for logical size, scale, safe areas, keyboard
+  occlusion, orientation, visibility, and surface recreation. Android and iOS
+  adapters report facts through it while application state remains intact.
 - **Virtual lists** ([src/widgets/ui_virtual_list.elisa](src/widgets/ui_virtual_list.elisa)) —
   bounded visible ranges, edge buffering, item placement, content extents, and
   semantic navigation metadata shared by every backend.
