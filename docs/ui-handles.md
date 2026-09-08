@@ -50,6 +50,8 @@ and large-text preferences. The explicit-size `button` constructor remains
 application-owned and unchanged.
 `text_field_accessible` applies the same policy to editable text controls.
 `slider_accessible` applies it to labeled value-adjustment controls.
+`radio_button_accessible` and `check_box_accessible` apply the same minimum
+target policy to choice controls.
 
 Use `handle(event)` to forward the portable event stream, `hit`/`cursor_at` for
 pointer policy, and `activate`/`adjust`/`radio_move` for accessibility actions.
