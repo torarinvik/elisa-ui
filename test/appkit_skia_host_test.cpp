@@ -57,7 +57,7 @@ int main() {
     const std::int32_t malformed_status = elisa_appkit_canvas_skia_present(
         0, reinterpret_cast<std::size_t>(context), 320.0f, 200.0f,
         std::numeric_limits<float>::max(), 1.0f);
-    if (malformed_status != 0) {
+    if (malformed_status != ELISA_APPKIT_SKIA_PRESENT_REJECTED) {
         std::fprintf(stderr, "appkit skia host: accepted an out-of-range backing extent\n");
         CGContextRelease(context);
         return 3;
@@ -119,7 +119,7 @@ int main() {
         static_cast<float>(width), static_cast<float>(height));
     elisa_appkit_skia_test_force_preframe_rejection(0);
     const auto* rejected_pixels = static_cast<const std::uint8_t*>(CGBitmapContextGetData(context));
-    if (rejected_status != 0 || rejected_pixels == nullptr ||
+    if (rejected_status != ELISA_APPKIT_SKIA_PRESENT_REJECTED || rejected_pixels == nullptr ||
         !expect_rgba(rejected_pixels, row_bytes, 0, 0, 0, 0, 0, "pre-frame rejection")) {
         std::fprintf(stderr, "appkit skia host: pre-frame rejection was not fallback-safe\n");
         CGContextRelease(context);

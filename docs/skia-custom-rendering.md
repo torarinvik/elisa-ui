@@ -37,6 +37,10 @@ before `app_frame`, while a negative result means the frame was already
 consumed and must not be replayed by the CoreGraphics fallback. This keeps
 lifecycle interruptions and late presentation failures safe without moving
 application state into the native shim.
+These sentinels are published as `ELISA_APPKIT_SKIA_PRESENT_REJECTED` and
+`ELISA_APPKIT_SKIA_PRESENT_CONSUMED_NO_PRESENTATION` in
+`include/elisa_appkit_skia.h`, so host callers do not duplicate numeric status
+policy.
 When presenting the completed raster, it draws into the logical view bounds so
 AppKit's device transform performs the one logical-to-backing conversion; this
 keeps Retina and other non-1x contexts from scaling the image twice.

@@ -114,13 +114,13 @@ extern "C" std::int32_t elisa_appkit_canvas_skia_present(std::size_t window_hand
     // A negative result means Elisa already consumed the frame (or native
     // presentation failed); never replay those callbacks through another
     // backend because application state may have changed synchronously.
-    if (status == 0) return 0;
+    if (status == ELISA_APPKIT_SKIA_PRESENT_REJECTED) return ELISA_APPKIT_SKIA_PRESENT_REJECTED;
     if (status < 0) return status;
 
     SkPixmap pixels;
-    if (!surface->peekPixels(&pixels)) return -1;
+    if (!surface->peekPixels(&pixels)) return ELISA_APPKIT_SKIA_PRESENT_CONSUMED_NO_PRESENTATION;
     CGImageRef image = image_from_pixels(pixels);
-    if (image == nullptr) return -1;
+    if (image == nullptr) return ELISA_APPKIT_SKIA_PRESENT_CONSUMED_NO_PRESENTATION;
     CGContextSaveGState(context);
     CGContextSetBlendMode(context, kCGBlendModeCopy);
     // AppKit's drawing context is expressed in view points; its device CTM

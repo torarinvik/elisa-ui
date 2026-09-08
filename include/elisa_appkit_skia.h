@@ -5,6 +5,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* Results from elisa_appkit_canvas_skia_present(). Elisa reserves zero for a
+ * rejection before app_frame; a negative value means the frame was consumed
+ * but could not be presented and must not be replayed through CoreGraphics. */
+#define ELISA_APPKIT_SKIA_PRESENT_REJECTED 0
+#define ELISA_APPKIT_SKIA_PRESENT_CONSUMED_NO_PRESENTATION (-1)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
