@@ -40,6 +40,10 @@ extend UiCore:
             raw: i32 = reasons.i32()
             return if raw < Invalidation.None.i32() or raw > Invalidation.All.i32()
             invalidation_flags <- invalidation_flags & (~raw)
+            # An animation bit represents a scheduled wake, so consuming it
+            # must also retire the associated delay. Otherwise an idle host
+            # can continue waking for work that no longer exists.
+            requested_frame_delay <- 0.0 if (raw & Invalidation.Animation.i32()) != 0
 
         def is_invalidated(reason: Invalidation) -> bool:
             raw: i32 = reason.i32()
@@ -57,6 +61,7 @@ extend UiCore:
 
         def clear_all_invalidations() -> void:
             invalidation_flags <- 0
+            requested_frame_delay <- 0.0
 
         # Commands past the buffer's capacity are dropped rather than growing
         # it. A frame that overflows draws incompletely, which is visible and
