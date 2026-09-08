@@ -31,6 +31,7 @@ extern skia_test_stroke_circle_count() -> i32
 extern skia_test_triangle_count() -> i32
 extern skia_test_line_count() -> i32
 extern skia_test_text_count() -> i32
+extern skia_test_measure_width_count() -> i32
 extern skia_test_last_text_size() -> f32
 extern skia_test_last_round_radius() -> f32
 extern skia_test_last_clip_radius() -> f32
@@ -79,6 +80,11 @@ def main() -> i64:
     check("Skia font policy clamps non-positive sizes", UiSkia::font_ascent(0.0) > 0.79 and UiSkia::font_ascent(0.0) < 0.81 and UiSkia::text_line_height(-4.0) > 1.19 and UiSkia::text_line_height(-4.0) < 1.21)
     skia_layout: UiTextMeasureLayout::Layout = UiSkia::layout_text("ABC DE", 20.0, 10.0)
     check("Skia layout uses its own width authority", skia_layout.line_count == 2 and UiTextMeasureLayout::line_view("ABC DE", 0) == "ABC" and UiTextMeasureLayout::line_view("ABC DE", 1) == "DE" and UiTextMeasureLayout::line_at(0).width == 15.0 and UiTextMeasureLayout::line_at(1).width == 10.0)
+    width_queries_before_cache: i32 = skia_test_measure_width_count()
+    cached_first: UiTextMeasureLayout::Layout = UiSkia::layout_text("cache-key", 100.0, 10.0)
+    width_queries_after_first: i32 = skia_test_measure_width_count()
+    cached_second: UiTextMeasureLayout::Layout = UiSkia::layout_text("cache-key", 100.0, 10.0)
+    check("Skia metric cache reuses repeated grapheme widths", cached_first.line_count == cached_second.line_count and width_queries_after_first > width_queries_before_cache and skia_test_measure_width_count() == width_queries_after_first)
     check("Skia hit testing returns grapheme-safe offsets", UiSkia::hit_test_text_line("ABC DE", 20.0, 10.0, 0, 0.0) == 0 and UiSkia::hit_test_text_line("ABC DE", 20.0, 10.0, 0, 4.0) == 1 and UiSkia::hit_test_text_line("ABC DE", 20.0, 10.0, 0, 100.0) == 3 and UiSkia::hit_test_text_line("A🙂B", 40.0, 10.0, 0, 20.0) == 5)
     check("Skia caret placement uses measured grapheme edges", UiSkia::caret_x_text_line("ABC", 20.0, 10.0, 0, 2) == 10.0 and UiSkia::caret_x_text_line("A🙂B", 40.0, 10.0, 0, 2) == 5.0 and UiSkia::caret_x_text_line("A🙂B", 40.0, 10.0, 0, 5) == 25.0)
     UiSkia::draw_text_run(UiCore::TextRun(UiCore::Vec2(-100.0, 100.0), 0.0, "x"), UiCore::rgb(220, 220, 220))
@@ -250,8 +256,12 @@ def main() -> i64:
     UiSkia::attach(20)
     _ = UiSkia::bind_font(scale_font_resource, 0x5CA1E)
     check("Skia diagnostics report the active scale", UiSkia::snapshot().surface_scale == 1.0 and UiSkia::snapshot().font_bindings == 1)
+    _ = UiSkia::layout_text("scale-cache", 100.0, 10.0)
+    width_queries_before_scale_reset: i32 = skia_test_measure_width_count()
     UiSkia::attach_scaled(20, 2.0)
     check("scale changes invalidate borrowed font bindings", UiSkia::snapshot().surface_scale == 2.0 and UiSkia::snapshot().font_bindings == 0)
+    _ = UiSkia::layout_text("scale-cache", 100.0, 10.0)
+    check("scale changes invalidate cached Skia metrics", skia_test_measure_width_count() > width_queries_before_scale_reset)
     UiSkia::detach()
     _ = UiResources::dispose(scale_font_resource)
 

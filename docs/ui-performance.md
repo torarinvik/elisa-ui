@@ -28,6 +28,9 @@ Typography queries are cached in Elisa for the duration of each paint. The
 bounded `UiTextMetrics` table removes repeated line-height and caption/range
 width FFI calls; copied width keys and the paint/tree-boundary reset keep cache
 memory bounded and prevent a new font or scale from reusing an old metric.
+The Skia custom adapter applies the same principle to grapheme-width queries
+with a separate bounded byte-keyed table, invalidated on scale or borrowed
+binding reset and bypassed for oversized clusters.
 Skia image and font bindings use a slot-indexed Elisa reverse map with an
 exact-generation check, so bound draw and metric queries do not scan the full
 binding tables. Cleanup remains a bounded table sweep at lifecycle boundaries.

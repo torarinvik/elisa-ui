@@ -28,6 +28,7 @@ static int stroke_circle_count;
 static int triangle_count;
 static int line_count;
 static int text_count;
+static int measure_width_count;
 static float last_round_radius;
 static float last_clip_radius;
 static float last_stroke_width;
@@ -147,11 +148,13 @@ void elisa_skia_canvas_draw_text(size_t canvas, const char *text, size_t length,
 }
 
 float elisa_skia_measure_text_width(const char *text, size_t length, float size) {
+    measure_width_count += 1;
     return text == NULL ? 0.0f : (float)length * size * 0.5f;
 }
 float elisa_skia_font_ascent(float size) { return size * 0.8f; }
 float elisa_skia_text_line_height(float size) { return size * 1.2f; }
 float elisa_skia_measure_text_width_with_font(size_t font, const char *text, size_t length, float size) {
+    measure_width_count += 1;
     return font == 0 || text == NULL ? 0.0f : (float)length * size * 0.6f;
 }
 float elisa_skia_font_ascent_with_font(size_t font, float size) { return font == 0 ? 0.0f : size * 0.85f; }
@@ -161,7 +164,7 @@ void skia_test_reset(void) {
     save_count = 0; restore_count = 0; scale_count = 0; translate_count = 0; rotate_count = 0; clip_count = 0; rounded_clip_count = 0;
     clear_count = 0; round_rect_count = 0; stroke_round_rect_count = 0; shadow_round_rect_count = 0; gradient_count = 0; image_count = 0; circle_count = 0; stroke_circle_count = 0; triangle_count = 0;
     last_shadow_offset_x = 0.0f; last_shadow_offset_y = 0.0f; last_shadow_blur = 0.0f;
-    line_count = 0; text_count = 0; last_round_radius = 0.0f; last_clip_radius = 0.0f; last_stroke_width = 0.0f; last_circle_stroke_width = 0.0f; last_line_width = 0.0f; last_text_size = 0.0f; last_image_sampling = 1; last_gradient_horizontal = 0;
+    line_count = 0; text_count = 0; measure_width_count = 0; last_round_radius = 0.0f; last_clip_radius = 0.0f; last_stroke_width = 0.0f; last_circle_stroke_width = 0.0f; last_line_width = 0.0f; last_text_size = 0.0f; last_image_sampling = 1; last_gradient_horizontal = 0;
 }
 int skia_test_save_count(void) { return save_count; }
 int skia_test_restore_count(void) { return restore_count; }
@@ -188,6 +191,7 @@ int skia_test_stroke_circle_count(void) { return stroke_circle_count; }
 int skia_test_triangle_count(void) { return triangle_count; }
 int skia_test_line_count(void) { return line_count; }
 int skia_test_text_count(void) { return text_count; }
+int skia_test_measure_width_count(void) { return measure_width_count; }
 float skia_test_last_text_size(void) { return last_text_size; }
 float skia_test_last_round_radius(void) { return last_round_radius; }
 float skia_test_last_clip_radius(void) { return last_clip_radius; }

@@ -57,6 +57,11 @@ results without retaining a font or Skia object across frames; paint and
 retained-tree resets are the explicit invalidation boundaries for font and
 scale changes. Width keys are copied into a small table and oversized text
 bypasses it, keeping cache memory and comparison work bounded.
+The custom Skia adapter adds a second bounded byte-keyed width cache for
+grapheme layout, keyed by the active borrowed font handle and normalized size.
+Repeated wrapping, hit testing, selection, and caret queries therefore reuse
+the same metric without another FFI call; scale/binding resets explicitly clear
+the cache, and clusters larger than its copy budget bypass it.
 
 Direct geometry calls and replayed commands share the private
 `ui_skia_geometry.elisa` policy. Coordinates and extents are finite and capped,

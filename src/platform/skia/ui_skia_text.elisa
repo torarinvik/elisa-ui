@@ -19,11 +19,7 @@ extend UiSkia:
             # Metrics are pure font queries and do not require a live canvas.
             # Layout can therefore use Skia's authority before a surface is
             # attached; only draw methods are gated by canvas_state.
-            return 0.0 if text.len <= 0 or text.data == null or not UiCore::is_finite(size)
-            safe_text: sview = UiCore::bounded_text(text)
-            return 0.0 if safe_text.len <= 0 or safe_text.data == null
-            pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
-            return UiCore::bounded_extent(elisa_skia_measure_text_width(pointer, safe_text.len.usize(), UiSkia::safe_font_size(size)))
+            return UiSkia::metric_width_cached(0, text, size)
 
         def font_ascent(size: f32) -> f32:
             return UiCore::bounded_extent(elisa_skia_font_ascent(UiSkia::safe_font_size(size)))
@@ -35,8 +31,7 @@ extend UiSkia:
         # metric surface for direct custom controls so layout and drawing use
         # the same borrowed font whenever that scope is active.
         def active_measure_text_width(text: sview, size: f32) -> f32:
-            return UiSkia::measure_text_width(text, size) if skia_frame_font == 0
-            return measure_text_width_with_handle(skia_frame_font, text, size)
+            return UiSkia::metric_width_cached(skia_frame_font, text, size)
 
         def active_font_ascent(size: f32) -> f32:
             return UiSkia::font_ascent(size) if skia_frame_font == 0
@@ -48,6 +43,61 @@ extend UiSkia:
 
     private:
         const MIN_FONT_SIZE: f32 = 1.0
+        const MAX_METRIC_CACHE_ENTRIES: usize = 128
+        const METRIC_CACHE_TEXT_CAPACITY: usize = 64
+
+        global mutable skia_metric_cache_valid: bool[MAX_METRIC_CACHE_ENTRIES] = zeroed
+        global mutable skia_metric_cache_fonts: usize[MAX_METRIC_CACHE_ENTRIES] = zeroed
+        global mutable skia_metric_cache_sizes: f32[MAX_METRIC_CACHE_ENTRIES] = zeroed
+        global mutable skia_metric_cache_hashes: u64[MAX_METRIC_CACHE_ENTRIES] = zeroed
+        global mutable skia_metric_cache_lengths: usize[MAX_METRIC_CACHE_ENTRIES] = zeroed
+        global mutable skia_metric_cache_values: f32[MAX_METRIC_CACHE_ENTRIES] = zeroed
+        global mutable skia_metric_cache_text: u8[MAX_METRIC_CACHE_ENTRIES * METRIC_CACHE_TEXT_CAPACITY] = zeroed
+        global mutable skia_metric_cache_next: usize = 0
+
+        def clear_metric_cache() -> void:
+            for index in 0..<MAX_METRIC_CACHE_ENTRIES:
+                skia_metric_cache_valid[index] <- false
+                skia_metric_cache_lengths[index] <- 0
+                skia_metric_cache_values[index] <- 0.0
+            skia_metric_cache_next <- 0
+
+        def metric_width_cached(font: usize, text: sview, size: f32) -> f32:
+            return 0.0 if text.len <= 0 or text.data == null or not UiCore::is_finite(size)
+            safe_text: sview = UiCore::bounded_text(text)
+            return 0.0 if safe_text.len <= 0 or safe_text.data == null
+            safe_size: f32 = UiSkia::safe_font_size(size)
+            length: usize = safe_text.len.usize()
+            return UiSkia::metric_width_uncached(font, safe_text, safe_size) if length > METRIC_CACHE_TEXT_CAPACITY
+            hash: mutable u64 = 14695981039346656037
+            for offset in 0..<length:
+                hash <- (hash ^ safe_text.data[offset].u64()) * 1099511628211
+            for index in 0..<MAX_METRIC_CACHE_ENTRIES:
+                if skia_metric_cache_valid[index] and skia_metric_cache_fonts[index] == font and skia_metric_cache_sizes[index] == safe_size and skia_metric_cache_hashes[index] == hash and skia_metric_cache_lengths[index] == length:
+                    storage_offset: usize = index * METRIC_CACHE_TEXT_CAPACITY
+                    matches: bool =
+                        for compare in 0..<length |matches = true| -> matches:
+                            matches <- false if skia_metric_cache_text[storage_offset + compare] != safe_text.data[compare]
+                            break if not matches
+                    return skia_metric_cache_values[index] if matches
+            measured: f32 = UiSkia::metric_width_uncached(font, safe_text, safe_size)
+            slot: usize = skia_metric_cache_next
+            storage_offset: usize = slot * METRIC_CACHE_TEXT_CAPACITY
+            for offset in 0..<METRIC_CACHE_TEXT_CAPACITY:
+                skia_metric_cache_text[storage_offset + offset] <- safe_text.data[offset] if offset < length else 0
+            skia_metric_cache_valid[slot] <- true
+            skia_metric_cache_fonts[slot] <- font
+            skia_metric_cache_sizes[slot] <- safe_size
+            skia_metric_cache_hashes[slot] <- hash
+            skia_metric_cache_lengths[slot] <- length
+            skia_metric_cache_values[slot] <- measured
+            skia_metric_cache_next <- (slot + 1) % MAX_METRIC_CACHE_ENTRIES
+            return measured
+
+        def metric_width_uncached(font: usize, text: sview, size: f32) -> f32:
+            pointer: cstr = text.data.cast[cstr] can Unsafe.PointerCast
+            return UiCore::bounded_extent(elisa_skia_measure_text_width(pointer, text.len.usize(), size)) if font == 0
+            return measure_text_width_with_handle(font, text, size)
 
         def safe_font_size(size: f32) -> f32:
             safe: f32 = UiCore::bounded_extent(size)
