@@ -1,0 +1,185 @@
+# Backend-neutral pixel-measured, grapheme-safe text layout core.
+#
+# This module owns bounded line storage, UTF-8/grapheme advancement, and break
+# policy. The caller supplies a width function so native and custom renderers
+# can keep their own shaping/font authority without moving line ownership out
+# of Elisa.
+
+include "../core/ui_core.elisa"
+
+module UiTextMeasureLayout:
+    public:
+        const MAX_LINES: usize = 256
+
+        struct LineRange:
+            offset: usize
+            length: usize
+            width: f32
+
+        struct Layout:
+            line_count: usize
+            max_width: f32
+            source_length: usize
+            text_size: f32
+            overflowed: bool
+
+        # Wrap one bounded text view only between grapheme clusters. The
+        # callback keeps the planner reusable by every backend profile. A
+        # zero/negative width means one logical pixel, which keeps the planner
+        # progressing for a minimized or malformed viewport.
+        def layout_with_measure(text: sview, max_width: f32, size: f32, width_provider: fn(sview, f32) -> f32) -> Layout:
+            measured_layout_reset()
+            safe_text: sview = UiCore::bounded_text(text)
+            measured_source_length <- safe_text.len.usize() if safe_text.len > 0 else 0
+            measured_max_width <- UiCore::bounded_extent(max_width)
+            measured_max_width <- 1.0 if measured_max_width <= 0.0 else measured_max_width
+            measured_text_size <- UiCore::bounded_extent(size)
+            measured_text_size <- 1.0 if measured_text_size <= 0.0 else measured_text_size
+            if measured_source_length == 0:
+                emit_line(0, 0, 0.0)
+            else:
+                start: mutable usize = 0
+                while start < measured_source_length:
+                    cursor: mutable usize = start
+                    line_width: mutable f32 = 0.0
+                    last_break: mutable usize = 0
+                    last_break_width: mutable f32 = 0.0
+                    has_break: mutable bool = false
+                    finished: mutable bool = false
+                    while cursor < measured_source_length:
+                        byte: u8 = safe_text.data[cursor]
+                        if is_newline(byte):
+                            emit_line(start, cursor - start, line_width)
+                            cursor <- cursor + 1
+                            if byte == 13 and cursor < measured_source_length and safe_text.data[cursor] == 10:
+                                cursor <- cursor + 1
+                            start <- cursor
+                            emit_line(start, 0, 0.0) if start == measured_source_length
+                            finished <- true
+                            break
+
+                        cluster_end: usize = UiText::next_grapheme(safe_text, cursor)
+                        cluster_length: usize = cluster_end - cursor if cluster_end > cursor and cluster_end <= measured_source_length else 1
+                        cluster: sview = sview(&safe_text.data[cursor], 0, cluster_length.i64())
+                        cluster_width: f32 = UiCore::bounded_extent(width_provider(cluster, measured_text_size))
+                        if is_break(byte) and (cursor == start or not is_break(safe_text.data[cursor - 1])):
+                            last_break <- cursor
+                            last_break_width <- line_width
+                            has_break <- true
+
+                        proposed: f32 = UiCore::bounded_extent(line_width + cluster_width)
+                        if proposed > measured_max_width and cursor > start:
+                            if has_break and last_break >= start:
+                                emit_line(start, last_break - start, last_break_width)
+                                cursor <- last_break + scalar_bytes(safe_text, last_break, measured_source_length)
+                                cursor <- skip_breaks(safe_text, cursor, measured_source_length)
+                                start <- cursor
+                                finished <- true
+                                break
+                            emit_line(start, cursor - start, line_width)
+                            start <- cursor
+                            finished <- true
+                            break
+
+                        # A single cluster wider than the viewport still owns
+                        # one line. Consuming it here guarantees progress for
+                        # a large emoji or CJK glyph.
+                        line_width <- proposed
+                        cursor <- cursor + cluster_length
+                        if line_width > measured_max_width and cursor > start:
+                            emit_line(start, cursor - start, line_width)
+                            start <- cursor
+                            finished <- true
+                            break
+                    if not finished:
+                        emit_line(start, measured_source_length - start, line_width)
+                        start <- measured_source_length
+            return Layout{line_count: measured_line_count, max_width: measured_max_width,
+                source_length: measured_source_length, text_size: measured_text_size,
+                overflowed: measured_overflowed}
+
+        def snapshot() -> Layout:
+            return Layout{line_count: measured_line_count, max_width: measured_max_width,
+                source_length: measured_source_length, text_size: measured_text_size,
+                overflowed: measured_overflowed}
+
+        def line_count() -> usize:
+            return measured_line_count
+
+        def line_at(index: usize) -> LineRange:
+            return LineRange{offset: 0, length: 0, width: 0.0} if index >= measured_line_count
+            return LineRange{offset: measured_line_offsets[index], length: measured_line_lengths[index], width: measured_line_widths[index]}
+
+        def line_if_valid(index: usize) -> LineRange?:
+            return null if index >= measured_line_count
+            return line_at(index)
+
+        def line_view(text: sview, index: usize) -> sview:
+            safe_text: sview = UiCore::bounded_text(text)
+            return "" if safe_text.len <= 0 or index >= measured_line_count
+            range: LineRange = line_at(index)
+            return "" if range.offset > safe_text.len.usize()
+            return "" if range.length > safe_text.len.usize() - range.offset
+            return sview(&safe_text.data[range.offset], 0, range.length.i64())
+
+    private:
+        global mutable measured_line_offsets: usize[MAX_LINES] = zeroed
+        global mutable measured_line_lengths: usize[MAX_LINES] = zeroed
+        global mutable measured_line_widths: f32[MAX_LINES] = zeroed
+        global mutable measured_line_count: usize = 0
+        global mutable measured_source_length: usize = 0
+        global mutable measured_max_width: f32 = 1.0
+        global mutable measured_text_size: f32 = 1.0
+        global mutable measured_overflowed: bool = false
+
+        def measured_layout_reset() -> void:
+            measured_line_count <- 0
+            measured_source_length <- 0
+            measured_max_width <- 1.0
+            measured_text_size <- 1.0
+            measured_overflowed <- false
+            for index in 0..<MAX_LINES:
+                measured_line_offsets[index] <- 0
+                measured_line_lengths[index] <- 0
+                measured_line_widths[index] <- 0.0
+
+        def emit_line(offset: usize, length: usize, width: f32) -> void:
+            if measured_line_count >= MAX_LINES:
+                measured_overflowed <- true
+                return
+            measured_line_offsets[measured_line_count] <- offset
+            measured_line_lengths[measured_line_count] <- length
+            measured_line_widths[measured_line_count] <- UiCore::bounded_extent(width)
+            measured_line_count <- measured_line_count + 1
+
+        def is_newline(byte: u8) -> bool:
+            return byte == 10 or byte == 13
+
+        def is_break(byte: u8) -> bool:
+            return byte == 9 or byte == 32
+
+        def skip_breaks(text: sview, offset: usize, end: usize) -> usize:
+            cursor: mutable usize = offset
+            for _ in 0..<MAX_LINES * UiCore::MAX_TEXT_BYTES:
+                break if cursor >= end or not is_break(text.data[cursor])
+                cursor <- cursor + 1
+            return cursor
+
+        def scalar_bytes(text: sview, offset: usize, end: usize) -> usize:
+            return 1 if offset >= end
+            first: i32 = text.data[offset].i32()
+            return 1 if first < 128 or first >= 248
+            width: mutable usize = 1
+            width <- 2 if first >= 194 and first <= 223
+            width <- 3 if first >= 224 and first <= 239
+            width <- 4 if first >= 240 and first <= 244
+            return 1 if width == 1 or width > end - offset
+            for index in 1..<width:
+                byte: u8 = text.data[offset + index]
+                return 1 if byte < 128 or byte > 191
+            second: u8 = text.data[offset + 1]
+            return 1 if first == 224 and second < 160
+            return 1 if first == 237 and second >= 160
+            return 1 if first == 240 and second < 144
+            return 1 if first == 244 and second >= 144
+            return width

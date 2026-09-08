@@ -1,0 +1,18 @@
+# Skia-backed measured text layout.
+#
+# The line-break policy remains backend-neutral and Elisa-owned. This adapter
+# supplies Skia's own width authority so a custom renderer never lays out with
+# CoreText, SDL_ttf, or a test metric and then paints with a different font.
+
+include "../../widgets/ui_text_measure_layout_core.elisa"
+
+def ui_skia_measure_layout_width(text: sview, size: f32) -> f32:
+    return UiSkia::measure_text_width(text, size)
+
+extend UiSkia:
+    public:
+        # Layout uses the same Skia metric path as direct text drawing. The
+        # returned ranges still borrow the caller's source view and remain
+        # bounded by UiTextMeasureLayout::MAX_LINES.
+        def layout_text(text: sview, max_width: f32, size: f32) -> UiTextMeasureLayout::Layout:
+            return UiTextMeasureLayout::layout_with_measure(text, max_width, size, ui_skia_measure_layout_width)

@@ -13,6 +13,9 @@ def ui_measure_text_width(text: sview, size: f32) -> f32:
 def ui_text_line_height(size: f32) -> f32:
     return size
 
+def test_measure_provider(text: sview, size: f32) -> f32:
+    return UiText::utf8_scalar_count(text).f32() * size
+
 global mutable failures: i32 = 0
 
 def check(name: cstr, ok: bool) -> void:
@@ -94,6 +97,8 @@ def main() -> i64:
     check("pixel layout preserves CRLF lines", measured_newline.line_count == 2 and UiTextMeasureLayout::line_view("top\r\nbottom", 1) == "bottom")
     measured_empty: UiTextMeasureLayout::Layout = UiTextMeasureLayout::layout("", 0.0, 0.0)
     check("pixel layout normalizes empty geometry", measured_empty.line_count == 1 and measured_empty.max_width == 1.0 and measured_empty.text_size == 1.0)
+    provided: UiTextMeasureLayout::Layout = UiTextMeasureLayout::layout_with_measure("AB", 20.0, 1.0, test_measure_provider)
+    check("pixel layout accepts an explicit metric provider", provided.line_count == 1 and UiTextMeasureLayout::line_at(0).width == 2.0)
     if failures == 0:
         _ = puts("text layout: all checks passed")
         return 0

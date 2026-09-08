@@ -13,8 +13,10 @@ layer. `UiTextLayout` remains the allocation-free scalar-column planner used by
 portable wire paths.
 
 `UiTextMeasureLayout` is the measured-width companion for native and custom
-painters. It walks the same grapheme boundaries, asks `UiTextMetrics` for the
-active backend's width for each cluster, and stores pixel-width ranges without
+painters. Its core accepts a `fn(sview, f32) -> f32` width provider, so each
+backend can supply its real font authority. The default facade uses
+`UiTextMetrics`; `UiSkia::layout_text` supplies Skia's own metric query. The
+planner walks the same grapheme boundaries and stores pixel-width ranges without
 copying the source text. It prefers whitespace-run breaks, honors LF/CRLF,
 normalizes hostile geometry, and emits a single oversized grapheme so malformed
 or unusually large glyphs cannot stall the planner. The metric cache and font
