@@ -103,6 +103,20 @@ module UiTextMeasureLayout:
                 source_length: measured_source_length, text_size: measured_text_size,
                 overflowed: measured_overflowed}
 
+        # Clear the shared line ranges while preserving the caller's bounded
+        # source length. This is used when a renderer resource is unavailable;
+        # returning a zero-line layout must not leave a prior frame's ranges
+        # observable through line_at()/line_view().
+        def empty_layout(text: sview, max_width: f32, size: f32) -> Layout:
+            measured_layout_reset()
+            safe_text: sview = UiCore::bounded_text(text)
+            measured_source_length <- safe_text.len.usize()
+            measured_max_width <- UiCore::bounded_extent(max_width)
+            measured_max_width <- 1.0 if measured_max_width <= 0.0 else measured_max_width
+            measured_text_size <- UiCore::bounded_extent(size)
+            measured_text_size <- 1.0 if measured_text_size <= 0.0 else measured_text_size
+            return snapshot()
+
         def line_count() -> usize:
             return measured_line_count
 
