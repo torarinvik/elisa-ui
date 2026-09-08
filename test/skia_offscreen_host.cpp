@@ -83,6 +83,10 @@ int main(int argc, char** argv) {
     elisa_skia_canvas_fill_round_rect(reinterpret_cast<std::size_t>(canvas), 20.0f, 20.0f, nan, 60.0f, 8.0f, 220, 80, 100, 255);
     elisa_skia_canvas_fill_round_rect(reinterpret_cast<std::size_t>(canvas), hostile, 20.0f, 60.0f, 40.0f, 8.0f, 220, 80, 100, 255);
     elisa_skia_canvas_fill_round_rect(reinterpret_cast<std::size_t>(canvas), 20.0f, 20.0f, 60.0f, 40.0f, hostile, 220, 80, 100, 255);
+    elisa_skia_canvas_fill_round_rect(reinterpret_cast<std::size_t>(canvas), 16777216.0f, 20.0f, 4.0f, 40.0f, 2.0f, 220, 80, 100, 255);
+    elisa_skia_canvas_draw_image_source_sampling(reinterpret_cast<std::size_t>(canvas), 1,
+                                                 -1.0f, 0.0f, 4.0f, 4.0f,
+                                                 20.0f, 20.0f, 40.0f, 40.0f, 255, 1);
     elisa_skia_canvas_stroke_round_rect(reinterpret_cast<std::size_t>(canvas), 20.0f, 20.0f, 60.0f, 40.0f, 8.0f, hostile, 220, 80, 100, 255);
     elisa_skia_canvas_shadow_round_rect(reinterpret_cast<std::size_t>(canvas), 20.0f, 20.0f, 60.0f, 40.0f, 8.0f, 0.0f, 0.0f, hostile, 255);
     elisa_skia_canvas_fill_linear_gradient(reinterpret_cast<std::size_t>(canvas), 20.0f, 20.0f, hostile, 40.0f,

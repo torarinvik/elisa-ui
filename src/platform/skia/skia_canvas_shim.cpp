@@ -47,8 +47,14 @@ bool bounded_nonnegative_extent(float value) {
     return finite(value) && value >= 0.0f && value <= max_geometry_extent;
 }
 
+bool bounded_far_edge(float origin, float extent) {
+    const float edge = origin + extent;
+    return finite(edge) && edge <= max_geometry_extent;
+}
+
 bool valid_rect(float x, float y, float width, float height) {
-    return bounded_coordinate(x) && bounded_coordinate(y) && bounded_extent(width) && bounded_extent(height);
+    return bounded_coordinate(x) && bounded_coordinate(y) && bounded_extent(width) && bounded_extent(height) &&
+        bounded_far_edge(x, width) && bounded_far_edge(y, height);
 }
 
 // Retained clips may intentionally be empty after Elisa intersects nested
@@ -57,7 +63,11 @@ bool valid_rect(float x, float y, float width, float height) {
 // while negative or non-finite geometry remains malformed and is rejected.
 bool valid_clip_rect(float x, float y, float width, float height) {
     return bounded_coordinate(x) && bounded_coordinate(y) && bounded_nonnegative_extent(width) &&
-        bounded_nonnegative_extent(height);
+        bounded_nonnegative_extent(height) && bounded_far_edge(x, width) && bounded_far_edge(y, height);
+}
+
+bool valid_source_rect(float x, float y, float width, float height) {
+    return x >= 0.0f && y >= 0.0f && valid_rect(x, y, width, height);
 }
 
 bool valid_scale(float x, float y) {
@@ -261,7 +271,7 @@ extern "C" void elisa_skia_canvas_draw_image_source_sampling(
     std::uint8_t alpha, std::int32_t sampling) {
     if (SkCanvas *target = canvas(canvas_handle);
         target != nullptr && image_handle != 0 &&
-        valid_rect(source_x, source_y, source_width, source_height) &&
+        valid_source_rect(source_x, source_y, source_width, source_height) &&
         valid_rect(x, y, width, height) && alpha != 0) {
         SkImage *image = reinterpret_cast<SkImage *>(image_handle);
         SkPaint paint;

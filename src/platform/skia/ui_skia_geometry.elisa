@@ -9,21 +9,33 @@ include "../../core/ui_core.elisa"
 extend UiSkia:
     private:
         def skia_safe_rect(box: UiCore::Rect) -> UiCore::Rect:
-            return UiCore::Rect(
-                UiCore::bounded_coordinate(box.origin.x),
-                UiCore::bounded_coordinate(box.origin.y),
-                UiCore::bounded_extent(box.size.width),
-                UiCore::bounded_extent(box.size.height))
+            safe_x: f32 = UiCore::bounded_coordinate(box.origin.x)
+            safe_y: f32 = UiCore::bounded_coordinate(box.origin.y)
+            safe_width: mutable f32 = UiCore::bounded_extent(box.size.width)
+            safe_height: mutable f32 = UiCore::bounded_extent(box.size.height)
+            # A bounded origin and extent can still overflow the shared
+            # coordinate envelope when the box starts near its positive edge.
+            # Clamp the extent before constructing the Skia rect so the native
+            # bridge never has to reason about a derived far edge.
+            width_room: f32 = UiCore::MAX_GEOMETRY_EXTENT - safe_x if safe_x > 0.0 else UiCore::MAX_GEOMETRY_EXTENT
+            height_room: f32 = UiCore::MAX_GEOMETRY_EXTENT - safe_y if safe_y > 0.0 else UiCore::MAX_GEOMETRY_EXTENT
+            safe_width <- width_room if safe_width > width_room else safe_width
+            safe_height <- height_room if safe_height > height_room else safe_height
+            return UiCore::Rect(safe_x, safe_y, safe_width, safe_height)
 
         # Image source rectangles are pixel-space regions rather than logical
         # layout boxes. Origins cannot be negative, but they use the same
         # finite envelope and extent cap before reaching Skia.
         def skia_safe_source_rect(source: UiCore::Rect) -> UiCore::Rect:
-            return UiCore::Rect(
-                UiCore::bounded_extent(source.origin.x),
-                UiCore::bounded_extent(source.origin.y),
-                UiCore::bounded_extent(source.size.width),
-                UiCore::bounded_extent(source.size.height))
+            safe_x: f32 = UiCore::bounded_extent(source.origin.x)
+            safe_y: f32 = UiCore::bounded_extent(source.origin.y)
+            safe_width: mutable f32 = UiCore::bounded_extent(source.size.width)
+            safe_height: mutable f32 = UiCore::bounded_extent(source.size.height)
+            width_room: f32 = UiCore::MAX_GEOMETRY_EXTENT - safe_x
+            height_room: f32 = UiCore::MAX_GEOMETRY_EXTENT - safe_y
+            safe_width <- width_room if safe_width > width_room else safe_width
+            safe_height <- height_room if safe_height > height_room else safe_height
+            return UiCore::Rect(safe_x, safe_y, safe_width, safe_height)
 
         def skia_safe_radius(box: UiCore::Rect, radius: f32) -> f32:
             safe_radius: mutable f32 = UiCore::bounded_extent(radius)
