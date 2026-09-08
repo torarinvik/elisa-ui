@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `ef6f4f2` (`test(skia): bracket showcase deferred painting`) on branch `work` |
+| elisa-ui revision | `a59ec98` (`fix(text): track prepend grapheme context`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -260,9 +260,11 @@ remain separate fixtures.
 The 2026-09-07 gates compile the complete AppKit canvas entry point and run the
 off-screen canvas fixture through `scripts/check_appkit_canvas.sh`; the bridge,
 semantic callbacks, bundle/signature checks, and PNG frame all pass without
-ordering a window onscreen. The full `bash scripts/run_tests.sh` suite also
-passes from this revision, including the AppKit canvas keymap and text paths.
-The Skia custom painter boundary compiles headlessly through
+ordering a window onscreen. The explicit compiler-only suite
+`ELISA_UI_REQUIRE_REAL_SKIA=0 bash scripts/run_tests.sh` passes from this
+revision, including the AppKit canvas keymap and text paths; strict default
+mode intentionally stops until the pinned Skia dependency is installed. The
+Skia custom painter boundary compiles headlessly through
 `scripts/check_skia.sh`; no foreground window is required. With a checkout at
 the pinned revision and the lockfile's CPU-raster archive, the same gate also
 links the production C++ host shim and runs
