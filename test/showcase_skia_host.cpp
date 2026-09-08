@@ -26,6 +26,9 @@ extern "C" std::int32_t elisa_showcase_skia_render(std::size_t canvas, std::size
 extern "C" std::int32_t elisa_showcase_skia_command_count();
 extern "C" std::int32_t elisa_showcase_skia_semantic_count();
 extern "C" std::int32_t elisa_showcase_skia_art_count();
+extern "C" std::int32_t elisa_showcase_skia_deferred_count();
+extern "C" std::int32_t elisa_showcase_skia_probe_x();
+extern "C" std::int32_t elisa_showcase_skia_probe_y();
 
 namespace {
 
@@ -95,9 +98,10 @@ int main(int argc, char** argv) {
     const std::int32_t commands = elisa_showcase_skia_command_count();
     const std::int32_t semantics = elisa_showcase_skia_semantic_count();
     const std::int32_t art = elisa_showcase_skia_art_count();
-    if (commands <= 20 || semantics <= 10 || art < 6) {
-        std::fprintf(stderr, "skia showcase: incomplete Elisa frame commands=%d semantics=%d art=%d\n",
-                     commands, semantics, art);
+    const std::int32_t deferred = elisa_showcase_skia_deferred_count();
+    if (commands <= 20 || semantics <= 10 || art < 6 || deferred != 2) {
+        std::fprintf(stderr, "skia showcase: incomplete Elisa frame commands=%d semantics=%d art=%d deferred=%d\n",
+                     commands, semantics, art, deferred);
         return 6;
     }
 
@@ -114,6 +118,26 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "skia showcase: retained custom artwork produced only %zu accent pixels\n",
                      accent_pixels);
         ok = false;
+    }
+
+    // The showcase probe intentionally overlaps its streams. The first
+    // deferred badge is orange, the retained divider covers its middle, and
+    // the second deferred circle covers the divider. Checking all three
+    // pixels proves that deferred work is ordered with retained commands, not
+    // appended as an overlay after the frame.
+    const int probe_x = elisa_showcase_skia_probe_x();
+    const int probe_y = elisa_showcase_skia_probe_y();
+    if (probe_x < 0 || probe_y < 0 || probe_x + 72 >= width || probe_y + 18 >= height) {
+        std::fprintf(stderr, "skia showcase: deferred probe escaped the retained content bounds x=%d y=%d\n",
+                     probe_x, probe_y);
+        ok = false;
+    } else {
+        ok = expect_color(pixels, probe_x + 2, probe_y + 9,
+                          SkColorSetARGB(255, 250, 140, 40), "deferred badge before retained") && ok;
+        ok = expect_color(pixels, probe_x + 16, probe_y + 9,
+                          SkColorSetARGB(255, 80, 200, 220), "retained divider between deferred") && ok;
+        ok = expect_color(pixels, probe_x + 56, probe_y + 9,
+                          SkColorSetARGB(255, 236, 100, 210), "deferred badge after retained") && ok;
     }
 
     const int iterations = configured_iterations();
@@ -137,8 +161,8 @@ int main(int argc, char** argv) {
         return 9;
     }
     if (!ok) return 10;
-    std::printf("skia showcase: rendered and verified %s commands=%d semantics=%d art=%d accent_pixels=%zu render_iterations=%d render_total_ns=%lld render_average_ns=%lld\n",
-                output, commands, semantics, art, accent_pixels, iterations,
+    std::printf("skia showcase: rendered and verified %s commands=%d semantics=%d art=%d deferred=%d accent_pixels=%zu probe_x=%d probe_y=%d render_iterations=%d render_total_ns=%lld render_average_ns=%lld\n",
+                output, commands, semantics, art, deferred, accent_pixels, probe_x, probe_y, iterations,
                 static_cast<long long>(total_ns), static_cast<long long>(average_ns));
     return 0;
 }

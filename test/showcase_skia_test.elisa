@@ -9,6 +9,9 @@ include "../examples/hello/app.elisa"
 
 global mutable showcase_ready: bool = false
 global mutable workflow_failures: i32 = 0
+global mutable deferred_probe_count: i32 = 0
+global mutable deferred_probe_x: i32 = 0
+global mutable deferred_probe_y: i32 = 0
 
 def ui_measure_text_width(text: sview, size: f32) -> f32:
     return UiSkia::measure_text_width(text, size)
@@ -73,6 +76,32 @@ def build_headless_frame() -> void:
     UiCore::begin_frame()
     app_frame()
 
+# Exercise the public deferred painter from application code. The three
+# records deliberately straddle a retained command: replay must produce the
+# first deferred badge, the retained divider, then the second deferred badge.
+# Geometry comes from the live retained content card, so this is a layout
+# workflow rather than a fixed-coordinate renderer test.
+def queue_deferred_layout_probe() -> void can[Ui.Draw]:
+    deferred_probe_count <- 0
+    if UiHandles::widget(HelloApp::content_handle()) is card:
+        probe_width: mutable f32 = 112.0 if card.width > 180.0 else card.width * 0.55
+        probe_width <- 36.0 if probe_width < 36.0
+        probe_x: f32 = card.x + card.width - probe_width - 36.0
+        probe_y: f32 = card.y + card.height - 58.0
+        deferred_probe_x <- probe_x.i32()
+        deferred_probe_y <- probe_y.i32()
+        first: UiCore::Rect = UiCore::Rect(probe_x, probe_y, 32.0, 18.0)
+        accepted_first: bool = UiSkia::defer_fill_rounded_rect(first, 4.0, UiCore::rgb(250, 140, 40))
+        # This retained divider overlaps the first deferred badge. The final
+        # circle overlaps the divider, making replay order observable in the
+        # raster rather than only in a recorder.
+        UiCore::fill(UiCore::Rect(probe_x + 8.0, probe_y, 64.0, 18.0), UiCore::rgb(80, 200, 220))
+        accepted_second: bool = UiSkia::defer_fill_circle(
+            UiCore::Circle{center: UiCore::Vec2(probe_x + 56.0, probe_y + 9.0), radius: 9.0},
+            UiCore::rgb(236, 100, 210))
+        deferred_probe_count <- 1 if accepted_first
+        deferred_probe_count <- deferred_probe_count + 1 if accepted_second
+
 def prepare_public_workflow() -> i32:
     ensure_showcase()
     workflow_failures <- 0
@@ -120,6 +149,7 @@ def showcase_skia_render(canvas: usize, font: usize) -> i32 can[Ui.Draw, Ui.Text
     if canvas == 0:
         UiSkia::end_deferred_frame()
         return UiSkia::RenderStatus.SkippedNoSurface.i32()
+    queue_deferred_layout_probe()
     UiSkia::attach(canvas)
     status: UiSkia::RenderStatus = UiSkia::render_status_with_font(font)
     UiSkia::detach()
@@ -135,8 +165,20 @@ def showcase_semantic_count() -> i32:
 def showcase_art_count() -> i32:
     return custom_art_command_count()
 
+def showcase_deferred_count() -> i32:
+    return deferred_probe_count
+
+def showcase_probe_x() -> i32:
+    return deferred_probe_x
+
+def showcase_probe_y() -> i32:
+    return deferred_probe_y
+
 export fn elisa_showcase_skia_prepare() -> i32 = prepare_public_workflow
 export fn elisa_showcase_skia_render(canvas: usize, font: usize) -> i32 = showcase_skia_render
 export fn elisa_showcase_skia_command_count() -> i32 = showcase_command_count
 export fn elisa_showcase_skia_semantic_count() -> i32 = showcase_semantic_count
 export fn elisa_showcase_skia_art_count() -> i32 = showcase_art_count
+export fn elisa_showcase_skia_deferred_count() -> i32 = showcase_deferred_count
+export fn elisa_showcase_skia_probe_x() -> i32 = showcase_probe_x
+export fn elisa_showcase_skia_probe_y() -> i32 = showcase_probe_y
