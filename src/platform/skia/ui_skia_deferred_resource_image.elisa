@@ -1,0 +1,69 @@
+# Generation-safe deferred image presentation for Skia custom controls.
+#
+# The queue stores a logical resource slot/generation instead of retaining a
+# native image pointer. Replay resolves the binding through UiSkia's resource
+# registry, so disposal or surface loss cannot turn an old command into a draw
+# through a recycled handle.
+
+include "../../core/ui_core.elisa"
+
+extend UiSkia:
+    public:
+        def defer_bound_image_fitted(resource: UiResources::ResourceHandle, box: UiCore::Rect, source: UiCore::Size, alpha: u8, fit: UiSkia::ImageFit) -> bool can[Ui.Draw]:
+            return UiSkia::defer_bound_image_fitted_with_sampling(resource, box, source, alpha, fit, UiSkia::ImageSampling.Linear)
+
+        def defer_bound_image_fitted_with_sampling(resource: UiResources::ResourceHandle, box: UiCore::Rect, source: UiCore::Size, alpha: u8, fit: UiSkia::ImageFit, sampling: UiSkia::ImageSampling) -> bool can[Ui.Draw]:
+            return UiSkia::queue_deferred_bound_image(resource, box, source, alpha, fit, 0.0, sampling, false)
+
+        def defer_bound_image_fitted_intrinsic(resource: UiResources::ResourceHandle, box: UiCore::Rect, alpha: u8, fit: UiSkia::ImageFit) -> bool can[Ui.Draw]:
+            return UiSkia::defer_bound_image_fitted_with_sampling(resource, box, UiResources::intrinsic_size(resource), alpha, fit, UiSkia::ImageSampling.Linear)
+
+        def defer_bound_image_fitted_intrinsic_with_sampling(resource: UiResources::ResourceHandle, box: UiCore::Rect, alpha: u8, fit: UiSkia::ImageFit, sampling: UiSkia::ImageSampling) -> bool can[Ui.Draw]:
+            return UiSkia::defer_bound_image_fitted_with_sampling(resource, box, UiResources::intrinsic_size(resource), alpha, fit, sampling)
+
+        def defer_bound_image_fitted_rounded(resource: UiResources::ResourceHandle, box: UiCore::Rect, source: UiCore::Size, alpha: u8, fit: UiSkia::ImageFit, radius: f32) -> bool can[Ui.Draw]:
+            return UiSkia::defer_bound_image_fitted_rounded_with_sampling(resource, box, source, alpha, fit, radius, UiSkia::ImageSampling.Linear)
+
+        def defer_bound_image_fitted_rounded_with_sampling(resource: UiResources::ResourceHandle, box: UiCore::Rect, source: UiCore::Size, alpha: u8, fit: UiSkia::ImageFit, radius: f32, sampling: UiSkia::ImageSampling) -> bool can[Ui.Draw]:
+            return UiSkia::queue_deferred_bound_image(resource, box, source, alpha, fit, radius, sampling, true)
+
+        def defer_bound_image_fitted_intrinsic_rounded(resource: UiResources::ResourceHandle, box: UiCore::Rect, alpha: u8, fit: UiSkia::ImageFit, radius: f32) -> bool can[Ui.Draw]:
+            return UiSkia::defer_bound_image_fitted_intrinsic_rounded_with_sampling(resource, box, alpha, fit, radius, UiSkia::ImageSampling.Linear)
+
+        def defer_bound_image_fitted_intrinsic_rounded_with_sampling(resource: UiResources::ResourceHandle, box: UiCore::Rect, alpha: u8, fit: UiSkia::ImageFit, radius: f32, sampling: UiSkia::ImageSampling) -> bool can[Ui.Draw]:
+            return UiSkia::defer_bound_image_fitted_rounded_with_sampling(resource, box, UiResources::intrinsic_size(resource), alpha, fit, radius, sampling)
+
+    private:
+        def queue_deferred_bound_image(resource: UiResources::ResourceHandle, box: UiCore::Rect, source: UiCore::Size, alpha: u8, fit: UiSkia::ImageFit, radius: f32, sampling: UiSkia::ImageSampling, rounded: bool) -> bool can[Ui.Draw]:
+            _ = UiSkia::prune_bindings()
+            return false if not deferred_frame_active or not UiResources::resource_is_valid(resource) or UiResources::state(resource) != UiResources::State.Ready or alpha == 0
+            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+            source_width: f32 = UiCore::bounded_extent(source.width)
+            source_height: f32 = UiCore::bounded_extent(source.height)
+            return false if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0 or source_width <= 0.0 or source_height <= 0.0
+            target: UiCore::Rect = UiSkia::fitted_image_rect(safe_box, source_width, source_height, fit)
+            return false if target.size.width <= 0.0 or target.size.height <= 0.0
+            kind: mutable UiSkia::DeferredKind = DeferredKind.DrawBoundImageFitted
+            kind <- DeferredKind.DrawBoundImageFittedRounded if rounded
+            command: DeferredCommand = UiSkia::empty_deferred(kind)
+            command.box <- safe_box
+            command.source_size <- UiCore::Size(source_width, source_height)
+            command.alpha <- alpha
+            command.image_fit <- UiSkia::normalize_image_fit(fit)
+            command.radius <- radius
+            command.sampling <- sampling
+            command.image_resource_slot <- resource.slot
+            command.image_resource_generation <- resource.generation
+            return UiSkia::enqueue_deferred(command)
+
+        def replay_deferred_bound_image(command: DeferredCommand, rounded: bool) -> bool can[Ui.Draw]:
+            return false if command.image_resource_generation == 0
+            resource: UiResources::ResourceHandle = UiResources::ResourceHandle{
+                slot: command.image_resource_slot,
+                generation: command.image_resource_generation}
+            result: mutable bool = false
+            if rounded:
+                result <- UiSkia::draw_bound_image_fitted_rounded_with_sampling(resource, command.box, command.source_size, command.alpha, command.image_fit, command.radius, command.sampling)
+            else:
+                result <- UiSkia::draw_bound_image_fitted_with_sampling(resource, command.box, command.source_size, command.alpha, command.image_fit, command.sampling)
+            return result

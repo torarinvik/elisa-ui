@@ -61,7 +61,9 @@ Externally imposed symbols are kept at the edges:
   registry remain compiler- and headless-testable without it.
 - Deferred Skia image fitting is also Elisa-owned: source dimensions, fit mode,
   sampling, and rounded clipping are copied into the bounded queue and replayed
-  through the same immediate image policy.
+  through the same immediate image policy. Generation-bound variants retain only
+  a logical resource slot/generation, repair stale binding indexes with bounded
+  scans, and skip disposed generations without retaining a native image pointer.
 - The optional AppKit/Skia compositor in
   `src/platform/appkit/appkit_skia_host.cpp` is linked only by the Skia canvas
   product; the standard AppKit product keeps its CoreGraphics fallback.

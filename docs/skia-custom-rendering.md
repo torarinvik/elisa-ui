@@ -168,6 +168,14 @@ so contain/cover/scale-down placement and temporary clip scopes stay identical
 between controls that draw during the callback and controls that draw after a
 SkCanvas is attached. Only the opaque image handle crosses the boundary.
 
+Generation-bound deferred image helpers (`defer_bound_image_fitted*()` and
+their intrinsic/rounded variants) store a logical resource slot and generation,
+not a native image pointer. Replay reconstructs that handle and resolves the
+current Elisa binding only while the resource is ready; disposed or recycled
+generations are skipped safely. Binding-index repair is bounded and generation
+aware, so resource teardown and surface recreation cannot redirect a queued
+command to a different image.
+
 `UiSkia::snapshot()` is a read-only diagnostic record for attachment/generation,
 save depth, clip/transform depth, active image/font bindings, and deferred
 queue activity/count/overflow/scope depth;

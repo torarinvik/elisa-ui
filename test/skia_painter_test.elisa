@@ -435,6 +435,37 @@ def main() -> i64:
     UiSkia::detach()
     UiSkia::end_deferred_frame()
 
+    UiResources::reset()
+    deferred_bound_image: UiResources::ResourceHandle = UiResources::request("images/deferred-bound", 7)
+    _ = UiResources::set_intrinsic_size(deferred_bound_image, 100.0, 50.0)
+    _ = UiResources::set_state(deferred_bound_image, UiResources::State.Ready)
+    _ = UiSkia::bind_image(deferred_bound_image, 0xD00D)
+    check("deferred bound image binding is ready", UiResources::resource_is_valid(deferred_bound_image) and UiResources::state(deferred_bound_image) == UiResources::State.Ready and UiSkia::image_binding_count() == 1)
+    UiCore::begin_frame()
+    skia_test_reset()
+    UiSkia::begin_deferred_frame()
+    check("deferred bound image captures logical resource identity", UiSkia::defer_bound_image_fitted_intrinsic_rounded_with_sampling(deferred_bound_image, fit_box, 255, UiSkia::ImageFit.Contain, 100.0, UiSkia::ImageSampling.Nearest) and UiSkia::deferred_count() == 1)
+    UiSkia::attach(35)
+    check("deferred bound image keeps binding through attach", UiSkia::image_binding_count() == 1)
+    check("deferred bound image resolves its generation at replay", UiSkia::render_status() == UiSkia::RenderStatus.Complete and skia_test_image_count() == 1 and skia_test_rounded_clip_count() == 1 and skia_test_last_clip_radius() == 50.0 and skia_test_last_image_sampling() == 0)
+    UiSkia::detach()
+    UiSkia::end_deferred_frame()
+    _ = UiResources::dispose(deferred_bound_image)
+
+    stale_deferred_image: UiResources::ResourceHandle = UiResources::request("images/deferred-stale", 7)
+    _ = UiResources::set_intrinsic_size(stale_deferred_image, 100.0, 50.0)
+    _ = UiResources::set_state(stale_deferred_image, UiResources::State.Ready)
+    _ = UiSkia::bind_image(stale_deferred_image, 0xEEEE)
+    UiCore::begin_frame()
+    skia_test_reset()
+    UiSkia::begin_deferred_frame()
+    _ = UiSkia::defer_bound_image_fitted_intrinsic(stale_deferred_image, fit_box, 255, UiSkia::ImageFit.Contain)
+    _ = UiResources::dispose(stale_deferred_image)
+    UiSkia::attach(35)
+    check("deferred bound image drops a disposed generation", UiSkia::render_status() == UiSkia::RenderStatus.Complete and skia_test_image_count() == 0 and skia_test_rounded_clip_count() == 0)
+    UiSkia::detach()
+    UiSkia::end_deferred_frame()
+
     # AppKit creates the borrowed SkCanvas after app_frame. The explicit
     # deferred scope keeps richer Skia-only primitives in Elisa until retained
     # commands have been replayed, without changing the hosted six-command ABI.

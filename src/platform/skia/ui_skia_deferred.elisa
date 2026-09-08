@@ -33,6 +33,8 @@ extend UiSkia:
             PopTransform = 17
             DrawImageFitted = 18
             DrawImageFittedRounded = 19
+            DrawBoundImageFitted = 20
+            DrawBoundImageFittedRounded = 21
 
         # The scope is explicit so the same app can use the Skia helpers in a
         # backend-neutral frame without silently accumulating work when no
@@ -72,6 +74,7 @@ extend UiSkia:
                 line: UiCore::Line{from_point: UiCore::Vec2(0.0, 0.0), to_point: UiCore::Vec2(0.0, 0.0)},
                 radius: radius, stroke_width: 0.0, image: 0, alpha: 0, sampling: UiSkia::ImageSampling.Linear,
                 source_size: UiCore::Size(0.0, 0.0), image_fit: UiSkia::ImageFit.Stretch,
+                image_resource_slot: 0, image_resource_generation: 0,
                 text_offset: 0, text_length: 0, text_origin: UiCore::Vec2(0.0, 0.0), text_size: 0.0,
                 transform_scale: UiCore::Vec2(1.0, 1.0)})
 
@@ -235,6 +238,8 @@ extend UiSkia:
             sampling: mutable UiSkia::ImageSampling
             source_size: mutable UiCore::Size
             image_fit: mutable UiSkia::ImageFit
+            image_resource_slot: mutable u32
+            image_resource_generation: mutable u32
             text_offset: mutable usize
             text_length: mutable usize
             text_origin: mutable UiCore::Vec2
@@ -246,7 +251,6 @@ extend UiSkia:
         global mutable deferred_count_state: usize = 0
         global mutable deferred_overflow_state: bool = false
         global mutable deferred_frame_active: bool = false
-
         def empty_deferred(kind: UiSkia::DeferredKind) -> DeferredCommand:
             return DeferredCommand{
                 kind: kind, box: UiCore::Rect(0.0, 0.0, 0.0, 0.0),
@@ -256,6 +260,7 @@ extend UiSkia:
                 color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, secondary: UiCore::Color{r: 0, g: 0, b: 0, a: 0},
                 radius: 0.0, stroke_width: 0.0, image: 0, alpha: 0, sampling: UiSkia::ImageSampling.Linear,
                 source_size: UiCore::Size(0.0, 0.0), image_fit: UiSkia::ImageFit.Stretch,
+                image_resource_slot: 0, image_resource_generation: 0,
                 text_offset: 0, text_length: 0, text_origin: UiCore::Vec2(0.0, 0.0), text_size: 0.0,
                 transform_scale: UiCore::Vec2(1.0, 1.0)}
 
@@ -304,6 +309,10 @@ extend UiSkia:
                         _ = UiSkia::draw_image_fitted_with_sampling(command.image, command.box, command.source_size, command.alpha, command.image_fit, command.sampling)
                     UiSkia::DeferredKind.DrawImageFittedRounded:
                         _ = UiSkia::draw_image_fitted_rounded_with_sampling(command.image, command.box, command.source_size, command.alpha, command.image_fit, command.radius, command.sampling)
+                    UiSkia::DeferredKind.DrawBoundImageFitted:
+                        _ = UiSkia::replay_deferred_bound_image(command, false)
+                    UiSkia::DeferredKind.DrawBoundImageFittedRounded:
+                        _ = UiSkia::replay_deferred_bound_image(command, true)
                     UiSkia::DeferredKind.DrawText:
                         UiSkia::draw_text_run(UiCore::TextRun(command.text_origin, command.text_size,
                             sview(&deferred_text_storage[command.text_offset], 0, command.text_length.i64())), command.color)

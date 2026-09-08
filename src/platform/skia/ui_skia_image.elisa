@@ -79,6 +79,23 @@ extend UiSkia:
                 return painted
             return UiSkia::draw_bound_image_with_sampling(resource, target, alpha, sampling)
 
+        def draw_bound_image_fitted_rounded(resource: UiResources::ResourceHandle, box: UiCore::Rect, source: UiCore::Size, alpha: u8, fit: UiSkia::ImageFit, radius: f32) -> bool can[Ui.Draw]:
+            return UiSkia::draw_bound_image_fitted_rounded_with_sampling(resource, box, source, alpha, fit, radius, UiSkia::ImageSampling.Linear)
+
+        def draw_bound_image_fitted_rounded_with_sampling(resource: UiResources::ResourceHandle, box: UiCore::Rect, source: UiCore::Size, alpha: u8, fit: UiSkia::ImageFit, radius: f32, sampling: UiSkia::ImageSampling) -> bool can[Ui.Draw]:
+            _ = UiSkia::prune_bindings()
+            return false if UiResources::state(resource) != UiResources::State.Ready or canvas_state == 0 or alpha == 0
+            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+            source_width: f32 = UiCore::bounded_extent(source.width)
+            source_height: f32 = UiCore::bounded_extent(source.height)
+            return false if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0 or source_width <= 0.0 or source_height <= 0.0
+            target: UiCore::Rect = UiSkia::fitted_image_rect(safe_box, source_width, source_height, fit)
+            return false if target.size.width <= 0.0 or target.size.height <= 0.0
+            return false if not UiSkia::push_rounded_clip(safe_box, radius)
+            painted: bool = UiSkia::draw_bound_image_with_sampling(resource, target, alpha, sampling)
+            _ = UiSkia::pop_clip()
+            return painted
+
         # Intrinsic metadata is already generation-scoped by UiResources, so
         # callers can opt into aspect-preserving placement without copying
         # dimensions from the host's decoded image record.
@@ -92,19 +109,7 @@ extend UiSkia:
             return UiSkia::draw_bound_image_fitted_intrinsic_rounded_with_sampling(resource, box, alpha, fit, radius, UiSkia::ImageSampling.Linear)
 
         def draw_bound_image_fitted_intrinsic_rounded_with_sampling(resource: UiResources::ResourceHandle, box: UiCore::Rect, alpha: u8, fit: UiSkia::ImageFit, radius: f32, sampling: UiSkia::ImageSampling) -> bool can[Ui.Draw]:
-            _ = UiSkia::prune_bindings()
-            return false if UiResources::state(resource) != UiResources::State.Ready or canvas_state == 0 or alpha == 0
-            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
-            source: UiCore::Size = UiResources::intrinsic_size(resource)
-            source_width: f32 = UiCore::bounded_extent(source.width)
-            source_height: f32 = UiCore::bounded_extent(source.height)
-            return false if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0 or source_width <= 0.0 or source_height <= 0.0
-            target: UiCore::Rect = UiSkia::fitted_image_rect(safe_box, source_width, source_height, fit)
-            return false if target.size.width <= 0.0 or target.size.height <= 0.0
-            return false if not UiSkia::push_rounded_clip(safe_box, radius)
-            painted: bool = UiSkia::draw_bound_image_with_sampling(resource, target, alpha, sampling)
-            _ = UiSkia::pop_clip()
-            return painted
+            return UiSkia::draw_bound_image_fitted_rounded_with_sampling(resource, box, UiResources::intrinsic_size(resource), alpha, fit, radius, sampling)
 
     private:
         def normalize_image_fit(fit: UiSkia::ImageFit) -> UiSkia::ImageFit:
