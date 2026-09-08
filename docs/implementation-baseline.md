@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `da1475e` (`feat: add explicit theme geometry tokens`) on branch `work` |
+| elisa-ui revision | `f0fcbee` (`feat: scale theme geometry for large text`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -41,6 +41,9 @@ caret, and selection geometry while leaving mixed-run shaping to the renderer.
 
 `UiTheme::metrics` now provides shared spacing, touch-target, focus-ring, and
 corner-radius tokens, with enlarged interaction affordances in high contrast.
+`UiTheme::scaled_metrics` applies normalized text scale to spacing and touch
+targets with finite bounds, while existing explicit widget dimensions remain
+application-owned.
 
 ## Source and boundary inventory
 
