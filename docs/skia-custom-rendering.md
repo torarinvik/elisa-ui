@@ -24,7 +24,8 @@ cannot silently use a different or dirty Skia source tree;
 edit loop on a machine without the checkout; that mode is not a renderer pass.
 `scripts/build_skia.sh` accepts either a normal checkout or a linked Git
 worktree, rejects tracked and untracked edits before fetching, and writes an
-archive provenance manifest after the build. The same pin and archive-hash
+archive provenance manifest after the build. The standalone AppKit/Skia
+builder uses that same manifest check, and the same pin and archive-hash
 verifier runs before every real fixture, so a copied or stale `libskia.a` is
 rejected instead of being mistaken for renderer evidence.
 After the primitive fixture, the gate runs `scripts/check_showcase_skia.sh`.

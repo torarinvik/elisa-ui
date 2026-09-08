@@ -25,6 +25,8 @@ actual_revision="$(git -C "$SKIA_ROOT" rev-parse HEAD 2>/dev/null || true)"
   echo "Skia checkout is not pinned to $expected_revision (found ${actual_revision:-unknown})" >&2
   exit 2
 }
+SKIA_ROOT="$SKIA_ROOT" SKIA_OUT="$SKIA_OUT" SKIA_LIB="$SKIA_OUT/libskia.a" \
+  bash "$ROOT/scripts/verify_skia_build.sh"
 bash "$ROOT/scripts/check_toolchain.sh"
 
 mkdir -p "$ROOT/build"
