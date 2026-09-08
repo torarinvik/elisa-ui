@@ -54,6 +54,11 @@ invalidations and metric pressure visible in the same diagnostic snapshot.
 and cancelled resource counts plus overflow state. It keeps resource diagnostics
 available without exposing the resource arena or borrowed renderer handles.
 
+`Frame.remote` exposes the backend-neutral remote session snapshot, including
+negotiated presentation, scale, lifecycle generation, input acknowledgement,
+and disconnect-overlay facts. It remains a value copy and does not expose
+transport objects.
+
 Secure text is redacted as `[secure]` in diagnostic nodes and semantic copies;
 selected text is cleared. This keeps inspector output safe for logs, snapshots,
 and future source-linked tooling. The module is allocation-free and can be

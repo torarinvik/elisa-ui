@@ -811,6 +811,9 @@ separate host-enforced security boundary.
 - `UiInspector::Frame` now includes the aggregate `UiResources::Snapshot`, so
   requested/ready/failure/cancellation pressure is visible to diagnostics
   without exposing resource storage or borrowed renderer handles.
+- `UiInspector::Frame` also includes the value-only `UiRemote::Snapshot`, making
+  negotiated presentation, scale, generation, and input-overlay state visible
+  through the same cross-backend diagnostics surface.
 - AppKit custom-canvas CoreText shaping and metrics now live in their own
   `ui_appkit_canvas_coretext.elisa` extension; window/snapshot ABI types and
   text-command routing remain separate modules with the same public contract.
