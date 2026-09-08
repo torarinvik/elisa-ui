@@ -494,6 +494,9 @@ separate host-enforced security boundary.
   rounded-rectangle shadows. Both helpers retain explicit Elisa geometry/effect
   policy and replay through the existing clip, gradient, and shadow primitives;
   no additional C/Objective-C state or hosted command shape is required.
+- Deferred convex-polygon helpers now reserve their full triangle/line
+  expansion before enqueueing, so a fixed-queue overflow rejects a complete
+  custom shape rather than presenting a partial fan or outline.
 - The shared event queue now rejects typed key, pointer-button, and gamepad
   ordinals that normalize to `Event.None`, instead of reporting a successful
   enqueue for a silently discarded no-op. The queue retains its existing

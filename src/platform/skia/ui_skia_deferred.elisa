@@ -140,6 +140,40 @@ extend UiSkia:
             command.color <- color
             return UiSkia::enqueue_deferred(command)
 
+        # Expand polygon convenience calls into existing bounded triangles and
+        # lines before the queue crosses the frame boundary. The capacity check
+        # is atomic, so a shape is never half-submitted when the fixed budget is
+        # exhausted.
+        def defer_fill_convex_polygon(polygon: UiSkia::ConvexPolygon&, color: UiCore::Color) -> bool can[Ui.Draw]:
+            return false if not deferred_frame_active or color.a == 0 or polygon.count < 3 or polygon.count > UiSkia::MAX_POLYGON_POINTS
+            required: usize = polygon.count - 2
+            return false if not UiSkia::reserve_deferred(required)
+            origin: UiCore::Vec2 = UiCore::Vec2(
+                UiCore::bounded_coordinate(polygon.points[0].x), UiCore::bounded_coordinate(polygon.points[0].y))
+            for index in 1..<(polygon.count - 1):
+                command: DeferredCommand = UiSkia::empty_deferred(DeferredKind.FillTriangle)
+                command.triangle <- UiCore::Triangle{
+                    a: origin,
+                    b: UiCore::Vec2(UiCore::bounded_coordinate(polygon.points[index].x), UiCore::bounded_coordinate(polygon.points[index].y)),
+                    c: UiCore::Vec2(UiCore::bounded_coordinate(polygon.points[index + 1].x), UiCore::bounded_coordinate(polygon.points[index + 1].y))}
+                command.color <- color
+                _ = UiSkia::enqueue_deferred(command)
+            return true
+
+        def defer_stroke_convex_polygon(polygon: UiSkia::ConvexPolygon&, stroke_width: f32, color: UiCore::Color) -> bool can[Ui.Draw]:
+            return false if not deferred_frame_active or color.a == 0 or polygon.count < 2 or polygon.count > UiSkia::MAX_POLYGON_POINTS or UiCore::bounded_extent(stroke_width) <= 0.0
+            return false if not UiSkia::reserve_deferred(polygon.count)
+            for index in 0..<polygon.count:
+                next: usize = 0 if index + 1 >= polygon.count else index + 1
+                command: DeferredCommand = UiSkia::empty_deferred(DeferredKind.StrokeLine)
+                command.line <- UiCore::Line{
+                    from_point: UiCore::Vec2(UiCore::bounded_coordinate(polygon.points[index].x), UiCore::bounded_coordinate(polygon.points[index].y)),
+                    to_point: UiCore::Vec2(UiCore::bounded_coordinate(polygon.points[next].x), UiCore::bounded_coordinate(polygon.points[next].y))}
+                command.stroke_width <- stroke_width
+                command.color <- color
+                _ = UiSkia::enqueue_deferred(command)
+            return true
+
         def defer_image_with_sampling(image: usize, box: UiCore::Rect, alpha: u8, sampling: UiSkia::ImageSampling) -> bool can[Ui.Draw]:
             return false if not deferred_frame_active or image == 0 or alpha == 0
             safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
@@ -215,6 +249,13 @@ extend UiSkia:
                 return false
             deferred_commands[deferred_count_state] <- command
             deferred_count_state <- deferred_count_state + 1
+            return true
+
+        def reserve_deferred(required: usize) -> bool:
+            return false if not deferred_frame_active or required == 0
+            if required > MAX_DEFERRED_COMMANDS or deferred_count_state > MAX_DEFERRED_COMMANDS - required:
+                deferred_overflow_state <- true
+                return false
             return true
 
         def replay_deferred() -> void can[Ui.Draw, Ui.Text]:

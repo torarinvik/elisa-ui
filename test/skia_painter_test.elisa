@@ -441,6 +441,23 @@ def main() -> i64:
     UiSkia::detach()
     UiSkia::end_deferred_frame()
 
+    deferred_polygon: UiSkia::ConvexPolygon = UiSkia::empty_polygon()
+    _ = UiSkia::polygon_add(deferred_polygon, UiCore::Vec2(10.0, 10.0))
+    _ = UiSkia::polygon_add(deferred_polygon, UiCore::Vec2(30.0, 10.0))
+    _ = UiSkia::polygon_add(deferred_polygon, UiCore::Vec2(35.0, 25.0))
+    _ = UiSkia::polygon_add(deferred_polygon, UiCore::Vec2(15.0, 30.0))
+    UiCore::begin_frame()
+    skia_test_reset()
+    UiSkia::begin_deferred_frame()
+    check("deferred Skia polygon expansion is atomic", UiSkia::defer_fill_convex_polygon(deferred_polygon, UiCore::rgb(20, 30, 40)) and UiSkia::defer_stroke_convex_polygon(deferred_polygon, 1.0, UiCore::rgb(220, 220, 220)) and UiSkia::deferred_count() == 6)
+    invalid_polygon: UiSkia::ConvexPolygon = UiSkia::empty_polygon()
+    invalid_polygon.count <- UiSkia::MAX_POLYGON_POINTS + 1
+    check("deferred Skia polygon rejects hostile counts", not UiSkia::defer_fill_convex_polygon(invalid_polygon, UiCore::rgb(20, 30, 40)) and UiSkia::deferred_count() == 6)
+    UiSkia::attach(39)
+    check("deferred Skia polygon replays through primitive fan", UiSkia::render_status() == UiSkia::RenderStatus.Complete and skia_test_triangle_count() == 2 and skia_test_line_count() == 4)
+    UiSkia::detach()
+    UiSkia::end_deferred_frame()
+
     UiSkia::begin_deferred_frame()
     accepted_deferred: usize =
         for _ in 0..<UiSkia::MAX_DEFERRED_COMMANDS + 1 |accepted: usize = 0| -> accepted:

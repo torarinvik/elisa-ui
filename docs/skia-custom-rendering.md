@@ -148,6 +148,12 @@ same temporary clip scope as immediate drawing, while shadows carry explicit
 offset, blur, radius, and alpha values in the Elisa queue; neither operation
 adds a native object or an implicit style default.
 
+Convex custom shapes can use `defer_fill_convex_polygon()` and
+`defer_stroke_convex_polygon()`. Elisa expands each bounded polygon into the
+existing triangle/line commands only after reserving the complete queue budget,
+so exhaustion rejects the whole shape instead of presenting a partial fan or
+outline.
+
 `UiSkia::snapshot()` is a read-only diagnostic record for attachment/generation,
 save depth, clip/transform depth, and active image/font bindings;
 `UiSkia::is_balanced()` provides the corresponding invariant check. These
