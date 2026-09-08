@@ -112,6 +112,9 @@ advances the token instead of silently reusing the prior generation.
 Surface loss also clears all borrowed image/typeface bindings; a recreated
 surface must explicitly bind fresh renderer objects while logical resources
 remain available to the view.
+Changing the logical-to-physical scale follows the same rule: the active scale
+is tracked in Elisa diagnostics and scale-sensitive borrowed bindings are
+cleared before the replacement frame is attached.
 
 Hosts that need an explicit completeness signal can call
 `UiSkia::render_checked()`: it replays the bounded batch but returns `false`

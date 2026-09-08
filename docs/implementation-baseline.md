@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `44da44d` (`fix(text): preserve punctuation in scalar wrapping`) on branch `work` |
+| elisa-ui revision | `ff9794a` (`fix(skia): invalidate bindings when scale changes`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -271,6 +271,8 @@ soft hyphen/slash breaks retain punctuation on the preceding line, and lines
 outside a clipped block are retained for diagnostics but skipped at the FFI.
 The scalar-column planner now follows the same punctuation-preserving soft-break
 policy as the measured planner.
+Skia scale changes now clear borrowed renderer bindings and expose the active
+scale in the read-only renderer snapshot before a replacement frame proceeds.
 The frame boundary also supports an explicit logical-to-physical scale with a
 balanced save/restore transform, including cleanup of any outstanding clips.
 `UiSkia::surface_lost()` preserves retained Elisa state while invalidating the
