@@ -149,6 +149,11 @@ status label; an overlay-only
 renderer, a renderer that ignores generation identity, or a renderer that
 never paints the edited text fails the application-level gate.
 
+The AppKit/Skia compositor fixture repeats its CoreGraphics presentation and
+compares the logical pixel digest, while reporting the elapsed presentation
+time. This catches a borrowed-surface replay that leaks state even when the
+standalone CPU-raster showcase remains stable.
+
 `UiSkia::fill_linear_gradient()` adds a bounded two-stop horizontal or vertical
 surface fill. Elisa owns the colors, orientation, transparency, and rectangle
 validation; the C++ boundary only creates the Skia shader and draws the rect.

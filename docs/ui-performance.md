@@ -90,6 +90,8 @@ The AppKit/CoreGraphics fallback is also checked headlessly by
 fresh processes and compares the PNG SHA-256 before running its semantic bridge
 fixture. This keeps the native fallback reproducible without opening or
 activating a window.
+The AppKit/Skia compositor fixture applies the same repeated-frame digest and
+positive-duration check to its borrowed CoreGraphics presentation surface.
 
 The only supported local escape hatch is explicit and non-passing:
 `ELISA_UI_REQUIRE_REAL_SKIA=0`. The gate rejects any other value, so a typo

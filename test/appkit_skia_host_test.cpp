@@ -2,6 +2,7 @@
 
 #include <CoreGraphics/CoreGraphics.h>
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -35,6 +36,17 @@ bool expect_ink(const std::uint8_t* pixels, int row_bytes, int left, int top,
     }
     std::fprintf(stderr, "text: no rasterized glyphs in the CoreGraphics target\n");
     return false;
+}
+
+std::uint64_t pixel_digest(const std::uint8_t* pixels, int row_bytes, int width, int height) {
+    std::uint64_t hash = UINT64_C(1469598103934665603);
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width * 4; ++x) {
+            hash ^= pixels[y * row_bytes + x];
+            hash *= UINT64_C(1099511628211);
+        }
+    }
+    return hash;
 }
 
 }  // namespace
@@ -80,6 +92,27 @@ int main() {
     if (ok) ok = expect_rgba(pixels, row_bytes, 230, 50, 70, 120, 220, "triangle") && ok;
     if (ok) ok = expect_rgba(pixels, row_bytes, 290, 160, 240, 180, 70, "deferred custom fill") && ok;
     if (ok) ok = expect_ink(pixels, row_bytes, 15, 158, 110, 198) && ok;
+    std::uint64_t repeated_digest = 0;
+    std::int64_t render_ns = 0;
+    if (ok) {
+        const std::uint64_t initial_digest = pixel_digest(pixels, row_bytes, width, height);
+        const auto render_start = std::chrono::steady_clock::now();
+        const std::int32_t repeated_status = elisa_appkit_canvas_skia_present(
+            0, reinterpret_cast<std::size_t>(context), 320.0f, 200.0f,
+            static_cast<float>(width), static_cast<float>(height));
+        const auto render_finish = std::chrono::steady_clock::now();
+        render_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            render_finish - render_start).count();
+        repeated_digest = pixel_digest(pixels, row_bytes, width, height);
+        if (repeated_status != 1 || render_ns <= 0 || repeated_digest != initial_digest) {
+            std::fprintf(stderr, "appkit skia host: repeated presentation was not deterministic status=%d ns=%lld initial=%016llx repeated=%016llx\n",
+                         repeated_status, static_cast<long long>(render_ns),
+                         static_cast<unsigned long long>(initial_digest),
+                         static_cast<unsigned long long>(repeated_digest));
+            CGContextRelease(context);
+            return 10;
+        }
+    }
 
     // AppKit supplies a point-based CGContext whose device transform maps
     // logical view units to backing pixels. The compositor must draw into the
@@ -152,6 +185,8 @@ int main() {
     }
     CGContextRelease(context);
     if (!ok) return 4;
-    std::printf("appkit skia host: off-screen CoreGraphics presentation passed\n");
+    std::printf("appkit skia host: off-screen CoreGraphics presentation passed render_ns=%lld pixel_digest=%016llx\n",
+                static_cast<long long>(render_ns),
+                static_cast<unsigned long long>(repeated_digest));
     return 0;
 }
