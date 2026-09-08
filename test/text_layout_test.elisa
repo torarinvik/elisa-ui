@@ -1,6 +1,7 @@
 # Headless checks for UTF-8-safe line-break planning.
 
 include "../src/widgets/ui_text_layout.elisa"
+include "../src/widgets/ui_text_measure_layout.elisa"
 
 extern puts(text: cstr) -> i64
 
@@ -99,6 +100,7 @@ def main() -> i64:
     check("pixel layout normalizes empty geometry", measured_empty.line_count == 1 and measured_empty.max_width == 1.0 and measured_empty.text_size == 1.0)
     provided: UiTextMeasureLayout::Layout = UiTextMeasureLayout::layout_with_measure("AB", 20.0, 1.0, test_measure_provider)
     check("pixel layout accepts an explicit metric provider", provided.line_count == 1 and UiTextMeasureLayout::line_at(0).width == 2.0)
+    check("portable hit testing returns grapheme-safe offsets", UiTextMeasureLayout::hit_test("ABC", 20.0, 1.0, 0, 1.5) == 2 and UiTextMeasureLayout::hit_test("A🙂B", 20.0, 1.0, 0, 1.0) == 1)
     hyphenated: UiTextMeasureLayout::Layout = UiTextMeasureLayout::layout_with_measure("ab-cd", 3.0, 1.0, test_measure_provider)
     check("pixel layout keeps hyphens at soft breaks", hyphenated.line_count == 2 and UiTextMeasureLayout::line_view("ab-cd", 0) == "ab-" and UiTextMeasureLayout::line_view("ab-cd", 1) == "cd" and UiTextMeasureLayout::line_at(0).width == 3.0)
     slashed: UiTextMeasureLayout::Layout = UiTextMeasureLayout::layout_with_measure("ab/cd", 3.0, 1.0, test_measure_provider)

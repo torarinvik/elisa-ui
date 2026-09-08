@@ -44,3 +44,5 @@ the native boundary.
 UTF-8 byte offset on a measured line. It reuses the active Skia width authority
 and advances only grapheme clusters, so combining marks and multi-codepoint
 emoji remain indivisible for caret and selection callers.
+The backend-neutral `UiTextMeasureLayout::hit_test()` facade provides the same
+contract through the active platform metric hook for non-Skia painters.

@@ -598,6 +598,8 @@ separate host-enforced security boundary.
 - Measured Skia text now exposes Elisa-owned line hit testing that returns only
   grapheme-boundary byte offsets, reusing the active backend width authority so
   caret/selection coordinates cannot split combining marks or emoji clusters.
+  The same operation is available through the backend-neutral
+  `UiTextMeasureLayout::hit_test()` facade.
 - Skia rounded-corner radii now cross the FFI after Elisa geometry
   normalization; the C++ bridge forwards them to `SkRRect` without a duplicate
   radius fallback and rejects malformed direct values.
