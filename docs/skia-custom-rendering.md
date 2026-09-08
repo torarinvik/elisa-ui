@@ -206,6 +206,10 @@ verified source dimensions. Contain centers the complete image; Cover centers
 the crop and opens a temporary destination clip so pixels cannot bleed outside
 the caller's box. The native bridge still receives only the final rectangle,
 sampling ordinal, and borrowed image handle.
+When a logical image has `UiResources::set_intrinsic_size()` metadata,
+`draw_bound_image_fitted_intrinsic()` derives source dimensions from that
+generation-scoped record, keeping decoded-image facts out of ordinary widget
+state.
 The ready and generation-bound image helpers expose matching
 `*_with_sampling()` forms, so filtering survives the resource-binding path.
 Hosts can use `bind_image`/`draw_bound_image` to associate that pointer with an

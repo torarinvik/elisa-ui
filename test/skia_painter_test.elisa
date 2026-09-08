@@ -364,6 +364,17 @@ def main() -> i64:
     UiSkia::detach()
     check("fitted image clip scope is balanced", skia_test_save_count() == 2 and skia_test_restore_count() == 2 and UiSkia::is_balanced())
 
+    UiResources::reset()
+    intrinsic_image: UiResources::ResourceHandle = UiResources::request("images/intrinsic-fit", 7)
+    _ = UiResources::set_intrinsic_size(intrinsic_image, 100.0, 50.0)
+    _ = UiResources::set_state(intrinsic_image, UiResources::State.Ready)
+    _ = UiSkia::bind_image(intrinsic_image, 0xBEEF)
+    skia_test_reset()
+    UiSkia::attach(32)
+    check("bound image fit can consume intrinsic metadata", UiSkia::draw_bound_image_fitted_intrinsic_with_sampling(intrinsic_image, fit_box, 255, UiSkia::ImageFit.Contain, UiSkia::ImageSampling.Nearest) and skia_test_last_image_x() == 10.0 and skia_test_last_image_y() == 45.0 and skia_test_last_image_width() == 100.0 and skia_test_last_image_height() == 50.0 and skia_test_last_image_sampling() == 0)
+    UiSkia::detach()
+    _ = UiResources::dispose(intrinsic_image)
+
     if failures == 0:
         _ = puts("skia painter: all checks passed")
         return 0
