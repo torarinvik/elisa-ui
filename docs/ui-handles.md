@@ -44,6 +44,11 @@ privacy-preserving text constructor. All control styling, sizing, alignment,
 visibility, focus order, selection groups, values, and steps are available as
 typed handle setters.
 
+`button_accessible` is an opt-in convenience constructor that derives the
+button's minimum height from `UiTheme::scaled_metrics`, including high-contrast
+and large-text preferences. The explicit-size `button` constructor remains
+application-owned and unchanged.
+
 Use `handle(event)` to forward the portable event stream, `hit`/`cursor_at` for
 pointer policy, and `activate`/`adjust`/`radio_move` for accessibility actions.
 Text composition and editing (`insert_text`, `replace_text`, marked text,
