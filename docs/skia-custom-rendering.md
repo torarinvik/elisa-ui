@@ -233,7 +233,8 @@ exact `(slot,generation)` token; recycled resource generations cannot reuse an
 old image binding. Elisa stores the opaque value only and exposes explicit
 unbind/clear operations before host disposal. `prune_bindings()` also removes
 entries whose logical resource is no longer `Ready`; draw, bind, and metric
-queries invoke it automatically, while `clear_resource_bindings()` provides one
+queries invoke it automatically, including fitted-image calls that reject a
+stale generation before drawing, while `clear_resource_bindings()` provides one
 teardown call for a resource that may have both image and font bindings.
 Per-resource image and font lookups use Elisa-owned reverse indexes keyed by
 the resource slot, then validate the generation before returning the borrowed

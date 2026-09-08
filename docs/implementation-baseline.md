@@ -358,6 +358,9 @@ generation-scoped `UiResources::intrinsic_size()` metadata directly, keeping
 decoded dimensions out of application widget state. Rounded image helpers
 compose a typed rounded clip around that fitted destination, reusing the same
 Elisa scope ledger for avatar/card presentation.
+Fitted bound-image entry points prune disposed generations before their state
+checks, so an invalid request cannot strand an opaque image handle in the
+bounded binding table.
 Interactive text blocks now compose selection, glyphs, and caret painting in
 one measured pass with one clip scope, preserving selection-before-text and
 caret-after-text ordering while leaving blink scheduling in widget state.
