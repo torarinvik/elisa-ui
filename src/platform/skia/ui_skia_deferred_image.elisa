@@ -27,6 +27,23 @@ extend UiSkia:
             command.sampling <- sampling
             return UiSkia::enqueue_deferred(command)
 
+        def defer_image_source_rounded(image: usize, source: UiCore::Rect, destination: UiCore::Rect, alpha: u8, radius: f32) -> bool can[Ui.Draw]:
+            return UiSkia::defer_image_source_rounded_with_sampling(image, source, destination, alpha, radius, UiSkia::ImageSampling.Linear)
+
+        def defer_image_source_rounded_with_sampling(image: usize, source: UiCore::Rect, destination: UiCore::Rect, alpha: u8, radius: f32, sampling: UiSkia::ImageSampling) -> bool can[Ui.Draw]:
+            return false if not deferred_frame_active or image == 0 or alpha == 0
+            safe_source: UiCore::Rect = UiSkia::skia_safe_source_rect(source)
+            safe_destination: UiCore::Rect = UiSkia::skia_safe_rect(destination)
+            return false if safe_source.size.width <= 0.0 or safe_source.size.height <= 0.0 or safe_destination.size.width <= 0.0 or safe_destination.size.height <= 0.0
+            command: DeferredCommand = UiSkia::empty_deferred(DeferredKind.DrawImageSourceRounded)
+            command.source_rect <- safe_source
+            command.box <- safe_destination
+            command.radius <- radius
+            command.image <- image
+            command.alpha <- alpha
+            command.sampling <- sampling
+            return UiSkia::enqueue_deferred(command)
+
         def defer_image_fitted(image: usize, box: UiCore::Rect, source: UiCore::Size, alpha: u8, fit: UiSkia::ImageFit) -> bool can[Ui.Draw]:
             return UiSkia::defer_image_fitted_with_sampling(image, box, source, alpha, fit, UiSkia::ImageSampling.Linear)
 

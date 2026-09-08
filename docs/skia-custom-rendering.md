@@ -183,6 +183,9 @@ forwards the two sanitized rectangles to `SkCanvas::drawImageRect`. The
 generation-safe `draw_bound_image_source*()` and
 `defer_bound_image_source*()` variants retain only the logical resource token,
 so a disposed or recycled image cannot be used by a later crop.
+The `*_source_rounded*()` forms compose the same crop with an Elisa-owned
+rounded clip for polished thumbnails and avatars; immediate and deferred
+variants share the typed save/restore ledger.
 
 Generation-bound deferred image helpers (`defer_bound_image_fitted*()` and
 their intrinsic/rounded variants) store a logical resource slot and generation,
