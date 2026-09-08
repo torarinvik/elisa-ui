@@ -12,10 +12,15 @@ module UiCapiWidget:
     public:
         const INVALID: u64 = 0
         const SLOT_RADIX: u64 = 4294967296
+        const MAX_EPOCH: usize = 4294967295
 
         def token_for_index(index: usize) -> u64:
             return INVALID if not UiFlat::identity_is_valid(index)
             lifetime: u64 = UiFlat::identity_lifetime().u64()
+            # The token layout reserves the low 32 bits for the slot. Refuse
+            # an epoch that cannot fit the remaining 32 bits instead of
+            # allowing multiplication to wrap and alias an older identity.
+            return INVALID if UiFlat::identity_lifetime() > MAX_EPOCH
             token: u64 = lifetime * SLOT_RADIX + index.u64()
             # Zero is reserved for an invalid callback target. The epoch starts
             # at one and is monotonic, but keep this guard explicit so a future
