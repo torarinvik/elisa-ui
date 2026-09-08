@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `a31d0c6` (`feat(skia): route layout metrics through backend provider`) on branch `work` |
+| elisa-ui revision | `81e809b` (`feat(skia): draw measured text blocks`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -259,7 +259,10 @@ opaque canvas FFI, leaving the C++ shim with primitive SkCanvas calls only.
 The custom host can use the exported one-shot `elisa_skia_render_frame` entry
 point, while explicit attach/render/detach remains available to hosts that need
 phase control. Skia font metrics are queryable before surface attachment
-because they do not depend on a live canvas.
+because they do not depend on a live canvas. The measured text planner is
+backend-neutral, while `UiSkia::draw_text_block` uses the active borrowed
+frame typeface for width, ascent, and line spacing, then clips and replays each
+line from Elisa-owned layout state.
 The frame boundary also supports an explicit logical-to-physical scale with a
 balanced save/restore transform, including cleanup of any outstanding clips.
 `UiSkia::surface_lost()` preserves retained Elisa state while invalidating the
