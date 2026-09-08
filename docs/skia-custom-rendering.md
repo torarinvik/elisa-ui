@@ -142,6 +142,12 @@ two-stop gradient helper. It is intentionally an Elisa-only convenience: the
 clip is opened, the validated gradient is issued, and the clip is closed in one
 bounded call, so custom controls cannot leak a native save or shader lifetime.
 
+Shadow colors are likewise framework values. `draw_shadow_rounded_rect()` keeps
+the legacy black shorthand, while `draw_shadow_rounded_rect_with_color()` sends
+an explicit Elisa `Color` through the additive color-aware bridge; the older
+native symbol remains only as a compatibility wrapper for hosts built against
+the previous ABI.
+
 The deferred API has matching `defer_fill_rounded_linear_gradient()` and
 `defer_shadow_rounded_rect()` helpers. Rounded gradients replay through the
 same temporary clip scope as immediate drawing, while shadows carry explicit

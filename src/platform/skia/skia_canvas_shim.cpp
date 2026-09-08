@@ -173,9 +173,11 @@ extern "C" void elisa_skia_canvas_stroke_round_rect(std::size_t handle, float x,
     }
 }
 
-extern "C" void elisa_skia_canvas_shadow_round_rect(std::size_t handle, float x, float y, float width,
-                                                      float height, float radius, float offset_x,
-                                                      float offset_y, float blur, std::uint8_t alpha) {
+extern "C" void elisa_skia_canvas_shadow_round_rect_color(std::size_t handle, float x, float y, float width,
+                                                            float height, float radius, float offset_x,
+                                                            float offset_y, float blur, std::uint8_t red,
+                                                            std::uint8_t green, std::uint8_t blue,
+                                                            std::uint8_t alpha) {
     if (SkCanvas *target = canvas(handle);
         target != nullptr && valid_rect(x, y, width, height) && bounded_nonnegative_extent(radius) &&
         bounded_coordinate(offset_x) && bounded_coordinate(offset_y) && bounded_nonnegative_extent(blur) &&
@@ -186,9 +188,19 @@ extern "C" void elisa_skia_canvas_shadow_round_rect(std::size_t handle, float x,
         // for the removed SkPaint::setShadowLayer API in current Skia.
         SkPaint paint = fill_paint(0, 0, 0, 255);
         paint.setImageFilter(SkImageFilters::DropShadowOnly(
-            offset_x, offset_y, blur, blur, color(0, 0, 0, alpha), nullptr));
+            offset_x, offset_y, blur, blur, color(red, green, blue, alpha), nullptr));
         target->drawRRect(SkRRect::MakeRectXY(rect, radius, radius), paint);
     }
+}
+
+// Compatibility entry point for hosts compiled against the original ABI. Elisa
+// uses the color-aware primitive above, so black is no longer a native visual
+// default on the framework path.
+extern "C" void elisa_skia_canvas_shadow_round_rect(std::size_t handle, float x, float y, float width,
+                                                      float height, float radius, float offset_x,
+                                                      float offset_y, float blur, std::uint8_t alpha) {
+    elisa_skia_canvas_shadow_round_rect_color(handle, x, y, width, height, radius,
+                                              offset_x, offset_y, blur, 0, 0, 0, alpha);
 }
 
 extern "C" void elisa_skia_canvas_fill_linear_gradient(std::size_t handle, float x, float y,

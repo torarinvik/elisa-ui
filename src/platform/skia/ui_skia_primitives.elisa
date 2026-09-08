@@ -67,18 +67,22 @@ extend UiSkia:
         # controls and deferred AppKit callback drawing. Skia receives only the
         # already-normalized rounded surface and explicit effect parameters.
         def draw_shadow_rounded_rect(box: UiCore::Rect, radius: f32, offset_x: f32, offset_y: f32, blur: f32, alpha: u8) -> void can[Ui.Draw]:
-            return if canvas_state == 0 or alpha == 0
+            UiSkia::draw_shadow_rounded_rect_with_color(box, radius, offset_x, offset_y, blur, UiCore::rgba(0, 0, 0, alpha))
+
+        def draw_shadow_rounded_rect_with_color(box: UiCore::Rect, radius: f32, offset_x: f32, offset_y: f32, blur: f32, color: UiCore::Color) -> void can[Ui.Draw]:
+            return if canvas_state == 0 or color.a == 0
             safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
             return if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
             safe_radius: f32 = UiSkia::skia_safe_radius(safe_box, radius)
             safe_offset_x: f32 = UiCore::bounded_coordinate(offset_x)
             safe_offset_y: f32 = UiCore::bounded_coordinate(offset_y)
             safe_blur: f32 = UiCore::bounded_extent(blur)
-            elisa_skia_canvas_shadow_round_rect(
+            elisa_skia_canvas_shadow_round_rect_color(
                 canvas_state,
                 safe_box.origin.x, safe_box.origin.y,
-                safe_box.size.width, safe_box.size.height,
-                safe_radius, safe_offset_x, safe_offset_y, safe_blur, alpha)
+                safe_box.size.width, safe_box.size.height, safe_radius,
+                safe_offset_x, safe_offset_y, safe_blur,
+                color.r, color.g, color.b, color.a)
 
         def fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> void can[Ui.Draw]:
             return if canvas_state == 0 or color.a == 0
