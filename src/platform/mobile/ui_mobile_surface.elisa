@@ -27,7 +27,7 @@ module UiMobileSurface:
         # A mobile host calls start after it has a logical surface. The
         # lifecycle transition is completed before the first frame is allowed.
         def start(width: f32, height: f32, scale: f32, safe: UiResponsive::Insets) -> bool:
-            return false if not UiCore::is_finite(width) or not UiCore::is_finite(height) or not UiCore::is_finite(scale) or not UiCore::is_finite(safe.top) or not UiCore::is_finite(safe.right) or not UiCore::is_finite(safe.bottom) or not UiCore::is_finite(safe.left)
+            return false if not UiCore::is_finite(width) or not UiCore::is_finite(height) or not UiCore::is_finite(scale) or not insets_are_valid(safe)
             return false if not UiLifecycle::begin()
             viewport_state <- UiResponsive::viewport(width, height, scale)
             safe_area_state <- UiResponsive::insets(safe.top, safe.right, safe.bottom, safe.left)
@@ -41,7 +41,7 @@ module UiMobileSurface:
 
         def set_safe_area(safe: UiResponsive::Insets) -> bool:
             return false if UiLifecycle::phase() == UiLifecycle::Phase.New or UiLifecycle::phase() == UiLifecycle::Phase.Stopped
-            return false if not UiCore::is_finite(safe.top) or not UiCore::is_finite(safe.right) or not UiCore::is_finite(safe.bottom) or not UiCore::is_finite(safe.left)
+            return false if not insets_are_valid(safe)
             safe_area_state <- UiResponsive::insets(safe.top, safe.right, safe.bottom, safe.left)
             return true
 
@@ -83,6 +83,9 @@ module UiMobileSurface:
             }
 
     private:
+        def insets_are_valid(value: UiResponsive::Insets) -> bool:
+            return UiCore::is_finite(value.top) and UiCore::is_finite(value.right) and UiCore::is_finite(value.bottom) and UiCore::is_finite(value.left) and value.top >= 0.0 and value.right >= 0.0 and value.bottom >= 0.0 and value.left >= 0.0
+
         global mutable viewport_state: UiResponsive::Viewport = UiResponsive::Viewport{width: 0.0, height: 0.0, scale: 1.0}
         global mutable safe_area_state: UiResponsive::Insets = UiResponsive::Insets{top: 0.0, right: 0.0, bottom: 0.0, left: 0.0}
         global mutable keyboard_state: UiResponsive::KeyboardInsets = UiResponsive::KeyboardInsets{bottom: 0.0, visible: false}
