@@ -22,6 +22,9 @@ cannot silently use a different or dirty Skia source tree;
 `scripts/run_tests.sh` invokes that gate by default. Set
 `ELISA_UI_REQUIRE_REAL_SKIA=0` only for an explicitly incomplete compiler-only
 edit loop on a machine without the checkout; that mode is not a renderer pass.
+`scripts/build_skia.sh` accepts either a normal checkout or a linked Git
+worktree, rejects tracked and untracked edits before fetching, and reuses the
+same pin verifier before configuring the build.
 After the primitive fixture, the gate runs `scripts/check_showcase_skia.sh`.
 That headless host includes the shipped `examples/hello/app.elisa`, drives its
 public focus, text-editing, state, and resource-generation callbacks, and

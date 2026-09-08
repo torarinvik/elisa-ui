@@ -25,12 +25,13 @@ command -v python3 >/dev/null || { echo "skia build: python3 is required" >&2; e
 if [[ ! -d "$SKIA_ROOT" ]]; then
   mkdir -p "$(dirname -- "$SKIA_ROOT")"
   git clone --no-checkout "$repository" "$SKIA_ROOT"
-elif [[ ! -d "$SKIA_ROOT/.git" ]]; then
+elif ! git -C "$SKIA_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
   echo "skia build: existing SKIA_ROOT is not a git checkout: $SKIA_ROOT" >&2
   exit 2
 fi
 
-if ! git -C "$SKIA_ROOT" diff --quiet || ! git -C "$SKIA_ROOT" diff --cached --quiet; then
+if ! git -C "$SKIA_ROOT" diff --quiet || ! git -C "$SKIA_ROOT" diff --cached --quiet ||
+   [[ -n "$(git -C "$SKIA_ROOT" status --porcelain --untracked-files=all)" ]]; then
   echo "skia build: refusing to change a dirty checkout: $SKIA_ROOT" >&2
   exit 2
 fi
@@ -38,6 +39,11 @@ git -C "$SKIA_ROOT" fetch --tags origin "$revision"
 git -C "$SKIA_ROOT" checkout --detach "$revision"
 git -C "$SKIA_ROOT" submodule update --init --recursive
 python3 "$SKIA_ROOT/tools/git-sync-deps"
+
+# Keep the fetch/build path and standalone renderer gates on the same source
+# contract. A linked worktree has a `.git` file, not a directory, and is valid
+# when Git reports a clean checkout at the pinned revision.
+SKIA_ROOT="$SKIA_ROOT" bash "$ROOT/scripts/verify_skia_pin.sh"
 
 gn_args=(
   'target_os="mac"'
