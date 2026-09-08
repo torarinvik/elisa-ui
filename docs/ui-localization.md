@@ -12,6 +12,11 @@ adapters. Repeating the same canonical tag is a no-op; a real change invalidates
 layout, paint, and semantics together. Oversized tags are copied as a bounded
 prefix and reported as `truncated` rather than reaching native code unchecked.
 
+`text_direction` resolves a paragraph base direction from the first strong
+Unicode scalar, using the supplied locale direction for empty or neutral-only
+text. It recognizes the major RTL scripts and common LTR script ranges while
+leaving bidi reordering and glyph shaping to the renderer.
+
 `plural` returns a typed category for the common English/French/Arabic,
 Russian/Ukrainian, and Polish rules, with a deterministic one/other fallback
 for unknown languages. Message catalogs remain application-owned; they consume

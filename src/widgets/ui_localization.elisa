@@ -109,6 +109,24 @@ module UiLocalization:
         def is_rtl(locale: sview) -> bool:
             return direction(locale) == Direction.RightToLeft
 
+        # Resolve the paragraph base direction from the first strong Unicode
+        # scalar, falling back to the caller's locale direction when the text
+        # is empty or contains only neutrals (punctuation, digits, and emoji).
+        # This is intentionally a bounded policy decision; bidi reordering and
+        # glyph shaping remain the renderer's responsibility.
+        def text_direction(text: sview, fallback: Direction) -> Direction:
+            safe_text: sview = UiCore::bounded_text(text)
+            limit: usize = safe_text.len.usize() if safe_text.len > 0 else 0
+            cursor: mutable usize = 0
+            while cursor < limit:
+                width: mutable usize = UiText::utf8_scalar_bytes(safe_text, cursor)
+                width <- 1 if width == 0 or width > limit - cursor
+                scalar: u32 = decode_scalar(safe_text, cursor, width)
+                return Direction.RightToLeft if strong_rtl(scalar)
+                return Direction.LeftToRight if strong_ltr(scalar)
+                cursor <- cursor + width
+            return fallback
+
         # Logical start/end map to the existing cross-axis alignment enum. A
         # caller can therefore keep one layout tree and switch only this fact
         # when the locale changes.
@@ -186,6 +204,34 @@ module UiLocalization:
             return false if locale.len < 2
             return false if locale.len > 2 and locale.data[2] != 45 and locale.data[2] != 95
             return lower_ascii(locale.data[0]) == first and lower_ascii(locale.data[1]) == second
+
+        def decode_scalar(text: sview, offset: usize, width: usize) -> u32:
+            first: u32 = text.data[offset].u32()
+            return first if width == 1
+            second: u32 = text.data[offset + 1].u32() & 63
+            return ((first & 31) << 6) | second if width == 2
+            third: u32 = text.data[offset + 2].u32() & 63
+            return (((first & 15) << 6) | second) << 6 | third if width == 3
+            fourth: u32 = text.data[offset + 3].u32() & 63
+            return ((((first & 7) << 6) | second) << 6 | third) << 6 | fourth
+
+        def strong_rtl(scalar: u32) -> bool:
+            return true if scalar >= 0x0590 and scalar <= 0x08FF
+            return true if scalar >= 0xFB1D and scalar <= 0xFDFF
+            return true if scalar >= 0xFE70 and scalar <= 0xFEFF
+            return false
+
+        def strong_ltr(scalar: u32) -> bool:
+            return true if scalar >= 0x0041 and scalar <= 0x024F
+            return true if scalar >= 0x0370 and scalar <= 0x052F
+            return true if scalar >= 0x0900 and scalar <= 0x0DFF
+            return true if scalar >= 0x0E00 and scalar <= 0x0E7F
+            return true if scalar >= 0x1000 and scalar <= 0x10FF
+            return true if scalar >= 0x1100 and scalar <= 0x11FF
+            return true if scalar >= 0x2E80 and scalar <= 0xA4CF
+            return true if scalar >= 0xAC00 and scalar <= 0xD7AF
+            return true if scalar >= 0xF900 and scalar <= 0xFAFF
+            return false
 
         def slavic_plural(quantity: i64) -> PluralCategory:
             ones: i64 = quantity % 10
