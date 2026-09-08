@@ -8,12 +8,19 @@ include "../skia/ui_skia.elisa"
 
 extend UiAppKitCanvas:
     public:
+        # A zero result is reserved for rejection before app_frame mutates the
+        # retained model. Once Elisa has entered a frame, every non-painted
+        # result is negative so the Objective-C caller cannot replay the same
+        # application callbacks through CoreGraphics.
+        const SKIA_REPLAY_REJECTED: i32 = 0
+        const SKIA_REPLAY_CONSUMED_NO_PRESENTATION: i32 = -1
+
         def skia_replay(window_handle: usize, canvas: usize, logical_width: f32, logical_height: f32, pixel_width: f32, pixel_height: f32, font: usize) -> i32 can[Ui.Draw, Ui.Text, Unsafe.PointerCast]:
-            return 0 if canvas == 0 or not UiAppKitCanvas::live()
-            return 0 if window_handle != UiAppKitCanvas::window_handle()
-            return 0 if not UiCapabilities::select_skia_renderer()
+            return SKIA_REPLAY_REJECTED if canvas == 0 or not UiAppKitCanvas::live()
+            return SKIA_REPLAY_REJECTED if window_handle != UiAppKitCanvas::window_handle()
+            return SKIA_REPLAY_REJECTED if not UiCapabilities::select_skia_renderer()
             scale: f32 = UiCore::backing_scale(logical_width, logical_height, pixel_width, pixel_height)
-            return 0 if scale <= 0.0
+            return SKIA_REPLAY_REJECTED if scale <= 0.0
             autorelease_pool: usize = objc_autoreleasePoolPush()
             UiAppKitCanvas::begin_native_frame(0)
             UiCore::set_frame_time(UiAppKitCanvas::monotonic_time())
@@ -36,6 +43,10 @@ extend UiAppKitCanvas:
             if same_session:
                 UiMetrics::finish_frame(UiAppKitCanvas::monotonic_time())
             objc_autoreleasePoolPop(autorelease_pool)
+            # app_frame has run whenever execution reaches this point. A
+            # stopped/replaced window, or a rejected borrowed surface, must
+            # never fall through to a second backend replay.
+            return SKIA_REPLAY_CONSUMED_NO_PRESENTATION if not same_session or status == UiSkia::RenderStatus.SkippedNoSurface
             return status
 
 def appkit_canvas_skia_replay_callback(window_handle: usize, canvas: usize, logical_width: f32, logical_height: f32, pixel_width: f32, pixel_height: f32, font: usize) -> i32 can[Ui.Draw, Ui.Text, Unsafe.PointerCast]:

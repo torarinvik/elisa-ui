@@ -32,6 +32,11 @@ The AppKit compositor forwards logical and backing-pixel dimensions to the
 Elisa replay callback; `UiCore::backing_scale()` selects the finite
 aspect-preserving scale there. The C++ host only rounds/limits pixel extents
 for its temporary allocation and no longer embeds a rendering-scale policy.
+The replay status is also split at the Elisa boundary: zero means rejection
+before `app_frame`, while a negative result means the frame was already
+consumed and must not be replayed by the CoreGraphics fallback. This keeps
+lifecycle interruptions and late presentation failures safe without moving
+application state into the native shim.
 When presenting the completed raster, it draws into the logical view bounds so
 AppKit's device transform performs the one logical-to-backing conversion; this
 keeps Retina and other non-1x contexts from scaling the image twice.

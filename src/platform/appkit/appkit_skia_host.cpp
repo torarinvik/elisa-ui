@@ -109,10 +109,13 @@ extern "C" std::int32_t elisa_appkit_canvas_skia_present(std::size_t window_hand
         logical_width, logical_height,
         static_cast<float>(pixel_width), static_cast<float>(pixel_height),
         reinterpret_cast<std::size_t>(typeface.get()));
-    // Elisa has already executed app_frame once the callback returns. Even a
-    // skipped/failed replay may have synchronously mutated application state,
-    // so never ask AppKit to run the CoreGraphics frame a second time.
-    if (status <= 0) return -1;
+    // Zero is the explicit pre-frame rejection sentinel: Elisa did not enter
+    // app_frame, so the Objective-C caller may use its CoreGraphics fallback.
+    // A negative result means Elisa already consumed the frame (or native
+    // presentation failed); never replay those callbacks through another
+    // backend because application state may have changed synchronously.
+    if (status == 0) return 0;
+    if (status < 0) return status;
 
     SkPixmap pixels;
     if (!surface->peekPixels(&pixels)) return -1;

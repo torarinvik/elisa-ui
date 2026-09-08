@@ -10,6 +10,7 @@
 #include "../include/elisa_appkit_skia.h"
 
 extern "C" void elisa_appkit_skia_test_force_failure(std::int32_t enabled);
+extern "C" void elisa_appkit_skia_test_force_preframe_rejection(std::int32_t enabled);
 
 namespace {
 
@@ -105,6 +106,24 @@ int main() {
     if (!scaled_ok) {
         CGContextRelease(context);
         return 7;
+    }
+
+    // A pre-frame rejection leaves the CoreGraphics target untouched and is
+    // the only result that permits the Objective-C caller to run its fallback
+    // path. This must remain distinct from a negative post-frame failure.
+    CGContextSetRGBFillColor(context, 0.0, 0.0, 0.0, 1.0);
+    CGContextFillRect(context, CGRectMake(0, 0, width, height));
+    elisa_appkit_skia_test_force_preframe_rejection(1);
+    const std::int32_t rejected_status = elisa_appkit_canvas_skia_present(
+        0, reinterpret_cast<std::size_t>(context), 320.0f, 200.0f,
+        static_cast<float>(width), static_cast<float>(height));
+    elisa_appkit_skia_test_force_preframe_rejection(0);
+    const auto* rejected_pixels = static_cast<const std::uint8_t*>(CGBitmapContextGetData(context));
+    if (rejected_status != 0 || rejected_pixels == nullptr ||
+        !expect_rgba(rejected_pixels, row_bytes, 0, 0, 0, 0, 0, "pre-frame rejection")) {
+        std::fprintf(stderr, "appkit skia host: pre-frame rejection was not fallback-safe\n");
+        CGContextRelease(context);
+        return 8;
     }
 
     // The callback has already consumed app_frame before a late presentation

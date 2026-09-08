@@ -363,6 +363,11 @@ caret-after-text ordering while leaving blink scheduling in widget state.
 The same compound operation has generation-bound primary/fallback wrappers, so
 font-resource controls keep one borrowed typeface scope across layout and all
 three painted layers.
+- The AppKit/Skia replay contract now reserves zero for rejection before
+  `app_frame`; negative results cover consumed-but-unpresentable frames and
+  late native presentation failures. The C++ host preserves that distinction,
+  allowing CoreGraphics fallback only when Elisa has not mutated application
+  state; `test/appkit_skia_host_test.cpp` covers both paths off-screen.
 The C++ bridge wraps each borrowed typeface in a temporary `sk_sp` reference
 for SkFont's ownership contract without transferring disposal authority from
 the host.
