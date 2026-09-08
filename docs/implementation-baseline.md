@@ -797,6 +797,9 @@ separate host-enforced security boundary.
 - AppKit canvas accessibility storage reset now uses a bounded scoped `for`
   expression, keeping fixed-capacity cleanup in Elisa without loop-counter
   mutation; the off-screen canvas bridge check remains green.
+- Resource demand counting now uses the same scoped reduction form for its
+  bounded slot scan, preserving deterministic ordering while removing mutable
+  accumulator plumbing from the public policy module.
 - AppKit custom-canvas CoreText shaping and metrics now live in their own
   `ui_appkit_canvas_coretext.elisa` extension; window/snapshot ABI types and
   text-command routing remain separate modules with the same public contract.
