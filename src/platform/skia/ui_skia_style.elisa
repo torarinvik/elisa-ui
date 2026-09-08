@@ -4,7 +4,21 @@
 # shadow treatment beside the shared rounded-rectangle style and pass every
 # effect parameter explicitly through the narrow FFI.
 
+include "../../widgets/ui_theme.elisa"
+
 extend UiSkia:
+    public:
+        # Apply the shared theme radius to a custom surface while retaining
+        # Skia's existing explicit shadow/fill/outline primitives.
+        def fill_themed_surface(box: UiCore::Rect, color: UiCore::Color, elevated: bool, metrics: UiTheme::Metrics) -> void can[Ui.Draw]:
+            return if UiSkia::canvas_state == 0 or color.a == 0
+            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+            return if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
+            style: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_with_radius(safe_box, elevated, metrics.corner_radius)
+            UiSkia::draw_shadow(safe_box, style)
+            UiSkia::fill_rounded_rect(safe_box, style.radius, color)
+            UiSkia::draw_outline(safe_box, style)
+
     private:
         def draw_shadow(box: UiCore::Rect, style: UiPaint::RoundedRectStyle) -> void can[Ui.Draw]:
             alpha: u8 = style.shadow_alpha

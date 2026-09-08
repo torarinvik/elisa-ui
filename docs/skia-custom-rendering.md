@@ -393,6 +393,10 @@ headers and libraries, then pass its
 without Skia installed, so layout, command generation, and all existing
 headless tests remain independent of the renderer choice.
 
+Custom surfaces may use `UiSkia::fill_themed_surface` with an explicit
+`UiTheme::Metrics` record. Radius clamping and shadow/outline policy remain in
+Elisa before the narrow Skia primitive calls.
+
 Native hosts can include [`include/elisa_skia.h`](../include/elisa_skia.h) for
 the exact C declarations. It documents borrowed-handle ownership and keeps the
 production bridge and headless recorder on the same ABI without exposing Skia

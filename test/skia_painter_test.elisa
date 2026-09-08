@@ -3,6 +3,7 @@
 # from Skia without changing this Elisa command/replay path.
 
 include "../src/platform/skia/ui_skia.elisa"
+include "../src/widgets/ui_theme.elisa"
 
 extern puts(text: cstr) -> i64
 extern skia_test_reset() -> void
@@ -641,6 +642,12 @@ def main() -> i64:
     _ = UiSkia::defer_text_run(UiCore::TextRun(UiCore::Vec2(2.0, 12.0), 10.0, "cancelled"), UiCore::rgb(220, 220, 220))
     UiSkia::surface_lost()
     check("surface loss cancels deferred Skia work", UiSkia::deferred_count() == 0 and not UiSkia::deferred_overflowed() and not UiSkia::is_attached())
+
+    skia_test_reset()
+    UiSkia::attach(42)
+    UiSkia::fill_themed_surface(UiCore::Rect(0.0, 0.0, 20.0, 10.0), UiCore::rgb(30, 40, 50), false, UiTheme::Metrics{spacing_unit: 8.0, minimum_touch_target: 44.0, focus_ring_width: 2.0, corner_radius: 5.0})
+    check("Skia consumes explicit theme radius", skia_test_round_rect_count() == 1)
+    UiSkia::detach()
 
     if failures == 0:
         _ = puts("skia painter: all checks passed")
