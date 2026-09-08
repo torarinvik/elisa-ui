@@ -63,6 +63,8 @@ state or geometry policy.
 also call `UiTextMetrics::set_context(font_generation, scale_generation)` when
 the active font set or display scale changes; a new generation invalidates both
 line-height and width caches.
+`UiTextMetrics::snapshot()` exposes the active generations and bounded query/miss
+counters for inspector and performance diagnostics.
 
 `UiSkia::text_caret_rect()` and `UiSkia::draw_text_caret()` use the same
 positioned line metrics for a grapheme-safe caret. Blink timing and visibility
