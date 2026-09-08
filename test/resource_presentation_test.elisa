@@ -36,6 +36,14 @@ def main() -> i64:
     missing_record: UiResourcePresentation::Record = UiResourcePresentation::record(missing, options)
     check("invalid resource presents a placeholder", missing_record.state == UiResourcePresentation::DisplayState.Placeholder and missing_record.placeholder_visible and not missing_record.fallback_visible)
 
+    requested_record: UiResourcePresentation::Record = UiResourcePresentation::request_image("images/request-helper", 3)
+    check("image request helper returns a loading record", UiResources::resource_is_valid(requested_record.handle) and requested_record.kind == UiResourcePresentation::Kind.Image and requested_record.state == UiResourcePresentation::DisplayState.Loading and requested_record.reserved_size.width == 64.0)
+    repeated_record: UiResourcePresentation::Record = UiResourcePresentation::request_image("images/request-helper", 8)
+    check("image request helper coalesces a live identifier", repeated_record.handle.slot == requested_record.handle.slot and repeated_record.handle.generation == requested_record.handle.generation and UiResources::owner(repeated_record.handle) == 8)
+    font_request: UiResourcePresentation::Record = UiResourcePresentation::request_font("fonts/request-helper", 3)
+    document_request: UiResourcePresentation::Record = UiResourcePresentation::request_document("documents/request-helper", 3)
+    check("typed request helpers choose their presentation policy", font_request.kind == UiResourcePresentation::Kind.Font and not font_request.progress_visible and document_request.kind == UiResourcePresentation::Kind.Document and document_request.reserved_size.width == 320.0)
+
     image: mutable UiResources::ResourceHandle = UiResources::request("images/preview", 3)
     _ = UiResources::set_intrinsic_size(image, 128.0, 72.0)
     loading: mutable UiResourcePresentation::Record = UiResourcePresentation::record(image, options)
