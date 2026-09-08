@@ -12,6 +12,7 @@ extend UiSkia:
             Stretch = 0
             Contain = 1
             Cover = 2
+            ScaleDown = 3
 
         # Draw an image using an Elisa-owned aspect-ratio policy. The default
         # filtering remains linear, matching draw_image().
@@ -105,7 +106,7 @@ extend UiSkia:
 
     private:
         def normalize_image_fit(fit: UiSkia::ImageFit) -> UiSkia::ImageFit:
-            return fit if fit == UiSkia::ImageFit.Stretch or fit == UiSkia::ImageFit.Contain or fit == UiSkia::ImageFit.Cover
+            return fit if fit == UiSkia::ImageFit.Stretch or fit == UiSkia::ImageFit.Contain or fit == UiSkia::ImageFit.Cover or fit == UiSkia::ImageFit.ScaleDown
             return UiSkia::ImageFit.Stretch
 
         def fitted_image_rect(box: UiCore::Rect, source_width: f32, source_height: f32, fit: UiSkia::ImageFit) -> UiCore::Rect:
@@ -114,7 +115,11 @@ extend UiSkia:
             width_ratio: f32 = box.size.width / source_width
             height_ratio: f32 = box.size.height / source_height
             return UiCore::Rect(0.0, 0.0, 0.0, 0.0) if not UiCore::is_finite(width_ratio) or not UiCore::is_finite(height_ratio)
-            scale: f32 = width_ratio if normalized_fit == UiSkia::ImageFit.Cover and width_ratio > height_ratio else height_ratio if normalized_fit == UiSkia::ImageFit.Cover else width_ratio if width_ratio < height_ratio else height_ratio
+            scale: mutable f32 = width_ratio if normalized_fit == UiSkia::ImageFit.Cover and width_ratio > height_ratio else height_ratio if normalized_fit == UiSkia::ImageFit.Cover else width_ratio if width_ratio < height_ratio else height_ratio
+            # ScaleDown keeps small assets at their intrinsic size while
+            # retaining Contain's centered aspect-preserving placement when
+            # the destination is smaller than the source.
+            scale <- 1.0 if normalized_fit == UiSkia::ImageFit.ScaleDown and scale > 1.0
             return UiCore::Rect(0.0, 0.0, 0.0, 0.0) if not UiCore::is_finite(scale) or scale <= 0.0
             target_width_raw: f32 = source_width * scale
             target_height_raw: f32 = source_height * scale

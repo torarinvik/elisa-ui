@@ -349,10 +349,11 @@ The Skia adapter also keeps a bounded byte-keyed grapheme-width cache in Elisa,
 keyed by active font handle and normalized size; scale/binding resets clear it
 and oversized clusters bypass the copy budget.
 Image placement now has an Elisa-owned `ImageFit` policy: Stretch preserves the
-legacy destination, Contain centers an aspect-preserving image, and Cover
-centers a crop inside a temporary clip. Source dimensions are validated before
-the borrowed `SkImage*` crosses the narrow bridge, and bound-resource variants
-reuse the same generation-safe image gate. A bound image can also consume its
+legacy destination, Contain centers an aspect-preserving image, Cover centers a
+crop inside a temporary clip, and ScaleDown avoids enlarging an asset that
+already fits. Source dimensions are validated before the borrowed `SkImage*`
+crosses the narrow bridge, and bound-resource variants reuse the same
+generation-safe image gate. A bound image can also consume its
 generation-scoped `UiResources::intrinsic_size()` metadata directly, keeping
 decoded dimensions out of application widget state. Rounded image helpers
 compose a typed rounded clip around that fitted destination, reusing the same

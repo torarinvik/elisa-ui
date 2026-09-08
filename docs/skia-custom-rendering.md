@@ -212,11 +212,13 @@ The default `draw_image()` path uses linear filtering; custom controls can call
 for crisp pixel art. Invalid enum values normalize back to linear before the
 sampling code reaches Skia.
 For non-stretching layouts, `draw_image_fitted()` and its resource-bound
-variants apply the Elisa `ImageFit.Contain` or `ImageFit.Cover` policy using
-verified source dimensions. Contain centers the complete image; Cover centers
-the crop and opens a temporary destination clip so pixels cannot bleed outside
-the caller's box. The native bridge still receives only the final rectangle,
-sampling ordinal, and borrowed image handle.
+variants apply the Elisa `ImageFit.Contain`, `ImageFit.Cover`, or
+`ImageFit.ScaleDown` policy using verified source dimensions. Contain centers
+the complete image; Cover centers the crop and opens a temporary destination
+clip so pixels cannot bleed outside the caller's box; ScaleDown preserves the
+intrinsic size of an asset that already fits while still shrinking an oversized
+asset. The native bridge still receives only the final rectangle, sampling
+ordinal, and borrowed image handle.
 When a logical image has `UiResources::set_intrinsic_size()` metadata,
 `draw_bound_image_fitted_intrinsic()` derives source dimensions from that
 generation-scoped record, keeping decoded-image facts out of ordinary widget
