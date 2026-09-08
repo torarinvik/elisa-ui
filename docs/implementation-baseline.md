@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `dddd1a7` (`fix(skia): bound rectangle far edges`) on branch `work` |
+| elisa-ui revision | `4fc14b8` (`feat(skia): clamp resource image crops`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -385,6 +385,10 @@ clamps positive-edge extents before the FFI, while the native bridge rejects
 out-of-envelope sums and negative source-crop origins from direct foreign
 callers. The headless painter and off-screen host fixtures cover these
 fail-closed cases without presenting a window.
+Generation-bound source crops additionally consume verified intrinsic image
+metadata when present, clamping source extents in Elisa for both immediate and
+deferred resource commands; metadata-free resources keep the envelope-only
+behavior.
 The optional AppKit/Skia compositor now checks the packed Skia ABI major before
 allocating a surface or invoking the Elisa callback; an incompatible runtime
 returns the pre-frame rejection sentinel so CoreGraphics fallback remains safe.

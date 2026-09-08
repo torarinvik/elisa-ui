@@ -183,6 +183,10 @@ forwards the two sanitized rectangles to `SkCanvas::drawImageRect`. The
 generation-safe `draw_bound_image_source*()` and
 `defer_bound_image_source*()` variants retain only the logical resource token,
 so a disposed or recycled image cannot be used by a later crop.
+When verified `UiResources::set_intrinsic_size()` metadata is available, these
+resource-bound crop forms also clamp the source rectangle to the decoded image
+extent in Elisa; resources without metadata retain the shared finite-envelope
+policy.
 The `*_source_rounded*()` forms compose the same crop with an Elisa-owned
 rounded clip for polished thumbnails and avatars; immediate and deferred
 variants share the typed save/restore ledger.
