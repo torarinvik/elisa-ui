@@ -40,6 +40,8 @@ module UiResourcePresentation:
             failure: UiResources::FailureKind
             network_progress: f32
             decode_progress: f32
+            demanded: bool
+            demand_priority: u32
             placeholder_visible: bool
             fallback_visible: bool
             progress_visible: bool
@@ -84,6 +86,15 @@ module UiResourcePresentation:
         def request(key: sview, owner: u32, options: Options) -> Record:
             return UiResourcePresentation::record(UiResources::request(key, owner), options)
 
+        # Request and publish a visibility/prefetch hint together. The logical
+        # request remains idempotent, while the returned snapshot reflects the
+        # exact generation that received the demand. An invalid key simply
+        # returns the same neutral record as request().
+        def request_with_demand(key: sview, owner: u32, priority: u32, options: Options) -> Record:
+            handle: UiResources::ResourceHandle = UiResources::request(key, owner)
+            _ = UiResources::set_demand(handle, priority)
+            return UiResourcePresentation::record(handle, options)
+
         def request_kind(key: sview, owner: u32, kind: Kind) -> Record:
             safe_kind: Kind = normalize_kind(kind)
             return UiResourcePresentation::request(key, owner, default_options(safe_kind))
@@ -96,6 +107,19 @@ module UiResourcePresentation:
 
         def request_document(key: sview, owner: u32) -> Record:
             return UiResourcePresentation::request_kind(key, owner, Kind.Document)
+
+        def request_kind_with_demand(key: sview, owner: u32, priority: u32, kind: Kind) -> Record:
+            safe_kind: Kind = normalize_kind(kind)
+            return UiResourcePresentation::request_with_demand(key, owner, priority, default_options(safe_kind))
+
+        def request_image_with_demand(key: sview, owner: u32, priority: u32) -> Record:
+            return UiResourcePresentation::request_kind_with_demand(key, owner, priority, Kind.Image)
+
+        def request_font_with_demand(key: sview, owner: u32, priority: u32) -> Record:
+            return UiResourcePresentation::request_kind_with_demand(key, owner, priority, Kind.Font)
+
+        def request_document_with_demand(key: sview, owner: u32, priority: u32) -> Record:
+            return UiResourcePresentation::request_kind_with_demand(key, owner, priority, Kind.Document)
 
         def display_state(handle: UiResources::ResourceHandle) -> DisplayState:
             match UiResources::state(handle):
@@ -133,6 +157,9 @@ module UiResourcePresentation:
 
         def cancel(handle: UiResources::ResourceHandle) -> bool:
             return UiResources::cancel(handle)
+
+        def clear_demand(value: Record) -> bool:
+            return UiResources::clear_demand(value.handle)
 
         # Emit the stable visual fallback owned by the framework. Ready assets
         # intentionally emit nothing: the host resolves verified bytes through
@@ -184,6 +211,8 @@ module UiResourcePresentation:
                 failure: UiResources::failure(handle),
                 network_progress: UiResources::downloaded_progress(handle),
                 decode_progress: UiResources::decoded_progress(handle),
+                demanded: UiResources::is_demanded(handle),
+                demand_priority: UiResources::demand_priority(handle),
                 placeholder_visible: is_placeholder(handle),
                 fallback_visible: is_fallback(handle),
                 progress_visible: options.show_progress and current == DisplayState.Loading,

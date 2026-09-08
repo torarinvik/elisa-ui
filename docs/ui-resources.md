@@ -104,6 +104,14 @@ default presentation options and return a `Record` immediately. The generic
 `request`/`request_kind` forms accept application-specific options while keeping
 the same coalescing and typed-handle lifetime rules.
 
+When visibility is known at request time, `request_image_with_demand`,
+`request_font_with_demand`, `request_document_with_demand`, or the generic
+`request_with_demand` combines the logical request with one demand hint and
+returns a record containing `demanded` and `demand_priority`. Repeating the
+helper for a live key updates its owner and priority without creating a second
+resource. `clear_demand(record)` releases only that generation's hint; it does
+not cancel or dispose the logical resource.
+
 `paint(box, record, options)` emits the backend-neutral placeholder, decoded
 progress strip, or fallback card (including its diagnostic mark) through the
 ordinary `UiCore` command list. It emits no command for `Ready`, leaving the
