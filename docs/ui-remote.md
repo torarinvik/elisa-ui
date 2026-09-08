@@ -23,6 +23,8 @@ input. Input sequence numbers are transport-owned, but Elisa rejects zero,
 duplicate, and out-of-order submissions and only accepts acknowledgements for
 sent sequences. The sticky `stale_input` fact lets a host render a reconnect or
 latency diagnostic without maintaining a second policy table.
+Malformed acknowledgements (zero, beyond the sent frontier, or older than the
+acknowledged frontier) also set that sticky diagnostic before being rejected.
 
 The module is allocation-free and backend-neutral. A future remote adapter may
 map the negotiated representation to the SDK's command, framebuffer, or video
