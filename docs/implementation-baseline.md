@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `4229438` (`fix: apply geometry with system theme updates`) on branch `work` |
+| elisa-ui revision | `564da82` (`fix: scale choice markers for high contrast`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -51,6 +51,8 @@ until a flat rounded-primitive path exists.
 so runtime contrast and text-scale changes cannot leave stale control
 affordances behind; the underlying preference and theme setters retain their
 documented invalidation semantics.
+High-contrast geometry also enlarges checkbox and radio markers so choice
+controls retain visible affordances at the selected contrast level.
 
 ## Source and boundary inventory
 
