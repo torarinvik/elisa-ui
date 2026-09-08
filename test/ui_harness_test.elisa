@@ -59,6 +59,9 @@ def main() -> i64:
     feature: UiFeatureView::FeatureHandle = UiHarness::request_feature(3, 1, "1.0.0", 6)
     check("harness injects a feature request", UiFeatureView::is_valid(feature) and UiFeatureView::state(feature) == UiFeatureView::FeatureState.Requested)
     check("harness injects activation and polling", UiHarness::activate_feature(feature, 44) and UiHarness::resolve_feature(feature, 44, UiFeatureView::FeatureState.Ready, UiFeatureView::FeatureFailureKind.Unknown) and UiFeatureView::is_ready(feature))
+    cancellable_feature: UiFeatureView::FeatureHandle = UiHarness::request_feature(4, 1, "1.0.0", 6)
+    _ = UiHarness::activate_feature(cancellable_feature, 45)
+    check("harness routes feature cancellation acknowledgement", UiHarness::cancel_feature(cancellable_feature) and UiFeatureView::activation_id(cancellable_feature) == 45 and UiHarness::acknowledge_feature_deactivation(cancellable_feature, 45) and UiFeatureView::activation_id(cancellable_feature) == 0)
 
     UiHarness::dispatch(UiCore::Event.FocusGained)
     check("harness forwards typed events", event_calls == 1 and last_event_kind == UiCore::WireKind.FocusGained.i32())
