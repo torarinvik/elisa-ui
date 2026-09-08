@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `39348e7` (`feat(skia): compose interactive text painting`) on branch `work` |
+| elisa-ui revision | `e4e151f` (`feat(skia): scope bound interactive text`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -358,6 +358,9 @@ decoded dimensions out of application widget state.
 Interactive text blocks now compose selection, glyphs, and caret painting in
 one measured pass with one clip scope, preserving selection-before-text and
 caret-after-text ordering while leaving blink scheduling in widget state.
+The same compound operation has generation-bound primary/fallback wrappers, so
+font-resource controls keep one borrowed typeface scope across layout and all
+three painted layers.
 The C++ bridge wraps each borrowed typeface in a temporary `sk_sp` reference
 for SkFont's ownership contract without transferring disposal authority from
 the host.
