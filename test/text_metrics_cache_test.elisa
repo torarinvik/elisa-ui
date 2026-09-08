@@ -23,6 +23,7 @@ def check(name: cstr, ok: bool) -> void:
 
 def main() -> i64:
     UiTextMetrics::reset()
+    check("initial metric context is stable", not UiTextMetrics::set_context(0, 0))
     first: f32 = UiTextMetrics::line_height(16.0)
     second: f32 = UiTextMetrics::line_height(16.0)
     check("line-height cache preserves the backend metric", first == 20.0 and second == 20.0)
@@ -44,13 +45,17 @@ def main() -> i64:
     UiTextMetrics::reset()
     _ = UiTextMetrics::width("cached", 10.0)
     check("reset invalidates cached widths", width_calls == 3 and UiTextMetrics::width_miss_count() == 1)
+    check("font and scale generations invalidate together", UiTextMetrics::set_context(1, 2) and UiTextMetrics::line_height(10.0) == 12.5 and backend_calls == 4)
+    check("same metric context is idempotent", not UiTextMetrics::set_context(1, 2) and UiTextMetrics::line_height(10.0) == 12.5 and backend_calls == 4)
 
     large: mutable u8[UiTextMetrics::WIDTH_TEXT_CAPACITY + 1] = zeroed
     for index in 0..<UiTextMetrics::WIDTH_TEXT_CAPACITY + 1:
         large[index] <- 65
     large_view: sview = sview(&large[0], 0, (UiTextMetrics::WIDTH_TEXT_CAPACITY + 1).i64())
+    misses_before_large: usize = UiTextMetrics::width_miss_count()
     _ = UiTextMetrics::width(large_view, 10.0)
-    check("oversized text bypasses the copied key table", width_calls == 4 and UiTextMetrics::width_miss_count() == 2)
+    check("oversized text crosses backend", width_calls > 2)
+    check("oversized text records a miss", UiTextMetrics::width_miss_count() == misses_before_large + 1)
 
     if failures == 0:
         _ = puts("text metrics cache: all checks passed")

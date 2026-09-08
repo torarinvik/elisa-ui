@@ -13,6 +13,16 @@ module UiTextMetrics:
         const MAX_WIDTH_ENTRIES: usize = 64
         const WIDTH_TEXT_CAPACITY: usize = 128
 
+        # Backend-owned generations identify the active font set and scale
+        # bucket. A changed generation invalidates cached measurements even if
+        # a paint frame spans a device or font transition.
+        def set_context(font_generation: u32, scale_generation: u32) -> bool:
+            return false if text_metrics_font_generation == font_generation and text_metrics_scale_generation == scale_generation
+            text_metrics_font_generation <- font_generation
+            text_metrics_scale_generation <- scale_generation
+            reset()
+            return true
+
         # A paint boundary owns the cache lifetime. Keeping this explicit also
         # gives deterministic tests and future font/scale adapters a cheap
         # invalidation hook without reaching into backend state.
@@ -105,6 +115,8 @@ module UiTextMetrics:
         global mutable width_next: usize = 0
         global mutable width_queries: usize = 0
         global mutable width_misses: usize = 0
+        global mutable text_metrics_font_generation: u32 = 0
+        global mutable text_metrics_scale_generation: u32 = 0
 
         def measure_width(text: sview, size: f32) -> f32:
             return UiConstraints::bounded(ui_measure_text_width(text, size))
