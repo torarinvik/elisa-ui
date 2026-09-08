@@ -216,6 +216,9 @@ When a logical image has `UiResources::set_intrinsic_size()` metadata,
 `draw_bound_image_fitted_intrinsic()` derives source dimensions from that
 generation-scoped record, keeping decoded-image facts out of ordinary widget
 state.
+`draw_image_fitted_rounded()` and the intrinsic bound variants add a typed
+rounded clip around the fitted destination, making avatar/card presentation a
+composition of Elisa scopes rather than a new native image primitive.
 The ready and generation-bound image helpers expose matching
 `*_with_sampling()` forms, so filtering survives the resource-binding path.
 Hosts can use `bind_image`/`draw_bound_image` to associate that pointer with an

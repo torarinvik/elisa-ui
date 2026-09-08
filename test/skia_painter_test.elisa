@@ -395,6 +395,17 @@ def main() -> i64:
     _ = UiResources::dispose(interactive_primary_font)
     _ = UiResources::dispose(interactive_fallback_font)
 
+    rounded_image: UiResources::ResourceHandle = UiResources::request("images/rounded-fit", 7)
+    _ = UiResources::set_intrinsic_size(rounded_image, 100.0, 50.0)
+    _ = UiResources::set_state(rounded_image, UiResources::State.Ready)
+    _ = UiSkia::bind_image(rounded_image, 0xD00D)
+    skia_test_reset()
+    UiSkia::attach(35)
+    check("rounded image fit stays inside an Elisa clip", UiSkia::draw_image_fitted_rounded(0xD00D, fit_box, UiCore::Size(100.0, 50.0), 255, UiSkia::ImageFit.Contain, 100.0) and skia_test_rounded_clip_count() == 1 and skia_test_last_clip_radius() == 50.0 and skia_test_last_image_x() == 10.0 and skia_test_last_image_y() == 45.0 and skia_test_last_image_width() == 100.0 and skia_test_last_image_height() == 50.0)
+    check("rounded bound image fit reuses intrinsic metadata", UiSkia::draw_bound_image_fitted_intrinsic_rounded_with_sampling(rounded_image, fit_box, 255, UiSkia::ImageFit.Cover, 12.0, UiSkia::ImageSampling.Nearest) and skia_test_rounded_clip_count() == 2 and skia_test_last_clip_radius() == 12.0 and skia_test_last_image_sampling() == 0)
+    UiSkia::detach()
+    _ = UiResources::dispose(rounded_image)
+
     if failures == 0:
         _ = puts("skia painter: all checks passed")
         return 0
