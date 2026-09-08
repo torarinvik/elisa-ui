@@ -29,6 +29,15 @@ feature views owned by a dismissed screen; the old handles then fail closed.
 acknowledged deactivation, while a subsequent request rotates the generation
 and clears that old token.
 
+For an application screen, `view(handle)` returns a stable projection with the
+current state, failure kind, activation token, and a single explicit action.
+`action()` reports `Cancel` while requested/loading and `Retry` for retryable
+terminal states. `back(handle)` consumes back by cancelling an in-flight
+activation and returns false for terminal states, allowing the application to
+pop the screen or let the platform handle navigation. This keeps cancellation
+and back behavior accessible without making the host aware of widget or arena
+internals.
+
 `UiInspector::Frame.features` exposes bounded counts for diagnostics. State
 changes invalidate paint and semantics so loading/error/cancellation UI can be
 updated without a backend shadow model. The module has no native pointers and

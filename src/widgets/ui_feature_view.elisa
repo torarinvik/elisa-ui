@@ -33,6 +33,18 @@ module UiFeatureView:
             Denied = 4
             Offline = 5
 
+        const enum ViewAction of i32:
+            None = 0
+            Cancel = 1
+            Retry = 2
+
+        struct View:
+            handle: FeatureHandle
+            state: FeatureState
+            failure: FeatureFailureKind
+            activation_id: u64
+            action: ViewAction
+
         struct FeatureHandle:
             slot: u32
             generation: u32
@@ -236,6 +248,30 @@ module UiFeatureView:
 
         def overflowed() -> bool:
             return feature_overflowed_state
+
+        # Application-facing view projection. It contains only stable typed
+        # facts; hosts still own activation, component memory, and transport.
+        def view(handle: FeatureHandle) -> View:
+            return View{
+                handle: handle,
+                state: state(handle),
+                failure: failure(handle),
+                activation_id: activation_id(handle),
+                action: action(handle),
+            }
+
+        def action(handle: FeatureHandle) -> ViewAction:
+            return ViewAction.None if not is_valid(handle)
+            current: FeatureState = feature_states[handle.slot.usize()]
+            return ViewAction.Cancel if current == FeatureState.Requested or current == FeatureState.Loading
+            return ViewAction.Retry if can_retry(handle) else ViewAction.None
+
+        # Back/cancel is deliberately a small policy seam: a requested or
+        # loading feature consumes back by cancelling its activation. Terminal
+        # states return false so the application can navigate away normally.
+        def back(handle: FeatureHandle) -> bool:
+            return false if action(handle) != ViewAction.Cancel
+            return cancel(handle)
 
     private:
         global mutable feature_count_state: usize = 0
