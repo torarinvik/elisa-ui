@@ -62,16 +62,18 @@ module UiTextMeasureLayout:
                         cluster_length: usize = cluster_end - cursor if cluster_end > cursor and cluster_end <= measured_source_length else 1
                         cluster: sview = sview(&safe_text.data[cursor], 0, cluster_length.i64())
                         cluster_width: f32 = UiCore::bounded_extent(width_provider(cluster, measured_text_size))
+                        proposed: f32 = UiCore::bounded_extent(line_width + cluster_width)
                         if is_break(byte) and (cursor == start or not is_break(safe_text.data[cursor - 1])):
-                            last_break <- cursor
-                            last_break_width <- line_width
+                            break_after: usize = cursor + cluster_length if is_punctuation_break(byte) else cursor
+                            last_break <- break_after
+                            last_break_width <- proposed if break_after > cursor else line_width
                             has_break <- true
 
-                        proposed: f32 = UiCore::bounded_extent(line_width + cluster_width)
                         if proposed > measured_max_width and cursor > start:
                             if has_break and last_break >= start:
                                 emit_line(start, last_break - start, last_break_width)
-                                cursor <- last_break + scalar_bytes(safe_text, last_break, measured_source_length)
+                                cursor <- last_break
+                                cursor <- cursor + 1 if cursor < measured_source_length and is_discardable_break(safe_text.data[cursor])
                                 cursor <- skip_breaks(safe_text, cursor, measured_source_length)
                                 start <- cursor
                                 finished <- true
@@ -170,30 +172,17 @@ module UiTextMeasureLayout:
             return byte == 10 or byte == 13
 
         def is_break(byte: u8) -> bool:
+            return is_discardable_break(byte) or is_punctuation_break(byte)
+
+        def is_discardable_break(byte: u8) -> bool:
             return byte == 9 or byte == 32
+
+        def is_punctuation_break(byte: u8) -> bool:
+            return byte == 45 or byte == 47
 
         def skip_breaks(text: sview, offset: usize, end: usize) -> usize:
             cursor: mutable usize = offset
             for _ in 0..<MAX_LINES * UiCore::MAX_TEXT_BYTES:
-                break if cursor >= end or not is_break(text.data[cursor])
+                break if cursor >= end or not is_discardable_break(text.data[cursor])
                 cursor <- cursor + 1
             return cursor
-
-        def scalar_bytes(text: sview, offset: usize, end: usize) -> usize:
-            return 1 if offset >= end
-            first: i32 = text.data[offset].i32()
-            return 1 if first < 128 or first >= 248
-            width: mutable usize = 1
-            width <- 2 if first >= 194 and first <= 223
-            width <- 3 if first >= 224 and first <= 239
-            width <- 4 if first >= 240 and first <= 244
-            return 1 if width == 1 or width > end - offset
-            for index in 1..<width:
-                byte: u8 = text.data[offset + index]
-                return 1 if byte < 128 or byte > 191
-            second: u8 = text.data[offset + 1]
-            return 1 if first == 224 and second < 160
-            return 1 if first == 237 and second >= 160
-            return 1 if first == 240 and second < 144
-            return 1 if first == 244 and second >= 144
-            return width

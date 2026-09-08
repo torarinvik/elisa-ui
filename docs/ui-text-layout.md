@@ -19,8 +19,9 @@ backend can supply its real font authority. The default facade uses
 uses the active borrowed frame typeface when one is present. The planner walks
 the same grapheme boundaries and stores pixel-width ranges without copying the
 source text. It prefers whitespace-run breaks, honors LF/CRLF, normalizes
-hostile geometry, and emits a single oversized grapheme so malformed or
-unusually large glyphs cannot stall the planner. The metric cache and font
+hostile geometry, prefers whitespace and punctuation soft breaks while keeping
+hyphens/slashes on the preceding line, and emits a single oversized grapheme so
+malformed or unusually large glyphs cannot stall the planner. The metric cache and font
 fallback policy therefore stay with the renderer while line ownership remains
 in Elisa.
 
