@@ -189,6 +189,18 @@ def main() -> i64:
     check("Skia text blocks retain layout while culling offscreen lines", clipped_block.line_count == 3 and skia_test_text_count() == 1 and skia_test_save_count() == 2 and skia_test_restore_count() == 1)
     UiSkia::detach()
 
+    scale_font_resource: UiResources::ResourceHandle = UiResources::request("fonts/scale", 7)
+    _ = UiResources::set_state(scale_font_resource, UiResources::State.Ready)
+    _ = UiSkia::bind_font(scale_font_resource, 0x5CA1E)
+    skia_test_reset()
+    UiSkia::attach(20)
+    _ = UiSkia::bind_font(scale_font_resource, 0x5CA1E)
+    check("Skia diagnostics report the active scale", UiSkia::snapshot().surface_scale == 1.0 and UiSkia::snapshot().font_bindings == 1)
+    UiSkia::attach_scaled(20, 2.0)
+    check("scale changes invalidate borrowed font bindings", UiSkia::snapshot().surface_scale == 2.0 and UiSkia::snapshot().font_bindings == 0)
+    UiSkia::detach()
+    _ = UiResources::dispose(scale_font_resource)
+
     UiSkia::attach(9)
     generation_before_invalid_attach: u32 = UiSkia::surface_generation()
     UiSkia::attach(0)
