@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `ad25916` (`test(text): require pinned Unicode conformance`) on branch `work` |
+| elisa-ui revision | `f382e9f` (`test(skia): require measured raster timing`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -626,7 +626,8 @@ separate host-enforced security boundary.
 - `test/skia_offscreen_host.cpp` repeats complete real SkSurface frames and
   reports render total/average nanoseconds, while `docs/ui-performance.md`
   records the distinction between retained-tree safety ceilings and actual
-  raster evidence.
+  raster evidence. The host rejects zero-duration samples and the showcase
+  host checks rasterized title ink in addition to shape pixels.
 - `test/showcase_skia_test.elisa` and `test/showcase_skia_host.cpp` extend that
   evidence to the shipped hello application: the required real-Skia gate drives
   its public text/input, state, and resource-replacement workflow, then checks
