@@ -12,6 +12,9 @@ inspectable representation available. Physical dimensions are bounded and
 divided by a normalized scale (default `1`, capped at `16`) before they reach
 layout. The selected record contains both physical and logical dimensions so a
 host can resize without changing widget state.
+Viewport conversion is fail-closed: `logical_size()` returns a zero size until
+the selection is accepted, so rejected or disconnected offers cannot inject a
+plausible layout viewport.
 
 `connect`, `suspend`, `resume`, and `disconnect` form the lifecycle contract.
 Each successful connection and disconnect advances a generation; a suspended
