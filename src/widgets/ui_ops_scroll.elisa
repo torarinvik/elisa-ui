@@ -33,6 +33,16 @@ extend UiWidgets:
                     next: f32 = limit if wanted > limit else wanted
                     difference: f32 = next - current if next >= current else current - next
                     state.offset <- next
-                    return difference >= 0.0001
+                    changed: bool = difference >= 0.0001
+                    if changed:
+                        # A programmatic scroll has the same observable
+                        # consequences as wheel input: child geometry,
+                        # pixels, and semantic bounds all move. Keep the
+                        # invalidation contract here so callers cannot forget
+                        # to schedule a frame when using the public API.
+                        UiCore::invalidate(UiCore::Invalidation.Layout)
+                        UiCore::invalidate(UiCore::Invalidation.Paint)
+                        UiCore::invalidate(UiCore::Invalidation.Semantics)
+                    return changed
                 _:
                     return false

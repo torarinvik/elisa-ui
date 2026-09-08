@@ -182,9 +182,14 @@ def main() -> i64:
         layout(stateful_scroll, 100.0, 50.0)
         check("stateful scroll starts at zero", scroll_state.offset, 0.0)
         check("stateful scroll reports content limit", scroll_limit(stateful_scroll), 40.0)
+        UiCore::clear_all_invalidations()
         if not scroll_to(stateful_scroll, 12.0):
             test_failures <- test_failures + 1
         check("stateful scroll stores requested offset", scroll_state.offset, 12.0)
+        scroll_invalidations: i32 = UiCore::invalidations()
+        test_failures <- test_failures + 1 if (scroll_invalidations & UiCore::Invalidation.Layout.i32()) == 0
+        test_failures <- test_failures + 1 if (scroll_invalidations & UiCore::Invalidation.Paint.i32()) == 0
+        test_failures <- test_failures + 1 if (scroll_invalidations & UiCore::Invalidation.Semantics.i32()) == 0
         layout(stateful_scroll, 100.0, 50.0)
         check("stateful scroll lays out translated content", scroll_b.y, 18.0)
         pointer(stateful_scroll, (UiCore::PointerEvent.Move(at: UiCore::Vec2(10.0, 45.0))))
