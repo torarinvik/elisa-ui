@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `b47292f` (`refactor(skia): share primitive normalization`) on branch `work` |
+| elisa-ui revision | `8e73552` (`refactor(skia): centralize style primitives`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -652,6 +652,9 @@ separate host-enforced security boundary.
 - Retained Skia replay now routes circle, triangle, and hairline-line commands
   through the same Elisa primitive helpers as immediate custom drawing, so
   geometry and alpha validation cannot drift between paint entry points.
+- Skia's shared outline and hairline style lowering now uses those same
+  primitive helpers, leaving `ui_skia_style.elisa` with visual-token selection
+  only and removing duplicate direct FFI calls.
 - Immediate Skia custom drawing now has a dedicated `ui_skia_clip.elisa`
   extension. It rejects empty clips before FFI and shares the transform/frame
   save-depth ledger, with headless coverage for direct clip balance and cleanup.
