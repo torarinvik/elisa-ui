@@ -10,6 +10,8 @@ The fixed eight-contact table recognizes taps (up to 350 ms), long presses
 two-contact pinch scale. Duplicate identities and capacity exhaustion fail
 closed and remain observable. `cancel_all()` is the lifecycle hook for focus or
 surface interruption, so no late move/up callback can target a dead capture.
+Touch ID `0` is valid; `NO_CONTACT_ID` is the distinct snapshot marker used
+when no secondary contact is active.
 
 The module deliberately does not claim native touch-device coverage yet. A
 backend must still translate its OS contact callbacks into these facts and map
