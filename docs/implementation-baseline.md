@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `180d6b4` (`feat: apply theme geometry to flat renderer`) on branch `work` |
+| elisa-ui revision | `4229438` (`fix: apply geometry with system theme updates`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -47,6 +47,8 @@ application-owned.
 `UiFlat::apply_metrics` and its typed-handle forwarding apply those tokens to
 focus, text, slider, and choice painter state; corner-radius remains reserved
 until a flat rounded-primitive path exists.
+`apply_system_theme` now applies palette and geometry atomically, so runtime
+contrast and text-scale changes cannot leave stale control affordances behind.
 
 ## Source and boundary inventory
 
