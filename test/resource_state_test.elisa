@@ -79,6 +79,11 @@ def main() -> i64:
 
     check("progress clamps malformed network values", UiResources::set_progress(image, 1.5, -2.0) and UiResources::downloaded_progress(image) == 1.0 and UiResources::decoded_progress(image) == 0.0)
     check("progress rejects out-of-order decreases", not UiResources::set_progress(image, 0.5, 0.0) and UiResources::downloaded_progress(image) == 1.0 and UiResources::decoded_progress(image) == 0.0)
+    zero_progress: f32 = 0.0
+    invalid_progress: f32 = zero_progress / zero_progress
+    infinite_progress: f32 = 1.0 / zero_progress
+    check("progress rejects non-finite network values", not UiResources::set_progress(image, invalid_progress, 0.0) and UiResources::downloaded_progress(image) == 1.0)
+    check("progress rejects non-finite decode values", not UiResources::set_progress(image, 1.0, infinite_progress) and UiResources::decoded_progress(image) == 0.0)
     check("ready is separate from network completion", UiResources::state(image) == UiResources::State.Requested)
     check("ready transition is accepted", UiResources::set_state(image, UiResources::State.Ready) and UiResources::state(image) == UiResources::State.Ready)
     check("ready state completes both progress channels", UiResources::downloaded_progress(image) == 1.0 and UiResources::decoded_progress(image) == 1.0)
