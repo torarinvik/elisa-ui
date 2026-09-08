@@ -63,6 +63,10 @@ def main() -> i64:
     huge_scroll_record: UiCore::EventRecord = UiCore::to_record(huge_scroll)
     check("scroll event bounds finite pointer coordinates", huge_scroll_record.x == UiCore::MAX_GEOMETRY_EXTENT and huge_scroll_record.y == -UiCore::MAX_GEOMETRY_EXTENT)
     check("scroll event bounds finite deltas", huge_scroll_record.dx == -UiCore::MAX_GEOMETRY_EXTENT and huge_scroll_record.dy == UiCore::MAX_GEOMETRY_EXTENT)
+    raw_pointer_record: UiCore::EventRecord = UiCore::EventRecord{kind: UiCore::WireKind.PointerMove, x: nan, y: 4.0, dx: 0.0, dy: 0.0, code: 0}
+    check("raw pointer record rejects non-finite coordinates", UiCore::from_record(raw_pointer_record) == UiCore::Event.None)
+    raw_scroll_record: UiCore::EventRecord = UiCore::EventRecord{kind: UiCore::WireKind.Scroll, x: 4.0, y: 4.0, dx: 0.0, dy: infinity, code: 0}
+    check("raw scroll record rejects non-finite deltas", UiCore::from_record(raw_scroll_record) == UiCore::Event.None)
     UiCore::begin_frame()
     UiCore::request_frame_after(-1.0)
     check("negative frame delays are ignored", UiCore::frame_delay() == 0.0)
@@ -186,12 +190,7 @@ def main() -> i64:
     hostile_record: UiCore::EventRecord = UiCore::EventRecord{
         kind: UiCore::WireKind.Scroll, x: nan, y: infinity, dx: infinity, dy: nan, code: 0,
     }
-    match UiCore::from_record(hostile_record):
-        UiCore::PointerEvent.Scroll(at, delta):
-            check("event decoding sanitizes raw pointer position", at.x == 0.0 and at.y == 0.0)
-            check("event decoding sanitizes raw scroll delta", delta.x == 0.0 and delta.y == 0.0)
-        _:
-            check("hostile scroll record keeps its event kind", false)
+    check("event decoding rejects hostile scroll coordinates", UiCore::from_record(hostile_record) == UiCore::Event.None)
     hostile_resize: UiCore::EventRecord = UiCore::EventRecord{
         kind: UiCore::WireKind.Resize, x: -4.0, y: infinity, dx: 0.0, dy: 0.0, code: 0,
     }

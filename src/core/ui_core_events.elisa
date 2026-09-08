@@ -171,6 +171,7 @@ extend UiCore:
             # EventRecord is the raw C/WIT boundary. Normalize every numeric
             # payload here before rebuilding a typed event so hosts cannot
             # inject NaN/infinity into hit testing, layout, or scroll policy.
+            return Event.None if not record_coordinates_are_finite(record)
             at: Vec2 = Vec2(bounded_coordinate(record.x), bounded_coordinate(record.y))
             return match record.kind:
                 WireKind.Quit:
@@ -221,6 +222,23 @@ extend UiCore:
             return from_record(to_record(event))
 
     private:
+        # Raw records bypass the typed constructors, so reject malformed
+        # pointer coordinates before `bounded_coordinate` could turn them
+        # into a plausible origin. Resize extents remain normalizable (a
+        # hostile size is safely clamped by the shared extent contract).
+        def record_coordinates_are_finite(record: EventRecord) -> bool:
+            match record.kind:
+                WireKind.PointerMove:
+                    return is_finite(record.x) and is_finite(record.y)
+                WireKind.PointerDown:
+                    return is_finite(record.x) and is_finite(record.y)
+                WireKind.PointerUp:
+                    return is_finite(record.x) and is_finite(record.y)
+                WireKind.Scroll:
+                    return is_finite(record.x) and is_finite(record.y) and is_finite(record.dx) and is_finite(record.dy)
+                _:
+                    return true
+
         def normalized_axis(value: f32) -> f32:
             safe: f32 = finite_or_zero(value)
             return -1.0 if safe < -1.0
