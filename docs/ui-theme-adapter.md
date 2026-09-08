@@ -17,9 +17,10 @@ The adapter changes only framework-wide visual tokens:
 
 - focus ring and selection colors;
 - checkbox/radio control marks;
-- scrollbar track, thumb, hover, and active colors.
+- scrollbar track, thumb, hover, and active colors;
+- focus inset, text padding, slider track height, and choice spacing metrics.
 
-Per-widget surfaces, hover/press colors, text colors, and all geometry metrics
+Per-widget surfaces, hover/press colors, text colors, and declared widget frames
 remain application-owned. Applications that need a custom token can still copy
 `UiFlat::theme()`, change the desired field, and call `UiHandles::set_theme()`.
 
@@ -28,7 +29,8 @@ framework theme changes. The underlying `set_theme` operation compares every
 token after normalization, so repeated host appearance refreshes do not create
 spurious layout, paint, or semantic invalidations.
 
-Text scaling remains explicit through `UiTheme::scaled_text_size`; this keeps
+Text scaling remains explicit through `UiTheme::scaled_text_size` and the
+shared geometry resolver; this keeps
 intentional per-control typography intact instead of silently rewriting every
 retained widget. Reduced-motion timing is likewise queried with
 `UiTheme::animation_interval` so an application can preserve a custom cadence
