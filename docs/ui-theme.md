@@ -24,3 +24,7 @@ malformed enum or scale values are canonicalized before comparison.
 The module is opt-in: applications that do not need shared palette policy do
 not pay for its resolver in their handle-heavy binaries. Applications may
 override any resolved token through their stable theme API after resolution.
+
+`UiTheme::metrics` resolves shared geometry tokens for spacing, minimum touch
+targets, focus-ring width, and corner radius. High-contrast mode raises touch
+and focus affordances and adjusts spacing consistently across controls.

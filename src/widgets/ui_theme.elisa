@@ -69,6 +69,12 @@ module UiTheme:
             disabled_text: UiCore::Color
             disabled_surface: UiCore::Color
 
+        struct Metrics:
+            spacing_unit: f32
+            minimum_touch_target: f32
+            focus_ring_width: f32
+            corner_radius: f32
+
         def defaults() -> Preferences:
             return Preferences{mode: ColorMode.System, contrast: Contrast.Normal,
                 text_scale: 1.0, reduced_motion: false}
@@ -105,6 +111,16 @@ module UiTheme:
             dark: bool = is_dark(normalized, system_dark)
             high: bool = is_high_contrast(normalized, system_high_contrast)
             return dark_palette(high) if dark else light_palette(high)
+
+        # Resolve geometry tokens alongside the palette so controls do not
+        # invent accessibility-sensitive dimensions independently.
+        def metrics(preferences: Preferences, system_high_contrast: bool) -> Metrics:
+            normalized: Preferences = normalize(preferences)
+            high: bool = is_high_contrast(normalized, system_high_contrast)
+            return Metrics{spacing_unit: 8.0 if not high else 10.0,
+                minimum_touch_target: 44.0 if not high else 48.0,
+                focus_ring_width: 2.0 if not high else 3.0,
+                corner_radius: 8.0 if not high else 6.0}
 
         def scaled_text_size(preferences: Preferences, base: f32) -> f32:
             normalized: Preferences = normalize(preferences)
