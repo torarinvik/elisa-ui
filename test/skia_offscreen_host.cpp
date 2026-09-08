@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <limits>
 
 #include "include/elisa_skia.h"
@@ -27,6 +28,18 @@ bool expect_color(const SkPixmap& pixels, int x, int y, SkColor expected, const 
     const SkColor actual = pixels.getColor(x, y);
     if (actual == expected) return true;
     std::fprintf(stderr, "%s: expected 0x%08x, got 0x%08x\n", label, expected, actual);
+    return false;
+}
+
+bool expect_color_near(const SkPixmap& pixels, int x, int y, SkColor expected,
+                       int tolerance, const char* label) {
+    const SkColor actual = pixels.getColor(x, y);
+    const int red_delta = std::abs(static_cast<int>(SkColorGetR(actual)) - static_cast<int>(SkColorGetR(expected)));
+    const int green_delta = std::abs(static_cast<int>(SkColorGetG(actual)) - static_cast<int>(SkColorGetG(expected)));
+    const int blue_delta = std::abs(static_cast<int>(SkColorGetB(actual)) - static_cast<int>(SkColorGetB(expected)));
+    if (red_delta <= tolerance && green_delta <= tolerance && blue_delta <= tolerance &&
+        SkColorGetA(actual) == SkColorGetA(expected)) return true;
+    std::fprintf(stderr, "%s: expected near 0x%08x, got 0x%08x\n", label, expected, actual);
     return false;
 }
 
@@ -72,6 +85,8 @@ int main(int argc, char** argv) {
     elisa_skia_canvas_fill_round_rect(reinterpret_cast<std::size_t>(canvas), 20.0f, 20.0f, 60.0f, 40.0f, hostile, 220, 80, 100, 255);
     elisa_skia_canvas_stroke_round_rect(reinterpret_cast<std::size_t>(canvas), 20.0f, 20.0f, 60.0f, 40.0f, 8.0f, hostile, 220, 80, 100, 255);
     elisa_skia_canvas_shadow_round_rect(reinterpret_cast<std::size_t>(canvas), 20.0f, 20.0f, 60.0f, 40.0f, 8.0f, 0.0f, 0.0f, hostile, 255);
+    elisa_skia_canvas_fill_linear_gradient(reinterpret_cast<std::size_t>(canvas), 20.0f, 20.0f, hostile, 40.0f,
+                                           20, 40, 80, 255, 100, 180, 220, 255, 1);
     elisa_skia_canvas_clip_rect(reinterpret_cast<std::size_t>(canvas), 0.0f, 0.0f, hostile, 100.0f);
     elisa_skia_canvas_draw_text(reinterpret_cast<std::size_t>(canvas), "x", 1, 20.0f, 40.0f, hostile, 255, 255, 255, 255);
     elisa_skia_canvas_fill_line(reinterpret_cast<std::size_t>(canvas), 0.0f, nan, 20.0f, 20.0f, 1.0f, 240, 240, 245, 255);
@@ -108,6 +123,8 @@ int main(int argc, char** argv) {
     ok = expect_color(pixels, 40, 40, SkColorSetARGB(255, 220, 80, 100), "rounded fill") && ok;
     ok = expect_color(pixels, 80, 130, SkColorSetARGB(255, 60, 180, 140), "circle") && ok;
     ok = expect_color(pixels, 230, 50, SkColorSetARGB(255, 70, 120, 220), "triangle") && ok;
+    ok = expect_color(pixels, 120, 130, SkColorSetARGB(255, 20, 40, 80), "gradient start") && ok;
+    ok = expect_color_near(pixels, 219, 130, SkColorSetARGB(255, 100, 180, 220), 2, "gradient end") && ok;
     ok = expect_ink(pixels, 15, 158, 110, 198, SkColorSetARGB(255, 18, 24, 32), "text") && ok;
 
     SkFILEWStream stream(output);
