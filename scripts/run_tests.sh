@@ -19,6 +19,17 @@ status=0
 SKIA_TEST_SHIM="$ROOT/build/skia_painter_shim.o"
 clang -c -Wall -Wextra -Werror -o "$SKIA_TEST_SHIM" "$ROOT/test/skia_painter_shim.c"
 
+# The real custom renderer is a required gate by default. Run it before the
+# longer portable/native matrix so a missing pinned SDK fails immediately and
+# cannot be mistaken for a complete test run.
+if [[ "${ELISA_UI_REQUIRE_REAL_SKIA:-1}" == "1" ]]; then
+  if ! bash "$ROOT/scripts/check_skia.sh"; then
+    echo "FAIL required skia renderer" >&2
+    echo "run ELISA_UI_REQUIRE_REAL_SKIA=0 only for a non-passing compiler-only edit loop" >&2
+    exit 2
+  fi
+fi
+
 if ! bash "$ROOT/scripts/check_source_sizes.sh"; then
   echo "FAIL source sizes"
   status=1
@@ -51,14 +62,10 @@ if ! bash "$ROOT/scripts/check_appkit_canvas.sh"; then
   status=1
 fi
 
-# The real custom renderer is a required gate by default. Developers may use
-# ELISA_UI_REQUIRE_REAL_SKIA=0 for a fast compiler-only edit loop, but that
-# explicit opt-out is not a passing renderer check and must not be used by CI.
+# The AppKit/Skia compositor extends the required CPU-raster gate when it is
+# available on macOS; its fixture remains headless and never foregrounds a UI.
 if [[ "${ELISA_UI_REQUIRE_REAL_SKIA:-1}" == "1" ]]; then
-  if ! bash "$ROOT/scripts/check_skia.sh"; then
-    echo "FAIL required skia renderer"
-    status=1
-  elif ! bash "$ROOT/scripts/check_appkit_skia.sh"; then
+  if ! bash "$ROOT/scripts/check_appkit_skia.sh"; then
     echo "FAIL appkit skia"
     status=1
   fi
