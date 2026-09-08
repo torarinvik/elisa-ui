@@ -15,6 +15,7 @@
 #include "include/core/SkFontMgr.h"
 #include "include/core/SkFontStyle.h"
 #include "include/core/SkImageInfo.h"
+#include "include/core/SkImage.h"
 #include "include/core/SkPixmap.h"
 #include "include/core/SkSurface.h"
 #include "include/encode/SkPngEncoder.h"
@@ -29,6 +30,12 @@ extern "C" std::int32_t elisa_showcase_skia_art_count();
 extern "C" std::int32_t elisa_showcase_skia_deferred_count();
 extern "C" std::int32_t elisa_showcase_skia_probe_x();
 extern "C" std::int32_t elisa_showcase_skia_probe_y();
+extern "C" std::int32_t elisa_showcase_skia_bind_resource_image(std::size_t image);
+extern "C" std::int32_t elisa_showcase_skia_resource_probe_count();
+extern "C" std::int32_t elisa_showcase_skia_resource_probe_x();
+extern "C" std::int32_t elisa_showcase_skia_resource_probe_y();
+extern "C" std::int32_t elisa_showcase_skia_resource_generation_before();
+extern "C" std::int32_t elisa_showcase_skia_resource_generation_after();
 
 namespace {
 
@@ -97,29 +104,52 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "skia showcase: failed to create raster surface\n");
         return 4;
     }
+    // Supply a deterministic host-decoded image while keeping the logical
+    // resource lifecycle and generation replacement in Elisa. The snapshot
+    // remains alive for every replay, matching a real host's borrowed image
+    // contract without adding an image registry to this fixture.
+    const SkImageInfo resource_info = SkImageInfo::Make(
+        180, 48, kRGBA_8888_SkColorType, kPremul_SkAlphaType);
+    sk_sp<SkSurface> resource_surface = SkSurfaces::Raster(resource_info);
+    if (!resource_surface) {
+        std::fprintf(stderr, "skia showcase: failed to create resource surface\n");
+        return 5;
+    }
+    resource_surface->getCanvas()->clear(SkColorSetARGB(255, 44, 176, 132));
+    const sk_sp<SkImage> resource_image = resource_surface->makeImageSnapshot();
+    if (!resource_image || elisa_showcase_skia_bind_resource_image(
+            reinterpret_cast<std::size_t>(resource_image.get())) != 1) {
+        std::fprintf(stderr, "skia showcase: failed to bind the decoded resource image\n");
+        return 6;
+    }
     SkCanvas* canvas = surface->getCanvas();
     const std::size_t canvas_handle = reinterpret_cast<std::size_t>(canvas);
     const std::size_t font_handle = reinterpret_cast<std::size_t>(typeface.get());
     const std::int32_t status = elisa_showcase_skia_render(canvas_handle, font_handle);
     if (status != 1) {
         std::fprintf(stderr, "skia showcase: Elisa returned status %d\n", status);
-        return 5;
+        return 7;
     }
 
     const std::int32_t commands = elisa_showcase_skia_command_count();
     const std::int32_t semantics = elisa_showcase_skia_semantic_count();
     const std::int32_t art = elisa_showcase_skia_art_count();
     const std::int32_t deferred = elisa_showcase_skia_deferred_count();
-    if (commands <= 20 || semantics <= 10 || art < 6 || deferred != 2) {
-        std::fprintf(stderr, "skia showcase: incomplete Elisa frame commands=%d semantics=%d art=%d deferred=%d\n",
-                     commands, semantics, art, deferred);
-        return 6;
+    const std::int32_t resource_deferred = elisa_showcase_skia_resource_probe_count();
+    const std::int32_t generation_before = elisa_showcase_skia_resource_generation_before();
+    const std::int32_t generation_after = elisa_showcase_skia_resource_generation_after();
+    if (commands <= 20 || semantics <= 10 || art < 6 || deferred != 2 ||
+        resource_deferred != 2 || generation_before <= 0 || generation_after <= generation_before) {
+        std::fprintf(stderr, "skia showcase: incomplete Elisa frame commands=%d semantics=%d art=%d deferred=%d resource_deferred=%d generations=%d->%d\n",
+                     commands, semantics, art, deferred, resource_deferred,
+                     generation_before, generation_after);
+        return 8;
     }
 
     SkPixmap pixels;
     if (!surface->peekPixels(&pixels)) {
         std::fprintf(stderr, "skia showcase: raster pixels unavailable\n");
-        return 7;
+        return 9;
     }
     bool ok = true;
     ok = expect_color(pixels, 0, 0, SkColorSetARGB(255, 226, 231, 241), "light-theme background") && ok;
@@ -153,13 +183,31 @@ int main(int argc, char** argv) {
                           SkColorSetARGB(255, 236, 100, 210), "deferred badge after retained") && ok;
     }
 
+    // The old resource generation was queued before retry and must not paint
+    // through its disposed/failed binding. The replacement generation is
+    // queued after retry and paints the host image into the adjacent box.
+    const int resource_x = elisa_showcase_skia_resource_probe_x();
+    const int resource_y = elisa_showcase_skia_resource_probe_y();
+    if (resource_x < 0 || resource_y < 0 || resource_x + 128 >= width || resource_y + 32 >= height) {
+        std::fprintf(stderr, "skia showcase: resource probe escaped retained bounds x=%d y=%d\n",
+                     resource_x, resource_y);
+        ok = false;
+    } else {
+        ok = expect_color(pixels, resource_x + 28, resource_y + 16,
+                          SkColorSetARGB(255, 49, 56, 72),
+                          "stale resource generation skipped") && ok;
+        ok = expect_color(pixels, resource_x + 64 + 28, resource_y + 16,
+                          SkColorSetARGB(255, 44, 176, 132),
+                          "replacement resource generation rendered") && ok;
+    }
+
     const int iterations = configured_iterations();
     const auto render_start = std::chrono::steady_clock::now();
     for (int index = 0; index < iterations; ++index) {
         const std::int32_t repeated = elisa_showcase_skia_render(canvas_handle, font_handle);
         if (repeated != 1) {
             std::fprintf(stderr, "skia showcase: repeated render %d returned status %d\n", index, repeated);
-            return 8;
+            return 10;
         }
     }
     const auto render_finish = std::chrono::steady_clock::now();
@@ -175,11 +223,13 @@ int main(int argc, char** argv) {
     SkPngEncoder::Options options;
     if (!SkPngEncoder::Encode(&stream, pixels, options) || !stream.bytesWritten()) {
         std::fprintf(stderr, "skia showcase: failed to write %s\n", output);
-        return 9;
+        return 11;
     }
-    if (!ok) return 10;
-    std::printf("skia showcase: rendered and verified %s renderer=cpu-raster commands=%d semantics=%d art=%d deferred=%d accent_pixels=%zu probe_x=%d probe_y=%d render_iterations=%d render_total_ns=%lld render_average_ns=%lld\n",
-                output, commands, semantics, art, deferred, accent_pixels, probe_x, probe_y, iterations,
+    if (!ok) return 12;
+    std::printf("skia showcase: rendered and verified %s renderer=cpu-raster commands=%d semantics=%d art=%d deferred=%d resource_deferred=%d generations=%d->%d accent_pixels=%zu probe_x=%d probe_y=%d resource_x=%d resource_y=%d render_iterations=%d render_total_ns=%lld render_average_ns=%lld\n",
+                output, commands, semantics, art, deferred, resource_deferred,
+                generation_before, generation_after, accent_pixels, probe_x, probe_y,
+                resource_x, resource_y, iterations,
                 static_cast<long long>(total_ns), static_cast<long long>(average_ns));
     return 0;
 }

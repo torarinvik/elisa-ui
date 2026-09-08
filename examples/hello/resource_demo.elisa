@@ -65,6 +65,39 @@ module HelloResourceDemo:
             hello_resource_update_view()
 
     public:
+        # Renderer adapters may inspect the logical asset identity without
+        # reaching into this demo's private state. The returned handle is
+        # generation checked by UiResources at every use.
+        def renderer_resource() -> UiResources::ResourceHandle:
+            return hello_resource_asset
+
+        # A host fixture can provide a decoded image after the app has
+        # requested it. Keep the state transition in Elisa so the renderer
+        # never treats a borrowed image pointer as proof that its logical
+        # resource is ready.
+        def renderer_mark_ready() -> bool:
+            return false if not UiResources::resource_is_valid(hello_resource_asset)
+            return true if UiResources::state(hello_resource_asset) == UiResources::State.Ready
+            return false if not UiResources::set_state(hello_resource_asset, UiResources::State.Ready)
+            hello_resource_update_view()
+            return true
+
+        # Exercise replacement semantics for a renderer before replay. The
+        # old generation is failed, then retry() rotates its identity; callers
+        # must replace their handle and bind the new generation.
+        def renderer_replace_ready() -> UiResources::ResourceHandle:
+            return UiResources::resource_invalid() if not UiResources::resource_is_valid(hello_resource_asset)
+            current: UiResources::State = UiResources::state(hello_resource_asset)
+            if current != UiResources::State.Failed:
+                return UiResources::resource_invalid() if not UiResources::fail(hello_resource_asset, UiResources::FailureKind.RetryableTransport)
+            replacement: UiResources::ResourceHandle = UiResources::retry(hello_resource_asset)
+            return UiResources::resource_invalid() if not UiResources::resource_is_valid(replacement)
+            hello_resource_asset <- replacement
+            _ = UiResources::set_intrinsic_size(replacement, 180.0, 48.0)
+            _ = UiResources::set_state(replacement, UiResources::State.Ready)
+            hello_resource_update_view()
+            return replacement
+
         def init(parent: UiHandles::Handle) -> void:
             UiResources::reset()
             panel: UiHandles::Handle = UiHandles::column(parent, 0.0, 6.0, UiCore::Color{r: 0, g: 0, b: 0, a: 0})

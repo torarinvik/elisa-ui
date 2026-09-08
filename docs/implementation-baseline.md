@@ -632,10 +632,14 @@ separate host-enforced security boundary.
   evidence to the shipped hello application: the required real-Skia gate drives
   its public text/input, state, and resource-replacement workflow, then checks
   command/semantic counts, retained custom-art pixels, a PNG snapshot, and
-  repeated frame timing on an 800x680 raster surface. The same application
-  fixture now anchors deferred orange/cyan/magenta artwork to the live content
-  card and checks the overlap pixels, proving deferred work is ordered before,
-  between, and after retained commands rather than being an overlay-only pass.
+  repeated frame timing on an 800x680 raster surface. The host binds a
+  deterministic decoded image; Elisa queues the old resource generation,
+  rotates it through retry, and queues the replacement before replay. Pixel
+  checks require the stale generation to remain the Elisa placeholder and the
+  replacement generation to paint. The same application fixture anchors
+  deferred orange/cyan/magenta artwork to the live content card and checks the
+  overlap pixels, proving deferred work is ordered before, between, and after
+  retained commands rather than being an overlay-only pass.
 - Immediate Skia clip and transform scopes now fail closed at an Elisa-owned
   depth budget. Rejected pushes make no native calls; transform pushes report
   rejection so callers cannot accidentally pop an older scope, while detach

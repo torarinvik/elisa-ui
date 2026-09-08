@@ -66,9 +66,11 @@ The same required gate then runs `scripts/check_showcase_skia.sh`: it drives
 the shipped `examples/hello/app.elisa` public callbacks (focus, UTF-8/IME
 editing, state save/restore, and resource replacement) and verifies that the
 resulting retained custom artwork produces real accent pixels in an 800x680
-SkSurface. Its output adds command, semantic, artwork-pixel, and frame timing
-counts, so a passing renderer check demonstrates an application workflow rather
-than only isolated primitive calls.
+SkSurface. The fixture binds a host-decoded image, proves the stale resource
+generation is skipped, and proves the replacement generation is painted before
+the repeated timing loop. Its output adds command, semantic, artwork-pixel,
+resource-generation, and frame timing counts, so a passing renderer check
+demonstrates an application workflow rather than only isolated primitive calls.
 
 The only supported local escape hatch is explicit and non-passing:
 `ELISA_UI_REQUIRE_REAL_SKIA=0`. It is useful while editing Elisa code on a
