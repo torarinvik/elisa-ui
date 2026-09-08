@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `a59ec98` (`fix(text): track prepend grapheme context`) on branch `work` |
+| elisa-ui revision | `3fa64b1` (`test(skia): verify showcase deferred ordering`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -628,7 +628,10 @@ separate host-enforced security boundary.
   evidence to the shipped hello application: the required real-Skia gate drives
   its public text/input, state, and resource-replacement workflow, then checks
   command/semantic counts, retained custom-art pixels, a PNG snapshot, and
-  repeated frame timing on an 800x680 raster surface.
+  repeated frame timing on an 800x680 raster surface. The same application
+  fixture now anchors deferred orange/cyan/magenta artwork to the live content
+  card and checks the overlap pixels, proving deferred work is ordered before,
+  between, and after retained commands rather than being an overlay-only pass.
 - Immediate Skia clip and transform scopes now fail closed at an Elisa-owned
   depth budget. Rejected pushes make no native calls; transform pushes report
   rejection so callers cannot accidentally pop an older scope, while detach

@@ -342,7 +342,10 @@ set `ELISA_UI_REQUIRE_REAL_SKIA=0` only for a compiler-only edit loop when the
 large SDK is not available. The gate also runs
 `scripts/check_showcase_skia.sh`, which drives the shipped hello application's
 public editing, state, and resource callbacks before checking its retained
-custom artwork and repeated frame timing on a real off-screen SkSurface.
+custom artwork and repeated frame timing on a real off-screen SkSurface. It
+also checks overlapping deferred/retained/deferred pixels anchored to the
+live content card, so the required renderer gate proves general widget order,
+not an overlay-only deferred pass.
 
 The native backend loads a font with SDL_ttf; set `ELISA_UI_FONT` to override
 the default. Text still measures through the platform contract on both
