@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `cf7054b` (`feat: resolve bounded text base direction`) on branch `work` |
+| elisa-ui revision | `dbc9f4d` (`feat: expose text metrics through inspector`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -31,6 +31,10 @@ colors and geometry.
 `UiLocalization::text_direction` now resolves a bounded paragraph base
 direction from the first strong Unicode scalar, with locale fallback for
 neutral-only text; bidi shaping and reordering remain renderer-owned.
+
+`UiInspector::Frame.text_metrics` now carries the active text metric generations
+and bounded query/miss counters, keeping font/scale cache evidence available to
+headless diagnostics.
 
 ## Source and boundary inventory
 
