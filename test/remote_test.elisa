@@ -13,7 +13,7 @@ def check(name: cstr, ok: bool) -> void:
 def main() -> i64:
     UiRemote::reset()
     initial: UiRemote::Snapshot = UiRemote::snapshot()
-    check("remote starts disconnected", initial.state == UiRemote::ConnectionState.Disconnected and initial.generation == 0 and initial.overlay_visible and not initial.selection.accepted)
+    check("remote starts disconnected", initial.state == UiRemote::ConnectionState.Disconnected and initial.generation > 0 and initial.overlay_visible and not initial.selection.accepted)
 
     offer: UiRemote::Offer = UiRemote::Offer{
         typed_commands: true, framebuffer: true, video: true,
@@ -75,6 +75,12 @@ def main() -> i64:
     check("remote rejects unsupported connection", not UiRemote::connect(unsupported, UiRemote::Presentation.Video))
     failed_reconnect <- UiRemote::snapshot()
     check("failed reconnect clears stale presentation and input", failed_reconnect.state == UiRemote::ConnectionState.Disconnected and not failed_reconnect.selection.accepted and not failed_reconnect.input_pending and failed_reconnect.generation != generation_before_failed_reconnect)
+
+    _ = UiRemote::connect(offer, UiRemote::Presentation.TypedCommands)
+    before_reset: u32 = UiRemote::snapshot().generation
+    UiRemote::reset()
+    _ = UiRemote::connect(offer, UiRemote::Presentation.TypedCommands)
+    check("reset cannot revive buffered session packets", UiRemote::snapshot().generation != before_reset and not UiRemote::submit_input_for_generation(before_reset, 1).accepted)
 
     if failures == 0:
         _ = puts("remote: all checks passed")
