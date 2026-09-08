@@ -53,6 +53,16 @@ extend UiSkia:
                 start.r, start.g, start.b, start.a,
                 end.r, end.g, end.b, end.a, axis)
 
+        # Compose the existing bounded rounded-clip and gradient primitives so
+        # custom cards can keep their corners transparent without introducing
+        # a second native shader/path state. The scope is always popped here,
+        # including when the gradient itself rejects malformed input.
+        def fill_rounded_linear_gradient(box: UiCore::Rect, radius: f32, start: UiCore::Color, end: UiCore::Color, horizontal: bool) -> void can[Ui.Draw]:
+            return if canvas_state == 0
+            return if not UiSkia::push_rounded_clip(box, radius)
+            UiSkia::fill_linear_gradient(box, start, end, horizontal)
+            _ = UiSkia::pop_clip()
+
         def fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> void can[Ui.Draw]:
             return if canvas_state == 0 or color.a == 0
             safe_disc: UiCore::Circle = UiSkia::skia_safe_circle(disc)

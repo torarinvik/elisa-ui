@@ -42,7 +42,7 @@ def check(name: cstr, ok: bool) -> void:
     _ = puts(name)
 
 def main() -> i64:
-    check("Skia ABI version is packed in Elisa", UiSkia::abi_version() == 0x000100 and elisa_skia_abi_version() == 0x000100)
+    check("Skia ABI version is packed in Elisa", UiSkia::abi_version() == 0x000200 and elisa_skia_abi_version() == 0x000200)
     check("backing scale stays in Elisa", UiCore::backing_scale(320.0, 200.0, 640.0, 300.0) == 1.5 and UiCore::backing_scale(320.0, 200.0, 0.0, 300.0) == 0.0)
     UiCapabilities::use_appkit_canvas()
     check("custom profile starts with CoreGraphics fallback", UiCapabilities::renderer() == UiCapabilities::Renderer.CoreGraphics)
@@ -285,6 +285,12 @@ def main() -> i64:
     check("rounded clip restores through the typed pop", UiSkia::pop_clip() and UiSkia::is_balanced())
     UiSkia::detach()
     check("rounded clip scope detaches cleanly", skia_test_save_count() == 2 and skia_test_restore_count() == 2)
+    skia_test_reset()
+    UiSkia::attach(26)
+    UiSkia::fill_rounded_linear_gradient(UiCore::Rect(1.0, 2.0, 8.0, 9.0), 100.0, UiCore::rgb(20, 40, 80), UiCore::rgb(100, 180, 220), true)
+    check("rounded gradients compose Elisa scopes", skia_test_rounded_clip_count() == 1 and skia_test_gradient_count() == 1 and skia_test_save_count() == 2 and skia_test_restore_count() == 1 and UiSkia::is_balanced())
+    UiSkia::detach()
+    check("rounded gradient scope detaches cleanly", skia_test_restore_count() == 2)
     UiCore::begin_frame()
     UiCore::clear(UiCore::rgb(4, 5, 6))
     check("one-shot status export reports complete", skia_render_frame_status_export(31) == UiSkia::RenderStatus.Complete.i32() and not UiSkia::is_attached())

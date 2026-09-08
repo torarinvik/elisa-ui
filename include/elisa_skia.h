@@ -16,7 +16,7 @@
 /* Packed as 0xMMmmpp (major, minor, patch). Hosts should check this before
  * submitting an opaque canvas or renderer object to the Skia boundary. */
 #define ELISA_SKIA_ABI_VERSION_MAJOR 0u
-#define ELISA_SKIA_ABI_VERSION_MINOR 1u
+#define ELISA_SKIA_ABI_VERSION_MINOR 2u
 #define ELISA_SKIA_ABI_VERSION_PATCH 0u
 #define ELISA_SKIA_ABI_VERSION \
     ((ELISA_SKIA_ABI_VERSION_MAJOR << 16) | \

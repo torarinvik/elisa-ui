@@ -109,6 +109,11 @@ box in Elisa. The bridge only receives the bounded rectangle and radius and
 clips with Skia's `clipRRect`; it does not choose a visual default or retain a
 native path object.
 
+`UiSkia::fill_rounded_linear_gradient()` composes that scope with the existing
+two-stop gradient helper. It is intentionally an Elisa-only convenience: the
+clip is opened, the validated gradient is issued, and the clip is closed in one
+bounded call, so custom controls cannot leak a native save or shader lifetime.
+
 `UiSkia::snapshot()` is a read-only diagnostic record for attachment/generation,
 save depth, clip/transform depth, and active image/font bindings;
 `UiSkia::is_balanced()` provides the corresponding invariant check. These

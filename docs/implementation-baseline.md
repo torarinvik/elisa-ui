@@ -513,6 +513,10 @@ separate host-enforced security boundary.
   still restores every accepted scope. Retained replay remains bounded
   separately by `UiCore::MAX_COMMANDS` so empty-clip command balance is
   unchanged.
+- Rounded custom clips now use the same typed save/pop ledger, with Elisa
+  clamping the radius before the bridge calls Skia's `clipRRect`. The Skia ABI
+  minor version is `2` for this additive entry point, and rounded gradients are
+  composed entirely in Elisa from the clip and two-stop gradient helpers.
 - The narrow Skia declarations are now published in `include/elisa_skia.h` and
   included by both the production C++ bridge and headless recorder, so host ABI
   drift is caught at compile time without widening the Elisa boundary. The
