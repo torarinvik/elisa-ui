@@ -163,6 +163,31 @@ module UiTextMeasureLayout:
                 cursor <- cursor + cluster_length
             return end
 
+        # Return the local x coordinate for a requested byte offset. Offsets
+        # that land inside a grapheme are normalized to that cluster's leading
+        # edge, matching hit testing and preventing caret rendering from
+        # splitting a combining sequence or emoji.
+        def caret_x_for_line(text: sview, index: usize, byte_offset: usize, size: f32, width_provider: fn(sview, f32) -> f32) -> f32:
+            safe_text: sview = UiCore::bounded_text(text)
+            return 0.0 if safe_text.len <= 0 or index >= measured_line_count
+            range: LineRange = line_at(index)
+            source_length: usize = safe_text.len.usize()
+            return 0.0 if range.offset > source_length or range.length > source_length - range.offset
+            end: usize = range.offset + range.length
+            cursor: mutable usize = range.offset
+            accumulated: mutable f32 = 0.0
+            target: mutable usize = byte_offset if byte_offset >= range.offset else range.offset
+            target <- end if target > end
+            while cursor < end:
+                return accumulated if target <= cursor
+                cluster_end: usize = UiText::next_grapheme(safe_text, cursor)
+                cluster_length: usize = cluster_end - cursor if cluster_end > cursor and cluster_end <= end else 1
+                cluster: sview = sview(&safe_text.data[cursor], 0, cluster_length.i64())
+                return accumulated if target < cluster_end
+                accumulated <- UiCore::bounded_extent(accumulated + UiCore::bounded_extent(width_provider(cluster, size)))
+                cursor <- cursor + cluster_length
+            return accumulated
+
     private:
         global mutable measured_line_offsets: usize[MAX_LINES] = zeroed
         global mutable measured_line_lengths: usize[MAX_LINES] = zeroed

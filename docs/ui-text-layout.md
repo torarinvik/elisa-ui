@@ -46,3 +46,6 @@ and advances only grapheme clusters, so combining marks and multi-codepoint
 emoji remain indivisible for caret and selection callers.
 The backend-neutral `UiTextMeasureLayout::hit_test()` facade provides the same
 contract through the active platform metric hook for non-Skia painters.
+`UiTextMeasureLayout::caret_x()` and `UiSkia::caret_x_text_line()` perform the
+inverse mapping for a source offset, flooring offsets inside a grapheme to its
+leading edge before summing measured cluster widths.

@@ -600,6 +600,9 @@ separate host-enforced security boundary.
   caret/selection coordinates cannot split combining marks or emoji clusters.
   The same operation is available through the backend-neutral
   `UiTextMeasureLayout::hit_test()` facade.
+- The measured text pipeline now also maps byte offsets back to caret x
+  coordinates, flooring offsets inside a grapheme to its leading edge through
+  the active backend metric provider.
 - Skia rounded-corner radii now cross the FFI after Elisa geometry
   normalization; the C++ bridge forwards them to `SkRRect` without a duplicate
   radius fallback and rejects malformed direct values.
