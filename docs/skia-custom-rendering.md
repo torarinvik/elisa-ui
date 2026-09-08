@@ -137,12 +137,15 @@ Skia object or native save scope can outlive the frame.
 The required `test/showcase_skia_test.elisa` fixture exercises this contract
 through the shipped `examples/hello/app.elisa`: it resolves the retained
 content-card handle, queues an orange deferred badge, emits an overlapping
-retained divider, and queues a magenta deferred circle. It also binds a
+retained divider, and queues a magenta deferred circle. It drives the public
+editable-field and validation callbacks through an invalid-to-valid edit before
+the frame is replayed. It also binds a
 deterministic host-decoded image to the app's logical resource, queues the old
 generation, rotates it through the public retry API, and queues the replacement
 generation before replay. The real Skia host checks the three overlap pixels,
-the skipped stale-generation placeholder, the rendered replacement image, and
-ink inside the edited text field's live retained bounds; an overlay-only
+the skipped stale-generation placeholder, the rendered replacement image, ink
+inside the edited text field's live retained bounds, and the final validation
+status label; an overlay-only
 renderer, a renderer that ignores generation identity, or a renderer that
 never paints the edited text fails the application-level gate.
 

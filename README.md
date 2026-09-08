@@ -142,6 +142,8 @@ because a module member's symbol carries its module and those names cannot move.
   stable field bindings, explicit pending/valid/invalid/offline states, bounded
   messages, owner-scoped teardown, and revision-checked completions preserve
   edits when validation tasks finish out of order.
+  The hello showcase uses the same public API for an invalid-to-valid project
+  name edit, keeping error presentation in the retained tree.
 - **Widgets** ([src/widgets/ui_widget.elisa](src/widgets/ui_widget.elisa)) — a
   retained tree in one fixed array linked by index, box layout, hit testing, and
   hover/press/focus/disabled/selected state. Buttons, radio buttons, check boxes,

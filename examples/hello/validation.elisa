@@ -1,0 +1,72 @@
+# Application-facing validation for the editable project name.
+#
+# The host may replace this immediate resolution with an asynchronous task;
+# the stable field binding and revision token stay in UiValidation. The demo
+# keeps only the view-facing status label and never stores a raw widget index.
+
+include "../../src/widgets/ui_validation.elisa"
+include "../../src/widgets/ui_handles.elisa"
+
+module HelloValidation:
+    private:
+        const PROJECT_FIELD_ID: u32 = 1001
+        const VALIDATION_OWNER: u32 = 1
+        global mutable project_field: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
+        global mutable status_label: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
+        global mutable record: UiValidation::Handle = UiValidation::invalid()
+        global mutable dark_theme: bool = true
+
+        def color(r: u8, g: u8, b: u8) -> UiCore::Color:
+            return UiCore::rgb(r, g, b)
+
+        def update_status() -> void:
+            return if not UiHandles::is_valid(status_label) or not UiValidation::is_valid(record)
+            current: UiValidation::Status = UiValidation::status(record)
+            muted: UiCore::Color = color(148, 158, 180) if dark_theme else color(91, 103, 126)
+            if current == UiValidation::Status.Validating:
+                UiHandles::set_text(status_label, "Checking project name…", 12.0, muted)
+            elif current == UiValidation::Status.Valid:
+                valid_color: UiCore::Color = color(96, 196, 142) if dark_theme else color(42, 132, 88)
+                UiHandles::set_text(status_label, "Project name looks good.", 12.0, valid_color)
+            elif current == UiValidation::Status.Invalid:
+                error_color: UiCore::Color = color(232, 132, 118) if dark_theme else color(180, 68, 58)
+                UiHandles::set_text(status_label, "Project name needs at least 3 characters.", 12.0, error_color)
+            elif current == UiValidation::Status.Unavailable:
+                offline_color: UiCore::Color = color(232, 188, 132) if dark_theme else color(166, 108, 42)
+                UiHandles::set_text(status_label, "Project name could not be checked offline.", 12.0, offline_color)
+            else:
+                UiHandles::set_text(status_label, "Project name requires at least 3 characters.", 12.0, muted)
+
+    public:
+        def init(parent: UiHandles::Handle, field: UiHandles::Handle) -> void:
+            project_field <- field
+            record <- UiValidation::bind_owned(PROJECT_FIELD_ID, VALIDATION_OWNER)
+            status_label <- UiHandles::label(parent, "Project name requires at least 3 characters.", 12.0, color(148, 158, 180))
+            UiHandles::set_help(status_label, "Validation status for the editable project name")
+
+        def apply_theme(dark: bool) -> void:
+            dark_theme <- dark
+            update_status()
+
+        # Resolve synchronously for the showcase. A production application can
+        # retain the token returned by UiValidation::begin and resolve it from
+        # a host task without changing this public view contract.
+        def validate() -> void:
+            return if not UiHandles::is_valid(project_field) or not UiValidation::is_valid(record)
+            token: u32 = UiValidation::begin(record)
+            return if token == 0
+            value: sview = UiHandles::text_value(project_field)
+            if value.len >= 3:
+                _ = UiValidation::accept(record, token)
+            else:
+                _ = UiValidation::reject(record, token, "Project name needs at least 3 characters.")
+            update_status()
+
+        def status() -> UiValidation::Status:
+            return UiValidation::status(record)
+
+        def dispose() -> void:
+            _ = UiValidation::dispose_owner(VALIDATION_OWNER)
+            record <- UiValidation::invalid()
+            project_field <- UiHandles::invalid()
+            status_label <- UiHandles::invalid()

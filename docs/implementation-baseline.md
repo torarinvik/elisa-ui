@@ -616,8 +616,9 @@ separate host-enforced security boundary.
 - The real showcase now has an application-level headless workflow in
   `test/showcase_workflow_test.elisa`: it builds the shared `examples/hello`
   tree, verifies retained custom vector commands and semantics, drives pointer
-  focus plus UTF-8/IME editing, saves/restores application state, and replaces
-  a failed resource generation before the next frame.
+  focus plus UTF-8/IME editing and an invalid-to-valid validation edit, saves/
+  restores application state, and replaces a failed resource generation before
+  the next frame.
 - `test/unicode_conformance_test.elisa` carries focused UAX #29 regressions,
   while `scripts/check_unicode_conformance.sh` generates a bounded Elisa
   fixture from all 1,187 rows of the pinned Unicode 15.1.0
@@ -632,7 +633,7 @@ separate host-enforced security boundary.
   digests, making the evidence reproducible beyond one process lifetime.
 - `test/showcase_skia_test.elisa` and `test/showcase_skia_host.cpp` extend that
   evidence to the shipped hello application: the required real-Skia gate drives
-  its public text/input, state, and resource-replacement workflow, then checks
+  its public text/input, validation, state, and resource-replacement workflow, then checks
   command/semantic counts, retained custom-art pixels, a PNG snapshot, and
   repeated frame timing on an 800x680 raster surface. The host binds a
   deterministic decoded image; Elisa queues the old resource generation,
@@ -640,7 +641,8 @@ separate host-enforced security boundary.
   checks require the stale generation to remain the Elisa placeholder and the
   replacement generation to paint and requires ink from the edited text field
   inside its live retained bounds, including a selected grapheme-safe prefix
-  painted with the active accent. The same application fixture anchors
+  painted with the active accent, plus the final validation status label. The
+  same application fixture anchors
   deferred orange/cyan/magenta artwork to the live content card and checks the
   overlap pixels, proving deferred work is ordered before, between, and after
   retained commands rather than being an overlay-only pass.

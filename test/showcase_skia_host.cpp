@@ -34,6 +34,10 @@ extern "C" std::int32_t elisa_showcase_skia_text_field_x();
 extern "C" std::int32_t elisa_showcase_skia_text_field_y();
 extern "C" std::int32_t elisa_showcase_skia_text_field_width();
 extern "C" std::int32_t elisa_showcase_skia_text_field_height();
+extern "C" std::int32_t elisa_showcase_skia_validation_x();
+extern "C" std::int32_t elisa_showcase_skia_validation_y();
+extern "C" std::int32_t elisa_showcase_skia_validation_width();
+extern "C" std::int32_t elisa_showcase_skia_validation_height();
 extern "C" std::int32_t elisa_showcase_skia_bind_resource_image(std::size_t image);
 extern "C" std::int32_t elisa_showcase_skia_resource_probe_count();
 extern "C" std::int32_t elisa_showcase_skia_resource_probe_x();
@@ -197,6 +201,21 @@ int main(int argc, char** argv) {
                          selection_pixels);
             ok = false;
         }
+    }
+    const int validation_x = elisa_showcase_skia_validation_x();
+    const int validation_y = elisa_showcase_skia_validation_y();
+    const int validation_width = elisa_showcase_skia_validation_width();
+    const int validation_height = elisa_showcase_skia_validation_height();
+    if (validation_x < 0 || validation_y < 0 || validation_width <= 24 || validation_height <= 8 ||
+        validation_x + validation_width >= width || validation_y + validation_height >= height) {
+        std::fprintf(stderr, "skia showcase: validation status escaped retained bounds x=%d y=%d width=%d height=%d\n",
+                     validation_x, validation_y, validation_width, validation_height);
+        ok = false;
+    } else {
+        ok = expect_ink(pixels, SkColorSetARGB(255, 238, 241, 247),
+                        validation_x + 4, validation_y + 2,
+                        validation_x + validation_width - 4, validation_y + validation_height - 2,
+                        "validation status") && ok;
     }
     const std::size_t accent_pixels = count_color(
         pixels, SkColorSetARGB(255, 204, 76, 92), 40, 180, width - 40, height - 20);
