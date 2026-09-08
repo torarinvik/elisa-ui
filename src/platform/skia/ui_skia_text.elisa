@@ -31,9 +31,31 @@ extend UiSkia:
         def text_line_height(size: f32) -> f32:
             return UiCore::bounded_extent(elisa_skia_text_line_height(UiSkia::safe_font_size(size)))
 
+        # Replay may borrow a specific typeface for the frame. Expose one
+        # metric surface for direct custom controls so layout and drawing use
+        # the same borrowed font whenever that scope is active.
+        def active_measure_text_width(text: sview, size: f32) -> f32:
+            return UiSkia::measure_text_width(text, size) if skia_frame_font == 0
+            return measure_text_width_with_handle(skia_frame_font, text, size)
+
+        def active_font_ascent(size: f32) -> f32:
+            return UiSkia::font_ascent(size) if skia_frame_font == 0
+            return UiCore::bounded_extent(elisa_skia_font_ascent_with_font(skia_frame_font, UiSkia::safe_font_size(size)))
+
+        def active_text_line_height(size: f32) -> f32:
+            return UiSkia::text_line_height(size) if skia_frame_font == 0
+            return UiCore::bounded_extent(elisa_skia_text_line_height_with_font(skia_frame_font, UiSkia::safe_font_size(size)))
+
     private:
         const MIN_FONT_SIZE: f32 = 1.0
 
         def safe_font_size(size: f32) -> f32:
             safe: f32 = UiCore::bounded_extent(size)
             return MIN_FONT_SIZE if safe < MIN_FONT_SIZE else safe
+
+        def measure_text_width_with_handle(font: usize, text: sview, size: f32) -> f32:
+            return 0.0 if font == 0 or text.len <= 0 or text.data == null or not UiCore::is_finite(size)
+            safe_text: sview = UiCore::bounded_text(text)
+            return 0.0 if safe_text.len <= 0 or safe_text.data == null
+            pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
+            return UiCore::bounded_extent(elisa_skia_measure_text_width_with_font(font, pointer, safe_text.len.usize(), UiSkia::safe_font_size(size)))

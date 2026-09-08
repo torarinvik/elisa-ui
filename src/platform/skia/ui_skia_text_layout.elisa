@@ -7,7 +7,7 @@
 include "../../widgets/ui_text_measure_layout_core.elisa"
 
 def ui_skia_measure_layout_width(text: sview, size: f32) -> f32:
-    return UiSkia::measure_text_width(text, size)
+    return UiSkia::active_measure_text_width(text, size)
 
 extend UiSkia:
     public:
@@ -16,3 +16,25 @@ extend UiSkia:
         # bounded by UiTextMeasureLayout::MAX_LINES.
         def layout_text(text: sview, max_width: f32, size: f32) -> UiTextMeasureLayout::Layout:
             return UiTextMeasureLayout::layout_with_measure(text, max_width, size, ui_skia_measure_layout_width)
+
+        # Draw a wrapped text block directly into a bounded rectangle. Layout
+        # happens first, so a caller can inspect overflow even when the canvas
+        # is unavailable or the clip scope is rejected. Text remains borrowed
+        # from the caller; each line crosses the narrow FFI exactly once.
+        def draw_text_block(text: sview, box: UiCore::Rect, size: f32, color: UiCore::Color) -> UiTextMeasureLayout::Layout can[Ui.Draw, Ui.Text]:
+            planned: UiTextMeasureLayout::Layout = UiSkia::layout_text(text, box.size.width, size)
+            return planned if canvas_state == 0 or color.a == 0
+            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+            return planned if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
+            return planned if not UiSkia::push_clip(safe_box)
+            ascent: f32 = UiCore::bounded_extent(UiSkia::active_font_ascent(planned.text_size))
+            line_step: mutable f32 = UiCore::bounded_extent(UiSkia::active_text_line_height(planned.text_size))
+            line_step <- planned.text_size if line_step <= 0.0
+            first_baseline: f32 = UiCore::bounded_coordinate(safe_box.origin.y + ascent)
+            for index in 0..<planned.line_count:
+                line: sview = UiTextMeasureLayout::line_view(text, index)
+                continue if line.len <= 0
+                line_y: f32 = UiCore::bounded_coordinate(first_baseline + line_step * index.f32())
+                UiSkia::draw_text_run(UiCore::TextRun(UiCore::Vec2(safe_box.origin.x, line_y), planned.text_size, line), color)
+            _ = UiSkia::pop_clip()
+            return planned
