@@ -10,6 +10,7 @@ RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
 SKIA_LIB="${SKIA_LIB:-$SKIA_OUT/libskia.a}"
 
 bash "$ROOT/scripts/check_toolchain.sh"
+bash "$ROOT/scripts/verify_skia_pin.sh"
 [[ -f "$SKIA_LIB" ]] || { echo "skia offscreen: no Skia library at $SKIA_LIB" >&2; exit 2; }
 [[ -f "$RUNTIME" ]] || { echo "skia offscreen: no runtime object at $RUNTIME" >&2; exit 2; }
 

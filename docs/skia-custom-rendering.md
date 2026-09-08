@@ -15,7 +15,10 @@ surface is supplied; that fallback is not the native-control path:
 
 The real renderer check is a required gate. `scripts/check_skia.sh` validates
 the lockfile revision, compiles the narrow bridge, and runs the headless CPU
-raster fixture when `SKIA_ROOT` and its pinned `libskia.a` are present;
+raster fixture when `SKIA_ROOT` and its pinned `libskia.a` are present. The
+off-screen and showcase scripts repeat the same clean-checkout verification
+through `scripts/verify_skia_pin.sh`, so invoking either fixture directly
+cannot silently use a different or dirty Skia source tree;
 `scripts/run_tests.sh` invokes that gate by default. Set
 `ELISA_UI_REQUIRE_REAL_SKIA=0` only for an explicitly incomplete compiler-only
 edit loop on a machine without the checkout; that mode is not a renderer pass.

@@ -4,7 +4,6 @@ set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
-SKIA_LOCK="$ROOT/third_party/skia.lock"
 require_real="${ELISA_UI_REQUIRE_REAL_SKIA:-1}"
 
 [[ -x "$STAGE1/bin/elisac-stage1" ]] || {
@@ -44,20 +43,7 @@ if rg -n 'safe_radius|radius[[:space:]]*>[[:space:]]*0\.0f' "$ROOT/src/platform/
 fi
 
 if [[ -n "${SKIA_ROOT:-}" ]]; then
-  [[ -f "$SKIA_ROOT/include/core/SkCanvas.h" ]] || {
-    echo "skia: SKIA_ROOT has no include/core/SkCanvas.h: $SKIA_ROOT" >&2
-    exit 2
-  }
-  [[ -f "$SKIA_LOCK" ]] || {
-    echo "skia: missing dependency pin $SKIA_LOCK" >&2
-    exit 2
-  }
-  expected_revision="$(awk -F= '$1 == "revision" { print $2; exit }' "$SKIA_LOCK")"
-  actual_revision="$(git -C "$SKIA_ROOT" rev-parse HEAD 2>/dev/null || true)"
-  if [[ -z "$actual_revision" || "$actual_revision" != "$expected_revision" ]]; then
-    echo "skia: SKIA_ROOT must be pinned to $expected_revision (found ${actual_revision:-unknown})" >&2
-    exit 2
-  fi
+  bash "$ROOT/scripts/verify_skia_pin.sh"
   cxx="${CXX:-clang++}"
   skia_cxxflags=()
   if [[ -n "${SKIA_CXXFLAGS:-}" ]]; then
