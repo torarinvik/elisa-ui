@@ -81,6 +81,12 @@ custom controls never construct or retain Skia C++ objects.
 surface fill. Elisa owns the colors, orientation, transparency, and rectangle
 validation; the C++ boundary only creates the Skia shader and draws the rect.
 
+For custom geometry, `UiSkia::empty_polygon()`, `polygon_add()`, and
+`fill_convex_polygon()` keep up to 32 Elisa-owned points and fan-triangulate
+them through the existing fill primitive. This provides a bounded path-like
+escape hatch without exposing `SkPath` or allocating native path state; callers
+must supply a convex, consistently wound polygon.
+
 Both immediate helpers and retained replay cull fully transparent fills,
 strokes, and text in Elisa before crossing the FFI; `Clear` remains explicit
 because clearing to transparent is observable surface state.

@@ -1,0 +1,35 @@
+# Elisa-owned convex polygon helper for custom Skia controls.
+#
+# The polygon is deliberately bounded and value-based. Elisa validates and
+# triangulates it into the existing primitive path; Skia receives no path
+# object, allocation, or lifetime responsibility. Callers must provide points
+# in winding order and keep the polygon convex.
+
+include "../../core/ui_core.elisa"
+
+extend UiSkia:
+    public:
+        const MAX_POLYGON_POINTS: usize = 32
+
+        struct ConvexPolygon:
+            count: mutable usize
+            points: mutable UiCore::Vec2[MAX_POLYGON_POINTS]
+
+        def empty_polygon() -> ConvexPolygon:
+            return ConvexPolygon{count: 0, points: zeroed}
+
+        def polygon_add(polygon: mutable ConvexPolygon&, point: UiCore::Vec2) -> bool:
+            return false if polygon.count >= UiSkia::MAX_POLYGON_POINTS
+            polygon.points[polygon.count] <- UiCore::Vec2(
+                UiCore::bounded_coordinate(point.x), UiCore::bounded_coordinate(point.y))
+            polygon.count <- polygon.count + 1
+            return true
+
+        def fill_convex_polygon(polygon: ConvexPolygon&, color: UiCore::Color) -> void can[Ui.Draw]:
+            return if canvas_state == 0 or color.a == 0 or polygon.count < 3
+            origin: UiCore::Vec2 = polygon.points[0]
+            for index in 1..<(polygon.count - 1):
+                UiSkia::fill_triangle(UiCore::Triangle{
+                    a: origin,
+                    b: polygon.points[index],
+                    c: polygon.points[index + 1]}, color)
