@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `564da82` (`fix: scale choice markers for high contrast`) on branch `work` |
+| elisa-ui revision | `8fd4874` (`test: cover adaptive accessible button sizing`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -53,6 +53,8 @@ affordances behind; the underlying preference and theme setters retain their
 documented invalidation semantics.
 High-contrast geometry also enlarges checkbox and radio markers so choice
 controls retain visible affordances at the selected contrast level.
+The typed accessible-button fixture also verifies the combined high-contrast
+and 2x text-scale target path without opening a window.
 
 ## Source and boundary inventory
 
