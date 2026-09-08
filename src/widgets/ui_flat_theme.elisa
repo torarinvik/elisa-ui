@@ -26,6 +26,25 @@ extend UiFlat:
             set_theme(current)
             return true
 
+        # Apply shared geometry tokens to framework visual controls. Per-widget
+        # declared frames remain untouched; only painter affordance tokens are
+        # updated, so applications retain explicit layout ownership.
+        def apply_metrics(metrics: UiTheme::Metrics) -> bool:
+            current: mutable Theme = theme()
+            current.focus_inset <- UiConstraints::bounded(metrics.focus_ring_width)
+            current.text_horizontal_padding <- UiConstraints::bounded(metrics.spacing_unit / 2.0)
+            current.text_vertical_padding <- UiConstraints::bounded(metrics.spacing_unit / 2.0)
+            current.slider_track_height <- UiConstraints::bounded(metrics.focus_ring_width * 2.0)
+            current.choice_text_space <- UiConstraints::bounded(metrics.spacing_unit)
+            return false if themes_equal(theme(), current)
+            set_theme(current)
+            return true
+
+        def apply_system_metrics(preferences: UiTheme::Preferences, system_high_contrast: bool) -> bool:
+            preferences_changed: bool = UiTheme::set_preferences(preferences)
+            metrics_changed: bool = apply_metrics(UiTheme::scaled_metrics(UiTheme::current_preferences(), system_high_contrast))
+            return preferences_changed or metrics_changed
+
         # Resolve and apply in one call when the host supplies system facts.
         # The resolved palette remains inspectable through UiTheme and the
         # framework theme remains overrideable through set_theme.
