@@ -5,6 +5,7 @@ set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
 SKIA_LOCK="$ROOT/third_party/skia.lock"
+require_real="${ELISA_UI_REQUIRE_REAL_SKIA:-1}"
 
 [[ -x "$STAGE1/bin/elisac-stage1" ]] || {
   echo "no stage1 product at $STAGE1/bin/elisac-stage1" >&2
@@ -79,9 +80,17 @@ if [[ -n "${SKIA_ROOT:-}" ]]; then
   skia_out="${SKIA_OUT:-$SKIA_ROOT/out/elisa}"
   if [[ -f "$skia_out/libskia.a" ]]; then
     SKIA_ROOT="$SKIA_ROOT" SKIA_OUT="$skia_out" bash "$ROOT/scripts/check_skia_offscreen.sh"
+  elif [[ "$require_real" == "1" ]]; then
+    echo "skia: required CPU-raster archive is missing at $skia_out/libskia.a" >&2
+    echo "skia: build the pinned checkout from third_party/skia.lock or set ELISA_UI_REQUIRE_REAL_SKIA=0 for a compiler-only edit loop" >&2
+    exit 2
   else
     echo "skia: pinned headers compile; off-screen fixture deferred until $skia_out/libskia.a exists"
   fi
+elif [[ "$require_real" == "1" ]]; then
+  echo "skia: real renderer checks are required; set SKIA_ROOT to the checkout pinned in third_party/skia.lock" >&2
+  echo "skia: set ELISA_UI_REQUIRE_REAL_SKIA=0 only for a compiler-only edit loop" >&2
+  exit 2
 else
   echo "skia: Elisa painter compiles; C++ shim deferred until SKIA_ROOT is configured"
 fi

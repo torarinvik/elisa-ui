@@ -27,9 +27,11 @@ extend UiAppKitCanvas:
             UiMetrics::begin_frame(UiCore::frame_time())
             UiCore::begin_frame()
             # The borrowed SkCanvas is created after app_frame. Rich Skia-only
-            # primitives therefore use this bounded Elisa queue and are
-            # replayed after the portable retained batch is available.
+            # primitives therefore use this bounded Elisa queue; each record
+            # captures its retained command anchor so replay can preserve the
+            # application's full draw order.
             UiSkia::begin_deferred_frame()
+            previous_font: usize = UiSkia::begin_frame_font(font)
             frame_generation: u32 = UiLifecycle::generation()
             app_frame()
             same_session: bool = UiLifecycle::generation() == frame_generation
@@ -45,6 +47,7 @@ extend UiAppKitCanvas:
                 UiAppKitCanvas::schedule_next_frame(UiCore::frame_delay())
             UiAppKitCanvas::end_native_frame()
             UiSkia::end_deferred_frame()
+            UiSkia::end_frame_font(previous_font)
             if same_session:
                 UiMetrics::finish_frame(UiAppKitCanvas::monotonic_time())
             objc_autoreleasePoolPop(autorelease_pool)

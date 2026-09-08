@@ -13,6 +13,13 @@ surface is supplied; that fallback is not the native-control path:
   painter specialization; `skia_canvas_shim.cpp` is the narrow C ABI that
   accepts an opaque borrowed `SkCanvas*` and exposes primitive operations.
 
+The real renderer check is a required gate. `scripts/check_skia.sh` validates
+the lockfile revision, compiles the narrow bridge, and runs the headless CPU
+raster fixture when `SKIA_ROOT` and its pinned `libskia.a` are present;
+`scripts/run_tests.sh` invokes that gate by default. Set
+`ELISA_UI_REQUIRE_REAL_SKIA=0` only for an explicitly incomplete compiler-only
+edit loop on a machine without the checkout; that mode is not a renderer pass.
+
 The FFI deliberately does not expose `SkPaint`, `SkFont`, `SkPath`, or any
 other C++ object to Elisa. A host can call the one-shot exported
 `elisa_skia_render_frame(canvas)` boundary, which attaches one borrowed canvas,
@@ -100,11 +107,16 @@ AppKit creates its temporary SkCanvas after the application frame callback.
 Skia-specific controls that need richer primitives during that callback can use
 the explicit `UiSkia::begin_deferred_frame()` / `end_deferred_frame()` scope
 and the `defer_*` helpers in `ui_skia_deferred.elisa`. Elisa copies bounded
-command values (including text) into a fixed side-band queue, replays them after
-the portable retained batch, and reports queue overflow through the same
-`CommandOverflow` status. Surface loss cancels the queue. The hosted
-six-command protocol remains unchanged, and no Skia object or native save scope
-can outlive the frame.
+command values (including text) into a fixed side-band queue and records the
+retained command count at each enqueue. Replay consumes one ordered stream: it
+replays retained commands up to the next anchor, then the deferred record, and
+continues until both streams are exhausted. Deferred painting is therefore not
+overlay-only; a custom control can appear before, between, or after retained
+widgets. Deferred clip/transform scopes also remain active across intervening
+retained commands, so their ordering follows the same frame sequence.
+Queue overflow reports through the same `CommandOverflow` status. Surface loss
+cancels the queue. The hosted six-command protocol remains unchanged, and no
+Skia object or native save scope can outlive the frame.
 
 `UiSkia::fill_linear_gradient()` adds a bounded two-stop horizontal or vertical
 surface fill. Elisa owns the colors, orientation, transparency, and rectangle

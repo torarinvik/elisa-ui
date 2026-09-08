@@ -2,8 +2,10 @@
 #
 # AppKit prepares `app_frame` before it can borrow a SkCanvas. This bounded
 # side-band queue lets a Skia-specific custom control issue richer primitives
-# during that callback without widening UiCore's six-command hosted ABI. The
-# queue copies text into Elisa storage and never retains host pointers.
+# during that callback without widening UiCore's six-command hosted ABI. Each
+# record stores the retained command count at enqueue time, so replay can
+# interleave custom work with ordinary widgets. The queue copies text into
+# Elisa storage and never retains host pointers.
 
 include "../../core/ui_core.elisa"
 
@@ -73,7 +75,7 @@ extend UiSkia:
             safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
             return false if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
             return UiSkia::enqueue_deferred(DeferredCommand{
-                kind: DeferredKind.FillRoundedRect, box: safe_box, color: color, secondary: UiCore::Color{r: 0, g: 0, b: 0, a: 0},
+                kind: DeferredKind.FillRoundedRect, retained_anchor: UiCore::command_count(), box: safe_box, color: color, secondary: UiCore::Color{r: 0, g: 0, b: 0, a: 0},
                 circle: UiCore::Circle{center: UiCore::Vec2(0.0, 0.0), radius: 0.0},
                 triangle: UiCore::Triangle{a: UiCore::Vec2(0.0, 0.0), b: UiCore::Vec2(0.0, 0.0), c: UiCore::Vec2(0.0, 0.0)},
                 line: UiCore::Line{from_point: UiCore::Vec2(0.0, 0.0), to_point: UiCore::Vec2(0.0, 0.0)},
@@ -233,6 +235,10 @@ extend UiSkia:
     private:
         struct DeferredCommand:
             kind: mutable DeferredKind
+            # Number of retained commands already emitted when this deferred
+            # command was queued. The anchor is Elisa-owned ordering metadata;
+            # it never crosses the Skia FFI.
+            retained_anchor: mutable usize
             box: mutable UiCore::Rect
             circle: mutable UiCore::Circle
             triangle: mutable UiCore::Triangle
@@ -262,7 +268,7 @@ extend UiSkia:
         global mutable deferred_frame_active: bool = false
         def empty_deferred(kind: UiSkia::DeferredKind) -> DeferredCommand:
             return DeferredCommand{
-                kind: kind, box: UiCore::Rect(0.0, 0.0, 0.0, 0.0),
+                kind: kind, retained_anchor: 0, box: UiCore::Rect(0.0, 0.0, 0.0, 0.0),
                 circle: UiCore::Circle{center: UiCore::Vec2(0.0, 0.0), radius: 0.0},
                 triangle: UiCore::Triangle{a: UiCore::Vec2(0.0, 0.0), b: UiCore::Vec2(0.0, 0.0), c: UiCore::Vec2(0.0, 0.0)},
                 line: UiCore::Line{from_point: UiCore::Vec2(0.0, 0.0), to_point: UiCore::Vec2(0.0, 0.0)},
@@ -278,6 +284,7 @@ extend UiSkia:
             if deferred_count_state >= MAX_DEFERRED_COMMANDS:
                 deferred_overflow_state <- true
                 return false
+            command.retained_anchor <- UiCore::command_count()
             deferred_commands[deferred_count_state] <- command
             deferred_count_state <- deferred_count_state + 1
             return true
@@ -290,9 +297,26 @@ extend UiSkia:
             return true
 
         def replay_deferred() -> void can[Ui.Draw, Ui.Text]:
-            return if not deferred_frame_active or canvas_state == 0
+            return if canvas_state == 0
+            if not deferred_frame_active:
+                UiPaint::replay_range[SkiaPainter](0, UiCore::command_count())
+                return
+            cursor: mutable usize = 0
+            total: usize = UiCore::command_count()
             for index in 0..<deferred_count_state:
                 command: DeferredCommand = deferred_commands[index]
+                anchor: mutable usize = command.retained_anchor if command.retained_anchor < total else total
+                anchor <- cursor if anchor < cursor else anchor
+                UiPaint::replay_range[SkiaPainter](cursor, anchor)
+                cursor <- anchor
+                UiSkia::replay_deferred_command(command)
+            UiPaint::replay_range[SkiaPainter](cursor, total)
+
+        private:
+            # Replay one deferred record. Keeping the discriminant match in the
+            # deferred module makes the ordering loop above small and leaves all
+            # primitive/resource policy in the existing Elisa helpers.
+            def replay_deferred_command(command: DeferredCommand) -> void can[Ui.Draw, Ui.Text]:
                 match command.kind:
                     UiSkia::DeferredKind.FillRoundedRect:
                         UiSkia::fill_rounded_rect(command.box, command.radius, command.color)

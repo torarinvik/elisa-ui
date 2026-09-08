@@ -1,0 +1,69 @@
+# Bounded UAX #29 extended-grapheme conformance corpus.
+#
+# The rows are copied from the categories exercised by Unicode's
+# GraphemeBreakTest data: combining marks, emoji ZWJ/modifier sequences,
+# regional indicators, Indic linker context, Hangul joins, CRLF, and a short
+# right-to-left sample. This is intentionally data-driven rather than another
+# collection of one-off helper assertions. Full script shaping and bidi order
+# remain the host font/shaper contract; these rows verify the framework's byte
+# and caret boundaries before a host is involved.
+
+include "../src/core/ui_core.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable failures: i32 = 0
+
+struct GraphemeCase:
+    text: sview
+    first: usize
+    second: usize
+    third: usize
+    fourth: usize
+    count: usize
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def expected_boundary(case: GraphemeCase, index: usize) -> usize:
+    return case.first if index == 0
+    return case.second if index == 1
+    return case.third if index == 2
+    return case.fourth if index == 3
+    return 0
+
+def check_case(case: GraphemeCase) -> void:
+    position: mutable usize = 0
+    for index in 0..<case.count:
+        next: usize = UiText::next_grapheme(case.text, position)
+        check("Unicode grapheme boundary matches conformance row", next == expected_boundary(case, index) and next > position)
+        position <- next
+    check("Unicode grapheme row terminates at its byte length", position == case.text.len.usize())
+
+def main() -> i64:
+    # Expected offsets are UTF-8 byte positions, the unit used by the editor's
+    # internal caret storage. Each row is a complete boundary sequence.
+    cases: GraphemeCase[8] = zeroed
+    cases[0] <- GraphemeCase{text: "a̐éö̲", first: 3, second: 6, third: 11, fourth: 0, count: 3}
+    cases[1] <- GraphemeCase{text: "👩‍💻", first: 11, second: 0, third: 0, fourth: 0, count: 1}
+    cases[2] <- GraphemeCase{text: "🇺🇸", first: 8, second: 0, third: 0, fourth: 0, count: 1}
+    cases[3] <- GraphemeCase{text: "👍🏽", first: 8, second: 0, third: 0, fourth: 0, count: 1}
+    cases[4] <- GraphemeCase{text: "क्‍ष", first: 12, second: 0, third: 0, fourth: 0, count: 1}
+    cases[5] <- GraphemeCase{text: "각", first: 9, second: 0, third: 0, fourth: 0, count: 1}
+    cases[6] <- GraphemeCase{text: "A\r\nB", first: 1, second: 3, third: 4, fourth: 0, count: 3}
+    cases[7] <- GraphemeCase{text: "אA", first: 2, second: 3, third: 0, fourth: 0, count: 2}
+    for index in 0..<8:
+        check_case(cases[index])
+
+    malformed: mutable u8[4] = zeroed
+    malformed[0] <- 0xE2
+    malformed[1] <- 65
+    malformed[2] <- 0
+    check("Unicode malformed input recovers one byte at a time", UiText::next_grapheme(sview(&malformed[0], 0, 3), 0) == 1 and UiText::next_grapheme(sview(&malformed[0], 0, 3), 1) == 2)
+    if failures == 0:
+        _ = puts("unicode conformance: all rows passed")
+        return 0
+    _ = puts("unicode conformance: FAILURES above")
+    return 1

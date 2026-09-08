@@ -47,6 +47,15 @@ static float last_image_source_x;
 static float last_image_source_y;
 static float last_image_source_width;
 static float last_image_source_height;
+static int event_log[512];
+static int event_total;
+
+static void record_event(int kind) {
+    if (event_total < (int)(sizeof(event_log) / sizeof(event_log[0]))) {
+        event_log[event_total] = kind;
+        event_total += 1;
+    }
+}
 
 void elisa_skia_canvas_save(size_t canvas) { if (canvas != 0) save_count += 1; }
 void elisa_skia_canvas_restore(size_t canvas) { if (canvas != 0) restore_count += 1; }
@@ -79,7 +88,7 @@ void elisa_skia_canvas_fill_round_rect(size_t canvas, float x, float y, float wi
                                        uint8_t green, uint8_t blue, uint8_t alpha) {
     (void)x; (void)y; (void)width; (void)height; (void)radius;
     (void)red; (void)green; (void)blue; (void)alpha;
-    if (canvas != 0) { round_rect_count += 1; last_round_radius = radius; }
+    if (canvas != 0) { round_rect_count += 1; last_round_radius = radius; record_event(1); }
 }
 void elisa_skia_canvas_stroke_round_rect(size_t canvas, float x, float y, float width,
                                          float height, float radius, float stroke_width, uint8_t red,
@@ -157,7 +166,7 @@ void elisa_skia_canvas_fill_circle(size_t canvas, float x, float y, float radius
                                    uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha) {
     (void)x; (void)y; (void)radius;
     (void)red; (void)green; (void)blue; (void)alpha;
-    if (canvas != 0) circle_count += 1;
+    if (canvas != 0) { circle_count += 1; record_event(2); }
 }
 void elisa_skia_canvas_stroke_circle(size_t canvas, float x, float y, float radius, float stroke_width,
                                      uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha) {
@@ -170,7 +179,7 @@ void elisa_skia_canvas_fill_triangle(size_t canvas, float ax, float ay, float bx
                                      uint8_t blue, uint8_t alpha) {
     (void)ax; (void)ay; (void)bx; (void)by; (void)cx; (void)cy;
     (void)red; (void)green; (void)blue; (void)alpha;
-    if (canvas != 0) triangle_count += 1;
+    if (canvas != 0) { triangle_count += 1; record_event(3); }
 }
 void elisa_skia_canvas_fill_line(size_t canvas, float x0, float y0, float x1, float y1,
                                  float stroke_width, uint8_t red, uint8_t green, uint8_t blue,
@@ -205,6 +214,7 @@ void skia_test_reset(void) {
     clear_count = 0; round_rect_count = 0; stroke_round_rect_count = 0; shadow_round_rect_count = 0; gradient_count = 0; image_count = 0; circle_count = 0; stroke_circle_count = 0; triangle_count = 0;
     last_shadow_offset_x = 0.0f; last_shadow_offset_y = 0.0f; last_shadow_blur = 0.0f; last_shadow_red = 0; last_shadow_green = 0; last_shadow_blue = 0;
     line_count = 0; text_count = 0; measure_width_count = 0; last_round_radius = 0.0f; last_clip_radius = 0.0f; last_stroke_width = 0.0f; last_circle_stroke_width = 0.0f; last_line_width = 0.0f; last_text_size = 0.0f; last_image_x = 0.0f; last_image_y = 0.0f; last_image_width = 0.0f; last_image_height = 0.0f; last_image_source_x = 0.0f; last_image_source_y = 0.0f; last_image_source_width = 0.0f; last_image_source_height = 0.0f; last_image_sampling = 1; last_gradient_horizontal = 0;
+    event_total = 0;
 }
 int skia_test_save_count(void) { return save_count; }
 int skia_test_restore_count(void) { return restore_count; }
@@ -247,3 +257,5 @@ float skia_test_last_image_source_x(void) { return last_image_source_x; }
 float skia_test_last_image_source_y(void) { return last_image_source_y; }
 float skia_test_last_image_source_width(void) { return last_image_source_width; }
 float skia_test_last_image_source_height(void) { return last_image_source_height; }
+int skia_test_event_count(void) { return event_total; }
+int skia_test_event_at(int index) { return index >= 0 && index < event_total ? event_log[index] : 0; }

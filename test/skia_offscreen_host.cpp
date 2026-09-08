@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <chrono>
 #include <limits>
 
 #include "include/elisa_skia.h"
@@ -134,6 +135,24 @@ int main(int argc, char** argv) {
     ok = expect_color_near(pixels, 219, 130, SkColorSetARGB(255, 100, 180, 220), 2, "gradient end") && ok;
     ok = expect_ink(pixels, 15, 158, 110, 198, SkColorSetARGB(255, 18, 24, 32), "text") && ok;
 
+    int iterations = 16;
+    if (const char* configured = std::getenv("ELISA_UI_SKIA_RENDER_ITERATIONS")) {
+        const long parsed = std::strtol(configured, nullptr, 10);
+        if (parsed > 0 && parsed <= 10000) iterations = static_cast<int>(parsed);
+    }
+    const auto render_start = std::chrono::steady_clock::now();
+    for (int index = 0; index < iterations; ++index) {
+        const std::int32_t repeated_status = elisa_skia_offscreen_render(
+            reinterpret_cast<std::size_t>(canvas), reinterpret_cast<std::size_t>(typeface.get()));
+        if (repeated_status != 1) {
+            std::fprintf(stderr, "skia offscreen: repeated render %d returned status %d\n", index, repeated_status);
+            return 8;
+        }
+    }
+    const auto render_finish = std::chrono::steady_clock::now();
+    const auto render_total_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(render_finish - render_start).count();
+    const auto render_average_ns = render_total_ns / iterations;
+
     SkFILEWStream stream(output);
     SkPngEncoder::Options options;
     if (!SkPngEncoder::Encode(&stream, pixels, options) || !stream.bytesWritten()) {
@@ -141,6 +160,8 @@ int main(int argc, char** argv) {
         return 5;
     }
     if (!ok) return 6;
-    std::printf("skia offscreen: rendered and verified %s\n", output);
+    std::printf("skia offscreen: rendered and verified %s render_iterations=%d render_total_ns=%lld render_average_ns=%lld\n",
+                output, iterations, static_cast<long long>(render_total_ns),
+                static_cast<long long>(render_average_ns));
     return 0;
 }

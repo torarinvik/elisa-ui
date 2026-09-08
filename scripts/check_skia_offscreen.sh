@@ -32,13 +32,14 @@ clang++ -Wl,-dead_strip -o "$HOST_BINARY" "${link_inputs[@]}" \
   -framework CoreFoundation -framework CoreGraphics -framework CoreText -framework Foundation -lz
 
 snapshot="${ELISA_UI_SKIA_SNAPSHOT:-}"
+render_iterations="${ELISA_UI_SKIA_RENDER_ITERATIONS:-16}"
 temporary_snapshot=""
 if [[ -z "$snapshot" ]]; then
   temporary_dir="$(mktemp -d "${TMPDIR:-/tmp}/elisa-ui-skia.XXXXXX")"
   temporary_snapshot="$temporary_dir/frame.png"
   snapshot="$temporary_snapshot"
 fi
-"$HOST_BINARY" "$snapshot"
+ELISA_UI_SKIA_RENDER_ITERATIONS="$render_iterations" "$HOST_BINARY" "$snapshot"
 if [[ -n "$temporary_snapshot" ]]; then
   rm -rf "${temporary_snapshot%/*}"
 fi

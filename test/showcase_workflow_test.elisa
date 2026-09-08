@@ -1,0 +1,115 @@
+# Headless integration of the real examples/hello showcase.
+#
+# This is intentionally an application-level test: it includes the same
+# app.elisa shipped by the native, AppKit canvas, Skia canvas, and WasmBrowser
+# entry points, then drives only the public callback contract. No window or
+# renderer surface is created here.
+
+include "../examples/hello/app.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable failures: i32 = 0
+
+def ui_measure_text_width(text: sview, size: f32) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size
+
+def ui_font_ascent(size: f32) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def widget_with_kind(kind: UiConst::WidgetKind) -> UiHandles::Handle:
+    for index in 0..<UiHandles::count():
+        handle: UiHandles::Handle = UiHandles::from_index(index)
+        if UiHandles::widget(handle) is row:
+            return handle if row.kind == kind
+    return UiHandles::invalid()
+
+def has_widget_text(expected: sview) -> bool:
+    for index in 0..<UiHandles::count():
+        handle: UiHandles::Handle = UiHandles::from_index(index)
+        if UiHandles::widget(handle) is row:
+            return true if row.text == expected
+    return false
+
+def main() -> i64:
+    UiCore::set_viewport(800.0, 680.0)
+    app_init()
+    UiCore::begin_frame()
+    app_frame()
+
+    check("showcase builds a retained application tree", UiHandles::count() > 20 and UiCore::command_count() > 20)
+    check("showcase emits custom vector art inside the retained frame", custom_art_command_count() >= 6)
+    check("showcase publishes semantic controls", UiCore::accessibility_count() > 10)
+
+    field: UiHandles::Handle = widget_with_kind(UiConst::WidgetKind.TextField)
+    check("showcase exposes an editable text field", UiHandles::is_valid(field))
+    if UiHandles::widget(field) is field_row:
+        centre: UiCore::Vec2 = UiCore::Vec2(field_row.x + field_row.width / 2.0, field_row.y + field_row.height / 2.0)
+        app_event(UiCore::PointerEvent.Down(centre, UiCore::PointerButton.Primary.i32()))
+        app_event(UiCore::PointerEvent.Up(centre, UiCore::PointerButton.Primary.i32()))
+        check("showcase pointer flow focuses the text field", UiHandles::is_focused(field))
+        app_text_input(" • café 👋")
+        check("showcase commits UTF-8 text through its public callback", UiHandles::text_value(field) == "Canvas study • café 👋")
+        app_text_editing("候補", 0, 1)
+        check("showcase retains an IME marked range", UiHandles::marked_length(field) > 0)
+        app_text_input("候")
+        check("showcase commits composition without losing Unicode", UiHandles::text_value(field) == "Canvas study • café 👋候補")
+    else:
+        check("showcase text field geometry is readable", false)
+
+    # The palette, theme, save, and restore paths are all application callbacks;
+    # they must leave the same retained tree paintable after state changes.
+    app_event(UiCore::KeyEvent.Down(UiCore::Key.Digit1))
+    app_event(UiCore::KeyEvent.Down(UiCore::Key.T))
+    app_event(UiCore::KeyEvent.Down(UiCore::Key.P))
+    app_event(UiCore::KeyEvent.Down(UiCore::Key.R))
+    UiCore::begin_frame()
+    app_frame()
+    check("showcase state callbacks rebuild a paintable frame", UiCore::command_count() > 20 and UiCore::accessibility_count() > 10)
+
+    # F/Y exercise failure followed by a fresh resource generation. Rendering
+    # the replacement frame immediately catches stale presentation state that
+    # a helper-only resource test cannot see.
+    app_event(UiCore::KeyEvent.Down(UiCore::Key.F))
+    check("showcase exposes a retryable resource failure", has_widget_text("Preview failed — retry or keep working offline."))
+    app_event(UiCore::KeyEvent.Down(UiCore::Key.Y))
+    check("showcase replaces failed resources before replay", has_widget_text("Optional preview loading…"))
+    UiCore::begin_frame()
+    app_frame()
+    check("replacement resource frame remains semantically complete", UiCore::command_count() > 20 and UiCore::accessibility_count() > 10)
+
+    return failures.i64()
+
+def custom_art_command_count() -> i32:
+    count: mutable i32 = 0
+    for index in 0..<UiCore::command_count():
+        match UiCore::command_at(index):
+            UiCore::Command.FillLine(segment, color):
+                count <- count + 1 if color.a > 0
+            UiCore::Command.FillCircle(disc, color):
+                count <- count + 1 if color.a > 0
+            UiCore::Command.FillTriangle(tri, color):
+                count <- count + 1 if color.a > 0
+            _:
+                pass
+    return count

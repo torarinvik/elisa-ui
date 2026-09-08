@@ -108,10 +108,16 @@ module UiPaint:
             # Text needs both: it rasterizes (Draw) through font metrics (Text).
             def draw_text(run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]
 
-        # Replay this frame's commands through one painter: the only place the
-        # command enum is matched for painting.
-        def replay[P: Painter]() -> void can[Ui.Draw, Ui.Text]:
-            for index in 0..<UiCore::command_count():
+        # Replay a bounded slice of this frame's commands through one painter.
+        # Custom backends use the slice form when they interleave Elisa-owned
+        # deferred work with retained commands; ordinary backends still call
+        # `replay`, which covers the complete batch.
+        def replay_range[P: Painter](start: usize, end: usize) -> void can[Ui.Draw, Ui.Text]:
+            total: usize = UiCore::command_count()
+            first: usize = start if start < total else total
+            last: usize = end if end < total else total
+            return if first >= last
+            for index in first..<last:
                 clipped: bool = UiCore::command_has_clip(index)
                 P.push_clip(UiCore::command_clip_at(index)) if clipped
                 match UiCore::command_at(index):
@@ -128,3 +134,8 @@ module UiPaint:
                     UiCore::Command.DrawText(run, color):
                         P.draw_text(run, color)
                 P.pop_clip() if clipped
+
+        # Replay this frame's commands through one painter: the only place the
+        # command enum is matched for painting.
+        def replay[P: Painter]() -> void can[Ui.Draw, Ui.Text]:
+            UiPaint::replay_range[P](0, UiCore::command_count())

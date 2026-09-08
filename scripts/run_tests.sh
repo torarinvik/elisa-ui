@@ -51,12 +51,20 @@ if ! bash "$ROOT/scripts/check_appkit_canvas.sh"; then
   status=1
 fi
 
-# When a pinned Skia checkout is supplied, include the optional AppKit/Skia
-# compositor in the same headless regression run. Without SKIA_ROOT the
-# ordinary suite remains independent of the multi-gigabyte SDK.
-if [[ -n "${SKIA_ROOT:-}" ]]; then
-  if ! bash "$ROOT/scripts/check_appkit_skia.sh"; then
+# The real custom renderer is a required gate by default. Developers may use
+# ELISA_UI_REQUIRE_REAL_SKIA=0 for a fast compiler-only edit loop, but that
+# explicit opt-out is not a passing renderer check and must not be used by CI.
+if [[ "${ELISA_UI_REQUIRE_REAL_SKIA:-1}" == "1" ]]; then
+  if ! bash "$ROOT/scripts/check_skia.sh"; then
+    echo "FAIL required skia renderer"
+    status=1
+  elif ! bash "$ROOT/scripts/check_appkit_skia.sh"; then
     echo "FAIL appkit skia"
+    status=1
+  fi
+elif [[ -n "${SKIA_ROOT:-}" ]]; then
+  if ! ELISA_UI_REQUIRE_REAL_SKIA=0 bash "$ROOT/scripts/check_skia.sh"; then
+    echo "FAIL skia compiler check"
     status=1
   fi
 fi

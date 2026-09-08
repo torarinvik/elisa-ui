@@ -47,6 +47,8 @@ extern skia_test_last_image_source_x() -> f32
 extern skia_test_last_image_source_y() -> f32
 extern skia_test_last_image_source_width() -> f32
 extern skia_test_last_image_source_height() -> f32
+extern skia_test_event_count() -> i32
+extern skia_test_event_at(index: i32) -> i32
 
 global mutable failures: i32 = 0
 
@@ -552,6 +554,22 @@ def main() -> i64:
     check("deferred Skia scope rejects malformed primitives", not UiSkia::defer_fill_rounded_rect(UiCore::Rect(8.0, 9.0, 0.0, 20.0), 6.0, UiCore::rgb(20, 30, 40)) and not UiSkia::defer_image(0, UiCore::Rect(8.0, 9.0, 40.0, 20.0), 255) and UiSkia::deferred_count() == 3)
     UiSkia::attach(36)
     check("deferred Skia primitives replay after retained commands", UiSkia::render_status() == UiSkia::RenderStatus.Complete and skia_test_round_rect_count() == 1 and skia_test_gradient_count() == 1 and skia_test_text_count() == 1)
+    UiSkia::detach()
+    UiSkia::end_deferred_frame()
+
+    # Deferred commands carry the retained command count from their enqueue
+    # point. This makes custom painting a true ordered stream: a deferred
+    # command can sit before, between, or after retained widgets instead of
+    # being forced into an overlay band.
+    UiCore::begin_frame()
+    skia_test_reset()
+    UiSkia::begin_deferred_frame()
+    _ = UiSkia::defer_fill_rounded_rect(UiCore::Rect(8.0, 9.0, 20.0, 12.0), 3.0, UiCore::rgb(20, 30, 40))
+    UiCore::fill(UiCore::Triangle{a: UiCore::Vec2(40.0, 10.0), b: UiCore::Vec2(60.0, 10.0), c: UiCore::Vec2(50.0, 30.0)}, UiCore::rgb(50, 60, 70))
+    _ = UiSkia::defer_fill_circle(UiCore::Circle{center: UiCore::Vec2(80.0, 20.0), radius: 5.0}, UiCore::rgb(80, 90, 100))
+    UiSkia::attach(42)
+    ordered_status: UiSkia::RenderStatus = UiSkia::render_status()
+    check("deferred painting preserves general widget ordering", ordered_status == UiSkia::RenderStatus.Complete and skia_test_event_count() == 3 and skia_test_event_at(0) == 1 and skia_test_event_at(1) == 3 and skia_test_event_at(2) == 2)
     UiSkia::detach()
     UiSkia::end_deferred_frame()
     check("deferred Skia scope clears copied state", UiSkia::deferred_count() == 0 and not UiSkia::deferred_overflowed() and not UiSkia::snapshot().deferred_active and UiSkia::snapshot().deferred_scope_depth == 0)

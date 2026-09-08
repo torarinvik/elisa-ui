@@ -48,3 +48,18 @@ not claim GPU upload latency, display-vsync pacing, battery/energy use, mobile
 thermal behavior, or hosted transport cost. Those require a real Skia GPU
 surface, device hosts, or WasmBrowser/remote transport fixtures and remain
 separate validation work.
+
+## Required renderer evidence
+
+The portable benchmark is not a substitute for raster proof. The default
+`scripts/run_tests.sh` gate now requires `scripts/check_skia.sh`, which in turn
+requires the exact checkout and CPU-raster archive pinned by
+`third_party/skia.lock`. `scripts/check_skia_offscreen.sh` renders the real
+Elisa painter into a headless SkSurface, verifies pixels and text, and repeats
+the complete frame through the same public export. Its output includes
+`render_iterations`, `render_total_ns`, and `render_average_ns`, providing a
+reproducible CPU-rendering datapoint alongside the retained-tree timings.
+
+The only supported local escape hatch is explicit and non-passing:
+`ELISA_UI_REQUIRE_REAL_SKIA=0`. It is useful while editing Elisa code on a
+machine without the pinned SDK, but CI and release checks must leave it unset.

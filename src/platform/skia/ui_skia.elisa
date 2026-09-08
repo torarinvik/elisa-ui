@@ -141,11 +141,9 @@ module UiSkia:
         # longer-lived generation contract is needed.
         def render_status_with_font(font: usize) -> RenderStatus can[Ui.Draw, Ui.Text]:
             return RenderStatus.SkippedNoSurface if canvas_state == 0
-            previous_font: usize = skia_frame_font
-            skia_frame_font <- font
-            UiPaint::replay[SkiaPainter]()
+            previous_font: usize = UiSkia::begin_frame_font(font)
             UiSkia::replay_deferred()
-            skia_frame_font <- previous_font
+            UiSkia::end_frame_font(previous_font)
             return RenderStatus.CommandOverflow if UiCore::command_overflowed() or UiSkia::deferred_overflowed()
             return RenderStatus.Complete
 
@@ -250,6 +248,22 @@ module UiSkia:
                 UiSkia::draw_text_run(run, color)
 
     private:
+        # Keep a host-provided typeface active while Elisa builds and replays a
+        # custom frame. The scope is private so widget code never receives or
+        # stores an opaque SkTypeface handle; AppKit uses it only to make
+        # pre-surface measurement and post-surface drawing agree.
+        def begin_frame_font(font: usize) -> usize:
+            previous: usize = skia_frame_font
+            if previous == font:
+                skia_frame_font <- font
+                return previous
+            UiSkia::clear_metric_cache() if previous != font
+            skia_frame_font <- font
+            return previous
+
+        def end_frame_font(previous: usize) -> void:
+            skia_frame_font <- previous
+
         global mutable canvas_state: usize = 0
         global mutable skia_clip_depth: usize = 0
         global mutable skia_transform_depth: usize = 0
