@@ -25,7 +25,8 @@ fallback policy therefore stay with the renderer while line ownership remains
 in Elisa.
 
 For immediate custom painting, `UiSkia::draw_text_block` consumes the same
-layout and clips each line to its destination rectangle. It returns the layout
-record even when the surface, color, or clip is unavailable, making overflow
-and line counts observable without coupling application state to a native
-canvas.
+layout and clips each line to its destination rectangle. The positioned variant
+adds explicit start/center/end and top/center/bottom placement without moving
+baseline policy into a host. Both return the layout record even when the
+surface, color, or clip is unavailable, making overflow and line counts
+observable without coupling application state to a native canvas.
