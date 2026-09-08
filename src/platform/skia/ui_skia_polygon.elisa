@@ -33,3 +33,15 @@ extend UiSkia:
                     a: origin,
                     b: polygon.points[index],
                     c: polygon.points[index + 1]}, color)
+
+        # Polygon outlines stay entirely in Elisa by reusing the same bounded
+        # line primitive as every other custom stroke. The closing edge is
+        # explicit, so callers do not need to duplicate their first point.
+        def stroke_convex_polygon(polygon: ConvexPolygon&, stroke_width: f32, color: UiCore::Color) -> void can[Ui.Draw]:
+            return if canvas_state == 0 or color.a == 0 or polygon.count < 2
+            return if UiCore::bounded_extent(stroke_width) <= 0.0
+            for index in 0..<polygon.count:
+                next: usize = 0 if index + 1 >= polygon.count else index + 1
+                UiSkia::stroke_line(
+                    UiCore::Line{from_point: polygon.points[index], to_point: polygon.points[next]},
+                    stroke_width, color)

@@ -287,6 +287,8 @@ orientation, alpha, and destination geometry.
 Convex custom polygons are bounded to 32 points and fan-triangulated in Elisa
 through the existing triangle primitive, so no native path object or lifetime
 enters the custom backend.
+Their outlines are now closed in Elisa by reusing the validated line primitive;
+no additional native path state is introduced.
 Custom controls can also push a rounded clip through the same bounded typed
 scope ledger; Elisa clamps its radius and the bridge forwards only the resulting
 rectangle/radius to Skia's `clipRRect`.
