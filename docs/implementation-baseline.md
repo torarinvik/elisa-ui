@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `156c989` (`feat(resources): release hidden owner demand`) on branch `work` |
+| elisa-ui revision | `9ea400f` (`feat(resources): combine presentation demand requests`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -727,6 +727,12 @@ separate host-enforced security boundary.
   geometry, independent progress visibility and retry affordances. Kind-specific
   defaults and all presentation decisions remain in Elisa; hosts only resolve
   verified resource data into renderer objects. Coverage lives in
+  `test/resource_presentation_test.elisa`.
+- `UiResourcePresentation` also exposes combined request-and-demand helpers for
+  visible assets, records demand state/priority in each presentation snapshot,
+  and clears only the generation's visibility hint without cancelling the
+  logical resource. Repeated helpers coalesce by identifier and update the
+  owner/priority in place; invalid keys remain neutral. Coverage lives in
   `test/resource_presentation_test.elisa`.
 - `UiFeatureView` is the optional-code counterpart to resource presentation:
   it records a bounded `(feature, interface, package)` identity, requires a
