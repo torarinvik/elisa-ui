@@ -354,6 +354,11 @@ def main() -> i64:
     check("rounded gradients compose Elisa scopes", skia_test_rounded_clip_count() == 1 and skia_test_gradient_count() == 1 and skia_test_save_count() == 2 and skia_test_restore_count() == 1 and UiSkia::is_balanced())
     UiSkia::detach()
     check("rounded gradient scope detaches cleanly", skia_test_restore_count() == 2)
+    skia_test_reset()
+    UiSkia::attach(27)
+    UiSkia::draw_shadow_rounded_rect(UiCore::Rect(1.0, 2.0, 8.0, 9.0), 100.0, 1.0, 2.0, 3.0, 180)
+    check("custom shadow helper keeps effect policy in Elisa", skia_test_shadow_round_rect_count() == 1 and skia_test_last_shadow_offset_x() == 1.0 and skia_test_last_shadow_offset_y() == 2.0 and skia_test_last_shadow_blur() == 3.0)
+    UiSkia::detach()
     UiCore::begin_frame()
     UiCore::clear(UiCore::rgb(4, 5, 6))
     check("one-shot status export reports complete", skia_render_frame_status_export(31) == UiSkia::RenderStatus.Complete.i32() and not UiSkia::is_attached())
@@ -425,6 +430,16 @@ def main() -> i64:
     UiSkia::detach()
     UiSkia::end_deferred_frame()
     check("deferred Skia scope clears copied state", UiSkia::deferred_count() == 0 and not UiSkia::deferred_overflowed())
+
+    UiCore::begin_frame()
+    skia_test_reset()
+    UiSkia::begin_deferred_frame()
+    check("deferred Skia effects accept rounded composition", UiSkia::defer_fill_rounded_linear_gradient(UiCore::Rect(8.0, 9.0, 40.0, 20.0), 6.0, UiCore::rgb(20, 30, 40), UiCore::rgb(90, 100, 110), true) and UiSkia::defer_shadow_rounded_rect(UiCore::Rect(8.0, 9.0, 40.0, 20.0), 6.0, 0.0, 2.0, 5.0, 100) and UiSkia::deferred_count() == 2)
+    check("deferred Skia effects reject empty geometry", not UiSkia::defer_fill_rounded_linear_gradient(UiCore::Rect(8.0, 9.0, 0.0, 20.0), 6.0, UiCore::rgb(20, 30, 40), UiCore::rgb(90, 100, 110), true) and not UiSkia::defer_shadow_rounded_rect(UiCore::Rect(8.0, 9.0, 40.0, 20.0), 6.0, 0.0, 2.0, 5.0, 0) and UiSkia::deferred_count() == 2)
+    UiSkia::attach(38)
+    check("deferred Skia effects replay through existing primitives", UiSkia::render_status() == UiSkia::RenderStatus.Complete and skia_test_gradient_count() == 1 and skia_test_rounded_clip_count() == 1 and skia_test_shadow_round_rect_count() == 1)
+    UiSkia::detach()
+    UiSkia::end_deferred_frame()
 
     UiSkia::begin_deferred_frame()
     accepted_deferred: usize =

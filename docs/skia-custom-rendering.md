@@ -142,6 +142,12 @@ two-stop gradient helper. It is intentionally an Elisa-only convenience: the
 clip is opened, the validated gradient is issued, and the clip is closed in one
 bounded call, so custom controls cannot leak a native save or shader lifetime.
 
+The deferred API has matching `defer_fill_rounded_linear_gradient()` and
+`defer_shadow_rounded_rect()` helpers. Rounded gradients replay through the
+same temporary clip scope as immediate drawing, while shadows carry explicit
+offset, blur, radius, and alpha values in the Elisa queue; neither operation
+adds a native object or an implicit style default.
+
 `UiSkia::snapshot()` is a read-only diagnostic record for attachment/generation,
 save depth, clip/transform depth, and active image/font bindings;
 `UiSkia::is_balanced()` provides the corresponding invariant check. These

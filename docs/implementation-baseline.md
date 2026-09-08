@@ -490,6 +490,10 @@ separate host-enforced security boundary.
   state is explicit (`hit`, accumulated x, or floor offset), so every walk is
   bounded even when a hostile text view or metric provider fails to make
   progress.
+- Deferred Skia callback drawing now has parity for rounded gradients and
+  rounded-rectangle shadows. Both helpers retain explicit Elisa geometry/effect
+  policy and replay through the existing clip, gradient, and shadow primitives;
+  no additional C/Objective-C state or hosted command shape is required.
 - The shared event queue now rejects typed key, pointer-button, and gamepad
   ordinals that normalize to `Event.None`, instead of reporting a successful
   enqueue for a silently discarded no-op. The queue retains its existing

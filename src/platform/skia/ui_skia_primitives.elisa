@@ -63,6 +63,23 @@ extend UiSkia:
             UiSkia::fill_linear_gradient(box, start, end, horizontal)
             _ = UiSkia::pop_clip()
 
+        # Keep shadow geometry and effect bounds in Elisa for both immediate
+        # controls and deferred AppKit callback drawing. Skia receives only the
+        # already-normalized rounded surface and explicit effect parameters.
+        def draw_shadow_rounded_rect(box: UiCore::Rect, radius: f32, offset_x: f32, offset_y: f32, blur: f32, alpha: u8) -> void can[Ui.Draw]:
+            return if canvas_state == 0 or alpha == 0
+            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+            return if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
+            safe_radius: f32 = UiSkia::skia_safe_radius(safe_box, radius)
+            safe_offset_x: f32 = UiCore::bounded_coordinate(offset_x)
+            safe_offset_y: f32 = UiCore::bounded_coordinate(offset_y)
+            safe_blur: f32 = UiCore::bounded_extent(blur)
+            elisa_skia_canvas_shadow_round_rect(
+                canvas_state,
+                safe_box.origin.x, safe_box.origin.y,
+                safe_box.size.width, safe_box.size.height,
+                safe_radius, safe_offset_x, safe_offset_y, safe_blur, alpha)
+
         def fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> void can[Ui.Draw]:
             return if canvas_state == 0 or color.a == 0
             safe_disc: UiCore::Circle = UiSkia::skia_safe_circle(disc)
