@@ -344,7 +344,8 @@ large SDK is not available. The gate also runs
 public editing, state, and resource callbacks before checking its retained
 custom artwork and repeated frame timing on a real off-screen SkSurface. It
 binds a host-decoded image and checks stale-versus-replacement resource
-generations before replay. It also checks overlapping deferred/retained/deferred
+generations before replay, plus rasterized ink from the edited text field. It
+also checks overlapping deferred/retained/deferred
 pixels anchored to the live content card, so the required renderer gate proves
 general widget order, not an overlay-only deferred pass.
 

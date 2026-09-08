@@ -135,9 +135,10 @@ retained divider, and queues a magenta deferred circle. It also binds a
 deterministic host-decoded image to the app's logical resource, queues the old
 generation, rotates it through the public retry API, and queues the replacement
 generation before replay. The real Skia host checks the three overlap pixels,
-the skipped stale-generation placeholder, and the rendered replacement image;
-an overlay-only renderer or a renderer that ignores generation identity fails
-the application-level gate.
+the skipped stale-generation placeholder, the rendered replacement image, and
+ink inside the edited text field's live retained bounds; an overlay-only
+renderer, a renderer that ignores generation identity, or a renderer that
+never paints the edited text fails the application-level gate.
 
 `UiSkia::fill_linear_gradient()` adds a bounded two-stop horizontal or vertical
 surface fill. Elisa owns the colors, orientation, transparency, and rectangle

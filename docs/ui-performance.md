@@ -69,7 +69,7 @@ resulting retained custom artwork produces real accent pixels in an 800x680
 SkSurface. The fixture binds a host-decoded image, proves the stale resource
 generation is skipped, and proves the replacement generation is painted before
 the repeated timing loop. Its output adds command, semantic, artwork-pixel,
-resource-generation, and frame timing counts, so a passing renderer check
+resource-generation, edited-text-ink, and frame timing counts, so a passing renderer check
 demonstrates an application workflow rather than only isolated primitive calls.
 
 The only supported local escape hatch is explicit and non-passing:

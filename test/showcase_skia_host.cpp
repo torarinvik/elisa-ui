@@ -30,6 +30,10 @@ extern "C" std::int32_t elisa_showcase_skia_art_count();
 extern "C" std::int32_t elisa_showcase_skia_deferred_count();
 extern "C" std::int32_t elisa_showcase_skia_probe_x();
 extern "C" std::int32_t elisa_showcase_skia_probe_y();
+extern "C" std::int32_t elisa_showcase_skia_text_field_x();
+extern "C" std::int32_t elisa_showcase_skia_text_field_y();
+extern "C" std::int32_t elisa_showcase_skia_text_field_width();
+extern "C" std::int32_t elisa_showcase_skia_text_field_height();
 extern "C" std::int32_t elisa_showcase_skia_bind_resource_image(std::size_t image);
 extern "C" std::int32_t elisa_showcase_skia_resource_probe_count();
 extern "C" std::int32_t elisa_showcase_skia_resource_probe_x();
@@ -155,6 +159,21 @@ int main(int argc, char** argv) {
     ok = expect_color(pixels, 0, 0, SkColorSetARGB(255, 226, 231, 241), "light-theme background") && ok;
     ok = expect_ink(pixels, SkColorSetARGB(255, 238, 241, 247),
                     36, 18, 360, 58, "showcase title text") && ok;
+    const int field_x = elisa_showcase_skia_text_field_x();
+    const int field_y = elisa_showcase_skia_text_field_y();
+    const int field_width = elisa_showcase_skia_text_field_width();
+    const int field_height = elisa_showcase_skia_text_field_height();
+    if (field_x < 0 || field_y < 0 || field_width <= 16 || field_height <= 12 ||
+        field_x + field_width >= width || field_y + field_height >= height) {
+        std::fprintf(stderr, "skia showcase: edited text field escaped retained bounds x=%d y=%d width=%d height=%d\n",
+                     field_x, field_y, field_width, field_height);
+        ok = false;
+    } else {
+        ok = expect_ink(pixels, SkColorSetARGB(255, 250, 251, 254),
+                        field_x + 8, field_y + 6,
+                        field_x + field_width - 8, field_y + field_height - 6,
+                        "edited text field") && ok;
+    }
     const std::size_t accent_pixels = count_color(
         pixels, SkColorSetARGB(255, 204, 76, 92), 40, 180, width - 40, height - 20);
     if (accent_pixels < 100) {
