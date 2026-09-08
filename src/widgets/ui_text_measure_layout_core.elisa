@@ -155,19 +155,21 @@ module UiTextMeasureLayout:
             source_length: usize = safe_text.len.usize()
             return range.offset if range.offset > source_length or range.length > source_length - range.offset
             end: usize = range.offset + range.length
-            cursor: mutable usize = range.offset
-            accumulated: mutable f32 = 0.0
             target: f32 = UiCore::bounded_coordinate(local_x)
-            while cursor < end:
-                cluster_end: usize = UiText::next_grapheme(safe_text, cursor)
-                cluster_length: usize = cluster_end - cursor if cluster_end > cursor and cluster_end <= end else 1
-                cluster: sview = sview(&safe_text.data[cursor], 0, cluster_length.i64())
-                cluster_width: f32 = UiCore::bounded_extent(width_provider(cluster, size))
-                midpoint: f32 = accumulated + cluster_width * 0.5
-                return cursor if target < midpoint
-                accumulated <- UiCore::bounded_extent(accumulated + cluster_width)
-                cursor <- cursor + cluster_length
-            return end
+            result: usize =
+                for _ in 0..<UiCore::MAX_TEXT_BYTES |cursor: usize = range.offset, accumulated: f32 = 0.0, hit: usize = end| -> hit:
+                    break if cursor >= end
+                    cluster_end: usize = UiText::next_grapheme(safe_text, cursor)
+                    cluster_length: usize = cluster_end - cursor if cluster_end > cursor and cluster_end <= end else 1
+                    cluster: sview = sview(&safe_text.data[cursor], 0, cluster_length.i64())
+                    cluster_width: f32 = UiCore::bounded_extent(width_provider(cluster, size))
+                    midpoint: f32 = accumulated + cluster_width * 0.5
+                    if target < midpoint:
+                        hit <- cursor
+                        break
+                    accumulated <- UiCore::bounded_extent(accumulated + cluster_width)
+                    cursor <- cursor + cluster_length
+            return result
 
         # Return the local x coordinate for a requested byte offset. Offsets
         # that land inside a grapheme are normalized to that cluster's leading
@@ -180,19 +182,18 @@ module UiTextMeasureLayout:
             source_length: usize = safe_text.len.usize()
             return 0.0 if range.offset > source_length or range.length > source_length - range.offset
             end: usize = range.offset + range.length
-            cursor: mutable usize = range.offset
-            accumulated: mutable f32 = 0.0
             target: mutable usize = byte_offset if byte_offset >= range.offset else range.offset
             target <- end if target > end
-            while cursor < end:
-                return accumulated if target <= cursor
-                cluster_end: usize = UiText::next_grapheme(safe_text, cursor)
-                cluster_length: usize = cluster_end - cursor if cluster_end > cursor and cluster_end <= end else 1
-                cluster: sview = sview(&safe_text.data[cursor], 0, cluster_length.i64())
-                return accumulated if target < cluster_end
-                accumulated <- UiCore::bounded_extent(accumulated + UiCore::bounded_extent(width_provider(cluster, size)))
-                cursor <- cursor + cluster_length
-            return accumulated
+            result: f32 =
+                for _ in 0..<UiCore::MAX_TEXT_BYTES |cursor: usize = range.offset, accumulated: f32 = 0.0| -> accumulated:
+                    break if cursor >= end or target <= cursor
+                    cluster_end: usize = UiText::next_grapheme(safe_text, cursor)
+                    cluster_length: usize = cluster_end - cursor if cluster_end > cursor and cluster_end <= end else 1
+                    cluster: sview = sview(&safe_text.data[cursor], 0, cluster_length.i64())
+                    break if target < cluster_end
+                    accumulated <- UiCore::bounded_extent(accumulated + UiCore::bounded_extent(width_provider(cluster, size)))
+                    cursor <- cursor + cluster_length
+            return result
 
         # Intersect a UTF-8 byte selection with one measured line and return
         # geometry in that line's local coordinate space. Both endpoints are
@@ -230,14 +231,19 @@ module UiTextMeasureLayout:
             end: usize = range.offset + range.length
             target: mutable usize = byte_offset if byte_offset >= range.offset else range.offset
             target <- end if target > end
-            cursor: mutable usize = range.offset
-            while cursor < end:
-                return cursor if target <= cursor
-                cluster_end: usize = UiText::next_grapheme(safe_text, cursor)
-                cluster_length: usize = cluster_end - cursor if cluster_end > cursor and cluster_end <= end else 1
-                return cursor if target < cursor + cluster_length
-                cursor <- cursor + cluster_length
-            return end
+            result: usize =
+                for _ in 0..<UiCore::MAX_TEXT_BYTES |cursor: usize = range.offset, floor: usize = end| -> floor:
+                    break if cursor >= end
+                    if target <= cursor:
+                        floor <- cursor
+                        break
+                    cluster_end: usize = UiText::next_grapheme(safe_text, cursor)
+                    cluster_length: usize = cluster_end - cursor if cluster_end > cursor and cluster_end <= end else 1
+                    if target < cursor + cluster_length:
+                        floor <- cursor
+                        break
+                    cursor <- cursor + cluster_length
+            return result
 
         global mutable measured_line_offsets: usize[MAX_LINES] = zeroed
         global mutable measured_line_lengths: usize[MAX_LINES] = zeroed

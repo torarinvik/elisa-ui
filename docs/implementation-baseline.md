@@ -485,6 +485,11 @@ separate host-enforced security boundary.
   local to the expression. Retained sibling-link insertion now uses the same
   scoped traversal form with an explicit exhaustion guard, so malformed child
   chains cannot append after a bounded scan has lost its terminator.
+- Pixel text hit-testing, caret placement, and grapheme-flooring now use the
+  same scoped `for` form over the shared `MAX_TEXT_BYTES` budget. Their result
+  state is explicit (`hit`, accumulated x, or floor offset), so every walk is
+  bounded even when a hostile text view or metric provider fails to make
+  progress.
 - The shared event queue now rejects typed key, pointer-button, and gamepad
   ordinals that normalize to `Event.None`, instead of reporting a successful
   enqueue for a silently discarded no-op. The queue retains its existing
