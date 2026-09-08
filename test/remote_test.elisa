@@ -53,6 +53,9 @@ def main() -> i64:
     check("remote acknowledges an in-flight input", UiRemote::acknowledge_input(1) and not UiRemote::snapshot().input_pending)
     check("remote rejects an unknown acknowledgement", not UiRemote::acknowledge_input(2) and UiRemote::snapshot().stale_input)
     check("remote rejects a zero acknowledgement", not UiRemote::acknowledge_input(0) and UiRemote::snapshot().stale_input)
+    first_generation: u32 = UiRemote::snapshot().generation
+    check("generation-aware input accepts the current session", UiRemote::submit_input_for_generation(first_generation, 9).accepted)
+    _ = UiRemote::acknowledge_input_for_generation(first_generation, 9)
 
     check("remote suspension blocks input", UiRemote::suspend() and not UiRemote::accepts_input() and UiRemote::snapshot().overlay_visible)
     check("remote resume restores input", UiRemote::resume() and UiRemote::accepts_input() and not UiRemote::snapshot().overlay_visible)
@@ -61,6 +64,11 @@ def main() -> i64:
     disconnected: UiRemote::Snapshot = UiRemote::snapshot()
     check("remote disconnect clears selection and advances generation", disconnected.state == UiRemote::ConnectionState.Disconnected and disconnected.generation != generation_before_disconnect and disconnected.overlay_visible and not disconnected.selection.accepted and not disconnected.input_pending)
     check("remote reconnects before a failed offer", UiRemote::connect(offer, UiRemote::Presentation.TypedCommands) and UiRemote::snapshot().selection.accepted)
+    second_generation: u32 = UiRemote::snapshot().generation
+    check("reconnect rotates the remote generation", second_generation != first_generation)
+    check("old-generation input is rejected after reconnect", not UiRemote::submit_input_for_generation(first_generation, 100).accepted and UiRemote::snapshot().stale_input)
+    check("current-generation input remains usable", UiRemote::submit_input_for_generation(second_generation, 1).accepted)
+    check("old-generation acknowledgement is rejected", not UiRemote::acknowledge_input_for_generation(first_generation, 1))
     _ = UiRemote::submit_input(9)
     generation_before_failed_reconnect: u32 = UiRemote::snapshot().generation
     failed_reconnect: mutable UiRemote::Snapshot = UiRemote::snapshot()

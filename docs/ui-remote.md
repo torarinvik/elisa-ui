@@ -22,8 +22,12 @@ Each successful connection and disconnect advances a generation; a suspended
 or disconnected session exposes `overlay_visible` and rejects application
 input. Input sequence numbers are transport-owned, but Elisa rejects zero,
 duplicate, and out-of-order submissions and only accepts acknowledgements for
-sent sequences. The sticky `stale_input` fact lets a host render a reconnect or
-latency diagnostic without maintaining a second policy table.
+sent sequences. Production adapters should use the generation-aware
+`submit_input_for_generation()` and `acknowledge_input_for_generation()` forms;
+the compatibility forms bind to the current generation. This prevents packets
+buffered before reconnect from becoming valid in a new session. The sticky
+`stale_input` fact lets a host render a reconnect or latency diagnostic without
+maintaining a second policy table.
 Malformed acknowledgements (zero, beyond the sent frontier, or older than the
 acknowledged frontier) also set that sticky diagnostic before being rejected.
 

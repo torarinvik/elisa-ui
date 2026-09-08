@@ -41,7 +41,17 @@ extend UiRemote:
         # stale-input rejection stay in Elisa. A duplicate or old packet never
         # reaches the application event policy.
         def submit_input(sequence: u64) -> InputResult:
+            return submit_input_for_generation(remote_generation, sequence)
+
+        # Production transports should carry the session generation alongside
+        # their sequence. This prevents a packet buffered before reconnect from
+        # becoming valid merely because its sequence is greater than the new
+        # session's reset counter.
+        def submit_input_for_generation(generation: u32, sequence: u64) -> InputResult:
             return InputResult{accepted: false, stale: false} if remote_state != ConnectionState.Connected
+            if generation != remote_generation:
+                remote_stale_input <- true
+                return InputResult{accepted: false, stale: true}
             if sequence == 0 or sequence <= remote_input_sent:
                 remote_stale_input <- true
                 return InputResult{accepted: false, stale: true}
@@ -49,6 +59,12 @@ extend UiRemote:
             return InputResult{accepted: true, stale: false}
 
         def acknowledge_input(sequence: u64) -> bool:
+            return acknowledge_input_for_generation(remote_generation, sequence)
+
+        def acknowledge_input_for_generation(generation: u32, sequence: u64) -> bool:
+            if remote_state != ConnectionState.Connected or generation != remote_generation:
+                remote_stale_input <- true
+                return false
             if sequence == 0 or sequence > remote_input_sent:
                 remote_stale_input <- true
                 return false
