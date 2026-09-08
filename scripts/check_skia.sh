@@ -80,6 +80,7 @@ if [[ -n "${SKIA_ROOT:-}" ]]; then
   skia_out="${SKIA_OUT:-$SKIA_ROOT/out/elisa}"
   if [[ -f "$skia_out/libskia.a" ]]; then
     SKIA_ROOT="$SKIA_ROOT" SKIA_OUT="$skia_out" bash "$ROOT/scripts/check_skia_offscreen.sh"
+    SKIA_ROOT="$SKIA_ROOT" SKIA_OUT="$skia_out" bash "$ROOT/scripts/check_showcase_skia.sh"
   elif [[ "$require_real" == "1" ]]; then
     echo "skia: required CPU-raster archive is missing at $skia_out/libskia.a" >&2
     echo "skia: build the pinned checkout from third_party/skia.lock or set ELISA_UI_REQUIRE_REAL_SKIA=0 for a compiler-only edit loop" >&2

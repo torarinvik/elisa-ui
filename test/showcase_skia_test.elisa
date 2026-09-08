@@ -1,0 +1,137 @@
+# Real-Skia acceptance of the shipped hello showcase.
+#
+# The host owns only an off-screen SkSurface and a borrowed typeface. This
+# fixture drives the same public app callbacks as a window host, then asks
+# Elisa to build and replay the final retained frame into that surface.
+
+include "../src/platform/skia/ui_skia.elisa"
+include "../examples/hello/app.elisa"
+
+global mutable showcase_ready: bool = false
+global mutable workflow_failures: i32 = 0
+
+def ui_measure_text_width(text: sview, size: f32) -> f32:
+    return UiSkia::measure_text_width(text, size)
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return UiSkia::text_line_height(size)
+
+def ui_font_ascent(size: f32) -> f32:
+    return UiSkia::font_ascent(size)
+
+def ui_text_line_height(size: f32) -> f32:
+    return UiSkia::text_line_height(size)
+
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return 0
+
+def ensure_showcase() -> void:
+    return if showcase_ready
+    UiCapabilities::use_appkit_canvas()
+    UiCore::set_viewport(800.0, 680.0)
+    app_init()
+    showcase_ready <- true
+
+def check_workflow(ok: bool) -> void:
+    workflow_failures <- workflow_failures + 1 if not ok
+
+def widget_with_kind(kind: UiConst::WidgetKind) -> UiHandles::Handle:
+    for index in 0..<UiHandles::count():
+        handle: UiHandles::Handle = UiHandles::from_index(index)
+        if UiHandles::widget(handle) is row:
+            return handle if row.kind == kind
+    return UiHandles::invalid()
+
+def has_widget_text(expected: sview) -> bool:
+    for index in 0..<UiHandles::count():
+        handle: UiHandles::Handle = UiHandles::from_index(index)
+        if UiHandles::widget(handle) is row:
+            return true if row.text == expected
+    return false
+
+def custom_art_command_count() -> i32:
+    count: mutable i32 = 0
+    for index in 0..<UiCore::command_count():
+        match UiCore::command_at(index):
+            UiCore::Command.FillLine(segment, color):
+                count <- count + 1 if color.a > 0
+            UiCore::Command.FillCircle(disc, color):
+                count <- count + 1 if color.a > 0
+            UiCore::Command.FillTriangle(tri, color):
+                count <- count + 1 if color.a > 0
+            _:
+                pass
+    return count
+
+def build_headless_frame() -> void:
+    UiCore::begin_frame()
+    app_frame()
+
+def prepare_public_workflow() -> i32:
+    ensure_showcase()
+    workflow_failures <- 0
+    build_headless_frame()
+    check_workflow(UiHandles::count() > 20 and UiCore::command_count() > 20)
+    check_workflow(custom_art_command_count() >= 6)
+    check_workflow(UiCore::accessibility_count() > 10)
+
+    field: UiHandles::Handle = widget_with_kind(UiConst::WidgetKind.TextField)
+    check_workflow(UiHandles::is_valid(field))
+    if UiHandles::widget(field) is field_row:
+        centre: UiCore::Vec2 = UiCore::Vec2(field_row.x + field_row.width / 2.0, field_row.y + field_row.height / 2.0)
+        app_event(UiCore::PointerEvent.Down(centre, UiCore::PointerButton.Primary.i32()))
+        app_event(UiCore::PointerEvent.Up(centre, UiCore::PointerButton.Primary.i32()))
+        check_workflow(UiHandles::is_focused(field))
+        app_text_input(" • café 👋")
+        check_workflow(UiHandles::text_value(field) == "Canvas study • café 👋")
+        app_text_editing("候補", 0, 1)
+        check_workflow(UiHandles::marked_length(field) > 0)
+        app_text_input("候")
+        check_workflow(UiHandles::text_value(field) == "Canvas study • café 👋候補")
+
+    # Exercise application state transitions before the frame that is replayed
+    # into Skia. In particular, Y must replace the failed resource generation,
+    # not merely repaint a stale status string.
+    app_event(UiCore::KeyEvent.Down(UiCore::Key.Digit1))
+    app_event(UiCore::KeyEvent.Down(UiCore::Key.T))
+    app_event(UiCore::KeyEvent.Down(UiCore::Key.P))
+    app_event(UiCore::KeyEvent.Down(UiCore::Key.R))
+    app_event(UiCore::KeyEvent.Down(UiCore::Key.F))
+    check_workflow(has_widget_text("Preview failed — retry or keep working offline."))
+    app_event(UiCore::KeyEvent.Down(UiCore::Key.Y))
+    check_workflow(has_widget_text("Optional preview loading…"))
+    build_headless_frame()
+    check_workflow(UiCore::command_count() > 20 and UiCore::accessibility_count() > 10)
+    return workflow_failures
+
+def showcase_skia_render(canvas: usize, font: usize) -> i32 can[Ui.Draw, Ui.Text]:
+    ensure_showcase()
+    build_headless_frame()
+    return UiSkia::RenderStatus.SkippedNoSurface.i32() if canvas == 0
+    UiSkia::begin_deferred_frame()
+    UiSkia::attach(canvas)
+    status: UiSkia::RenderStatus = UiSkia::render_status_with_font(font)
+    UiSkia::detach()
+    UiSkia::end_deferred_frame()
+    return status.i32()
+
+def showcase_command_count() -> i32:
+    return UiCore::command_count().i32()
+
+def showcase_semantic_count() -> i32:
+    return UiCore::accessibility_count().i32()
+
+def showcase_art_count() -> i32:
+    return custom_art_command_count()
+
+export fn elisa_showcase_skia_prepare() -> i32 = prepare_public_workflow
+export fn elisa_showcase_skia_render(canvas: usize, font: usize) -> i32 = showcase_skia_render
+export fn elisa_showcase_skia_command_count() -> i32 = showcase_command_count
+export fn elisa_showcase_skia_semantic_count() -> i32 = showcase_semantic_count
+export fn elisa_showcase_skia_art_count() -> i32 = showcase_art_count

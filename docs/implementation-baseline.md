@@ -620,6 +620,11 @@ separate host-enforced security boundary.
   reports render total/average nanoseconds, while `docs/ui-performance.md`
   records the distinction between retained-tree safety ceilings and actual
   raster evidence.
+- `test/showcase_skia_test.elisa` and `test/showcase_skia_host.cpp` extend that
+  evidence to the shipped hello application: the required real-Skia gate drives
+  its public text/input, state, and resource-replacement workflow, then checks
+  command/semantic counts, retained custom-art pixels, a PNG snapshot, and
+  repeated frame timing on an 800x680 raster surface.
 - Immediate Skia clip and transform scopes now fail closed at an Elisa-owned
   depth budget. Rejected pushes make no native calls; transform pushes report
   rejection so callers cannot accidentally pop an older scope, while detach

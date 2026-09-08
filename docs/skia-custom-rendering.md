@@ -19,6 +19,13 @@ raster fixture when `SKIA_ROOT` and its pinned `libskia.a` are present;
 `scripts/run_tests.sh` invokes that gate by default. Set
 `ELISA_UI_REQUIRE_REAL_SKIA=0` only for an explicitly incomplete compiler-only
 edit loop on a machine without the checkout; that mode is not a renderer pass.
+After the primitive fixture, the gate runs `scripts/check_showcase_skia.sh`.
+That headless host includes the shipped `examples/hello/app.elisa`, drives its
+public focus, text-editing, state, and resource-generation callbacks, and
+checks the final retained layout for real rasterized custom artwork. The
+showcase check also reports repeated frame timing, making renderer milestones
+something an application can reproduce rather than a collection of helper-only
+combinations.
 
 The FFI deliberately does not expose `SkPaint`, `SkFont`, `SkPath`, or any
 other C++ object to Elisa. A host can call the one-shot exported
