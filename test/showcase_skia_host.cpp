@@ -188,6 +188,15 @@ int main(int argc, char** argv) {
                         field_x + 8, field_y + 6,
                         field_x + field_width - 8, field_y + field_height - 6,
                         "edited text field") && ok;
+        const std::size_t selection_pixels = count_color(
+            pixels, SkColorSetARGB(255, 204, 76, 92),
+            field_x + 8, field_y + 4,
+            field_x + field_width - 8, field_y + field_height - 4);
+        if (selection_pixels < 16) {
+            std::fprintf(stderr, "skia showcase: edited text selection produced only %zu pixels\n",
+                         selection_pixels);
+            ok = false;
+        }
     }
     const std::size_t accent_pixels = count_color(
         pixels, SkColorSetARGB(255, 204, 76, 92), 40, 180, width - 40, height - 20);
