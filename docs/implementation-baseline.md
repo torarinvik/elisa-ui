@@ -64,6 +64,8 @@ Externally imposed symbols are kept at the edges:
   through the same immediate image policy. Generation-bound variants retain only
   a logical resource slot/generation, repair stale binding indexes with bounded
   scans, and skip disposed generations without retaining a native image pointer.
+  Direct generation-bound image commands are available when a control already
+  has its final destination rectangle.
 - The optional AppKit/Skia compositor in
   `src/platform/appkit/appkit_skia_host.cpp` is linked only by the Skia canvas
   product; the standard AppKit product keeps its CoreGraphics fallback.

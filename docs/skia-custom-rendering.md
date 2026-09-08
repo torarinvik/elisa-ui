@@ -175,6 +175,9 @@ current Elisa binding only while the resource is ready; disposed or recycled
 generations are skipped safely. Binding-index repair is bounded and generation
 aware, so resource teardown and surface recreation cannot redirect a queued
 command to a different image.
+The direct `defer_bound_image*()` forms use the same identity contract when a
+control already has its final destination rectangle and does not need fitting;
+sampling remains an explicit Elisa enum rather than a native filter object.
 
 `UiSkia::snapshot()` is a read-only diagnostic record for attachment/generation,
 save depth, clip/transform depth, active image/font bindings, and deferred
