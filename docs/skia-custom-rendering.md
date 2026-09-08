@@ -161,6 +161,13 @@ and mismatched or over-budget pops are rejected before they can restore the
 wrong native state. Scope-depth exhaustion marks the frame incomplete through
 the same `CommandOverflow` status as command-capacity exhaustion.
 
+Deferred image helpers (`defer_image_fitted*()` and
+`defer_image_fitted_rounded*()`) carry source dimensions, fit mode, sampling,
+and radius in the Elisa queue. Replay calls the immediate fitted-image helpers,
+so contain/cover/scale-down placement and temporary clip scopes stay identical
+between controls that draw during the callback and controls that draw after a
+SkCanvas is attached. Only the opaque image handle crosses the boundary.
+
 `UiSkia::snapshot()` is a read-only diagnostic record for attachment/generation,
 save depth, clip/transform depth, active image/font bindings, and deferred
 queue activity/count/overflow/scope depth;

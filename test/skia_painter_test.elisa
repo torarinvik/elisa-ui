@@ -417,6 +417,24 @@ def main() -> i64:
     UiSkia::detach()
     _ = UiResources::dispose(rounded_image)
 
+    UiCore::begin_frame()
+    skia_test_reset()
+    UiSkia::begin_deferred_frame()
+    check("deferred fitted image stores Elisa placement policy", UiSkia::defer_image_fitted_with_sampling(0xD00D, fit_box, source_size, 255, UiSkia::ImageFit.Cover, UiSkia::ImageSampling.Nearest) and UiSkia::deferred_count() == 1)
+    UiSkia::attach(35)
+    check("deferred fitted image replays through a bounded clip", UiSkia::render_status() == UiSkia::RenderStatus.Complete and skia_test_image_count() == 1 and skia_test_clip_count() == 1 and skia_test_last_image_x() == -40.0 and skia_test_last_image_y() == 20.0 and skia_test_last_image_width() == 200.0 and skia_test_last_image_height() == 100.0 and skia_test_last_image_sampling() == 0)
+    UiSkia::detach()
+    UiSkia::end_deferred_frame()
+
+    UiCore::begin_frame()
+    skia_test_reset()
+    UiSkia::begin_deferred_frame()
+    check("deferred rounded image keeps fit and radius together", UiSkia::defer_image_fitted_rounded(0xD00D, fit_box, source_size, 255, UiSkia::ImageFit.Contain, 100.0) and UiSkia::deferred_count() == 1)
+    UiSkia::attach(35)
+    check("deferred rounded image replays through an Elisa clip", UiSkia::render_status() == UiSkia::RenderStatus.Complete and skia_test_image_count() == 1 and skia_test_rounded_clip_count() == 1 and skia_test_last_clip_radius() == 50.0 and skia_test_last_image_x() == 10.0 and skia_test_last_image_y() == 45.0 and skia_test_last_image_width() == 100.0 and skia_test_last_image_height() == 50.0)
+    UiSkia::detach()
+    UiSkia::end_deferred_frame()
+
     # AppKit creates the borrowed SkCanvas after app_frame. The explicit
     # deferred scope keeps richer Skia-only primitives in Elisa until retained
     # commands have been replayed, without changing the hosted six-command ABI.

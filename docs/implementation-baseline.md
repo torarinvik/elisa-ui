@@ -59,6 +59,9 @@ Externally imposed symbols are kept at the edges:
   `third_party/skia.lock`. A host still supplies the fetched SDK/build output;
   `ui_skia.elisa` and the generation-safe `ui_skia_resources.elisa` binding
   registry remain compiler- and headless-testable without it.
+- Deferred Skia image fitting is also Elisa-owned: source dimensions, fit mode,
+  sampling, and rounded clipping are copied into the bounded queue and replayed
+  through the same immediate image policy.
 - The optional AppKit/Skia compositor in
   `src/platform/appkit/appkit_skia_host.cpp` is linked only by the Skia canvas
   product; the standard AppKit product keeps its CoreGraphics fallback.
