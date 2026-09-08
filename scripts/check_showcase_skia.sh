@@ -39,13 +39,22 @@ if [[ ! "$render_iterations" =~ ^[1-9][0-9]*$ ]] || (( render_iterations > 10000
   echo "skia showcase: ELISA_UI_SKIA_RENDER_ITERATIONS must be an integer in 1..10000 (got $render_iterations)" >&2
   exit 2
 fi
-temporary_snapshot=""
-if [[ -z "$snapshot" ]]; then
-  temporary_dir="$(mktemp -d "${TMPDIR:-/tmp}/elisa-ui-skia-showcase.XXXXXX")"
-  temporary_snapshot="$temporary_dir/showcase.png"
-  snapshot="$temporary_snapshot"
+run_dir="$(mktemp -d "${TMPDIR:-/tmp}/elisa-ui-skia-showcase.XXXXXX")"
+cleanup() { rm -rf "$run_dir"; }
+trap cleanup EXIT
+
+first_snapshot="$snapshot"
+if [[ -z "$first_snapshot" ]]; then
+  first_snapshot="$run_dir/showcase-first.png"
 fi
-ELISA_UI_SKIA_RENDER_ITERATIONS="$render_iterations" "$HOST_BINARY" "$snapshot"
-if [[ -n "$temporary_snapshot" ]]; then
-  rm -rf "${temporary_snapshot%/*}"
-fi
+second_snapshot="$run_dir/showcase-second.png"
+first_output="$(ELISA_UI_SKIA_RENDER_ITERATIONS="$render_iterations" "$HOST_BINARY" "$first_snapshot")"
+printf '%s\n' "$first_output"
+second_output="$(ELISA_UI_SKIA_RENDER_ITERATIONS="$render_iterations" "$HOST_BINARY" "$second_snapshot")"
+second_digest="$(sed -n 's/.*pixel_digest=\([[:xdigit:]]*\).*/\1/p' <<<"$second_output" | tail -n 1)"
+first_digest="$(sed -n 's/.*pixel_digest=\([[:xdigit:]]*\).*/\1/p' <<<"$first_output" | tail -n 1)"
+[[ -n "$first_digest" && "$first_digest" == "$second_digest" ]] || {
+  echo "skia showcase: fresh-process pixel digest mismatch (first=$first_digest second=$second_digest)" >&2
+  exit 12
+}
+echo "skia showcase: fresh-process replay digest verified pixel_digest=$second_digest"

@@ -63,19 +63,23 @@ The renderer scripts accept only an explicit integer iteration count in
 `1..10000`; malformed values fail before timing starts instead of silently
 changing the sample size.
 The host rejects a zero-duration sample, checks rasterized title ink, and
-compares a logical-pixel digest before and after repeated replays. A nominally
-successful call therefore cannot satisfy the gate without producing measured,
-stable pixels; leaked save/clip/transform state is caught as a digest change.
+compares a logical-pixel digest before and after repeated replays. The required
+shell gate then launches each real host a second time and compares that digest
+across fresh processes. A nominally successful call therefore cannot satisfy
+the gate without producing measured, stable pixels; leaked save/clip/transform
+state is caught as a digest change, and process-global initialization cannot
+hide nondeterministic output.
 The same required gate then runs `scripts/check_showcase_skia.sh`: it drives
 the shipped `examples/hello/app.elisa` public callbacks (focus, UTF-8/IME
 editing, state save/restore, and resource replacement) and verifies that the
 resulting retained custom artwork produces real accent pixels in an 800x680
 SkSurface. The fixture binds a host-decoded image, proves the stale resource
 generation is skipped, and proves the replacement generation is painted before
-the repeated timing loop. Its output adds command, semantic, artwork-pixel,
-resource-generation, edited-text-ink, frame timing, and replay-digest evidence,
-so a passing renderer check demonstrates an application workflow rather than
-only isolated primitive calls.
+the repeated timing loop; the shell gate repeats the entire workflow in a fresh
+process and requires the same logical pixel digest. Its output adds command,
+semantic, artwork-pixel, resource-generation, edited-text-ink, frame timing, and
+replay-digest evidence, so a passing renderer check demonstrates an application
+workflow rather than only isolated primitive calls.
 
 The only supported local escape hatch is explicit and non-passing:
 `ELISA_UI_REQUIRE_REAL_SKIA=0`. The gate rejects any other value, so a typo
