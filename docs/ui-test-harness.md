@@ -33,6 +33,12 @@ with owner-scoped `cancel_resources_for_owner` and
 `stop()` resets resource generations before making late callbacks no-ops, so an
 async completion cannot update a disposed slot.
 
+Optional feature activation can be exercised through
+`request_feature`, `activate_feature`, `resolve_feature`, `cancel_feature`,
+and `acknowledge_feature_deactivation`. The acknowledgement requires the
+original activation token, matching the production host contract, and makes
+cancel/release tests possible without opening a window.
+
 `set_time` accepts monotonic absolute seconds; `advance_time` adds a positive
 delta and ignores negative, NaN, or infinite input. The clock never moves
 backwards. `resize`, `focus_lost`, and `focus_gained` are convenience helpers
