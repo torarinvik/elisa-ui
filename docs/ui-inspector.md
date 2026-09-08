@@ -12,6 +12,9 @@ node: UiInspector::Node? = UiInspector::inspect(save)
 first: UiInspector::Node? = UiInspector::node_at(0)
 ```
 
+Use `frame_with_system_contrast(true)` when the host reports high contrast so
+resolved geometry metrics reflect the active platform preference.
+
 `Frame` reports the viewport, shared lifecycle phase/generation and its input
 and rendering predicates, deferred layout state, frame clock/deadline,
 stage timing metrics (application, semantics, and paint), independent
