@@ -185,6 +185,35 @@ extend UiSkia:
             _ = UiSkia::pop_clip()
             return planned
 
+        # Compose selection, text, and caret painting in one measured pass.
+        # Selection is emitted before glyphs and the caret after them, while a
+        # single clip scope keeps all three layers inside the destination.
+        def draw_text_block_interactive(text: sview, box: UiCore::Rect, size: f32, text_color: UiCore::Color, selection_start: usize, selection_end: usize, selection_color: UiCore::Color, caret_line: usize, caret_offset: usize, caret_width: f32, caret_color: UiCore::Color, horizontal: UiSkia::HorizontalTextAlignment, vertical: UiSkia::VerticalTextAlignment, vertical_inset: f32) -> UiTextMeasureLayout::Layout can[Ui.Draw, Ui.Text]:
+            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+            planned: UiTextMeasureLayout::Layout = UiSkia::layout_text(text, safe_box.size.width, size)
+            return planned if canvas_state == 0
+            return planned if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
+            return planned if not UiSkia::push_clip(safe_box)
+            ascent: f32 = UiCore::bounded_extent(UiSkia::active_font_ascent(planned.text_size))
+            line_step: mutable f32 = UiCore::bounded_extent(UiSkia::active_text_line_height(planned.text_size))
+            line_step <- planned.text_size if line_step <= 0.0
+            first_baseline: f32 = UiSkia::aligned_text_baseline(safe_box, ascent, line_step, planned.line_count, vertical)
+            for index in 0..<planned.line_count:
+                if selection_start != selection_end and selection_color.a != 0:
+                    selection_box: UiCore::Rect = UiSkia::selection_rect_for_layout(text, planned, safe_box, index, selection_start, selection_end, horizontal, vertical, vertical_inset)
+                    UiSkia::fill_rounded_rect(selection_box, 2.0, selection_color) if selection_box.size.width > 0.0 and selection_box.size.height > 0.0
+                line: sview = UiTextMeasureLayout::line_view(text, index)
+                line_y: f32 = UiCore::bounded_coordinate(first_baseline + line_step * index.f32())
+                if line.len > 0 and line_y + line_step >= safe_box.origin.y and line_y - ascent <= UiCore::bottom_edge(safe_box) and text_color.a != 0:
+                    line_width: f32 = UiTextMeasureLayout::line_at(index).width
+                    line_x: f32 = UiSkia::aligned_text_origin(safe_box, line_width, horizontal)
+                    UiSkia::draw_text_run(UiCore::TextRun(UiCore::Vec2(line_x, line_y), planned.text_size, line), text_color)
+                if index == caret_line and caret_color.a != 0:
+                    caret_box: UiCore::Rect = UiSkia::caret_rect_for_layout(text, planned, safe_box, index, caret_offset, horizontal, vertical, caret_width, vertical_inset)
+                    UiSkia::fill_rounded_rect(caret_box, caret_box.size.width * 0.5, caret_color) if caret_box.size.width > 0.0 and caret_box.size.height > 0.0
+            _ = UiSkia::pop_clip()
+            return planned
+
         def draw_bound_text_block(resource: UiResources::ResourceHandle, text: sview, box: UiCore::Rect, size: f32, color: UiCore::Color, horizontal: UiSkia::HorizontalTextAlignment, vertical: UiSkia::VerticalTextAlignment) -> UiTextMeasureLayout::Layout can[Ui.Draw, Ui.Text]:
             _ = UiSkia::prune_bindings()
             return UiSkia::empty_text_layout(text, box.size.width, size) if UiResources::state(resource) != UiResources::State.Ready

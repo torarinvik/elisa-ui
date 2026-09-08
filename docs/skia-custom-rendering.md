@@ -185,6 +185,10 @@ horizontal and vertical alignment and an Elisa-owned clip scope. GPU surface
 creation and an AppKit `MTKView`/`SkSurface` host are intentionally separate
 follow-ups; they must be chosen with the target's pinned Skia build rather than
 smuggled into the Elisa ABI.
+`draw_text_block_interactive()` composes selection, glyphs, and caret painting
+in one measured pass, preserving selection-before-text/caret-after-text order
+and sharing one clip scope. Blink visibility remains widget state; the compound
+operation only consumes the caller's explicit caret range and colors.
 
 Ready generation-bound typefaces can use `layout_bound_text()` and
 `draw_bound_text_block()` (or their fallback forms), which scope the selected
