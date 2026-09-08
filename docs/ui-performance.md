@@ -78,8 +78,9 @@ generation is skipped, and proves the replacement generation is painted before
 the repeated timing loop; the shell gate repeats the entire workflow in a fresh
 process and requires the same logical pixel digest. Its output adds command,
 semantic, artwork-pixel, resource-generation, edited-text-ink, frame timing, and
-replay-digest evidence, so a passing renderer check demonstrates an application
-workflow rather than only isolated primitive calls.
+replay-digest evidence. The edited-text check also requires a grapheme-safe
+selection surface inside the field, so a passing renderer check demonstrates an
+application workflow rather than only isolated primitive calls.
 
 The only supported local escape hatch is explicit and non-passing:
 `ELISA_UI_REQUIRE_REAL_SKIA=0`. The gate rejects any other value, so a typo
