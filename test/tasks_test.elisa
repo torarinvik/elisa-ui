@@ -12,11 +12,14 @@ def check(name: cstr, ok: bool) -> void:
 
 def main() -> i64:
     UiTasks::reset()
+    UiCore::clear_all_invalidations()
     first: UiTasks::Handle = UiTasks::start(7)
     first_token: u32 = UiTasks::token(first)
+    check("task start invalidates presentation", UiCore::is_invalidated(UiCore::Invalidation.Paint) and UiCore::is_invalidated(UiCore::Invalidation.Semantics))
     check("task start returns a live token", UiTasks::is_valid(first) and first_token != 0 and UiTasks::owner(first) == 7 and UiTasks::is_pending(first))
     check("stale token cannot complete", not UiTasks::complete(first, first_token + 1, true) and UiTasks::is_pending(first))
     check("current token completes successfully", UiTasks::complete(first, first_token, true) and UiTasks::state(first) == UiTasks::TaskState.Completed)
+    check("task completion keeps presentation invalidated", UiCore::is_invalidated(UiCore::Invalidation.Paint) and UiCore::is_invalidated(UiCore::Invalidation.Semantics))
     check("completed task rejects duplicate completion", not UiTasks::complete(first, first_token, false) and UiTasks::state(first) == UiTasks::TaskState.Completed)
 
     cancelled: UiTasks::Handle = UiTasks::start(8)
