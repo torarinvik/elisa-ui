@@ -8,7 +8,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui revision | `c28e645` (`fix(skia): bound circle geometry`) on branch `work` |
+| elisa-ui revision | `b47292f` (`refactor(skia): share primitive normalization`) on branch `work` |
 | Host | Darwin 25.6.0, arm64 (`Torarins-MacBook-Air.local`) |
 | C compiler | Homebrew clang 23.1.0 |
 | Elisa compiler | `../wasm-sdk-compiler/bin/elisac-stage1` on clean `codex/wasm-sdk`, revision `c6948142f19d`; SHA-256 `56945beffa13240afdd004ac7590580b56f11c7406fc82c16309f6bd9025e574` |
@@ -649,6 +649,9 @@ separate host-enforced security boundary.
   axes, keeping the full disk inside the finite geometry envelope before the
   FFI; the native bridge applies the same derived-edge rejection to direct
   foreign circle calls.
+- Retained Skia replay now routes circle, triangle, and hairline-line commands
+  through the same Elisa primitive helpers as immediate custom drawing, so
+  geometry and alpha validation cannot drift between paint entry points.
 - Immediate Skia custom drawing now has a dedicated `ui_skia_clip.elisa`
   extension. It rejects empty clips before FFI and shares the transform/frame
   save-depth ledger, with headless coverage for direct clip balance and cleanup.
