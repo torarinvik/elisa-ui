@@ -112,8 +112,9 @@ input, focus, style, callback, text, scrolling, and painting modules, each below
 lines), with keyboard focus/capture policy in `ui_flat_focus.elisa`, text
 semantic projection and focus visibility in `ui_flat_text_semantics.elisa`, visual
 color policy in `ui_flat_style.elisa`, shared `UiTheme` palette adaptation in
-`ui_flat_theme.elisa` (37 lines), the shared Unicode property tables and
-boundary walker in `ui_text_grapheme.elisa` (199 lines), and legacy callback lowering in
+`ui_flat_theme.elisa` (37 lines), the shared Unicode property tables in the
+small `ui_text_grapheme_props_*.elisa` modules and boundary walker in
+`ui_text_grapheme.elisa` (149 lines), and legacy callback lowering in
 `ui_flat_events.elisa`. The flat editor and line planner both use that single
 UiText-owned walker, so wrapping cannot split a combining or ZWJ cluster. The
 frame-local line-height cache in `ui_text_metrics.elisa` keeps repeated widget
@@ -228,6 +229,8 @@ scripts/check_source_sizes.sh
   all tracked Elisa modules are at or below 400 lines: PASS
 scripts/check_global_names.sh
   all mutable module-global names are unique across the source tree: PASS
+ELISA_UI_STAGE1=../wasm-sdk-compiler bash scripts/check_unicode_conformance.sh
+  unicode UAX #29 15.1.0: 1187 rows passed (pinned data hash verified)
 scripts/check_skia.sh (strict default, no SKIA_ROOT in this checkout)
   required real-renderer dependency gate: EXIT 2 (expected; pinned SDK/archive not installed)
 ELISA_UI_REQUIRE_REAL_SKIA=0 ELISA_UI_STAGE1=../wasm-sdk-compiler bash scripts/check_skia.sh
@@ -615,11 +618,11 @@ separate host-enforced security boundary.
   tree, verifies retained custom vector commands and semantics, drives pointer
   focus plus UTF-8/IME editing, saves/restores application state, and replaces
   a failed resource generation before the next frame.
-- `test/unicode_conformance_test.elisa` carries a data-driven UAX #29 corpus
-  for combining marks, emoji ZWJ/modifier and regional-indicator sequences,
-  Indic and Hangul joins, CRLF, RTL text, and malformed-byte recovery. The
-  retained editor and layout walkers now have conformance evidence separate
-  from renderer-specific helper tests.
+- `test/unicode_conformance_test.elisa` carries focused UAX #29 regressions,
+  while `scripts/check_unicode_conformance.sh` generates a bounded Elisa
+  fixture from all 1,187 rows of the pinned Unicode 15.1.0
+  `GraphemeBreakTest.txt`. The retained editor and layout walkers therefore
+  have full conformance evidence separate from renderer-specific helper tests.
 - `test/skia_offscreen_host.cpp` repeats complete real SkSurface frames and
   reports render total/average nanoseconds, while `docs/ui-performance.md`
   records the distinction between retained-tree safety ceilings and actual

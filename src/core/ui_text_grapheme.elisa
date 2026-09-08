@@ -4,6 +4,12 @@
 # same user-perceived-character boundaries. Keep the compact UAX #29 property
 # vocabulary beside UiText so no backend has to duplicate caret policy.
 
+include "./ui_text_grapheme_props_basic.elisa"
+include "./ui_text_grapheme_props_emoji.elisa"
+include "./ui_text_grapheme_props_extend_a.elisa"
+include "./ui_text_grapheme_props_extend_b.elisa"
+include "./ui_text_grapheme_props_indic.elisa"
+
 extend UiText:
     public:
         # Advance to the next extended grapheme boundary. The input is a
@@ -46,12 +52,19 @@ extend UiText:
                         previous_scalar <- scalar
                     elif grapheme_linker(scalar):
                         cursor <- cursor + width
-                        indic_context <- 2 if indic_context == 1 else 0
+                        # GB9c permits the linker context to survive another
+                        # InCB=Linker; the conformance corpus includes doubled
+                        # viramas before the joining consonant.
+                        indic_context <- 2 if indic_context == 1 or indic_context == 2 else 0
                         emoji_base <- false
                         prepend_context <- false
                         previous_scalar <- scalar
                     elif extends_grapheme(scalar):
                         cursor <- cursor + width
+                        # GB9c only skips Indic_Conjunct_Break=Extend. A
+                        # general grapheme Extend (for example a variation
+                        # selector) must not carry an Indic linker context.
+                        indic_context <- 0 if indic_context != 0 and not UiText::incb_extend_data(scalar)
                         prepend_context <- false
                         previous_scalar <- scalar
                     elif grapheme_spacing_mark(scalar):
@@ -96,99 +109,28 @@ extend UiText:
             return ((first & 7) << 18) | (second << 12) | (third << 6) | fourth
 
         def extends_grapheme(scalar: u32) -> bool:
-            return true if scalar >= 768 and scalar <= 879
-            return true if scalar >= 6832 and scalar <= 6911
-            return true if scalar >= 7616 and scalar <= 7679
-            return true if scalar >= 8400 and scalar <= 8447
-            return true if scalar >= 65024 and scalar <= 65039
-            return true if scalar >= 127995 and scalar <= 127999
-            return true if scalar >= 917536 and scalar <= 917631
-            return true if scalar >= 917760 and scalar <= 917999
-            return true if scalar == 8204
-            return scalar >= 65056 and scalar <= 65071
+            return UiText::gcb_extend_a(scalar) or UiText::gcb_extend_b(scalar)
 
         def grapheme_control(scalar: u32) -> bool:
-            return true if scalar <= 31
-            return scalar >= 127 and scalar <= 159
+            return scalar == 13 or scalar == 10 or UiText::gcb_control_data(scalar)
 
         def grapheme_prepend(scalar: u32) -> bool:
-            return true if scalar >= 1536 and scalar <= 1541
-            return true if scalar == 1757 or scalar == 1807 or scalar == 2274
-            return true if scalar >= 2192 and scalar <= 2193
-            return true if scalar == 3406 or scalar == 69821 or scalar == 69837
-            return true if scalar >= 70082 and scalar <= 70083
-            return true if scalar == 71999 or scalar == 72001 or scalar == 72250
-            return scalar >= 72324 and scalar <= 72329
+            return UiText::gcb_prepend_data(scalar)
 
         def grapheme_spacing_mark(scalar: u32) -> bool:
-            return true if scalar >= 2366 and scalar <= 2380
-            return true if scalar >= 2382 and scalar <= 2383
-            return true if scalar >= 2389 and scalar <= 2391
-            return true if scalar >= 2402 and scalar <= 2403
-            return true if scalar >= 2494 and scalar <= 2500
-            return true if scalar >= 2503 and scalar <= 2508
-            return true if scalar == 2519
-            return true if scalar >= 2622 and scalar <= 2636
-            return true if scalar >= 2750 and scalar <= 2764
-            return true if scalar >= 2878 and scalar <= 2892
-            return true if scalar == 2903
-            return true if scalar >= 3006 and scalar <= 3020
-            return true if scalar == 3031
-            return true if scalar >= 3134 and scalar <= 3148
-            return true if scalar >= 3157 and scalar <= 3158
-            return true if scalar >= 3262 and scalar <= 3276
-            return true if scalar >= 3285 and scalar <= 3286
-            return true if scalar >= 3390 and scalar <= 3404
-            return true if scalar == 3415
-            return true if scalar >= 3531 and scalar <= 3551
-            return true if scalar >= 3632 and scalar <= 3642
-            return true if scalar >= 3762 and scalar <= 3763
-            return true if scalar >= 3902 and scalar <= 3903
-            return true if scalar >= 4139 and scalar <= 4152
-            return true if scalar >= 4155 and scalar <= 4158
-            return scalar >= 4159 and scalar <= 4169
+            return UiText::gcb_spacing_mark_data(scalar)
 
         def grapheme_linker(scalar: u32) -> bool:
-            return true if scalar == 2381 or scalar == 2509 or scalar == 2637 or scalar == 2765
-            return true if scalar == 2893 or scalar == 3021 or scalar == 3149 or scalar == 3277
-            return true if scalar == 3405 or scalar == 3530 or scalar == 4153 or scalar == 4154
-            return true if scalar == 6098 or scalar == 6752 or scalar == 6980
-            return true if scalar == 69702 or scalar == 69939 or scalar == 70080
-            return true if scalar == 70197 or scalar == 70477 or scalar == 70722
-            return true if scalar == 70850 or scalar == 71103 or scalar == 71231
-            return true if scalar == 71350 or scalar == 71467 or scalar == 71737
-            return true if scalar == 71997 or scalar == 72160 or scalar == 72244
-            return true if scalar == 72767 or scalar == 73028
-            return false
+            return UiText::incb_linker_data(scalar)
 
         def grapheme_consonant(scalar: u32) -> bool:
-            return true if scalar >= 2325 and scalar <= 2361
-            return true if scalar >= 2453 and scalar <= 2489
-            return true if scalar >= 2524 and scalar <= 2527
-            return true if scalar >= 2581 and scalar <= 2617
-            return true if scalar >= 2649 and scalar <= 2654
-            return true if scalar >= 2709 and scalar <= 2745
-            return true if scalar >= 2784 and scalar <= 2785
-            return true if scalar >= 2837 and scalar <= 2873
-            return true if scalar >= 2908 and scalar <= 2909
-            return true if scalar >= 2965 and scalar <= 3001
-            return true if scalar >= 3093 and scalar <= 3129
-            return true if scalar >= 3221 and scalar <= 3257
-            return true if scalar >= 3349 and scalar <= 3385
-            return true if scalar >= 3482 and scalar <= 3526
-            return true if scalar >= 4096 and scalar <= 4129
-            return scalar >= 6016 and scalar <= 6050
+            return UiText::incb_consonant_data(scalar)
 
         def grapheme_extended_pictographic(scalar: u32) -> bool:
-            return true if scalar == 169 or scalar == 174 or scalar == 8252 or scalar == 8265
-            return false if scalar >= 127462 and scalar <= 127487
-            return true if scalar >= 9728 and scalar <= 10175
-            return true if scalar >= 11008 and scalar <= 11263
-            return true if scalar >= 127744 and scalar <= 129791
-            return scalar >= 129792 and scalar <= 129939
+            return UiText::extended_pictographic_data(scalar)
 
         def regional_indicator(scalar: u32) -> bool:
-            return scalar >= 127462 and scalar <= 127487
+            return UiText::gcb_regional_indicator_data(scalar)
 
         def hangul_kind(scalar: u32) -> u32:
             return 1 if (scalar >= 4352 and scalar <= 4447) or (scalar >= 43360 and scalar <= 43388)

@@ -40,6 +40,15 @@ if ! bash "$ROOT/scripts/check_global_names.sh"; then
   status=1
 fi
 
+# Execute the pinned Unicode GraphemeBreakTest corpus through the same
+# UiText::next_grapheme used by editors and line layout. The small curated
+# regression fixture remains in the per-test loop; this data-driven gate is
+# the conformance evidence and must not be reduced to helper combinations.
+if ! bash "$ROOT/scripts/check_unicode_conformance.sh"; then
+  echo "FAIL unicode conformance"
+  status=1
+fi
+
 # The C boundary is checked by building a real C program against the library --
 # the header and the Elisa side are two hand-written descriptions of one ABI, and
 # nothing in the Elisa suite sees the header.
