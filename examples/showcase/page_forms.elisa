@@ -1,0 +1,244 @@
+# Forms page: text entry, secure entry, validation, choices and submission.
+
+include "../../src/widgets/ui_validation.elisa"
+include "theme.elisa"
+include "format.elisa"
+
+module ShowcaseForms:
+    private:
+        const EMAIL_FIELD_ID: u32 = 2001
+        const OWNER: u32 = 2
+        global mutable page: UiHandles::Handle = UiHandles::invalid()
+        global mutable heading: UiHandles::Handle = UiHandles::invalid()
+        global mutable blurb: UiHandles::Handle = UiHandles::invalid()
+        global mutable card: UiHandles::Handle = UiHandles::invalid()
+        global mutable name_field: UiHandles::Handle = UiHandles::invalid()
+        global mutable email_field: UiHandles::Handle = UiHandles::invalid()
+        global mutable email_status: UiHandles::Handle = UiHandles::invalid()
+        global mutable password_field: UiHandles::Handle = UiHandles::invalid()
+        global mutable reveal_box: UiHandles::Handle = UiHandles::invalid()
+        global mutable plan_heading: UiHandles::Handle = UiHandles::invalid()
+        global mutable plan_row: UiHandles::Handle = UiHandles::invalid()
+        global mutable plan_free: UiHandles::Handle = UiHandles::invalid()
+        global mutable plan_pro: UiHandles::Handle = UiHandles::invalid()
+        global mutable plan_team: UiHandles::Handle = UiHandles::invalid()
+        global mutable prefs_heading: UiHandles::Handle = UiHandles::invalid()
+        global mutable pref_updates: UiHandles::Handle = UiHandles::invalid()
+        global mutable pref_autosave: UiHandles::Handle = UiHandles::invalid()
+        global mutable pref_telemetry: UiHandles::Handle = UiHandles::invalid()
+        global mutable action_row: UiHandles::Handle = UiHandles::invalid()
+        global mutable submit_button: UiHandles::Handle = UiHandles::invalid()
+        global mutable reset_button: UiHandles::Handle = UiHandles::invalid()
+        global mutable summary: UiHandles::Handle = UiHandles::invalid()
+        global mutable email_record: UiValidation::Handle = UiValidation::invalid()
+        global mutable submitted: bool = false
+
+        def at_least_graphemes(value: sview, needed: usize) -> bool:
+            enough_graphemes: bool =
+                for _ in 0..<needed |position: usize = 0, enough: bool = true| -> enough:
+                    enough <- false if position.i64() >= value.len
+                    break if not enough
+                    position <- UiText::next_grapheme(value, position)
+            return enough_graphemes
+
+        def email_looks_valid(value: sview) -> bool:
+            return false if value.len < 5 or value.data == null
+            at: mutable i64 = -1
+            dot_after_at: mutable bool = false
+            for index in 0..<value.len.usize():
+                byte: u8 = value.data[index]
+                if byte == 64 and at < 0:
+                    at <- index.i64()
+                elif byte == 46 and at >= 0 and index.i64() > at + 1:
+                    dot_after_at <- true
+            return at > 0 and dot_after_at and value.data[value.len.usize() - 1] != 46
+
+        def plan_index() -> i32:
+            return 0 if UiHandles::selected(plan_free)
+            return 1 if UiHandles::selected(plan_pro)
+            return 2
+
+        def plan_name() -> sview:
+            index: i32 = plan_index()
+            return "Free" if index == 0
+            return "Pro" if index == 1
+            return "Team"
+
+        def choose_plan(index: i32) -> void:
+            UiHandles::set_selected(plan_free, index == 0)
+            UiHandles::set_selected(plan_pro, index == 1)
+            UiHandles::set_selected(plan_team, index == 2)
+
+        def validate_email() -> void:
+            return if not UiValidation::is_valid(email_record)
+            token: u32 = UiValidation::begin(email_record)
+            return if token == 0
+            value: sview = UiHandles::text_value(email_field)
+            if value.len <= 0:
+                _ = UiValidation::reject(email_record, token, "Email is required.")
+            elif email_looks_valid(value):
+                _ = UiValidation::accept(email_record, token)
+            else:
+                _ = UiValidation::reject(email_record, token, "Enter an address like ada@example.org.")
+            current: UiValidation::Status = UiValidation::status(email_record)
+            if current == UiValidation::Status.Valid:
+                UiHandles::set_text(email_status, "Email looks good.", 12.0, ShowcaseTheme::success())
+            elif current == UiValidation::Status.Invalid:
+                UiHandles::set_text(email_status, UiValidation::message(email_record), 12.0, ShowcaseTheme::danger_hover())
+            else:
+                UiHandles::set_text(email_status, "Checking email…", 12.0, ShowcaseTheme::muted())
+
+        def update_summary() -> void can Unsafe.PointerCast:
+            prefs: i32 = (1 if UiHandles::selected(pref_updates) else 0) + (1 if UiHandles::selected(pref_autosave) else 0) + (1 if UiHandles::selected(pref_telemetry) else 0)
+            ShowcaseText::begin()
+            ShowcaseText::put("Plan: ")
+            ShowcaseText::put(plan_name())
+            ShowcaseText::put(" · ")
+            ShowcaseText::put_i32(prefs)
+            ShowcaseText::put(" of 3 preferences · ")
+            ShowcaseText::put("submitted" if submitted else "draft")
+            UiHandles::set_text(summary, ShowcaseText::view(), 13.0, ShowcaseTheme::success() if submitted else ShowcaseTheme::muted())
+            ready: bool = at_least_graphemes(UiHandles::text_value(name_field), 2) and UiValidation::status(email_record) == UiValidation::Status.Valid
+            UiHandles::set_enabled(submit_button, ready)
+            ShowcaseTheme::style_accent_button(submit_button, "Submit again" if submitted else "Submit", 13.0)
+
+        def submit() -> void can Unsafe.PointerCast:
+            return if not UiHandles::is_enabled(submit_button)
+            submitted <- true
+            update_summary()
+
+        def reset() -> void can Unsafe.PointerCast:
+            UiHandles::replace_text(name_field, "")
+            UiHandles::replace_text(email_field, "")
+            UiHandles::replace_text(password_field, "")
+            UiHandles::set_selected(reveal_box, false)
+            UiHandles::set_secure(password_field, true)
+            UiHandles::set_selected(pref_updates, false)
+            UiHandles::set_selected(pref_autosave, true)
+            UiHandles::set_selected(pref_telemetry, false)
+            choose_plan(1)
+            submitted <- false
+            validate_email()
+            update_summary()
+
+    public:
+        def init(host: UiHandles::Handle) -> void can Unsafe.PointerCast:
+            page <- UiHandles::column(host, 0.0, 14.0, ShowcaseTheme::transparent())
+            UiHandles::set_grow(page, 1.0)
+            heading <- UiHandles::label(page, "Forms", 22.0, ShowcaseTheme::ink())
+            blurb <- UiHandles::label(page, "Custom-drawn fields with native IME, selection, undo, clipboard and validation.", 13.0, ShowcaseTheme::muted())
+            card <- UiHandles::column(page, 18.0, 10.0, ShowcaseTheme::card())
+            UiHandles::set_grow(card, 0.0)
+            name_field <- UiHandles::text_field(card, "Full name", "Ada Lovelace", "", 340.0, 38.0, 14.0, ShowcaseTheme::ink(), ShowcaseTheme::field())
+            UiHandles::set_help(name_field, "At least two characters")
+            UiHandles::set_max_size(name_field, 420.0, 38.0)
+            email_field <- UiHandles::text_field(card, "Email", "ada@example.org", "", 340.0, 38.0, 14.0, ShowcaseTheme::ink(), ShowcaseTheme::field())
+            UiHandles::set_help(email_field, "Validated as you type")
+            UiHandles::set_max_size(email_field, 420.0, 38.0)
+            email_record <- UiValidation::bind_owned(EMAIL_FIELD_ID, OWNER)
+            email_status <- UiHandles::label(card, "", 12.0, ShowcaseTheme::muted())
+            password_field <- UiHandles::secure_text_field(card, "Password", "at least 8 characters", "", 340.0, 38.0, 14.0, ShowcaseTheme::ink(), ShowcaseTheme::field())
+            UiHandles::set_help(password_field, "Masked; never copied to the clipboard or a snapshot")
+            UiHandles::set_max_size(password_field, 420.0, 38.0)
+            reveal_box <- UiHandles::check_box(card, 170.0, 30.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            UiHandles::set_max_size(reveal_box, 170.0, 30.0)
+            plan_heading <- UiHandles::label(card, "Plan", 13.0, ShowcaseTheme::muted())
+            plan_row <- UiHandles::row(card, 0.0, 8.0, ShowcaseTheme::transparent())
+            UiHandles::set_grow(plan_row, 0.0)
+            plan_free <- UiHandles::radio_button(plan_row, 110.0, 32.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            plan_pro <- UiHandles::radio_button(plan_row, 110.0, 32.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            plan_team <- UiHandles::radio_button(plan_row, 110.0, 32.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            UiHandles::set_help(plan_free, "No charge, one project")
+            UiHandles::set_help(plan_pro, "Unlimited projects")
+            UiHandles::set_help(plan_team, "Shared workspaces")
+            prefs_heading <- UiHandles::label(card, "Preferences", 13.0, ShowcaseTheme::muted())
+            pref_updates <- UiHandles::check_box(card, 220.0, 30.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            pref_autosave <- UiHandles::check_box(card, 220.0, 30.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            pref_telemetry <- UiHandles::check_box(card, 220.0, 30.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            UiHandles::set_max_size(pref_updates, 220.0, 30.0)
+            UiHandles::set_max_size(pref_autosave, 220.0, 30.0)
+            UiHandles::set_max_size(pref_telemetry, 220.0, 30.0)
+            action_row <- UiHandles::row(card, 0.0, 10.0, ShowcaseTheme::transparent())
+            UiHandles::set_grow(action_row, 0.0)
+            submit_button <- UiHandles::button(action_row, 130.0, 36.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            reset_button <- UiHandles::button(action_row, 130.0, 36.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            UiHandles::set_help(submit_button, "Enabled once the name and email are valid")
+            UiHandles::set_help(reset_button, "Clear every field and choice")
+            summary <- UiHandles::label(card, "", 13.0, ShowcaseTheme::muted())
+            reset()
+            apply_theme()
+
+        def set_visible(visible: bool) -> void:
+            UiHandles::set_visible(page, visible)
+
+        def apply_theme() -> void can Unsafe.PointerCast:
+            UiHandles::set_text(heading, "Forms", 22.0, ShowcaseTheme::ink())
+            UiHandles::set_text(blurb, "Custom-drawn fields with native IME, selection, undo, clipboard and validation.", 13.0, ShowcaseTheme::muted())
+            UiHandles::set_color(card, ShowcaseTheme::card())
+            ShowcaseTheme::style_field(name_field, "Full name", 14.0)
+            ShowcaseTheme::style_field(email_field, "Email", 14.0)
+            ShowcaseTheme::style_field(password_field, "Password", 14.0)
+            ShowcaseTheme::style_choice(reveal_box, "Show password", 13.0)
+            UiHandles::set_text(plan_heading, "Plan", 13.0, ShowcaseTheme::muted())
+            ShowcaseTheme::style_choice(plan_free, "Free", 13.0)
+            ShowcaseTheme::style_choice(plan_pro, "Pro", 13.0)
+            ShowcaseTheme::style_choice(plan_team, "Team", 13.0)
+            UiHandles::set_text(prefs_heading, "Preferences", 13.0, ShowcaseTheme::muted())
+            ShowcaseTheme::style_choice(pref_updates, "Email me about updates", 13.0)
+            ShowcaseTheme::style_choice(pref_autosave, "Autosave drafts", 13.0)
+            ShowcaseTheme::style_choice(pref_telemetry, "Share anonymous usage data", 13.0)
+            ShowcaseTheme::style_button(reset_button, "Reset", 13.0)
+            validate_email()
+            update_summary()
+
+        def widget_event(widget: usize, event: i32) -> bool can Unsafe.PointerCast:
+            if UiHandles::event_is(event, UiConst::WidgetEvent.Change):
+                if UiHandles::callback_matches(widget, email_field):
+                    validate_email()
+                    update_summary()
+                    return true
+                if UiHandles::callback_matches(widget, name_field):
+                    update_summary()
+                    return true
+                return false
+            if UiHandles::event_is(event, UiConst::WidgetEvent.Submit):
+                return false if not (UiHandles::callback_matches(widget, name_field) or UiHandles::callback_matches(widget, email_field) or UiHandles::callback_matches(widget, password_field))
+                submit()
+                return true
+            return false if not UiHandles::event_is(event, UiConst::WidgetEvent.Click)
+            if UiHandles::callback_matches(widget, reveal_box):
+                UiHandles::set_secure(password_field, not UiHandles::selected(reveal_box))
+                return true
+            if UiHandles::callback_matches(widget, plan_free):
+                choose_plan(0)
+                update_summary()
+                return true
+            if UiHandles::callback_matches(widget, plan_pro):
+                choose_plan(1)
+                update_summary()
+                return true
+            if UiHandles::callback_matches(widget, plan_team):
+                choose_plan(2)
+                update_summary()
+                return true
+            if UiHandles::callback_matches(widget, pref_updates) or UiHandles::callback_matches(widget, pref_autosave) or UiHandles::callback_matches(widget, pref_telemetry):
+                update_summary()
+                return true
+            if UiHandles::callback_matches(widget, submit_button):
+                submit()
+                return true
+            if UiHandles::callback_matches(widget, reset_button):
+                reset()
+                return true
+            return false
+
+        def text_has_focus() -> bool:
+            return UiHandles::is_focused(name_field) or UiHandles::is_focused(email_field) or UiHandles::is_focused(password_field)
+
+        def validate() -> void can Unsafe.PointerCast:
+            validate_email()
+            update_summary()
+
+        def dispose() -> void:
+            _ = UiValidation::dispose_owner(OWNER)
+            email_record <- UiValidation::invalid()

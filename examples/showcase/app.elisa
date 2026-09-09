@@ -1,0 +1,426 @@
+# Elisa UI Showcase: one retained tree, five pages, every widget kind the
+# framework has, and the actions that connect them.
+#
+# Page modules own their handles; this module owns the shell (header, sidebar,
+# toolbar, footer), page switching, theming, state persistence and the app_*
+# contract every backend drives. Nothing here is platform-specific.
+
+include "../../src/widgets/ui_handles_persistence.elisa"
+include "theme.elisa"
+include "format.elisa"
+include "page_overview.elisa"
+include "page_forms.elisa"
+include "page_controls.elisa"
+include "page_lists.elisa"
+include "page_canvas.elisa"
+include "dialog.elisa"
+
+module ShowcaseApp:
+    private:
+        const PAGE_COUNT: i32 = 5
+        const ACTION_HIDE_ITEM: i32 = 1
+        const STATE_PAGE_ID: u32 = 1
+        const STATE_DARK_ID: u32 = 2
+        const STATE_ACCENT_ID: u32 = 3
+        const STATE_ACTIONS_ID: u32 = 4
+        global mutable root: UiHandles::Handle = UiHandles::invalid()
+        global mutable header: UiHandles::Handle = UiHandles::invalid()
+        global mutable title_label: UiHandles::Handle = UiHandles::invalid()
+        global mutable subtitle_label: UiHandles::Handle = UiHandles::invalid()
+        global mutable header_spacer: UiHandles::Handle = UiHandles::invalid()
+        global mutable accent_row: UiHandles::Handle = UiHandles::invalid()
+        global mutable accent_ids: u32[5] = zeroed
+        global mutable dark_box: UiHandles::Handle = UiHandles::invalid()
+        global mutable body: UiHandles::Handle = UiHandles::invalid()
+        global mutable sidebar: UiHandles::Handle = UiHandles::invalid()
+        global mutable nav_ids: u32[5] = zeroed
+        global mutable sidebar_spacer: UiHandles::Handle = UiHandles::invalid()
+        global mutable version_label: UiHandles::Handle = UiHandles::invalid()
+        global mutable main: UiHandles::Handle = UiHandles::invalid()
+        global mutable toolbar: UiHandles::Handle = UiHandles::invalid()
+        global mutable new_button: UiHandles::Handle = UiHandles::invalid()
+        global mutable hide_button: UiHandles::Handle = UiHandles::invalid()
+        global mutable save_button: UiHandles::Handle = UiHandles::invalid()
+        global mutable restore_button: UiHandles::Handle = UiHandles::invalid()
+        global mutable theme_button: UiHandles::Handle = UiHandles::invalid()
+        global mutable toolbar_spacer: UiHandles::Handle = UiHandles::invalid()
+        global mutable actions_label: UiHandles::Handle = UiHandles::invalid()
+        global mutable host: UiHandles::Handle = UiHandles::invalid()
+        global mutable footer: UiHandles::Handle = UiHandles::invalid()
+        global mutable status_label: UiHandles::Handle = UiHandles::invalid()
+        global mutable footer_spacer: UiHandles::Handle = UiHandles::invalid()
+        global mutable count_label: UiHandles::Handle = UiHandles::invalid()
+        global mutable page_index: i32 = 0
+        global mutable action_count: u32 = 0
+        global mutable event_count: u32 = 0
+        global mutable state_blob: u8[UiState::MAX_BYTES] = zeroed
+        global mutable state_length: usize = 0
+
+        def nav_handle(index: i32) -> UiHandles::Handle:
+            return UiHandles::invalid() if index < 0 or index >= PAGE_COUNT
+            return UiHandles::from_index(nav_ids[index.usize()].usize())
+
+        def accent_handle(index: i32) -> UiHandles::Handle:
+            return UiHandles::invalid() if index < 0 or index >= ShowcaseTheme::ACCENT_COUNT
+            return UiHandles::from_index(accent_ids[index.usize()].usize())
+
+        def page_name(index: i32) -> sview:
+            return "Overview" if index == 0
+            return "Forms" if index == 1
+            return "Controls" if index == 2
+            return "Lists" if index == 3
+            return "Canvas"
+
+        def refresh_counters() -> void can Unsafe.PointerCast:
+            ShowcaseText::begin()
+            ShowcaseText::put_u32(action_count)
+            ShowcaseText::put(" actions")
+            UiHandles::set_text(actions_label, ShowcaseText::view(), 12.0, ShowcaseTheme::muted())
+            ShowcaseText::begin()
+            ShowcaseText::put_u32(UiHandles::count().u32())
+            ShowcaseText::put(" widgets · ")
+            ShowcaseText::put_u32(event_count)
+            ShowcaseText::put(" events · ")
+            ShowcaseText::put(ShowcaseTheme::accent_name(ShowcaseTheme::accent()))
+            ShowcaseText::put(" · ")
+            ShowcaseText::put("dark" if ShowcaseTheme::is_dark() else "light")
+            UiHandles::set_text(count_label, ShowcaseText::view(), 12.0, ShowcaseTheme::muted())
+            ShowcaseOverview::refresh(UiHandles::count().u32(), action_count, event_count)
+
+        def note(status: sview) -> void can Unsafe.PointerCast:
+            action_count <- action_count + 1
+            UiHandles::set_text(status_label, status, 12.0, ShowcaseTheme::ink())
+            refresh_counters()
+
+        def show_page(index: i32) -> void can Unsafe.PointerCast:
+            safe: i32 = 0 if index < 0 or index >= PAGE_COUNT else index
+            page_index <- safe
+            for scan in 0..<PAGE_COUNT:
+                UiHandles::set_selected(nav_handle(scan), scan == safe)
+            ShowcaseOverview::set_visible(safe == 0)
+            ShowcaseForms::set_visible(safe == 1)
+            ShowcaseControls::set_visible(safe == 2)
+            ShowcaseLists::set_visible(safe == 3)
+            ShowcaseCanvas::set_visible(safe == 4)
+            ShowcaseText::begin()
+            ShowcaseText::put("Page: ")
+            ShowcaseText::put(page_name(safe))
+            UiHandles::set_text(status_label, ShowcaseText::view(), 12.0, ShowcaseTheme::muted())
+
+        def apply_theme() -> void can Unsafe.PointerCast:
+            ShowcaseTheme::apply_framework_palette()
+            UiHandles::set_color(root, ShowcaseTheme::canvas())
+            UiHandles::set_color(header, ShowcaseTheme::shell())
+            UiHandles::set_color(sidebar, ShowcaseTheme::shell())
+            UiHandles::set_color(toolbar, ShowcaseTheme::panel())
+            UiHandles::set_color(footer, ShowcaseTheme::shell())
+            UiHandles::set_text(title_label, "Elisa UI Showcase", 21.0, ShowcaseTheme::ink())
+            UiHandles::set_text(subtitle_label, "self-hosted compiler · AppKit canvas backend", 12.0, ShowcaseTheme::muted())
+            UiHandles::set_text(version_label, "elisa-ui 0.1 · stage1", 11.0, ShowcaseTheme::muted())
+            for index in 0..<ShowcaseTheme::ACCENT_COUNT:
+                UiHandles::set_colors(accent_handle(index), ShowcaseTheme::accent_color(index), ShowcaseTheme::accent_hover_color(index), ShowcaseTheme::accent_press_color(index))
+                UiHandles::set_selected(accent_handle(index), index == ShowcaseTheme::accent())
+            ShowcaseTheme::style_choice(dark_box, "Dark mode", 13.0)
+            UiHandles::set_selected(dark_box, ShowcaseTheme::is_dark())
+            for index in 0..<PAGE_COUNT:
+                ShowcaseTheme::style_choice(nav_handle(index), page_name(index), 14.0)
+            ShowcaseTheme::style_accent_button(new_button, "New item", 13.0)
+            ShowcaseTheme::style_danger_button(hide_button, "Hide item…", 13.0)
+            ShowcaseTheme::style_button(save_button, "Save state", 13.0)
+            ShowcaseTheme::style_button(restore_button, "Restore state", 13.0)
+            ShowcaseTheme::style_button(theme_button, "Toggle theme", 13.0)
+            ShowcaseOverview::apply_theme()
+            ShowcaseForms::apply_theme()
+            ShowcaseControls::apply_theme()
+            ShowcaseLists::apply_theme()
+            ShowcaseCanvas::apply_theme()
+            ShowcaseDialog::apply_theme()
+            ShowcaseText::begin()
+            ShowcaseText::put("Theme: ")
+            ShowcaseText::put("dark" if ShowcaseTheme::is_dark() else "light")
+            ShowcaseText::put(" · accent ")
+            ShowcaseText::put(ShowcaseTheme::accent_name(ShowcaseTheme::accent()))
+            UiHandles::set_text(status_label, ShowcaseText::view(), 12.0, ShowcaseTheme::muted())
+            refresh_counters()
+
+        def toggle_theme() -> void can Unsafe.PointerCast:
+            ShowcaseTheme::set_dark(not ShowcaseTheme::is_dark())
+            action_count <- action_count + 1
+            apply_theme()
+
+        def choose_accent(index: i32) -> void can Unsafe.PointerCast:
+            ShowcaseTheme::set_accent(index)
+            action_count <- action_count + 1
+            apply_theme()
+
+        def set_shell_enabled(enabled: bool) -> void:
+            UiHandles::set_enabled(sidebar, enabled)
+            UiHandles::set_enabled(toolbar, enabled)
+            UiHandles::set_enabled(header, enabled)
+
+        def add_item() -> void can Unsafe.PointerCast:
+            if ShowcaseLists::add_item():
+                show_page(3)
+                note("New item added to the list.")
+            else:
+                show_page(3)
+                note("The list already shows all 24 rows.")
+
+        def request_hide() -> void can Unsafe.PointerCast:
+            show_page(3)
+            if not ShowcaseLists::has_selection():
+                note("Select a row first.")
+                return
+            if ShowcaseDialog::open(ACTION_HIDE_ITEM, "Hide this item?", ShowcaseLists::selected_caption(), "Hide"):
+                set_shell_enabled(false)
+                note("Confirm or cancel the dialog (Escape cancels).")
+
+        def close_dialog_with(action: i32) -> void can Unsafe.PointerCast:
+            set_shell_enabled(true)
+            if action == ACTION_HIDE_ITEM:
+                _ = ShowcaseLists::hide_selected()
+                note("Item hidden; the list reflowed.")
+            else:
+                note("Dialog dismissed; nothing changed.")
+
+        def save_state() -> void can Unsafe.PointerCast:
+            UiHandlesPersistence::begin()
+            _ = UiState::put_i32(STATE_PAGE_ID, page_index)
+            _ = UiState::put_bool(STATE_DARK_ID, ShowcaseTheme::is_dark())
+            _ = UiState::put_i32(STATE_ACCENT_ID, ShowcaseTheme::accent())
+            _ = UiState::put_i32(STATE_ACTIONS_ID, action_count.i32())
+            if UiHandlesPersistence::saved().failed:
+                note("State could not be saved.")
+                return
+            state_length <- UiHandlesPersistence::copy_to(&state_blob[0], UiState::MAX_BYTES)
+            note("State saved: page, theme, accent and action count.")
+
+        def restore_state() -> void can Unsafe.PointerCast:
+            if state_length <= UiState::HEADER_BYTES:
+                note("Nothing saved yet. Press Save state first.")
+                return
+            if not UiHandlesPersistence::restore(&state_blob[0], state_length):
+                note("The saved state was rejected.")
+                return
+            ShowcaseTheme::set_dark(UiState::bool(STATE_DARK_ID, true))
+            ShowcaseTheme::set_accent(UiState::i32(STATE_ACCENT_ID, 2))
+            action_count <- UiState::i32(STATE_ACTIONS_ID, 0).u32()
+            apply_theme()
+            show_page(UiState::i32(STATE_PAGE_ID, 0))
+            note("State restored.")
+
+    public:
+        def init() -> void can Unsafe.PointerCast:
+            ShowcaseForms::dispose()
+            UiHandles::reset()
+            UiDialog::reset()
+            UiNavigation::reset()
+            UiValidation::reset()
+            page_index <- 0
+            action_count <- 0
+            event_count <- 0
+            state_length <- 0
+            ShowcaseTheme::set_dark(true)
+            ShowcaseTheme::set_accent(2)
+
+            root <- UiHandles::column(UiHandles::root_parent(), 0.0, 0.0, ShowcaseTheme::canvas())
+
+            header <- UiHandles::row(root, 16.0, 14.0, ShowcaseTheme::shell())
+            UiHandles::set_grow(header, 0.0)
+            title_label <- UiHandles::label(header, "Elisa UI Showcase", 21.0, ShowcaseTheme::ink())
+            subtitle_label <- UiHandles::label(header, "", 12.0, ShowcaseTheme::muted())
+            header_spacer <- UiHandles::row(header, 0.0, 0.0, ShowcaseTheme::transparent())
+            UiHandles::set_grow(header_spacer, 1.0)
+            accent_row <- UiHandles::row(header, 0.0, 6.0, ShowcaseTheme::transparent())
+            UiHandles::set_grow(accent_row, 0.0)
+            for index in 0..<ShowcaseTheme::ACCENT_COUNT:
+                swatch: UiHandles::Handle = UiHandles::radio_button(accent_row, 30.0, 26.0, ShowcaseTheme::accent_color(index), ShowcaseTheme::accent_hover_color(index), ShowcaseTheme::accent_press_color(index))
+                accent_ids[index.usize()] <- UiHandles::index(swatch).u32()
+                UiHandles::set_help(swatch, ShowcaseTheme::accent_name(index))
+            dark_box <- UiHandles::check_box(header, 120.0, 30.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            UiHandles::set_help(dark_box, "Switch appearance (keyboard: T)")
+
+            body <- UiHandles::row(root, 0.0, 0.0, ShowcaseTheme::transparent())
+            UiHandles::set_grow(body, 1.0)
+            sidebar <- UiHandles::column(body, 12.0, 6.0, ShowcaseTheme::shell())
+            UiHandles::set_grow(sidebar, 0.0)
+            for index in 0..<PAGE_COUNT:
+                entry: UiHandles::Handle = UiHandles::radio_button(sidebar, 168.0, 34.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+                nav_ids[index.usize()] <- UiHandles::index(entry).u32()
+                UiHandles::set_grow(entry, 0.0)
+                UiHandles::set_help(entry, "Open this page (keyboard: 1 to 5)")
+            sidebar_spacer <- UiHandles::column(sidebar, 0.0, 0.0, ShowcaseTheme::transparent())
+            UiHandles::set_grow(sidebar_spacer, 1.0)
+            version_label <- UiHandles::label(sidebar, "", 11.0, ShowcaseTheme::muted())
+
+            main <- UiHandles::column(body, 0.0, 0.0, ShowcaseTheme::transparent())
+            UiHandles::set_grow(main, 1.0)
+            toolbar <- UiHandles::row(main, 10.0, 8.0, ShowcaseTheme::panel())
+            UiHandles::set_grow(toolbar, 0.0)
+            new_button <- UiHandles::button(toolbar, 110.0, 32.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            hide_button <- UiHandles::button(toolbar, 110.0, 32.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            save_button <- UiHandles::button(toolbar, 110.0, 32.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            restore_button <- UiHandles::button(toolbar, 120.0, 32.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            theme_button <- UiHandles::button(toolbar, 120.0, 32.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            UiHandles::set_help(new_button, "Reveal another list row (keyboard: N)")
+            UiHandles::set_help(hide_button, "Hide the selected list row after confirming (keyboard: H)")
+            UiHandles::set_help(save_button, "Snapshot the app state (keyboard: P)")
+            UiHandles::set_help(restore_button, "Restore the last snapshot (keyboard: R)")
+            UiHandles::set_help(theme_button, "Switch appearance (keyboard: T)")
+            toolbar_spacer <- UiHandles::row(toolbar, 0.0, 0.0, ShowcaseTheme::transparent())
+            UiHandles::set_grow(toolbar_spacer, 1.0)
+            actions_label <- UiHandles::label(toolbar, "", 12.0, ShowcaseTheme::muted())
+
+            host <- UiHandles::column(main, 18.0, 12.0, ShowcaseTheme::transparent())
+            UiHandles::set_grow(host, 1.0)
+            ShowcaseDialog::init(host)
+            ShowcaseOverview::init(host)
+            ShowcaseForms::init(host)
+            ShowcaseControls::init(host)
+            ShowcaseLists::init(host)
+            ShowcaseCanvas::init(host)
+
+            footer <- UiHandles::row(root, 10.0, 12.0, ShowcaseTheme::shell())
+            UiHandles::set_grow(footer, 0.0)
+            status_label <- UiHandles::label(footer, "Ready.", 12.0, ShowcaseTheme::muted())
+            footer_spacer <- UiHandles::row(footer, 0.0, 0.0, ShowcaseTheme::transparent())
+            UiHandles::set_grow(footer_spacer, 1.0)
+            count_label <- UiHandles::label(footer, "", 12.0, ShowcaseTheme::muted())
+
+            apply_theme()
+            show_page(0)
+            refresh_counters()
+            UiHandles::layout(UiCore::viewport_width(), UiCore::viewport_height())
+
+        def widget_event(widget: usize, event: i32) -> void can Unsafe.PointerCast:
+            event_count <- event_count + 1
+            if ShowcaseDialog::is_open():
+                was_open: bool = true
+                action: i32 = ShowcaseDialog::widget_event(widget, event)
+                close_dialog_with(action) if was_open and not ShowcaseDialog::is_open()
+                return
+            if UiHandles::event_is(event, UiConst::WidgetEvent.Click):
+                for index in 0..<PAGE_COUNT:
+                    if UiHandles::callback_matches(widget, nav_handle(index)):
+                        show_page(index)
+                        action_count <- action_count + 1
+                        refresh_counters()
+                        return
+                for index in 0..<ShowcaseTheme::ACCENT_COUNT:
+                    if UiHandles::callback_matches(widget, accent_handle(index)):
+                        choose_accent(index)
+                        return
+                if UiHandles::callback_matches(widget, dark_box):
+                    ShowcaseTheme::set_dark(UiHandles::selected(dark_box))
+                    action_count <- action_count + 1
+                    apply_theme()
+                    return
+                if UiHandles::callback_matches(widget, new_button):
+                    add_item()
+                    return
+                if UiHandles::callback_matches(widget, hide_button):
+                    request_hide()
+                    return
+                if UiHandles::callback_matches(widget, save_button):
+                    save_state()
+                    return
+                if UiHandles::callback_matches(widget, restore_button):
+                    restore_state()
+                    return
+                if UiHandles::callback_matches(widget, theme_button):
+                    toggle_theme()
+                    return
+            quick: i32 = ShowcaseOverview::widget_event(widget, event)
+            if quick == 1:
+                show_page(1)
+                note("Opened Forms from the overview.")
+                return
+            if quick == 2:
+                show_page(4)
+                note("Opened Canvas from the overview.")
+                return
+            if quick == 3:
+                toggle_theme()
+                return
+            if quick == 4:
+                choose_accent((ShowcaseTheme::accent() + 1) % ShowcaseTheme::ACCENT_COUNT)
+                return
+            handled: bool = ShowcaseForms::widget_event(widget, event) or ShowcaseControls::widget_event(widget, event) or ShowcaseLists::widget_event(widget, event) or ShowcaseCanvas::widget_event(widget, event)
+            if handled:
+                action_count <- action_count + 1
+            refresh_counters()
+
+        def event(incoming: UiCore::Event) -> void can Unsafe.PointerCast:
+            match incoming:
+                UiCore::KeyEvent.Down(code):
+                    event_count <- event_count + 1
+                    if ShowcaseDialog::is_open():
+                        if code == UiCore::Key.Escape and ShowcaseDialog::escape():
+                            close_dialog_with(0)
+                            return
+                    elif ShowcaseForms::text_has_focus():
+                        UiHandles::handle(incoming)
+                        return
+                    else:
+                        if code == UiCore::Key.Digit1:
+                            show_page(0)
+                        elif code == UiCore::Key.Digit2:
+                            show_page(1)
+                        elif code == UiCore::Key.Digit3:
+                            show_page(2)
+                        elif code == UiCore::Key.Digit4:
+                            show_page(3)
+                        elif code == UiCore::Key.Digit5:
+                            show_page(4)
+                        elif code == UiCore::Key.T:
+                            toggle_theme()
+                            return
+                        elif code == UiCore::Key.N:
+                            add_item()
+                            return
+                        elif code == UiCore::Key.H:
+                            request_hide()
+                            return
+                        elif code == UiCore::Key.P:
+                            save_state()
+                            return
+                        elif code == UiCore::Key.R:
+                            restore_state()
+                            return
+                        elif code == UiCore::Key.Space and page_index == 4:
+                            ShowcaseCanvas::toggle_animation()
+                            note("Animation toggled.")
+                            return
+                _:
+                    pass
+            UiHandles::handle(incoming)
+
+        def frame() -> void can Unsafe.PointerCast:
+            UiCore::clear(ShowcaseTheme::canvas())
+            UiHandles::paint()
+            ShowcaseOverview::frame()
+            ShowcaseControls::frame()
+            ShowcaseCanvas::frame()
+            ShowcaseDialog::frame()
+
+# The application half of the contract. Top-level by name; one call each.
+def app_init() -> void:
+    ShowcaseApp::init()
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    ShowcaseApp::widget_event(widget, event)
+
+def app_event(event: UiCore::Event) -> void:
+    ShowcaseApp::event(event)
+
+def app_text_input(text: sview) -> void:
+    UiHandles::insert_text(text)
+
+def app_validate() -> void:
+    ShowcaseForms::validate()
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    UiHandles::update_marked_text_utf8_characters(text, selected_start, selected_length)
+
+def app_frame() -> void:
+    ShowcaseApp::frame()

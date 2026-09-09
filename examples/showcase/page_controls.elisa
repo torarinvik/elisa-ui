@@ -1,0 +1,232 @@
+# Controls page: linked sliders and meters, a frame-driven task runner, and
+# enable/visibility/alignment switches that reshape a live subtree.
+
+include "theme.elisa"
+include "format.elisa"
+
+module ShowcaseControls:
+    private:
+        global mutable page: UiHandles::Handle = UiHandles::invalid()
+        global mutable heading: UiHandles::Handle = UiHandles::invalid()
+        global mutable blurb: UiHandles::Handle = UiHandles::invalid()
+        global mutable sliders_card: UiHandles::Handle = UiHandles::invalid()
+        global mutable sliders_heading: UiHandles::Handle = UiHandles::invalid()
+        global mutable volume: UiHandles::Handle = UiHandles::invalid()
+        global mutable volume_meter: UiHandles::Handle = UiHandles::invalid()
+        global mutable volume_label: UiHandles::Handle = UiHandles::invalid()
+        global mutable brightness: UiHandles::Handle = UiHandles::invalid()
+        global mutable brightness_meter: UiHandles::Handle = UiHandles::invalid()
+        global mutable brightness_label: UiHandles::Handle = UiHandles::invalid()
+        global mutable temperature: UiHandles::Handle = UiHandles::invalid()
+        global mutable temperature_label: UiHandles::Handle = UiHandles::invalid()
+        global mutable link_box: UiHandles::Handle = UiHandles::invalid()
+        global mutable task_card: UiHandles::Handle = UiHandles::invalid()
+        global mutable task_heading: UiHandles::Handle = UiHandles::invalid()
+        global mutable task_status: UiHandles::Handle = UiHandles::invalid()
+        global mutable task_bar: UiHandles::Handle = UiHandles::invalid()
+        global mutable task_row: UiHandles::Handle = UiHandles::invalid()
+        global mutable start_button: UiHandles::Handle = UiHandles::invalid()
+        global mutable pause_button: UiHandles::Handle = UiHandles::invalid()
+        global mutable reset_button: UiHandles::Handle = UiHandles::invalid()
+        global mutable options_card: UiHandles::Handle = UiHandles::invalid()
+        global mutable options_heading: UiHandles::Handle = UiHandles::invalid()
+        global mutable enable_box: UiHandles::Handle = UiHandles::invalid()
+        global mutable show_task_box: UiHandles::Handle = UiHandles::invalid()
+        global mutable center_box: UiHandles::Handle = UiHandles::invalid()
+        global mutable task_running: bool = false
+        global mutable task_progress: f32 = 0.0
+        global mutable last_time: f64 = 0.0
+
+        def refresh_slider_labels() -> void can Unsafe.PointerCast:
+            ShowcaseText::begin()
+            ShowcaseText::put("Volume ")
+            ShowcaseText::put_percent(UiHandles::value(volume))
+            UiHandles::set_text(volume_label, ShowcaseText::view(), 12.0, ShowcaseTheme::muted())
+            ShowcaseText::begin()
+            ShowcaseText::put("Brightness ")
+            ShowcaseText::put_percent(UiHandles::value(brightness))
+            UiHandles::set_text(brightness_label, ShowcaseText::view(), 12.0, ShowcaseTheme::muted())
+            ShowcaseText::begin()
+            ShowcaseText::put("Temperature ")
+            ShowcaseText::put_fixed1(16.0 + UiHandles::value(temperature) * 14.0)
+            ShowcaseText::put(" °C")
+            UiHandles::set_text(temperature_label, ShowcaseText::view(), 12.0, ShowcaseTheme::muted())
+            UiHandles::set_value(volume_meter, UiHandles::value(volume))
+            UiHandles::set_value(brightness_meter, UiHandles::value(brightness))
+
+        def link_from(value: f32) -> void:
+            return if not UiHandles::selected(link_box)
+            UiHandles::set_value(volume, value)
+            UiHandles::set_value(brightness, value)
+            UiHandles::set_value(temperature, value)
+
+        def task_view() -> void can Unsafe.PointerCast:
+            UiHandles::set_value(task_bar, task_progress)
+            if task_progress >= 1.0:
+                UiHandles::set_text(task_status, "Task complete.", 13.0, ShowcaseTheme::success())
+            elif task_running:
+                ShowcaseText::begin()
+                ShowcaseText::put("Running · ")
+                ShowcaseText::put_percent(task_progress)
+                UiHandles::set_text(task_status, ShowcaseText::view(), 13.0, ShowcaseTheme::ink())
+            elif task_progress > 0.0:
+                ShowcaseText::begin()
+                ShowcaseText::put("Paused · ")
+                ShowcaseText::put_percent(task_progress)
+                UiHandles::set_text(task_status, ShowcaseText::view(), 13.0, ShowcaseTheme::warning())
+            else:
+                UiHandles::set_text(task_status, "Idle. Press Start to run a five-second task.", 13.0, ShowcaseTheme::muted())
+            UiHandles::set_enabled(start_button, not task_running and task_progress < 1.0)
+            UiHandles::set_enabled(pause_button, task_running)
+            UiHandles::set_enabled(reset_button, task_progress > 0.0)
+
+        def start_task() -> void can Unsafe.PointerCast:
+            return if task_running or task_progress >= 1.0
+            task_running <- true
+            last_time <- UiCore::frame_time()
+            task_view()
+            UiCore::request_frame_after(0.016)
+
+    public:
+        def init(host: UiHandles::Handle) -> void can Unsafe.PointerCast:
+            page <- UiHandles::column(host, 0.0, 14.0, ShowcaseTheme::transparent())
+            UiHandles::set_grow(page, 1.0)
+            heading <- UiHandles::label(page, "Controls", 22.0, ShowcaseTheme::ink())
+            blurb <- UiHandles::label(page, "Sliders, meters, a frame-driven task, and switches that reshape a live subtree.", 13.0, ShowcaseTheme::muted())
+
+            sliders_card <- UiHandles::column(page, 18.0, 8.0, ShowcaseTheme::card())
+            UiHandles::set_grow(sliders_card, 0.0)
+            sliders_heading <- UiHandles::label(sliders_card, "Sliders and meters", 14.0, ShowcaseTheme::muted())
+            volume_label <- UiHandles::label(sliders_card, "", 12.0, ShowcaseTheme::muted())
+            volume <- UiHandles::slider_labeled(sliders_card, "Volume", 260.0, 26.0, 0.6, ShowcaseTheme::track(), ShowcaseTheme::current_accent(), ShowcaseTheme::thumb())
+            UiHandles::set_help(volume, "Drag, or use the arrow keys when focused")
+            volume_meter <- UiHandles::progress_bar_labeled(sliders_card, "Volume level", 260.0, 8.0, 0.6, ShowcaseTheme::track(), ShowcaseTheme::current_accent())
+            brightness_label <- UiHandles::label(sliders_card, "", 12.0, ShowcaseTheme::muted())
+            brightness <- UiHandles::slider_labeled(sliders_card, "Brightness", 260.0, 26.0, 0.8, ShowcaseTheme::track(), ShowcaseTheme::current_accent(), ShowcaseTheme::thumb())
+            UiHandles::set_step(brightness, 0.1)
+            UiHandles::set_help(brightness, "Steps by ten percent")
+            brightness_meter <- UiHandles::progress_bar_labeled(sliders_card, "Brightness level", 260.0, 8.0, 0.8, ShowcaseTheme::track(), ShowcaseTheme::current_accent())
+            temperature_label <- UiHandles::label(sliders_card, "", 12.0, ShowcaseTheme::muted())
+            temperature <- UiHandles::slider_labeled(sliders_card, "Temperature", 260.0, 26.0, 0.35, ShowcaseTheme::track(), ShowcaseTheme::current_accent(), ShowcaseTheme::thumb())
+            UiHandles::set_step(temperature, 0.02)
+            UiHandles::set_help(temperature, "Sixteen to thirty degrees")
+            link_box <- UiHandles::check_box(sliders_card, 200.0, 30.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            UiHandles::set_max_size(link_box, 200.0, 30.0)
+            UiHandles::set_help(link_box, "Moving one slider moves all three")
+
+            task_card <- UiHandles::column(page, 18.0, 8.0, ShowcaseTheme::card())
+            UiHandles::set_grow(task_card, 0.0)
+            task_heading <- UiHandles::label(task_card, "Task runner", 14.0, ShowcaseTheme::muted())
+            task_status <- UiHandles::label(task_card, "", 13.0, ShowcaseTheme::muted())
+            task_bar <- UiHandles::progress_bar_labeled(task_card, "Task progress", 300.0, 10.0, 0.0, ShowcaseTheme::track(), ShowcaseTheme::current_accent())
+            task_row <- UiHandles::row(task_card, 0.0, 8.0, ShowcaseTheme::transparent())
+            UiHandles::set_grow(task_row, 0.0)
+            start_button <- UiHandles::button(task_row, 100.0, 32.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            pause_button <- UiHandles::button(task_row, 100.0, 32.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            reset_button <- UiHandles::button(task_row, 100.0, 32.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            UiHandles::set_help(start_button, "Advance the progress bar from the frame clock")
+            UiHandles::set_help(pause_button, "Stop advancing; progress is kept")
+            UiHandles::set_help(reset_button, "Return the task to idle")
+
+            options_card <- UiHandles::column(page, 18.0, 8.0, ShowcaseTheme::card())
+            UiHandles::set_grow(options_card, 0.0)
+            options_heading <- UiHandles::label(options_card, "Subtree switches", 14.0, ShowcaseTheme::muted())
+            enable_box <- UiHandles::check_box(options_card, 260.0, 30.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            show_task_box <- UiHandles::check_box(options_card, 260.0, 30.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            center_box <- UiHandles::check_box(options_card, 260.0, 30.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            UiHandles::set_max_size(enable_box, 260.0, 30.0)
+            UiHandles::set_max_size(show_task_box, 260.0, 30.0)
+            UiHandles::set_max_size(center_box, 260.0, 30.0)
+            UiHandles::set_selected(enable_box, true)
+            UiHandles::set_selected(show_task_box, true)
+            UiHandles::set_help(enable_box, "Disables every slider and meter above at once")
+            UiHandles::set_help(show_task_box, "Hides the task runner; layout reflows")
+            UiHandles::set_help(center_box, "Centres the sliders instead of stretching them")
+            apply_theme()
+
+        def set_visible(visible: bool) -> void:
+            UiHandles::set_visible(page, visible)
+
+        def apply_theme() -> void can Unsafe.PointerCast:
+            UiHandles::set_text(heading, "Controls", 22.0, ShowcaseTheme::ink())
+            UiHandles::set_text(blurb, "Sliders, meters, a frame-driven task, and switches that reshape a live subtree.", 13.0, ShowcaseTheme::muted())
+            UiHandles::set_color(sliders_card, ShowcaseTheme::card())
+            UiHandles::set_color(task_card, ShowcaseTheme::card())
+            UiHandles::set_color(options_card, ShowcaseTheme::card())
+            UiHandles::set_text(sliders_heading, "Sliders and meters", 14.0, ShowcaseTheme::muted())
+            UiHandles::set_text(task_heading, "Task runner", 14.0, ShowcaseTheme::muted())
+            UiHandles::set_text(options_heading, "Subtree switches", 14.0, ShowcaseTheme::muted())
+            ShowcaseTheme::style_slider(volume)
+            ShowcaseTheme::style_slider(brightness)
+            ShowcaseTheme::style_slider(temperature)
+            ShowcaseTheme::style_meter(volume_meter)
+            ShowcaseTheme::style_meter(brightness_meter)
+            ShowcaseTheme::style_meter(task_bar)
+            ShowcaseTheme::style_choice(link_box, "Link the three sliders", 13.0)
+            ShowcaseTheme::style_accent_button(start_button, "Start", 13.0)
+            ShowcaseTheme::style_button(pause_button, "Pause", 13.0)
+            ShowcaseTheme::style_button(reset_button, "Reset", 13.0)
+            ShowcaseTheme::style_choice(enable_box, "Enable sliders and meters", 13.0)
+            ShowcaseTheme::style_choice(show_task_box, "Show the task runner", 13.0)
+            ShowcaseTheme::style_choice(center_box, "Centre the slider card", 13.0)
+            refresh_slider_labels()
+            task_view()
+
+        def widget_event(widget: usize, event: i32) -> bool can Unsafe.PointerCast:
+            if UiHandles::event_is(event, UiConst::WidgetEvent.Change):
+                if UiHandles::callback_matches(widget, volume):
+                    link_from(UiHandles::value(volume))
+                elif UiHandles::callback_matches(widget, brightness):
+                    link_from(UiHandles::value(brightness))
+                elif UiHandles::callback_matches(widget, temperature):
+                    link_from(UiHandles::value(temperature))
+                else:
+                    return false
+                refresh_slider_labels()
+                return true
+            return false if not UiHandles::event_is(event, UiConst::WidgetEvent.Click)
+            if UiHandles::callback_matches(widget, link_box):
+                link_from(UiHandles::value(volume))
+                refresh_slider_labels()
+                return true
+            if UiHandles::callback_matches(widget, start_button):
+                start_task()
+                return true
+            if UiHandles::callback_matches(widget, pause_button):
+                task_running <- false
+                task_view()
+                return true
+            if UiHandles::callback_matches(widget, reset_button):
+                task_running <- false
+                task_progress <- 0.0
+                task_view()
+                return true
+            if UiHandles::callback_matches(widget, enable_box):
+                UiHandles::set_enabled(sliders_card, UiHandles::selected(enable_box))
+                return true
+            if UiHandles::callback_matches(widget, show_task_box):
+                UiHandles::set_visible(task_card, UiHandles::selected(show_task_box))
+                return true
+            if UiHandles::callback_matches(widget, center_box):
+                alignment: mutable UiConst::CrossAlignment = UiConst::CrossAlignment.Stretch
+                alignment <- UiConst::CrossAlignment.Center if UiHandles::selected(center_box)
+                UiHandles::set_cross_alignment(sliders_card, alignment)
+                return true
+            return false
+
+        def task_is_running() -> bool:
+            return task_running
+
+        def frame() -> void can Unsafe.PointerCast:
+            return if not task_running
+            now: f64 = UiCore::frame_time()
+            elapsed: mutable f32 = (now - last_time).f32()
+            elapsed <- 0.0 if elapsed < 0.0
+            elapsed <- 0.1 if elapsed > 0.1
+            last_time <- now
+            task_progress <- task_progress + elapsed * 0.2
+            if task_progress >= 1.0:
+                task_progress <- 1.0
+                task_running <- false
+            task_view()
+            UiCore::request_frame_after(0.016) if task_running

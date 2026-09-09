@@ -198,11 +198,15 @@ module UiSkia:
         # UTF-8, and minimum-font policy as ordinary commands.
         def draw_text_run(run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
             return if canvas_state == 0 or color.a == 0 or run.text.len <= 0 or run.text.data == null
+            # The run's origin is the TOP of its line box (see the flat painter and the
+            # SDL3 blit); Skia's drawSimpleText takes the BASELINE, so add the ascent
+            # of the font that will actually draw it.
+            safe_size: f32 = UiSkia::safe_font_size(run.size)
             safe_run: UiCore::TextRun = UiCore::TextRun(
                 UiCore::Vec2(
                     UiCore::bounded_coordinate(run.origin.x),
-                    UiCore::bounded_coordinate(run.origin.y)),
-                UiSkia::safe_font_size(run.size),
+                    UiCore::bounded_coordinate(run.origin.y + UiSkia::active_font_ascent(safe_size))),
+                safe_size,
                 UiCore::bounded_text(run.text))
             safe_text: sview = safe_run.text
             return if safe_text.len <= 0 or safe_text.data == null

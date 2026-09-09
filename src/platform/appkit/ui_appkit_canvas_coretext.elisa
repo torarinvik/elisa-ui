@@ -102,10 +102,15 @@ extend UiAppKitCanvas:
                 # lays glyphs out in y-up coordinates. Reflect the drawing
                 # space around the view's bottom edge, then mirror the
                 # baseline so the rest of Elisa can stay y-down.
+                # A TextRun's origin is the TOP of its line box -- the convention the
+                # flat painter centres captions with and the SDL3 painter blits at.
+                # CoreText positions the BASELINE, so step down by the ascent; without
+                # this every caption sat one ascent too high in its control.
                 view_height: f64 = UiCore::viewport_height().f64()
+                baseline: f64 = y.f64() + font_ascent(size).f64()
                 CGContextTranslateCTM(context, 0.0, view_height)
                 CGContextScaleCTM(context, 1.0, -1.0)
-                CGContextSetTextPosition(context, x.f64(), view_height - y.f64())
+                CGContextSetTextPosition(context, x.f64(), view_height - baseline)
                 CTLineDraw(line, context)
                 CGContextRestoreGState(context)
                 CFRelease(line)

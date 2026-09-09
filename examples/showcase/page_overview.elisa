@@ -1,0 +1,132 @@
+# Overview page: live statistics, quick actions and a hero painted every frame.
+
+include "theme.elisa"
+include "format.elisa"
+
+module ShowcaseOverview:
+    private:
+        global mutable page: UiHandles::Handle = UiHandles::invalid()
+        global mutable heading: UiHandles::Handle = UiHandles::invalid()
+        global mutable blurb: UiHandles::Handle = UiHandles::invalid()
+        global mutable stats_row: UiHandles::Handle = UiHandles::invalid()
+        global mutable widgets_card: UiHandles::Handle = UiHandles::invalid()
+        global mutable actions_card: UiHandles::Handle = UiHandles::invalid()
+        global mutable events_card: UiHandles::Handle = UiHandles::invalid()
+        global mutable frames_card: UiHandles::Handle = UiHandles::invalid()
+        global mutable quick_heading: UiHandles::Handle = UiHandles::invalid()
+        global mutable quick_row: UiHandles::Handle = UiHandles::invalid()
+        global mutable go_forms: UiHandles::Handle = UiHandles::invalid()
+        global mutable go_canvas: UiHandles::Handle = UiHandles::invalid()
+        global mutable toggle_theme: UiHandles::Handle = UiHandles::invalid()
+        global mutable next_accent: UiHandles::Handle = UiHandles::invalid()
+        global mutable hero: UiHandles::Handle = UiHandles::invalid()
+        global mutable hero_caption: UiHandles::Handle = UiHandles::invalid()
+        global mutable frames: u32 = 0
+        global mutable last_widgets: u32 = 0
+        global mutable last_actions: u32 = 0
+        global mutable last_events: u32 = 0
+
+        def stat_card(parent: UiHandles::Handle, caption: sview) -> UiHandles::Handle:
+            card: UiHandles::Handle = UiHandles::column(parent, 14.0, 4.0, ShowcaseTheme::card())
+            UiHandles::set_grow(card, 1.0)
+            _ = UiHandles::label(card, "0", 26.0, ShowcaseTheme::ink())
+            _ = UiHandles::label(card, caption, 12.0, ShowcaseTheme::muted())
+            return card
+
+        # The value label is the card's first child, its caption the next
+        # sibling: the tree is the record, so no extra handles are kept.
+        def set_stat(card: UiHandles::Handle, caption: sview, value: u32) -> void can Unsafe.PointerCast:
+            UiHandles::set_color(card, ShowcaseTheme::card())
+            value_label: UiHandles::Handle = UiHandles::first_child(card)
+            ShowcaseText::begin()
+            ShowcaseText::put_u32(value)
+            UiHandles::set_text(value_label, ShowcaseText::view(), 26.0, ShowcaseTheme::ink())
+            UiHandles::set_text(UiHandles::next_sibling(value_label), caption, 12.0, ShowcaseTheme::muted())
+
+        def refresh_stats() -> void can Unsafe.PointerCast:
+            set_stat(widgets_card, "retained widgets", last_widgets)
+            set_stat(actions_card, "actions performed", last_actions)
+            set_stat(events_card, "input events", last_events)
+            set_stat(frames_card, "frames painted", frames)
+
+    public:
+        def init(host: UiHandles::Handle) -> void can Unsafe.PointerCast:
+            page <- UiHandles::column(host, 0.0, 14.0, ShowcaseTheme::transparent())
+            UiHandles::set_grow(page, 1.0)
+            heading <- UiHandles::label(page, "Overview", 22.0, ShowcaseTheme::ink())
+            blurb <- UiHandles::label(page, "One retained tree, painted by Elisa into a native window.", 13.0, ShowcaseTheme::muted())
+            stats_row <- UiHandles::row(page, 0.0, 12.0, ShowcaseTheme::transparent())
+            UiHandles::set_grow(stats_row, 0.0)
+            widgets_card <- stat_card(stats_row, "retained widgets")
+            actions_card <- stat_card(stats_row, "actions performed")
+            events_card <- stat_card(stats_row, "input events")
+            frames_card <- stat_card(stats_row, "frames painted")
+            quick_heading <- UiHandles::label(page, "Quick actions", 14.0, ShowcaseTheme::muted())
+            quick_row <- UiHandles::row(page, 0.0, 10.0, ShowcaseTheme::transparent())
+            UiHandles::set_grow(quick_row, 0.0)
+            go_forms <- UiHandles::button(quick_row, 140.0, 34.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            go_canvas <- UiHandles::button(quick_row, 140.0, 34.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            toggle_theme <- UiHandles::button(quick_row, 140.0, 34.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            next_accent <- UiHandles::button(quick_row, 140.0, 34.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            UiHandles::set_help(go_forms, "Switch to the Forms page")
+            UiHandles::set_help(go_canvas, "Switch to the Canvas page")
+            UiHandles::set_help(toggle_theme, "Switch between dark and light appearance")
+            UiHandles::set_help(next_accent, "Cycle the accent colour")
+            hero <- UiHandles::column(page, 18.0, 8.0, ShowcaseTheme::card())
+            UiHandles::set_grow(hero, 1.0)
+            hero_caption <- UiHandles::label(hero, "Custom painting anchored to a retained layout node; the selected accent stands taller.", 13.0, ShowcaseTheme::muted())
+            apply_theme()
+
+        def set_visible(visible: bool) -> void:
+            UiHandles::set_visible(page, visible)
+
+        def apply_theme() -> void can Unsafe.PointerCast:
+            UiHandles::set_text(heading, "Overview", 22.0, ShowcaseTheme::ink())
+            UiHandles::set_text(blurb, "One retained tree, painted by Elisa into a native window.", 13.0, ShowcaseTheme::muted())
+            UiHandles::set_text(quick_heading, "Quick actions", 14.0, ShowcaseTheme::muted())
+            ShowcaseTheme::style_button(go_forms, "Open forms", 13.0)
+            ShowcaseTheme::style_button(go_canvas, "Open canvas", 13.0)
+            ShowcaseTheme::style_button(toggle_theme, "Toggle theme", 13.0)
+            ShowcaseTheme::style_accent_button(next_accent, "Next accent", 13.0)
+            UiHandles::set_color(hero, ShowcaseTheme::card())
+            UiHandles::set_text(hero_caption, "Custom painting anchored to a retained layout node; the selected accent stands taller.", 13.0, ShowcaseTheme::muted())
+            refresh_stats()
+
+        def refresh(widgets: u32, actions: u32, events: u32) -> void can Unsafe.PointerCast:
+            last_widgets <- widgets
+            last_actions <- actions
+            last_events <- events
+            refresh_stats()
+
+        # 0 = not ours, 1 = go to forms, 2 = go to canvas, 3 = toggle theme, 4 = next accent.
+        def widget_event(widget: usize, event: i32) -> i32:
+            return 0 if not UiHandles::event_is(event, UiConst::WidgetEvent.Click)
+            return 1 if UiHandles::callback_matches(widget, go_forms)
+            return 2 if UiHandles::callback_matches(widget, go_canvas)
+            return 3 if UiHandles::callback_matches(widget, toggle_theme)
+            return 4 if UiHandles::callback_matches(widget, next_accent)
+            return 0
+
+        def frame() -> void:
+            frames <- frames + 1
+            return if not UiHandles::is_visible(page)
+            if UiHandles::widget(hero) is card:
+                if UiHandles::widget(hero_caption) is caption:
+                    left: f32 = card.x + 18.0
+                    right: f32 = card.x + card.width - 18.0
+                    top: f32 = caption.y + caption.height + 14.0
+                    bottom: f32 = card.y + card.height - 18.0
+                    return if right - left < 60.0 or bottom - top < 40.0
+                    UiCore::set_clip(UiCore::Rect(left, top, right - left, bottom - top))
+                    slot: f32 = (right - left) / ShowcaseTheme::ACCENT_COUNT.f32()
+                    for index in 0..<ShowcaseTheme::ACCENT_COUNT:
+                        selected: bool = index == ShowcaseTheme::accent()
+                        share: f32 = 0.66 if selected else 0.34
+                        block_height: f32 = (bottom - top) * share
+                        x: f32 = left + slot * index.f32() + 8.0
+                        UiCore::fill(UiCore::Rect(x, bottom - block_height, slot - 16.0, block_height), ShowcaseTheme::accent_color(index))
+                        UiCore::fill(UiCore::Rect(x, bottom - block_height - 8.0, slot - 16.0, 3.0), ShowcaseTheme::with_alpha(ShowcaseTheme::ink(), 120)) if selected
+                    halo: UiCore::Color = ShowcaseTheme::with_alpha(ShowcaseTheme::current_accent(), 48)
+                    UiCore::fill(UiCore::Circle{center: UiCore::Vec2(right - 72.0, top + 52.0), radius: 44.0}, halo)
+                    UiCore::fill(UiCore::Circle{center: UiCore::Vec2(right - 72.0, top + 52.0), radius: 20.0}, ShowcaseTheme::current_accent())
+                    UiCore::clear_clip()

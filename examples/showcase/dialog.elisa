@@ -1,0 +1,99 @@
+# A confirm dialog: UiDialog owns the modal state and its semantics, UiNavigation
+# owns what Escape means while it is open, and the panel is ordinary retained
+# widgets shown at the top of the page host.
+
+include "../../src/widgets/ui_dialog.elisa"
+include "../../src/widgets/ui_navigation.elisa"
+include "theme.elisa"
+
+module ShowcaseDialog:
+    private:
+        const OWNER: u32 = 7
+        global mutable panel: UiHandles::Handle = UiHandles::invalid()
+        global mutable title_label: UiHandles::Handle = UiHandles::invalid()
+        global mutable message_label: UiHandles::Handle = UiHandles::invalid()
+        global mutable button_row: UiHandles::Handle = UiHandles::invalid()
+        global mutable cancel_button: UiHandles::Handle = UiHandles::invalid()
+        global mutable confirm_button: UiHandles::Handle = UiHandles::invalid()
+        global mutable dialog: UiDialog::DialogHandle = UiDialog::dialog_invalid()
+        global mutable navigation: UiNavigation::NavigationHandle = UiNavigation::navigation_invalid()
+        global mutable pending: i32 = 0
+
+        # Close with a typed result; the pending action is returned only for
+        # the primary choice.
+        def finish(result: UiDialog::Result) -> i32:
+            return 0 if not UiDialog::is_open(dialog)
+            _ = UiDialog::choose(dialog, result)
+            _ = UiDialog::dispose(dialog)
+            _ = UiNavigation::dismiss_owner(OWNER)
+            dialog <- UiDialog::dialog_invalid()
+            navigation <- UiNavigation::navigation_invalid()
+            UiHandles::set_visible(panel, false)
+            action: i32 = pending
+            pending <- 0
+            return action if result == UiDialog::Result.Primary else 0
+
+    public:
+        def init(host: UiHandles::Handle) -> void:
+            panel <- UiHandles::column(host, 18.0, 10.0, ShowcaseTheme::card())
+            UiHandles::set_grow(panel, 0.0)
+            title_label <- UiHandles::label(panel, "", 17.0, ShowcaseTheme::ink())
+            message_label <- UiHandles::label(panel, "", 13.0, ShowcaseTheme::muted())
+            button_row <- UiHandles::row(panel, 0.0, 10.0, ShowcaseTheme::transparent())
+            UiHandles::set_grow(button_row, 0.0)
+            cancel_button <- UiHandles::button(button_row, 110.0, 34.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            confirm_button <- UiHandles::button(button_row, 110.0, 34.0, ShowcaseTheme::danger(), ShowcaseTheme::danger_hover(), ShowcaseTheme::danger_press())
+            UiHandles::set_help(cancel_button, "Keep everything as it is (keyboard: Escape)")
+            UiHandles::set_help(confirm_button, "Carry out the action")
+            UiHandles::set_visible(panel, false)
+            apply_theme()
+
+        def apply_theme() -> void:
+            UiHandles::set_color(panel, ShowcaseTheme::card())
+            ShowcaseTheme::style_button(cancel_button, "Cancel", 13.0)
+            if UiDialog::is_open(dialog):
+                UiHandles::set_text(title_label, UiDialog::title(dialog), 17.0, ShowcaseTheme::ink())
+                UiHandles::set_text(message_label, UiDialog::message(dialog), 13.0, ShowcaseTheme::muted())
+                ShowcaseTheme::style_danger_button(confirm_button, UiDialog::primary_label(dialog), 13.0)
+            else:
+                ShowcaseTheme::style_danger_button(confirm_button, "Confirm", 13.0)
+
+        def is_open() -> bool:
+            return UiDialog::is_open(dialog)
+
+        def open(action: i32, title: sview, message: sview, confirm: sview) -> bool:
+            return false if is_open()
+            dialog <- UiDialog::open(UiDialog::Kind.Confirm, title, message, confirm, "Cancel", OWNER)
+            return false if not UiDialog::dialog_is_valid(dialog)
+            navigation <- UiNavigation::push(OWNER, UiNavigation::BackPolicy.Consume, false)
+            pending <- action
+            apply_theme()
+            UiHandles::set_visible(panel, true)
+            _ = UiHandles::request_focus(cancel_button)
+            return true
+
+        # The confirmed action code, or 0 when nothing was confirmed.
+        def widget_event(widget: usize, event: i32) -> i32:
+            return 0 if not is_open() or not UiHandles::event_is(event, UiConst::WidgetEvent.Click)
+            return finish(UiDialog::Result.Primary) if UiHandles::callback_matches(widget, confirm_button)
+            return finish(UiDialog::Result.Cancelled) if UiHandles::callback_matches(widget, cancel_button)
+            return 0
+
+        # Escape is OS back navigation: the navigation stack says the dialog
+        # consumes it, and the dialog closes with the Back result.
+        def escape() -> bool:
+            return false if not is_open()
+            decision: UiNavigation::BackDecision = UiNavigation::request_back()
+            return false if decision != UiNavigation::BackDecision.Consumed
+            _ = finish(UiDialog::Result.Back)
+            return true
+
+        # An accent frame around the open dialog, painted after the widgets.
+        def frame() -> void:
+            return if not is_open()
+            if UiHandles::widget(panel) is box:
+                accent: UiCore::Color = ShowcaseTheme::current_accent()
+                UiCore::fill(UiCore::Rect(box.x - 2.0, box.y - 2.0, box.width + 4.0, 2.0), accent)
+                UiCore::fill(UiCore::Rect(box.x - 2.0, box.y + box.height, box.width + 4.0, 2.0), accent)
+                UiCore::fill(UiCore::Rect(box.x - 2.0, box.y, 2.0, box.height), accent)
+                UiCore::fill(UiCore::Rect(box.x + box.width, box.y, 2.0, box.height), accent)

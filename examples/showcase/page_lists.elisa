@@ -1,0 +1,234 @@
+# Lists page: a scrolling list of retained rows with selection, hide/reveal,
+# keyboard movement and programmatic scrolling.
+
+include "theme.elisa"
+include "format.elisa"
+
+module ShowcaseLists:
+    private:
+        const ROW_COUNT: usize = 24
+        const INITIAL_ROWS: usize = 14
+        global mutable page: UiHandles::Handle = UiHandles::invalid()
+        global mutable heading: UiHandles::Handle = UiHandles::invalid()
+        global mutable blurb: UiHandles::Handle = UiHandles::invalid()
+        global mutable count_label: UiHandles::Handle = UiHandles::invalid()
+        global mutable list: UiHandles::Handle = UiHandles::invalid()
+        global mutable rows: u32[ROW_COUNT] = zeroed
+        global mutable detail_card: UiHandles::Handle = UiHandles::invalid()
+        global mutable detail_title: UiHandles::Handle = UiHandles::invalid()
+        global mutable detail_body: UiHandles::Handle = UiHandles::invalid()
+        global mutable button_row: UiHandles::Handle = UiHandles::invalid()
+        global mutable previous_button: UiHandles::Handle = UiHandles::invalid()
+        global mutable next_button: UiHandles::Handle = UiHandles::invalid()
+        global mutable hide_button: UiHandles::Handle = UiHandles::invalid()
+        global mutable show_all_button: UiHandles::Handle = UiHandles::invalid()
+        global mutable end_button: UiHandles::Handle = UiHandles::invalid()
+        global mutable selected_row: i32 = 0
+
+        def row_handle(index: usize) -> UiHandles::Handle:
+            return UiHandles::invalid() if index >= ROW_COUNT
+            return UiHandles::from_index(rows[index].usize())
+
+        def kind_name(index: usize) -> sview:
+            slot: usize = index % 6
+            return "Sensor node" if slot == 0
+            return "Actuator" if slot == 1
+            return "Bridge" if slot == 2
+            return "Relay" if slot == 3
+            return "Probe" if slot == 4
+            return "Beacon"
+
+        def write_caption(index: usize) -> void:
+            ShowcaseText::begin()
+            ShowcaseText::put("Item ")
+            ShowcaseText::put_u32((index + 1).u32())
+            ShowcaseText::put(" · ")
+            ShowcaseText::put(kind_name(index))
+
+        def style_row(index: usize) -> void can Unsafe.PointerCast:
+            handle: UiHandles::Handle = row_handle(index)
+            write_caption(index)
+            UiHandles::set_colors(handle, ShowcaseTheme::card(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            UiHandles::set_text(handle, ShowcaseText::view(), 13.0, ShowcaseTheme::ink())
+
+        def visible_rows() -> u32:
+            total: mutable u32 = 0
+            for index in 0..<ROW_COUNT:
+                total <- total + 1 if UiHandles::is_visible(row_handle(index))
+            return total
+
+        def selection_is_live() -> bool:
+            return selected_row >= 0 and selected_row.usize() < ROW_COUNT and UiHandles::is_visible(row_handle(selected_row.usize()))
+
+        def update_count() -> void can Unsafe.PointerCast:
+            ShowcaseText::begin()
+            ShowcaseText::put_u32(visible_rows())
+            ShowcaseText::put(" of ")
+            ShowcaseText::put_u32(ROW_COUNT.u32())
+            ShowcaseText::put(" rows shown · wheel or drag the indicator to scroll")
+            UiHandles::set_text(count_label, ShowcaseText::view(), 12.0, ShowcaseTheme::muted())
+
+        def update_detail() -> void can Unsafe.PointerCast:
+            live: bool = selection_is_live()
+            if live:
+                write_caption(selected_row.usize())
+                UiHandles::set_text(detail_title, ShowcaseText::view(), 16.0, ShowcaseTheme::ink())
+                ShowcaseText::begin()
+                ShowcaseText::put("Row ")
+                ShowcaseText::put_i32(selected_row + 1)
+                ShowcaseText::put(" · scroll offset ")
+                ShowcaseText::put_fixed1(UiHandles::scroll_offset(list))
+                ShowcaseText::put(" of ")
+                ShowcaseText::put_fixed1(UiHandles::scroll_limit(list))
+                UiHandles::set_text(detail_body, ShowcaseText::view(), 13.0, ShowcaseTheme::muted())
+            else:
+                UiHandles::set_text(detail_title, "Nothing selected", 16.0, ShowcaseTheme::ink())
+                UiHandles::set_text(detail_body, "Pick a row above, or press New item in the toolbar.", 13.0, ShowcaseTheme::muted())
+            UiHandles::set_enabled(hide_button, live)
+            UiHandles::set_enabled(previous_button, live)
+            UiHandles::set_enabled(next_button, live)
+
+        def select(index: i32) -> void can Unsafe.PointerCast:
+            selected_row <- index
+            for scan in 0..<ROW_COUNT:
+                UiHandles::set_selected(row_handle(scan), scan.i32() == index)
+            update_detail()
+
+        # Move the selection to the nearest visible row in one direction.
+        def move_selection(direction: i32) -> void can Unsafe.PointerCast:
+            return if not selection_is_live()
+            cursor: mutable i32 = selected_row
+            for _ in 0..<ROW_COUNT:
+                cursor <- cursor + direction
+                break if cursor < 0 or cursor.usize() >= ROW_COUNT
+                if UiHandles::is_visible(row_handle(cursor.usize())):
+                    select(cursor)
+                    _ = UiHandles::request_focus(row_handle(cursor.usize()))
+                    return
+
+    public:
+        def init(host: UiHandles::Handle) -> void can Unsafe.PointerCast:
+            page <- UiHandles::column(host, 0.0, 12.0, ShowcaseTheme::transparent())
+            UiHandles::set_grow(page, 1.0)
+            heading <- UiHandles::label(page, "Lists", 22.0, ShowcaseTheme::ink())
+            blurb <- UiHandles::label(page, "Retained rows inside a scroll viewport: select, hide, reveal, and move with the keyboard.", 13.0, ShowcaseTheme::muted())
+            count_label <- UiHandles::label(page, "", 12.0, ShowcaseTheme::muted())
+            list <- UiHandles::scroll(page, UiConst::Axis.Column, 0.0, 160.0, ShowcaseTheme::panel())
+            UiHandles::set_grow(list, 1.0)
+            for index in 0..<ROW_COUNT:
+                row: UiHandles::Handle = UiHandles::radio_button(list, 0.0, 30.0, ShowcaseTheme::card(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+                rows[index] <- UiHandles::index(row).u32()
+                UiHandles::set_grow(row, 0.0)
+                UiHandles::set_visible(row, index < INITIAL_ROWS)
+                UiHandles::set_help(row, "Select this row")
+            detail_card <- UiHandles::column(page, 16.0, 6.0, ShowcaseTheme::card())
+            UiHandles::set_grow(detail_card, 0.0)
+            detail_title <- UiHandles::label(detail_card, "", 16.0, ShowcaseTheme::ink())
+            detail_body <- UiHandles::label(detail_card, "", 13.0, ShowcaseTheme::muted())
+            button_row <- UiHandles::row(detail_card, 0.0, 8.0, ShowcaseTheme::transparent())
+            UiHandles::set_grow(button_row, 0.0)
+            previous_button <- UiHandles::button(button_row, 100.0, 32.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            next_button <- UiHandles::button(button_row, 100.0, 32.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            hide_button <- UiHandles::button(button_row, 100.0, 32.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            show_all_button <- UiHandles::button(button_row, 100.0, 32.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            end_button <- UiHandles::button(button_row, 120.0, 32.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            UiHandles::set_help(previous_button, "Select the previous visible row")
+            UiHandles::set_help(next_button, "Select the next visible row")
+            UiHandles::set_help(hide_button, "Hide the selected row; the list reflows")
+            UiHandles::set_help(show_all_button, "Reveal every hidden row")
+            UiHandles::set_help(end_button, "Scroll the list to its end")
+            apply_theme()
+            select(0)
+            update_count()
+
+        def set_visible(visible: bool) -> void:
+            UiHandles::set_visible(page, visible)
+
+        def apply_theme() -> void can Unsafe.PointerCast:
+            UiHandles::set_text(heading, "Lists", 22.0, ShowcaseTheme::ink())
+            UiHandles::set_text(blurb, "Retained rows inside a scroll viewport: select, hide, reveal, and move with the keyboard.", 13.0, ShowcaseTheme::muted())
+            UiHandles::set_color(list, ShowcaseTheme::panel())
+            UiHandles::set_color(detail_card, ShowcaseTheme::card())
+            for index in 0..<ROW_COUNT:
+                style_row(index)
+            ShowcaseTheme::style_button(previous_button, "Previous", 13.0)
+            ShowcaseTheme::style_button(next_button, "Next", 13.0)
+            ShowcaseTheme::style_danger_button(hide_button, "Hide", 13.0)
+            ShowcaseTheme::style_button(show_all_button, "Show all", 13.0)
+            ShowcaseTheme::style_button(end_button, "Scroll to end", 13.0)
+            update_count()
+            update_detail()
+
+        def widget_event(widget: usize, event: i32) -> bool can Unsafe.PointerCast:
+            return false if not UiHandles::event_is(event, UiConst::WidgetEvent.Click)
+            for index in 0..<ROW_COUNT:
+                if UiHandles::callback_matches(widget, row_handle(index)):
+                    select(index.i32())
+                    return true
+            if UiHandles::callback_matches(widget, previous_button):
+                move_selection(-1)
+                return true
+            if UiHandles::callback_matches(widget, next_button):
+                move_selection(1)
+                return true
+            if UiHandles::callback_matches(widget, hide_button):
+                _ = hide_selected()
+                return true
+            if UiHandles::callback_matches(widget, show_all_button):
+                for index in 0..<ROW_COUNT:
+                    UiHandles::set_visible(row_handle(index), true)
+                update_count()
+                update_detail()
+                return true
+            if UiHandles::callback_matches(widget, end_button):
+                UiHandles::ensure_layout()
+                _ = UiHandles::set_scroll_offset(list, UiHandles::scroll_limit(list))
+                update_detail()
+                return true
+            return false
+
+        # Reveal the first hidden row, select it and bring it into view.
+        def add_item() -> bool can Unsafe.PointerCast:
+            for index in 0..<ROW_COUNT:
+                if not UiHandles::is_visible(row_handle(index)):
+                    UiHandles::set_visible(row_handle(index), true)
+                    select(index.i32())
+                    UiHandles::ensure_layout()
+                    _ = UiHandles::set_scroll_offset(list, UiHandles::scroll_limit(list))
+                    update_count()
+                    update_detail()
+                    return true
+            return false
+
+        def hide_selected() -> bool can Unsafe.PointerCast:
+            return false if not selection_is_live()
+            hidden: i32 = selected_row
+            UiHandles::set_visible(row_handle(hidden.usize()), false)
+            UiHandles::set_selected(row_handle(hidden.usize()), false)
+            selected_row <- -1
+            # Prefer the next visible row, then the previous one.
+            for index in 0..<ROW_COUNT:
+                candidate: i32 = hidden + 1 + index.i32()
+                break if candidate.usize() >= ROW_COUNT
+                if UiHandles::is_visible(row_handle(candidate.usize())):
+                    select(candidate)
+                    break
+            if selected_row < 0:
+                for index in 0..<ROW_COUNT:
+                    candidate: i32 = hidden - 1 - index.i32()
+                    break if candidate < 0
+                    if UiHandles::is_visible(row_handle(candidate.usize())):
+                        select(candidate)
+                        break
+            update_count()
+            update_detail()
+            return true
+
+        def has_selection() -> bool:
+            return selection_is_live()
+
+        # The selected row's caption, formatted into the shared scratch buffer.
+        def selected_caption() -> sview can Unsafe.PointerCast:
+            return "" if not selection_is_live()
+            write_caption(selected_row.usize())
+            return ShowcaseText::view()

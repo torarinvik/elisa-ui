@@ -1,0 +1,61 @@
+# Bounded number formatting for the showcase's live labels.
+#
+# UiHandles::set_text copies its argument into retained widget storage, so one
+# scratch buffer serves every label: begin(), append pieces, hand view() to the
+# setter, and the buffer is free again. Nothing allocates.
+
+include "../../src/widgets/ui_handles.elisa"
+
+module ShowcaseText:
+    private:
+        const CAPACITY: usize = 240
+        global mutable scratch: u8[CAPACITY] = zeroed
+        global mutable length: usize = 0
+
+        def put_byte(byte: u8) -> void:
+            return if length >= CAPACITY
+            scratch[length] <- byte
+            length <- length + 1
+
+    public:
+        def begin() -> void:
+            length <- 0
+
+        def put(text: sview) -> void:
+            return if text.len <= 0 or text.data == null
+            for index in 0..<text.len.usize():
+                put_byte(text.data[index])
+
+        def put_u32(value: u32) -> void:
+            divisor: mutable u32 = 1000000000
+            started: mutable bool = false
+            for _ in 0..<10:
+                digit: u32 = (value / divisor) % 10
+                started <- true if digit != 0 or divisor == 1
+                put_byte((digit + 48).u8()) if started
+                divisor <- divisor / 10
+
+        def put_i32(value: i32) -> void:
+            if value < 0:
+                put_byte(45)
+                put_u32((0 - value).u32())
+                return
+            put_u32(value.u32())
+
+        # 0.0..1.0 as a whole percentage: 0.724 -> "72%".
+        def put_percent(fraction: f32) -> void:
+            safe: f32 = UiCore::normalized_unit(fraction)
+            put_u32((safe * 100.0 + 0.5).u32())
+            put_byte(37)
+
+        # One decimal place, non-negative: 3.26 -> "3.3".
+        def put_fixed1(value: f32) -> void:
+            safe: f32 = UiCore::finite_or_zero(value)
+            positive: f32 = 0.0 if safe < 0.0 else safe
+            scaled: u32 = (positive * 10.0 + 0.5).u32()
+            put_u32(scaled / 10)
+            put_byte(46)
+            put_u32(scaled % 10)
+
+        def view() -> sview can Unsafe.PointerCast:
+            return sview(&scratch[0], 0, length.i64())

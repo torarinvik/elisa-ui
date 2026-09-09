@@ -1,0 +1,196 @@
+# Canvas page: backend-neutral drawing commands driven by widget state and the
+# frame clock, replayed by CoreGraphics inside a retained layout node.
+
+include "theme.elisa"
+include "format.elisa"
+
+extern sinf(value: f32) -> f32
+extern cosf(value: f32) -> f32
+
+module ShowcaseCanvas:
+    private:
+        const BAR_COUNT: usize = 18
+        const ORBIT_COUNT: usize = 7
+        const TAU: f32 = 6.2831853
+        global mutable page: UiHandles::Handle = UiHandles::invalid()
+        global mutable heading: UiHandles::Handle = UiHandles::invalid()
+        global mutable blurb: UiHandles::Handle = UiHandles::invalid()
+        global mutable control_row: UiHandles::Handle = UiHandles::invalid()
+        global mutable animate_box: UiHandles::Handle = UiHandles::invalid()
+        global mutable mode_bars: UiHandles::Handle = UiHandles::invalid()
+        global mutable mode_orbit: UiHandles::Handle = UiHandles::invalid()
+        global mutable mode_both: UiHandles::Handle = UiHandles::invalid()
+        global mutable speed: UiHandles::Handle = UiHandles::invalid()
+        global mutable speed_label: UiHandles::Handle = UiHandles::invalid()
+        global mutable scale: UiHandles::Handle = UiHandles::invalid()
+        global mutable scale_label: UiHandles::Handle = UiHandles::invalid()
+        global mutable art: UiHandles::Handle = UiHandles::invalid()
+        global mutable art_caption: UiHandles::Handle = UiHandles::invalid()
+        global mutable phase: f32 = 0.0
+        global mutable last_time: f64 = 0.0
+        global mutable mode: i32 = 2
+
+        def speed_factor() -> f32:
+            return 0.2 + UiHandles::value(speed) * 2.8
+
+        def refresh_labels() -> void can Unsafe.PointerCast:
+            ShowcaseText::begin()
+            ShowcaseText::put("Speed ")
+            ShowcaseText::put_fixed1(speed_factor())
+            ShowcaseText::put("x")
+            UiHandles::set_text(speed_label, ShowcaseText::view(), 12.0, ShowcaseTheme::muted())
+            ShowcaseText::begin()
+            ShowcaseText::put("Scale ")
+            ShowcaseText::put_percent(UiHandles::value(scale))
+            UiHandles::set_text(scale_label, ShowcaseText::view(), 12.0, ShowcaseTheme::muted())
+
+        def choose_mode(index: i32) -> void:
+            mode <- index
+            UiHandles::set_selected(mode_bars, index == 0)
+            UiHandles::set_selected(mode_orbit, index == 1)
+            UiHandles::set_selected(mode_both, index == 2)
+
+        def paint_bars(left: f32, top: f32, right: f32, bottom: f32, amplitude: f32) -> void:
+            slot: f32 = (right - left) / BAR_COUNT.f32()
+            accent: UiCore::Color = ShowcaseTheme::current_accent()
+            for index in 0..<BAR_COUNT:
+                wave: f32 = 0.5 + 0.5 * sinf(phase + index.f32() * 0.42)
+                bar_height: f32 = (bottom - top - 36.0) * wave * (0.3 + amplitude * 0.7) + 6.0
+                x: f32 = left + slot * index.f32() + 3.0
+                alpha: u8 = (110.0 + wave * 140.0).u8()
+                UiCore::fill(UiCore::Rect(x, bottom - bar_height, slot - 6.0, bar_height), ShowcaseTheme::with_alpha(accent, alpha))
+                UiCore::fill(UiCore::Rect(x, bottom - bar_height, slot - 6.0, 3.0), ShowcaseTheme::with_alpha(ShowcaseTheme::ink(), 140))
+
+        def paint_orbit(centre_x: f32, centre_y: f32, radius: f32) -> void:
+            guide: UiCore::Color = ShowcaseTheme::with_alpha(ShowcaseTheme::ink(), 40)
+            for index in 0..<ORBIT_COUNT:
+                angle: f32 = phase * 0.8 + index.f32() * TAU / ORBIT_COUNT.f32()
+                ring: f32 = radius * (0.5 + 0.25 * (index % 3).f32())
+                x: f32 = centre_x + cosf(angle) * ring
+                y: f32 = centre_y + sinf(angle) * ring * 0.62
+                trail_x: f32 = centre_x + cosf(angle - 0.35) * ring
+                trail_y: f32 = centre_y + sinf(angle - 0.35) * ring * 0.62
+                UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(centre_x, centre_y), to_point: UiCore::Vec2(x, y)}, guide)
+                body: UiCore::Color = ShowcaseTheme::accent_color((index % 5).i32())
+                UiCore::fill(UiCore::Circle{center: UiCore::Vec2(trail_x, trail_y), radius: 4.0 + (index % 3).f32() * 2.0}, ShowcaseTheme::with_alpha(body, 90))
+                UiCore::fill(UiCore::Circle{center: UiCore::Vec2(x, y), radius: 6.0 + (index % 3).f32() * 3.0}, body)
+            UiCore::fill(UiCore::Circle{center: UiCore::Vec2(centre_x, centre_y), radius: 30.0}, ShowcaseTheme::with_alpha(ShowcaseTheme::current_accent(), 50))
+            UiCore::fill(UiCore::Circle{center: UiCore::Vec2(centre_x, centre_y), radius: 14.0}, ShowcaseTheme::current_accent())
+            UiCore::fill(UiCore::Triangle{
+                a: UiCore::Vec2(centre_x, centre_y - 22.0),
+                b: UiCore::Vec2(centre_x + 19.0, centre_y + 11.0),
+                c: UiCore::Vec2(centre_x - 19.0, centre_y + 11.0),
+            }, ShowcaseTheme::with_alpha(ShowcaseTheme::on_accent(), 150))
+
+    public:
+        def init(host: UiHandles::Handle) -> void can Unsafe.PointerCast:
+            page <- UiHandles::column(host, 0.0, 12.0, ShowcaseTheme::transparent())
+            UiHandles::set_grow(page, 1.0)
+            heading <- UiHandles::label(page, "Canvas", 22.0, ShowcaseTheme::ink())
+            blurb <- UiHandles::label(page, "Shapes, alpha, lines, clipping and text from one command batch; CoreGraphics replays it.", 13.0, ShowcaseTheme::muted())
+            control_row <- UiHandles::row(page, 0.0, 10.0, ShowcaseTheme::transparent())
+            UiHandles::set_grow(control_row, 0.0)
+            animate_box <- UiHandles::check_box(control_row, 110.0, 30.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            UiHandles::set_selected(animate_box, true)
+            UiHandles::set_help(animate_box, "Advance the scene from the frame clock (keyboard: Space)")
+            mode_bars <- UiHandles::radio_button(control_row, 84.0, 30.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            mode_orbit <- UiHandles::radio_button(control_row, 84.0, 30.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            mode_both <- UiHandles::radio_button(control_row, 84.0, 30.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            UiHandles::set_help(mode_bars, "Show only the bar wave")
+            UiHandles::set_help(mode_orbit, "Show only the orbit")
+            UiHandles::set_help(mode_both, "Show both scenes")
+            speed_label <- UiHandles::label(control_row, "", 12.0, ShowcaseTheme::muted())
+            speed <- UiHandles::slider_labeled(control_row, "Speed", 140.0, 26.0, 0.35, ShowcaseTheme::track(), ShowcaseTheme::current_accent(), ShowcaseTheme::thumb())
+            UiHandles::set_help(speed, "How fast the scene advances")
+            scale_label <- UiHandles::label(control_row, "", 12.0, ShowcaseTheme::muted())
+            scale <- UiHandles::slider_labeled(control_row, "Scale", 140.0, 26.0, 0.7, ShowcaseTheme::track(), ShowcaseTheme::current_accent(), ShowcaseTheme::thumb())
+            UiHandles::set_help(scale, "How large the scene is drawn")
+            art <- UiHandles::column(page, 16.0, 6.0, ShowcaseTheme::card())
+            UiHandles::set_grow(art, 1.0)
+            art_caption <- UiHandles::label(art, "Painted by app_frame every frame while animating; resize the window and it follows.", 12.0, ShowcaseTheme::muted())
+            choose_mode(2)
+            apply_theme()
+
+        def set_visible(visible: bool) -> void:
+            UiHandles::set_visible(page, visible)
+            last_time <- 0.0
+
+        def apply_theme() -> void can Unsafe.PointerCast:
+            UiHandles::set_text(heading, "Canvas", 22.0, ShowcaseTheme::ink())
+            UiHandles::set_text(blurb, "Shapes, alpha, lines, clipping and text from one command batch; CoreGraphics replays it.", 13.0, ShowcaseTheme::muted())
+            ShowcaseTheme::style_choice(animate_box, "Animate", 13.0)
+            ShowcaseTheme::style_choice(mode_bars, "Bars", 13.0)
+            ShowcaseTheme::style_choice(mode_orbit, "Orbit", 13.0)
+            ShowcaseTheme::style_choice(mode_both, "Both", 13.0)
+            ShowcaseTheme::style_slider(speed)
+            ShowcaseTheme::style_slider(scale)
+            UiHandles::set_color(art, ShowcaseTheme::card())
+            UiHandles::set_text(art_caption, "Painted by app_frame every frame while animating; resize the window and it follows.", 12.0, ShowcaseTheme::muted())
+            refresh_labels()
+
+        def widget_event(widget: usize, event: i32) -> bool can Unsafe.PointerCast:
+            if UiHandles::event_is(event, UiConst::WidgetEvent.Change):
+                return false if not (UiHandles::callback_matches(widget, speed) or UiHandles::callback_matches(widget, scale))
+                refresh_labels()
+                return true
+            return false if not UiHandles::event_is(event, UiConst::WidgetEvent.Click)
+            if UiHandles::callback_matches(widget, animate_box):
+                last_time <- 0.0
+                return true
+            if UiHandles::callback_matches(widget, mode_bars):
+                choose_mode(0)
+                return true
+            if UiHandles::callback_matches(widget, mode_orbit):
+                choose_mode(1)
+                return true
+            if UiHandles::callback_matches(widget, mode_both):
+                choose_mode(2)
+                return true
+            return false
+
+        def toggle_animation() -> void:
+            UiHandles::set_selected(animate_box, not UiHandles::selected(animate_box))
+            last_time <- 0.0
+
+        def frame() -> void can Unsafe.PointerCast:
+            return if not UiHandles::is_visible(page)
+            now: f64 = UiCore::frame_time()
+            if UiHandles::selected(animate_box):
+                elapsed: mutable f32 = (now - last_time).f32() if last_time > 0.0 else 0.0
+                elapsed <- 0.0 if elapsed < 0.0
+                elapsed <- 0.1 if elapsed > 0.1
+                phase <- phase + elapsed * speed_factor()
+                phase <- phase - TAU if phase > TAU
+                UiCore::request_frame_after(0.016)
+            last_time <- now
+            if UiHandles::widget(art) is card:
+                if UiHandles::widget(art_caption) is caption:
+                    left: f32 = card.x + 16.0
+                    right: f32 = card.x + card.width - 16.0
+                    top: f32 = caption.y + caption.height + 12.0
+                    bottom: f32 = card.y + card.height - 16.0
+                    return if right - left < 80.0 or bottom - top < 60.0
+                    UiCore::set_clip(UiCore::Rect(left, top, right - left, bottom - top))
+                    UiCore::fill(UiCore::Rect(left, top, right - left, bottom - top), ShowcaseTheme::field())
+                    grid: UiCore::Color = ShowcaseTheme::with_alpha(ShowcaseTheme::line(), 120)
+                    for step in 1..<12:
+                        x: f32 = left + (right - left) * step.f32() / 12.0
+                        UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(x, top), to_point: UiCore::Vec2(x, bottom)}, grid)
+                    for step in 1..<6:
+                        y: f32 = top + (bottom - top) * step.f32() / 6.0
+                        UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(left, y), to_point: UiCore::Vec2(right, y)}, grid)
+                    amplitude: f32 = UiHandles::value(scale)
+                    paint_bars(left + 8.0, top + 8.0, right - 8.0, bottom - 24.0, amplitude) if mode != 1
+                    if mode != 0:
+                        shortest: f32 = (right - left) if (right - left) < (bottom - top) else (bottom - top)
+                        paint_orbit((left + right) * 0.5, (top + bottom) * 0.5, shortest * 0.42 * (0.4 + amplitude * 0.6))
+                    ShowcaseText::begin()
+                    ShowcaseText::put("phase ")
+                    ShowcaseText::put_fixed1(phase)
+                    ShowcaseText::put(" rad · ")
+                    ShowcaseText::put_u32(BAR_COUNT.u32())
+                    ShowcaseText::put(" bars · ")
+                    ShowcaseText::put_u32(ORBIT_COUNT.u32())
+                    ShowcaseText::put(" bodies")
+                    UiCore::draw(UiCore::TextRun(UiCore::Vec2(left + 8.0, bottom - 18.0), 12.0, ShowcaseText::view()), ShowcaseTheme::muted())
+                    UiCore::clear_clip()

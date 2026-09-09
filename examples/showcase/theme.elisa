@@ -1,0 +1,178 @@
+# Showcase palette and accent policy.
+#
+# Every colour is a function of two facts the app owns -- dark or light, and
+# which accent is selected -- so a theme switch is one pass over the retained
+# tree calling the same setters with fresh values. Nothing here allocates.
+
+include "../../src/widgets/ui_handles.elisa"
+
+module ShowcaseTheme:
+    private:
+        global mutable dark: bool = true
+        global mutable accent_index: i32 = 2
+
+        def pick(dark_value: UiCore::Color, light_value: UiCore::Color) -> UiCore::Color:
+            return dark_value if dark else light_value
+
+    public:
+        const ACCENT_COUNT: i32 = 5
+
+        def rgb(r: u8, g: u8, b: u8) -> UiCore::Color:
+            return UiCore::rgb(r, g, b)
+
+        def transparent() -> UiCore::Color:
+            return UiCore::rgba(0, 0, 0, 0)
+
+        def with_alpha(color: UiCore::Color, alpha: u8) -> UiCore::Color:
+            return UiCore::Color{r: color.r, g: color.g, b: color.b, a: alpha}
+
+        def is_dark() -> bool:
+            return dark
+
+        def set_dark(value: bool) -> void:
+            dark <- value
+
+        def accent() -> i32:
+            return accent_index
+
+        def set_accent(index: i32) -> void:
+            accent_index <- 0 if index < 0 or index >= ACCENT_COUNT else index
+
+        def accent_color(index: i32) -> UiCore::Color:
+            return rgb(226, 86, 104) if index == 0
+            return rgb(52, 176, 124) if index == 1
+            return rgb(66, 120, 236) if index == 2
+            return rgb(176, 98, 230) if index == 3
+            return rgb(238, 160, 52)
+
+        def accent_hover_color(index: i32) -> UiCore::Color:
+            return rgb(240, 110, 126) if index == 0
+            return rgb(74, 198, 146) if index == 1
+            return rgb(92, 142, 248) if index == 2
+            return rgb(196, 124, 244) if index == 3
+            return rgb(250, 182, 84)
+
+        def accent_press_color(index: i32) -> UiCore::Color:
+            return rgb(170, 60, 76) if index == 0
+            return rgb(36, 128, 90) if index == 1
+            return rgb(44, 86, 180) if index == 2
+            return rgb(130, 68, 176) if index == 3
+            return rgb(184, 118, 32)
+
+        def accent_name(index: i32) -> sview:
+            return "Coral" if index == 0
+            return "Mint" if index == 1
+            return "Ocean" if index == 2
+            return "Violet" if index == 3
+            return "Amber"
+
+        def current_accent() -> UiCore::Color:
+            return accent_color(accent_index)
+
+        def current_accent_hover() -> UiCore::Color:
+            return accent_hover_color(accent_index)
+
+        def current_accent_press() -> UiCore::Color:
+            return accent_press_color(accent_index)
+
+        def canvas() -> UiCore::Color:
+            return pick(rgb(10, 12, 18), rgb(226, 230, 238))
+
+        def shell() -> UiCore::Color:
+            return pick(rgb(17, 20, 28), rgb(240, 243, 248))
+
+        def panel() -> UiCore::Color:
+            return pick(rgb(23, 27, 37), rgb(248, 250, 253))
+
+        def card() -> UiCore::Color:
+            return pick(rgb(31, 36, 48), rgb(255, 255, 255))
+
+        def field() -> UiCore::Color:
+            return pick(rgb(13, 16, 23), rgb(243, 245, 250))
+
+        def ink() -> UiCore::Color:
+            return pick(rgb(240, 243, 250), rgb(24, 29, 40))
+
+        def muted() -> UiCore::Color:
+            return pick(rgb(150, 160, 182), rgb(96, 108, 130))
+
+        def line() -> UiCore::Color:
+            return pick(rgb(46, 52, 66), rgb(212, 218, 228))
+
+        def button() -> UiCore::Color:
+            return pick(rgb(48, 54, 70), rgb(222, 227, 236))
+
+        def button_hover() -> UiCore::Color:
+            return pick(rgb(62, 70, 90), rgb(208, 214, 226))
+
+        def button_press() -> UiCore::Color:
+            return pick(rgb(34, 39, 52), rgb(190, 198, 214))
+
+        def danger() -> UiCore::Color:
+            return pick(rgb(120, 46, 54), rgb(236, 92, 104))
+
+        def danger_hover() -> UiCore::Color:
+            return pick(rgb(150, 58, 68), rgb(248, 116, 128))
+
+        def danger_press() -> UiCore::Color:
+            return pick(rgb(88, 34, 40), rgb(190, 66, 78))
+
+        def success() -> UiCore::Color:
+            return pick(rgb(92, 204, 142), rgb(30, 138, 84))
+
+        def warning() -> UiCore::Color:
+            return pick(rgb(240, 182, 72), rgb(178, 118, 18))
+
+        def track() -> UiCore::Color:
+            return pick(rgb(52, 58, 74), rgb(200, 207, 220))
+
+        def thumb() -> UiCore::Color:
+            return pick(rgb(240, 244, 252), rgb(255, 255, 255))
+
+        def on_accent() -> UiCore::Color:
+            return rgb(255, 255, 255)
+
+        # Push the same facts into the framework palette so focus rings,
+        # selection and disabled styling follow the app's choice.
+        def apply_framework_palette() -> void:
+            mode: mutable UiTheme::ColorMode = UiTheme::ColorMode.Light
+            mode <- UiTheme::ColorMode.Dark if dark
+            preferences: UiTheme::Preferences = UiTheme::Preferences{
+                mode: mode, contrast: UiTheme::Contrast.Normal,
+                text_scale: 1.0, reduced_motion: false,
+            }
+            palette: mutable UiTheme::Palette = UiTheme::resolve(preferences, false, false)
+            palette.accent <- current_accent()
+            palette.focus_ring <- current_accent()
+            palette.selection <- current_accent()
+            _ = UiHandles::apply_palette(palette)
+
+        # One restyle call per widget family.
+        def style_button(handle: UiHandles::Handle, caption: sview, size: f32) -> void:
+            UiHandles::set_colors(handle, button(), button_hover(), button_press())
+            UiHandles::set_text(handle, caption, size, ink())
+
+        def style_accent_button(handle: UiHandles::Handle, caption: sview, size: f32) -> void:
+            UiHandles::set_colors(handle, current_accent(), current_accent_hover(), current_accent_press())
+            UiHandles::set_text(handle, caption, size, on_accent())
+
+        def style_danger_button(handle: UiHandles::Handle, caption: sview, size: f32) -> void:
+            UiHandles::set_colors(handle, danger(), danger_hover(), danger_press())
+            UiHandles::set_text(handle, caption, size, rgb(255, 240, 242))
+
+        def style_choice(handle: UiHandles::Handle, caption: sview, size: f32) -> void:
+            UiHandles::set_colors(handle, button(), button_hover(), button_press())
+            UiHandles::set_text(handle, caption, size, ink())
+
+        def style_field(handle: UiHandles::Handle, caption: sview, size: f32) -> void:
+            UiHandles::set_colors(handle, field(), field(), field())
+            UiHandles::set_text(handle, caption, size, ink())
+
+        def style_slider(handle: UiHandles::Handle) -> void:
+            UiHandles::set_colors(handle, track(), current_accent(), thumb())
+
+        def style_meter(handle: UiHandles::Handle) -> void:
+            UiHandles::set_colors(handle, track(), current_accent(), current_accent())
+
+        def style_label(handle: UiHandles::Handle, caption: sview, size: f32, color: UiCore::Color) -> void:
+            UiHandles::set_text(handle, caption, size, color)
