@@ -1,0 +1,109 @@
+# Phase 6: the deferred Skia scope -- custom primitives, ordering against retained
+# commands, effects, polygons, typed nested scopes, bounded overflow, cancellation on
+# surface loss -- and themed surfaces.
+
+def check_deferred_scopes() -> void:
+    # AppKit creates the borrowed SkCanvas after app_frame. The explicit
+    # deferred scope keeps richer Skia-only primitives in Elisa until retained
+    # commands have been replayed, without changing the hosted six-command ABI.
+    UiCore::begin_frame()
+    skia_test_reset()
+    UiSkia::begin_deferred_frame()
+    check("deferred Skia scope accepts custom primitives", UiSkia::defer_fill_rounded_rect(UiCore::Rect(8.0, 9.0, 40.0, 20.0), 6.0, UiCore::rgb(20, 30, 40)) and UiSkia::defer_fill_linear_gradient(UiCore::Rect(8.0, 9.0, 40.0, 20.0), UiCore::rgb(20, 30, 40), UiCore::rgb(90, 100, 110), true) and UiSkia::defer_text_run(UiCore::TextRun(UiCore::Vec2(8.0, 24.0), 10.0, "queued"), UiCore::rgb(220, 220, 220)) and UiSkia::deferred_count() == 3 and UiSkia::snapshot().deferred_active and UiSkia::snapshot().deferred_count == 3 and not UiSkia::snapshot().deferred_overflowed)
+    check("deferred Skia scope rejects malformed primitives", not UiSkia::defer_fill_rounded_rect(UiCore::Rect(8.0, 9.0, 0.0, 20.0), 6.0, UiCore::rgb(20, 30, 40)) and not UiSkia::defer_image(0, UiCore::Rect(8.0, 9.0, 40.0, 20.0), 255) and UiSkia::deferred_count() == 3)
+    UiSkia::attach(36)
+    check("deferred Skia primitives replay after retained commands", UiSkia::render_status() == UiSkia::RenderStatus.Complete and skia_test_round_rect_count() == 1 and skia_test_gradient_count() == 1 and skia_test_text_count() == 1)
+    UiSkia::detach()
+    UiSkia::end_deferred_frame()
+
+    # Deferred commands carry the retained command count from their enqueue
+    # point. This makes custom painting a true ordered stream: a deferred
+    # command can sit before, between, or after retained widgets instead of
+    # being forced into an overlay band.
+    UiCore::begin_frame()
+    skia_test_reset()
+    UiSkia::begin_deferred_frame()
+    _ = UiSkia::defer_fill_rounded_rect(UiCore::Rect(8.0, 9.0, 20.0, 12.0), 3.0, UiCore::rgb(20, 30, 40))
+    UiCore::fill(UiCore::Triangle{a: UiCore::Vec2(40.0, 10.0), b: UiCore::Vec2(60.0, 10.0), c: UiCore::Vec2(50.0, 30.0)}, UiCore::rgb(50, 60, 70))
+    _ = UiSkia::defer_fill_circle(UiCore::Circle{center: UiCore::Vec2(80.0, 20.0), radius: 5.0}, UiCore::rgb(80, 90, 100))
+    UiSkia::attach(42)
+    ordered_status: UiSkia::RenderStatus = UiSkia::render_status()
+    check("deferred painting preserves general widget ordering", ordered_status == UiSkia::RenderStatus.Complete and skia_test_event_count() == 3 and skia_test_event_at(0) == 1 and skia_test_event_at(1) == 3 and skia_test_event_at(2) == 2)
+    UiSkia::detach()
+    UiSkia::end_deferred_frame()
+    check("deferred Skia scope clears copied state", UiSkia::deferred_count() == 0 and not UiSkia::deferred_overflowed() and not UiSkia::snapshot().deferred_active and UiSkia::snapshot().deferred_scope_depth == 0)
+
+    UiCore::begin_frame()
+    skia_test_reset()
+    UiSkia::begin_deferred_frame()
+    check("deferred Skia effects accept rounded composition", UiSkia::defer_fill_rounded_linear_gradient(UiCore::Rect(8.0, 9.0, 40.0, 20.0), 6.0, UiCore::rgb(20, 30, 40), UiCore::rgb(90, 100, 110), true) and UiSkia::defer_shadow_rounded_rect_with_color(UiCore::Rect(8.0, 9.0, 40.0, 20.0), 6.0, 0.0, 2.0, 5.0, UiCore::rgba(20, 40, 80, 100)) and UiSkia::deferred_count() == 2)
+    check("deferred Skia effects reject empty geometry", not UiSkia::defer_fill_rounded_linear_gradient(UiCore::Rect(8.0, 9.0, 0.0, 20.0), 6.0, UiCore::rgb(20, 30, 40), UiCore::rgb(90, 100, 110), true) and not UiSkia::defer_shadow_rounded_rect(UiCore::Rect(8.0, 9.0, 40.0, 20.0), 6.0, 0.0, 2.0, 5.0, 0) and UiSkia::deferred_count() == 2)
+    UiSkia::attach(38)
+    check("deferred Skia effects replay through existing primitives", UiSkia::render_status() == UiSkia::RenderStatus.Complete and skia_test_gradient_count() == 1 and skia_test_rounded_clip_count() == 1 and skia_test_shadow_round_rect_count() == 1 and skia_test_last_shadow_red() == 20 and skia_test_last_shadow_green() == 40 and skia_test_last_shadow_blue() == 80)
+    UiSkia::detach()
+    UiSkia::end_deferred_frame()
+
+    deferred_polygon: UiSkia::ConvexPolygon = UiSkia::empty_polygon()
+    _ = UiSkia::polygon_add(deferred_polygon, UiCore::Vec2(10.0, 10.0))
+    _ = UiSkia::polygon_add(deferred_polygon, UiCore::Vec2(30.0, 10.0))
+    _ = UiSkia::polygon_add(deferred_polygon, UiCore::Vec2(35.0, 25.0))
+    _ = UiSkia::polygon_add(deferred_polygon, UiCore::Vec2(15.0, 30.0))
+    UiCore::begin_frame()
+    skia_test_reset()
+    UiSkia::begin_deferred_frame()
+    check("deferred Skia polygon expansion is atomic", UiSkia::defer_fill_convex_polygon(deferred_polygon, UiCore::rgb(20, 30, 40)) and UiSkia::defer_stroke_convex_polygon(deferred_polygon, 1.0, UiCore::rgb(220, 220, 220)) and UiSkia::deferred_count() == 6)
+    invalid_polygon: UiSkia::ConvexPolygon = UiSkia::empty_polygon()
+    invalid_polygon.count <- UiSkia::MAX_POLYGON_POINTS + 1
+    check("deferred Skia polygon rejects hostile counts", not UiSkia::defer_fill_convex_polygon(invalid_polygon, UiCore::rgb(20, 30, 40)) and UiSkia::deferred_count() == 6)
+    UiSkia::attach(39)
+    check("deferred Skia polygon replays through primitive fan", UiSkia::render_status() == UiSkia::RenderStatus.Complete and skia_test_triangle_count() == 2 and skia_test_line_count() == 4)
+    UiSkia::detach()
+    UiSkia::end_deferred_frame()
+
+    UiCore::begin_frame()
+    skia_test_reset()
+    UiSkia::begin_deferred_frame()
+    check("deferred Skia scopes validate typed nesting", UiSkia::defer_push_clip(UiCore::Rect(2.0, 3.0, 40.0, 30.0)) and UiSkia::defer_push_rounded_clip(UiCore::Rect(4.0, 5.0, 30.0, 20.0), 6.0) and UiSkia::defer_push_transform(UiCore::Vec2(1.0, 2.0), UiCore::Vec2(1.5, 0.75)) and UiSkia::defer_push_rotation(15.0) and UiSkia::deferred_scope_depth() == 4)
+    check("deferred Skia scopes reject mismatched pops", not UiSkia::defer_pop_clip() and UiSkia::deferred_scope_depth() == 4)
+    _ = UiSkia::defer_fill_circle(UiCore::Circle{center: UiCore::Vec2(20.0, 20.0), radius: 4.0}, UiCore::rgb(20, 30, 40))
+    check("deferred Skia scopes unwind in LIFO order", UiSkia::defer_pop_transform() and UiSkia::defer_pop_transform() and UiSkia::defer_pop_clip() and UiSkia::defer_pop_clip() and UiSkia::deferred_scope_depth() == 0)
+    UiSkia::attach(40)
+    check("deferred Skia scopes replay through immediate ledger", UiSkia::render_status() == UiSkia::RenderStatus.Complete and skia_test_clip_count() == 1 and skia_test_rounded_clip_count() == 1 and skia_test_translate_count() == 1 and skia_test_rotate_count() == 1 and skia_test_circle_count() == 1 and skia_test_save_count() == 5 and skia_test_restore_count() == 4 and UiSkia::is_balanced())
+    UiSkia::detach()
+    check("deferred Skia scopes detach cleanly", skia_test_restore_count() == 5 and UiSkia::is_balanced())
+    UiSkia::end_deferred_frame()
+
+    skia_test_reset()
+    UiSkia::begin_deferred_frame()
+    bounded_deferred_scopes: usize =
+        for _ in 0..<UiSkia::MAX_SCOPE_DEPTH |accepted: usize = 0| -> accepted:
+            accepted <- accepted + 1 if UiSkia::defer_push_transform(UiCore::Vec2(1.0, 1.0), UiCore::Vec2(1.0, 1.0))
+    check("deferred scope depth reports bounded overflow", bounded_deferred_scopes == UiSkia::MAX_SCOPE_DEPTH - 1 and UiSkia::deferred_overflowed() and UiSkia::snapshot().deferred_scope_depth == UiSkia::MAX_SCOPE_DEPTH - 1)
+    UiSkia::attach(41)
+    check("deferred scope overflow reports incomplete rendering", UiSkia::render_status() == UiSkia::RenderStatus.CommandOverflow)
+    UiSkia::detach()
+    UiSkia::end_deferred_frame()
+
+    skia_test_reset()
+    UiSkia::begin_deferred_frame()
+    accepted_deferred: usize =
+        for _ in 0..<UiSkia::MAX_DEFERRED_COMMANDS + 1 |accepted: usize = 0| -> accepted:
+            accepted <- accepted + 1 if UiSkia::defer_fill_circle(UiCore::Circle{center: UiCore::Vec2(20.0, 20.0), radius: 4.0}, UiCore::rgb(20, 30, 40))
+    check("deferred Skia queue exposes bounded overflow", accepted_deferred == UiSkia::MAX_DEFERRED_COMMANDS and UiSkia::deferred_count() == UiSkia::MAX_DEFERRED_COMMANDS and UiSkia::deferred_overflowed())
+    UiSkia::attach(37)
+    check("deferred overflow reports incomplete rendering", UiSkia::render_status() == UiSkia::RenderStatus.CommandOverflow and skia_test_circle_count() == UiSkia::MAX_DEFERRED_COMMANDS.i32())
+    UiSkia::detach()
+    UiSkia::end_deferred_frame()
+    UiSkia::begin_deferred_frame()
+    _ = UiSkia::defer_text_run(UiCore::TextRun(UiCore::Vec2(2.0, 12.0), 10.0, "cancelled"), UiCore::rgb(220, 220, 220))
+    UiSkia::surface_lost()
+    check("surface loss cancels deferred Skia work", UiSkia::deferred_count() == 0 and not UiSkia::deferred_overflowed() and not UiSkia::is_attached())
+
+    skia_test_reset()
+    UiSkia::attach(42)
+    UiSkia::fill_themed_surface(UiCore::Rect(0.0, 0.0, 20.0, 10.0), UiCore::rgb(30, 40, 50), false, UiTheme::Metrics{spacing_unit: 8.0, minimum_touch_target: 44.0, focus_ring_width: 2.0, corner_radius: 5.0})
+    check("Skia consumes explicit theme radius", skia_test_round_rect_count() == 1 and skia_test_last_round_radius() == 5.0)
+    skia_test_reset()
+    UiSkia::fill_current_themed_surface(UiCore::Rect(0.0, 0.0, 20.0, 10.0), UiCore::rgb(30, 40, 50), false, true)
+    check("Skia resolves current theme surface", skia_test_round_rect_count() == 1)
+    UiSkia::detach()

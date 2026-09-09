@@ -19,58 +19,63 @@ SNAPSHOT="$SNAPSHOT_DIR/frame.png"
 SNAPSHOT_SECOND="$SNAPSHOT_DIR/frame-second.png"
 trap 'rm -rf "$SNAPSHOT_DIR"' EXIT
 BRIDGE_TEST="$ROOT/build/appkit_canvas_bridge_test"
+# The shim is one translation unit spread over an umbrella and the fragments it
+# #imports (src/platform/appkit/canvas_shim/). Every source-level policy check
+# below must read all of them: a leak that moved into a fragment would otherwise
+# pass unseen, and each check is a "must not contain" over the whole unit.
+CANVAS_SHIM_SOURCES=("$ROOT/src/platform/appkit/appkit_canvas_shim.m" "$ROOT"/src/platform/appkit/canvas_shim/*.m)
 
 # Architecture guard: headless/test configuration belongs to Elisa. The Cocoa
 # shim receives explicit values and must not silently grow a second policy path.
-if grep -Eq 'getenv\("ELISA_UI_(SMOKE_FRAMES|SNAPSHOT)"' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'getenv\("ELISA_UI_(SMOKE_FRAMES|SNAPSHOT)"' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: environment policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq '@autoreleasepool' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq '@autoreleasepool' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: autorelease scope leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq '@\[' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq '@\[' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: array construction leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq '@\(' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq '@\(' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: number construction leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq '\[\[NSAttributedString alloc\]|initWithString:' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq '\[\[NSAttributedString alloc\]|initWithString:' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: attributed-substring construction leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq '\bNSMutableArray\b|arrayWithCapacity:' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq '\bNSMutableArray\b|arrayWithCapacity:' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: accessibility child-list construction leaked back into Objective-C" >&2
   exit 1
 fi
-if awk '/void elisa_appkit_canvas_accessibility_set_boolean_value\(/ { inside=1 } inside && /@\(/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if awk '/void elisa_appkit_canvas_accessibility_set_boolean_value\(/ { inside=1 } inside && /@\(/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: accessibility boolean boxing leaked back into Objective-C" >&2
   exit 1
 fi
-if awk '/void elisa_appkit_canvas_accessibility_set_range_values\(/ { inside=1 } inside && /@\(/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if awk '/void elisa_appkit_canvas_accessibility_set_range_values\(/ { inside=1 } inside && /@\(/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: accessibility range boxing leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'elisa_canvas_headless|elisaInteraction|elisa_appkit_canvas_(select_all|delete_selection|selected_text_pointer|selected_text_length|undo|redo)\b' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'elisa_canvas_headless|elisaInteraction|elisa_appkit_canvas_(select_all|delete_selection|selected_text_pointer|selected_text_length|undo|redo)\b' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: framework state or edit policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'elisa_appkit_canvas_(clear|rect|circle|triangle|line|render_options)\b' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'elisa_appkit_canvas_(clear|rect|circle|triangle|line|render_options)\b' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: CoreGraphics path rendering leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'CGContext(Save|Restore)GState' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'CGContext(Save|Restore)GState' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: frame graphics-state lifetime leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'elisa_appkit_canvas_text(_width)?\b' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'elisa_appkit_canvas_text(_width)?\b' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: CoreText text rendering leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq '\bNSFont\b|NSForegroundColorAttributeName|sizeWithAttributes' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq '\bNSFont\b|NSForegroundColorAttributeName|sizeWithAttributes' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: font construction or measurement leaked back into Objective-C" >&2
   exit 1
 fi
@@ -84,31 +89,31 @@ if grep -Eq '\bstrcmp\b' "$ROOT/src/platform/appkit/ui_appkit_canvas.elisa"; the
   echo "appkit canvas: libc strcmp survived in the Elisa backend" >&2
   exit 1
 fi
-if grep -Eq '\bvalueKind\b|\bvalue_kind\b' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq '\bvalueKind\b|\bvalue_kind\b' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: accessibility value-shape policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'modifiers[[:space:]]*&[[:space:]]*[1248]' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'modifiers[[:space:]]*&[[:space:]]*[1248]' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: menu modifier policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'notifications[[:space:]]*&[[:space:]]*[124]' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'notifications[[:space:]]*&[[:space:]]*[124]' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: accessibility notification policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'accessibility(Min|Max)Value[[:space:]]*=[[:space:]]*@\((0\.0|1\.0)\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'accessibility(Min|Max)Value[[:space:]]*=[[:space:]]*@\((0\.0|1\.0)\)' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: accessibility range policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'if[[:space:]]*\([[:space:]]*tooltip[[:space:]]*\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'if[[:space:]]*\([[:space:]]*tooltip[[:space:]]*\)' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: accessibility tooltip policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'return[[:space:]]+self\.accessibilityHelp' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'return[[:space:]]+self\.accessibilityHelp' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: tooltip text lookup leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq '\bappendApplicationName\b' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq '\bappendApplicationName\b' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: menu title policy leaked back into Objective-C" >&2
   exit 1
 fi
@@ -119,123 +124,123 @@ if grep -Eq 'application_menu_label\(prefix: cstr[^)]*application: cstr' "$ROOT/
   echo "appkit canvas: counted menu title was narrowed to cstr" >&2
   exit 1
 fi
-if grep -Eq 'stringWithFormat:@"elisa-ui-' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'stringWithFormat:@"elisa-ui-' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: accessibility identifier policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'elisa_menu_action|elisa_text_action|int[[:space:]]+token[[:space:]]*=' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'elisa_menu_action|elisa_text_action|int[[:space:]]+token[[:space:]]*=' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: selector/action policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'int[[:space:]]+action[[:space:]]*=|elisa_appkit_canvas_text_action_(handle|enabled|valid)\(|elisa_appkit_canvas_perform_text_action\(' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'int[[:space:]]+action[[:space:]]*=|elisa_appkit_canvas_text_action_(handle|enabled|valid)\(|elisa_appkit_canvas_perform_text_action\(' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: text-selector dispatch policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq '\bsel_registerName\b' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq '\bsel_registerName\b' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: selector registration leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq '\bsel_getName\b' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq '\bsel_getName\b' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: selector decoding leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq '__bridge[[:space:]]+NSString|__bridge[[:space:]]+NSAccessibility' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq '__bridge[[:space:]]+NSString|__bridge[[:space:]]+NSAccessibility' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: unchecked borrowed text handles remain in Objective-C" >&2
   exit 1
 fi
-if grep -Eq '__bridge[[:space:]]+NSCursor' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq '__bridge[[:space:]]+NSCursor' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: unchecked cursor handles remain in Objective-C" >&2
   exit 1
 fi
-if grep -Eq '__bridge[[:space:]]+NSEvent' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq '__bridge[[:space:]]+NSEvent' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: unchecked event handles remain in Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'elisa_canvas_menus' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'elisa_canvas_menus' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: menu-index bookkeeping leaked into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'static NSTimer \*elisa_canvas_animation_timer' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'static NSTimer \*elisa_canvas_animation_timer' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: redraw-timer lifetime was hidden in Objective-C state" >&2
   exit 1
 fi
-if grep -Eq 'static ElisaCanvasView[[:space:]]*\*elisa_canvas_view' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'static ElisaCanvasView[[:space:]]*\*elisa_canvas_view' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: duplicate content-view ownership was hidden in Objective-C state" >&2
   exit 1
 fi
-if grep -Eq 'static (__strong |__weak )?ElisaCanvasDelegate[[:space:]]*\*' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'static (__strong |__weak )?ElisaCanvasDelegate[[:space:]]*\*' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: delegate ownership was hidden in Objective-C state" >&2
   exit 1
 fi
-if grep -Eq '\belisa_canvas_window\b' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq '\belisa_canvas_window\b' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: root-window lookup state was hidden in Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'static NSMutableArray[[:space:]]*\*' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'static NSMutableArray[[:space:]]*\*' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: accessibility element ownership was hidden in Objective-C state" >&2
   exit 1
 fi
-if grep -Eq 'elisa(LocalFrame|Cursor|Synchronizing|Index)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'elisa(LocalFrame|Cursor|Synchronizing|Index)' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: accessibility geometry, cursor, synchronization, or target state was duplicated in Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'static NSMenu \*elisa_canvas_menu_bar' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'static NSMenu \*elisa_canvas_menu_bar' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: menu-bar lifetime was hidden in Objective-C state" >&2
   exit 1
 fi
-if grep -Eq 'elisa_accessibility_next' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'elisa_accessibility_next' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: pending accessibility ordering leaked into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'elisa_accessibility_elements' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'elisa_accessibility_elements' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: semantic-ID object lookup leaked into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'children\.count[[:space:]]*>|accessibility_capacity' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'children\.count[[:space:]]*>|accessibility_capacity' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: accessibility child-capacity policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'elisa_appkit_canvas_accessibility_index_for_handle' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'elisa_appkit_canvas_accessibility_index_for_handle' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: accessibility handle-to-widget lookup leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'BOOL[[:space:]]+isNew[[:space:]]*=[[:space:]]*element[[:space:]]*==' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'BOOL[[:space:]]+isNew[[:space:]]*=[[:space:]]*element[[:space:]]*==' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: accessibility identity/reuse policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'elisa_appkit_canvas_perform_text_action\([[:space:]]*[1-6][[:space:]]*\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'elisa_appkit_canvas_perform_text_action\([[:space:]]*[1-6][[:space:]]*\)' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: text-action token policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'forwardMouseButton:.*button:[01]|accessibility_adjust\([^,]+,[[:space:]]*[+-]?[01][[:space:]]*\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'forwardMouseButton:.*button:[01]|accessibility_adjust\([^,]+,[[:space:]]*[+-]?[01][[:space:]]*\)' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: pointer or accessibility token policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'modifierFlags[[:space:]]*&|flags[[:space:]]*&' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'modifierFlags[[:space:]]*&|flags[[:space:]]*&' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: modifier decoding leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'setActivationPolicy:.*\?|setTabbingMode:.*\?' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'setActivationPolicy:.*\?|setTabbingMode:.*\?' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: activation or tabbing policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'if \(layoutChanged\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'if \(layoutChanged\)' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: accessibility layout-notification policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'if \(delay <= 0\.0f\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'if \(delay <= 0\.0f\)' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: redraw cancellation policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'forMode:NSRunLoopCommonModes' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'forMode:NSRunLoopCommonModes' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: run-loop mode policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'setReleasedWhenClosed:NO' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'setReleasedWhenClosed:NO' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: window-retain policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'backing:NSBackingStoreBuffered' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'backing:NSBackingStoreBuffered' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: backing-store policy leaked back into Objective-C constructors" >&2
   exit 1
 fi
@@ -247,31 +252,31 @@ if awk '
   /const (int|size_t) elisa_appkit_canvas_[[:alnum:]_]+[[:space:]]*=[[:space:]]*NS/ { next }
   /NSWindowStyleMask(Titled|Closable|Miniaturizable|Resizable)|NSBackingStoreBuffered|NSApplicationActivationPolicy(Regular|Prohibited)|NSWindowTabbingMode(Preferred|Disallowed)|NSTracking(MouseMoved|MouseEnteredAndExited|ActiveInKeyWindow|InVisibleRect)|NSNotFound|NSEventModifierFlag(Command|Shift|Option|Control|DeviceIndependentFlagsMask)/ { found=1 }
   END { exit found ? 0 : 1 }
-' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: SDK enum policy was duplicated in Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'forType:NSPasteboardTypeString|stringForType:NSPasteboardTypeString|colorSpaceName:NSCalibratedRGBColorSpace|representationUsingType:NSBitmapImageFileTypePNG' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'forType:NSPasteboardTypeString|stringForType:NSPasteboardTypeString|colorSpaceName:NSCalibratedRGBColorSpace|representationUsingType:NSBitmapImageFileTypePNG' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: pasteboard or snapshot encoding policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'NSBitmapImageRep|displayRectIgnoringOpacity|representationUsingType:|writeToFile:' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'NSBitmapImageRep|displayRectIgnoringOpacity|representationUsingType:|writeToFile:' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: bitmap snapshot construction or encoding leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'elisa_canvas_empty_menu_key|keyEquivalent[[:space:]]*=[^=]' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'elisa_canvas_empty_menu_key|keyEquivalent[[:space:]]*=[^=]' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: menu key fallback policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'ceil\(|MAX\(' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'ceil\(|MAX\(' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: bitmap extent policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'bitsPerSample:8|samplesPerPixel:4|hasAlpha:YES|bitmapFormat:0' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'bitsPerSample:8|samplesPerPixel:4|hasAlpha:YES|bitmapFormat:0' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: bitmap format policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'NSMakeRect\([^\n]*1\.0' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'NSMakeRect\([^\n]*1\.0' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: caret geometry policy leaked back into Objective-C" >&2
   exit 1
 fi
@@ -279,92 +284,92 @@ fi
 # has no eligible help text or a native string allocation fails. Empty
 # protocol fallbacks are not framework text; reject only non-empty literals so
 # application-visible text still cannot migrate into the shim.
-if grep -Eq '@"[^"]+"' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq '@"[^"]+"' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: non-empty framework text leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'if \(activate\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'if \(activate\)' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: visible activation policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq '\[NSApp stop:nil\]' "$ROOT/src/platform/appkit/appkit_canvas_shim.m" && \
-   awk '/- \(void\)windowWillClose:/ { inside=1 } inside && /\[NSApp stop:nil\]/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq '\[NSApp stop:nil\]' "${CANVAS_SHIM_SOURCES[@]}" && \
+   awk '/- \(void\)windowWillClose:/ { inside=1 } inside && /\[NSApp stop:nil\]/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: close lifecycle policy leaked back into Objective-C" >&2
   exit 1
 fi
-if awk '/void elisa_appkit_canvas_close\(\)/ { inside=1 } inside && /elisa_canvas_animation_timer/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if awk '/void elisa_appkit_canvas_close\(\)/ { inside=1 } inside && /elisa_canvas_animation_timer/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: close timer policy leaked back into Objective-C" >&2
   exit 1
 fi
-if awk '/int elisa_appkit_canvas_present\(\)/ { inside=1 } inside && /setNeedsDisplay/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if awk '/int elisa_appkit_canvas_present\(\)/ { inside=1 } inside && /setNeedsDisplay/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: initial redraw policy leaked back into Objective-C" >&2
   exit 1
 fi
-if awk '/- \(void\)setFrameSize:/ { inside=1 } inside && /elisa_canvas_window/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if awk '/- \(void\)setFrameSize:/ { inside=1 } inside && /elisa_canvas_window/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: Elisa initialization policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'NSMakeRange\(location,[[:space:]]*0\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'NSMakeRange\(location,[[:space:]]*0\)' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: text range length policy leaked back into Objective-C" >&2
   exit 1
 fi
-if awk '/void elisa_appkit_canvas_accessibility_clear_value\(/ { inside=1 } inside && /NSMakeRange\(elisa_appkit_canvas_not_found,[[:space:]]*0\)/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if awk '/void elisa_appkit_canvas_accessibility_clear_value\(/ { inside=1 } inside && /NSMakeRange\(elisa_appkit_canvas_not_found,[[:space:]]*0\)/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: accessibility clear-range policy leaked back into Objective-C" >&2
   exit 1
 fi
-if awk '/size_t elisa_appkit_canvas_open\(/ { inside=1 } inside && /make_first_responder/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if awk '/size_t elisa_appkit_canvas_open\(/ { inside=1 } inside && /make_first_responder/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: focus policy leaked back into Objective-C window creation" >&2
   exit 1
 fi
-if awk '/size_t elisa_appkit_canvas_open\(/ { inside=1 } inside && /setActivationPolicy/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if awk '/size_t elisa_appkit_canvas_open\(/ { inside=1 } inside && /setActivationPolicy/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: activation policy leaked back into Objective-C window creation" >&2
   exit 1
 fi
-if awk '/size_t elisa_appkit_canvas_open\(/ { inside=1 } inside && /setTabbingMode|setRestorable/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if awk '/size_t elisa_appkit_canvas_open\(/ { inside=1 } inside && /setTabbingMode|setRestorable/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: window policy leaked back into Objective-C window creation" >&2
   exit 1
 fi
-if awk '/size_t elisa_appkit_canvas_open\(/ { inside=1 } inside && /setTitle/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if awk '/size_t elisa_appkit_canvas_open\(/ { inside=1 } inside && /setTitle/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: window-title policy leaked back into Objective-C window creation" >&2
   exit 1
 fi
-if awk '/size_t elisa_appkit_canvas_schedule_redraw\(/ { inside=1 } inside && /setNeedsDisplay/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if awk '/size_t elisa_appkit_canvas_schedule_redraw\(/ { inside=1 } inside && /setNeedsDisplay/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: timer redraw policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'if \(centered\)' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'if \(centered\)' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: window centering policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'elisa_appkit_canvas_pointer\(' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'elisa_appkit_canvas_pointer\(' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: pointer event-kind policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'elisa_appkit_canvas_pointer_(down|up)\(|elisa_appkit_canvas_text_click\(' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'elisa_appkit_canvas_pointer_(down|up)\(|elisa_appkit_canvas_text_click\(' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: pointer phase or text-click policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'elisa_appkit_canvas_pointer_move\(|elisa_appkit_canvas_cursor_at\(' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'elisa_appkit_canvas_pointer_move\(|elisa_appkit_canvas_cursor_at\(' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: pointer-motion policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'elisa_appkit_canvas_(pointer_leave|cursor_leave)\(' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'elisa_appkit_canvas_(pointer_leave|cursor_leave)\(' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: pointer-exit sequencing leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq 'elisa_appkit_canvas_arrow_cursor\(\)[[:space:]]*set' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq 'elisa_appkit_canvas_arrow_cursor\(\)[[:space:]]*set' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: leave-cursor policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq '\- \(BOOL\)(isFlipped|acceptsFirstResponder|isAccessibilityElement) \{ return (YES|NO); \}' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq '\- \(BOOL\)(isFlipped|acceptsFirstResponder|isAccessibilityElement) \{ return (YES|NO); \}' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: view contract policy leaked back into Objective-C" >&2
   exit 1
 fi
-if grep -Eq '\- \(NSArray \*\)(accessibilityChildren|accessibilityChildrenInNavigationOrder) ' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if grep -Eq '\- \(NSArray \*\)(accessibilityChildren|accessibilityChildrenInNavigationOrder) ' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: accessibility child-list fallback leaked back into Objective-C" >&2
   exit 1
 fi
-if awk '/void elisa_appkit_canvas_accessibility_commit\(/ { inside=1 } inside && /invalidateCursorRectsForView/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "$ROOT/src/platform/appkit/appkit_canvas_shim.m"; then
+if awk '/void elisa_appkit_canvas_accessibility_commit\(/ { inside=1 } inside && /invalidateCursorRectsForView/ { found=1 } inside && /^}/ { inside=0 } END { exit found ? 0 : 1 }' "${CANVAS_SHIM_SOURCES[@]}"; then
   echo "appkit canvas: cursor invalidation policy leaked back into Objective-C accessibility commit" >&2
   exit 1
 fi
