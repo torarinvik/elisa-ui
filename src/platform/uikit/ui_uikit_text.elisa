@@ -1,0 +1,119 @@
+# CoreText authority for the UIKit canvas.
+#
+# UIKit hands drawRect: a context whose CTM already puts the origin at the top
+# left with y growing downwards -- the same convention as a flipped NSView. So
+# font construction, measurement and the draw transform are the same policy on
+# both Apple platforms, and this module is a deliberate sibling of the AppKit
+# one rather than a shared abstraction: the two boundaries own their own
+# externs and can diverge without a conditional in the middle.
+
+extend UiUIKit:
+    public:
+        const SYSTEM_UI_FONT: i32 = 2
+
+        def font_ascent(size: f32) -> f32:
+            safe_size: f32 = UiCore::bounded_extent(size)
+            font: usize = CTFontCreateUIFontForLanguage(SYSTEM_UI_FONT, safe_size.f64(), 0)
+            return 0.0 if font == 0
+            ascent: f32 = UiCore::bounded_extent(CTFontGetAscent(font).f32())
+            CFRelease(font)
+            return ascent
+
+        def font_line_height(size: f32) -> f32:
+            safe_size: f32 = UiCore::bounded_extent(size)
+            font: usize = CTFontCreateUIFontForLanguage(SYSTEM_UI_FONT, safe_size.f64(), 0)
+            return 0.0 if font == 0
+            height: f32 = UiCore::bounded_extent((CTFontGetAscent(font) + CTFontGetDescent(font) + CTFontGetLeading(font)).f32())
+            CFRelease(font)
+            return height
+
+    private:
+        const BOLD_TRAIT: u32 = 2
+
+        def text_font(size: f32, semibold: i32) -> usize:
+            safe_size: f32 = UiCore::bounded_extent(size)
+            regular: usize = CTFontCreateUIFontForLanguage(SYSTEM_UI_FONT, safe_size.f64(), 0)
+            return 0 if regular == 0
+            return regular if semibold == 0
+            emphasized: usize = CTFontCreateCopyWithSymbolicTraits(regular, safe_size.f64(), 0, BOLD_TRAIT, BOLD_TRAIT)
+            return regular if emphasized == 0
+            CFRelease(regular)
+            return emphasized
+
+        def text_attributes(font: usize, color: usize) -> usize:
+            keys: usize[2] = [kCTFontAttributeName, kCTForegroundColorAttributeName]
+            values: usize[2] = [font, color]
+            key_pointer: usize& = (&keys[0]).cast[usize&] can Unsafe.PointerCast
+            value_pointer: usize& = (&values[0]).cast[usize&] can Unsafe.PointerCast
+            count: i64 = 2 if color != 0 else 1
+            return CFDictionaryCreate(0, key_pointer, value_pointer, count, 0, 0)
+
+        def text_line(text: cstr, length: usize, size: f32, semibold: i32, color: usize) -> usize:
+            text_pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
+            return 0 if length > 0 and text_pointer == 0.uintptr()
+            font: usize = text_font(size, semibold)
+            return 0 if font == 0
+            string: usize = CFStringCreateWithBytes(0, text, length.i64(), UTF8_ENCODING, false)
+            if string == 0:
+                CFRelease(font)
+                return 0
+            attributes: usize = text_attributes(font, color)
+            if attributes == 0:
+                CFRelease(string)
+                CFRelease(font)
+                return 0
+            attributed: usize = CFAttributedStringCreate(0, string, attributes)
+            if attributed == 0:
+                CFRelease(attributes)
+                CFRelease(string)
+                CFRelease(font)
+                return 0
+            line: usize = CTLineCreateWithAttributedString(attributed)
+            CFRelease(attributed)
+            CFRelease(attributes)
+            CFRelease(string)
+            CFRelease(font)
+            return line if line != 0 else 0
+
+    public:
+        def text_width(text: cstr, length: usize, size: f32, semibold: i32) -> f32:
+            text_pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
+            return 0.0 if length == 0 or text_pointer == 0.uintptr()
+            line: usize = text_line(text, length, size, semibold, 0)
+            return 0.0 if line == 0
+            ascent: mutable f64 = 0.0
+            descent: mutable f64 = 0.0
+            leading: mutable f64 = 0.0
+            width: f32 = UiCore::bounded_extent(CTLineGetTypographicBounds(line, &ascent, &descent, &leading).f32())
+            CFRelease(line)
+            return width
+
+        def draw_text_line(text: cstr, length: usize, size: f32, semibold: i32, x: f32, y: f32, color: UiCore::Color) -> void:
+            text_pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
+            return if length == 0 or text_pointer == 0.uintptr()
+            color_ref: usize = CGColorCreateGenericRGB(color_component(color.r).f64(), color_component(color.g).f64(), color_component(color.b).f64(), color_component(color.a).f64())
+            return if color_ref == 0
+            line: usize = text_line(text, length, size, semibold, color_ref)
+            if line != 0:
+                context: usize = current_context()
+                if context == 0:
+                    CFRelease(line)
+                    CGColorRelease(color_ref)
+                    return
+                CGContextSaveGState(context)
+                # UIKit supplies a y-down CTM while CoreText lays glyphs out in
+                # y-up coordinates. Reflect the drawing space around the view's
+                # bottom edge, then mirror the baseline so the rest of Elisa
+                # stays y-down.
+                # A TextRun's origin is the TOP of its line box -- the
+                # convention the flat painter centres captions with. CoreText
+                # positions the BASELINE, so step down by the ascent.
+                view_height: f64 = UiCore::viewport_height().f64()
+                baseline: f64 = y.f64() + font_ascent(size).f64()
+                CGContextTranslateCTM(context, 0.0, view_height)
+                CGContextScaleCTM(context, 1.0, -1.0)
+                CGContextSetTextPosition(context, x.f64(), view_height - baseline)
+                CTLineDraw(line, context)
+                CGContextRestoreGState(context)
+                CFRelease(line)
+            CGColorRelease(color_ref)

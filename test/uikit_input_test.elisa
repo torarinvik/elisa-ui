@@ -1,0 +1,143 @@
+# UIKit input and semantics policy, pinned without a device.
+#
+# A UIPress carries a USB HID usage and a UIKeyModifierFlags bitfield; a UITouch
+# carries a phase and a location. What those mean is Elisa's decision, so it is
+# asserted here rather than observed on a simulator.
+
+include "../src/platform/uikit/ui_uikit.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def app_init() -> void:
+    pass
+
+def app_frame() -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    pass
+
+def check_letters_and_digits() -> void:
+    check("HID A maps to Key.A", UiUIKit::key_from_hid(4) == UiCore::Key.A.i32())
+    check("HID Z maps to Key.Z", UiUIKit::key_from_hid(29) == UiCore::Key.Z.i32())
+    check("HID M maps to Key.M", UiUIKit::key_from_hid(16) == UiCore::Key.M.i32())
+    check("HID 1 maps to Digit1", UiUIKit::key_from_hid(30) == UiCore::Key.Digit1.i32())
+    check("HID 9 maps to Digit9", UiUIKit::key_from_hid(38) == UiCore::Key.Digit9.i32())
+    # HID puts zero after nine, unlike every keyboard's printed order.
+    check("HID 0 maps to Digit0", UiUIKit::key_from_hid(39) == UiCore::Key.Digit0.i32())
+
+def check_editing_and_navigation() -> void:
+    check("HID return maps to Enter", UiUIKit::key_from_hid(40) == UiCore::Key.Enter.i32())
+    check("HID escape maps to Escape", UiUIKit::key_from_hid(41) == UiCore::Key.Escape.i32())
+    check("HID delete maps to Backspace", UiUIKit::key_from_hid(42) == UiCore::Key.Backspace.i32())
+    check("HID tab maps to Tab", UiUIKit::key_from_hid(43) == UiCore::Key.Tab.i32())
+    check("HID space maps to Space", UiUIKit::key_from_hid(44) == UiCore::Key.Space.i32())
+    check("HID forward delete maps to Delete", UiUIKit::key_from_hid(76) == UiCore::Key.Delete.i32())
+    check("HID right arrow maps to Right", UiUIKit::key_from_hid(79) == UiCore::Key.Right.i32())
+    check("HID left arrow maps to Left", UiUIKit::key_from_hid(80) == UiCore::Key.Left.i32())
+    check("HID down arrow maps to Down", UiUIKit::key_from_hid(81) == UiCore::Key.Down.i32())
+    check("HID up arrow maps to Up", UiUIKit::key_from_hid(82) == UiCore::Key.Up.i32())
+    check("HID home maps to Home", UiUIKit::key_from_hid(74) == UiCore::Key.Home.i32())
+    check("HID end maps to End", UiUIKit::key_from_hid(77) == UiCore::Key.End.i32())
+    check("HID page up maps to PageUp", UiUIKit::key_from_hid(75) == UiCore::Key.PageUp.i32())
+    check("HID page down maps to PageDown", UiUIKit::key_from_hid(78) == UiCore::Key.PageDown.i32())
+    # The keypad's Enter is the same framework key as Return.
+    check("HID keypad enter maps to Enter", UiUIKit::key_from_hid(88) == UiCore::Key.Enter.i32())
+
+def check_punctuation_and_function_keys() -> void:
+    check("HID hyphen maps to Minus", UiUIKit::key_from_hid(45) == UiCore::Key.Minus.i32())
+    check("HID equal maps to Equal", UiUIKit::key_from_hid(46) == UiCore::Key.Equal.i32())
+    check("HID open bracket maps to LeftBracket", UiUIKit::key_from_hid(47) == UiCore::Key.LeftBracket.i32())
+    check("HID close bracket maps to RightBracket", UiUIKit::key_from_hid(48) == UiCore::Key.RightBracket.i32())
+    check("HID backslash maps to Backslash", UiUIKit::key_from_hid(49) == UiCore::Key.Backslash.i32())
+    check("HID non-US backslash maps to Backslash", UiUIKit::key_from_hid(50) == UiCore::Key.Backslash.i32())
+    check("HID semicolon maps to Semicolon", UiUIKit::key_from_hid(51) == UiCore::Key.Semicolon.i32())
+    check("HID quote maps to Apostrophe", UiUIKit::key_from_hid(52) == UiCore::Key.Apostrophe.i32())
+    check("HID grave maps to Backtick", UiUIKit::key_from_hid(53) == UiCore::Key.Backtick.i32())
+    check("HID comma maps to Comma", UiUIKit::key_from_hid(54) == UiCore::Key.Comma.i32())
+    check("HID period maps to Period", UiUIKit::key_from_hid(55) == UiCore::Key.Period.i32())
+    check("HID slash maps to Slash", UiUIKit::key_from_hid(56) == UiCore::Key.Slash.i32())
+    check("HID F1 maps to F1", UiUIKit::key_from_hid(58) == UiCore::Key.F1.i32())
+    check("HID F12 maps to F12", UiUIKit::key_from_hid(69) == UiCore::Key.F12.i32())
+
+def check_modifier_keys() -> void:
+    check("HID left control maps to LeftControl", UiUIKit::key_from_hid(224) == UiCore::Key.LeftControl.i32())
+    check("HID left shift maps to LeftShift", UiUIKit::key_from_hid(225) == UiCore::Key.LeftShift.i32())
+    check("HID left alt maps to LeftAlt", UiUIKit::key_from_hid(226) == UiCore::Key.LeftAlt.i32())
+    check("HID left GUI maps to LeftSuper", UiUIKit::key_from_hid(227) == UiCore::Key.LeftSuper.i32())
+    check("HID right GUI maps to RightSuper", UiUIKit::key_from_hid(231) == UiCore::Key.RightSuper.i32())
+    # Unmapped usages must be rejected, not folded onto a real key.
+    check("caps lock has no framework key", UiUIKit::key_from_hid(57) == 0)
+    check("unknown HID usage is rejected", UiUIKit::key_from_hid(200) == 0)
+    check("negative HID usage is rejected", UiUIKit::key_from_hid(-1) == 0)
+
+def check_modifier_flags() -> void:
+    check("shift flag decodes", UiUIKit::modifier_shift(UiUIKit::MODIFIER_SHIFT))
+    check("control flag decodes", UiUIKit::modifier_control(UiUIKit::MODIFIER_CONTROL))
+    check("alternate flag decodes", UiUIKit::modifier_alternate(UiUIKit::MODIFIER_ALTERNATE))
+    check("command flag decodes", UiUIKit::modifier_command(UiUIKit::MODIFIER_COMMAND))
+    check("caps lock flag decodes", UiUIKit::modifier_caps_lock(UiUIKit::MODIFIER_CAPS_LOCK))
+    check("empty flags decode to nothing", not UiUIKit::modifier_shift(0) and not UiUIKit::modifier_command(0))
+    combined: i64 = UiUIKit::MODIFIER_SHIFT | UiUIKit::MODIFIER_COMMAND
+    check("combined flags decode independently", UiUIKit::modifier_shift(combined) and UiUIKit::modifier_command(combined) and not UiUIKit::modifier_control(combined))
+
+def check_shortcuts_and_routing() -> void:
+    command: i64 = UiUIKit::MODIFIER_COMMAND
+    shift_command: i64 = UiUIKit::MODIFIER_COMMAND | UiUIKit::MODIFIER_SHIFT
+    check("command-A selects all", UiUIKit::shortcut_from_press(4, command) == 1)
+    check("command-C copies", UiUIKit::shortcut_from_press(6, command) == 2)
+    check("command-X cuts", UiUIKit::shortcut_from_press(27, command) == 3)
+    check("command-V pastes", UiUIKit::shortcut_from_press(25, command) == 4)
+    check("command-Z undoes", UiUIKit::shortcut_from_press(29, command) == 5)
+    check("shift-command-Z redoes", UiUIKit::shortcut_from_press(29, shift_command) == 6)
+    check("a bare letter is not a shortcut", UiUIKit::shortcut_from_press(4, 0) == 0)
+    check("an unbound command chord is not a shortcut", UiUIKit::shortcut_from_press(7, command) == 0)
+    # Routing: a field that does not accept text always yields the raw key.
+    check("no text field routes raw", UiUIKit::press_route(false, 4, command) == 0)
+    check("command chord routes to its editing action", UiUIKit::press_route(true, 6, command) == 3)
+    check("unbound command chord routes raw", UiUIKit::press_route(true, 7, command) == 0)
+    check("control chord routes raw", UiUIKit::press_route(true, 4, UiUIKit::MODIFIER_CONTROL) == 0)
+    check("plain typing enters the text system", UiUIKit::press_route(true, 4, 0) == 1)
+    # Option-modified input still belongs to the text system: it is how many
+    # accented characters are composed.
+    check("option typing enters the text system", UiUIKit::press_route(true, 4, UiUIKit::MODIFIER_ALTERNATE) == 1)
+
+def check_touch_classification() -> void:
+    check("began is a valid phase", UiUIKit::touch_phase_is_valid(0))
+    check("cancelled is a valid phase", UiUIKit::touch_phase_is_valid(4))
+    check("a phase below the range is rejected", not UiUIKit::touch_phase_is_valid(-1))
+    check("a phase above the range is rejected", not UiUIKit::touch_phase_is_valid(5))
+    check("began is a pointer down", UiUIKit::pointer_kind_for_phase(0) == UiUIKit::POINTER_DOWN)
+    check("moved is a pointer move", UiUIKit::pointer_kind_for_phase(1) == UiUIKit::POINTER_MOVE)
+    check("stationary is a pointer move", UiUIKit::pointer_kind_for_phase(2) == UiUIKit::POINTER_MOVE)
+    check("ended is a pointer up", UiUIKit::pointer_kind_for_phase(3) == UiUIKit::POINTER_UP)
+    # A cancelled touch releases the pointer without activating the control
+    # under it -- the whole reason Cancelled is not folded into Ended.
+    check("cancelled releases without activating", UiUIKit::pointer_kind_for_phase(4) == UiUIKit::POINTER_LEAVE)
+    check("cancelled does not activate", not UiUIKit::phase_activates(4))
+    check("ended activates", UiUIKit::phase_activates(3))
+    # A touch screen has no hover, so the press supplies the move a mouse
+    # would have delivered first.
+    check("began synthesizes the missing move", UiUIKit::phase_needs_synthetic_move(0))
+    check("moved needs no synthetic move", not UiUIKit::phase_needs_synthetic_move(1))
+    check("a touch reports the primary button", UiUIKit::touch_button() == UiCore::PointerButton.Primary.i32())
+
+def main() -> i64:
+    check_letters_and_digits()
+    check_editing_and_navigation()
+    check_punctuation_and_function_keys()
+    check_modifier_keys()
+    check_modifier_flags()
+    check_shortcuts_and_routing()
+    check_touch_classification()
+    if failures == 0:
+        _ = puts("uikit input: all checks passed")
+        return 0
+    _ = puts("uikit input: FAILURES above")
+    return 1

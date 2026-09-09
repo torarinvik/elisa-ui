@@ -1,0 +1,160 @@
+# UIKit backend: framework-owned constants, geometry policy and native value
+# construction. The module base every other UIKit file extends.
+
+module UiUIKit:
+    public:
+        # Darwin's CLOCK_MONOTONIC. Calling libSystem directly keeps timing
+        # policy and unit conversion in Elisa rather than the Objective-C shim.
+        const CLOCK_MONOTONIC: i32 = 6
+
+        def monotonic_time() -> f64:
+            return clock_gettime_nsec_np(CLOCK_MONOTONIC).f64() / 1000000000.0
+
+        const UTF8_ENCODING: u32 = 0x08000100
+
+        def not_found() -> usize:
+            return elisa_uikit_not_found
+
+        # A touch has no button. Reporting the primary button keeps the
+        # retained widget layer's press/activate rules identical on both Apple
+        # platforms instead of teaching every control a second code path.
+        def touch_button() -> i32:
+            return UiCore::PointerButton.Primary.i32()
+
+        # The text protocol wants a caret rectangle in view coordinates.
+        def caret_width() -> f32:
+            return 1.0
+
+        def native_string(text: sview) -> usize can Unsafe.PointerCast:
+            return 0 if text.len < 0
+            safe_text: sview = UiCore::bounded_text(text)
+            empty: cstr = ""
+            pointer: mutable cstr = empty
+            pointer <- safe_text.data.cast[cstr] can Unsafe.PointerCast if safe_text.len > 0
+            return CFStringCreateWithBytes(0, pointer, safe_text.len, UTF8_ENCODING, false)
+
+        def native_string_bytes(bytes: u8&, length: usize) -> usize can Unsafe.PointerCast:
+            # Unlike `native_string` this receives a raw pointer and cannot
+            # discover the allocation extent, so reject a length outside the
+            # framework text budget rather than letting CoreFoundation walk an
+            # untrusted range.
+            return 0 if length > UiCore::MAX_TEXT_BYTES
+            return 0 if length > 0 and bytes == null
+            if length == 0 and bytes == null:
+                empty: cstr = ""
+                return CFStringCreateWithBytes(0, empty, 0, UTF8_ENCODING, false)
+            pointer: cstr = (&bytes[0]).cast[cstr] can Unsafe.PointerCast
+            return CFStringCreateWithBytes(0, pointer, length.i64(), UTF8_ENCODING, false)
+
+        # Copy a native string's UTF-8 bytes into an Elisa-owned buffer. The
+        # destination is cleared first so a rejected value can never leave the
+        # previous copy readable through a zero-length result.
+        def copy_native_string(value: usize, buffer: mutable u8&, capacity: usize) -> usize:
+            safe_capacity: usize = capacity if capacity < UiCore::MAX_TEXT_BYTES else UiCore::MAX_TEXT_BYTES
+            return 0 if safe_capacity > 0 and buffer == null
+            for index in 0..<safe_capacity:
+                buffer[index] <- 0
+            return 0 if value == 0 or safe_capacity == 0
+            return 0 if CFGetTypeID(value) != CFStringGetTypeID()
+            length: i64 = CFStringGetLength(value)
+            return 0 if length <= 0
+            used: mutable i64 = 0
+            # CFStringGetBytes reports both the characters converted and the
+            # bytes written. A fixed buffer can stop before the final scalar,
+            # so `used == capacity` alone does not mean the string was fully
+            # consumed. Preserve the capacity sentinel whenever the character
+            # count is incomplete; text callers pass the bounded prefix through
+            # UiFlat, which records the truncation.
+            converted: i64 = CFStringGetBytes(value, NativeRange{location: 0, length: length}, UTF8_ENCODING, 0, false, buffer, safe_capacity.i64(), &used)
+            return 0 if used <= 0
+            return safe_capacity if converted < length
+            return safe_capacity if used > safe_capacity.i64()
+            return used.usize()
+
+        # UIAccessibilityTraits is a bitfield of stable public constants. Elisa
+        # maps its own semantic roles onto them so the shim never has to know
+        # what a framework role means.
+        const TRAIT_NONE: u64 = 0
+        const TRAIT_BUTTON: u64 = 1
+        const TRAIT_LINK: u64 = 2
+        const TRAIT_IMAGE: u64 = 4
+        const TRAIT_SELECTED: u64 = 8
+        const TRAIT_PLAYS_SOUND: u64 = 16
+        const TRAIT_KEYBOARD_KEY: u64 = 32
+        const TRAIT_STATIC_TEXT: u64 = 64
+        const TRAIT_SUMMARY_ELEMENT: u64 = 128
+        const TRAIT_NOT_ENABLED: u64 = 256
+        const TRAIT_UPDATES_FREQUENTLY: u64 = 512
+        const TRAIT_SEARCH_FIELD: u64 = 1024
+        const TRAIT_HEADER: u64 = 65536
+        const TRAIT_ADJUSTABLE: u64 = 2097152
+
+        # Snapshot geometry is framework policy, not a CoreGraphics default.
+        const SNAPSHOT_MAX_PIXELS: u64 = 67108864
+        # The largest finite f32 below 2^31; values at or above it cannot be
+        # represented by the i32 ABI used by the CoreGraphics entry point.
+        const SNAPSHOT_MAX_I32_EXTENT: f32 = 2147483520.0
+
+        def bitmap_extent(value: f32) -> i32:
+            safe: f32 = UiCore::nonnegative_extent(value)
+            return 1 if safe <= 0.0
+            return 0 if safe > SNAPSHOT_MAX_I32_EXTENT
+            rounded: f32 = ceilf(safe)
+            return 0 if rounded > SNAPSHOT_MAX_I32_EXTENT
+            return 1 if rounded < 1.0 else rounded.i32()
+
+        def snapshot_dimensions_safe(width: i32, height: i32) -> bool:
+            return false if width <= 0 or height <= 0
+            return width.u64() * height.u64() <= SNAPSHOT_MAX_PIXELS
+
+        # iOS reports a display scale rather than a window backing factor. The
+        # retained model is laid out in logical points on every backend, so the
+        # scale only ever reaches the snapshot pixel budget and the metrics.
+        const MIN_SCALE: f32 = 0.5
+        const MAX_SCALE: f32 = 8.0
+
+        def bounded_scale(value: f32) -> f32:
+            return 1.0 if not UiCore::is_finite(value)
+            return MIN_SCALE if value < MIN_SCALE
+            return MAX_SCALE if value > MAX_SCALE
+            return value
+
+    private:
+        def color_component(value: u8) -> f32:
+            return value.f32() / 255.0
+
+        def set_fill_color(context: usize, color: UiCore::Color) -> void:
+            CGContextSetRGBFillColor(context, color_component(color.r).f64(), color_component(color.g).f64(), color_component(color.b).f64(), color_component(color.a).f64())
+
+        def set_stroke_color(context: usize, color: UiCore::Color) -> void:
+            CGContextSetRGBStrokeColor(context, color_component(color.r).f64(), color_component(color.g).f64(), color_component(color.b).f64(), color_component(color.a).f64())
+
+        def set_shadow(context: usize, x: f32, y: f32, blur: f32, alpha: f32) -> void:
+            color: usize = CGColorCreateGenericGray(0.0, alpha.f64())
+            return if color == 0
+            CGContextSetShadowWithColor(context, NativeSize{width: x.f64(), height: y.f64()}, blur.f64(), color)
+            CGColorRelease(color)
+
+        def rounded_path(context: usize, box: UiCore::Rect, radius: f32) -> void:
+            left: f64 = box.origin.x.f64()
+            top: f64 = box.origin.y.f64()
+            right: f64 = (box.origin.x + box.size.width).f64()
+            bottom: f64 = (box.origin.y + box.size.height).f64()
+            curve: f64 = radius.f64()
+            CGContextBeginPath(context)
+            CGContextMoveToPoint(context, left + curve, top)
+            CGContextAddLineToPoint(context, right - curve, top)
+            CGContextAddArcToPoint(context, right, top, right, top + curve, curve)
+            CGContextAddLineToPoint(context, right, bottom - curve)
+            CGContextAddArcToPoint(context, right, bottom, right - curve, bottom, curve)
+            CGContextAddLineToPoint(context, left + curve, bottom)
+            CGContextAddArcToPoint(context, left, bottom, left, bottom - curve, curve)
+            CGContextAddLineToPoint(context, left, top + curve)
+            CGContextAddArcToPoint(context, left, top, left + curve, top, curve)
+            CGContextClosePath(context)
+
+        def smoke_mode() -> bool:
+            value_opt: cstr? = getenv("ELISA_UI_SMOKE_FRAMES")
+            if value_opt is value:
+                return uikit_cstr_byte(value, 0) != 48 or uikit_cstr_byte(value, 1) != 0
+            return false

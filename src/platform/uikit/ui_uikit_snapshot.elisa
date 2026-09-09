@@ -1,0 +1,84 @@
+# Off-screen frames for the UIKit backend.
+#
+# This is what makes the backend testable without a device: one real frame,
+# through the real painter and the real CoreText path, into a CoreGraphics
+# bitmap. `ELISA_UI_SNAPSHOT` additionally writes it as a PNG so a rendering
+# regression is visible rather than merely non-zero.
+
+extend UiUIKit:
+    private:
+        const SNAPSHOT_BITS_PER_COMPONENT: usize = 8
+        const SNAPSHOT_BITMAP_INFO_PREMULTIPLIED_LAST: u32 = 1
+        const SNAPSHOT_URL_POSIX_PATH_STYLE: i32 = 0
+
+        def snapshot_target() -> usize can Unsafe.PointerCast:
+            value_opt: cstr? = getenv("ELISA_UI_SNAPSHOT")
+            if value_opt is value:
+                length: usize = uikit_path_length(value)
+                # `native_string` bounds counted views at the framework text
+                # budget. Reject a longer path rather than writing a silently
+                # truncated one.
+                return 0 if length > UIKIT_PATH_SCAN_CAPACITY or not uikit_path_within_budget(length)
+                return native_string(sview(value, 0, length.i64()))
+            return 0
+
+        def write_png(context: usize, path: usize) -> bool:
+            image: usize = CGBitmapContextCreateImage(context)
+            return false if image == 0
+            url: usize = CFURLCreateWithFileSystemPath(0, path, SNAPSHOT_URL_POSIX_PATH_STYLE, false)
+            if url == 0:
+                CGImageRelease(image)
+                return false
+            png_type: usize = native_string("public.png")
+            if png_type == 0:
+                CFRelease(url)
+                CGImageRelease(image)
+                return false
+            destination: usize = CGImageDestinationCreateWithURL(url, png_type, 1, 0)
+            if destination == 0:
+                CFRelease(png_type)
+                CFRelease(url)
+                CGImageRelease(image)
+                return false
+            CGImageDestinationAddImage(destination, image, 0)
+            written: bool = CGImageDestinationFinalize(destination)
+            CFRelease(destination)
+            CFRelease(png_type)
+            CFRelease(url)
+            CGImageRelease(image)
+            return written
+
+    public:
+        def render_snapshot(pixels_width: i32, pixels_height: i32) -> bool:
+            can Ui.Draw, Ui.Text, Unsafe.PointerCast:
+                return false if not UiLifecycle::can_render()
+                return false if not snapshot_dimensions_safe(pixels_width, pixels_height)
+                color_space: usize = CGColorSpaceCreateDeviceRGB()
+                return false if color_space == 0
+                context: usize = CGBitmapContextCreate(0, pixels_width.usize(), pixels_height.usize(), SNAPSHOT_BITS_PER_COMPONENT, 0, color_space, SNAPSHOT_BITMAP_INFO_PREMULTIPLIED_LAST)
+                CGColorSpaceRelease(color_space)
+                return false if context == 0
+                reset_frame_state()
+                # A CGBitmapContext has a bottom-left origin and counts
+                # pixels; a UIKit view has a top-left origin and is measured in
+                # points. Mirror and scale in one transform so the painter sees
+                # the same coordinates it would on screen, and CoreText's
+                # nested transform stays identical between on-screen and
+                # off-screen frames.
+                device_scale: f64 = scale().f64()
+                CGContextSaveGState(context)
+                CGContextTranslateCTM(context, 0.0, pixels_height.f64())
+                CGContextScaleCTM(context, device_scale, 0.0 - device_scale)
+                uikit_frame_callback(context)
+                CGContextRestoreGState(context)
+                CGContextFlush(context)
+                if not frame_was_rendered():
+                    CGContextRelease(context)
+                    return false
+                written: mutable bool = true
+                path: usize = snapshot_target()
+                if path != 0:
+                    written <- write_png(context, path)
+                    CFRelease(path)
+                CGContextRelease(context)
+                return written

@@ -77,6 +77,12 @@ because a module member's symbol carries its module and those names cannot move.
   and crosses only a narrow C FFI; the current AppKit canvas's CoreGraphics
   path remains an explicit fallback when the optional Skia host is not linked,
   plus
+  [UIKit](src/platform/uikit/ui_uikit.elisa) (a custom-painted iOS `UIView`;
+  the same CoreGraphics replay and CoreText shaping as the macOS canvas, with
+  touch instead of a mouse, `UIAccessibilityTraits` instead of Cocoa roles, and
+  safe-area/keyboard/orientation facts layered onto `UiMobileSurface` -- see
+  [docs/uikit-backend.md](docs/uikit-backend.md)),
+  plus
   [wasmbrowser](src/platform/wasmbrowser/ui_wasmbrowser.elisa) (a component
   implementing `world app`; the host drives the loop through the exported guest
   interface, canonical-ABI encoding stays in the backend modules, and its
@@ -261,7 +267,10 @@ because a module member's symbol carries its module and those names cannot move.
   own module, as [examples/hello/app.elisa](examples/hello/app.elisa) shows.
 
 Backend selection is by include: each example has a `native_main.elisa` and a
-`wapp_main.elisa` entry that include the same `app.elisa`.
+`wapp_main.elisa` entry that include the same `app.elisa`. `hello` additionally
+has `appkit_main.elisa`, `appkit_canvas_main.elisa` and `uikit_main.elisa` --
+the iOS entry differs from the macOS canvas one only in which backend it
+includes and the launch options it states.
 
 See [docs/custom-appkit-canvas.md](docs/custom-appkit-canvas.md) for the
 custom-painted AppKit API, application contract, controls and off-screen test

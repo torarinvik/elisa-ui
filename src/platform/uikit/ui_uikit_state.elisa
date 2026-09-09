@@ -1,0 +1,171 @@
+# Retained UIKit session state.
+#
+# The view handle, the frame's graphics context, the redraw timer and the
+# semantic element history live here so every other UIKit module reads one
+# authority for "is this session still the live one".
+
+extend UiUIKit:
+    private:
+        global mutable uikit_canvas_view: usize = 0
+        global mutable uikit_frame_context: usize = 0
+        global mutable uikit_frame_rendered: bool = false
+        global mutable uikit_headless_session: bool = false
+        global mutable uikit_redraw_timer: usize = 0
+        global mutable uikit_text_input_active: bool = false
+
+        global mutable uikit_accessibility_previous_ids: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable uikit_accessibility_previous_slot_by_id: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable uikit_accessibility_previous_handles: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable uikit_accessibility_previous_retained: bool[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable uikit_accessibility_previous_traits: u64[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable uikit_accessibility_next_ids: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable uikit_accessibility_next_handles: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable uikit_accessibility_next_traits: u64[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        # A committed element is an opaque callback target. Resolving it back
+        # to the retained widget action stays in Elisa so the shim never owns
+        # a second widget lookup table.
+        global mutable uikit_accessibility_previous_actions: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable uikit_accessibility_next_actions: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable uikit_accessibility_commit_handles: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable uikit_accessibility_stale_handles: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable uikit_accessibility_stale_count: usize = 0
+        global mutable uikit_accessibility_previous_count: usize = 0
+        global mutable uikit_accessibility_force_layout: bool = true
+
+        const ACCESSIBILITY_IDENTIFIER_CAPACITY: usize = 32
+        global mutable uikit_accessibility_identifier_storage: u8[ACCESSIBILITY_IDENTIFIER_CAPACITY] = zeroed
+
+        def current_context() -> usize:
+            return uikit_frame_context
+
+        def previous_accessibility_index(id: usize) -> usize:
+            return UiCore::MAX_ACCESSIBILITY_NODES if id >= UiCore::MAX_ACCESSIBILITY_NODES
+            index: usize = uikit_accessibility_previous_slot_by_id[id]
+            return index if index < uikit_accessibility_previous_count and uikit_accessibility_previous_ids[index] == id
+            return UiCore::MAX_ACCESSIBILITY_NODES
+
+        def release_accessibility_handles() -> void:
+            for index in 0..<uikit_accessibility_previous_count:
+                handle: usize = uikit_accessibility_previous_handles[index]
+                old_id: usize = uikit_accessibility_previous_ids[index]
+                uikit_accessibility_previous_slot_by_id[old_id] <- UiCore::MAX_ACCESSIBILITY_NODES if old_id < UiCore::MAX_ACCESSIBILITY_NODES
+                elisa_uikit_accessibility_release(handle) if handle != 0
+                uikit_accessibility_previous_handles[index] <- 0
+            uikit_accessibility_previous_count <- 0
+
+        def reset_accessibility_history() -> void:
+            release_accessibility_handles()
+            uikit_accessibility_force_layout <- true
+
+        # Accessibility identifiers are stable framework metadata. Generate
+        # their UTF-8 bytes here so the Objective-C bridge never invents a
+        # naming scheme or formats framework state on its own.
+        def accessibility_identifier(id: usize) -> sview:
+            prefix: sview = "elisa-ui-"
+            for index in 0..<prefix.len.usize():
+                uikit_accessibility_identifier_storage[index] <- prefix.data[index]
+            value: mutable usize = id
+            digits: mutable usize =
+                for _ in 0..<20 |remaining: usize = value, count: usize = 0| -> count:
+                    break if remaining == 0
+                    count <- count + 1
+                    remaining <- remaining / 10
+            digits <- 1 if digits == 0
+            value <- id
+            for index in 0..<digits:
+                position: usize = prefix.len.usize() + digits - 1 - index
+                uikit_accessibility_identifier_storage[position] <- (value % 10 + 48).u8()
+                value <- value / 10
+            return sview(&uikit_accessibility_identifier_storage[0], 0, (prefix.len.usize() + digits).i64())
+
+    public:
+        def accessibility_action_for_handle(handle: usize) -> usize:
+            return not_found() if handle == 0
+            for index in 0..<uikit_accessibility_previous_count:
+                return uikit_accessibility_previous_actions[index] if uikit_accessibility_previous_handles[index] == handle
+            return not_found()
+
+        # UIKit callbacks can arrive after the scene starts dismantling its
+        # view. Keep one lifecycle predicate so every entry point uses the same
+        # answer about whether retained widget state is still live.
+        # A headless session has no UIKit view, but it does have a live
+        # retained model and a real graphics context. Both are "live"; only the
+        # calls that need a view are additionally gated on one.
+        def live() -> bool:
+            return UiLifecycle::can_render() and (uikit_canvas_view != 0 or uikit_headless_session)
+
+        def is_headless() -> bool:
+            return uikit_headless_session
+
+        def view_handle() -> usize:
+            return uikit_canvas_view
+
+        def frame_was_rendered() -> bool:
+            return uikit_frame_rendered
+
+        def redraw() -> void:
+            return if not live() or uikit_canvas_view == 0
+            elisa_uikit_redraw(uikit_canvas_view)
+
+        def begin_native_frame(context: usize) -> void:
+            uikit_frame_context <- context
+            uikit_frame_rendered <- true
+
+        def end_native_frame() -> void:
+            uikit_frame_context <- 0
+
+        def mark_headless() -> void:
+            uikit_headless_session <- true
+
+        def reset_frame_state() -> void:
+            uikit_frame_rendered <- false
+            uikit_frame_context <- 0
+
+        def cancel_redraw() -> void:
+            return if uikit_redraw_timer == 0
+            elisa_uikit_cancel_redraw(uikit_redraw_timer)
+            uikit_redraw_timer <- 0
+
+        # A frame may ask for the next one after a delay. Cancel the pending
+        # request first so a run of animated frames cannot accumulate timers.
+        def schedule_next_frame(delay: f32) -> void:
+            cancel_redraw()
+            return if not live() or uikit_canvas_view == 0
+            return if not UiCore::is_finite(delay) or delay < 0.0
+            uikit_redraw_timer <- elisa_uikit_schedule_redraw(delay, uikit_canvas_view, UiLifecycle::generation())
+
+        # UIKit raises the software keyboard for a first responder that reports
+        # it accepts text. Following the retained focus is framework policy, so
+        # the request lives here rather than in a view delegate.
+        def set_text_input(wanted: bool) -> bool:
+            return false if not live() or uikit_canvas_view == 0
+            return true if wanted == uikit_text_input_active
+            accepted: bool = elisa_uikit_begin_text_input(uikit_canvas_view) != 0 if wanted else elisa_uikit_end_text_input(uikit_canvas_view) != 0
+            uikit_text_input_active <- wanted if accepted
+            return accepted
+
+        def text_input_is_active() -> bool:
+            return uikit_text_input_active
+
+        def redraw_timer_is(handle: usize) -> bool:
+            return handle != 0 and handle == uikit_redraw_timer
+
+        def clear_redraw_timer() -> void:
+            uikit_redraw_timer <- 0
+
+        def stop() -> void:
+            cancel_redraw()
+            _ = UiLifecycle::stop()
+            _ = UiMobileSurface::stop()
+            elisa_uikit_stop()
+
+        def release_canvas() -> void:
+            cancel_redraw()
+            release_accessibility_handles()
+            if uikit_canvas_view != 0 and uikit_text_input_active:
+                _ = elisa_uikit_end_text_input(uikit_canvas_view)
+            uikit_text_input_active <- false
+            uikit_headless_session <- false
+            uikit_canvas_view <- 0
+            uikit_frame_context <- 0
+            _ = UiLifecycle::stop()

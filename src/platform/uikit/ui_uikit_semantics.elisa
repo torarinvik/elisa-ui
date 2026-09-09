@@ -1,0 +1,112 @@
+# Publish the semantic frame to UIKit.
+#
+# Identity is decided here, from Elisa's own history of stable IDs, and sent to
+# the shim as an explicit token. The bridge never infers reuse by probing an
+# opaque element. The child list is replaced in one transaction: if it fails,
+# the previous committed list and its ownership are left exactly as they were.
+
+extend UiUIKit:
+    private:
+        def commit_accessibility_children(requested_count: usize) -> bool can Unsafe.PointerCast:
+            return false if requested_count > UiCore::MAX_ACCESSIBILITY_NODES
+            count: mutable usize = 0
+            for index in 0..<requested_count:
+                handle: usize = uikit_accessibility_next_handles[index]
+                # A semantic frame is all-or-nothing. Compacting away a missing
+                # element would let UIKit accept a shorter list than the one
+                # Elisa published, leaving nodes assistive clients can never
+                # reach.
+                return false if handle == 0
+                uikit_accessibility_commit_handles[count] <- handle
+                count <- count + 1
+            return false if count > UiCore::MAX_ACCESSIBILITY_NODES
+            values_pointer: usize& = (&uikit_accessibility_commit_handles[0]).cast[usize&] can Unsafe.PointerCast
+            children: usize = CFArrayCreate(0, values_pointer, count.i64(), 0)
+            return false if children == 0
+            committed: bool = elisa_uikit_accessibility_commit(uikit_canvas_view, children) != 0
+            CFRelease(children)
+            return committed
+
+    public:
+        def sync_accessibility() -> void can Unsafe.PointerCast:
+            # Building elements costs a native allocation each. VoiceOver and
+            # Switch Control are the only readers, so skip the whole pass when
+            # no assistive technology is running.
+            return if elisa_uikit_accessibility_is_running() == 0
+            next_count: usize = UiCore::accessibility_count()
+            previous_count: usize = uikit_accessibility_previous_count
+            layout_changed: mutable bool = uikit_accessibility_force_layout or next_count != previous_count
+            for retained_index in 0..<previous_count:
+                uikit_accessibility_previous_retained[retained_index] <- false
+            for index in 0..<next_count:
+                node: UiCore::AccessibilityNode = UiCore::accessibility_at(index)
+                traits: u64 = accessibility_traits(node.role, node.enabled, node.selected)
+                native_identifier: usize = native_string(accessibility_identifier(node.id))
+                native_label: usize = native_string(node.label)
+                native_hint: mutable usize = 0
+                native_hint <- native_string(node.help) if node.help.len > 0
+                native_value: usize = accessibility_value_string(node)
+                previous_index: usize = previous_accessibility_index(node.id)
+                existed: bool = previous_index < previous_count
+                previous_handle: usize = uikit_accessibility_previous_handles[previous_index] if existed else 0
+                layout_changed <- true if index >= previous_count or uikit_accessibility_previous_ids[index] != node.id
+                layout_changed <- true if existed and uikit_accessibility_previous_traits[previous_index] != traits
+                is_new: i32 = 1 if not existed or previous_handle == 0 else 0
+                handle: usize = elisa_uikit_accessibility_add(uikit_canvas_view, previous_handle, is_new,
+                    native_identifier, traits, native_label, native_hint, native_value,
+                    node.frame.origin.x, node.frame.origin.y,
+                    node.frame.size.width, node.frame.size.height,
+                    1 if node.enabled else 0)
+                uikit_accessibility_next_ids[index] <- node.id
+                uikit_accessibility_next_handles[index] <- handle
+                uikit_accessibility_next_traits[index] <- traits
+                uikit_accessibility_next_actions[index] <- node.action
+                uikit_accessibility_previous_retained[previous_index] <- true if existed and previous_handle != 0 and handle == previous_handle
+                CFRelease(native_identifier) if native_identifier != 0
+                CFRelease(native_label) if native_label != 0
+                CFRelease(native_hint) if native_hint != 0
+                CFRelease(native_value) if native_value != 0
+            uikit_accessibility_stale_count <- 0
+            for previous_index in 0..<previous_count:
+                previous_handle: usize = uikit_accessibility_previous_handles[previous_index]
+                if not uikit_accessibility_previous_retained[previous_index] and uikit_accessibility_stale_count < UiCore::MAX_ACCESSIBILITY_NODES:
+                    uikit_accessibility_stale_handles[uikit_accessibility_stale_count] <- previous_handle
+                    uikit_accessibility_stale_count <- uikit_accessibility_stale_count + 1
+            if commit_accessibility_children(next_count):
+                publish_accessibility_history(next_count)
+                for stale_index in 0..<uikit_accessibility_stale_count:
+                    stale_handle: usize = uikit_accessibility_stale_handles[stale_index]
+                    elisa_uikit_accessibility_release(stale_handle) if stale_handle != 0
+                    uikit_accessibility_stale_handles[stale_index] <- 0
+                if layout_changed:
+                    elisa_uikit_accessibility_post_layout_changed(uikit_canvas_view)
+                uikit_accessibility_force_layout <- false
+            else:
+                # Keep the old list and its ownership. Elements created during
+                # this pass are not reachable from it, so release them; reused
+                # handles remain owned by the previous-frame table.
+                discard_uncommitted_elements(next_count, previous_count)
+            uikit_accessibility_stale_count <- 0
+
+    private:
+        def publish_accessibility_history(next_count: usize) -> void:
+            uikit_accessibility_previous_count <- next_count
+            for index in 0..<next_count:
+                id: usize = uikit_accessibility_next_ids[index]
+                uikit_accessibility_previous_ids[index] <- id
+                uikit_accessibility_previous_slot_by_id[id] <- index if id < UiCore::MAX_ACCESSIBILITY_NODES
+                uikit_accessibility_previous_handles[index] <- uikit_accessibility_next_handles[index]
+                uikit_accessibility_previous_traits[index] <- uikit_accessibility_next_traits[index]
+                uikit_accessibility_previous_actions[index] <- uikit_accessibility_next_actions[index]
+
+        def discard_uncommitted_elements(next_count: usize, previous_count: usize) -> void:
+            for next_index in 0..<next_count:
+                candidate: usize = uikit_accessibility_next_handles[next_index]
+                known: mutable bool = false
+                for known_index in 0..<previous_count:
+                    known <- true if candidate != 0 and candidate == uikit_accessibility_previous_handles[known_index]
+                if candidate != 0 and not known:
+                    elisa_uikit_accessibility_release(candidate)
+                uikit_accessibility_next_handles[next_index] <- 0
+            for stale_index in 0..<uikit_accessibility_stale_count:
+                uikit_accessibility_stale_handles[stale_index] <- 0

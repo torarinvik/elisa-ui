@@ -1,0 +1,159 @@
+# UIKit input policy: hardware keys, modifiers and touch classification.
+#
+# Nothing here touches UIKit. A UIPress carries a USB HID usage code and a
+# UIKeyModifierFlags bitfield; a UITouch carries a phase, a location and a tap
+# count. The shim forwards those raw facts and this module decides what they
+# mean, so the same decisions are unit-tested on the host with no simulator.
+
+extend UiUIKit:
+    public:
+        # UIKeyboardHIDUsage values are USB HID keyboard usage IDs. The three
+        # dense runs are arithmetic; only the punctuation and the navigation
+        # cluster need a table.
+        const HID_A: i32 = 4
+        const HID_Z: i32 = 29
+        const HID_ONE: i32 = 30
+        const HID_NINE: i32 = 38
+        const HID_ZERO: i32 = 39
+        const HID_F1: i32 = 58
+        const HID_F12: i32 = 69
+
+        def key_from_hid(usage: i32) -> i32:
+            return UiCore::Key.A.i32() + (usage - HID_A) if usage >= HID_A and usage <= HID_Z
+            return UiCore::Key.Digit1.i32() + (usage - HID_ONE) if usage >= HID_ONE and usage <= HID_NINE
+            return UiCore::Key.Digit0.i32() if usage == HID_ZERO
+            return UiCore::Key.F1.i32() + (usage - HID_F1) if usage >= HID_F1 and usage <= HID_F12
+            return key_from_hid_punctuation(usage)
+
+    private:
+        def key_from_hid_punctuation(usage: i32) -> i32:
+            return UiCore::Key.Enter.i32() if usage == 40
+            return UiCore::Key.Escape.i32() if usage == 41
+            return UiCore::Key.Backspace.i32() if usage == 42
+            return UiCore::Key.Tab.i32() if usage == 43
+            return UiCore::Key.Space.i32() if usage == 44
+            return UiCore::Key.Minus.i32() if usage == 45
+            return UiCore::Key.Equal.i32() if usage == 46
+            return UiCore::Key.LeftBracket.i32() if usage == 47
+            return UiCore::Key.RightBracket.i32() if usage == 48
+            return UiCore::Key.Backslash.i32() if usage == 49
+            # HID 50 is the non-US variant of the same physical backslash key.
+            return UiCore::Key.Backslash.i32() if usage == 50
+            return UiCore::Key.Semicolon.i32() if usage == 51
+            return UiCore::Key.Apostrophe.i32() if usage == 52
+            return UiCore::Key.Backtick.i32() if usage == 53
+            return UiCore::Key.Comma.i32() if usage == 54
+            return UiCore::Key.Period.i32() if usage == 55
+            return UiCore::Key.Slash.i32() if usage == 56
+            return key_from_hid_navigation(usage)
+
+        def key_from_hid_navigation(usage: i32) -> i32:
+            return UiCore::Key.Insert.i32() if usage == 73
+            return UiCore::Key.Home.i32() if usage == 74
+            return UiCore::Key.PageUp.i32() if usage == 75
+            return UiCore::Key.Delete.i32() if usage == 76
+            return UiCore::Key.End.i32() if usage == 77
+            return UiCore::Key.PageDown.i32() if usage == 78
+            return UiCore::Key.Right.i32() if usage == 79
+            return UiCore::Key.Left.i32() if usage == 80
+            return UiCore::Key.Down.i32() if usage == 81
+            return UiCore::Key.Up.i32() if usage == 82
+            # Keypad Enter is the same framework key as Return.
+            return UiCore::Key.Enter.i32() if usage == 88
+            return UiCore::Key.LeftControl.i32() if usage == 224
+            return UiCore::Key.LeftShift.i32() if usage == 225
+            return UiCore::Key.LeftAlt.i32() if usage == 226
+            return UiCore::Key.LeftSuper.i32() if usage == 227
+            return UiCore::Key.RightControl.i32() if usage == 228
+            return UiCore::Key.RightShift.i32() if usage == 229
+            return UiCore::Key.RightAlt.i32() if usage == 230
+            return UiCore::Key.RightSuper.i32() if usage == 231
+            return 0
+
+    public:
+        # UIKeyModifierFlags. These are stable public constants, so Elisa reads
+        # them directly rather than importing six more extern symbols.
+        const MODIFIER_CAPS_LOCK: i64 = 65536
+        const MODIFIER_SHIFT: i64 = 131072
+        const MODIFIER_CONTROL: i64 = 262144
+        const MODIFIER_ALTERNATE: i64 = 524288
+        const MODIFIER_COMMAND: i64 = 1048576
+
+        def modifier_shift(flags: i64) -> bool:
+            return (flags & MODIFIER_SHIFT) != 0
+
+        def modifier_control(flags: i64) -> bool:
+            return (flags & MODIFIER_CONTROL) != 0
+
+        def modifier_alternate(flags: i64) -> bool:
+            return (flags & MODIFIER_ALTERNATE) != 0
+
+        def modifier_command(flags: i64) -> bool:
+            return (flags & MODIFIER_COMMAND) != 0
+
+        def modifier_caps_lock(flags: i64) -> bool:
+            return (flags & MODIFIER_CAPS_LOCK) != 0
+
+        # Editing shortcut tokens shared with the AppKit adapter: 1 Select All,
+        # 2 Copy, 3 Cut, 4 Paste, 5 Undo, 6 Redo. iPadOS delivers these as an
+        # ordinary command-modified press rather than a menu selector.
+        def shortcut_from_press(usage: i32, flags: i64) -> i32:
+            return 0 if not modifier_command(flags)
+            shift: bool = modifier_shift(flags)
+            return 1 if usage == 4
+            return 2 if usage == 6
+            return 3 if usage == 27
+            return 4 if usage == 25
+            return 6 if usage == 29 and shift
+            return 5 if usage == 29
+            return 0
+
+        # Result tokens match the AppKit router so the flat adapter has one
+        # vocabulary: 0 raw key, 1 hand to the text system, 2..7 editing
+        # action 1..6.
+        def press_route(accepts_text: bool, usage: i32, flags: i64) -> i32:
+            return 0 if not accepts_text
+            if modifier_command(flags):
+                action: i32 = shortcut_from_press(usage, flags)
+                return action + 1 if action != 0
+                return 0
+            return 0 if modifier_control(flags)
+            return 1
+
+    public:
+        # UITouchPhase. Cancelled is deliberately distinct from Ended: a
+        # cancelled touch must not activate the control under it.
+        const enum TouchPhase of i32:
+            Began = 0
+            Moved = 1
+            Stationary = 2
+            Ended = 3
+            Cancelled = 4
+
+        def touch_phase_is_valid(phase: i32) -> bool:
+            return phase >= TouchPhase.Began.i32() and phase <= TouchPhase.Cancelled.i32()
+
+        # A touch is the pointer. There is no hover on a touch screen, so a
+        # press synthesizes the move that a mouse would have delivered first;
+        # otherwise a control never sees the pointer arrive before the press.
+        # Tokens match the AppKit pointer callback: 0 move, 1 down, 2 up,
+        # 3 leave, 4 scroll.
+        const POINTER_MOVE: i32 = 0
+        const POINTER_DOWN: i32 = 1
+        const POINTER_UP: i32 = 2
+        const POINTER_LEAVE: i32 = 3
+        const POINTER_SCROLL: i32 = 4
+
+        def pointer_kind_for_phase(phase: i32) -> i32:
+            return POINTER_DOWN if phase == TouchPhase.Began.i32()
+            return POINTER_MOVE if phase == TouchPhase.Moved.i32() or phase == TouchPhase.Stationary.i32()
+            return POINTER_UP if phase == TouchPhase.Ended.i32()
+            return POINTER_LEAVE
+
+        # A Began phase needs the synthetic move first; a Cancelled phase
+        # releases the pointer without an activating Up.
+        def phase_needs_synthetic_move(phase: i32) -> bool:
+            return phase == TouchPhase.Began.i32()
+
+        def phase_activates(phase: i32) -> bool:
+            return phase == TouchPhase.Ended.i32()

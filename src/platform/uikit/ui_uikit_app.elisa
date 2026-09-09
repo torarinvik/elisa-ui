@@ -1,0 +1,111 @@
+# UIKit session lifecycle.
+#
+# iOS inverts the desktop order: UIApplicationMain owns the process, and the
+# surface arrives later as a callback. So `run` prepares the session and enters
+# UIKit, and `attach_surface` -- driven by the shim once the view has a real
+# size -- is where the application's `app_init` runs. Both paths share one
+# reset, so a smoke render and a real launch cannot drift.
+
+extend UiUIKit:
+    public:
+        struct LaunchOptions:
+            # A full-screen iOS app usually wants the status bar; a kiosk or a
+            # game does not. Neither is a UIKit default worth inheriting
+            # silently, so the application states it.
+            status_bar: bool
+            # Whether the device may sleep while the app is foreground.
+            idle_timer: bool
+            # Headless smoke width/height, used only when no scene arrives.
+            snapshot_width: f32
+            snapshot_height: f32
+            snapshot_scale: f32
+
+        def default_launch_options() -> LaunchOptions:
+            return LaunchOptions{status_bar: true, idle_timer: true,
+                snapshot_width: 393.0, snapshot_height: 852.0, snapshot_scale: 3.0}
+
+        def run() -> i64:
+            can Ui.Window, Ui.Draw, Ui.Text, Ui.Input, Unsafe.PointerCast:
+                return run_with_options(default_launch_options())
+
+        def run_with_options(options: LaunchOptions) -> i64:
+            can Ui.Window, Ui.Draw, Ui.Text, Ui.Input, Unsafe.PointerCast:
+                return 1 if not begin_session()
+                if smoke_mode():
+                    result: i64 = run_headless(options)
+                    release_canvas()
+                    return result
+                uikit_launch_options <- options
+                status: i32 = elisa_uikit_run()
+                release_canvas()
+                return 0 if status == 0 else 1
+
+        # Called by the shim once UIKit has a view with a real size. This is
+        # the first moment a frame may be produced, so it is also where the
+        # application is initialized.
+        def attach_surface(view: usize, width: f32, height: f32, scale: f32,
+                           safe_top: f32, safe_right: f32, safe_bottom: f32, safe_left: f32) -> bool:
+            can Ui.Window, Ui.Draw, Ui.Text, Ui.Input, Unsafe.PointerCast:
+                return false if view == 0
+                return false if UiLifecycle::phase() != UiLifecycle::Phase.New
+                uikit_canvas_view <- view
+                return false if not begin_surface(width, height, scale, safe_top, safe_right, safe_bottom, safe_left)
+                reset_accessibility_history()
+                reset_frame_state()
+                elisa_uikit_set_status_bar_hidden(0 if uikit_launch_options.status_bar else 1)
+                elisa_uikit_set_idle_timer_disabled(0 if uikit_launch_options.idle_timer else 1)
+                app_init()
+                # A started surface is renderable but not yet focused: UIKit
+                # reports that separately, through applicationDidBecomeActive.
+                # `app_init` is application-owned and may stop the session
+                # before the first frame. Do not ask UIKit to draw a surface
+                # the framework has already retired.
+                return false if not live()
+                elisa_uikit_redraw(uikit_canvas_view)
+                return true
+
+        # Off-screen sessions are entered through one door so a smoke render
+        # and a test agree on what a live headless session is.
+        def begin_headless_session(width: f32, height: f32, scale: f32) -> bool:
+            return false if not begin_session()
+            return false if not UiCore::is_finite(width) or not UiCore::is_finite(height)
+            return false if width <= 0.0 or height <= 0.0
+            mark_headless()
+            UiCore::set_viewport(width, height)
+            safe: UiResponsive::Insets = UiResponsive::insets(0.0, 0.0, 0.0, 0.0)
+            return false if not UiMobileSurface::start(width, height, bounded_scale(scale), safe)
+            reset_frame_state()
+            return true
+
+    private:
+        global mutable uikit_launch_options: LaunchOptions = LaunchOptions{status_bar: true, idle_timer: true, snapshot_width: 393.0, snapshot_height: 852.0, snapshot_scale: 3.0}
+
+        def begin_session() -> bool:
+            release_canvas()
+            UiLifecycle::reset()
+            UiMobileSurface::reset()
+            UiCapabilities::use_uikit()
+            UiEvents::reset()
+            UiMetrics::reset()
+            # Restarting in one process must not leave the retired session's
+            # retained commands or semantics readable while the replacement is
+            # being built.
+            UiCore::discard_frame()
+            UiCore::clear_all_invalidations()
+            # The lifecycle deliberately stays New here. On iOS a session has
+            # no surface until UIKit lays the view out, and UiMobileSurface
+            # owns the Begin transition that goes with acquiring one.
+            return UiLifecycle::phase() == UiLifecycle::Phase.New
+
+        # The headless path exists so the backend has a gate that needs no
+        # device and no simulator: it renders one real frame through the same
+        # painter into a CoreGraphics bitmap and optionally writes a PNG.
+        def run_headless(options: LaunchOptions) -> i64:
+            can Ui.Draw, Ui.Text, Ui.Input, Unsafe.PointerCast:
+                width: i32 = bitmap_extent(options.snapshot_width * bounded_scale(options.snapshot_scale))
+                height: i32 = bitmap_extent(options.snapshot_height * bounded_scale(options.snapshot_scale))
+                return 2 if not snapshot_dimensions_safe(width, height)
+                return 2 if not begin_headless_session(options.snapshot_width, options.snapshot_height, options.snapshot_scale)
+                app_init()
+                return 2 if not UiLifecycle::can_render()
+                return 0 if render_snapshot(width, height) else 2

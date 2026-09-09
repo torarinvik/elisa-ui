@@ -1,0 +1,125 @@
+# Ready-to-use UIKit adapter for the allocation-free UiFlat layer.
+#
+# The generic UIKit host deliberately knows only UiCore. These callbacks
+# connect touch, hardware keys, the software keyboard and VoiceOver actions to
+# UiFlat, so an application entry point needs one include instead of repeating
+# ABI glue.
+
+include "./ui_uikit.elisa"
+include "./ui_uikit_clipboard.elisa"
+include "../../widgets/ui_handles.elisa"
+
+# A touch is both a pointer transition and a text-selection click. Keeping that
+# ordering here means every native host reports the same interaction; the shim
+# only forwards UIKit's raw phase and location.
+def uikit_flat_touch(view_handle: usize, phase: i32, x: f32, y: f32, tap_count: i32) -> void:
+    return if not UiUIKit::live() or not UiLifecycle::accepts_input()
+    return if view_handle != UiUIKit::view_handle()
+    return if not UiUIKit::touch_phase_is_valid(phase)
+    return if not UiCore::is_finite(x) or not UiCore::is_finite(y)
+    if UiUIKit::phase_needs_synthetic_move(phase):
+        lifetime: usize = UiFlat::lifetime()
+        uikit_touch(view_handle, phase, x, y, tap_count)
+        # The press may synchronously dispatch an application callback that
+        # rebuilds the retained tree or stops the session. The original touch
+        # must not then select text in the replacement tree.
+        return if UiFlat::lifetime() != lifetime or not UiUIKit::live() or not UiLifecycle::accepts_input()
+        UiFlat::select_text_click_at_pointer(x, y, UiUIKit::touch_button(), tap_count)
+        # Selection runs after the pointer router's redraw, so ask for one more
+        # paint for the selection change itself.
+        UiUIKit::redraw() if UiUIKit::live()
+        uikit_flat_sync_keyboard()
+        return
+    uikit_touch(view_handle, phase, x, y, tap_count)
+
+# The software keyboard follows focus. UIKit only raises it for a first
+# responder that reports it accepts text, so the framework asks for -- and
+# resigns -- first responder as the retained focus changes.
+def uikit_flat_sync_keyboard() -> void:
+    return if not UiUIKit::live()
+    UiUIKit::set_text_input(UiFlat::accepts_text())
+
+def uikit_flat_wants_keyboard(view_handle: usize) -> i32:
+    return 0 if not UiUIKit::live() or view_handle != UiUIKit::view_handle()
+    return 1 if UiFlat::accepts_text() else 0
+
+def uikit_flat_has_text(view_handle: usize) -> i32:
+    return 0 if not UiUIKit::live() or view_handle != UiUIKit::view_handle()
+    return 0 if not UiFlat::accepts_text()
+    return 1 if UiFlat::accessibility_text_value(UiFlat::focused()).len > 0 else 0
+
+# UIKeyInput's insertText: is the software keyboard's only text entry point. It
+# carries a plain string; Elisa copies it into its own bounded staging buffer
+# before UiFlat sees it, so no borrowed UIKit text is retained.
+def uikit_flat_insert_text(view_handle: usize, text: usize) -> void:
+    return if not UiUIKit::live() or view_handle != UiUIKit::view_handle()
+    return if not UiLifecycle::accepts_input() or not UiFlat::accepts_text() or text == 0
+    length: usize = UiUIKitClipboard::copy_native_text(text)
+    lifetime: usize = UiFlat::lifetime()
+    UiFlat::insert_text(UiUIKitClipboard::native_text_view(length))
+    UiUIKitClipboard::scrub_native_text()
+    return if UiFlat::lifetime() != lifetime or not UiUIKit::live()
+    UiUIKit::redraw()
+
+def uikit_flat_delete_backward(view_handle: usize) -> void:
+    return if not UiUIKit::live() or view_handle != UiUIKit::view_handle()
+    return if not UiLifecycle::accepts_input() or not UiFlat::accepts_text()
+    lifetime: usize = UiFlat::lifetime()
+    UiFlat::keyboard(UiCore::KeyEvent.Down(code: UiCore::Key.Backspace))
+    return if UiFlat::lifetime() != lifetime or not UiUIKit::live()
+    UiUIKit::redraw()
+
+# Hardware keys arrive as UIPress. Elisa decides whether a chord is an editing
+# action, ordinary text, or a raw key the application should see.
+def uikit_flat_press(view_handle: usize, usage: i32, flags: i64, down: i32) -> void:
+    return if not UiUIKit::live() or not UiLifecycle::accepts_input()
+    return if view_handle != UiUIKit::view_handle()
+    return if not uikit_boolean_flag_is_valid(down)
+    if down == 1:
+        route: i32 = UiUIKit::press_route(UiFlat::accepts_text(), usage, flags)
+        if route >= 2:
+            _ = uikit_flat_perform_text_action(route - 1)
+            return
+    uikit_press(view_handle, usage, flags, down)
+    uikit_flat_sync_keyboard()
+
+def uikit_flat_perform_text_action(action: i32) -> i32:
+    return 0 if not UiUIKit::live() or not UiLifecycle::accepts_input()
+    lifetime: usize = UiFlat::lifetime()
+    performed: bool = UiFlat::perform_text_action(action)
+    return 0 if not performed
+    return 0 if UiFlat::lifetime() != lifetime or not UiUIKit::live()
+    UiUIKit::redraw()
+    return 1
+
+# VoiceOver activation and adjustment. The native element is an opaque callback
+# target; resolving it to a retained widget action happens in Elisa.
+def uikit_flat_accessibility_activate(view_handle: usize, handle: usize) -> i32:
+    return 0 if not UiUIKit::live() or view_handle != UiUIKit::view_handle() or not UiLifecycle::accepts_input()
+    index: usize = UiUIKit::accessibility_action_for_handle(handle)
+    return 0 if index == UiUIKit::not_found()
+    activated: bool = UiFlat::activate(index)
+    return 0 if not activated or not UiUIKit::live()
+    UiUIKit::redraw()
+    uikit_flat_sync_keyboard()
+    return 1
+
+def uikit_flat_accessibility_adjust(view_handle: usize, handle: usize, direction: i32) -> i32:
+    return 0 if not UiUIKit::live() or view_handle != UiUIKit::view_handle() or not UiLifecycle::accepts_input()
+    return 0 if direction != 1 and direction != -1
+    index: usize = UiUIKit::accessibility_action_for_handle(handle)
+    return 0 if index == UiUIKit::not_found()
+    adjusted: bool = UiFlat::adjust_step(index, direction)
+    return 0 if not adjusted or not UiUIKit::live()
+    UiUIKit::redraw()
+    return 1
+
+# UIKit's increment/decrement selectors carry no direction argument, so the two
+# tokens are framework facts the shim asks for rather than constants it holds.
+def uikit_flat_accessibility_increment_direction() -> i32:
+    return 1
+
+def uikit_flat_accessibility_decrement_direction() -> i32:
+    return -1
+
+include "./ui_uikit_flat_exports.elisa"

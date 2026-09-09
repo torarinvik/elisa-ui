@@ -1,0 +1,18 @@
+# Re-entrant UIKit callback guard.
+#
+# UIKit invokes callbacks synchronously, so the adapter drains one Elisa event
+# queue at a time. The guard is framework state, not an ABI symbol; keeping it
+# private prevents a native callback name from becoming a mutable global.
+
+module UiUIKitCallbackState:
+    public:
+        def begin_dispatch() -> bool:
+            return false if uikit_dispatch_active
+            uikit_dispatch_active <- true
+            return true
+
+        def end_dispatch() -> void:
+            uikit_dispatch_active <- false
+
+    private:
+        global mutable uikit_dispatch_active: bool = false

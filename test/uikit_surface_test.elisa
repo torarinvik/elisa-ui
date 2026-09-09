@@ -1,0 +1,159 @@
+# UIKit surface facts, semantics and a real off-screen frame.
+#
+# Everything below the Objective-C shim is ordinary Apple platform code, so it
+# runs here on the host against C stand-ins for the shim's entry points. The
+# frame is genuine: the same painter, the same CoreText path and the same
+# semantic transaction the device would run.
+
+include "../src/platform/uikit/ui_uikit_flat.elisa"
+
+extern puts(text: cstr) -> i64
+extern elisa_uikit_stub_set_view(handle: usize) -> void
+extern elisa_uikit_stub_set_accessibility_running(running: i32) -> void
+extern elisa_uikit_stub_live_element_count() -> i32
+
+global mutable failures: i32 = 0
+global mutable frames_painted: i32 = 0
+
+# The widget tree under test. Keeping it in a module matches how an
+# application owns its handles, and keeps the retained identities out of the
+# test's own top-level scope.
+module UiKitTestApp:
+    public:
+        def build() -> void:
+            UiHandles::reset()
+            root <- UiHandles::column(UiHandles::root_parent(), 16.0, 12.0, UiCore::rgb(18, 20, 26))
+            _ = UiHandles::label(root, "elisa-ui on UIKit", 22.0, UiCore::rgb(240, 242, 248))
+            action_button <- UiHandles::button(root, 220.0, 44.0, UiCore::rgb(60, 110, 220), UiCore::rgb(80, 130, 240), UiCore::rgb(40, 80, 180))
+            UiHandles::set_text(action_button, "Continue", 16.0, UiCore::rgb(255, 255, 255))
+            volume_slider <- UiHandles::slider_labeled(root, "Volume", 220.0, 28.0, 0.5, UiCore::rgb(50, 54, 64), UiCore::rgb(60, 110, 220), UiCore::rgb(240, 242, 248))
+            name_field <- UiHandles::text_field(root, "Name", "Your name", "Ada", 220.0, 36.0, 15.0, UiCore::rgb(240, 242, 248), UiCore::rgb(30, 32, 40))
+
+    private:
+        global mutable root: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
+        global mutable action_button: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
+        global mutable volume_slider: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
+        global mutable name_field: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def app_init() -> void:
+    UiKitTestApp::build()
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    UiHandles::handle(event)
+
+def app_text_input(text: sview) -> void:
+    UiHandles::insert_text(text)
+
+def app_validate() -> void:
+    pass
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    UiHandles::update_marked_text_utf8_characters(text, selected_start, selected_length)
+
+def app_frame() -> void:
+    frames_painted <- frames_painted + 1
+    UiHandles::layout(UiCore::viewport_width(), UiCore::viewport_height())
+    UiHandles::paint()
+
+def check_capability_profile() -> void:
+    UiCapabilities::use_uikit()
+    profile: UiCapabilities::Snapshot = UiCapabilities::snapshot()
+    check("uikit selects its own backend", profile.backend == UiCapabilities::Backend.UiKit)
+    check("uikit paints through CoreGraphics", profile.renderer == UiCapabilities::Renderer.CoreGraphics)
+    check("uikit is a custom-paint surface", profile.custom_paint and profile.surface and not profile.native_controls)
+    # A device rotates and can move between displays, so scale is not fixed for
+    # the life of the session the way it is on the macOS canvas.
+    check("uikit reports changing scale", profile.scale_changes)
+    check("uikit has one window", not profile.multiple_windows)
+    check("uikit supports text input and semantics", profile.text_input and profile.semantics and profile.clipboard)
+
+def check_surface_facts() -> void:
+    UiLifecycle::reset()
+    UiMobileSurface::reset()
+    check("a zero-sized surface is rejected", not UiUIKit::begin_surface(0.0, 800.0, 3.0, 0.0, 0.0, 0.0, 0.0))
+    zero: f32 = 0.0
+    check("a non-finite surface is rejected", not UiUIKit::begin_surface(1.0 / zero, 800.0, 3.0, 0.0, 0.0, 0.0, 0.0))
+    check("a negative safe area is rejected", not UiUIKit::begin_surface(393.0, 852.0, 3.0, -1.0, 0.0, 0.0, 0.0))
+    check("a real surface starts", UiUIKit::begin_surface(393.0, 852.0, 3.0, 59.0, 0.0, 34.0, 0.0))
+    check("the viewport follows the surface", UiCore::viewport_width() == 393.0 and UiCore::viewport_height() == 852.0)
+    check("the surface is portrait", UiUIKit::orientation() == UiResponsive::Orientation.Portrait)
+    # The notch and the home indicator are insets, not a smaller viewport.
+    content: UiResponsive::ContentArea = UiUIKit::content_area()
+    check("safe area insets the content", content.origin.y == 59.0 and content.size.height == 759.0)
+    check("the keyboard is an inset too", UiUIKit::set_keyboard(336.0, true))
+    check("the keyboard shrinks the content", UiUIKit::content_area().size.height == 457.0)
+    check("a negative keyboard inset is rejected", not UiUIKit::set_keyboard(-1.0, true))
+    check("the keyboard retracts", UiUIKit::set_keyboard(0.0, false) and UiUIKit::content_area().size.height == 759.0)
+    check("rotation resizes the surface", UiUIKit::resize_surface(852.0, 393.0, 3.0))
+    check("rotation is reported as landscape", UiUIKit::orientation() == UiResponsive::Orientation.Landscape)
+    check("a malformed resize is rejected", not UiUIKit::resize_surface(1.0 / zero, 393.0, 3.0))
+    # An extreme display scale is clamped rather than published as reported.
+    check("an absurd scale is bounded", UiUIKit::resize_surface(852.0, 393.0, 1000.0) and UiUIKit::scale() == UiUIKit::MAX_SCALE)
+
+def check_semantic_mapping() -> void:
+    button_traits: u64 = UiUIKit::accessibility_traits(UiCore::AccessibilityRole.Button, true, false)
+    check("a button is a button", (button_traits & UiUIKit::TRAIT_BUTTON) != 0)
+    check("an enabled control is not marked disabled", (button_traits & UiUIKit::TRAIT_NOT_ENABLED) == 0)
+    disabled: u64 = UiUIKit::accessibility_traits(UiCore::AccessibilityRole.Button, false, false)
+    check("a disabled control says so", (disabled & UiUIKit::TRAIT_NOT_ENABLED) != 0)
+    slider: u64 = UiUIKit::accessibility_traits(UiCore::AccessibilityRole.Slider, true, false)
+    check("a slider is adjustable", (slider & UiUIKit::TRAIT_ADJUSTABLE) != 0)
+    label: u64 = UiUIKit::accessibility_traits(UiCore::AccessibilityRole.Label, true, false)
+    check("a label is static text", (label & UiUIKit::TRAIT_STATIC_TEXT) != 0)
+    checked_box: u64 = UiUIKit::accessibility_traits(UiCore::AccessibilityRole.CheckBox, true, true)
+    check("a checked box is selected", (checked_box & UiUIKit::TRAIT_SELECTED) != 0)
+    # Selection is meaningful for a check box, not for a push button.
+    pressed_button: u64 = UiUIKit::accessibility_traits(UiCore::AccessibilityRole.Button, true, true)
+    check("a button does not report selection", (pressed_button & UiUIKit::TRAIT_SELECTED) == 0)
+    check("a label is not interactive", not UiUIKit::accessibility_is_interactive(UiCore::AccessibilityRole.Label, true))
+    check("a progress bar is not interactive", not UiUIKit::accessibility_is_interactive(UiCore::AccessibilityRole.ProgressBar, true))
+    check("a disabled button is not interactive", not UiUIKit::accessibility_is_interactive(UiCore::AccessibilityRole.Button, false))
+    check("an enabled button is interactive", UiUIKit::accessibility_is_interactive(UiCore::AccessibilityRole.Button, true))
+    check("a slider speaks a range", UiUIKit::accessibility_value_kind(UiCore::AccessibilityRole.Slider) == 2)
+    check("a check box speaks a boolean", UiUIKit::accessibility_value_kind(UiCore::AccessibilityRole.CheckBox) == 1)
+    check("a text field speaks text", UiUIKit::accessibility_value_kind(UiCore::AccessibilityRole.TextField) == 3)
+    check("a label speaks no value", UiUIKit::accessibility_value_kind(UiCore::AccessibilityRole.Label) == 0)
+
+def check_offscreen_frame() -> void can[Ui.Draw, Ui.Text, Ui.Input, Ui.Window, Unsafe.PointerCast]:
+    elisa_uikit_stub_set_accessibility_running(1)
+    check("a headless session starts", UiUIKit::begin_headless_session(393.0, 852.0, 3.0))
+    app_init()
+    # UiMobileSurface owns the Begin/Ready transition that comes with acquiring
+    # a surface, so a started session is already renderable. It is not yet
+    # focused: UIKit reports that separately, so the phase is Inactive.
+    check("the session becomes renderable", UiUIKit::live() and UiLifecycle::phase() == UiLifecycle::Phase.Inactive)
+    check("focus activates the session", UiMobileSurface::focus_gained() and UiLifecycle::accepts_input())
+    check("a headless session has no view", UiUIKit::is_headless() and UiUIKit::view_handle() == 0)
+    frames_painted <- 0
+    check("an off-screen frame renders", UiUIKit::render_snapshot(1179, 2556))
+    check("the application painted exactly one frame", frames_painted == 1)
+    # The semantic transaction ran against the stub bridge: every published
+    # node must have become a live element.
+    check("semantics published elements", elisa_uikit_stub_live_element_count() > 0)
+    published: i32 = elisa_uikit_stub_live_element_count()
+    check("a second frame reuses its elements", UiUIKit::render_snapshot(1179, 2556) and elisa_uikit_stub_live_element_count() == published)
+    check("an oversized snapshot is refused", not UiUIKit::render_snapshot(100000, 100000))
+    check("a zero-sized snapshot is refused", not UiUIKit::render_snapshot(0, 100))
+    UiUIKit::release_canvas()
+    check("release frees every element", elisa_uikit_stub_live_element_count() == 0)
+    check("a released session is not live", not UiUIKit::live())
+
+def main() -> i64 can[Ui.Draw, Ui.Text, Ui.Input, Ui.Window, Unsafe.PointerCast]:
+    elisa_uikit_stub_set_view(0)
+    check_capability_profile()
+    check_surface_facts()
+    check_semantic_mapping()
+    check_offscreen_frame()
+    if failures == 0:
+        _ = puts("uikit surface: all checks passed")
+        return 0
+    _ = puts("uikit surface: FAILURES above")
+    return 1

@@ -1,0 +1,151 @@
+# UIKit native boundary.
+#
+# Every symbol the iOS host needs, declared once. The Objective-C shim owns
+# object and protocol plumbing only: it creates the application, window, view
+# controller and accessibility elements, and forwards raw facts. Sizing,
+# routing, identity and lifecycle policy stay in the Elisa modules that extend
+# UiUIKit.
+#
+# CoreGraphics and CoreText are shared by both Apple platforms, so the
+# declarations below deliberately match the macOS canvas boundary exactly. The
+# retained command batch is replayed through the same calls on both.
+
+include "../../core/ui_paint.elisa"
+include "../../core/ui_lifecycle.elisa"
+include "../../core/ui_metrics.elisa"
+include "../../core/ui_capabilities.elisa"
+include "../mobile/ui_mobile_surface.elisa"
+using UiPaint
+
+extern getenv(name: cstr) -> cstr?
+extern clock_gettime_nsec_np(clock_id: i32) -> u64
+extern ceilf(x: f32) -> f32
+
+struct NativeSize:
+    width: f64
+    height: f64
+
+struct NativeRange:
+    location: i64
+    length: i64
+
+# Application and surface lifecycle.
+extern elisa_uikit_not_found: usize
+extern elisa_uikit_run() -> i32
+extern elisa_uikit_stop() -> void
+extern elisa_uikit_view_handle() -> usize
+extern elisa_uikit_redraw(view_handle: usize) -> void
+extern elisa_uikit_schedule_redraw(delay: f32, view_handle: usize, generation: u32) -> usize
+extern elisa_uikit_cancel_redraw(handle: usize) -> void
+extern elisa_uikit_set_status_bar_hidden(hidden: i32) -> void
+extern elisa_uikit_set_idle_timer_disabled(disabled: i32) -> void
+
+# Text input. UIKit's UIKeyInput lives on the view; Elisa decides whether the
+# view should currently be first responder and what the caret reports.
+extern elisa_uikit_begin_text_input(view_handle: usize) -> i32
+extern elisa_uikit_end_text_input(view_handle: usize) -> i32
+extern elisa_uikit_reload_input_views(view_handle: usize) -> void
+
+# Pasteboard. UIPasteboard exposes one general string slot.
+extern elisa_uikit_clipboard_write(text: usize) -> i32
+extern elisa_uikit_clipboard_read() -> usize
+
+# Accessibility. Same identity contract as the macOS canvas: Elisa decides
+# reuse and passes an explicit token; the shim never probes a handle.
+extern elisa_uikit_accessibility_add(view_handle: usize, previous_handle: usize, is_new: i32, identifier: usize, traits: u64, label: usize, hint: usize, value: usize, x: f32, y: f32, width: f32, height: f32, enabled: i32) -> usize
+extern elisa_uikit_accessibility_update(view_handle: usize, handle: usize, identifier: usize, traits: u64, label: usize, hint: usize, value: usize, x: f32, y: f32, width: f32, height: f32, enabled: i32) -> i32
+extern elisa_uikit_accessibility_release(handle: usize) -> void
+extern elisa_uikit_accessibility_commit(view_handle: usize, children: usize) -> i32
+extern elisa_uikit_accessibility_post_layout_changed(view_handle: usize) -> void
+extern elisa_uikit_accessibility_post_screen_changed(view_handle: usize) -> void
+extern elisa_uikit_accessibility_is_running() -> i32
+
+# CoreFoundation.
+extern CFRelease(value: usize) -> void
+extern CFRetain(value: usize) -> usize
+extern CFStringCreateWithBytes(allocator: usize, bytes: cstr, length: i64, encoding: u32, external: bool) -> usize
+extern CFStringGetLength(value: usize) -> i64
+extern CFStringGetBytes(value: usize, range: NativeRange, encoding: u32, loss_byte: u8, external: bool, buffer: mutable u8&, max_length: i64, used_length: mutable i64&) -> i64
+extern CFArrayCreate(allocator: usize, values: usize&, count: i64, callbacks: usize) -> usize
+extern CFDictionaryCreate(allocator: usize, keys: usize&, values: usize&, count: i64, key_callbacks: usize, value_callbacks: usize) -> usize
+extern CFAttributedStringCreate(allocator: usize, text: usize, attributes: usize) -> usize
+extern CFURLCreateWithFileSystemPath(allocator: usize, path: usize, path_style: i32, is_directory: bool) -> usize
+extern objc_autoreleasePoolPush() -> usize
+extern objc_autoreleasePoolPop(pool: usize) -> void
+
+# CoreGraphics.
+extern CGColorCreateGenericRGB(r: f64, g: f64, b: f64, a: f64) -> usize
+extern CGColorRelease(color: usize) -> void
+extern CGContextSaveGState(context: usize) -> void
+extern CGContextRestoreGState(context: usize) -> void
+extern CGContextTranslateCTM(context: usize, x: f64, y: f64) -> void
+extern CGContextScaleCTM(context: usize, x: f64, y: f64) -> void
+extern CGContextSetShouldAntialias(context: usize, enabled: bool) -> void
+extern CGContextSetShouldSmoothFonts(context: usize, enabled: bool) -> void
+extern CGContextSetRGBFillColor(context: usize, r: f64, g: f64, b: f64, a: f64) -> void
+extern CGContextSetRGBStrokeColor(context: usize, r: f64, g: f64, b: f64, a: f64) -> void
+extern CGContextSetLineWidth(context: usize, width: f64) -> void
+extern CGContextSetShadowWithColor(context: usize, offset: NativeSize, blur: f64, color: usize) -> void
+extern CGContextBeginPath(context: usize) -> void
+extern CGContextClosePath(context: usize) -> void
+extern CGContextMoveToPoint(context: usize, x: f64, y: f64) -> void
+extern CGContextAddLineToPoint(context: usize, x: f64, y: f64) -> void
+extern CGContextAddArc(context: usize, x: f64, y: f64, radius: f64, start_angle: f64, end_angle: f64, clockwise: i32) -> void
+extern CGContextAddArcToPoint(context: usize, x1: f64, y1: f64, x2: f64, y2: f64, radius: f64) -> void
+extern CGContextFillPath(context: usize) -> void
+extern CGContextStrokePath(context: usize) -> void
+extern CGContextClip(context: usize) -> void
+extern CGContextSetTextPosition(context: usize, x: f64, y: f64) -> void
+extern CGContextFlush(context: usize) -> void
+extern CGContextRelease(context: usize) -> void
+extern CGColorSpaceCreateDeviceRGB() -> usize
+extern CGColorSpaceRelease(color_space: usize) -> void
+extern CGBitmapContextCreate(data: usize, width: usize, height: usize, bits_per_component: usize, bytes_per_row: usize, color_space: usize, bitmap_info: u32) -> usize
+extern CGBitmapContextCreateImage(context: usize) -> usize
+extern CGImageRelease(image: usize) -> void
+extern CGImageDestinationCreateWithURL(url: usize, image_type: usize, count: usize, options: usize) -> usize
+extern CGImageDestinationAddImage(destination: usize, image: usize, properties: usize) -> void
+extern CGImageDestinationFinalize(destination: usize) -> bool
+
+# CoreText.
+extern CTFontCreateUIFontForLanguage(ui_type: i32, size: f64, language: usize) -> usize
+extern CTFontCreateCopyWithSymbolicTraits(font: usize, size: f64, matrix: usize, traits: u32, mask: u32) -> usize
+extern CTFontGetAscent(font: usize) -> f64
+extern CTFontGetDescent(font: usize) -> f64
+extern CTFontGetLeading(font: usize) -> f64
+extern CTLineCreateWithAttributedString(text: usize) -> usize
+extern CTLineGetTypographicBounds(line: usize, ascent: mutable f64&, descent: mutable f64&, leading: mutable f64&) -> f64
+extern CTLineDraw(line: usize, context: usize) -> void
+extern kCTFontAttributeName: usize
+extern kCTForegroundColorAttributeName: usize
+
+# Snapshot paths come from the process environment and are bounded by the
+# platform's path limits in normal use. Keep the scan in Elisa so this backend
+# does not acquire a libc dependency for one small string primitive, while the
+# bound prevents an unterminated value from becoming an unbounded memory walk.
+const UIKIT_PATH_SCAN_CAPACITY: usize = 4096
+
+def uikit_cstr_byte(text: cstr, index: usize) -> u8:
+    pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
+    return 0 if pointer == 0.uintptr()
+    trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic]:
+        byte: u8& = (pointer + index.uintptr()).cast[u8&]
+        return byte
+
+def uikit_path_length(text: cstr) -> usize:
+    pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
+    return 0 if pointer == 0.uintptr()
+    length: usize =
+        for index in 0..<UIKIT_PATH_SCAN_CAPACITY |length = UIKIT_PATH_SCAN_CAPACITY| -> length:
+            value: u8 = uikit_cstr_byte(text, index)
+            length <- index if value == 0
+            break if value == 0
+    # CAPACITY + 1 is an explicit invalid sentinel: a valid path can be exactly
+    # CAPACITY bytes long, but this value had no terminator in the scan window.
+    return UIKIT_PATH_SCAN_CAPACITY + 1 if length == UIKIT_PATH_SCAN_CAPACITY else length
+
+def uikit_path_within_budget(length: usize) -> bool:
+    return length <= UiCore::MAX_TEXT_BYTES
+extern CGColorCreateGenericGray(gray: f64, alpha: f64) -> usize
+extern CFGetTypeID(value: usize) -> usize
+extern CFStringGetTypeID() -> usize

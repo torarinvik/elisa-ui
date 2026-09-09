@@ -1,0 +1,167 @@
+# C callbacks from the UIKit shim. Top-level because the Objective-C ABI names
+# them. Each one forwards a raw fact; the policy it feeds lives in UiUIKit.
+
+include "../../widgets/ui_back.elisa"
+include "./ui_uikit_callback_state.elisa"
+
+# Native BOOLs cross the C ABI as i32. One shared validator keeps the UIKit and
+# flat adapters from drifting into different truthiness rules.
+def uikit_boolean_flag_is_valid(value: i32) -> bool:
+    return value == 0 or value == 1
+
+def uikit_dispatch_event(event: UiCore::Event) -> void:
+    return if not UiEvents::enqueue(event)
+    return if not UiUIKitCallbackState::begin_dispatch()
+    # A callback can stop the session or begin a replacement before returning.
+    # Capture the session identity at drain start so queued events cannot leak
+    # across that lifecycle boundary. The phase-New case remains usable for
+    # isolated unit tests that exercise the pure dispatcher with no surface.
+    allow_unowned_dispatch: bool = UiLifecycle::phase() == UiLifecycle::Phase.New
+    drain_generation: u32 = UiLifecycle::generation()
+    queued: mutable UiCore::Event = UiCore::Event.None
+    while UiEvents::dequeue(queued):
+        continue if UiLifecycle::generation() != drain_generation
+        if not allow_unowned_dispatch:
+            continue if not UiLifecycle::is_started()
+            continue if UiCore::is_input_event(queued) and not UiLifecycle::accepts_input()
+        app_event(queued)
+    UiUIKitCallbackState::end_dispatch()
+
+def uikit_dispatch_input_event(event: UiCore::Event) -> void:
+    return if not UiLifecycle::accepts_input()
+    uikit_dispatch_event(event)
+
+def uikit_frame_callback(context: usize) -> void:
+    can Ui.Draw, Ui.Text, Unsafe.PointerCast:
+        # UIKit may issue a draw while the view is being constructed or torn
+        # down. Do not enter the retained frame pipeline until a real context
+        # exists and the session is live.
+        return if context == 0 or not UiUIKit::live()
+        pool: usize = objc_autoreleasePoolPush()
+        CGContextSaveGState(context)
+        UiUIKit::begin_native_frame(context)
+        UiCore::set_frame_time(UiUIKit::monotonic_time())
+        CGContextSetShouldAntialias(context, true)
+        CGContextSetShouldSmoothFonts(context, true)
+        UiMetrics::begin_frame(UiCore::frame_time())
+        UiCore::begin_frame()
+        frame_generation: u32 = UiLifecycle::generation()
+        app_frame()
+        # `app_frame` is application-owned and may stop the session
+        # synchronously. The context below is still balanced, but semantics,
+        # redraw scheduling and command replay must not target a retired
+        # surface.
+        same_session: bool = UiLifecycle::generation() == frame_generation
+        if same_session and UiUIKit::live():
+            UiMetrics::mark_application(UiUIKit::monotonic_time())
+            UiUIKit::sync_accessibility()
+            UiMetrics::mark_semantics(UiUIKit::monotonic_time())
+            UiPaint::replay[UiUIKit::UiKitPainter]()
+            UiMetrics::mark_paint(UiUIKit::monotonic_time())
+            UiUIKit::schedule_next_frame(UiCore::frame_delay())
+        UiUIKit::end_native_frame()
+        CGContextRestoreGState(context)
+        UiMetrics::finish_frame(UiUIKit::monotonic_time()) if same_session
+        objc_autoreleasePoolPop(pool)
+
+def uikit_frame(view_handle: usize, context: usize) -> void:
+    can Ui.Draw, Ui.Text, Unsafe.PointerCast:
+        return if view_handle != UiUIKit::view_handle()
+        uikit_frame_callback(context)
+
+def uikit_surface_ready(view_handle: usize, width: f32, height: f32, scale: f32,
+                        safe_top: f32, safe_right: f32, safe_bottom: f32, safe_left: f32) -> i32:
+    can Ui.Window, Ui.Draw, Ui.Text, Ui.Input, Unsafe.PointerCast:
+        return 1 if UiUIKit::attach_surface(view_handle, width, height, scale, safe_top, safe_right, safe_bottom, safe_left) else 0
+
+def uikit_surface_resized(view_handle: usize, width: f32, height: f32, scale: f32) -> void:
+    return if not UiUIKit::live() or view_handle != UiUIKit::view_handle()
+    # UIKit's CGSize is finite, but this is also an FFI boundary a foreign host
+    # or test can call directly. `resize_surface` rejects malformed values; do
+    # not publish a Resize event for one.
+    return if not UiUIKit::resize_surface(width, height, scale)
+    uikit_dispatch_event(UiCore::Event.Resize(size: UiCore::Size(width, height)))
+    UiUIKit::redraw()
+
+def uikit_safe_area_changed(view_handle: usize, top: f32, right: f32, bottom: f32, left: f32) -> void:
+    return if not UiUIKit::live() or view_handle != UiUIKit::view_handle()
+    return if not UiUIKit::set_safe_area(top, right, bottom, left)
+    UiUIKit::redraw()
+
+def uikit_keyboard_changed(view_handle: usize, bottom: f32, visible: i32) -> void:
+    return if not UiUIKit::live() or view_handle != UiUIKit::view_handle()
+    return if not uikit_boolean_flag_is_valid(visible)
+    return if not UiUIKit::set_keyboard(bottom, visible != 0)
+    UiUIKit::redraw()
+
+def uikit_touch(view_handle: usize, phase: i32, x: f32, y: f32, tap_count: i32) -> void:
+    return if not UiUIKit::live() or view_handle != UiUIKit::view_handle()
+    return if not UiUIKit::touch_phase_is_valid(phase)
+    # The Vec2 constructor sanitizes malformed coordinates for ordinary typed
+    # values. At this boundary, turning a NaN into (0,0) would deliver a touch
+    # at a real control, so reject the callback instead.
+    return if not UiCore::is_finite(x) or not UiCore::is_finite(y)
+    at: UiCore::Vec2 = UiCore::Vec2(x, y)
+    # A touch screen has no hover, so a press supplies the move a mouse would
+    # have delivered first. Without it a control never sees the pointer arrive
+    # before the press and cannot show its pressed state.
+    uikit_dispatch_input_event(UiCore::PointerEvent.Move(at: at)) if UiUIKit::phase_needs_synthetic_move(phase)
+    kind: i32 = UiUIKit::pointer_kind_for_phase(phase)
+    button: i32 = UiUIKit::touch_button()
+    event: mutable UiCore::Event = (UiCore::PointerEvent.Move(at: at))
+    event <- (UiCore::PointerEvent.Down(at: at, button: button)) if kind == UiUIKit::POINTER_DOWN
+    event <- (UiCore::PointerEvent.Up(at: at, button: button)) if kind == UiUIKit::POINTER_UP
+    event <- (UiCore::PointerEvent.Leave) if kind == UiUIKit::POINTER_LEAVE
+    uikit_dispatch_input_event(event)
+    _ = tap_count
+
+def uikit_scroll(view_handle: usize, x: f32, y: f32, dx: f32, dy: f32) -> void:
+    return if not UiUIKit::live() or view_handle != UiUIKit::view_handle()
+    return if not UiCore::is_finite(x) or not UiCore::is_finite(y)
+    return if not UiCore::is_finite(dx) or not UiCore::is_finite(dy)
+    uikit_dispatch_input_event(UiCore::PointerEvent.Scroll(at: UiCore::Vec2(x, y), delta: UiCore::Vec2(dx, dy)))
+
+def uikit_press(view_handle: usize, usage: i32, flags: i64, down: i32) -> void:
+    return if not UiUIKit::live() or view_handle != UiUIKit::view_handle()
+    return if not uikit_boolean_flag_is_valid(down)
+    key: i32 = UiUIKit::key_from_hid(usage)
+    return if key == 0 or not UiCore::key_is_valid(key)
+    event: UiCore::Event = (UiCore::KeyEvent.Down(key: key.Key())) if down != 0 else (UiCore::KeyEvent.Up(key: key.Key()))
+    uikit_dispatch_input_event(event)
+    _ = flags
+
+def uikit_lifecycle(view_handle: usize, signal: i32) -> i32:
+    return 0 if view_handle != UiUIKit::view_handle()
+    # Signals mirror the portable mobile surface vocabulary: 0 focus gained,
+    # 1 focus lost, 2 background, 3 foreground, 4 surface lost, 5 surface
+    # restored, 6 stop. UIKit's notification names are native spelling for
+    # exactly these transitions.
+    return 1 if signal == 0 and UiMobileSurface::focus_gained() else uikit_lifecycle_rest(signal)
+
+def uikit_lifecycle_rest(signal: i32) -> i32:
+    return 1 if signal == 1 and UiMobileSurface::focus_lost()
+    return 1 if signal == 2 and UiMobileSurface::background()
+    return 1 if signal == 3 and UiMobileSurface::foreground()
+    return 1 if signal == 4 and UiMobileSurface::surface_lost()
+    return 1 if signal == 5 and UiMobileSurface::surface_restored()
+    if signal == 6:
+        UiUIKit::release_canvas()
+        return 1
+    return 0
+
+def uikit_timer_fired(view_handle: usize, generation: u32, timer_handle: usize) -> void:
+    # A cancelled or superseded timer can still fire once. Accept the callback
+    # only from the timer this session is currently waiting on.
+    return if view_handle != UiUIKit::view_handle() or generation != UiLifecycle::generation()
+    return if not UiUIKit::redraw_timer_is(timer_handle)
+    UiUIKit::clear_redraw_timer()
+    UiUIKit::redraw()
+
+export fn elisa_uikit_timer_fired(view_handle: usize, generation: u32, timer_handle: usize) -> void = uikit_timer_fired
+export fn elisa_uikit_frame(view_handle: usize, context: usize) -> void = uikit_frame
+export fn elisa_uikit_surface_ready(view_handle: usize, width: f32, height: f32, scale: f32, safe_top: f32, safe_right: f32, safe_bottom: f32, safe_left: f32) -> i32 = uikit_surface_ready
+export fn elisa_uikit_surface_resized(view_handle: usize, width: f32, height: f32, scale: f32) -> void = uikit_surface_resized
+export fn elisa_uikit_safe_area_changed(view_handle: usize, top: f32, right: f32, bottom: f32, left: f32) -> void = uikit_safe_area_changed
+export fn elisa_uikit_keyboard_changed(view_handle: usize, bottom: f32, visible: i32) -> void = uikit_keyboard_changed
+export fn elisa_uikit_scroll(view_handle: usize, x: f32, y: f32, dx: f32, dy: f32) -> void = uikit_scroll
+export fn elisa_uikit_lifecycle(view_handle: usize, signal: i32) -> i32 = uikit_lifecycle

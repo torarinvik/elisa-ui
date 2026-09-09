@@ -1,0 +1,77 @@
+# The UIKit painter. One CoreGraphics implementation of UiPaint::Painter that
+# replays the retained command batch into the context UIKit supplies.
+
+extend UiUIKit:
+    public:
+        struct UiKitPainter:
+            unused: i32
+
+        impl Painter for UiKitPainter:
+            def push_clip(box: UiCore::Rect) -> void can[Ui.Draw]:
+                context: usize = current_context()
+                CGContextSaveGState(context)
+                CGContextBeginPath(context)
+                CGContextMoveToPoint(context, box.origin.x.f64(), box.origin.y.f64())
+                CGContextAddLineToPoint(context, (box.origin.x + box.size.width).f64(), box.origin.y.f64())
+                CGContextAddLineToPoint(context, (box.origin.x + box.size.width).f64(), (box.origin.y + box.size.height).f64())
+                CGContextAddLineToPoint(context, box.origin.x.f64(), (box.origin.y + box.size.height).f64())
+                CGContextClosePath(context)
+                CGContextClip(context)
+            def pop_clip() -> void can[Ui.Draw]:
+                CGContextRestoreGState(current_context())
+            def clear(color: UiCore::Color) -> void can[Ui.Draw]:
+                context: usize = current_context()
+                set_fill_color(context, color)
+                CGContextBeginPath(context)
+                CGContextMoveToPoint(context, 0.0, 0.0)
+                CGContextAddLineToPoint(context, UiCore::viewport_width().f64(), 0.0)
+                CGContextAddLineToPoint(context, UiCore::viewport_width().f64(), UiCore::viewport_height().f64())
+                CGContextAddLineToPoint(context, 0.0, UiCore::viewport_height().f64())
+                CGContextClosePath(context)
+                CGContextFillPath(context)
+            def fill_rect(box: UiCore::Rect, color: UiCore::Color, elevated: bool) -> void can[Ui.Draw]:
+                style: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style(box, elevated)
+                shadow_alpha: f32 = style.shadow_alpha.f32() / 255.0
+                hairline_alpha: f32 = style.hairline_alpha.f32() / 255.0
+                context: usize = current_context()
+                CGContextSaveGState(context)
+                set_shadow(context, style.shadow_offset_x, style.shadow_offset_y, style.shadow_blur, shadow_alpha) if shadow_alpha > 0.0
+                set_fill_color(context, color)
+                rounded_path(context, box, style.radius)
+                CGContextFillPath(context)
+                CGContextRestoreGState(context)
+                CGContextSaveGState(context)
+                rounded_path(context, box, style.radius)
+                CGContextSetRGBStrokeColor(context, 1.0, 1.0, 1.0, hairline_alpha.f64())
+                CGContextSetLineWidth(context, style.hairline_width.f64())
+                CGContextStrokePath(context)
+                CGContextRestoreGState(context)
+            def fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> void can[Ui.Draw]:
+                context: usize = current_context()
+                set_fill_color(context, color)
+                CGContextBeginPath(context)
+                CGContextAddArc(context, disc.center.x.f64(), disc.center.y.f64(), disc.radius.f64(), 0.0, 6.283185307179586, 0)
+                CGContextFillPath(context)
+            def fill_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]:
+                context: usize = current_context()
+                set_fill_color(context, color)
+                CGContextBeginPath(context)
+                CGContextMoveToPoint(context, tri.a.x.f64(), tri.a.y.f64())
+                CGContextAddLineToPoint(context, tri.b.x.f64(), tri.b.y.f64())
+                CGContextAddLineToPoint(context, tri.c.x.f64(), tri.c.y.f64())
+                CGContextClosePath(context)
+                CGContextFillPath(context)
+            def fill_line(segment: UiCore::Line, color: UiCore::Color) -> void can[Ui.Draw]:
+                context: usize = current_context()
+                set_stroke_color(context, color)
+                CGContextSetLineWidth(context, UiPaint::HAIRLINE_WIDTH.f64())
+                CGContextBeginPath(context)
+                CGContextMoveToPoint(context, segment.from_point.x.f64(), segment.from_point.y.f64())
+                CGContextAddLineToPoint(context, segment.to_point.x.f64(), segment.to_point.y.f64())
+                CGContextStrokePath(context)
+            def draw_text(run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
+                return if run.text.len == 0
+                safe_text: sview = UiCore::bounded_text(run.text)
+                pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
+                semibold: i32 = 1 if run.size >= 19.0 else 0
+                draw_text_line(pointer, safe_text.len, run.size, semibold, run.origin.x, run.origin.y, color)

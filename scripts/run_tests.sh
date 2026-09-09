@@ -27,6 +27,10 @@ status=0
 
 SKIA_TEST_SHIM="$ROOT/build/skia_painter_shim.o"
 clang -c -Wall -Wextra -Werror -o "$SKIA_TEST_SHIM" "$ROOT/test/skia_painter_shim.c"
+# The UIKit tests exercise the whole backend below the Objective-C shim, so
+# they link C stand-ins for the entry points that shim would provide.
+UIKIT_TEST_STUBS="$ROOT/build/uikit_host_stubs.o"
+clang -c -Wall -Wextra -Werror -o "$UIKIT_TEST_STUBS" "$ROOT/test/uikit_host_stubs.c"
 
 # The real custom renderer is a required gate by default. Run it before the
 # longer portable/native matrix so a missing pinned SDK fails immediately and
@@ -88,6 +92,14 @@ if ! bash "$ROOT/scripts/check_appkit_canvas.sh"; then
   status=1
 fi
 
+# The UIKit backend has no window to open and no simulator to boot: its shim is
+# type-checked against the real iOS SDK and everything below it is built and run
+# here, including one real off-screen frame.
+if ! bash "$ROOT/scripts/check_uikit.sh"; then
+  echo "FAIL uikit"
+  status=1
+fi
+
 # The AppKit/Skia compositor extends the required CPU-raster gate when it is
 # available on macOS; its fixture remains headless and never foregrounds a UI.
 if [[ "$require_real_skia" == "1" ]]; then
@@ -116,7 +128,12 @@ for source in "$ROOT"/test/*_test.elisa; do
   if [[ "$name" == "skia_painter_test" ]]; then
     link_inputs=("$SKIA_TEST_SHIM" "$RUNTIME")
   fi
-  if [[ "$name" == "appkit_canvas_keymap_test" && "$(uname -s)" == "Darwin" ]]; then
+  if [[ "$name" == uikit_* ]]; then
+    link_inputs=("$UIKIT_TEST_STUBS" "$RUNTIME")
+  fi
+  if [[ "$name" == uikit_* && "$(uname -s)" == "Darwin" ]]; then
+    clang -Wl,-dead_strip -o "$ROOT/build/$name" "$ROOT/build/$name.o" "${link_inputs[@]}" -framework CoreFoundation -framework CoreGraphics -framework CoreText -framework ImageIO
+  elif [[ "$name" == "appkit_canvas_keymap_test" && "$(uname -s)" == "Darwin" ]]; then
     clang -Wl,-dead_strip -o "$ROOT/build/$name" "$ROOT/build/$name.o" "${link_inputs[@]}" -L"$SDL_LIB" -lSDL3 -lSDL3_ttf -Wl,-rpath,"$SDL_LIB" -framework CoreFoundation
   else
     clang -Wl,-dead_strip -o "$ROOT/build/$name" "$ROOT/build/$name.o" "${link_inputs[@]}" -L"$SDL_LIB" -lSDL3 -lSDL3_ttf -Wl,-rpath,"$SDL_LIB"

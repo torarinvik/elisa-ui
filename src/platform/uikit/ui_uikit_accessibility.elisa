@@ -1,0 +1,91 @@
+# UIKit semantics: framework roles onto UIAccessibilityTraits, and the value
+# string VoiceOver speaks.
+#
+# UIKit's model is flatter than the macOS one -- a traits bitfield plus label,
+# hint and value strings -- so the mapping is the whole adapter. Elisa decides
+# every bit of it; the shim only assigns what it is handed.
+
+extend UiUIKit:
+    public:
+        def accessibility_traits(role: UiCore::AccessibilityRole, enabled: bool, selected: bool) -> u64:
+            traits: mutable u64 = role_traits(role)
+            traits <- traits | TRAIT_NOT_ENABLED if not enabled
+            traits <- traits | TRAIT_SELECTED if selected and role_reports_selection(role)
+            return traits
+
+        # A node with an activation action is reachable by a VoiceOver double
+        # tap. Progress and label nodes are read but never activated.
+        def accessibility_is_interactive(role: UiCore::AccessibilityRole, enabled: bool) -> bool:
+            return false if not enabled
+            return role != UiCore::AccessibilityRole.Label and role != UiCore::AccessibilityRole.ProgressBar
+
+        # Value kinds match the AppKit adapter's vocabulary so the shared
+        # semantic tests read the same way: 0 none, 1 boolean, 2 range, 3 text.
+        def accessibility_value_kind(role: UiCore::AccessibilityRole) -> i32:
+            return 1 if role == UiCore::AccessibilityRole.CheckBox or role == UiCore::AccessibilityRole.RadioButton
+            return 2 if role == UiCore::AccessibilityRole.Slider or role == UiCore::AccessibilityRole.ProgressBar
+            return 3 if role == UiCore::AccessibilityRole.TextField or role == UiCore::AccessibilityRole.PasswordField
+            return 0
+
+    private:
+        def role_traits(role: UiCore::AccessibilityRole) -> u64:
+            return TRAIT_STATIC_TEXT if role == UiCore::AccessibilityRole.Label
+            return TRAIT_BUTTON if role == UiCore::AccessibilityRole.Button
+            return TRAIT_BUTTON if role == UiCore::AccessibilityRole.RadioButton
+            return TRAIT_BUTTON if role == UiCore::AccessibilityRole.CheckBox
+            return TRAIT_ADJUSTABLE if role == UiCore::AccessibilityRole.Slider
+            return TRAIT_UPDATES_FREQUENTLY if role == UiCore::AccessibilityRole.ProgressBar
+            return TRAIT_NONE if role == UiCore::AccessibilityRole.TextField
+            return TRAIT_NONE if role == UiCore::AccessibilityRole.PasswordField
+            return TRAIT_SUMMARY_ELEMENT if role == UiCore::AccessibilityRole.Dialog
+            return TRAIT_NONE
+
+        def role_reports_selection(role: UiCore::AccessibilityRole) -> bool:
+            return role == UiCore::AccessibilityRole.CheckBox or role == UiCore::AccessibilityRole.RadioButton
+
+        # UIKit speaks a value string, not a number pair. Percent is what
+        # VoiceOver announces for an adjustable control, so produce it here
+        # instead of leaving the shim to invent a format.
+        const VALUE_CAPACITY: usize = 8
+        global mutable uikit_value_storage: u8[VALUE_CAPACITY] = zeroed
+
+        def range_percent(value: f32, has_range: bool, range_min: f32, range_max: f32) -> i32:
+            return 0 if not UiCore::is_finite(value)
+            low: f32 = range_min if has_range and UiCore::is_finite(range_min) else 0.0
+            high: f32 = range_max if has_range and UiCore::is_finite(range_max) else 1.0
+            span: f32 = high - low
+            return 0 if span <= 0.0
+            ratio: f32 = (value - low) / span
+            return 0 if ratio <= 0.0
+            return 100 if ratio >= 1.0
+            return (ratio * 100.0 + 0.5).i32()
+
+        def percent_text(percent: i32) -> sview:
+            bounded: i32 = 0 if percent < 0 else (100 if percent > 100 else percent)
+            digits: mutable usize = 1
+            digits <- 2 if bounded >= 10
+            digits <- 3 if bounded >= 100
+            value: mutable i32 = bounded
+            for index in 0..<digits:
+                position: usize = digits - 1 - index
+                uikit_value_storage[position] <- (value % 10 + 48).i32().u8()
+                value <- value / 10
+            uikit_value_storage[digits] <- 37
+            return sview(&uikit_value_storage[0], 0, (digits + 1).i64())
+
+    public:
+        # Returns a retained CFString, or 0 when the role has no spoken value.
+        # Ownership transfers to the caller, matching every other native_string
+        # producer in this backend.
+        def accessibility_value_string(node: UiCore::AccessibilityNode) -> usize can Unsafe.PointerCast:
+            kind: i32 = accessibility_value_kind(node.role)
+            return 0 if kind == 0
+            if kind == 2:
+                return native_string(percent_text(range_percent(node.value, node.has_range, node.range_min, node.range_max)))
+            if kind == 3:
+                # A password field must not have its contents spoken. UIKit
+                # renders the secure placeholder itself when the element only
+                # reports its label, so publish no value at all.
+                return 0 if node.role == UiCore::AccessibilityRole.PasswordField
+                return native_string(node.text_value)
+            return 0
