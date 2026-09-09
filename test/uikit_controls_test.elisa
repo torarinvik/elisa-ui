@@ -26,6 +26,7 @@ extern elisa_uikit_controls_stub_selected(slot: i32) -> i32
 extern elisa_uikit_controls_stub_progress(slot: i32) -> f32
 extern elisa_uikit_controls_stub_content_width(slot: i32) -> f32
 extern elisa_uikit_controls_stub_released(order: i32) -> usize
+extern elisa_uikit_controls_stub_action(slot: i32) -> i32
 
 global mutable failures: i32 = 0
 
@@ -45,6 +46,15 @@ def check(name: cstr, ok: bool) -> void:
 
 def app_widget_event(widget: UiWidgets::Widget, event: i32) -> void:
     pass
+
+global mutable control_events: i32 = 0
+global mutable last_control_index: i32 = -1
+global mutable last_control_event: i32 = -1
+
+def app_control_event(index: i32, event: i32) -> void:
+    control_events <- control_events + 1
+    last_control_index <- index
+    last_control_event <- event
 
 # UIKit measures its own controls, so layout only needs something consistent.
 def ui_measure_text_width(text: sview, size: f32) -> f32:
@@ -137,6 +147,39 @@ def check_text_and_state() -> void:
     # UIProgressView has no range, so Elisa normalizes before the boundary.
     check("a gauge is normalized to a fraction", elisa_uikit_controls_stub_progress(6) == 0.25)
 
+# Which controls report, what they report, and what the application sees.
+def check_actions() -> void:
+    # A panel and a label have nothing to report, so no action is installed on
+    # them at all -- asking a toolkit to would be ignored at best.
+    check("a view gets no action", elisa_uikit_controls_stub_action(1) == -1)
+    check("a label gets no action", elisa_uikit_controls_stub_action(7) == -1)
+    check("a button gets a primary action", elisa_uikit_controls_stub_action(2) == 0)
+    check("a check box gets a primary action", elisa_uikit_controls_stub_action(3) == 0)
+    # A slider drags and a field types: both report each step, not only a
+    # final commit.
+    check("a text field reports value changes", elisa_uikit_controls_stub_action(5) == 1)
+
+    control_events <- 0
+    button: usize = elisa_uikit_controls_stub_handle(2)
+    check("a button action reaches the application",
+        UiUIKitControls::controls_action(button, 0.0, false) == 2 and control_events == 1)
+    check("a button reports a click", last_control_event == UiConst::WidgetEvent.Click.i32() and last_control_index == 2)
+    # A handle belonging to no live control is what a late callback from a
+    # torn-down tree looks like; it must not reach the application.
+    check("an unknown handle reports nothing",
+        UiUIKitControls::controls_action(999999, 0.0, false) == UiControls::NO_PARENT and control_events == 1)
+    # Acting on a control records the new state before the callback runs, so a
+    # callback that reads the control observes what the user just did.
+    check("a check box records its new selection",
+        UiUIKitControls::controls_action(elisa_uikit_controls_stub_handle(3), 0.0, true) == 3
+        and UiControls::state_at(3).selected)
+    check("unchecking records too",
+        UiUIKitControls::controls_action(elisa_uikit_controls_stub_handle(3), 0.0, false) == 3
+        and not UiControls::state_at(3).selected)
+    field: usize = elisa_uikit_controls_stub_handle(5)
+    check("a text field reports a change",
+        UiUIKitControls::controls_action(field, 0.0, false) == 5 and last_control_event == UiConst::WidgetEvent.Change.i32())
+
 def check_rerealization() -> void can[Memory.Allocate, Abort.Panic, Ui.Controls, Unsafe.PointerCast]:
     first_root: usize = elisa_uikit_controls_stub_handle(0)
     last: usize = elisa_uikit_controls_stub_handle(elisa_uikit_controls_stub_count() - 1)
@@ -157,6 +200,7 @@ def main() -> i64 can[Memory.Allocate, Abort.Panic, Ui.Controls, Unsafe.PointerC
     check_mapping()
     check_hierarchy_and_geometry()
     check_text_and_state()
+    check_actions()
     check_rerealization()
     if failures == 0:
         _ = puts("uikit controls: all checks passed")

@@ -29,6 +29,7 @@ static int created_has_accessibility_label[ELISA_UIKIT_CONTROLS_MAX];
 static int created_selected[ELISA_UIKIT_CONTROLS_MAX];
 static float created_progress[ELISA_UIKIT_CONTROLS_MAX];
 static float created_content_width[ELISA_UIKIT_CONTROLS_MAX];
+static int created_action[ELISA_UIKIT_CONTROLS_MAX];
 static int created_count = 0;
 
 static size_t released_order[ELISA_UIKIT_CONTROLS_MAX];
@@ -124,6 +125,7 @@ static size_t create(int kind, int selectable) {
     created_selected[slot] = -1;
     created_progress[slot] = -1.0f;
     created_content_width[slot] = -1.0f;
+    created_action[slot] = -1;
     return created_handle[slot];
 }
 
@@ -192,6 +194,14 @@ void elisa_uikit_controls_set_button_selected(size_t handle, int selected) {
 void elisa_uikit_controls_set_slider_state(size_t handle, float low, float high, float value) {
     (void)handle; (void)low; (void)high; (void)value;
 }
+int elisa_uikit_controls_stub_action(int slot) {
+    return slot < 0 || slot >= created_count ? -1 : created_action[slot];
+}
+void elisa_uikit_controls_set_action(size_t handle, int valueChange) {
+    int slot = slot_of(handle);
+    if (slot >= 0) created_action[slot] = valueChange;
+}
+
 void elisa_uikit_controls_set_progress(size_t handle, float fraction) {
     int slot = slot_of(handle);
     if (slot >= 0) created_progress[slot] = fraction;

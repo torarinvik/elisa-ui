@@ -103,6 +103,14 @@ module UiAppKit:
         def button_bezel_style(index: i32) -> i32:
             return UiAppKitNative::native_button_bezel_style(native_handle(index))
 
+        # Fire a real Cocoa target/action, which is the only way to prove the
+        # whole chain -- installed target, shim callback, handle resolution,
+        # write-back and application callback -- rather than each half alone.
+        def perform_button_click(index: i32) -> void:
+            handle: usize = native_handle(index)
+            return if handle == 0
+            UiAppKitNative::native_perform_button_click(handle)
+
         def button_toggles(index: i32) -> i32:
             handle: usize = native_handle(index)
             before: i32 = UiAppKitNative::native_button_is_on(handle)
@@ -247,6 +255,16 @@ module UiAppKit:
                     UiAppKitNative::native_set_field_text(handle, value)
                 CFRelease(value)
 
+            def set_action(index: i32, kind: UiControls::Kind) -> void:
+                can Ui.Controls:
+                    handle: usize = native_handle(index)
+                    return if handle == 0
+                    # A slider drags and a field types: both should report each
+                    # step, not only the final commit. The choice is the shared
+                    # policy's, not Cocoa's.
+                    continuous: bool = UiControls::action_event_for(kind) == UiConst::WidgetEvent.Change
+                    elisa_appkit_controls_set_action(handle, 1 if continuous else 0)
+
             def set_state(index: i32, kind: UiControls::Kind, value: f32, low: f32, high: f32, selected: bool) -> void:
                 can Ui.Controls:
                     handle: usize = native_handle(index)
@@ -304,3 +322,20 @@ module UiAppKit:
 
         def run() -> void:
             UiAppKitNative::native_run()
+
+        # Cocoa reports which control acted and what it now holds. Turning that
+        # into a control index, recording the value and choosing the event are
+        # all shared with every other native backend.
+        def controls_action(handle: usize, value: f32, selected: bool) -> i32:
+            index: i32 = UiControls::index_for_native_handle(handle)
+            return index if index == UiControls::NO_PARENT
+            kind: UiControls::Kind = UiControls::kind_at(index.usize())
+            return UiControls::dispatch_native_action(handle, UiControls::action_event_for(kind), value, selected)
+
+# Cocoa's control state crosses as its raw SDK value. Which value means "on"
+# is a fact Elisa already names for set_state, so it is compared here rather
+# than duplicated in the shim.
+def appkit_controls_action(handle: usize, value: f32, state: i64) -> i32:
+    return UiAppKit::controls_action(handle, value, state == elisa_appkit_control_state_on.i64())
+
+export fn elisa_appkit_controls_action(handle: usize, value: f32, state: i64) -> i32 = appkit_controls_action

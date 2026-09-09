@@ -193,3 +193,48 @@ void elisa_uikit_controls_set_progress(size_t handle, float fraction) {
 void elisa_uikit_controls_set_accessibility_label(size_t handle, size_t text) {
     elisa_uikit_controls_view(handle).accessibilityLabel = elisa_uikit_controls_string(text);
 }
+
+// --- Actions -----------------------------------------------------------
+//
+// One shared target. UIKit reports which control acted and what it now holds;
+// Elisa resolves that to a control index, records the value and decides what
+// kind of event it was.
+
+extern int elisa_uikit_controls_action(size_t handle, float value, int selected);
+
+@interface ElisaUiKitControlsTarget : NSObject
++ (instancetype)shared;
+- (void)controlActed:(id)sender;
+@end
+
+@implementation ElisaUiKitControlsTarget
++ (instancetype)shared {
+    static ElisaUiKitControlsTarget *target = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        target = [[ElisaUiKitControlsTarget alloc] init];
+    });
+    return target;
+}
+
+- (void)controlActed:(id)sender {
+    if (![sender isKindOfClass:[UIControl class]]) return;
+    float value = 0.0f;
+    int selected = 0;
+    if ([sender isKindOfClass:[UISlider class]]) value = ((UISlider *)sender).value;
+    if ([sender isKindOfClass:[UIButton class]]) selected = ((UIButton *)sender).selected ? 1 : 0;
+    (void)elisa_uikit_controls_action((size_t)(__bridge void *)sender, value, selected);
+}
+@end
+
+// `valueChange` selects which UIControlEvents to subscribe to. Elisa decides
+// it from the widget kind; this only performs the subscription.
+void elisa_uikit_controls_set_action(size_t handle, int valueChange) {
+    UIView *view = elisa_uikit_controls_view(handle);
+    if (![view isKindOfClass:[UIControl class]]) return;
+    UIControlEvents events = valueChange != 0 ? UIControlEventValueChanged | UIControlEventEditingChanged
+                                              : UIControlEventPrimaryActionTriggered;
+    [(UIControl *)view addTarget:[ElisaUiKitControlsTarget shared]
+                          action:@selector(controlActed:)
+                forControlEvents:events];
+}

@@ -57,6 +57,11 @@ global mutable log_y: f32[LOG_CAP] = zeroed
 global mutable log_w: f32[LOG_CAP] = zeroed
 global mutable log_h: f32[LOG_CAP] = zeroed
 global mutable log_total: usize = 0
+global mutable log_action: i32[LOG_CAP] = zeroed
+global mutable action_calls: i32 = 0
+global mutable control_events: i32 = 0
+global mutable last_control_index: i32 = -1
+global mutable last_control_event: i32 = -1
 global mutable frame_calls: usize = 0
 global mutable text_calls: usize = 0
 global mutable state_calls: usize = 0
@@ -97,6 +102,16 @@ impl Controls for RecordingControls:
         log_state_low[row] <- low
         log_state_high[row] <- high
         log_state_selected[row] <- selected
+
+    def set_action(index: i32, kind: UiControls::Kind) -> void can[Ui.Controls]:
+        action_calls <- action_calls + 1
+        return if index < 0 or index.usize() >= LOG_CAP
+        log_action[index.usize()] <- kind.i32()
+
+def app_control_event(index: i32, event: i32) -> void:
+    control_events <- control_events + 1
+    last_control_index <- index
+    last_control_event <- event
 
 def kind_at(row: usize) -> i32:
     return log_kind[row]

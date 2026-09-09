@@ -131,6 +131,16 @@ module UiUIKitControls:
                     elisa_uikit_controls_set_accessibility_label(handle, value)
                 CFRelease(value)
 
+            def set_action(index: i32, kind: UiControls::Kind) -> void:
+                can Ui.Controls:
+                    handle: usize = native_handle(index)
+                    return if handle == 0
+                    # A slider drags and a field types: both are value changes.
+                    # A button is a primary action. The choice is the shared
+                    # policy's, not UIKit's.
+                    value_change: bool = UiControls::action_event_for(kind) == UiConst::WidgetEvent.Change
+                    elisa_uikit_controls_set_action(handle, 1 if value_change else 0)
+
             def set_state(index: i32, kind: UiControls::Kind, value: f32, low: f32, high: f32, selected: bool) -> void:
                 can Ui.Controls:
                     handle: usize = native_handle(index)
@@ -143,6 +153,15 @@ module UiUIKitControls:
                         return
                     if kind == UiControls::Kind.ProgressBar:
                         elisa_uikit_controls_set_progress(handle, progress_fraction(value, low, high))
+
+        # UIKit reports which control acted and what it now holds. Turning
+        # that into a control index, recording the value and choosing the event
+        # are all shared with every other native backend.
+        def controls_action(handle: usize, value: f32, selected: bool) -> i32:
+            index: i32 = UiControls::index_for_native_handle(handle)
+            return index if index == UiControls::NO_PARENT
+            kind: UiControls::Kind = UiControls::kind_at(index.usize())
+            return UiControls::dispatch_native_action(handle, UiControls::action_event_for(kind), value, selected)
 
         # Release the retained handles before the next realization. Children may
         # still be retained by their old superview, but dropping every Elisa
@@ -203,3 +222,8 @@ def uikit_controls_realize(root_view: usize) -> i32:
         return 1
 
 export fn elisa_uikit_controls_realize(root_view: usize) -> i32 = uikit_controls_realize
+
+def uikit_controls_action(handle: usize, value: f32, selected: i32) -> i32:
+    return UiUIKitControls::controls_action(handle, value, selected != 0)
+
+export fn elisa_uikit_controls_action(handle: usize, value: f32, selected: i32) -> i32 = uikit_controls_action

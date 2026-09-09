@@ -1,0 +1,68 @@
+# Native-control events, resolved back into the retained control list.
+#
+# A native backend hands its OS toolkit an action target and gets an opaque
+# handle back when the user acts. That handle means nothing to an application:
+# it must become the control index the list already owns, the new value must be
+# recorded so the app can read it, and only then does the application callback
+# run. Every backend therefore shares one resolution, one write-back and one
+# event vocabulary instead of inventing three.
+
+        # The reverse of set_native_handle. A backend calls this from its
+        # action callback, where all it has is the toolkit's own object.
+        def index_for_native_handle(handle: usize) -> i32:
+            return NO_PARENT if handle == 0
+            for index in 0..<total:
+                return index.i32() if ops[index].native_handle == handle
+            return NO_PARENT
+
+        # Record what the user just did before the application sees the event,
+        # so a callback that reads the control's state observes the new value
+        # rather than the one the tree was realized with.
+        def note_value(index: usize, value: f32, selected: bool) -> bool:
+            return false if index >= total
+            return false if not UiCore::is_finite(value)
+            ops[index].state_value <- value
+            ops[index].state_selected <- selected
+            return true
+
+        # A selectable control is one of a group: turning one on turns its
+        # siblings off. The toolkit does not know the group, the retained list
+        # does, so the write-back happens here rather than in a backend.
+        def note_selection(index: usize, selected: bool) -> bool:
+            return false if index >= total
+            ops[index].state_selected <- selected
+            return true if not selected or ops[index].kind != Kind.RadioButton
+            parent: i32 = ops[index].parent
+            for sibling in 0..<total:
+                continue if sibling == index
+                continue if ops[sibling].kind != Kind.RadioButton or ops[sibling].parent != parent
+                ops[sibling].state_selected <- false
+            return true
+
+        # The one entry point a backend's action callback needs. Returns the
+        # resolved control index, or NO_PARENT when the handle belongs to no
+        # live control -- which is what a late callback from a torn-down tree
+        # looks like, and must not reach the application.
+        def dispatch_native_action(handle: usize, event: UiConst::WidgetEvent, value: f32, selected: bool) -> i32:
+            index: i32 = index_for_native_handle(handle)
+            return NO_PARENT if index == NO_PARENT
+            slot: usize = index.usize()
+            if event == UiConst::WidgetEvent.Change:
+                return NO_PARENT if not note_value(slot, value, selected)
+            if event == UiConst::WidgetEvent.Click:
+                return NO_PARENT if not note_selection(slot, selected)
+            app_control_event(index, event.i32())
+            return index
+
+        # Which controls have anything to report. A label or a panel has no
+        # action, and asking a toolkit to install one on them would either be
+        # ignored or, worse, quietly accepted.
+        def kind_reports_action(kind: Kind) -> bool:
+            return kind == Kind.PushButton or kind == Kind.ToggleButton or kind == Kind.CheckBox or kind == Kind.RadioButton or kind == Kind.Slider or kind == Kind.TextField
+
+        # What acting on a control means. A button is a click; dragging a
+        # slider or typing in a field is a change. Keeping this here means a
+        # backend reports the raw fact and never picks the vocabulary.
+        def action_event_for(kind: Kind) -> UiConst::WidgetEvent:
+            return UiConst::WidgetEvent.Change if kind == Kind.Slider or kind == Kind.TextField
+            return UiConst::WidgetEvent.Click

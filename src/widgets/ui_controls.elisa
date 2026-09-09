@@ -121,6 +121,12 @@ module UiControls:
             # Initial value/range/selection state, kept separate from caption
             # text so a backend can apply native state with typed setters.
             def set_state(index: i32, kind: Kind, value: f32, low: f32, high: f32, selected: bool) -> void can[Ui.Controls]
+            # Ask the toolkit to report what the user does with this control.
+            # A backend installs its own action target and calls
+            # UiControls::dispatch_native_action from it; which kinds have
+            # anything to report, and what acting on one means, are decided by
+            # kind_reports_action and action_event_for rather than per backend.
+            def set_action(index: i32, kind: Kind) -> void can[Ui.Controls]
 
     private:
         # The list itself. It sits after the vocabulary because that is the reading
@@ -286,5 +292,9 @@ module UiControls:
                 C.set_frame(slot, kind_at(index), box_at(index))
                 C.set_text(slot, kind_at(index), text_at(index))
                 C.set_state(slot, kind_at(index), state.value, state.low, state.high, state.selected)
+                # Last, so a control never reports an action while it is still
+                # being given its initial text and state.
+                C.set_action(slot, kind_at(index)) if kind_reports_action(kind_at(index))
 
         include "./ui_controls_policy.elisa"
+        include "./ui_controls_events.elisa"

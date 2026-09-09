@@ -453,3 +453,52 @@ float elisa_appkit_progress_value(size_t handle) {
     NSProgressIndicator *bar = (NSProgressIndicator *)elisa_appkit_object(handle);
     return [bar isKindOfClass:[NSProgressIndicator class]] ? (float)[bar doubleValue] : -1.0f;
 }
+
+// --- Actions -----------------------------------------------------------
+//
+// One shared target. Cocoa reports which control acted and what it now holds;
+// Elisa resolves that to a control index, records the value and decides what
+// kind of event it was.
+
+extern int elisa_appkit_controls_action(size_t handle, float value, long state);
+
+@interface ElisaAppKitControlsTarget : NSObject
++ (instancetype)shared;
+- (void)controlActed:(id)sender;
+@end
+
+@implementation ElisaAppKitControlsTarget
++ (instancetype)shared {
+    static ElisaAppKitControlsTarget *target = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        target = [[ElisaAppKitControlsTarget alloc] init];
+    });
+    return target;
+}
+
+- (void)controlActed:(id)sender {
+    if (![sender isKindOfClass:[NSControl class]]) return;
+    NSControl *control = (NSControl *)sender;
+    float value = 0.0f;
+    // The raw control state crosses unread: what "on" is remains an SDK fact
+    // Elisa already names, and comparing it here would put a second copy of
+    // that vocabulary in Objective-C.
+    long state = 0;
+    if ([control isKindOfClass:[NSSlider class]]) value = (float)[control doubleValue];
+    if ([control isKindOfClass:[NSButton class]]) state = (long)[(NSButton *)control state];
+    (void)elisa_appkit_controls_action((size_t)(__bridge void *)control, value, state);
+}
+@end
+
+// Cocoa reports a text field's editing through its delegate rather than the
+// action, which only fires on Return. Continuous action gives the same
+// per-keystroke Change the other backends report.
+void elisa_appkit_controls_set_action(size_t handle, int continuous) {
+    id object = elisa_appkit_object(handle);
+    if (![object isKindOfClass:[NSControl class]]) return;
+    NSControl *control = (NSControl *)object;
+    [control setTarget:[ElisaAppKitControlsTarget shared]];
+    [control setAction:@selector(controlActed:)];
+    [control setContinuous:continuous != 0];
+}
