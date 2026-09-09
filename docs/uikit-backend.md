@@ -48,11 +48,17 @@ the shim sources, the same way the AppKit canvas gate does.
   responder as the retained focus changes.
 * **Scale changes.** `UiCapabilities::use_uikit` reports `scale_changes`,
   because a device rotates and can move between displays.
-* **No composition, and it says so.** The view adopts `UIKeyInput`, which
-  commits finished text and has no marked-text phase, so the profile reports
-  `composition: false`. Adopting the full `UITextInput` protocol is what would
-  change that; until then an application asking
-  `UiCapabilities::supports_composition` gets the truth.
+* **Composition goes through `UITextInput`.** UIKit expresses text in opaque
+  `UITextPosition` and `UITextRange` objects; here they are UTF-16 offsets into
+  the focused field, so the shim's implementations are thin integer wrappers and
+  every question that needs the text — document length, whether an offset
+  exists, what a clamped range covers, where a caret sits, which offset a touch
+  lands on — is asked of Elisa
+  (`ui_uikit_flat_text.elisa`). A marked range from a Japanese keyboard, from
+  dictation or from autocorrect reaches `UiFlat` through the same
+  `update_marked_text`/`unmark_text` pair the AppKit adapter uses. A secure
+  field still refuses readback, through the same
+  `UiFlat::allows_text_readback` gate as the clipboard.
 
 ## System appearance
 
@@ -102,6 +108,9 @@ The gate has two halves, neither of which needs a booted simulator:
    (`test/uikit_host_stubs.c`), including one real off-screen frame written out
    as a PNG and required to be byte-identical across fresh processes.
 
-`test/uikit_input_test.elisa` and `test/uikit_surface_test.elisa` pin the input
-mapping, the surface facts, the semantic mapping, and a genuine off-screen frame
-with its semantic transaction.
+`test/uikit_input_test.elisa`, `test/uikit_surface_test.elisa` and
+`test/uikit_text_input_test.elisa` pin the input mapping, the surface facts, the
+semantic mapping, a genuine off-screen frame with its semantic transaction, and
+the text protocol — offsets and their sentinel, range bounding, selection,
+composition, caret and range geometry, touch-to-caret, and a secure field's
+refusal to hand its text back.

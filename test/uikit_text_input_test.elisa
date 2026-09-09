@@ -1,0 +1,172 @@
+# The UIKit text protocol, exercised against a real focused field.
+#
+# UIKit's positions and ranges are UTF-16 offsets, and every question that
+# needs the text is answered by Elisa. Those answers are what make composition,
+# the selection callout and touch-to-caret behave, so they are pinned here
+# rather than left to be discovered on a device.
+
+include "../src/platform/uikit/ui_uikit_flat.elisa"
+
+extern puts(text: cstr) -> i64
+extern elisa_uikit_stub_set_view(handle: usize) -> void
+
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+module TextTestApp:
+    public:
+        def build(secure: bool) -> void:
+            UiHandles::reset()
+            root <- UiHandles::column(UiHandles::root_parent(), 12.0, 8.0, UiCore::rgb(18, 20, 26))
+            field <- UiHandles::text_field(root, "Name", "Your name", "Ada", 240.0, 36.0, 15.0, UiCore::rgb(240, 242, 248), UiCore::rgb(30, 32, 40))
+            UiHandles::set_secure(field, secure)
+            UiHandles::layout(400.0, 200.0)
+            _ = UiHandles::request_focus(field)
+
+        def field_index() -> usize:
+            return UiHandles::index(field)
+
+    private:
+        global mutable root: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
+        global mutable field: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
+
+def app_init() -> void:
+    TextTestApp::build(false)
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    UiHandles::handle(event)
+
+def app_text_input(text: sview) -> void:
+    UiHandles::insert_text(text)
+
+def app_validate() -> void:
+    pass
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    UiHandles::update_marked_text_utf8_characters(text, selected_start, selected_length)
+
+def app_frame() -> void:
+    UiHandles::layout(UiCore::viewport_width(), UiCore::viewport_height())
+    UiHandles::paint()
+
+# A live session with the field focused. Every check below runs against it.
+def start_session(secure: bool) -> bool can[Ui.Draw, Ui.Text, Ui.Input, Ui.Window, Unsafe.PointerCast]:
+    return false if not UiUIKit::begin_headless_session(400.0, 200.0, 2.0)
+    # Editing needs an active session, not merely a renderable one -- the same
+    # rule a real app meets when UIKit reports the scene became active.
+    return false if not UiMobileSurface::focus_gained()
+    TextTestApp::build(secure)
+    return UiUIKit::live() and UiLifecycle::accepts_input() and UiFlat::accepts_text()
+
+def check_rejects_a_foreign_view() -> void:
+    # Every entry point is an FFI seam. A handle that is not this session's
+    # view must produce the closed answer, not the focused field's state.
+    other: usize = 1
+    check("a foreign view has no document", uikit_text_length(other) == 0)
+    check("a foreign view has no selection", uikit_text_selection_location(other) == UiUIKit::not_found())
+    check("a foreign view has no marked text", uikit_text_has_marked(other) == 0)
+    check("a foreign view cannot be selected into", uikit_text_set_selection(other, 0, 1) == 0)
+    check("a foreign view yields no offset for a touch", uikit_text_offset_at_x(other, 10.0) == UiUIKit::not_found())
+
+def check_document_and_offsets(view: usize) -> void:
+    check("the document is the field's text", uikit_text_length(view) == 3)
+    check("the start of the document exists", uikit_text_clamp_offset(view, 0) == 0)
+    check("the end of the document exists", uikit_text_clamp_offset(view, 3) == 3)
+    # UIKit builds positions by arithmetic and expects one past the end to be
+    # rejected, not clamped: a clamped answer would let it construct a range
+    # that does not exist.
+    check("one past the end does not exist", uikit_text_clamp_offset(view, 4) == UiUIKit::not_found())
+    check("the sentinel stays the sentinel", uikit_text_clamp_offset(view, UiUIKit::not_found()) == UiUIKit::not_found())
+    check("stepping forward moves", uikit_text_offset_position(view, 1, 1) == 2)
+    check("stepping backward moves", uikit_text_offset_position(view, 2, -1) == 1)
+    check("stepping to the end is a position", uikit_text_offset_position(view, 0, 3) == 3)
+    check("stepping past the end is not", uikit_text_offset_position(view, 0, 4) == UiUIKit::not_found())
+    # Underflow is a missing position, not zero.
+    check("stepping before the start is not a position", uikit_text_offset_position(view, 1, -2) == UiUIKit::not_found())
+    check("stepping from nowhere goes nowhere", uikit_text_offset_position(view, UiUIKit::not_found(), 1) == UiUIKit::not_found())
+
+def check_ranges(view: usize) -> void:
+    check("a range inside the document is kept", uikit_text_range_location(view, 1) == 1 and uikit_text_range_length(view, 1, 2) == 2)
+    check("an over-long range is bounded", uikit_text_range_length(view, 1, 99) == 2)
+    check("a range past the end is bounded", uikit_text_range_location(view, 99) == 3)
+    # The sentinel location means "the current selection", which is how
+    # UIKit asks for the caret's own range.
+    check("the sentinel location means the selection", uikit_text_range_location(view, UiUIKit::not_found()) == uikit_text_selection_location(view))
+    check("the sentinel location has no length", uikit_text_range_length(view, UiUIKit::not_found(), 2) == 0)
+
+def check_selection(view: usize) -> void:
+    check("the selection can be set", uikit_text_set_selection(view, 1, 2) == 1)
+    check("the selection reads back", uikit_text_selection_location(view) == 1 and uikit_text_selection_length(view) == 2)
+    check("a caret is a zero-length selection", uikit_text_set_selection(view, 3, 0) == 1 and uikit_text_selection_length(view) == 0)
+    check("a selection from nowhere is refused", uikit_text_set_selection(view, UiUIKit::not_found(), 1) == 0)
+
+def check_composition(view: usize) -> void:
+    check("a fresh field has no marked text", uikit_text_has_marked(view) == 0)
+    check("an unmarked field reports no marked range", uikit_text_marked_location(view) == UiUIKit::not_found())
+    _ = uikit_text_set_selection(view, 3, 0)
+    uikit_text_set_marked(view, 0, 0, 0)
+    check("a null composition is ignored", uikit_text_has_marked(view) == 0)
+    native: usize = UiUIKit::native_string("ka")
+    uikit_text_set_marked(view, native, 2, 0)
+    CFRelease(native) if native != 0
+    check("a composition marks text", uikit_text_has_marked(view) == 1)
+    check("the marked range is reported", uikit_text_marked_length(view) == 2 and uikit_text_marked_location(view) != UiUIKit::not_found())
+    uikit_text_unmark(view)
+    check("unmarking ends the composition", uikit_text_has_marked(view) == 0)
+
+def check_readback(view: usize) -> void can[Unsafe.PointerCast]:
+    text: usize = uikit_text_in_range(view, 0, 3)
+    check("a plain field hands its text back", text != 0)
+    CFRelease(text) if text != 0
+    check("a range from nowhere reads nothing", uikit_text_in_range(view, UiUIKit::not_found(), 1) == 0)
+
+def check_geometry(view: usize) -> void:
+    x: mutable f32 = 0.0
+    y: mutable f32 = 0.0
+    width: mutable f32 = 0.0
+    height: mutable f32 = 0.0
+    check("a caret has a rectangle", uikit_text_rect(view, 0, 0, &x, &y, &width, &height) == 1)
+    # A zero-length range is a caret, which has a nominal width of its own.
+    check("the caret is caret-width", width == UiUIKit::caret_width() and height > 0.0)
+    check("a range is wider than a caret", uikit_text_rect(view, 0, uikit_text_length(view), &x, &y, &width, &height) == 1 and width > UiUIKit::caret_width())
+    check("a touch on the left lands at the start", uikit_text_offset_at_x(view, -1000.0) == 0)
+    check("a touch on the right lands at the end", uikit_text_offset_at_x(view, 100000.0) == uikit_text_length(view))
+    zero: f32 = 0.0
+    check("a non-finite touch yields no offset", uikit_text_offset_at_x(view, 1.0 / zero) == UiUIKit::not_found())
+
+def check_secure_field_refuses_readback() -> void can[Ui.Draw, Ui.Text, Ui.Input, Ui.Window, Unsafe.PointerCast]:
+    check("a secure session starts", start_session(true))
+    view: usize = UiUIKit::view_handle()
+    # A secure field goes through the same gate as the clipboard: UIKit may
+    # know how long the document is, but never what it says.
+    check("a secure field still has a document", uikit_text_length(view) == 3)
+    check("a secure field refuses readback", uikit_text_in_range(view, 0, 3) == 0)
+    UiUIKit::release_canvas()
+
+def main() -> i64 can[Ui.Draw, Ui.Text, Ui.Input, Ui.Window, Unsafe.PointerCast]:
+    elisa_uikit_stub_set_view(0)
+    check_rejects_a_foreign_view()
+    check("a session with a focused field starts", start_session(false))
+    view: usize = UiUIKit::view_handle()
+    check_document_and_offsets(view)
+    check_ranges(view)
+    check_selection(view)
+    check_readback(view)
+    check_geometry(view)
+    # Composition changes the document, so it runs after the checks that
+    # depend on the field's initial text.
+    check_composition(view)
+    UiUIKit::release_canvas()
+    check_secure_field_refuses_readback()
+    if failures == 0:
+        _ = puts("uikit text input: all checks passed")
+        return 0
+    _ = puts("uikit text input: FAILURES above")
+    return 1

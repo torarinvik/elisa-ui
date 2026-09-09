@@ -9,6 +9,12 @@
 // The elements published by the last committed semantic frame. UIKit reads
 // this through accessibilityElements; Elisa owns its contents and ordering.
 @property(nonatomic, strong) NSArray *elisaElements;
+// UITextInput's two stored requirements. The delegate is UIKit's own; the
+// tokenizer is the stock one, because word and sentence boundaries in the
+// user's language are the text system's job, not the framework's.
+@property(nonatomic, weak) id<UITextInputDelegate> inputDelegate;
+@property(nonatomic, strong) id<UITextInputTokenizer> elisaTokenizer;
+- (size_t)elisaHandle;
 @end
 
 @implementation ElisaUiKitView

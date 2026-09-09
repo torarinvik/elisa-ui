@@ -1,0 +1,161 @@
+# UITextInput for the flat widget layer.
+#
+# UIKit's text protocol is expressed in opaque UITextPosition and UITextRange
+# objects. Those are UTF-16 offsets into the focused field, so the shim's
+# implementations of them are thin integer wrappers and every question that
+# needs the text itself -- how long the document is, what a clamped range
+# actually covers, where a caret sits, which offset a touch lands on -- is
+# answered here.
+#
+# This is what makes composition work on iOS: a marked range from the Japanese
+# keyboard, dictation or autocorrect reaches UiFlat through the same
+# update_marked_text/unmark_text pair the AppKit adapter uses.
+
+def uikit_text_ready(view_handle: usize) -> bool:
+    return UiUIKit::live() and view_handle == UiUIKit::view_handle() and UiFlat::accepts_text()
+
+def uikit_text_editable(view_handle: usize) -> bool:
+    return uikit_text_ready(view_handle) and UiLifecycle::accepts_input()
+
+# --- Document extent and offsets ---------------------------------------
+
+def uikit_text_length(view_handle: usize) -> usize:
+    return 0 if not uikit_text_ready(view_handle)
+    return UiFlat::text_utf16_length(UiFlat::focused())
+
+# UIKit builds positions by arithmetic and expects an out-of-document result to
+# be rejected rather than clamped -- returning a clamped position would let it
+# construct a range that does not exist. The sentinel says "no such position".
+def uikit_text_clamp_offset(view_handle: usize, offset: usize) -> usize:
+    return UiUIKit::not_found() if not uikit_text_ready(view_handle)
+    return UiUIKit::not_found() if offset == UiUIKit::not_found()
+    return UiUIKit::not_found() if offset > UiFlat::text_utf16_length(UiFlat::focused())
+    return offset
+
+# A signed step from a position, as positionFromPosition:offset: asks for.
+# Underflow is a missing position, not zero.
+def uikit_text_offset_position(view_handle: usize, offset: usize, delta: i64) -> usize:
+    base: usize = uikit_text_clamp_offset(view_handle, offset)
+    return UiUIKit::not_found() if base == UiUIKit::not_found()
+    if delta < 0:
+        step: usize = (0 - delta).usize()
+        return UiUIKit::not_found() if step > base
+        return base - step
+    return uikit_text_clamp_offset(view_handle, base + delta.usize())
+
+def uikit_text_range_location(view_handle: usize, location: usize) -> usize:
+    return 0 if not uikit_text_ready(view_handle)
+    return UiFlat::selection_utf16_location(UiFlat::focused()) if location == UiUIKit::not_found()
+    return UiFlat::text_range_location(UiFlat::focused(), location)
+
+def uikit_text_range_length(view_handle: usize, location: usize, length: usize) -> usize:
+    return 0 if not uikit_text_ready(view_handle)
+    return 0 if location == UiUIKit::not_found()
+    return UiFlat::text_range_length(UiFlat::focused(), location, length)
+
+# --- Reading and replacing ---------------------------------------------
+
+# Returns a +1 CFString the caller releases, or 0. A secure field never hands
+# its bytes back: UiFlat::allows_text_readback is the same gate the macOS
+# adapter and the clipboard use.
+def uikit_text_in_range(view_handle: usize, location: usize, length: usize) -> usize:
+    return 0 if not uikit_text_ready(view_handle) or not UiFlat::allows_text_readback()
+    return 0 if location == UiUIKit::not_found()
+    index: usize = UiFlat::focused()
+    byte_length: usize = UiFlat::text_range_byte_length(index, location, length)
+    return UiUIKit::native_string_bytes(UiFlat::text_range_pointer(index, location), byte_length)
+
+def uikit_text_replace_range(view_handle: usize, location: usize, length: usize, text: usize) -> void:
+    return if not uikit_text_editable(view_handle) or text == 0
+    copied: usize = UiUIKitClipboard::copy_native_text(text)
+    has_replacement: bool = location != UiUIKit::not_found()
+    lifetime: usize = UiFlat::lifetime()
+    UiFlat::commit_text(UiUIKitClipboard::native_text_view(copied), location, length, has_replacement)
+    UiUIKitClipboard::scrub_native_text()
+    # Text insertion runs the application callback synchronously. A callback
+    # may replace the retained tree or stop the session, so do not repaint a
+    # surface that is no longer the live one.
+    return if UiFlat::lifetime() != lifetime or not UiUIKit::live()
+    UiUIKit::redraw()
+
+# --- Selection ---------------------------------------------------------
+
+def uikit_text_selection_location(view_handle: usize) -> usize:
+    return UiUIKit::not_found() if not uikit_text_ready(view_handle)
+    return UiFlat::selection_utf16_location(UiFlat::focused())
+
+def uikit_text_selection_length(view_handle: usize) -> usize:
+    return 0 if not uikit_text_ready(view_handle)
+    return UiFlat::selection_utf16_length(UiFlat::focused())
+
+def uikit_text_set_selection(view_handle: usize, location: usize, length: usize) -> i32:
+    return 0 if not uikit_text_editable(view_handle) or location == UiUIKit::not_found()
+    UiFlat::set_selection_utf16(UiFlat::focused(), location, length)
+    UiUIKit::redraw()
+    return 1
+
+# --- Composition -------------------------------------------------------
+
+def uikit_text_has_marked(view_handle: usize) -> i32:
+    return 0 if not uikit_text_ready(view_handle)
+    return 1 if UiFlat::marked_utf16_length(UiFlat::focused()) > 0 else 0
+
+def uikit_text_marked_location(view_handle: usize) -> usize:
+    return UiUIKit::not_found() if not uikit_text_ready(view_handle)
+    index: usize = UiFlat::focused()
+    return UiUIKit::not_found() if UiFlat::marked_utf16_length(index) == 0
+    return UiFlat::marked_utf16_location(index)
+
+def uikit_text_marked_length(view_handle: usize) -> usize:
+    return 0 if not uikit_text_ready(view_handle)
+    return UiFlat::marked_utf16_length(UiFlat::focused())
+
+# setMarkedText: replaces the current marked range, or the selection when there
+# is none. UIKit does not say which; UiFlat already owns that rule, so pass the
+# composition text and its selected sub-range straight through.
+def uikit_text_set_marked(view_handle: usize, text: usize, selected_location: usize, selected_length: usize) -> void:
+    return if not uikit_text_editable(view_handle) or text == 0
+    copied: usize = UiUIKitClipboard::copy_native_text(text)
+    lifetime: usize = UiFlat::lifetime()
+    UiFlat::update_marked_text(UiUIKitClipboard::native_text_view(copied), selected_location, selected_length, UiUIKit::not_found(), 0, false)
+    UiUIKitClipboard::scrub_native_text()
+    return if UiFlat::lifetime() != lifetime or not UiUIKit::live()
+    UiUIKit::redraw()
+
+def uikit_text_unmark(view_handle: usize) -> void:
+    return if not uikit_text_editable(view_handle)
+    UiFlat::unmark_text()
+    UiUIKit::redraw()
+
+# --- Geometry ----------------------------------------------------------
+
+# The caret and selection rectangles UIKit draws its own handles and callout
+# against. Failing closed leaves the shim returning CGRectZero rather than a
+# rectangle over unrelated content.
+def uikit_text_rect(view_handle: usize, location: usize, length: usize,
+                    x: mutable f32&, y: mutable f32&,
+                    width: mutable f32&, height: mutable f32&) -> i32:
+    return 0 if x == null or y == null or width == null or height == null
+    x <- 0.0
+    y <- 0.0
+    width <- 0.0
+    height <- 0.0
+    return 0 if not uikit_text_ready(view_handle)
+    index: usize = UiFlat::focused()
+    start: usize = uikit_text_range_location(view_handle, location)
+    span: usize = uikit_text_range_length(view_handle, location, length)
+    left: f32 = UiFlat::text_character_x(index, start)
+    x <- left
+    y <- UiFlat::text_caret_y(index)
+    height <- UiFlat::text_caret_height(index)
+    # A zero-length range is a caret, which has a nominal width of its own.
+    width <- UiUIKit::caret_width() if span == 0 else UiFlat::text_character_x(index, start + span) - left
+    return 1
+
+def uikit_text_offset_at_x(view_handle: usize, x: f32) -> usize:
+    return UiUIKit::not_found() if not uikit_text_ready(view_handle)
+    return UiUIKit::not_found() if not UiCore::is_finite(x)
+    index: usize = UiFlat::focused()
+    return UiFlat::text_utf16_offset(index, UiFlat::text_position_at(index, x))
+
+include "./ui_uikit_flat_text_exports.elisa"

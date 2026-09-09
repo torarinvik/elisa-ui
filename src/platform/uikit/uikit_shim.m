@@ -40,6 +40,26 @@ extern void elisa_uikit_appearance_changed(size_t viewHandle, int dark, int high
 extern void elisa_uikit_text_action_selector(size_t viewHandle, size_t selector);
 extern int elisa_uikit_text_action_valid_selector(size_t viewHandle, size_t selector);
 
+// UITextInput. Positions and ranges are UTF-16 offsets into the focused field;
+// elisa_uikit_not_found is "no such position".
+extern size_t elisa_uikit_text_length(size_t viewHandle);
+extern size_t elisa_uikit_text_clamp_offset(size_t viewHandle, size_t offset);
+extern size_t elisa_uikit_text_offset_position(size_t viewHandle, size_t offset, int64_t delta);
+extern size_t elisa_uikit_text_in_range(size_t viewHandle, size_t location, size_t length);
+extern void elisa_uikit_text_replace_range(size_t viewHandle, size_t location, size_t length, size_t text);
+extern size_t elisa_uikit_text_selection_location(size_t viewHandle);
+extern size_t elisa_uikit_text_selection_length(size_t viewHandle);
+extern int elisa_uikit_text_set_selection(size_t viewHandle, size_t location, size_t length);
+extern int elisa_uikit_text_has_marked(size_t viewHandle);
+extern size_t elisa_uikit_text_marked_location(size_t viewHandle);
+extern size_t elisa_uikit_text_marked_length(size_t viewHandle);
+extern void elisa_uikit_text_set_marked(size_t viewHandle, size_t text,
+                                        size_t selectedLocation, size_t selectedLength);
+extern void elisa_uikit_text_unmark(size_t viewHandle);
+extern int elisa_uikit_text_rect(size_t viewHandle, size_t location, size_t length,
+                                 float *x, float *y, float *width, float *height);
+extern size_t elisa_uikit_text_offset_at_x(size_t viewHandle, float x);
+
 // Semantics.
 extern int elisa_uikit_accessibility_activate(size_t viewHandle, size_t handle);
 extern int elisa_uikit_accessibility_adjust(size_t viewHandle, size_t handle, int direction);
@@ -60,5 +80,6 @@ static NSString *elisa_uikit_string(size_t handle);
 // Fragments, in dependency order (each may use what the earlier ones declare).
 #import "shim/accessibility_element.m"
 #import "shim/view.m"
+#import "shim/text_input.m"
 #import "shim/controller.m"
 #import "shim/host.m"
