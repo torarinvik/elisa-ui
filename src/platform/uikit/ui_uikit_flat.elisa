@@ -92,6 +92,32 @@ def uikit_flat_perform_text_action(action: i32) -> i32:
     UiUIKit::redraw()
     return 1
 
+# The iOS edit menu. UIKit asks a responder which standard editing actions it
+# can perform and then sends the matching selector. Elisa decodes the opaque
+# SEL through the runtime C ABI, maps the runtime spelling to its own action
+# vocabulary, and answers from the retained text state -- so the shim never
+# holds an action table or an enabled-ness rule.
+def uikit_flat_text_action_for_selector(selector: cstr) -> i32:
+    return 1 if uikit_cstr_equals(selector, "selectAll:")
+    return 2 if uikit_cstr_equals(selector, "copy:")
+    return 3 if uikit_cstr_equals(selector, "cut:")
+    return 4 if uikit_cstr_equals(selector, "paste:")
+    return 5 if uikit_cstr_equals(selector, "undo:")
+    return 6 if uikit_cstr_equals(selector, "redo:")
+    return 0
+
+def uikit_flat_text_action_selector(view_handle: usize, selector: usize) -> void:
+    return if not UiUIKit::live() or view_handle != UiUIKit::view_handle() or selector == 0
+    action: i32 = uikit_flat_text_action_for_selector(sel_getName(selector))
+    return if action == 0
+    _ = uikit_flat_perform_text_action(action)
+
+def uikit_flat_text_action_valid_selector(view_handle: usize, selector: usize) -> i32:
+    return 0 if not UiUIKit::live() or view_handle != UiUIKit::view_handle() or selector == 0
+    action: i32 = uikit_flat_text_action_for_selector(sel_getName(selector))
+    return 0 if action == 0
+    return 1 if UiFlat::text_action_enabled(action) else 0
+
 # VoiceOver activation and adjustment. The native element is an opaque callback
 # target; resolving it to a retained widget action happens in Elisa.
 def uikit_flat_accessibility_activate(view_handle: usize, handle: usize) -> i32:

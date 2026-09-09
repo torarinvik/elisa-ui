@@ -15,11 +15,13 @@ include "../../core/ui_lifecycle.elisa"
 include "../../core/ui_metrics.elisa"
 include "../../core/ui_capabilities.elisa"
 include "../mobile/ui_mobile_surface.elisa"
+include "../../widgets/ui_theme.elisa"
 using UiPaint
 
 extern getenv(name: cstr) -> cstr?
 extern clock_gettime_nsec_np(clock_id: i32) -> u64
 extern ceilf(x: f32) -> f32
+extern sel_getName(selector: usize) -> cstr
 
 struct NativeSize:
     width: f64
@@ -146,6 +148,23 @@ def uikit_path_length(text: cstr) -> usize:
 
 def uikit_path_within_budget(length: usize) -> bool:
     return length <= UiCore::MAX_TEXT_BYTES
+
+# Objective-C selector identity is irreducibly native; its editor meaning is
+# not. Elisa decodes the opaque SEL through the runtime C ABI and owns what the
+# runtime spelling means.
+def uikit_cstr_equals(left: cstr, right: cstr) -> bool:
+    left_pointer: uintptr = left.cast[uintptr] can Unsafe.PointerCast
+    right_pointer: uintptr = right.cast[uintptr] can Unsafe.PointerCast
+    return false if left_pointer == 0.uintptr() or right_pointer == 0.uintptr()
+    condition: bool =
+        for index in 0..<UIKIT_PATH_SCAN_CAPACITY |condition = false| -> condition:
+            left_byte: u8 = uikit_cstr_byte(left, index)
+            right_byte: u8 = uikit_cstr_byte(right, index)
+            condition <- false if left_byte != right_byte
+            break if left_byte != right_byte
+            condition <- true if left_byte == 0
+            break if left_byte == 0
+    return condition
 extern CGColorCreateGenericGray(gray: f64, alpha: f64) -> usize
 extern CFGetTypeID(value: usize) -> usize
 extern CFStringGetTypeID() -> usize

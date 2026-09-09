@@ -60,9 +60,37 @@ static int elisa_uikit_status_bar_hidden = 0;
             return;
         }
         self.elisaStarted = YES;
+        [self elisaReportAppearance];
+        [self elisaObserveTraits];
         return;
     }
     elisa_uikit_surface_resized(handle, (float)size.width, (float)size.height, scale);
+}
+
+// Dynamic Type arrives as the scaled size of the body style rather than a
+// category name, so Apple's category vocabulary never has to be mirrored here.
+- (void)elisaReportAppearance {
+    UITraitCollection *traits = self.traitCollection;
+    UIFontMetrics *metrics = [UIFontMetrics metricsForTextStyle:UIFontTextStyleBody];
+    CGFloat scaledBody = [metrics scaledValueForValue:17.0
+                     compatibleWithTraitCollection:traits];
+    elisa_uikit_appearance_changed((size_t)(__bridge void *)self.view,
+                                   traits.userInterfaceStyle == UIUserInterfaceStyleDark ? 1 : 0,
+                                   traits.accessibilityContrast == UIAccessibilityContrastHigh ? 1 : 0,
+                                   (float)scaledBody);
+}
+
+// Registering for exactly the traits the framework reads means UIKit filters
+// the notifications instead of the framework discarding them.
+- (void)elisaObserveTraits {
+    [self registerForTraitChanges:@[UITraitUserInterfaceStyle.class,
+                                    UITraitAccessibilityContrast.class,
+                                    UITraitPreferredContentSizeCategory.class]
+                      withHandler:^(ElisaUiKitViewController *controller, UITraitCollection *previous) {
+        (void)previous;
+        if (!controller.elisaStarted) return;
+        [controller elisaReportAppearance];
+    }];
 }
 
 - (void)viewSafeAreaInsetsDidChange {

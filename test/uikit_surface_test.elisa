@@ -74,6 +74,10 @@ def check_capability_profile() -> void:
     check("uikit reports changing scale", profile.scale_changes)
     check("uikit has one window", not profile.multiple_windows)
     check("uikit supports text input and semantics", profile.text_input and profile.semantics and profile.clipboard)
+    # The view adopts UIKeyInput, which commits finished text and has no
+    # marked-text phase. Claiming composition would be a promise the backend
+    # cannot keep, so it is pinned false until UITextInput is adopted.
+    check("uikit does not claim composition", not profile.composition and not UiCapabilities::supports_composition())
 
 def check_surface_facts() -> void:
     UiLifecycle::reset()
@@ -122,6 +126,35 @@ def check_semantic_mapping() -> void:
     check("a text field speaks text", UiUIKit::accessibility_value_kind(UiCore::AccessibilityRole.TextField) == 3)
     check("a label speaks no value", UiUIKit::accessibility_value_kind(UiCore::AccessibilityRole.Label) == 0)
 
+def check_system_appearance() -> void:
+    check("a fresh session assumes light, normal contrast", not UiUIKit::system_dark() and not UiUIKit::system_high_contrast())
+    check("a fresh session assumes unscaled text", UiUIKit::system_text_scale() == 1.0)
+    check("a real change is reported", UiUIKit::set_system_appearance(true, false, 17.0))
+    check("dark mode is recorded", UiUIKit::system_dark() and UiUIKit::system_text_scale() == 1.0)
+    # UIKit posts a trait change for every trait, including ones this backend
+    # does not read; a redundant one must not cost a repaint.
+    check("a redundant change is not reported", not UiUIKit::set_system_appearance(true, false, 17.0))
+    check("Dynamic Type becomes a scale", UiUIKit::set_system_appearance(true, false, 25.5) and UiUIKit::system_text_scale() == 1.5)
+    check("an absurd Dynamic Type size is bounded", UiUIKit::set_system_appearance(true, false, 1000.0) and UiUIKit::system_text_scale() == UiUIKit::MAX_TEXT_SCALE)
+    zero: f32 = 0.0
+    check("a non-finite body size falls back to unscaled", UiUIKit::set_system_appearance(true, false, 1.0 / zero) and UiUIKit::system_text_scale() == 1.0)
+    check("high contrast is recorded", UiUIKit::set_system_appearance(true, true, 17.0) and UiUIKit::system_high_contrast())
+    preferences: UiTheme::Preferences = UiUIKit::system_preferences(false)
+    check("system facts become theme preferences", preferences.mode == UiTheme::ColorMode.Dark and preferences.contrast == UiTheme::Contrast.High)
+    _ = UiUIKit::set_system_appearance(false, false, 17.0)
+
+def check_edit_menu() -> void:
+    # UIKit sends the standard editing selectors; Elisa decodes the runtime
+    # spelling and owns what each one means.
+    check("selectAll: is action 1", uikit_flat_text_action_for_selector("selectAll:") == 1)
+    check("copy: is action 2", uikit_flat_text_action_for_selector("copy:") == 2)
+    check("cut: is action 3", uikit_flat_text_action_for_selector("cut:") == 3)
+    check("paste: is action 4", uikit_flat_text_action_for_selector("paste:") == 4)
+    check("undo: is action 5", uikit_flat_text_action_for_selector("undo:") == 5)
+    check("redo: is action 6", uikit_flat_text_action_for_selector("redo:") == 6)
+    check("an unrelated selector is not an edit action", uikit_flat_text_action_for_selector("delete:") == 0)
+    check("a prefix of a selector is not a match", uikit_flat_text_action_for_selector("copy") == 0)
+
 def check_offscreen_frame() -> void can[Ui.Draw, Ui.Text, Ui.Input, Ui.Window, Unsafe.PointerCast]:
     elisa_uikit_stub_set_accessibility_running(1)
     check("a headless session starts", UiUIKit::begin_headless_session(393.0, 852.0, 3.0))
@@ -151,6 +184,8 @@ def main() -> i64 can[Ui.Draw, Ui.Text, Ui.Input, Ui.Window, Unsafe.PointerCast]
     check_capability_profile()
     check_surface_facts()
     check_semantic_mapping()
+    check_system_appearance()
+    check_edit_menu()
     check_offscreen_frame()
     if failures == 0:
         _ = puts("uikit surface: all checks passed")

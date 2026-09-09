@@ -1,0 +1,61 @@
+# System appearance facts from UIKit.
+#
+# UIKit reports three things an application may want its palette to follow:
+# the interface style, the accessibility contrast setting, and Dynamic Type.
+# None of them is a decision, and none of them is applied here -- an
+# application owns its palette. The backend records the facts and repaints; an
+# app that wants to follow the system reads them and calls UiTheme::resolve.
+#
+# Dynamic Type arrives as the scaled size of the body text style rather than a
+# category name, so the mapping from Apple's category vocabulary to a scale
+# stays out of the Objective-C shim entirely.
+
+extend UiUIKit:
+    public:
+        # The unscaled body size UIKit scales from. Dividing the reported
+        # scaled size by it recovers a plain multiplier.
+        const BODY_TEXT_POINTS: f32 = 17.0
+        const MIN_TEXT_SCALE: f32 = 0.5
+        const MAX_TEXT_SCALE: f32 = 4.0
+
+        def system_dark() -> bool:
+            return uikit_system_dark
+
+        def system_high_contrast() -> bool:
+            return uikit_system_high_contrast
+
+        def system_text_scale() -> f32:
+            return uikit_system_text_scale
+
+        # Returns true when a fact actually changed, so a caller can skip the
+        # repaint and the application callback for a redundant notification --
+        # UIKit posts one for every trait, including ones this backend ignores.
+        def set_system_appearance(dark: bool, high_contrast: bool, scaled_body_points: f32) -> bool:
+            scale: f32 = text_scale_from_body_points(scaled_body_points)
+            changed: bool = dark != uikit_system_dark or high_contrast != uikit_system_high_contrast or scale != uikit_system_text_scale
+            uikit_system_dark <- dark
+            uikit_system_high_contrast <- high_contrast
+            uikit_system_text_scale <- scale
+            return changed
+
+        # An application that simply wants to track the system can hand this
+        # straight to UiTheme::resolve.
+        def system_preferences(reduced_motion: bool) -> UiTheme::Preferences:
+            mode: mutable UiTheme::ColorMode = UiTheme::ColorMode.Light
+            mode <- UiTheme::ColorMode.Dark if uikit_system_dark
+            contrast: mutable UiTheme::Contrast = UiTheme::Contrast.Normal
+            contrast <- UiTheme::Contrast.High if uikit_system_high_contrast
+            return UiTheme::Preferences{mode: mode, contrast: contrast,
+                text_scale: uikit_system_text_scale, reduced_motion: reduced_motion}
+
+    private:
+        global mutable uikit_system_dark: bool = false
+        global mutable uikit_system_high_contrast: bool = false
+        global mutable uikit_system_text_scale: f32 = 1.0
+
+        def text_scale_from_body_points(scaled_body_points: f32) -> f32:
+            return 1.0 if not UiCore::is_finite(scaled_body_points) or scaled_body_points <= 0.0
+            scale: f32 = scaled_body_points / BODY_TEXT_POINTS
+            return MIN_TEXT_SCALE if scale < MIN_TEXT_SCALE
+            return MAX_TEXT_SCALE if scale > MAX_TEXT_SCALE
+            return scale

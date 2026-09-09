@@ -117,6 +117,38 @@
     elisa_uikit_delete_backward([self elisaHandle]);
 }
 
+// --- The edit menu -----------------------------------------------------
+//
+// UIKit asks a responder which standard editing actions it can perform, then
+// sends the matching selector. Both questions are forwarded as the opaque SEL:
+// Elisa decodes it and answers from the retained text state, so no action
+// table or enabled-ness rule lives here.
+
+- (BOOL)canPerformAction:(SEL)action withSender:(id)sender {
+    if (elisa_uikit_text_action_valid_selector([self elisaHandle], (size_t)(void *)action)) return YES;
+    return [super canPerformAction:action withSender:sender];
+}
+
+- (void)copy:(id)sender {
+    (void)sender;
+    elisa_uikit_text_action_selector([self elisaHandle], (size_t)(void *)_cmd);
+}
+
+- (void)cut:(id)sender {
+    (void)sender;
+    elisa_uikit_text_action_selector([self elisaHandle], (size_t)(void *)_cmd);
+}
+
+- (void)paste:(id)sender {
+    (void)sender;
+    elisa_uikit_text_action_selector([self elisaHandle], (size_t)(void *)_cmd);
+}
+
+- (void)selectAll:(id)sender {
+    (void)sender;
+    elisa_uikit_text_action_selector([self elisaHandle], (size_t)(void *)_cmd);
+}
+
 // --- Semantics ---------------------------------------------------------
 
 - (BOOL)isAccessibilityElement {

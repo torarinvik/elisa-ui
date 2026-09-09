@@ -48,6 +48,33 @@ the shim sources, the same way the AppKit canvas gate does.
   responder as the retained focus changes.
 * **Scale changes.** `UiCapabilities::use_uikit` reports `scale_changes`,
   because a device rotates and can move between displays.
+* **No composition, and it says so.** The view adopts `UIKeyInput`, which
+  commits finished text and has no marked-text phase, so the profile reports
+  `composition: false`. Adopting the full `UITextInput` protocol is what would
+  change that; until then an application asking
+  `UiCapabilities::supports_composition` gets the truth.
+
+## System appearance
+
+`ui_uikit_appearance.elisa` records three facts UIKit reports — interface style,
+accessibility contrast, and Dynamic Type — and repaints when one of them
+actually changed (UIKit posts a trait change for every trait, including ones
+this backend does not read). Nothing is applied: a palette is application
+state. An app that wants to follow the system reads
+`UiUIKit::system_preferences` and hands it to `UiTheme::resolve`.
+
+Dynamic Type arrives as the scaled size of the body text style rather than a
+category name, so Apple's category vocabulary never has to be mirrored in the
+shim; Elisa divides by the unscaled body size to recover a plain multiplier and
+bounds it.
+
+## The edit menu
+
+UIKit asks a responder which standard editing actions it can perform and then
+sends the matching selector. Both questions are forwarded as the opaque `SEL`:
+Elisa decodes it through `sel_getName`, maps the runtime spelling onto the same
+action vocabulary the AppKit adapter uses, and answers enabled-ness from the
+retained text state. The shim holds no action table and no enabled-ness rule.
 
 ## Building and testing
 
