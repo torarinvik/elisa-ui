@@ -159,9 +159,29 @@ products and checks each painted something.
 It skips itself when no iOS runtime is installed; install one with
 `xcodebuild -downloadPlatform iOS`.
 
-One thing it does **not** cover: synthesizing a touch. `simctl` cannot inject
-one, so the touch path is covered by the host tests and by the ABI cross-check,
-not on a device.
+### A real touch
+
+`simctl` cannot inject a touch, so `scripts/check_uikit_touch.sh` drives
+`XCUIApplication`, whose taps go through the simulator's own HID pipeline — the
+same path a finger takes. One test covers the whole chain, because each link is
+required for the next to be observable:
+
+* XCUI can only see a custom-painted canvas through its accessibility elements,
+  so finding the button at all proves the semantic tree reached iOS;
+* the tap proves UIKit delivered the touch to the view and the framework routed
+  it into the retained model;
+* the status text the application rewrote coming back out proves the callback
+  ran, the frame repainted, and the new semantics were published;
+* a second tap reporting a different text proves the framework did not latch.
+
+There is no Xcode project here, so the script assembles the runner by hand from
+the `XCTRunner.app` template Xcode ships — embedding the test frameworks and
+writing an `.xctestrun` — which is all an Xcode scheme would otherwise do.
+
+This is also why the semantic tree is published unconditionally rather than only
+when VoiceOver is running: assistive technology is not its only reader. Voice
+Control, Full Keyboard Access, the accessibility inspector and UI automation all
+consume it, and several have no public "is running" flag to gate on.
 
 `test/uikit_input_test.elisa`, `test/uikit_surface_test.elisa` and
 `test/uikit_text_input_test.elisa` pin the input mapping, the surface facts, the

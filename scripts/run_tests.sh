@@ -110,6 +110,13 @@ if ! bash "$ROOT/scripts/check_uikit_simulator.sh"; then
   status=1
 fi
 
+# ...and a real touch. simctl cannot inject one, so this drives XCUIApplication
+# through the simulator's own HID pipeline. Skips itself like the gate above.
+if ! bash "$ROOT/scripts/check_uikit_touch.sh"; then
+  echo "FAIL uikit touch"
+  status=1
+fi
+
 # The AppKit/Skia compositor extends the required CPU-raster gate when it is
 # available on macOS; its fixture remains headless and never foregrounds a UI.
 if [[ "$require_real_skia" == "1" ]]; then

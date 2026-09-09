@@ -29,10 +29,12 @@ extend UiUIKit:
 
     public:
         def sync_accessibility() -> void can Unsafe.PointerCast:
-            # Building elements costs a native allocation each. VoiceOver and
-            # Switch Control are the only readers, so skip the whole pass when
-            # no assistive technology is running.
-            return if elisa_uikit_accessibility_is_running() == 0
+            # Published unconditionally, as the macOS canvas does. Assistive
+            # technology is not the only reader: Voice Control, Full Keyboard
+            # Access, the accessibility inspector and UI automation all consume
+            # this tree, and several of them have no public "is running" flag to
+            # gate on. Skipping the pass when VoiceOver happens to be off made
+            # the app invisible to every one of them.
             next_count: usize = UiCore::accessibility_count()
             previous_count: usize = uikit_accessibility_previous_count
             # A fresh tree is a new screen, not a layout change: VoiceOver

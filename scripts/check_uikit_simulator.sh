@@ -110,12 +110,21 @@ for backend in canvas controls; do
   xcrun simctl install "$UDID" "$app" >/dev/null
   xcrun simctl launch "$UDID" "$bundle" >/dev/null
   # Give the scene a moment to lay out and paint its first frame.
+  #
+  # `launchctl list | grep -q` is a trap under pipefail: grep can close the
+  # pipe on a match before launchctl has finished writing, and the pipeline
+  # then reports launchctl's SIGPIPE rather than grep's success. Capture the
+  # table first and search that.
+  running=""
   for _ in $(seq 10); do
     sleep 1
-    xcrun simctl spawn "$UDID" launchctl list 2>/dev/null | grep -q "$bundle" && break
+    running="$(xcrun simctl spawn "$UDID" launchctl list 2>/dev/null || true)"
+    case "$running" in *"$bundle"*) break ;; esac
   done
-  xcrun simctl spawn "$UDID" launchctl list 2>/dev/null | grep -q "$bundle" ||
-    fail "the $backend app is not running after launch"
+  case "$running" in
+    *"$bundle"*) ;;
+    *) fail "the $backend app is not running after launch" ;;
+  esac
   shot="$WORK/$backend.png"
   xcrun simctl io "$UDID" screenshot "$shot" >/dev/null 2>&1
   [[ -s "$shot" ]] || fail "no screenshot for the $backend app"

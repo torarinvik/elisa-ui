@@ -18,15 +18,11 @@
 const size_t elisa_uikit_not_found = (size_t)-1;
 
 static size_t elisa_uikit_stub_view = 0;
-static int elisa_uikit_stub_accessibility_running = 0;
 static size_t elisa_uikit_stub_children = 0;
 static int elisa_uikit_stub_live_elements = 0;
 
 /* Test-facing controls. Declared in the Elisa test as externs. */
 void elisa_uikit_stub_set_view(size_t handle) { elisa_uikit_stub_view = handle; }
-void elisa_uikit_stub_set_accessibility_running(int running) {
-    elisa_uikit_stub_accessibility_running = running;
-}
 size_t elisa_uikit_stub_committed_children(void) { return elisa_uikit_stub_children; }
 int elisa_uikit_stub_live_element_count(void) { return elisa_uikit_stub_live_elements; }
 
@@ -48,10 +44,6 @@ void elisa_uikit_reload_input_views(size_t viewHandle) { (void)viewHandle; }
 
 int elisa_uikit_clipboard_write(size_t text) { (void)text; return 0; }
 size_t elisa_uikit_clipboard_read(void) { return 0; }
-
-int elisa_uikit_accessibility_is_running(void) {
-    return elisa_uikit_stub_accessibility_running;
-}
 
 size_t elisa_uikit_accessibility_add(size_t viewHandle, size_t previousHandle, int isNew,
                                      size_t identifier, uint64_t traits,

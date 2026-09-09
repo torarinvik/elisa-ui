@@ -136,10 +136,6 @@ size_t elisa_uikit_clipboard_read(void) {
 
 // --- Semantics ---------------------------------------------------------
 
-int elisa_uikit_accessibility_is_running(void) {
-    return (UIAccessibilityIsVoiceOverRunning() || UIAccessibilityIsSwitchControlRunning()) ? 1 : 0;
-}
-
 static void elisa_uikit_apply_element(ElisaUiKitAccessibilityElement *element,
                                       size_t identifier, uint64_t traits,
                                       size_t label, size_t hint, size_t value,
