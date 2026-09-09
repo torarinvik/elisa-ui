@@ -200,6 +200,38 @@ extend UiCore:
                 invalidate(Invalidation.Paint)
                 invalidate(Invalidation.Semantics)
 
+        # Where the viewport is actually usable. A phone's notch and home
+        # indicator, and a raised software keyboard, take space the viewport
+        # still covers: a backdrop should fill it, content should not sit under
+        # it. Zero on every backend that has no such thing, which is every
+        # desktop one -- so this changes nothing unless a backend says
+        # otherwise.
+        def set_content_insets(top: f32, right: f32, bottom: f32, left: f32) -> bool:
+            return false if not is_finite(top) or not is_finite(right) or not is_finite(bottom) or not is_finite(left)
+            return false if top < 0.0 or right < 0.0 or bottom < 0.0 or left < 0.0
+            changed: bool = top != content_inset_top_state or right != content_inset_right_state or bottom != content_inset_bottom_state or left != content_inset_left_state
+            content_inset_top_state <- top
+            content_inset_right_state <- right
+            content_inset_bottom_state <- bottom
+            content_inset_left_state <- left
+            if changed:
+                invalidate(Invalidation.Layout)
+                invalidate(Invalidation.Paint)
+                invalidate(Invalidation.Semantics)
+            return true
+
+        def content_inset_top() -> f32:
+            return content_inset_top_state
+
+        def content_inset_right() -> f32:
+            return content_inset_right_state
+
+        def content_inset_bottom() -> f32:
+            return content_inset_bottom_state
+
+        def content_inset_left() -> f32:
+            return content_inset_left_state
+
         def viewport_width() -> f32:
             return viewport_size.width
 

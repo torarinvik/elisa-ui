@@ -18,6 +18,7 @@ extern elisa_uikit_controls_stub_selectable(slot: i32) -> i32
 extern elisa_uikit_controls_stub_parent(slot: i32) -> usize
 extern elisa_uikit_controls_stub_handle(slot: i32) -> usize
 extern elisa_uikit_controls_stub_width(slot: i32) -> f32
+extern elisa_uikit_controls_stub_height(slot: i32) -> f32
 extern elisa_uikit_controls_stub_has_title(slot: i32) -> i32
 extern elisa_uikit_controls_stub_has_label_text(slot: i32) -> i32
 extern elisa_uikit_controls_stub_has_field_text(slot: i32) -> i32
@@ -128,7 +129,9 @@ def check_hierarchy_and_geometry() -> void:
     check("the root is attached to the scene view", elisa_uikit_controls_stub_parent(0) == UiUIKitControls::scene_root())
     check("the toolbar is attached to the window", elisa_uikit_controls_stub_parent(1) == elisa_uikit_controls_stub_handle(0))
     check("a button is attached to its toolbar", elisa_uikit_controls_stub_parent(2) == elisa_uikit_controls_stub_handle(1))
-    check("the window is placed at the laid-out width", elisa_uikit_controls_stub_width(0) == 393.0)
+    # Without a scene geometry there is no safe area to move the root into, so
+    # the laid-out frame stands rather than being overridden with zero.
+    check("the window keeps its laid-out width when the scene is unknown", elisa_uikit_controls_stub_width(0) == 393.0)
     check("a control is placed too", elisa_uikit_controls_stub_width(2) > 0.0)
     # A plain view is not a scroll view, so it is never given content size.
     check("a plain view gets no content size", elisa_uikit_controls_stub_content_width(1) < 0.0)
@@ -191,10 +194,28 @@ def check_rerealization() -> void can[Memory.Allocate, Abort.Panic, Ui.Controls,
     check("children are released before their parents",
         elisa_uikit_controls_stub_released(0) == last and elisa_uikit_controls_stub_released(7) == first_root)
 
+# Once the scene reports its geometry, the tree is laid out against the usable
+# part of it and the root is moved to where the safe area starts -- so a
+# toolbar does not end up under the clock.
+def check_scene_geometry() -> void can[Memory.Allocate, Abort.Panic, Ui.Controls, Unsafe.PointerCast]:
+    check("a real scene geometry is accepted", UiUIKitControls::set_scene_geometry(402.0, 874.0, 62.0, 0.0, 34.0, 0.0))
+    check("the scene geometry is known", UiUIKitControls::scene_geometry_is_known())
+    check("the content excludes the notch and the home indicator",
+        UiUIKitControls::content_width() == 402.0 and UiUIKitControls::content_height() == 778.0)
+    check("the content starts below the notch",
+        UiUIKitControls::content_origin_y() == 62.0 and UiUIKitControls::content_origin_x() == 0.0)
+    elisa_uikit_controls_stub_reset()
+    realize_tree()
+    check("the root is placed inside the safe area",
+        elisa_uikit_controls_stub_width(0) == 402.0 and elisa_uikit_controls_stub_height(0) == 778.0)
+
 def main() -> i64 can[Memory.Allocate, Abort.Panic, Ui.Controls, Unsafe.PointerCast]:
     check_capability_profile()
     check("a scene root is required", not UiUIKitControls::set_scene_root(0))
     check("a scene root is accepted", UiUIKitControls::set_scene_root(4242))
+    check("a malformed scene geometry is rejected", not UiUIKitControls::set_scene_geometry(0.0, 874.0, 0.0, 0.0, 0.0, 0.0))
+    check("a negative safe area is rejected", not UiUIKitControls::set_scene_geometry(402.0, 874.0, -1.0, 0.0, 0.0, 0.0))
+    check("no geometry means no safe area to place into", not UiUIKitControls::scene_geometry_is_known())
     elisa_uikit_controls_stub_reset()
     realize_tree()
     check_mapping()
@@ -202,6 +223,7 @@ def main() -> i64 can[Memory.Allocate, Abort.Panic, Ui.Controls, Unsafe.PointerC
     check_text_and_state()
     check_actions()
     check_rerealization()
+    check_scene_geometry()
     if failures == 0:
         _ = puts("uikit controls: all checks passed")
         return 0

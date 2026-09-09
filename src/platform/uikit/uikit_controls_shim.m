@@ -17,22 +17,39 @@
 #include <stdint.h>
 
 // Elisa realizes the control tree once the scene has a surface.
-extern int elisa_uikit_controls_realize(size_t rootView);
+extern int elisa_uikit_controls_realize(size_t rootView, float width, float height,
+                                        float safeTop, float safeRight,
+                                        float safeBottom, float safeLeft);
 
 @interface ElisaUiKitControlsViewController : UIViewController
-@property(nonatomic, assign) BOOL elisaRealized;
+@property(nonatomic, assign) CGSize elisaRealizedSize;
 @end
 
 @implementation ElisaUiKitControlsViewController
+// A rotation or a split-view resize changes the box the tree was laid out
+// against, so the tree is realized again rather than left at the old geometry.
+// Whether a given size is worth re-realizing is not decided here: the size and
+// the insets cross unread, and Elisa answers.
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
-    if (self.elisaRealized) return;
     CGSize size = self.view.bounds.size;
     if (size.width <= 0.0 || size.height <= 0.0) return;
-    // Elisa decides whether the realization is accepted; only then is this
-    // controller's view the live root.
-    if (elisa_uikit_controls_realize((size_t)(__bridge void *)self.view) == 0) return;
-    self.elisaRealized = YES;
+    if (CGSizeEqualToSize(size, self.elisaRealizedSize)) return;
+    UIEdgeInsets insets = self.view.safeAreaInsets;
+    if (elisa_uikit_controls_realize((size_t)(__bridge void *)self.view,
+                                     (float)size.width, (float)size.height,
+                                     (float)insets.top, (float)insets.right,
+                                     (float)insets.bottom, (float)insets.left) == 0) {
+        return;
+    }
+    self.elisaRealizedSize = size;
+}
+
+- (void)viewSafeAreaInsetsDidChange {
+    [super viewSafeAreaInsetsDidChange];
+    // Force the next layout pass to re-realize against the new insets.
+    self.elisaRealizedSize = CGSizeZero;
+    [self.view setNeedsLayout];
 }
 @end
 

@@ -4,6 +4,24 @@
 
 extend UiFlat:
     public:
+        # A backend publishes the unusable edges of its surface to UiCore --
+        # the layer a backend is allowed to know. Roots are arranged inside
+        # what is left, while paint still covers the whole viewport, so a
+        # background reaches the bezel and the text does not slide under the
+        # clock. This forwarder exists so a caller holding only UiFlat does not
+        # have to reach past it.
+        def set_content_insets(top: f32, right: f32, bottom: f32, left: f32) -> bool:
+            accepted: bool = UiCore::set_content_insets(top, right, bottom, left)
+            mark_layout_dirty() if accepted
+            return accepted
+
+        # An inset larger than the surface would leave a negative extent. Keep
+        # a usable strip instead of arranging into an impossible box.
+        def content_extent(total: f32, near: f32, far: f32) -> f32:
+            remaining: f32 = total - near - far
+            return 0.0 if remaining < 0.0
+            return remaining
+
         def layout(width: f32, height: f32) -> void:
             normalize_widget_enums()
             last_layout_width <- UiConstraints::bounded(width)
@@ -29,7 +47,7 @@ extend UiFlat:
             normalize_widget_enums()
             for index in 0..<widget_count:
                 parent: usize = widgets[index].parent
-                arrange(index, 0.0, 0.0, last_layout_width, last_layout_height, 0) if parent == NONE or parent >= widget_count
+                arrange(index, UiCore::content_inset_left(), UiCore::content_inset_top(), content_extent(last_layout_width, UiCore::content_inset_left(), UiCore::content_inset_right()), content_extent(last_layout_height, UiCore::content_inset_top(), UiCore::content_inset_bottom()), 0) if parent == NONE or parent >= widget_count
 
         # Geometry consumers share paint's deferred retained reflow. Keeping
         # this in Elisa means a mutation followed immediately by hit testing

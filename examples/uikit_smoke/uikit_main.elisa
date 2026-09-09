@@ -1,0 +1,168 @@
+# An on-device smoke app for the UIKit backend.
+#
+# The host gate proves the framework's own decisions. This proves the other
+# half: that UIKit actually delivers the facts those decisions are made from.
+# It prints one line whenever a reported fact changes -- surface size, display
+# scale, safe-area insets, interface style, contrast, Dynamic Type and the
+# pointer -- so `simctl launch --console-pty` shows what reached Elisa, and
+# `simctl ui <device> appearance dark` shows the trait callback arriving.
+
+include "../../src/platform/uikit/ui_uikit_flat.elisa"
+
+extern puts(text: cstr) -> i64
+
+module SmokeReport:
+    private:
+        const LINE_CAPACITY: usize = 512
+        global mutable line: u8[LINE_CAPACITY] = zeroed
+        global mutable length: usize = 0
+
+        def put(text: sview) -> void:
+            take: usize = text.len.usize()
+            for index in 0..<take:
+                position: usize = length + index
+                line[position] <- text.data[index] if position < LINE_CAPACITY - 1
+            length <- length + take if length + take < LINE_CAPACITY - 1
+
+        # Fixed one decimal place. Enough to show a half-point inset without a
+        # general float formatter in a smoke app.
+        def put_fixed(value: f32) -> void:
+            safe: f32 = 0.0 if not UiCore::is_finite(value) else value
+            negative: bool = safe < 0.0
+            put("-") if negative
+            scaled: u32 = ((0.0 - safe if negative else safe) * 10.0 + 0.5).u32()
+            put_u32(scaled / 10)
+            put(".")
+            put_u32(scaled % 10)
+
+        def put_u32(value: u32) -> void:
+            digits: mutable usize = 1
+            probe: mutable u32 = value
+            for _ in 0..<9:
+                break if probe < 10
+                probe <- probe / 10
+                digits <- digits + 1
+            remaining: mutable u32 = value
+            for index in 0..<digits:
+                position: usize = length + digits - 1 - index
+                line[position] <- (remaining % 10 + 48).u8() if position < LINE_CAPACITY - 1
+                remaining <- remaining / 10
+            length <- length + digits if length + digits < LINE_CAPACITY - 1
+
+        def put_bool(value: bool) -> void:
+            put("yes") if value
+            put("no") if not value
+
+    public:
+        def begin(label: sview) -> void:
+            length <- 0
+            put(label)
+
+        def field(name: sview, value: f32) -> void:
+            put(" ")
+            put(name)
+            put("=")
+            put_fixed(value)
+
+        def flag(name: sview, value: bool) -> void:
+            put(" ")
+            put(name)
+            put("=")
+            put_bool(value)
+
+        def emit() -> void can Unsafe.PointerCast:
+            line[length] <- 0
+            _ = puts((&line[0]).cast[cstr] can Unsafe.PointerCast)
+
+module SmokeApp:
+    private:
+        global mutable root: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
+        global mutable status: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
+        global mutable button: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
+        global mutable taps: i32 = 0
+        global mutable reported_width: f32 = -1.0
+        global mutable reported_inset_top: f32 = -1.0
+        global mutable reported_dark: bool = false
+        global mutable reported_scale: f32 = -1.0
+        global mutable reported_text_scale: f32 = -1.0
+        global mutable reported_contrast: bool = false
+        global mutable reported_taps: i32 = -1
+        global mutable reported_phase: i32 = -1
+        global mutable frames: u32 = 0
+
+        def facts_changed() -> bool:
+            return true if UiCore::viewport_width() != reported_width
+            return true if UiCore::content_inset_top() != reported_inset_top
+            return true if UiUIKit::system_dark() != reported_dark
+            return true if UiUIKit::scale() != reported_scale
+            return true if UiUIKit::system_text_scale() != reported_text_scale
+            return true if UiUIKit::system_high_contrast() != reported_contrast
+            return true if UiLifecycle::phase().i32() != reported_phase
+            return taps != reported_taps
+
+    public:
+        def init() -> void:
+            UiHandles::reset()
+            root <- UiHandles::column(UiHandles::root_parent(), 20.0, 16.0, UiCore::rgb(16, 18, 24))
+            _ = UiHandles::label(root, "elisa-ui UIKit smoke", 24.0, UiCore::rgb(240, 242, 248))
+            status <- UiHandles::label(root, "waiting for a tap", 16.0, UiCore::rgb(180, 190, 210))
+            button <- UiHandles::button(root, 200.0, 48.0, UiCore::rgb(60, 110, 220), UiCore::rgb(90, 140, 245), UiCore::rgb(40, 80, 180))
+            UiHandles::set_text(button, "Tap me", 18.0, UiCore::rgb(255, 255, 255))
+
+        def widget_event(widget: usize) -> void:
+            return if widget != UiHandles::index(button)
+            taps <- taps + 1
+            UiHandles::set_text(status, "tapped", 16.0, UiCore::rgb(140, 230, 170))
+
+        def frame() -> void can Unsafe.PointerCast:
+            frames <- frames + 1
+            UiHandles::layout(UiCore::viewport_width(), UiCore::viewport_height())
+            UiHandles::paint()
+            return if not facts_changed()
+            reported_width <- UiCore::viewport_width()
+            reported_inset_top <- UiCore::content_inset_top()
+            reported_dark <- UiUIKit::system_dark()
+            reported_scale <- UiUIKit::scale()
+            reported_text_scale <- UiUIKit::system_text_scale()
+            reported_contrast <- UiUIKit::system_high_contrast()
+            reported_taps <- taps
+            reported_phase <- UiLifecycle::phase().i32()
+            SmokeReport::begin("ELISA-UI-SMOKE")
+            SmokeReport::field("width", UiCore::viewport_width())
+            SmokeReport::field("height", UiCore::viewport_height())
+            SmokeReport::field("scale", UiUIKit::scale())
+            SmokeReport::field("inset_top", UiCore::content_inset_top())
+            SmokeReport::field("inset_bottom", UiCore::content_inset_bottom())
+            SmokeReport::flag("dark", UiUIKit::system_dark())
+            SmokeReport::flag("high_contrast", UiUIKit::system_high_contrast())
+            SmokeReport::field("text_scale", UiUIKit::system_text_scale())
+            SmokeReport::field("taps", taps.f32())
+            # The lifecycle phase UIKit's delegate drove us into: 2 is Active,
+            # 3 Inactive, 4 Background.
+            SmokeReport::field("phase", UiLifecycle::phase().i32().f32())
+            SmokeReport::emit()
+
+def app_init() -> void:
+    SmokeApp::init()
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    SmokeApp::widget_event(widget)
+
+def app_event(event: UiCore::Event) -> void:
+    UiHandles::handle(event)
+
+def app_text_input(text: sview) -> void:
+    UiHandles::insert_text(text)
+
+def app_validate() -> void:
+    pass
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    UiHandles::update_marked_text_utf8_characters(text, selected_start, selected_length)
+
+def app_frame() -> void:
+    can Unsafe.PointerCast:
+        SmokeApp::frame()
+
+def main() -> i64:
+    return UiUIKit::run()

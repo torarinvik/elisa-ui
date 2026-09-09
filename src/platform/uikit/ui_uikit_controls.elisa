@@ -38,6 +38,15 @@ module UiUIKitControls:
         # hierarchy it was given rather than inventing a second UIWindow that
         # the platform would never show.
         global mutable uikit_controls_root: usize = 0
+        # The scene's own geometry, as UIKit last reported it. The tree is laid
+        # out against the usable part of it, not against a size an application
+        # guessed at build time.
+        global mutable uikit_controls_width: f32 = 0.0
+        global mutable uikit_controls_height: f32 = 0.0
+        global mutable uikit_controls_inset_top: f32 = 0.0
+        global mutable uikit_controls_inset_right: f32 = 0.0
+        global mutable uikit_controls_inset_bottom: f32 = 0.0
+        global mutable uikit_controls_inset_left: f32 = 0.0
 
         # Keep the retained UIKit identity in the same Elisa record that owns
         # the control index. A child is attached only after its constructor
@@ -63,6 +72,10 @@ module UiUIKitControls:
 
         # A push button is the only kind whose selection UIKit must not toggle
         # for itself; the other three are selectable controls.
+        def usable(value: f32) -> f32:
+            return 0.0 if not UiCore::is_finite(value) or value < 0.0
+            return value
+
         def button_is_selectable(kind: UiControls::Kind) -> bool:
             return kind != UiControls::Kind.PushButton
 
@@ -194,7 +207,16 @@ module UiUIKitControls:
                 # The realized root is emitted at index zero. Attaching it to
                 # the scene's view is the one step the hierarchy walk cannot
                 # do, because that view belongs to UIKit.
-                elisa_uikit_controls_add_child(uikit_controls_root, native_handle(0))
+                root_handle: usize = native_handle(0)
+                elisa_uikit_controls_add_child(uikit_controls_root, root_handle)
+                # The hierarchy walk placed the root at the origin of the box it
+                # was laid out in. That box is the safe area, so the root moves
+                # to where the safe area actually starts -- but only once the
+                # scene has reported a geometry. Without one there is no safe
+                # area to move to, and overriding the laid-out frame with zero
+                # would hide the whole tree.
+                if root_handle != 0 and scene_geometry_is_known():
+                    elisa_uikit_controls_set_frame(root_handle, content_origin_x(), content_origin_y(), content_width(), content_height())
 
         def start() -> void:
             UiCapabilities::use_uikit_controls()
@@ -203,6 +225,39 @@ module UiUIKitControls:
             return false if view == 0
             uikit_controls_root <- view
             return true
+
+        # The scene's geometry, validated once. A malformed size is rejected
+        # rather than laid out against.
+        def set_scene_geometry(width: f32, height: f32, top: f32, right: f32, bottom: f32, left: f32) -> bool:
+            return false if not UiCore::is_finite(width) or not UiCore::is_finite(height)
+            return false if width <= 0.0 or height <= 0.0
+            return false if not UiCore::is_finite(top) or not UiCore::is_finite(right)
+            return false if not UiCore::is_finite(bottom) or not UiCore::is_finite(left)
+            return false if top < 0.0 or right < 0.0 or bottom < 0.0 or left < 0.0
+            uikit_controls_width <- width
+            uikit_controls_height <- height
+            uikit_controls_inset_top <- top
+            uikit_controls_inset_right <- right
+            uikit_controls_inset_bottom <- bottom
+            uikit_controls_inset_left <- left
+            return true
+
+        # What an application should lay its tree out against: the scene minus
+        # the notch, the home indicator and any rounded corner.
+        def scene_geometry_is_known() -> bool:
+            return uikit_controls_width > 0.0 and uikit_controls_height > 0.0
+
+        def content_width() -> f32:
+            return usable(uikit_controls_width - uikit_controls_inset_left - uikit_controls_inset_right)
+
+        def content_height() -> f32:
+            return usable(uikit_controls_height - uikit_controls_inset_top - uikit_controls_inset_bottom)
+
+        def content_origin_x() -> f32:
+            return uikit_controls_inset_left
+
+        def content_origin_y() -> f32:
+            return uikit_controls_inset_top
 
         def scene_root() -> usize:
             return uikit_controls_root
@@ -215,13 +270,14 @@ module UiUIKitControls:
 # tree before entering UIKit the way the macOS entry point does. The scene calls
 # this once its view has a real size; `app_controls_realize` is where the
 # application builds, lays out and realizes.
-def uikit_controls_realize(root_view: usize) -> i32:
+def uikit_controls_realize(root_view: usize, width: f32, height: f32, safe_top: f32, safe_right: f32, safe_bottom: f32, safe_left: f32) -> i32:
     can Memory.Allocate, Abort.Panic, Ui.Controls, Unsafe.PointerCast:
         return 0 if not UiUIKitControls::set_scene_root(root_view)
+        return 0 if not UiUIKitControls::set_scene_geometry(width, height, safe_top, safe_right, safe_bottom, safe_left)
         app_controls_realize()
         return 1
 
-export fn elisa_uikit_controls_realize(root_view: usize) -> i32 = uikit_controls_realize
+export fn elisa_uikit_controls_realize(root_view: usize, width: f32, height: f32, safe_top: f32, safe_right: f32, safe_bottom: f32, safe_left: f32) -> i32 = uikit_controls_realize
 
 def uikit_controls_action(handle: usize, value: f32, selected: i32) -> i32:
     return UiUIKitControls::controls_action(handle, value, selected != 0)

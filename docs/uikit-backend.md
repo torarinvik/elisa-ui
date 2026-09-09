@@ -143,6 +143,26 @@ The gate has two halves, neither of which needs a booted simulator:
    (`test/uikit_host_stubs.c`), including one real off-screen frame written out
    as a PNG and required to be byte-identical across fresh processes.
 
+### And then actually running them
+
+`scripts/check_uikit_simulator.sh` boots a simulator and runs both backends on
+it. The two halves above are about what the framework decides and whether the
+products link; this is about whether a real iOS delivers the facts those
+decisions are made from. `examples/uikit_smoke` prints one line whenever a
+reported fact changes, so the gate reads what reached Elisa instead of inferring
+it from pixels: the scene's own width and display scale (not a size compiled
+into the app), safe-area insets that are actually non-zero, a real dark-mode
+trait change, a real Dynamic Type change, and the Active/Inactive transitions
+that come from genuinely backgrounding the app. Then it launches both `hello`
+products and checks each painted something.
+
+It skips itself when no iOS runtime is installed; install one with
+`xcodebuild -downloadPlatform iOS`.
+
+One thing it does **not** cover: synthesizing a touch. `simctl` cannot inject
+one, so the touch path is covered by the host tests and by the ABI cross-check,
+not on a device.
+
 `test/uikit_input_test.elisa`, `test/uikit_surface_test.elisa` and
 `test/uikit_text_input_test.elisa` pin the input mapping, the surface facts, the
 semantic mapping, a genuine off-screen frame with its semantic transaction, and

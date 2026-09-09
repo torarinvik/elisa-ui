@@ -103,6 +103,13 @@ if ! bash "$ROOT/scripts/check_uikit.sh"; then
   status=1
 fi
 
+# ...and then actually run them. This boots a simulator, so it skips itself
+# when no iOS runtime is installed rather than failing a machine that has none.
+if ! bash "$ROOT/scripts/check_uikit_simulator.sh"; then
+  echo "FAIL uikit simulator"
+  status=1
+fi
+
 # The AppKit/Skia compositor extends the required CPU-raster gate when it is
 # available on macOS; its fixture remains headless and never foregrounds a UI.
 if [[ "$require_real_skia" == "1" ]]; then

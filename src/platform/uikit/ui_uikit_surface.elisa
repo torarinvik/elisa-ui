@@ -20,24 +20,30 @@ extend UiUIKit:
             safe: UiResponsive::Insets = UiResponsive::insets(safe_top, safe_right, safe_bottom, safe_left)
             return false if not UiMobileSurface::start(width, height, bounded_scale(scale), safe)
             UiCore::set_viewport(width, height)
+            publish_content_insets()
             return true
 
         def resize_surface(width: f32, height: f32, scale: f32) -> bool:
             return false if not surface_values_are_valid(width, height)
             return false if not UiMobileSurface::resize(width, height, bounded_scale(scale))
             UiCore::set_viewport(width, height)
+            publish_content_insets()
             return true
 
         def set_safe_area(top: f32, right: f32, bottom: f32, left: f32) -> bool:
             return false if not insets_are_valid(top, right, bottom, left)
-            return UiMobileSurface::set_safe_area(UiResponsive::insets(top, right, bottom, left))
+            return false if not UiMobileSurface::set_safe_area(UiResponsive::insets(top, right, bottom, left))
+            publish_content_insets()
+            return true
 
         # The software keyboard covers the bottom of the surface rather than
         # shrinking it. Publish it as an inset so a form can scroll its focused
         # field into the remaining content area.
         def set_keyboard(bottom: f32, visible: bool) -> bool:
             return false if not UiCore::is_finite(bottom) or bottom < 0.0
-            return UiMobileSurface::set_keyboard(bottom, visible)
+            return false if not UiMobileSurface::set_keyboard(bottom, visible)
+            publish_content_insets()
+            return true
 
         def content_area() -> UiResponsive::ContentArea:
             return UiMobileSurface::snapshot().content
@@ -48,7 +54,26 @@ extend UiUIKit:
         def scale() -> f32:
             return UiMobileSurface::snapshot().viewport.scale
 
+        # The notch, the home indicator and a raised keyboard are all space the
+        # viewport still covers but content must stay out of. The retained
+        # layer already knows how to keep a backdrop full-bleed while arranging
+        # inside a smaller box, so the backend only has to say where the edges
+        # are.
+        def publish_content_insets() -> bool:
+            snapshot: UiMobileSurface::Snapshot = UiMobileSurface::snapshot()
+            area: UiResponsive::ContentArea = snapshot.content
+            viewport: UiResponsive::Viewport = snapshot.viewport
+            top: f32 = area.origin.y
+            left: f32 = area.origin.x
+            right: f32 = viewport.width - left - area.size.width
+            bottom: f32 = viewport.height - top - area.size.height
+            return UiCore::set_content_insets(top, nonnegative(right), nonnegative(bottom), left)
+
     private:
+        def nonnegative(value: f32) -> f32:
+            return 0.0 if not UiCore::is_finite(value) or value < 0.0
+            return value
+
         def surface_values_are_valid(width: f32, height: f32) -> bool:
             return UiCore::is_finite(width) and UiCore::is_finite(height) and width > 0.0 and height > 0.0
 
