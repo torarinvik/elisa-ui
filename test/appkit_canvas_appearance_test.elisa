@@ -1,0 +1,70 @@
+# macOS system appearance, decided in Elisa.
+#
+# Cocoa answers "which appearance" with a name object rather than a boolean,
+# and the accessibility variants are separate names -- a high-contrast dark
+# view is not called dark. Comparing them is the decision, so it is pinned here
+# rather than left to the Objective-C shim.
+
+include "../src/platform/appkit/ui_appkit_canvas.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def app_init() -> void:
+    pass
+
+def app_frame() -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    pass
+
+def main() -> i64:
+    check("a fresh session assumes light, normal contrast, full motion",
+        not UiAppKitCanvas::system_dark() and not UiAppKitCanvas::system_high_contrast() and not UiAppKitCanvas::system_reduced_motion())
+    # macOS has no Dynamic Type; the scale exists so one preferences shape
+    # works on both Apple platforms.
+    check("macOS text scale is fixed", UiAppKitCanvas::system_text_scale() == 1.0)
+    check("the dark appearance is dark",
+        UiAppKitCanvas::set_system_appearance(NSAppearanceNameDarkAqua, false, false) and UiAppKitCanvas::system_dark())
+    check("dark alone is not high contrast", not UiAppKitCanvas::system_high_contrast())
+    # Cocoa posts an appearance change for reasons this backend does not read.
+    check("a redundant appearance is not reported",
+        not UiAppKitCanvas::set_system_appearance(NSAppearanceNameDarkAqua, false, false))
+    check("the aqua appearance is light",
+        UiAppKitCanvas::set_system_appearance(NSAppearanceNameAqua, false, false) and not UiAppKitCanvas::system_dark())
+    # A high-contrast dark view must not be painted light.
+    check("high-contrast dark is both dark and high contrast",
+        UiAppKitCanvas::set_system_appearance(NSAppearanceNameAccessibilityHighContrastDarkAqua, false, false)
+        and UiAppKitCanvas::system_dark() and UiAppKitCanvas::system_high_contrast())
+    check("high-contrast aqua is light and high contrast",
+        UiAppKitCanvas::set_system_appearance(NSAppearanceNameAccessibilityHighContrastAqua, false, false)
+        and not UiAppKitCanvas::system_dark() and UiAppKitCanvas::system_high_contrast())
+    check("vibrant dark is dark",
+        UiAppKitCanvas::set_system_appearance(NSAppearanceNameVibrantDark, false, false) and UiAppKitCanvas::system_dark())
+    # Increase Contrast is a workspace setting, so it raises contrast under any
+    # appearance name.
+    check("the workspace setting raises contrast on its own",
+        UiAppKitCanvas::set_system_appearance(NSAppearanceNameAqua, true, false)
+        and UiAppKitCanvas::system_high_contrast() and not UiAppKitCanvas::system_dark())
+    check("reduce motion is recorded",
+        UiAppKitCanvas::set_system_appearance(NSAppearanceNameAqua, false, true) and UiAppKitCanvas::system_reduced_motion())
+    # A missing name must not be read as dark; a view with no appearance yet is
+    # the ordinary light default.
+    check("no appearance name is light",
+        UiAppKitCanvas::set_system_appearance(0, false, false) and not UiAppKitCanvas::system_dark() and not UiAppKitCanvas::system_high_contrast())
+    _ = UiAppKitCanvas::set_system_appearance(NSAppearanceNameAccessibilityHighContrastDarkAqua, false, true)
+    preferences: UiTheme::Preferences = UiAppKitCanvas::system_preferences()
+    check("system facts become theme preferences",
+        preferences.mode == UiTheme::ColorMode.Dark and preferences.contrast == UiTheme::Contrast.High
+        and preferences.reduced_motion and preferences.text_scale == 1.0)
+    if failures == 0:
+        _ = puts("appkit canvas appearance: all checks passed")
+        return 0
+    _ = puts("appkit canvas appearance: FAILURES above")
+    return 1

@@ -172,6 +172,17 @@ void elisa_appkit_canvas_focus_changed(size_t windowHandle, int focused) {
 void elisa_appkit_canvas_accessibility_environment_changed(size_t windowHandle) {
     test_environment_window = windowHandle;
 }
+size_t test_appearance_window = 0;
+size_t test_appearance_name = 0;
+int test_appearance_increase_contrast = -1;
+int test_appearance_reduce_motion = -1;
+void elisa_appkit_canvas_appearance_changed(size_t windowHandle, size_t appearanceName,
+                                            int increaseContrast, int reduceMotion) {
+    test_appearance_window = windowHandle;
+    test_appearance_name = appearanceName;
+    test_appearance_increase_contrast = increaseContrast;
+    test_appearance_reduce_motion = reduceMotion;
+}
 void elisa_appkit_canvas_timer_fired(size_t windowHandle, uint32_t generation, size_t timerHandle) {
     test_timer_fired_window = windowHandle;
     test_timer_fired_generation = generation;

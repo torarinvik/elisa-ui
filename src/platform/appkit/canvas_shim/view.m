@@ -232,6 +232,40 @@
     NSRect inWindow = [self convertRect:local toView:nil];
     return [self.window convertRectToScreen:inWindow];
 }
+// Cocoa answers "which appearance" with a name object, and the accessibility
+// variants are separate names. Pass the name through unread, together with the
+// two workspace display options; Elisa owns what the combination means.
+- (void)reportAppearance {
+    size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
+    NSWorkspace *workspace = [NSWorkspace sharedWorkspace];
+    elisa_appkit_canvas_appearance_changed(
+        windowHandle, (size_t)(__bridge void *)self.effectiveAppearance.name,
+        workspace.accessibilityDisplayShouldIncreaseContrast ? 1 : 0,
+        workspace.accessibilityDisplayShouldReduceMotion ? 1 : 0);
+}
+- (void)viewDidChangeEffectiveAppearance {
+    [super viewDidChangeEffectiveAppearance];
+    [self reportAppearance];
+}
+- (void)accessibilityDisplayOptionsChanged:(NSNotification *)notification {
+    (void)notification;
+    [self reportAppearance];
+}
+- (void)viewDidMoveToWindow {
+    [super viewDidMoveToWindow];
+    if (self.window == nil) return;
+    // Reduce Motion and Increase Contrast are workspace settings rather than
+    // view appearance, so they arrive by notification instead.
+    [[NSWorkspace sharedWorkspace].notificationCenter
+        addObserver:self
+           selector:@selector(accessibilityDisplayOptionsChanged:)
+               name:NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification
+             object:nil];
+    [self reportAppearance];
+}
+- (void)dealloc {
+    [[NSWorkspace sharedWorkspace].notificationCenter removeObserver:self];
+}
 - (void)flagsChanged:(NSEvent *)event {
     size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
     elisa_appkit_canvas_raw_flags(windowHandle, event.keyCode, (size_t)[event modifierFlags]);

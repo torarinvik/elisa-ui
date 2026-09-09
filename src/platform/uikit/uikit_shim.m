@@ -36,7 +36,7 @@ extern void elisa_uikit_insert_text(size_t viewHandle, size_t text);
 extern void elisa_uikit_delete_backward(size_t viewHandle);
 
 extern void elisa_uikit_appearance_changed(size_t viewHandle, int dark, int highContrast,
-                                           float scaledBodyPoints);
+                                           int reducedMotion, float scaledBodyPoints);
 extern void elisa_uikit_text_action_selector(size_t viewHandle, size_t selector);
 extern int elisa_uikit_text_action_valid_selector(size_t viewHandle, size_t selector);
 

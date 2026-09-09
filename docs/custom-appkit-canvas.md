@@ -352,3 +352,23 @@ Multiline editing
 is not yet part of this compact control; the separate native-controls AppKit
 backend remains available when an application needs the complete native text
 editor.
+
+## System appearance
+
+`ui_appkit_canvas_appearance.elisa` records what macOS reports about the
+system's look: the view's effective appearance, and the Increase Contrast and
+Reduce Motion display options. Nothing is applied — a palette is application
+state. An app that wants to follow the system reads
+`UiAppKitCanvas::system_preferences` and hands it to `UiTheme::resolve`. This is
+the same shape the UIKit backend exposes, so one application can follow the
+system on both Apple platforms without branching on the OS.
+
+Cocoa answers "which appearance" with a name object rather than a boolean, and
+the accessibility variants are separate names — a high-contrast dark view is not
+called dark. Comparing them is the decision, so the shim passes the name through
+unread and `appearance_is_dark`/`appearance_is_high_contrast` decide. Increase
+Contrast is a workspace setting rather than an appearance, so it raises contrast
+under any name.
+
+macOS has no Dynamic Type, so `system_text_scale` is fixed at 1.0; it exists so
+that one preferences shape works on both platforms.

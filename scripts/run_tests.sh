@@ -133,8 +133,8 @@ for source in "$ROOT"/test/*_test.elisa; do
   fi
   if [[ "$name" == uikit_* && "$(uname -s)" == "Darwin" ]]; then
     clang -Wl,-dead_strip -o "$ROOT/build/$name" "$ROOT/build/$name.o" "${link_inputs[@]}" -framework CoreFoundation -framework CoreGraphics -framework CoreText -framework ImageIO
-  elif [[ "$name" == "appkit_canvas_keymap_test" && "$(uname -s)" == "Darwin" ]]; then
-    clang -Wl,-dead_strip -o "$ROOT/build/$name" "$ROOT/build/$name.o" "${link_inputs[@]}" -L"$SDL_LIB" -lSDL3 -lSDL3_ttf -Wl,-rpath,"$SDL_LIB" -framework CoreFoundation
+  elif [[ "$name" == appkit_canvas_* && "$(uname -s)" == "Darwin" ]]; then
+    clang -Wl,-dead_strip -o "$ROOT/build/$name" "$ROOT/build/$name.o" "${link_inputs[@]}" -L"$SDL_LIB" -lSDL3 -lSDL3_ttf -Wl,-rpath,"$SDL_LIB" -framework CoreFoundation -framework AppKit
   else
     clang -Wl,-dead_strip -o "$ROOT/build/$name" "$ROOT/build/$name.o" "${link_inputs[@]}" -L"$SDL_LIB" -lSDL3 -lSDL3_ttf -Wl,-rpath,"$SDL_LIB"
   fi

@@ -1,0 +1,70 @@
+# System appearance facts from AppKit.
+#
+# macOS reports the effective appearance of the view and two accessibility
+# display options. None of them is a decision, and none is applied here -- an
+# application owns its palette. The backend records the facts and repaints; an
+# app that wants to follow the system reads them and calls UiTheme::resolve.
+#
+# Cocoa answers "which appearance" with a name object rather than a boolean,
+# and the accessibility variants are separate names. Comparing them is the
+# decision, so it happens here: the shim passes the name through unread.
+
+include "../../widgets/ui_theme.elisa"
+
+extend UiAppKitCanvas:
+    public:
+        def system_dark() -> bool:
+            return appkit_system_dark
+
+        def system_high_contrast() -> bool:
+            return appkit_system_high_contrast
+
+        def system_reduced_motion() -> bool:
+            return appkit_system_reduced_motion
+
+        # macOS has no Dynamic Type. The scale exists so an application can use
+        # one preferences shape on both Apple platforms.
+        def system_text_scale() -> f32:
+            return 1.0
+
+        # Returns true when a fact actually changed, so a redundant appearance
+        # notification does not cost a repaint.
+        def set_system_appearance(appearance_name: usize, increase_contrast: bool, reduce_motion: bool) -> bool:
+            dark: bool = appearance_is_dark(appearance_name)
+            high_contrast: bool = increase_contrast or appearance_is_high_contrast(appearance_name)
+            changed: bool = dark != appkit_system_dark or high_contrast != appkit_system_high_contrast or reduce_motion != appkit_system_reduced_motion
+            appkit_system_dark <- dark
+            appkit_system_high_contrast <- high_contrast
+            appkit_system_reduced_motion <- reduce_motion
+            return changed
+
+        def system_preferences() -> UiTheme::Preferences:
+            mode: mutable UiTheme::ColorMode = UiTheme::ColorMode.Light
+            mode <- UiTheme::ColorMode.Dark if appkit_system_dark
+            contrast: mutable UiTheme::Contrast = UiTheme::Contrast.Normal
+            contrast <- UiTheme::Contrast.High if appkit_system_high_contrast
+            return UiTheme::Preferences{mode: mode, contrast: contrast,
+                text_scale: 1.0, reduced_motion: appkit_system_reduced_motion}
+
+    private:
+        global mutable appkit_system_dark: bool = false
+        global mutable appkit_system_high_contrast: bool = false
+        global mutable appkit_system_reduced_motion: bool = false
+
+        def appearance_name_is(name: usize, expected: usize) -> bool:
+            return false if name == 0 or expected == 0
+            return CFEqual(name, expected)
+
+        # The accessibility high-contrast appearances are dark in their own
+        # right; a view under one of them must not be painted light.
+        def appearance_is_dark(name: usize) -> bool:
+            return true if appearance_name_is(name, NSAppearanceNameDarkAqua)
+            return true if appearance_name_is(name, NSAppearanceNameAccessibilityHighContrastDarkAqua)
+            return true if appearance_name_is(name, NSAppearanceNameAccessibilityHighContrastVibrantDark)
+            return appearance_name_is(name, NSAppearanceNameVibrantDark)
+
+        def appearance_is_high_contrast(name: usize) -> bool:
+            return true if appearance_name_is(name, NSAppearanceNameAccessibilityHighContrastAqua)
+            return true if appearance_name_is(name, NSAppearanceNameAccessibilityHighContrastDarkAqua)
+            return true if appearance_name_is(name, NSAppearanceNameAccessibilityHighContrastVibrantLight)
+            return appearance_name_is(name, NSAppearanceNameAccessibilityHighContrastVibrantDark)

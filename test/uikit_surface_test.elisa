@@ -126,21 +126,23 @@ def check_semantic_mapping() -> void:
     check("a label speaks no value", UiUIKit::accessibility_value_kind(UiCore::AccessibilityRole.Label) == 0)
 
 def check_system_appearance() -> void:
-    check("a fresh session assumes light, normal contrast", not UiUIKit::system_dark() and not UiUIKit::system_high_contrast())
+    check("a fresh session assumes light, normal contrast", not UiUIKit::system_dark() and not UiUIKit::system_high_contrast() and not UiUIKit::system_reduced_motion())
+    check("reduce motion is reported", UiUIKit::set_system_appearance(false, false, true, 17.0) and UiUIKit::system_reduced_motion() and UiUIKit::system_preferences().reduced_motion)
+    _ = UiUIKit::set_system_appearance(false, false, false, 17.0)
     check("a fresh session assumes unscaled text", UiUIKit::system_text_scale() == 1.0)
-    check("a real change is reported", UiUIKit::set_system_appearance(true, false, 17.0))
+    check("a real change is reported", UiUIKit::set_system_appearance(true, false, false, 17.0))
     check("dark mode is recorded", UiUIKit::system_dark() and UiUIKit::system_text_scale() == 1.0)
     # UIKit posts a trait change for every trait, including ones this backend
     # does not read; a redundant one must not cost a repaint.
-    check("a redundant change is not reported", not UiUIKit::set_system_appearance(true, false, 17.0))
-    check("Dynamic Type becomes a scale", UiUIKit::set_system_appearance(true, false, 25.5) and UiUIKit::system_text_scale() == 1.5)
-    check("an absurd Dynamic Type size is bounded", UiUIKit::set_system_appearance(true, false, 1000.0) and UiUIKit::system_text_scale() == UiUIKit::MAX_TEXT_SCALE)
+    check("a redundant change is not reported", not UiUIKit::set_system_appearance(true, false, false, 17.0))
+    check("Dynamic Type becomes a scale", UiUIKit::set_system_appearance(true, false, false, 25.5) and UiUIKit::system_text_scale() == 1.5)
+    check("an absurd Dynamic Type size is bounded", UiUIKit::set_system_appearance(true, false, false, 1000.0) and UiUIKit::system_text_scale() == UiUIKit::MAX_TEXT_SCALE)
     zero: f32 = 0.0
-    check("a non-finite body size falls back to unscaled", UiUIKit::set_system_appearance(true, false, 1.0 / zero) and UiUIKit::system_text_scale() == 1.0)
-    check("high contrast is recorded", UiUIKit::set_system_appearance(true, true, 17.0) and UiUIKit::system_high_contrast())
-    preferences: UiTheme::Preferences = UiUIKit::system_preferences(false)
+    check("a non-finite body size falls back to unscaled", UiUIKit::set_system_appearance(true, false, false, 1.0 / zero) and UiUIKit::system_text_scale() == 1.0)
+    check("high contrast is recorded", UiUIKit::set_system_appearance(true, true, false, 17.0) and UiUIKit::system_high_contrast())
+    preferences: UiTheme::Preferences = UiUIKit::system_preferences()
     check("system facts become theme preferences", preferences.mode == UiTheme::ColorMode.Dark and preferences.contrast == UiTheme::Contrast.High)
-    _ = UiUIKit::set_system_appearance(false, false, 17.0)
+    _ = UiUIKit::set_system_appearance(false, false, false, 17.0)
 
 def check_edit_menu() -> void:
     # UIKit sends the standard editing selectors; Elisa decodes the runtime

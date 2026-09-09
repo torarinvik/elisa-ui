@@ -21,6 +21,7 @@ static int elisa_uikit_status_bar_hidden = 0;
 
 @interface ElisaUiKitViewController : UIViewController
 @property(nonatomic, assign) BOOL elisaStarted;
+- (void)elisaReportAppearance;
 @end
 
 @implementation ElisaUiKitViewController
@@ -77,6 +78,7 @@ static int elisa_uikit_status_bar_hidden = 0;
     elisa_uikit_appearance_changed((size_t)(__bridge void *)self.view,
                                    traits.userInterfaceStyle == UIUserInterfaceStyleDark ? 1 : 0,
                                    traits.accessibilityContrast == UIAccessibilityContrastHigh ? 1 : 0,
+                                   UIAccessibilityIsReduceMotionEnabled() ? 1 : 0,
                                    (float)scaledBody);
 }
 
@@ -119,6 +121,10 @@ static int elisa_uikit_status_bar_hidden = 0;
                    name:UIKeyboardWillChangeFrameNotification object:nil];
     [center addObserver:self selector:@selector(elisaKeyboardHidden:)
                    name:UIKeyboardWillHideNotification object:nil];
+    // Reduce Motion is an accessibility setting rather than a trait, so it
+    // arrives by notification instead of through the trait registration.
+    [center addObserver:self selector:@selector(elisaAccessibilitySettingChanged:)
+                   name:UIAccessibilityReduceMotionStatusDidChangeNotification object:nil];
 }
 
 - (void)elisaKeyboardChanged:(NSNotification *)note {
@@ -141,6 +147,12 @@ static int elisa_uikit_status_bar_hidden = 0;
     UIView *view = self.controller.viewIfLoaded;
     if (view == nil) return;
     elisa_uikit_keyboard_changed((size_t)(__bridge void *)view, 0.0f, 0);
+}
+
+- (void)elisaAccessibilitySettingChanged:(NSNotification *)note {
+    (void)note;
+    if (self.controller.viewIfLoaded == nil) return;
+    [self.controller elisaReportAppearance];
 }
 
 - (BOOL)application:(UIApplication *)application

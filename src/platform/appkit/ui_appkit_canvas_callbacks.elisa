@@ -238,6 +238,20 @@ def appkit_canvas_accessibility_tooltip_text(window_handle: usize, handle: usize
     return 0 if not UiAppKitCanvas::live() or window_handle != UiAppKitCanvas::window_handle()
     return UiAppKitCanvas::accessibility_tooltip_text(handle)
 
+# Cocoa posts an appearance change for every reason, including ones this
+# backend does not read. Repaint only when a fact the framework uses changed.
+def appkit_canvas_appearance_changed_callback(window_handle: usize, appearance_name: usize, increase_contrast: i32, reduce_motion: i32) -> void:
+    return if window_handle != UiAppKitCanvas::window_handle()
+    return if not appkit_canvas_boolean_flag_is_valid(increase_contrast) or not appkit_canvas_boolean_flag_is_valid(reduce_motion)
+    return if not UiAppKitCanvas::set_system_appearance(appearance_name, increase_contrast != 0, reduce_motion != 0)
+    return if not UiAppKitCanvas::live()
+    # A palette is application state. The framework only asks for a frame; an
+    # app that follows the system rebuilds its colors in that frame from
+    # UiAppKitCanvas::system_preferences.
+    UiAppKitCanvas::redraw()
+
+export fn elisa_appkit_canvas_appearance_changed(window_handle: usize, appearance_name: usize, increase_contrast: i32, reduce_motion: i32) -> void = appkit_canvas_appearance_changed_callback
+
 export fn elisa_appkit_canvas_frame(window_handle: usize, context: usize) -> void = appkit_canvas_frame_callback
 export fn elisa_appkit_canvas_valid_marked_attributes(window_handle: usize) -> usize = appkit_canvas_valid_marked_attributes
 export fn elisa_appkit_canvas_accessibility_increment_direction() -> i32 = appkit_canvas_accessibility_increment_direction

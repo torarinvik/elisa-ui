@@ -29,6 +29,8 @@ extern void elisa_appkit_canvas_pointer_scroll(size_t windowHandle, float x, flo
 extern void elisa_appkit_canvas_raw_flags(size_t windowHandle, int keyCode, size_t modifiers);
 extern void elisa_appkit_canvas_focus_changed(size_t windowHandle, int focused);
 extern void elisa_appkit_canvas_accessibility_environment_changed(size_t windowHandle);
+extern void elisa_appkit_canvas_appearance_changed(size_t windowHandle, size_t appearanceName,
+                                                   int increaseContrast, int reduceMotion);
 extern void elisa_appkit_canvas_window_closed(size_t windowHandle);
 extern void elisa_appkit_canvas_rebuild_cursor_rects(size_t windowHandle);
 extern int elisa_appkit_canvas_render_headless(size_t windowHandle,

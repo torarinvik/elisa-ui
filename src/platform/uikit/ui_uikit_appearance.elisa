@@ -27,30 +27,35 @@ extend UiUIKit:
         def system_text_scale() -> f32:
             return uikit_system_text_scale
 
+        def system_reduced_motion() -> bool:
+            return uikit_system_reduced_motion
+
         # Returns true when a fact actually changed, so a caller can skip the
         # repaint and the application callback for a redundant notification --
         # UIKit posts one for every trait, including ones this backend ignores.
-        def set_system_appearance(dark: bool, high_contrast: bool, scaled_body_points: f32) -> bool:
+        def set_system_appearance(dark: bool, high_contrast: bool, reduced_motion: bool, scaled_body_points: f32) -> bool:
             scale: f32 = text_scale_from_body_points(scaled_body_points)
-            changed: bool = dark != uikit_system_dark or high_contrast != uikit_system_high_contrast or scale != uikit_system_text_scale
+            changed: bool = dark != uikit_system_dark or high_contrast != uikit_system_high_contrast or scale != uikit_system_text_scale or reduced_motion != uikit_system_reduced_motion
             uikit_system_dark <- dark
             uikit_system_high_contrast <- high_contrast
+            uikit_system_reduced_motion <- reduced_motion
             uikit_system_text_scale <- scale
             return changed
 
         # An application that simply wants to track the system can hand this
         # straight to UiTheme::resolve.
-        def system_preferences(reduced_motion: bool) -> UiTheme::Preferences:
+        def system_preferences() -> UiTheme::Preferences:
             mode: mutable UiTheme::ColorMode = UiTheme::ColorMode.Light
             mode <- UiTheme::ColorMode.Dark if uikit_system_dark
             contrast: mutable UiTheme::Contrast = UiTheme::Contrast.Normal
             contrast <- UiTheme::Contrast.High if uikit_system_high_contrast
             return UiTheme::Preferences{mode: mode, contrast: contrast,
-                text_scale: uikit_system_text_scale, reduced_motion: reduced_motion}
+                text_scale: uikit_system_text_scale, reduced_motion: uikit_system_reduced_motion}
 
     private:
         global mutable uikit_system_dark: bool = false
         global mutable uikit_system_high_contrast: bool = false
+        global mutable uikit_system_reduced_motion: bool = false
         global mutable uikit_system_text_scale: f32 = 1.0
 
         def text_scale_from_body_points(scaled_body_points: f32) -> f32:
