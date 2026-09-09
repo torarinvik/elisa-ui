@@ -50,8 +50,22 @@ extend UiFlat:
         # Bottom-up pass: a container's minimum is its children's minima summed
         # along its axis (plus spacing and padding) and maximised across it. A
         # declared minimum still wins if it is larger.
+        # A label's minimum IS its text, so it has to be measured against the
+        # metrics in force now rather than the ones that happened to exist when
+        # the widget was built. A host that installs its typeface after the
+        # tree is constructed, a device-scale change and a Dynamic Type change
+        # all move these numbers; a label built before any of them otherwise
+        # keeps a stale box forever, and one built before a typeface existed at
+        # all keeps a zero-height box and disappears.
+        def remeasure_text_minimum(index: usize) -> void:
+            return if widgets[index].kind != UiConst::WidgetKind.Label
+            safe_size: f32 = UiConstraints::bounded(widgets[index].text_size)
+            widgets[index].declared_min_width <- UiTextMetrics::width(widgets[index].text, safe_size)
+            widgets[index].declared_min_height <- UiTextMetrics::line_height(safe_size)
+
         def measure(index: usize, depth: usize) -> void:
             return if index >= widget_count or depth >= MAX_TRAVERSAL_DEPTH
+            remeasure_text_minimum(index)
             widgets[index].min_width <- widgets[index].declared_min_width
             widgets[index].min_height <- widgets[index].declared_min_height
             widgets[index].scroll_content_width <- widgets[index].declared_min_width

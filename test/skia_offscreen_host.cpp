@@ -145,7 +145,10 @@ int main(int argc, char** argv) {
     ok = expect_color(pixels, 40, 40, SkColorSetARGB(255, 220, 80, 100), "rounded fill") && ok;
     ok = expect_color(pixels, 80, 130, SkColorSetARGB(255, 60, 180, 140), "circle") && ok;
     ok = expect_color(pixels, 230, 50, SkColorSetARGB(255, 70, 120, 220), "triangle") && ok;
-    ok = expect_color(pixels, 120, 130, SkColorSetARGB(255, 20, 40, 80), "gradient start") && ok;
+    // A gradient is sampled at pixel CENTRES, so the first and last pixels sit
+    // half a pixel along the ramp rather than exactly on an endpoint colour.
+    // Both ends therefore get the same small tolerance.
+    ok = expect_color_near(pixels, 120, 130, SkColorSetARGB(255, 20, 40, 80), 2, "gradient start") && ok;
     ok = expect_color_near(pixels, 219, 130, SkColorSetARGB(255, 100, 180, 220), 2, "gradient end") && ok;
     ok = expect_ink(pixels, 15, 158, 110, 198, SkColorSetARGB(255, 18, 24, 32), "text") && ok;
     const std::uint64_t initial_digest = pixel_digest(pixels);

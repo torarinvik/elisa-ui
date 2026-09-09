@@ -1,0 +1,42 @@
+# The borrowed-typeface scope for a Skia frame.
+#
+# A host lends the renderer a typeface for the duration of one frame. The scope
+# lives here rather than beside the canvas state because it is the seam two
+# layers meet at: layout measures text with it before a surface exists, and the
+# painter draws with it afterwards.
+
+extend UiSkia:
+    public:
+        # Keep a host-provided typeface active while Elisa builds and replays a
+        # custom frame. A HOST seam, not a widget API: the opaque SkTypeface
+        # handle comes from the compositor and goes straight back to it, so
+        # widget code neither receives nor stores one. It has to be two calls
+        # rather than one scoped operation because the font must already be
+        # active during app_frame -- that is where text is measured -- and the
+        # borrowed canvas only exists afterwards.
+        #
+        # The caller must pass the returned handle to end_frame_font on every
+        # exit path, so a frame cannot leave a retired typeface installed for
+        # the next one.
+        def begin_frame_font(font: usize) -> usize:
+            previous: usize = skia_frame_font
+            if previous == font:
+                skia_frame_font <- font
+                return previous
+            UiSkia::clear_metric_cache()
+            skia_frame_font <- font
+            # A different typeface measures differently. UiSkia knows only
+            # UiCore, so it publishes a generation instead of reaching into the
+            # widget layer's metric cache; the adapter that owns both hands it
+            # to UiTextMetrics::set_context. Without that, a host installing
+            # its typeface after a first layout keeps every measurement taken
+            # before it existed -- and a default SkFont, having no typeface,
+            # measures nothing, so those entries are zeros and every label they
+            # sized stays invisible.
+            skia_font_generation <- skia_font_generation + 1
+            skia_font_generation <- 1 if skia_font_generation == 0
+            return previous
+
+        def end_frame_font(previous: usize) -> void:
+            skia_frame_font <- previous
+

@@ -16,12 +16,14 @@
 #include "include/core/SkFontMetrics.h"
 #include "include/core/SkImage.h"
 #include "include/core/SkPaint.h"
+#include "include/core/SkPath.h"
+#include "include/core/SkPathBuilder.h"
 #include "include/core/SkRect.h"
 #include "include/core/SkRRect.h"
 #include "include/core/SkSamplingOptions.h"
 #include "include/core/SkTypeface.h"
 #include "include/effects/SkImageFilters.h"
-#include "include/effects/SkGradientShader.h"
+#include "include/effects/SkGradient.h"
 
 namespace {
 
@@ -242,14 +244,16 @@ extern "C" void elisa_skia_canvas_fill_linear_gradient(std::size_t handle, float
             {x, y},
             {horizontal != 0 ? x + width : x, horizontal != 0 ? y : y + height},
         };
-        const SkColor colors[] = {
-            color(start_red, start_green, start_blue, start_alpha),
-            color(end_red, end_green, end_blue, end_alpha),
+        const SkColor4f colors[] = {
+            SkColor4f::FromColor(color(start_red, start_green, start_blue, start_alpha)),
+            SkColor4f::FromColor(color(end_red, end_green, end_blue, end_alpha)),
         };
         SkPaint paint;
         paint.setAntiAlias(true);
-        paint.setShader(SkGradientShader::MakeLinear(points, colors, nullptr, 2,
-                                                      SkTileMode::kClamp));
+        // Two evenly spaced stops: the stop policy stays in Elisa, so no
+        // positions are supplied here.
+        const SkGradient gradient({SkSpan(colors), SkTileMode::kClamp}, {});
+        paint.setShader(SkShaders::LinearGradient(points, gradient));
         target->drawRect(SkRect::MakeXYWH(x, y, width, height), paint);
     }
 }
@@ -290,10 +294,14 @@ extern "C" void elisa_skia_canvas_draw_image_source_sampling(
         paint.setAntiAlias(true);
         paint.setAlphaf(static_cast<float>(alpha) / 255.0f);
         const SkFilterMode filter = sampling == 0 ? SkFilterMode::kNearest : SkFilterMode::kLinear;
+        // Strict: a sub-rect blit must not sample texels outside the source
+        // rectangle Elisa asked for, which is what would let a neighbouring
+        // sprite in an atlas bleed into this one along its edges.
         target->drawImageRect(image,
                               SkRect::MakeXYWH(source_x, source_y, source_width, source_height),
                               SkRect::MakeXYWH(x, y, width, height),
-                              SkSamplingOptions(filter, SkMipmapMode::kNone), &paint);
+                              SkSamplingOptions(filter, SkMipmapMode::kNone), &paint,
+                              SkCanvas::kStrict_SrcRectConstraint);
     }
 }
 

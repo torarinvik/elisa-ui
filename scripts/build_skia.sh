@@ -18,9 +18,15 @@ revision="$(awk -F= '$1 == "revision" { print $2; exit }' "$LOCK")"
 }
 
 command -v git >/dev/null || { echo "skia build: git is required" >&2; exit 2; }
-command -v gn >/dev/null || { echo "skia build: gn from depot_tools is required" >&2; exit 2; }
-command -v autoninja >/dev/null || { echo "skia build: autoninja from depot_tools is required" >&2; exit 2; }
 command -v python3 >/dev/null || { echo "skia build: python3 is required" >&2; exit 2; }
+# depot_tools is not needed for this build. Skia fetches its own gn, and a
+# plain ninja builds it; prefer depot_tools when it is on PATH, because a
+# machine that has it usually wants it used.
+NINJA="$(command -v autoninja || command -v ninja || true)"
+[[ -n "$NINJA" ]] || {
+  echo "skia build: ninja is required (brew install ninja, or use depot_tools)" >&2
+  exit 2
+}
 
 if [[ ! -d "$SKIA_ROOT" ]]; then
   mkdir -p "$(dirname -- "$SKIA_ROOT")"
@@ -39,6 +45,14 @@ git -C "$SKIA_ROOT" fetch --tags origin "$revision"
 git -C "$SKIA_ROOT" checkout --detach "$revision"
 git -C "$SKIA_ROOT" submodule update --init --recursive
 python3 "$SKIA_ROOT/tools/git-sync-deps"
+
+# Skia's own gn, unless depot_tools already supplies one.
+GN="$(command -v gn || true)"
+if [[ -z "$GN" ]]; then
+  [[ -x "$SKIA_ROOT/bin/gn" ]] || python3 "$SKIA_ROOT/bin/fetch-gn"
+  GN="$SKIA_ROOT/bin/gn"
+fi
+[[ -x "$GN" ]] || { echo "skia build: no usable gn" >&2; exit 2; }
 
 # Keep the fetch/build path and standalone renderer gates on the same source
 # contract. A linked worktree has a `.git` file, not a directory, and is valid
@@ -67,8 +81,13 @@ gn_args=(
 )
 mkdir -p "$(dirname -- "$SKIA_OUT")"
 joined_args="${gn_args[*]}"
-gn gen "$SKIA_OUT" --args="$joined_args"
-autoninja -C "$SKIA_OUT" skia
+# fetch-gn writes into the checkout, so re-verify the pin after it and before
+# anything is built from the tree.
+SKIA_ROOT="$SKIA_ROOT" bash "$ROOT/scripts/verify_skia_pin.sh" >/dev/null
+# gn locates the source tree by walking up for a .gn file, and this script
+# does not run from inside the checkout.
+"$GN" gen "$SKIA_OUT" --root="$SKIA_ROOT" --args="$joined_args"
+"$NINJA" -C "$SKIA_OUT" skia
 
 actual_revision="$(git -C "$SKIA_ROOT" rev-parse HEAD)"
 [[ "$actual_revision" == "$revision" ]] || {

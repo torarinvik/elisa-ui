@@ -88,6 +88,10 @@ module UiSkia:
             if scale_changed:
                 UiSkia::clear_bindings()
                 UiSkia::clear_metric_cache()
+                # Metrics are resolved at a device scale, so the shared cache
+                # is stale for the same reason a font change makes it stale.
+                skia_scale_generation <- skia_scale_generation + 1
+                skia_scale_generation <- 1 if skia_scale_generation == 0
             canvas_state <- canvas
             skia_clip_depth <- 0
             skia_save_depth <- 1
@@ -125,6 +129,15 @@ module UiSkia:
 
         def surface_generation() -> u32:
             return skia_surface_generation
+
+        # The two facts that change what a measurement returns. A host adapter
+        # feeds them to UiTextMetrics::set_context so the widget layer's cache
+        # is invalidated by a typeface or device-scale change.
+        def font_generation() -> u32:
+            return skia_font_generation
+
+        def scale_generation() -> u32:
+            return skia_scale_generation
 
         # Replay the retained command batch through this backend's painter.
         # Hosts only manage the borrowed canvas lifetime; command traversal and
@@ -251,30 +264,6 @@ module UiSkia:
             def draw_text(run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
                 UiSkia::draw_text_run(run, color)
 
-    public:
-        # Keep a host-provided typeface active while Elisa builds and replays a
-        # custom frame. A HOST seam, not a widget API: the opaque SkTypeface
-        # handle comes from the compositor and goes straight back to it, so
-        # widget code neither receives nor stores one. It has to be two calls
-        # rather than one scoped operation because the font must already be
-        # active during app_frame -- that is where text is measured -- and the
-        # borrowed canvas only exists afterwards.
-        #
-        # The caller must pass the returned handle to end_frame_font on every
-        # exit path, so a frame cannot leave a retired typeface installed for
-        # the next one.
-        def begin_frame_font(font: usize) -> usize:
-            previous: usize = skia_frame_font
-            if previous == font:
-                skia_frame_font <- font
-                return previous
-            UiSkia::clear_metric_cache() if previous != font
-            skia_frame_font <- font
-            return previous
-
-        def end_frame_font(previous: usize) -> void:
-            skia_frame_font <- previous
-
     private:
         global mutable canvas_state: usize = 0
         global mutable skia_clip_depth: usize = 0
@@ -291,6 +280,13 @@ module UiSkia:
         global mutable skia_surface_generation: u32 = 0
         global mutable skia_surface_scale: f32 = 1.0
         global mutable skia_frame_font: usize = 0
+        # Generations for the shared UiTextMetrics cache: one for the borrowed
+        # typeface, one for the device scale. Both change what a measurement
+        # returns, and neither is visible to the widget layer any other way.
+        global mutable skia_font_generation: u32 = 0
+        global mutable skia_scale_generation: u32 = 0
+
+include "./ui_skia_font_scope.elisa"
 
 include "./ui_skia_geometry.elisa"
 

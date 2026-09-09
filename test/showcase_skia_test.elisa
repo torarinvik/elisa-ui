@@ -20,19 +20,27 @@ global mutable resource_generation_after: u32 = 0
 global mutable resource_image: usize = 0
 global mutable resource_replacement_done: bool = false
 
-const RESOURCE_PLACEHOLDER: UiCore::Color = UiCore::Color{r: 49, g: 56, b: 72, a: 255}
+# A function, not a `const`: stage1 declines any function body that references
+# a struct-typed top-level const, and the object then has no definition for it
+# at all. That is why every colour in this repository is a function.
+def resource_placeholder() -> UiCore::Color:
+    return UiCore::Color{r: 49, g: 56, b: 72, a: 255}
 
+# The ACTIVE metric family, not the plain one: this host supplies a typeface,
+# and a default SkFont has none, so the plain family measures every string as
+# zero. Layout believes it -- which collapses every label to no height at all.
+# A host that borrows a typeface for the frame must measure with it.
 def ui_measure_text_width(text: sview, size: f32) -> f32:
-    return UiSkia::measure_text_width(text, size)
+    return UiSkia::active_measure_text_width(text, size)
 
 def ui_measure_text_height(text: sview, size: f32) -> f32:
-    return UiSkia::text_line_height(size)
+    return UiSkia::active_text_line_height(size)
 
 def ui_font_ascent(size: f32) -> f32:
-    return UiSkia::font_ascent(size)
+    return UiSkia::active_font_ascent(size)
 
 def ui_text_line_height(size: f32) -> f32:
-    return UiSkia::text_line_height(size)
+    return UiSkia::active_text_line_height(size)
 
 def ui_clipboard_has_text() -> bool:
     return false
@@ -124,37 +132,43 @@ def queue_deferred_layout_probe() -> void can[Ui.Draw]:
 # must skip the stale command and paint only the replacement image.
 def queue_deferred_resource_probe() -> void can[Ui.Draw]:
     return if resource_image == 0
+    # stage1 also declines a const-enum member passed straight as a call
+    # argument; binding it to a local first compiles the identical call.
+    contain: UiSkia::ImageFit = UiSkia::ImageFit.Contain
     if UiHandles::widget(HelloApp::content_handle()) is card:
         box_width: f32 = 56.0
         gap: f32 = 8.0
         probe_x: f32 = card.x + card.width - box_width * 2.0 - gap - 36.0
-        probe_y: f32 = card.y + card.height - 64.0
+        # The layout probe owns the strip 58pt above the card's bottom edge.
+        # These two probes are read as separate 128x32 and 72x18 regions, so
+        # they have to occupy separate strips -- overlapping them made the
+        # resource placeholder paint over the ordering badge and the badge
+        # assertions read the wrong colour entirely.
+        probe_y: f32 = card.y + card.height - 110.0
         resource_probe_x <- probe_x.i32()
         resource_probe_y <- probe_y.i32()
         old_box: UiCore::Rect = UiCore::Rect(probe_x, probe_y, box_width, 32.0)
         new_box: UiCore::Rect = UiCore::Rect(probe_x + box_width + gap, probe_y, box_width, 32.0)
         # These retained fills make the stale-generation result observable
         # independently of whatever artwork happens to be behind the probe.
-        UiCore::fill(old_box, RESOURCE_PLACEHOLDER)
+        UiCore::fill(old_box, resource_placeholder())
         UiCore::fill(new_box, UiCore::rgb(42, 50, 64))
         if not resource_replacement_done:
             old_resource: UiResources::ResourceHandle = HelloResourceDemo::renderer_resource()
             resource_generation_before <- old_resource.generation
-            accepted_old: bool = UiSkia::defer_bound_image_fitted_intrinsic_rounded(
-                old_resource, old_box, 255, UiSkia::ImageFit.Contain, 6.0)
+            accepted_old: bool = UiSkia::defer_bound_image_fitted_intrinsic_rounded(old_resource, old_box, 255, contain, 6.0)
             replacement: UiResources::ResourceHandle = HelloResourceDemo::renderer_replace_ready()
             if UiResources::resource_is_valid(replacement):
                 resource_generation_after <- replacement.generation
                 _ = UiSkia::bind_image(replacement, resource_image)
-                accepted_new: bool = UiSkia::defer_bound_image_fitted_intrinsic_rounded(
-                    replacement, new_box, 255, UiSkia::ImageFit.Contain, 6.0)
+                accepted_new: bool = UiSkia::defer_bound_image_fitted_intrinsic_rounded(replacement, new_box, 255, contain, 6.0)
                 resource_probe_count <- 1 if accepted_old
                 resource_probe_count <- resource_probe_count + 1 if accepted_new
                 resource_replacement_done <- true
         else:
             current: UiResources::ResourceHandle = HelloResourceDemo::renderer_resource()
-            resource_probe_count <- 1 if UiSkia::defer_bound_image_fitted_intrinsic_rounded(
-                current, new_box, 255, UiSkia::ImageFit.Contain, 6.0)
+            accepted_current: bool = UiSkia::defer_bound_image_fitted_intrinsic_rounded(current, new_box, 255, contain, 6.0)
+            resource_probe_count <- 1 if accepted_current
 
 def prepare_public_workflow() -> i32:
     ensure_showcase()
@@ -204,6 +218,8 @@ def prepare_public_workflow() -> i32:
     # Exercise application state transitions before the frame that is replayed
     # into Skia. In particular, Y must replace the failed resource generation,
     # not merely repaint a stale status string.
+    # Focus is cleared so the shortcuts below reach the application rather than
+    # the field.
     UiHandles::clear_focus()
     app_event(UiCore::KeyEvent.Down(UiCore::Key.Digit1))
     app_event(UiCore::KeyEvent.Down(UiCore::Key.T))
@@ -219,14 +235,31 @@ def prepare_public_workflow() -> i32:
     return workflow_failures
 
 def showcase_skia_render(canvas: usize, font: usize) -> i32 can[Ui.Draw, Ui.Text]:
+    # The typeface has to be installed BEFORE the frame is built, not just
+    # before it is drawn: layout measures every label, and a default SkFont
+    # with no typeface measures nothing. Without this scope the whole tree lays
+    # out with zero-height text -- which is what made labels invisible, the
+    # validation row zero-high and the selection highlight empty. This is the
+    # same bracket the real AppKit/Skia host uses.
+    previous_font: usize = UiSkia::begin_frame_font(font)
+    _ = UiTextMetrics::set_context(UiSkia::font_generation(), UiSkia::scale_generation())
     ensure_showcase()
     UiSkia::begin_deferred_frame()
-    # The real AppKit/Skia host brackets app_frame before borrowing its
-    # canvas. Keep that order here so any showcase control using a deferred
-    # Skia primitive is captured and replayed rather than silently dropped.
+    # Restore the edited field's focus and selection immediately before the
+    # frame that is rasterized. The workflow clears focus so its shortcuts
+    # reach the application, and the host binds a resource in between, either
+    # of which can leave the field unselected by the time it is painted.
+    selected_field: UiHandles::Handle = widget_with_kind(UiConst::WidgetKind.TextField)
+    if UiHandles::is_valid(selected_field):
+        _ = UiHandles::request_focus(selected_field)
+        UiHandles::set_selection_utf16(selected_field, 0, 5)
+    # The real host brackets app_frame before borrowing its canvas. Keep that
+    # order here so any showcase control using a deferred Skia primitive is
+    # captured and replayed rather than silently dropped.
     build_headless_frame()
     if canvas == 0:
         UiSkia::end_deferred_frame()
+        UiSkia::end_frame_font(previous_font)
         return UiSkia::RenderStatus.SkippedNoSurface.i32()
     queue_deferred_layout_probe()
     queue_deferred_resource_probe()
@@ -234,6 +267,7 @@ def showcase_skia_render(canvas: usize, font: usize) -> i32 can[Ui.Draw, Ui.Text
     status: UiSkia::RenderStatus = UiSkia::render_status_with_font(font)
     UiSkia::detach()
     UiSkia::end_deferred_frame()
+    UiSkia::end_frame_font(previous_font)
     return status.i32()
 
 def showcase_command_count() -> i32:
@@ -277,6 +311,19 @@ def showcase_text_field_width() -> i32:
 
 def showcase_text_field_height() -> i32:
     return showcase_text_field_frame().size.height.i32()
+
+# The selection colour is the framework's, not the fixture's: the app moves it
+# with the active accent, and the workflow restores saved state that chooses
+# one. A host asserting a hardcoded colour is asserting the app's palette
+# rather than that the renderer painted the selection.
+# Packed ARGB. The alpha matters: the highlight is deliberately translucent so
+# the glyphs under it stay readable, which means no pixel in it is ever the
+# pure colour -- a host has to composite before it can look for one.
+# i64, not i32: an opaque alpha packs to 0xff000000, which does not fit a
+# signed 32-bit result -- and the framework traps on that rather than wrapping.
+def showcase_selection_color() -> i64:
+    selection: UiCore::Color = UiHandles::theme().selection
+    return selection.a.i64() * 16777216 + selection.r.i64() * 65536 + selection.g.i64() * 256 + selection.b.i64()
 
 def showcase_validation_x() -> i32:
     return showcase_validation_frame().origin.x.i32()
@@ -325,6 +372,7 @@ export fn elisa_showcase_skia_text_field_x() -> i32 = showcase_text_field_x
 export fn elisa_showcase_skia_text_field_y() -> i32 = showcase_text_field_y
 export fn elisa_showcase_skia_text_field_width() -> i32 = showcase_text_field_width
 export fn elisa_showcase_skia_text_field_height() -> i32 = showcase_text_field_height
+export fn elisa_showcase_skia_selection_color() -> i64 = showcase_selection_color
 export fn elisa_showcase_skia_validation_x() -> i32 = showcase_validation_x
 export fn elisa_showcase_skia_validation_y() -> i32 = showcase_validation_y
 export fn elisa_showcase_skia_validation_width() -> i32 = showcase_validation_width

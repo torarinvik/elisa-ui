@@ -8,11 +8,13 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cmath>
 #include <cstdlib>
 
 #include "include/core/SkCanvas.h"
 #include "include/core/SkColor.h"
 #include "include/core/SkFontMgr.h"
+#include "include/core/SkTypeface.h"
 #include "include/core/SkFontStyle.h"
 #include "include/core/SkImageInfo.h"
 #include "include/core/SkImage.h"
@@ -34,6 +36,7 @@ extern "C" std::int32_t elisa_showcase_skia_text_field_x();
 extern "C" std::int32_t elisa_showcase_skia_text_field_y();
 extern "C" std::int32_t elisa_showcase_skia_text_field_width();
 extern "C" std::int32_t elisa_showcase_skia_text_field_height();
+extern "C" std::int64_t elisa_showcase_skia_selection_color();
 extern "C" std::int32_t elisa_showcase_skia_validation_x();
 extern "C" std::int32_t elisa_showcase_skia_validation_y();
 extern "C" std::int32_t elisa_showcase_skia_validation_width();
@@ -60,6 +63,24 @@ std::size_t count_color(const SkPixmap& pixels, SkColor expected,
     for (int y = top; y < bottom; ++y) {
         for (int x = left; x < right; ++x) {
             count += pixels.getColor(x, y) == expected ? 1u : 0u;
+        }
+    }
+    return count;
+}
+
+// A composited colour lands within a rounding error of the expected blend, so
+// an exact match is the wrong question to ask of one.
+std::size_t count_color_near(const SkPixmap& pixels, SkColor expected, int tolerance,
+                             int left, int top, int right, int bottom) {
+    const auto near = [&](SkColor actual) {
+        return std::abs(static_cast<int>(SkColorGetR(actual)) - static_cast<int>(SkColorGetR(expected))) <= tolerance &&
+               std::abs(static_cast<int>(SkColorGetG(actual)) - static_cast<int>(SkColorGetG(expected))) <= tolerance &&
+               std::abs(static_cast<int>(SkColorGetB(actual)) - static_cast<int>(SkColorGetB(expected))) <= tolerance;
+    };
+    std::size_t count = 0;
+    for (int y = top; y < bottom; ++y) {
+        for (int x = left; x < right; ++x) {
+            count += near(pixels.getColor(x, y)) ? 1u : 0u;
         }
     }
     return count;
@@ -192,8 +213,24 @@ int main(int argc, char** argv) {
                         field_x + 8, field_y + 6,
                         field_x + field_width - 8, field_y + field_height - 6,
                         "edited text field") && ok;
-        const std::size_t selection_pixels = count_color(
-            pixels, SkColorSetARGB(255, 204, 76, 92),
+        // The framework owns the selection colour: it moves with the active
+        // accent, which the restored state chooses, and it is translucent so
+        // the glyphs under it stay readable. Ask for it and composite it over
+        // the field fill, because no pixel is ever the pure colour.
+        const std::uint32_t selection_argb =
+            static_cast<std::uint32_t>(elisa_showcase_skia_selection_color());
+        
+        const float selection_alpha = static_cast<float>((selection_argb >> 24) & 0xff) / 255.0f;
+        const auto over_field = [&](std::uint32_t channel, std::uint32_t field) {
+            const float blended = selection_alpha * static_cast<float>(channel) +
+                                  (1.0f - selection_alpha) * static_cast<float>(field);
+            return static_cast<std::uint8_t>(blended + 0.5f);
+        };
+        const std::size_t selection_pixels = count_color_near(
+            pixels, SkColorSetARGB(255,
+                                   over_field((selection_argb >> 16) & 0xff, 250),
+                                   over_field((selection_argb >> 8) & 0xff, 251),
+                                   over_field(selection_argb & 0xff, 254)), 2,
             field_x + 8, field_y + 4,
             field_x + field_width - 8, field_y + field_height - 4);
         if (selection_pixels < 16) {

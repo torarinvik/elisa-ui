@@ -82,12 +82,23 @@ module HelloResourceDemo:
             hello_resource_update_view()
             return true
 
-        # Exercise replacement semantics for a renderer before replay. The
-        # old generation is failed, then retry() rotates its identity; callers
-        # must replace their handle and bind the new generation.
+        # Exercise replacement semantics for a renderer before replay. The old
+        # generation is failed, then retry() rotates its identity; callers must
+        # replace their handle and bind the new generation.
+        #
+        # `fail` refuses a READY resource -- a loaded asset does not
+        # spontaneously break, and that guard is right. Retiring one to make
+        # room for a replacement is an application decision instead, and
+        # set_state is the transition that expresses it: Ready -> Failed is
+        # permitted, while Ready -> Requested is not, because a new host
+        # operation has to rotate its generation through retry() rather than
+        # claim the old one's identity.
         def renderer_replace_ready() -> UiResources::ResourceHandle:
             return UiResources::resource_invalid() if not UiResources::resource_is_valid(hello_resource_asset)
-            current: UiResources::State = UiResources::state(hello_resource_asset)
+            current: mutable UiResources::State = UiResources::state(hello_resource_asset)
+            if current == UiResources::State.Ready:
+                return UiResources::resource_invalid() if not UiResources::set_state(hello_resource_asset, UiResources::State.Failed)
+                current <- UiResources::State.Failed
             if current != UiResources::State.Failed:
                 return UiResources::resource_invalid() if not UiResources::fail(hello_resource_asset, UiResources::FailureKind.RetryableTransport)
             replacement: UiResources::ResourceHandle = UiResources::retry(hello_resource_asset)
