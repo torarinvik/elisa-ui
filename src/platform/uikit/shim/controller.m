@@ -31,6 +31,7 @@ static int elisa_uikit_status_bar_hidden = 0;
     self.view.multipleTouchEnabled = NO;
     self.view.opaque = YES;
     [(ElisaUiKitView *)self.view elisaInstallScrollRecognizer];
+    [(ElisaUiKitView *)self.view elisaInstallPointer];
 }
 
 - (BOOL)prefersStatusBarHidden {

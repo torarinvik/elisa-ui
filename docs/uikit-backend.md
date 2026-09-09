@@ -82,6 +82,21 @@ Elisa decodes it through `sel_getName`, maps the runtime spelling onto the same
 action vocabulary the AppKit adapter uses, and answers enabled-ness from the
 retained text state. The shim holds no action table and no enabled-ness rule.
 
+## The iPad pointer
+
+An iPad with a trackpad or mouse does have hover, and a pointer that changes
+shape over a control — so the "there is no hover" rule above is about touch, not
+about the platform. A `UIHoverGestureRecognizer` feeds the same `Move` event a
+mouse would, and a `UIPointerInteraction` asks Elisa for the region under the
+pointer: `uikit_flat_pointer_region` returns the control's own frame plus the
+same cursor token the macOS canvas uses (0 default, 1 an activating control,
+2 text). The frame is what lets iPadOS morph the pointer into the control; a
+miss reports no region, so UIKit keeps its own default rather than snapping to a
+rectangle the framework did not choose.
+
+Indirect scrolling arrives at a `UIPanGestureRecognizer` restricted to the
+indirect pointer, so it cannot compete with finger touches.
+
 ## Building and testing
 
 ```bash

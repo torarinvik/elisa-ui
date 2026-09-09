@@ -5,7 +5,7 @@
 // framework event a phase produces, what a HID usage means, and whether the
 // software keyboard should be up.
 
-@interface ElisaUiKitView : UIView <UIKeyInput>
+@interface ElisaUiKitView : UIView <UIKeyInput, UIPointerInteractionDelegate>
 // The elements published by the last committed semantic frame. UIKit reads
 // this through accessibilityElements; Elisa owns its contents and ordering.
 @property(nonatomic, strong) NSArray *elisaElements;
@@ -83,6 +83,66 @@
     CGPoint at = [pan locationInView:self];
     elisa_uikit_scroll([self elisaHandle], (float)at.x, (float)at.y,
                        (float)delta.x, (float)delta.y);
+}
+
+// --- The iPad pointer --------------------------------------------------
+//
+// A trackpad or mouse does hover, and its pointer changes shape over a
+// control. Both reuse the retained policy the macOS canvas already uses: the
+// same Move event, and the same cursor tokens.
+
+- (void)elisaInstallPointer {
+    UIHoverGestureRecognizer *hover =
+        [[UIHoverGestureRecognizer alloc] initWithTarget:self action:@selector(elisaHover:)];
+    [self addGestureRecognizer:hover];
+    [self addInteraction:[[UIPointerInteraction alloc] initWithDelegate:self]];
+}
+
+- (void)elisaHover:(UIHoverGestureRecognizer *)hover {
+    if (hover.state == UIGestureRecognizerStateEnded || hover.state == UIGestureRecognizerStateCancelled) {
+        elisa_uikit_hover_ended([self elisaHandle]);
+        return;
+    }
+    CGPoint at = [hover locationInView:self];
+    elisa_uikit_hover([self elisaHandle], (float)at.x, (float)at.y);
+}
+
+- (UIPointerRegion *)pointerInteraction:(UIPointerInteraction *)interaction
+                       regionForRequest:(UIPointerRegionRequest *)request
+                          defaultRegion:(UIPointerRegion *)defaultRegion {
+    (void)interaction;
+    float x = 0.0f;
+    float y = 0.0f;
+    float width = 0.0f;
+    float height = 0.0f;
+    int token = elisa_uikit_pointer_region([self elisaHandle],
+                                           (float)request.location.x, (float)request.location.y,
+                                           &x, &y, &width, &height);
+    if (token < 0) return defaultRegion;
+    // The identifier carries the token back to the style callback, so the
+    // region and its appearance are decided by the same lookup.
+    return [UIPointerRegion regionWithRect:CGRectMake(x, y, width, height)
+                                identifier:@(token)];
+}
+
+- (UIPointerStyle *)pointerInteraction:(UIPointerInteraction *)interaction
+                        styleForRegion:(UIPointerRegion *)region {
+    (void)interaction;
+    id identifier = region.identifier;
+    if (![identifier isKindOfClass:[NSNumber class]]) return nil;
+    int token = [(NSNumber *)identifier intValue];
+    if (token == 2) {
+        UIPointerShape *beam = [UIPointerShape beamWithPreferredLength:region.rect.size.height
+                                                                 axis:UIAxisVertical];
+        return [UIPointerStyle styleWithShape:beam constrainedAxes:UIAxisVertical];
+    }
+    if (token == 1) {
+        // Morph the pointer into the control's own shape, which is the
+        // iPadOS idiom for something activatable.
+        UIPointerShape *shape = [UIPointerShape shapeWithRoundedRect:region.rect];
+        return [UIPointerStyle styleWithShape:shape constrainedAxes:UIAxisNeither];
+    }
+    return nil;
 }
 
 // --- Hardware keys -----------------------------------------------------

@@ -20,6 +20,12 @@ global mutable frames_painted: i32 = 0
 # test's own top-level scope.
 module UiKitTestApp:
     public:
+        def button() -> UiHandles::Handle:
+            return action_button
+
+        def field() -> UiHandles::Handle:
+            return name_field
+
         def build() -> void:
             UiHandles::reset()
             root <- UiHandles::column(UiHandles::root_parent(), 16.0, 12.0, UiCore::rgb(18, 20, 26))
@@ -156,6 +162,30 @@ def check_edit_menu() -> void:
     check("an unrelated selector is not an edit action", uikit_flat_text_action_for_selector("delete:") == 0)
     check("a prefix of a selector is not a match", uikit_flat_text_action_for_selector("copy") == 0)
 
+# The iPad pointer reuses the retained cursor policy: 0 default, 1 an
+# activating control, 2 text. A miss reports no region at all so UIKit keeps
+# its own default rather than snapping to a rectangle Elisa did not choose.
+def check_pointer(view: usize) -> void:
+    x: mutable f32 = 0.0
+    y: mutable f32 = 0.0
+    width: mutable f32 = 0.0
+    height: mutable f32 = 0.0
+    check("a foreign view has no pointer region", uikit_flat_pointer_region(1, 10.0, 10.0, &x, &y, &width, &height) < 0)
+    zero: f32 = 0.0
+    check("a non-finite pointer has no region", uikit_flat_pointer_region(view, 1.0 / zero, 10.0, &x, &y, &width, &height) < 0)
+    # Far outside the surface there is no control, so UIKit keeps its default.
+    check("a miss has no region", uikit_flat_pointer_region(view, -1000.0, -1000.0, &x, &y, &width, &height) < 0)
+    button_x: f32 = UiFlat::widget(UiHandles::index(UiKitTestApp::button())).x + 4.0
+    button_y: f32 = UiFlat::widget(UiHandles::index(UiKitTestApp::button())).y + 4.0
+    token: i32 = uikit_flat_pointer_region(view, button_x, button_y, &x, &y, &width, &height)
+    check("a button asks for the activating pointer", token == 1)
+    # The region is the control's own frame, which is what lets iPadOS morph
+    # the pointer into it.
+    check("the region is the control's frame", width > 0.0 and height > 0.0 and x <= button_x and y <= button_y)
+    field_x: f32 = UiFlat::widget(UiHandles::index(UiKitTestApp::field())).x + 4.0
+    field_y: f32 = UiFlat::widget(UiHandles::index(UiKitTestApp::field())).y + 4.0
+    check("a text field asks for the beam", uikit_flat_pointer_region(view, field_x, field_y, &x, &y, &width, &height) == 2)
+
 def check_offscreen_frame() -> void can[Ui.Draw, Ui.Text, Ui.Input, Ui.Window, Unsafe.PointerCast]:
     elisa_uikit_stub_set_accessibility_running(1)
     check("a headless session starts", UiUIKit::begin_headless_session(393.0, 852.0, 3.0))
@@ -172,6 +202,7 @@ def check_offscreen_frame() -> void can[Ui.Draw, Ui.Text, Ui.Input, Ui.Window, U
     # The semantic transaction ran against the stub bridge: every published
     # node must have become a live element.
     check("semantics published elements", elisa_uikit_stub_live_element_count() > 0)
+    check_pointer(UiUIKit::view_handle())
     published: i32 = elisa_uikit_stub_live_element_count()
     check("a second frame reuses its elements", UiUIKit::render_snapshot(1179, 2556) and elisa_uikit_stub_live_element_count() == published)
     check("an oversized snapshot is refused", not UiUIKit::render_snapshot(100000, 100000))

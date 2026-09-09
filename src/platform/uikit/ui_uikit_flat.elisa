@@ -148,5 +148,43 @@ def uikit_flat_accessibility_increment_direction() -> i32:
 def uikit_flat_accessibility_decrement_direction() -> i32:
     return -1
 
+# An iPad with a trackpad or mouse does have hover, and a pointer whose shape
+# follows the control under it. Both reuse the retained policy the macOS canvas
+# already uses: the same Move event and the same cursor tokens
+# (0 default, 1 an activating control, 2 text).
+def uikit_flat_hover(view_handle: usize, x: f32, y: f32) -> void:
+    return if not UiUIKit::live() or view_handle != UiUIKit::view_handle()
+    return if not UiLifecycle::accepts_input()
+    return if not UiCore::is_finite(x) or not UiCore::is_finite(y)
+    uikit_dispatch_input_event(UiCore::PointerEvent.Move(at: UiCore::Vec2(x, y)))
+
+def uikit_flat_hover_ended(view_handle: usize) -> void:
+    return if not UiUIKit::live() or view_handle != UiUIKit::view_handle()
+    return if not UiLifecycle::accepts_input()
+    uikit_dispatch_input_event(UiCore::PointerEvent.Leave)
+
+# The pointer's shape and the rectangle it snaps to are both retained-layout
+# facts. Reporting the control's own frame is what lets iPadOS morph the
+# pointer into it, so the geometry is resolved here rather than guessed from a
+# touch radius in the shim.
+def uikit_flat_pointer_region(view_handle: usize, x: f32, y: f32,
+                              region_x: mutable f32&, region_y: mutable f32&,
+                              region_width: mutable f32&, region_height: mutable f32&) -> i32:
+    return -1 if region_x == null or region_y == null or region_width == null or region_height == null
+    region_x <- 0.0
+    region_y <- 0.0
+    region_width <- 0.0
+    region_height <- 0.0
+    return -1 if not UiUIKit::live() or view_handle != UiUIKit::view_handle()
+    return -1 if not UiCore::is_finite(x) or not UiCore::is_finite(y)
+    target: usize = UiFlat::hit(x, y)
+    return -1 if target == UiFlat::NONE
+    widget: UiFlat::Widget = UiFlat::widget(target)
+    region_x <- widget.x
+    region_y <- widget.y
+    region_width <- widget.width
+    region_height <- widget.height
+    return UiFlat::cursor_at(x, y)
+
 include "./ui_uikit_flat_text.elisa"
 include "./ui_uikit_flat_exports.elisa"

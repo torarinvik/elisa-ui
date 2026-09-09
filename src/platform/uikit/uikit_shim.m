@@ -28,6 +28,13 @@ extern void elisa_uikit_timer_fired(size_t viewHandle, uint32_t generation, size
 extern void elisa_uikit_touch(size_t viewHandle, int phase, float x, float y, int tapCount);
 extern void elisa_uikit_scroll(size_t viewHandle, float x, float y, float dx, float dy);
 extern void elisa_uikit_press(size_t viewHandle, int usage, int64_t flags, int down);
+extern void elisa_uikit_hover(size_t viewHandle, float x, float y);
+extern void elisa_uikit_hover_ended(size_t viewHandle);
+// Returns the cursor token (0 default, 1 an activating control, 2 text), or a
+// negative value when no control is under the pointer.
+extern int elisa_uikit_pointer_region(size_t viewHandle, float x, float y,
+                                      float *regionX, float *regionY,
+                                      float *regionWidth, float *regionHeight);
 
 // Text input.
 extern int elisa_uikit_wants_keyboard(size_t viewHandle);
