@@ -1,0 +1,205 @@
+# elisa-ui UIKit backend: the widget tree as real iOS controls.
+#
+# The sibling of the AppKit controls backend, and the opposite of the UIKit
+# canvas. This one owns no pixels: it creates UILabels, UIButtons, UISliders and
+# UITextFields and lets UIKit lay out their text, run the IME, mirror
+# right-to-left, scale with Dynamic Type and talk to VoiceOver. None of that is
+# reachable by drawing rectangles, which is the whole reason to want native
+# controls.
+#
+# UiControls owns the index -> opaque handle table. The Objective-C shim
+# resolves handles only at the UIKit boundary and keeps no second arena.
+
+include "../../widgets/ui_controls.elisa"
+include "../../core/ui_capabilities.elisa"
+
+# `impl UiControls::Controls for T:` is rejected by stage0's parser, so the impl
+# below names `Controls` unqualified and this is what resolves it.
+using UiControls
+
+include "./ui_uikit_controls_native.elisa"
+
+module UiUIKitControls:
+    public:
+        # The UIKit controls backend. A TYPE, not a value: native handles live
+        # in UiControls' retained records, so methods are static and the
+        # specialization inlines straight through to typed C entry points.
+        struct UiKitControls:
+            unused: i32
+
+        def native_handle(index: i32) -> usize:
+            return 0 if index < 0
+            return 0 if index.usize() >= UiControls::count()
+            return UiControls::native_handle_at(index.usize())
+
+    private:
+        # iOS has exactly one window, supplied by the scene. A `Window` control
+        # therefore becomes an ordinary container view: the framework keeps the
+        # hierarchy it was given rather than inventing a second UIWindow that
+        # the platform would never show.
+        global mutable uikit_controls_root: usize = 0
+
+        # Keep the retained UIKit identity in the same Elisa record that owns
+        # the control index. A child is attached only after its constructor
+        # returned a non-zero handle, and the list is emitted parent-first, so
+        # its parent already exists.
+        def record_created(index: i32, handle: usize, parent: i32) -> void:
+            return if handle == 0 or index < 0
+            UiControls::set_native_handle(index.usize(), handle)
+            parent_handle: usize = native_handle(parent)
+            elisa_uikit_controls_add_child(parent_handle, handle) if parent >= 0 and parent_handle != 0
+
+        # UIProgressView has no range of its own. Normalizing here keeps the
+        # native bridge free of framework value policy, and matches what the
+        # canvas backend speaks to VoiceOver.
+        def progress_fraction(value: f32, low: f32, high: f32) -> f32:
+            return 0.0 if not UiCore::is_finite(value) or not UiCore::is_finite(low) or not UiCore::is_finite(high)
+            span: f32 = high - low
+            return 0.0 if span <= 0.0
+            fraction: f32 = (value - low) / span
+            return 0.0 if fraction < 0.0
+            return 1.0 if fraction > 1.0
+            return fraction
+
+        # A push button is the only kind whose selection UIKit must not toggle
+        # for itself; the other three are selectable controls.
+        def button_is_selectable(kind: UiControls::Kind) -> bool:
+            return kind != UiControls::Kind.PushButton
+
+        def kind_is_button(kind: UiControls::Kind) -> bool:
+            return kind == UiControls::Kind.PushButton or kind == UiControls::Kind.ToggleButton or kind == UiControls::Kind.CheckBox or kind == UiControls::Kind.RadioButton
+
+    public:
+        impl Controls for UiKitControls:
+            def create(index: i32, kind: UiControls::Kind, parent: i32, window_mode: UiControls::WindowMode, axis: UiConst::Axis, state: UiControls::ControlState) -> void:
+                can Ui.Controls:
+                    # A window's decoration mode has no iOS meaning: the scene
+                    # owns the only surface. Accepting the value and ignoring
+                    # it is honest; refusing to realize the tree would not be.
+                    _ = window_mode
+                    if kind == UiControls::Kind.Window or kind == UiControls::Kind.Panel:
+                        record_created(index, elisa_uikit_controls_create_view(), parent)
+                        return
+                    if kind == UiControls::Kind.ScrollView:
+                        vertical: i32 = 0 if axis == UiConst::Axis.Row else 1
+                        horizontal: i32 = 1 if axis == UiConst::Axis.Row else 0
+                        record_created(index, elisa_uikit_controls_create_scroll_view(vertical, horizontal), parent)
+                        return
+                    if kind == UiControls::Kind.Label:
+                        record_created(index, elisa_uikit_controls_create_label(), parent)
+                        return
+                    if kind_is_button(kind):
+                        # A UISwitch is the iOS control for a bare boolean, but
+                        # it carries no caption of its own. A selectable
+                        # UIButton keeps the widget's text visible and is the
+                        # same control iOS itself uses for check and radio
+                        # rows, so a labelled boolean stays readable.
+                        record_created(index, elisa_uikit_controls_create_button(1 if button_is_selectable(kind) else 0), parent)
+                        return
+                    if kind == UiControls::Kind.TextField:
+                        record_created(index, elisa_uikit_controls_create_text_field(), parent)
+                        return
+                    if kind == UiControls::Kind.Slider:
+                        record_created(index, elisa_uikit_controls_create_slider(state.low, state.high, state.value), parent)
+                        return
+                    if kind == UiControls::Kind.ProgressBar:
+                        record_created(index, elisa_uikit_controls_create_progress(), parent)
+
+            def set_frame(index: i32, kind: UiControls::Kind, box: UiCore::Rect) -> void:
+                can Ui.Controls:
+                    handle: usize = native_handle(index)
+                    return if handle == 0
+                    elisa_uikit_controls_set_frame(handle, box.origin.x, box.origin.y, box.size.width, box.size.height)
+                    if kind == UiControls::Kind.ScrollView:
+                        elisa_uikit_controls_set_content_size(handle, box.size.width, box.size.height)
+
+            def set_text(index: i32, kind: UiControls::Kind, text: sview) -> void:
+                # Native controls copy this borrowed CoreFoundation string in
+                # their own setter, so the bridge performs only the assignment.
+                value: usize = native_string(text)
+                return if value == 0
+                handle: usize = native_handle(index)
+                if kind_is_button(kind):
+                    elisa_uikit_controls_set_button_title(handle, value)
+                if kind == UiControls::Kind.Label:
+                    elisa_uikit_controls_set_label_text(handle, value)
+                if kind == UiControls::Kind.TextField:
+                    elisa_uikit_controls_set_field_text(handle, value)
+                # A window has no title bar on iOS and a slider or progress bar
+                # has no caption, so the text becomes what VoiceOver reads.
+                if kind == UiControls::Kind.Window or kind == UiControls::Kind.Slider or kind == UiControls::Kind.ProgressBar:
+                    elisa_uikit_controls_set_accessibility_label(handle, value)
+                CFRelease(value)
+
+            def set_state(index: i32, kind: UiControls::Kind, value: f32, low: f32, high: f32, selected: bool) -> void:
+                can Ui.Controls:
+                    handle: usize = native_handle(index)
+                    return if handle == 0
+                    if kind == UiControls::Kind.ToggleButton or kind == UiControls::Kind.CheckBox or kind == UiControls::Kind.RadioButton:
+                        elisa_uikit_controls_set_button_selected(handle, 1 if selected else 0)
+                        return
+                    if kind == UiControls::Kind.Slider:
+                        elisa_uikit_controls_set_slider_state(handle, low, high, value)
+                        return
+                    if kind == UiControls::Kind.ProgressBar:
+                        elisa_uikit_controls_set_progress(handle, progress_fraction(value, low, high))
+
+        # Release the retained handles before the next realization. Children may
+        # still be retained by their old superview, but dropping every Elisa
+        # ownership reference lets ARC tear the old tree down without a second
+        # native lifetime table.
+        def release_native_handles() -> void:
+            # UiControls emits parents before children, so release in reverse:
+            # a parent's deallocation must not invalidate a child handle Elisa
+            # still has to release.
+            count: usize = UiControls::count()
+            index: mutable usize = count
+            for _ in 0..<count:
+                index <- index - 1
+                handle: usize = UiControls::native_handle_at(index)
+                # Clear the ownership slot before crossing the boundary, so a
+                # re-entrant lookup during teardown fails closed rather than
+                # observing a handle whose retain is being relinquished.
+                UiControls::set_native_handle(index, 0) if handle != 0
+                elisa_uikit_controls_release(handle)
+
+        # Realize a laid-out widget tree as native controls. Run
+        # UiWidgets::layout first: every control is placed at the box it
+        # computed.
+        def realize(root: UiWidgets::Widget) -> void:
+            can[Ui.Controls]:
+                release_native_handles()
+                UiControls::reset()
+                UiControls::realize(root, UiControls::NO_PARENT, 0)
+                UiControls::apply[UiKitControls]()
+                # The realized root is emitted at index zero. Attaching it to
+                # the scene's view is the one step the hierarchy walk cannot
+                # do, because that view belongs to UIKit.
+                elisa_uikit_controls_add_child(uikit_controls_root, native_handle(0))
+
+        def start() -> void:
+            UiCapabilities::use_uikit_controls()
+
+        def set_scene_root(view: usize) -> bool:
+            return false if view == 0
+            uikit_controls_root <- view
+            return true
+
+        def scene_root() -> usize:
+            return uikit_controls_root
+
+        def run() -> i64:
+            start()
+            return 0 if elisa_uikit_controls_run() == 0 else 1
+
+# iOS hands the surface over after launch, so an application cannot realize its
+# tree before entering UIKit the way the macOS entry point does. The scene calls
+# this once its view has a real size; `app_controls_realize` is where the
+# application builds, lays out and realizes.
+def uikit_controls_realize(root_view: usize) -> i32:
+    can Memory.Allocate, Abort.Panic, Ui.Controls, Unsafe.PointerCast:
+        return 0 if not UiUIKitControls::set_scene_root(root_view)
+        app_controls_realize()
+        return 1
+
+export fn elisa_uikit_controls_realize(root_view: usize) -> i32 = uikit_controls_realize

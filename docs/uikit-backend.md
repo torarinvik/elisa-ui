@@ -1,4 +1,23 @@
-# The UIKit backend
+# The UIKit backends
+
+iOS has two, mirroring macOS: a custom-painted canvas (this document) and a
+native-controls backend
+([`ui_uikit_controls.elisa`](../src/platform/uikit/ui_uikit_controls.elisa))
+that owns no pixels and realizes the portable widget tree as real UILabels,
+UIButtons, UISliders and UITextFields through the same `UiControls` protocol the
+AppKit controls backend implements. An application links exactly one; both build
+with `scripts/build_uikit.sh <example> <simulator|device> <canvas|controls>`.
+
+Two decisions in the controls backend are worth stating, because iOS has no
+exact counterpart for them. A `Window` becomes an ordinary container view: the
+scene owns the only real window, so inventing a second `UIWindow` the platform
+would never show would be worse than keeping the hierarchy as given. And a
+`CheckBox` becomes a selectable `UIButton` rather than a `UISwitch` — a switch
+is the iOS control for a bare boolean, but it carries no caption, and a
+selectable button keeps the widget's own text visible, which is the same control
+iOS uses for check and radio rows.
+
+# The UIKit canvas backend
 
 elisa-ui runs on iOS through the same architecture as the macOS canvas: Elisa
 owns the retained widget tree and emits a batch of `UiCore::Command` values, and

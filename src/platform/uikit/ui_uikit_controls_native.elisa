@@ -1,0 +1,39 @@
+# UIKit native-controls boundary.
+#
+# One typed C entry point per UIKit operation. Every one receives values Elisa
+# already decided; none of them chooses a control, a place or a state.
+
+extern CFRelease(value: usize) -> void
+extern CFStringCreateWithBytes(allocator: usize, bytes: cstr, length: i64, encoding: u32, external: bool) -> usize
+
+extern elisa_uikit_controls_run() -> i32
+extern elisa_uikit_controls_create_view() -> usize
+extern elisa_uikit_controls_create_scroll_view(vertical: i32, horizontal: i32) -> usize
+extern elisa_uikit_controls_create_label() -> usize
+extern elisa_uikit_controls_create_button(selectable: i32) -> usize
+extern elisa_uikit_controls_create_text_field() -> usize
+extern elisa_uikit_controls_create_slider(low: f32, high: f32, value: f32) -> usize
+extern elisa_uikit_controls_create_progress() -> usize
+extern elisa_uikit_controls_release(handle: usize) -> void
+extern elisa_uikit_controls_add_child(parent: usize, child: usize) -> void
+extern elisa_uikit_controls_set_frame(handle: usize, x: f32, y: f32, width: f32, height: f32) -> void
+extern elisa_uikit_controls_set_content_size(handle: usize, width: f32, height: f32) -> void
+extern elisa_uikit_controls_set_label_text(handle: usize, text: usize) -> void
+extern elisa_uikit_controls_set_button_title(handle: usize, text: usize) -> void
+extern elisa_uikit_controls_set_field_text(handle: usize, text: usize) -> void
+extern elisa_uikit_controls_set_button_selected(handle: usize, selected: i32) -> void
+extern elisa_uikit_controls_set_slider_state(handle: usize, low: f32, high: f32, value: f32) -> void
+extern elisa_uikit_controls_set_progress(handle: usize, fraction: f32) -> void
+extern elisa_uikit_controls_set_accessibility_label(handle: usize, text: usize) -> void
+
+const UIKIT_CONTROLS_UTF8_ENCODING: u32 = 0x08000100
+
+# Counted Elisa text becomes a CoreFoundation string here, once, so no native
+# entry point has to know the framework's text budget.
+def native_string(text: sview) -> usize:
+    return 0 if text.len < 0
+    safe_text: sview = UiCore::bounded_text(text)
+    empty: cstr = ""
+    pointer: mutable cstr = empty
+    pointer <- safe_text.data.cast[cstr] can Unsafe.PointerCast if safe_text.len > 0
+    return CFStringCreateWithBytes(0, pointer, safe_text.len, UIKIT_CONTROLS_UTF8_ENCODING, false)

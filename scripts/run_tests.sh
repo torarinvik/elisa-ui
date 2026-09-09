@@ -31,6 +31,9 @@ clang -c -Wall -Wextra -Werror -o "$SKIA_TEST_SHIM" "$ROOT/test/skia_painter_shi
 # they link C stand-ins for the entry points that shim would provide.
 UIKIT_TEST_STUBS="$ROOT/build/uikit_host_stubs.o"
 clang -c -Wall -Wextra -Werror -o "$UIKIT_TEST_STUBS" "$ROOT/test/uikit_host_stubs.c"
+# The native-controls backend has its own, disjoint shim boundary.
+UIKIT_CONTROLS_TEST_STUBS="$ROOT/build/uikit_controls_host_stubs.o"
+clang -c -Wall -Wextra -Werror -o "$UIKIT_CONTROLS_TEST_STUBS" "$ROOT/test/uikit_controls_host_stubs.c"
 
 # The real custom renderer is a required gate by default. Run it before the
 # longer portable/native matrix so a missing pinned SDK fails immediately and
@@ -128,7 +131,9 @@ for source in "$ROOT"/test/*_test.elisa; do
   if [[ "$name" == "skia_painter_test" ]]; then
     link_inputs=("$SKIA_TEST_SHIM" "$RUNTIME")
   fi
-  if [[ "$name" == uikit_* ]]; then
+  if [[ "$name" == "uikit_controls_test" ]]; then
+    link_inputs=("$UIKIT_CONTROLS_TEST_STUBS" "$RUNTIME")
+  elif [[ "$name" == uikit_* ]]; then
     link_inputs=("$UIKIT_TEST_STUBS" "$RUNTIME")
   fi
   if [[ "$name" == uikit_* && "$(uname -s)" == "Darwin" ]]; then

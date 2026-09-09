@@ -77,7 +77,12 @@ because a module member's symbol carries its module and those names cannot move.
   and crosses only a narrow C FFI; the current AppKit canvas's CoreGraphics
   path remains an explicit fallback when the optional Skia host is not linked,
   plus
-  [UIKit](src/platform/uikit/ui_uikit.elisa) (a custom-painted iOS `UIView`;
+  [UIKit controls](src/platform/uikit/ui_uikit_controls.elisa) (real iOS
+  controls; UILabels, UIButtons, UISliders and UITextFields that UIKit draws,
+  focuses, scales with Dynamic Type and reads aloud, realized through the same
+  backend-neutral `UiControls` protocol the AppKit controls backend implements)
+  and
+  [UIKit canvas](src/platform/uikit/ui_uikit.elisa) (a custom-painted iOS `UIView`;
   the same CoreGraphics replay and CoreText shaping as the macOS canvas, with
   touch instead of a mouse, `UIAccessibilityTraits` instead of Cocoa roles, and
   safe-area/keyboard/orientation facts layered onto `UiMobileSurface` -- see

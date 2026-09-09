@@ -26,6 +26,7 @@ if ! SDK="$(xcrun --sdk iphonesimulator --show-sdk-path 2>/dev/null)" || [[ ! -d
 fi
 
 SHIM="$ROOT/src/platform/uikit/uikit_shim.m"
+CONTROLS_SHIM="$ROOT/src/platform/uikit/uikit_controls_shim.m"
 # The shim is one translation unit spread over an umbrella and the fragments it
 # #imports. Every source-level policy check below must read all of them: a
 # decision that moved into a fragment would otherwise pass unseen.
@@ -38,15 +39,22 @@ SHIM_SOURCES=("$SHIM" "$ROOT"/src/platform/uikit/shim/*.m)
 # backend agree: every callback the shim calls must be defined by the Elisa
 # object, and every entry point Elisa declared extern must exist in the shim.
 
+# Both iOS backends, for both destinations. The controls backend paints
+# nothing and the canvas paints everything; an application links exactly one,
+# so each has to link on its own.
 for flavor in simulator device; do
-  if ! bash "$ROOT/scripts/build_uikit.sh" hello "$flavor" >/dev/null 2>"$ROOT/build/uikit_${flavor}.log"; then
-    echo "uikit: the $flavor build failed" >&2
-    cat "$ROOT/build/uikit_${flavor}.log" >&2
-    exit 1
-  fi
+  for backend in canvas controls; do
+    log="$ROOT/build/uikit_${flavor}_${backend}.log"
+    if ! bash "$ROOT/scripts/build_uikit.sh" hello "$flavor" "$backend" >/dev/null 2>"$log"; then
+      echo "uikit: the $flavor $backend build failed" >&2
+      cat "$log" >&2
+      exit 1
+    fi
+  done
 done
-SIMULATOR_BINARY="$ROOT/build/ios/simulator/hello_uikit"
-DEVICE_BINARY="$ROOT/build/ios/device/hello_uikit"
+SIMULATOR_BINARY="$ROOT/build/ios/simulator/canvas/hello_uikit"
+DEVICE_BINARY="$ROOT/build/ios/device/canvas/hello_uikit"
+CONTROLS_BINARY="$ROOT/build/ios/device/controls/hello_uikit_controls"
 vtool -show-build-version "$SIMULATOR_BINARY" | grep -q 'platform IOSSIMULATOR' ||
   { echo "uikit: the simulator build is not an iOS simulator image" >&2; exit 1; }
 vtool -show-build-version "$DEVICE_BINARY" | grep -q 'platform IOS$' ||
@@ -55,8 +63,21 @@ for framework in UIKit Foundation CoreGraphics CoreText; do
   otool -L "$DEVICE_BINARY" | grep -q "/${framework}.framework/" ||
     { echo "uikit: the device build does not link $framework" >&2; exit 1; }
 done
-plutil -lint "$ROOT/build/ios/device/hello_uikit.app/Info.plist" >/dev/null
-codesign --verify --strict "$ROOT/build/ios/simulator/hello_uikit.app"
+vtool -show-build-version "$CONTROLS_BINARY" | grep -q 'platform IOS$' ||
+  { echo "uikit: the controls build is not an iOS device image" >&2; exit 1; }
+# The controls backend must not have pulled in the painter: no CoreText, no
+# bitmap context. If it had, "native controls" would be a claim rather than a
+# fact.
+set +o pipefail
+if nm -gu "$CONTROLS_BINARY" | grep -qE '^_(CTLineDraw|CTFontCreateUIFontForLanguage|CGBitmapContextCreate)$'; then
+  echo "uikit: the controls backend links the custom painter" >&2
+  exit 1
+fi
+set -o pipefail
+plutil -lint "$ROOT/build/ios/device/canvas/hello_uikit.app/Info.plist" >/dev/null
+plutil -lint "$ROOT/build/ios/device/controls/hello_uikit_controls.app/Info.plist" >/dev/null
+codesign --verify --strict "$ROOT/build/ios/simulator/canvas/hello_uikit.app"
+codesign --verify --strict "$ROOT/build/ios/simulator/controls/hello_uikit_controls.app"
 
 # --- 2. Architecture guards --------------------------------------------
 # The shim forwards facts and performs operations. Every decision belongs to
@@ -94,6 +115,19 @@ grep -Eq 'static (__strong )?(UIWindow|ElisaUiKitView|ElisaUiKitViewController|E
   fail "UIKit object ownership was hidden in Objective-C state"
 grep -Eq '\bstrlen\b|\bstrcmp\b' "$ROOT"/src/platform/uikit/ui_uikit_*.elisa &&
   fail "libc string primitives survived in the Elisa backend"
+
+# The controls shim has the opposite job: UIKit owning fonts, text layout and
+# drawing is the whole point, so those are not leaks there. What must not leak
+# is the framework's own decisions -- which control a widget kind becomes, where
+# it goes, and how a value is normalized.
+grep -Eq 'CGContext|CTLine|CTFontCreate' "$CONTROLS_SHIM" &&
+  fail "the controls shim started drawing"
+grep -Eq 'UiControls|Kind\.|kind ==' "$CONTROLS_SHIM" &&
+  fail "widget-kind policy leaked into the controls shim"
+grep -Eq '/[[:space:]]*\(high|value[[:space:]]*-[[:space:]]*low' "$CONTROLS_SHIM" &&
+  fail "value normalization leaked into the controls shim"
+grep -Eq 'static (__strong )?UI[A-Za-z]+[[:space:]]*\*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*(=|;)' "$CONTROLS_SHIM" &&
+  fail "UIKit object ownership was hidden in the controls shim"
 
 # --- 3. The Elisa backend, built and run on the host -------------------
 

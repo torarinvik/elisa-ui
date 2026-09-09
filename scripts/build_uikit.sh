@@ -8,18 +8,36 @@
 # callback fallbacks the runtime expects come from the compiler that defines
 # them rather than from a copy in this repository that would drift.
 #
-# Usage: build_uikit.sh [example] [simulator|device]
+# Usage: build_uikit.sh [example] [simulator|device] [canvas|controls]
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
 EXAMPLE="${1:-hello}"
 FLAVOR="${2:-simulator}"
-ENTRY="$ROOT/examples/$EXAMPLE/uikit_main.elisa"
+# The two iOS backends are separate products: the canvas paints every pixel,
+# the controls backend paints none. An application links exactly one.
+BACKEND="${3:-canvas}"
+case "$BACKEND" in
+  canvas)
+    ENTRY="$ROOT/examples/$EXAMPLE/uikit_main.elisa"
+    SHIM="$ROOT/src/platform/uikit/uikit_shim.m"
+    SUFFIX="uikit"
+    ;;
+  controls)
+    ENTRY="$ROOT/examples/$EXAMPLE/uikit_controls_main.elisa"
+    SHIM="$ROOT/src/platform/uikit/uikit_controls_shim.m"
+    SUFFIX="uikit_controls"
+    ;;
+  *)
+    echo "unknown backend '$BACKEND' (expected canvas or controls)" >&2
+    exit 2
+    ;;
+esac
 DEPLOYMENT="${ELISA_UI_IOS_DEPLOYMENT:-17.0}"
 
 [[ "$(uname -s)" == "Darwin" ]] || { echo "the UIKit backend is macOS-hosted" >&2; exit 2; }
-[[ -f "$ENTRY" ]] || { echo "no UIKit entry: examples/$EXAMPLE/uikit_main.elisa" >&2; exit 2; }
+[[ -f "$ENTRY" ]] || { echo "no UIKit $BACKEND entry: $ENTRY" >&2; exit 2; }
 [[ -x "$STAGE1/bin/elisac-stage1" ]] || { echo "no stage1 product at $STAGE1/bin/elisac-stage1" >&2; exit 2; }
 
 case "$FLAVOR" in
@@ -40,7 +58,7 @@ case "$FLAVOR" in
 esac
 SDK="$(xcrun --sdk "$SDK_NAME" --show-sdk-path)"
 
-OUT="$ROOT/build/ios/$FLAVOR"
+OUT="$ROOT/build/ios/$FLAVOR/$BACKEND"
 mkdir -p "$OUT"
 
 # The iOS runtime object. The host one is Mach-O for macOS and cannot be
@@ -56,7 +74,7 @@ xcrun --sdk "$SDK_NAME" clang -target "$TRIPLE" -isysroot "$SDK" \
 
 # The Objective-C shim, one translation unit.
 xcrun --sdk "$SDK_NAME" clang -target "$TRIPLE" -isysroot "$SDK" -fobjc-arc \
-  -c -Wall -Wextra -Werror -o "$OUT/uikit_shim.o" "$ROOT/src/platform/uikit/uikit_shim.m"
+  -c -Wall -Wextra -Werror -o "$OUT/uikit_shim.o" "$SHIM"
 
 # The link driver the compiler will invoke. It receives the compiler's own
 # link line and adds only what is specific to this platform.
@@ -71,7 +89,7 @@ exec xcrun --sdk "$SDK_NAME" clang -target "$TRIPLE" -isysroot "$SDK" "\$@" \\
 LINK
 chmod +x "$LINKER"
 
-BINARY="$OUT/${EXAMPLE}_uikit"
+BINARY="$OUT/${EXAMPLE}_${SUFFIX}"
 ELISA_CLANG="$LINKER" ELISA_RUNTIME_OBJ="$RUNTIME" \
   "$STAGE1/bin/elisac-stage1" -emit exe -O0 -target-triple "$TRIPLE" \
   -o "$BINARY" "$ENTRY"
@@ -79,14 +97,14 @@ ELISA_CLANG="$LINKER" ELISA_RUNTIME_OBJ="$RUNTIME" \
 # Package it as a real .app so it can be installed on a simulator or signed
 # for a device. The bundle metadata is application identity, so it is stated
 # here rather than inferred by the shim.
-APP="$OUT/${EXAMPLE}_uikit.app"
+APP="$OUT/${EXAMPLE}_${SUFFIX}.app"
 rm -rf "$APP"
 mkdir -p "$APP"
-cp "$BINARY" "$APP/${EXAMPLE}_uikit"
+cp "$BINARY" "$APP/${EXAMPLE}_${SUFFIX}"
 PLIST="$APP/Info.plist"
 plutil -create xml1 "$PLIST"
-plutil -insert CFBundleExecutable -string "${EXAMPLE}_uikit" "$PLIST"
-plutil -insert CFBundleIdentifier -string "org.elisa-ui.${EXAMPLE}.uikit" "$PLIST"
+plutil -insert CFBundleExecutable -string "${EXAMPLE}_${SUFFIX}" "$PLIST"
+plutil -insert CFBundleIdentifier -string "org.elisa-ui.${EXAMPLE}.${BACKEND}" "$PLIST"
 plutil -insert CFBundleName -string "elisa-ui" "$PLIST"
 plutil -insert CFBundleDisplayName -string "elisa-ui" "$PLIST"
 plutil -insert CFBundlePackageType -string "APPL" "$PLIST"

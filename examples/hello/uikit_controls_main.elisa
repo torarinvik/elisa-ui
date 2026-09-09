@@ -1,0 +1,64 @@
+# elisa-ui on iOS, as REAL native controls.
+#
+# The same widget tree the macOS entry point hands to AppKit, handed to UIKit
+# instead: UILabels, UIButtons, a UISlider and a UITextField that iOS draws,
+# focuses, scales with Dynamic Type and reads aloud. Nothing here is
+# platform-specific -- the tree, the layout and the kinds are the portable
+# widget layer; only the backend changed.
+
+include "../../src/platform/uikit/ui_uikit_controls.elisa"
+
+using UiWidgets
+
+def app_widget_event(widget: UiWidgets::Widget, event: i32) -> void:
+    pass
+
+# Text metrics belong to the platform. UIKit measures its own controls, so the
+# layout pass only needs something consistent to size boxes with.
+def ui_measure_text_width(text: sview, size: f32) -> f32:
+    return text.len.f32() * size * 0.55
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size
+def ui_font_ascent(size: f32) -> f32:
+    return size
+def ui_text_line_height(size: f32) -> f32:
+    return size * 1.3
+
+def grey(v: u8) -> UiCore::Color:
+    return UiCore::Color{r: v, g: v, b: v, a: 255}
+
+def build() -> Widget:
+    can Memory.Allocate, Abort.Panic:
+        open_button: Widget = Button.Push(min_width: 96.0, min_height: 44.0, grow: 1.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "Open", rest: grey(60), hover: grey(90), press: grey(30))
+        save_button: Widget = Button.Push(min_width: 96.0, min_height: 44.0, grow: 1.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "Save", rest: grey(60), hover: grey(90), press: grey(30))
+        wrap_box: Widget = Button.Check(min_width: 120.0, min_height: 44.0, grow: 1.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "Wrap lines", checked: true, rest: grey(60), hover: grey(90), press: grey(30))
+        open_button.next_sibling <- save_button
+        save_button.next_sibling <- wrap_box
+
+        # A 44pt row is the platform's touch-target floor, which is why this
+        # toolbar is taller than the macOS one built from the same kinds.
+        toolbar: Widget = Container.Box(min_width: 0.0, min_height: 60.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: open_button, next_sibling: null, axis: UiConst::Axis.Row, padding: 8.0, spacing: 8.0, fill: grey(30))
+
+        field: Widget = Control.TextBox(min_width: 0.0, min_height: 44.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, text: "a native text field", caret: 0, size: 15.0, ink: grey(230), fill: grey(45))
+        progress: Widget = Control.Gauge(min_width: 0.0, min_height: 20.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, fraction: 0.4, track: grey(50), bar: grey(120))
+        status: Widget = Control.Label(min_width: 0.0, min_height: 20.0, grow: 1.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, text: "Every control here is a real UIKit control.", size: 15.0, ink: grey(210))
+        field.next_sibling <- progress
+        progress.next_sibling <- status
+
+        body: Widget = Container.Box(min_width: 0.0, min_height: 0.0, grow: 1.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: field, next_sibling: null, axis: UiConst::Axis.Column, padding: 16.0, spacing: 12.0, fill: grey(38))
+        toolbar.next_sibling <- body
+
+        return Window.Top(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: toolbar, next_sibling: null, title: "elisa-ui on UIKit", resizable: true)
+
+# The scene calls this once it has a surface. iPhone 15 Pro in portrait is the
+# reference geometry; a real scene reports its own and the same tree is laid out
+# against it.
+def app_controls_realize() -> void:
+    can Memory.Allocate, Abort.Panic, Ui.Controls, Unsafe.PointerCast:
+        root: Widget = build()
+        layout(root, 393.0, 852.0)
+        UiUIKitControls::realize(root)
+
+def main() -> i64:
+    can Memory.Allocate, Abort.Panic, Ui.Controls, Unsafe.PointerCast:
+        return UiUIKitControls::run()
