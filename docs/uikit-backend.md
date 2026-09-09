@@ -23,6 +23,7 @@ Every decision that follows from those facts is in Elisa:
 | Safe area, keyboard frame, size, scale | `ui_uikit_surface.elisa` over `UiMobileSurface` — validation, insets, orientation, and the logical viewport |
 | Semantic role | `ui_uikit_accessibility.elisa` — `UIAccessibilityTraits`, and the value string VoiceOver speaks |
 | Element identity and reuse | `ui_uikit_semantics.elisa` — the shim is told whether an element is new; it never probes a handle |
+| When the assistive cursor should move | `ui_uikit_semantics.elisa` — a fresh tree is a *screen* change; a moved retained focus moves VoiceOver; an ordinary repaint moves nothing |
 | Application notifications | `ui_uikit_callbacks.elisa` — one lifecycle vocabulary shared with every other backend |
 
 `scripts/check_uikit.sh` enforces that split as "must not contain" checks over

@@ -22,6 +22,17 @@
                                            elisa_uikit_accessibility_increment_direction());
 }
 
+// VoiceOver rewriting a field's value. Whether this element is a field at all,
+// and what the edit does, are decided in Elisa; a refused edit leaves the
+// element's spoken value exactly as it was.
+- (void)setAccessibilityValue:(NSString *)value {
+    if (elisa_uikit_accessibility_set_text(self.viewHandle, (size_t)(__bridge void *)self,
+                                           (size_t)(__bridge void *)value) == 0) {
+        return;
+    }
+    [super setAccessibilityValue:value];
+}
+
 - (void)accessibilityDecrement {
     (void)elisa_uikit_accessibility_adjust(self.viewHandle, (size_t)(__bridge void *)self,
                                            elisa_uikit_accessibility_decrement_direction());

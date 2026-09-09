@@ -130,6 +130,25 @@ def uikit_flat_accessibility_activate(view_handle: usize, handle: usize) -> i32:
     uikit_flat_sync_keyboard()
     return 1
 
+# VoiceOver can rewrite a text field's value. A slider is adjusted through the
+# increment/decrement pair instead, which is why this accepts text only: on iOS
+# an adjustable element's value is spoken, never assigned.
+def uikit_flat_accessibility_set_text(view_handle: usize, handle: usize, text: usize) -> i32:
+    return 0 if not UiUIKit::live() or view_handle != UiUIKit::view_handle() or not UiLifecycle::accepts_input()
+    return 0 if text == 0
+    index: usize = UiUIKit::accessibility_action_for_handle(handle)
+    return 0 if index == UiUIKit::not_found() or not UiFlat::text_editable(index)
+    length: usize = UiUIKitClipboard::copy_native_text(text)
+    lifetime: usize = UiFlat::lifetime()
+    UiFlat::replace_text(index, UiUIKitClipboard::native_text_view(length))
+    UiUIKitClipboard::scrub_native_text()
+    # Replacement runs the application callback synchronously. If that callback
+    # rebuilt the tree or stopped the session, the element that asked for the
+    # edit is no longer the live source of truth.
+    return 0 if UiFlat::lifetime() != lifetime or not UiUIKit::live()
+    UiUIKit::redraw()
+    return 1
+
 def uikit_flat_accessibility_adjust(view_handle: usize, handle: usize, direction: i32) -> i32:
     return 0 if not UiUIKit::live() or view_handle != UiUIKit::view_handle() or not UiLifecycle::accepts_input()
     return 0 if direction != 1 and direction != -1

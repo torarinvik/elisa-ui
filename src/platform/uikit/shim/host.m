@@ -212,6 +212,15 @@ void elisa_uikit_accessibility_post_layout_changed(size_t viewHandle) {
     UIAccessibilityPostNotification(UIAccessibilityLayoutChangedNotification, nil);
 }
 
+// Move the assistive cursor to one committed element. Which element, and
+// whether the move is warranted at all, are decided in Elisa.
+void elisa_uikit_accessibility_focus(size_t viewHandle, size_t handle) {
+    (void)viewHandle;
+    ElisaUiKitAccessibilityElement *element = elisa_uikit_element(handle);
+    if (element == nil) return;
+    UIAccessibilityPostNotification(UIAccessibilityLayoutChangedNotification, element);
+}
+
 void elisa_uikit_accessibility_post_screen_changed(size_t viewHandle) {
     (void)viewHandle;
     UIAccessibilityPostNotification(UIAccessibilityScreenChangedNotification, nil);

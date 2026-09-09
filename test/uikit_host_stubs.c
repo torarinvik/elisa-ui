@@ -89,4 +89,10 @@ int elisa_uikit_accessibility_commit(size_t viewHandle, size_t children) {
 }
 
 void elisa_uikit_accessibility_post_layout_changed(size_t viewHandle) { (void)viewHandle; }
+static size_t elisa_uikit_stub_focused = 0;
+size_t elisa_uikit_stub_focused_element(void) { return elisa_uikit_stub_focused; }
+void elisa_uikit_accessibility_focus(size_t viewHandle, size_t handle) {
+    (void)viewHandle;
+    elisa_uikit_stub_focused = handle;
+}
 void elisa_uikit_accessibility_post_screen_changed(size_t viewHandle) { (void)viewHandle; }

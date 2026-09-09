@@ -70,6 +70,7 @@ extern size_t elisa_uikit_text_offset_at_x(size_t viewHandle, float x);
 // Semantics.
 extern int elisa_uikit_accessibility_activate(size_t viewHandle, size_t handle);
 extern int elisa_uikit_accessibility_adjust(size_t viewHandle, size_t handle, int direction);
+extern int elisa_uikit_accessibility_set_text(size_t viewHandle, size_t handle, size_t text);
 extern int elisa_uikit_accessibility_increment_direction(void);
 extern int elisa_uikit_accessibility_decrement_direction(void);
 

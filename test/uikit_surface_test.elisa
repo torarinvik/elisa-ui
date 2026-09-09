@@ -11,6 +11,7 @@ extern puts(text: cstr) -> i64
 extern elisa_uikit_stub_set_view(handle: usize) -> void
 extern elisa_uikit_stub_set_accessibility_running(running: i32) -> void
 extern elisa_uikit_stub_live_element_count() -> i32
+extern elisa_uikit_stub_focused_element() -> usize
 
 global mutable failures: i32 = 0
 global mutable frames_painted: i32 = 0
@@ -205,6 +206,13 @@ def check_offscreen_frame() -> void can[Ui.Draw, Ui.Text, Ui.Input, Ui.Window, U
     check_pointer(UiUIKit::view_handle())
     published: i32 = elisa_uikit_stub_live_element_count()
     check("a second frame reuses its elements", UiUIKit::render_snapshot(1179, 2556) and elisa_uikit_stub_live_element_count() == published)
+    # Moving the assistive cursor is a change in what the user is on, not a
+    # repaint: an ordinary frame must not yank VoiceOver back to the same
+    # element, and a focus change must move it.
+    check("an unfocused tree moves no assistive cursor", elisa_uikit_stub_focused_element() == 0)
+    _ = UiMobileSurface::focus_gained()
+    _ = UiHandles::request_focus(UiKitTestApp::field())
+    check("focusing a field moves the assistive cursor", UiUIKit::render_snapshot(1179, 2556) and elisa_uikit_stub_focused_element() != 0)
     check("an oversized snapshot is refused", not UiUIKit::render_snapshot(100000, 100000))
     check("a zero-sized snapshot is refused", not UiUIKit::render_snapshot(0, 100))
     UiUIKit::release_canvas()

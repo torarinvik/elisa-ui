@@ -35,7 +35,13 @@ extend UiUIKit:
             return if elisa_uikit_accessibility_is_running() == 0
             next_count: usize = UiCore::accessibility_count()
             previous_count: usize = uikit_accessibility_previous_count
-            layout_changed: mutable bool = uikit_accessibility_force_layout or next_count != previous_count
+            # A fresh tree is a new screen, not a layout change: VoiceOver
+            # should announce it and move to its first element rather than
+            # keep a cursor pointing into the retired one.
+            screen_changed: bool = uikit_accessibility_force_layout
+            layout_changed: mutable bool = screen_changed or next_count != previous_count
+            focused_id: mutable usize = 0
+            has_focus: mutable bool = false
             for retained_index in 0..<previous_count:
                 uikit_accessibility_previous_retained[retained_index] <- false
             for index in 0..<next_count:
@@ -61,6 +67,9 @@ extend UiUIKit:
                 uikit_accessibility_next_handles[index] <- handle
                 uikit_accessibility_next_traits[index] <- traits
                 uikit_accessibility_next_actions[index] <- node.action
+                if node.focused and not has_focus:
+                    focused_id <- node.id
+                    has_focus <- true
                 uikit_accessibility_previous_retained[previous_index] <- true if existed and previous_handle != 0 and handle == previous_handle
                 CFRelease(native_identifier) if native_identifier != 0
                 CFRelease(native_label) if native_label != 0
@@ -78,8 +87,17 @@ extend UiUIKit:
                     stale_handle: usize = uikit_accessibility_stale_handles[stale_index]
                     elisa_uikit_accessibility_release(stale_handle) if stale_handle != 0
                     uikit_accessibility_stale_handles[stale_index] <- 0
-                if layout_changed:
+                if screen_changed:
+                    elisa_uikit_accessibility_post_screen_changed(uikit_canvas_view)
+                elif layout_changed:
                     elisa_uikit_accessibility_post_layout_changed(uikit_canvas_view)
+                # Moving the assistive cursor is a change in what the user is
+                # on, not a repaint, so it is reported only when the retained
+                # focus actually moved.
+                if has_focus != uikit_accessibility_has_focus or focused_id != uikit_accessibility_focused_id:
+                    uikit_accessibility_has_focus <- has_focus
+                    uikit_accessibility_focused_id <- focused_id
+                    elisa_uikit_accessibility_focus(uikit_canvas_view, focused_handle(focused_id)) if has_focus
                 uikit_accessibility_force_layout <- false
             else:
                 # Keep the old list and its ownership. Elements created during
@@ -89,6 +107,12 @@ extend UiUIKit:
             uikit_accessibility_stale_count <- 0
 
     private:
+        # Resolve a stable semantic ID to the element just committed for it.
+        def focused_handle(id: usize) -> usize:
+            for index in 0..<uikit_accessibility_previous_count:
+                return uikit_accessibility_previous_handles[index] if uikit_accessibility_previous_ids[index] == id
+            return 0
+
         def publish_accessibility_history(next_count: usize) -> void:
             uikit_accessibility_previous_count <- next_count
             for index in 0..<next_count:
