@@ -251,11 +251,18 @@ module UiSkia:
             def draw_text(run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
                 UiSkia::draw_text_run(run, color)
 
-    private:
+    public:
         # Keep a host-provided typeface active while Elisa builds and replays a
-        # custom frame. The scope is private so widget code never receives or
-        # stores an opaque SkTypeface handle; AppKit uses it only to make
-        # pre-surface measurement and post-surface drawing agree.
+        # custom frame. A HOST seam, not a widget API: the opaque SkTypeface
+        # handle comes from the compositor and goes straight back to it, so
+        # widget code neither receives nor stores one. It has to be two calls
+        # rather than one scoped operation because the font must already be
+        # active during app_frame -- that is where text is measured -- and the
+        # borrowed canvas only exists afterwards.
+        #
+        # The caller must pass the returned handle to end_frame_font on every
+        # exit path, so a frame cannot leave a retired typeface installed for
+        # the next one.
         def begin_frame_font(font: usize) -> usize:
             previous: usize = skia_frame_font
             if previous == font:
@@ -268,6 +275,7 @@ module UiSkia:
         def end_frame_font(previous: usize) -> void:
             skia_frame_font <- previous
 
+    private:
         global mutable canvas_state: usize = 0
         global mutable skia_clip_depth: usize = 0
         global mutable skia_transform_depth: usize = 0

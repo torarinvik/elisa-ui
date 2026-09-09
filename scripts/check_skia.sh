@@ -22,21 +22,36 @@ bash "$ROOT/scripts/check_toolchain.sh"
 mkdir -p "$ROOT/build"
 bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ROOT/build/ui_skia.o" "$ROOT/src/platform/skia/ui_skia.elisa"
 
-if ! nm -g "$ROOT/build/ui_skia.o" | grep -Eq 'elisa_skia_abi_version$'; then
-  echo "skia: ABI version symbol is not exported by the Elisa object" >&2
-  exit 1
-fi
-if ! nm -g "$ROOT/build/ui_skia.o" | grep -Eq 'elisa_skia_render_frame_with_font_status$'; then
-  echo "skia: scoped-font render symbol is not exported by the Elisa object" >&2
-  exit 1
-fi
-if ! nm -g "$ROOT/build/ui_skia.o" | grep -Eq 'elisa_skia_render_frame$'; then
-  echo "skia: one-shot render symbol is not exported by the Elisa object" >&2
-  exit 1
-fi
-if ! nm -g "$ROOT/build/ui_skia.o" | grep -Eq 'elisa_skia_render_frame_scaled$'; then
-  echo "skia: scaled one-shot render symbol is not exported by the Elisa object" >&2
-  exit 1
+# `nm | grep -q` is a trap under pipefail: grep can close the pipe on a match
+# before nm has finished writing its table, and the pipeline then reports nm's
+# SIGPIPE rather than grep's success. Read the table once and search that.
+skia_symbols="$(nm -g "$ROOT/build/ui_skia.o")"
+for skia_symbol in \
+  elisa_skia_abi_version \
+  elisa_skia_render_frame_with_font_status \
+  elisa_skia_render_frame \
+  elisa_skia_render_frame_scaled; do
+  case "$skia_symbols" in
+    *"$skia_symbol"*) ;;
+    *)
+      echo "skia: $skia_symbol is not exported by the Elisa object" >&2
+      exit 1
+      ;;
+  esac
+done
+
+# Compiling the painter alone does not exercise the compositor seam, which is
+# how the AppKit+Skia product silently stopped compiling: the frame-font scope
+# it needs had been made private to UiSkia and nothing linked the two. These
+# entries need no Skia headers, so they are checked even without SKIA_ROOT.
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  for skia_entry in hello showcase; do
+    entry="$ROOT/examples/$skia_entry/appkit_skia_canvas_main.elisa"
+    [[ -f "$entry" ]] || continue
+    bash "$STAGE1/scripts/elisac_stage1.sh" -O0 \
+      -o "$ROOT/build/${skia_entry}_appkit_skia_entry.o" "$entry"
+  done
+  echo "skia: the AppKit compositor entries compile"
 fi
 
 if rg -n '#include[[:space:]]*[<"](Cocoa|AppKit)' "$ROOT/src/platform/skia/skia_canvas_shim.cpp"; then
