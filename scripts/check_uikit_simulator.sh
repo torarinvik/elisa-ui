@@ -64,7 +64,13 @@ xcrun simctl install "$UDID" "$ROOT/build/ios/simulator/canvas/uikit_smoke_uikit
 xcrun simctl ui "$UDID" appearance light >/dev/null 2>&1 || true
 xcrun simctl ui "$UDID" content_size medium >/dev/null 2>&1 || true
 CONSOLE="$WORK/smoke.txt"
-( xcrun simctl launch --console-pty "$UDID" "$SMOKE_BUNDLE" >"$CONSOLE" 2>&1 & )
+# --console-pty keeps a reader attached to the device for as long as it runs.
+# Leaving one behind makes the next gate's install race with it, so its pid is
+# kept and killed rather than orphaned.
+xcrun simctl launch --console-pty "$UDID" "$SMOKE_BUNDLE" >"$CONSOLE" 2>&1 &
+CONSOLE_PID=$!
+cleanup_console() { kill "$CONSOLE_PID" 2>/dev/null || true; }
+trap 'cleanup_console; rm -rf "$WORK"' EXIT
 wait_for "$CONSOLE" "ELISA-UI-SMOKE" || fail "the app never reported a frame"
 
 # The scene's geometry has to reach Elisa, not a size compiled into the app.
@@ -78,8 +84,14 @@ awk -v s="$scale" 'BEGIN{exit !(s >= 2)}' || fail "implausible display scale: $s
 # inset means the safe area never arrived.
 awk -v t="$inset_top" 'BEGIN{exit !(t > 0)}' || fail "the safe-area top inset never arrived: $inset_top"
 awk -v b="$inset_bottom" 'BEGIN{exit !(b > 0)}' || fail "the safe-area bottom inset never arrived: $inset_bottom"
-[[ "$(field "$CONSOLE" phase)" == "2.0" ]] || fail "the app never became active"
-grep -q "dark=no" "$CONSOLE" || fail "the light appearance never arrived"
+# The scene reports its first frame before the delegate has said the app
+# became active, so this is a wait rather than a reading of the first line.
+wait_for "$CONSOLE" "phase=2.0" || fail "the app never became active"
+# The device keeps its appearance between runs, and a change made just before
+# launch can land after the first frame. Ask again and wait, the same way the
+# dark-mode check below does.
+xcrun simctl ui "$UDID" appearance light >/dev/null 2>&1 || true
+wait_for "$CONSOLE" "dark=no" || fail "the light appearance never arrived"
 
 # A real trait change, delivered by UIKit's own registration.
 xcrun simctl ui "$UDID" appearance dark >/dev/null
@@ -96,6 +108,7 @@ wait_for "$CONSOLE" "phase=3.0" || fail "resigning active never reached Elisa"
 xcrun simctl launch "$UDID" "$SMOKE_BUNDLE" >/dev/null
 wait_for "$CONSOLE" "phase=2.0" 30 || fail "becoming active again never reached Elisa"
 xcrun simctl terminate "$UDID" "$SMOKE_BUNDLE" >/dev/null 2>&1 || true
+cleanup_console
 echo "uikit simulator: surface $width@${scale}x, safe area ${inset_top}/${inset_bottom}, appearance, Dynamic Type and lifecycle all reached Elisa"
 
 # --- Both backends launch and paint ------------------------------------
@@ -136,4 +149,8 @@ for backend in canvas controls; do
   echo "uikit simulator: the $backend app launched and painted ($size byte screenshot)"
 done
 
+# Leave the device as this gate found it, so a rerun starts from the same
+# place rather than inheriting the settings the last one exercised.
+xcrun simctl ui "$UDID" appearance light >/dev/null 2>&1 || true
+xcrun simctl ui "$UDID" content_size medium >/dev/null 2>&1 || true
 echo "uikit simulator: both iOS backends run on a booted device"

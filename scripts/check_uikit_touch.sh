@@ -127,11 +127,21 @@ PLIST
 plutil -lint "$OUT/elisa.xctestrun" >/dev/null
 
 LOG="$OUT/xcodebuild.log"
-if ! xcodebuild test-without-building -xctestrun "$OUT/elisa.xctestrun" \
-     -destination "platform=iOS Simulator,id=$UDID" >"$LOG" 2>&1; then
-  echo "uikit touch: the UI test failed" >&2
-  grep -E "error:|Failing tests|Underlying Error" "$LOG" >&2 | head -10 || true
-  exit 1
+# A gate that ran just before this one can still be tearing its own launch
+# down, and xcodebuild reports that as a failure even when the test itself
+# passed. One retry distinguishes a busy device from a real failure.
+run_ui_test() {
+  xcodebuild test-without-building -xctestrun "$OUT/elisa.xctestrun" \
+    -destination "platform=iOS Simulator,id=$UDID" >"$LOG" 2>&1
+}
+if ! run_ui_test; then
+  echo "uikit touch: first attempt failed; retrying once in case the device was busy" >&2
+  sleep 5
+  if ! run_ui_test; then
+    echo "uikit touch: the UI test failed" >&2
+    grep -E "error:|Failing tests|Underlying Error" "$LOG" >&2 | head -10 || true
+    exit 1
+  fi
 fi
 grep -q "Executed 1 test, with 0 failures" "$LOG" || {
   echo "uikit touch: the UI test did not report a pass" >&2

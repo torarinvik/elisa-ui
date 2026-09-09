@@ -108,10 +108,27 @@ SkPaint stroke_paint(std::uint8_t red, std::uint8_t green, std::uint8_t blue, st
     return paint;
 }
 
+// Text quality is chosen by Elisa and applied here. Both knobs change how
+// glyphs land on the pixel grid rather than what is drawn, so they are one
+// process-wide setting instead of an argument on every draw call.
+int elisa_skia_text_subpixel = 0;
+int elisa_skia_text_hinting = 0;
+
+SkFontHinting hinting_for(int hinting) {
+    switch (hinting) {
+        case 1: return SkFontHinting::kSlight;
+        case 2: return SkFontHinting::kNormal;
+        case 3: return SkFontHinting::kFull;
+        default: return SkFontHinting::kNone;
+    }
+}
+
 SkFont font_for(float size) {
     SkFont font;
     font.setSize(size);
     font.setEdging(SkFont::Edging::kAntiAlias);
+    font.setSubpixel(elisa_skia_text_subpixel != 0);
+    font.setHinting(hinting_for(elisa_skia_text_hinting));
     return font;
 }
 
@@ -123,6 +140,11 @@ SkFont font_for(float size, SkTypeface *typeface) {
     return font;
 }
 
+}
+
+extern "C" void elisa_skia_set_text_quality(int subpixel, int hinting) {
+    elisa_skia_text_subpixel = subpixel != 0 ? 1 : 0;
+    elisa_skia_text_hinting = hinting;
 }
 
 extern "C" void elisa_skia_canvas_save(std::size_t handle) {

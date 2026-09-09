@@ -15,6 +15,24 @@ extern elisa_skia_text_line_height_with_font(font: usize, size: f32) -> f32
 
 extend UiSkia:
     public:
+        # How glyphs are allowed to land on the pixel grid. Both are framework
+        # policy, not a Skia default: without subpixel positioning every glyph
+        # snaps to a whole pixel, which makes the space between letters visibly
+        # uneven at UI sizes. Slight hinting is what pairs with it -- it keeps
+        # stems crisp vertically without distorting horizontal advances, which
+        # is what heavier hinting does and what makes subpixel positioning
+        # pointless.
+        const TEXT_HINTING_NONE: i32 = 0
+        const TEXT_HINTING_SLIGHT: i32 = 1
+        const TEXT_HINTING_NORMAL: i32 = 2
+        const TEXT_HINTING_FULL: i32 = 3
+
+        # Applied wherever a frame begins, because measurement and drawing must
+        # agree: an advance measured without subpixel positioning does not
+        # match a glyph drawn with it.
+        def apply_text_quality() -> void:
+            elisa_skia_set_text_quality(1, TEXT_HINTING_SLIGHT)
+
         def measure_text_width(text: sview, size: f32) -> f32:
             # Metrics are pure font queries and do not require a live canvas.
             # Layout can therefore use Skia's authority before a surface is

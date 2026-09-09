@@ -57,6 +57,10 @@ static void record_event(int kind) {
     }
 }
 
+/* Glyph placement policy. This stub records nothing: the painter test is about
+   which commands reach the bridge, and text quality changes how a real
+   rasterizer places glyphs rather than which calls are made. */
+void elisa_skia_set_text_quality(int subpixel, int hinting) { (void)subpixel; (void)hinting; }
 void elisa_skia_canvas_save(size_t canvas) { if (canvas != 0) save_count += 1; }
 void elisa_skia_canvas_restore(size_t canvas) { if (canvas != 0) restore_count += 1; }
 void elisa_skia_canvas_scale(size_t canvas, float x, float y) {

@@ -90,6 +90,11 @@ if [[ -n "${SKIA_ROOT:-}" ]]; then
     SKIA_ROOT="$SKIA_ROOT" SKIA_OUT="$skia_out" SKIA_LIB="$skia_out/libskia.a" bash "$ROOT/scripts/verify_skia_build.sh"
     SKIA_ROOT="$SKIA_ROOT" SKIA_OUT="$skia_out" bash "$ROOT/scripts/check_skia_offscreen.sh"
     SKIA_ROOT="$SKIA_ROOT" SKIA_OUT="$skia_out" bash "$ROOT/scripts/check_showcase_skia.sh"
+    # Every page of the shipped showcase, through the real painter. The hello
+    # fixture above asserts pixels on one frame; this covers the theme, the
+    # controls, the scrolling list and the custom canvas, and leaves the
+    # pictures behind in build/.
+    SKIA_ROOT="$SKIA_ROOT" SKIA_OUT="$skia_out" bash "$ROOT/scripts/render_showcase_skia.sh"
   elif [[ "$require_real" == "1" ]]; then
     echo "skia: required CPU-raster archive is missing at $skia_out/libskia.a" >&2
     echo "skia: build the pinned checkout from third_party/skia.lock or set ELISA_UI_REQUIRE_REAL_SKIA=0 for a compiler-only edit loop" >&2

@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Render every page of the shipped showcase with real Skia, off-screen.
+#
+# The hello fixture next door asserts pixels. This one produces the pictures:
+# five pages of the showcase -- its theme, its controls, its scrolling list and
+# its custom-painted canvas -- rasterized by the same painter a window uses. It
+# is how the renderer's output is looked at rather than only measured, and it
+# doubles as coverage: a page that stops laying out produces a nearly empty
+# frame, which is what the size check below catches.
+#
+# Usage: render_showcase_skia.sh [output-prefix] [width] [height]
+set -euo pipefail
+
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
+SKIA_ROOT="${SKIA_ROOT:?set SKIA_ROOT to the pinned checkout from third_party/skia.lock}"
+SKIA_OUT="${SKIA_OUT:-$SKIA_ROOT/out/elisa}"
+SKIA_LIB="${SKIA_LIB:-$SKIA_OUT/libskia.a}"
+RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
+PREFIX="${1:-$ROOT/build/showcase-skia}"
+WIDTH="${2:-1180}"
+HEIGHT="${3:-800}"
+
+bash "$ROOT/scripts/verify_skia_pin.sh" >/dev/null
+SKIA_ROOT="$SKIA_ROOT" SKIA_OUT="$SKIA_OUT" SKIA_LIB="$SKIA_LIB" bash "$ROOT/scripts/verify_skia_build.sh" >/dev/null
+[[ -f "$RUNTIME" ]] || { echo "showcase skia: no runtime object at $RUNTIME" >&2; exit 2; }
+
+mkdir -p "$ROOT/build"
+bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ROOT/build/showcase_app_skia_test.o" \
+  "$ROOT/test/showcase_app_skia_test.elisa"
+clang++ -std=c++20 -DSK_BUILD_FOR_MAC -fPIC -I"$ROOT" -I"$SKIA_ROOT" -c \
+  "$ROOT/test/showcase_app_skia_host.cpp" -o "$ROOT/build/showcase_app_skia_host.o"
+clang++ -std=c++17 -fPIC -I"$SKIA_ROOT" -c \
+  "$ROOT/src/platform/skia/skia_canvas_shim.cpp" -o "$ROOT/build/skia_canvas_shim.o"
+
+link_inputs=("$ROOT/build/showcase_app_skia_host.o" "$ROOT/build/showcase_app_skia_test.o"
+             "$ROOT/build/skia_canvas_shim.o" "$RUNTIME" "$SKIA_LIB")
+for extra in "$SKIA_OUT/libpng.a" "$SKIA_OUT/libzlib.a"; do
+  [[ -f "$extra" ]] && link_inputs+=("$extra")
+done
+clang++ -Wl,-dead_strip -o "$ROOT/build/showcase_app_skia" "${link_inputs[@]}" \
+  -framework CoreFoundation -framework CoreGraphics -framework CoreText -framework Foundation -lz
+
+"$ROOT/build/showcase_app_skia" "$PREFIX" "$WIDTH" "$HEIGHT" >/dev/null
+
+# A page that failed to lay out still writes a PNG -- of almost nothing. A
+# flat frame compresses to a fraction of a populated one, so a floor here is
+# what separates "rendered" from "wrote a file".
+for page in 1 2 3 4 5; do
+  file="$PREFIX-page$page.png"
+  [[ -s "$file" ]] || { echo "showcase skia: page $page produced no file" >&2; exit 1; }
+  size="$(stat -f%z "$file")"
+  if [[ "$size" -lt 20000 ]]; then
+    echo "showcase skia: page $page rendered almost nothing ($size bytes)" >&2
+    exit 1
+  fi
+  echo "showcase skia: page $page rendered ${WIDTH}x${HEIGHT} ($size bytes) -> $file"
+done
+echo "showcase skia: all five showcase pages rendered by the real renderer"

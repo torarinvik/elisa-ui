@@ -1,5 +1,6 @@
 # Canvas page: backend-neutral drawing commands driven by widget state and the
-# frame clock, replayed by CoreGraphics inside a retained layout node.
+# frame clock, replayed by whichever rasterizer the host selected inside a
+# retained layout node.
 
 include "theme.elisa"
 include "format.elisa"
@@ -9,6 +10,12 @@ extern cosf(value: f32) -> f32
 
 module ShowcaseCanvas:
     private:
+        # The commands are the same either way; only the rasterizer differs, so
+        # the page says which one is actually drawing it.
+        def renderer_blurb() -> sview:
+            return "Shapes, alpha, lines, clipping and text from one command batch; Skia replays it." if UiCapabilities::supports_skia()
+            return "Shapes, alpha, lines, clipping and text from one command batch; CoreGraphics replays it."
+
         const BAR_COUNT: usize = 18
         const ORBIT_COUNT: usize = 7
         const TAU: f32 = 6.2831853
@@ -87,7 +94,7 @@ module ShowcaseCanvas:
             page <- UiHandles::column(host, 0.0, 12.0, ShowcaseTheme::transparent())
             UiHandles::set_grow(page, 1.0)
             heading <- UiHandles::label(page, "Canvas", 22.0, ShowcaseTheme::ink())
-            blurb <- UiHandles::label(page, "Shapes, alpha, lines, clipping and text from one command batch; CoreGraphics replays it.", 13.0, ShowcaseTheme::muted())
+            blurb <- UiHandles::label(page, renderer_blurb(), 13.0, ShowcaseTheme::muted())
             control_row <- UiHandles::row(page, 0.0, 10.0, ShowcaseTheme::transparent())
             UiHandles::set_grow(control_row, 0.0)
             animate_box <- UiHandles::check_box(control_row, 110.0, 30.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
@@ -117,7 +124,7 @@ module ShowcaseCanvas:
 
         def apply_theme() -> void can Unsafe.PointerCast:
             UiHandles::set_text(heading, "Canvas", 22.0, ShowcaseTheme::ink())
-            UiHandles::set_text(blurb, "Shapes, alpha, lines, clipping and text from one command batch; CoreGraphics replays it.", 13.0, ShowcaseTheme::muted())
+            UiHandles::set_text(blurb, renderer_blurb(), 13.0, ShowcaseTheme::muted())
             ShowcaseTheme::style_choice(animate_box, "Animate", 13.0)
             ShowcaseTheme::style_choice(mode_bars, "Bars", 13.0)
             ShowcaseTheme::style_choice(mode_orbit, "Orbit", 13.0)
