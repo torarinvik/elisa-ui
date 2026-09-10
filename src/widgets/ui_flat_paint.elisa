@@ -86,9 +86,18 @@ extend UiFlat:
                     outer: mutable UiCore::Color = current_theme.control_mark if enabled else muted_color(current_theme.control_mark)
                     outer <- accent if widgets[index].selected
                     UiCore::fill(UiCore::Circle{center: UiCore::Vec2(mark_x, mark_y), radius: current_theme.radio_outer_radius}, outer)
+                    # The two states are the same two circles at different
+                    # PROPORTIONS. Empty is a thin ring, so the outer disc is
+                    # cut back to a border of the same relative weight the
+                    # checkbox uses. Selected is a filled disc with a small
+                    # mark, so the hole shrinks -- at the token's own radius it
+                    # is half the outer circle, and half is a donut rather
+                    # than a chosen option.
                     inner: mutable UiCore::Color = color
                     inner <- contrast_ink(accent) if widgets[index].selected
-                    UiCore::fill(UiCore::Circle{center: UiCore::Vec2(mark_x, mark_y), radius: current_theme.radio_inner_radius}, inner)
+                    hole: mutable f32 = current_theme.radio_outer_radius * RADIO_RING_INNER_RATIO
+                    hole <- radio_selected_mark_radius() if widgets[index].selected
+                    UiCore::fill(UiCore::Circle{center: UiCore::Vec2(mark_x, mark_y), radius: hole}, inner)
                 elif widgets[index].kind == UiConst::WidgetKind.CheckBox:
                     checkbox_extent: f32 = current_theme.checkbox_size
                     box_x: f32 = widgets[index].x + current_theme.choice_center_x - checkbox_extent / 2.0
@@ -106,7 +115,7 @@ extend UiFlat:
                     # hairline on the widget's own dark fill, which at 14pt is a
                     # few blue pixels on near-black -- present in the buffer and
                     # absent to the eye.
-                    checkbox_inset: f32 = checkbox_extent * 0.18
+                    checkbox_inset: f32 = checkbox_extent * CONTROL_BORDER_RATIO
                     checkbox_inner_extent: mutable f32 = checkbox_extent - checkbox_inset * 2.0
                     checkbox_inner_extent <- 0.0 if checkbox_inner_extent < 0.0
                     if not widgets[index].selected:
