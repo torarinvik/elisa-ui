@@ -446,6 +446,26 @@ def main() -> i64:
     UiFlat::paint()
     check("and recedes on a dark one too", luminance_gap(widget_ink(dark_control), night_ink) < luminance_gap(dark_lively, night_ink))
 
+    # A MARKER THAT FITS THE CONTROL IT MARKS. The accessibility metrics grow
+    # the marker with the reader's text preference, and a fixed-size control
+    # does not grow with it -- so the resolved marker can be wider than the
+    # widget it belongs to. It used to be drawn anyway, centred on a token that
+    # sat past the right edge, which is how a row of small swatches came to
+    # draw its rings over its neighbours.
+    UiFlat::reset()
+    swatch_ink: UiCore::Color = UiCore::rgb(60, 90, 200)
+    swatch: usize = UiFlat::radio_button(UiFlat::NONE, 28.0, 28.0, swatch_ink, swatch_ink, swatch_ink)
+    oversized_theme: mutable UiFlat::Theme = base_theme
+    oversized_theme.checkbox_size <- 60.0
+    oversized_theme.choice_center_x <- 70.0
+    UiFlat::set_theme(oversized_theme)
+    UiFlat::layout(28.0, 28.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("a marker never leaves the control that owns it", circles_stay_inside(UiFlat::widget(swatch).x, UiFlat::widget(swatch).y, UiFlat::widget(swatch).width, UiFlat::widget(swatch).height))
+    check("and it is still as large as the control allows", frame_contains_circle_radius(14.0))
+    UiFlat::set_theme(base_theme)
+
     if test_failures == 0:
         _ = puts("widget layout: all checks passed")
         return 0

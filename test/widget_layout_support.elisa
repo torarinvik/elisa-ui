@@ -170,6 +170,33 @@ def luminance_gap(left: UiCore::Color, right: UiCore::Color) -> i64:
 def widget_ink(index: usize) -> UiCore::Color:
     return rect_ink(UiFlat::widget(index).x, UiFlat::widget(index).y, UiFlat::widget(index).width, UiFlat::widget(index).height)
 
+# Does every circle in the frame sit inside this box? A marker drawn outside
+# the control that owns it lands on its neighbour.
+def circles_stay_inside(x: f32, y: f32, width: f32, height: f32) -> bool:
+    for command_index in 0..<UiCore::command_count():
+        match UiCore::command_at(command_index):
+            UiCore::Command.FillCircle(circle, color):
+                inside =
+                    left: f32 = circle.center.x - circle.radius
+                    right: f32 = circle.center.x + circle.radius
+                    top: f32 = circle.center.y - circle.radius
+                    bottom: f32 = circle.center.y + circle.radius
+                    left >= x - 0.01 and right <= x + width + 0.01 and top >= y - 0.01 and bottom <= y + height + 0.01
+                return false if not inside
+            _:
+                pass
+    return true
+
+
+def frame_contains_circle_radius(radius: f32) -> bool:
+    for command_index in 0..<UiCore::command_count():
+        match UiCore::command_at(command_index):
+            UiCore::Command.FillCircle(circle, color):
+                return true if near(circle.radius, radius)
+            _:
+                pass
+    return false
+
 def frame_contains_clip(x: f32, y: f32, width: f32, height: f32) -> bool:
     for index in 0..<UiCore::command_count():
         if UiCore::command_has_clip(index):

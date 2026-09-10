@@ -62,10 +62,46 @@ extend UiFlat:
         # The mark inside a chosen one, as a fraction of the disc it sits in.
         const RADIO_SELECTED_MARK_RATIO: f32 = 0.4
 
-        def radio_selected_mark_radius() -> f32:
-            proportional: f32 = theme().radio_outer_radius * RADIO_SELECTED_MARK_RATIO
+        def radio_selected_mark_radius(outer_radius: f32) -> f32:
+            proportional: f32 = outer_radius * RADIO_SELECTED_MARK_RATIO
             declared: f32 = theme().radio_inner_radius
             return proportional if proportional < declared else declared
+
+        # A MARKER THAT FITS THE CONTROL IT MARKS.
+        #
+        # The theme's marker size is a preference, and a preference can ask for
+        # more room than a fixed-size control has. The showcase's accent
+        # swatches are 28pt squares; at double text scale the resolved marker
+        # was wider than the swatch and its centre sat past the right edge, so
+        # every one of them drew its ring over its neighbour. Growing a marker
+        # with the reader's preference is right. Drawing it outside the widget
+        # that owns it never is, and the widget is the only authority on how
+        # much room there is.
+        def choice_marker_extent(index: usize) -> f32:
+            room =
+                width: f32 = widgets[index].width
+                height: f32 = widgets[index].height
+                width if width < height else height
+            return 0.0 if room <= 0.0
+            requested: f32 = theme().checkbox_size
+            return room if requested > room else requested
+
+        def choice_marker_center_x(index: usize, extent: f32) -> f32:
+            half: f32 = extent / 2.0
+            farthest: f32 = widgets[index].width - half
+            return half if farthest < half
+            requested: f32 = theme().choice_center_x
+            return half if requested < half
+            return farthest if requested > farthest
+            return requested
+
+        # A label follows the MARKER rather than the token whenever the token
+        # would start it inside the marker or past the end of the control.
+        def choice_text_origin(index: usize, center_x: f32, extent: f32) -> f32:
+            beside_marker: f32 = center_x + extent / 2.0
+            requested: f32 = theme().choice_text_space
+            return beside_marker if requested < beside_marker or requested >= widgets[index].width
+            return requested
 
         # The ink to put ON a filled swatch, decided by the swatch.
         #

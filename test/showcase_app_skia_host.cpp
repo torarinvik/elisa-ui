@@ -29,6 +29,7 @@ extern "C" std::int32_t elisa_showcase_app_skia_render(std::size_t canvas, std::
                                                        float scale);
 extern "C" std::int32_t elisa_showcase_app_skia_focus_next();
 extern "C" std::int32_t elisa_showcase_app_skia_toggle_theme();
+extern "C" std::int32_t elisa_showcase_app_skia_accessible(std::int32_t on);
 extern "C" std::int32_t elisa_showcase_app_skia_open_dialog();
 extern "C" std::int32_t elisa_showcase_app_skia_hover_button(std::int32_t pressed);
 extern "C" std::int32_t elisa_showcase_app_skia_close_dialog();
@@ -140,13 +141,36 @@ int main(int argc, char** argv) {
     }
     std::printf("showcase skia: wrote %s\n", light_path.c_str());
 
+    // ...and the accessibility branch, which no frame in this set had ever put
+    // on screen: the high-contrast palette at double text scale. Every bug
+    // found in that path so far was found by reading rather than by looking.
+    if (elisa_showcase_app_skia_toggle_theme() != 1 || elisa_showcase_app_skia_accessible(1) != 1) {
+        std::fprintf(stderr, "showcase skia: could not apply the accessible preferences\n");
+        return 7;
+    }
+    surface->getCanvas()->clear(SK_ColorTRANSPARENT);
+    const std::int32_t contrast_status = elisa_showcase_app_skia_render(
+        reinterpret_cast<std::size_t>(surface->getCanvas()),
+        reinterpret_cast<std::size_t>(typeface.get()),
+        static_cast<float>(width), static_cast<float>(height), 2, 1.0f);
+    if (contrast_status != 1) {
+        std::fprintf(stderr, "showcase skia: contrast page returned status %d\n", contrast_status);
+        return 5;
+    }
+    const std::string contrast_path = prefix + "-contrast.png";
+    if (!write_png(surface.get(), contrast_path)) {
+        std::fprintf(stderr, "showcase skia: failed to write %s\n", contrast_path.c_str());
+        return 6;
+    }
+    std::printf("showcase skia: wrote %s\n", contrast_path.c_str());
+    if (elisa_showcase_app_skia_accessible(0) != 1) {
+        std::fprintf(stderr, "showcase skia: could not restore the default preferences\n");
+        return 7;
+    }
+
     // Back to the dark palette, then the confirmation dialog: a raised sheet
     // over a shell disabled beneath it. Modals are their own rendering case and
     // appeared in none of the frames above.
-    if (elisa_showcase_app_skia_toggle_theme() != 1) {
-        std::fprintf(stderr, "showcase skia: could not switch the palette back\n");
-        return 7;
-    }
     if (elisa_showcase_app_skia_open_dialog() != 1) {
         std::fprintf(stderr, "showcase skia: could not open the dialog\n");
         return 7;

@@ -193,6 +193,11 @@ an appearance that was, at some stage, drawn by code no picture covered.
 
 - five pages, dark
 - `-light`, the light palette — the other half of the depth policy
+- `-contrast`, the high-contrast palette at double text scale — the
+  accessibility branch, which nothing had ever put on screen. Every bug found
+  in that path had been found by reading rather than by looking, and the first
+  frame it produced showed a row of accent swatches drawing their rings over
+  each other.
 - `-focus`, with the keyboard focus on a control
 - `-dialog`, a modal over a shell disabled beneath it
 - `-hover` and `-pressed`, a control under the pointer

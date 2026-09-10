@@ -75,6 +75,18 @@ if cmp -s "$PREFIX-page2.png" "$focus_file"; then
   exit 1
 fi
 echo "showcase skia: focus ring rendered ${WIDTH}x${HEIGHT} ($focus_size bytes) -> $focus_file"
+# ...the accessibility branch: the high-contrast palette at double text scale.
+# Nothing had ever rendered it, which is how a marker that grew with the
+# reader's preference but not with the control it marks survived.
+contrast_file="$PREFIX-contrast.png"
+[[ -s "$contrast_file" ]] || { echo "showcase skia: the high-contrast frame produced no file" >&2; exit 1; }
+contrast_size="$(stat -f%z "$contrast_file")"
+if [[ "$contrast_size" -lt 20000 ]]; then
+  echo "showcase skia: the high-contrast frame rendered almost nothing ($contrast_size bytes)" >&2
+  exit 1
+fi
+echo "showcase skia: high contrast rendered ${WIDTH}x${HEIGHT} ($contrast_size bytes) -> $contrast_file"
+
 # ...and the light palette, which exercises the other half of the depth policy.
 light_file="$PREFIX-light.png"
 [[ -s "$light_file" ]] || { echo "showcase skia: the light frame produced no file" >&2; exit 1; }
