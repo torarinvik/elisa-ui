@@ -98,6 +98,43 @@ def showcase_app_skia_open_dialog() -> i32:
         app_event(UiCore::KeyEvent.Down(code: UiCore::Key.H))
         return 1
 
+# Put the pointer on a control, so a frame can show what one looks like under
+# the cursor and under a press.
+#
+# HOVER AND PRESS ARE APPEARANCES TOO, and every frame the gate rendered was of
+# controls at rest. The button is found rather than hardcoded: a coordinate
+# baked into a fixture stops pointing at anything the first time the toolbar
+# changes, and then reports that hover renders fine because it hovered nothing.
+def showcase_app_skia_first_button() -> usize:
+    for index in 0..<UiHandles::count():
+        row: UiFlat::Widget = UiFlat::widget(index)
+        continue if row.kind != UiConst::WidgetKind.Button
+        continue if row.width <= 0.0 or row.height <= 0.0
+        return index
+    return UiHandles::count()
+
+def showcase_app_skia_hover_button(pressed: i32) -> i32:
+    can Ui.Input:
+        return 0 if not showcase_started
+        index: usize = showcase_app_skia_first_button()
+        return 0 if index >= UiHandles::count()
+        row: UiFlat::Widget = UiFlat::widget(index)
+        centre: UiCore::Vec2 = UiCore::Vec2(row.x + row.width / 2.0, row.y + row.height / 2.0)
+        app_event(UiCore::PointerEvent.Move(at: centre))
+        app_event(UiCore::PointerEvent.Down(at: centre, button: 0)) if pressed != 0
+        return 1
+
+# Escape, the way a person dismisses the dialog. The shell is DISABLED while a
+# modal is open, so a hover frame taken without closing it first shows a
+# disabled control not reacting -- which is a true picture of the wrong thing.
+def showcase_app_skia_close_dialog() -> i32:
+    can Ui.Input:
+        return 0 if not showcase_started
+        app_event(UiCore::KeyEvent.Down(code: UiCore::Key.Escape))
+        return 1
+
+export fn elisa_showcase_app_skia_close_dialog() -> i32 = showcase_app_skia_close_dialog
+export fn elisa_showcase_app_skia_hover_button(pressed: i32) -> i32 = showcase_app_skia_hover_button
 export fn elisa_showcase_app_skia_render(canvas: usize, font: usize, width: f32, height: f32, page: i32, scale: f32) -> i32 = showcase_app_skia_render
 export fn elisa_showcase_app_skia_open_dialog() -> i32 = showcase_app_skia_open_dialog
 export fn elisa_showcase_app_skia_focus_next() -> i32 = showcase_app_skia_focus_next

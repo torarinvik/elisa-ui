@@ -111,4 +111,28 @@ if [[ "$retina_size" -lt 60000 ]]; then
   exit 1
 fi
 echo "showcase skia: retina frame rendered $((WIDTH * 2))x$((HEIGHT * 2)) at 2x ($retina_size bytes) -> $retina_file"
+# ...and a control under the cursor, and the same control held down. Hover and
+# press are appearances, and every other frame here is of controls at rest.
+for state in hover pressed; do
+  state_file="$PREFIX-$state.png"
+  [[ -s "$state_file" ]] || { echo "showcase skia: the $state frame produced no file" >&2; exit 1; }
+  state_size="$(stat -f%z "$state_file")"
+  if [[ "$state_size" -lt 20000 ]]; then
+    echo "showcase skia: the $state frame rendered almost nothing ($state_size bytes)" >&2
+    exit 1
+  fi
+  echo "showcase skia: $state state rendered ${WIDTH}x${HEIGHT} ($state_size bytes) -> $state_file"
+done
+# Three DIFFERENT pictures. A pointer that reached nothing still writes two
+# perfectly good frames of a control at rest, which is how this check earns its
+# keep: it caught exactly that, with the modal left open and the shell disabled
+# beneath it, before the frames were looked at.
+if cmp -s "$PREFIX-page1.png" "$PREFIX-hover.png"; then
+  echo "showcase skia: the hover frame is identical to the resting one; the pointer reached no control" >&2
+  exit 1
+fi
+if cmp -s "$PREFIX-hover.png" "$PREFIX-pressed.png"; then
+  echo "showcase skia: the pressed frame is identical to the hovered one; the press changed nothing" >&2
+  exit 1
+fi
 echo "showcase skia: all five showcase pages rendered by the real renderer"

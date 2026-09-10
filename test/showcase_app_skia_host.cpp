@@ -29,6 +29,8 @@ extern "C" std::int32_t elisa_showcase_app_skia_render(std::size_t canvas, std::
 extern "C" std::int32_t elisa_showcase_app_skia_focus_next();
 extern "C" std::int32_t elisa_showcase_app_skia_toggle_theme();
 extern "C" std::int32_t elisa_showcase_app_skia_open_dialog();
+extern "C" std::int32_t elisa_showcase_app_skia_hover_button(std::int32_t pressed);
+extern "C" std::int32_t elisa_showcase_app_skia_close_dialog();
 
 namespace {
 
@@ -185,5 +187,34 @@ int main(int argc, char** argv) {
         return 6;
     }
     std::printf("showcase skia: wrote %s\n", retina_path.c_str());
+
+    // A control under the cursor, and the same control held down. Every frame
+    // above is of controls at rest, so the two appearances a pointer actually
+    // produces were in no picture at all.
+    if (elisa_showcase_app_skia_close_dialog() != 1) {
+        std::fprintf(stderr, "showcase skia: could not close the dialog\n");
+        return 7;
+    }
+    for (int pressed = 0; pressed < 2; ++pressed) {
+        if (elisa_showcase_app_skia_hover_button(pressed) != 1) {
+            std::fprintf(stderr, "showcase skia: could not put the pointer on a control\n");
+            return 7;
+        }
+        surface->getCanvas()->clear(SK_ColorTRANSPARENT);
+        const std::int32_t pointer_status = elisa_showcase_app_skia_render(
+            reinterpret_cast<std::size_t>(surface->getCanvas()),
+            reinterpret_cast<std::size_t>(typeface.get()),
+            static_cast<float>(width), static_cast<float>(height), 1, 1.0f);
+        if (pointer_status != 1) {
+            std::fprintf(stderr, "showcase skia: pointer frame returned status %d\n", pointer_status);
+            return 5;
+        }
+        const std::string pointer_path = prefix + (pressed != 0 ? "-pressed.png" : "-hover.png");
+        if (!write_png(surface.get(), pointer_path)) {
+            std::fprintf(stderr, "showcase skia: failed to write %s\n", pointer_path.c_str());
+            return 6;
+        }
+        std::printf("showcase skia: wrote %s\n", pointer_path.c_str());
+    }
     return 0;
 }
