@@ -56,6 +56,8 @@ void elisa_skia_canvas_shadow_round_rect(size_t canvas, float x, float y, float 
                                          float radius, float offset_x, float offset_y, float blur,
                                          uint8_t alpha);
 /* The shape's outside, blurred, shifted and clipped to the shape: an inner shadow. */
+/* A picture repeated at its own size across a rounded box. */
+void elisa_skia_canvas_draw_image_tiled(size_t canvas, size_t image, float x, float y, float width, float height, float radius, uint8_t alpha);
 void elisa_skia_canvas_inner_shadow_round_rect(size_t canvas, float x, float y, float width, float height, float radius, float offset_y, float blur, uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha);
 void elisa_skia_canvas_shadow_round_rect_color(size_t canvas, float x, float y, float width, float height,
                                                float radius, float offset_x, float offset_y, float blur,

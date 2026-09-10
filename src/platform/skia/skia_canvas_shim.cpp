@@ -320,6 +320,27 @@ extern "C" void elisa_skia_canvas_draw_image_sampling(std::size_t canvas_handle,
 }
 
 
+// A picture repeated across a rounded box at its own size: an image shader
+// with repeat tiling, filled into the shape. Grain over a ramp is the case
+// that wants it -- a 64-pixel noise tile over a full page, at a few percent.
+extern "C" void elisa_skia_canvas_draw_image_tiled(std::size_t canvas_handle, std::size_t image_handle,
+                                                   float x, float y, float width, float height,
+                                                   float radius, std::uint8_t alpha) {
+    SkCanvas *target = canvas(canvas_handle);
+    SkImage *image = reinterpret_cast<SkImage *>(image_handle);
+    if (target == nullptr || image == nullptr || !valid_rect(x, y, width, height) ||
+        !bounded_nonnegative_extent(radius) || alpha == 0) return;
+    SkPaint paint;
+    paint.setAntiAlias(true);
+    paint.setAlpha(alpha);
+    // Anchor the tile grid at the box's origin so the pattern does not swim
+    // when the box moves.
+    const SkMatrix at = SkMatrix::Translate(x, y);
+    paint.setShader(image->makeShader(SkTileMode::kRepeat, SkTileMode::kRepeat,
+                                      SkSamplingOptions(SkFilterMode::kNearest), &at));
+    target->drawRRect(SkRRect::MakeRectXY(SkRect::MakeXYWH(x, y, width, height), radius, radius), paint);
+}
+
 extern "C" void elisa_skia_canvas_draw_image_source_sampling(
     std::size_t canvas_handle, std::size_t image_handle,
     float source_x, float source_y, float source_width, float source_height,

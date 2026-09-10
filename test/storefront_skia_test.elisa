@@ -58,14 +58,15 @@ def storefront_skia_render(canvas: usize, font: usize, width: f32, height: f32, 
 
 # Four pictures, bound the way a host binds them: a resource the framework
 # knows by slot and generation, an image the host loaded, one call each.
-def storefront_skia_bind(brand: usize, glyph: usize, banner: usize, plate: usize) -> i32:
+def storefront_skia_bind(brand: usize, glyph: usize, banner: usize, plate: usize, grain: usize) -> i32:
     return 0 if not storefront_started
-    return 0 if brand == 0 or glyph == 0 or banner == 0 or plate == 0
+    return 0 if brand == 0 or glyph == 0 or banner == 0 or plate == 0 or grain == 0
     StoreApp::set_pictures(
         bound(brand, "storefront/brand", 48.0, 48.0),
         bound(glyph, "storefront/glyph", 48.0, 48.0),
         bound(banner, "storefront/banner", 720.0, 240.0),
-        bound(plate, "storefront/plate", 360.0, 180.0))
+        bound(plate, "storefront/plate", 360.0, 180.0),
+        bound(grain, "storefront/grain", 64.0, 64.0))
     return 1
 
 def bound(image: usize, key: sview, width: f32, height: f32) -> UiCore::ImageRef:
@@ -77,5 +78,17 @@ def bound(image: usize, key: sview, width: f32, height: f32) -> UiCore::ImageRef
     return UiCore::image_ref_none() if not UiSkia::bind_image(resource, image)
     return UiCore::image_ref(resource.slot, resource.generation)
 
+# A CONTROL UNDER THE CURSOR, and the same control held down. Every frame of
+# the storefront is of controls at rest, so the two appearances a pointer
+# actually produces -- and the motion between them -- were in no picture.
+def storefront_skia_hover(pressed: i32) -> i32:
+    can Ui.Input:
+        return 0 if not storefront_started
+        centre: UiCore::Vec2 = StoreApp::primary_centre()
+        app_event(UiCore::PointerEvent.Move(at: centre))
+        app_event(UiCore::PointerEvent.Down(at: centre, button: 0)) if pressed != 0
+        return 1
+
+export fn elisa_storefront_skia_hover(pressed: i32) -> i32 = storefront_skia_hover
 export fn elisa_storefront_skia_render(canvas: usize, font: usize, width: f32, height: f32, scale: f32) -> i32 = storefront_skia_render
-export fn elisa_storefront_skia_bind(brand: usize, glyph: usize, banner: usize, plate: usize) -> i32 = storefront_skia_bind
+export fn elisa_storefront_skia_bind(brand: usize, glyph: usize, banner: usize, plate: usize, grain: usize) -> i32 = storefront_skia_bind

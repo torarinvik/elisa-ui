@@ -59,3 +59,18 @@ flat colour and the photograph were deliberately indistinguishable — so it wou
 have passed with no picture at all. It samples the hero's sky instead, which is
 the one place in the frame where a picture and its fill are nothing like each
 other.
+
+## A hovered and a pressed frame, and grain
+
+Every frame of the storefront was of controls at rest. The host now puts the
+pointer on the primary action and holds it down, rendering one frame per
+motion step so the first is *mid-transition* (`-hovering.png`, `-pressing.png`)
+and a later one is settled (`-hover.png`, `-pressed.png`). The settled frames
+must differ from rest and from each other, or the pointer reached nothing —
+which it did on the first try, because the primary's hover colour *was* its
+rest colour. A control whose hover is its rest is a control the pointer does
+nothing to.
+
+`PictureFit.Tile` repeats a picture at its own size across a box. The page
+carries a 64-pixel tile of blue-tinted noise at 14/255: a mathematically smooth
+ramp reads as vector, and this is what makes a background read as a surface.

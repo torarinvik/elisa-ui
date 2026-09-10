@@ -31,8 +31,10 @@ extern "C" void elisa_skia_set_bold_typeface(std::size_t font);
 extern "C" void elisa_skia_set_font_manager(std::size_t manager);
 extern "C" std::int32_t elisa_storefront_skia_render(std::size_t canvas, std::size_t font,
                                                     float width, float height, float scale);
+extern "C" std::int32_t elisa_storefront_skia_hover(std::int32_t pressed);
 extern "C" std::int32_t elisa_storefront_skia_bind(std::size_t brand, std::size_t glyph,
-                                                  std::size_t banner, std::size_t plate);
+                                                  std::size_t banner, std::size_t plate,
+                                                  std::size_t grain);
 
 namespace {
 
@@ -115,6 +117,27 @@ sk_sp<SkImage> make_glyph() {
     return bitmap.asImage();
 }
 
+// GRAIN. A 64-pixel tile of blue-tinted noise, drawn over the page at a few
+// percent. A mathematically smooth ramp reads as vector; this is what makes a
+// background feel like a surface. Deterministic, so the frame is reproducible.
+sk_sp<SkImage> make_grain() {
+    const int size = 64;
+    SkBitmap bitmap;
+    if (!bitmap.tryAllocPixels(SkImageInfo::Make(size, size, kRGBA_8888_SkColorType, kPremul_SkAlphaType))) {
+        return nullptr;
+    }
+    std::uint32_t seed = 0x9E3779B9u;
+    for (int y = 0; y < size; ++y) {
+        for (int x = 0; x < size; ++x) {
+            seed ^= seed << 13; seed ^= seed >> 17; seed ^= seed << 5;
+            const unsigned v = 160 + (seed % 96);
+            *bitmap.getAddr32(x, y) = pack(v, v, v > 220 ? 255 : v + 24);
+        }
+    }
+    bitmap.setImmutable();
+    return bitmap.asImage();
+}
+
 bool write_png(SkSurface* surface, const std::string& path) {
     SkPixmap pixels;
     if (!surface->peekPixels(&pixels)) return false;
@@ -179,14 +202,16 @@ int main(int argc, char** argv) {
     sk_sp<SkImage> plate = make_scene(360, 180, 170, 160, 235);
     sk_sp<SkImage> brand = make_glyph();
     sk_sp<SkImage> glyph = make_glyph();
-    if (!banner || !plate || !brand || !glyph) {
+    sk_sp<SkImage> grain = make_grain();
+    if (!banner || !plate || !brand || !glyph || !grain) {
         std::fprintf(stderr, "storefront skia: could not build the pictures\n");
         return 4;
     }
     if (elisa_storefront_skia_bind(reinterpret_cast<std::size_t>(brand.get()),
                                    reinterpret_cast<std::size_t>(glyph.get()),
                                    reinterpret_cast<std::size_t>(banner.get()),
-                                   reinterpret_cast<std::size_t>(plate.get())) != 1) {
+                                   reinterpret_cast<std::size_t>(plate.get()),
+                                   reinterpret_cast<std::size_t>(grain.get())) != 1) {
         std::fprintf(stderr, "storefront skia: could not bind the pictures\n");
         return 5;
     }
@@ -221,6 +246,50 @@ int main(int argc, char** argv) {
         return 5;
     }
 
+    // The primary action under the cursor, then held down. The lift, the
+    // light and the recess are appearances a pointer produces, and a frame of
+    // controls at rest shows none of them. Motion eases between the two, so
+    // a frame is taken PER STEP: the first is mid-transition, a later one is
+    // settled, and both are written. The settled ones must differ from rest
+    // and from each other, or the pointer reached nothing.
+    const auto luminance_at = [&](int px, int py) {
+        SkPixmap p;
+        if (!surface->peekPixels(&p)) return -1;
+        const SkColor c = p.getColor(px, py);
+        return static_cast<int>((SkColorGetR(c) * 54 + SkColorGetG(c) * 183 + SkColorGetB(c) * 19) >> 8);
+    };
+    const int rest = luminance_at(static_cast<int>(372 * scale), static_cast<int>(248 * scale));
+    int settled[2] = {rest, rest};
+    for (int state = 0; state < 2; ++state) {
+        if (elisa_storefront_skia_hover(state) != 1) {
+            std::fprintf(stderr, "storefront skia: could not move the pointer\n");
+            return 7;
+        }
+        for (int step = 0; step < 6; ++step) {
+            surface->getCanvas()->clear(SK_ColorTRANSPARENT);
+            if (elisa_storefront_skia_render(reinterpret_cast<std::size_t>(surface->getCanvas()),
+                                             reinterpret_cast<std::size_t>(typeface.get()),
+                                             static_cast<float>(width), static_cast<float>(height), scale) != 1) {
+                std::fprintf(stderr, "storefront skia: %s frame returned an error\n", state ? "pressed" : "hover");
+                return 5;
+            }
+            if (step == 0) {
+                const std::string mid = path.substr(0, path.size() - 4) + (state ? "-pressing.png" : "-hovering.png");
+                write_png(surface.get(), mid);
+            }
+        }
+        settled[state] = luminance_at(static_cast<int>(372 * scale), static_cast<int>(248 * scale));
+        const std::string done = path.substr(0, path.size() - 4) + (state ? "-pressed.png" : "-hover.png");
+        if (!write_png(surface.get(), done)) {
+            std::fprintf(stderr, "storefront skia: failed to write %s\n", done.c_str());
+            return 6;
+        }
+    }
+    if (settled[0] == rest || settled[1] == settled[0]) {
+        std::fprintf(stderr, "storefront skia: the pointer reached nothing (rest %d, hover %d, pressed %d)\n",
+                     rest, settled[0], settled[1]);
+        return 5;
+    }
     std::printf("storefront skia: rendered %dx%d at %.1fx -> %s\n",
                 static_cast<int>(width * scale), static_cast<int>(height * scale),
                 static_cast<double>(scale), path.c_str());
