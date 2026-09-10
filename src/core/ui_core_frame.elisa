@@ -98,13 +98,18 @@ extend UiCore:
         # models a drop shadow has no use for the third state.
         def command_depth_at(index: usize) -> SurfaceDepth:
             return SurfaceDepth.Flat if index >= command_total.usize()
-            return command_surface_depth[index].SurfaceDepth()
+            return command_style[index].depth
 
         # The recorded stroke weight of a command. Only FillLine reads it; every
         # other command records the default and ignores it.
         def command_corner_at(index: usize) -> UiCore::CornerStyle:
-            return CornerStyle.Automatic if index >= command_count()
-            return command_corner_style[index].CornerStyle()
+            return command_style_at(index).corner
+
+        # The whole paint record for one command. A painter reads this and
+        # nothing else about how the surface is meant to look.
+        def command_style_at(index: usize) -> UiCore::SurfaceStyle:
+            return surface_style(SurfaceDepth.Flat) if index >= command_count()
+            return command_style[index]
 
         def command_stroke_width_at(index: usize) -> f32:
             return DEFAULT_STROKE_WIDTH if index >= command_total.usize()
@@ -298,18 +303,17 @@ extend UiCore:
             push_command_styled(command, SurfaceDepth.Flat, width)
 
         def push_command_styled(command: Command, depth: SurfaceDepth, width: f32) -> void:
-            push_command_shaped(command, depth, width, CornerStyle.Automatic)
+            push_command_shaped(command, surface_style(depth), width)
 
-        def push_command_shaped(command: Command, depth: SurfaceDepth, width: f32, corner: CornerStyle) -> void:
+        def push_command_shaped(command: Command, style: SurfaceStyle, width: f32) -> void:
             if command_total >= MAX_COMMANDS.u32():
                 command_dropped <- true
                 return
             slot: usize = command_total.usize()
             command_has_clip_flag[slot] <- current_clip_active
             command_clip[slot] <- current_clip if current_clip_active
-            command_surface_depth[slot] <- depth.i32()
+            command_style[slot] <- style
             command_stroke_width[slot] <- width
-            command_corner_style[slot] <- corner.i32()
             command_buffer[slot] <- normalized_command(command)
             command_total <- command_total + 1
             invalidate(Invalidation.Paint)
@@ -318,9 +322,8 @@ extend UiCore:
             command_buffer[index] <- Command.Clear(Color{r: 0, g: 0, b: 0, a: 0})
             command_clip[index] <- Rect(0.0, 0.0, 0.0, 0.0)
             command_has_clip_flag[index] <- false
-            command_surface_depth[index] <- SurfaceDepth.Flat.i32()
+            command_style[index] <- surface_style(SurfaceDepth.Flat)
             command_stroke_width[index] <- DEFAULT_STROKE_WIDTH
-            command_corner_style[index] <- CornerStyle.Automatic.i32()
 
         def clear_accessibility_slot(index: usize) -> void:
             accessibility_nodes[index] <- AccessibilityNode{

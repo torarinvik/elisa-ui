@@ -31,6 +31,14 @@ static int last_shadow_red;
 static int last_shadow_green;
 static int last_shadow_blue;
 static int last_shadow_alpha;
+/* The FIRST rounded gradient of a frame, not the last. A raised surface's
+   sheen is a rounded gradient too and it is drawn after the fill, so "last"
+   can never tell a ramped fill from a flat one. */
+static int first_ramp_red;
+static int first_ramp_green;
+static int first_ramp_blue;
+static int first_ramp_end_red;
+static int first_ramp_seen;
 static int image_count;
 static int circle_count;
 static int stroke_circle_count;
@@ -147,9 +155,17 @@ void elisa_skia_canvas_fill_round_rect_gradient(size_t canvas, float x, float y,
                                                uint8_t end_blue, uint8_t end_alpha,
                                                int32_t horizontal) {
     (void)x; (void)y; (void)width; (void)height; (void)radius; (void)horizontal;
-    (void)start_red; (void)start_green; (void)start_blue; (void)start_alpha;
-    (void)end_red; (void)end_green; (void)end_blue; (void)end_alpha;
-    if (canvas != 0) { rounded_gradient_count += 1; }
+    (void)start_alpha; (void)end_green; (void)end_blue; (void)end_alpha;
+    if (canvas != 0) {
+        if (!first_ramp_seen) {
+            first_ramp_seen = 1;
+            first_ramp_red = start_red;
+            first_ramp_green = start_green;
+            first_ramp_blue = start_blue;
+            first_ramp_end_red = end_red;
+        }
+        rounded_gradient_count += 1;
+    }
 }
 void elisa_skia_canvas_stroke_round_rect_gradient(size_t canvas, float x, float y, float width,
                                                   float height, float radius, float stroke_width,
@@ -279,7 +295,7 @@ void skia_test_reset(void) {
     save_count = 0; restore_count = 0; scale_count = 0; translate_count = 0; rotate_count = 0; clip_count = 0; rounded_clip_count = 0;
     clear_count = 0; last_text_weight_stroke = 0.0f; rounded_gradient_count = 0; stroke_rounded_gradient_count = 0; round_rect_count = 0; stroke_round_rect_count = 0; shadow_round_rect_count = 0; gradient_count = 0; image_count = 0; circle_count = 0; stroke_circle_count = 0; triangle_count = 0;
     backdrop_blur_count = 0; last_backdrop_sigma = 0.0f; last_text_used_bold = 0;
-    last_shadow_offset_x = 0.0f; last_shadow_offset_y = 0.0f; last_shadow_blur = 0.0f; last_shadow_red = 0; last_shadow_green = 0; last_shadow_blue = 0; last_shadow_alpha = 0;
+    last_shadow_offset_x = 0.0f; last_shadow_offset_y = 0.0f; last_shadow_blur = 0.0f; last_shadow_red = 0; last_shadow_green = 0; last_shadow_blue = 0; last_shadow_alpha = 0; first_ramp_seen = 0; first_ramp_red = 0; first_ramp_green = 0; first_ramp_blue = 0; first_ramp_end_red = 0;
     line_count = 0; text_count = 0; measure_width_count = 0; last_round_radius = 0.0f; last_clip_radius = 0.0f; last_stroke_width = 0.0f; last_circle_stroke_width = 0.0f; last_line_width = 0.0f; last_line_round_cap = 0; last_text_size = 0.0f; last_image_x = 0.0f; last_image_y = 0.0f; last_image_width = 0.0f; last_image_height = 0.0f; last_image_source_x = 0.0f; last_image_source_y = 0.0f; last_image_source_width = 0.0f; last_image_source_height = 0.0f; last_image_sampling = 1; last_gradient_horizontal = 0;
     event_total = 0;
 }
@@ -298,6 +314,10 @@ int skia_test_shadow_round_rect_count(void) { return shadow_round_rect_count; }
 /* The one number that decides whether a shadow reads as height or as dirt on
    the page. It was discarded here, so no fixture could see it. */
 int skia_test_last_shadow_alpha(void) { return last_shadow_alpha; }
+int skia_test_first_ramp_red(void) { return first_ramp_red; }
+int skia_test_first_ramp_green(void) { return first_ramp_green; }
+int skia_test_first_ramp_blue(void) { return first_ramp_blue; }
+int skia_test_first_ramp_end_red(void) { return first_ramp_end_red; }
 int skia_test_gradient_count(void) { return gradient_count; }
 int skia_test_rounded_gradient_count(void) { return rounded_gradient_count; }
 int skia_test_stroke_rounded_gradient_count(void) { return stroke_rounded_gradient_count; }

@@ -217,3 +217,68 @@ def check_vocabulary() -> void:
         _ = UiSkia::render_status()
         UiSkia::detach()
         check("and the painter draws the capsule the application asked for", skia_test_last_round_radius() == 11.0)
+
+        # A RAMP AND A LIGHT: the two things every surface in a current
+        # interface has that this framework could not draw at all.
+        #
+        # A shadow says how HIGH something is. A glow says it is ON -- the
+        # selected item, the primary action, the live indicator. They are
+        # drawn by the same primitive and mean opposite things, so the
+        # geometry that separates them lives here rather than in five
+        # backends: a shadow is dropped and black, a glow is centred and the
+        # surface's own colour, because light leaves an object in every
+        # direction and weight only goes down.
+        lit_box: UiCore::Rect = UiCore::Rect(0.0, 0.0, 120.0, 34.0)
+        base_style: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for(lit_box, UiCore::SurfaceDepth.Raised, UiCore::rgb(60, 120, 240))
+        lit: UiPaint::RoundedRectStyle = UiPaint::glow_shadow(base_style, lit_box)
+        check("a glow is not dropped in any direction", lit.shadow_offset_x == 0.0 and lit.shadow_offset_y == 0.0)
+        check("and it spreads further than the shadow it replaces", lit.shadow_blur > base_style.shadow_blur)
+        check("it keeps the surface's own corner", lit.radius == base_style.radius)
+        check("and it is only a light", lit.contact_alpha == 0 and lit.sheen_top_alpha == 0 and lit.bevel_alpha == 0 and lit.backdrop_blur == 0.0)
+        check("a hostile box cannot ask for an unbounded light", UiPaint::glow_blur(UiCore::Rect(0.0, 0.0, 1.0e30, 1.0e30)) == UiPaint::GLOW_BLUR_MAX and UiPaint::glow_blur(UiCore::Rect(0.0, 0.0, 1.0, 1.0)) == UiPaint::GLOW_BLUR_MIN)
+
+        # A zeroed record is the old behaviour exactly, which is what let this
+        # reach every existing call site without touching one of them.
+        plain: UiCore::SurfaceStyle = UiCore::surface_style(UiCore::SurfaceDepth.Raised)
+        check("a surface that says nothing has neither", not UiCore::has_gradient(plain) and not UiCore::has_glow(plain) and plain.corner == UiCore::CornerStyle.Automatic)
+
+        # ...and both reach the backend. The shim keeps the shadow's COLOUR,
+        # so a glow is distinguishable from a shadow at the boundary rather
+        # than only in the policy.
+        UiCore::begin_frame()
+        UiCore::fill_styled(UiCore::Rect(20.0, 20.0, 120.0, 34.0), UiCore::rgb(120, 170, 255), UiCore::SurfaceStyle{
+            depth: UiCore::SurfaceDepth.Raised,
+            corner: UiCore::CornerStyle.Pill,
+            gradient: UiCore::rgb(60, 120, 240),
+            gradient_horizontal: false,
+            glow: UiCore::rgba(60, 120, 240, 90),
+        })
+        skia_test_reset()
+        UiSkia::attach(1)
+        _ = UiSkia::render_status()
+        UiSkia::detach()
+        # The FIRST rounded gradient of the frame is the fill. A raised
+        # surface's sheen is a rounded gradient too and it is drawn after, so
+        # a count alone can never tell a ramped fill from a flat one -- which
+        # is exactly how the first version of this check passed with the ramp
+        # removed.
+        check("the painter fills a ramp rather than a flat colour", skia_test_first_ramp_red() == 120 and skia_test_first_ramp_green() == 170 and skia_test_first_ramp_blue() == 255)
+        check("and runs it to the far colour the application named", skia_test_first_ramp_end_red() == 60)
+        check("and draws the light in the colour it was given", skia_test_last_shadow_red() == 0 and skia_test_last_shadow_green() == 0 and skia_test_last_shadow_blue() == 0)
+        # The ambient shadow is drawn AFTER the glow, so the last shadow the
+        # backend was asked for is black -- which is what the check above
+        # reads. The glow's own colour is asserted by drawing one alone.
+        UiCore::begin_frame()
+        UiCore::fill_styled(UiCore::Rect(20.0, 20.0, 120.0, 34.0), UiCore::rgb(120, 170, 255), UiCore::SurfaceStyle{
+            depth: UiCore::SurfaceDepth.Flat,
+            corner: UiCore::CornerStyle.Pill,
+            gradient: UiCore::rgba(0, 0, 0, 0),
+            gradient_horizontal: false,
+            glow: UiCore::rgba(60, 120, 240, 90),
+        })
+        skia_test_reset()
+        UiSkia::attach(1)
+        _ = UiSkia::render_status()
+        UiSkia::detach()
+        check("a flat surface with a light draws exactly one, in colour", skia_test_shadow_round_rect_count() == 1 and skia_test_last_shadow_red() == 60 and skia_test_last_shadow_green() == 120 and skia_test_last_shadow_blue() == 240)
+        check("and it is centred, not dropped", skia_test_last_shadow_offset_x() == 0.0 and skia_test_last_shadow_offset_y() == 0.0)

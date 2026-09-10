@@ -47,3 +47,53 @@ extend UiCore:
             Pill = 1
             # No rounding at all.
             Square = 2
+
+        # EVERYTHING ABOUT HOW A SURFACE IS PAINTED that is not its box or its
+        # base colour, in one record.
+        #
+        # It began as a single `depth` argument, then grew a `corner` beside
+        # it, and the next two attributes would have made `fill_rect` a
+        # six-argument call that every backend has to thread. A record is the
+        # honest shape: these are facts about ONE surface, they travel
+        # together, and a painter that ignores three of them ignores them by
+        # name rather than by position.
+        #
+        # It rides side-band, like the depth alone used to. The command
+        # PAYLOAD is unchanged, so a wire backend that never learns about any
+        # of this keeps decoding the same rectangles it always did.
+        struct SurfaceStyle:
+            depth: SurfaceDepth
+            corner: CornerStyle
+            # The far end of a linear ramp across the fill. Alpha 0 means a
+            # flat fill, which is why every existing call site needed no
+            # change: a zeroed record is the old behaviour exactly.
+            #
+            # A ramp is not a decoration here. Every raised, tinted or
+            # accented surface in a current interface is one, and a framework
+            # that can only fill flat colour cannot draw one however good its
+            # shadows are.
+            gradient: Color
+            gradient_horizontal: bool
+            # An outer light in the surface's own colour. NOT the shadow: a
+            # shadow says how high something is, a glow says it is ON -- the
+            # selected item, the primary action, the live indicator. They are
+            # drawn by the same primitive and mean opposite things, so they
+            # are two fields rather than one tinted one.
+            glow: Color
+
+        # The record every existing fill emits: a flat surface at the depth it
+        # asked for, derived corners, no ramp and no light.
+        def surface_style(depth: SurfaceDepth) -> SurfaceStyle:
+            return SurfaceStyle{
+                depth,
+                corner: CornerStyle.Automatic,
+                gradient: Color{r: 0, g: 0, b: 0, a: 0},
+                gradient_horizontal: false,
+                glow: Color{r: 0, g: 0, b: 0, a: 0},
+            }
+
+        def has_gradient(style: SurfaceStyle) -> bool:
+            return style.gradient.a != 0
+
+        def has_glow(style: SurfaceStyle) -> bool:
+            return style.glow.a != 0

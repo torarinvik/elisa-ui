@@ -237,3 +237,45 @@ extend UiPaint:
         # a bevel weaker than the hairline would read as a nick in the rim.
         def rim_alpha(style: RoundedRectStyle) -> u8:
             return style.bevel_alpha if style.bevel_alpha > style.hairline_alpha else style.hairline_alpha
+
+    public:
+        # A GLOW IS NOT A SHADOW, and the difference is the whole policy.
+        #
+        # A shadow says how HIGH something is: it is dropped, it is black, and
+        # it grows with the object because the height it implies is physical.
+        # A glow says something is ON -- the selected item, the primary
+        # action, the live indicator -- and light leaves an object in every
+        # direction, so it is centred rather than dropped and it is the
+        # surface's OWN colour rather than black.
+        #
+        # They are drawn by the same primitive and mean opposite things, which
+        # is exactly why the geometry lives here and not in five backends.
+        const GLOW_BLUR_RATIO: f32 = 0.45
+        const GLOW_BLUR_MIN: f32 = 5.0
+        const GLOW_BLUR_MAX: f32 = 30.0
+
+        def glow_blur(box: UiCore::Rect) -> f32:
+            return clamped(elevation_extent(box) * GLOW_BLUR_RATIO, GLOW_BLUR_MIN, GLOW_BLUR_MAX)
+
+        # The style a backend hands its shadow primitive to draw a glow: same
+        # corner, no offset in either direction, the glow's own colour.
+        def glow_shadow(base: RoundedRectStyle, box: UiCore::Rect) -> RoundedRectStyle:
+            return RoundedRectStyle{
+                radius: base.radius,
+                elevated: base.elevated,
+                shadow_alpha: base.shadow_alpha,
+                hairline_alpha: base.hairline_alpha,
+                shadow_offset_x: 0.0,
+                shadow_offset_y: 0.0,
+                shadow_blur: glow_blur(box),
+                hairline_width: base.hairline_width,
+                sheen_top_alpha: 0,
+                sheen_bottom_alpha: 0,
+                bevel_alpha: 0,
+                sheen_is_shadow: false,
+                bevel_at_bottom: false,
+                contact_alpha: 0,
+                contact_offset_y: 0.0,
+                contact_blur: 0.0,
+                backdrop_blur: 0.0,
+            }

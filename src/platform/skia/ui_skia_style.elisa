@@ -30,6 +30,13 @@ extend UiSkia:
         # surface rather than part of its colour; rim last, because an edge that
         # anything else paints over stops being an edge.
         def draw_elevated_surface(box: UiCore::Rect, style: UiPaint::RoundedRectStyle, color: UiCore::Color) -> void can[Ui.Draw]:
+            UiSkia::draw_styled_surface(box, style, color, UiCore::surface_style(UiCore::SurfaceDepth.Flat))
+
+        # ...and the same surface with the application's own paint record: a
+        # ramp across the fill and a light around it. Both are opt-in and a
+        # zeroed record has neither, which is why the call above is the whole
+        # of the old behaviour.
+        def draw_styled_surface(box: UiCore::Rect, style: UiPaint::RoundedRectStyle, color: UiCore::Color, surface: UiCore::SurfaceStyle) -> void can[Ui.Draw]:
             # Glass comes FIRST, before even the shadow: it is a change to what
             # is already on the canvas, and everything below is drawn on top of
             # the result. The shadow lands outside the blurred region anyway,
@@ -39,9 +46,16 @@ extend UiSkia:
             # same result either way, and this order leaves the ambient layer
             # as the last shadow the backend was asked for, which is the one a
             # painter fixture reads back.
+            # The glow goes under the shadows and over the glass: it is light
+            # spilling around the object, so it belongs outside the object and
+            # beneath everything the object itself puts down.
+            UiSkia::draw_glow(box, style, surface.glow) if UiCore::has_glow(surface)
             UiSkia::draw_shadow(box, UiPaint::contact_shadow(style)) if UiPaint::has_contact_shadow(style)
             UiSkia::draw_shadow(box, style)
-            UiSkia::fill_rounded_rect(box, style.radius, color)
+            if UiCore::has_gradient(surface):
+                UiSkia::fill_rounded_gradient(box, style.radius, color, surface.gradient, surface.gradient_horizontal)
+            else:
+                UiSkia::fill_rounded_rect(box, style.radius, color)
             UiSkia::draw_sheen(box, style)
             UiSkia::draw_outline(box, style)
 
@@ -64,6 +78,12 @@ extend UiSkia:
     private:
         def disc_bounds(disc: UiCore::Circle) -> UiCore::Rect:
             return UiCore::Rect(disc.center.x - disc.radius, disc.center.y - disc.radius, disc.radius * 2.0, disc.radius * 2.0)
+
+        # One primitive, two meanings: see UiPaint::glow_shadow.
+        def draw_glow(box: UiCore::Rect, style: UiPaint::RoundedRectStyle, glow: UiCore::Color) -> void can[Ui.Draw]:
+            lit: UiPaint::RoundedRectStyle = UiPaint::glow_shadow(style, box)
+            UiSkia::draw_shadow_rounded_rect_with_color(
+                box, lit.radius, lit.shadow_offset_x, lit.shadow_offset_y, lit.shadow_blur, glow)
 
         def draw_shadow(box: UiCore::Rect, style: UiPaint::RoundedRectStyle) -> void can[Ui.Draw]:
             alpha: u8 = style.shadow_alpha

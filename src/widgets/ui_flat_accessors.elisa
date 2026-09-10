@@ -248,6 +248,35 @@ extend UiFlat:
             widgets[index].corner <- corner
             UiCore::invalidate(UiCore::Invalidation.Paint)
 
+        # A RAMP ACROSS A SURFACE'S FILL. Every raised, tinted or accented
+        # surface in a current interface is one, and a framework that can only
+        # fill flat colour cannot draw one however good its shadows are. The
+        # widget's own colour is the near end; this is the far one.
+        def set_gradient(index: usize, far: UiCore::Color, horizontal: bool) -> void:
+            return if index >= widget_count
+            return if colors_equal(widgets[index].gradient, far) and widgets[index].gradient_horizontal == horizontal
+            widgets[index].gradient <- far
+            widgets[index].gradient_horizontal <- horizontal
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+
+        # AN OUTER LIGHT. Not the shadow: a shadow says how high something is,
+        # a glow says it is ON -- the selected item, the primary action, the
+        # live indicator. See UiPaint::glow_shadow.
+        def set_glow(index: usize, glow: UiCore::Color) -> void:
+            return if index >= widget_count or colors_equal(widgets[index].glow, glow)
+            widgets[index].glow <- glow
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+
+        def surface_style_of(index: usize, depth: UiCore::SurfaceDepth) -> UiCore::SurfaceStyle:
+            return UiCore::surface_style(depth) if index >= widget_count
+            return UiCore::SurfaceStyle{
+                depth,
+                corner: widgets[index].corner,
+                gradient: widgets[index].gradient,
+                gradient_horizontal: widgets[index].gradient_horizontal,
+                glow: widgets[index].glow,
+            }
+
         def corner_of(index: usize) -> UiCore::CornerStyle:
             return UiCore::CornerStyle.Automatic if index >= widget_count
             return widgets[index].corner

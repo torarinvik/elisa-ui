@@ -152,9 +152,29 @@ module ShowcaseTheme:
             UiHandles::set_colors(handle, button(), button_hover(), button_press())
             UiHandles::set_text(handle, caption, size, ink())
 
+        # THE PRIMARY ACTION, which in a current interface is not a flat
+        # rectangle of the accent colour. It is a ramp from a lighter top edge
+        # to the accent, with the accent itself spilling out around it: the
+        # ramp says the surface is curved toward the light, the glow says the
+        # control is live. Both are framework features now, so the showcase
+        # states them rather than approximating them with a second colour.
         def style_accent_button(handle: UiHandles::Handle, caption: sview, size: f32) -> void:
-            UiHandles::set_colors(handle, current_accent(), current_accent_hover(), current_accent_press())
+            UiHandles::set_colors(handle, lifted(current_accent()), current_accent_hover(), current_accent_press())
+            UiHandles::set_gradient(handle, current_accent(), false)
+            UiHandles::set_glow(handle, tinted(current_accent(), 90))
             UiHandles::set_text(handle, caption, size, on_accent())
+
+        # A lighter cast of a colour, for the near end of a ramp. Toward white
+        # rather than by a fixed amount, so a dark accent lifts as much as a
+        # bright one and neither clips.
+        def lifted(color: UiCore::Color) -> UiCore::Color:
+            return UiCore::rgba(toward_white(color.r), toward_white(color.g), toward_white(color.b), color.a)
+
+        def toward_white(channel: u8) -> u8:
+            return (channel.i64() + (255 - channel.i64()) * 34 / 100).u8()
+
+        def tinted(color: UiCore::Color, alpha: u8) -> UiCore::Color:
+            return UiCore::rgba(color.r, color.g, color.b, alpha)
 
         def style_danger_button(handle: UiHandles::Handle, caption: sview, size: f32) -> void:
             UiHandles::set_colors(handle, danger(), danger_hover(), danger_press())
@@ -163,6 +183,30 @@ module ShowcaseTheme:
         def style_choice(handle: UiHandles::Handle, caption: sview, size: f32) -> void:
             UiHandles::set_colors(handle, button(), button_hover(), button_press())
             UiHandles::set_text(handle, caption, size, ink())
+
+        # A NAVIGATION ENTRY, whose selected state in a current interface is
+        # not a dot beside a bordered box. It is the accent itself, ramped and
+        # lit, with the unselected entries reduced to text on the shell. That
+        # is one call each now, because a ramp and a light are things the
+        # framework can be told about rather than things an app fakes.
+        def style_nav_entry(handle: UiHandles::Handle, caption: sview, size: f32, selected: bool) -> void:
+            UiHandles::set_corner(handle, UiCore::CornerStyle.Automatic)
+            if selected:
+                UiHandles::set_colors(handle, lifted(current_accent()), lifted(current_accent()), current_accent_press())
+                UiHandles::set_gradient(handle, current_accent(), false)
+                UiHandles::set_glow(handle, tinted(current_accent(), 80))
+                UiHandles::set_text(handle, caption, size, on_accent())
+                return
+            # An unselected entry is not a weaker version of the selected one.
+            # It is the shell, with a label on it, which is what stops a list
+            # of five from reading as five buttons.
+            UiHandles::set_colors(handle, transparent(), button_hover(), button_press())
+            UiHandles::set_gradient(handle, rgba(0, 0, 0, 0), false)
+            UiHandles::set_glow(handle, rgba(0, 0, 0, 0))
+            UiHandles::set_text(handle, caption, size, muted())
+
+        def rgba(r: u8, g: u8, b: u8, a: u8) -> UiCore::Color:
+            return UiCore::rgba(r, g, b, a)
 
         def style_field(handle: UiHandles::Handle, caption: sview, size: f32) -> void:
             UiHandles::set_colors(handle, field(), field(), field())
