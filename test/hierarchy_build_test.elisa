@@ -207,4 +207,25 @@ def main() -> i64:
         if bounded_state.offset != UiCore::MAX_GEOMETRY_EXTENT:
             fail("stateful scroll builder bounds oversized offsets")
 
+        # A STATE THAT SHOWS AT BOTH ENDS OF THE RANGE. Hover was a fixed +30
+        # on every channel and press a fixed -30: fine on a mid-tone surface,
+        # nothing at all on a near-white one, where the addition clips. A light
+        # theme had no hover feedback, and press moved the opposite way from
+        # hover for no reason -- which reads as a different control rather than
+        # a stronger version of the same signal.
+        paper: UiCore::Color = UiCore::rgb(250, 250, 252)
+        slate: UiCore::Color = UiCore::rgb(36, 40, 50)
+        paper_hover: i64 = UiCore::surface_luminance(state_shift(paper, HOVER_STATE_SHIFT))
+        slate_hover: i64 = UiCore::surface_luminance(state_shift(slate, HOVER_STATE_SHIFT))
+        if paper_hover >= UiCore::surface_luminance(paper):
+            fail("a light surface must darken under the pointer")
+        if slate_hover <= UiCore::surface_luminance(slate):
+            fail("a dark surface must lighten under the pointer")
+        if UiCore::surface_luminance(paper) - paper_hover < 12:
+            fail("a near-white surface must still move visibly")
+        if UiCore::surface_luminance(state_shift(paper, PRESS_STATE_SHIFT)) >= paper_hover:
+            fail("pressing a light surface must go further than hovering it")
+        if UiCore::surface_luminance(state_shift(slate, PRESS_STATE_SHIFT)) <= slate_hover:
+            fail("pressing a dark surface must go further than hovering it")
+
         return failures.i64()

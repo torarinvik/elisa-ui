@@ -88,28 +88,28 @@ extend UiWidgets:
                 safe_caption: sview = normalized_text(caption)
                 text_width: f32 = UiTextMetrics::width(safe_caption, 14.0, false)
                 text_height: f32 = UiTextMetrics::line_height(14.0)
-                return Button.Push(min_width: UiCore::bounded_extent(text_width + 20.0), min_height: UiCore::bounded_extent(text_height + 12.0), grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: safe_caption, rest: base, hover: lighten(base, 30), press: darken(base, 30))
+                return Button.Push(min_width: UiCore::bounded_extent(text_width + 20.0), min_height: UiCore::bounded_extent(text_height + 12.0), grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: safe_caption, rest: base, hover: state_shift(base, HOVER_STATE_SHIFT), press: state_shift(base, PRESS_STATE_SHIFT))
 
         def checkbox(caption: sview, checked: bool, base: UiCore::Color) -> Widget:
             can Memory.Allocate, Abort.Panic:
                 safe_caption: sview = normalized_text(caption)
                 text_width: f32 = UiTextMetrics::width(safe_caption, 14.0, false)
                 text_height: f32 = UiTextMetrics::line_height(14.0)
-                return Button.Check(min_width: UiCore::bounded_extent(text_width + 28.0), min_height: UiCore::bounded_extent(text_height + 8.0), grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: safe_caption, checked: checked, rest: base, hover: lighten(base, 30), press: darken(base, 30))
+                return Button.Check(min_width: UiCore::bounded_extent(text_width + 28.0), min_height: UiCore::bounded_extent(text_height + 8.0), grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: safe_caption, checked: checked, rest: base, hover: state_shift(base, HOVER_STATE_SHIFT), press: state_shift(base, PRESS_STATE_SHIFT))
 
         def toggle(caption: sview, on: bool, base: UiCore::Color) -> Widget:
             can Memory.Allocate, Abort.Panic:
                 safe_caption: sview = normalized_text(caption)
                 text_width: f32 = UiTextMetrics::width(safe_caption, 14.0, false)
                 text_height: f32 = UiTextMetrics::line_height(14.0)
-                return Button.Toggle(min_width: UiCore::bounded_extent(text_width + 28.0), min_height: UiCore::bounded_extent(text_height + 8.0), grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: safe_caption, on: on, rest: base, hover: lighten(base, 30), press: darken(base, 30))
+                return Button.Toggle(min_width: UiCore::bounded_extent(text_width + 28.0), min_height: UiCore::bounded_extent(text_height + 8.0), grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: safe_caption, on: on, rest: base, hover: state_shift(base, HOVER_STATE_SHIFT), press: state_shift(base, PRESS_STATE_SHIFT))
 
         def radio(caption: sview, group: i32, selected: bool, base: UiCore::Color) -> Widget:
             can Memory.Allocate, Abort.Panic:
                 safe_caption: sview = normalized_text(caption)
                 text_width: f32 = UiTextMetrics::width(safe_caption, 14.0, false)
                 text_height: f32 = UiTextMetrics::line_height(14.0)
-                return Button.Radio(min_width: UiCore::bounded_extent(text_width + 28.0), min_height: UiCore::bounded_extent(text_height + 8.0), grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: safe_caption, group: group, selected: selected, rest: base, hover: lighten(base, 30), press: darken(base, 30))
+                return Button.Radio(min_width: UiCore::bounded_extent(text_width + 28.0), min_height: UiCore::bounded_extent(text_height + 8.0), grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: safe_caption, group: group, selected: selected, rest: base, hover: state_shift(base, HOVER_STATE_SHIFT), press: state_shift(base, PRESS_STATE_SHIFT))
 
         def gauge(fraction: f32, track: UiCore::Color, bar: UiCore::Color) -> Widget:
             can Memory.Allocate, Abort.Panic:
@@ -147,6 +147,27 @@ extend UiWidgets:
             return UiCore::Color{r: r, g: g, b: b, a: c.a}
 
     public:
+        # A STATE THAT SHOWS AT BOTH ENDS OF THE RANGE.
+        #
+        # Hover was a fixed +30 on every channel and press a fixed -30, which
+        # works on a mid-tone surface and nowhere else. On a near-white button
+        # the addition clips: rgb(250, 250, 252) lightens to (255, 255, 255),
+        # a change of five levels nobody can see, and on pure white to nothing
+        # at all -- so a light theme had no hover feedback. The two also moved
+        # in OPPOSITE directions for no reason, which makes a press look like a
+        # different control rather than a stronger version of the same signal.
+        #
+        # Moving AWAY from the surface's own lightness is the rule that works
+        # at both ends, and it is what a state layer is: a dark surface gets
+        # lighter, a light one gets darker, and pressing is the same move
+        # further along.
+        const HOVER_STATE_SHIFT: u8 = 26
+        const PRESS_STATE_SHIFT: u8 = 52
+
+        def state_shift(c: UiCore::Color, amount: u8) -> UiCore::Color:
+            return darken(c, amount) if UiCore::surface_luminance(c) >= 128
+            return lighten(c, amount)
+
         # Give a widget a share of its parent's leftover space. Returns the
         # widget so it can be written inline:
         # `children(row, grow(button("OK", blue), 1.0))`.
