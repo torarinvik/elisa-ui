@@ -110,7 +110,16 @@ nothing in the opaque case, where those pixels were being covered anyway.
   has always carried was written for grooves and never asked for by the one
   gesture it describes exactly.
 - A disabled control is **flat**. Elevation is an invitation, and one that
-  still stands off the page is inviting a press it will not answer.
+  still stands off the page is inviting a press it will not answer. It is also
+  muted *toward the surface it sits on*, not toward black. Halving every
+  channel was the old rule, and it reads as "off" on a dark interface only by
+  accident — everything there is already near black, so darkening happens to
+  lower contrast. On a light page the same rule turns a near-white button
+  mid-grey and makes the one control that must recede the most prominent thing
+  on the screen. Half the distance to the ground is the same statement in both
+  palettes: less difference from the surroundings. A mark, a track or a caption
+  recedes into the widget's own fill rather than into what is behind the widget,
+  because a disabled checkmark fading toward the page would *gain* contrast.
 - Radios and checkboxes are **flat**, and inset while pressed. They were raised
   like buttons until a list of twenty-four full-width rows showed what that
   costs: each row with its own rim and its own shadow is a ladder of floating

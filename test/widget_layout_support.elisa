@@ -151,6 +151,25 @@ def first_fill_color_command(expected: UiCore::Color) -> usize:
                 pass
     return UiCore::command_count()
 
+# The colour of the fill that covers exactly this box, and how far two colours
+# stand apart in perceived lightness.
+def rect_ink(x: f32, y: f32, width: f32, height: f32) -> UiCore::Color:
+    for command_index in 0..<UiCore::command_count():
+        match UiCore::command_at(command_index):
+            UiCore::Command.FillRect(rect, color):
+                return color if near(rect.origin.x, x) and near(rect.origin.y, y) and near(rect.size.width, width) and near(rect.size.height, height)
+            _:
+                pass
+    return UiCore::rgba(0, 0, 0, 0)
+
+def luminance_gap(left: UiCore::Color, right: UiCore::Color) -> i64:
+    first: i64 = UiCore::surface_luminance(left)
+    second: i64 = UiCore::surface_luminance(right)
+    return first - second if first > second else second - first
+
+def widget_ink(index: usize) -> UiCore::Color:
+    return rect_ink(UiFlat::widget(index).x, UiFlat::widget(index).y, UiFlat::widget(index).width, UiFlat::widget(index).height)
+
 def frame_contains_clip(x: f32, y: f32, width: f32, height: f32) -> bool:
     for index in 0..<UiCore::command_count():
         if UiCore::command_has_clip(index):

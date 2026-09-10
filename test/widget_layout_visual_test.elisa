@@ -413,6 +413,39 @@ def main() -> i64:
     UiFlat::paint()
     check("a control that cannot be pressed is flat", UiCore::command_depth_at(first_rect_index(UiCore::Color{r: 30, g: 45, b: 100, a: 255})) == UiCore::SurfaceDepth.Flat)
 
+    # A DISABLED CONTROL ON A LIGHT PAGE. Muting used to halve every channel,
+    # which moves a colour toward BLACK -- a rule that reads as "off" on a dark
+    # interface only by accident, because everything there is already near
+    # black. On a light page the same rule turns a near-white button mid-grey,
+    # and the one control that must recede becomes the most prominent thing on
+    # the screen.
+    UiFlat::reset()
+    page_ink: UiCore::Color = UiCore::rgb(250, 250, 252)
+    page: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 0.0, 0.0, page_ink)
+    pale_control: usize = UiFlat::button(page, 120.0, 40.0, UiCore::rgb(232, 234, 242), UiCore::rgb(238, 240, 246), UiCore::rgb(220, 222, 232))
+    UiFlat::layout(200.0, 100.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    lively: UiCore::Color = widget_ink(pale_control)
+    UiFlat::set_enabled(pale_control, false)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("a disabled control on a light page recedes rather than darkens", luminance_gap(widget_ink(pale_control), page_ink) < luminance_gap(lively, page_ink))
+    # ...and the same statement still holds on a dark one, where the old rule
+    # happened to be right.
+    UiFlat::reset()
+    night_ink: UiCore::Color = UiCore::rgb(16, 18, 24)
+    night: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 0.0, 0.0, night_ink)
+    dark_control: usize = UiFlat::button(night, 120.0, 40.0, UiCore::rgb(70, 120, 220), UiCore::rgb(90, 140, 240), UiCore::rgb(50, 90, 180))
+    UiFlat::layout(200.0, 100.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    dark_lively: UiCore::Color = widget_ink(dark_control)
+    UiFlat::set_enabled(dark_control, false)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("and recedes on a dark one too", luminance_gap(widget_ink(dark_control), night_ink) < luminance_gap(dark_lively, night_ink))
+
     if test_failures == 0:
         _ = puts("widget layout: all checks passed")
         return 0

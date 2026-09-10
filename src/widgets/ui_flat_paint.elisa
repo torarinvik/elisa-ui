@@ -62,12 +62,12 @@ extend UiFlat:
                     track_x: f32 = widgets[index].x + slider_inset
                     track_width: f32 = widgets[index].width - slider_inset * 2.0
                     shown_fraction: f32 = displayed_value(index, widgets[index].value)
-                    slider_track: UiCore::Color = widgets[index].color if enabled else muted_color(widgets[index].color)
-                    slider_fill: UiCore::Color = widgets[index].hover_color if enabled else muted_color(widgets[index].hover_color)
+                    slider_track: UiCore::Color = widgets[index].color if enabled else muted_ink(index, widgets[index].color)
+                    slider_fill: UiCore::Color = widgets[index].hover_color if enabled else muted_ink(index, widgets[index].hover_color)
                     UiCore::fill_inset(UiCore::Rect(track_x, track_y, track_width, track_height), slider_track)
                     UiCore::fill(UiCore::Rect(track_x, track_y, track_width * shown_fraction, track_height), slider_fill)
                     thumb_x: f32 = track_x + track_width * shown_fraction
-                    thumb: mutable UiCore::Color = widgets[index].press_color if enabled else muted_color(widgets[index].press_color)
+                    thumb: mutable UiCore::Color = widgets[index].press_color if enabled else muted_ink(index, widgets[index].press_color)
                     thumb <- current_theme.control_mark_strong if widgets[index].pressed
                     # The thumb is the one control that is unambiguously ON the
                     # surface rather than part of it, so it is the one circle
@@ -78,8 +78,8 @@ extend UiFlat:
                     progress_height: f32 = current_theme.slider_track_height if current_theme.slider_track_height < widgets[index].height else widgets[index].height
                     progress_y: f32 = widgets[index].y + widgets[index].height / 2.0 - progress_height / 2.0
                     shown_progress: f32 = displayed_value(index, widgets[index].value)
-                    progress_track: UiCore::Color = widgets[index].color if enabled else muted_color(widgets[index].color)
-                    progress_fill: UiCore::Color = widgets[index].hover_color if enabled else muted_color(widgets[index].hover_color)
+                    progress_track: UiCore::Color = widgets[index].color if enabled else muted_ink(index, widgets[index].color)
+                    progress_fill: UiCore::Color = widgets[index].hover_color if enabled else muted_ink(index, widgets[index].hover_color)
                     UiCore::fill_inset(UiCore::Rect(widgets[index].x, progress_y, widgets[index].width, progress_height), progress_track)
                     UiCore::fill(UiCore::Rect(widgets[index].x, progress_y, widgets[index].width * shown_progress, progress_height), progress_fill)
                 elif color.a != 0:
@@ -91,8 +91,8 @@ extend UiFlat:
                     # ink that reads on it. It used to keep the same grey ring
                     # whether it was on or off and change only a 3pt dot, which
                     # is a state you have to hunt for rather than one you see.
-                    accent: UiCore::Color = current_theme.control_mark_strong if enabled else muted_color(current_theme.control_mark_strong)
-                    outer: mutable UiCore::Color = current_theme.control_mark if enabled else muted_color(current_theme.control_mark)
+                    accent: UiCore::Color = current_theme.control_mark_strong if enabled else muted_ink(index, current_theme.control_mark_strong)
+                    outer: mutable UiCore::Color = current_theme.control_mark if enabled else muted_ink(index, current_theme.control_mark)
                     outer <- accent if widgets[index].selected
                     UiCore::fill(UiCore::Circle{center: UiCore::Vec2(mark_x, mark_y), radius: current_theme.radio_outer_radius}, outer)
                     # The two states are the same two circles at different
@@ -111,8 +111,8 @@ extend UiFlat:
                     checkbox_extent: f32 = current_theme.checkbox_size
                     box_x: f32 = widgets[index].x + current_theme.choice_center_x - checkbox_extent / 2.0
                     box_y: f32 = widgets[index].y + widgets[index].height / 2.0 - checkbox_extent / 2.0
-                    checkbox_accent: UiCore::Color = current_theme.control_mark_strong if enabled else muted_color(current_theme.control_mark_strong)
-                    box_color: mutable UiCore::Color = current_theme.control_mark if enabled else muted_color(current_theme.control_mark)
+                    checkbox_accent: UiCore::Color = current_theme.control_mark_strong if enabled else muted_ink(index, current_theme.control_mark_strong)
+                    box_color: mutable UiCore::Color = current_theme.control_mark if enabled else muted_ink(index, current_theme.control_mark)
                     box_color <- checkbox_accent if widgets[index].selected
                     UiCore::fill(UiCore::Rect(box_x, box_y, checkbox_extent, checkbox_extent), box_color)
                     # Scale the inset and checkmark with the token. Fixed
@@ -157,7 +157,7 @@ extend UiFlat:
                     visible_value: sview = display_range(index, visible_start, visible_stop)
                     display_text: sview = visible_value if field_value.len > 0 else widgets[index].placeholder
                     field_ink: mutable UiCore::Color = widgets[index].text_color
-                    field_ink <- muted_color(field_ink) if not enabled
+                    field_ink <- muted_ink(index, field_ink) if not enabled
                     if field_value.len == 0:
                         field_ink <- UiCore::Color{r: field_ink.r / 2, g: field_ink.g / 2, b: field_ink.b / 2, a: field_ink.a}
                     field_y: f32 = widgets[index].y + (widgets[index].height - measure_text_line_height(index)) / 2.0
@@ -211,7 +211,7 @@ extend UiFlat:
                     # different widths.
                     text_x <- widgets[index].x + current_theme.choice_text_space
                 ink: mutable UiCore::Color = widgets[index].text_color
-                ink <- muted_color(ink) if not enabled
+                ink <- muted_ink(index, ink) if not enabled
                 UiCore::draw(UiCore::TextRun(UiCore::Vec2(text_x, text_y), widgets[index].text_size, widgets[index].text, widgets[index].text_weighted), ink)
             # Indicators are emitted after content so they remain readable over
             # translated children and nested scroll areas.

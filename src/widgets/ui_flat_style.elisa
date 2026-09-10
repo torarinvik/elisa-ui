@@ -4,13 +4,51 @@ extend UiFlat:
     private:
         def color_of(index: usize) -> UiCore::Color:
             if not effectively_enabled(index):
-                return muted_color(widgets[index].color)
+                return muted_surface(index, widgets[index].color)
             return widgets[index].press_color if widgets[index].pressed
             return widgets[index].hover_color if widgets[index].hovered
             return widgets[index].color
 
-        def muted_color(base: UiCore::Color) -> UiCore::Color:
-            return UiCore::Color{r: base.r / 2, g: base.g / 2, b: base.b / 2, a: base.a}
+        # DISABLED MEANS RECEDE, and receding is relative to what you sit ON.
+        #
+        # This used to halve every channel, which moves a colour toward BLACK.
+        # On a dark interface that reads as "off" by accident -- everything is
+        # already near black, so darkening it lowers contrast. On a light one it
+        # is exactly backwards: a near-white button becomes mid-grey, and the
+        # disabled control ends up MORE prominent than the enabled ones beside
+        # it, which is the one thing it must never be.
+        #
+        # Half the distance to the ground works in both, because it is the same
+        # statement in both: less difference from the surroundings.
+        const MUTED_TOWARD_GROUND: f32 = 0.55
+
+        def muted_surface(index: usize, base: UiCore::Color) -> UiCore::Color:
+            return muted_toward(base, ground_behind(index))
+
+        # A mark, a track or a caption recedes into the surface it is drawn on,
+        # which is the widget's own fill rather than whatever is behind the
+        # widget. A disabled checkmark fading toward the page instead of toward
+        # the box it sits in would gain contrast, not lose it.
+        def muted_ink(index: usize, base: UiCore::Color) -> UiCore::Color:
+            own: UiCore::Color = color_of(index)
+            return muted_toward(base, own) if own.a != 0
+            return muted_toward(base, ground_behind(index))
+
+        def muted_toward(base: UiCore::Color, ground: UiCore::Color) -> UiCore::Color:
+            # Nothing painted behind it, so there is nothing to recede into.
+            # Keep the old darkening rather than fading toward transparent,
+            # which would erase the control instead of disabling it.
+            return UiCore::Color{r: base.r / 2, g: base.g / 2, b: base.b / 2, a: base.a} if ground.a == 0
+            return UiCore::Color{
+                r: muted_channel(base.r, ground.r),
+                g: muted_channel(base.g, ground.g),
+                b: muted_channel(base.b, ground.b),
+                a: base.a,
+            }
+
+        def muted_channel(base: u8, ground: u8) -> u8:
+            moved: f32 = base.f32() + (ground.f32() - base.f32()) * MUTED_TOWARD_GROUND
+            return UiCore::channel(moved.i64()).u8()
 
         # An empty choice -- box or ring -- is a BORDER, and one ratio sets its
         # weight for both so they read as one family. The checkbox measures the
