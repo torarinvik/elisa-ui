@@ -24,3 +24,26 @@ the category instead of making each backend parse locale strings independently.
 
 Claim dynamic item identity through `UiIdentity` before rebuilding a localized
 list so RTL/retranslation does not transfer focus or edit state by position.
+
+## What the painter mirrors, and what it does not yet
+
+A choice control's **marker and its label** follow the reader's direction: in a
+right-to-left locale the box or ring sits on the trailing side and the caption
+runs to the other side of it. The fitted left-to-right centre is *reflected*
+rather than recomputed, which keeps the marker inside its control for free —
+the left-to-right answer is already clamped, and a reflection of something
+inside the box is inside the box.
+
+This was carried by nothing for a long time. `direction`, `leading_alignment`,
+`trailing_alignment` and `mirror_x` have existed since localization landed, and
+the retained painter consulted none of them; the only caller outside this
+module's own test was text layout, which takes a direction for the caret, hit
+testing and selection. So an Arabic build got a correctly mirrored caret inside
+a field whose checkbox was still nailed to the left with its label running away
+from it. A policy nothing consults is a policy that is not there.
+
+**Still left-to-right**: a slider's fill direction, and the side a scrollbar
+sits on. Both are deliberate omissions rather than oversights — each maps
+pointer coordinates back to a value or an offset, so mirroring the paint
+without mirroring that mapping in the same change would invert the drag. They
+want the painter and `ui_flat_pointer.elisa` moved together.

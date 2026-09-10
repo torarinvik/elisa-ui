@@ -466,6 +466,33 @@ def main() -> i64:
     check("and it is still as large as the control allows", frame_contains_circle_radius(14.0))
     UiFlat::set_theme(base_theme)
 
+    # A MARKER HAS A SIDE, AND THE SIDE IS THE READER'S. The framework has
+    # carried a direction policy since localization landed, and the retained
+    # painter never asked it anything -- text layout did, so an Arabic build
+    # got a correctly mirrored caret inside a field whose checkbox was still
+    # nailed to the left with its label running away from it.
+    UiFlat::reset()
+    row_ink: UiCore::Color = UiCore::rgb(40, 44, 56)
+    mirrored: usize = UiFlat::check_box(UiFlat::NONE, 200.0, 28.0, row_ink, row_ink, row_ink)
+    UiFlat::set_text(mirrored, "Save", 14.0, UiCore::rgb(240, 240, 245))
+    UiFlat::layout(200.0, 28.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    ltr_marker: f32 = first_rect_box(UiFlat::theme().control_mark).origin.x
+    ltr_label: f32 = first_text_origin_x()
+    _ = UiLocalization::set_locale("ar-SA")
+    UiCore::begin_frame()
+    UiFlat::paint()
+    rtl_marker: f32 = first_rect_box(UiFlat::theme().control_mark).origin.x
+    rtl_label: f32 = first_text_origin_x()
+    check("a right-to-left reader gets the marker on the trailing side", rtl_marker > ltr_marker and rtl_marker > 100.0)
+    check("and its label on the other side of it", ltr_label > ltr_marker and rtl_label < rtl_marker)
+    check("a mirrored marker is still inside its control", rtl_marker >= 0.0 and rtl_marker + UiFlat::theme().checkbox_size <= 200.0)
+    _ = UiLocalization::set_locale("en-US")
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("and the default reader is unchanged by any of it", near(first_rect_box(UiFlat::theme().control_mark).origin.x, ltr_marker))
+
     if test_failures == 0:
         _ = puts("widget layout: all checks passed")
         return 0

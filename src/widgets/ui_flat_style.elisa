@@ -88,18 +88,53 @@ extend UiFlat:
             requested: f32 = theme().checkbox_size
             return room if requested > room else requested
 
+        # WHICH SIDE A MARKER IS ON, and why the painter has to ask.
+        #
+        # The framework has carried a direction policy since localization
+        # landed -- `direction`, leading and trailing alignment, `mirror_x` --
+        # and the retained painter never asked it anything. Text layout did:
+        # the caret, hit testing and selection all take a direction. So an
+        # Arabic build got a correctly mirrored caret inside a field whose
+        # checkbox was still nailed to the left, with its label running away
+        # from it. A policy nothing consults is a policy that is not there.
+        #
+        # Mirroring the fitted centre rather than recomputing it keeps the
+        # marker inside the control for free: the left-to-right answer is
+        # already clamped, and a reflection of something inside the box is
+        # inside the box.
         def choice_marker_center_x(index: usize, extent: f32) -> f32:
-            half: f32 = extent / 2.0
-            farthest: f32 = widgets[index].width - half
+            leading =
+                half: f32 = extent / 2.0
+                farthest: f32 = widgets[index].width - half
+                fitted: f32 = leading_marker_center(index, half, farthest)
+                fitted
+            return widgets[index].width - leading if painting_right_to_left()
+            return leading
+
+        def leading_marker_center(index: usize, half: f32, farthest: f32) -> f32:
             return half if farthest < half
             requested: f32 = theme().choice_center_x
             return half if requested < half
             return farthest if requested > farthest
             return requested
 
+        def painting_right_to_left() -> bool:
+            return UiLocalization::is_rtl(UiLocalization::current_locale())
+
         # A label follows the MARKER rather than the token whenever the token
         # would start it inside the marker or past the end of the control.
-        def choice_text_origin(index: usize, center_x: f32, extent: f32) -> f32:
+        # A label starts where the marker ends, on whichever side that is. The
+        # caller supplies the marker's own centre, so this needs no second
+        # direction test: in a mirrored control the marker's trailing edge is
+        # the label's right edge, and the run is placed from there by its width.
+        def choice_text_origin(index: usize, center_x: f32, extent: f32, text_width: f32) -> f32:
+            gap: f32 = theme().choice_text_space - theme().choice_center_x
+            if painting_right_to_left():
+                right_edge =
+                    marker_left: f32 = center_x - extent / 2.0
+                    marker_left - gap if gap > 0.0 else marker_left
+                return 0.0 if right_edge - text_width < 0.0
+                return right_edge - text_width
             beside_marker =
                 half: f32 = extent / 2.0
                 center_x + half
