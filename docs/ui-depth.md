@@ -106,6 +106,36 @@ resting one means the pointer reached nothing. Both have fired.
 ## Backends
 
 The policy is shared: `UiPaint::RoundedRectStyle` is what every custom backend
-reads. The Skia painter draws all of it. The AppKit and UIKit CoreGraphics
-painters currently draw the shadow and the hairline and ignore the sheen and
-bevel fields, so they render as they did before rather than incorrectly.
+reads, and all three custom backends now draw all of it.
+
+For a while only Skia did. The AppKit and UIKit painters asked for a style with
+`rounded_rect_style(box, elevated)` -- no colour, so no weighting, and no way to
+express a recess -- then drew two of the four effects the record describes and
+dropped the sheen and the bevel on the floor. The same command list produced a
+lit surface under Skia and a flat one under CoreGraphics, which is precisely the
+drift the shared record exists to prevent.
+
+What is shared is now the whole policy, not just the numbers. `UiPaint` owns the
+derivations that used to live inside the Skia backend -- `has_sheen`, the tint
+that inverts for a recess, and the rim gradient whose direction flips with
+`bevel_at_bottom` -- so a backend contributes no appearance decision of its own.
+What it contributes is a primitive: Skia takes a gradient-shaded round rect
+directly, while Quartz has none and must clip to a path (and, for the rim, to a
+stroked path converted into an area) and fill it. That difference is confined to
+one function per backend.
+
+The one thing a backend may still legitimately differ on is text weight, because
+the font stacks differ: Skia synthesizes it with `SkFont::setEmbolden`, CoreText
+asks for the bold symbolic trait. Both now read `TextRun.weighted`; CoreText used
+to infer weight from point size alone, so a weighted stat value came out bold in
+one backend and regular in the other.
+
+`test/appkit_canvas_surface_test.elisa` is what keeps this honest. It renders
+through the real `AppKitPainter` into a CoreGraphics bitmap -- no window, no run
+loop -- and reads the pixels back, asserting the same lighting relationships the
+Skia hosts assert: raised is brighter at the top, a recess is the same
+relationship inverted, flat is a weaker version of raised, and the rim is
+brighter than the fill beneath it. Six of its seven checks fail against the
+painter as it was. UIKit cannot be run on the build host, so it is held to the
+compile gate and to being a mirror of the AppKit file -- the honest ceiling for
+that backend, and the same one the rest of it has.

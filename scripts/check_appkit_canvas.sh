@@ -465,6 +465,13 @@ nm -g "$BIN" | grep -q ' U _CTLineDraw$'
 nm -g "$BIN" | grep -q ' U _CTLineGetTypographicBounds$'
 nm -g "$BIN" | grep -q ' U _CFStringCreateWithBytes$'
 nm -g "$BIN" | grep -q ' U _CGColorCreateGenericRGB$'
+# The depth treatment is three effects, and the gradient calls are the two that
+# were missing. A painter that fell back to a flat fill and a uniform hairline
+# would still produce a valid, stable PNG, so the product is checked for the
+# primitives rather than only for the picture.
+nm -g "$BIN" | grep ' U _CGGradientCreateWithColorComponents$' >/dev/null
+nm -g "$BIN" | grep ' U _CGContextDrawLinearGradient$' >/dev/null
+nm -g "$BIN" | grep ' U _CGContextReplacePathWithStrokedPath$' >/dev/null
 if nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_\(line_height\|ascent\)$'; then
   echo "appkit canvas: font metrics leaked back into Objective-C" >&2
   exit 1

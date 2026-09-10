@@ -1,0 +1,164 @@
+# The CoreGraphics painter, held to the standard the Skia painter is held to.
+#
+# The AppKit and UIKit painters used to consume two of the four fields in
+# `UiPaint::RoundedRectStyle` and silently drop the sheen and the bevel, so the
+# same command list produced a lit surface under Skia and a flat one under
+# CoreGraphics. Nothing caught it, because nothing ever read a pixel this
+# painter produced: the canvas gate checks that a PNG appears and that two runs
+# agree, which a flat fill satisfies perfectly.
+#
+# So this renders through the real `AppKitPainter` into a CoreGraphics bitmap --
+# no window, no run loop, no display -- and asserts the LIGHTING, in the same
+# terms as `expect_lit_from_above` in the Skia hosts: a raised surface is
+# brighter at the top than at the bottom, a recess is the same relationship
+# inverted, and a flat fill is neither.
+
+include "../src/platform/appkit/ui_appkit_canvas.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def app_init() -> void:
+    pass
+
+def app_frame() -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    pass
+
+const PROBE_WIDTH: i32 = 200
+const PROBE_HEIGHT: i32 = 140
+
+# The probe box, and the two rows the assertions read. Both sit INSIDE the fill
+# rather than on its edge, so what they measure is the wash across the face and
+# not the rim -- the two effects are separately weighted and a single row that
+# caught both could pass on either one alone.
+const PROBE_LEFT: f32 = 20.0
+const PROBE_TOP: f32 = 20.0
+const PROBE_RIGHT: f32 = 180.0
+const PROBE_BOTTOM: f32 = 120.0
+const PROBE_INSET_ROWS: i32 = 6
+
+extend UiAppKitCanvas:
+    public:
+        # Paint one surface into a caller-supplied context through the real
+        # retained path -- a command in the batch, replayed by the real painter,
+        # with the same mirror `render_headless` applies -- so the probe and the
+        # product differ only in where the pixels land.
+        def probe_surface(context: usize, box: UiCore::Rect, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void can Ui.Draw, Ui.Text:
+            UiCore::begin_frame()
+            if depth == UiCore::SurfaceDepth.Raised:
+                UiCore::fill_elevated(box, color)
+            elif depth == UiCore::SurfaceDepth.Inset:
+                UiCore::fill_inset(box, color)
+            else:
+                UiCore::fill(box, color)
+            frame_context <- context
+            CGContextSaveGState(context)
+            CGContextTranslateCTM(context, 0.0, PROBE_HEIGHT.f64())
+            CGContextScaleCTM(context, 1.0, -1.0)
+            UiPaint::replay[UiAppKitCanvas::AppKitPainter]()
+            CGContextRestoreGState(context)
+            CGContextFlush(context)
+            frame_context <- 0
+
+def probe_box() -> UiCore::Rect:
+    return UiCore::Rect{
+        origin: UiCore::Vec2{x: PROBE_LEFT, y: PROBE_TOP},
+        size: UiCore::Size{width: PROBE_RIGHT - PROBE_LEFT, height: PROBE_BOTTOM - PROBE_TOP},
+    }
+
+# Perceived lightness of one pixel, read straight out of the bitmap. The
+# weights are UiCore's, so "lighter" here means what it means to the depth
+# policy that decided the alphas.
+def sample(context: usize, x: i32, y: i32) -> i64 can Unsafe.PointerCast:
+    data: usize = CGBitmapContextGetData(context)
+    return -1 if data == 0
+    stride: usize = CGBitmapContextGetBytesPerRow(context)
+    base: uintptr = data.uintptr()
+    offset: uintptr = (y.usize() * stride + x.usize() * 4).uintptr()
+    red: u8& = (base + offset).cast[u8&]
+    green: u8& = (base + offset + 1.uintptr()).cast[u8&]
+    blue: u8& = (base + offset + 2.uintptr()).cast[u8&]
+    return UiCore::surface_luminance(UiCore::rgba(red, green, blue, 255))
+
+def new_context() -> usize:
+    space: usize = CGColorSpaceCreateDeviceRGB()
+    return 0 if space == 0
+    context: usize = CGBitmapContextCreate(0, PROBE_WIDTH.usize(), PROBE_HEIGHT.usize(), 8, 0, space, 1)
+    CGColorSpaceRelease(space)
+    return context
+
+# The difference in lightness between a row just below the top of the fill and
+# a row just above its bottom. Positive means lit from above.
+def top_minus_bottom(color: UiCore::Color, depth: UiCore::SurfaceDepth) -> i64 can Ui.Draw, Ui.Text, Unsafe.PointerCast:
+    context: usize = new_context()
+    return 0 if context == 0
+    UiAppKitCanvas::probe_surface(context, probe_box(), color, depth)
+    middle: i32 = ((PROBE_LEFT + PROBE_RIGHT) / 2.0).i32()
+    top: i64 = sample(context, middle, PROBE_TOP.i32() + PROBE_INSET_ROWS)
+    bottom: i64 = sample(context, middle, PROBE_BOTTOM.i32() - PROBE_INSET_ROWS)
+    CGContextRelease(context)
+    return top - bottom
+
+def main() -> i64:
+    can Ui.Draw, Ui.Text, Unsafe.PointerCast:
+        panel: UiCore::Color = UiCore::rgba(38, 40, 48, 255)
+        card: UiCore::Color = UiCore::rgba(238, 239, 243, 255)
+
+        # A raised surface catches light on its upper half. On a DARK fill that
+        # is the only cue there is -- the shadow it casts is dark on dark -- so
+        # this is the assertion that would have failed for the whole life of
+        # the CoreGraphics painter.
+        check("a raised dark surface is lit from above",
+              top_minus_bottom(panel, UiCore::SurfaceDepth.Raised) > 0)
+        check("a raised light surface is lit from above",
+              top_minus_bottom(card, UiCore::SurfaceDepth.Raised) > 0)
+
+        # A recess is the same light from the same place, falling on the other
+        # side of the edge: the wash is shadow, so the top is DARKER.
+        check("a recessed surface is shaded from above",
+              top_minus_bottom(panel, UiCore::SurfaceDepth.Inset) < 0)
+
+        # Flat still carries a trace of both, because a completely flat fill
+        # beside a lifted one reads as a rendering failure. Trace, not
+        # elevation: it must be weaker than the raised treatment.
+        flat: i64 = top_minus_bottom(panel, UiCore::SurfaceDepth.Flat)
+        check("a flat surface is still shaped by the light", flat > 0)
+        check("a flat surface is lifted less than a raised one",
+              flat < top_minus_bottom(panel, UiCore::SurfaceDepth.Raised))
+
+        # An invisible fill stays invisible. The sheen and the rim are white at
+        # their own alphas, not scaled by the fill's -- so without a guard a
+        # fully transparent rect paints a visible outline, and the widget layer
+        # emits exactly that for a ring that is switched off.
+        clear_context: usize = new_context()
+        check("the transparent probe bitmap was created", clear_context != 0)
+        if clear_context != 0:
+            UiAppKitCanvas::probe_surface(clear_context, probe_box(), UiCore::rgba(255, 255, 255, 0), UiCore::SurfaceDepth.Raised)
+            middle: i32 = ((PROBE_LEFT + PROBE_RIGHT) / 2.0).i32()
+            check("a transparent fill paints nothing at all",
+                  sample(clear_context, middle, PROBE_TOP.i32()) == 0 and sample(clear_context, middle, PROBE_TOP.i32() + PROBE_INSET_ROWS) == 0)
+            CGContextRelease(clear_context)
+
+        # The rim. A pixel ON the top edge is brighter than the fill under it,
+        # for the same reason the sheen exists, and this is the effect the old
+        # painter drew as a uniform hairline that said nothing about direction.
+        rim_context: usize = new_context()
+        check("the probe bitmap was created", rim_context != 0)
+        if rim_context != 0:
+            UiAppKitCanvas::probe_surface(rim_context, probe_box(), panel, UiCore::SurfaceDepth.Raised)
+            middle: i32 = ((PROBE_LEFT + PROBE_RIGHT) / 2.0).i32()
+            edge: i64 = sample(rim_context, middle, PROBE_TOP.i32())
+            under: i64 = sample(rim_context, middle, PROBE_TOP.i32() + PROBE_INSET_ROWS)
+            bottom_edge: i64 = sample(rim_context, middle, PROBE_BOTTOM.i32() - 1)
+            check("the top edge carries the rim light", edge > under)
+            check("the rim is brighter at the top than at the bottom", edge > bottom_edge)
+            CGContextRelease(rim_context)
+    return failures.i64()

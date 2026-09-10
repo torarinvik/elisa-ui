@@ -216,23 +216,21 @@ extend UiAppKitCanvas:
                 CGContextAddLineToPoint(context, 0.0, UiCore::viewport_height().f64())
                 CGContextClosePath(context)
                 CGContextFillPath(context)
+            # The colour is passed to the STYLE, not just to the fill: the whole
+            # depth policy is weighted by how light the surface is, and this
+            # painter used to ask for a style that could not know.
             def fill_rect(box: UiCore::Rect, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void can[Ui.Draw]:
-                style: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style(box, depth == UiCore::SurfaceDepth.Raised)
-                shadow_alpha: f32 = style.shadow_alpha.f32() / 255.0
-                hairline_alpha: f32 = style.hairline_alpha.f32() / 255.0
-                context: usize = current_context()
-                CGContextSaveGState(context)
-                set_shadow(context, style.shadow_offset_x, style.shadow_offset_y, style.shadow_blur, shadow_alpha) if shadow_alpha > 0.0
-                set_fill_color(context, color)
-                rounded_path(context, box, style.radius)
-                CGContextFillPath(context)
-                CGContextRestoreGState(context)
-                CGContextSaveGState(context)
-                rounded_path(context, box, style.radius)
-                CGContextSetRGBStrokeColor(context, 1.0, 1.0, 1.0, hairline_alpha.f64())
-                CGContextSetLineWidth(context, style.hairline_width.f64())
-                CGContextStrokePath(context)
-                CGContextRestoreGState(context)
+                # An invisible fill must stay invisible. The depth treatment
+                # paints a white sheen and a white rim that are NOT scaled by
+                # the fill's alpha, so a transparent rect -- which the widget
+                # layer emits for a ring that is currently off -- would come out
+                # as a visible outline. Skia has guarded this since it grew the
+                # gradients; this painter is where the frame is decided for
+                # CoreGraphics.
+                return if color.a == 0
+                return if box.size.width <= 0.0 or box.size.height <= 0.0
+                style: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for(box, depth, color)
+                draw_depth_surface(current_context(), box, style, color)
             def fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> void can[Ui.Draw]:
                 context: usize = current_context()
                 set_fill_color(context, color)
@@ -260,5 +258,9 @@ extend UiAppKitCanvas:
                 return if run.text.len == 0
                 safe_text: sview = UiCore::bounded_text(run.text)
                 pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
-                semibold: i32 = 1 if run.size >= 19.0 else 0
+                # A run the widget layer marked weighted is bold whatever its
+                # size. Skia honours that flag; CoreText was deciding weight
+                # from the point size alone, so a weighted stat value came out
+                # bold in one backend and regular in the other.
+                semibold: i32 = 1 if run.weighted or run.size >= 19.0 else 0
                 draw_text_line(pointer, safe_text.len, run.size, semibold, run.origin.x, run.origin.y, color)

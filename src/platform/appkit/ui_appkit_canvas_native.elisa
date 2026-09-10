@@ -160,9 +160,26 @@ extern CGContextScaleCTM(context: usize, x: f64, y: f64) -> void
 extern CGContextFlush(context: usize) -> void
 extern CGContextRelease(context: usize) -> void
 extern CGColorSpaceCreateDeviceRGB() -> usize
+
+# CoreGraphics gradients. The depth policy in UiPaint is two linear gradients --
+# the wash across a surface and the rim on its edge -- so both CoreGraphics
+# painters need the same four entry points. `ReplacePathWithStrokedPath` is what
+# lets the rim be a gradient at all: it turns the outline into an area that can
+# be clipped to and filled, which a stroke colour alone cannot express.
+struct NativePoint:
+    x: f64
+    y: f64
+extern CGGradientCreateWithColorComponents(space: usize, components: f64&, locations: f64&, count: usize) -> usize
+extern CGGradientRelease(gradient: usize) -> void
+extern CGContextDrawLinearGradient(context: usize, gradient: usize, start: NativePoint, end: NativePoint, options: u32) -> void
+extern CGContextReplacePathWithStrokedPath(context: usize) -> void
 extern CGColorSpaceRelease(color_space: usize) -> void
 extern CGBitmapContextCreate(data: usize, width: usize, height: usize, bits_per_component: usize, bytes_per_row: usize, color_space: usize, bitmap_info: u32) -> usize
 extern CGBitmapContextCreateImage(context: usize) -> usize
+# Reading the pixels back is how the custom painter is held to the same
+# "lit from above" standard as the Skia one, with no window and no display.
+extern CGBitmapContextGetData(context: usize) -> usize
+extern CGBitmapContextGetBytesPerRow(context: usize) -> usize
 extern CGImageRelease(image: usize) -> void
 extern CFURLCreateWithFileSystemPath(allocator: usize, path: usize, path_style: i32, is_directory: bool) -> usize
 extern CGImageDestinationCreateWithURL(url: usize, image_type: usize, count: usize, options: usize) -> usize

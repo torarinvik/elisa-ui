@@ -185,6 +185,41 @@ module UiPaint:
                 bevel_at_bottom: inset,
             }
 
+        # The two gradients a depth treatment is MADE of, derived here rather
+        # than in each backend.
+        #
+        # This is the seam the framework got wrong once already. Skia knew that a
+        # recess washes with black rather than white, and that the rim runs from
+        # the bevel alpha to the hairline alpha in whichever direction the light
+        # comes from; CoreGraphics knew none of it, because that arithmetic lived
+        # inside the Skia backend rather than in the policy both backends read.
+        # The same app looked like two different apps. Four functions here, and a
+        # backend only has to know how to draw a linear gradient.
+        def has_sheen(style: RoundedRectStyle) -> bool:
+            return style.sheen_top_alpha != 0 or style.sheen_bottom_alpha != 0
+
+        # White at a low alpha rather than a lightened copy of the fill: an
+        # overlay works on any colour the app chooses, and needs no colour
+        # arithmetic in the backend. A recess inverts the tint, not the
+        # direction -- the light is still overhead.
+        def sheen_near_color(style: RoundedRectStyle) -> UiCore::Color:
+            tint: u8 = sheen_tint(style)
+            return UiCore::rgba(tint, tint, tint, style.sheen_top_alpha)
+
+        def sheen_far_color(style: RoundedRectStyle) -> UiCore::Color:
+            tint: u8 = sheen_tint(style)
+            return UiCore::rgba(tint, tint, tint, style.sheen_bottom_alpha)
+
+        # The outline and the rim light are ONE stroke, which is why they are one
+        # gradient here. Two strokes would double up on whichever edge they share.
+        def rim_near_color(style: RoundedRectStyle) -> UiCore::Color:
+            near: u8 = style.hairline_alpha if style.bevel_at_bottom else rim_alpha(style)
+            return UiCore::rgba(255, 255, 255, near)
+
+        def rim_far_color(style: RoundedRectStyle) -> UiCore::Color:
+            far: u8 = rim_alpha(style) if style.bevel_at_bottom else style.hairline_alpha
+            return UiCore::rgba(255, 255, 255, far)
+
         # Move an effect's strength between what a BLACK surface needs and what a
         # WHITE one needs, in proportion to how light this surface actually is.
         #
@@ -244,3 +279,12 @@ module UiPaint:
         # command enum is matched for painting.
         def replay[P: Painter]() -> void can[Ui.Draw, Ui.Text]:
             UiPaint::replay_range[P](0, UiCore::command_count())
+
+    private:
+        def sheen_tint(style: RoundedRectStyle) -> u8:
+            return 0 if style.sheen_is_shadow else 255
+
+        # The lit edge is never DIMMER than the outline that defines the shape:
+        # a bevel weaker than the hairline would read as a nick in the rim.
+        def rim_alpha(style: RoundedRectStyle) -> u8:
+            return style.bevel_alpha if style.bevel_alpha > style.hairline_alpha else style.hairline_alpha

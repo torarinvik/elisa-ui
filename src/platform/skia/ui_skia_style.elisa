@@ -42,16 +42,14 @@ extend UiSkia:
                 box, style.radius, style.shadow_offset_x, style.shadow_offset_y,
                 style.shadow_blur, alpha)
 
-        # Light across the face, strongest at the top. White at a low alpha
-        # rather than a lightened copy of the fill: an overlay works on any
-        # colour the app chooses, and needs no colour arithmetic here.
+        # Light across the face, strongest at the top. The tint and the two
+        # alphas come from UiPaint, so the CoreGraphics painters draw the
+        # identical wash from the identical record.
         def draw_sheen(box: UiCore::Rect, style: UiPaint::RoundedRectStyle) -> void can[Ui.Draw]:
-            return if style.sheen_top_alpha == 0 and style.sheen_bottom_alpha == 0
-            tint: u8 = 0 if style.sheen_is_shadow else 255
+            return if not UiPaint::has_sheen(style)
             UiSkia::fill_rounded_gradient(
                 box, style.radius,
-                UiCore::rgba(tint, tint, tint, style.sheen_top_alpha),
-                UiCore::rgba(tint, tint, tint, style.sheen_bottom_alpha), false)
+                UiPaint::sheen_near_color(style), UiPaint::sheen_far_color(style), false)
 
         # The outline and the rim light are ONE stroke.
         #
@@ -61,10 +59,6 @@ extend UiSkia:
         # bevel alpha at the top to the hairline alpha at the bottom does both,
         # and cannot double up on the top edge the way two strokes would.
         def draw_outline(box: UiCore::Rect, style: UiPaint::RoundedRectStyle) -> void can[Ui.Draw]:
-            rim: u8 = style.bevel_alpha if style.bevel_alpha > style.hairline_alpha else style.hairline_alpha
-            near: u8 = style.hairline_alpha if style.bevel_at_bottom else rim
-            far: u8 = rim if style.bevel_at_bottom else style.hairline_alpha
             UiSkia::stroke_rounded_gradient(
                 box, style.radius, style.hairline_width,
-                UiCore::rgba(255, 255, 255, near),
-                UiCore::rgba(255, 255, 255, far), false)
+                UiPaint::rim_near_color(style), UiPaint::rim_far_color(style), false)

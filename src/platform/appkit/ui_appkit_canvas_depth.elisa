@@ -1,0 +1,87 @@
+# The CoreGraphics depth painter: UiPaint's style record turned into Quartz.
+#
+# WHY THIS FILE EXISTS. The custom AppKit painter used to ask for a style with
+# `rounded_rect_style(box, elevated)` -- no colour, no recess -- and then draw
+# two of the four things the record describes: the shadow and a flat white
+# hairline. The sheen and the bevel were simply dropped. Skia drew all four, so
+# one command list produced two different pictures depending on which custom
+# backend the app was built against, which is the exact drift the shared
+# `RoundedRectStyle` was introduced to prevent.
+#
+# WHY IT IS NOT SHARED CODE WITH SKIA. The policy IS shared -- every alpha,
+# tint and direction below comes from UiPaint, and this file contains no
+# appearance decision of its own. What cannot be shared is the primitive: Skia
+# takes a gradient-shaded round rect directly, while Quartz has no such call and
+# must clip to a path and fill it. That is the whole difference, and it is
+# confined to `vertical_gradient` below.
+
+include "../../core/ui_paint.elisa"
+
+extend UiAppKitCanvas:
+    private:
+        # A linear gradient is defined by unpremultiplied RGBA in the space it
+        # is created in, and by two points rather than a rectangle. Both painter
+        # contexts see top-left coordinates -- the visible view is flipped and
+        # the off-screen bitmap is mirrored to match -- so `near` is the top
+        # edge in both, the same end the Skia gradient starts at.
+        def vertical_gradient(context: usize, box: UiCore::Rect, near: UiCore::Color, far: UiCore::Color) -> void can[Ui.Draw]:
+            space: usize = CGColorSpaceCreateDeviceRGB()
+            return if space == 0
+            components: f64[8] = [
+                color_component(near.r).f64(), color_component(near.g).f64(),
+                color_component(near.b).f64(), color_component(near.a).f64(),
+                color_component(far.r).f64(), color_component(far.g).f64(),
+                color_component(far.b).f64(), color_component(far.a).f64(),
+            ]
+            locations: f64[2] = [0.0, 1.0]
+            component_pointer: f64& = (&components[0]).cast[f64&] can Unsafe.PointerCast
+            location_pointer: f64& = (&locations[0]).cast[f64&] can Unsafe.PointerCast
+            gradient: usize = CGGradientCreateWithColorComponents(space, component_pointer, location_pointer, 2)
+            CGColorSpaceRelease(space)
+            return if gradient == 0
+            top: NativePoint = NativePoint{x: box.origin.x.f64(), y: box.origin.y.f64()}
+            bottom: NativePoint = NativePoint{x: box.origin.x.f64(), y: (box.origin.y + box.size.height).f64()}
+            CGContextDrawLinearGradient(context, gradient, top, bottom, 0)
+            CGGradientRelease(gradient)
+
+        # Light across the face of the surface, clipped to its own shape so the
+        # wash cannot square off the corners the fill just rounded.
+        def draw_surface_sheen(context: usize, box: UiCore::Rect, style: UiPaint::RoundedRectStyle) -> void can[Ui.Draw]:
+            return if not UiPaint::has_sheen(style)
+            CGContextSaveGState(context)
+            rounded_path(context, box, style.radius)
+            CGContextClip(context)
+            vertical_gradient(context, box, UiPaint::sheen_near_color(style), UiPaint::sheen_far_color(style))
+            CGContextRestoreGState(context)
+
+        # The outline and the rim light are one stroke, so they are one gradient.
+        # Quartz cannot shade a stroke, so the stroked outline is converted into
+        # an area, clipped to, and filled with the gradient instead -- the same
+        # pixels a shaded stroke would have covered.
+        def draw_surface_rim(context: usize, box: UiCore::Rect, style: UiPaint::RoundedRectStyle) -> void can[Ui.Draw]:
+            CGContextSaveGState(context)
+            rounded_path(context, box, style.radius)
+            CGContextSetLineWidth(context, style.hairline_width.f64())
+            CGContextReplacePathWithStrokedPath(context)
+            CGContextClip(context)
+            vertical_gradient(context, box, UiPaint::rim_near_color(style), UiPaint::rim_far_color(style))
+            CGContextRestoreGState(context)
+
+        # One rounded surface, in UiPaint's order: the shadow it casts, its own
+        # fill, the light falling on it, and last the rim -- an edge that
+        # anything else paints over stops being an edge.
+        #
+        # Named for the depth policy rather than for elevation because UiSkia
+        # has a `draw_elevated_surface` of its own, and the AppKit+Skia
+        # compositor puts both painters in one translation unit: the shared
+        # name there resolved to the other backend and declined to compile.
+        def draw_depth_surface(context: usize, box: UiCore::Rect, style: UiPaint::RoundedRectStyle, color: UiCore::Color) -> void can[Ui.Draw]:
+            shadow_alpha: f32 = style.shadow_alpha.f32() / 255.0
+            CGContextSaveGState(context)
+            set_shadow(context, style.shadow_offset_x, style.shadow_offset_y, style.shadow_blur, shadow_alpha) if shadow_alpha > 0.0
+            set_fill_color(context, color)
+            rounded_path(context, box, style.radius)
+            CGContextFillPath(context)
+            CGContextRestoreGState(context)
+            draw_surface_sheen(context, box, style)
+            draw_surface_rim(context, box, style)
