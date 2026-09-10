@@ -31,9 +31,10 @@ extend UiFlat:
         # batch move further than the last.
         def begin_frame_motion() -> void:
             now: f64 = UiCore::frame_time()
-            elapsed: f64 = now - flat_last_paint_time
+            flat_frame_elapsed <-
+                elapsed: f64 = now - flat_last_paint_time
+                0.0 if elapsed <= 0.0 or now <= 0.0 else UiCore::bounded_extent(elapsed.f32())
             flat_last_paint_time <- now
-            flat_frame_elapsed <- 0.0 if elapsed <= 0.0 or now <= 0.0 else UiCore::bounded_extent(elapsed.f32())
 
         # The colour to paint this widget with, and the advance of its
         # transition. This MUTATES: it must be called exactly once per widget
@@ -110,11 +111,11 @@ extend UiFlat:
         def approach_channel(from_level: u8, to_level: u8, step: f32) -> u8:
             return to_level if from_level == to_level
             rising: bool = to_level > from_level
-            distance: f32 = to_level.f32() - from_level.f32() if rising else from_level.f32() - to_level.f32()
-            moved: mutable f32 = distance * step
-            moved <- 1.0 if moved < 1.0
-            travelled: i64 = moved.i64()
-            level: i64 = from_level.i64() + travelled if rising else from_level.i64() - travelled
+            level =
+                distance: f32 = to_level.f32() - from_level.f32() if rising else from_level.f32() - to_level.f32()
+                travelled: f32 = distance * step
+                stepped: i64 = travelled.i64() if travelled > 1.0 else 1
+                from_level.i64() + stepped if rising else from_level.i64() - stepped
             return to_level if rising and level > to_level.i64()
             return to_level if not rising and level < to_level.i64()
             return UiCore::channel(level).u8()
