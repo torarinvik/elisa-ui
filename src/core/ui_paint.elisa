@@ -164,7 +164,7 @@ module UiPaint:
         # completely flat fill next to a lifted one looks like a rendering
         # failure rather than a deliberate lack of emphasis.
         def elevation_treatment(base: RoundedRectStyle, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> RoundedRectStyle:
-            light: bool = UiCore::surface_luminance(color) >= 128
+            luminance: i64 = UiCore::surface_luminance(color)
             elevated: bool = depth == UiCore::SurfaceDepth.Raised
             inset: bool = depth == UiCore::SurfaceDepth.Inset
             # A recess casts no shadow of its own -- the shadow is INSIDE it,
@@ -172,18 +172,32 @@ module UiPaint:
             return RoundedRectStyle{
                 radius: base.radius,
                 elevated: elevated,
-                shadow_alpha: 0 if inset else ((46 if elevated else 0) if light else (130 if elevated else 0)),
+                shadow_alpha: 0 if inset or not elevated else blend(130, 46, luminance),
                 hairline_alpha: base.hairline_alpha,
                 shadow_offset_x: base.shadow_offset_x,
                 shadow_offset_y: 8.0,
                 shadow_blur: 22.0,
                 hairline_width: base.hairline_width,
-                sheen_top_alpha: (70 if light else 110) if inset else ((26 if elevated else 10) if light else (30 if elevated else 8)),
+                sheen_top_alpha: blend(110, 70, luminance) if inset else (blend(30, 26, luminance) if elevated else blend(8, 10, luminance)),
                 sheen_bottom_alpha: 0,
-                bevel_alpha: (90 if light else 46) if inset else ((170 if elevated else 60) if light else (120 if elevated else 40)),
+                bevel_alpha: blend(46, 90, luminance) if inset else (blend(120, 170, luminance) if elevated else blend(40, 60, luminance)),
                 sheen_is_shadow: inset,
                 bevel_at_bottom: inset,
             }
+
+        # Move an effect's strength between what a BLACK surface needs and what a
+        # WHITE one needs, in proportion to how light this surface actually is.
+        #
+        # A threshold here was wrong, and visibly so: the accents in the shipped
+        # showcase straddle it -- coral measures 130 and the ocean blue 117 --
+        # so two bars of the same saturation, side by side in one chart, got
+        # visibly different rims because one landed a step above the midpoint.
+        # Lighting is continuous; a cliff in the policy shows up as a cliff in
+        # the picture.
+        def blend(at_black: i64, at_white: i64, luminance: i64) -> u8:
+            bounded: i64 = UiCore::channel(luminance)
+            mixed: i64 = at_black + (at_white - at_black) * bounded / 255
+            return UiCore::channel(mixed).u8()
 
         # One command, one method. A painter is a TYPE, not a value: its state is
         # the backend's own (SDL3's renderer handle, the component's wire cursor),

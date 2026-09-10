@@ -26,6 +26,7 @@
 extern "C" std::int32_t elisa_showcase_app_skia_render(std::size_t canvas, std::size_t font,
                                                        float width, float height, std::int32_t page);
 extern "C" std::int32_t elisa_showcase_app_skia_focus_next();
+extern "C" std::int32_t elisa_showcase_app_skia_toggle_theme();
 
 namespace {
 
@@ -104,5 +105,29 @@ int main(int argc, char** argv) {
         return 6;
     }
     std::printf("showcase skia: wrote %s\n", focused_path.c_str());
+
+    // ...and the same page in the light palette. The depth policy has two
+    // halves -- a light surface is lifted by the shadow it casts, a dark one by
+    // light on its top edge -- and rendering only the dark theme left one of
+    // them unexecuted and, worse, unlooked-at.
+    if (elisa_showcase_app_skia_toggle_theme() != 1) {
+        std::fprintf(stderr, "showcase skia: could not switch the palette\n");
+        return 7;
+    }
+    surface->getCanvas()->clear(SK_ColorTRANSPARENT);
+    const std::int32_t light_status = elisa_showcase_app_skia_render(
+        reinterpret_cast<std::size_t>(surface->getCanvas()),
+        reinterpret_cast<std::size_t>(typeface.get()),
+        static_cast<float>(width), static_cast<float>(height), 1);
+    if (light_status != 1) {
+        std::fprintf(stderr, "showcase skia: light page returned status %d\n", light_status);
+        return 5;
+    }
+    const std::string light_path = prefix + "-light.png";
+    if (!write_png(surface.get(), light_path)) {
+        std::fprintf(stderr, "showcase skia: failed to write %s\n", light_path.c_str());
+        return 6;
+    }
+    std::printf("showcase skia: wrote %s\n", light_path.c_str());
     return 0;
 }

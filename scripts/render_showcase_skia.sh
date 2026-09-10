@@ -73,4 +73,17 @@ if cmp -s "$PREFIX-page2.png" "$focus_file"; then
   exit 1
 fi
 echo "showcase skia: focus ring rendered ${WIDTH}x${HEIGHT} ($focus_size bytes) -> $focus_file"
+# ...and the light palette, which exercises the other half of the depth policy.
+light_file="$PREFIX-light.png"
+[[ -s "$light_file" ]] || { echo "showcase skia: the light frame produced no file" >&2; exit 1; }
+light_size="$(stat -f%z "$light_file")"
+if [[ "$light_size" -lt 20000 ]]; then
+  echo "showcase skia: the light frame rendered almost nothing ($light_size bytes)" >&2
+  exit 1
+fi
+if cmp -s "$PREFIX-page1.png" "$light_file"; then
+  echo "showcase skia: the light frame is identical to the dark one; the palette did not switch" >&2
+  exit 1
+fi
+echo "showcase skia: light palette rendered ${WIDTH}x${HEIGHT} ($light_size bytes) -> $light_file"
 echo "showcase skia: all five showcase pages rendered by the real renderer"
