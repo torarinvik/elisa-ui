@@ -117,6 +117,28 @@ def frame_contains_elevated_rect_color(expected: UiCore::Color) -> bool:
                 pass
     return false
 
+# The index of the first rect filled in `expected`, or the command count when
+# there is none. Rings and the surfaces they surround are both fills, so the
+# only way to tell "drawn behind" from "drawn over" is their ORDER.
+def first_rect_index(expected: UiCore::Color) -> usize:
+    for index in 0..<UiCore::command_count():
+        match UiCore::command_at(index):
+            UiCore::Command.FillRect(rect, color):
+                return index if color.r == expected.r and color.g == expected.g and color.b == expected.b and color.a == expected.a
+            _:
+                pass
+    return UiCore::command_count()
+
+# The box of the first rect filled in `expected`.
+def first_rect_box(expected: UiCore::Color) -> UiCore::Rect:
+    for index in 0..<UiCore::command_count():
+        match UiCore::command_at(index):
+            UiCore::Command.FillRect(rect, color):
+                return rect if color.r == expected.r and color.g == expected.g and color.b == expected.b and color.a == expected.a
+            _:
+                pass
+    return UiCore::Rect(0.0, 0.0, 0.0, 0.0)
+
 def first_fill_color_command(expected: UiCore::Color) -> usize:
     for index in 0..<UiCore::command_count():
         match UiCore::command_at(index):

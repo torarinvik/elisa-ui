@@ -134,6 +134,34 @@ def main() -> i64:
     check("radio button remains interactive", UiFlat::hit(60.0, 20.0) == choice)
     check("radio button surface is explicitly elevated", frame_contains_elevated_rect_color(UiCore::rgb(20, 40, 80)))
 
+    # A RING SURROUNDS ITS WIDGET, which means two things a fill alone cannot
+    # say: it is larger on every side, and it is painted FIRST so the widget
+    # covers its middle. Painted after, it would be a filled rectangle over the
+    # control; smaller or offset, it would be a border on one side.
+    UiFlat::reset()
+    ringed: usize = UiFlat::button(UiFlat::NONE, 120.0, 40.0, UiCore::rgb(20, 40, 80), UiCore::rgb(30, 50, 90), UiCore::rgb(10, 20, 40))
+    ring_ink: UiCore::Color = UiCore::rgb(240, 120, 20)
+    UiFlat::set_ring(ringed, ring_ink)
+    UiFlat::layout(120.0, 40.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    ring_box: UiCore::Rect = first_rect_box(ring_ink)
+    surface_box: UiCore::Rect = first_rect_box(UiCore::rgb(20, 40, 80))
+    check("a ring is painted behind the widget it surrounds", first_rect_index(ring_ink) < first_rect_index(UiCore::rgb(20, 40, 80)))
+    check("a ring stands out on every side", ring_box.origin.x < surface_box.origin.x and ring_box.origin.y < surface_box.origin.y and ring_box.size.width > surface_box.size.width and ring_box.size.height > surface_box.size.height)
+    check("a ring is not itself an elevated surface", not frame_contains_elevated_rect_color(ring_ink))
+    UiFlat::set_ring(ringed, UiCore::rgba(0, 0, 0, 0))
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("a transparent ring is no ring", first_rect_index(ring_ink) == UiCore::command_count())
+    # Focus outranks an application's own emphasis: two concentric rings would
+    # read as neither, and where the keyboard is standing is the more urgent.
+    UiFlat::set_ring(ringed, ring_ink)
+    _ = UiFlat::request_focus(ringed)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("focus outranks an application ring", first_rect_index(ring_ink) == UiCore::command_count())
+
     UiFlat::reset()
     toggle: usize = UiFlat::check_box(UiFlat::NONE, 120.0, 40.0, UiCore::rgb(30, 30, 40), UiCore::rgb(40, 40, 50), UiCore::rgb(20, 20, 30))
     UiFlat::set_text(toggle, "Dark mode", 16.0, UiCore::rgb(255, 255, 255))
