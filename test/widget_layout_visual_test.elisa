@@ -493,6 +493,31 @@ def main() -> i64:
     UiFlat::paint()
     check("and the default reader is unchanged by any of it", near(first_rect_box(UiFlat::theme().control_mark).origin.x, ltr_marker))
 
+    # LEADING MEANS THE READER'S START. The default alignment for content was
+    # written as "leading" in the comment beside it and implemented as `x`, so
+    # it read as a decision rather than an oversight and survived the change
+    # that taught the marker beside it which side it was on.
+    UiFlat::reset()
+    content: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 0.0, 0.0, UiCore::rgb(30, 34, 42))
+    caption: usize = UiFlat::label(content, "Save", 20.0, UiCore::rgb(240, 240, 245))
+    UiFlat::layout(200.0, 40.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    ltr_caption: f32 = first_text_origin_x()
+    _ = UiLocalization::set_locale("he-IL")
+    UiCore::begin_frame()
+    UiFlat::paint()
+    rtl_caption: f32 = first_text_origin_x()
+    check("a label starts at the reader's own edge", rtl_caption > ltr_caption and near(rtl_caption + 40.0, UiFlat::widget(caption).x + UiFlat::widget(caption).width))
+    # A run wider than its box keeps the leading edge in both directions:
+    # pushing it off the start to honour the end makes a long label unreadable.
+    UiFlat::set_text(caption, "A caption longer than the box that holds it", 20.0, UiCore::rgb(240, 240, 245))
+    UiFlat::layout(200.0, 40.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("and an overlong one is not pushed off it", first_text_origin_x() >= UiFlat::widget(caption).x)
+    _ = UiLocalization::set_locale("en-US")
+
     if test_failures == 0:
         _ = puts("widget layout: all checks passed")
         return 0

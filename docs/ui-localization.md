@@ -25,6 +25,13 @@ the category instead of making each backend parse locale strings independently.
 Claim dynamic item identity through `UiIdentity` before rebuilding a localized
 list so RTL/retranslation does not transfer focus or edit state by position.
 
+## What the painter mirrors
+
+A choice control's **hit target** needed nothing: the whole row is the target
+in both directions, and hit testing never consults the marker's geometry. It is
+recorded here because it looked like work and was not — checking was cheaper
+than the change would have been.
+
 ## What the painter mirrors, and what it does not yet
 
 A choice control's **marker and its label** follow the reader's direction: in a
@@ -41,6 +48,14 @@ module's own test was text layout, which takes a direction for the caret, hit
 testing and selection. So an Arabic build got a correctly mirrored caret inside
 a field whose checkbox was still nailed to the left with its label running away
 from it. A policy nothing consults is a policy that is not there.
+
+An ordinary **label** starts at the reader's own edge. The default alignment
+for content was written as "leading" in the comment beside it and implemented
+as `x` — one word doing duty for two different edges, and correct for one of
+them. Reading as a decision rather than an oversight is how it survived the
+change that taught the marker beside it which side it was on. A run wider than
+its box keeps the leading edge in both directions: pushing it off the start to
+honour the end is how a long label becomes an unreadable one.
 
 A **slider** and a **progress track** fill from the reader's start edge, and a
 vertical **scrollbar** sits on the reader's trailing side. These needed the

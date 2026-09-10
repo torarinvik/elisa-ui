@@ -141,6 +141,26 @@ extend UiFlat:
             return track_width * track_fraction(value) if painting_right_to_left()
             return 0.0
 
+        # LEADING MEANS THE READER'S START, which is the right edge for half
+        # the world.
+        #
+        # The default alignment for content was written as "leading" in the
+        # comment beside it and implemented as `x`: one word doing duty for two
+        # different edges, and correct for one of them. It read as a decision
+        # rather than an oversight, which is why it survived the change that
+        # taught the marker beside it which side it was on.
+        #
+        # A run wider than its box keeps the leading edge in both directions --
+        # pushing it off the start to honour the end is how a long label
+        # becomes an unreadable one.
+        def leading_text_origin(index: usize, text_width: f32) -> f32:
+            return widgets[index].x if not painting_right_to_left()
+            trailing =
+                room: f32 = widgets[index].width - text_width
+                widgets[index].x + room
+            return widgets[index].x if trailing < widgets[index].x
+            return trailing
+
         def painting_right_to_left() -> bool:
             return UiLocalization::is_rtl(UiLocalization::current_locale())
 
