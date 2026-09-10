@@ -282,3 +282,23 @@ def check_vocabulary() -> void:
         UiSkia::detach()
         check("a flat surface with a light draws exactly one, in colour", skia_test_shadow_round_rect_count() == 1 and skia_test_last_shadow_red() == 60 and skia_test_last_shadow_green() == 120 and skia_test_last_shadow_blue() == 240)
         check("and it is centred, not dropped", skia_test_last_shadow_offset_x() == 0.0 and skia_test_last_shadow_offset_y() == 0.0)
+
+        # A FLAT SURFACE HAS AN EDGE; IT DOES NOT HAVE A LIT ONE.
+        #
+        # The lit top edge is what makes a raised surface read as raised, and
+        # a flat fill was given a weaker copy of it so that a flat surface
+        # beside a lifted one would not look like a rendering failure. That
+        # argues for SOME edge. What shipped was a 24-level highlight at the
+        # top of every flat fill, and the rendered list showed the cost: a
+        # scroll viewport of twenty-four adjacent rows came out as
+        # twenty-four boxes, which is the same ladder the depth policy already
+        # removed the SHADOW from choice rows to avoid. The rim was left doing
+        # what the shadow had been stopped from doing.
+        strip: UiCore::Rect = UiCore::Rect(0.0, 0.0, 940.0, 26.0)
+        row_ink: UiCore::Color = UiCore::rgb(40, 44, 54)
+        flat_row: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for(strip, UiCore::SurfaceDepth.Flat, row_ink)
+        lifted_row: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for(strip, UiCore::SurfaceDepth.Raised, row_ink)
+        check("a flat surface still has an edge", flat_row.bevel_alpha > 0 and flat_row.hairline_alpha > 0)
+        check("but not a lit one", flat_row.bevel_alpha <= 24)
+        check("nothing like the edge that says a surface is raised", flat_row.bevel_alpha * 3 < lifted_row.bevel_alpha)
+        check("and a flat surface is still flat", flat_row.shadow_alpha == 0 and flat_row.contact_alpha == 0)

@@ -379,3 +379,18 @@ lightness, so the light half of it at high contrast had never been rendered
 under the name of the frame that claimed to cover it. The host now switches
 the application palette too, and asserts the light frame is measurably lighter
 than the dark one rather than merely different from it.
+
+## A flat surface has an edge; it does not have a lit one
+
+The lit top edge is what makes a raised surface read as raised, and a flat
+fill was given a weaker copy of it so a flat surface beside a lifted one would
+not look like a rendering failure. That argues for *some* edge. What shipped
+was a **24-level highlight at the top of every flat fill**, and the rendered
+list showed the cost: a scroll viewport of twenty-four adjacent rows came out
+as twenty-four boxes.
+
+That is the same ladder the depth policy had already removed the *shadow* from
+choice rows to avoid — the rim was quietly left doing what the shadow had been
+stopped from doing. The flat bevel is now `14/22` rather than `40/60`, which
+measures as a 12-level step at a row boundary instead of 24, and a fixture
+holds it to under a third of a raised surface's lit edge.
