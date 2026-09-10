@@ -15,6 +15,7 @@
 #include "include/core/SkFontMgr.h"
 #include "include/core/SkFontStyle.h"
 #include "include/core/SkImage.h"
+#include "include/core/SkBitmap.h"
 #include "include/core/SkImageInfo.h"
 #include "include/core/SkPixmap.h"
 #include "include/core/SkStream.h"
@@ -35,6 +36,7 @@ extern "C" std::int32_t elisa_showcase_app_skia_hover_button(std::int32_t presse
 extern "C" std::int32_t elisa_showcase_app_skia_close_dialog();
 extern "C" std::int32_t elisa_showcase_app_skia_direction(std::int32_t rtl);
 extern "C" std::int32_t elisa_showcase_app_skia_page();
+extern "C" std::int32_t elisa_showcase_app_skia_bind_image(std::size_t image);
 
 namespace {
 
@@ -48,6 +50,30 @@ int sampled_luminance(SkSurface* surface, int x, int y) {
     if (x < 0 || y < 0 || x >= pixels.width() || y >= pixels.height()) return -1;
     const SkColor color = pixels.getColor(x, y);
     return (SkColorGetR(color) * 54 + SkColorGetG(color) * 183 + SkColorGetB(color) * 19) >> 8;
+}
+
+// A picture for the application's mark, made here rather than loaded, so the
+// fixture needs no asset on disk and no decoder: what is being proved is that
+// an image reaches a retained widget, not that a PNG can be read. A diagonal
+// ramp with a lighter wedge is enough to be recognisable at 34pt and enough to
+// tell a drawn image from a fill of one colour.
+sk_sp<SkImage> make_brand_image() {
+    SkBitmap bitmap;
+    if (!bitmap.tryAllocPixels(SkImageInfo::Make(64, 64, kRGBA_8888_SkColorType, kPremul_SkAlphaType))) {
+        return nullptr;
+    }
+    for (int y = 0; y < 64; ++y) {
+        for (int x = 0; x < 64; ++x) {
+            const int ramp = (x + y) * 255 / 126;
+            const bool wedge = (x + y) > 46 && (x + y) < 82 && x > 8 && x < 56;
+            const unsigned r = static_cast<unsigned>(wedge ? 245 : 40 + ramp / 4);
+            const unsigned g = static_cast<unsigned>(wedge ? 248 : 90 + ramp / 3);
+            const unsigned b = static_cast<unsigned>(wedge ? 255 : 200 + ramp / 5);
+            *bitmap.getAddr32(x, y) = static_cast<std::uint32_t>((255u << 24) | (b << 16) | (g << 8) | r);
+        }
+    }
+    bitmap.setImmutable();
+    return bitmap.asImage();
 }
 
 bool write_png(SkSurface* surface, const std::string& path) {
@@ -89,6 +115,32 @@ int main(int argc, char** argv) {
         return 4;
     }
 
+    // One frame first, so the application exists and can be handed a picture.
+    // A resource is requested, marked ready and bound in that call; nothing
+    // above it ever sees this SkImage.
+    sk_sp<SkImage> brand = make_brand_image();
+    if (!brand) {
+        std::fprintf(stderr, "showcase skia: could not build the brand image\n");
+        return 4;
+    }
+    surface->getCanvas()->clear(SK_ColorTRANSPARENT);
+    if (elisa_showcase_app_skia_render(
+            reinterpret_cast<std::size_t>(surface->getCanvas()),
+            reinterpret_cast<std::size_t>(typeface.get()),
+            static_cast<float>(width), static_cast<float>(height), 1, 1.0f) != 1) {
+        std::fprintf(stderr, "showcase skia: could not start the application\n");
+        return 5;
+    }
+    if (elisa_showcase_app_skia_bind_image(reinterpret_cast<std::size_t>(brand.get())) != 1) {
+        std::fprintf(stderr, "showcase skia: could not bind the brand image\n");
+        return 5;
+    }
+
+    // The mark's pixel from the frame rendered BEFORE the bind above -- the
+    // surface still holds it -- so the check below is a comparison rather
+    // than a guess about what an empty tile looks like.
+    const int tile_before = sampled_luminance(surface.get(), 32, 30);
+
     for (std::int32_t page = 1; page <= 5; ++page) {
         surface->getCanvas()->clear(SK_ColorTRANSPARENT);
         const std::int32_t status = elisa_showcase_app_skia_render(
@@ -105,6 +157,20 @@ int main(int argc, char** argv) {
             return 6;
         }
         std::printf("showcase skia: wrote %s\n", path.c_str());
+    }
+
+    // The mark's own pixel, after the picture was bound. It is the first thing
+    // in any frame this framework has rendered that is an image rather than a
+    // shape, so nothing else could have covered for it. A binding that fails
+    // silently, a command the painter drops, a reference that resolves to
+    // nothing: each produces a perfectly good frame with an empty tile, which
+    // is exactly what a size check cannot tell from a full one.
+    const int tile_after = sampled_luminance(surface.get(), 32, 30);
+    if (tile_before < 0 || tile_after < 0 || std::abs(tile_after - tile_before) < 40) {
+        std::fprintf(stderr,
+                     "showcase skia: the bound image never reached the frame "
+                     "(%d before, %d after)\n", tile_before, tile_after);
+        return 5;
     }
 
     // One more frame of the forms page with the keyboard focus moved onto a

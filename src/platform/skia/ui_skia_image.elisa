@@ -71,6 +71,18 @@ extend UiSkia:
             _ = UiSkia::pop_clip()
             return true
 
+        # A whole image into a rounded box, with no fit policy and no crop:
+        # the retained command carries a destination and a shape and nothing
+        # else, because a widget's box IS the destination.
+        def draw_image_rounded_with_sampling(image: usize, box: UiCore::Rect, alpha: u8, radius: f32, sampling: UiSkia::ImageSampling) -> bool can[Ui.Draw]:
+            return false if UiSkia::canvas_state == 0 or image == 0 or alpha == 0
+            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+            return false if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
+            return false if not UiSkia::push_rounded_clip(safe_box, radius)
+            UiSkia::draw_image_with_sampling(image, safe_box, alpha, sampling)
+            _ = UiSkia::pop_clip()
+            return true
+
         # Resource-bound variants preserve generation checks and borrowed
         # image lifetime while reusing the same destination policy.
         def draw_bound_image_fitted(resource: UiResources::ResourceHandle, box: UiCore::Rect, source: UiCore::Size, alpha: u8, fit: UiSkia::ImageFit) -> bool can[Ui.Draw]:

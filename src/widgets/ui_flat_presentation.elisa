@@ -1,0 +1,114 @@
+# How a widget looks beyond its colour.
+#
+# Split from ui_flat_accessors.elisa at the source budget, and the seam is a
+# real one. Everything left there is a widget's STATE -- its text, whether it
+# is enabled, what it is worth. These are its PRESENTATION: the shape it takes,
+# the ramp across it, the light around it, the picture in it, and whether it is
+# an overlay over everything else. Each is a fact the painter reads and nothing
+# else acts on, and `surface_style_of` is the one place they are gathered into
+# the record a command carries.
+
+extend UiFlat:
+    public:
+        # MARK A ROOT AS AN OVERLAY: a modal sheet, a popover, a toast.
+        #
+        # Roots already paint in arena order, so "paint this last" was always
+        # expressible. What was not is the other half of what a modal IS --
+        # everything beneath it recedes behind a wash and stops taking the
+        # pointer. Without that half a dialog reads as a band glued into the
+        # layout above a shell that still looks fully clickable, which is what
+        # the showcase's own confirmation dialog looked like in every frame
+        # this framework has ever rendered.
+        #
+        # Only a ROOT can be one. An overlay nested inside the tree it is meant
+        # to cover would have to be painted out of its own subtree's order,
+        # which is a second paint order, not a flag.
+        def set_overlay(index: usize, overlay: bool) -> void:
+            return if index >= widget_count
+            root: bool = widgets[index].parent == NONE or widgets[index].parent >= widget_count
+            return if widgets[index].overlay == overlay or (overlay and not root)
+            widgets[index].overlay <- overlay
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+
+        # STATE A SURFACE'S KIND when its size does not say it. A tag, a
+        # status chip and a count badge are capsules at a size where the
+        # derived corner policy correctly answers "not a bar"; an image plate
+        # filling the head of a card wants no corners of its own. See
+        # UiCore::CornerStyle for why this is three kinds and not a radius.
+        def set_corner(index: usize, corner: UiCore::CornerStyle) -> void:
+            return if index >= widget_count or widgets[index].corner == corner
+            widgets[index].corner <- corner
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+
+        # A RAMP ACROSS A SURFACE'S FILL. Every raised, tinted or accented
+        # surface in a current interface is one, and a framework that can only
+        # fill flat colour cannot draw one however good its shadows are. The
+        # widget's own colour is the near end; this is the far one.
+        def set_gradient(index: usize, far: UiCore::Color, horizontal: bool) -> void:
+            return if index >= widget_count
+            return if colors_equal(widgets[index].gradient, far) and widgets[index].gradient_horizontal == horizontal
+            widgets[index].gradient <- far
+            widgets[index].gradient_horizontal <- horizontal
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+
+        # AN OUTER LIGHT. Not the shadow: a shadow says how high something is,
+        # a glow says it is ON -- the selected item, the primary action, the
+        # live indicator. See UiPaint::glow_shadow.
+        def set_glow(index: usize, glow: UiCore::Color) -> void:
+            return if index >= widget_count or colors_equal(widgets[index].glow, glow)
+            widgets[index].glow <- glow
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+
+        # AN IMAGE ON A WIDGET. Painted into the widget's own box, over its
+        # fill and under its text, clipped to the shape the widget states --
+        # which is what a thumbnail filling the head of a card needs and all
+        # it needs.
+        #
+        # The reference is a slot and a generation, so this survives the image
+        # itself: a widget holding a reference to an image that has been
+        # evicted paints its fill and nothing else, rather than a dangling
+        # pointer or a placeholder nobody asked for.
+        def set_image(index: usize, image: UiCore::ImageRef) -> void:
+            return if index >= widget_count or UiCore::image_refs_equal(widgets[index].image, image)
+            widgets[index].image <- image
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+
+        def set_image_alpha(index: usize, alpha: u8) -> void:
+            return if index >= widget_count or widgets[index].image_alpha == alpha
+            widgets[index].image_alpha <- alpha
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+
+        # A picture on a disabled control is dimmed for the same reason its
+        # ramp and its light are dropped: what the reader sees has to say
+        # whether the control will answer.
+        def image_alpha_of(index: usize) -> u8:
+            return 0 if index >= widget_count
+            return widgets[index].image_alpha if effectively_enabled(index)
+            return (widgets[index].image_alpha.i64() * DISABLED_IMAGE_ALPHA / 255).u8()
+
+        # The same reduction the disabled ink uses, so a dimmed picture and
+        # the dimmed caption beside it recede together rather than at two
+        # different rates.
+        const DISABLED_IMAGE_ALPHA: i64 = 110
+
+        def image_of(index: usize) -> UiCore::ImageRef:
+            return UiCore::image_ref_none() if index >= widget_count
+            return widgets[index].image
+
+        def surface_style_of(index: usize, depth: UiCore::SurfaceDepth) -> UiCore::SurfaceStyle:
+            return UiCore::surface_style(depth) if index >= widget_count
+            return UiCore::SurfaceStyle{
+                depth,
+                corner: widgets[index].corner,
+                gradient: widgets[index].gradient,
+                gradient_horizontal: widgets[index].gradient_horizontal,
+                glow: widgets[index].glow,
+            }
+
+        def corner_of(index: usize) -> UiCore::CornerStyle:
+            return UiCore::CornerStyle.Automatic if index >= widget_count
+            return widgets[index].corner
+
+        def is_overlay(index: usize) -> bool:
+            return false if index >= widget_count
+            return widgets[index].overlay

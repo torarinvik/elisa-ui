@@ -1,0 +1,54 @@
+# Retained images: a widget carrying a picture.
+#
+# Its own fixture rather than another block in the visual test, and not only
+# for the source budget. Everything asserted here is about a command that did
+# not exist until now -- its emission, its reference, its strength, and the
+# sentinel that means "no image" -- and the rest of the visual suite is about
+# colour and geometry that predate it.
+
+include "./widget_layout_support.elisa"
+
+def main() -> i64:
+    # A WIDGET CAN CARRY A PICTURE.
+    #
+    # Images were the last thing in this framework a widget could not have.
+    # They existed only as an immediate, Skia-only call into a live canvas --
+    # outside the retained list every backend replays -- so every icon,
+    # thumbnail and avatar in a real interface was out of reach on every
+    # backend including that one, because the widget layer never emits an
+    # immediate call.
+    UiFlat::reset()
+    plate: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 0.0, 0.0, UiCore::rgb(20, 24, 30))
+    UiFlat::set_min_size(plate, 40.0, 40.0)
+    UiFlat::layout(40.0, 40.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("a widget with no picture emits no image", not frame_contains_image())
+    UiFlat::set_image(plate, UiCore::image_ref(3, 7))
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("a widget with one emits it into its own box", first_image_box().size.width == 40.0 and first_image_box().size.height == 40.0)
+    check("with the reference the application gave, not a pointer", UiCore::image_refs_equal(first_image_ref(), UiCore::image_ref(3, 7)))
+    check("at full strength by default", first_image_alpha() == 255)
+    # A picture on a disabled control recedes with the caption beside it, for
+    # the same reason its ramp and its light are dropped: what the reader sees
+    # has to say whether the control will answer.
+    UiFlat::set_enabled(plate, false)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("a disabled control's picture recedes with it", first_image_alpha() < 255 and first_image_alpha() > 0)
+    UiFlat::set_enabled(plate, true)
+    # THE SENTINEL IS GENERATION ZERO, so a zeroed widget row names no image by
+    # construction rather than by convention -- and a reference whose image is
+    # gone paints the fill and nothing else rather than a placeholder nobody
+    # asked for.
+    UiFlat::set_image(plate, UiCore::image_ref_none())
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("and a reference to nothing draws nothing", not frame_contains_image())
+
+    if test_failures == 0:
+        _ = puts("widget image: all checks passed")
+        return 0
+    _ = puts("widget image: FAILURES above")
+    return 1

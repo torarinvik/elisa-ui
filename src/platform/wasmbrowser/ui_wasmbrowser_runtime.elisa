@@ -118,6 +118,25 @@ module UiWasmBrowser:
             wire_color(base, 20, color)
             wire_f32(base, 24, width)
 
+        # DISCRIMINANT SIX, and the record is additive: every field of every
+        # other record stays where it was, so a host built before images
+        # existed reads the same bytes at the same offsets and skips this one
+        # by its unknown tag. What it must NOT do is go missing -- the host is
+        # handed a COUNT, so a command that writes no record leaves it reading
+        # one slot of whatever was there last frame. That is why this encoder
+        # exists at all for a painter that cannot draw an image: the wire
+        # carries the whole command list or it carries a lie.
+        def encode_draw_image(base: usize, draw: UiCore::ImageDraw) -> void:
+            wire_discriminant(base, 6)
+            wire_f32(base, 4, draw.box.origin.x)
+            wire_f32(base, 8, draw.box.origin.y)
+            wire_f32(base, 12, draw.box.size.width)
+            wire_f32(base, 16, draw.box.size.height)
+            wire_u32(base, 20, draw.image.slot.uintptr())
+            wire_u32(base, 24, draw.image.generation.uintptr())
+            wire_buffer[base + 28] <- draw.alpha
+            wire_buffer[base + 29] <- draw.corner.i32().u8()
+
         def encode_draw_text(base: usize, run: UiCore::TextRun, color: UiCore::Color) -> void:
             # text-run lowers to x, y, size, color, then the string's pointer and
             # length: 24 payload bytes, which still fits the 28 the largest case
@@ -292,6 +311,13 @@ module UiWasmBrowser:
 
             def fill_rect(box: UiCore::Rect, color: UiCore::Color, style: UiCore::SurfaceStyle) -> void can[Ui.Draw]:
                 encode_fill_rect(wire_take_slot(), box, color)
+
+            # The wire carries the command whether or not this side can draw
+            # it: the host is handed a count, and a command that writes no
+            # record leaves the host reading a stale slot. Whether a browser
+            # canvas has the image is the host's question, not this side's.
+            def draw_image(draw: UiCore::ImageDraw) -> void can[Ui.Draw]:
+                encode_draw_image(wire_take_slot(), draw)
 
             def fill_circle(disc: UiCore::Circle, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void can[Ui.Draw]:
                 # The wire carries geometry, not lighting; the host canvas

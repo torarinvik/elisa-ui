@@ -132,6 +132,20 @@ extend UiSkia:
             return false if index >= MAX_IMAGE_BINDINGS
             return UiSkia::draw_ready_image_with_sampling(skia_image_binding_images[index], resource, box, alpha, sampling)
 
+        # The retained path. UiPaint hands the painter a slot, a generation and
+        # a shape; everything a native handle would have carried is looked up
+        # here, at replay time, from the binding the host made when the image
+        # became ready. An unbound or superseded reference draws nothing.
+        def draw_retained_image(draw: UiCore::ImageDraw) -> bool can[Ui.Draw]:
+            resource: UiResources::ResourceHandle = UiResources::ResourceHandle{slot: draw.image.slot, generation: draw.image.generation}
+            _ = UiSkia::prune_bindings()
+            return false if UiResources::state(resource) != UiResources::State.Ready
+            index: usize = image_binding_index(resource)
+            return false if index >= MAX_IMAGE_BINDINGS
+            radius: f32 = UiPaint::corner_radius_for(draw.box, draw.corner)
+            return UiSkia::draw_ready_image_with_sampling(skia_image_binding_images[index], resource, draw.box, draw.alpha, UiSkia::ImageSampling.Linear) if radius <= 0.0
+            return UiSkia::draw_image_rounded_with_sampling(skia_image_binding_images[index], draw.box, draw.alpha, radius, UiSkia::ImageSampling.Linear)
+
         def draw_bound_image_source(resource: UiResources::ResourceHandle, source: UiCore::Rect, destination: UiCore::Rect, alpha: u8) -> bool can[Ui.Draw]:
             return UiSkia::draw_bound_image_source_with_sampling(resource, source, destination, alpha, UiSkia::ImageSampling.Linear)
 

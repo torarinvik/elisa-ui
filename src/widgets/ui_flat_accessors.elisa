@@ -74,6 +74,26 @@ extend UiFlat:
 
         # Zero means unbounded. A maximum below the measured minimum never
         # clips required content; the minimum wins for that axis.
+        # The missing half of set_max_size. Every builder that takes a minimum
+        # takes it once, at construction, and a panel takes none at all -- so
+        # a container that is meant to hold a fixed square (an icon tile, a
+        # colour well, a placeholder for something not loaded yet) had no way
+        # to say so, and came out zero-sized because an empty panel measures
+        # its children.
+        #
+        # A LABEL is the exception and stays one: its minimum is remeasured
+        # from its text on every layout pass, so a value set here would be
+        # overwritten before it was used, and silently. Refusing is the
+        # honest answer.
+        def set_min_size(index: usize, width: f32, height: f32) -> void:
+            return if index >= widget_count or not UiCore::is_finite(width) or not UiCore::is_finite(height)
+            return if widgets[index].kind == UiConst::WidgetKind.Label
+            widgets[index].declared_min_width <- UiConstraints::bounded(width)
+            widgets[index].declared_min_height <- UiConstraints::bounded(height)
+            widgets[index].min_width <- widgets[index].declared_min_width
+            widgets[index].min_height <- widgets[index].declared_min_height
+            mark_layout_dirty()
+
         def set_max_size(index: usize, width: f32, height: f32) -> void:
             return if index >= widget_count or not UiCore::is_finite(width) or not UiCore::is_finite(height)
             widgets[index].max_width <- UiConstraints::bounded(width)
@@ -218,72 +238,15 @@ extend UiFlat:
             widgets[index].help <- copy_retained_text(index, 2, help)
             mark_semantics_dirty()
 
-        # MARK A ROOT AS AN OVERLAY: a modal sheet, a popover, a toast.
-        #
-        # Roots already paint in arena order, so "paint this last" was always
-        # expressible. What was not is the other half of what a modal IS --
-        # everything beneath it recedes behind a wash and stops taking the
-        # pointer. Without that half a dialog reads as a band glued into the
-        # layout above a shell that still looks fully clickable, which is what
-        # the showcase's own confirmation dialog looked like in every frame
-        # this framework has ever rendered.
-        #
-        # Only a ROOT can be one. An overlay nested inside the tree it is meant
-        # to cover would have to be painted out of its own subtree's order,
-        # which is a second paint order, not a flag.
-        def set_overlay(index: usize, overlay: bool) -> void:
-            return if index >= widget_count
-            root: bool = widgets[index].parent == NONE or widgets[index].parent >= widget_count
-            return if widgets[index].overlay == overlay or (overlay and not root)
-            widgets[index].overlay <- overlay
-            UiCore::invalidate(UiCore::Invalidation.Paint)
 
-        # STATE A SURFACE'S KIND when its size does not say it. A tag, a
-        # status chip and a count badge are capsules at a size where the
-        # derived corner policy correctly answers "not a bar"; an image plate
-        # filling the head of a card wants no corners of its own. See
-        # UiCore::CornerStyle for why this is three kinds and not a radius.
-        def set_corner(index: usize, corner: UiCore::CornerStyle) -> void:
-            return if index >= widget_count or widgets[index].corner == corner
-            widgets[index].corner <- corner
-            UiCore::invalidate(UiCore::Invalidation.Paint)
 
-        # A RAMP ACROSS A SURFACE'S FILL. Every raised, tinted or accented
-        # surface in a current interface is one, and a framework that can only
-        # fill flat colour cannot draw one however good its shadows are. The
-        # widget's own colour is the near end; this is the far one.
-        def set_gradient(index: usize, far: UiCore::Color, horizontal: bool) -> void:
-            return if index >= widget_count
-            return if colors_equal(widgets[index].gradient, far) and widgets[index].gradient_horizontal == horizontal
-            widgets[index].gradient <- far
-            widgets[index].gradient_horizontal <- horizontal
-            UiCore::invalidate(UiCore::Invalidation.Paint)
 
-        # AN OUTER LIGHT. Not the shadow: a shadow says how high something is,
-        # a glow says it is ON -- the selected item, the primary action, the
-        # live indicator. See UiPaint::glow_shadow.
-        def set_glow(index: usize, glow: UiCore::Color) -> void:
-            return if index >= widget_count or colors_equal(widgets[index].glow, glow)
-            widgets[index].glow <- glow
-            UiCore::invalidate(UiCore::Invalidation.Paint)
 
-        def surface_style_of(index: usize, depth: UiCore::SurfaceDepth) -> UiCore::SurfaceStyle:
-            return UiCore::surface_style(depth) if index >= widget_count
-            return UiCore::SurfaceStyle{
-                depth,
-                corner: widgets[index].corner,
-                gradient: widgets[index].gradient,
-                gradient_horizontal: widgets[index].gradient_horizontal,
-                glow: widgets[index].glow,
-            }
 
-        def corner_of(index: usize) -> UiCore::CornerStyle:
-            return UiCore::CornerStyle.Automatic if index >= widget_count
-            return widgets[index].corner
 
-        def is_overlay(index: usize) -> bool:
-            return false if index >= widget_count
-            return widgets[index].overlay
+
+
+
 
         def set_secure(index: usize, secure: bool) -> void:
             return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField

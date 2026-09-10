@@ -183,6 +183,24 @@ def showcase_app_skia_page() -> i32:
     return 0 if not showcase_started
     return ShowcaseApp::current_page() + 1
 
+# BIND A PICTURE, the way a host does: a resource the framework knows by slot
+# and generation, an image the host loaded, and one call that ties them
+# together. Nothing above this line -- not the widget, not the command, not the
+# painter -- ever sees the host's handle.
+#
+# The showcase's mark is the caller. It is the one element in that frame that
+# is a picture rather than a shape, and until the command list learned to carry
+# an image there was no way to put one there at all.
+def showcase_app_skia_bind_image(image: usize) -> i32:
+    return 0 if not showcase_started or image == 0
+    resource: UiResources::ResourceHandle = UiResources::request("showcase/brand", 11)
+    return 0 if not UiResources::resource_is_valid(resource)
+    return 0 if not UiResources::set_state(resource, UiResources::State.Ready)
+    return 0 if not UiSkia::bind_image(resource, image)
+    ShowcaseApp::set_brand_image(UiCore::image_ref(resource.slot, resource.generation))
+    return 1
+
+export fn elisa_showcase_app_skia_bind_image(image: usize) -> i32 = showcase_app_skia_bind_image
 export fn elisa_showcase_app_skia_page() -> i32 = showcase_app_skia_page
 export fn elisa_showcase_app_skia_close_dialog() -> i32 = showcase_app_skia_close_dialog
 export fn elisa_showcase_app_skia_hover_button(pressed: i32) -> i32 = showcase_app_skia_hover_button

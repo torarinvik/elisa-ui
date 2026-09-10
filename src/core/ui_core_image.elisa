@@ -1,0 +1,65 @@
+# A retained image: identity, not a pointer.
+#
+# Its own file for the same reason surface depth has one: this is a PAINTING
+# fact, consumed by the shared replay and by every backend, while the types
+# file is the geometry and event vocabulary the whole framework is written
+# against.
+#
+# Images were the last thing in this framework a widget could not have. They
+# existed only as an immediate, Skia-only facility -- a call you make into a
+# live canvas, outside the retained command list -- so no widget on any backend
+# could carry one, and every icon, thumbnail and avatar in a real interface was
+# out of reach. The command list is the only thing a backend replays, so
+# anything that is not in it does not exist as far as the framework is
+# concerned.
+
+extend UiCore:
+    public:
+        # A SLOT AND A GENERATION, NOT A HANDLE.
+        #
+        # The retained command list is plain data: it can be asserted in a test
+        # with no renderer, logged, diffed between runs, or shipped across a
+        # boundary no native handle could cross. A raw SkImage pointer in it
+        # would end all four, and would make the list unsafe to keep for even
+        # one frame past the image's life.
+        #
+        # A slot names WHICH image and a generation says WHICH ONE THAT WAS:
+        # reusing a slot after the first image is gone bumps the generation, so
+        # a command left over from a previous frame resolves to nothing rather
+        # than to whatever moved in. That is the same shape the widget
+        # resources subsystem already uses, so the two need no translation.
+        struct ImageRef:
+            slot: u32
+            generation: u32
+
+        # Generation zero is the sentinel. A resource subsystem issues its
+        # first generation at one, so a zeroed record -- an uninitialised
+        # widget row, a cleared command slot -- names no image by construction
+        # rather than by convention.
+        def image_ref(slot: u32, generation: u32) -> ImageRef:
+            return ImageRef{slot, generation}
+
+        def image_ref_none() -> ImageRef:
+            return ImageRef{slot: 0, generation: 0}
+
+        def image_ref_is_valid(image: ImageRef) -> bool:
+            return image.generation != 0
+
+        def image_refs_equal(left: ImageRef, right: ImageRef) -> bool:
+            return left.slot == right.slot and left.generation == right.generation
+
+        # One image drawn into one box. The alpha is per-DRAW, not per-image:
+        # the same picture fades in on one surface while sitting solid on
+        # another, and an image that had to be reloaded to change its opacity
+        # would be a cache miss disguised as an animation.
+        #
+        # `corner` is here rather than in SurfaceStyle beside the fills because
+        # an image is not a surface: it has no depth, casts nothing, and the
+        # only thing it borrows from the shape vocabulary is which corners to
+        # cut. A thumbnail filling the head of a card is the case that needs
+        # it, and it needs exactly this much.
+        struct ImageDraw:
+            box: Rect
+            image: ImageRef
+            alpha: u8
+            corner: CornerStyle

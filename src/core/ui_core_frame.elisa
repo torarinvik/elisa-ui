@@ -369,6 +369,13 @@ extend UiCore:
                 Command.FillLine(segment, color):
                     safe_segment: Line = Line{from_point: Vec2{x: bounded_coordinate(segment.from_point.x), y: bounded_coordinate(segment.from_point.y)}, to_point: Vec2{x: bounded_coordinate(segment.to_point.x), y: bounded_coordinate(segment.to_point.y)}}
                     return Command.FillLine(safe_segment, color)
+                Command.DrawImage(draw):
+                    safe_box: Rect = Rect{origin: Vec2{x: bounded_coordinate(draw.box.origin.x), y: bounded_coordinate(draw.box.origin.y)}, size: Size{width: bounded_extent(draw.box.size.width), height: bounded_extent(draw.box.size.height)}}
+                    # An image whose generation has moved on names nothing.
+                    # Normalizing it to the sentinel here means a backend
+                    # never has to decide what a stale reference draws.
+                    safe_image: ImageRef = draw.image if image_ref_is_valid(draw.image) else image_ref_none()
+                    return Command.DrawImage(ImageDraw{box: safe_box, image: safe_image, alpha: draw.alpha, corner: draw.corner})
                 Command.DrawText(run, color):
                     # `push_command` is public, so callers can bypass `draw` and
                     # construct a raw TextRun directly. Normalize it here as

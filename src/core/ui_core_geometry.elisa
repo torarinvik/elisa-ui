@@ -99,6 +99,24 @@ extend UiCore:
             safe_box: Rect = Rect{origin: Vec2{x: bounded_coordinate(box.origin.x), y: bounded_coordinate(box.origin.y)}, size: Size{width: bounded_extent(box.size.width), height: bounded_extent(box.size.height)}}
             push_command_shaped(Command.FillRect(safe_box, color), style, DEFAULT_STROKE_WIDTH)
 
+        # AN IMAGE IN A BOX. The last thing in this framework a widget could
+        # not have: images existed only as an immediate, Skia-only call into a
+        # live canvas, outside the retained list every backend replays, so no
+        # widget on any backend could carry one.
+        #
+        # A backend that has not loaded this image, or has no image support at
+        # all, draws nothing. That is deliberate and it is the reason the
+        # reference is a slot and a generation rather than a pointer: a
+        # command list that outlives its images is still a valid command list.
+        def draw_image(box: Rect, image: ImageRef, alpha: u8) -> void:
+            draw_image_shaped(box, image, alpha, CornerStyle.Automatic)
+
+        def draw_image_shaped(box: Rect, image: ImageRef, alpha: u8, corner: CornerStyle) -> void:
+            return if alpha == 0 or not image_ref_is_valid(image)
+            safe_box: Rect = Rect{origin: Vec2{x: bounded_coordinate(box.origin.x), y: bounded_coordinate(box.origin.y)}, size: Size{width: bounded_extent(box.size.width), height: bounded_extent(box.size.height)}}
+            return if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
+            push_command(Command.DrawImage(ImageDraw{box: safe_box, image, alpha, corner}))
+
         def fill(disc: Circle, color: Color) -> void:
             safe_disc: Circle = Circle{center: Vec2{x: bounded_coordinate(disc.center.x), y: bounded_coordinate(disc.center.y)}, radius: bounded_extent(disc.radius)}
             push_command(Command.FillCircle(safe_disc, color))

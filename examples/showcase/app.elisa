@@ -49,6 +49,11 @@ module ShowcaseApp:
         global mutable accent_ids: u32[5] = zeroed
         global mutable dark_box: UiHandles::Handle = UiHandles::invalid()
         global mutable body: UiHandles::Handle = UiHandles::invalid()
+        # The application's own mark, at the head of the shell -- the one
+        # element in this frame that is a PICTURE rather than a shape. It
+        # stays invalid, and paints nothing, until a host binds an image to
+        # it; nothing else in the app has to know whether that ever happened.
+        global mutable brand_tile: UiHandles::Handle = UiHandles::invalid()
         global mutable sidebar: UiHandles::Handle = UiHandles::invalid()
         global mutable nav_ids: u32[5] = zeroed
         global mutable sidebar_spacer: UiHandles::Handle = UiHandles::invalid()
@@ -232,6 +237,14 @@ module ShowcaseApp:
         # Which page is actually on screen. A caller that selects one the way
         # a user would -- by pressing its shortcut -- has no way to know the
         # press was consumed, and a modal consumes them all.
+        # Hand the application a picture for its mark. The reference is a slot
+        # and a generation, so this is the only place that has to know an
+        # image exists at all -- and a frame rendered before it is called, or
+        # by a backend that cannot draw images, is a frame with an empty tile
+        # rather than a broken one.
+        def set_brand_image(image: UiCore::ImageRef) -> void:
+            UiHandles::set_image(brand_tile, image)
+
         def current_page() -> i32:
             return page_index
 
@@ -253,6 +266,15 @@ module ShowcaseApp:
 
             header <- UiHandles::row(root, 16.0, 14.0, ShowcaseTheme::shell())
             UiHandles::set_grow(header, 0.0)
+            # A button is the one builder that takes a minimum size, and a
+            # mark is not interactive -- but it does not have to be: an
+            # interactive widget with no help, no action and no caption is a
+            # hit target nobody can reach, and the alternative here is a
+            # builder argument no other widget wants.
+            brand_tile <- UiHandles::panel(header, UiConst::Axis.Column, 0.0, 0.0, ShowcaseTheme::transparent())
+            UiHandles::set_grow(brand_tile, 0.0)
+            UiHandles::set_min_size(brand_tile, 34.0, 34.0)
+            UiHandles::set_max_size(brand_tile, 34.0, 34.0)
             title_label <- UiHandles::label(header, "Elisa UI Showcase", 21.0, ShowcaseTheme::ink())
             UiHandles::set_text_weight(title_label, true)
             subtitle_label <- UiHandles::label(header, "", 12.0, ShowcaseTheme::muted())
