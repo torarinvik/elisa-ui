@@ -24,7 +24,8 @@
 #include "include/ports/SkFontMgr_mac_ct.h"
 
 extern "C" std::int32_t elisa_showcase_app_skia_render(std::size_t canvas, std::size_t font,
-                                                       float width, float height, std::int32_t page);
+                                                       float width, float height, std::int32_t page,
+                                                       float scale);
 extern "C" std::int32_t elisa_showcase_app_skia_focus_next();
 extern "C" std::int32_t elisa_showcase_app_skia_toggle_theme();
 extern "C" std::int32_t elisa_showcase_app_skia_open_dialog();
@@ -70,7 +71,7 @@ int main(int argc, char** argv) {
         const std::int32_t status = elisa_showcase_app_skia_render(
             reinterpret_cast<std::size_t>(surface->getCanvas()),
             reinterpret_cast<std::size_t>(typeface.get()),
-            static_cast<float>(width), static_cast<float>(height), page);
+            static_cast<float>(width), static_cast<float>(height), page, 1.0f);
         if (status != 1) {
             std::fprintf(stderr, "showcase skia: page %d returned status %d\n", page, status);
             return 5;
@@ -95,7 +96,7 @@ int main(int argc, char** argv) {
     const std::int32_t focused_status = elisa_showcase_app_skia_render(
         reinterpret_cast<std::size_t>(surface->getCanvas()),
         reinterpret_cast<std::size_t>(typeface.get()),
-        static_cast<float>(width), static_cast<float>(height), 2);
+        static_cast<float>(width), static_cast<float>(height), 2, 1.0f);
     if (focused_status != 1) {
         std::fprintf(stderr, "showcase skia: focused page returned status %d\n", focused_status);
         return 5;
@@ -119,7 +120,7 @@ int main(int argc, char** argv) {
     const std::int32_t light_status = elisa_showcase_app_skia_render(
         reinterpret_cast<std::size_t>(surface->getCanvas()),
         reinterpret_cast<std::size_t>(typeface.get()),
-        static_cast<float>(width), static_cast<float>(height), 1);
+        static_cast<float>(width), static_cast<float>(height), 1, 1.0f);
     if (light_status != 1) {
         std::fprintf(stderr, "showcase skia: light page returned status %d\n", light_status);
         return 5;
@@ -146,7 +147,7 @@ int main(int argc, char** argv) {
     const std::int32_t dialog_status = elisa_showcase_app_skia_render(
         reinterpret_cast<std::size_t>(surface->getCanvas()),
         reinterpret_cast<std::size_t>(typeface.get()),
-        static_cast<float>(width), static_cast<float>(height), 0);
+        static_cast<float>(width), static_cast<float>(height), 0, 1.0f);
     if (dialog_status != 1) {
         std::fprintf(stderr, "showcase skia: dialog frame returned status %d\n", dialog_status);
         return 5;
@@ -157,5 +158,32 @@ int main(int argc, char** argv) {
         return 6;
     }
     std::printf("showcase skia: wrote %s\n", dialog_path.c_str());
+
+    // And once at a RETINA backing scale: the same logical point extent on a
+    // canvas with twice the pixels, which is what most Macs actually run. It is
+    // where a renderer's radii, hairlines and glyph placement show whether they
+    // were derived or merely tuned to look right at 1.0.
+    const SkImageInfo retina_info = SkImageInfo::Make(width * 2, height * 2, kRGBA_8888_SkColorType,
+                                                     kPremul_SkAlphaType);
+    sk_sp<SkSurface> retina = SkSurfaces::Raster(retina_info);
+    if (!retina) {
+        std::fprintf(stderr, "showcase skia: no retina raster surface\n");
+        return 4;
+    }
+    retina->getCanvas()->clear(SK_ColorTRANSPARENT);
+    const std::int32_t retina_status = elisa_showcase_app_skia_render(
+        reinterpret_cast<std::size_t>(retina->getCanvas()),
+        reinterpret_cast<std::size_t>(typeface.get()),
+        static_cast<float>(width), static_cast<float>(height), 1, 2.0f);
+    if (retina_status != 1) {
+        std::fprintf(stderr, "showcase skia: retina frame returned status %d\n", retina_status);
+        return 5;
+    }
+    const std::string retina_path = prefix + "-retina.png";
+    if (!write_png(retina.get(), retina_path)) {
+        std::fprintf(stderr, "showcase skia: failed to write %s\n", retina_path.c_str());
+        return 6;
+    }
+    std::printf("showcase skia: wrote %s\n", retina_path.c_str());
     return 0;
 }

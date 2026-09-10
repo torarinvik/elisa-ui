@@ -100,4 +100,15 @@ if cmp -s "$PREFIX-page4.png" "$dialog_file"; then
   exit 1
 fi
 echo "showcase skia: dialog rendered ${WIDTH}x${HEIGHT} ($dialog_size bytes) -> $dialog_file"
+# ...and once at a retina backing scale. A frame that only looks right at 1.0 is
+# a frame tuned to one grid rather than derived from the geometry.
+retina_file="$PREFIX-retina.png"
+[[ -s "$retina_file" ]] || { echo "showcase skia: the retina frame produced no file" >&2; exit 1; }
+retina_size="$(stat -f%z "$retina_file")"
+# Four times the pixels of the 1x frame, so the floor is proportionally higher.
+if [[ "$retina_size" -lt 60000 ]]; then
+  echo "showcase skia: the retina frame rendered almost nothing ($retina_size bytes)" >&2
+  exit 1
+fi
+echo "showcase skia: retina frame rendered $((WIDTH * 2))x$((HEIGHT * 2)) at 2x ($retina_size bytes) -> $retina_file"
 echo "showcase skia: all five showcase pages rendered by the real renderer"

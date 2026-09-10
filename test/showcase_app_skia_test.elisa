@@ -33,7 +33,12 @@ def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
 
 global mutable showcase_started: bool = false
 
-def showcase_app_skia_render(canvas: usize, font: usize, width: f32, height: f32, page: i32) -> i32:
+# `width`/`height` are LOGICAL points and `scale` is the backing scale, exactly
+# as a window reports them: a retina host hands over a canvas with twice the
+# pixels and the same point extent, and every radius, hairline and glyph has to
+# come out right in both. Rendering only at 1.0 leaves the scale most Macs
+# actually run on unexecuted.
+def showcase_app_skia_render(canvas: usize, font: usize, width: f32, height: f32, page: i32, scale: f32) -> i32:
     can Ui.Draw, Ui.Text, Ui.Input, Unsafe.PointerCast:
         previous_font: usize = UiSkia::begin_frame_font(font)
         _ = UiTextMetrics::set_context(UiSkia::font_generation(), UiSkia::scale_generation())
@@ -56,7 +61,7 @@ def showcase_app_skia_render(canvas: usize, font: usize, width: f32, height: f32
             UiSkia::end_deferred_frame()
             UiSkia::end_frame_font(previous_font)
             return UiSkia::RenderStatus.SkippedNoSurface.i32()
-        UiSkia::attach(canvas)
+        UiSkia::attach_scaled(canvas, scale)
         status: UiSkia::RenderStatus = UiSkia::render_status_with_font(font)
         UiSkia::detach()
         UiSkia::end_deferred_frame()
@@ -93,7 +98,7 @@ def showcase_app_skia_open_dialog() -> i32:
         app_event(UiCore::KeyEvent.Down(code: UiCore::Key.H))
         return 1
 
-export fn elisa_showcase_app_skia_render(canvas: usize, font: usize, width: f32, height: f32, page: i32) -> i32 = showcase_app_skia_render
+export fn elisa_showcase_app_skia_render(canvas: usize, font: usize, width: f32, height: f32, page: i32, scale: f32) -> i32 = showcase_app_skia_render
 export fn elisa_showcase_app_skia_open_dialog() -> i32 = showcase_app_skia_open_dialog
 export fn elisa_showcase_app_skia_focus_next() -> i32 = showcase_app_skia_focus_next
 export fn elisa_showcase_app_skia_toggle_theme() -> i32 = showcase_app_skia_toggle_theme
