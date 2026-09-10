@@ -210,6 +210,36 @@ def main() -> i64:
     check("and from the leading edge for the other", ltr_origin < 0.05)
     check("with the same width either way", near(filled_fraction(mirrored), 0.25))
 
+    # THE RISE UNDER THE POINTER. A hovered control comes up a height and its
+    # light brightens, eased like its colour: mid-motion it is between rest
+    # and risen, settled it is Floating with a brighter glow, and gone from
+    # under the pointer it comes back down.
+    UiFlat::reset()
+    lamp: usize = UiFlat::button(UiFlat::NONE, 120.0, 34.0, UiCore::rgb(60, 120, 240), UiCore::rgb(70, 130, 250), UiCore::rgb(30, 80, 200))
+    UiFlat::set_glow(lamp, UiCore::rgba(60, 120, 240, 100))
+    UiFlat::layout(120.0, 34.0)
+    UiCore::set_frame_time(300.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    rest_glow: u8 = UiCore::command_style_at(first_fill_color_command(UiCore::rgb(60, 120, 240))).glow.a
+    check("at rest a control is Raised with the light it was given", surface_depth(lamp) == UiCore::SurfaceDepth.Raised and rest_glow == 100)
+    UiFlat::pointer((UiCore::PointerEvent.Move(at: UiCore::Vec2(60.0, 17.0))))
+    UiCore::set_frame_time(300.02)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    mid_glow: u8 = UiCore::command_style_at(0).glow.a
+    check("one frame in, the light is brightening but not yet bright", mid_glow > rest_glow and mid_glow < 160)
+    UiCore::set_frame_time(301.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("settled under the pointer it has risen a height", surface_depth(lamp) == UiCore::SurfaceDepth.Floating)
+    check("with its light at full", UiCore::command_style_at(0).glow.a == 160)
+    UiFlat::pointer((UiCore::PointerEvent.Move(at: UiCore::Vec2(300.0, 300.0))))
+    UiCore::set_frame_time(302.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("and comes back down when the pointer leaves", surface_depth(lamp) == UiCore::SurfaceDepth.Raised and UiCore::command_style_at(0).glow.a == rest_glow)
+
     if test_failures == 0:
         _ = puts("widget motion: all checks passed")
         return 0

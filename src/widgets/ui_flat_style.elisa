@@ -175,6 +175,31 @@ extend UiFlat:
         # Shape is not a state, so the corner survives. The ramp and the light
         # do not: dropping both leaves the muted fill carrying the whole
         # appearance, which is what it did before either existed.
+        # THE RISE UNDER THE POINTER. A hovered control that can be pressed
+        # comes up a height and its light brightens, both eased: past halfway
+        # it is Floating rather than Raised, and its glow's alpha grows with
+        # the lift. A control with no light of its own is not given one --
+        # the rise is enough, and a glow that appears from nothing on hover
+        # is a control that lit up rather than one that came closer.
+        const LIFT_GLOW_GAIN: f32 = 0.6
+
+        def lifted_surface_style(index: usize, style: UiCore::SurfaceStyle) -> UiCore::SurfaceStyle:
+            rises: bool = control_surface(widgets[index].kind) and effectively_enabled(index) and not widgets[index].pressed
+            lift: f32 = displayed_lift(index, 1.0 if rises and widgets[index].hovered else 0.0)
+            return style if lift <= 0.0
+            glow: UiCore::Color = style.glow
+            brighter: i64 = glow.a.i64() + (glow.a.f32() * LIFT_GLOW_GAIN * lift).i64()
+            return UiCore::SurfaceStyle{
+                depth: UiCore::SurfaceDepth.Floating if lift > 0.5 and style.depth == UiCore::SurfaceDepth.Raised else style.depth,
+                corner: style.corner,
+                ramped: style.ramped,
+                gradient: style.gradient,
+                gradient_horizontal: style.gradient_horizontal,
+                gradient_mid: style.gradient_mid,
+                gradient_mid_at: style.gradient_mid_at,
+                glow: UiCore::rgba(glow.r, glow.g, glow.b, UiCore::channel(brighter).u8()) if glow.a != 0 else glow,
+            }
+
         def live_surface_style(index: usize, depth: UiCore::SurfaceDepth) -> UiCore::SurfaceStyle:
             style: UiCore::SurfaceStyle = surface_style_of(index, depth)
             return style if effectively_enabled(index)
@@ -190,9 +215,9 @@ extend UiFlat:
             }
 
         def fill_widget_surface(index: usize, box: UiCore::Rect, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void:
-            style: UiCore::SurfaceStyle = live_surface_style(index, depth)
+            style: UiCore::SurfaceStyle = lifted_surface_style(index, live_surface_style(index, depth))
             if style.corner == UiCore::CornerStyle.Automatic and not UiCore::has_gradient(style) and not UiCore::has_glow(style):
-                fill_at_depth(box, color, depth)
+                fill_at_depth(box, color, style.depth)
                 return
             UiCore::fill_styled(box, color, style)
 

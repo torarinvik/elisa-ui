@@ -88,3 +88,17 @@ fade in from nothing, that one frame into a transition the surface is strictly
 between its two states, that depth is already the new one, that it finishes
 exactly on its target rather than near it, that a settled control asks for no
 further frames, and that reduced motion arrives without travelling.
+
+## The rise under the pointer
+
+A control that changes colour under the cursor says *you are on me*; one that
+also rises and brightens says *and I will answer*. `displayed_lift` eases a
+per-widget lift from 0 to 1 the way the colour eases, and the surface style
+reads it: past halfway a Raised control is Floating, and its glow's alpha grows
+by up to `LIFT_GLOW_GAIN`. A control with no light of its own is not given one
+— the rise is enough, and a glow appearing from nothing on hover reads as a
+control that lit up rather than one that came closer. Pressing suppresses the
+lift (the recess is the feedback there); leaving brings it back down.
+
+The storefront host writes `-hovering.png` one motion step in, so the lift can
+be looked at mid-rise rather than only asserted.

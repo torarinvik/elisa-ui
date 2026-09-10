@@ -51,6 +51,21 @@ extend UiFlat:
             UiCore::request_frame_after(STATE_TRANSITION_FRAME) if not colors_equal(moved, target)
             return moved
 
+        # HOW FAR A CONTROL HAS RISEN toward the pointer. A control that
+        # changes colour under the cursor says "you are on me"; one that also
+        # rises and brightens says "and I will answer". The rise is eased
+        # like the colour, so a frame taken mid-motion shows it halfway up.
+        def displayed_lift(index: usize, target: f32) -> f32:
+            if not widgets[index].shown_lift_settled:
+                widgets[index].shown_lift <- target
+                widgets[index].shown_lift_settled <- true
+                return target
+            step: f32 = transition_step()
+            moved: f32 = target if step >= 1.0 else approach_value(widgets[index].shown_lift, target, step)
+            widgets[index].shown_lift <- moved
+            UiCore::request_frame_after(STATE_TRANSITION_FRAME) if moved != target
+            return moved
+
         # THE FRACTION A CONTROL IS SHOWING, which is not always the one it
         # holds. A meter that jumps to its new reading tells you the number
         # changed; one that travels tells you which way and by how much, which
