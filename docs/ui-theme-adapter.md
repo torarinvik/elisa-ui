@@ -32,6 +32,14 @@ default and high-contrast sizes where they were. The marker's centre and its
 label's origin follow from the marker, so the gap on either side of it stays
 one spacing unit at any scale.
 
+So does every other affordance the reader has to see or hit. The slider track
+came from the focus ring's width for the same reason the marker did, and the
+slider **thumb** and the **scrollbar** were not applied at all — they sat at
+their construction defaults for the life of the process, so a reader at
+double-size text got an 8pt scrollbar and an 8pt thumb beside a touch target
+the same preference had already doubled. Each ratio lands on the value that
+default was, so nothing moves until a preference asks it to.
+
 Per-widget surfaces, hover/press colors, text colors, and declared widget frames
 remain application-owned. Applications that need a custom token can still copy
 `UiFlat::theme()`, change the desired field, and call `UiHandles::set_theme()`.

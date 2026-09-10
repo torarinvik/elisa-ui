@@ -11,6 +11,12 @@ extend UiFlat:
     public:
         # A choice marker as a multiple of the spacing unit. See apply_metrics.
         const MARKER_PER_SPACING: f32 = 1.375
+        # The rest of the affordances, each at the ratio that reproduces the
+        # value it was constructed with at the default eight-point spacing.
+        const TRACK_PER_SPACING: f32 = 0.75
+        const THUMB_PER_SPACING: f32 = 1.0
+        const SCROLLBAR_PER_SPACING: f32 = 1.0
+        const SCROLLBAR_INSET_PER_SPACING: f32 = 0.5
 
         # Apply one resolved palette without replacing application-specific
         # widget colors or layout metrics. The return value lets a frame skip
@@ -37,7 +43,18 @@ extend UiFlat:
             current.focus_inset <- UiConstraints::bounded(metrics.focus_ring_width)
             current.text_horizontal_padding <- UiConstraints::bounded(metrics.spacing_unit / 2.0)
             current.text_vertical_padding <- UiConstraints::bounded(metrics.spacing_unit / 2.0)
-            current.slider_track_height <- UiConstraints::bounded(metrics.focus_ring_width * 2.0)
+            # ...and so is every other affordance the reader has to see or hit.
+            # The track came from the focus ring's width for the same reason
+            # the marker did, and the THUMB and the SCROLLBAR were not applied
+            # at all: they sat at their construction defaults for the life of
+            # the process, so a reader at double-size text got an 8pt scrollbar
+            # and an 8pt thumb beside a doubled touch target. Each ratio below
+            # lands on the value that default was, so nothing moves until a
+            # preference asks it to.
+            current.slider_track_height <- UiConstraints::bounded(metrics.spacing_unit * TRACK_PER_SPACING)
+            current.slider_thumb_radius <- UiConstraints::bounded(metrics.spacing_unit * THUMB_PER_SPACING)
+            current.scrollbar_width <- UiConstraints::bounded(metrics.spacing_unit * SCROLLBAR_PER_SPACING)
+            current.scrollbar_inset <- UiConstraints::bounded(metrics.spacing_unit * SCROLLBAR_INSET_PER_SPACING)
             # A MARKER IS TYPOGRAPHY, so it scales with the text preference.
             #
             # These were derived from the focus ring's width, which is a proxy
