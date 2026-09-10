@@ -77,3 +77,20 @@ value in either direction and only its origin moves**. Mirroring the width
 instead looks right at both ends and is inverted everywhere between — an empty
 track paints itself full — and a check that only compares filled *fractions*
 passes straight through it. Width and origin are asserted separately.
+
+A **text field's content** follows the reader: the run starts at the reader's
+own edge, and the caret, the selection band, the composition underline and the
+click that places the caret all follow it. This is the one piece that could not
+be a reflection — but it turned out not to need five mirrorings either.
+Everything a field draws or hits is a *distance from the start of the visible
+run*, and direction changes exactly one thing: which edge that run starts at.
+One pair of inverse functions (`field_run_x` and `field_run_distance`) carries
+all of it, so the painter and the pointer have no second formula to disagree
+about. A span is drawn from its leading corner, which for a mirrored reader is
+the far end of the distance it covers; a caret is the zero-width case and needs
+no special handling.
+
+These helpers live in `ui_flat_direction.elisa` rather than beside the colour
+policy. Each of them is the single place its two consumers meet, and that
+matters more here than elsewhere: a second copy of any one is a control you can
+see in one place and grab in another.

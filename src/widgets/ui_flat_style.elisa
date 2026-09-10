@@ -118,49 +118,6 @@ extend UiFlat:
             return farthest if requested > farthest
             return requested
 
-        # THE FRACTION OF A TRACK, MEASURED FROM THE READER'S START.
-        #
-        # One function, consulted by the painter and by the pointer, because
-        # they are two halves of one fact: where along the track a value sits.
-        # Mirroring the paint without the mapping would leave the thumb where
-        # the finger is not, which is worse than not mirroring at all -- it is
-        # why the slider was left alone when the choice marker was mirrored.
-        #
-        # It is its own inverse, so both halves call the same thing and there
-        # is no second formula to get wrong.
-        def track_fraction(value: f32) -> f32:
-            return 1.0 - value if painting_right_to_left()
-            return value
-
-        # The span a value FILLS runs from the reader's start edge to the
-        # thumb, so its width is the value in either direction and only its
-        # origin moves. Mirroring the width instead is a mistake that looks
-        # right at both ends and is inverted everywhere between: an empty
-        # right-to-left track paints itself full.
-        def track_fill_origin(track_width: f32, value: f32) -> f32:
-            return track_width * track_fraction(value) if painting_right_to_left()
-            return 0.0
-
-        # LEADING MEANS THE READER'S START, which is the right edge for half
-        # the world.
-        #
-        # The default alignment for content was written as "leading" in the
-        # comment beside it and implemented as `x`: one word doing duty for two
-        # different edges, and correct for one of them. It read as a decision
-        # rather than an oversight, which is why it survived the change that
-        # taught the marker beside it which side it was on.
-        #
-        # A run wider than its box keeps the leading edge in both directions --
-        # pushing it off the start to honour the end is how a long label
-        # becomes an unreadable one.
-        def leading_text_origin(index: usize, text_width: f32) -> f32:
-            return widgets[index].x if not painting_right_to_left()
-            trailing =
-                room: f32 = widgets[index].width - text_width
-                widgets[index].x + room
-            return widgets[index].x if trailing < widgets[index].x
-            return trailing
-
         # A MARK MUST CONTRAST WITH THE CONTROL, not with the palette's idea
         # of the page.
         #
@@ -187,9 +144,6 @@ extend UiFlat:
             return mark if gap >= MARK_CONTRAST_MINIMUM
             ink: UiCore::Color = contrast_ink(surface)
             return UiCore::rgba(ink.r, ink.g, ink.b, mark.a)
-
-        def painting_right_to_left() -> bool:
-            return UiLocalization::is_rtl(UiLocalization::current_locale())
 
         # A label follows the MARKER rather than the token whenever the token
         # would start it inside the marker or past the end of the control.

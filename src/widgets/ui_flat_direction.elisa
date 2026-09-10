@@ -1,0 +1,85 @@
+# UiFlat reading direction: which edge everything starts from.
+#
+# Split out of ui_flat_style.elisa when it outgrew the source budget, and the
+# seam is a real one. Every function here answers one question in a different
+# currency -- a fraction along a track, a distance along a text run, the origin
+# of a label or a span -- and each is the single place its two consumers meet.
+# That matters more here than elsewhere, because the painter and the pointer
+# both have to mirror: a second copy of any of these is a control you can see
+# in one place and grab in another.
+
+extend UiFlat:
+    private:
+        # THE X OF A DISTANCE ALONG A FIELD'S RUN, and its inverse.
+        #
+        # Everything a text field draws or hits is a DISTANCE from the start of
+        # the visible run: the caret sits so many points along it, a selection
+        # spans from one distance to another, the composition underline runs
+        # between two, and a click asks which distance it landed on. Reading
+        # direction changes exactly one of those things -- which edge the run
+        # starts at -- so one pair of functions turns every one of them into an
+        # x and back, and the painter and the pointer have no second formula to
+        # disagree about. That is the whole reason the field could be mirrored
+        # at all: five separate mirrorings would have been five chances to put
+        # the caret where the finger is not.
+        def field_run_x(index: usize, inset: f32, distance: f32) -> f32:
+            return widgets[index].x + widgets[index].width - inset - distance if painting_right_to_left()
+            return widgets[index].x + inset + distance
+
+        def field_run_distance(index: usize, inset: f32, pointer_x: f32) -> f32:
+            return widgets[index].x + widgets[index].width - inset - pointer_x if painting_right_to_left()
+            return pointer_x - widgets[index].x - inset
+
+        # A span is drawn from its LEADING corner, which for a mirrored reader
+        # is the far end of the distance it covers. A caret is the zero-width
+        # case and needs no special handling.
+        def field_span_origin(index: usize, inset: f32, distance: f32, span_width: f32) -> f32:
+            return field_run_x(index, inset, distance + span_width) if painting_right_to_left()
+            return field_run_x(index, inset, distance)
+
+        def painting_right_to_left() -> bool:
+            return UiLocalization::is_rtl(UiLocalization::current_locale())
+
+
+        # THE FRACTION OF A TRACK, MEASURED FROM THE READER'S START.
+        #
+        # One function, consulted by the painter and by the pointer, because
+        # they are two halves of one fact: where along the track a value sits.
+        # Mirroring the paint without the mapping would leave the thumb where
+        # the finger is not, which is worse than not mirroring at all -- it is
+        # why the slider was left alone when the choice marker was mirrored.
+        #
+        # It is its own inverse, so both halves call the same thing and there
+        # is no second formula to get wrong.
+        def track_fraction(value: f32) -> f32:
+            return 1.0 - value if painting_right_to_left()
+            return value
+
+        # The span a value FILLS runs from the reader's start edge to the
+        # thumb, so its width is the value in either direction and only its
+        # origin moves. Mirroring the width instead is a mistake that looks
+        # right at both ends and is inverted everywhere between: an empty
+        # right-to-left track paints itself full.
+        def track_fill_origin(track_width: f32, value: f32) -> f32:
+            return track_width * track_fraction(value) if painting_right_to_left()
+            return 0.0
+
+        # LEADING MEANS THE READER'S START, which is the right edge for half
+        # the world.
+        #
+        # The default alignment for content was written as "leading" in the
+        # comment beside it and implemented as `x`: one word doing duty for two
+        # different edges, and correct for one of them. It read as a decision
+        # rather than an oversight, which is why it survived the change that
+        # taught the marker beside it which side it was on.
+        #
+        # A run wider than its box keeps the leading edge in both directions --
+        # pushing it off the start to honour the end is how a long label
+        # becomes an unreadable one.
+        def leading_text_origin(index: usize, text_width: f32) -> f32:
+            return widgets[index].x if not painting_right_to_left()
+            trailing =
+                room: f32 = widgets[index].width - text_width
+                widgets[index].x + room
+            return widgets[index].x if trailing < widgets[index].x
+            return trailing

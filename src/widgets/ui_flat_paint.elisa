@@ -171,18 +171,19 @@ extend UiFlat:
                     selected_start <- visible_start if selected_start < visible_start else selected_start
                     selected_stop <- visible_stop if selected_stop > visible_stop else selected_stop
                     if selected_stop > selected_start:
-                        selection_x: f32 = widgets[index].x + text_inset + measure_text_range(index, visible_start, selected_start)
                         selection_width: f32 = measure_text_range(index, selected_start, selected_stop)
+                        selection_x: f32 = field_span_origin(index, text_inset, measure_text_range(index, visible_start, selected_start), selection_width)
                         selection_inset: f32 = clamped_inset(current_theme.selection_vertical_inset, widgets[index].height)
                         UiCore::fill(UiCore::Rect(selection_x, widgets[index].y + selection_inset, selection_width, widgets[index].height - selection_inset * 2.0), current_theme.selection)
-                    UiCore::draw(UiCore::TextRun(UiCore::Vec2(widgets[index].x + text_inset, field_y), widgets[index].text_size, display_text), field_ink)
+                    run_origin: f32 = field_span_origin(index, text_inset, 0.0, UiTextMetrics::width(display_text, widgets[index].text_size, widgets[index].text_weighted))
+                    UiCore::draw(UiCore::TextRun(UiCore::Vec2(run_origin, field_y), widgets[index].text_size, display_text), field_ink)
                     marked_start: mutable usize = widgets[index].marked_start
                     marked_stop: mutable usize = widgets[index].marked_end
                     marked_start <- visible_start if marked_start < visible_start else marked_start
                     marked_stop <- visible_stop if marked_stop > visible_stop else marked_stop
                     if marked_stop > marked_start:
-                        marked_x: f32 = widgets[index].x + text_inset + measure_text_range(index, visible_start, marked_start)
                         marked_width: f32 = measure_text_range(index, marked_start, marked_stop)
+                        marked_x: f32 = field_span_origin(index, text_inset, measure_text_range(index, visible_start, marked_start), marked_width)
                         # Keep the composition underline inside the field even
                         # when a theme supplies an inset larger than its
                         # current widget height.
@@ -190,7 +191,7 @@ extend UiFlat:
                         marked_y: f32 = widgets[index].y + widgets[index].height - marked_inset
                         UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(marked_x, marked_y), to_point: UiCore::Vec2(marked_x + marked_width, marked_y)}, widgets[index].text_color)
                     if widgets[index].focused and selection_start(index) == selection_end(index) and caret_is_visible():
-                        caret_x: f32 = widgets[index].x + text_inset + measure_text_range(index, visible_start, widgets[index].caret)
+                        caret_x: f32 = field_run_x(index, text_inset, measure_text_range(index, visible_start, widgets[index].caret))
                         caret_inset: f32 = clamped_inset(current_theme.text_vertical_padding, widgets[index].height)
                         # A caret is one of the few things that is still a
                         # hairline on purpose: it marks a position BETWEEN two

@@ -485,6 +485,40 @@ def main() -> i64:
     UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.RightSuper)))
     check("releasing one Command preserves shortcuts from the other", test_clipboard_value() == "copy")
 
+    # A MIRRORED FIELD, DRAWN AND CLICKED THE SAME WAY. Everything a text
+    # field draws or hits is a distance from the start of the visible run, and
+    # direction changes exactly one thing: which edge that run starts at. One
+    # pair of inverse functions carries all of it, so there is no second
+    # formula for the painter and the pointer to disagree about -- which is the
+    # only reason a field could be mirrored without putting the caret where the
+    # finger is not.
+    UiFlat::reset()
+    mirrored_field: usize = UiFlat::text_field(UiFlat::NONE, "Name", "", "abcd", 200.0, 30.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
+    _ = UiFlat::request_focus(mirrored_field)
+    UiFlat::layout(200.0, 30.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    ltr_run: f32 = first_text_origin_x()
+    ltr_caret: usize = UiFlat::widget(mirrored_field).caret
+    _ = UiLocalization::set_locale("he-IL")
+    UiCore::begin_frame()
+    UiFlat::paint()
+    rtl_run: f32 = first_text_origin_x()
+    check("a mirrored field's content starts at the reader's edge", rtl_run > ltr_run)
+    check("and stays inside the field", rtl_run >= UiFlat::widget(mirrored_field).x and rtl_run <= UiFlat::widget(mirrored_field).x + UiFlat::widget(mirrored_field).width)
+    # The click mapping is the inverse of the draw. Clicking near the reader's
+    # own start edge puts the caret at the beginning of the text in either
+    # direction; the same x means opposite ends of the run.
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(197.0, 15.0), button: 0)))
+    rtl_start_caret: usize = UiFlat::widget(mirrored_field).caret
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(197.0, 15.0), button: 0)))
+    _ = UiLocalization::set_locale("en-US")
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(197.0, 15.0), button: 0)))
+    ltr_end_caret: usize = UiFlat::widget(mirrored_field).caret
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(197.0, 15.0), button: 0)))
+    check("a click at the far right is the run's start for one reader and its end for the other", rtl_start_caret == 0 and ltr_end_caret == 4)
+    _ = ltr_caret
+
     if test_failures == 0:
         _ = puts("widget layout: all checks passed")
         return 0
