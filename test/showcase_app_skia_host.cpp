@@ -25,6 +25,7 @@
 #include "include/ports/SkFontMgr_mac_ct.h"
 
 extern "C" void elisa_skia_set_bold_typeface(std::size_t font);
+extern "C" void elisa_skia_set_font_manager(std::size_t manager);
 extern "C" std::int32_t elisa_showcase_app_skia_render(std::size_t canvas, std::size_t font,
                                                        float width, float height, std::int32_t page,
                                                        float scale);
@@ -102,6 +103,7 @@ int main(int argc, char** argv) {
     sk_sp<SkTypeface> bold_typeface =
         font_manager ? font_manager->matchFamilyStyle(nullptr, SkFontStyle::Bold()) : nullptr;
     elisa_skia_set_bold_typeface(reinterpret_cast<std::size_t>(bold_typeface.get()));
+    elisa_skia_set_font_manager(reinterpret_cast<std::size_t>(font_manager.get()));
     if (!typeface) {
         std::fprintf(stderr, "showcase skia: no system typeface\n");
         return 3;

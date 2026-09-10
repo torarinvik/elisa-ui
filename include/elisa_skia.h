@@ -110,6 +110,10 @@ void elisa_skia_canvas_draw_text_weighted(size_t canvas, size_t font, const char
  * stem growth is not applied; without one the renderer synthesises weight as
  * before. Borrowed like every other font handle: the host owns it. */
 void elisa_skia_set_bold_typeface(size_t font);
+/* A font manager for per-code-point fallback, or 0 to take it back. */
+void elisa_skia_set_font_manager(size_t manager);
+/* 1 when every code point has a real glyph on the lent face or a fallback. */
+int elisa_skia_text_covers(size_t font, const char *text, size_t length);
 size_t elisa_skia_bold_typeface_handle(void);
 float elisa_skia_measure_text_width_weighted(size_t font, const char *text, size_t length,
                                              float size, float weight_stroke);

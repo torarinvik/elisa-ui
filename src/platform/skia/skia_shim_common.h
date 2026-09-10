@@ -31,6 +31,9 @@
 #include "include/core/SkSamplingOptions.h"
 #include "include/core/SkShader.h"
 #include "include/core/SkTypeface.h"
+#include "include/core/SkFontMgr.h"
+#include <unordered_map>
+#include <vector>
 #include "include/effects/SkImageFilters.h"
 #include "include/effects/SkGradient.h"
 
@@ -125,6 +128,90 @@ inline int elisa_skia_text_hinting = 0;
 // The bold face a host has lent the renderer, or zero. Borrowed for as long as
 // the host says so, exactly like the regular face handed to each draw call.
 inline std::size_t elisa_skia_bold_typeface = 0;
+// A font manager the host has lent, or zero. It is the ONLY way a glyph the
+// lent face lacks gets drawn as anything but a box: the shim asks it for a
+// face that has the code point, per code point, and remembers the answer.
+inline std::size_t elisa_skia_font_manager = 0;
+inline std::unordered_map<std::uint32_t, sk_sp<SkTypeface>> elisa_skia_fallback_cache;
+
+// One run of text drawn with one face. A string is split into these at every
+// point where the lent face has no glyph and a fallback does -- and drawn
+// and measured through the SAME split, so a run measures as it draws.
+struct TextRun {
+    std::size_t begin;
+    std::size_t end;
+    sk_sp<SkTypeface> face;   // null means the lent face
+};
+
+inline std::uint32_t decode_utf8(const char *text, std::size_t length, std::size_t &index) {
+    const auto byte = [&](std::size_t at) { return static_cast<unsigned char>(text[at]); };
+    const unsigned char lead = byte(index);
+    std::size_t extra = lead >= 0xF0 ? 3 : lead >= 0xE0 ? 2 : lead >= 0xC0 ? 1 : 0;
+    if (index + extra >= length + (extra == 0 ? 1 : 0) && extra != 0) { index += 1; return 0xFFFD; }
+    std::uint32_t code = extra == 0 ? lead : extra == 1 ? (lead & 0x1F) : extra == 2 ? (lead & 0x0F) : (lead & 0x07);
+    for (std::size_t k = 1; k <= extra; ++k) {
+        if (index + k >= length) { index += 1; return 0xFFFD; }
+        code = (code << 6) | (byte(index + k) & 0x3F);
+    }
+    index += extra + 1;
+    return code;
+}
+
+inline sk_sp<SkTypeface> fallback_face_for(std::uint32_t code, SkTypeface *lent) {
+    if (elisa_skia_font_manager == 0) return nullptr;
+    const auto cached = elisa_skia_fallback_cache.find(code);
+    if (cached != elisa_skia_fallback_cache.end()) return cached->second;
+    SkFontMgr *manager = reinterpret_cast<SkFontMgr *>(elisa_skia_font_manager);
+    const SkFontStyle style = lent != nullptr ? lent->fontStyle() : SkFontStyle::Normal();
+    sk_sp<SkTypeface> found = manager->matchFamilyStyleCharacter(nullptr, style, nullptr, 0,
+                                                                   static_cast<SkUnichar>(code));
+    // Remember misses too: a code point no face has is asked about once.
+    elisa_skia_fallback_cache.emplace(code, found);
+    return found;
+}
+
+inline std::vector<TextRun> split_runs(SkTypeface *lent, const char *text, std::size_t length) {
+    std::vector<TextRun> runs;
+    std::size_t index = 0;
+    while (index < length) {
+        const std::size_t start = index;
+        const std::uint32_t code = decode_utf8(text, length, index);
+        sk_sp<SkTypeface> face = nullptr;
+        // Control characters and anything the lent face already has stay on it.
+        if (code >= 0x20 && lent != nullptr && lent->unicharToGlyph(static_cast<SkUnichar>(code)) == 0) {
+            face = fallback_face_for(code, lent);
+        }
+        if (!runs.empty() && runs.back().face.get() == face.get()) {
+            runs.back().end = index;
+        } else {
+            runs.push_back(TextRun{start, index, face});
+        }
+    }
+    return runs;
+}
+
+// Draw a string as its runs, advancing by each run's measured width.
+inline void draw_runs(SkCanvas *target, const SkFont &base, const SkPaint &paint, SkTypeface *lent,
+                      const char *text, std::size_t length, float x, float y) {
+    float pen = x;
+    for (const TextRun &run : split_runs(lent, text, length)) {
+        SkFont font = base;
+        if (run.face) font.setTypeface(run.face);
+        const std::size_t count = run.end - run.begin;
+        target->drawSimpleText(text + run.begin, count, SkTextEncoding::kUTF8, pen, y, font, paint);
+        pen += font.measureText(text + run.begin, count, SkTextEncoding::kUTF8);
+    }
+}
+
+inline float measure_runs(const SkFont &base, SkTypeface *lent, const char *text, std::size_t length) {
+    float total = 0.0f;
+    for (const TextRun &run : split_runs(lent, text, length)) {
+        SkFont font = base;
+        if (run.face) font.setTypeface(run.face);
+        total += font.measureText(text + run.begin, run.end - run.begin, SkTextEncoding::kUTF8);
+    }
+    return total;
+}
 
 inline SkFontHinting hinting_for(int hinting) {
     switch (hinting) {

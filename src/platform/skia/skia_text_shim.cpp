@@ -28,9 +28,8 @@ extern "C" void elisa_skia_canvas_draw_text_with_font(std::size_t canvas_handle,
     if (SkCanvas *target = canvas(canvas_handle);
         target != nullptr && font_handle != 0 && text != nullptr && length > 0 && bounded_coordinate(x) &&
         bounded_coordinate(y) && bounded_extent(size)) {
-        SkFont font = font_for(size, reinterpret_cast<SkTypeface *>(font_handle));
-        target->drawSimpleText(text, length, SkTextEncoding::kUTF8, x, y, font,
-                               fill_paint(red, green, blue, alpha));
+        SkTypeface *lent = reinterpret_cast<SkTypeface *>(font_handle);
+        draw_runs(target, font_for(size, lent), fill_paint(red, green, blue, alpha), lent, text, length, x, y);
     }
 }
 
@@ -39,8 +38,8 @@ extern "C" float elisa_skia_measure_text_width_with_font(std::size_t font_handle
                                                            const char *text, std::size_t length,
                                                            float size) {
     if (font_handle == 0 || text == nullptr || length == 0 || !bounded_extent(size)) return 0.0f;
-    const float measured = font_for(size, reinterpret_cast<SkTypeface *>(font_handle))
-        .measureText(text, length, SkTextEncoding::kUTF8);
+    SkTypeface *lent = reinterpret_cast<SkTypeface *>(font_handle);
+    const float measured = measure_runs(font_for(size, lent), lent, text, length);
     return finite(measured) && measured >= 0.0f ? measured : 0.0f;
 }
 
@@ -56,8 +55,8 @@ extern "C" void elisa_skia_canvas_draw_text_weighted(std::size_t canvas_handle,
         target != nullptr && text != nullptr && length > 0 && bounded_coordinate(x) &&
         bounded_coordinate(y) && bounded_extent(size)) {
         const SkFont font = weighted_font_for(size, font_handle, weight_stroke);
-        target->drawSimpleText(text, length, SkTextEncoding::kUTF8, x, y, font,
-                               weighted_paint(fill_paint(red, green, blue, alpha), weight_stroke));
+        draw_runs(target, font, weighted_paint(fill_paint(red, green, blue, alpha), weight_stroke),
+                  font.getTypeface(), text, length, x, y);
     }
 }
 
@@ -66,11 +65,36 @@ extern "C" float elisa_skia_measure_text_width_weighted(std::size_t font_handle,
                                                           const char *text, std::size_t length,
                                                           float size, float weight_stroke) {
     if (text == nullptr || length == 0 || !bounded_extent(size)) return 0.0f;
-    const float measured = weighted_font_for(size, font_handle, weight_stroke)
-        .measureText(text, length, SkTextEncoding::kUTF8);
+    const SkFont font = weighted_font_for(size, font_handle, weight_stroke);
+    const float measured = measure_runs(font, font.getTypeface(), text, length);
     return finite(measured) && measured >= 0.0f ? measured : 0.0f;
 }
 
+
+// Lend a font manager so a glyph the lent face lacks can be drawn with one
+// that has it. Zero takes it back; the per-code-point cache goes with it,
+// because its answers were the manager's.
+extern "C" void elisa_skia_set_font_manager(std::size_t manager) {
+    elisa_skia_font_manager = manager;
+    elisa_skia_fallback_cache.clear();
+}
+
+// Does every code point in this string resolve to a real glyph -- on the lent
+// face or on a fallback the manager can supply? This is the question a
+// fixture can ask that a rendered pixel cannot: a box glyph has ink too.
+extern "C" int elisa_skia_text_covers(std::size_t font_handle, const char *text, std::size_t length) {
+    SkTypeface *lent = reinterpret_cast<SkTypeface *>(font_handle);
+    if (lent == nullptr || text == nullptr) return 0;
+    for (const TextRun &run : split_runs(lent, text, length)) {
+        SkTypeface *face = run.face ? run.face.get() : lent;
+        std::size_t index = run.begin;
+        while (index < run.end) {
+            const std::uint32_t code = decode_utf8(text, length, index);
+            if (code >= 0x20 && face->unicharToGlyph(static_cast<SkUnichar>(code)) == 0) return 0;
+        }
+    }
+    return 1;
+}
 
 extern "C" void elisa_skia_set_bold_typeface(std::size_t font) {
     elisa_skia_bold_typeface = font;

@@ -21,6 +21,8 @@
 #include "include/core/SkStream.h"
 #include "include/ports/SkFontMgr_mac_ct.h"
 
+extern "C" void elisa_skia_set_font_manager(std::size_t manager);
+extern "C" int elisa_skia_text_covers(std::size_t font, const char *text, std::size_t length);
 extern "C" void elisa_skia_set_bold_typeface(std::size_t font);
 extern "C" std::int32_t elisa_skia_offscreen_render(std::size_t canvas, std::size_t font);
 
@@ -201,6 +203,23 @@ int main(int argc, char** argv) {
         return 4;
     }
     bool ok = true;
+    // GLYPH FALLBACK. A face without a glyph draws a box, and a box has ink, so
+    // no pixel check can see this. The shim answers the real question: does
+    // every code point resolve to a glyph on the lent face or on a fallback
+    // the manager supplies? The command glyph is one the default face lacks.
+    {
+        sk_sp<SkFontMgr> manager = SkFontMgr_New_CoreText(nullptr);
+        sk_sp<SkTypeface> plain = manager ? manager->matchFamilyStyle(nullptr, SkFontStyle::Normal()) : nullptr;
+        if (plain) {
+            const char *command = "\xE2\x8C\x98 K";
+            elisa_skia_set_font_manager(0);
+            const int bare = elisa_skia_text_covers(reinterpret_cast<std::size_t>(plain.get()), command, 5);
+            elisa_skia_set_font_manager(reinterpret_cast<std::size_t>(manager.get()));
+            const int helped = elisa_skia_text_covers(reinterpret_cast<std::size_t>(plain.get()), command, 5);
+            if (helped != 1) { std::fprintf(stderr, "glyph fallback: the command glyph still has no face\n"); ok = false; }
+            if (bare != 0) { std::fprintf(stderr, "glyph fallback: the check cannot fail -- the lent face already had the glyph\n"); ok = false; }
+        }
+    }
     ok = expect_color(pixels, 0, 0, SkColorSetARGB(255, 18, 24, 32), "background") && ok;
     // The rect spans y 20..80. Sampled 4px inside each horizontal edge, clear
     // of the antialiased corner and of the one-pixel rim.
