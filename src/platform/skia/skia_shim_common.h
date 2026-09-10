@@ -134,6 +134,9 @@ inline std::size_t elisa_skia_bold_typeface = 0;
 // lent face lacks gets drawn as anything but a box: the shim asks it for a
 // face that has the code point, per code point, and remembers the answer.
 inline std::size_t elisa_skia_font_manager = 0;
+// Extra advance after every scalar but the last, set per run by the painter
+// and put back to zero after. Zero draws exactly as before.
+inline float elisa_skia_text_tracking = 0.0f;
 inline std::unordered_map<std::uint32_t, sk_sp<SkTypeface>> elisa_skia_fallback_cache;
 
 // One run of text drawn with one face. A string is split into these at every
@@ -196,12 +199,25 @@ inline std::vector<TextRun> split_runs(SkTypeface *lent, const char *text, std::
 inline void draw_runs(SkCanvas *target, const SkFont &base, const SkPaint &paint, SkTypeface *lent,
                       const char *text, std::size_t length, float x, float y) {
     float pen = x;
+    const float tracking = elisa_skia_text_tracking;
     for (const TextRun &run : split_runs(lent, text, length)) {
         SkFont font = base;
         if (run.face) font.setTypeface(run.face);
-        const std::size_t count = run.end - run.begin;
-        target->drawSimpleText(text + run.begin, count, SkTextEncoding::kUTF8, pen, y, font, paint);
-        pen += font.measureText(text + run.begin, count, SkTextEncoding::kUTF8);
+        if (tracking <= 0.0f) {
+            const std::size_t count = run.end - run.begin;
+            target->drawSimpleText(text + run.begin, count, SkTextEncoding::kUTF8, pen, y, font, paint);
+            pen += font.measureText(text + run.begin, count, SkTextEncoding::kUTF8);
+            continue;
+        }
+        // Tracked: one scalar at a time, the gap after each but the last.
+        std::size_t index = run.begin;
+        while (index < run.end) {
+            const std::size_t start = index;
+            decode_utf8(text, length, index);
+            target->drawSimpleText(text + start, index - start, SkTextEncoding::kUTF8, pen, y, font, paint);
+            pen += font.measureText(text + start, index - start, SkTextEncoding::kUTF8);
+            if (index < length) pen += tracking;
+        }
     }
 }
 

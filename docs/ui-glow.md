@@ -128,3 +128,13 @@ meet). Stretch is the default and what a photograph never wants; Cover fills
 and crops, Contain shows all of it. The painter alone knows the picture's own
 size — the host tells the resource at bind time — so the fit rides on the
 command and the crop is decided at replay.
+
+## Tracking
+
+`TextRun.tracking` is an extra advance after every scalar but the last. It
+*changes advances*, so it is the one text attribute that touches measurement:
+`UiCore::tracking_width` adds exactly the term the painter adds — count minus
+one, times the tracking — and the Skia shim advances scalar by scalar when it is
+set, so a tracked run measures as it draws. It counts scalars, not bytes. Labels
+only: `UiFlat::set_text_tracking` refuses everything else, because a control's
+caption is centred in a declared box and would not move.

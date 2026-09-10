@@ -118,6 +118,8 @@ void elisa_skia_canvas_draw_text_weighted(size_t canvas, size_t font, const char
 void elisa_skia_set_bold_typeface(size_t font);
 /* A font manager for per-code-point fallback, or 0 to take it back. */
 void elisa_skia_set_font_manager(size_t manager);
+/* Extra advance after every scalar but the last, for the next draws; 0 resets. */
+void elisa_skia_set_text_tracking(float tracking);
 /* A blurred pass of the same glyphs, meant to be drawn before the run. */
 void elisa_skia_canvas_draw_text_halo(size_t canvas, size_t font, const char *text, size_t length, float x, float y, float size, float weight_stroke, uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha);
 /* 1 when every code point has a real glyph on the lent face or a fallback. */

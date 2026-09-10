@@ -154,7 +154,7 @@ extend UiCore:
             push_command_with_stroke(Command.FillLine(safe_segment, color), bounded_extent(width))
 
         def draw(run: TextRun, color: Color) -> void:
-            safe_run: TextRun = TextRun(run.origin, run.size, run.text, run.weighted, run.halo)
+            safe_run: TextRun = TextRun(run.origin, run.size, run.text, run.weighted, run.halo, run.tracking)
             push_command(Command.DrawText(safe_run, color))
         def TextRun(origin: Vec2, size: f32, body: sview) -> TextRun:
             return TextRun(origin, size, body, false)
@@ -163,5 +163,18 @@ extend UiCore:
             return TextRun(origin, size, body, weighted, Color{r: 0, g: 0, b: 0, a: 0})
 
         def TextRun(origin: Vec2, size: f32, body: sview, weighted: bool, halo: Color) -> TextRun:
+            return TextRun(origin, size, body, weighted, halo, 0.0)
+
+        def TextRun(origin: Vec2, size: f32, body: sview, weighted: bool, halo: Color, tracking: f32) -> TextRun:
             safe_body: sview = bounded_text(body)
-            return TextRun{origin: Vec2{x: bounded_coordinate(origin.x), y: bounded_coordinate(origin.y)}, size: bounded_extent(size), text: safe_body, weighted: weighted, halo: halo}
+            safe_tracking: f32 = tracking if is_finite(tracking) and tracking >= 0.0 and tracking <= 64.0 else 0.0
+            return TextRun{origin: Vec2{x: bounded_coordinate(origin.x), y: bounded_coordinate(origin.y)}, size: bounded_extent(size), text: safe_body, weighted: weighted, halo: halo, tracking: safe_tracking}
+
+        # The width tracking adds: one gap per scalar after the first. The
+        # painter advances by exactly this, so a tracked run measures as it
+        # draws.
+        def tracking_width(text: sview, tracking: f32) -> f32:
+            return 0.0 if tracking <= 0.0
+            count: usize = UiText::utf8_scalar_count(bounded_text(text))
+            return 0.0 if count <= 1
+            return bounded_extent((count - 1).f32() * tracking)

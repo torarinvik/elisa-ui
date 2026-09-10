@@ -444,3 +444,16 @@ def check_vocabulary() -> void:
         check("and blurs wider", high.shadow_blur > mid_height.shadow_blur)
         check("but is not darker", high.shadow_alpha == mid_height.shadow_alpha)
         check("and it is lifted, so it is glass when see-through", UiPaint::is_glass(high, UiCore::rgba(255, 255, 255, 150)))
+
+        # TRACKING CHANGES ADVANCES, so the measurement adds exactly the term
+        # the painter adds: one gap per scalar after the first.
+        check("a tracked run is wider by one gap per scalar after the first", UiCore::tracking_width("EXPLORE", 1.5) == 9.0)
+        check("a one-scalar run gains nothing, and neither does an untracked one", UiCore::tracking_width("E", 1.5) == 0.0 and UiCore::tracking_width("EXPLORE", 0.0) == 0.0)
+        check("and the gap counts scalars, not bytes", UiCore::tracking_width("\xE2\x8C\x98K", 2.0) == 2.0)
+        UiCore::begin_frame()
+        UiCore::draw(UiCore::TextRun(UiCore::Vec2(0.0, 0.0), 10.0, "EXPLORE", true, UiCore::rgba(0, 0, 0, 0), 1.5), UiCore::rgb(255, 255, 255))
+        skia_test_reset()
+        UiSkia::attach(1)
+        _ = UiSkia::render_status()
+        UiSkia::detach()
+        check("the painter sets the tracking it was asked for", skia_test_peak_tracking() == 1.5)

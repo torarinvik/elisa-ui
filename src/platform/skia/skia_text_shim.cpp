@@ -97,6 +97,10 @@ extern "C" float elisa_skia_measure_text_width_weighted(std::size_t font_handle,
 // Lend a font manager so a glyph the lent face lacks can be drawn with one
 // that has it. Zero takes it back; the per-code-point cache goes with it,
 // because its answers were the manager's.
+extern "C" void elisa_skia_set_text_tracking(float tracking) {
+    elisa_skia_text_tracking = std::isfinite(tracking) && tracking > 0.0f ? tracking : 0.0f;
+}
+
 extern "C" void elisa_skia_set_font_manager(std::size_t manager) {
     elisa_skia_font_manager = manager;
     elisa_skia_fallback_cache.clear();
