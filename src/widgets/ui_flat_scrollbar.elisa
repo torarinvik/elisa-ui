@@ -4,6 +4,9 @@
 
 extend UiFlat:
     private:
+        # How much of the channel the painted thumb takes across its width.
+        const SCROLL_THUMB_FILL: f32 = 0.6
+
         # Scroll indicators are drawn by the flat painter itself, so a canvas
         # backend does not need an NSScroller or a browser scrollbar. The thumb
         # length reflects the viewport/content ratio and its travel follows the
@@ -38,14 +41,23 @@ extend UiFlat:
             # surface and the thumb rides in it -- the same pair as a slider,
             # and the same reason: filled flat, the two read as one light bar
             # laid over the content instead of an indicator you could grab.
+            # THE THUMB IS NARROWER THAN ITS CHANNEL, and only in the paint.
+            #
+            # It used to fill the track edge to edge, so a scrollbar read as a
+            # pale slab laid over the content rather than as something riding
+            # in a groove. The HIT geometry below is unchanged and still the
+            # full bar: a small target to look at and a large one to grab is
+            # the point, not a smaller control.
+            thumb_bar: f32 = bar * SCROLL_THUMB_FILL
+            thumb_offset: f32 = (bar - thumb_bar) * 0.5
             if is_row:
                 track: UiCore::Rect = UiCore::Rect(widgets[index].x + inset, widgets[index].y + widgets[index].height - bar - inset, track_extent, bar)
-                thumb: UiCore::Rect = UiCore::Rect(track.origin.x + thumb_position, track.origin.y, thumb_extent, bar)
+                thumb: UiCore::Rect = UiCore::Rect(track.origin.x + thumb_position, track.origin.y + thumb_offset, thumb_extent, thumb_bar)
                 UiCore::fill_inset(track, track_color)
                 UiCore::fill_elevated(thumb, thumb_color)
             else:
                 track: UiCore::Rect = UiCore::Rect(widgets[index].x + widgets[index].width - bar - inset, widgets[index].y + inset, bar, track_extent)
-                thumb: UiCore::Rect = UiCore::Rect(track.origin.x, track.origin.y + thumb_position, bar, thumb_extent)
+                thumb: UiCore::Rect = UiCore::Rect(track.origin.x + thumb_offset, track.origin.y + thumb_position, thumb_bar, thumb_extent)
                 UiCore::fill_inset(track, track_color)
                 UiCore::fill_elevated(thumb, thumb_color)
 
