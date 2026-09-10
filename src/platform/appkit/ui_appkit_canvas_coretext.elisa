@@ -38,23 +38,25 @@ extend UiAppKitCanvas:
             return emphasized
 
         def text_attributes(font: usize, color: usize) -> usize:
-            return text_attributes_tracked(font, color, 0.0)
+            return text_attributes_tracked(font, color, 0)
 
         # TRACKING is a kern attribute: CoreText adds it after every glyph.
         # Elisa's measurement adds it after every glyph but the last, so a
         # tracked line is drawn one gap longer than it was measured -- at the
         # trailing edge, where nothing is measured against it.
-        def text_attributes_tracked(font: usize, color: usize, tracking: f32) -> usize:
-            kern_value: mutable f32 = tracking
-            kern: usize = CFNumberCreate(0, 5, (&kern_value).cast[usize&] can Unsafe.PointerCast) if tracking > 0.0 else 0
+        #
+        # OWNERSHIP: the dictionary is created with null callbacks, so it does
+        # not retain what it holds. The font and the colour survive because
+        # they are released only after the CTLine exists; the kern number has
+        # to be released on the same schedule, by the caller that made it --
+        # releasing it here, before the line, was a trap in CFRelease.
+        def text_attributes_tracked(font: usize, color: usize, kern: usize) -> usize:
             keys: usize[3] = [kCTFontAttributeName, kCTForegroundColorAttributeName if color != 0 else kCTKernAttributeName, kCTKernAttributeName]
             values: usize[3] = [font, color if color != 0 else kern, kern]
             key_pointer: usize& = (&keys[0]).cast[usize&] can Unsafe.PointerCast
             value_pointer: usize& = (&values[0]).cast[usize&] can Unsafe.PointerCast
             count: i64 = 1 + (1 if color != 0 else 0) + (1 if kern != 0 else 0)
-            attributes: usize = CFDictionaryCreate(0, key_pointer, value_pointer, count, 0, 0)
-            CFRelease(kern) if kern != 0
-            return attributes
+            return CFDictionaryCreate(0, key_pointer, value_pointer, count, 0, 0)
 
         def text_line(text: cstr, length: usize, size: f32, semibold: i32, color: usize) -> usize:
             return text_line_tracked(text, length, size, semibold, color, 0.0)
@@ -68,20 +70,25 @@ extend UiAppKitCanvas:
             if string == 0:
                 CFRelease(font)
                 return 0
-            attributes: usize = text_attributes_tracked(font, color, tracking)
+            kern_value: mutable f32 = tracking
+            kern: usize = CFNumberCreate(0, 5, (&kern_value).cast[usize&] can Unsafe.PointerCast) if tracking > 0.0 else 0
+            attributes: usize = text_attributes_tracked(font, color, kern)
             if attributes == 0:
+                CFRelease(kern) if kern != 0
                 CFRelease(string)
                 CFRelease(font)
                 return 0
             attributed: usize = CFAttributedStringCreate(0, string, attributes)
             if attributed == 0:
                 CFRelease(attributes)
+                CFRelease(kern) if kern != 0
                 CFRelease(string)
                 CFRelease(font)
                 return 0
             line: usize = CTLineCreateWithAttributedString(attributed)
             CFRelease(attributed)
             CFRelease(attributes)
+            CFRelease(kern) if kern != 0
             CFRelease(string)
             CFRelease(font)
             return line if line != 0 else 0
@@ -139,7 +146,10 @@ extend UiAppKitCanvas:
                 if halo_line != 0:
                     CGContextSaveGState(context)
                     set_colored_shadow(context, 0.0, 0.0, size * 0.09 + 0.6, halo)
+                    # CTLineDraw ADVANCES the text position. Each pass sets it
+                    # again, or the second lands one run to the right -- a ghost.
                     CTLineDraw(halo_line, context)
+                    CGContextSetTextPosition(context, x.f64(), view_height - baseline)
                     CTLineDraw(halo_line, context)
                     CGContextRestoreGState(context)
                     CGContextSetTextPosition(context, x.f64(), view_height - baseline)
