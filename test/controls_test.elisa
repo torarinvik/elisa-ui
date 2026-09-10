@@ -20,6 +20,10 @@ extern puts(text: cstr) -> i64
 
 global mutable test_failures: i32 = 0
 
+def near(actual: f32, expected: f32) -> bool:
+    delta: f32 = actual - expected if actual > expected else expected - actual
+    return delta < 0.01
+
 def check(name: cstr, ok: bool) -> void:
     return if ok
     test_failures <- test_failures + 1
@@ -166,6 +170,31 @@ def main() -> i64:
         check("every control is framed", frame_calls == 5)
         check("every control is given its text", text_calls == 5)
         check("every control receives initial state", state_calls == 5)
+
+        # MIRRORED PLACEMENT. This module's header names RTL mirroring as one
+        # of the things you get by letting the platform lay out, and then
+        # admits fourteen lines later that placing every control at the box
+        # UiWidgets::layout already computed forfeits exactly that. Both were in
+        # the file; only the second was true, so an Arabic build got its
+        # controls in left-to-right order with each one correctly mirrored
+        # INSIDE itself by the OS -- the worst of the two arrangements.
+        # Index 2 is the 40pt button at the start of a 200pt row; index 1 is
+        # the row itself, which is full width and correctly mirrors to nowhere.
+        ltr_first: UiCore::Rect = UiControls::box_at(2)
+        ltr_root: UiCore::Rect = UiControls::box_at(1)
+        _ = UiLocalization::set_locale("ar-SA")
+        UiControls::reset()
+        UiControls::realize(root, UiControls::NO_PARENT, 0)
+        rtl_first: UiCore::Rect = UiControls::box_at(2)
+        check("a control is placed from the reader's edge of its container", rtl_first.origin.x > ltr_first.origin.x)
+        check("with its size untouched", rtl_first.size.width == ltr_first.size.width and rtl_first.size.height == ltr_first.size.height)
+        check("and its distance from that edge preserved", near(rtl_first.origin.x + rtl_first.size.width, ltr_root.origin.x + ltr_root.size.width - (ltr_first.origin.x - ltr_root.origin.x)))
+        check("a full-width child correctly mirrors to nowhere", near(UiControls::box_at(1).origin.x, ltr_root.origin.x))
+        check("and the root itself has no container to mirror within", near(UiControls::box_at(0).origin.x, 0.0))
+        _ = UiLocalization::set_locale("en-US")
+        UiControls::reset()
+        UiControls::realize(root, UiControls::NO_PARENT, 0)
+        check("and the default reader is placed exactly as before", near(UiControls::box_at(2).origin.x, ltr_first.origin.x))
 
         # PARENT FIRST, and the OS tree has the widget tree's shape.
         check("the root has no parent", log_parent[0] == UiControls::NO_PARENT)

@@ -15,8 +15,15 @@
 # ABSOLUTE PLACEMENT. Every control is positioned at the box `UiWidgets::layout`
 # already computed, so ui_ops.elisa stays the single layout implementation and
 # both presentation modes agree about where things are. The cost is the platform
-# behaviour that comes from letting the platform lay out -- Dynamic Type, RTL
-# mirroring, platform-correct focus order. Delegating to Auto Layout,
+# behaviour that comes from letting the platform lay out -- Dynamic Type and
+# platform-correct focus order. RTL mirroring is NOT among them any more, and
+# was the sharpest of the three: this header claimed the platform did it while
+# the paragraph you are reading admitted absolute placement forfeited it, and
+# an Arabic build got its controls in left-to-right order with each one
+# correctly mirrored inside itself by the OS -- the worst of the two
+# arrangements. `mirror_control_boxes` places each control from its container's
+# trailing edge, which is what `UiLocalization::mirror_x` was written for and
+# what nothing had ever called. Delegating to Auto Layout,
 # ConstraintLayout or a GtkBox is a per-backend upgrade this shape leaves open,
 # not a rewrite.
 #
@@ -40,6 +47,9 @@ include "./ui_hierarchy.elisa"
 # ui_ops `extend`s UiWidgets with the passes; box_of lives there, not in the
 # type declarations.
 include "./ui_ops.elisa"
+# Placement is mirrored here, so the direction policy is part of this module's
+# vocabulary as well as the painters'.
+include "./ui_localization.elisa"
 include "../core/ui_paint.elisa"
 
 # One module for the whole seam: the vocabulary, the list the tree walk fills,
@@ -163,6 +173,9 @@ module UiControls:
             native_handle: mutable usize
 
         global mutable ops: ControlOp[MAX_CONTROLS] = zeroed
+        # How far each control sat from its container's leading edge before any
+        # mirroring. Captured in a sweep of its own; see mirror_control_boxes.
+        global mutable control_leading_offsets: f32[MAX_CONTROLS] = zeroed
         global mutable control_text_storage: u8[CONTROL_TEXT_STORAGE_SIZE] = zeroed
         global mutable total: usize = 0
         global mutable control_dropped: bool = false
@@ -281,6 +294,37 @@ module UiControls:
                 realize(node, index.i32(), depth + 1)
                 sibling_steps <- sibling_steps + 1
                 cursor <- node.next_sibling
+            # The root call is the one that has a whole tree to mirror.
+            mirror_control_boxes() if parent == NO_PARENT
+
+        # MIRRORING ABSOLUTE PLACEMENT.
+        #
+        # This module's header names RTL mirroring as one of the things you get
+        # by letting the platform lay out, and then, fourteen lines later,
+        # admits that positioning every control at the box UiWidgets::layout
+        # already computed forfeits exactly that. Both statements were in the
+        # file and only the second was true, so an Arabic build got its controls
+        # in left-to-right order and each one correctly mirrored INSIDE itself
+        # by the OS -- the worst of the two arrangements.
+        #
+        # A box mirrors inside its PARENT, so this is two sweeps over a list
+        # that is already in parent-first order: one to record how far each
+        # control sits from its container's leading edge, and one to place it
+        # that far from the other edge. Doing it inside the walk would need a
+        # parent's original box after its own had been overwritten.
+        def mirror_control_boxes() -> void:
+            return if not UiLocalization::is_rtl(UiLocalization::current_locale())
+            for index in 0..<total:
+                origin: i32 = ops[index].parent
+                control_leading_offsets[index] <- 0.0 if origin < 0 else ops[index].box.origin.x - ops[origin.usize()].box.origin.x
+            for index in 0..<total:
+                origin: i32 = ops[index].parent
+                continue if origin < 0
+                container: UiCore::Rect = ops[origin.usize()].box
+                own: UiCore::Rect = ops[index].box
+                room: f32 = container.size.width - control_leading_offsets[index] - own.size.width
+                placed: f32 = container.origin.x + room if room >= 0.0 else container.origin.x
+                ops[index].box <- UiCore::Rect(UiCore::bounded_coordinate(placed), own.origin.y, own.size.width, own.size.height)
 
         # Hand the list to a backend, in order. The only generic here, and it
         # never touches a widget handle.

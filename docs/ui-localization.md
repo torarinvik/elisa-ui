@@ -111,3 +111,20 @@ or hit-testing files — so unlike the flat layer's, mirroring the knob had no
 second half to keep in step with it. That was worth checking rather than
 assuming: it is the difference between a two-line change and the paired one the
 flat slider needed.
+
+## Native controls
+
+Absolute placement forfeited RTL mirroring, and `ui_controls.elisa` said so in
+its own header two paragraphs after claiming the platform provided it. Only the
+second statement was true: an Arabic build got its controls in left-to-right
+order, each one correctly mirrored *inside itself* by the OS — the worst of the
+two arrangements, because every control looked right and the layout was
+backwards.
+
+A box mirrors inside its **parent**, so `mirror_control_boxes` is two sweeps
+over a list that is already in parent-first order: one to record how far each
+control sits from its container's leading edge, and one to place it that far
+from the other edge. Doing it inside the tree walk would need a parent's
+original box after its own had been overwritten. A full-width child mirrors to
+nowhere, which is correct and asserted; the root has no container and is left
+alone.
