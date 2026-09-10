@@ -121,6 +121,21 @@ extend UiSkia:
                 safe_offset_x, safe_offset_y, safe_blur,
                 color.r, color.g, color.b, color.a)
 
+        # Blur what is already on the canvas inside a rounded rectangle. The
+        # framework asks for this before filling a translucent raised surface;
+        # the fill is what turns a blurred region into glass.
+        def blur_behind_rounded_rect(box: UiCore::Rect, radius: f32, sigma: f32) -> void can[Ui.Draw]:
+            return if canvas_state == 0
+            safe_sigma: f32 = UiCore::bounded_extent(sigma)
+            return if safe_sigma <= 0.0
+            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+            return if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
+            elisa_skia_canvas_blur_behind_round_rect(
+                canvas_state,
+                safe_box.origin.x, safe_box.origin.y,
+                safe_box.size.width, safe_box.size.height,
+                UiSkia::skia_safe_radius(safe_box, radius), safe_sigma)
+
         def fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> void can[Ui.Draw]:
             return if canvas_state == 0 or color.a == 0
             safe_disc: UiCore::Circle = UiSkia::skia_safe_circle(disc)

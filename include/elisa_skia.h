@@ -16,7 +16,7 @@
 /* Packed as 0xMMmmpp (major, minor, patch). Hosts should check this before
  * submitting an opaque canvas or renderer object to the Skia boundary. */
 #define ELISA_SKIA_ABI_VERSION_MAJOR 0u
-#define ELISA_SKIA_ABI_VERSION_MINOR 5u
+#define ELISA_SKIA_ABI_VERSION_MINOR 6u
 #define ELISA_SKIA_ABI_VERSION_PATCH 0u
 #define ELISA_SKIA_ABI_VERSION \
     ((ELISA_SKIA_ABI_VERSION_MAJOR << 16) | \
@@ -58,6 +58,14 @@ void elisa_skia_canvas_shadow_round_rect(size_t canvas, float x, float y, float 
 void elisa_skia_canvas_shadow_round_rect_color(size_t canvas, float x, float y, float width, float height,
                                                float radius, float offset_x, float offset_y, float blur,
                                                uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha);
+/* Blur what is already on the canvas inside a rounded rectangle. The one
+ * effect that is a function of the pixels UNDER a surface rather than of the
+ * surface, so it cannot be composed from the primitives above. The framework
+ * asks for it before filling a translucent raised surface; the fill is what
+ * turns a blurred region into glass. Sigma is a Gaussian standard deviation in
+ * device pixels, chosen by Elisa. */
+void elisa_skia_canvas_blur_behind_round_rect(size_t canvas, float x, float y, float width,
+                                              float height, float radius, float sigma);
 void elisa_skia_canvas_fill_round_rect_gradient(size_t canvas, float x, float y, float width,
                                                float height, float radius,
                                                uint8_t start_red, uint8_t start_green,

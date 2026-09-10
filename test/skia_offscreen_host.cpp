@@ -92,6 +92,20 @@ bool expect_ink(const SkPixmap& pixels, int left, int top, int right, int bottom
     return false;
 }
 
+// The largest step between horizontally adjacent pixels along one row. A blur
+// is a statement about NEIGHBOURS, so this is what can be compared; a colour
+// sampled at one point cannot tell a blurred edge from a tinted one.
+int max_horizontal_step(const SkPixmap& pixels, int y, int left, int right) {
+    int largest = 0;
+    for (int x = left; x < right; ++x) {
+        const SkColor here = pixels.getColor(x, y);
+        const SkColor next = pixels.getColor(x + 1, y);
+        const int step = std::abs(static_cast<int>(SkColorGetR(here)) - static_cast<int>(SkColorGetR(next)));
+        if (step > largest) largest = step;
+    }
+    return largest;
+}
+
 // Hash logical pixels rather than row padding so the value is stable across
 // SkSurface row-byte choices. Repeated renders must reproduce this digest;
 // otherwise a leaked save/clip/transform scope could silently alter frames.
@@ -190,6 +204,18 @@ int main(int argc, char** argv) {
     ok = expect_color_near(pixels, 120, 130, SkColorSetARGB(255, 20, 40, 80), 2, "gradient start") && ok;
     ok = expect_color_near(pixels, 219, 130, SkColorSetARGB(255, 100, 180, 220), 2, "gradient end") && ok;
     ok = expect_ink(pixels, 15, 158, 110, 198, SkColorSetARGB(255, 18, 24, 32), "text") && ok;
+    // GLASS. The stripe field runs from y 108 to 194; the translucent raised
+    // panel covers its lower half. Above the panel the stripes are hard steps
+    // of better than two hundred levels; under it the framework asked Skia to
+    // blur the backdrop, and the same edges have to be a fraction of that.
+    const int bare_step = max_horizontal_step(pixels, 130, 236, 296);
+    const int glass_step = max_horizontal_step(pixels, 175, 236, 296);
+    if (bare_step < 120 || glass_step * 3 >= bare_step) {
+        std::fprintf(stderr,
+                     "glass: backdrop was not blurred (bare step=%d, under glass=%d)\n",
+                     bare_step, glass_step);
+        ok = false;
+    }
     const std::uint64_t initial_digest = pixel_digest(pixels);
 
     int iterations = 16;

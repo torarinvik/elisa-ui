@@ -269,14 +269,53 @@ extern "C" void elisa_skia_canvas_shadow_round_rect_color(std::size_t handle, fl
         bounded_coordinate(offset_x) && bounded_coordinate(offset_y) && bounded_nonnegative_extent(blur) &&
         alpha != 0) {
         const SkRect rect = SkRect::MakeXYWH(x, y, width, height);
+        const SkRRect rounded = SkRRect::MakeRectXY(rect, radius, radius);
         // DropShadowOnly keeps the source silhouette out of the result while
         // still using its alpha as the shadow mask. This is the replacement
         // for the removed SkPaint::setShadowLayer API in current Skia.
         SkPaint paint = fill_paint(0, 0, 0, 255);
         paint.setImageFilter(SkImageFilters::DropShadowOnly(
             offset_x, offset_y, blur, blur, color(red, green, blue, alpha), nullptr));
-        target->drawRRect(SkRRect::MakeRectXY(rect, radius, radius), paint);
+        // AN OUTER SHADOW IS OUTSIDE. The part of it that falls under the
+        // surface is invisible while the surface is opaque and is a stain the
+        // moment it is not: a translucent panel would be darkened by its own
+        // shadow, which is why CSS clips an outer box-shadow out of the border
+        // box rather than letting it show through. The clip costs nothing in
+        // the opaque case, where those pixels were being covered anyway.
+        target->save();
+        target->clipRRect(rounded, SkClipOp::kDifference, true);
+        target->drawRRect(rounded, paint);
+        target->restore();
     }
+}
+
+// GLASS: blur what is already on the canvas, inside a rounded rectangle.
+//
+// This is the one effect in the framework that cannot be composed from the
+// primitives above, because it is a function of the pixels UNDER the surface
+// rather than of the surface. A layer opened with a backdrop filter is
+// initialized with the filtered content beneath it; restoring it immediately
+// composites that blurred copy back through the clip, which leaves the region
+// blurred and nothing else drawn. The translucent fill the framework paints
+// next is what turns it from a smear into glass.
+extern "C" void elisa_skia_canvas_blur_behind_round_rect(std::size_t handle, float x, float y,
+                                                           float width, float height, float radius,
+                                                           float sigma) {
+    SkCanvas *target = canvas(handle);
+    if (target == nullptr || !valid_rect(x, y, width, height) ||
+        !bounded_nonnegative_extent(radius) || !bounded_nonnegative_extent(sigma) || sigma <= 0.0f) {
+        return;
+    }
+    const SkRect rect = SkRect::MakeXYWH(x, y, width, height);
+    sk_sp<SkImageFilter> blur = SkImageFilters::Blur(sigma, sigma, nullptr);
+    if (blur == nullptr) {
+        return;
+    }
+    target->save();
+    target->clipRRect(SkRRect::MakeRectXY(rect, radius, radius), true);
+    target->saveLayer(SkCanvas::SaveLayerRec(&rect, nullptr, blur.get(), 0));
+    target->restore();
+    target->restore();
 }
 
 // Compatibility entry point for hosts compiled against the original ABI. Elisa

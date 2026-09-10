@@ -49,3 +49,33 @@ def check_vocabulary() -> void:
         UiPaint::replay[UiSkia::SkiaPainter]()
         UiSkia::detach()
         check("an ordinary run is drawn as the face is", skia_test_last_text_weight_stroke() == 0.0)
+
+        # GLASS. A raised surface you can see through blurs what is behind it,
+        # and the framework asks for that with a primitive no other effect
+        # needs -- it is the one thing that is a function of the pixels UNDER a
+        # surface. What makes it an application-level decision without a new
+        # API is that the alpha already says it: a lifted panel with a
+        # translucent fill is a panel floating above content you can still see.
+        UiCore::begin_frame()
+        UiCore::fill_elevated(UiCore::Rect(10.0, 10.0, 200.0, 120.0), UiCore::rgba(30, 34, 44, 190))
+        UiSkia::attach(13)
+        skia_test_reset()
+        UiPaint::replay[UiSkia::SkiaPainter]()
+        UiSkia::detach()
+        glass: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for(UiCore::Rect(10.0, 10.0, 200.0, 120.0), UiCore::SurfaceDepth.Raised, UiCore::rgba(30, 34, 44, 190))
+        check("a translucent raised surface blurs what is behind it", skia_test_backdrop_blur_count() == 1)
+        check("and the radius is the framework's, not the bridge's", skia_test_last_backdrop_sigma() == glass.backdrop_blur and glass.backdrop_blur > 0.0)
+
+        # The three surfaces that are NOT glass, and none of them is an
+        # accident of alpha: an opaque panel has nothing to show through it, a
+        # recess is IN the surface it is cut from, and a flat translucent fill
+        # is a tint -- the framework paints those by the hundred.
+        UiCore::begin_frame()
+        UiCore::fill_elevated(UiCore::Rect(10.0, 10.0, 200.0, 120.0), UiCore::rgb(30, 34, 44))
+        UiCore::fill_inset(UiCore::Rect(10.0, 140.0, 200.0, 40.0), UiCore::rgba(30, 34, 44, 190))
+        UiCore::fill(UiCore::Rect(10.0, 190.0, 200.0, 40.0), UiCore::rgba(30, 34, 44, 190))
+        UiSkia::attach(13)
+        skia_test_reset()
+        UiPaint::replay[UiSkia::SkiaPainter]()
+        UiSkia::detach()
+        check("an opaque, a recessed and a flat surface are not glass", skia_test_backdrop_blur_count() == 0)

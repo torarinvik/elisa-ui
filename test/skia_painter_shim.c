@@ -25,6 +25,8 @@ static int last_gradient_horizontal;
 static float last_shadow_offset_x;
 static float last_shadow_offset_y;
 static float last_shadow_blur;
+static int backdrop_blur_count;
+static float last_backdrop_sigma;
 static int last_shadow_red;
 static int last_shadow_green;
 static int last_shadow_blue;
@@ -104,6 +106,11 @@ void elisa_skia_canvas_stroke_round_rect(size_t canvas, float x, float y, float 
     (void)x; (void)y; (void)width; (void)height; (void)radius;
     (void)red; (void)green; (void)blue; (void)alpha;
     if (canvas != 0) { stroke_round_rect_count += 1; last_stroke_width = stroke_width; }
+}
+void elisa_skia_canvas_blur_behind_round_rect(size_t canvas, float x, float y, float width,
+                                              float height, float radius, float sigma) {
+    (void)x; (void)y; (void)width; (void)height; (void)radius;
+    if (canvas != 0) { backdrop_blur_count += 1; last_backdrop_sigma = sigma; }
 }
 void elisa_skia_canvas_shadow_round_rect_color(size_t canvas, float x, float y, float width,
                                                float height, float radius, float offset_x,
@@ -253,6 +260,7 @@ float elisa_skia_text_line_height_with_font(size_t font, float size) { return fo
 void skia_test_reset(void) {
     save_count = 0; restore_count = 0; scale_count = 0; translate_count = 0; rotate_count = 0; clip_count = 0; rounded_clip_count = 0;
     clear_count = 0; last_text_weight_stroke = 0.0f; rounded_gradient_count = 0; stroke_rounded_gradient_count = 0; round_rect_count = 0; stroke_round_rect_count = 0; shadow_round_rect_count = 0; gradient_count = 0; image_count = 0; circle_count = 0; stroke_circle_count = 0; triangle_count = 0;
+    backdrop_blur_count = 0; last_backdrop_sigma = 0.0f;
     last_shadow_offset_x = 0.0f; last_shadow_offset_y = 0.0f; last_shadow_blur = 0.0f; last_shadow_red = 0; last_shadow_green = 0; last_shadow_blue = 0;
     line_count = 0; text_count = 0; measure_width_count = 0; last_round_radius = 0.0f; last_clip_radius = 0.0f; last_stroke_width = 0.0f; last_circle_stroke_width = 0.0f; last_line_width = 0.0f; last_line_round_cap = 0; last_text_size = 0.0f; last_image_x = 0.0f; last_image_y = 0.0f; last_image_width = 0.0f; last_image_height = 0.0f; last_image_source_x = 0.0f; last_image_source_y = 0.0f; last_image_source_width = 0.0f; last_image_source_height = 0.0f; last_image_sampling = 1; last_gradient_horizontal = 0;
     event_total = 0;
@@ -276,6 +284,8 @@ int skia_test_last_gradient_horizontal(void) { return last_gradient_horizontal; 
 float skia_test_last_shadow_offset_x(void) { return last_shadow_offset_x; }
 float skia_test_last_shadow_offset_y(void) { return last_shadow_offset_y; }
 float skia_test_last_shadow_blur(void) { return last_shadow_blur; }
+int skia_test_backdrop_blur_count(void) { return backdrop_blur_count; }
+float skia_test_last_backdrop_sigma(void) { return last_backdrop_sigma; }
 int skia_test_last_shadow_red(void) { return last_shadow_red; }
 int skia_test_last_shadow_green(void) { return last_shadow_green; }
 int skia_test_last_shadow_blue(void) { return last_shadow_blue; }

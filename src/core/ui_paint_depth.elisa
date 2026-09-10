@@ -24,6 +24,22 @@ extend UiPaint:
         const CONTACT_BLUR_RATIO: f32 = 0.06
         const CONTACT_BLUR_MIN: f32 = 1.0
         const CONTACT_BLUR_MAX: f32 = 8.0
+        # Glass: how far behind a translucent raised surface the world blurs.
+        # A CONSTANT, unlike the shadow above it. A shadow scales with the
+        # object because the height it implies is physical; a blur radius is a
+        # property of the MATERIAL, and two panels of different sizes cut from
+        # the same glass frost identically. Every system that ships this effect
+        # -- vibrancy, acrylic, backdrop-filter -- reads it as a material.
+        # Six is a Gaussian that spans roughly forty device pixels end to end:
+        # far enough that text behind the panel stops being legible, close
+        # enough that blocks of colour survive as the shapes they are. Glass
+        # that abstracts everything to one wash is a solid panel with extra
+        # arithmetic.
+        const BACKDROP_BLUR_SIGMA: f32 = 6.0
+        # ...with one concession to size: a blur wider than the surface samples
+        # mostly what is beside the panel rather than behind it, and reads as a
+        # wash rather than as glass.
+        const BACKDROP_BLUR_EXTENT_RATIO: f32 = 0.34
 
         # The elevation treatment for a surface that will be painted in `color`.
         #
@@ -92,7 +108,24 @@ extend UiPaint:
                 contact_alpha: 0 if inset or not elevated else blend(150, 60, luminance),
                 contact_offset_y: clamped(extent * CONTACT_OFFSET_RATIO, CONTACT_OFFSET_MIN, CONTACT_OFFSET_MAX),
                 contact_blur: clamped(extent * CONTACT_BLUR_RATIO, CONTACT_BLUR_MIN, CONTACT_BLUR_MAX),
+                backdrop_blur: backdrop_blur_for(extent, color, elevated),
             }
+
+        # A raised surface you can see through is glass. Flat and recessed ones
+        # are not: a recess is IN the surface it is cut from, and a flat fill
+        # that happens to be translucent is a tint -- blurring behind either
+        # would be an effect no one asked for on shapes the framework paints by
+        # the hundred. A fully transparent fill is nothing at all.
+        #
+        # The radius does NOT scale with the surface -- see the constant.
+        def backdrop_blur_for(extent: f32, color: UiCore::Color, elevated: bool) -> f32:
+            return 0.0 if not elevated or color.a == 0 or color.a == 255
+            limit: f32 = UiCore::bounded_extent(extent * BACKDROP_BLUR_EXTENT_RATIO)
+            return limit if limit < BACKDROP_BLUR_SIGMA
+            return BACKDROP_BLUR_SIGMA
+
+        def has_backdrop_blur(style: RoundedRectStyle) -> bool:
+            return style.backdrop_blur > 0.0
 
         # The shorter side is what a surface's height reads from: a full-width
         # toolbar is not lifted further off the page than a button because it
@@ -129,6 +162,7 @@ extend UiPaint:
                 contact_alpha: 0,
                 contact_offset_y: 0.0,
                 contact_blur: 0.0,
+                backdrop_blur: 0.0,
             }
 
         def has_contact_shadow(style: RoundedRectStyle) -> bool:

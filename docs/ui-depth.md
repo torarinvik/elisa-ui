@@ -60,6 +60,46 @@ The shorter side is the right measurement because a full-width toolbar is not
 lifted further off the page by being wide, and a tall narrow panel is not lifted
 by being tall. The clamps are what stop a bar from casting a fifty-pixel shadow.
 
+## Glass
+
+A **raised** surface with a **translucent** fill is glass: the framework blurs
+whatever is already on the canvas inside its outline before filling it. That is
+what vibrancy, acrylic and `backdrop-filter` are for, and it needs no new API —
+an application that puts an alpha below 255 on a lifted panel has already said
+"a panel floating above content you can still see."
+
+The other three cases are deliberately not glass. An opaque panel has nothing
+to show through it. A recess is *in* the surface it is cut from. And a flat
+translucent fill is a tint — the framework paints those by the hundred, and
+blurring behind each one would be an effect nobody asked for.
+
+Unlike the shadow, the blur radius does **not** scale with the surface. A
+shadow scales because the height it implies is physical; a blur radius is a
+property of the *material*, and two panels cut from the same glass frost
+identically. `BACKDROP_BLUR_SIGMA` is 6 — a Gaussian spanning roughly forty
+device pixels end to end, far enough that text behind the panel stops being
+legible and close enough that blocks of colour survive as the shapes they are.
+The one concession to size is a cap at about a third of the surface's shorter
+side: a blur wider than the panel samples what is *beside* it rather than
+behind it, and reads as a wash.
+
+This is the only effect in the framework that is a function of the pixels under
+a surface rather than of the surface, and so the only one a backend cannot
+compose from the primitives it already had.
+`elisa_skia_canvas_blur_behind_round_rect` is the whole addition (ABI 0.6.0).
+Quartz has no comparable backdrop filter without an offscreen round trip, so on
+the CoreGraphics painters a translucent raised surface is plain translucency —
+named here rather than left to be discovered.
+
+## An outer shadow is outside
+
+The part of a drop shadow that falls under the surface is invisible while the
+surface is opaque and is a *stain* the moment it is not: the first glass panel
+rendered came out at luminance 42 where it should have been 99, darkened by its
+own shadow showing through it. CSS clips an outer `box-shadow` out of the border
+box for exactly this reason, and the Skia painter now does the same. It costs
+nothing in the opaque case, where those pixels were being covered anyway.
+
 ## Which widgets are which
 
 `UiFlat` decides, in `surface_depth_of`:
