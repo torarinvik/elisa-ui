@@ -1,0 +1,89 @@
+# State transitions: a control MOVES between its states instead of jumping.
+#
+# WHY THIS IS FRAMEWORK WORK AND NOT AN APPLICATION'S. Every state a widget has
+# already lives here -- hovered, pressed, enabled, selected -- and so does the
+# colour each one resolves to. An application that wanted its buttons to ease
+# under the pointer would have to duplicate that resolution, keep its own copy
+# of the previous colour for every widget, and drive a frame clock. It would
+# also have to re-derive the accessibility answer: a reduced-motion preference
+# must remove the motion and nothing else.
+#
+# WHY A CLOCK IS THE SWITCH. `UiCore::set_frame_time` is optional and documented
+# as optional -- "platforms that do not animate may leave the default at zero".
+# A host that leaves it there measures a zero interval, every transition
+# completes in the frame it starts, and the picture is identical to the one the
+# framework drew before this file existed. Motion is what a host opts into by
+# telling the framework what time it is.
+
+extend UiFlat:
+    public:
+        # Long enough to be seen as movement, short enough that a pointer
+        # sweeping a toolbar does not leave a wake behind it. Every system worth
+        # copying lands between 0.1 and 0.2 seconds for a control-sized change.
+        const STATE_TRANSITION_SECONDS: f32 = 0.14
+        # The wake a control in motion asks for. Hosts coalesce onto the
+        # earliest request, so a page of moving controls is still one wake.
+        const STATE_TRANSITION_FRAME: f32 = 0.016
+
+        # Measure the interval this frame covers. Called once, at the top of
+        # paint, so every widget in one frame moves by the same amount --
+        # sampling the clock per widget would make the first widget in the
+        # batch move further than the last.
+        def begin_frame_motion() -> void:
+            now: f64 = UiCore::frame_time()
+            elapsed: f64 = now - flat_last_paint_time
+            flat_last_paint_time <- now
+            flat_frame_elapsed <- 0.0 if elapsed <= 0.0 or now <= 0.0 else UiCore::bounded_extent(elapsed.f32())
+
+        # The colour to paint this widget with, and the advance of its
+        # transition. This MUTATES: it must be called exactly once per widget
+        # per frame, from paint, and the target it is given is the colour the
+        # widget's state resolves to.
+        def displayed_color(index: usize, target: UiCore::Color) -> UiCore::Color:
+            if not widgets[index].shown_settled:
+                widgets[index].shown_color <- target
+                widgets[index].shown_settled <- true
+                return target
+            step: f32 = transition_step()
+            moved: UiCore::Color = target if step >= 1.0 else approach(widgets[index].shown_color, target, step)
+            widgets[index].shown_color <- moved
+            UiCore::request_frame_after(STATE_TRANSITION_FRAME) if not colors_equal(moved, target)
+            return moved
+
+    private:
+        # A fraction of the remaining distance, so a control eases into its new
+        # state rather than arriving at constant speed. The fraction is derived
+        # from elapsed TIME rather than counted in frames: a 30Hz host and a
+        # 120Hz one must take the same fifth of a second to finish, and a frame
+        # the host was late for must cover the ground it missed.
+        def transition_step() -> f32:
+            duration: f32 = UiTheme::animation_interval(UiTheme::current_preferences(), STATE_TRANSITION_SECONDS)
+            return 1.0 if duration <= 0.0
+            return 1.0 if flat_frame_elapsed <= 0.0
+            return 1.0 if flat_frame_elapsed >= duration
+            return flat_frame_elapsed / duration
+
+        def approach(from_color: UiCore::Color, to_color: UiCore::Color, step: f32) -> UiCore::Color:
+            return UiCore::Color{
+                r: approach_channel(from_color.r, to_color.r, step),
+                g: approach_channel(from_color.g, to_color.g, step),
+                b: approach_channel(from_color.b, to_color.b, step),
+                a: approach_channel(from_color.a, to_color.a, step),
+            }
+
+        # A CHANNEL THAT DIFFERS ALWAYS MOVES. A proportional step over a small
+        # distance rounds back to where it started, and a transition that cannot
+        # make progress asks for a wake it will waste and never finishes -- the
+        # control would sit one level short of its state for as long as the
+        # window is open.
+        def approach_channel(from_level: u8, to_level: u8, step: f32) -> u8:
+            return to_level if from_level == to_level
+            rising: bool = to_level > from_level
+            distance: f32 = to_level.f32() - from_level.f32() if rising else from_level.f32() - to_level.f32()
+            moved: mutable f32 = distance * step
+            moved <- 1.0 if moved < 1.0
+            travelled: i64 = moved.i64()
+            level: i64 = from_level.i64() + travelled if rising else from_level.i64() - travelled
+            return to_level if rising and level > to_level.i64()
+            return to_level if not rising and level < to_level.i64()
+            return UiCore::channel(level).u8()

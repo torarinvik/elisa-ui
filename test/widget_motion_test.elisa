@@ -1,0 +1,113 @@
+# State transitions: a control moves between its states, and only when a host
+# has said what time it is.
+#
+# The framework's clock is optional by design, so the two behaviours this file
+# separates are the whole contract: a backend that never reports a frame time
+# must draw exactly what it drew before transitions existed, and a backend that
+# does must see a control take a measurable interval to get where it is going.
+# Both are asserted here rather than looked at, because a transition is a thing
+# no still frame can show.
+
+include "./widget_layout_support.elisa"
+
+# The colour of the fill that covers a widget's own box.
+def surface_ink(index: usize) -> UiCore::Color:
+    frame: UiCore::Rect = UiCore::Rect(UiFlat::widget(index).x, UiFlat::widget(index).y, UiFlat::widget(index).width, UiFlat::widget(index).height)
+    for command_index in 0..<UiCore::command_count():
+        match UiCore::command_at(command_index):
+            UiCore::Command.FillRect(rect, color):
+                matched: bool = near(rect.origin.x, frame.origin.x) and near(rect.origin.y, frame.origin.y) and near(rect.size.width, frame.size.width) and near(rect.size.height, frame.size.height)
+                return color if matched
+            _:
+                pass
+    return UiCore::rgba(0, 0, 0, 0)
+
+def surface_depth(index: usize) -> UiCore::SurfaceDepth:
+    frame: UiCore::Rect = UiCore::Rect(UiFlat::widget(index).x, UiFlat::widget(index).y, UiFlat::widget(index).width, UiFlat::widget(index).height)
+    for command_index in 0..<UiCore::command_count():
+        match UiCore::command_at(command_index):
+            UiCore::Command.FillRect(rect, color):
+                matched: bool = near(rect.origin.x, frame.origin.x) and near(rect.origin.y, frame.origin.y) and near(rect.size.width, frame.size.width) and near(rect.size.height, frame.size.height)
+                return UiCore::command_depth_at(command_index) if matched
+            _:
+                pass
+    return UiCore::SurfaceDepth.Flat
+
+def repaint() -> void:
+    UiCore::begin_frame()
+    UiFlat::paint()
+
+def rest_ink() -> UiCore::Color:
+    return UiCore::rgb(40, 60, 150)
+
+def hover_ink() -> UiCore::Color:
+    return UiCore::rgb(90, 140, 240)
+
+def build_button() -> usize:
+    UiFlat::reset()
+    button: usize = UiFlat::button(UiFlat::NONE, 120.0, 40.0, rest_ink(), hover_ink(), UiCore::rgb(20, 30, 80))
+    UiFlat::layout(120.0, 40.0)
+    return button
+
+def same_ink(left: UiCore::Color, right: UiCore::Color) -> bool:
+    return left.r == right.r and left.g == right.g and left.b == right.b and left.a == right.a
+
+def between(value: u8, low: u8, high: u8) -> bool:
+    return value > low and value < high
+
+def main() -> i64:
+    # A HOST THAT NEVER SAYS WHAT TIME IT IS GETS NO MOTION. This is the case
+    # every existing backend and every existing test is in, and the reason
+    # adding transitions changed none of them.
+    silent: usize = build_button()
+    repaint()
+    UiFlat::pointer((UiCore::PointerEvent.Move(at: UiCore::Vec2(60.0, 20.0))))
+    repaint()
+    check("without a clock a control is already where its state says", same_ink(surface_ink(silent), hover_ink()))
+
+    # ...and with one, it takes an interval to get there.
+    timed: usize = build_button()
+    UiCore::set_frame_time(100.0)
+    repaint()
+    check("a control's first frame is its own colour, not a fade in from nothing", same_ink(surface_ink(timed), rest_ink()))
+    UiFlat::pointer((UiCore::PointerEvent.Move(at: UiCore::Vec2(60.0, 20.0))))
+    UiCore::set_frame_time(100.02)
+    repaint()
+    moving: UiCore::Color = surface_ink(timed)
+    check("one frame into a transition a control is between its two states", between(moving.r, rest_ink().r, hover_ink().r) and between(moving.b, rest_ink().b, hover_ink().b))
+    check("a control in motion asks for the frame that continues it", UiCore::frame_delay() > 0.0)
+
+    # DEPTH IS THE STATE, NOT THE SCREEN. A button being pressed is in the
+    # surface from the first frame of the press, because that is what it is;
+    # only its colour has any distance to travel.
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(60.0, 20.0), button: 0)))
+    UiCore::set_frame_time(100.04)
+    repaint()
+    check("a control is in the surface from the first frame of the press", surface_depth(timed) == UiCore::SurfaceDepth.Inset)
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(60.0, 20.0), button: 0)))
+
+    # Given longer than the transition lasts, it is over.
+    UiCore::set_frame_time(101.0)
+    repaint()
+    check("a transition finishes exactly on its target", same_ink(surface_ink(timed), hover_ink()))
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("a settled control asks for no further frames", UiCore::frame_delay() == 0.0)
+
+    # REDUCED MOTION REMOVES THE MOTION AND NOTHING ELSE. The control still
+    # reaches the same colour on the same frame; it simply does not travel.
+    _ = UiTheme::set_preferences(UiTheme::Preferences{mode: UiTheme::ColorMode.System, contrast: UiTheme::Contrast.Normal, text_scale: 1.0, reduced_motion: true})
+    still: usize = build_button()
+    UiCore::set_frame_time(200.0)
+    repaint()
+    UiFlat::pointer((UiCore::PointerEvent.Move(at: UiCore::Vec2(60.0, 20.0))))
+    UiCore::set_frame_time(200.02)
+    repaint()
+    check("a reduced-motion preference arrives without travelling", same_ink(surface_ink(still), hover_ink()))
+    _ = UiTheme::set_preferences(UiTheme::Preferences{mode: UiTheme::ColorMode.System, contrast: UiTheme::Contrast.Normal, text_scale: 1.0, reduced_motion: false})
+
+    if test_failures == 0:
+        _ = puts("widget motion: all checks passed")
+        return 0
+    _ = puts("widget motion: FAILURES above")
+    return 1

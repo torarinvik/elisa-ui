@@ -6,6 +6,7 @@ extend UiFlat:
     public:
         def paint() -> void:
             UiTextMetrics::reset()
+            begin_frame_motion()
             normalize_widget_enums()
             layout(last_layout_width, last_layout_height) if layout_initialized and layout_dirty
             build_paint_order()
@@ -40,7 +41,13 @@ extend UiFlat:
                 continue if not effectively_visible(index) or not intersects_scroll_viewports(index)
                 set_scroll_clip(index)
                 enabled: bool = effectively_enabled(index)
-                color: UiCore::Color = color_of(index)
+                # The state's colour and the colour on screen are two different
+                # facts while a control is moving between them. DEPTH reads the
+                # state -- a button being pressed is in the surface from the
+                # first frame of the press, because that is what it IS -- and
+                # the fill reads the screen.
+                target_color: UiCore::Color = color_of(index)
+                color: UiCore::Color = displayed_color(index, target_color)
                 frame: UiCore::Rect = UiCore::Rect(widgets[index].x, widgets[index].y, widgets[index].width, widgets[index].height)
                 paint_ring(index)
                 # A TRACK IS A GROOVE. Both the slider's and the progress
@@ -74,7 +81,7 @@ extend UiFlat:
                     UiCore::fill_inset(UiCore::Rect(widgets[index].x, progress_y, widgets[index].width, progress_height), progress_track)
                     UiCore::fill(UiCore::Rect(widgets[index].x, progress_y, widgets[index].width * widgets[index].value, progress_height), progress_fill)
                 elif color.a != 0:
-                    UiFlat::fill_at_depth(frame, color, surface_depth_of(index, color))
+                    UiFlat::fill_at_depth(frame, color, surface_depth_of(index, target_color))
                 if widgets[index].kind == UiConst::WidgetKind.RadioButton:
                     mark_x: f32 = widgets[index].x + current_theme.choice_center_x
                     mark_y: f32 = widgets[index].y + widgets[index].height / 2.0
