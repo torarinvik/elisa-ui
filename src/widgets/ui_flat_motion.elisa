@@ -50,7 +50,38 @@ extend UiFlat:
             UiCore::request_frame_after(STATE_TRANSITION_FRAME) if not colors_equal(moved, target)
             return moved
 
+        # THE FRACTION A CONTROL IS SHOWING, which is not always the one it
+        # holds. A meter that jumps to its new reading tells you the number
+        # changed; one that travels tells you which way and by how much, which
+        # is the whole reason a meter is a bar and not a label.
+        #
+        # A control being DRAGGED is the exception, and not a small one: the
+        # value follows the pointer, and easing toward it would leave the thumb
+        # trailing the finger. Nothing feels more broken than a control that
+        # does not keep up with the hand on it.
+        def displayed_value(index: usize, target: f32) -> f32:
+            safe_target: f32 = UiConstraints::bounded(target)
+            if not widgets[index].shown_value_settled or widgets[index].pressed:
+                widgets[index].shown_value <- safe_target
+                widgets[index].shown_value_settled <- true
+                return safe_target
+            step: f32 = transition_step()
+            moved: f32 = safe_target if step >= 1.0 else approach_value(widgets[index].shown_value, safe_target, step)
+            widgets[index].shown_value <- moved
+            UiCore::request_frame_after(STATE_TRANSITION_FRAME) if moved != safe_target
+            return moved
+
     private:
+        # A fraction is continuous, so "close enough" is what ends the journey:
+        # below one part in a thousand of the track no pixel can tell the
+        # difference, and a transition that cannot end keeps asking for frames.
+        const VALUE_SETTLE_EPSILON: f32 = 0.001
+
+        def approach_value(from_value: f32, to_value: f32, step: f32) -> f32:
+            distance: f32 = to_value - from_value
+            return to_value if distance < VALUE_SETTLE_EPSILON and distance > 0.0 - VALUE_SETTLE_EPSILON
+            return UiConstraints::bounded(from_value + distance * step)
+
         # A fraction of the remaining distance, so a control eases into its new
         # state rather than arriving at constant speed. The fraction is derived
         # from elapsed TIME rather than counted in frames: a 30Hz host and a

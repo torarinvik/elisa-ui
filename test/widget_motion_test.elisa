@@ -33,6 +33,24 @@ def surface_depth(index: usize) -> UiCore::SurfaceDepth:
                 pass
     return UiCore::SurfaceDepth.Flat
 
+# How much of a track is filled, read out of the frame: the widest fill inside
+# the widget's own box that is not the track itself.
+def filled_fraction(index: usize) -> f32:
+    frame_width: f32 = UiFlat::widget(index).width
+    return 0.0 if frame_width <= 0.0
+    widest: mutable f32 = 0.0
+    track: mutable f32 = 0.0
+    for command_index in 0..<UiCore::command_count():
+        match UiCore::command_at(command_index):
+            UiCore::Command.FillRect(rect, color):
+                if rect.size.height <= UiFlat::widget(index).height:
+                    track <- rect.size.width if UiCore::command_depth_at(command_index) == UiCore::SurfaceDepth.Inset and rect.size.width > track else track
+                    widest <- rect.size.width if UiCore::command_depth_at(command_index) == UiCore::SurfaceDepth.Flat and rect.size.width > widest else widest
+            _:
+                pass
+    return 0.0 if track <= 0.0
+    return widest / track
+
 def repaint() -> void:
     UiCore::begin_frame()
     UiFlat::paint()
@@ -105,6 +123,37 @@ def main() -> i64:
     repaint()
     check("a reduced-motion preference arrives without travelling", same_ink(surface_ink(still), hover_ink()))
     _ = UiTheme::set_preferences(UiTheme::Preferences{mode: UiTheme::ColorMode.System, contrast: UiTheme::Contrast.Normal, text_scale: 1.0, reduced_motion: false})
+
+    # A FRACTION TRAVELS TOO. A meter that jumps to its new reading says the
+    # number changed; one that travels says which way and by how much, which is
+    # the whole reason a meter is a bar rather than a label.
+    UiFlat::reset()
+    meter: usize = UiFlat::progress_bar(UiFlat::NONE, "load", 200.0, 8.0, 0.0, UiCore::rgb(40, 44, 56), UiCore::rgb(80, 140, 240))
+    UiFlat::layout(200.0, 8.0)
+    UiFlat::set_value(meter, 0.0)
+    UiCore::set_frame_time(300.0)
+    repaint()
+    check("a meter's first frame is the reading it holds", near(filled_fraction(meter), 0.0))
+    UiFlat::set_value(meter, 1.0)
+    UiCore::set_frame_time(300.02)
+    repaint()
+    partial: f32 = filled_fraction(meter)
+    check("a new reading is travelled to, not jumped to", partial > 0.0 and partial < 1.0)
+    UiCore::set_frame_time(301.0)
+    repaint()
+    check("and it arrives exactly", near(filled_fraction(meter), 1.0))
+
+    # ...except under the hand. A slider being dragged follows the pointer, and
+    # easing toward it would leave the thumb trailing the finger.
+    UiFlat::reset()
+    dragged: usize = UiFlat::slider(UiFlat::NONE, "level", 200.0, 24.0, 0.2, UiCore::rgb(40, 44, 56), UiCore::rgb(80, 140, 240), UiCore::rgb(240, 240, 245))
+    UiFlat::layout(200.0, 24.0)
+    UiCore::set_frame_time(400.0)
+    repaint()
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(180.0, 12.0), button: 0)))
+    UiCore::set_frame_time(400.02)
+    repaint()
+    check("a control under the hand keeps up with it", near(filled_fraction(dragged), UiFlat::widget(dragged).value))
 
     if test_failures == 0:
         _ = puts("widget motion: all checks passed")

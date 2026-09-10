@@ -30,14 +30,29 @@ all already did.
 
 ## What travels and what does not
 
-Colour travels. **Depth does not**: a button being pressed is *in* the surface
+Colour travels, and so does a **fraction**: the value a slider, meter or
+progress bar is showing eases to the one it holds. A meter that jumps to its
+new reading tells you the number changed; one that travels tells you which way
+and by how much, which is the whole reason a meter is a bar rather than a
+label. Below one part in a thousand of the track no pixel can tell the
+difference, so that is where the journey ends — a transition that cannot end
+keeps asking for frames.
+
+A control **under the hand** is the exception, and not a small one. A slider
+being dragged takes its value from the pointer, and easing toward it would
+leave the thumb trailing the finger; nothing feels more broken than a control
+that cannot keep up with the hand on it. A pressed control's value snaps.
+
+**Depth does not travel**: a button being pressed is *in* the surface
 from the first frame of the press, because that is what it is — only its colour
 has any distance to cover. Paint reads the state for `surface_depth_of` and the
 screen for the fill, which is the one place those two facts differ.
 
-Geometry does not travel either. Nothing in the layout pass is interpolated, so
-a transition can never move a hit target out from under the pointer that
-started it.
+Layout geometry does not travel either, and that is a decision rather than a
+gap: nothing in the layout pass is interpolated, so a transition can never move
+a hit target out from under the pointer that started it. A fraction is safe to
+move for exactly that reason — it repositions a thumb inside a track whose hit
+target is the whole track.
 
 ## The interval, not the frame
 
