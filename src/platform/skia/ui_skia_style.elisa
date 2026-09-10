@@ -35,7 +35,26 @@ extend UiSkia:
             UiSkia::draw_sheen(box, style)
             UiSkia::draw_outline(box, style)
 
+        # A DISC is a rounded rectangle whose corner is its own radius.
+        #
+        # That identity is what lets a raised thumb reuse the whole surface
+        # treatment -- shadow, fill, sheen, rim -- without one new primitive in
+        # any backend. A slider thumb is the one control that is unambiguously
+        # ON the surface rather than part of it, and it was the last thing in
+        # the framework still painted as a flat disc of colour.
+        def fill_disc(disc: UiCore::Circle, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void can[Ui.Draw]:
+            return if UiSkia::canvas_state == 0 or color.a == 0 or disc.radius <= 0.0
+            if depth == UiCore::SurfaceDepth.Flat:
+                UiSkia::fill_circle(disc, color)
+                return
+            box: UiCore::Rect = disc_bounds(disc)
+            style: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for_with_radius(box, depth, disc.radius, color)
+            UiSkia::draw_elevated_surface(box, style, color)
+
     private:
+        def disc_bounds(disc: UiCore::Circle) -> UiCore::Rect:
+            return UiCore::Rect(disc.center.x - disc.radius, disc.center.y - disc.radius, disc.radius * 2.0, disc.radius * 2.0)
+
         def draw_shadow(box: UiCore::Rect, style: UiPaint::RoundedRectStyle) -> void can[Ui.Draw]:
             alpha: u8 = style.shadow_alpha
             UiSkia::draw_shadow_rounded_rect(

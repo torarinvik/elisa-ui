@@ -68,6 +68,20 @@ extend UiAppKitCanvas:
             CGContextFlush(context)
             frame_context <- 0
 
+extend UiAppKitCanvas:
+    public:
+        def probe_disc(context: usize, disc: UiCore::Circle, color: UiCore::Color) -> void can Ui.Draw, Ui.Text:
+            UiCore::begin_frame()
+            UiCore::fill_elevated(disc, color)
+            frame_context <- context
+            CGContextSaveGState(context)
+            CGContextTranslateCTM(context, 0.0, PROBE_HEIGHT.f64())
+            CGContextScaleCTM(context, 1.0, -1.0)
+            UiPaint::replay[UiAppKitCanvas::AppKitPainter]()
+            CGContextRestoreGState(context)
+            CGContextFlush(context)
+            frame_context <- 0
+
 def probe_box() -> UiCore::Rect:
     return UiCore::Rect{
         origin: UiCore::Vec2{x: PROBE_LEFT, y: PROBE_TOP},
@@ -133,6 +147,24 @@ def main() -> i64:
         check("a flat surface is still shaped by the light", flat > 0)
         check("a flat surface is lifted less than a raised one",
               flat < top_minus_bottom(panel, UiCore::SurfaceDepth.Raised))
+
+        # A RAISED DISC is the same treatment on a circle, and it is what a
+        # slider thumb is. It reuses the rounded-rect path with the corner set
+        # to the disc's own radius, so if that identity ever stopped holding
+        # the thumb would come back square before this check noticed -- which
+        # is why the assertion is about light and not about shape.
+        disc_context: usize = new_context()
+        check("the disc probe bitmap was created", disc_context != 0)
+        if disc_context != 0:
+            centre_x: i32 = PROBE_WIDTH / 2
+            centre_y: i32 = PROBE_HEIGHT / 2
+            UiAppKitCanvas::probe_disc(disc_context, UiCore::Circle{center: UiCore::Vec2(centre_x.f32(), centre_y.f32()), radius: 24.0}, UiCore::rgba(38, 40, 48, 255))
+            top: i64 = sample(disc_context, centre_x, centre_y - 16)
+            bottom: i64 = sample(disc_context, centre_x, centre_y + 16)
+            outside: i64 = sample(disc_context, centre_x, centre_y - 30)
+            check("a raised disc is lit from above", top > bottom)
+            check("a raised disc stays inside its own radius", outside == 0)
+            CGContextRelease(disc_context)
 
         # An invisible fill stays invisible. The sheen and the rim are white at
         # their own alphas, not scaled by the fill's -- so without a guard a

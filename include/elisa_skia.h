@@ -16,7 +16,7 @@
 /* Packed as 0xMMmmpp (major, minor, patch). Hosts should check this before
  * submitting an opaque canvas or renderer object to the Skia boundary. */
 #define ELISA_SKIA_ABI_VERSION_MAJOR 0u
-#define ELISA_SKIA_ABI_VERSION_MINOR 3u
+#define ELISA_SKIA_ABI_VERSION_MINOR 4u
 #define ELISA_SKIA_ABI_VERSION_PATCH 0u
 #define ELISA_SKIA_ABI_VERSION \
     ((ELISA_SKIA_ABI_VERSION_MAJOR << 16) | \
@@ -105,8 +105,11 @@ void elisa_skia_canvas_stroke_circle(size_t canvas, float x, float y, float radi
 void elisa_skia_canvas_fill_triangle(size_t canvas, float ax, float ay, float bx, float by,
                                      float cx, float cy, uint8_t red, uint8_t green,
                                      uint8_t blue, uint8_t alpha);
+/* `round_cap` is non-zero for a round cap and zero for a butt cap. The caller
+ * decides; this ABI has no default, because how a stroke ends is appearance. */
 void elisa_skia_canvas_fill_line(size_t canvas, float x0, float y0, float x1, float y1,
-                                 float stroke_width, uint8_t red, uint8_t green, uint8_t blue,
+                                 float stroke_width, int32_t round_cap,
+                                 uint8_t red, uint8_t green, uint8_t blue,
                                  uint8_t alpha);
 
 float elisa_skia_measure_text_width(const char *text, size_t length, float size);

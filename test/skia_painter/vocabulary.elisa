@@ -1,0 +1,30 @@
+# Phase 7: the drawing vocabulary's side-band metadata.
+#
+# Depth and stroke weight both ride BESIDE the command rather than inside its
+# payload, so a wire backend's decoder keeps working and reads them only if it
+# can honour them. This phase runs last because it begins a frame of its own:
+# the batch the earlier phases build is the batch they replay.
+
+def check_vocabulary() -> void:
+    can Ui.Draw, Ui.Text:
+        # Stroke weight rides beside the command, like depth, and leaves the
+        # FillLine payload alone.
+        UiCore::begin_frame()
+        UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(0.0, 0.0), to_point: UiCore::Vec2(10.0, 0.0)}, UiCore::rgb(200, 200, 200))
+        UiCore::fill_stroke(UiCore::Line{from_point: UiCore::Vec2(0.0, 4.0), to_point: UiCore::Vec2(10.0, 4.0)}, 3.5, UiCore::rgb(200, 200, 200))
+        UiCore::fill_elevated(UiCore::Circle{center: UiCore::Vec2(20.0, 20.0), radius: 6.0}, UiCore::rgb(240, 240, 245))
+        check("an ordinary line is a hairline", UiCore::command_stroke_width_at(0) == UiCore::DEFAULT_STROKE_WIDTH)
+        check("a stroke carries its own weight", UiCore::command_stroke_width_at(1) == 3.5)
+        check("weight does not disturb depth", UiCore::command_depth_at(1) == UiCore::SurfaceDepth.Flat)
+        check("a raised disc records its depth", UiCore::command_depth_at(2) == UiCore::SurfaceDepth.Raised)
+        check("a hairline is butt-capped and a stroke is not", not UiPaint::stroke_cap_is_round(1.0) and UiPaint::stroke_cap_is_round(2.0))
+
+        # And the weight reaches the backend. The recorder is the only thing
+        # that can say so: the batch above is replayed through the real painter
+        # and the width the bridge received is read back.
+        UiSkia::attach(9)
+        skia_test_reset()
+        UiPaint::replay[UiSkia::SkiaPainter]()
+        UiSkia::detach()
+        check("the weight reaches the bridge", skia_test_line_count() == 2 and skia_test_last_line_width() == 3.5)
+        check("and so does the cap it implies", skia_test_last_line_round_cap() == 1)

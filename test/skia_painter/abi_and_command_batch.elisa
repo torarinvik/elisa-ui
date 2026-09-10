@@ -2,7 +2,7 @@
 # transparent commands and elevation metadata, and the rounded-rect style policy.
 
 def check_abi_and_command_batch() -> void:
-    check("Skia ABI version is packed in Elisa", UiSkia::abi_version() == 0x000300 and elisa_skia_abi_version() == 0x000300)
+    check("Skia ABI version is packed in Elisa", UiSkia::abi_version() == 0x000400 and elisa_skia_abi_version() == 0x000400)
     check("backing scale stays in Elisa", UiCore::backing_scale(320.0, 200.0, 640.0, 300.0) == 1.5 and UiCore::backing_scale(320.0, 200.0, 0.0, 300.0) == 0.0)
     UiCapabilities::use_appkit_canvas()
     check("custom profile starts with CoreGraphics fallback", UiCapabilities::renderer() == UiCapabilities::Renderer.CoreGraphics)
@@ -48,5 +48,18 @@ def check_abi_and_command_batch() -> void:
     check("a raised surface is lit from the top", not lifted_slate.sheen_is_shadow and not lifted_slate.bevel_at_bottom and lifted_slate.sheen_bottom_alpha == 0)
     check("elevation is a difference of degree, not of kind", lifted_slate.sheen_top_alpha > flat.sheen_top_alpha and lifted_slate.bevel_alpha > flat.bevel_alpha and flat.shadow_alpha == 0)
     check("a saturated accent is treated as the dark surface it is", UiCore::surface_luminance(UiCore::rgb(66, 120, 236)) < 128 and UiCore::surface_luminance(paper) >= 128)
+
+    # THE CORNER POLICY, asserted as the three shapes it distinguishes rather
+    # than as a table of radii. A bar is a capsule; a square is not; a list row
+    # is slender but too thick to be a bar, which is the case that a
+    # slenderness-only rule got wrong and a render caught.
+    track: UiCore::Rect = UiCore::Rect(0.0, 0.0, 900.0, 4.0)
+    square: UiCore::Rect = UiCore::Rect(0.0, 0.0, 14.0, 14.0)
+    row: UiCore::Rect = UiCore::Rect(0.0, 0.0, 940.0, 26.0)
+    check("a bar is a capsule", UiPaint::corner_radius(track) == 2.0)
+    check("a square is not a circle", UiPaint::corner_radius(square) < 7.0 and UiPaint::corner_radius(square) > 0.0)
+    check("a list row is not a stadium", UiPaint::corner_radius(row) < 13.0)
+    check("a large surface shares one corner", UiPaint::corner_radius(UiCore::Rect(0.0, 0.0, 950.0, 260.0)) == UiPaint::CORNER_MAX)
+    check("the corner is continuous across thickness", UiPaint::corner_radius(UiCore::Rect(0.0, 0.0, 900.0, 12.0)) > UiPaint::corner_radius(UiCore::Rect(0.0, 0.0, 900.0, 12.5)) * 0.5)
 
     check("custom painters share explicit rounded style policy", style.elevated and style.shadow_alpha == 61 and style.hairline_alpha == 33 and style.shadow_offset_x == 0.0 and style.shadow_offset_y == 2.0 and style.shadow_blur == 5.0 and style.hairline_width == 1.0 and not plain_style.elevated and plain_style.shadow_alpha == 0 and plain_style.hairline_alpha == 14)

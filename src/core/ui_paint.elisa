@@ -63,6 +63,13 @@ module UiPaint:
         const SHADOW_OFFSET_Y: f32 = 2.0
         const SHADOW_BLUR: f32 = 5.0
         const HAIRLINE_WIDTH: f32 = 1.0
+        # The largest corner any surface takes, and the corner a perfectly
+        # square one gets as a fraction of its side.
+        const CORNER_MAX: f32 = 12.0
+        const BLOCK_CORNER_RATIO: f32 = 0.22
+        # The thickness range over which a slender surface stops being a bar.
+        const BAR_THICKNESS_MIN: f32 = 8.0
+        const BAR_THICKNESS_MAX: f32 = 24.0
 
         # Shared custom-painter styling. Native controls do not consume this
         # record; each custom backend translates the same Elisa policy into its
@@ -100,13 +107,49 @@ module UiPaint:
             sheen_is_shadow: bool
             bevel_at_bottom: bool
 
+        # The corner policy: a capsule if the surface is a BAR -- long AND thin --
+        # and a proportional corner otherwise, blended continuously between.
+        #
+        # It began as `shortest * 0.22`, capped at 10. That is proportional, and
+        # proportional corners are what made the small controls look dated: a
+        # 4pt slider track got a 0.9pt radius, so the filled part of every
+        # slider, every progress meter and every thin divider ended in a SQUARE.
+        # Nothing in a current interface has square ends at that size.
+        #
+        # Half the short side fixes that and breaks two other things, both of
+        # which the renders showed. A checkbox indicator is 14x14, and half of
+        # 14 is a CIRCLE: the checkboxes came back indistinguishable from radio
+        # buttons. And a list row is 940x26 -- slender, so half its thickness is
+        # a stadium, and a page of twenty-four of them reads as twenty-four
+        # floating buttons rather than as a list.
+        #
+        # Slenderness alone cannot separate those: a track and a row are both
+        # long. What separates them is THICKNESS. A capsule says "this is a bar",
+        # and a bar is thin in absolute terms, not relative ones -- so both
+        # factors weight the blend and a surface has to be both to get one.
         def rounded_rect_style(box: UiCore::Rect, elevated: bool) -> RoundedRectStyle:
-            # Every custom surface gets the shared rounded/hairline treatment;
-            # elevation only opts into the stronger shadow values below.
+            return rounded_rect_style_with_radius(box, elevated, corner_radius(box))
+
+        def corner_radius(box: UiCore::Rect) -> f32:
             shortest: f32 = box.size.width if box.size.width < box.size.height else box.size.height
-            radius: mutable f32 = UiCore::bounded_extent(shortest * 0.22)
-            radius <- 10.0 if radius > 10.0 else radius
-            return rounded_rect_style_with_radius(box, elevated, radius)
+            longest: f32 = box.size.height if box.size.width < box.size.height else box.size.width
+            return 0.0 if shortest <= 0.0
+            pill: f32 = slender_weight(longest / shortest) * thin_weight(shortest)
+            radius: mutable f32 = UiCore::bounded_extent(shortest * (BLOCK_CORNER_RATIO + (0.5 - BLOCK_CORNER_RATIO) * pill))
+            radius <- CORNER_MAX if radius > CORNER_MAX else radius
+            return radius
+
+        # Square reads as 0, three-to-one and beyond as 1.
+        def slender_weight(slenderness: f32) -> f32:
+            weight: mutable f32 = (slenderness - 1.0) / 2.0
+            weight <- 0.0 if weight < 0.0
+            return 1.0 if weight > 1.0 else weight
+
+        # A hairline or a track reads as 1, anything as thick as a list row as 0.
+        def thin_weight(shortest: f32) -> f32:
+            weight: mutable f32 = (BAR_THICKNESS_MAX - shortest) / (BAR_THICKNESS_MAX - BAR_THICKNESS_MIN)
+            weight <- 0.0 if weight < 0.0
+            return 1.0 if weight > 1.0 else weight
 
         # Theme-aware variant for custom painters. The supplied radius is
         # normalized against the box so a malformed style cannot escape the
@@ -195,6 +238,17 @@ module UiPaint:
         # inside the Skia backend rather than in the policy both backends read.
         # The same app looked like two different apps. Four functions here, and a
         # backend only has to know how to draw a linear gradient.
+        # How a stroke ENDS, decided once for every backend.
+        #
+        # A hairline is butt-capped: a divider, a rule and a caret are drawn to
+        # an exact length, and half a pixel of overhang at each end is a
+        # measurable error rather than a nicety. Anything wider is round-capped,
+        # because a butt cap on a thick diagonal reads as chipped -- and a
+        # checkmark is two thick diagonals meeting at a point, which is where
+        # this shows first.
+        def stroke_cap_is_round(width: f32) -> bool:
+            return width > UiCore::DEFAULT_STROKE_WIDTH
+
         def has_sheen(style: RoundedRectStyle) -> bool:
             return style.sheen_top_alpha != 0 or style.sheen_bottom_alpha != 0
 
@@ -242,9 +296,9 @@ module UiPaint:
             def pop_clip() -> void can[Ui.Draw]
             def clear(color: UiCore::Color) -> void can[Ui.Draw]
             def fill_rect(box: UiCore::Rect, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void can[Ui.Draw]
-            def fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> void can[Ui.Draw]
+            def fill_circle(disc: UiCore::Circle, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void can[Ui.Draw]
             def fill_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]
-            def fill_line(segment: UiCore::Line, color: UiCore::Color) -> void can[Ui.Draw]
+            def fill_line(segment: UiCore::Line, color: UiCore::Color, width: f32) -> void can[Ui.Draw]
             # Text needs both: it rasterizes (Draw) through font metrics (Text).
             def draw_text(run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]
 
@@ -266,11 +320,11 @@ module UiPaint:
                     UiCore::Command.FillRect(box, color):
                         P.fill_rect(box, color, UiCore::command_depth_at(index))
                     UiCore::Command.FillCircle(disc, color):
-                        P.fill_circle(disc, color)
+                        P.fill_circle(disc, color, UiCore::command_depth_at(index))
                     UiCore::Command.FillTriangle(tri, color):
                         P.fill_triangle(tri, color)
                     UiCore::Command.FillLine(segment, color):
-                        P.fill_line(segment, color)
+                        P.fill_line(segment, color, UiCore::command_stroke_width_at(index))
                     UiCore::Command.DrawText(run, color):
                         P.draw_text(run, color)
                 P.pop_clip() if clipped

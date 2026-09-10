@@ -44,7 +44,11 @@ extend UiUIKit:
                 return if box.size.width <= 0.0 or box.size.height <= 0.0
                 style: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for(box, depth, color)
                 draw_depth_surface(current_context(), box, style, color)
-            def fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> void can[Ui.Draw]:
+            def fill_circle(disc: UiCore::Circle, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void can[Ui.Draw]:
+                return if color.a == 0 or disc.radius <= 0.0
+                if depth != UiCore::SurfaceDepth.Flat:
+                    draw_depth_disc(current_context(), disc, color, depth)
+                    return
                 context: usize = current_context()
                 set_fill_color(context, color)
                 CGContextBeginPath(context)
@@ -59,10 +63,12 @@ extend UiUIKit:
                 CGContextAddLineToPoint(context, tri.c.x.f64(), tri.c.y.f64())
                 CGContextClosePath(context)
                 CGContextFillPath(context)
-            def fill_line(segment: UiCore::Line, color: UiCore::Color) -> void can[Ui.Draw]:
+            def fill_line(segment: UiCore::Line, color: UiCore::Color, width: f32) -> void can[Ui.Draw]:
+                return if color.a == 0 or width <= 0.0
                 context: usize = current_context()
                 set_stroke_color(context, color)
-                CGContextSetLineWidth(context, UiPaint::HAIRLINE_WIDTH.f64())
+                CGContextSetLineWidth(context, width.f64())
+                CGContextSetLineCap(context, CG_LINE_CAP_ROUND if UiPaint::stroke_cap_is_round(width) else CG_LINE_CAP_BUTT)
                 CGContextBeginPath(context)
                 CGContextMoveToPoint(context, segment.from_point.x.f64(), segment.from_point.y.f64())
                 CGContextAddLineToPoint(context, segment.to_point.x.f64(), segment.to_point.y.f64())

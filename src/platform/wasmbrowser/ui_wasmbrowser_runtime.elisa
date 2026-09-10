@@ -104,13 +104,19 @@ module UiWasmBrowser:
             wire_f32(base, 24, tri.c.y)
             wire_color(base, 28, color)
 
-        def encode_fill_line(base: usize, segment: UiCore::Line, color: UiCore::Color) -> void:
+        # Line lowers to two points, the colour, and the stroke weight: 24
+        # payload bytes, still inside the 28 the largest case (triangle) already
+        # reserves, so the record's size and every earlier field keep their
+        # offsets. A host that decoded lines before this reads exactly what it
+        # read before and ignores the tail.
+        def encode_fill_line(base: usize, segment: UiCore::Line, color: UiCore::Color, width: f32) -> void:
             wire_discriminant(base, 4)
             wire_f32(base, 4, segment.from_point.x)
             wire_f32(base, 8, segment.from_point.y)
             wire_f32(base, 12, segment.to_point.x)
             wire_f32(base, 16, segment.to_point.y)
             wire_color(base, 20, color)
+            wire_f32(base, 24, width)
 
         def encode_draw_text(base: usize, run: UiCore::TextRun, color: UiCore::Color) -> void:
             # text-run lowers to x, y, size, color, then the string's pointer and
@@ -287,14 +293,16 @@ module UiWasmBrowser:
             def fill_rect(box: UiCore::Rect, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void can[Ui.Draw]:
                 encode_fill_rect(wire_take_slot(), box, color)
 
-            def fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> void can[Ui.Draw]:
+            def fill_circle(disc: UiCore::Circle, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void can[Ui.Draw]:
+                # The wire carries geometry, not lighting; the host canvas
+                # applies its own treatment, as it does for rectangles.
                 encode_fill_circle(wire_take_slot(), disc, color)
 
             def fill_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]:
                 encode_fill_triangle(wire_take_slot(), tri, color)
 
-            def fill_line(segment: UiCore::Line, color: UiCore::Color) -> void can[Ui.Draw]:
-                encode_fill_line(wire_take_slot(), segment, color)
+            def fill_line(segment: UiCore::Line, color: UiCore::Color, width: f32) -> void can[Ui.Draw]:
+                encode_fill_line(wire_take_slot(), segment, color, width)
 
             def draw_text(run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
                 encode_draw_text(wire_take_slot(), run, color)

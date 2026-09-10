@@ -85,6 +85,13 @@ extend UiCore:
             safe_disc: Circle = Circle{center: Vec2{x: bounded_coordinate(disc.center.x), y: bounded_coordinate(disc.center.y)}, radius: bounded_extent(disc.radius)}
             push_command(Command.FillCircle(safe_disc, color))
 
+        # A raised disc: a slider thumb, a handle, a dot that sits ON the
+        # surface rather than in it. Same explicit opt-in as the rectangle --
+        # an ordinary circle stays plain however big it is.
+        def fill_elevated(disc: Circle, color: Color) -> void:
+            safe_disc: Circle = Circle{center: Vec2{x: bounded_coordinate(disc.center.x), y: bounded_coordinate(disc.center.y)}, radius: bounded_extent(disc.radius)}
+            push_command_with_style(Command.FillCircle(safe_disc, color), SurfaceDepth.Raised)
+
         def fill(tri: Triangle, color: Color) -> void:
             safe_tri: Triangle = Triangle{a: Vec2{x: bounded_coordinate(tri.a.x), y: bounded_coordinate(tri.a.y)}, b: Vec2{x: bounded_coordinate(tri.b.x), y: bounded_coordinate(tri.b.y)}, c: Vec2{x: bounded_coordinate(tri.c.x), y: bounded_coordinate(tri.c.y)}}
             push_command(Command.FillTriangle(safe_tri, color))
@@ -92,6 +99,17 @@ extend UiCore:
         def fill(segment: Line, color: Color) -> void:
             safe_segment: Line = Line{from_point: Vec2{x: bounded_coordinate(segment.from_point.x), y: bounded_coordinate(segment.from_point.y)}, to_point: Vec2{x: bounded_coordinate(segment.to_point.x), y: bounded_coordinate(segment.to_point.y)}}
             push_command(Command.FillLine(safe_segment, color))
+
+        # A line WITH WEIGHT.
+        #
+        # `fill(Line, ...)` is a hairline and always was, in every backend: the
+        # painters passed a constant width because the command carried none.
+        # That is fine for a divider and wrong for everything else -- a
+        # checkmark, an orbit spoke, a series in a chart. A framework whose
+        # thickest available line is one pixel cannot draw a modern graph.
+        def fill_stroke(segment: Line, width: f32, color: Color) -> void:
+            safe_segment: Line = Line{from_point: Vec2{x: bounded_coordinate(segment.from_point.x), y: bounded_coordinate(segment.from_point.y)}, to_point: Vec2{x: bounded_coordinate(segment.to_point.x), y: bounded_coordinate(segment.to_point.y)}}
+            push_command_with_stroke(Command.FillLine(safe_segment, color), bounded_extent(width))
 
         def draw(run: TextRun, color: Color) -> void:
             safe_run: TextRun = TextRun(run.origin, run.size, run.text, run.weighted)

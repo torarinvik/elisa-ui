@@ -500,14 +500,20 @@ extern "C" void elisa_skia_canvas_fill_triangle(std::size_t handle, float ax, fl
     }
 }
 
+// The cap is an appearance decision and arrives as a value; this bridge must
+// not pick one. A butt cap is what makes a thick diagonal look chipped, which
+// is visible the moment a line is wider than a hairline.
 extern "C" void elisa_skia_canvas_fill_line(std::size_t handle, float x0, float y0, float x1, float y1,
-                                              float stroke_width, std::uint8_t red, std::uint8_t green,
+                                              float stroke_width, std::int32_t round_cap,
+                                              std::uint8_t red, std::uint8_t green,
                                               std::uint8_t blue,
                                               std::uint8_t alpha) {
     if (SkCanvas *target = canvas(handle);
         target != nullptr && bounded_coordinate(x0) && bounded_coordinate(y0) && bounded_coordinate(x1) &&
         bounded_coordinate(y1) && bounded_extent(stroke_width)) {
-        target->drawLine(x0, y0, x1, y1, stroke_paint(red, green, blue, alpha, stroke_width));
+        SkPaint paint = stroke_paint(red, green, blue, alpha, stroke_width);
+        paint.setStrokeCap(round_cap != 0 ? SkPaint::kRound_Cap : SkPaint::kButt_Cap);
+        target->drawLine(x0, y0, x1, y1, paint);
     }
 }
 

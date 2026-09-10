@@ -100,6 +100,14 @@ extend UiCore:
             return SurfaceDepth.Flat if index >= command_total.usize()
             return command_surface_depth[index].SurfaceDepth()
 
+        # The recorded stroke weight of a command. Only FillLine reads it; every
+        # other command records the default and ignores it.
+        def command_stroke_width_at(index: usize) -> f32:
+            return DEFAULT_STROKE_WIDTH if index >= command_total.usize()
+            width: f32 = command_stroke_width[index]
+            return DEFAULT_STROKE_WIDTH if width <= 0.0
+            return width
+
         # Clip state is deliberately side-band metadata. A backend that can
         # clip natively applies it around one command; a wire backend can keep
         # the render-command discriminants and payloads byte-for-byte stable.
@@ -280,6 +288,12 @@ extend UiCore:
 
     private:
         def push_command_with_style(command: Command, depth: SurfaceDepth) -> void:
+            push_command_styled(command, depth, DEFAULT_STROKE_WIDTH)
+
+        def push_command_with_stroke(command: Command, width: f32) -> void:
+            push_command_styled(command, SurfaceDepth.Flat, width)
+
+        def push_command_styled(command: Command, depth: SurfaceDepth, width: f32) -> void:
             if command_total >= MAX_COMMANDS.u32():
                 command_dropped <- true
                 return
@@ -287,6 +301,7 @@ extend UiCore:
             command_has_clip_flag[slot] <- current_clip_active
             command_clip[slot] <- current_clip if current_clip_active
             command_surface_depth[slot] <- depth.i32()
+            command_stroke_width[slot] <- width
             command_buffer[slot] <- normalized_command(command)
             command_total <- command_total + 1
             invalidate(Invalidation.Paint)
@@ -296,6 +311,7 @@ extend UiCore:
             command_clip[index] <- Rect(0.0, 0.0, 0.0, 0.0)
             command_has_clip_flag[index] <- false
             command_surface_depth[index] <- SurfaceDepth.Flat.i32()
+            command_stroke_width[index] <- DEFAULT_STROKE_WIDTH
 
         def clear_accessibility_slot(index: usize) -> void:
             accessibility_nodes[index] <- AccessibilityNode{

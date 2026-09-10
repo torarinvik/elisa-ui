@@ -61,7 +61,11 @@ extend UiFlat:
                     thumb_x: f32 = track_x + track_width * widgets[index].value
                     thumb: mutable UiCore::Color = widgets[index].press_color if enabled else muted_color(widgets[index].press_color)
                     thumb <- current_theme.control_mark_strong if widgets[index].pressed
-                    UiCore::fill(UiCore::Circle{center: UiCore::Vec2(thumb_x, track_y + track_height / 2.0), radius: current_theme.slider_thumb_radius}, thumb)
+                    # The thumb is the one control that is unambiguously ON the
+                    # surface rather than part of it, so it is the one circle
+                    # the framework raises. A flat disc of colour on a flat
+                    # track is the shape of a 2005 slider.
+                    UiCore::fill_elevated(UiCore::Circle{center: UiCore::Vec2(thumb_x, track_y + track_height / 2.0), radius: current_theme.slider_thumb_radius}, thumb)
                 elif widgets[index].kind == UiConst::WidgetKind.ProgressBar:
                     progress_height: f32 = current_theme.slider_track_height if current_theme.slider_track_height < widgets[index].height else widgets[index].height
                     progress_y: f32 = widgets[index].y + widgets[index].height / 2.0 - progress_height / 2.0
@@ -74,29 +78,49 @@ extend UiFlat:
                 if widgets[index].kind == UiConst::WidgetKind.RadioButton:
                     mark_x: f32 = widgets[index].x + current_theme.choice_center_x
                     mark_y: f32 = widgets[index].y + widgets[index].height / 2.0
-                    outer: UiCore::Color = current_theme.control_mark if enabled else muted_color(current_theme.control_mark)
+                    # A SELECTED choice is filled with the accent and marked in
+                    # ink that reads on it. It used to keep the same grey ring
+                    # whether it was on or off and change only a 3pt dot, which
+                    # is a state you have to hunt for rather than one you see.
+                    accent: UiCore::Color = current_theme.control_mark_strong if enabled else muted_color(current_theme.control_mark_strong)
+                    outer: mutable UiCore::Color = current_theme.control_mark if enabled else muted_color(current_theme.control_mark)
+                    outer <- accent if widgets[index].selected
                     UiCore::fill(UiCore::Circle{center: UiCore::Vec2(mark_x, mark_y), radius: current_theme.radio_outer_radius}, outer)
                     inner: mutable UiCore::Color = color
-                    inner <- current_theme.control_mark_strong if widgets[index].selected and enabled
-                    inner <- muted_color(current_theme.control_mark_strong) if widgets[index].selected and not enabled
+                    inner <- contrast_ink(accent) if widgets[index].selected
                     UiCore::fill(UiCore::Circle{center: UiCore::Vec2(mark_x, mark_y), radius: current_theme.radio_inner_radius}, inner)
                 elif widgets[index].kind == UiConst::WidgetKind.CheckBox:
                     checkbox_extent: f32 = current_theme.checkbox_size
                     box_x: f32 = widgets[index].x + current_theme.choice_center_x - checkbox_extent / 2.0
                     box_y: f32 = widgets[index].y + widgets[index].height / 2.0 - checkbox_extent / 2.0
-                    box_color: UiCore::Color = current_theme.control_mark if enabled else muted_color(current_theme.control_mark)
+                    checkbox_accent: UiCore::Color = current_theme.control_mark_strong if enabled else muted_color(current_theme.control_mark_strong)
+                    box_color: mutable UiCore::Color = current_theme.control_mark if enabled else muted_color(current_theme.control_mark)
+                    box_color <- checkbox_accent if widgets[index].selected
                     UiCore::fill(UiCore::Rect(box_x, box_y, checkbox_extent, checkbox_extent), box_color)
                     # Scale the inset and checkmark with the token. Fixed
                     # pixel geometry here used to overflow when an app chose
                     # a compact checkbox theme.
+                    #
+                    # A checked box is SOLID accent: the well is only cut out of
+                    # it when the box is empty. The tick used to be an accent
+                    # hairline on the widget's own dark fill, which at 14pt is a
+                    # few blue pixels on near-black -- present in the buffer and
+                    # absent to the eye.
                     checkbox_inset: f32 = checkbox_extent * 0.18
                     checkbox_inner_extent: mutable f32 = checkbox_extent - checkbox_inset * 2.0
                     checkbox_inner_extent <- 0.0 if checkbox_inner_extent < 0.0
-                    UiCore::fill(UiCore::Rect(box_x + checkbox_inset, box_y + checkbox_inset, checkbox_inner_extent, checkbox_inner_extent), color)
+                    if not widgets[index].selected:
+                        UiCore::fill(UiCore::Rect(box_x + checkbox_inset, box_y + checkbox_inset, checkbox_inner_extent, checkbox_inner_extent), color)
                     if widgets[index].selected and checkbox_extent > 0.0:
-                        check_ink: UiCore::Color = current_theme.control_mark_strong if enabled else muted_color(current_theme.control_mark_strong)
-                        UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(box_x + checkbox_extent * 0.23, box_y + checkbox_extent * 0.50), to_point: UiCore::Vec2(box_x + checkbox_extent * 0.44, box_y + checkbox_extent * 0.73)}, check_ink)
-                        UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(box_x + checkbox_extent * 0.44, box_y + checkbox_extent * 0.73), to_point: UiCore::Vec2(box_x + checkbox_extent * 0.82, box_y + checkbox_extent * 0.27)}, check_ink)
+                        check_ink: UiCore::Color = contrast_ink(checkbox_accent)
+                        # The tick scales its WEIGHT with the box as well as its
+                        # geometry. A hairline check in a 14pt box is a few
+                        # pixels of ink: present in the buffer, absent to the
+                        # eye, and the reason this control read as empty
+                        # whether it was on or off.
+                        check_weight: f32 = checkbox_extent * 0.15
+                        UiCore::fill_stroke(UiCore::Line{from_point: UiCore::Vec2(box_x + checkbox_extent * 0.23, box_y + checkbox_extent * 0.50), to_point: UiCore::Vec2(box_x + checkbox_extent * 0.44, box_y + checkbox_extent * 0.73)}, check_weight, check_ink)
+                        UiCore::fill_stroke(UiCore::Line{from_point: UiCore::Vec2(box_x + checkbox_extent * 0.44, box_y + checkbox_extent * 0.73), to_point: UiCore::Vec2(box_x + checkbox_extent * 0.82, box_y + checkbox_extent * 0.27)}, check_weight, check_ink)
                 if widgets[index].kind == UiConst::WidgetKind.TextField:
                     field_value: sview = text_value(index)
                     text_inset: f32 = clamped_inset(current_theme.text_horizontal_padding, widgets[index].width)
@@ -145,6 +169,10 @@ extend UiFlat:
                     if widgets[index].focused and selection_start(index) == selection_end(index) and caret_is_visible():
                         caret_x: f32 = widgets[index].x + text_inset + measure_text_range(index, visible_start, widgets[index].caret)
                         caret_inset: f32 = clamped_inset(current_theme.text_vertical_padding, widgets[index].height)
+                        # A caret is one of the few things that is still a
+                        # hairline on purpose: it marks a position BETWEEN two
+                        # characters, and a wide one starts to look like a
+                        # selection of the character beside it.
                         UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(caret_x, widgets[index].y + caret_inset), to_point: UiCore::Vec2(caret_x, widgets[index].y + widgets[index].height - caret_inset)}, widgets[index].text_color)
                     continue
                 continue if widgets[index].text_size <= 0.0 or widgets[index].text.len == 0
