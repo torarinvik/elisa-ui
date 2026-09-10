@@ -105,6 +105,39 @@ bool expect_color(const SkPixmap& pixels, int x, int y, SkColor expected,
     return false;
 }
 
+// A pixel belonging to the RETAINED SURFACE painted in `base`.
+//
+// These probes ask which draw won a pixel -- ordering between deferred and
+// retained work, a stale resource binding that must not paint -- and the
+// candidates are colours as far apart as orange, cyan and magenta. They are
+// not measuring a shade, so they must not break when the renderer's surface
+// treatment lights the top of a fill. A surface is lit, never darkened, so the
+// tolerance is one-sided: brighter than requested by at most the strongest
+// wash the policy applies, and never dimmer.
+constexpr int max_surface_sheen = 12;
+
+bool expect_surface(const SkPixmap& pixels, int x, int y, SkColor base, const char* label) {
+    const SkColor actual = pixels.getColor(x, y);
+    const int deltas[] = {
+        static_cast<int>(SkColorGetR(actual)) - static_cast<int>(SkColorGetR(base)),
+        static_cast<int>(SkColorGetG(actual)) - static_cast<int>(SkColorGetG(base)),
+        static_cast<int>(SkColorGetB(actual)) - static_cast<int>(SkColorGetB(base)),
+    };
+    for (const int delta : deltas) {
+        if (delta < 0 || delta > max_surface_sheen) {
+            std::fprintf(stderr, "%s: expected the surface painted 0x%08x, got 0x%08x\n",
+                         label, base, actual);
+            return false;
+        }
+    }
+    if (SkColorGetA(actual) != SkColorGetA(base)) {
+        std::fprintf(stderr, "%s: expected alpha 0x%02x, got 0x%02x\n",
+                     label, SkColorGetA(base), SkColorGetA(actual));
+        return false;
+    }
+    return true;
+}
+
 // Hash logical pixels rather than raw row bytes. Skia may pad rows, and those
 // padding bytes are not part of the rendered frame contract. The digest is
 // used to prove that repeated retained/deferred replays are deterministic and
@@ -276,8 +309,8 @@ int main(int argc, char** argv) {
     } else {
         ok = expect_color(pixels, probe_x + 2, probe_y + 9,
                           SkColorSetARGB(255, 250, 140, 40), "deferred badge before retained") && ok;
-        ok = expect_color(pixels, probe_x + 16, probe_y + 9,
-                          SkColorSetARGB(255, 80, 200, 220), "retained divider between deferred") && ok;
+        ok = expect_surface(pixels, probe_x + 16, probe_y + 9,
+                            SkColorSetARGB(255, 80, 200, 220), "retained divider between deferred") && ok;
         ok = expect_color(pixels, probe_x + 56, probe_y + 9,
                           SkColorSetARGB(255, 236, 100, 210), "deferred badge after retained") && ok;
     }
@@ -292,9 +325,9 @@ int main(int argc, char** argv) {
                      resource_x, resource_y);
         ok = false;
     } else {
-        ok = expect_color(pixels, resource_x + 28, resource_y + 16,
-                          SkColorSetARGB(255, 49, 56, 72),
-                          "stale resource generation skipped") && ok;
+        ok = expect_surface(pixels, resource_x + 28, resource_y + 16,
+                            SkColorSetARGB(255, 49, 56, 72),
+                            "stale resource generation skipped") && ok;
         ok = expect_color(pixels, resource_x + 64 + 28, resource_y + 16,
                           SkColorSetARGB(255, 44, 176, 132),
                           "replacement resource generation rendered") && ok;

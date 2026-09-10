@@ -319,11 +319,13 @@ def showcase_text_field_height() -> i32:
 # Packed ARGB. The alpha matters: the highlight is deliberately translucent so
 # the glyphs under it stay readable, which means no pixel in it is ever the
 # pure colour -- a host has to composite before it can look for one.
-# i64, not i32: an opaque alpha packs to 0xff000000, which does not fit a
-# signed 32-bit result -- and the framework traps on that rather than wrapping.
+#
+# The packing is UiCore's, not this fixture's. It used to be open-coded here,
+# which is how it was first written into an i32 that an opaque alpha overflows;
+# the framework's packer states that bound as a refinement type instead of
+# leaving each call site to rediscover it.
 def showcase_selection_color() -> i64:
-    selection: UiCore::Color = UiHandles::theme().selection
-    return selection.a.i64() * 16777216 + selection.r.i64() * 65536 + selection.g.i64() * 256 + selection.b.i64()
+    return UiCore::pack_argb(UiHandles::theme().selection)
 
 def showcase_validation_x() -> i32:
     return showcase_validation_frame().origin.x.i32()

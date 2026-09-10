@@ -37,6 +37,43 @@ extend UiSkia:
                 safe_radius, safe_width,
                 color.r, color.g, color.b, color.a)
 
+        # A rounded rectangle filled with a two-stop gradient, in ONE Skia draw.
+        #
+        # The composed clip-and-fill version below predates this and still has
+        # its uses, but a clip gives the corners a hard edge while a shader on
+        # the rounded path is antialiased like every other primitive -- which is
+        # exactly where a surface treatment would otherwise show its seams.
+        def fill_rounded_gradient(box: UiCore::Rect, radius: f32, start: UiCore::Color, end: UiCore::Color, horizontal: bool) -> void can[Ui.Draw]:
+            return if canvas_state == 0 or (start.a == 0 and end.a == 0)
+            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+            return if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
+            elisa_skia_canvas_fill_round_rect_gradient(
+                canvas_state,
+                safe_box.origin.x, safe_box.origin.y,
+                safe_box.size.width, safe_box.size.height,
+                UiSkia::skia_safe_radius(safe_box, radius),
+                start.r, start.g, start.b, start.a,
+                end.r, end.g, end.b, end.a,
+                1 if horizontal else 0)
+
+        # The same, stroked. This is what draws a rim light: one outline whose
+        # colour changes down the edge, rather than two strokes fighting over
+        # the same pixels.
+        def stroke_rounded_gradient(box: UiCore::Rect, radius: f32, stroke_width: f32, start: UiCore::Color, end: UiCore::Color, horizontal: bool) -> void can[Ui.Draw]:
+            return if canvas_state == 0 or (start.a == 0 and end.a == 0)
+            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+            return if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
+            safe_width: f32 = UiCore::bounded_extent(stroke_width)
+            return if safe_width <= 0.0
+            elisa_skia_canvas_stroke_round_rect_gradient(
+                canvas_state,
+                safe_box.origin.x, safe_box.origin.y,
+                safe_box.size.width, safe_box.size.height,
+                UiSkia::skia_safe_radius(safe_box, radius), safe_width,
+                start.r, start.g, start.b, start.a,
+                end.r, end.g, end.b, end.a,
+                1 if horizontal else 0)
+
         # A two-stop gradient is enough for polished surfaces and keeps the
         # color-stop policy in Elisa. Skia owns only shader construction and
         # rasterization; malformed geometry and fully transparent stops never

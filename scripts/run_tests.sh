@@ -56,6 +56,14 @@ if ! bash "$ROOT/scripts/check_global_names.sh"; then
   status=1
 fi
 
+# The laws in src/ are only worth the compiler's willingness to complain about
+# them, and a refinement that stops being checked keeps compiling silently. This
+# compiles one fixture that must be reported and one that must not.
+if ! bash "$ROOT/scripts/check_refinements.sh"; then
+  echo "FAIL refinements"
+  status=1
+fi
+
 # Execute the pinned Unicode GraphemeBreakTest corpus through the same
 # UiText::next_grapheme used by editors and line layout. The small curated
 # regression fixture remains in the per-test loop; this data-driven gate is

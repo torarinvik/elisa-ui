@@ -26,6 +26,33 @@ bool expect_rgba(const std::uint8_t* pixels, int row_bytes, int x, int y,
     return false;
 }
 
+// A surface lit from above: strictly lighter at its top edge than the colour
+// the app asked for, and exactly that colour at its bottom. See the same
+// assertion in skia_offscreen_host.cpp -- the pair is what pins the sheen,
+// where one fixed sample would only pin whatever the treatment happens to be.
+bool expect_lit_from_above(const std::uint8_t* pixels, int row_bytes, int x, int top_y,
+                           int bottom_y, std::uint8_t red, std::uint8_t green,
+                           std::uint8_t blue, const char* label) {
+    const std::uint8_t* top = pixels + top_y * row_bytes + x * 4;
+    const std::uint8_t* bottom = pixels + bottom_y * row_bytes + x * 4;
+    // The far edge is where the wash has decayed to nothing. "Nothing" is
+    // allowed to be one 8-bit step: the ramp is sampled at pixel CENTRES, so
+    // the last row inside the shape sits a fraction of a step short of the end,
+    // and at a device scale other than 1 that fraction rounds differently.
+    if (bottom[0] < red || bottom[0] > red + 1 || bottom[1] < green || bottom[1] > green + 1 ||
+        bottom[2] < blue || bottom[2] > blue + 1 || bottom[3] != 255) {
+        std::fprintf(stderr, "%s: the unlit edge should be rgba(%u,%u,%u,255), got rgba(%u,%u,%u,%u)\n",
+                     label, red, green, blue, bottom[0], bottom[1], bottom[2], bottom[3]);
+        return false;
+    }
+    if (top[0] <= bottom[0] || top[1] <= bottom[1] || top[2] <= bottom[2]) {
+        std::fprintf(stderr, "%s: the top edge is not lit: rgb(%u,%u,%u) is no lighter than the far edge rgb(%u,%u,%u)\n",
+                     label, top[0], top[1], top[2], bottom[0], bottom[1], bottom[2]);
+        return false;
+    }
+    return true;
+}
+
 bool expect_ink(const std::uint8_t* pixels, int row_bytes, int left, int top,
                 int right, int bottom) {
     for (int y = top; y < bottom; ++y) {
@@ -87,7 +114,8 @@ int main() {
     bool ok = status == 1 && pixels != nullptr;
     if (!ok) std::fprintf(stderr, "appkit skia host: compositor returned status %d\n", status);
     if (ok) ok = expect_rgba(pixels, row_bytes, 0, 0, 18, 24, 32, "background") && ok;
-    if (ok) ok = expect_rgba(pixels, row_bytes, 40, 40, 220, 80, 100, "rounded fill") && ok;
+    // The rect spans y 20..80; sampled 4px inside each horizontal edge.
+    if (ok) ok = expect_lit_from_above(pixels, row_bytes, 40, 24, 76, 220, 80, 100, "rounded fill") && ok;
     if (ok) ok = expect_rgba(pixels, row_bytes, 80, 130, 60, 180, 140, "circle") && ok;
     if (ok) ok = expect_rgba(pixels, row_bytes, 230, 50, 70, 120, 220, "triangle") && ok;
     if (ok) ok = expect_rgba(pixels, row_bytes, 290, 160, 240, 180, 70, "deferred custom fill") && ok;
@@ -137,7 +165,8 @@ int main() {
     bool scaled_ok = scaled_status == 1 && scaled_pixels != nullptr;
     if (!scaled_ok) std::fprintf(stderr, "appkit skia host: scaled compositor returned status %d\n", scaled_status);
     if (scaled_ok) scaled_ok = expect_rgba(scaled_pixels, scaled_row_bytes, 0, 0, 18, 24, 32, "scaled background") && scaled_ok;
-    if (scaled_ok) scaled_ok = expect_rgba(scaled_pixels, scaled_row_bytes, 80, 80, 220, 80, 100, "scaled rounded fill") && scaled_ok;
+    // At 2x the same rect spans y 40..160.
+    if (scaled_ok) scaled_ok = expect_lit_from_above(scaled_pixels, scaled_row_bytes, 80, 48, 152, 220, 80, 100, "scaled rounded fill") && scaled_ok;
     if (scaled_ok) scaled_ok = expect_rgba(scaled_pixels, scaled_row_bytes, 160, 260, 60, 180, 140, "scaled circle") && scaled_ok;
     if (scaled_ok) scaled_ok = expect_rgba(scaled_pixels, scaled_row_bytes, 460, 100, 70, 120, 220, "scaled triangle") && scaled_ok;
     if (scaled_ok) scaled_ok = expect_ink(scaled_pixels, scaled_row_bytes, 30, 316, 220, 396) && scaled_ok;

@@ -76,6 +76,29 @@ module UiPaint:
             shadow_offset_y: f32
             shadow_blur: f32
             hairline_width: f32
+            # DEPTH, and why it is three effects rather than one.
+            #
+            # A drop shadow alone is how a surface reads as raised on PAPER. On a
+            # dark interface it is nearly invisible -- dark on dark -- and the
+            # first Skia renders of the showcase looked flat for exactly that
+            # reason: every surface had the same shadow policy and none of it
+            # showed. What actually reads as raised on a dark ground is LIGHT
+            # CATCHING THE TOP EDGE, so the policy carries both and weights them
+            # by how light the surface itself is.
+            #
+            # `sheen` is a white overlay across the fill, strongest at the top:
+            # the surface is lit from above. `bevel` is the rim of that same
+            # light on the top of the outline -- one pixel, and the difference
+            # between a rectangle and an object.
+            sheen_top_alpha: u8
+            sheen_bottom_alpha: u8
+            bevel_alpha: u8
+            # A RECESSED surface is the same three effects with the light
+            # coming from the other side of the edge: the wash across it is
+            # shadow rather than sheen, and the rim sits at the BOTTOM, where a
+            # well catches light from a source still overhead.
+            sheen_is_shadow: bool
+            bevel_at_bottom: bool
 
         def rounded_rect_style(box: UiCore::Rect, elevated: bool) -> RoundedRectStyle:
             # Every custom surface gets the shared rounded/hairline treatment;
@@ -103,6 +126,63 @@ module UiPaint:
                 shadow_offset_y: SHADOW_OFFSET_Y,
                 shadow_blur: SHADOW_BLUR,
                 hairline_width: HAIRLINE_WIDTH,
+                sheen_top_alpha: 0,
+                sheen_bottom_alpha: 0,
+                bevel_alpha: 0,
+                sheen_is_shadow: false,
+                bevel_at_bottom: false,
+            }
+
+        # The elevation treatment for a surface that will be painted in `color`.
+        #
+        # This is the whole depth policy, in one place, for every custom backend:
+        # a light surface is lifted by a soft shadow beneath it, a dark surface by
+        # light along its top edge, and both get a little of the other. Passing the
+        # colour is what makes that possible -- the style used to be chosen with no
+        # idea what would be painted into it, so one shadow had to serve a white
+        # card and a near-black panel, and it suited neither.
+        def rounded_rect_style_for(box: UiCore::Rect, depth: UiCore::SurfaceDepth, color: UiCore::Color) -> RoundedRectStyle:
+            base: RoundedRectStyle = rounded_rect_style(box, depth == UiCore::SurfaceDepth.Raised)
+            return elevation_treatment(base, color, depth)
+
+        def rounded_rect_style_for_with_radius(box: UiCore::Rect, depth: UiCore::SurfaceDepth, requested_radius: f32, color: UiCore::Color) -> RoundedRectStyle:
+            base: RoundedRectStyle = rounded_rect_style_with_radius(box, depth == UiCore::SurfaceDepth.Raised, requested_radius)
+            return elevation_treatment(base, color, depth)
+
+        # Weight the three depth effects by the surface's own lightness.
+        #
+        # LIGHT surfaces (luminance at or above the midpoint) cast a real shadow:
+        # wide and soft, low alpha, offset further down than the old policy's 2px,
+        # because a tight dark smudge reads as a border rather than as height.
+        # They keep a strong top bevel -- on paper that is the lit edge.
+        #
+        # DARK surfaces get a shadow too, but a stronger one over a shorter
+        # distance (it has to survive being dark-on-dark), and they lean on the
+        # sheen and bevel, which are the only two things that read at all.
+        #
+        # A surface that is NOT elevated still gets a trace of both, because a
+        # completely flat fill next to a lifted one looks like a rendering
+        # failure rather than a deliberate lack of emphasis.
+        def elevation_treatment(base: RoundedRectStyle, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> RoundedRectStyle:
+            light: bool = UiCore::surface_luminance(color) >= 128
+            elevated: bool = depth == UiCore::SurfaceDepth.Raised
+            inset: bool = depth == UiCore::SurfaceDepth.Inset
+            # A recess casts no shadow of its own -- the shadow is INSIDE it,
+            # which is what the inverted wash below draws.
+            return RoundedRectStyle{
+                radius: base.radius,
+                elevated: elevated,
+                shadow_alpha: 0 if inset else ((46 if elevated else 0) if light else (130 if elevated else 0)),
+                hairline_alpha: base.hairline_alpha,
+                shadow_offset_x: base.shadow_offset_x,
+                shadow_offset_y: 8.0,
+                shadow_blur: 22.0,
+                hairline_width: base.hairline_width,
+                sheen_top_alpha: (70 if light else 110) if inset else ((26 if elevated else 10) if light else (30 if elevated else 8)),
+                sheen_bottom_alpha: 0,
+                bevel_alpha: (90 if light else 46) if inset else ((170 if elevated else 60) if light else (120 if elevated else 40)),
+                sheen_is_shadow: inset,
+                bevel_at_bottom: inset,
             }
 
         # One command, one method. A painter is a TYPE, not a value: its state is
@@ -112,7 +192,7 @@ module UiPaint:
             def push_clip(box: UiCore::Rect) -> void can[Ui.Draw]
             def pop_clip() -> void can[Ui.Draw]
             def clear(color: UiCore::Color) -> void can[Ui.Draw]
-            def fill_rect(box: UiCore::Rect, color: UiCore::Color, elevated: bool) -> void can[Ui.Draw]
+            def fill_rect(box: UiCore::Rect, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void can[Ui.Draw]
             def fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> void can[Ui.Draw]
             def fill_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]
             def fill_line(segment: UiCore::Line, color: UiCore::Color) -> void can[Ui.Draw]
@@ -135,7 +215,7 @@ module UiPaint:
                     UiCore::Command.Clear(color):
                         P.clear(color)
                     UiCore::Command.FillRect(box, color):
-                        P.fill_rect(box, color, UiCore::command_is_elevated(index))
+                        P.fill_rect(box, color, UiCore::command_depth_at(index))
                     UiCore::Command.FillCircle(disc, color):
                         P.fill_circle(disc, color)
                     UiCore::Command.FillTriangle(tri, color):

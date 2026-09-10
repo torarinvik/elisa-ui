@@ -42,6 +42,12 @@ extend UiFlat:
                 enabled: bool = effectively_enabled(index)
                 color: UiCore::Color = color_of(index)
                 frame: UiCore::Rect = UiCore::Rect(widgets[index].x, widgets[index].y, widgets[index].width, widgets[index].height)
+                paint_focus_halo(index) if widgets[index].focused
+                # A TRACK IS A GROOVE. Both the slider's and the progress
+                # bar's are cut into the surface, so they take the recessed
+                # lighting for the same reason a text field does; the value
+                # that fills them stays flat, because it sits IN the channel
+                # rather than being another surface stacked on it.
                 if widgets[index].kind == UiConst::WidgetKind.Slider:
                     slider_inset: f32 = clamped_inset(current_theme.slider_horizontal_inset, widgets[index].width)
                     track_height: f32 = current_theme.slider_track_height if current_theme.slider_track_height < widgets[index].height else widgets[index].height
@@ -50,7 +56,7 @@ extend UiFlat:
                     track_width: f32 = widgets[index].width - slider_inset * 2.0
                     slider_track: UiCore::Color = widgets[index].color if enabled else muted_color(widgets[index].color)
                     slider_fill: UiCore::Color = widgets[index].hover_color if enabled else muted_color(widgets[index].hover_color)
-                    UiCore::fill(UiCore::Rect(track_x, track_y, track_width, track_height), slider_track)
+                    UiCore::fill_inset(UiCore::Rect(track_x, track_y, track_width, track_height), slider_track)
                     UiCore::fill(UiCore::Rect(track_x, track_y, track_width * widgets[index].value, track_height), slider_fill)
                     thumb_x: f32 = track_x + track_width * widgets[index].value
                     thumb: mutable UiCore::Color = widgets[index].press_color if enabled else muted_color(widgets[index].press_color)
@@ -61,11 +67,10 @@ extend UiFlat:
                     progress_y: f32 = widgets[index].y + widgets[index].height / 2.0 - progress_height / 2.0
                     progress_track: UiCore::Color = widgets[index].color if enabled else muted_color(widgets[index].color)
                     progress_fill: UiCore::Color = widgets[index].hover_color if enabled else muted_color(widgets[index].hover_color)
-                    UiCore::fill(UiCore::Rect(widgets[index].x, progress_y, widgets[index].width, progress_height), progress_track)
+                    UiCore::fill_inset(UiCore::Rect(widgets[index].x, progress_y, widgets[index].width, progress_height), progress_track)
                     UiCore::fill(UiCore::Rect(widgets[index].x, progress_y, widgets[index].width * widgets[index].value, progress_height), progress_fill)
                 elif color.a != 0:
-                    elevated_surface: bool = widgets[index].kind == UiConst::WidgetKind.Button or widgets[index].kind == UiConst::WidgetKind.RadioButton or widgets[index].kind == UiConst::WidgetKind.CheckBox or widgets[index].kind == UiConst::WidgetKind.TextField
-                    UiCore::fill_elevated(frame, color) if elevated_surface else UiCore::fill(frame, color)
+                    UiFlat::fill_at_depth(frame, color, surface_depth_of(index, color))
                 if widgets[index].kind == UiConst::WidgetKind.RadioButton:
                     mark_x: f32 = widgets[index].x + current_theme.choice_center_x
                     mark_y: f32 = widgets[index].y + widgets[index].height / 2.0
@@ -92,17 +97,6 @@ extend UiFlat:
                         check_ink: UiCore::Color = current_theme.control_mark_strong if enabled else muted_color(current_theme.control_mark_strong)
                         UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(box_x + checkbox_extent * 0.23, box_y + checkbox_extent * 0.50), to_point: UiCore::Vec2(box_x + checkbox_extent * 0.44, box_y + checkbox_extent * 0.73)}, check_ink)
                         UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(box_x + checkbox_extent * 0.44, box_y + checkbox_extent * 0.73), to_point: UiCore::Vec2(box_x + checkbox_extent * 0.82, box_y + checkbox_extent * 0.27)}, check_ink)
-                if widgets[index].focused:
-                    focus_x: f32 = clamped_inset(current_theme.focus_inset, widgets[index].width)
-                    focus_y: f32 = clamped_inset(current_theme.focus_inset, widgets[index].height)
-                    left: f32 = widgets[index].x + focus_x
-                    top: f32 = widgets[index].y + focus_y
-                    right: f32 = widgets[index].x + widgets[index].width - focus_x
-                    bottom: f32 = widgets[index].y + widgets[index].height - focus_y
-                    UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(left, top), to_point: UiCore::Vec2(right, top)}, current_theme.focus_ring)
-                    UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(right, top), to_point: UiCore::Vec2(right, bottom)}, current_theme.focus_ring)
-                    UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(right, bottom), to_point: UiCore::Vec2(left, bottom)}, current_theme.focus_ring)
-                    UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(left, bottom), to_point: UiCore::Vec2(left, top)}, current_theme.focus_ring)
                 if widgets[index].kind == UiConst::WidgetKind.TextField:
                     field_value: sview = text_value(index)
                     text_inset: f32 = clamped_inset(current_theme.text_horizontal_padding, widgets[index].width)
@@ -166,7 +160,7 @@ extend UiFlat:
                     text_x <- widgets[index].x + marker_space + (widgets[index].width - marker_space - text_width) / 2.0
                 ink: mutable UiCore::Color = widgets[index].text_color
                 ink <- muted_color(ink) if not enabled
-                UiCore::draw(UiCore::TextRun(UiCore::Vec2(text_x, text_y), widgets[index].text_size, widgets[index].text), ink)
+                UiCore::draw(UiCore::TextRun(UiCore::Vec2(text_x, text_y), widgets[index].text_size, widgets[index].text, widgets[index].text_weighted), ink)
             # Indicators are emitted after content so they remain readable over
             # translated children and nested scroll areas.
             for order_index in 0..<paint_order_count:

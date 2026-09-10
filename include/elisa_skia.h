@@ -58,6 +58,20 @@ void elisa_skia_canvas_shadow_round_rect(size_t canvas, float x, float y, float 
 void elisa_skia_canvas_shadow_round_rect_color(size_t canvas, float x, float y, float width, float height,
                                                float radius, float offset_x, float offset_y, float blur,
                                                uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha);
+void elisa_skia_canvas_fill_round_rect_gradient(size_t canvas, float x, float y, float width,
+                                               float height, float radius,
+                                               uint8_t start_red, uint8_t start_green,
+                                               uint8_t start_blue, uint8_t start_alpha,
+                                               uint8_t end_red, uint8_t end_green,
+                                               uint8_t end_blue, uint8_t end_alpha,
+                                               int32_t horizontal);
+void elisa_skia_canvas_stroke_round_rect_gradient(size_t canvas, float x, float y, float width,
+                                                  float height, float radius, float stroke_width,
+                                                  uint8_t start_red, uint8_t start_green,
+                                                  uint8_t start_blue, uint8_t start_alpha,
+                                                  uint8_t end_red, uint8_t end_green,
+                                                  uint8_t end_blue, uint8_t end_alpha,
+                                                  int32_t horizontal);
 void elisa_skia_canvas_fill_linear_gradient(size_t canvas, float x, float y, float width, float height,
                                             uint8_t start_red, uint8_t start_green, uint8_t start_blue,
                                             uint8_t start_alpha, uint8_t end_red, uint8_t end_green,
@@ -74,6 +88,12 @@ void elisa_skia_canvas_draw_image_source_sampling(size_t canvas, size_t image,
                                                   uint8_t alpha, int32_t sampling);
 void elisa_skia_canvas_draw_text(size_t canvas, const char *text, size_t length, float x, float y,
                                  float size, uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha);
+void elisa_skia_canvas_draw_text_weighted(size_t canvas, size_t font, const char *text,
+                                          size_t length, float x, float y, float size,
+                                          int32_t weighted, uint8_t red, uint8_t green,
+                                          uint8_t blue, uint8_t alpha);
+float elisa_skia_measure_text_width_weighted(size_t font, const char *text, size_t length,
+                                             float size, int32_t weighted);
 void elisa_skia_canvas_draw_text_with_font(size_t canvas, size_t font, const char *text, size_t length,
                                            float x, float y, float size, uint8_t red, uint8_t green,
                                            uint8_t blue, uint8_t alpha);

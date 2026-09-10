@@ -14,14 +14,26 @@ extend UiSkia:
             return if UiSkia::canvas_state == 0 or color.a == 0
             safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
             return if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
-            style: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_with_radius(safe_box, elevated, metrics.corner_radius)
-            UiSkia::draw_shadow(safe_box, style)
-            UiSkia::fill_rounded_rect(safe_box, style.radius, color)
-            UiSkia::draw_outline(safe_box, style)
+            depth: UiCore::SurfaceDepth = UiCore::SurfaceDepth.Raised if elevated else UiCore::SurfaceDepth.Flat
+            style: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for_with_radius(safe_box, depth, metrics.corner_radius, color)
+            UiSkia::draw_elevated_surface(safe_box, style, color)
 
         def fill_current_themed_surface(box: UiCore::Rect, color: UiCore::Color, elevated: bool, system_high_contrast: bool) -> void can[Ui.Draw]:
             metrics: UiTheme::Metrics = UiTheme::scaled_metrics(UiTheme::current_preferences(), system_high_contrast)
             UiSkia::fill_themed_surface(box, color, elevated, metrics)
+
+        # One rounded surface, painted the way UiPaint says to light it: the
+        # shadow it casts, its own fill, the sheen across it, and the rim.
+        #
+        # The ORDER is the whole thing. Shadow first, because it belongs under
+        # the surface; sheen over the fill, because it is light falling ON the
+        # surface rather than part of its colour; rim last, because an edge that
+        # anything else paints over stops being an edge.
+        def draw_elevated_surface(box: UiCore::Rect, style: UiPaint::RoundedRectStyle, color: UiCore::Color) -> void can[Ui.Draw]:
+            UiSkia::draw_shadow(box, style)
+            UiSkia::fill_rounded_rect(box, style.radius, color)
+            UiSkia::draw_sheen(box, style)
+            UiSkia::draw_outline(box, style)
 
     private:
         def draw_shadow(box: UiCore::Rect, style: UiPaint::RoundedRectStyle) -> void can[Ui.Draw]:
@@ -30,6 +42,29 @@ extend UiSkia:
                 box, style.radius, style.shadow_offset_x, style.shadow_offset_y,
                 style.shadow_blur, alpha)
 
+        # Light across the face, strongest at the top. White at a low alpha
+        # rather than a lightened copy of the fill: an overlay works on any
+        # colour the app chooses, and needs no colour arithmetic here.
+        def draw_sheen(box: UiCore::Rect, style: UiPaint::RoundedRectStyle) -> void can[Ui.Draw]:
+            return if style.sheen_top_alpha == 0 and style.sheen_bottom_alpha == 0
+            tint: u8 = 0 if style.sheen_is_shadow else 255
+            UiSkia::fill_rounded_gradient(
+                box, style.radius,
+                UiCore::rgba(tint, tint, tint, style.sheen_top_alpha),
+                UiCore::rgba(tint, tint, tint, style.sheen_bottom_alpha), false)
+
+        # The outline and the rim light are ONE stroke.
+        #
+        # They used to be two ideas and only one of them existed: a uniform
+        # white hairline all the way round, which defines the shape but says
+        # nothing about where the light is. A single stroke that runs from the
+        # bevel alpha at the top to the hairline alpha at the bottom does both,
+        # and cannot double up on the top edge the way two strokes would.
         def draw_outline(box: UiCore::Rect, style: UiPaint::RoundedRectStyle) -> void can[Ui.Draw]:
-            alpha: u8 = style.hairline_alpha
-            UiSkia::stroke_rounded_rect(box, style.radius, style.hairline_width, UiCore::rgba(255, 255, 255, alpha))
+            rim: u8 = style.bevel_alpha if style.bevel_alpha > style.hairline_alpha else style.hairline_alpha
+            near: u8 = style.hairline_alpha if style.bevel_at_bottom else rim
+            far: u8 = rim if style.bevel_at_bottom else style.hairline_alpha
+            UiSkia::stroke_rounded_gradient(
+                box, style.radius, style.hairline_width,
+                UiCore::rgba(255, 255, 255, near),
+                UiCore::rgba(255, 255, 255, far), false)

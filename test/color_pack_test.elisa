@@ -1,0 +1,58 @@
+# Packed-colour arithmetic, and the refinement types that bound it.
+#
+# The value here is not that 255 packs to 4278190080 -- it is that the packer
+# and the unpackers name their bounds in their signatures, so the compiler can
+# reject a caller that would leave them. The runtime checks below cover the
+# arithmetic; scripts/check_refinements.sh covers the rejection.
+
+include "../src/core/ui_core.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable color_pack_test_failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    color_pack_test_failures <- color_pack_test_failures + 1
+    _ = puts(name)
+
+def round_trips(color: UiCore::Color) -> bool:
+    restored: UiCore::Color = UiCore::unpack_argb(UiCore::pack_argb(color))
+    return restored.r == color.r and restored.g == color.g and restored.b == color.b and restored.a == color.a
+
+def main() -> i64:
+    # The exact value that used to trap. Opaque black is 0xff000000: larger than
+    # any positive i32, and the reason every signature in this family is i64.
+    opaque_black: i64 = UiCore::pack_argb(UiCore::rgba(0, 0, 0, 255))
+    check("an opaque colour packs past the signed 32-bit range", opaque_black == 4278190080)
+    check("the packed word stays inside its own law", opaque_black <= UiCore::PACKED_ARGB_MAX and opaque_black >= 0)
+    check("opaque white is the largest word", UiCore::pack_argb(UiCore::rgba(255, 255, 255, 255)) == UiCore::PACKED_ARGB_MAX)
+    check("a fully transparent colour packs to zero", UiCore::pack_argb(UiCore::rgba(0, 0, 0, 0)) == 0)
+
+    # Each channel lands in its own place value, and nowhere else.
+    check("alpha occupies the top byte", UiCore::pack_argb(UiCore::rgba(0, 0, 0, 1)) == UiCore::ARGB_ALPHA_SCALE)
+    check("red occupies the second byte", UiCore::pack_argb(UiCore::rgba(1, 0, 0, 0)) == UiCore::ARGB_RED_SCALE)
+    check("green occupies the third byte", UiCore::pack_argb(UiCore::rgba(0, 1, 0, 0)) == UiCore::ARGB_GREEN_SCALE)
+    check("blue occupies the low byte", UiCore::pack_argb(UiCore::rgba(0, 0, 1, 0)) == 1)
+
+    mixed: i64 = UiCore::pack_argb(UiCore::rgba(18, 52, 86, 120))
+    check("alpha comes back out", UiCore::packed_alpha(mixed) == 120)
+    check("red comes back out", UiCore::packed_red(mixed) == 18)
+    check("green comes back out", UiCore::packed_green(mixed) == 52)
+    check("blue comes back out", UiCore::packed_blue(mixed) == 86)
+
+    check("a mixed colour round trips", round_trips(UiCore::rgba(18, 52, 86, 120)))
+    check("an opaque colour round trips", round_trips(UiCore::rgba(200, 40, 90, 255)))
+    check("a transparent colour round trips", round_trips(UiCore::rgba(7, 9, 11, 0)))
+
+    # `channel` is the only way in, so it is the only place a stray value can be
+    # turned into a proven one. It clamps rather than trapping: a colour is a
+    # presentation fact and a wrong shade is better than a dead frame.
+    check("a negative channel clamps to zero", UiCore::channel(-1) == 0)
+    check("an oversized channel clamps to the maximum", UiCore::channel(4096) == UiCore::CHANNEL_MAX)
+    check("an in-range channel is unchanged", UiCore::channel(137) == 137)
+
+    if color_pack_test_failures == 0:
+        _ = puts("color pack: all checks passed")
+        return 0
+    return 1

@@ -46,7 +46,10 @@ def check_immediate_painting() -> u32:
     check("Skia circles stay inside the geometry envelope", skia_test_circle_count() == edge_circle_count and skia_test_stroke_circle_count() == edge_stroke_circle_count)
     UiSkia::fill_triangle(UiCore::Triangle{a: UiCore::Vec2(1.0, 1.0), b: UiCore::Vec2(4.0, 1.0), c: UiCore::Vec2(2.0, 5.0)}, UiCore::rgb(20, 30, 40))
     UiSkia::stroke_line(UiCore::Line{from_point: UiCore::Vec2(1.0, 2.0), to_point: UiCore::Vec2(8.0, 9.0)}, 1.0, UiCore::rgb(20, 30, 40))
-    check("immediate custom shapes cross the Elisa-owned API", skia_test_stroke_round_rect_count() == 3 and skia_test_circle_count() == 2 and skia_test_stroke_circle_count() == 1 and skia_test_last_circle_stroke_width() == 2.0 and skia_test_triangle_count() == 2 and skia_test_line_count() == 2)
+    # One plain rounded stroke: the direct call above. The two retained
+    # rectangles in this batch are outlined by the rim instead, which is a
+    # gradient stroke -- see "a retained surface is lit, not merely filled".
+    check("immediate custom shapes cross the Elisa-owned API", skia_test_stroke_round_rect_count() == 1 and skia_test_circle_count() == 2 and skia_test_stroke_circle_count() == 1 and skia_test_last_circle_stroke_width() == 2.0 and skia_test_triangle_count() == 2 and skia_test_line_count() == 2)
     UiSkia::fill_rounded_rect(UiCore::Rect(12.0, 13.0, 0.0, 20.0), 6.0, UiCore::rgb(20, 30, 40))
     UiResources::reset()
     logical_image: UiResources::ResourceHandle = UiResources::request("images/skia", 7)
@@ -123,8 +126,22 @@ def check_immediate_painting() -> u32:
     check("detach restores the frame transform", skia_test_restore_count() == 3)
     check("scale crosses the boundary for attachment and transform", skia_test_scale_count() == 2)
     check("clip crosses the boundary once", skia_test_clip_count() == 1)
-    check("all commands replay through Skia", skia_test_clear_count() == 1 and skia_test_round_rect_count() == 4 and skia_test_stroke_round_rect_count() == 3 and skia_test_shadow_round_rect_count() == 1 and skia_test_image_count() == 11 and skia_test_circle_count() == 2 and skia_test_triangle_count() == 2 and skia_test_line_count() == 2 and skia_test_text_count() == 6)
-    check("Skia shadow policy stays in Elisa", skia_test_last_shadow_offset_x() == 0.0 and skia_test_last_shadow_offset_y() == 2.0 and skia_test_last_shadow_blur() == 5.0 and skia_test_last_shadow_red() == 0 and skia_test_last_shadow_green() == 0 and skia_test_last_shadow_blue() == 0)
+    check("all commands replay through Skia", skia_test_clear_count() == 1 and skia_test_round_rect_count() == 4 and skia_test_stroke_round_rect_count() == 1 and skia_test_shadow_round_rect_count() == 1 and skia_test_image_count() == 11 and skia_test_circle_count() == 2 and skia_test_triangle_count() == 2 and skia_test_line_count() == 2 and skia_test_text_count() == 6)
+    # A RETAINED SURFACE IS FOUR DRAWS, and this is where that is stated. Each
+    # rectangle in the batch above becomes the shadow it casts, its own fill,
+    # the sheen across its face and the rim on its edge -- so the two rectangles
+    # contribute two sheens and two rims, while the ONE bare
+    # `stroke_rounded_rect` call earlier in this phase is the only plain stroke
+    # left. Before the surface treatment the rim was that plain stroke, which is
+    # why this number moved.
+    check("a retained surface is lit, not merely filled", skia_test_rounded_gradient_count() == 2 and skia_test_stroke_rounded_gradient_count() == 2)
+    # The bridge invents no appearance: every shadow parameter that crossed the
+    # FFI is the one UiPaint computed for that exact box, depth and colour.
+    # Comparing against the policy rather than against literals is deliberate --
+    # a hardcoded 2.0/5.0 here only pinned whatever the treatment happened to be
+    # and had to be rewritten the moment it was tuned.
+    replayed_style: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for(UiCore::Rect(2.0, 3.0, 100.0, 30.0), UiCore::SurfaceDepth.Raised, UiCore::rgb(40, 50, 60))
+    check("Skia shadow policy stays in Elisa", skia_test_last_shadow_offset_x() == replayed_style.shadow_offset_x and skia_test_last_shadow_offset_y() == replayed_style.shadow_offset_y and skia_test_last_shadow_blur() == replayed_style.shadow_blur and skia_test_last_shadow_red() == 0 and skia_test_last_shadow_green() == 0 and skia_test_last_shadow_blue() == 0)
     check("Skia hairline policy stays in Elisa", skia_test_last_stroke_width() == 1.0 and skia_test_last_line_width() == 1.0)
     check("detach clears the borrowed state", not UiSkia::is_attached())
     check("detached render status is explicit", UiSkia::render_status() == UiSkia::RenderStatus.SkippedNoSurface)

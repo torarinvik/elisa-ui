@@ -72,7 +72,14 @@ extend UiCore:
         # remain plain even when they happen to be wide and short.
         def fill_elevated(box: Rect, color: Color) -> void:
             safe_box: Rect = Rect{origin: Vec2{x: bounded_coordinate(box.origin.x), y: bounded_coordinate(box.origin.y)}, size: Size{width: bounded_extent(box.size.width), height: bounded_extent(box.size.height)}}
-            push_command_with_style(Command.FillRect(safe_box, color), true)
+            push_command_with_style(Command.FillRect(safe_box, color), SurfaceDepth.Raised)
+
+        # Mark a rectangle as an intentional RECESSED surface: a text field, a
+        # slider track, a well. The opposite lighting to fill_elevated, and the
+        # same explicit opt-in -- nothing infers it from the shape.
+        def fill_inset(box: Rect, color: Color) -> void:
+            safe_box: Rect = Rect{origin: Vec2{x: bounded_coordinate(box.origin.x), y: bounded_coordinate(box.origin.y)}, size: Size{width: bounded_extent(box.size.width), height: bounded_extent(box.size.height)}}
+            push_command_with_style(Command.FillRect(safe_box, color), SurfaceDepth.Inset)
 
         def fill(disc: Circle, color: Color) -> void:
             safe_disc: Circle = Circle{center: Vec2{x: bounded_coordinate(disc.center.x), y: bounded_coordinate(disc.center.y)}, radius: bounded_extent(disc.radius)}
@@ -87,8 +94,11 @@ extend UiCore:
             push_command(Command.FillLine(safe_segment, color))
 
         def draw(run: TextRun, color: Color) -> void:
-            safe_run: TextRun = TextRun(run.origin, run.size, run.text)
+            safe_run: TextRun = TextRun(run.origin, run.size, run.text, run.weighted)
             push_command(Command.DrawText(safe_run, color))
         def TextRun(origin: Vec2, size: f32, body: sview) -> TextRun:
+            return TextRun(origin, size, body, false)
+
+        def TextRun(origin: Vec2, size: f32, body: sview, weighted: bool) -> TextRun:
             safe_body: sview = bounded_text(body)
-            return TextRun{origin: Vec2{x: bounded_coordinate(origin.x), y: bounded_coordinate(origin.y)}, size: bounded_extent(size), text: safe_body}
+            return TextRun{origin: Vec2{x: bounded_coordinate(origin.x), y: bounded_coordinate(origin.y)}, size: bounded_extent(size), text: safe_body, weighted: weighted}

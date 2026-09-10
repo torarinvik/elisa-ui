@@ -68,7 +68,7 @@ extend UiCore:
         # fixable; the alternative is growing the buffer while making the
         # component's monotonic heap grow without bound.
         def push_command(command: Command) -> void:
-            push_command_with_style(command, false)
+            push_command_with_style(command, SurfaceDepth.Flat)
 
         # The batch a backend consumes at frame end.
         def command_count() -> usize:
@@ -91,7 +91,14 @@ extend UiCore:
         # style bit is kept beside the command so native/custom painters can
         # render an intentional control surface without changing wire payloads.
         def command_is_elevated(index: usize) -> bool:
-            return index < command_total.usize() and command_elevated[index]
+            return command_depth_at(index) == SurfaceDepth.Raised
+
+        # The recorded depth of a command. `command_is_elevated` remains the
+        # answer to the older yes/no question and is kept: a backend that only
+        # models a drop shadow has no use for the third state.
+        def command_depth_at(index: usize) -> SurfaceDepth:
+            return SurfaceDepth.Flat if index >= command_total.usize()
+            return command_surface_depth[index].SurfaceDepth()
 
         # Clip state is deliberately side-band metadata. A backend that can
         # clip natively applies it around one command; a wire backend can keep
@@ -272,14 +279,14 @@ extend UiCore:
             return 1 if milliseconds < 1 else milliseconds
 
     private:
-        def push_command_with_style(command: Command, elevated: bool) -> void:
+        def push_command_with_style(command: Command, depth: SurfaceDepth) -> void:
             if command_total >= MAX_COMMANDS.u32():
                 command_dropped <- true
                 return
             slot: usize = command_total.usize()
             command_has_clip_flag[slot] <- current_clip_active
             command_clip[slot] <- current_clip if current_clip_active
-            command_elevated[slot] <- elevated
+            command_surface_depth[slot] <- depth.i32()
             command_buffer[slot] <- normalized_command(command)
             command_total <- command_total + 1
             invalidate(Invalidation.Paint)
@@ -288,7 +295,7 @@ extend UiCore:
             command_buffer[index] <- Command.Clear(Color{r: 0, g: 0, b: 0, a: 0})
             command_clip[index] <- Rect(0.0, 0.0, 0.0, 0.0)
             command_has_clip_flag[index] <- false
-            command_elevated[index] <- false
+            command_surface_depth[index] <- SurfaceDepth.Flat.i32()
 
         def clear_accessibility_slot(index: usize) -> void:
             accessibility_nodes[index] <- AccessibilityNode{
@@ -341,5 +348,5 @@ extend UiCore:
                     safe_run: TextRun = TextRun(
                         Vec2(bounded_coordinate(run.origin.x), bounded_coordinate(run.origin.y)),
                         bounded_extent(run.size),
-                        bounded_text(run.text))
+                        bounded_text(run.text), run.weighted)
                     return Command.DrawText(safe_run, color)

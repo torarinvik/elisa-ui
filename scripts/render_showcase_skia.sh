@@ -56,4 +56,21 @@ for page in 1 2 3 4 5; do
   fi
   echo "showcase skia: page $page rendered ${WIDTH}x${HEIGHT} ($size bytes) -> $file"
 done
+# ...and one frame with the keyboard focus on a control. Every page above is
+# rendered with nothing focused, so without this the focus ring -- the thing a
+# keyboard user navigates by -- appears in no picture and is checked by nothing.
+focus_file="$PREFIX-focus.png"
+[[ -s "$focus_file" ]] || { echo "showcase skia: the focused frame produced no file" >&2; exit 1; }
+focus_size="$(stat -f%z "$focus_file")"
+if [[ "$focus_size" -lt 20000 ]]; then
+  echo "showcase skia: the focused frame rendered almost nothing ($focus_size bytes)" >&2
+  exit 1
+fi
+# The ring has to CHANGE the frame. A focused render identical to the unfocused
+# one means the ring stopped being drawn, which no size check would notice.
+if cmp -s "$PREFIX-page2.png" "$focus_file"; then
+  echo "showcase skia: the focused frame is identical to the unfocused one; no focus ring was drawn" >&2
+  exit 1
+fi
+echo "showcase skia: focus ring rendered ${WIDTH}x${HEIGHT} ($focus_size bytes) -> $focus_file"
 echo "showcase skia: all five showcase pages rendered by the real renderer"

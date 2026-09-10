@@ -44,6 +44,43 @@ bool expect_color_near(const SkPixmap& pixels, int x, int y, SkColor expected,
     return false;
 }
 
+// A surface lit from above is LIGHTER at its top edge than at its bottom, and
+// its bottom is still exactly the colour the app asked for. Asserting the pair
+// is what pins the sheen: one sample alone cannot tell a wash from a palette
+// change, and a fixed expected value at one point would have to be re-derived
+// every time the treatment is tuned.
+bool expect_lit_from_above(const SkPixmap& pixels, int x, int top_y, int bottom_y,
+                           SkColor base, const char* label) {
+    const SkColor top = pixels.getColor(x, top_y);
+    const SkColor bottom = pixels.getColor(x, bottom_y);
+    // The far edge is where the wash has decayed to nothing. "Nothing" is
+    // allowed to be one 8-bit step: the ramp is sampled at pixel CENTRES, so
+    // the last row inside the shape sits a fraction of a step short of the end.
+    const int floors[] = {
+        static_cast<int>(SkColorGetR(bottom)) - static_cast<int>(SkColorGetR(base)),
+        static_cast<int>(SkColorGetG(bottom)) - static_cast<int>(SkColorGetG(base)),
+        static_cast<int>(SkColorGetB(bottom)) - static_cast<int>(SkColorGetB(base)),
+    };
+    for (const int delta : floors) {
+        if (delta < 0 || delta > 1) {
+            std::fprintf(stderr, "%s: the unlit edge should be the requested colour 0x%08x, got 0x%08x\n",
+                         label, base, bottom);
+            return false;
+        }
+    }
+    if (SkColorGetA(bottom) != SkColorGetA(base)) {
+        std::fprintf(stderr, "%s: the unlit edge changed alpha: 0x%08x\n", label, bottom);
+        return false;
+    }
+    if (SkColorGetR(top) <= SkColorGetR(bottom) || SkColorGetG(top) <= SkColorGetG(bottom) ||
+        SkColorGetB(top) <= SkColorGetB(bottom)) {
+        std::fprintf(stderr, "%s: the top edge is not lit: 0x%08x is no lighter than the far edge 0x%08x\n",
+                     label, top, bottom);
+        return false;
+    }
+    return true;
+}
+
 bool expect_ink(const SkPixmap& pixels, int left, int top, int right, int bottom,
                 SkColor background, const char* label) {
     for (int y = top; y < bottom; ++y) {
@@ -142,7 +179,9 @@ int main(int argc, char** argv) {
     }
     bool ok = true;
     ok = expect_color(pixels, 0, 0, SkColorSetARGB(255, 18, 24, 32), "background") && ok;
-    ok = expect_color(pixels, 40, 40, SkColorSetARGB(255, 220, 80, 100), "rounded fill") && ok;
+    // The rect spans y 20..80. Sampled 4px inside each horizontal edge, clear
+    // of the antialiased corner and of the one-pixel rim.
+    ok = expect_lit_from_above(pixels, 40, 24, 76, SkColorSetARGB(255, 220, 80, 100), "rounded fill") && ok;
     ok = expect_color(pixels, 80, 130, SkColorSetARGB(255, 60, 180, 140), "circle") && ok;
     ok = expect_color(pixels, 230, 50, SkColorSetARGB(255, 70, 120, 220), "triangle") && ok;
     // A gradient is sampled at pixel CENTRES, so the first and last pixels sit

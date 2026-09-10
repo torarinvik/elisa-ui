@@ -1,0 +1,100 @@
+# Colour arithmetic that leaves the Color struct: packing four channels into a
+# single integer word, and taking one back out.
+#
+# THE BUG THIS FILE EXISTS FOR. A Color's four fields are u8, so a channel can
+# never be out of range while it stays a field. The moment it becomes a term in
+# `a * 16777216 + r * 65536 + g * 256 + b` it is an ordinary integer with no
+# bound of its own -- and an OPAQUE colour packs to 0xff000000, which does not
+# fit a signed 32-bit integer. Written with an i32 result that traps at run time
+# (exit 133, in a screenshot fixture, long after the mistake); written with an
+# i64 result it is correct. Nothing in either type said which one it was.
+#
+# The laws below say it. `UiChannel` and `UiPackedArgb` are REFINEMENT types: the
+# bound travels with the value, a function that promises one has to establish it,
+# and a call the compiler cannot prove stays inside it is reported at compile
+# time. That is the whole reason packing lives here as framework API rather than
+# open-coded at each call site -- open-coded arithmetic has no signature to
+# refine, so every copy of it is a fresh chance to pick the wrong width.
+law UiChannel(self: i64) = self >= 0 and self <= 255
+law UiPackedArgb(self: i64) = self >= 0 and self <= 4294967295
+
+extend UiCore:
+    public:
+        const CHANNEL_MAX: i64 = 255
+        # 0xffffffff. The largest packed word, and the reason the result is i64:
+        # it is just over twice the largest positive i32.
+        const PACKED_ARGB_MAX: i64 = 4294967295
+        # Place values, not shifts. A shift of a signed value is a second way to
+        # lose the top bit; multiplication by a positive constant is the same
+        # arithmetic with none of that.
+        const ARGB_ALPHA_SCALE: i64 = 16777216
+        const ARGB_RED_SCALE: i64 = 65536
+        const ARGB_GREEN_SCALE: i64 = 256
+        # One past the largest channel: the modulus that isolates one byte.
+        const CHANNEL_SPAN: i64 = 256
+
+        # Perceived lightness of a colour, 0..255.
+        #
+        # Rec. 601 weights rather than a plain average: a UI is judged by eye and
+        # green carries most of the apparent brightness, so a saturated blue
+        # accent is correctly treated as a DARK surface and gets the dark
+        # lighting treatment, while the same channels averaged would call it
+        # mid-grey. Lives here beside the channels it weighs, because both the
+        # painting policy and the widget layer need the same answer.
+        def surface_luminance(color: Color) -> i64:
+            return channel(color.r.i64()) * 299 / 1000 + channel(color.g.i64()) * 587 / 1000 + channel(color.b.i64()) * 114 / 1000
+
+        # A channel from an arbitrary integer, clamped into range. The RETURN
+        # carries the law, which is what makes it useful: a caller can hand the
+        # result straight to `pack_channels` without the checker having to
+        # reason about whatever arithmetic produced the input.
+        def channel(value: i64) -> i64 is UiChannel:
+            return 0 if value < 0
+            return CHANNEL_MAX if value > CHANNEL_MAX
+            return value
+
+        # A packed word from an arbitrary integer, clamped. The sibling of
+        # `channel`, and for the same reason: a law has to be ESTABLISHED
+        # somewhere, and a guarded constructor is the one place in this file
+        # where a value acquires one instead of being required to have it.
+        def packed_word(value: i64) -> i64 is UiPackedArgb:
+            return 0 if value < 0
+            return PACKED_ARGB_MAX if value > PACKED_ARGB_MAX
+            return value
+
+        # The packer. Each parameter demands a proven channel, so the only way
+        # to reach it is through `channel` or another value already known to be
+        # one -- there is no spelling of this call that silently admits a 300.
+        #
+        # The `packed_word` on the result is not defensive: four channels cannot
+        # sum past 0xffffffff, so the clamp is unreachable. It is there because
+        # the checker proves bounds from GUARDS, not from arithmetic over four
+        # separate premises, and a law that the compiler cannot discharge is a
+        # law nobody can rely on. Stating the step is honest; asserting the
+        # result unproven would not be.
+        def pack_channels(a: i64 is UiChannel, r: i64 is UiChannel, g: i64 is UiChannel, b: i64 is UiChannel) -> i64 is UiPackedArgb:
+            return packed_word(a * ARGB_ALPHA_SCALE + r * ARGB_RED_SCALE + g * ARGB_GREEN_SCALE + b)
+
+        # Pack a colour. The struct's own u8 fields are already in range; they
+        # still go through `channel`, because a u8 widened to i64 is a fact about
+        # the source type and the law is a fact about the value, and stating it
+        # once here is cheaper than a proof obligation at every call site.
+        def pack_argb(color: Color) -> i64 is UiPackedArgb:
+            return pack_channels(channel(color.a.i64()), channel(color.r.i64()), channel(color.g.i64()), channel(color.b.i64()))
+
+        def packed_alpha(word: i64 is UiPackedArgb) -> i64 is UiChannel:
+            return channel(word / ARGB_ALPHA_SCALE)
+
+        def packed_red(word: i64 is UiPackedArgb) -> i64 is UiChannel:
+            return channel((word / ARGB_RED_SCALE) % CHANNEL_SPAN)
+
+        def packed_green(word: i64 is UiPackedArgb) -> i64 is UiChannel:
+            return channel((word / ARGB_GREEN_SCALE) % CHANNEL_SPAN)
+
+        def packed_blue(word: i64 is UiPackedArgb) -> i64 is UiChannel:
+            return channel(word % CHANNEL_SPAN)
+
+        # The round trip. `pack_argb(unpack_argb(w)) == w` for every packed word,
+        # and `unpack_argb(pack_argb(c)) == c` for every colour.
+        def unpack_argb(word: i64 is UiPackedArgb) -> Color:
+            return Color{r: packed_red(word).u8(), g: packed_green(word).u8(), b: packed_blue(word).u8(), a: packed_alpha(word).u8()}

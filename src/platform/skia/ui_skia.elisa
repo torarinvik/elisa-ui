@@ -23,11 +23,14 @@ extern elisa_skia_canvas_fill_round_rect(canvas: usize, x: f32, y: f32, width: f
 extern elisa_skia_canvas_stroke_round_rect(canvas: usize, x: f32, y: f32, width: f32, height: f32, radius: f32, stroke_width: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
 extern elisa_skia_canvas_shadow_round_rect(canvas: usize, x: f32, y: f32, width: f32, height: f32, radius: f32, offset_x: f32, offset_y: f32, blur: f32, alpha: u8) -> void
 extern elisa_skia_canvas_shadow_round_rect_color(canvas: usize, x: f32, y: f32, width: f32, height: f32, radius: f32, offset_x: f32, offset_y: f32, blur: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
+extern elisa_skia_canvas_fill_round_rect_gradient(canvas: usize, x: f32, y: f32, width: f32, height: f32, radius: f32, start_red: u8, start_green: u8, start_blue: u8, start_alpha: u8, end_red: u8, end_green: u8, end_blue: u8, end_alpha: u8, horizontal: i32) -> void
+extern elisa_skia_canvas_stroke_round_rect_gradient(canvas: usize, x: f32, y: f32, width: f32, height: f32, radius: f32, stroke_width: f32, start_red: u8, start_green: u8, start_blue: u8, start_alpha: u8, end_red: u8, end_green: u8, end_blue: u8, end_alpha: u8, horizontal: i32) -> void
 extern elisa_skia_canvas_fill_linear_gradient(canvas: usize, x: f32, y: f32, width: f32, height: f32, start_red: u8, start_green: u8, start_blue: u8, start_alpha: u8, end_red: u8, end_green: u8, end_blue: u8, end_alpha: u8, horizontal: i32) -> void
 extern elisa_skia_canvas_draw_image(canvas: usize, image: usize, x: f32, y: f32, width: f32, height: f32, alpha: u8) -> void
 extern elisa_skia_canvas_draw_image_sampling(canvas: usize, image: usize, x: f32, y: f32, width: f32, height: f32, alpha: u8, sampling: i32) -> void
 extern elisa_skia_canvas_draw_image_source_sampling(canvas: usize, image: usize, source_x: f32, source_y: f32, source_width: f32, source_height: f32, x: f32, y: f32, width: f32, height: f32, alpha: u8, sampling: i32) -> void
 extern elisa_skia_canvas_draw_text_with_font(canvas: usize, font: usize, text: cstr, length: usize, x: f32, y: f32, size: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
+extern elisa_skia_canvas_draw_text_weighted(canvas: usize, font: usize, text: cstr, length: usize, x: f32, y: f32, size: f32, weighted: i32, red: u8, green: u8, blue: u8, alpha: u8) -> void
 extern elisa_skia_canvas_fill_circle(canvas: usize, x: f32, y: f32, radius: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
 extern elisa_skia_canvas_stroke_circle(canvas: usize, x: f32, y: f32, radius: f32, stroke_width: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
 extern elisa_skia_canvas_fill_triangle(canvas: usize, ax: f32, ay: f32, bx: f32, by: f32, cx: f32, cy: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
@@ -222,14 +225,15 @@ module UiSkia:
                     UiCore::bounded_coordinate(run.origin.x),
                     UiCore::bounded_coordinate(run.origin.y + UiSkia::active_font_ascent(safe_size))),
                 safe_size,
-                UiCore::bounded_text(run.text))
+                UiCore::bounded_text(run.text), run.weighted)
             safe_text: sview = safe_run.text
             return if safe_text.len <= 0 or safe_text.data == null
             pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
-            if skia_frame_font != 0:
-                elisa_skia_canvas_draw_text_with_font(canvas_state, skia_frame_font, pointer, safe_text.len.usize(), safe_run.origin.x, safe_run.origin.y, safe_run.size, color.r, color.g, color.b, color.a)
-            else:
-                elisa_skia_canvas_draw_text(canvas_state, pointer, safe_text.len.usize(), safe_run.origin.x, safe_run.origin.y, safe_run.size, color.r, color.g, color.b, color.a)
+            # One entry point for both faces: a zero font handle means the
+            # renderer's own default, which is what the borrowed-typeface path
+            # falls back to anyway. The weight rides alongside rather than
+            # doubling the surface into weighted/unweighted pairs.
+            elisa_skia_canvas_draw_text_weighted(canvas_state, skia_frame_font, pointer, safe_text.len.usize(), safe_run.origin.x, safe_run.origin.y, safe_run.size, 1 if safe_run.weighted else 0, color.r, color.g, color.b, color.a)
 
         struct SkiaPainter:
             unused: i32
@@ -245,14 +249,12 @@ module UiSkia:
                 return if canvas_state == 0
                 elisa_skia_canvas_clear(canvas_state, color.r, color.g, color.b, color.a)
 
-            def fill_rect(box: UiCore::Rect, color: UiCore::Color, elevated: bool) -> void can[Ui.Draw]:
+            def fill_rect(box: UiCore::Rect, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void can[Ui.Draw]:
                 return if canvas_state == 0 or color.a == 0
                 safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
                 return if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
-                style: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style(safe_box, elevated)
-                UiSkia::draw_shadow(safe_box, style)
-                UiSkia::fill_rounded_rect(safe_box, style.radius, color)
-                UiSkia::draw_outline(safe_box, style)
+                style: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for(safe_box, depth, color)
+                UiSkia::draw_elevated_surface(safe_box, style, color)
 
             def fill_circle(disc: UiCore::Circle, color: UiCore::Color) -> void can[Ui.Draw]:
                 UiSkia::fill_circle(disc, color)

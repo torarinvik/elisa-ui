@@ -21,6 +21,7 @@
 #include "include/core/SkRect.h"
 #include "include/core/SkRRect.h"
 #include "include/core/SkSamplingOptions.h"
+#include "include/core/SkShader.h"
 #include "include/core/SkTypeface.h"
 #include "include/effects/SkImageFilters.h"
 #include "include/effects/SkGradient.h"
@@ -132,11 +133,46 @@ SkFont font_for(float size) {
     return font;
 }
 
+// A two-stop gradient down (or across) a box. The STOP POLICY stays in Elisa --
+// two evenly spaced stops, no positions supplied -- so this is only the shader
+// construction the C++ side has to own.
+sk_sp<SkShader> two_stop_shader(float x, float y, float width, float height,
+                                std::uint8_t start_red, std::uint8_t start_green,
+                                std::uint8_t start_blue, std::uint8_t start_alpha,
+                                std::uint8_t end_red, std::uint8_t end_green,
+                                std::uint8_t end_blue, std::uint8_t end_alpha,
+                                std::int32_t horizontal) {
+    const SkPoint points[] = {
+        {x, y},
+        {horizontal != 0 ? x + width : x, horizontal != 0 ? y : y + height},
+    };
+    const SkColor4f colors[] = {
+        SkColor4f::FromColor(color(start_red, start_green, start_blue, start_alpha)),
+        SkColor4f::FromColor(color(end_red, end_green, end_blue, end_alpha)),
+    };
+    const SkGradient gradient({SkSpan(colors), SkTileMode::kClamp}, {});
+    return SkShaders::LinearGradient(points, gradient);
+}
+
 SkFont font_for(float size, SkTypeface *typeface) {
     SkFont font = font_for(size);
     // The FFI handle is borrowed, while SkFont stores an owning sk_sp. Hold a
     // temporary ref for the font's lifetime without transferring host ownership.
     font.setTypeface(sk_ref_sp(typeface));
+    return font;
+}
+
+// Weight, from the ONE typeface a host lends the renderer.
+//
+// A host hands over a single borrowed SkTypeface for the frame, so there is no
+// bold face to select; `setEmbolden` dilates the outline of the face that is
+// there. Measured against this pin: it does NOT change advances -- the same
+// string measures 297.1406 with and without it -- so a weighted run occupies
+// exactly the box the layout pass measured for it, and text weight costs the
+// framework no second measurement path and no risk of clipped labels.
+SkFont font_for(float size, SkTypeface *typeface, int weighted) {
+    SkFont font = typeface != nullptr ? font_for(size, typeface) : font_for(size);
+    font.setEmbolden(weighted != 0);
     return font;
 }
 
@@ -262,21 +298,63 @@ extern "C" void elisa_skia_canvas_fill_linear_gradient(std::size_t handle, float
                                                          std::int32_t horizontal) {
     if (SkCanvas *target = canvas(handle);
         target != nullptr && valid_rect(x, y, width, height) && (start_alpha != 0 || end_alpha != 0)) {
-        const SkPoint points[] = {
-            {x, y},
-            {horizontal != 0 ? x + width : x, horizontal != 0 ? y : y + height},
-        };
-        const SkColor4f colors[] = {
-            SkColor4f::FromColor(color(start_red, start_green, start_blue, start_alpha)),
-            SkColor4f::FromColor(color(end_red, end_green, end_blue, end_alpha)),
-        };
         SkPaint paint;
         paint.setAntiAlias(true);
-        // Two evenly spaced stops: the stop policy stays in Elisa, so no
-        // positions are supplied here.
-        const SkGradient gradient({SkSpan(colors), SkTileMode::kClamp}, {});
-        paint.setShader(SkShaders::LinearGradient(points, gradient));
+        paint.setShader(two_stop_shader(x, y, width, height, start_red, start_green, start_blue,
+                                        start_alpha, end_red, end_green, end_blue, end_alpha,
+                                        horizontal));
         target->drawRect(SkRect::MakeXYWH(x, y, width, height), paint);
+    }
+}
+
+extern "C" void elisa_skia_canvas_fill_round_rect_gradient(std::size_t handle, float x, float y,
+                                                            float width, float height, float radius,
+                                                            std::uint8_t start_red,
+                                                            std::uint8_t start_green,
+                                                            std::uint8_t start_blue,
+                                                            std::uint8_t start_alpha,
+                                                            std::uint8_t end_red,
+                                                            std::uint8_t end_green,
+                                                            std::uint8_t end_blue,
+                                                            std::uint8_t end_alpha,
+                                                            std::int32_t horizontal) {
+    if (SkCanvas *target = canvas(handle);
+        target != nullptr && valid_rect(x, y, width, height) && bounded_nonnegative_extent(radius) &&
+        (start_alpha != 0 || end_alpha != 0)) {
+        SkPaint paint;
+        paint.setAntiAlias(true);
+        paint.setShader(two_stop_shader(x, y, width, height, start_red, start_green, start_blue,
+                                        start_alpha, end_red, end_green, end_blue, end_alpha,
+                                        horizontal));
+        target->drawRRect(SkRRect::MakeRectXY(SkRect::MakeXYWH(x, y, width, height), radius, radius),
+                          paint);
+    }
+}
+
+extern "C" void elisa_skia_canvas_stroke_round_rect_gradient(std::size_t handle, float x, float y,
+                                                               float width, float height, float radius,
+                                                               float stroke_width,
+                                                               std::uint8_t start_red,
+                                                               std::uint8_t start_green,
+                                                               std::uint8_t start_blue,
+                                                               std::uint8_t start_alpha,
+                                                               std::uint8_t end_red,
+                                                               std::uint8_t end_green,
+                                                               std::uint8_t end_blue,
+                                                               std::uint8_t end_alpha,
+                                                               std::int32_t horizontal) {
+    if (SkCanvas *target = canvas(handle);
+        target != nullptr && valid_rect(x, y, width, height) && bounded_nonnegative_extent(radius) &&
+        bounded_extent(stroke_width) && (start_alpha != 0 || end_alpha != 0)) {
+        SkPaint paint;
+        paint.setAntiAlias(true);
+        paint.setStyle(SkPaint::kStroke_Style);
+        paint.setStrokeWidth(stroke_width);
+        paint.setShader(two_stop_shader(x, y, width, height, start_red, start_green, start_blue,
+                                        start_alpha, end_red, end_green, end_blue, end_alpha,
+                                        horizontal));
+        target->drawRRect(SkRRect::MakeRectXY(SkRect::MakeXYWH(x, y, width, height), radius, radius),
+                          paint);
     }
 }
 
@@ -347,6 +425,31 @@ extern "C" float elisa_skia_measure_text_width_with_font(std::size_t font_handle
                                                            float size) {
     if (font_handle == 0 || text == nullptr || length == 0 || !bounded_extent(size)) return 0.0f;
     const float measured = font_for(size, reinterpret_cast<SkTypeface *>(font_handle))
+        .measureText(text, length, SkTextEncoding::kUTF8);
+    return finite(measured) && measured >= 0.0f ? measured : 0.0f;
+}
+
+extern "C" void elisa_skia_canvas_draw_text_weighted(std::size_t canvas_handle,
+                                                       std::size_t font_handle,
+                                                       const char *text, std::size_t length,
+                                                       float x, float y, float size,
+                                                       std::int32_t weighted,
+                                                       std::uint8_t red, std::uint8_t green,
+                                                       std::uint8_t blue, std::uint8_t alpha) {
+    if (SkCanvas *target = canvas(canvas_handle);
+        target != nullptr && text != nullptr && length > 0 && bounded_coordinate(x) &&
+        bounded_coordinate(y) && bounded_extent(size)) {
+        const SkFont font = font_for(size, reinterpret_cast<SkTypeface *>(font_handle), weighted);
+        target->drawSimpleText(text, length, SkTextEncoding::kUTF8, x, y, font,
+                               fill_paint(red, green, blue, alpha));
+    }
+}
+
+extern "C" float elisa_skia_measure_text_width_weighted(std::size_t font_handle,
+                                                          const char *text, std::size_t length,
+                                                          float size, std::int32_t weighted) {
+    if (text == nullptr || length == 0 || !bounded_extent(size)) return 0.0f;
+    const float measured = font_for(size, reinterpret_cast<SkTypeface *>(font_handle), weighted)
         .measureText(text, length, SkTextEncoding::kUTF8);
     return finite(measured) && measured >= 0.0f ? measured : 0.0f;
 }

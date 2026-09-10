@@ -25,6 +25,7 @@
 
 extern "C" std::int32_t elisa_showcase_app_skia_render(std::size_t canvas, std::size_t font,
                                                        float width, float height, std::int32_t page);
+extern "C" std::int32_t elisa_showcase_app_skia_focus_next();
 
 namespace {
 
@@ -79,5 +80,29 @@ int main(int argc, char** argv) {
         }
         std::printf("showcase skia: wrote %s\n", path.c_str());
     }
+
+    // One more frame of the forms page with the keyboard focus moved onto a
+    // control. Every page above renders with nothing focused, so the focus ring
+    // -- the part of the appearance a keyboard user actually navigates by --
+    // was never in a picture anyone could look at.
+    if (elisa_showcase_app_skia_focus_next() != 1) {
+        std::fprintf(stderr, "showcase skia: could not move focus\n");
+        return 7;
+    }
+    surface->getCanvas()->clear(SK_ColorTRANSPARENT);
+    const std::int32_t focused_status = elisa_showcase_app_skia_render(
+        reinterpret_cast<std::size_t>(surface->getCanvas()),
+        reinterpret_cast<std::size_t>(typeface.get()),
+        static_cast<float>(width), static_cast<float>(height), 2);
+    if (focused_status != 1) {
+        std::fprintf(stderr, "showcase skia: focused page returned status %d\n", focused_status);
+        return 5;
+    }
+    const std::string focused_path = prefix + "-focus.png";
+    if (!write_png(surface.get(), focused_path)) {
+        std::fprintf(stderr, "showcase skia: failed to write %s\n", focused_path.c_str());
+        return 6;
+    }
+    std::printf("showcase skia: wrote %s\n", focused_path.c_str());
     return 0;
 }

@@ -30,4 +30,23 @@ def check_abi_and_command_batch() -> void:
     plain_style: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style(UiCore::Rect(2.0, 3.0, 100.0, 30.0), false)
     custom_style: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_with_radius(UiCore::Rect(0.0, 0.0, 20.0, 10.0), false, 9.0)
     check("theme radius is clamped to half the box", custom_style.radius == 5.0)
+    # THE DEPTH POLICY, asserted as the three claims it makes rather than as a
+    # table of numbers: a light surface is lifted by the shadow it casts, a dark
+    # one by light on its top edge, and a recess is the same lighting turned
+    # over -- no shadow, a wash that is shade rather than sheen, and its rim at
+    # the bottom. Only the ORDERING between treatments is pinned here, so the
+    # values stay tunable while the rules cannot silently invert.
+    box: UiCore::Rect = UiCore::Rect(2.0, 3.0, 100.0, 30.0)
+    paper: UiCore::Color = UiCore::rgb(250, 250, 252)
+    slate: UiCore::Color = UiCore::rgb(31, 36, 48)
+    lifted_paper: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for(box, UiCore::SurfaceDepth.Raised, paper)
+    lifted_slate: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for(box, UiCore::SurfaceDepth.Raised, slate)
+    well: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for(box, UiCore::SurfaceDepth.Inset, slate)
+    flat: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for(box, UiCore::SurfaceDepth.Flat, slate)
+    check("a dark surface leans on light where a shadow cannot be seen", lifted_slate.shadow_alpha > lifted_paper.shadow_alpha and lifted_paper.bevel_alpha > lifted_slate.bevel_alpha)
+    check("a recess casts no shadow and is shaded, not lit", well.shadow_alpha == 0 and well.sheen_is_shadow and well.bevel_at_bottom and well.sheen_top_alpha > 0)
+    check("a raised surface is lit from the top", not lifted_slate.sheen_is_shadow and not lifted_slate.bevel_at_bottom and lifted_slate.sheen_bottom_alpha == 0)
+    check("elevation is a difference of degree, not of kind", lifted_slate.sheen_top_alpha > flat.sheen_top_alpha and lifted_slate.bevel_alpha > flat.bevel_alpha and flat.shadow_alpha == 0)
+    check("a saturated accent is treated as the dark surface it is", UiCore::surface_luminance(UiCore::rgb(66, 120, 236)) < 128 and UiCore::surface_luminance(paper) >= 128)
+
     check("custom painters share explicit rounded style policy", style.elevated and style.shadow_alpha == 61 and style.hairline_alpha == 33 and style.shadow_offset_x == 0.0 and style.shadow_offset_y == 2.0 and style.shadow_blur == 5.0 and style.hairline_width == 1.0 and not plain_style.elevated and plain_style.shadow_alpha == 0 and plain_style.hairline_alpha == 14)

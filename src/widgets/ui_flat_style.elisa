@@ -11,3 +11,103 @@ extend UiFlat:
 
         def muted_color(base: UiCore::Color) -> UiCore::Color:
             return UiCore::Color{r: base.r / 2, g: base.g / 2, b: base.b / 2, a: base.a}
+
+        # Is this Panel a CARD rather than a layout box?
+        #
+        # Panel is both: the root, the rows and the spacers that only exist to
+        # arrange children, and the raised surfaces an app groups content onto.
+        # Nothing in the model distinguishes them, and elevating all of them
+        # would put a shadow behind every layout container.
+        #
+        # What separates them is already there: a layout box paints the same
+        # colour as whatever it sits on, so it is invisible; a card paints its
+        # own. A panel whose colour DIFFERS from its parent's is a surface the
+        # app meant you to see, and it is the one that should be lit.
+        #
+        # A root panel is never a card. It is the window's background, and a
+        # background that casts a shadow is a window with a shadow inside it.
+        # How a widget's surface sits relative to what is behind it.
+        #
+        # A TEXT FIELD IS A WELL. It used to be painted with the same raised
+        # treatment as a button, which is the difference between a UI that looks
+        # almost right and one that looks made: a field you type into is cut
+        # into the surface, not resting on it. Everything you press -- buttons,
+        # radios, checkboxes -- is raised, and a card is raised when it is
+        # lighter than its ground and recessed when it is darker, because that
+        # is what the two look like in the world.
+        def surface_depth_of(index: usize, color: UiCore::Color) -> UiCore::SurfaceDepth:
+            kind: UiConst::WidgetKind = widgets[index].kind
+            return UiCore::SurfaceDepth.Inset if kind == UiConst::WidgetKind.TextField
+            return UiCore::SurfaceDepth.Raised if kind == UiConst::WidgetKind.Button or kind == UiConst::WidgetKind.RadioButton or kind == UiConst::WidgetKind.CheckBox
+            return UiCore::SurfaceDepth.Flat if not panel_is_surface(index, color)
+            behind: UiCore::Color = ground_behind(index)
+            return UiCore::SurfaceDepth.Inset if UiCore::surface_luminance(color) < UiCore::surface_luminance(behind)
+            return UiCore::SurfaceDepth.Raised
+
+        def fill_at_depth(box: UiCore::Rect, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void:
+            if depth == UiCore::SurfaceDepth.Inset:
+                UiCore::fill_inset(box, color)
+            elif depth == UiCore::SurfaceDepth.Raised:
+                UiCore::fill_elevated(box, color)
+            else:
+                UiCore::fill(box, color)
+
+        def panel_is_surface(index: usize, color: UiCore::Color) -> bool:
+            return false if widgets[index].kind != UiConst::WidgetKind.Panel
+            behind: UiCore::Color = ground_behind(index)
+            return false if behind.a == 0
+            return color.r != behind.r or color.g != behind.g or color.b != behind.b or color.a != behind.a
+
+        # The colour actually visible behind a widget.
+        #
+        # NOT simply the parent's: a layout row is usually transparent, and a
+        # card inside one is painted over whatever is behind THAT. Stopping at
+        # the immediate parent made every card in a row read as sitting on
+        # nothing, so none of them were lit -- the buttons had depth and the
+        # cards holding them did not.
+        #
+        # Bounded by MAX_TRAVERSAL_DEPTH like every other walk over this tree:
+        # the parent links are repaired on build, but a paint pass is not the
+        # place to discover that they were not.
+        def ground_behind(index: usize) -> UiCore::Color:
+            probe: mutable usize = widgets[index].parent
+            for _ in 0..<MAX_TRAVERSAL_DEPTH:
+                return UiCore::rgba(0, 0, 0, 0) if probe == NONE or probe >= widget_count
+                behind: UiCore::Color = color_of(probe)
+                return behind if behind.a != 0
+                probe <- widgets[probe].parent
+            return UiCore::rgba(0, 0, 0, 0)
+
+        # The focus ring, drawn as a HALO UNDER the control rather than an
+        # outline over it.
+        #
+        # It used to be four straight lines inset into the widget, which put
+        # square corners on a rounded button in every backend -- the retained
+        # command vocabulary has no stroked rounded rectangle, so an outline
+        # could not follow the shape it was outlining. A slightly larger filled
+        # rectangle behind the control does follow it: the painter rounds a fill
+        # by the same policy it rounds the control, so the ring is concentric
+        # with the surface by construction, on Skia and CoreGraphics alike.
+        #
+        # It also reads better. A ring that surrounds a control instead of
+        # eating into it leaves the label alone, and against a dark ground an
+        # accent halo is visible where a one-pixel line is not.
+        #
+        # The halo is Flat: it is light around the control, not a second surface
+        # stacked under it, and lighting it would put a rim on the rim.
+        def paint_focus_halo(index: usize) -> void:
+            spread: f32 = focus_halo_spread()
+            box: UiCore::Rect = UiCore::Rect(
+                widgets[index].x - spread, widgets[index].y - spread,
+                widgets[index].width + spread * 2.0, widgets[index].height + spread * 2.0)
+            UiCore::fill(box, current_theme.focus_ring)
+
+        # How far the halo stands out from the control. Derived from the theme's
+        # ring width so a high-contrast or large-text preference grows it with
+        # everything else, and bounded so a malformed token cannot paint a
+        # focus ring over the rest of the window.
+        def focus_halo_spread() -> f32:
+            requested: f32 = UiConstraints::bounded(current_theme.focus_inset)
+            return 1.0 if requested < 1.0
+            return 4.0 if requested > 4.0
+            return requested
