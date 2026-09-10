@@ -543,6 +543,33 @@ def main() -> i64:
     UiFlat::set_theme(base_theme)
     _ = dim_box
 
+    # A RING IS A DISC WITH A HOLE CUT IN IT, AND THE HOLE HAS TO BE CUT WITH
+    # THE COLOUR THAT IS ACTUALLY THERE.
+    #
+    # The hole was painted in the widget's OWN fill, which is right only when
+    # that fill is opaque. A choice control with no surface of its own cuts
+    # nothing: the ring comes out as a solid disc, so an unselected option
+    # renders as a selected one. Nothing had rendered it because every choice
+    # control in the showcase had a surface until the navigation entries
+    # stopped having one.
+    UiFlat::reset()
+    bare_ground: UiCore::Color = UiCore::rgb(24, 28, 36)
+    holder: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 0.0, 0.0, bare_ground)
+    bare: usize = UiFlat::radio_button(holder, 200.0, 30.0, UiCore::rgba(0, 0, 0, 0), UiCore::rgba(0, 0, 0, 0), UiCore::rgba(0, 0, 0, 0))
+    UiFlat::set_text(bare, "Overview", 14.0, UiCore::rgb(240, 240, 245))
+    UiFlat::layout(200.0, 30.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    ring_outer: UiCore::Rect = first_circle_box(UiFlat::theme().control_mark)
+    check("an unselected choice draws its ring", ring_outer.size.width > 0.0)
+    check("and cuts the hole with the ground it is standing on", frame_contains_circle_color(bare_ground))
+    # A control WITH a surface still cuts with its own colour: the ground is
+    # what is behind the mark, and that is the surface when there is one.
+    UiFlat::set_colors(bare, UiCore::rgb(48, 54, 68), UiCore::rgb(48, 54, 68), UiCore::rgb(48, 54, 68))
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("a control with a surface cuts with its own", frame_contains_circle_color(UiCore::rgb(48, 54, 68)))
+
     if test_failures == 0:
         _ = puts("widget layout: all checks passed")
         return 0

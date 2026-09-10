@@ -1,0 +1,101 @@
+# Where a choice control's marker and its caption sit.
+#
+# Split from ui_flat_style.elisa at the source budget, and the seam is a real
+# one: everything here answers the same question in different currencies --
+# how big the marker is, which side of the row it is on, where its centre
+# falls, and where the caption starts beside it. The painter and the pointer
+# both consult these, so a second copy of any of them is a control you can see
+# in one place and grab in another.
+
+extend UiFlat:
+    private:
+        def radio_selected_mark_radius(outer_radius: f32) -> f32:
+            proportional: f32 = outer_radius * RADIO_SELECTED_MARK_RATIO
+            declared: f32 = theme().radio_inner_radius
+            return proportional if proportional < declared else declared
+
+        # A MARKER THAT FITS THE CONTROL IT MARKS.
+        #
+        # The theme's marker size is a preference, and a preference can ask for
+        # more room than a fixed-size control has. The showcase's accent
+        # swatches are 28pt squares; at double text scale the resolved marker
+        # was wider than the swatch and its centre sat past the right edge, so
+        # every one of them drew its ring over its neighbour. Growing a marker
+        # with the reader's preference is right. Drawing it outside the widget
+        # that owns it never is, and the widget is the only authority on how
+        # much room there is.
+        def choice_marker_extent(index: usize) -> f32:
+            room =
+                width: f32 = widgets[index].width
+                height: f32 = widgets[index].height
+                width if width < height else height
+            return 0.0 if room <= 0.0
+            requested: f32 = theme().checkbox_size
+            return room if requested > room else requested
+
+        # WHICH SIDE A MARKER IS ON, and why the painter has to ask.
+        #
+        # The framework has carried a direction policy since localization
+        # landed -- `direction`, leading and trailing alignment, `mirror_x` --
+        # and the retained painter never asked it anything. Text layout did:
+        # the caret, hit testing and selection all take a direction. So an
+        # Arabic build got a correctly mirrored caret inside a field whose
+        # checkbox was still nailed to the left, with its label running away
+        # from it. A policy nothing consults is a policy that is not there.
+        #
+        # Mirroring the fitted centre rather than recomputing it keeps the
+        # marker inside the control for free: the left-to-right answer is
+        # already clamped, and a reflection of something inside the box is
+        # inside the box.
+        def choice_marker_center_x(index: usize, extent: f32) -> f32:
+            leading =
+                half: f32 = extent / 2.0
+                farthest: f32 = widgets[index].width - half
+                fitted: f32 = leading_marker_center(index, half, farthest)
+                fitted
+            return widgets[index].width - leading if painting_right_to_left()
+            return leading
+
+        def leading_marker_center(index: usize, half: f32, farthest: f32) -> f32:
+            return half if farthest < half
+            requested: f32 = theme().choice_center_x
+            return half if requested < half
+            return farthest if requested > farthest
+            return requested
+
+        # A MARK MUST CONTRAST WITH THE CONTROL, not with the palette's idea
+        # of the page.
+        #
+        # The theme resolves control marks from the SYSTEM palette and the
+        # application paints its OWN surfaces, and nothing made those two agree.
+        # A reader on a light system running an app that draws dark got the
+        # light palette's near-black mark on a near-black control: measured at
+        # luminance 19 against a surface of 56, a gap of 37 where the dark
+        # palette's own mark manages 145. In high contrast, of all places -- the
+        # one preference whose entire purpose is that gap.
+        #
+        # The framework already knows the surface and already has a rule for
+        # choosing ink to put on one. This is that rule, applied to a mark
+        # instead of to a tick, and only when the resolved mark has failed.
+        const MARK_CONTRAST_MINIMUM: i64 = 60
+
+        # A label follows the MARKER rather than the token whenever the token
+        # would start it inside the marker or past the end of the control.
+        # A label starts where the marker ends, on whichever side that is. The
+        # caller supplies the marker's own centre, so this needs no second
+        # direction test: in a mirrored control the marker's trailing edge is
+        # the label's right edge, and the run is placed from there by its width.
+        def choice_text_origin(index: usize, center_x: f32, extent: f32, text_width: f32) -> f32:
+            gap: f32 = theme().choice_text_space - theme().choice_center_x
+            if painting_right_to_left():
+                right_edge =
+                    marker_left: f32 = center_x - extent / 2.0
+                    marker_left - gap if gap > 0.0 else marker_left
+                return 0.0 if right_edge - text_width < 0.0
+                return right_edge - text_width
+            beside_marker =
+                half: f32 = extent / 2.0
+                center_x + half
+            requested: f32 = theme().choice_text_space
+            return beside_marker if requested < beside_marker or requested >= widgets[index].width
+            return requested
