@@ -30,6 +30,7 @@ static float last_backdrop_sigma;
 static int last_shadow_red;
 static int last_shadow_green;
 static int last_shadow_blue;
+static int last_shadow_alpha;
 static int image_count;
 static int circle_count;
 static int stroke_circle_count;
@@ -120,9 +121,10 @@ void elisa_skia_canvas_shadow_round_rect_color(size_t canvas, float x, float y, 
                                                float height, float radius, float offset_x,
                                                float offset_y, float blur, uint8_t red,
                                                uint8_t green, uint8_t blue, uint8_t alpha) {
-    (void)x; (void)y; (void)width; (void)height; (void)radius; (void)alpha;
+    (void)x; (void)y; (void)width; (void)height; (void)radius;
     if (canvas != 0) {
         shadow_round_rect_count += 1;
+        last_shadow_alpha = alpha;
         last_shadow_offset_x = offset_x;
         last_shadow_offset_y = offset_y;
         last_shadow_blur = blur;
@@ -277,7 +279,7 @@ void skia_test_reset(void) {
     save_count = 0; restore_count = 0; scale_count = 0; translate_count = 0; rotate_count = 0; clip_count = 0; rounded_clip_count = 0;
     clear_count = 0; last_text_weight_stroke = 0.0f; rounded_gradient_count = 0; stroke_rounded_gradient_count = 0; round_rect_count = 0; stroke_round_rect_count = 0; shadow_round_rect_count = 0; gradient_count = 0; image_count = 0; circle_count = 0; stroke_circle_count = 0; triangle_count = 0;
     backdrop_blur_count = 0; last_backdrop_sigma = 0.0f; last_text_used_bold = 0;
-    last_shadow_offset_x = 0.0f; last_shadow_offset_y = 0.0f; last_shadow_blur = 0.0f; last_shadow_red = 0; last_shadow_green = 0; last_shadow_blue = 0;
+    last_shadow_offset_x = 0.0f; last_shadow_offset_y = 0.0f; last_shadow_blur = 0.0f; last_shadow_red = 0; last_shadow_green = 0; last_shadow_blue = 0; last_shadow_alpha = 0;
     line_count = 0; text_count = 0; measure_width_count = 0; last_round_radius = 0.0f; last_clip_radius = 0.0f; last_stroke_width = 0.0f; last_circle_stroke_width = 0.0f; last_line_width = 0.0f; last_line_round_cap = 0; last_text_size = 0.0f; last_image_x = 0.0f; last_image_y = 0.0f; last_image_width = 0.0f; last_image_height = 0.0f; last_image_source_x = 0.0f; last_image_source_y = 0.0f; last_image_source_width = 0.0f; last_image_source_height = 0.0f; last_image_sampling = 1; last_gradient_horizontal = 0;
     event_total = 0;
 }
@@ -293,6 +295,9 @@ int skia_test_round_rect_count(void) { return round_rect_count; }
 int skia_test_stroke_round_rect_count(void) { return stroke_round_rect_count; }
 float skia_test_last_text_weight_stroke(void) { return last_text_weight_stroke; }
 int skia_test_shadow_round_rect_count(void) { return shadow_round_rect_count; }
+/* The one number that decides whether a shadow reads as height or as dirt on
+   the page. It was discarded here, so no fixture could see it. */
+int skia_test_last_shadow_alpha(void) { return last_shadow_alpha; }
 int skia_test_gradient_count(void) { return gradient_count; }
 int skia_test_rounded_gradient_count(void) { return rounded_gradient_count; }
 int skia_test_stroke_rounded_gradient_count(void) { return stroke_rounded_gradient_count; }

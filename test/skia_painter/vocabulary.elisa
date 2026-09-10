@@ -121,3 +121,42 @@ def check_vocabulary() -> void:
         check("and is symmetric about it", UiPaint::stroke_pass_offset(3.0, 0) == 0.0 - UiPaint::stroke_pass_offset(3.0, 2))
         check("an even count straddles it", UiPaint::stroke_pass_offset(2.0, 0) == 0.0 - UiPaint::stroke_pass_offset(2.0, 1) and UiPaint::stroke_pass_offset(2.0, 0) != 0.0)
         check("a pass past the count contributes nothing", UiPaint::stroke_pass_offset(3.0, 9) == 0.0)
+
+        # A SHADOW LIFTS A SURFACE. IT MUST NOT STAIN THE PAGE AROUND IT.
+        #
+        # Rendered against the interfaces this framework is aiming at, the
+        # light palette's own frame was the tell: a white card darkened the
+        # page under its edge by sixty-six levels and was still twenty-seven
+        # levels dark thirty-five points away, and the twelve-point gutter
+        # between two cards was filled by both their shadows at once. The gaps
+        # in that frame did not read as the page. They read as grooves, and a
+        # page of grooves is what makes an interface look a decade old.
+        #
+        # Three numbers decide this and all three lived in the depth policy
+        # where no fixture could see them, because the painter shim discarded
+        # the shadow's alpha outright -- the one value that separates height
+        # from dirt.
+        card: UiCore::Rect = UiCore::Rect(0.0, 0.0, 240.0, 72.0)
+        paper: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for(card, UiCore::SurfaceDepth.Raised, UiCore::rgb(255, 255, 255))
+        slate: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for(card, UiCore::SurfaceDepth.Raised, UiCore::rgb(28, 32, 40))
+        check("a light card still casts a shadow", paper.shadow_alpha > 0 and paper.shadow_blur > 0.0 and paper.shadow_offset_y > 0.0)
+        check("but a soft one, not a smear", paper.shadow_alpha <= 24)
+        check("its contact line is tight, not dark", paper.contact_alpha <= 32 and paper.contact_blur < paper.shadow_blur)
+        # Sideways reach is what crosses a gutter, and it is the blur.
+        check("and it does not reach across the gutter beside it", paper.shadow_blur <= 12.0)
+        # The dark palette leans on the sheen and the rim, so its shadow has to
+        # survive being dark-on-dark. Keeping the two ends ordered is what
+        # stops a light-palette correction from flattening the other one.
+        check("a dark surface is still shadowed harder than a light one", slate.shadow_alpha > paper.shadow_alpha and slate.contact_alpha > paper.contact_alpha)
+        # A shadow bigger than the thing casting it is haze, not height.
+        check("a shadow is never larger than its surface", paper.shadow_blur + paper.shadow_offset_y <= 72.0)
+        # ...and the painter passes on what the policy decided, rather than a
+        # strength of its own. The shim kept every other argument and threw
+        # this one away, so the whole policy above was unobservable end to end.
+        UiCore::begin_frame()
+        UiCore::fill_elevated(UiCore::Rect(20.0, 20.0, 240.0, 72.0), UiCore::rgb(255, 255, 255))
+        skia_test_reset()
+        UiSkia::attach(1)
+        _ = UiSkia::render_status()
+        UiSkia::detach()
+        check("the painter asks for the shadow the policy chose", skia_test_last_shadow_alpha() > 0 and skia_test_last_shadow_alpha() <= 32)

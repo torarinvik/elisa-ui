@@ -305,3 +305,42 @@ the counters stay open. A real bold face would look better still and is what a
 future host-lends-two-typefaces change would buy; it would also make advances
 differ between the measuring and the drawing authority on the AppKit+Skia
 product, where CoreText measures and Skia draws.
+
+## A shadow lifts a surface; it must not stain the page
+
+Measured against the interfaces this framework is aiming at, the light
+palette's own frame was the tell. A white card darkened the page under its
+edge by **66 levels** and was still **27 levels** dark 35pt away, and the
+12pt gutter between two adjacent cards was filled by both their shadows at
+once. The gaps in that frame did not read as the page; they read as grooves,
+and a page of grooves is what makes an interface look a decade old.
+
+Three numbers decided that, and all three lived here where no fixture could
+see them — the painter shim discarded the shadow's alpha outright, which is
+the one value that separates height from dirt. The alpha is recorded now, and
+the policy is asserted directly:
+
+| | before | after |
+| --- | --- | --- |
+| ambient alpha, light surface | 46 | 20 |
+| contact alpha, light surface | 60 | 26 |
+| ambient blur ratio | 0.30 | 0.13 |
+| ambient blur floor / ceiling | 5 / 44 | 2 / 18 |
+| ambient offset ceiling | 16 | 10 |
+
+The **dark** end of every blend is untouched. A dark surface leans on the
+sheen and the rim because a shadow has to survive being dark-on-dark, and a
+fixture keeps the two ends ordered so a light-palette correction cannot
+quietly flatten the other one.
+
+Lowering the blur *floor* was forced by the ratio, not chosen: at 0.13 every
+surface shorter than 38pt clamped to the same floor, so a 16pt slider thumb
+and a 30pt button were lit identically and the existing "a shadow is the size
+of the thing that casts it" check went red. A 2pt floor restores the ordering
+and is the physically right answer anyway — a small object close to the page
+has a tight shadow.
+
+The sideways reach of a shadow is its blur, so that is the number a gutter
+constrains, and it is now bounded below the tightest gutter the shipped
+metrics produce.
+
