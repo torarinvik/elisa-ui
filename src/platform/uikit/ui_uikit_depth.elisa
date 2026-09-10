@@ -66,6 +66,15 @@ extend UiUIKit:
             vertical_gradient(context, box, UiPaint::rim_near_color(style), UiPaint::rim_far_color(style))
             CGContextRestoreGState(context)
 
+        def draw_shadowed_body(context: usize, box: UiCore::Rect, style: UiPaint::RoundedRectStyle, color: UiCore::Color) -> void can[Ui.Draw]:
+            shadow_alpha: f32 = style.shadow_alpha.f32() / 255.0
+            CGContextSaveGState(context)
+            set_shadow(context, style.shadow_offset_x, style.shadow_offset_y, style.shadow_blur, shadow_alpha) if shadow_alpha > 0.0
+            set_fill_color(context, color)
+            rounded_path(context, box, style.radius)
+            CGContextFillPath(context)
+            CGContextRestoreGState(context)
+
         # One rounded surface, in UiPaint's order: the shadow it casts, its own
         # fill, the light falling on it, and last the rim -- an edge that
         # anything else paints over stops being an edge.
@@ -75,13 +84,13 @@ extend UiUIKit:
         # compositor puts both painters in one translation unit: the shared
         # name there resolved to the other backend and declined to compile.
         def draw_depth_surface(context: usize, box: UiCore::Rect, style: UiPaint::RoundedRectStyle, color: UiCore::Color) -> void can[Ui.Draw]:
-            shadow_alpha: f32 = style.shadow_alpha.f32() / 255.0
-            CGContextSaveGState(context)
-            set_shadow(context, style.shadow_offset_x, style.shadow_offset_y, style.shadow_blur, shadow_alpha) if shadow_alpha > 0.0
-            set_fill_color(context, color)
-            rounded_path(context, box, style.radius)
-            CGContextFillPath(context)
-            CGContextRestoreGState(context)
+            # CoreGraphics attaches a shadow to a DRAWING OP, so the two
+            # layers are two fills of the same path. The second covers the
+            # first's body exactly, and each shadow lands under its own fill,
+            # which is the composite the single-pass Skia path produces.
+            contact: UiPaint::RoundedRectStyle = UiPaint::contact_shadow(style)
+            draw_shadowed_body(context, box, contact, color) if UiPaint::has_contact_shadow(style)
+            draw_shadowed_body(context, box, style, color)
             draw_surface_sheen(context, box, style)
             draw_surface_rim(context, box, style)
 

@@ -1,0 +1,195 @@
+# The elevation half of the painting contract: how a surface is LIT.
+#
+# Split out of ui_paint.elisa so the contract -- the protocol, the replay loop
+# and the geometry policy -- reads without the lighting arithmetic wrapped
+# around it, and so neither half crowds the other out of the file budget.
+# Everything here extends the same module and is reached by the same names.
+
+extend UiPaint:
+    public:
+        # The ambient layer: soft, offset well below the surface. Its ceiling
+        # is what a modal deserves; its floor is what a slider thumb needs to
+        # sit above a track rather than in it.
+        const AMBIENT_OFFSET_RATIO: f32 = 0.12
+        const AMBIENT_OFFSET_MIN: f32 = 1.5
+        const AMBIENT_OFFSET_MAX: f32 = 16.0
+        const AMBIENT_BLUR_RATIO: f32 = 0.30
+        const AMBIENT_BLUR_MIN: f32 = 5.0
+        const AMBIENT_BLUR_MAX: f32 = 44.0
+        # The contact layer: tight, dark, barely offset. It is the shadow in
+        # the sliver of space an object does not quite close.
+        const CONTACT_OFFSET_RATIO: f32 = 0.03
+        const CONTACT_OFFSET_MIN: f32 = 0.5
+        const CONTACT_OFFSET_MAX: f32 = 4.0
+        const CONTACT_BLUR_RATIO: f32 = 0.06
+        const CONTACT_BLUR_MIN: f32 = 1.0
+        const CONTACT_BLUR_MAX: f32 = 8.0
+
+        # The elevation treatment for a surface that will be painted in `color`.
+        #
+        # This is the whole depth policy, in one place, for every custom backend:
+        # a light surface is lifted by a soft shadow beneath it, a dark surface by
+        # light along its top edge, and both get a little of the other. Passing the
+        # colour is what makes that possible -- the style used to be chosen with no
+        # idea what would be painted into it, so one shadow had to serve a white
+        # card and a near-black panel, and it suited neither.
+        def rounded_rect_style_for(box: UiCore::Rect, depth: UiCore::SurfaceDepth, color: UiCore::Color) -> RoundedRectStyle:
+            base: RoundedRectStyle = rounded_rect_style(box, depth == UiCore::SurfaceDepth.Raised)
+            return elevation_treatment(base, box, color, depth)
+
+        def rounded_rect_style_for_with_radius(box: UiCore::Rect, depth: UiCore::SurfaceDepth, requested_radius: f32, color: UiCore::Color) -> RoundedRectStyle:
+            base: RoundedRectStyle = rounded_rect_style_with_radius(box, depth == UiCore::SurfaceDepth.Raised, requested_radius)
+            return elevation_treatment(base, box, color, depth)
+
+        # Weight the three depth effects by the surface's own lightness.
+        #
+        # LIGHT surfaces (luminance at or above the midpoint) cast a real shadow:
+        # wide and soft, low alpha, offset further down than the old policy's 2px,
+        # because a tight dark smudge reads as a border rather than as height.
+        # They keep a strong top bevel -- on paper that is the lit edge.
+        #
+        # DARK surfaces get a shadow too, but a stronger one over a shorter
+        # distance (it has to survive being dark-on-dark), and they lean on the
+        # sheen and bevel, which are the only two things that read at all.
+        #
+        # A surface that is NOT elevated still gets a trace of both, because a
+        # completely flat fill next to a lifted one looks like a rendering
+        # failure rather than a deliberate lack of emphasis.
+        # A SHADOW THE SIZE OF THE THING THAT CASTS IT.
+        #
+        # The offset and blur used to be two constants -- 8 down, 22 across --
+        # for every raised surface in the framework, so a 34pt button and a
+        # 600pt dialog were lit by the same lamp at the same distance. On the
+        # button that is a shadow larger than the object, which does not read
+        # as height; it reads as haze, and on the light palette it spread the
+        # alpha so thin that the button had no measurable shadow at all.
+        #
+        # Height scales with the surface's shorter side and is clamped at both
+        # ends: below the floor a shadow is a smudge, above the ceiling a
+        # dialog would be lit from the next room. The clamps are what keep a
+        # full-width bar from casting a fifty-pixel shadow.
+        def elevation_treatment(base: RoundedRectStyle, box: UiCore::Rect, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> RoundedRectStyle:
+            luminance: i64 = UiCore::surface_luminance(color)
+            elevated: bool = depth == UiCore::SurfaceDepth.Raised
+            inset: bool = depth == UiCore::SurfaceDepth.Inset
+            extent: f32 = elevation_extent(box)
+            # A recess casts no shadow of its own -- the shadow is INSIDE it,
+            # which is what the inverted wash below draws.
+            return RoundedRectStyle{
+                radius: base.radius,
+                elevated: elevated,
+                shadow_alpha: 0 if inset or not elevated else blend(130, 46, luminance),
+                hairline_alpha: base.hairline_alpha,
+                shadow_offset_x: base.shadow_offset_x,
+                shadow_offset_y: clamped(extent * AMBIENT_OFFSET_RATIO, AMBIENT_OFFSET_MIN, AMBIENT_OFFSET_MAX),
+                shadow_blur: clamped(extent * AMBIENT_BLUR_RATIO, AMBIENT_BLUR_MIN, AMBIENT_BLUR_MAX),
+                hairline_width: base.hairline_width,
+                sheen_top_alpha: blend(110, 70, luminance) if inset else (blend(30, 26, luminance) if elevated else blend(8, 10, luminance)),
+                sheen_bottom_alpha: 0,
+                bevel_alpha: blend(46, 90, luminance) if inset else (blend(120, 170, luminance) if elevated else blend(40, 60, luminance)),
+                sheen_is_shadow: inset,
+                bevel_at_bottom: inset,
+                contact_alpha: 0 if inset or not elevated else blend(150, 60, luminance),
+                contact_offset_y: clamped(extent * CONTACT_OFFSET_RATIO, CONTACT_OFFSET_MIN, CONTACT_OFFSET_MAX),
+                contact_blur: clamped(extent * CONTACT_BLUR_RATIO, CONTACT_BLUR_MIN, CONTACT_BLUR_MAX),
+            }
+
+        # The shorter side is what a surface's height reads from: a full-width
+        # toolbar is not lifted further off the page than a button because it
+        # is wide, and a tall narrow panel is not lifted because it is tall.
+        def elevation_extent(box: UiCore::Rect) -> f32:
+            shortest: f32 = box.size.width if box.size.width < box.size.height else box.size.height
+            return 0.0 if shortest < 0.0
+            return UiCore::bounded_extent(shortest)
+
+        def clamped(value: f32, low: f32, high: f32) -> f32:
+            bounded: f32 = UiCore::bounded_extent(value)
+            return low if bounded < low
+            return high if bounded > high
+            return bounded
+
+        # The contact layer as a style of its own, so a backend draws it with
+        # the shadow call it already has rather than learning a second one.
+        # Everything but the shadow is cleared: this pass is the shadow.
+        def contact_shadow(style: RoundedRectStyle) -> RoundedRectStyle:
+            return RoundedRectStyle{
+                radius: style.radius,
+                elevated: style.elevated,
+                shadow_alpha: style.contact_alpha,
+                hairline_alpha: 0,
+                shadow_offset_x: style.shadow_offset_x,
+                shadow_offset_y: style.contact_offset_y,
+                shadow_blur: style.contact_blur,
+                hairline_width: style.hairline_width,
+                sheen_top_alpha: 0,
+                sheen_bottom_alpha: 0,
+                bevel_alpha: 0,
+                sheen_is_shadow: false,
+                bevel_at_bottom: false,
+                contact_alpha: 0,
+                contact_offset_y: 0.0,
+                contact_blur: 0.0,
+            }
+
+        def has_contact_shadow(style: RoundedRectStyle) -> bool:
+            return style.contact_alpha != 0
+
+        # The two gradients a depth treatment is MADE of, derived here rather
+        # than in each backend.
+        #
+        # This is the seam the framework got wrong once already. Skia knew that a
+        # recess washes with black rather than white, and that the rim runs from
+        # the bevel alpha to the hairline alpha in whichever direction the light
+        # comes from; CoreGraphics knew none of it, because that arithmetic lived
+        # inside the Skia backend rather than in the policy both backends read.
+        # The same app looked like two different apps. Four functions here, and a
+        # backend only has to know how to draw a linear gradient.
+
+        def has_sheen(style: RoundedRectStyle) -> bool:
+            return style.sheen_top_alpha != 0 or style.sheen_bottom_alpha != 0
+
+        # White at a low alpha rather than a lightened copy of the fill: an
+        # overlay works on any colour the app chooses, and needs no colour
+        # arithmetic in the backend. A recess inverts the tint, not the
+        # direction -- the light is still overhead.
+        def sheen_near_color(style: RoundedRectStyle) -> UiCore::Color:
+            tint: u8 = sheen_tint(style)
+            return UiCore::rgba(tint, tint, tint, style.sheen_top_alpha)
+
+        def sheen_far_color(style: RoundedRectStyle) -> UiCore::Color:
+            tint: u8 = sheen_tint(style)
+            return UiCore::rgba(tint, tint, tint, style.sheen_bottom_alpha)
+
+        # The outline and the rim light are ONE stroke, which is why they are one
+        # gradient here. Two strokes would double up on whichever edge they share.
+        def rim_near_color(style: RoundedRectStyle) -> UiCore::Color:
+            near: u8 = style.hairline_alpha if style.bevel_at_bottom else rim_alpha(style)
+            return UiCore::rgba(255, 255, 255, near)
+
+        def rim_far_color(style: RoundedRectStyle) -> UiCore::Color:
+            far: u8 = rim_alpha(style) if style.bevel_at_bottom else style.hairline_alpha
+            return UiCore::rgba(255, 255, 255, far)
+
+        # Move an effect's strength between what a BLACK surface needs and what a
+        # WHITE one needs, in proportion to how light this surface actually is.
+        #
+        # A threshold here was wrong, and visibly so: the accents in the shipped
+        # showcase straddle it -- coral measures 130 and the ocean blue 117 --
+        # so two bars of the same saturation, side by side in one chart, got
+        # visibly different rims because one landed a step above the midpoint.
+        # Lighting is continuous; a cliff in the policy shows up as a cliff in
+        # the picture.
+        def blend(at_black: i64, at_white: i64, luminance: i64) -> u8:
+            bounded: i64 = UiCore::channel(luminance)
+            mixed: i64 = at_black + (at_white - at_black) * bounded / 255
+            return UiCore::channel(mixed).u8()
+
+
+    private:
+        def sheen_tint(style: RoundedRectStyle) -> u8:
+            return 0 if style.sheen_is_shadow else 255
+
+        # The lit edge is never DIMMER than the outline that defines the shape:
+        # a bevel weaker than the hairline would read as a nick in the rim.
+        def rim_alpha(style: RoundedRectStyle) -> u8:
+            return style.bevel_alpha if style.bevel_alpha > style.hairline_alpha else style.hairline_alpha

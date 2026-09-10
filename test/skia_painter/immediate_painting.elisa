@@ -126,7 +126,7 @@ def check_immediate_painting() -> u32:
     check("detach restores the frame transform", skia_test_restore_count() == 3)
     check("scale crosses the boundary for attachment and transform", skia_test_scale_count() == 2)
     check("clip crosses the boundary once", skia_test_clip_count() == 1)
-    check("all commands replay through Skia", skia_test_clear_count() == 1 and skia_test_round_rect_count() == 4 and skia_test_stroke_round_rect_count() == 1 and skia_test_shadow_round_rect_count() == 1 and skia_test_image_count() == 11 and skia_test_circle_count() == 2 and skia_test_triangle_count() == 2 and skia_test_line_count() == 2 and skia_test_text_count() == 6)
+    check("all commands replay through Skia", skia_test_clear_count() == 1 and skia_test_round_rect_count() == 4 and skia_test_stroke_round_rect_count() == 1 and skia_test_shadow_round_rect_count() == 2 and skia_test_image_count() == 11 and skia_test_circle_count() == 2 and skia_test_triangle_count() == 2 and skia_test_line_count() == 2 and skia_test_text_count() == 6)
     # A RETAINED SURFACE IS FOUR DRAWS, and this is where that is stated. Each
     # rectangle in the batch above becomes the shadow it casts, its own fill,
     # the sheen across its face and the rim on its edge -- so the two rectangles
@@ -142,6 +142,18 @@ def check_immediate_painting() -> u32:
     # and had to be rewritten the moment it was tuned.
     replayed_style: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for(UiCore::Rect(2.0, 3.0, 100.0, 30.0), UiCore::SurfaceDepth.Raised, UiCore::rgb(40, 50, 60))
     check("Skia shadow policy stays in Elisa", skia_test_last_shadow_offset_x() == replayed_style.shadow_offset_x and skia_test_last_shadow_offset_y() == replayed_style.shadow_offset_y and skia_test_last_shadow_blur() == replayed_style.shadow_blur and skia_test_last_shadow_red() == 0 and skia_test_last_shadow_green() == 0 and skia_test_last_shadow_blue() == 0)
+    # A RAISED SURFACE CASTS TWO SHADOWS, not one: the wide ambient layer the
+    # check above reads back, and the tight contact layer drawn under it. One
+    # blur is a drop-shadow filter; two is how an object rests on a surface.
+    contact_layer: UiPaint::RoundedRectStyle = UiPaint::contact_shadow(replayed_style)
+    check("a raised surface casts an ambient shadow and a contact shadow", UiPaint::has_contact_shadow(replayed_style) and contact_layer.shadow_blur < replayed_style.shadow_blur and contact_layer.shadow_offset_y < replayed_style.shadow_offset_y and contact_layer.shadow_alpha > replayed_style.shadow_alpha)
+    check("the contact layer is only a shadow", contact_layer.sheen_top_alpha == 0 and contact_layer.bevel_alpha == 0 and contact_layer.hairline_alpha == 0 and not UiPaint::has_contact_shadow(contact_layer))
+    # ...and the lamp is not at a fixed height above every object. A dialog and
+    # a slider thumb used to be given the same 8pt offset and 22pt blur.
+    thumb: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for(UiCore::Rect(0.0, 0.0, 16.0, 16.0), UiCore::SurfaceDepth.Raised, UiCore::rgb(40, 50, 60))
+    sheet: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for(UiCore::Rect(0.0, 0.0, 620.0, 180.0), UiCore::SurfaceDepth.Raised, UiCore::rgb(40, 50, 60))
+    check("a shadow is the size of the thing that casts it", thumb.shadow_offset_y < replayed_style.shadow_offset_y and replayed_style.shadow_offset_y < sheet.shadow_offset_y and thumb.shadow_blur < replayed_style.shadow_blur and replayed_style.shadow_blur < sheet.shadow_blur)
+    check("and a wide bar is not lifted by being wide", UiPaint::rounded_rect_style_for(UiCore::Rect(0.0, 0.0, 1200.0, 30.0), UiCore::SurfaceDepth.Raised, UiCore::rgb(40, 50, 60)).shadow_blur == replayed_style.shadow_blur)
     check("Skia hairline policy stays in Elisa", skia_test_last_stroke_width() == 1.0 and skia_test_last_line_width() == 1.0)
     check("detach clears the borrowed state", not UiSkia::is_attached())
     check("detached render status is explicit", UiSkia::render_status() == UiSkia::RenderStatus.SkippedNoSurface)
