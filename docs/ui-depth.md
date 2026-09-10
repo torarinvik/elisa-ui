@@ -413,3 +413,19 @@ is nearly its own colour, so it is a tint and the framework declines to blur
 behind it. Its **modal sheet** sits over the content list, is genuinely
 see-through, and frosts it — which is what says the sheet is in front of the
 content rather than in it.
+
+## Glass has a thickness
+
+A translucent raised surface used to be a tint with an outline: the fill, the
+sheen, the rim. What a slab of glass actually shows is its **edge** — a bright
+bleed just inside the top where the lip catches the light, a dark bleed just
+inside the bottom where it shades the face. Both are **inner shadows**: the
+shape's own outside, blurred, shifted, and clipped back to the shape, so only
+the bleed across the edge survives.
+
+`UiPaint::is_glass` gates it — elevated and see-through — so an opaque card
+shows no thickness because it has none, and a recess is already lit from its
+lip. The blur scales with the surface; the light is shifted down into the top
+edge and the shade up into the bottom one, because the light is overhead. Skia
+draws it through a new inner-shadow primitive; the CoreGraphics painters do not
+yet, and this is recorded rather than hidden.

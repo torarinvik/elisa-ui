@@ -327,3 +327,33 @@ extend UiPaint:
                 contact_blur: 0.0,
                 backdrop_blur: 0.0,
             }
+
+    public:
+        # GLASS HAS A THICKNESS. A translucent raised surface used to be a
+        # tint with an outline: the fill, the sheen, the rim. What a slab of
+        # glass actually shows is its EDGE -- a bright bleed just inside the
+        # top where the lip catches the light, a dark bleed just inside the
+        # bottom where it shades the face -- and both are inner shadows, the
+        # shape's own outside blurred back across its edge. They are drawn
+        # only for glass: an opaque card shows no thickness because it has
+        # none to show, and a recess is already lit from its lip.
+        const GLASS_EDGE_BLUR_RATIO: f32 = 0.16
+        const GLASS_EDGE_BLUR_MIN: f32 = 2.0
+        const GLASS_EDGE_BLUR_MAX: f32 = 10.0
+        const GLASS_LIGHT_ALPHA: u8 = 150
+        const GLASS_SHADE_ALPHA: u8 = 70
+
+        def is_glass(style: RoundedRectStyle, color: UiCore::Color) -> bool:
+            return style.elevated and color.a != 0 and color.a != 255
+
+        def glass_edge_blur(box: UiCore::Rect) -> f32:
+            return clamped(elevation_extent(box) * GLASS_EDGE_BLUR_RATIO, GLASS_EDGE_BLUR_MIN, GLASS_EDGE_BLUR_MAX)
+
+        # The light comes from above: the bright bleed is shifted DOWN so it
+        # lands inside the top edge, the dark one UP so it lands inside the
+        # bottom.
+        def glass_light_offset(box: UiCore::Rect) -> f32:
+            return glass_edge_blur(box) * 0.9
+
+        def glass_shade_offset(box: UiCore::Rect) -> f32:
+            return 0.0 - glass_edge_blur(box) * 0.7

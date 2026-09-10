@@ -412,3 +412,23 @@ def check_vocabulary() -> void:
         check("a run with a halo asks for one", skia_test_halo_count() == 1)
         check("and both runs are still drawn as text", skia_test_text_count() == 2)
         check("and a plain run still measures as its halo-less self", UiCore::TextRun(UiCore::Vec2(0.0, 0.0), 12.0, "x").halo.a == 0)
+
+        # GLASS HAS A THICKNESS. A translucent raised surface used to be a
+        # tint with an outline. A slab of glass shows its EDGE: a bright bleed
+        # inside the top where the lip catches the light, a dark one inside
+        # the bottom where it shades the face -- both inner shadows, both only
+        # for a surface you see through.
+        glass_pane: UiCore::Rect = UiCore::Rect(0.0, 0.0, 200.0, 80.0)
+        pane_style: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for(glass_pane, UiCore::SurfaceDepth.Raised, UiCore::rgba(20, 30, 60, 150))
+        check("a surface you see through is glass", UiPaint::is_glass(pane_style, UiCore::rgba(20, 30, 60, 150)))
+        check("an opaque one is not, and a recess is not", not UiPaint::is_glass(pane_style, UiCore::rgb(20, 30, 60)) and not UiPaint::is_glass(UiPaint::rounded_rect_style_for(glass_pane, UiCore::SurfaceDepth.Inset, UiCore::rgba(20, 30, 60, 150)), UiCore::rgba(20, 30, 60, 150)))
+        check("the light bleeds in from the top and the shade from the bottom", UiPaint::glass_light_offset(glass_pane) > 0.0 and UiPaint::glass_shade_offset(glass_pane) < 0.0)
+        UiCore::begin_frame()
+        UiCore::fill_elevated(UiCore::Rect(10.0, 10.0, 200.0, 80.0), UiCore::rgba(20, 30, 60, 150))
+        UiCore::fill_elevated(UiCore::Rect(10.0, 100.0, 200.0, 80.0), UiCore::rgb(20, 30, 60))
+        skia_test_reset()
+        UiSkia::attach(1)
+        _ = UiSkia::render_status()
+        UiSkia::detach()
+        check("the painter draws both edges for the glass pane and none for the opaque one", skia_test_inner_shadow_count() == 2)
+        check("with the shade drawn last, pulled up into the bottom edge", skia_test_last_inner_offset_y() < 0.0)

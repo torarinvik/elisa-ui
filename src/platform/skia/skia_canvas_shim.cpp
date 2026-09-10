@@ -176,6 +176,35 @@ extern "C" void elisa_skia_canvas_shadow_round_rect(std::size_t handle, float x,
 }
 
 
+// AN INNER SHADOW IS INSIDE. The shape's own outside, blurred and shifted,
+// clipped to the shape: only the blur that bleeds back across the edge
+// survives, which is a shadow cast by the lip onto the face. This is what
+// makes glass read as a slab with thickness rather than a tint with an
+// outline -- a bright bleed at the top edge, a dark one at the bottom.
+extern "C" void elisa_skia_canvas_inner_shadow_round_rect(std::size_t handle, float x, float y, float width,
+                                                          float height, float radius, float offset_y,
+                                                          float blur, std::uint8_t red, std::uint8_t green,
+                                                          std::uint8_t blue, std::uint8_t alpha) {
+    if (SkCanvas *target = canvas(handle);
+        target != nullptr && valid_rect(x, y, width, height) && bounded_nonnegative_extent(radius) &&
+        bounded_coordinate(offset_y) && bounded_extent(blur) && alpha != 0) {
+        const SkRect rect = SkRect::MakeXYWH(x, y, width, height);
+        const SkRRect rounded = SkRRect::MakeRectXY(rect, radius, radius);
+        SkPaint paint = fill_paint(red, green, blue, alpha);
+        paint.setMaskFilter(SkMaskFilter::MakeBlur(kNormal_SkBlurStyle, blur));
+        // The inverse of the shape: a generous outer rect with the rounded
+        // shape cut from it, even-odd, shifted by the offset.
+        SkPathBuilder builder;
+        builder.setFillType(SkPathFillType::kEvenOdd);
+        builder.addRect(rect.makeOutset(blur * 4.0f + 8.0f, blur * 4.0f + 8.0f).makeOffset(0.0f, offset_y));
+        builder.addRRect(rounded.makeOffset(0.0f, offset_y));
+        target->save();
+        target->clipRRect(rounded, SkClipOp::kIntersect, true);
+        target->drawPath(builder.detach(), paint);
+        target->restore();
+    }
+}
+
 extern "C" void elisa_skia_canvas_fill_linear_gradient(std::size_t handle, float x, float y,
                                                          float width, float height,
                                                          std::uint8_t start_red,
