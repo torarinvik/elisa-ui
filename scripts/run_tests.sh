@@ -143,7 +143,7 @@ for source in "$ROOT"/test/*_test.elisa; do
   name="$(basename "$source" .elisa)"
   # The real Skia fixtures are library entry points driven by their C++ hosts;
   # the dedicated renderer gate owns their compile/link/run lifecycle.
-  if [[ "$name" == "skia_offscreen_test" || "$name" == "showcase_skia_test" || "$name" == "showcase_app_skia_test" || "$name" == "appkit_skia_host_test" ]]; then
+  if [[ "$name" == "skia_offscreen_test" || "$name" == "showcase_skia_test" || "$name" == "showcase_app_skia_test" || "$name" == "storefront_skia_test" || "$name" == "appkit_skia_host_test" ]]; then
     continue
   fi
   bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ROOT/build/$name.o" "$source"

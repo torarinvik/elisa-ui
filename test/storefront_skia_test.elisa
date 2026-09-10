@@ -1,0 +1,79 @@
+# The storefront example rendered by real Skia, off-screen.
+#
+# The showcase fixture proves the renderer draws every widget. This one proves
+# something the showcase cannot: that the vocabulary composes into a frame
+# somebody would ship. Nothing here is a demonstration of a feature -- it is a
+# rail, a header, a hero and a grid, and the only reason to look at it is
+# whether it looks like an interface.
+
+include "../src/platform/skia/ui_skia.elisa"
+include "../examples/storefront/app.elisa"
+
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    return UiSkia::active_measure_text_width(text, size, weighted)
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return UiSkia::active_text_line_height(size)
+
+def ui_font_ascent(size: f32) -> f32:
+    return UiSkia::active_font_ascent(size)
+
+def ui_text_line_height(size: f32) -> f32:
+    return UiSkia::active_text_line_height(size)
+
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return 0
+
+global mutable storefront_started: bool = false
+
+def storefront_skia_render(canvas: usize, font: usize, width: f32, height: f32, scale: f32) -> i32:
+    can Ui.Draw, Ui.Text, Ui.Input, Unsafe.PointerCast:
+        previous_font: usize = UiSkia::begin_frame_font(font)
+        _ = UiTextMetrics::set_context(UiSkia::font_generation(), UiSkia::scale_generation())
+        UiCapabilities::use_appkit_canvas()
+        _ = UiCapabilities::select_skia_renderer()
+        UiCore::set_viewport(width, height)
+        if not storefront_started:
+            app_init()
+            storefront_started <- true
+        UiSkia::begin_deferred_frame()
+        UiCore::begin_frame()
+        app_frame()
+        if canvas == 0:
+            UiSkia::end_deferred_frame()
+            UiSkia::end_frame_font(previous_font)
+            return UiSkia::RenderStatus.SkippedNoSurface.i32()
+        UiSkia::attach_scaled(canvas, scale)
+        status: UiSkia::RenderStatus = UiSkia::render_status_with_font(font)
+        UiSkia::detach()
+        UiSkia::end_deferred_frame()
+        UiSkia::end_frame_font(previous_font)
+        return status.i32()
+
+# Four pictures, bound the way a host binds them: a resource the framework
+# knows by slot and generation, an image the host loaded, one call each.
+def storefront_skia_bind(brand: usize, glyph: usize, banner: usize, plate: usize) -> i32:
+    return 0 if not storefront_started
+    return 0 if brand == 0 or glyph == 0 or banner == 0 or plate == 0
+    StoreApp::set_pictures(
+        bound(brand, "storefront/brand"),
+        bound(glyph, "storefront/glyph"),
+        bound(banner, "storefront/banner"),
+        bound(plate, "storefront/plate"))
+    return 1
+
+def bound(image: usize, key: sview) -> UiCore::ImageRef:
+    resource: UiResources::ResourceHandle = UiResources::request(key, 21)
+    return UiCore::image_ref_none() if not UiResources::resource_is_valid(resource)
+    return UiCore::image_ref_none() if not UiResources::set_state(resource, UiResources::State.Ready)
+    return UiCore::image_ref_none() if not UiSkia::bind_image(resource, image)
+    return UiCore::image_ref(resource.slot, resource.generation)
+
+export fn elisa_storefront_skia_render(canvas: usize, font: usize, width: f32, height: f32, scale: f32) -> i32 = storefront_skia_render
+export fn elisa_storefront_skia_bind(brand: usize, glyph: usize, banner: usize, plate: usize) -> i32 = storefront_skia_bind

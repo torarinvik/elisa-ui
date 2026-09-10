@@ -1,0 +1,238 @@
+# The content column: a search bar, a page header with tabs, a hero, and the
+# grid of store cards.
+
+include "./style.elisa"
+
+module StoreCatalog:
+    private:
+        const CARD_COUNT: i32 = 6
+        const TAB_COUNT: i32 = 4
+        const TAGS_PER_CARD: i32 = 3
+        global mutable content: UiHandles::Handle = UiHandles::invalid()
+        global mutable hero: UiHandles::Handle = UiHandles::invalid()
+        global mutable hero_plate: UiHandles::Handle = UiHandles::invalid()
+        global mutable tab_ids: u32[4] = zeroed
+        global mutable tab_rules: u32[4] = zeroed
+        global mutable card_plates: u32[6] = zeroed
+        global mutable card_tiles: u32[6] = zeroed
+        global mutable selected_tab: i32 = 0
+
+        def tab_name(index: i32) -> sview:
+            return "Discover" if index == 0
+            return "Featured" if index == 1
+            return "Categories" if index == 2
+            return "Collections"
+
+        def card_title(index: i32) -> sview:
+            return "Independent Games" if index == 0
+            return "Creative Tools" if index == 1
+            return "Learning Lab" if index == 2
+            return "Productivity Hub" if index == 3
+            return "Open Utilities" if index == 4
+            return "Research Commons"
+
+        def card_body(index: i32) -> sview:
+            return "Small teams. Big ideas." if index == 0
+            return "Tools for makers and designers." if index == 1
+            return "Knowledge apps for curious minds." if index == 2
+            return "Get more done with open tools." if index == 3
+            return "Essential tools for a more open web." if index == 4
+            return "Apps for research, data and discovery."
+
+        def card_tag(index: i32, slot: i32) -> sview:
+            return "Open Source" if slot == 2
+            return "Games" if index == 0 and slot == 0
+            return "Indie" if index == 0
+            return "Creative" if index == 1 and slot == 0
+            return "Education" if index == 2 and slot == 0
+            return "Productivity" if index == 3 and slot == 0
+            return "Utilities" if index == 4 and slot == 0
+            return "Research" if index == 5 and slot == 0
+            return "Reference"
+
+        # Widths for the two controls that carry a caption and no measurement.
+        # Deliberately generous: a capsule with its text touching the ends is
+        # a capsule that was cut from a rectangle.
+        def tab_width(index: i32) -> f32:
+            return 58.0 if index == 0
+            return 56.0 if index == 1
+            return 72.0 if index == 2
+            return 74.0
+
+        def tag_width(index: i32, slot: i32) -> f32:
+            return 72.0 if slot == 2
+            return 46.0 if index == 0 and slot == 0
+            return 40.0 if index == 0
+            return 54.0 if index == 1 and slot == 0
+            return 62.0 if index == 2 and slot == 0
+            return 74.0 if index == 3 and slot == 0
+            return 58.0 if index == 4 and slot == 0
+            return 58.0 if index == 5 and slot == 0
+            return 62.0
+
+        # A tile's ramp runs from a lifted cast of its colour down to the
+        # colour itself, the same way the primary action does -- toward white
+        # rather than by a fixed amount, so a dark hue lifts as much as a
+        # bright one and neither clips.
+        def lifted(color: UiCore::Color) -> UiCore::Color:
+            return StoreTheme::rgba(toward_white(color.r), toward_white(color.g), toward_white(color.b), color.a)
+
+        def toward_white(channel: u8) -> u8:
+            return (channel.i64() + (255 - channel.i64()) * 42 / 100).u8()
+
+        def plate_color(index: i32) -> UiCore::Color:
+            return StoreTheme::rgb(46, 104, 172) if index == 0
+            return StoreTheme::rgb(112, 84, 196) if index == 1
+            return StoreTheme::rgb(38, 128, 138) if index == 2
+            return StoreTheme::rgb(58, 132, 90) if index == 3
+            return StoreTheme::rgb(44, 84, 176) if index == 4
+            return StoreTheme::rgb(96, 70, 168)
+
+        # One card: an image plate across the head, a mark, a title, a line of
+        # body text, and its tags. Everything below the plate is text, so the
+        # card's height comes from its content rather than from a number.
+        def card(parent: UiHandles::Handle, index: i32) -> void:
+            frame: UiHandles::Handle = UiHandles::column(parent, 0.0, 0.0, StoreTheme::surface())
+            UiHandles::set_grow(frame, 1.0)
+            # EQUAL COLUMNS NEED AN EQUAL BASE. Grow distributes the SPARE
+            # space evenly, not the total, so three cards whose minimums differ
+            # by the width of their tags come out three different widths.
+            UiHandles::set_min_size(frame, 260.0, 0.0)
+            UiHandles::set_gradient(frame, StoreTheme::surface_far(), false)
+
+            plate: UiHandles::Handle = UiHandles::column(frame, 0.0, 0.0, plate_color(index))
+            UiHandles::set_grow(plate, 0.0)
+            UiHandles::set_min_size(plate, 0.0, 84.0)
+            UiHandles::set_max_size(plate, 4096.0, 84.0)
+            card_plates[index.usize()] <- UiHandles::index(plate).u32()
+
+            body: UiHandles::Handle = UiHandles::column(frame, 12.0, 5.0, StoreTheme::transparent())
+            UiHandles::set_grow(body, 0.0)
+            head: UiHandles::Handle = UiHandles::row(body, 0.0, 9.0, StoreTheme::transparent())
+            UiHandles::set_grow(head, 0.0)
+            tile: UiHandles::Handle = UiHandles::column(head, 0.0, 0.0, StoreTheme::transparent())
+            UiHandles::set_grow(tile, 0.0)
+            UiHandles::set_min_size(tile, 30.0, 30.0)
+            UiHandles::set_max_size(tile, 30.0, 30.0)
+            card_tiles[index.usize()] <- UiHandles::index(tile).u32()
+            heading: UiHandles::Handle = UiHandles::label(head, card_title(index), 13.0, StoreTheme::ink())
+            UiHandles::set_text_weight(heading, true)
+            _ = UiHandles::label(body, card_body(index), 11.0, StoreTheme::muted())
+
+            tags: UiHandles::Handle = UiHandles::row(body, 0.0, 5.0, StoreTheme::transparent())
+            UiHandles::set_grow(tags, 0.0)
+            for slot in 0..<TAGS_PER_CARD:
+                chip: UiHandles::Handle = UiHandles::button(tags, tag_width(index, slot), 18.0, StoreTheme::chip(), StoreTheme::chip(), StoreTheme::chip())
+                UiHandles::set_grow(chip, 0.0)
+                StoreStyle::tag(chip, card_tag(index, slot))
+            filler: UiHandles::Handle = UiHandles::column(tags, 0.0, 0.0, StoreTheme::transparent())
+            UiHandles::set_grow(filler, 1.0)
+
+    public:
+        def init(host: UiHandles::Handle) -> void:
+            content <- UiHandles::column(host, 18.0, 14.0, StoreTheme::transparent())
+            UiHandles::set_grow(content, 1.0)
+
+            search: UiHandles::Handle = UiHandles::button(content, 0.0, 38.0, StoreTheme::bar(), StoreTheme::bar(), StoreTheme::bar())
+            UiHandles::set_grow(search, 0.0)
+            UiHandles::set_corner(search, UiCore::CornerStyle.Pill)
+            UiHandles::set_text(search, "Search apps, creators, or anything…", 13.0, StoreTheme::muted())
+
+            header: UiHandles::Handle = UiHandles::row(content, 0.0, 14.0, StoreTheme::transparent())
+            UiHandles::set_grow(header, 0.0)
+            titles: UiHandles::Handle = UiHandles::column(header, 0.0, 2.0, StoreTheme::transparent())
+            UiHandles::set_grow(titles, 1.0)
+            page_title: UiHandles::Handle = UiHandles::label(titles, "Metastore", 24.0, StoreTheme::rail_ink())
+            UiHandles::set_text_weight(page_title, true)
+            _ = UiHandles::label(titles, "Discover and add new stores. A more open ecosystem.", 12.0, StoreTheme::rail_muted())
+            tabs: UiHandles::Handle = UiHandles::row(header, 0.0, 16.0, StoreTheme::transparent())
+            UiHandles::set_grow(tabs, 0.0)
+            for index in 0..<TAB_COUNT:
+                column: UiHandles::Handle = UiHandles::column(tabs, 0.0, 4.0, StoreTheme::transparent())
+                UiHandles::set_grow(column, 0.0)
+                # A BUTTON DOES NOT MEASURE ITS CAPTION -- a minimum is
+                # declared once, at construction -- so a tab asked for zero
+                # width came out zero wide and the whole row vanished into the
+                # header. A label measures; a button is told.
+                label: UiHandles::Handle = UiHandles::button(column, tab_width(index), 20.0, StoreTheme::transparent(), StoreTheme::transparent(), StoreTheme::transparent())
+                UiHandles::set_grow(label, 0.0)
+                tab_ids[index.usize()] <- UiHandles::index(label).u32()
+                # The underline IS the tab. Two points thick and as wide as its
+                # label, which the corner policy reads as a bar and caps
+                # without being told.
+                rule: UiHandles::Handle = UiHandles::column(column, 0.0, 0.0, StoreTheme::transparent())
+                UiHandles::set_grow(rule, 0.0)
+                UiHandles::set_min_size(rule, 0.0, 2.0)
+                UiHandles::set_max_size(rule, 4096.0, 2.0)
+                tab_rules[index.usize()] <- UiHandles::index(rule).u32()
+            create: UiHandles::Handle = UiHandles::button(header, 132.0, 36.0, StoreTheme::accent(), StoreTheme::accent(), StoreTheme::accent())
+            UiHandles::set_grow(create, 0.0)
+            UiHandles::set_cross_alignment(create, UiConst::CrossAlignment.Center)
+            StoreStyle::primary(create, "Create a Store", 13.0)
+
+            # THE HERO IS ONE PANEL. Its picture is its own record and its
+            # copy is its children, so the text lands on the image with no
+            # second layer and no overlay widget -- a widget paints its fill,
+            # then its picture, then everything inside it.
+            hero <- UiHandles::column(content, 26.0, 6.0, StoreTheme::rgb(20, 40, 84))
+            UiHandles::set_grow(hero, 0.0)
+            UiHandles::set_min_size(hero, 0.0, 196.0)
+            UiHandles::set_max_size(hero, 4096.0, 196.0)
+            hero_plate <- hero
+            eyebrow: UiHandles::Handle = UiHandles::label(hero, "A MORE OPEN", 10.0, StoreTheme::rgba(186, 214, 255, 255))
+            UiHandles::set_text_weight(eyebrow, true)
+            headline: UiHandles::Handle = UiHandles::label(hero, "Marketplace Ecosystem", 30.0, StoreTheme::rgb(255, 255, 255))
+            UiHandles::set_text_weight(headline, true)
+            _ = UiHandles::label(hero, "Discover independent stores, curated by creators", 13.0, StoreTheme::rgba(222, 236, 255, 255))
+            _ = UiHandles::label(hero, "and communities around the world.", 13.0, StoreTheme::rgba(222, 236, 255, 255))
+            actions: UiHandles::Handle = UiHandles::row(hero, 0.0, 10.0, StoreTheme::transparent())
+            UiHandles::set_grow(actions, 0.0)
+            UiHandles::set_min_size(actions, 0.0, 40.0)
+            UiHandles::set_max_size(actions, 4096.0, 40.0)
+            browse: UiHandles::Handle = UiHandles::button(actions, 148.0, 36.0, StoreTheme::accent(), StoreTheme::accent(), StoreTheme::accent())
+            UiHandles::set_grow(browse, 0.0)
+            UiHandles::set_cross_alignment(browse, UiConst::CrossAlignment.Center)
+            StoreStyle::primary(browse, "Browse Stores", 13.0)
+            learn: UiHandles::Handle = UiHandles::button(actions, 110.0, 36.0, StoreTheme::transparent(), StoreTheme::transparent(), StoreTheme::transparent())
+            UiHandles::set_grow(learn, 0.0)
+            UiHandles::set_cross_alignment(learn, UiConst::CrossAlignment.Center)
+            StoreStyle::secondary(learn, "Learn More", 13.0)
+            hero_gap: UiHandles::Handle = UiHandles::column(actions, 0.0, 0.0, StoreTheme::transparent())
+            UiHandles::set_grow(hero_gap, 1.0)
+
+            section: UiHandles::Handle = UiHandles::row(content, 0.0, 0.0, StoreTheme::transparent())
+            UiHandles::set_grow(section, 0.0)
+            section_title: UiHandles::Handle = UiHandles::label(section, "Featured Stores", 17.0, StoreTheme::rail_ink())
+            UiHandles::set_text_weight(section_title, true)
+            section_gap: UiHandles::Handle = UiHandles::column(section, 0.0, 0.0, StoreTheme::transparent())
+            UiHandles::set_grow(section_gap, 1.0)
+            _ = UiHandles::label(section, "View all", 12.0, StoreTheme::accent_lifted())
+
+            grid: UiHandles::Handle = UiHandles::column(content, 0.0, 12.0, StoreTheme::transparent())
+            UiHandles::set_grow(grid, 0.0)
+            for line in 0..<2:
+                strip: UiHandles::Handle = UiHandles::row(grid, 0.0, 12.0, StoreTheme::transparent())
+                UiHandles::set_grow(strip, 0.0)
+                UiHandles::set_min_size(strip, 0.0, 182.0)
+                UiHandles::set_max_size(strip, 4096.0, 182.0)
+                for column in 0..<3:
+                    card(strip, line * 3 + column)
+            # The slack belongs BELOW the grid, not inside the cards. A card
+            # stretched to fill a column is a card with a hole in it.
+            slack: UiHandles::Handle = UiHandles::column(content, 0.0, 0.0, StoreTheme::transparent())
+            UiHandles::set_grow(slack, 1.0)
+            restyle()
+
+        def restyle() -> void:
+            for index in 0..<TAB_COUNT:
+                StoreStyle::tab(UiHandles::from_index(tab_ids[index.usize()].usize()), tab_name(index), index == selected_tab)
+                rule: UiHandles::Handle = UiHandles::from_index(tab_rules[index.usize()].usize())
+                UiHandles::set_color(rule, StoreTheme::accent_lifted() if index == selected_tab else StoreTheme::transparent())
+
+        # Pictures for the hero and the six plates. A card whose plate never
+        # arrives is a card with a coloured head, not a broken one.
+        def set_pictures(banner: UiCore::ImageRef, plate: UiCore::ImageRef, mark: UiCore::ImageRef) -> void:
+            UiHandles::set_image(hero_plate, banner)
+            for index in 0..<CARD_COUNT:
+                UiHandles::set_image(UiHandles::from_index(card_plates[index.usize()].usize()), plate)
+                StoreStyle::tile(UiHandles::from_index(card_tiles[index.usize()].usize()), lifted(plate_color(index)), plate_color(index), mark)

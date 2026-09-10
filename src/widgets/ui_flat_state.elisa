@@ -292,6 +292,23 @@ extend UiFlat:
             if widget_count >= MAX_WIDGETS:
                 widget_dropped <- true
                 return NONE
+            # A CHILD OF SOMETHING THAT CANNOT HOLD CHILDREN IS A MISTAKE, NOT
+            # A ROOT.
+            #
+            # Only a panel and a scroll viewport nest. Asking for a child of a
+            # button used to hand back a perfectly valid widget that was
+            # secretly a ROOT -- laid out across the whole viewport, painted
+            # over everything, and taking the pointer anywhere it was
+            # transparent. It cost an afternoon in the storefront example,
+            # where every icon tile in the rail was a full-window pane, and
+            # the frame looked almost right the entire time.
+            #
+            # The sentinel is the same one a full arena returns, and the same
+            # one every builder already checks, so a caller that handles one
+            # handles the other.
+            if parent != NONE and parent < widget_count and not can_nest(parent):
+                widget_dropped <- true
+                return NONE
             index: usize = widget_count
             widget_count <- widget_count + 1
             mark_layout_dirty()

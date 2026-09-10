@@ -1,0 +1,54 @@
+# A storefront, composed the way a shipping application is composed.
+#
+# The showcase next door puts every widget on screen, which makes it a coverage
+# artifact and also makes it look like a widget catalogue. This one has nothing
+# on screen to demonstrate a feature: a rail, a search bar, a header with tabs,
+# a hero and a grid of cards, and every one of them is built from the ordinary
+# retained vocabulary. It is the answer to "what does an interface built with
+# this framework look like" rather than "what can this framework draw".
+
+include "./shell.elisa"
+include "./catalog.elisa"
+
+module StoreApp:
+    private:
+        global mutable root: UiHandles::Handle = UiHandles::invalid()
+        global mutable body: UiHandles::Handle = UiHandles::invalid()
+        global mutable started: bool = false
+
+    public:
+        def init() -> void:
+            return if started
+            started <- true
+            root <- UiHandles::column(UiHandles::root_parent(), 0.0, 0.0, StoreTheme::page_near())
+            UiHandles::set_gradient(root, StoreTheme::page_far(), false)
+            body <- UiHandles::row(root, 0.0, 0.0, StoreTheme::transparent())
+            UiHandles::set_grow(body, 1.0)
+            StoreShell::init(body)
+            StoreCatalog::init(body)
+
+        def frame() -> void:
+            # The viewport is the host's to report and the layout is the
+            # application's to run against it. A frame that never lays out is
+            # a tree of zero-sized boxes and a perfectly good empty PNG.
+            UiHandles::layout(UiCore::viewport_width(), UiCore::viewport_height())
+            UiCore::clear(StoreTheme::page_near())
+            UiHandles::paint()
+
+        # One call for the host to hand over every picture the frame uses.
+        def set_pictures(brand: UiCore::ImageRef, glyph: UiCore::ImageRef, banner: UiCore::ImageRef, plate: UiCore::ImageRef) -> void:
+            StoreShell::set_marks(brand, glyph)
+            StoreCatalog::set_pictures(banner, plate, glyph)
+
+def app_init() -> void:
+    StoreApp::init()
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    _ = widget
+    _ = event
+
+def app_event(event: UiCore::Event) -> void:
+    _ = event
+
+def app_frame() -> void:
+    StoreApp::frame()

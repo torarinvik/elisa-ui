@@ -1,0 +1,120 @@
+# The left rail: brand, primary destinations, a section of categories, and a
+# promotional card at the foot.
+
+include "./style.elisa"
+
+module StoreShell:
+    private:
+        const NAV_COUNT: i32 = 3
+        const CATEGORY_COUNT: i32 = 4
+        global mutable rail: UiHandles::Handle = UiHandles::invalid()
+        global mutable brand_tile: UiHandles::Handle = UiHandles::invalid()
+        global mutable nav_ids: u32[3] = zeroed
+        global mutable nav_tiles: u32[3] = zeroed
+        global mutable category_ids: u32[4] = zeroed
+        global mutable category_tiles: u32[4] = zeroed
+        global mutable promo: UiHandles::Handle = UiHandles::invalid()
+        global mutable captions: u32[7] = zeroed
+        global mutable caption_total: usize = 0
+        global mutable selected: i32 = 1
+
+        def mark(parent: UiHandles::Handle) -> UiHandles::Handle:
+            tile: UiHandles::Handle = UiHandles::column(parent, 0.0, 0.0, StoreTheme::transparent())
+            UiHandles::set_grow(tile, 0.0)
+            UiHandles::set_min_size(tile, 22.0, 22.0)
+            UiHandles::set_max_size(tile, 22.0, 22.0)
+            UiHandles::set_cross_alignment(tile, UiConst::CrossAlignment.Center)
+            return tile
+
+        def caption(parent: UiHandles::Handle, text: sview) -> void:
+            label: UiHandles::Handle = UiHandles::label(parent, text, 14.0, StoreTheme::rail_ink())
+            UiHandles::set_grow(label, 1.0)
+            UiHandles::set_cross_alignment(label, UiConst::CrossAlignment.Center)
+            captions[caption_total] <- UiHandles::index(label).u32()
+            caption_total <- caption_total + 1
+
+        def nav_name(index: i32) -> sview:
+            return "Home" if index == 0
+            return "Metastore" if index == 1
+            return "My Stores"
+
+        def category_name(index: i32) -> sview:
+            return "Games" if index == 0
+            return "Creative Tools" if index == 1
+            return "Productivity" if index == 2
+            return "Learning"
+
+        # A PANEL, not a button. Only a panel and a scroll viewport hold
+        # children, and this row holds a tile and a caption -- asking a button
+        # for children is refused outright now, which is how this example
+        # found out it had been building seven full-window panes.
+        def entry(parent: UiHandles::Handle) -> UiHandles::Handle:
+            row: UiHandles::Handle = UiHandles::row(parent, 9.0, 10.0, StoreTheme::transparent())
+            UiHandles::set_grow(row, 0.0)
+            UiHandles::set_min_size(row, 224.0, 40.0)
+            UiHandles::set_max_size(row, 4096.0, 40.0)
+            return row
+
+    public:
+        def init(host: UiHandles::Handle) -> void:
+            rail <- UiHandles::column(host, 16.0, 6.0, StoreTheme::rail())
+            UiHandles::set_grow(rail, 0.0)
+            UiHandles::set_gradient(rail, StoreTheme::rail_far(), false)
+
+            brand_row: UiHandles::Handle = UiHandles::row(rail, 0.0, 12.0, StoreTheme::transparent())
+            UiHandles::set_grow(brand_row, 0.0)
+            brand_tile <- UiHandles::column(brand_row, 0.0, 0.0, StoreTheme::transparent())
+            UiHandles::set_grow(brand_tile, 0.0)
+            UiHandles::set_min_size(brand_tile, 42.0, 42.0)
+            UiHandles::set_max_size(brand_tile, 42.0, 42.0)
+            brand_text: UiHandles::Handle = UiHandles::column(brand_row, 0.0, 1.0, StoreTheme::transparent())
+            brand_name: UiHandles::Handle = UiHandles::label(brand_text, "WasmBrowser", 16.0, StoreTheme::rail_ink())
+            UiHandles::set_text_weight(brand_name, true)
+            _ = UiHandles::label(brand_text, "The Open Web. Beyond.", 11.0, StoreTheme::rail_muted())
+
+            gap: UiHandles::Handle = UiHandles::column(rail, 0.0, 0.0, StoreTheme::transparent())
+            UiHandles::set_grow(gap, 0.0)
+            UiHandles::set_min_size(gap, 0.0, 10.0)
+
+            for index in 0..<NAV_COUNT:
+                item: UiHandles::Handle = entry(rail)
+                nav_ids[index.usize()] <- UiHandles::index(item).u32()
+                nav_tiles[index.usize()] <- UiHandles::index(mark(item)).u32()
+                caption(item, nav_name(index))
+
+            section: UiHandles::Handle = UiHandles::label(rail, "EXPLORE", 10.0, StoreTheme::rail_label())
+            UiHandles::set_text_weight(section, true)
+
+            for index in 0..<CATEGORY_COUNT:
+                item: UiHandles::Handle = entry(rail)
+                category_ids[index.usize()] <- UiHandles::index(item).u32()
+                category_tiles[index.usize()] <- UiHandles::index(mark(item)).u32()
+                caption(item, category_name(index))
+
+            spacer: UiHandles::Handle = UiHandles::column(rail, 0.0, 0.0, StoreTheme::transparent())
+            UiHandles::set_grow(spacer, 1.0)
+
+            promo <- UiHandles::column(rail, 14.0, 3.0, StoreTheme::accent_lifted())
+            UiHandles::set_grow(promo, 0.0)
+            UiHandles::set_gradient(promo, StoreTheme::accent_deep(), false)
+            UiHandles::set_glow(promo, StoreTheme::rgba(37, 118, 236, 130))
+            promo_title: UiHandles::Handle = UiHandles::label(promo, "A more open tomorrow.", 13.0, StoreTheme::on_accent())
+            UiHandles::set_text_weight(promo_title, true)
+            _ = UiHandles::label(promo, "Build. Share. Explore.", 11.0, StoreTheme::rgba(214, 232, 255, 255))
+            restyle()
+
+        def restyle() -> void:
+            for index in 0..<NAV_COUNT:
+                StoreStyle::nav_row(UiHandles::from_index(nav_ids[index.usize()].usize()), UiHandles::from_index(captions[index.usize()].usize()), nav_name(index), index == selected)
+            for index in 0..<CATEGORY_COUNT:
+                StoreStyle::nav_row(UiHandles::from_index(category_ids[index.usize()].usize()), UiHandles::from_index(captions[(NAV_COUNT + index).usize()].usize()), category_name(index), false)
+
+        # The rail's marks. Each is a gradient square with a picture in it, so
+        # one widget carries what would otherwise be a stack of three.
+        def set_marks(brand: UiCore::ImageRef, glyph: UiCore::ImageRef) -> void:
+            UiHandles::set_image(brand_tile, brand)
+            UiHandles::set_corner(brand_tile, UiCore::CornerStyle.Automatic)
+            for index in 0..<NAV_COUNT:
+                StoreStyle::tile(UiHandles::from_index(nav_tiles[index.usize()].usize()), StoreTheme::rgba(255, 255, 255, 30), StoreTheme::rgba(255, 255, 255, 12), glyph)
+            for index in 0..<CATEGORY_COUNT:
+                StoreStyle::tile(UiHandles::from_index(category_tiles[index.usize()].usize()), StoreTheme::rgba(255, 255, 255, 30), StoreTheme::rgba(255, 255, 255, 12), glyph)

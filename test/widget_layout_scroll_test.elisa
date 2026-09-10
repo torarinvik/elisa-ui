@@ -142,9 +142,25 @@ def main() -> i64:
     check("scrollbar clicks do not multi-select the focused text field", UiFlat::selected_text_length(guarded_field) == 0)
 
     UiFlat::reset()
+    # A CHILD OF A LEAF IS A MISTAKE, NOT A ROOT.
+    #
+    # This used to hand back a perfectly valid widget that was secretly a
+    # root: laid out across the whole viewport, painted over everything, and
+    # taking the pointer anywhere it was transparent. The link was correctly
+    # refused and the WIDGET was not, which is the half that shows up in a
+    # frame. It cost an afternoon in the storefront example, where every icon
+    # tile in the rail was a full-window pane and the picture looked almost
+    # right the whole time.
+    #
+    # The sentinel is the one a full arena already returns and the one every
+    # builder already checks, so a caller that handles one handles the other.
+    # An out-of-range parent stays a detached widget: that is a stale handle
+    # rather than a wrong shape, and the check below still asserts it.
     leaf_parent: usize = UiFlat::label(UiFlat::NONE, "Leaf", 14.0, UiCore::rgb(230, 230, 230))
     detached_child: usize = UiFlat::button(leaf_parent, 80.0, 24.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
-    check("leaf widgets reject child attachments", UiFlat::widget(leaf_parent).first_child == UiFlat::NONE and UiFlat::widget(detached_child).parent == UiFlat::NONE)
+    check("a leaf refuses a child outright", detached_child == UiFlat::NONE and not UiFlat::is_valid(detached_child))
+    check("and gains none", UiFlat::widget(leaf_parent).first_child == UiFlat::NONE)
+    check("the refusal is reported, not silent", UiFlat::overflowed())
 
     UiFlat::reset()
     orphan: usize = UiFlat::button(999, 80.0, 24.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
