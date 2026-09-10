@@ -89,8 +89,17 @@ extend UiAppKitCanvas:
             # layers are two fills of the same path. The second covers the
             # first's body exactly, and each shadow lands under its own fill,
             # which is the composite the single-pass Skia path produces.
+            #
+            # ...as long as the body is OPAQUE. Filling a translucent surface
+            # twice composites its colour with itself, and the widget comes out
+            # darker than the one the application asked for -- a visible bug
+            # traded for an invisible shadow. Skia has no such constraint: its
+            # shadow is a shape of its own, drawn before the one fill. This is
+            # the one place the two cannot draw the identical picture, and a
+            # translucent surface is the case where the contact layer is worth
+            # least anyway.
             contact: UiPaint::RoundedRectStyle = UiPaint::contact_shadow(style)
-            draw_shadowed_body(context, box, contact, color) if UiPaint::has_contact_shadow(style)
+            draw_shadowed_body(context, box, contact, color) if UiPaint::has_contact_shadow(style) and color.a == 255
             draw_shadowed_body(context, box, style, color)
             draw_surface_sheen(context, box, style)
             draw_surface_rim(context, box, style)

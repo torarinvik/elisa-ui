@@ -121,6 +121,17 @@ def top_minus_bottom(color: UiCore::Color, depth: UiCore::SurfaceDepth) -> i64 c
     CGContextRelease(context)
     return top - bottom
 
+# One row just above the bottom of the fill, where the sheen has faded to
+# nothing and what is left is the body's own colour.
+def bottom_sample(color: UiCore::Color, depth: UiCore::SurfaceDepth) -> i64 can Ui.Draw, Ui.Text, Unsafe.PointerCast:
+    context: usize = new_context()
+    return 0 if context == 0
+    UiAppKitCanvas::probe_surface(context, probe_box(), color, depth)
+    middle: i32 = ((PROBE_LEFT + PROBE_RIGHT) / 2.0).i32()
+    value: i64 = sample(context, middle, PROBE_BOTTOM.i32() - PROBE_INSET_ROWS)
+    CGContextRelease(context)
+    return value
+
 def main() -> i64:
     can Ui.Draw, Ui.Text, Unsafe.PointerCast:
         panel: UiCore::Color = UiCore::rgba(38, 40, 48, 255)
@@ -134,6 +145,14 @@ def main() -> i64:
               top_minus_bottom(panel, UiCore::SurfaceDepth.Raised) > 0)
         check("a raised light surface is lit from above",
               top_minus_bottom(card, UiCore::SurfaceDepth.Raised) > 0)
+        # A TRANSLUCENT SURFACE IS FILLED ONCE. CoreGraphics attaches a shadow
+        # to a drawing OP, so the contact layer is a second fill of the same
+        # path -- and a second fill of a translucent body composites its colour
+        # with itself. The application asked for one wash and would have got
+        # two: a visible bug traded for an invisible shadow.
+        glass: UiCore::Color = UiCore::rgba(255, 255, 255, 128)
+        check("a translucent raised surface is filled once",
+              bottom_sample(glass, UiCore::SurfaceDepth.Raised) - bottom_sample(glass, UiCore::SurfaceDepth.Flat) < 8)
 
         # A recess is the same light from the same place, falling on the other
         # side of the edge: the wash is shadow, so the top is DARKER.

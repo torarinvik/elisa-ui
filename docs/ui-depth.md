@@ -179,7 +179,11 @@ The contact shadow needed no new vocabulary anywhere: it is a style whose shadow
 fields are the contact ones, so each backend draws it with the shadow call it
 already had. Skia draws both layers under one fill; CoreGraphics attaches a
 shadow to a drawing OP, so the two layers are two fills of the same path, and
-the second covers the first's body exactly.
+the second covers the first's body exactly — as long as that body is OPAQUE.
+Filling a translucent surface twice composites its colour with itself, so the
+CoreGraphics painters skip the contact layer when the fill is not opaque: a
+visible bug is not worth an invisible shadow, and that is the one place the two
+backends cannot draw the identical picture.
 
 The one thing a backend may still legitimately differ on is text weight, because
 the font stacks differ: Skia synthesizes it as a stroke added to the outline,
