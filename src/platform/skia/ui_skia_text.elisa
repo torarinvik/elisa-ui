@@ -33,11 +33,28 @@ extend UiSkia:
         def apply_text_quality() -> void:
             elisa_skia_set_text_quality(1, TEXT_HINTING_SLIGHT)
 
-        def measure_text_width(text: sview, size: f32) -> f32:
+        def measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
             # Metrics are pure font queries and do not require a live canvas.
             # Layout can therefore use Skia's authority before a surface is
             # attached; only draw methods are gated by canvas_state.
-            return UiSkia::metric_width_cached(0, text, size)
+            return UiSkia::metric_width_cached(0, text, size, weighted)
+
+        # LEND THE RENDERER A BOLD FACE, or pass zero to take it back.
+        #
+        # With one in hand a weighted run is drawn AND measured with it, and the
+        # synthetic stem growth is not applied -- a designed bold already
+        # carries the weight in its outlines, and dilating it as well would
+        # close the counters. Without one nothing changes: the renderer
+        # synthesises weight exactly as it did.
+        #
+        # The face is borrowed like every other font handle here. A host that
+        # frees it must clear this first.
+        def set_bold_font(font: usize) -> void:
+            elisa_skia_set_bold_typeface(font)
+            UiSkia::clear_metric_cache()
+
+        def bold_font() -> usize:
+            return elisa_skia_bold_typeface_handle()
 
         def font_ascent(size: f32) -> f32:
             return UiCore::bounded_extent(elisa_skia_font_ascent(UiSkia::safe_font_size(size)))
@@ -48,8 +65,8 @@ extend UiSkia:
         # Replay may borrow a specific typeface for the frame. Expose one
         # metric surface for direct custom controls so layout and drawing use
         # the same borrowed font whenever that scope is active.
-        def active_measure_text_width(text: sview, size: f32) -> f32:
-            return UiSkia::metric_width_cached(skia_frame_font, text, size)
+        def active_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+            return UiSkia::metric_width_cached(skia_frame_font, text, size, weighted)
 
         def active_font_ascent(size: f32) -> f32:
             return UiSkia::font_ascent(size) if skia_frame_font == 0
@@ -66,6 +83,12 @@ extend UiSkia:
 
         global mutable skia_metric_cache_valid: bool[MAX_METRIC_CACHE_ENTRIES] = zeroed
         global mutable skia_metric_cache_fonts: usize[MAX_METRIC_CACHE_ENTRIES] = zeroed
+        # WEIGHT IS PART OF THE KEY. It was not, and did not need to be, while
+        # weight was a stroke: a stroke dilates an outline and leaves the
+        # advance alone, so bold and regular measured the same. A designed bold
+        # face has its own advances, and a cache that forgot which one it stored
+        # would hand a weighted run the width of its regular self.
+        global mutable skia_metric_cache_weighted: bool[MAX_METRIC_CACHE_ENTRIES] = zeroed
         global mutable skia_metric_cache_sizes: f32[MAX_METRIC_CACHE_ENTRIES] = zeroed
         global mutable skia_metric_cache_hashes: u64[MAX_METRIC_CACHE_ENTRIES] = zeroed
         global mutable skia_metric_cache_lengths: usize[MAX_METRIC_CACHE_ENTRIES] = zeroed
@@ -80,31 +103,32 @@ extend UiSkia:
                 skia_metric_cache_values[index] <- 0.0
             skia_metric_cache_next <- 0
 
-        def metric_width_cached(font: usize, text: sview, size: f32) -> f32:
+        def metric_width_cached(font: usize, text: sview, size: f32, weighted: bool) -> f32:
             return 0.0 if text.len <= 0 or text.data == null or not UiCore::is_finite(size)
             safe_text: sview = UiCore::bounded_text(text)
             return 0.0 if safe_text.len <= 0 or safe_text.data == null
             safe_size: f32 = UiSkia::safe_font_size(size)
             length: usize = safe_text.len.usize()
-            return UiSkia::metric_width_uncached(font, safe_text, safe_size) if length > METRIC_CACHE_TEXT_CAPACITY
+            return UiSkia::metric_width_uncached(font, safe_text, safe_size, weighted) if length > METRIC_CACHE_TEXT_CAPACITY
             hash: mutable u64 = 14695981039346656037
             for offset in 0..<length:
                 hash <- (hash ^ safe_text.data[offset].u64()) * 1099511628211
             for index in 0..<MAX_METRIC_CACHE_ENTRIES:
-                if skia_metric_cache_valid[index] and skia_metric_cache_fonts[index] == font and skia_metric_cache_sizes[index] == safe_size and skia_metric_cache_hashes[index] == hash and skia_metric_cache_lengths[index] == length:
+                if skia_metric_cache_valid[index] and skia_metric_cache_fonts[index] == font and skia_metric_cache_weighted[index] == weighted and skia_metric_cache_sizes[index] == safe_size and skia_metric_cache_hashes[index] == hash and skia_metric_cache_lengths[index] == length:
                     storage_offset: usize = index * METRIC_CACHE_TEXT_CAPACITY
                     matches: bool =
                         for compare in 0..<length |matches = true| -> matches:
                             matches <- false if skia_metric_cache_text[storage_offset + compare] != safe_text.data[compare]
                             break if not matches
                     return skia_metric_cache_values[index] if matches
-            measured: f32 = UiSkia::metric_width_uncached(font, safe_text, safe_size)
+            measured: f32 = UiSkia::metric_width_uncached(font, safe_text, safe_size, weighted)
             slot: usize = skia_metric_cache_next
             storage_offset: usize = slot * METRIC_CACHE_TEXT_CAPACITY
             for offset in 0..<METRIC_CACHE_TEXT_CAPACITY:
                 skia_metric_cache_text[storage_offset + offset] <- safe_text.data[offset] if offset < length else 0
             skia_metric_cache_valid[slot] <- true
             skia_metric_cache_fonts[slot] <- font
+            skia_metric_cache_weighted[slot] <- weighted
             skia_metric_cache_sizes[slot] <- safe_size
             skia_metric_cache_hashes[slot] <- hash
             skia_metric_cache_lengths[slot] <- length
@@ -112,8 +136,13 @@ extend UiSkia:
             skia_metric_cache_next <- (slot + 1) % MAX_METRIC_CACHE_ENTRIES
             return measured
 
-        def metric_width_uncached(font: usize, text: sview, size: f32) -> f32:
+        def metric_width_uncached(font: usize, text: sview, size: f32, weighted: bool) -> f32:
             pointer: cstr = text.data.cast[cstr] can Unsafe.PointerCast
+            # A weighted run goes through the weighted entry point whether or
+            # not a typeface was borrowed for the frame: the stroke argument is
+            # what tells the bridge the run is bold, and the bridge selects a
+            # designed bold face when the host has lent one.
+            return UiCore::bounded_extent(elisa_skia_measure_text_width_weighted(font, pointer, text.len.usize(), size, UiPaint::synthetic_weight_stroke(size, true))) if weighted
             return UiCore::bounded_extent(elisa_skia_measure_text_width(pointer, text.len.usize(), size)) if font == 0
             return measure_text_width_with_handle(font, text, size)
 

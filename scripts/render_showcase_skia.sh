@@ -32,9 +32,11 @@ clang++ -std=c++20 -DSK_BUILD_FOR_MAC -fPIC -I"$ROOT" -I"$SKIA_ROOT" -c \
   "$ROOT/test/showcase_app_skia_host.cpp" -o "$ROOT/build/showcase_app_skia_host.o"
 clang++ -std=c++17 -fPIC -I"$SKIA_ROOT" -c \
   "$ROOT/src/platform/skia/skia_canvas_shim.cpp" -o "$ROOT/build/skia_canvas_shim.o"
+clang++ -std=c++17 -fPIC -I"$SKIA_ROOT" -c \
+  "$ROOT/src/platform/skia/skia_text_shim.cpp" -o "$ROOT/build/skia_text_shim.o"
 
 link_inputs=("$ROOT/build/showcase_app_skia_host.o" "$ROOT/build/showcase_app_skia_test.o"
-             "$ROOT/build/skia_canvas_shim.o" "$RUNTIME" "$SKIA_LIB")
+             "$ROOT/build/skia_canvas_shim.o" "$ROOT/build/skia_text_shim.o" "$RUNTIME" "$SKIA_LIB")
 for extra in "$SKIA_OUT/libpng.a" "$SKIA_OUT/libzlib.a"; do
   [[ -f "$extra" ]] && link_inputs+=("$extra")
 done

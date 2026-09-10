@@ -24,6 +24,7 @@
 #include "include/ports/SkFontMgr_mac_ct.h"
 #include "include/core/SkStream.h"
 
+extern "C" void elisa_skia_set_bold_typeface(std::size_t font);
 extern "C" std::int32_t elisa_showcase_skia_prepare();
 extern "C" std::int32_t elisa_showcase_skia_render(std::size_t canvas, std::size_t font);
 extern "C" std::int32_t elisa_showcase_skia_command_count();
@@ -167,6 +168,12 @@ int main(int argc, char** argv) {
     const auto typeface = font_manager == nullptr
         ? nullptr
         : font_manager->matchFamilyStyle(nullptr, SkFontStyle::Normal());
+    // The system bold face, lent for the life of the host: weighted runs are
+    // drawn and measured with a designed bold instead of a synthetic stroke.
+    const auto bold_typeface = font_manager == nullptr
+        ? nullptr
+        : font_manager->matchFamilyStyle(nullptr, SkFontStyle::Bold());
+    elisa_skia_set_bold_typeface(reinterpret_cast<std::size_t>(bold_typeface.get()));
     if (typeface == nullptr) {
         std::fprintf(stderr, "skia showcase: failed to resolve the CoreText default typeface\n");
         return 3;

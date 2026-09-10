@@ -20,13 +20,16 @@ ELISA_OBJECT="$ROOT/build/showcase_skia_test.o"
 HOST_OBJECT="$ROOT/build/showcase_skia_host.o"
 HOST_BINARY="$ROOT/build/showcase_skia_test"
 SHIM_OBJECT="$ROOT/build/skia_canvas_shim.o"
+TEXT_SHIM_OBJECT="$ROOT/build/skia_text_shim.o"
 bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ELISA_OBJECT" "$ROOT/test/showcase_skia_test.elisa"
 clang++ -std=c++20 -DSK_BUILD_FOR_MAC -fPIC -I"$ROOT" -I"$SKIA_ROOT" -c \
   "$ROOT/test/showcase_skia_host.cpp" -o "$HOST_OBJECT"
 clang++ -std=c++17 -fPIC -I"$SKIA_ROOT" -c \
   "$ROOT/src/platform/skia/skia_canvas_shim.cpp" -o "$SHIM_OBJECT"
+clang++ -std=c++17 -fPIC -I"$SKIA_ROOT" -c \
+  "$ROOT/src/platform/skia/skia_text_shim.cpp" -o "$TEXT_SHIM_OBJECT"
 
-link_inputs=("$HOST_OBJECT" "$ELISA_OBJECT" "$SHIM_OBJECT" "$RUNTIME" "$SKIA_LIB")
+link_inputs=("$HOST_OBJECT" "$ELISA_OBJECT" "$SHIM_OBJECT" "$TEXT_SHIM_OBJECT" "$RUNTIME" "$SKIA_LIB")
 for extra in "$SKIA_OUT/libpng.a" "$SKIA_OUT/libzlib.a"; do
   [[ -f "$extra" ]] && link_inputs+=("$extra")
 done

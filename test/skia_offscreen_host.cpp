@@ -21,6 +21,7 @@
 #include "include/core/SkStream.h"
 #include "include/ports/SkFontMgr_mac_ct.h"
 
+extern "C" void elisa_skia_set_bold_typeface(std::size_t font);
 extern "C" std::int32_t elisa_skia_offscreen_render(std::size_t canvas, std::size_t font);
 
 namespace {
@@ -175,6 +176,14 @@ int main(int argc, char** argv) {
     const auto typeface = font_manager == nullptr
         ? nullptr
         : font_manager->matchFamilyStyle(nullptr, SkFontStyle::Normal());
+    // Lend the renderer the system BOLD face as well. A weighted run is then
+    // drawn and measured with a designed bold rather than with a stroke added
+    // to the regular outline, which is what the framework falls back to when a
+    // host has none.
+    const auto bold_typeface = font_manager == nullptr
+        ? nullptr
+        : font_manager->matchFamilyStyle(nullptr, SkFontStyle::Bold());
+    elisa_skia_set_bold_typeface(reinterpret_cast<std::size_t>(bold_typeface.get()));
     if (typeface == nullptr) {
         std::fprintf(stderr, "skia offscreen: failed to resolve the CoreText default typeface\n");
         return 7;

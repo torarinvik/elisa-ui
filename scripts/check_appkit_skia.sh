@@ -21,6 +21,7 @@ link_inputs=(
   "$ROOT/build/appkit_skia_host_test.o"
   "$ROOT/build/appkit_skia_host.o"
   "$ROOT/build/skia_canvas_shim.o"
+  "$ROOT/build/skia_text_shim.o"
   "$RUNTIME"
   "$SKIA_OUT/libskia.a"
 )

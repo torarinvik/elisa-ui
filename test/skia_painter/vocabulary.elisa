@@ -79,3 +79,29 @@ def check_vocabulary() -> void:
         UiPaint::replay[UiSkia::SkiaPainter]()
         UiSkia::detach()
         check("an opaque, a recessed and a flat surface are not glass", skia_test_backdrop_blur_count() == 0)
+
+        # A DESIGNED BOLD IF THE HOST HAS ONE. Synthetic weight was always a
+        # stand-in for a face the renderer did not have, and the framework said
+        # so: a stroke dilates an outline uniformly, which is not what a drawn
+        # bold does, and matching a real semibold's ink closed the counters. A
+        # host that lends a second face gets the real thing, drawn AND measured
+        # with it -- and the synthetic growth is not applied on top, which
+        # would double the stems.
+        regular_width: f32 = UiSkia::active_measure_text_width("Overview", 20.0, false)
+        synthetic_width: f32 = UiSkia::active_measure_text_width("Overview", 20.0, true)
+        check("without a bold face weight costs no width", synthetic_width == regular_width)
+        UiSkia::set_bold_font(0x5B01D)
+        real_bold_width: f32 = UiSkia::active_measure_text_width("Overview", 20.0, true)
+        check("a lent bold face has its own advances", real_bold_width > regular_width)
+        check("and the regular face is untouched by it", UiSkia::active_measure_text_width("Overview", 20.0, false) == regular_width)
+        check("the renderer reports the face it was lent", UiSkia::bold_font() == 0x5B01D)
+
+        UiCore::begin_frame()
+        UiCore::draw(UiCore::TextRun(UiCore::Vec2(4.0, 20.0), 26.0, "166", true), UiCore::rgb(240, 240, 245))
+        UiSkia::attach(15)
+        skia_test_reset()
+        UiPaint::replay[UiSkia::SkiaPainter]()
+        UiSkia::detach()
+        check("a weighted run is drawn with the lent face", skia_test_last_text_used_bold() == 1)
+        UiSkia::set_bold_font(0)
+        check("taking the face back restores the synthetic weight", UiSkia::active_measure_text_width("Overview", 20.0, true) == regular_width and UiSkia::bold_font() == 0)

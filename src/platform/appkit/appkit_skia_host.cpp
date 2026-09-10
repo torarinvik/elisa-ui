@@ -23,6 +23,7 @@
 #include "include/core/SkTypeface.h"
 #include "include/ports/SkFontMgr_mac_ct.h"
 
+extern "C" void elisa_skia_set_bold_typeface(std::size_t font);
 extern "C" std::int32_t elisa_appkit_canvas_skia_replay(std::size_t window_handle,
                                                           std::size_t canvas,
                                                           float logical_width,
@@ -113,6 +114,14 @@ extern "C" std::int32_t elisa_appkit_canvas_skia_present(std::size_t window_hand
     const auto typeface = font_manager == nullptr
         ? nullptr
         : font_manager->matchFamilyStyle(nullptr, SkFontStyle::Normal());
+    // The compositor MEASURES with CoreText and DRAWS with Skia, so the two
+    // must be handed the same faces. CoreText picks the bold symbolic trait
+    // for a weighted run; this lends Skia the system bold from the same font
+    // manager, which is where those advances come from.
+    const auto bold_typeface = font_manager == nullptr
+        ? nullptr
+        : font_manager->matchFamilyStyle(nullptr, SkFontStyle::Bold());
+    elisa_skia_set_bold_typeface(reinterpret_cast<std::size_t>(bold_typeface.get()));
     if (typeface == nullptr) return 0;
 
     const std::int32_t status = elisa_appkit_canvas_skia_replay(

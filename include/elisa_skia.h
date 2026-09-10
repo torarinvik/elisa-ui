@@ -16,7 +16,7 @@
 /* Packed as 0xMMmmpp (major, minor, patch). Hosts should check this before
  * submitting an opaque canvas or renderer object to the Skia boundary. */
 #define ELISA_SKIA_ABI_VERSION_MAJOR 0u
-#define ELISA_SKIA_ABI_VERSION_MINOR 6u
+#define ELISA_SKIA_ABI_VERSION_MINOR 7u
 #define ELISA_SKIA_ABI_VERSION_PATCH 0u
 #define ELISA_SKIA_ABI_VERSION \
     ((ELISA_SKIA_ABI_VERSION_MAJOR << 16) | \
@@ -105,6 +105,12 @@ void elisa_skia_canvas_draw_text_weighted(size_t canvas, size_t font, const char
                                           size_t length, float x, float y, float size,
                                           float weight_stroke, uint8_t red, uint8_t green,
                                           uint8_t blue, uint8_t alpha);
+/* Lend the renderer a designed bold face, or pass zero to take it back. With
+ * one in hand a weighted run is DRAWN and MEASURED with it and the synthetic
+ * stem growth is not applied; without one the renderer synthesises weight as
+ * before. Borrowed like every other font handle: the host owns it. */
+void elisa_skia_set_bold_typeface(size_t font);
+size_t elisa_skia_bold_typeface_handle(void);
 float elisa_skia_measure_text_width_weighted(size_t font, const char *text, size_t length,
                                              float size, float weight_stroke);
 void elisa_skia_canvas_draw_text_with_font(size_t canvas, size_t font, const char *text, size_t length,

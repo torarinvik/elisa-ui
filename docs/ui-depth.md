@@ -258,8 +258,24 @@ that forgot which one it stored would hand a weighted run the regular width.
 `set_text_weight` marks layout dirty for the same reason: on CoreText, weight is
 a real semibold face and a label's intrinsic width changes with it.
 
-Skia has no bold face to select. A host lends the renderer one borrowed
-typeface, so weight there is synthesized -- and the AMOUNT is now the
+Skia takes a designed bold face when the host lends one. `elisa_skia_set_bold_typeface`
+is the whole addition (ABI 0.7.0): with a bold face in hand a weighted run is
+drawn *and measured* with it, and the synthetic stem growth is not applied on
+top — a designed bold already carries the weight in its outlines, and dilating
+it as well would double the stems and close the counters. Every Skia host in
+the tree lends the system bold from the same font manager it already asked for
+the regular face. That is what keeps the AppKit/Skia compositor honest: it
+MEASURES with CoreText, which picks the bold symbolic trait, and DRAWS with
+Skia, so the two have to be handed faces from the same place.
+
+`UiTextMetrics` was already keying its cache on weight; Skia's own metric cache
+now does too. It did not have to while weight was a stroke — a stroke leaves
+the advance alone, so bold and regular measured the same — and a cache that
+forgot which one it stored would hand a weighted run the width of its regular
+self and clip it.
+
+The synthetic path remains, and is what a host with one typeface still gets.
+A host lends the renderer one borrowed typeface, so weight there is synthesized -- and the AMOUNT is now the
 framework's rather than Skia's. `setEmbolden` decided it before, and measured
 against CoreText's semibold at the same size it was 30% light: a heading was
 bold in a native AppKit window and merely medium in the Skia one. It is a stroke

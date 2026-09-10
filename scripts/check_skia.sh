@@ -54,12 +54,12 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   echo "skia: the AppKit compositor entries compile"
 fi
 
-if rg -n '#include[[:space:]]*[<"](Cocoa|AppKit)' "$ROOT/src/platform/skia/skia_canvas_shim.cpp"; then
+if rg -n '#include[[:space:]]*[<"](Cocoa|AppKit)' "$ROOT/src/platform/skia/skia_canvas_shim.cpp" "$ROOT/src/platform/skia/skia_text_shim.cpp" "$ROOT/src/platform/skia/skia_shim_common.h"; then
   echo "skia: host shim must not import AppKit" >&2
   exit 1
 fi
 
-if rg -n 'safe_radius|radius[[:space:]]*>[[:space:]]*0\.0f' "$ROOT/src/platform/skia/skia_canvas_shim.cpp"; then
+if rg -n 'safe_radius|radius[[:space:]]*>[[:space:]]*0\.0f' "$ROOT/src/platform/skia/skia_canvas_shim.cpp" "$ROOT/src/platform/skia/skia_text_shim.cpp" "$ROOT/src/platform/skia/skia_shim_common.h"; then
   echo "skia: rounded-corner policy leaked back into the C++ bridge" >&2
   exit 1
 fi
@@ -79,10 +79,16 @@ if [[ -n "${SKIA_ROOT:-}" ]]; then
     "$cxx" -std=c++17 -fPIC -I"$SKIA_ROOT" "${skia_cxxflags[@]}" \
       -c "$ROOT/src/platform/skia/skia_canvas_shim.cpp" \
       -o "$ROOT/build/skia_canvas_shim.o"
+    "$cxx" -std=c++17 -fPIC -I"$SKIA_ROOT" "${skia_cxxflags[@]}" \
+      -c "$ROOT/src/platform/skia/skia_text_shim.cpp" \
+      -o "$ROOT/build/skia_text_shim.o"
   else
     "$cxx" -std=c++17 -fPIC -I"$SKIA_ROOT" \
       -c "$ROOT/src/platform/skia/skia_canvas_shim.cpp" \
       -o "$ROOT/build/skia_canvas_shim.o"
+    "$cxx" -std=c++17 -fPIC -I"$SKIA_ROOT" \
+      -c "$ROOT/src/platform/skia/skia_text_shim.cpp" \
+      -o "$ROOT/build/skia_text_shim.o"
   fi
   echo "skia: Elisa painter and C++ host shim compile"
   skia_out="${SKIA_OUT:-$SKIA_ROOT/out/elisa}"

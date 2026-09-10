@@ -107,6 +107,10 @@ void elisa_skia_canvas_stroke_round_rect(size_t canvas, float x, float y, float 
     (void)red; (void)green; (void)blue; (void)alpha;
     if (canvas != 0) { stroke_round_rect_count += 1; last_stroke_width = stroke_width; }
 }
+static size_t bold_typeface_handle;
+static int last_text_used_bold;
+void elisa_skia_set_bold_typeface(size_t font) { bold_typeface_handle = font; }
+size_t elisa_skia_bold_typeface_handle(void) { return bold_typeface_handle; }
 void elisa_skia_canvas_blur_behind_round_rect(size_t canvas, float x, float y, float width,
                                               float height, float radius, float sigma) {
     (void)x; (void)y; (void)width; (void)height; (void)radius;
@@ -200,7 +204,8 @@ void elisa_skia_canvas_draw_text_weighted(size_t canvas, size_t font, const char
                                           uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha) {
     (void)font; (void)text; (void)length; (void)x; (void)y;
     (void)red; (void)green; (void)blue; (void)alpha;
-    if (canvas != 0) { text_count += 1; last_text_size = size; last_text_weight_stroke = weight_stroke; }
+    if (canvas != 0) { text_count += 1; last_text_size = size; last_text_weight_stroke = weight_stroke;
+                       last_text_used_bold = weight_stroke > 0.0f && bold_typeface_handle != 0; }
 }
 void elisa_skia_canvas_draw_text_with_font(size_t canvas, size_t font, const char *text,
                                            size_t length, float x, float y, float size,
@@ -248,6 +253,17 @@ float elisa_skia_measure_text_width(const char *text, size_t length, float size)
     measure_width_count += 1;
     return text == NULL ? 0.0f : (float)length * size * 0.5f;
 }
+/* The stand-in models the one property that matters to the framework: with a
+   bold face lent, a weighted run measures WIDER than its regular self; without
+   one, weight is a stroke and the advance is unchanged. */
+float elisa_skia_measure_text_width_weighted(size_t font, const char *text, size_t length,
+                                             float size, float weight_stroke) {
+    measure_width_count += 1;
+    if (text == NULL) return 0.0f;
+    const float base = font == 0 ? (float)length * size * 0.5f : (float)length * size * 0.6f;
+    const int bold = weight_stroke > 0.0f && bold_typeface_handle != 0;
+    return bold ? base * 1.1f : base;
+}
 float elisa_skia_font_ascent(float size) { return size * 0.8f; }
 float elisa_skia_text_line_height(float size) { return size * 1.2f; }
 float elisa_skia_measure_text_width_with_font(size_t font, const char *text, size_t length, float size) {
@@ -260,7 +276,7 @@ float elisa_skia_text_line_height_with_font(size_t font, float size) { return fo
 void skia_test_reset(void) {
     save_count = 0; restore_count = 0; scale_count = 0; translate_count = 0; rotate_count = 0; clip_count = 0; rounded_clip_count = 0;
     clear_count = 0; last_text_weight_stroke = 0.0f; rounded_gradient_count = 0; stroke_rounded_gradient_count = 0; round_rect_count = 0; stroke_round_rect_count = 0; shadow_round_rect_count = 0; gradient_count = 0; image_count = 0; circle_count = 0; stroke_circle_count = 0; triangle_count = 0;
-    backdrop_blur_count = 0; last_backdrop_sigma = 0.0f;
+    backdrop_blur_count = 0; last_backdrop_sigma = 0.0f; last_text_used_bold = 0;
     last_shadow_offset_x = 0.0f; last_shadow_offset_y = 0.0f; last_shadow_blur = 0.0f; last_shadow_red = 0; last_shadow_green = 0; last_shadow_blue = 0;
     line_count = 0; text_count = 0; measure_width_count = 0; last_round_radius = 0.0f; last_clip_radius = 0.0f; last_stroke_width = 0.0f; last_circle_stroke_width = 0.0f; last_line_width = 0.0f; last_line_round_cap = 0; last_text_size = 0.0f; last_image_x = 0.0f; last_image_y = 0.0f; last_image_width = 0.0f; last_image_height = 0.0f; last_image_source_x = 0.0f; last_image_source_y = 0.0f; last_image_source_width = 0.0f; last_image_source_height = 0.0f; last_image_sampling = 1; last_gradient_horizontal = 0;
     event_total = 0;
@@ -285,6 +301,7 @@ float skia_test_last_shadow_offset_x(void) { return last_shadow_offset_x; }
 float skia_test_last_shadow_offset_y(void) { return last_shadow_offset_y; }
 float skia_test_last_shadow_blur(void) { return last_shadow_blur; }
 int skia_test_backdrop_blur_count(void) { return backdrop_blur_count; }
+int skia_test_last_text_used_bold(void) { return last_text_used_bold; }
 float skia_test_last_backdrop_sigma(void) { return last_backdrop_sigma; }
 int skia_test_last_shadow_red(void) { return last_shadow_red; }
 int skia_test_last_shadow_green(void) { return last_shadow_green; }
