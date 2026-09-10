@@ -37,6 +37,18 @@ extern "C" std::int32_t elisa_showcase_app_skia_direction(std::int32_t rtl);
 
 namespace {
 
+// The luminance of one pixel of the rendered frame. A frame is "light" or
+// "dark" because of the APPLICATION's own surfaces, not because of the system
+// tokens the framework resolves, and those are two different switches -- which
+// is exactly what the light high-contrast frame got wrong.
+int sampled_luminance(SkSurface* surface, int x, int y) {
+    SkPixmap pixels;
+    if (!surface->peekPixels(&pixels)) return -1;
+    if (x < 0 || y < 0 || x >= pixels.width() || y >= pixels.height()) return -1;
+    const SkColor color = pixels.getColor(x, y);
+    return (SkColorGetR(color) * 54 + SkColorGetG(color) * 183 + SkColorGetB(color) * 19) >> 8;
+}
+
 bool write_png(SkSurface* surface, const std::string& path) {
     SkPixmap pixels;
     if (!surface->peekPixels(&pixels)) return false;
@@ -158,6 +170,7 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "showcase skia: contrast page returned status %d\n", contrast_status);
         return 5;
     }
+    const int dark_contrast_luminance = sampled_luminance(surface.get(), width / 2, height / 2);
     const std::string contrast_path = prefix + "-contrast.png";
     if (!write_png(surface.get(), contrast_path)) {
         std::fprintf(stderr, "showcase skia: failed to write %s\n", contrast_path.c_str());
@@ -168,7 +181,16 @@ int main(int argc, char** argv) {
     // by each surface's own lightness, so the two high-contrast modes do not
     // exercise the same arithmetic -- and every bug found in this framework's
     // light palette so far was one the dark one hid.
-    if (elisa_showcase_app_skia_accessible(2) != 1) {
+    // THE APPLICATION'S PALETTE IS NOT THE SYSTEM'S. `accessible(2)` resolves
+    // the framework's tokens from a light system palette, and that is all it
+    // does -- the showcase paints its own cards, panels and page from its own
+    // theme, which the T key toggles. Without this the "light high-contrast"
+    // frame rendered the framework's light tokens over the app's DARK
+    // surfaces, so the two contrast frames had pixel-identical surfaces and
+    // the light half of the depth policy -- which is weighted by each
+    // surface's own lightness -- stayed unrendered under the name of the
+    // frame that claimed to cover it.
+    if (elisa_showcase_app_skia_toggle_theme() != 1 || elisa_showcase_app_skia_accessible(2) != 1) {
         std::fprintf(stderr, "showcase skia: could not apply the light accessible preferences\n");
         return 7;
     }
@@ -181,13 +203,28 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "showcase skia: light contrast page returned status %d\n", light_contrast_status);
         return 5;
     }
+    // Two frames that merely DIFFER are not two palettes: these differed by
+    // their control tokens alone for as long as they existed. The light one
+    // has to be light.
+    const int light_contrast_luminance = sampled_luminance(surface.get(), width / 2, height / 2);
+    if (dark_contrast_luminance < 0 || light_contrast_luminance < 0) {
+        std::fprintf(stderr, "showcase skia: could not sample the contrast frames\n");
+        return 5;
+    }
+    if (light_contrast_luminance <= dark_contrast_luminance + 40) {
+        std::fprintf(stderr,
+                     "showcase skia: the light high-contrast frame is not lighter than the dark one "
+                     "(%d vs %d); the application palette did not switch\n",
+                     light_contrast_luminance, dark_contrast_luminance);
+        return 5;
+    }
     const std::string light_contrast_path = prefix + "-contrast-light.png";
     if (!write_png(surface.get(), light_contrast_path)) {
         std::fprintf(stderr, "showcase skia: failed to write %s\n", light_contrast_path.c_str());
         return 6;
     }
     std::printf("showcase skia: wrote %s\n", light_contrast_path.c_str());
-    if (elisa_showcase_app_skia_accessible(0) != 1) {
+    if (elisa_showcase_app_skia_toggle_theme() != 1 || elisa_showcase_app_skia_accessible(0) != 1) {
         std::fprintf(stderr, "showcase skia: could not restore the default preferences\n");
         return 7;
     }

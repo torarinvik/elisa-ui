@@ -344,3 +344,38 @@ The sideways reach of a shadow is its blur, so that is the number a gutter
 constrains, and it is now bounded below the tightest gutter the shipped
 metrics produce.
 
+## A recess is cued by its rim, not by a wash across its face
+
+The inner shadow in a well is cast by the **lip**, and it falls off within a
+few points of it. The gradient primitive every backend shares runs edge to
+edge, so drawing that shadow with it at a real inner shadow's strength gave a
+text field a **61-level ramp down its entire height** — not a recess, a
+gradient fill, and precisely the beveled-well look interfaces stopped using
+two decades ago.
+
+It had never been seen because it is only conspicuous on a light surface, and
+the frame that claimed to render light surfaces at high contrast was rendering
+dark ones (see below). The inset sheen is now a hint (44/26, from 110/70) and
+the **rim** carries the cue: for a recess the single outline stroke already
+runs from the bevel at the bottom to the hairline at the top, which is
+edge-local and physically right. A fixture holds the hint below the rim so the
+wash can never take the cue back over.
+
+On the dark palette this costs nothing measurable — the wash is black on
+near-black and contributed 2 levels across a field either way.
+
+## The application's palette is not the system's
+
+`accessible(2)` in the showcase fixture resolves the *framework's* tokens from
+a light system palette. That is all it does: the showcase paints its own
+cards, panels and page from its own theme, toggled by a different switch. So
+the frame named `-contrast-light.png` rendered the framework's light tokens
+over the application's **dark** surfaces, and the two high-contrast frames had
+pixel-identical surfaces — `(55, 59, 70)` in both.
+
+The gate only required the two frames to *differ*, and they did, by their
+control tokens alone. The depth policy is weighted by each surface's own
+lightness, so the light half of it at high contrast had never been rendered
+under the name of the frame that claimed to cover it. The host now switches
+the application palette too, and asserts the light frame is measurably lighter
+than the dark one rather than merely different from it.
