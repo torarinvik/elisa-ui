@@ -429,3 +429,16 @@ lip. The blur scales with the surface; the light is shifted down into the top
 edge and the shade up into the bottom one, because the light is overhead. Skia
 draws it through a new inner-shadow primitive; the CoreGraphics painters do not
 yet, and this is recorded rather than hidden.
+
+## A third height
+
+One "raised" made chips, cards and the sheet over them the same height, and a
+sheet at the height of the cards under it is a card among cards.
+`SurfaceDepth.Floating` is the same surface seen from further up: the extent
+that sets its drop and blur is scaled by `FLOATING_HEIGHT_RATIO`, and so are the
+ceilings — a sheet that has already reached the Raised ceiling would otherwise
+float to exactly the same height, which is how the first version of the check
+failed. The alphas are untouched: it reads as *higher*, not as darker.
+
+`UiFlat::set_floating` lifts a widget that would have been Raised; a recess or
+a flat hit target cannot float.

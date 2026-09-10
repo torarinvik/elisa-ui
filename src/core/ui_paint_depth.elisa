@@ -10,6 +10,12 @@ extend UiPaint:
         # The ambient layer: soft, offset well below the surface. Its ceiling
         # is what a modal deserves; its floor is what a slider thumb needs to
         # sit above a track rather than in it.
+        # How much further up a Floating surface sits than a Raised one.
+        const FLOATING_HEIGHT_RATIO: f32 = 2.2
+
+        def is_lifted(depth: UiCore::SurfaceDepth) -> bool:
+            return depth == UiCore::SurfaceDepth.Raised or depth == UiCore::SurfaceDepth.Floating
+
         const AMBIENT_OFFSET_RATIO: f32 = 0.12
         const AMBIENT_OFFSET_MIN: f32 = 1.5
         const AMBIENT_OFFSET_MAX: f32 = 10.0
@@ -50,7 +56,7 @@ extend UiPaint:
         # idea what would be painted into it, so one shadow had to serve a white
         # card and a near-black panel, and it suited neither.
         def rounded_rect_style_for(box: UiCore::Rect, depth: UiCore::SurfaceDepth, color: UiCore::Color) -> RoundedRectStyle:
-            base: RoundedRectStyle = rounded_rect_style(box, depth == UiCore::SurfaceDepth.Raised)
+            base: RoundedRectStyle = rounded_rect_style(box, is_lifted(depth))
             return elevation_treatment(base, box, color, depth)
 
         # The treatment for a surface whose KIND has been stated. Every custom
@@ -62,7 +68,7 @@ extend UiPaint:
             return rounded_rect_style_for_with_radius(box, depth, corner_radius_for(box, corner), color)
 
         def rounded_rect_style_for_with_radius(box: UiCore::Rect, depth: UiCore::SurfaceDepth, requested_radius: f32, color: UiCore::Color) -> RoundedRectStyle:
-            base: RoundedRectStyle = rounded_rect_style_with_radius(box, depth == UiCore::SurfaceDepth.Raised, requested_radius)
+            base: RoundedRectStyle = rounded_rect_style_with_radius(box, is_lifted(depth), requested_radius)
             return elevation_treatment(base, box, color, depth)
 
         # Weight the three depth effects by the surface's own lightness.
@@ -94,9 +100,13 @@ extend UiPaint:
         # full-width bar from casting a fifty-pixel shadow.
         def elevation_treatment(base: RoundedRectStyle, box: UiCore::Rect, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> RoundedRectStyle:
             luminance: i64 = UiCore::surface_luminance(color)
-            elevated: bool = depth == UiCore::SurfaceDepth.Raised
+            elevated: bool = is_lifted(depth)
             inset: bool = depth == UiCore::SurfaceDepth.Inset
-            extent: f32 = elevation_extent(box)
+            # A floating surface is the same surface seen from further up:
+            # the extent that sets its drop and blur is scaled, not the
+            # alphas, so it reads as higher rather than as darker.
+            lift: f32 = FLOATING_HEIGHT_RATIO if depth == UiCore::SurfaceDepth.Floating else 1.0
+            extent: f32 = elevation_extent(box) * lift
             # A recess casts no shadow of its own -- the shadow is INSIDE it,
             # which is what the inverted wash below draws.
             return RoundedRectStyle{
@@ -105,8 +115,11 @@ extend UiPaint:
                 shadow_alpha: 0 if inset or not elevated else blend(130, 20, luminance),
                 hairline_alpha: base.hairline_alpha,
                 shadow_offset_x: base.shadow_offset_x,
-                shadow_offset_y: clamped(extent * AMBIENT_OFFSET_RATIO, AMBIENT_OFFSET_MIN, AMBIENT_OFFSET_MAX),
-                shadow_blur: clamped(extent * AMBIENT_BLUR_RATIO, AMBIENT_BLUR_MIN, AMBIENT_BLUR_MAX),
+                # The ceilings lift with the surface: a sheet that has already
+                # reached the Raised ceiling would otherwise float to exactly
+                # the same height.
+                shadow_offset_y: clamped(extent * AMBIENT_OFFSET_RATIO, AMBIENT_OFFSET_MIN, AMBIENT_OFFSET_MAX * lift),
+                shadow_blur: clamped(extent * AMBIENT_BLUR_RATIO, AMBIENT_BLUR_MIN, AMBIENT_BLUR_MAX * lift),
                 hairline_width: base.hairline_width,
                 sheen_top_alpha: blend(44, 26, luminance) if inset else (blend(30, 26, luminance) if elevated else blend(8, 10, luminance)),
                 sheen_bottom_alpha: 0,
