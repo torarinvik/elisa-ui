@@ -274,6 +274,37 @@ extend UiPaint:
         def glow_blur(box: UiCore::Rect) -> f32:
             return clamped(elevation_extent(box) * GLOW_BLUR_RATIO, GLOW_BLUR_MIN, GLOW_BLUR_MAX)
 
+        # A LIGHT HAS A CORE AND A HALO, the way a shadow has a contact layer
+        # and an ambient one. One wide Gaussian at the application's alpha is
+        # a haze: it reads as a tint around the object rather than as the
+        # object being bright. A second, tight layer close to the edge is
+        # what says the light is COMING FROM the surface -- and it is drawn at
+        # the same alpha over a fraction of the blur, so the two compound
+        # near the edge and fall away together.
+        const GLOW_CORE_RATIO: f32 = 0.38
+
+        def glow_core(base: RoundedRectStyle, box: UiCore::Rect) -> RoundedRectStyle:
+            halo: RoundedRectStyle = glow_shadow(base, box)
+            return RoundedRectStyle{
+                radius: halo.radius,
+                elevated: halo.elevated,
+                shadow_alpha: halo.shadow_alpha,
+                hairline_alpha: halo.hairline_alpha,
+                shadow_offset_x: 0.0,
+                shadow_offset_y: 0.0,
+                shadow_blur: clamped(halo.shadow_blur * GLOW_CORE_RATIO, 1.5, GLOW_BLUR_MAX),
+                hairline_width: halo.hairline_width,
+                sheen_top_alpha: 0,
+                sheen_bottom_alpha: 0,
+                bevel_alpha: 0,
+                sheen_is_shadow: false,
+                bevel_at_bottom: false,
+                contact_alpha: 0,
+                contact_offset_y: 0.0,
+                contact_blur: 0.0,
+                backdrop_blur: 0.0,
+            }
+
         # The style a backend hands its shadow primitive to draw a glow: same
         # corner, no offset in either direction, the glow's own colour.
         def glow_shadow(base: RoundedRectStyle, box: UiCore::Rect) -> RoundedRectStyle:

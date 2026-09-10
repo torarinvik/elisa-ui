@@ -46,9 +46,18 @@ extend UiFlat:
         # widget's own colour is the near end; this is the far one.
         def set_gradient(index: usize, far: UiCore::Color, horizontal: bool) -> void:
             return if index >= widget_count
-            return if colors_equal(widgets[index].gradient, far) and widgets[index].gradient_horizontal == horizontal
+            return if widgets[index].ramped and colors_equal(widgets[index].gradient, far) and widgets[index].gradient_horizontal == horizontal
+            widgets[index].ramped <- true
             widgets[index].gradient <- far
             widgets[index].gradient_horizontal <- horizontal
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+
+        # Back to a flat fill. Its own call, because "no ramp" and "a ramp to
+        # a transparent far end" are different statements and the second is
+        # what a scrim is made of.
+        def clear_gradient(index: usize) -> void:
+            return if index >= widget_count or not widgets[index].ramped
+            widgets[index].ramped <- false
             UiCore::invalidate(UiCore::Invalidation.Paint)
 
         # AN OUTER LIGHT. Not the shadow: a shadow says how high something is,
@@ -100,6 +109,7 @@ extend UiFlat:
             return UiCore::SurfaceStyle{
                 depth,
                 corner: widgets[index].corner,
+                ramped: widgets[index].ramped,
                 gradient: widgets[index].gradient,
                 gradient_horizontal: widgets[index].gradient_horizontal,
                 glow: widgets[index].glow,

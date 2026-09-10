@@ -56,6 +56,21 @@ sk_sp<SkImage> make_scene(int width, int height, unsigned hue_r, unsigned hue_g,
             unsigned r = static_cast<unsigned>(hue_r * (0.45 + 0.55 * (1.0 - v)));
             unsigned g = static_cast<unsigned>(hue_g * (0.50 + 0.50 * (1.0 - v)));
             unsigned b = static_cast<unsigned>(hue_b * (0.60 + 0.40 * (1.0 - v)));
+            // A sun low on the right: a soft radial bloom the ridges will cut
+            // into, which is what gives the scene a light source and the
+            // rest of the frame something to be lit by.
+            const double sdx = (u - 0.72) * 1.6;
+            const double sdy = (v - 0.34);
+            const double sun = std::exp(-(sdx * sdx + sdy * sdy) * 22.0);
+            r = static_cast<unsigned>(r + (255 - r) * sun * 0.9);
+            g = static_cast<unsigned>(g + (255 - g) * sun * 0.7);
+            b = static_cast<unsigned>(b + (255 - b) * sun * 0.35);
+            // Cloud bands: two slow sines, brightened where they overlap.
+            const double band = 0.5 + 0.5 * std::sin(u * 9.0 + v * 30.0) * std::sin(u * 3.5 - v * 11.0);
+            const double cloud = v < 0.5 ? band * band * 0.28 : 0.0;
+            r = static_cast<unsigned>(r + (255 - r) * cloud);
+            g = static_cast<unsigned>(g + (255 - g) * cloud);
+            b = static_cast<unsigned>(b + (255 - b) * cloud);
             // Two ridgelines, the far one hazed into the sky.
             const double far_ridge = 0.56 + 0.06 * std::sin(u * 7.0) + 0.03 * std::sin(u * 17.0);
             const double near_ridge = 0.72 + 0.10 * std::sin(u * 4.0 + 1.3);
@@ -154,12 +169,12 @@ int main(int argc, char** argv) {
     const int bare = [&] {
         SkPixmap pixels;
         if (!surface->peekPixels(&pixels)) return -1;
-        const SkColor c = pixels.getColor(static_cast<int>(700 * scale), static_cast<int>(150 * scale));
+        const SkColor c = pixels.getColor(static_cast<int>(1300 * scale), static_cast<int>(160 * scale));
         return static_cast<int>((SkColorGetR(c) * 54 + SkColorGetG(c) * 183 + SkColorGetB(c) * 19) >> 8);
     }();
 
     sk_sp<SkImage> banner = make_scene(720, 240, 150, 190, 250);
-    sk_sp<SkImage> plate = make_scene(360, 180, 130, 180, 240);
+    sk_sp<SkImage> plate = make_scene(360, 180, 170, 160, 235);
     sk_sp<SkImage> brand = make_glyph();
     sk_sp<SkImage> glyph = make_glyph();
     if (!banner || !plate || !brand || !glyph) {
@@ -196,7 +211,7 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "storefront skia: could not read the frame\n");
         return 5;
     }
-    const SkColor c = pixels.getColor(static_cast<int>(700 * scale), static_cast<int>(150 * scale));
+    const SkColor c = pixels.getColor(static_cast<int>(1300 * scale), static_cast<int>(160 * scale));
     const int lit = static_cast<int>((SkColorGetR(c) * 54 + SkColorGetG(c) * 183 + SkColorGetB(c) * 19) >> 8);
     if (bare < 0 || std::abs(lit - bare) < 20) {
         std::fprintf(stderr, "storefront skia: the plates never arrived (%d before, %d after)\n",

@@ -83,3 +83,25 @@ passed with the ramp removed, because a raised surface's **sheen** is a rounded
 gradient too and is drawn right after the fill. The shim now keeps the *first*
 rounded gradient of a frame, which is the fill; a count could never have told
 the two apart.
+
+## A light has a core and a halo
+
+The way a shadow has a contact layer and an ambient one. One wide Gaussian at
+the application's alpha is a haze — it reads as a tint *around* the object
+rather than as the object being bright. `UiPaint::glow_core` is a second,
+tight layer at a fraction of the halo's blur, drawn last; the two compound near
+the edge and fall away together, which is what says the light is coming *from*
+the surface. Every painter that draws a glow draws both.
+
+## "No ramp" and "a ramp to nothing" are different statements
+
+The far colour's alpha used to be the sentinel — alpha zero meant a flat fill —
+and that conflated the two. A **scrim** over a picture, so that copy laid across
+it reads, is a ramp from a deep colour to *fully transparent*; under the old
+sentinel it was silently a flat wash at the near colour's alpha. The hero in the
+storefront came out uniformly dark with its picture never showing, and the ramp
+was doing exactly what it had been told.
+
+`SurfaceStyle.ramped` is the flag now, the far colour is free to be anything,
+and `UiFlat::clear_gradient` is the way back to a flat fill. A zeroed record
+still means no ramp — `false` is zero — so nothing that predates this changed.

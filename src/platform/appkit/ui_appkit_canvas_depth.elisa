@@ -71,11 +71,19 @@ extend UiAppKitCanvas:
         # shadow off a drawing op, so the light is a fill of the surface's own
         # path with the glow attached -- and the fill that follows covers it.
         def draw_glow(context: usize, box: UiCore::Rect, style: UiPaint::RoundedRectStyle, glow: UiCore::Color) -> void can[Ui.Draw]:
-            lit: UiPaint::RoundedRectStyle = UiPaint::glow_shadow(style, box)
+            halo: UiPaint::RoundedRectStyle = UiPaint::glow_shadow(style, box)
             CGContextSaveGState(context)
-            set_colored_shadow(context, lit.shadow_offset_x, lit.shadow_offset_y, lit.shadow_blur, glow)
+            set_colored_shadow(context, halo.shadow_offset_x, halo.shadow_offset_y, halo.shadow_blur, glow)
             set_fill_color(context, glow)
-            rounded_path(context, box, lit.radius)
+            rounded_path(context, box, halo.radius)
+            CGContextFillPath(context)
+            CGContextRestoreGState(context)
+            # ...and the core, tight to the edge. See UiPaint::glow_core.
+            core: UiPaint::RoundedRectStyle = UiPaint::glow_core(style, box)
+            CGContextSaveGState(context)
+            set_colored_shadow(context, 0.0, 0.0, core.shadow_blur, glow)
+            set_fill_color(context, glow)
+            rounded_path(context, box, core.radius)
             CGContextFillPath(context)
             CGContextRestoreGState(context)
 

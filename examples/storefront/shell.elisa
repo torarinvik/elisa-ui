@@ -7,6 +7,7 @@ module StoreShell:
     private:
         const NAV_COUNT: i32 = 3
         const CATEGORY_COUNT: i32 = 4
+        const COMMUNITY_COUNT: i32 = 2
         global mutable rail: UiHandles::Handle = UiHandles::invalid()
         global mutable brand_tile: UiHandles::Handle = UiHandles::invalid()
         global mutable nav_ids: u32[3] = zeroed
@@ -14,7 +15,10 @@ module StoreShell:
         global mutable category_ids: u32[4] = zeroed
         global mutable category_tiles: u32[4] = zeroed
         global mutable promo: UiHandles::Handle = UiHandles::invalid()
-        global mutable captions: u32[7] = zeroed
+        global mutable captions: u32[9] = zeroed
+        global mutable community_ids: u32[2] = zeroed
+        global mutable community_tiles: u32[2] = zeroed
+        global mutable promo_arrow: UiHandles::Handle = UiHandles::invalid()
         global mutable caption_total: usize = 0
         global mutable selected: i32 = 1
 
@@ -37,6 +41,20 @@ module StoreShell:
             return "Home" if index == 0
             return "Metastore" if index == 1
             return "My Stores"
+
+        def community_name(index: i32) -> sview:
+            return "Creators" if index == 0
+            return "Discussions"
+
+        # A section is a small tracked label over a hairline. The hairline is
+        # a one-point panel: a bar by the corner policy's own test.
+        def section(text: sview) -> void:
+            heading: UiHandles::Handle = UiHandles::label(rail, text, 10.0, StoreTheme::rail_label())
+            UiHandles::set_text_weight(heading, true)
+            rule: UiHandles::Handle = UiHandles::column(rail, 0.0, 0.0, StoreTheme::hairline())
+            UiHandles::set_grow(rule, 0.0)
+            UiHandles::set_min_size(rule, 0.0, 1.0)
+            UiHandles::set_max_size(rule, 4096.0, 1.0)
 
         def category_name(index: i32) -> sview:
             return "Games" if index == 0
@@ -63,8 +81,10 @@ module StoreShell:
 
             brand_row: UiHandles::Handle = UiHandles::row(rail, 0.0, 12.0, StoreTheme::transparent())
             UiHandles::set_grow(brand_row, 0.0)
-            brand_tile <- UiHandles::column(brand_row, 0.0, 0.0, StoreTheme::transparent())
+            brand_tile <- UiHandles::column(brand_row, 0.0, 0.0, StoreTheme::accent_lifted())
             UiHandles::set_grow(brand_tile, 0.0)
+            UiHandles::set_gradient(brand_tile, StoreTheme::accent_deep(), false)
+            UiHandles::set_glow(brand_tile, StoreTheme::rgba(37, 118, 236, 130))
             UiHandles::set_min_size(brand_tile, 42.0, 42.0)
             UiHandles::set_max_size(brand_tile, 42.0, 42.0)
             brand_text: UiHandles::Handle = UiHandles::column(brand_row, 0.0, 1.0, StoreTheme::transparent())
@@ -82,8 +102,7 @@ module StoreShell:
                 nav_tiles[index.usize()] <- UiHandles::index(mark(item)).u32()
                 caption(item, nav_name(index))
 
-            section: UiHandles::Handle = UiHandles::label(rail, "EXPLORE", 10.0, StoreTheme::rail_label())
-            UiHandles::set_text_weight(section, true)
+            section("EXPLORE")
 
             for index in 0..<CATEGORY_COUNT:
                 item: UiHandles::Handle = entry(rail)
@@ -91,16 +110,42 @@ module StoreShell:
                 category_tiles[index.usize()] <- UiHandles::index(mark(item)).u32()
                 caption(item, category_name(index))
 
+            section("COMMUNITY")
+            for index in 0..<COMMUNITY_COUNT:
+                item: UiHandles::Handle = entry(rail)
+                community_ids[index.usize()] <- UiHandles::index(item).u32()
+                community_tiles[index.usize()] <- UiHandles::index(mark(item)).u32()
+                caption(item, community_name(index))
+
             spacer: UiHandles::Handle = UiHandles::column(rail, 0.0, 0.0, StoreTheme::transparent())
             UiHandles::set_grow(spacer, 1.0)
 
-            promo <- UiHandles::column(rail, 14.0, 3.0, StoreTheme::accent_lifted())
+            # The promo card is a picture with a scrim and copy over it, the
+            # same shape as the hero at a fifth of the size, and a lit round
+            # arrow at its trailing edge.
+            promo <- UiHandles::column(rail, 0.0, 0.0, StoreTheme::accent_deep())
             UiHandles::set_grow(promo, 0.0)
-            UiHandles::set_gradient(promo, StoreTheme::accent_deep(), false)
-            UiHandles::set_glow(promo, StoreTheme::rgba(37, 118, 236, 130))
-            promo_title: UiHandles::Handle = UiHandles::label(promo, "A more open tomorrow.", 13.0, StoreTheme::on_accent())
+            UiHandles::set_min_size(promo, 0.0, 96.0)
+            UiHandles::set_max_size(promo, 4096.0, 96.0)
+            UiHandles::set_glow(promo, StoreTheme::rgba(37, 118, 236, 120))
+            promo_scrim: UiHandles::Handle = UiHandles::row(promo, 14.0, 8.0, StoreTheme::rgba(12, 30, 80, 200))
+            UiHandles::set_grow(promo_scrim, 1.0)
+            UiHandles::set_gradient(promo_scrim, StoreTheme::rgba(12, 30, 80, 40), true)
+            promo_copy: UiHandles::Handle = UiHandles::column(promo_scrim, 0.0, 3.0, StoreTheme::transparent())
+            UiHandles::set_grow(promo_copy, 1.0)
+            UiHandles::set_cross_alignment(promo_copy, UiConst::CrossAlignment.Center)
+            promo_title: UiHandles::Handle = UiHandles::label(promo_copy, "A more open", 13.0, StoreTheme::on_accent())
             UiHandles::set_text_weight(promo_title, true)
-            _ = UiHandles::label(promo, "Build. Share. Explore.", 11.0, StoreTheme::rgba(214, 232, 255, 255))
+            promo_title2: UiHandles::Handle = UiHandles::label(promo_copy, "tomorrow.", 13.0, StoreTheme::on_accent())
+            UiHandles::set_text_weight(promo_title2, true)
+            _ = UiHandles::label(promo_copy, "Build. Share. Explore.", 10.0, StoreTheme::rgba(214, 232, 255, 255))
+            promo_arrow <- UiHandles::button(promo_scrim, 34.0, 34.0, StoreTheme::rgba(255, 255, 255, 40), StoreTheme::rgba(255, 255, 255, 60), StoreTheme::rgba(255, 255, 255, 30))
+            UiHandles::set_grow(promo_arrow, 0.0)
+            UiHandles::set_cross_alignment(promo_arrow, UiConst::CrossAlignment.Center)
+            UiHandles::set_corner(promo_arrow, UiCore::CornerStyle.Pill)
+            UiHandles::set_glow(promo_arrow, StoreTheme::rgba(150, 200, 255, 70))
+            UiHandles::set_text(promo_arrow, "›", 18.0, StoreTheme::on_accent())
+            UiHandles::set_text_weight(promo_arrow, true)
             restyle()
 
         def restyle() -> void:
@@ -108,12 +153,17 @@ module StoreShell:
                 StoreStyle::nav_row(UiHandles::from_index(nav_ids[index.usize()].usize()), UiHandles::from_index(captions[index.usize()].usize()), nav_name(index), index == selected)
             for index in 0..<CATEGORY_COUNT:
                 StoreStyle::nav_row(UiHandles::from_index(category_ids[index.usize()].usize()), UiHandles::from_index(captions[(NAV_COUNT + index).usize()].usize()), category_name(index), false)
+            for index in 0..<COMMUNITY_COUNT:
+                StoreStyle::nav_row(UiHandles::from_index(community_ids[index.usize()].usize()), UiHandles::from_index(captions[(NAV_COUNT + CATEGORY_COUNT + index).usize()].usize()), community_name(index), false)
 
         # The rail's marks. Each is a gradient square with a picture in it, so
         # one widget carries what would otherwise be a stack of three.
-        def set_marks(brand: UiCore::ImageRef, glyph: UiCore::ImageRef) -> void:
+        def set_marks(brand: UiCore::ImageRef, glyph: UiCore::ImageRef, banner: UiCore::ImageRef) -> void:
             UiHandles::set_image(brand_tile, brand)
             UiHandles::set_corner(brand_tile, UiCore::CornerStyle.Automatic)
+            UiHandles::set_image(promo, banner)
+            for index in 0..<COMMUNITY_COUNT:
+                StoreStyle::tile(UiHandles::from_index(community_tiles[index.usize()].usize()), StoreTheme::rgba(255, 255, 255, 30), StoreTheme::rgba(255, 255, 255, 12), glyph)
             for index in 0..<NAV_COUNT:
                 StoreStyle::tile(UiHandles::from_index(nav_tiles[index.usize()].usize()), StoreTheme::rgba(255, 255, 255, 30), StoreTheme::rgba(255, 255, 255, 12), glyph)
             for index in 0..<CATEGORY_COUNT:

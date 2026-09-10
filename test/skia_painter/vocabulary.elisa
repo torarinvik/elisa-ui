@@ -249,6 +249,7 @@ def check_vocabulary() -> void:
         UiCore::fill_styled(UiCore::Rect(20.0, 20.0, 120.0, 34.0), UiCore::rgb(120, 170, 255), UiCore::SurfaceStyle{
             depth: UiCore::SurfaceDepth.Raised,
             corner: UiCore::CornerStyle.Pill,
+            ramped: true,
             gradient: UiCore::rgb(60, 120, 240),
             gradient_horizontal: false,
             glow: UiCore::rgba(60, 120, 240, 90),
@@ -272,6 +273,7 @@ def check_vocabulary() -> void:
         UiCore::fill_styled(UiCore::Rect(20.0, 20.0, 120.0, 34.0), UiCore::rgb(120, 170, 255), UiCore::SurfaceStyle{
             depth: UiCore::SurfaceDepth.Flat,
             corner: UiCore::CornerStyle.Pill,
+            ramped: false,
             gradient: UiCore::rgba(0, 0, 0, 0),
             gradient_horizontal: false,
             glow: UiCore::rgba(60, 120, 240, 90),
@@ -280,7 +282,7 @@ def check_vocabulary() -> void:
         UiSkia::attach(1)
         _ = UiSkia::render_status()
         UiSkia::detach()
-        check("a flat surface with a light draws exactly one, in colour", skia_test_shadow_round_rect_count() == 1 and skia_test_last_shadow_red() == 60 and skia_test_last_shadow_green() == 120 and skia_test_last_shadow_blue() == 240)
+        check("a flat surface with a light draws only light, in colour", skia_test_shadow_round_rect_count() == 2 and skia_test_last_shadow_red() == 60 and skia_test_last_shadow_green() == 120 and skia_test_last_shadow_blue() == 240)
         check("and it is centred, not dropped", skia_test_last_shadow_offset_x() == 0.0 and skia_test_last_shadow_offset_y() == 0.0)
 
         # A FLAT SURFACE HAS AN EDGE; IT DOES NOT HAVE A LIT ONE.
@@ -321,3 +323,50 @@ def check_vocabulary() -> void:
         # A recess is IN the surface it is cut from, and a flat translucent
         # fill is a tint by definition -- neither is glass however clear it is.
         check("only a raised surface is glass", not UiPaint::has_backdrop_blur(UiPaint::rounded_rect_style_for(glass_box, UiCore::SurfaceDepth.Inset, UiCore::rgba(24, 28, 36, 150))))
+
+        # A LIGHT HAS A CORE AND A HALO, the way a shadow has a contact layer
+        # and an ambient one. One wide Gaussian reads as a tint around the
+        # object; the tight second layer is what says the light comes FROM it.
+        core: UiPaint::RoundedRectStyle = UiPaint::glow_core(base_style, lit_box)
+        check("the core sits tight to the edge", core.shadow_blur < lit.shadow_blur and core.shadow_blur > 0.0)
+        check("and is centred like the halo", core.shadow_offset_x == 0.0 and core.shadow_offset_y == 0.0)
+        check("and is only a light", core.contact_alpha == 0 and core.sheen_top_alpha == 0 and core.bevel_alpha == 0)
+        UiCore::begin_frame()
+        UiCore::fill_styled(UiCore::Rect(20.0, 20.0, 120.0, 34.0), UiCore::rgb(120, 170, 255), UiCore::SurfaceStyle{
+            depth: UiCore::SurfaceDepth.Flat,
+            corner: UiCore::CornerStyle.Pill,
+            ramped: false,
+            gradient: UiCore::rgba(0, 0, 0, 0),
+            gradient_horizontal: false,
+            glow: UiCore::rgba(60, 120, 240, 90),
+        })
+        skia_test_reset()
+        UiSkia::attach(1)
+        _ = UiSkia::render_status()
+        UiSkia::detach()
+        check("a lit flat surface draws both layers and nothing else", skia_test_shadow_round_rect_count() == 2)
+        check("with the core drawn last, tight to the edge", skia_test_last_shadow_blur() < UiPaint::glow_blur(lit_box))
+
+        # "NO RAMP" AND "A RAMP TO NOTHING" ARE DIFFERENT STATEMENTS. A scrim
+        # over a picture, so that copy laid across it reads, is a ramp from a
+        # deep colour to fully transparent. The far colour's alpha used to be
+        # the sentinel, so that scrim was silently a flat wash and the
+        # picture under it never showed.
+        scrim_style: UiCore::SurfaceStyle = UiCore::SurfaceStyle{
+            depth: UiCore::SurfaceDepth.Flat,
+            corner: UiCore::CornerStyle.Automatic,
+            ramped: true,
+            gradient: UiCore::rgba(10, 22, 56, 0),
+            gradient_horizontal: true,
+            glow: UiCore::rgba(0, 0, 0, 0),
+        }
+        check("a ramp to a transparent far end is still a ramp", UiCore::has_gradient(scrim_style))
+        check("and a record with none says so by its flag, not by a colour", not UiCore::has_gradient(UiCore::surface_style(UiCore::SurfaceDepth.Flat)))
+        UiCore::begin_frame()
+        UiCore::fill_styled(UiCore::Rect(0.0, 0.0, 200.0, 60.0), UiCore::rgba(10, 22, 56, 214), scrim_style)
+        skia_test_reset()
+        UiSkia::attach(1)
+        _ = UiSkia::render_status()
+        UiSkia::detach()
+        # The FIRST gradient again: the sheen follows the fill and runs vertically.
+        check("and the painter draws it as one, across", skia_test_first_ramp_red() == 10 and skia_test_first_ramp_horizontal() == 1)

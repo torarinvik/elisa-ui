@@ -16,6 +16,11 @@ module StoreCatalog:
         global mutable card_plates: u32[6] = zeroed
         global mutable card_tiles: u32[6] = zeroed
         global mutable selected_tab: i32 = 0
+        global mutable search_mark: UiHandles::Handle = UiHandles::invalid()
+        global mutable top_marks: u32[4] = zeroed
+        global mutable top_mark_total: usize = 0
+        global mutable hero_scrim: UiHandles::Handle = UiHandles::invalid()
+        global mutable card_chevrons: u32[6] = zeroed
 
         def tab_name(index: i32) -> sview:
             return "Discover" if index == 0
@@ -121,22 +126,77 @@ module StoreCatalog:
 
             tags: UiHandles::Handle = UiHandles::row(body, 0.0, 5.0, StoreTheme::transparent())
             UiHandles::set_grow(tags, 0.0)
+            UiHandles::set_min_size(tags, 0.0, 30.0)
+            UiHandles::set_max_size(tags, 4096.0, 30.0)
             for slot in 0..<TAGS_PER_CARD:
-                chip: UiHandles::Handle = UiHandles::button(tags, tag_width(index, slot), 18.0, StoreTheme::chip(), StoreTheme::chip(), StoreTheme::chip())
+                chip: UiHandles::Handle = UiHandles::button(tags, tag_width(index, slot), 20.0, StoreTheme::chip(), StoreTheme::chip(), StoreTheme::chip())
                 UiHandles::set_grow(chip, 0.0)
+                UiHandles::set_cross_alignment(chip, UiConst::CrossAlignment.Center)
                 StoreStyle::tag(chip, card_tag(index, slot))
             filler: UiHandles::Handle = UiHandles::column(tags, 0.0, 0.0, StoreTheme::transparent())
             UiHandles::set_grow(filler, 1.0)
+            chevron: UiHandles::Handle = UiHandles::button(tags, 30.0, 30.0, StoreTheme::rgb(240, 245, 252), StoreTheme::rgb(226, 236, 250), StoreTheme::rgb(214, 228, 246))
+            UiHandles::set_grow(chevron, 0.0)
+            UiHandles::set_cross_alignment(chevron, UiConst::CrossAlignment.Center)
+            UiHandles::set_corner(chevron, UiCore::CornerStyle.Pill)
+            UiHandles::set_gradient(chevron, StoreTheme::rgb(222, 232, 248), false)
+            UiHandles::set_text(chevron, "›", 18.0, StoreTheme::accent())
+            UiHandles::set_text_weight(chevron, true)
+            card_chevrons[index.usize()] <- UiHandles::index(chevron).u32()
 
     public:
         def init(host: UiHandles::Handle) -> void:
             content <- UiHandles::column(host, 18.0, 14.0, StoreTheme::transparent())
             UiHandles::set_grow(content, 1.0)
 
-            search: UiHandles::Handle = UiHandles::button(content, 0.0, 38.0, StoreTheme::bar(), StoreTheme::bar(), StoreTheme::bar())
-            UiHandles::set_grow(search, 0.0)
+            top: UiHandles::Handle = UiHandles::row(content, 0.0, 12.0, StoreTheme::transparent())
+            UiHandles::set_grow(top, 0.0)
+            UiHandles::set_min_size(top, 0.0, 40.0)
+            UiHandles::set_max_size(top, 4096.0, 40.0)
+            # The search bar is a capsule panel: a caption at the leading
+            # edge and a shortcut chip at the trailing one, which a button
+            # with one centred caption cannot hold.
+            search: UiHandles::Handle = UiHandles::row(top, 6.0, 8.0, StoreTheme::bar())
+            UiHandles::set_grow(search, 1.0)
             UiHandles::set_corner(search, UiCore::CornerStyle.Pill)
-            UiHandles::set_text(search, "Search apps, creators, or anything…", 13.0, StoreTheme::muted())
+            magnifier: UiHandles::Handle = UiHandles::column(search, 0.0, 0.0, StoreTheme::transparent())
+            UiHandles::set_grow(magnifier, 0.0)
+            UiHandles::set_min_size(magnifier, 22.0, 22.0)
+            UiHandles::set_max_size(magnifier, 22.0, 22.0)
+            UiHandles::set_cross_alignment(magnifier, UiConst::CrossAlignment.Center)
+            UiHandles::set_corner(magnifier, UiCore::CornerStyle.Pill)
+            search_mark <- magnifier
+            prompt: UiHandles::Handle = UiHandles::label(search, "Search apps, creators, or anything…", 13.0, StoreTheme::muted())
+            UiHandles::set_grow(prompt, 1.0)
+            UiHandles::set_cross_alignment(prompt, UiConst::CrossAlignment.Center)
+            shortcut: UiHandles::Handle = UiHandles::button(search, 30.0, 24.0, StoreTheme::chip(), StoreTheme::chip(), StoreTheme::chip())
+            UiHandles::set_grow(shortcut, 0.0)
+            UiHandles::set_cross_alignment(shortcut, UiConst::CrossAlignment.Center)
+            UiHandles::set_corner(shortcut, UiCore::CornerStyle.Automatic)
+            # A slash, not a command glyph: the host lends whatever face it
+            # matched for "normal", and a face without the glyph renders a
+            # box where the key should be. "/" is a key every face has and
+            # every reader knows.
+            UiHandles::set_text(shortcut, "/", 12.0, StoreTheme::chip_ink())
+            # Appearance toggle, notifications, account: three capsules of
+            # the same glass as the bar, each holding a mark.
+            for slot in 0..<3:
+                control: UiHandles::Handle = UiHandles::row(top, 5.0, 4.0, StoreTheme::bar())
+                UiHandles::set_grow(control, 0.0)
+                UiHandles::set_corner(control, UiCore::CornerStyle.Pill)
+                UiHandles::set_min_size(control, 68.0 if slot == 0 else 40.0, 40.0)
+                UiHandles::set_max_size(control, 68.0 if slot == 0 else 40.0, 40.0)
+                for dot in 0..<(2 if slot == 0 else 1):
+                    mark: UiHandles::Handle = UiHandles::column(control, 0.0, 0.0, StoreTheme::rgb(255, 214, 96) if slot == 0 and dot == 0 else (StoreTheme::rgb(58, 76, 120) if slot == 0 else StoreTheme::accent_lifted()))
+                    UiHandles::set_grow(mark, 0.0)
+                    UiHandles::set_min_size(mark, 30.0, 30.0)
+                    UiHandles::set_max_size(mark, 30.0, 30.0)
+                    UiHandles::set_cross_alignment(mark, UiConst::CrossAlignment.Center)
+                    UiHandles::set_corner(mark, UiCore::CornerStyle.Pill)
+                    UiHandles::set_gradient(mark, StoreTheme::accent_deep() if slot == 2 else (StoreTheme::rgb(255, 160, 60) if slot == 0 and dot == 0 else (StoreTheme::rgb(30, 42, 78) if slot == 0 else StoreTheme::rgb(224, 236, 255))), false)
+                    UiHandles::set_glow(mark, StoreTheme::rgba(37, 118, 236, 90) if slot == 2 else StoreTheme::transparent())
+                    top_marks[top_mark_total] <- UiHandles::index(mark).u32()
+                    top_mark_total <- top_mark_total + 1
 
             header: UiHandles::Handle = UiHandles::row(content, 0.0, 14.0, StoreTheme::transparent())
             UiHandles::set_grow(header, 0.0)
@@ -174,18 +234,27 @@ module StoreCatalog:
             # copy is its children, so the text lands on the image with no
             # second layer and no overlay widget -- a widget paints its fill,
             # then its picture, then everything inside it.
-            hero <- UiHandles::column(content, 26.0, 6.0, StoreTheme::rgb(20, 40, 84))
+            hero <- UiHandles::column(content, 0.0, 0.0, StoreTheme::rgb(20, 40, 84))
             UiHandles::set_grow(hero, 0.0)
-            UiHandles::set_min_size(hero, 0.0, 196.0)
-            UiHandles::set_max_size(hero, 4096.0, 196.0)
+            UiHandles::set_min_size(hero, 0.0, 206.0)
+            UiHandles::set_max_size(hero, 4096.0, 206.0)
             hero_plate <- hero
-            eyebrow: UiHandles::Handle = UiHandles::label(hero, "A MORE OPEN", 10.0, StoreTheme::rgba(186, 214, 255, 255))
+            # THE COPY READS BECAUSE OF A SCRIM, not because the picture
+            # happens to be dark where the words fall. A ramp from a deep
+            # blue at the leading edge to nothing at the trailing one, laid
+            # over the picture and under the text: one panel, one gradient
+            # with a transparent far end, and the words sit on it.
+            scrim: UiHandles::Handle = UiHandles::column(hero, 26.0, 6.0, StoreTheme::rgba(10, 22, 56, 214))
+            UiHandles::set_grow(scrim, 1.0)
+            UiHandles::set_gradient(scrim, StoreTheme::rgba(10, 22, 56, 0), true)
+            hero_scrim <- scrim
+            eyebrow: UiHandles::Handle = UiHandles::label(scrim, "A MORE OPEN", 10.0, StoreTheme::rgba(186, 214, 255, 255))
             UiHandles::set_text_weight(eyebrow, true)
-            headline: UiHandles::Handle = UiHandles::label(hero, "Marketplace Ecosystem", 30.0, StoreTheme::rgb(255, 255, 255))
+            headline: UiHandles::Handle = UiHandles::label(scrim, "Marketplace Ecosystem", 30.0, StoreTheme::rgb(255, 255, 255))
             UiHandles::set_text_weight(headline, true)
-            _ = UiHandles::label(hero, "Discover independent stores, curated by creators", 13.0, StoreTheme::rgba(222, 236, 255, 255))
-            _ = UiHandles::label(hero, "and communities around the world.", 13.0, StoreTheme::rgba(222, 236, 255, 255))
-            actions: UiHandles::Handle = UiHandles::row(hero, 0.0, 10.0, StoreTheme::transparent())
+            _ = UiHandles::label(scrim, "Discover independent stores, curated by creators", 13.0, StoreTheme::rgba(222, 236, 255, 255))
+            _ = UiHandles::label(scrim, "and communities around the world.", 13.0, StoreTheme::rgba(222, 236, 255, 255))
+            actions: UiHandles::Handle = UiHandles::row(scrim, 0.0, 10.0, StoreTheme::transparent())
             UiHandles::set_grow(actions, 0.0)
             UiHandles::set_min_size(actions, 0.0, 40.0)
             UiHandles::set_max_size(actions, 4096.0, 40.0)
@@ -199,6 +268,17 @@ module StoreCatalog:
             StoreStyle::secondary(learn, "Learn More", 13.0)
             hero_gap: UiHandles::Handle = UiHandles::column(actions, 0.0, 0.0, StoreTheme::transparent())
             UiHandles::set_grow(hero_gap, 1.0)
+            # Page dots, the current one lit and the rest glass.
+            dots: UiHandles::Handle = UiHandles::row(scrim, 0.0, 6.0, StoreTheme::transparent())
+            UiHandles::set_grow(dots, 0.0)
+            UiHandles::set_cross_alignment(dots, UiConst::CrossAlignment.Center)
+            for dot in 0..<5:
+                pip: UiHandles::Handle = UiHandles::column(dots, 0.0, 0.0, StoreTheme::accent_lifted() if dot == 0 else StoreTheme::rgba(255, 255, 255, 110))
+                UiHandles::set_grow(pip, 0.0)
+                UiHandles::set_min_size(pip, 8.0, 8.0)
+                UiHandles::set_max_size(pip, 8.0, 8.0)
+                UiHandles::set_corner(pip, UiCore::CornerStyle.Pill)
+                UiHandles::set_glow(pip, StoreTheme::rgba(96, 168, 255, 120) if dot == 0 else StoreTheme::transparent())
 
             section: UiHandles::Handle = UiHandles::row(content, 0.0, 0.0, StoreTheme::transparent())
             UiHandles::set_grow(section, 0.0)
@@ -213,8 +293,8 @@ module StoreCatalog:
             for line in 0..<2:
                 strip: UiHandles::Handle = UiHandles::row(grid, 0.0, 12.0, StoreTheme::transparent())
                 UiHandles::set_grow(strip, 0.0)
-                UiHandles::set_min_size(strip, 0.0, 182.0)
-                UiHandles::set_max_size(strip, 4096.0, 182.0)
+                UiHandles::set_min_size(strip, 0.0, 196.0)
+                UiHandles::set_max_size(strip, 4096.0, 196.0)
                 for column in 0..<3:
                     card(strip, line * 3 + column)
             # The slack belongs BELOW the grid, not inside the cards. A card
@@ -233,6 +313,10 @@ module StoreCatalog:
         # arrives is a card with a coloured head, not a broken one.
         def set_pictures(banner: UiCore::ImageRef, plate: UiCore::ImageRef, mark: UiCore::ImageRef) -> void:
             UiHandles::set_image(hero_plate, banner)
+            UiHandles::set_image(search_mark, mark)
+            UiHandles::set_image_alpha(search_mark, 150)
+            for slot in 0..<top_mark_total:
+                UiHandles::set_image(UiHandles::from_index(top_marks[slot].usize()), mark)
             for index in 0..<CARD_COUNT:
                 UiHandles::set_image(UiHandles::from_index(card_plates[index.usize()].usize()), plate)
                 StoreStyle::tile(UiHandles::from_index(card_tiles[index.usize()].usize()), lifted(plate_color(index)), plate_color(index), mark)

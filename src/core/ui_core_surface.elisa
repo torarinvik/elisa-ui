@@ -64,14 +64,26 @@ extend UiCore:
         struct SurfaceStyle:
             depth: SurfaceDepth
             corner: CornerStyle
-            # The far end of a linear ramp across the fill. Alpha 0 means a
-            # flat fill, which is why every existing call site needed no
-            # change: a zeroed record is the old behaviour exactly.
+            # Whether there is a ramp at all, SEPARATE from where it goes.
             #
-            # A ramp is not a decoration here. Every raised, tinted or
-            # accented surface in a current interface is one, and a framework
-            # that can only fill flat colour cannot draw one however good its
-            # shadows are.
+            # The far colour's alpha used to be the sentinel -- alpha zero meant
+            # a flat fill -- and that conflated two different statements. "No
+            # ramp" and "a ramp to nothing" are not the same thing: a scrim
+            # over a picture, so that copy laid across it reads, is a ramp
+            # from a deep colour to FULLY TRANSPARENT, and under the old
+            # sentinel it was silently a flat wash at the near colour's alpha.
+            # The hero in the storefront example came out uniformly dark and
+            # its picture never showed, and the ramp was doing exactly what
+            # it had been told. A zeroed record still means no ramp: false is
+            # zero.
+            ramped: bool
+            # The far end of the ramp, when there is one. Any colour, any
+            # alpha -- including none.
+            #
+            # A ramp is not a decoration. Every raised, tinted or accented
+            # surface in a current interface is one, and a framework that can
+            # only fill flat colour cannot draw one however good its shadows
+            # are.
             gradient: Color
             gradient_horizontal: bool
             # An outer light in the surface's own colour. NOT the shadow: a
@@ -87,13 +99,14 @@ extend UiCore:
             return SurfaceStyle{
                 depth,
                 corner: CornerStyle.Automatic,
+                ramped: false,
                 gradient: Color{r: 0, g: 0, b: 0, a: 0},
                 gradient_horizontal: false,
                 glow: Color{r: 0, g: 0, b: 0, a: 0},
             }
 
         def has_gradient(style: SurfaceStyle) -> bool:
-            return style.gradient.a != 0
+            return style.ramped
 
         def has_glow(style: SurfaceStyle) -> bool:
             return style.glow.a != 0
