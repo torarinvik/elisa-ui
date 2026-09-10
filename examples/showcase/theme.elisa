@@ -78,14 +78,43 @@ module ShowcaseTheme:
         def canvas() -> UiCore::Color:
             return pick(rgb(10, 12, 18), rgb(226, 230, 238))
 
+        # THE PAGE IS NOT ONE COLOUR. A window filled edge to edge with a
+        # single flat value is the cheapest possible ground, and it reads that
+        # way next to anything current. The far end of this ramp carries a
+        # trace of the accent, which is what ties the whole frame to the one
+        # colour the application is actually about.
+        def canvas_far() -> UiCore::Color:
+            base: UiCore::Color = canvas()
+            accent: UiCore::Color = current_accent()
+            return UiCore::rgba(shade(base.r, accent.r), shade(base.g, accent.g), shade(base.b, accent.b), 255)
+
+        # A twelfth of the way toward the accent: present in the pixels,
+        # absent from the description anyone would give of the colour.
+        def shade(base: u8, toward: u8) -> u8:
+            return (base.i64() + (toward.i64() - base.i64()) / 5).u8()
+
+        # GLASS. The framework has carried a backdrop-blur path since the depth
+        # policy landed -- a raised surface whose fill is neither opaque nor
+        # invisible is treated as something you see through -- and nothing in
+        # the shipped application had ever asked for one. A policy whose only
+        # caller is its own test is the shape every defect in this work has
+        # had, and it is also the single most defining trait of the interfaces
+        # this is being measured against.
         def shell() -> UiCore::Color:
-            return pick(rgb(17, 20, 28), rgb(240, 243, 248))
+            return glassy(pick(rgb(17, 20, 28), rgb(240, 243, 248)), 226)
 
         def panel() -> UiCore::Color:
-            return pick(rgb(23, 27, 37), rgb(248, 250, 253))
+            return glassy(pick(rgb(23, 27, 37), rgb(248, 250, 253)), 232)
 
         def card() -> UiCore::Color:
-            return pick(rgb(31, 36, 48), rgb(255, 255, 255))
+            return glassy(pick(rgb(31, 36, 48), rgb(255, 255, 255)), 242)
+
+        # An alpha below 255 is what says "you see through this". Kept close to
+        # opaque: a panel you can read the page through is not glass, it is a
+        # tint, and the text on it stops being legible before it starts being
+        # beautiful.
+        def glassy(color: UiCore::Color, alpha: u8) -> UiCore::Color:
+            return UiCore::rgba(color.r, color.g, color.b, alpha)
 
         def field() -> UiCore::Color:
             return pick(rgb(13, 16, 23), rgb(243, 245, 250))
