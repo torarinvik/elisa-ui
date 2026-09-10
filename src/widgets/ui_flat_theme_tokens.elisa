@@ -1,0 +1,47 @@
+# The shared theme token record: normalization and equality.
+#
+# Split from ui_flat_accessors.elisa at the source budget, and the seam is a
+# real one. Everything there answers a question about ONE widget; this file
+# owns the record every widget reads and nobody owns -- which is why it is the
+# one place a hostile or merely careless value has to be made safe, and the one
+# place an idempotent palette refresh has to be recognised as idempotent.
+
+extend UiFlat:
+    public:
+        def theme() -> Theme:
+            return current_theme
+
+        def set_theme(next: Theme) -> void:
+            normalized: mutable Theme = next
+            normalized.focus_inset <- UiConstraints::bounded(next.focus_inset)
+            normalized.text_horizontal_padding <- UiConstraints::bounded(next.text_horizontal_padding)
+            normalized.text_vertical_padding <- UiConstraints::bounded(next.text_vertical_padding)
+            normalized.selection_vertical_inset <- UiConstraints::bounded(next.selection_vertical_inset)
+            normalized.marked_underline_inset <- UiConstraints::bounded(next.marked_underline_inset)
+            normalized.slider_horizontal_inset <- UiConstraints::bounded(next.slider_horizontal_inset)
+            normalized.slider_track_height <- UiConstraints::bounded(next.slider_track_height)
+            normalized.slider_thumb_radius <- UiConstraints::bounded(next.slider_thumb_radius)
+            normalized.choice_center_x <- UiConstraints::bounded(next.choice_center_x)
+            normalized.radio_outer_radius <- UiConstraints::bounded(next.radio_outer_radius)
+            normalized.radio_inner_radius <- UiConstraints::bounded(next.radio_inner_radius)
+            # A selected radio mark is drawn inside the outer ring. Keep a
+            # hostile theme from inverting that layering relationship.
+            normalized.radio_inner_radius <- normalized.radio_outer_radius if normalized.radio_inner_radius > normalized.radio_outer_radius
+            normalized.checkbox_size <- UiConstraints::bounded(next.checkbox_size)
+            normalized.choice_text_space <- UiConstraints::bounded(next.choice_text_space)
+            normalized.caret_blink_interval <- UiConstraints::bounded(next.caret_blink_interval)
+            normalized.scrollbar_width <- UiConstraints::bounded(next.scrollbar_width)
+            normalized.scrollbar_inset <- UiConstraints::bounded(next.scrollbar_inset)
+            return if themes_equal(current_theme, normalized)
+            current_theme <- normalized
+            mark_layout_dirty()
+
+    private:
+        def colors_equal(left: UiCore::Color, right: UiCore::Color) -> bool:
+            return left.r == right.r and left.g == right.g and left.b == right.b and left.a == right.a
+
+        # `set_theme` accepts a complete value so application code can retain
+        # custom metrics. Compare every token after normalization to avoid
+        # turning an idempotent palette refresh into a perpetual dirty frame.
+        def themes_equal(left: Theme, right: Theme) -> bool:
+            return colors_equal(left.focus_ring, right.focus_ring) and colors_equal(left.selection, right.selection) and colors_equal(left.control_mark, right.control_mark) and colors_equal(left.control_mark_strong, right.control_mark_strong) and left.focus_inset == right.focus_inset and left.text_horizontal_padding == right.text_horizontal_padding and left.text_vertical_padding == right.text_vertical_padding and left.selection_vertical_inset == right.selection_vertical_inset and left.marked_underline_inset == right.marked_underline_inset and left.slider_horizontal_inset == right.slider_horizontal_inset and left.slider_track_height == right.slider_track_height and left.slider_thumb_radius == right.slider_thumb_radius and left.choice_center_x == right.choice_center_x and left.radio_outer_radius == right.radio_outer_radius and left.radio_inner_radius == right.radio_inner_radius and left.checkbox_size == right.checkbox_size and left.choice_text_space == right.choice_text_space and left.caret_blink_interval == right.caret_blink_interval and colors_equal(left.scrollbar_track, right.scrollbar_track) and colors_equal(left.scrollbar_thumb, right.scrollbar_thumb) and colors_equal(left.scrollbar_thumb_hover, right.scrollbar_thumb_hover) and colors_equal(left.scrollbar_thumb_active, right.scrollbar_thumb_active) and left.scrollbar_width == right.scrollbar_width and left.scrollbar_inset == right.scrollbar_inset and colors_equal(left.scrim, right.scrim)

@@ -180,3 +180,40 @@ def check_vocabulary() -> void:
         check("its face carries a hint, not a fill", well.sheen_top_alpha <= 32)
         check("and the hint never overpowers the rim that defines it", well.sheen_top_alpha < well.bevel_alpha)
         check("a recess casts no shadow of its own", well.shadow_alpha == 0 and well.contact_alpha == 0)
+
+        # SHAPE IS A STATEMENT ABOUT KIND, not only about size.
+        #
+        # The derived corner policy is right for almost everything and is the
+        # default for exactly that reason: it keeps every surface in a frame
+        # consistent with every other without an application naming a pixel
+        # value that stops being right at the next text scale. But two
+        # surfaces of the same size can be different kinds, and there was no
+        # way to say so -- a radius came from the box and from nothing else,
+        # so a capsule tag was not expressible at all.
+        chip: UiCore::Rect = UiCore::Rect(0.0, 0.0, 64.0, 22.0)
+        # The policy asks whether a box is a BAR -- long AND thin -- and a
+        # 64x22 chip is neither enough of either. It is not wrong about that;
+        # it simply cannot know the answer.
+        check("the derived policy rounds a chip like a small card", UiPaint::corner_radius_for(chip, UiCore::CornerStyle.Automatic) < 11.0)
+        check("and a stated capsule is a capsule", UiPaint::corner_radius_for(chip, UiCore::CornerStyle.Pill) == 11.0)
+        check("a stated square has no corners", UiPaint::corner_radius_for(chip, UiCore::CornerStyle.Square) == 0.0)
+        # A capsule asks for half the short side, which is the value the style
+        # already clamps to, so it can never exceed its box.
+        tall: UiCore::Rect = UiCore::Rect(0.0, 0.0, 20.0, 200.0)
+        check("a capsule is half the SHORT side, whichever that is", UiPaint::corner_radius_for(tall, UiCore::CornerStyle.Pill) == 10.0)
+        check("and an empty box asks for nothing", UiPaint::corner_radius_for(UiCore::Rect(0.0, 0.0, 0.0, 40.0), UiCore::CornerStyle.Pill) == 0.0)
+        # The kind survives the elevation treatment: a raised capsule is still
+        # a capsule, and it still casts the shadow its size earns.
+        raised_chip: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for_shaped(chip, UiCore::SurfaceDepth.Raised, UiCore::CornerStyle.Pill, UiCore::rgb(255, 255, 255))
+        check("a raised capsule keeps both its shape and its lift", raised_chip.radius == 11.0 and raised_chip.shadow_alpha > 0)
+        # ...and it reaches the backend. The side band carries it, so the
+        # command payload is unchanged and a wire backend decodes the same
+        # rectangles it always did.
+        UiCore::begin_frame()
+        UiCore::fill_shaped(UiCore::Rect(20.0, 20.0, 64.0, 22.0), UiCore::rgb(70, 90, 140), UiCore::SurfaceDepth.Flat, UiCore::CornerStyle.Pill)
+        check("the shape rides beside the command, not inside it", UiCore::command_corner_at(0) == UiCore::CornerStyle.Pill)
+        skia_test_reset()
+        UiSkia::attach(1)
+        _ = UiSkia::render_status()
+        UiSkia::detach()
+        check("and the painter draws the capsule the application asked for", skia_test_last_round_radius() == 11.0)

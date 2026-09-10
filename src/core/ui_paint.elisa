@@ -167,6 +167,19 @@ module UiPaint:
         # long. What separates them is THICKNESS. A capsule says "this is a bar",
         # and a bar is thin in absolute terms, not relative ones -- so both
         # factors weight the blend and a surface has to be both to get one.
+        # The radius a surface of this KIND takes. See UiCore::CornerStyle:
+        # the derived policy is the default because it keeps a frame
+        # consistent with itself, and the two named kinds exist for the facts
+        # it cannot know. Pill asks for half the short side, which is exactly
+        # what rounded_rect_style_with_radius already clamps to, so a capsule
+        # needs no separate arithmetic and cannot exceed the box.
+        def corner_radius_for(box: UiCore::Rect, corner: UiCore::CornerStyle) -> f32:
+            return 0.0 if corner == UiCore::CornerStyle.Square
+            return corner_radius(box) if corner != UiCore::CornerStyle.Pill
+            shortest: f32 = box.size.width if box.size.width < box.size.height else box.size.height
+            return 0.0 if shortest <= 0.0
+            return UiCore::bounded_extent(shortest / 2.0)
+
         def rounded_rect_style(box: UiCore::Rect, elevated: bool) -> RoundedRectStyle:
             return rounded_rect_style_with_radius(box, elevated, corner_radius(box))
 
@@ -286,7 +299,7 @@ module UiPaint:
             def push_clip(box: UiCore::Rect) -> void can[Ui.Draw]
             def pop_clip() -> void can[Ui.Draw]
             def clear(color: UiCore::Color) -> void can[Ui.Draw]
-            def fill_rect(box: UiCore::Rect, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void can[Ui.Draw]
+            def fill_rect(box: UiCore::Rect, color: UiCore::Color, depth: UiCore::SurfaceDepth, corner: UiCore::CornerStyle) -> void can[Ui.Draw]
             def fill_circle(disc: UiCore::Circle, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void can[Ui.Draw]
             def fill_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]
             def fill_line(segment: UiCore::Line, color: UiCore::Color, width: f32) -> void can[Ui.Draw]
@@ -309,7 +322,7 @@ module UiPaint:
                     UiCore::Command.Clear(color):
                         P.clear(color)
                     UiCore::Command.FillRect(box, color):
-                        P.fill_rect(box, color, UiCore::command_depth_at(index))
+                        P.fill_rect(box, color, UiCore::command_depth_at(index), UiCore::command_corner_at(index))
                     UiCore::Command.FillCircle(disc, color):
                         P.fill_circle(disc, color, UiCore::command_depth_at(index))
                     UiCore::Command.FillTriangle(tri, color):
