@@ -175,6 +175,31 @@ def main() -> i64:
     check("duplicate semantic IDs stay unique", UiCore::accessibility_count() == 1)
     check("duplicate semantic IDs keep the first position", duplicate_node.label == "last declaration" and duplicate_node.role == UiCore::AccessibilityRole.Button)
 
+    # A ROW VIEWPORT HAS A DIRECTION OF TRAVEL, not just a side. The vertical
+    # bar only had to change which edge it sits on; a mirrored horizontal one
+    # starts at the reader's own edge and its thumb runs the other way -- and
+    # the drag has to agree with the paint, or the thumb runs away from the
+    # finger. Both halves call one function, which is its own inverse.
+    UiFlat::reset()
+    row_view: usize = UiFlat::scroll(UiFlat::NONE, UiConst::Axis.Row, 120.0, 60.0, UiCore::rgb(12, 16, 24))
+    wide: usize = UiFlat::button(row_view, 400.0, 40.0, UiCore::rgb(40, 44, 56), UiCore::rgb(40, 44, 56), UiCore::rgb(40, 44, 56))
+    UiFlat::layout(120.0, 60.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    ltr_thumb: f32 = horizontal_thumb_x(row_view)
+    _ = UiLocalization::set_locale("ar-SA")
+    UiCore::begin_frame()
+    UiFlat::paint()
+    rtl_thumb: f32 = horizontal_thumb_x(row_view)
+    check("an unscrolled mirrored row parks its thumb at the reader's edge", rtl_thumb > ltr_thumb)
+    # Dragging the thumb toward the reader's end must scroll forward, not back.
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(rtl_thumb + 4.0, 52.0), button: 0)))
+    dragging: bool = UiFlat::scroll_dragging()
+    UiFlat::pointer((UiCore::PointerEvent.Move(at: UiCore::Vec2(rtl_thumb - 20.0, 52.0))))
+    check("a mirrored drag toward the far edge scrolls forward", dragging and UiFlat::scroll_offset(row_view) > 0.0)
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(rtl_thumb - 20.0, 52.0), button: 0)))
+    _ = UiLocalization::set_locale("en-US")
+
     if test_failures == 0:
         _ = puts("widget layout: all checks passed")
         return 0

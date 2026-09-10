@@ -58,7 +58,12 @@ its box keeps the leading edge in both directions: pushing it off the start to
 honour the end is how a long label becomes an unreadable one.
 
 A **slider** and a **progress track** fill from the reader's start edge, and a
-vertical **scrollbar** sits on the reader's trailing side. These needed the
+vertical **scrollbar** sits on the reader's trailing side. A **horizontal**
+scrollbar needed more than a side: a row viewport has a direction of *travel*,
+so a mirrored one parks its thumb at the reader's own edge and runs it the
+other way, and the drag delta changes sign to match. Reverting either half
+alone fails its own assertion — the paint half leaves the thumb parked at the
+wrong end, the drag half sends it away from the finger. These needed the
 painter and the pointer moved together — each maps pointer coordinates back to
 a value or an offset, and mirroring the paint alone would leave the thumb where
 the finger is not, which is worse than not mirroring at all. Both halves call
