@@ -38,14 +38,28 @@ extend UiAppKitCanvas:
             return emphasized
 
         def text_attributes(font: usize, color: usize) -> usize:
-            keys: usize[2] = [kCTFontAttributeName, kCTForegroundColorAttributeName]
-            values: usize[2] = [font, color]
+            return text_attributes_tracked(font, color, 0.0)
+
+        # TRACKING is a kern attribute: CoreText adds it after every glyph.
+        # Elisa's measurement adds it after every glyph but the last, so a
+        # tracked line is drawn one gap longer than it was measured -- at the
+        # trailing edge, where nothing is measured against it.
+        def text_attributes_tracked(font: usize, color: usize, tracking: f32) -> usize:
+            kern_value: mutable f32 = tracking
+            kern: usize = CFNumberCreate(0, 5, (&kern_value).cast[usize&] can Unsafe.PointerCast) if tracking > 0.0 else 0
+            keys: usize[3] = [kCTFontAttributeName, kCTForegroundColorAttributeName if color != 0 else kCTKernAttributeName, kCTKernAttributeName]
+            values: usize[3] = [font, color if color != 0 else kern, kern]
             key_pointer: usize& = (&keys[0]).cast[usize&] can Unsafe.PointerCast
             value_pointer: usize& = (&values[0]).cast[usize&] can Unsafe.PointerCast
-            count: i64 = 2 if color != 0 else 1
-            return CFDictionaryCreate(0, key_pointer, value_pointer, count, 0, 0)
+            count: i64 = 1 + (1 if color != 0 else 0) + (1 if kern != 0 else 0)
+            attributes: usize = CFDictionaryCreate(0, key_pointer, value_pointer, count, 0, 0)
+            CFRelease(kern) if kern != 0
+            return attributes
 
         def text_line(text: cstr, length: usize, size: f32, semibold: i32, color: usize) -> usize:
+            return text_line_tracked(text, length, size, semibold, color, 0.0)
+
+        def text_line_tracked(text: cstr, length: usize, size: f32, semibold: i32, color: usize, tracking: f32) -> usize:
             text_pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
             return 0 if length > 0 and text_pointer == 0.uintptr()
             font: usize = text_font(size, semibold)
@@ -54,7 +68,7 @@ extend UiAppKitCanvas:
             if string == 0:
                 CFRelease(font)
                 return 0
-            attributes: usize = text_attributes(font, color)
+            attributes: usize = text_attributes_tracked(font, color, tracking)
             if attributes == 0:
                 CFRelease(string)
                 CFRelease(font)
@@ -85,12 +99,23 @@ extend UiAppKitCanvas:
             CFRelease(line)
             return width
 
+        def halo_color_ref(halo: UiCore::Color) -> usize:
+            return CGColorCreateGenericRGB(color_component(halo.r).f64(), color_component(halo.g).f64(), color_component(halo.b).f64(), color_component(halo.a).f64())
+
         def draw_text_line(text: cstr, length: usize, size: f32, semibold: i32, x: f32, y: f32, color: UiCore::Color) -> void:
+            draw_text_line_styled(text, length, size, semibold, x, y, color, UiCore::rgba(0, 0, 0, 0), 0.0)
+
+        # A HALO is the run drawn once more, first, with a shadow of no offset
+        # attached and the glyphs themselves transparent-ish: Quartz hangs a
+        # shadow off a drawing op, so the blurred copy is the shadow of a
+        # pass whose own ink is the halo colour.
+        def draw_text_line_styled(text: cstr, length: usize, size: f32, semibold: i32, x: f32, y: f32, color: UiCore::Color, halo: UiCore::Color, tracking: f32) -> void:
             text_pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
             return if length == 0 or text_pointer == 0.uintptr()
             color_ref: usize = CGColorCreateGenericRGB(color_component(color.r).f64(), color_component(color.g).f64(), color_component(color.b).f64(), color_component(color.a).f64())
             return if color_ref == 0
-            line: usize = text_line(text, length, size, semibold, color_ref)
+            line: usize = text_line_tracked(text, length, size, semibold, color_ref, tracking)
+            halo_line: usize = text_line_tracked(text, length, size, semibold, halo_color_ref(halo), tracking) if halo.a != 0 else 0
             if line != 0:
                 context: usize = current_context()
                 if context == 0:
@@ -111,7 +136,15 @@ extend UiAppKitCanvas:
                 CGContextTranslateCTM(context, 0.0, view_height)
                 CGContextScaleCTM(context, 1.0, -1.0)
                 CGContextSetTextPosition(context, x.f64(), view_height - baseline)
+                if halo_line != 0:
+                    CGContextSaveGState(context)
+                    set_colored_shadow(context, 0.0, 0.0, size * 0.09 + 0.6, halo)
+                    CTLineDraw(halo_line, context)
+                    CTLineDraw(halo_line, context)
+                    CGContextRestoreGState(context)
+                    CGContextSetTextPosition(context, x.f64(), view_height - baseline)
                 CTLineDraw(line, context)
                 CGContextRestoreGState(context)
                 CFRelease(line)
+            CFRelease(halo_line) if halo_line != 0
             CGColorRelease(color_ref)

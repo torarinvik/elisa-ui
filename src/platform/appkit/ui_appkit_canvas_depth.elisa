@@ -24,6 +24,50 @@ extend UiAppKitCanvas:
         # contexts see top-left coordinates -- the visible view is flipped and
         # the off-screen bitmap is mirrored to match -- so `near` is the top
         # edge in both, the same end the Skia gradient starts at.
+        # Three stops, the middle at a position. Same call, one more colour
+        # and one more location; see UiCore::SurfaceStyle for why a line is
+        # not enough.
+        def vertical_gradient3(context: usize, box: UiCore::Rect, near: UiCore::Color, mid: UiCore::Color, mid_at: f32, far: UiCore::Color, horizontal: bool) -> void can[Ui.Draw]:
+            space: usize = CGColorSpaceCreateDeviceRGB()
+            return if space == 0
+            components: f64[12] = [
+                color_component(near.r).f64(), color_component(near.g).f64(), color_component(near.b).f64(), color_component(near.a).f64(),
+                color_component(mid.r).f64(), color_component(mid.g).f64(), color_component(mid.b).f64(), color_component(mid.a).f64(),
+                color_component(far.r).f64(), color_component(far.g).f64(), color_component(far.b).f64(), color_component(far.a).f64(),
+            ]
+            locations: f64[3] = [0.0, mid_at.f64(), 1.0]
+            component_pointer: f64& = (&components[0]).cast[f64&] can Unsafe.PointerCast
+            location_pointer: f64& = (&locations[0]).cast[f64&] can Unsafe.PointerCast
+            gradient: usize = CGGradientCreateWithColorComponents(space, component_pointer, location_pointer, 3)
+            CGColorSpaceRelease(space)
+            return if gradient == 0
+            start: NativePoint = NativePoint{x: box.origin.x.f64(), y: box.origin.y.f64()}
+            stop: NativePoint = NativePoint{x: (box.origin.x + box.size.width).f64() if horizontal else box.origin.x.f64(), y: box.origin.y.f64() if horizontal else (box.origin.y + box.size.height).f64()}
+            CGContextDrawLinearGradient(context, gradient, start, stop, 0)
+            CGGradientRelease(gradient)
+
+        # AN INNER SHADOW IS INSIDE: clip to the shape, then fill the shape's
+        # OUTSIDE -- a big rectangle with the shape cut out, even-odd -- with a
+        # shadow attached. The fill lands outside the clip and only its
+        # shadow falls in, which is a shadow cast by the lip onto the face.
+        def inner_shadow(context: usize, box: UiCore::Rect, radius: f32, offset_y: f32, blur: f32, tint: UiCore::Color) -> void can[Ui.Draw]:
+            return if tint.a == 0
+            CGContextSaveGState(context)
+            rounded_path(context, box, radius)
+            CGContextClip(context)
+            set_colored_shadow(context, 0.0, offset_y, blur, tint)
+            set_fill_color(context, tint)
+            margin: f32 = blur * 4.0 + 8.0
+            CGContextBeginPath(context)
+            CGContextMoveToPoint(context, (box.origin.x - margin).f64(), (box.origin.y - margin).f64())
+            CGContextAddLineToPoint(context, (box.origin.x + box.size.width + margin).f64(), (box.origin.y - margin).f64())
+            CGContextAddLineToPoint(context, (box.origin.x + box.size.width + margin).f64(), (box.origin.y + box.size.height + margin).f64())
+            CGContextAddLineToPoint(context, (box.origin.x - margin).f64(), (box.origin.y + box.size.height + margin).f64())
+            CGContextClosePath(context)
+            rounded_subpath(context, box, radius)
+            CGContextEOFillPath(context)
+            CGContextRestoreGState(context)
+
         def vertical_gradient(context: usize, box: UiCore::Rect, near: UiCore::Color, far: UiCore::Color) -> void can[Ui.Draw]:
             space: usize = CGColorSpaceCreateDeviceRGB()
             return if space == 0
@@ -94,7 +138,12 @@ extend UiAppKitCanvas:
             CGContextSaveGState(context)
             rounded_path(context, box, style.radius)
             CGContextClip(context)
-            vertical_gradient(context, box, color, surface.gradient)
+            if UiCore::has_mid_stop(surface):
+                vertical_gradient3(context, box, color, surface.gradient_mid, surface.gradient_mid_at, surface.gradient, surface.gradient_horizontal)
+            elif surface.gradient_horizontal:
+                vertical_gradient3(context, box, color, color, 0.5, surface.gradient, true)
+            else:
+                vertical_gradient(context, box, color, surface.gradient)
             CGContextRestoreGState(context)
 
         def draw_shadowed_body(context: usize, box: UiCore::Rect, style: UiPaint::RoundedRectStyle, color: UiCore::Color) -> void can[Ui.Draw]:
@@ -145,6 +194,10 @@ extend UiAppKitCanvas:
             # difference is recorded rather than hidden -- see docs/ui-glow.md.
             draw_surface_ramp(context, box, style, color, surface) if UiCore::has_gradient(surface)
             draw_surface_sheen(context, box, style)
+            # GLASS HAS A THICKNESS. See UiPaint::is_glass and the Skia painter.
+            if UiPaint::is_glass(style, color):
+                inner_shadow(context, box, style.radius, UiPaint::glass_light_offset(box), UiPaint::glass_edge_blur(box), UiCore::rgba(255, 255, 255, UiPaint::GLASS_LIGHT_ALPHA))
+                inner_shadow(context, box, style.radius, UiPaint::glass_shade_offset(box), UiPaint::glass_edge_blur(box), UiCore::rgba(0, 0, 0, UiPaint::GLASS_SHADE_ALPHA))
             draw_surface_rim(context, box, style)
 
         # A DISC is a rounded rectangle whose corner is its own radius.
@@ -158,3 +211,62 @@ extend UiAppKitCanvas:
             box: UiCore::Rect = UiCore::Rect(disc.center.x - disc.radius, disc.center.y - disc.radius, disc.radius * 2.0, disc.radius * 2.0)
             style: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for_with_radius(box, depth, disc.radius, color)
             draw_depth_surface(context, box, style, color)
+
+        # RETAINED IMAGES. A command names a picture by slot and generation;
+        # this table is where the host said which CGImage that is, at the
+        # moment it became ready. Nothing above the painter sees the handle.
+        const MAX_IMAGE_BINDINGS: usize = 64
+        global mutable appkit_canvas_image_slots: u32[64] = zeroed
+        global mutable appkit_canvas_image_generations: u32[64] = zeroed
+        global mutable appkit_canvas_image_handles: usize[64] = zeroed
+        global mutable appkit_canvas_image_bound: bool[64] = zeroed
+
+        # A slot and a generation, NOT a resource handle: the painter must
+        # not depend on the resource subsystem -- the simulator smoke unit
+        # does not carry it -- and those two numbers are all the command has.
+        def bind_image(slot: u32, generation: u32, image: usize) -> bool:
+            return false if image == 0 or generation == 0
+            resource: UiCore::ImageRef = UiCore::image_ref(slot, generation)
+            for index in 0..<MAX_IMAGE_BINDINGS:
+                if appkit_canvas_image_bound[index] and appkit_canvas_image_slots[index] == resource.slot:
+                    appkit_canvas_image_generations[index] <- resource.generation
+                    appkit_canvas_image_handles[index] <- image
+                    return true
+            for index in 0..<MAX_IMAGE_BINDINGS:
+                if not appkit_canvas_image_bound[index]:
+                    appkit_canvas_image_bound[index] <- true
+                    appkit_canvas_image_slots[index] <- resource.slot
+                    appkit_canvas_image_generations[index] <- resource.generation
+                    appkit_canvas_image_handles[index] <- image
+                    return true
+            return false
+
+        def bound_image(image: UiCore::ImageRef) -> usize:
+            for index in 0..<MAX_IMAGE_BINDINGS:
+                if appkit_canvas_image_bound[index] and appkit_canvas_image_slots[index] == image.slot and appkit_canvas_image_generations[index] == image.generation:
+                    return appkit_canvas_image_handles[index]
+            return 0
+
+        # Named apart from UiSkia's draw_retained_image: the AppKit+Skia
+        # compositor puts both painters in one unit and the shared name was
+        # declined there.
+        # A CGImage is drawn y-up; the painter's space is y-down. Flip about
+        # the box so the picture lands upright, clip to the stated shape, and
+        # let the fit policy -- shared with Skia -- say where it lands.
+        def draw_bound_picture(context: usize, draw: UiCore::ImageDraw) -> void can[Ui.Draw]:
+            image: usize = bound_image(draw.image)
+            return if image == 0 or draw.alpha == 0
+            radius: f32 = UiPaint::corner_radius_for(draw.box, draw.corner)
+            CGContextSaveGState(context)
+            rounded_path(context, draw.box, radius)
+            CGContextClip(context)
+            CGContextSetAlpha(context, color_component(draw.alpha).f64())
+            source: UiCore::Size = UiCore::Size(CGImageGetWidth(image).f32(), CGImageGetHeight(image).f32())
+            target: UiCore::Rect = UiPaint::fitted_rect(draw.box, source, draw.fit)
+            CGContextTranslateCTM(context, 0.0, (target.origin.y * 2.0 + target.size.height).f64())
+            CGContextScaleCTM(context, 1.0, -1.0)
+            if draw.fit == UiCore::PictureFit.Tile:
+                CGContextDrawTiledImage(context, NativeImageRect{x: target.origin.x.f64(), y: target.origin.y.f64(), width: source.width.f64(), height: source.height.f64()}, image)
+            else:
+                CGContextDrawImage(context, NativeImageRect{x: target.origin.x.f64(), y: target.origin.y.f64(), width: target.size.width.f64(), height: target.size.height.f64()}, image)
+            CGContextRestoreGState(context)

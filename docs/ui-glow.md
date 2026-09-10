@@ -54,15 +54,11 @@ stay stable for everything that predates this.
 | backend | ramp | glow |
 | --- | --- | --- |
 | Skia | yes, `fill_round_rect_gradient` | yes, coloured shadow |
-| AppKit canvas | yes, clipped `CGGradient` — **vertical only** | yes, coloured `CGContextSetShadowWithColor` |
+| AppKit canvas | yes, clipped `CGGradient`, three stops, either axis | yes, core and halo |
 | UIKit canvas | same as AppKit | same as AppKit |
 | SDL3 | no — flat fill, as it already ignores depth | no |
 | wasm wire | no — the host canvas owns treatment | no |
 
-The CoreGraphics painters have a `vertical_gradient` helper and no horizontal
-one, so `gradient_horizontal` is ignored there and the ramp runs vertically.
-Recorded rather than hidden: it is a real difference between the frames those
-two backends and Skia produce.
 
 Quartz also hangs a shadow off a *drawing op* rather than drawing it as a
 shape, so a glow there is a fill of the surface's own path with the light
@@ -138,3 +134,28 @@ one, times the tracking — and the Skia shim advances scalar by scalar when it 
 set, so a tracked run measures as it draws. It counts scalars, not bytes. Labels
 only: `UiFlat::set_text_tracking` refuses everything else, because a control's
 caption is centred in a declared box and would not move.
+
+## The CoreGraphics painters, caught up
+
+Everything above is now drawn by the AppKit and UIKit canvases as well as by
+Skia: three-stop ramps on either axis, the glass edges (an even-odd fill of the
+shape's outside with a shadow attached, clipped to the shape), the halo (a
+second `CTLineDraw` with a zero-offset shadow, drawn first), tracking (a kern
+attribute — CoreText adds it after every glyph, Elisa measures it after every
+glyph but the last, so a tracked line is drawn one gap longer at its trailing
+edge, where nothing is measured against it), and retained images through a
+per-painter slot/generation table, `CGContextDrawImage` under the y-flip a
+CGImage needs, `CGContextDrawTiledImage` for `Tile`, and the fit policy that
+now lives in `UiPaint::fitted_rect` so all three painters share it.
+
+Font fallback on CoreGraphics is CoreText's own cascade and needed nothing.
+
+Two things the build found. The AppKit+Skia compositor compiles both painters
+into one unit, and a CG function named the same as a Skia one was declined
+there — renamed. And the painter must not depend on the resource subsystem: the
+simulator smoke unit does not carry it, so the CG binding table takes a slot
+and a generation, the two numbers the command already has.
+
+`appkit_canvas_surface_test` sampled the *foot* of a translucent raised surface
+to prove it was filled once; the foot now carries a deliberate shaded edge, so
+it samples the centre, which a double fill still darkens.
