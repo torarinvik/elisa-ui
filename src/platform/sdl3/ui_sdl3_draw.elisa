@@ -166,6 +166,28 @@ module UiSdl3Draw:
             _ = SDL_SetRenderDrawColor(ren(), color.r, color.g, color.b, color.a)
             _ = SDL_RenderLine(ren(), segment.from_point.x, segment.from_point.y, segment.to_point.x, segment.to_point.y)
 
+        # A WEIGHTED LINE, from the only line SDL3 draws.
+        #
+        # Its renderer has one-pixel lines and nothing wider, so a weight is
+        # honoured by drawing the line once per pass, offset along its normal.
+        # UiPaint owns how many passes and how far apart; this owns the normal,
+        # which is the one part that needs the segment's own length.
+        def paint_stroke(segment: UiCore::Line, color: UiCore::Color, width: f32) -> void:
+            passes: usize = UiPaint::stroke_pass_count(width)
+            return paint_line(segment, color) if passes <= 1
+            dx: f32 = segment.to_point.x - segment.from_point.x
+            dy: f32 = segment.to_point.y - segment.from_point.y
+            length: f32 = UiCore::finite_or_zero(sqrtf(dx * dx + dy * dy))
+            return paint_line(segment, color) if length <= 0.0
+            normal_x: f32 = (0.0 - dy) / length
+            normal_y: f32 = dx / length
+            _ = SDL_SetRenderDrawColor(ren(), color.r, color.g, color.b, color.a)
+            for pass_index in 0..<passes:
+                shift: f32 = UiPaint::stroke_pass_offset(width, pass_index)
+                _ = SDL_RenderLine(ren(),
+                    segment.from_point.x + normal_x * shift, segment.from_point.y + normal_y * shift,
+                    segment.to_point.x + normal_x * shift, segment.to_point.y + normal_y * shift)
+
     public:
         def has_drawable_viewport() -> bool:
             return viewport_is_drawable()
@@ -262,10 +284,11 @@ module UiSdl3Draw:
                 paint_triangle(tri, color)
 
             def fill_line(segment: UiCore::Line, color: UiCore::Color, width: f32) -> void can[Ui.Draw]:
-                # SDL3's renderer draws one-pixel lines and nothing wider, so
-                # weight is recorded and lost here rather than approximated
-                # with a quad the scanline code would have to own.
-                paint_line(segment, color)
+                # Weight used to be recorded and lost here. It cost the
+                # checkmark: two weighted diagonals drawn as hairlines is a
+                # tick you cannot see, which is the defect the weight
+                # vocabulary exists to fix.
+                paint_stroke(segment, color, width)
 
             def draw_text(run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
                 blit_text(run, color)

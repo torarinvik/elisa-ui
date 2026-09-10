@@ -105,3 +105,19 @@ def check_vocabulary() -> void:
         check("a weighted run is drawn with the lent face", skia_test_last_text_used_bold() == 1)
         UiSkia::set_bold_font(0)
         check("taking the face back restores the synthetic weight", UiSkia::active_measure_text_width("Overview", 20.0, true) == regular_width and UiSkia::bold_font() == 0)
+
+        # A WIDE LINE FROM NARROW ONES. A backend whose renderer draws only
+        # single-pixel lines can still honour a weight by drawing the line
+        # several times along its normal, and how many times and how far apart
+        # is policy -- so it is asserted here, with no renderer in sight, and
+        # the backend contributes only the line it already had.
+        check("a hairline is one pass", UiPaint::stroke_pass_count(UiCore::DEFAULT_STROKE_WIDTH) == 1 and UiPaint::stroke_pass_count(0.4) == 1)
+        check("a weight is as many passes as it is wide", UiPaint::stroke_pass_count(3.0) == 3 and UiPaint::stroke_pass_count(2.4) == 2)
+        check("and a hostile weight cannot ask for unbounded work", UiPaint::stroke_pass_count(1.0 / 0.0) == 1 and UiPaint::stroke_pass_count(4096.0) == UiPaint::MAX_STROKE_PASSES)
+        # An odd count keeps one pass exactly on the line; an even one
+        # straddles it. Either way the passes are centred, so a weighted line
+        # covers the same middle as the hairline it replaces.
+        check("an odd count keeps a pass on the line", UiPaint::stroke_pass_offset(3.0, 1) == 0.0)
+        check("and is symmetric about it", UiPaint::stroke_pass_offset(3.0, 0) == 0.0 - UiPaint::stroke_pass_offset(3.0, 2))
+        check("an even count straddles it", UiPaint::stroke_pass_offset(2.0, 0) == 0.0 - UiPaint::stroke_pass_offset(2.0, 1) and UiPaint::stroke_pass_offset(2.0, 0) != 0.0)
+        check("a pass past the count contributes nothing", UiPaint::stroke_pass_offset(3.0, 9) == 0.0)

@@ -249,6 +249,36 @@ module UiPaint:
         # this shows first.
         def stroke_cap_is_round(width: f32) -> bool:
             return width > UiCore::DEFAULT_STROKE_WIDTH
+
+        # A WIDE LINE FROM NARROW ONES.
+        #
+        # A backend whose renderer draws only single-pixel lines -- SDL3's does
+        # -- can still honour a stroke weight by drawing the line several times,
+        # offset along its normal. The framework already decides the weight;
+        # how many passes and how far apart is the same kind of decision, so it
+        # lives here and is asserted without a renderer, and the backend
+        # contributes only the single-pixel line it already had.
+        #
+        # This is not a nicety. A checkmark is two weighted diagonals, and a
+        # backend that drops the weight draws a tick a few pixels of ink wide
+        # in a 14pt box -- present in the buffer and absent to the eye, which is
+        # the exact defect the weight vocabulary was introduced to fix.
+        const MAX_STROKE_PASSES: usize = 32
+
+        def stroke_pass_count(width: f32) -> usize:
+            return 1 if not UiCore::is_finite(width) or width <= UiCore::DEFAULT_STROKE_WIDTH
+            passes: i64 = (width + 0.5).i64()
+            return 1 if passes < 1
+            return MAX_STROKE_PASSES if passes > MAX_STROKE_PASSES.i64()
+            return passes.usize()
+
+        # Passes are spread evenly about the line, so an odd count keeps one
+        # exactly on it and an even count straddles it. The offsets are in
+        # pixels along the normal; the backend owns which way that points.
+        def stroke_pass_offset(width: f32, pass_index: usize) -> f32:
+            count: usize = stroke_pass_count(width)
+            return 0.0 if pass_index >= count
+            return pass_index.f32() - (count.f32() - 1.0) / 2.0
         # One command, one method. A painter is a TYPE, not a value: its state is
         # the backend's own (SDL3's renderer handle, the component's wire cursor),
         # so the methods are static and the specialization inlines them.
