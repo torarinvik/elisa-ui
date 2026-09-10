@@ -199,6 +199,21 @@ extern "C" void elisa_skia_canvas_fill_linear_gradient(std::size_t handle, float
 }
 
 
+extern "C" void elisa_skia_canvas_fill_round_rect_gradient3(std::size_t handle, float x, float y,
+                                                             float width, float height, float radius,
+                                                             std::uint32_t start, std::uint32_t mid,
+                                                             float mid_at, std::uint32_t end,
+                                                             std::int32_t horizontal) {
+    if (SkCanvas *target = canvas(handle);
+        target != nullptr && valid_rect(x, y, width, height) && bounded_nonnegative_extent(radius) &&
+        finite(mid_at) && mid_at > 0.0f && mid_at < 1.0f) {
+        SkPaint paint;
+        paint.setAntiAlias(true);
+        paint.setShader(three_stop_shader(x, y, width, height, start, mid, mid_at, end, horizontal));
+        target->drawRRect(SkRRect::MakeRectXY(SkRect::MakeXYWH(x, y, width, height), radius, radius), paint);
+    }
+}
+
 extern "C" void elisa_skia_canvas_fill_round_rect_gradient(std::size_t handle, float x, float y,
                                                             float width, float height, float radius,
                                                             std::uint8_t start_red,

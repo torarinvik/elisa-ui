@@ -143,6 +143,14 @@ extend UiSkia:
             index: usize = image_binding_index(resource)
             return false if index >= MAX_IMAGE_BINDINGS
             radius: f32 = UiPaint::corner_radius_for(draw.box, draw.corner)
+            if draw.fit != UiCore::PictureFit.Stretch:
+                # Cover and Contain need the picture's own size, which the
+                # host told the resource when it became ready. A resource
+                # with no size falls back to Stretch rather than to nothing.
+                source: UiCore::Size = UiResources::intrinsic_size(resource)
+                if source.width > 0.0 and source.height > 0.0:
+                    fit: UiSkia::ImageFit = UiSkia::ImageFit.Cover if draw.fit == UiCore::PictureFit.Cover else UiSkia::ImageFit.Contain
+                    return UiSkia::draw_image_fitted_rounded_with_sampling(skia_image_binding_images[index], draw.box, source, draw.alpha, fit, radius, UiSkia::ImageSampling.Linear)
             return UiSkia::draw_ready_image_with_sampling(skia_image_binding_images[index], resource, draw.box, draw.alpha, UiSkia::ImageSampling.Linear) if radius <= 0.0
             return UiSkia::draw_image_rounded_with_sampling(skia_image_binding_images[index], draw.box, draw.alpha, radius, UiSkia::ImageSampling.Linear)
 

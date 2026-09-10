@@ -61,6 +61,29 @@ extern "C" void elisa_skia_canvas_draw_text_weighted(std::size_t canvas_handle,
 }
 
 
+// THE HALO: the same glyphs, blurred, drawn first. It follows the letterforms
+// rather than boxing them, which is what lets a headline sit on a picture and
+// a dark caption sit on glass. Sigma scales with the size so a small caption
+// gets a tight halo and a display line a soft one.
+extern "C" void elisa_skia_canvas_draw_text_halo(std::size_t canvas_handle, std::size_t font_handle,
+                                                   const char *text, std::size_t length,
+                                                   float x, float y, float size, float weight_stroke,
+                                                   std::uint8_t red, std::uint8_t green,
+                                                   std::uint8_t blue, std::uint8_t alpha) {
+    if (SkCanvas *target = canvas(canvas_handle);
+        target != nullptr && text != nullptr && length > 0 && alpha != 0 && bounded_coordinate(x) &&
+        bounded_coordinate(y) && bounded_extent(size)) {
+        const SkFont font = weighted_font_for(size, font_handle, weight_stroke);
+        SkPaint paint = weighted_paint(fill_paint(red, green, blue, alpha), weight_stroke);
+        const float sigma = size * 0.09f + 0.6f;
+        paint.setMaskFilter(SkMaskFilter::MakeBlur(kNormal_SkBlurStyle, sigma));
+        // Two passes: the blur alone reads thin at small alpha, and a second
+        // pass at the same alpha is cheaper and cleaner than raising it.
+        draw_runs(target, font, paint, font.getTypeface(), text, length, x, y);
+        draw_runs(target, font, paint, font.getTypeface(), text, length, x, y);
+    }
+}
+
 extern "C" float elisa_skia_measure_text_width_weighted(std::size_t font_handle,
                                                           const char *text, std::size_t length,
                                                           float size, float weight_stroke) {

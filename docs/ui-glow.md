@@ -105,3 +105,26 @@ was doing exactly what it had been told.
 `SurfaceStyle.ramped` is the flag now, the far colour is free to be anything,
 and `UiFlat::clear_gradient` is the way back to a flat fill. A zeroed record
 still means no ramp — `false` is zero — so nothing that predates this changed.
+
+## Three stops, a halo, and a fit
+
+**Two colours make a line.** The surfaces in a current interface are curves —
+a lift at the top edge, the hue through the body, a deep end — and a scrim is a
+falloff, not a slope. `SurfaceStyle.gradient_mid` / `gradient_mid_at` is a
+middle stop at a position in (0, 1); zero means none, so a zeroed record is
+still a two-stop ramp. Skia draws it through a packed-ARGB three-stop entry;
+the CoreGraphics painters draw the two-stop ramp and ignore the middle, which is
+recorded here rather than hidden.
+
+**A halo behind a run** (`TextRun.halo`) is the same glyphs blurred, drawn
+*first*, so it follows the letterforms rather than boxing them — a headline
+sits on a picture, a dark caption sits on glass. Sigma scales with the size.
+Costs no layout. `UiFlat::set_text_halo` states it per widget.
+
+**How a picture meets a box that is not its shape** (`ImageDraw.fit`, named
+`PictureFit` because the Skia layer already had an `ImageFit` for its immediate
+path and the stage1 backend declines a field expression where the two names
+meet). Stretch is the default and what a photograph never wants; Cover fills
+and crops, Contain shows all of it. The painter alone knows the picture's own
+size — the host tells the resource at bind time — so the fit rides on the
+command and the crop is decided at replay.

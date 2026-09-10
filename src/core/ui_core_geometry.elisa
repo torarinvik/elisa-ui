@@ -92,6 +92,8 @@ extend UiCore:
                 ramped: false,
                 gradient: Color{r: 0, g: 0, b: 0, a: 0},
                 gradient_horizontal: false,
+                gradient_mid: Color{r: 0, g: 0, b: 0, a: 0},
+                gradient_mid_at: 0.0,
                 glow: Color{r: 0, g: 0, b: 0, a: 0},
             })
 
@@ -113,10 +115,13 @@ extend UiCore:
             draw_image_shaped(box, image, alpha, CornerStyle.Automatic)
 
         def draw_image_shaped(box: Rect, image: ImageRef, alpha: u8, corner: CornerStyle) -> void:
+            draw_image_fitted(box, image, alpha, corner, PictureFit.Stretch)
+
+        def draw_image_fitted(box: Rect, image: ImageRef, alpha: u8, corner: CornerStyle, fit: PictureFit) -> void:
             return if alpha == 0 or not image_ref_is_valid(image)
             safe_box: Rect = Rect{origin: Vec2{x: bounded_coordinate(box.origin.x), y: bounded_coordinate(box.origin.y)}, size: Size{width: bounded_extent(box.size.width), height: bounded_extent(box.size.height)}}
             return if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
-            push_command(Command.DrawImage(ImageDraw{box: safe_box, image, alpha, corner}))
+            push_command(Command.DrawImage(ImageDraw{box: safe_box, image, alpha, corner, fit}))
 
         def fill(disc: Circle, color: Color) -> void:
             safe_disc: Circle = Circle{center: Vec2{x: bounded_coordinate(disc.center.x), y: bounded_coordinate(disc.center.y)}, radius: bounded_extent(disc.radius)}
@@ -149,11 +154,14 @@ extend UiCore:
             push_command_with_stroke(Command.FillLine(safe_segment, color), bounded_extent(width))
 
         def draw(run: TextRun, color: Color) -> void:
-            safe_run: TextRun = TextRun(run.origin, run.size, run.text, run.weighted)
+            safe_run: TextRun = TextRun(run.origin, run.size, run.text, run.weighted, run.halo)
             push_command(Command.DrawText(safe_run, color))
         def TextRun(origin: Vec2, size: f32, body: sview) -> TextRun:
             return TextRun(origin, size, body, false)
 
         def TextRun(origin: Vec2, size: f32, body: sview, weighted: bool) -> TextRun:
+            return TextRun(origin, size, body, weighted, Color{r: 0, g: 0, b: 0, a: 0})
+
+        def TextRun(origin: Vec2, size: f32, body: sview, weighted: bool, halo: Color) -> TextRun:
             safe_body: sview = bounded_text(body)
-            return TextRun{origin: Vec2{x: bounded_coordinate(origin.x), y: bounded_coordinate(origin.y)}, size: bounded_extent(size), text: safe_body, weighted: weighted}
+            return TextRun{origin: Vec2{x: bounded_coordinate(origin.x), y: bounded_coordinate(origin.y)}, size: bounded_extent(size), text: safe_body, weighted: weighted, halo: halo}

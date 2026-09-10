@@ -55,6 +55,23 @@ extend UiFlat:
         # Back to a flat fill. Its own call, because "no ramp" and "a ramp to
         # a transparent far end" are different statements and the second is
         # what a scrim is made of.
+        # A middle stop for the ramp. Position in (0, 1); anything else
+        # removes it. See SurfaceStyle for why a line is not enough.
+        # A soft light or shadow behind this widget's text. It is what lets a
+        # headline sit on a picture and a dark caption on glass; the halo
+        # follows the letterforms rather than boxing them, and costs no
+        # layout. See UiCore::TextRun.halo.
+        def set_text_halo(index: usize, halo: UiCore::Color) -> void:
+            return if index >= widget_count or colors_equal(widgets[index].text_halo, halo)
+            widgets[index].text_halo <- halo
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+
+        def set_gradient_mid(index: usize, mid: UiCore::Color, at: f32) -> void:
+            return if index >= widget_count or not UiCore::is_finite(at)
+            widgets[index].gradient_mid <- mid
+            widgets[index].gradient_mid_at <- at if at > 0.0 and at < 1.0 else 0.0
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+
         def clear_gradient(index: usize) -> void:
             return if index >= widget_count or not widgets[index].ramped
             widgets[index].ramped <- false
@@ -90,6 +107,12 @@ extend UiFlat:
         # A picture on a disabled control is dimmed for the same reason its
         # ramp and its light are dropped: what the reader sees has to say
         # whether the control will answer.
+        # See UiCore::PictureFit. Cover is what a photograph in a card wants.
+        def set_image_fit(index: usize, fit: UiCore::PictureFit) -> void:
+            return if index >= widget_count or widgets[index].image_fit == fit
+            widgets[index].image_fit <- fit
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+
         def image_alpha_of(index: usize) -> u8:
             return 0 if index >= widget_count
             return widgets[index].image_alpha if effectively_enabled(index)
@@ -112,6 +135,8 @@ extend UiFlat:
                 ramped: widgets[index].ramped,
                 gradient: widgets[index].gradient,
                 gradient_horizontal: widgets[index].gradient_horizontal,
+                gradient_mid: widgets[index].gradient_mid,
+                gradient_mid_at: widgets[index].gradient_mid_at,
                 glow: widgets[index].glow,
             }
 

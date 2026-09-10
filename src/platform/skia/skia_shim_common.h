@@ -35,6 +35,8 @@
 #include <unordered_map>
 #include <vector>
 #include "include/effects/SkImageFilters.h"
+#include "include/core/SkMaskFilter.h"
+#include "include/core/SkBlurTypes.h"
 #include "include/effects/SkGradient.h"
 
 namespace elisa_skia_shim {
@@ -234,6 +236,19 @@ inline SkFont font_for(float size) {
 // A two-stop gradient down (or across) a box. The STOP POLICY stays in Elisa --
 // two evenly spaced stops, no positions supplied -- so this is only the shader
 // construction the C++ side has to own.
+inline sk_sp<SkShader> three_stop_shader(float x, float y, float width, float height,
+                                          SkColor start, SkColor mid, float mid_at, SkColor end,
+                                          std::int32_t horizontal) {
+    const SkPoint points[] = {
+        {x, y},
+        {horizontal != 0 ? x + width : x, horizontal != 0 ? y : y + height},
+    };
+    const SkColor4f colors[] = {SkColor4f::FromColor(start), SkColor4f::FromColor(mid), SkColor4f::FromColor(end)};
+    const float positions[] = {0.0f, mid_at, 1.0f};
+    const SkGradient gradient({SkSpan(colors), SkSpan(positions), SkTileMode::kClamp}, {});
+    return SkShaders::LinearGradient(points, gradient);
+}
+
 inline sk_sp<SkShader> two_stop_shader(float x, float y, float width, float height,
                                 std::uint8_t start_red, std::uint8_t start_green,
                                 std::uint8_t start_blue, std::uint8_t start_alpha,

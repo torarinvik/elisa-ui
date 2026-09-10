@@ -66,6 +66,8 @@ void elisa_skia_canvas_shadow_round_rect_color(size_t canvas, float x, float y, 
  * device pixels, chosen by Elisa. */
 void elisa_skia_canvas_blur_behind_round_rect(size_t canvas, float x, float y, float width,
                                               float height, float radius, float sigma);
+/* Three stops; colours are packed ARGB. mid_at must be in (0, 1). */
+void elisa_skia_canvas_fill_round_rect_gradient3(size_t canvas, float x, float y, float width, float height, float radius, uint32_t start, uint32_t mid, float mid_at, uint32_t end, int32_t horizontal);
 void elisa_skia_canvas_fill_round_rect_gradient(size_t canvas, float x, float y, float width,
                                                float height, float radius,
                                                uint8_t start_red, uint8_t start_green,
@@ -112,6 +114,8 @@ void elisa_skia_canvas_draw_text_weighted(size_t canvas, size_t font, const char
 void elisa_skia_set_bold_typeface(size_t font);
 /* A font manager for per-code-point fallback, or 0 to take it back. */
 void elisa_skia_set_font_manager(size_t manager);
+/* A blurred pass of the same glyphs, meant to be drawn before the run. */
+void elisa_skia_canvas_draw_text_halo(size_t canvas, size_t font, const char *text, size_t length, float x, float y, float size, float weight_stroke, uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha);
 /* 1 when every code point has a real glyph on the lent face or a fallback. */
 int elisa_skia_text_covers(size_t font, const char *text, size_t length);
 size_t elisa_skia_bold_typeface_handle(void);

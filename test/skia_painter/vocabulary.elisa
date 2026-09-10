@@ -252,6 +252,8 @@ def check_vocabulary() -> void:
             ramped: true,
             gradient: UiCore::rgb(60, 120, 240),
             gradient_horizontal: false,
+            gradient_mid: UiCore::rgba(0, 0, 0, 0),
+            gradient_mid_at: 0.0,
             glow: UiCore::rgba(60, 120, 240, 90),
         })
         skia_test_reset()
@@ -276,6 +278,8 @@ def check_vocabulary() -> void:
             ramped: false,
             gradient: UiCore::rgba(0, 0, 0, 0),
             gradient_horizontal: false,
+            gradient_mid: UiCore::rgba(0, 0, 0, 0),
+            gradient_mid_at: 0.0,
             glow: UiCore::rgba(60, 120, 240, 90),
         })
         skia_test_reset()
@@ -338,6 +342,8 @@ def check_vocabulary() -> void:
             ramped: false,
             gradient: UiCore::rgba(0, 0, 0, 0),
             gradient_horizontal: false,
+            gradient_mid: UiCore::rgba(0, 0, 0, 0),
+            gradient_mid_at: 0.0,
             glow: UiCore::rgba(60, 120, 240, 90),
         })
         skia_test_reset()
@@ -358,6 +364,8 @@ def check_vocabulary() -> void:
             ramped: true,
             gradient: UiCore::rgba(10, 22, 56, 0),
             gradient_horizontal: true,
+            gradient_mid: UiCore::rgba(0, 0, 0, 0),
+            gradient_mid_at: 0.0,
             glow: UiCore::rgba(0, 0, 0, 0),
         }
         check("a ramp to a transparent far end is still a ramp", UiCore::has_gradient(scrim_style))
@@ -370,3 +378,37 @@ def check_vocabulary() -> void:
         UiSkia::detach()
         # The FIRST gradient again: the sheen follows the fill and runs vertically.
         check("and the painter draws it as one, across", skia_test_first_ramp_red() == 10 and skia_test_first_ramp_horizontal() == 1)
+
+        # TWO COLOURS MAKE A LINE. The surfaces in a current interface are
+        # curves -- a lift at the top edge, the hue through the body, a deep
+        # end -- and a scrim is a falloff, not a slope. A middle stop at a
+        # position is the smallest thing that draws both.
+        curved: UiCore::SurfaceStyle = UiCore::SurfaceStyle{
+            depth: UiCore::SurfaceDepth.Flat, corner: UiCore::CornerStyle.Automatic,
+            ramped: true, gradient: UiCore::rgb(20, 78, 190), gradient_horizontal: false,
+            gradient_mid: UiCore::rgb(37, 118, 236), gradient_mid_at: 0.35,
+            glow: UiCore::rgba(0, 0, 0, 0),
+        }
+        check("a middle stop makes a three-stop ramp", UiCore::has_mid_stop(curved))
+        check("and a stop at an end is no stop", not UiCore::has_mid_stop(UiCore::SurfaceStyle{depth: UiCore::SurfaceDepth.Flat, corner: UiCore::CornerStyle.Automatic, ramped: true, gradient: UiCore::rgb(1, 2, 3), gradient_horizontal: false, gradient_mid: UiCore::rgb(4, 5, 6), gradient_mid_at: 1.0, glow: UiCore::rgba(0, 0, 0, 0)}))
+        UiCore::begin_frame()
+        UiCore::fill_styled(UiCore::Rect(0.0, 0.0, 120.0, 40.0), UiCore::rgb(96, 168, 255), curved)
+        skia_test_reset()
+        UiSkia::attach(1)
+        _ = UiSkia::render_status()
+        UiSkia::detach()
+        check("the painter draws it with three stops, at the position asked", skia_test_gradient3_count() == 1 and skia_test_last_gradient3_mid_at() == 0.35)
+
+        # A HALO BEHIND A RUN: the same glyphs blurred, drawn first, so a
+        # headline sits on a picture and a dark caption on glass. It follows
+        # the letterforms rather than boxing them and costs no layout.
+        UiCore::begin_frame()
+        UiCore::draw(UiCore::TextRun(UiCore::Vec2(10.0, 10.0), 20.0, "Marketplace", true, UiCore::rgba(0, 0, 0, 120)), UiCore::rgb(255, 255, 255))
+        UiCore::draw(UiCore::TextRun(UiCore::Vec2(10.0, 40.0), 12.0, "plain"), UiCore::rgb(255, 255, 255))
+        skia_test_reset()
+        UiSkia::attach(1)
+        _ = UiSkia::render_status()
+        UiSkia::detach()
+        check("a run with a halo asks for one", skia_test_halo_count() == 1)
+        check("and both runs are still drawn as text", skia_test_text_count() == 2)
+        check("and a plain run still measures as its halo-less self", UiCore::TextRun(UiCore::Vec2(0.0, 0.0), 12.0, "x").halo.a == 0)
