@@ -27,6 +27,7 @@ extern "C" std::int32_t elisa_showcase_app_skia_render(std::size_t canvas, std::
                                                        float width, float height, std::int32_t page);
 extern "C" std::int32_t elisa_showcase_app_skia_focus_next();
 extern "C" std::int32_t elisa_showcase_app_skia_toggle_theme();
+extern "C" std::int32_t elisa_showcase_app_skia_open_dialog();
 
 namespace {
 
@@ -129,5 +130,32 @@ int main(int argc, char** argv) {
         return 6;
     }
     std::printf("showcase skia: wrote %s\n", light_path.c_str());
+
+    // Back to the dark palette, then the confirmation dialog: a raised sheet
+    // over a shell disabled beneath it. Modals are their own rendering case and
+    // appeared in none of the frames above.
+    if (elisa_showcase_app_skia_toggle_theme() != 1) {
+        std::fprintf(stderr, "showcase skia: could not switch the palette back\n");
+        return 7;
+    }
+    if (elisa_showcase_app_skia_open_dialog() != 1) {
+        std::fprintf(stderr, "showcase skia: could not open the dialog\n");
+        return 7;
+    }
+    surface->getCanvas()->clear(SK_ColorTRANSPARENT);
+    const std::int32_t dialog_status = elisa_showcase_app_skia_render(
+        reinterpret_cast<std::size_t>(surface->getCanvas()),
+        reinterpret_cast<std::size_t>(typeface.get()),
+        static_cast<float>(width), static_cast<float>(height), 0);
+    if (dialog_status != 1) {
+        std::fprintf(stderr, "showcase skia: dialog frame returned status %d\n", dialog_status);
+        return 5;
+    }
+    const std::string dialog_path = prefix + "-dialog.png";
+    if (!write_png(surface.get(), dialog_path)) {
+        std::fprintf(stderr, "showcase skia: failed to write %s\n", dialog_path.c_str());
+        return 6;
+    }
+    std::printf("showcase skia: wrote %s\n", dialog_path.c_str());
     return 0;
 }

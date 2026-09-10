@@ -29,6 +29,7 @@ module ShowcaseDialog:
             dialog <- UiDialog::dialog_invalid()
             navigation <- UiNavigation::navigation_invalid()
             UiHandles::set_visible(panel, false)
+            UiHandles::set_ring(panel, ShowcaseTheme::transparent())
             action: i32 = pending
             pending <- 0
             return action if result == UiDialog::Result.Primary else 0
@@ -50,6 +51,7 @@ module ShowcaseDialog:
 
         def apply_theme() -> void:
             UiHandles::set_color(panel, ShowcaseTheme::card())
+            UiHandles::set_ring(panel, ShowcaseTheme::current_accent() if UiDialog::is_open(dialog) else ShowcaseTheme::transparent())
             ShowcaseTheme::style_button(cancel_button, "Cancel", 13.0)
             if UiDialog::is_open(dialog):
                 UiHandles::set_text(title_label, UiDialog::title(dialog), 17.0, ShowcaseTheme::ink())
@@ -69,6 +71,7 @@ module ShowcaseDialog:
             pending <- action
             apply_theme()
             UiHandles::set_visible(panel, true)
+            UiHandles::set_ring(panel, ShowcaseTheme::current_accent())
             _ = UiHandles::request_focus(cancel_button)
             return true
 
@@ -88,12 +91,13 @@ module ShowcaseDialog:
             _ = finish(UiDialog::Result.Back)
             return true
 
-        # An accent frame around the open dialog, painted after the widgets.
-        def frame() -> void:
-            return if not is_open()
-            if UiHandles::widget(panel) is box:
-                accent: UiCore::Color = ShowcaseTheme::current_accent()
-                UiCore::fill(UiCore::Rect(box.x - 2.0, box.y - 2.0, box.width + 4.0, 2.0), accent)
-                UiCore::fill(UiCore::Rect(box.x - 2.0, box.y + box.height, box.width + 4.0, 2.0), accent)
-                UiCore::fill(UiCore::Rect(box.x - 2.0, box.y, 2.0, box.height), accent)
-                UiCore::fill(UiCore::Rect(box.x + box.width, box.y, 2.0, box.height), accent)
+        # The accent ring around the open dialog is the FRAMEWORK's now.
+        #
+        # It used to be four thin filled rectangles this module laid along the
+        # panel's edges after the widgets were painted -- the only way to draw
+        # an outline when the command vocabulary has no stroked rounded
+        # rectangle -- and it put square corners on a panel with 10px ones, with
+        # the panel's own curve visibly cutting into them. `set_ring` asks for
+        # the ring instead: the painter draws it as a slightly larger rounded
+        # fill behind the panel, in the paint order, so it follows the panel's
+        # corners and its layout with no edge arithmetic here at all.

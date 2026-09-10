@@ -86,4 +86,18 @@ if cmp -s "$PREFIX-page1.png" "$light_file"; then
   exit 1
 fi
 echo "showcase skia: light palette rendered ${WIDTH}x${HEIGHT} ($light_size bytes) -> $light_file"
+# ...and the modal, which is a rendering case of its own: a raised sheet with an
+# accent ring, over a shell disabled beneath it.
+dialog_file="$PREFIX-dialog.png"
+[[ -s "$dialog_file" ]] || { echo "showcase skia: the dialog frame produced no file" >&2; exit 1; }
+dialog_size="$(stat -f%z "$dialog_file")"
+if [[ "$dialog_size" -lt 20000 ]]; then
+  echo "showcase skia: the dialog frame rendered almost nothing ($dialog_size bytes)" >&2
+  exit 1
+fi
+if cmp -s "$PREFIX-page4.png" "$dialog_file"; then
+  echo "showcase skia: the dialog frame is identical to the page beneath it; the dialog did not open" >&2
+  exit 1
+fi
+echo "showcase skia: dialog rendered ${WIDTH}x${HEIGHT} ($dialog_size bytes) -> $dialog_file"
 echo "showcase skia: all five showcase pages rendered by the real renderer"
