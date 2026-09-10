@@ -245,6 +245,30 @@ extend UiFlat:
             widgets[index].help <- copy_retained_text(index, 2, help)
             mark_semantics_dirty()
 
+        # MARK A ROOT AS AN OVERLAY: a modal sheet, a popover, a toast.
+        #
+        # Roots already paint in arena order, so "paint this last" was always
+        # expressible. What was not is the other half of what a modal IS --
+        # everything beneath it recedes behind a wash and stops taking the
+        # pointer. Without that half a dialog reads as a band glued into the
+        # layout above a shell that still looks fully clickable, which is what
+        # the showcase's own confirmation dialog looked like in every frame
+        # this framework has ever rendered.
+        #
+        # Only a ROOT can be one. An overlay nested inside the tree it is meant
+        # to cover would have to be painted out of its own subtree's order,
+        # which is a second paint order, not a flag.
+        def set_overlay(index: usize, overlay: bool) -> void:
+            return if index >= widget_count
+            root: bool = widgets[index].parent == NONE or widgets[index].parent >= widget_count
+            return if widgets[index].overlay == overlay or (overlay and not root)
+            widgets[index].overlay <- overlay
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+
+        def is_overlay(index: usize) -> bool:
+            return false if index >= widget_count
+            return widgets[index].overlay
+
         def set_secure(index: usize, secure: bool) -> void:
             return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
             widgets[index].secure <- secure
@@ -366,4 +390,4 @@ extend UiFlat:
         # custom metrics. Compare every token after normalization to avoid
         # turning an idempotent palette refresh into a perpetual dirty frame.
         def themes_equal(left: Theme, right: Theme) -> bool:
-            return colors_equal(left.focus_ring, right.focus_ring) and colors_equal(left.selection, right.selection) and colors_equal(left.control_mark, right.control_mark) and colors_equal(left.control_mark_strong, right.control_mark_strong) and left.focus_inset == right.focus_inset and left.text_horizontal_padding == right.text_horizontal_padding and left.text_vertical_padding == right.text_vertical_padding and left.selection_vertical_inset == right.selection_vertical_inset and left.marked_underline_inset == right.marked_underline_inset and left.slider_horizontal_inset == right.slider_horizontal_inset and left.slider_track_height == right.slider_track_height and left.slider_thumb_radius == right.slider_thumb_radius and left.choice_center_x == right.choice_center_x and left.radio_outer_radius == right.radio_outer_radius and left.radio_inner_radius == right.radio_inner_radius and left.checkbox_size == right.checkbox_size and left.choice_text_space == right.choice_text_space and left.caret_blink_interval == right.caret_blink_interval and colors_equal(left.scrollbar_track, right.scrollbar_track) and colors_equal(left.scrollbar_thumb, right.scrollbar_thumb) and colors_equal(left.scrollbar_thumb_hover, right.scrollbar_thumb_hover) and colors_equal(left.scrollbar_thumb_active, right.scrollbar_thumb_active) and left.scrollbar_width == right.scrollbar_width and left.scrollbar_inset == right.scrollbar_inset
+            return colors_equal(left.focus_ring, right.focus_ring) and colors_equal(left.selection, right.selection) and colors_equal(left.control_mark, right.control_mark) and colors_equal(left.control_mark_strong, right.control_mark_strong) and left.focus_inset == right.focus_inset and left.text_horizontal_padding == right.text_horizontal_padding and left.text_vertical_padding == right.text_vertical_padding and left.selection_vertical_inset == right.selection_vertical_inset and left.marked_underline_inset == right.marked_underline_inset and left.slider_horizontal_inset == right.slider_horizontal_inset and left.slider_track_height == right.slider_track_height and left.slider_thumb_radius == right.slider_thumb_radius and left.choice_center_x == right.choice_center_x and left.radio_outer_radius == right.radio_outer_radius and left.radio_inner_radius == right.radio_inner_radius and left.checkbox_size == right.checkbox_size and left.choice_text_space == right.choice_text_space and left.caret_blink_interval == right.caret_blink_interval and colors_equal(left.scrollbar_track, right.scrollbar_track) and colors_equal(left.scrollbar_thumb, right.scrollbar_thumb) and colors_equal(left.scrollbar_thumb_hover, right.scrollbar_thumb_hover) and colors_equal(left.scrollbar_thumb_active, right.scrollbar_thumb_active) and left.scrollbar_width == right.scrollbar_width and left.scrollbar_inset == right.scrollbar_inset and colors_equal(left.scrim, right.scrim)

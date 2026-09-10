@@ -9,6 +9,11 @@ include "theme.elisa"
 module ShowcaseDialog:
     private:
         const OWNER: u32 = 7
+        # The overlay ROOT: a full-viewport column that centres the sheet and
+        # carries the scrim behind it. The dialog used to be a child of the
+        # page host, which made it a band in the layout above a shell that
+        # still looked entirely clickable.
+        global mutable layer: UiHandles::Handle = UiHandles::invalid()
         global mutable panel: UiHandles::Handle = UiHandles::invalid()
         global mutable title_label: UiHandles::Handle = UiHandles::invalid()
         global mutable message_label: UiHandles::Handle = UiHandles::invalid()
@@ -28,7 +33,7 @@ module ShowcaseDialog:
             _ = UiNavigation::dismiss_owner(OWNER)
             dialog <- UiDialog::dialog_invalid()
             navigation <- UiNavigation::navigation_invalid()
-            UiHandles::set_visible(panel, false)
+            UiHandles::set_visible(layer, false)
             UiHandles::set_ring(panel, ShowcaseTheme::transparent())
             action: i32 = pending
             pending <- 0
@@ -36,8 +41,16 @@ module ShowcaseDialog:
 
     public:
         def init(host: UiHandles::Handle) -> void:
-            panel <- UiHandles::column(host, 18.0, 10.0, ShowcaseTheme::card())
+            _ = host
+            layer <- UiHandles::column(UiHandles::root_parent(), 0.0, 0.0, ShowcaseTheme::transparent())
+            UiHandles::set_overlay(layer, true)
+            UiHandles::set_main_alignment(layer, UiConst::MainAlignment.Center)
+            panel <- UiHandles::column(layer, 18.0, 10.0, ShowcaseTheme::card())
             UiHandles::set_grow(panel, 0.0)
+            # Cross alignment is a property of the CHILD, not the container:
+            # setting it on the layer left the sheet stretched to the full
+            # width of the window, which is a band with a scrim behind it.
+            UiHandles::set_cross_alignment(panel, UiConst::CrossAlignment.Center)
             title_label <- UiHandles::label(panel, "", 17.0, ShowcaseTheme::ink())
             message_label <- UiHandles::label(panel, "", 13.0, ShowcaseTheme::muted())
             button_row <- UiHandles::row(panel, 0.0, 10.0, ShowcaseTheme::transparent())
@@ -46,7 +59,7 @@ module ShowcaseDialog:
             confirm_button <- UiHandles::button(button_row, 110.0, 34.0, ShowcaseTheme::danger(), ShowcaseTheme::danger_hover(), ShowcaseTheme::danger_press())
             UiHandles::set_help(cancel_button, "Keep everything as it is (keyboard: Escape)")
             UiHandles::set_help(confirm_button, "Carry out the action")
-            UiHandles::set_visible(panel, false)
+            UiHandles::set_visible(layer, false)
             apply_theme()
 
         def apply_theme() -> void:
@@ -70,7 +83,7 @@ module ShowcaseDialog:
             navigation <- UiNavigation::push(OWNER, UiNavigation::BackPolicy.Consume, false)
             pending <- action
             apply_theme()
-            UiHandles::set_visible(panel, true)
+            UiHandles::set_visible(layer, true)
             UiHandles::set_ring(panel, ShowcaseTheme::current_accent())
             _ = UiHandles::request_focus(cancel_button)
             return true

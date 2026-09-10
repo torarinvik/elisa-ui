@@ -260,6 +260,31 @@ int main(int argc, char** argv) {
     // Back to the dark palette, then the confirmation dialog: a raised sheet
     // over a shell disabled beneath it. Modals are their own rendering case and
     // appeared in none of the frames above.
+    //
+    // The SAME page, undimmed, sampled well away from where the sheet will
+    // land. It has to be the same page: the surface still holds the
+    // right-to-left frame at this point, and comparing a mirrored shell
+    // against an unmirrored one measures the mirroring, not the wash.
+    //
+    // A modal that leaves the page behind it fully lit is a band in the
+    // layout above a shell that still looks clickable, which is what every
+    // frame of this dialog showed until the framework grew an overlay layer.
+    //
+    // Honest about what this catches: the showcase ALSO disables its shell
+    // while a modal is open, and disabled surfaces mute, so this fires if the
+    // page behind the sheet stops receding for EITHER reason. It is not proof
+    // that a scrim was laid -- that is asserted at the command level in
+    // widget_layout_geometry_test, where the wash can be removed and watched
+    // to fail. Measured here, the two together take the shell from 35 to 11.
+    surface->getCanvas()->clear(SK_ColorTRANSPARENT);
+    if (elisa_showcase_app_skia_render(
+            reinterpret_cast<std::size_t>(surface->getCanvas()),
+            reinterpret_cast<std::size_t>(typeface.get()),
+            static_cast<float>(width), static_cast<float>(height), 0, 1.0f) != 1) {
+        std::fprintf(stderr, "showcase skia: could not render the undimmed shell\n");
+        return 5;
+    }
+    const int undimmed_shell = sampled_luminance(surface.get(), width / 8, height - height / 8);
     if (elisa_showcase_app_skia_open_dialog() != 1) {
         std::fprintf(stderr, "showcase skia: could not open the dialog\n");
         return 7;
@@ -271,6 +296,18 @@ int main(int argc, char** argv) {
         static_cast<float>(width), static_cast<float>(height), 0, 1.0f);
     if (dialog_status != 1) {
         std::fprintf(stderr, "showcase skia: dialog frame returned status %d\n", dialog_status);
+        return 5;
+    }
+    const int dimmed_shell = sampled_luminance(surface.get(), width / 8, height - height / 8);
+    if (undimmed_shell < 0 || dimmed_shell < 0) {
+        std::fprintf(stderr, "showcase skia: could not sample the shell\n");
+        return 5;
+    }
+    if (dimmed_shell >= undimmed_shell) {
+        std::fprintf(stderr,
+                     "showcase skia: the shell behind the modal is not dimmed (%d vs %d); "
+                     "the sheet is a band in the layout, not an overlay\n",
+                     dimmed_shell, undimmed_shell);
         return 5;
     }
     const std::string dialog_path = prefix + "-dialog.png";

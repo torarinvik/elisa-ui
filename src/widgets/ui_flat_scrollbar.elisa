@@ -178,6 +178,20 @@ extend UiFlat:
                 append_paint_order(child, depth + 1)
                 child <- widgets[child].next_sibling
 
+        # WHERE THE SCRIM GOES: the paint-order position of the first visible
+        # overlay root, or NONE when nothing is overlaid. Everything before it
+        # is beneath the wash; everything from it on is above.
+        #
+        # One query, consulted by the painter and by the pointer, for the same
+        # reason every other direction and geometry decision here is: a shell
+        # that is dimmed in the picture and still live under the finger is
+        # worse than one that was never dimmed.
+        def overlay_paint_start() -> usize:
+            for order_index in 0..<paint_order_count:
+                index: usize = paint_order[order_index]
+                return order_index if widgets[index].overlay and effectively_visible(index)
+            return NONE
+
         def build_paint_order() -> void:
             paint_order_count <- 0
             for index in 0..<widget_count:

@@ -406,6 +406,55 @@ def main() -> i64:
     UiFlat::layout(100.0, 40.0)
     check("and the default reader is unchanged by any of it", near(UiFlat::widget(lead).x, ltr_lead) and near(UiFlat::widget(narrow).x, ltr_narrow))
 
+    # A MODAL IS A SHEET OVER A SHELL THAT HAS RECEDED.
+    #
+    # Roots already painted in arena order, so "paint this last" was always
+    # expressible; the other half of what a modal IS was not. Every frame this
+    # framework has ever rendered of its own confirmation dialog showed a band
+    # glued into the layout above a shell that still looked entirely
+    # clickable. A scrim is not decoration -- it is the picture of the fact
+    # that everything under it is inert, so the painter and the pointer read
+    # one query and cannot disagree about where it begins.
+    UiFlat::reset()
+    shell: usize = UiFlat::button(UiFlat::NONE, 200.0, 100.0, UiCore::rgb(30, 34, 42), UiCore::rgb(30, 34, 42), UiCore::rgb(30, 34, 42))
+    # A root always fills the viewport, so an overlay is a transparent layer
+    # that holds the sheet -- which is what makes the sheet centreable and the
+    # wash full-bleed without either being a special case.
+    layer: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 0.0, 0.0, UiCore::rgba(0, 0, 0, 0))
+    UiFlat::set_main_alignment(layer, UiConst::MainAlignment.Center)
+    sheet: usize = UiFlat::button(layer, 60.0, 40.0, UiCore::rgb(70, 76, 90), UiCore::rgb(70, 76, 90), UiCore::rgb(70, 76, 90))
+    UiFlat::set_cross_alignment(sheet, UiConst::CrossAlignment.Center)
+    UiFlat::layout(200.0, 100.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    scrim_ink: UiCore::Color = UiFlat::theme().scrim
+    check("nothing is overlaid until something says so", not frame_contains_rect_color(0.0, 0.0, 200.0, 100.0, scrim_ink) and UiFlat::hit(10.0, 10.0) == shell)
+    UiFlat::set_overlay(layer, true)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("an overlay lays a scrim over the whole viewport", frame_contains_rect_color(0.0, 0.0, 200.0, 100.0, scrim_ink))
+    # BETWEEN the two, not before the frame or after it: a wash in front of
+    # the sheet is a fog, and one behind the shell dims nothing.
+    shell_command: usize = first_fill_color_command(UiCore::rgb(30, 34, 42))
+    scrim_command: usize = first_fill_color_command(scrim_ink)
+    sheet_command: usize = first_fill_color_command(UiCore::rgb(70, 76, 90))
+    check("and lays it between the shell and the sheet", shell_command < scrim_command and scrim_command < sheet_command)
+    # The pointer's half of the same decision. Seen dimmed and still live
+    # under the finger is worse than never dimmed at all.
+    check("what the scrim covers, it covers", UiFlat::hit(10.0, 90.0) == UiFlat::NONE)
+    check("and what is above it is still reachable", UiFlat::hit(100.0, 50.0) == sheet)
+    # A hidden overlay is not an overlay: the wash has to leave with the sheet.
+    UiFlat::set_visible(layer, false)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("a hidden overlay takes its scrim with it", not frame_contains_rect_color(0.0, 0.0, 200.0, 100.0, scrim_ink) and UiFlat::hit(10.0, 90.0) == shell)
+    # Only a root can be one. An overlay nested inside the tree it is meant to
+    # cover would have to be painted out of its own subtree's order, which is
+    # a second paint order rather than a flag.
+    nested: usize = UiFlat::button(layer, 10.0, 10.0, UiCore::rgb(1, 2, 3), UiCore::rgb(1, 2, 3), UiCore::rgb(1, 2, 3))
+    UiFlat::set_overlay(nested, true)
+    check("a child cannot be an overlay", not UiFlat::is_overlay(nested))
+
     if test_failures == 0:
         _ = puts("widget layout: all checks passed")
         return 0

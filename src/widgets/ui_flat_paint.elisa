@@ -36,8 +36,15 @@ extend UiFlat:
                     if next_semantic < widget_count:
                         emit_accessibility(next_semantic)
                         semantic_emitted[next_semantic] <- true
+            scrim_at: usize = overlay_paint_start()
             for order_index in 0..<paint_order_count:
                 index: usize = paint_order[order_index]
+                # The wash goes down between the shell and the overlay, in the
+                # paint order rather than before or after the whole frame, so
+                # it dims exactly what is under the sheet and nothing else.
+                if order_index == scrim_at:
+                    UiCore::clear_clip()
+                    UiCore::fill(UiCore::Rect(0.0, 0.0, last_layout_width, last_layout_height), current_theme.scrim) if current_theme.scrim.a != 0
                 continue if not effectively_visible(index) or not intersects_scroll_viewports(index)
                 set_scroll_clip(index)
                 enabled: bool = effectively_enabled(index)
