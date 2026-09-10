@@ -58,18 +58,50 @@ inside it.
   is behind the row.
 - A card lighter than its ground is raised; darker is recessed.
 
-## The focus ring
+## Rings
 
-It is a rounded fill drawn UNDER the control, slightly larger — a halo, not an
-outline. The retained command vocabulary has no stroked rounded rectangle, so
-an outline could not follow the shape it was outlining, and the ring was four
-straight lines with square corners on every rounded control. A fill behind the
-control is rounded by the same policy that rounds the control, so the ring is
-concentric by construction in every backend, with no change to the wire format
-the hosted backend encodes.
+A ring is a rounded fill drawn UNDER a widget, slightly larger — a halo, not an
+outline. The retained command vocabulary has no stroked rounded rectangle, so an
+outline could not follow the shape it was outlining, and every ring in this
+framework was four straight lines with square corners on a rounded control. A
+fill behind the widget is rounded by the same policy that rounds the widget, so
+the ring is concentric by construction in every backend, with no change to the
+wire format the hosted backend encodes.
+
+The focus ring is one instance. An application asks for its own with
+
+    UiHandles::set_ring(handle, colour)
+
+for a modal's accent frame, a validation error, a tour highlight. Focus wins
+where both apply: where a keyboard user is standing is the more urgent fact, and
+two concentric rings read as neither. A transparent colour is no ring.
+
+It has to be the painter's job rather than an app's frame callback, for two
+reasons that only show up when you render it. Drawn before the retained tree it
+renders nothing — the shell and page panels paint after it and cover the
+viewport. And it has to be positioned after layout, because the frame that opens
+a dialog is the frame that first gives its panel a box.
 
 A stroked-rounded-rectangle command is still the missing primitive; bordered
 cards and outlined buttons want it too.
+
+## What the gate looks at
+
+`scripts/render_showcase_skia.sh` renders the shipped showcase through the real
+painter and writes every frame to `build/`. The list is the point: each entry is
+an appearance that was, at some stage, drawn by code no picture covered.
+
+- five pages, dark
+- `-light`, the light palette — the other half of the depth policy
+- `-focus`, with the keyboard focus on a control
+- `-dialog`, a modal over a shell disabled beneath it
+- `-hover` and `-pressed`, a control under the pointer
+- `-retina`, at a 2x backing scale
+
+Size floors catch a page that stopped laying out. The checks that earn their
+keep are the ones that require frames to DIFFER: a focused frame identical to
+the unfocused one means no ring was drawn, and a hovered frame identical to the
+resting one means the pointer reached nothing. Both have fired.
 
 ## Backends
 
