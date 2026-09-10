@@ -28,3 +28,24 @@ def check_vocabulary() -> void:
         UiSkia::detach()
         check("the weight reaches the bridge", skia_test_line_count() == 2 and skia_test_last_line_width() == 3.5)
         check("and so does the cap it implies", skia_test_last_line_round_cap() == 1)
+
+        # Synthetic text weight is a number the FRAMEWORK chooses, not one the
+        # bridge picks: `setEmbolden` used to decide it, and measured against a
+        # real semibold face it was 30% light. The recorder reads back what the
+        # painter asked for.
+        UiCore::begin_frame()
+        UiCore::draw(UiCore::TextRun(UiCore::Vec2(4.0, 20.0), 26.0, "166", true), UiCore::rgb(240, 240, 245))
+        UiSkia::attach(11)
+        skia_test_reset()
+        UiPaint::replay[UiSkia::SkiaPainter]()
+        UiSkia::detach()
+        check("a weighted run carries the framework's stem growth", skia_test_last_text_weight_stroke() == UiPaint::synthetic_weight_stroke(26.0, true))
+        check("and the growth is real", UiPaint::synthetic_weight_stroke(26.0, true) > 0.0)
+
+        UiCore::begin_frame()
+        UiCore::draw(UiCore::TextRun(UiCore::Vec2(4.0, 20.0), 26.0, "166"), UiCore::rgb(240, 240, 245))
+        UiSkia::attach(11)
+        skia_test_reset()
+        UiPaint::replay[UiSkia::SkiaPainter]()
+        UiSkia::detach()
+        check("an ordinary run is drawn as the face is", skia_test_last_text_weight_stroke() == 0.0)

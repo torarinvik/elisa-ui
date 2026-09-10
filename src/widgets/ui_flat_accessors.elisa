@@ -203,7 +203,7 @@ extend UiFlat:
             safe_size: f32 = UiConstraints::bounded(size)
             widgets[index] with { text <- safe_text, text_size <- safe_size, text_color <- color }
             if widgets[index].kind == UiConst::WidgetKind.Label:
-                measured_width: f32 = UiTextMetrics::width(safe_text, safe_size)
+                measured_width: f32 = UiTextMetrics::width(safe_text, safe_size, widgets[index].text_weighted)
                 measured_height: f32 = UiTextMetrics::line_height(safe_size)
                 widgets[index] with {
                     declared_min_width <- measured_width, declared_min_height <- measured_height,
@@ -216,12 +216,16 @@ extend UiFlat:
         # Separate from set_text because weight is a STYLE the app sets once,
         # while the caption changes with the data -- folding it into set_text
         # would make every content update restate a presentation choice. It
-        # does not mark layout dirty: synthesised weight leaves advances alone,
-        # so the box this widget already measured still fits.
+        # It DOES mark layout dirty. It used not to, on the reasoning that
+        # synthesised weight leaves advances alone -- true of Skia, which
+        # dilates one face, and false of CoreText, which selects a real
+        # semibold. A label's intrinsic width is measured from its text, so on
+        # the platform where weight is real the box has to be measured again.
         def set_text_weight(index: usize, weighted: bool) -> void:
             return if index >= widget_count
             return if widgets[index].text_weighted == weighted
             widgets[index].text_weighted <- weighted
+            mark_layout_dirty()
             UiCore::invalidate(UiCore::Invalidation.Paint)
 
         # Put a ring around this widget, or take it away with a transparent

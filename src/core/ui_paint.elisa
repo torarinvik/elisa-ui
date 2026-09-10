@@ -70,6 +70,15 @@ module UiPaint:
         # The thickness range over which a slender surface stops being a bar.
         const BAR_THICKNESS_MIN: f32 = 8.0
         const BAR_THICKNESS_MAX: f32 = 24.0
+        # The stem growth a weighted run gets, as a fraction of its point size.
+        #
+        # Tuned against a real semibold face rendered by CoreText at the same
+        # size, but NOT to equal it. Matching its ink exactly takes 0.07, and at
+        # 0.07 the counters close: dilating one face uniformly is not what a
+        # designed bold does, so the bowl of an "e" fills in before the stems
+        # are heavy enough. This is the point where a heading reads as bold and
+        # the counters stay open.
+        const SYNTHETIC_WEIGHT_RATIO: f32 = 0.045
 
         # Shared custom-painter styling. Native controls do not consume this
         # record; each custom backend translates the same Elisa policy into its
@@ -238,6 +247,25 @@ module UiPaint:
         # inside the Skia backend rather than in the policy both backends read.
         # The same app looked like two different apps. Four functions here, and a
         # backend only has to know how to draw a linear gradient.
+        # SYNTHETIC TEXT WEIGHT, as a stroke added to the glyph outline.
+        #
+        # A backend with one borrowed typeface has no bold face to switch to, so
+        # weight has to be synthesized. Skia offers `setEmbolden` for exactly
+        # this and it is what the framework used -- but measured against a real
+        # semibold face it is too light: the same weighted run carried 30% less
+        # ink under Skia than under CoreText, so a heading was bold in a native
+        # AppKit window and merely medium in the Skia one.
+        #
+        # A stroke says the same thing with a number the framework chooses. It
+        # also keeps the property the single-typeface design rests on: a stroke
+        # dilates the outline and does not touch the ADVANCE, so a weighted run
+        # still occupies exactly the box the layout pass measured for it and
+        # there is no second measurement path and no risk of clipped labels.
+        # A real bold face would change advances and would need one.
+        def synthetic_weight_stroke(size: f32, weighted: bool) -> f32:
+            return 0.0 if not weighted or size <= 0.0
+            return UiCore::bounded_extent(size * SYNTHETIC_WEIGHT_RATIO)
+
         # How a stroke ENDS, decided once for every backend.
         #
         # A hairline is butt-capped: a divider, a rule and a caret are drawn to

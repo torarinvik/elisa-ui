@@ -139,3 +139,38 @@ brighter than the fill beneath it. Six of its seven checks fail against the
 painter as it was. UIKit cannot be run on the build host, so it is held to the
 compile gate and to being a mirror of the AppKit file -- the honest ceiling for
 that backend, and the same one the rest of it has.
+
+## Typography
+
+Weight is a flag on the run, and only the flag. Both CoreText painters used to
+read `run.weighted or run.size >= 19.0`; the size half was older than the flag
+and outlived it, so a large label came out semibold on Apple platforms and
+regular under Skia with nothing in the model saying which was meant. An app that
+wants a heavy heading marks it.
+
+That heuristic also lived in the MEASUREMENT seam, which is why removing it from
+the painter alone would have been a bug: `ui_measure_text_width` inferred weight
+from the point size exactly as the painter did, so the two agreed by accident.
+Weight now travels with the run into both, and `UiTextMetrics` keys its cache on
+it -- the same string at the same size measures differently bold, and a cache
+that forgot which one it stored would hand a weighted run the regular width.
+`set_text_weight` marks layout dirty for the same reason: on CoreText, weight is
+a real semibold face and a label's intrinsic width changes with it.
+
+Skia has no bold face to select. A host lends the renderer one borrowed
+typeface, so weight there is synthesized -- and the AMOUNT is now the
+framework's rather than Skia's. `setEmbolden` decided it before, and measured
+against CoreText's semibold at the same size it was 30% light: a heading was
+bold in a native AppKit window and merely medium in the Skia one. It is a stroke
+added to the glyph outline instead, which also keeps the property the
+single-typeface design rests on -- a stroke does not change the ADVANCE, so a
+weighted run occupies the box the layout pass measured for it.
+
+`SYNTHETIC_WEIGHT_RATIO` is tuned against that reference but deliberately not to
+equal it. Matching its ink takes 0.07, and at 0.07 the counters close: dilating
+one face uniformly is not what a designed bold does, so the bowl of an "e" fills
+in before the stems are heavy enough. 0.045 is where a heading reads as bold and
+the counters stay open. A real bold face would look better still and is what a
+future host-lends-two-typefaces change would buy; it would also make advances
+differ between the measuring and the drawing authority on the AppKit+Skia
+product, where CoreText measures and Skia draws.

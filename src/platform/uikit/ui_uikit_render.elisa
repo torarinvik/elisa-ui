@@ -77,9 +77,12 @@ extend UiUIKit:
                 return if run.text.len == 0
                 safe_text: sview = UiCore::bounded_text(run.text)
                 pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
-                # A run the widget layer marked weighted is bold whatever its
-                # size. Skia honours that flag; CoreText was deciding weight
-                # from the point size alone, so a weighted stat value came out
-                # bold in one backend and regular in the other.
-                semibold: i32 = 1 if run.weighted or run.size >= 19.0 else 0
+                # WEIGHT IS THE FLAG, and only the flag.
+                #
+                # This used to read `run.weighted or run.size >= 19.0`. The size
+                # half of that is older than the flag and outlived it: a large
+                # label came out semibold here and regular under Skia, with
+                # nothing in the model saying which was intended. An app that
+                # wants a heavy heading marks it, and then every backend agrees.
+                semibold: i32 = 1 if run.weighted else 0
                 draw_text_line(pointer, safe_text.len, run.size, semibold, run.origin.x, run.origin.y, color)

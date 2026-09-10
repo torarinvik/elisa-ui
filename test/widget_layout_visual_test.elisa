@@ -289,6 +289,23 @@ def main() -> i64:
     check("theme keeps radio marks inside their outer ring", near(UiFlat::theme().radio_inner_radius, 2.0))
     UiFlat::set_theme(base_theme)
 
+    # MEASURE THE FACE YOU DRAW WITH. A label's intrinsic width comes from its
+    # text, so a backend that selects a real semibold -- CoreText does -- gives
+    # a weighted label a wider box. Nothing measured weight before: the AppKit
+    # seam inferred it from the point size and so did its painter, so the two
+    # agreed by accident, and the accident ended the moment the painter began
+    # reading the run's own flag.
+    UiFlat::reset()
+    weighed: usize = UiFlat::label(UiFlat::NONE, "Overview", 20.0, UiCore::rgb(240, 240, 245))
+    UiFlat::layout(400.0, 100.0)
+    regular_width: f32 = UiFlat::widget(weighed).min_width
+    UiFlat::set_text_weight(weighed, true)
+    UiFlat::layout(400.0, 100.0)
+    check("a weighted label is measured with its own weight", UiFlat::widget(weighed).min_width > regular_width)
+    UiFlat::set_text_weight(weighed, false)
+    UiFlat::layout(400.0, 100.0)
+    check("and unweighting it measures back", near(UiFlat::widget(weighed).min_width, regular_width))
+
     # Choice-control geometry scales with the theme token. A compact checkbox
     # must not retain the old fixed seven-pixel inner square.
     UiFlat::reset()

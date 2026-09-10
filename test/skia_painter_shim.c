@@ -16,7 +16,7 @@ static int rounded_clip_count;
 static int clear_count;
 static int round_rect_count;
 static int stroke_round_rect_count;
-static int last_text_weighted;
+static float last_text_weight_stroke;
 static int rounded_gradient_count;
 static int stroke_rounded_gradient_count;
 static int shadow_round_rect_count;
@@ -189,11 +189,11 @@ void elisa_skia_canvas_draw_image_source_sampling(size_t canvas, size_t image,
 }
 void elisa_skia_canvas_draw_text_weighted(size_t canvas, size_t font, const char *text,
                                           size_t length, float x, float y, float size,
-                                          int32_t weighted,
+                                          float weight_stroke,
                                           uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha) {
     (void)font; (void)text; (void)length; (void)x; (void)y;
     (void)red; (void)green; (void)blue; (void)alpha;
-    if (canvas != 0) { text_count += 1; last_text_size = size; last_text_weighted = weighted; }
+    if (canvas != 0) { text_count += 1; last_text_size = size; last_text_weight_stroke = weight_stroke; }
 }
 void elisa_skia_canvas_draw_text_with_font(size_t canvas, size_t font, const char *text,
                                            size_t length, float x, float y, float size,
@@ -252,7 +252,7 @@ float elisa_skia_text_line_height_with_font(size_t font, float size) { return fo
 
 void skia_test_reset(void) {
     save_count = 0; restore_count = 0; scale_count = 0; translate_count = 0; rotate_count = 0; clip_count = 0; rounded_clip_count = 0;
-    clear_count = 0; last_text_weighted = 0; rounded_gradient_count = 0; stroke_rounded_gradient_count = 0; round_rect_count = 0; stroke_round_rect_count = 0; shadow_round_rect_count = 0; gradient_count = 0; image_count = 0; circle_count = 0; stroke_circle_count = 0; triangle_count = 0;
+    clear_count = 0; last_text_weight_stroke = 0.0f; rounded_gradient_count = 0; stroke_rounded_gradient_count = 0; round_rect_count = 0; stroke_round_rect_count = 0; shadow_round_rect_count = 0; gradient_count = 0; image_count = 0; circle_count = 0; stroke_circle_count = 0; triangle_count = 0;
     last_shadow_offset_x = 0.0f; last_shadow_offset_y = 0.0f; last_shadow_blur = 0.0f; last_shadow_red = 0; last_shadow_green = 0; last_shadow_blue = 0;
     line_count = 0; text_count = 0; measure_width_count = 0; last_round_radius = 0.0f; last_clip_radius = 0.0f; last_stroke_width = 0.0f; last_circle_stroke_width = 0.0f; last_line_width = 0.0f; last_line_round_cap = 0; last_text_size = 0.0f; last_image_x = 0.0f; last_image_y = 0.0f; last_image_width = 0.0f; last_image_height = 0.0f; last_image_source_x = 0.0f; last_image_source_y = 0.0f; last_image_source_width = 0.0f; last_image_source_height = 0.0f; last_image_sampling = 1; last_gradient_horizontal = 0;
     event_total = 0;
@@ -267,7 +267,7 @@ int skia_test_rounded_clip_count(void) { return rounded_clip_count; }
 int skia_test_clear_count(void) { return clear_count; }
 int skia_test_round_rect_count(void) { return round_rect_count; }
 int skia_test_stroke_round_rect_count(void) { return stroke_round_rect_count; }
-int skia_test_last_text_weighted(void) { return last_text_weighted; }
+float skia_test_last_text_weight_stroke(void) { return last_text_weight_stroke; }
 int skia_test_shadow_round_rect_count(void) { return shadow_round_rect_count; }
 int skia_test_gradient_count(void) { return gradient_count; }
 int skia_test_rounded_gradient_count(void) { return rounded_gradient_count; }

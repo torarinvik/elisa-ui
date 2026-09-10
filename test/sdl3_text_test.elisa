@@ -70,8 +70,8 @@ def main() -> i64:
         _ = puts(SDL_GetError())
         return 2
 
-    narrow: f32 = ui_measure_text_width("i", 20.0)
-    wide: f32 = ui_measure_text_width("MMMMMMMMMM", 20.0)
+    narrow: f32 = ui_measure_text_width("i", 20.0, false)
+    wide: f32 = ui_measure_text_width("MMMMMMMMMM", 20.0, false)
     check("a font opened and measured a non-zero width", narrow > 0.0)
     check("wider text measures wider", wide > narrow)
 
@@ -79,19 +79,19 @@ def main() -> i64:
     # more than ten times an i would be under a monospace approximation.
     check("measurement is proportional, not monospace", wide > narrow * 10.0)
 
-    small: f32 = ui_measure_text_width("Save", 12.0)
-    large: f32 = ui_measure_text_width("Save", 24.0)
+    small: f32 = ui_measure_text_width("Save", 12.0, false)
+    large: f32 = ui_measure_text_width("Save", 24.0, false)
     check("larger point size measures wider", large > small)
 
     check("line height is positive", ui_text_line_height(20.0) > 0.0)
     check("line height grows with size", ui_text_line_height(32.0) > ui_text_line_height(12.0))
     check("ascent is positive and within the line", ui_font_ascent(20.0) > 0.0 and ui_font_ascent(20.0) <= ui_text_line_height(20.0))
-    check("empty text measures zero", ui_measure_text_width("", 20.0) == 0.0)
+    check("empty text measures zero", ui_measure_text_width("", 20.0, false) == 0.0)
     malformed_view_words: mutable u64[2] = zeroed
     malformed_view_words[1] <- 4
     malformed_view_ref: mutable sview& = (&malformed_view_words[0]).cast[mutable sview&] can Unsafe.PointerCast
     null_view: sview = malformed_view_ref[0]
-    check("null-backed counted text measures zero", ui_measure_text_width(null_view, 20.0) == 0.0)
+    check("null-backed counted text measures zero", ui_measure_text_width(null_view, 20.0, false) == 0.0)
 
     UiSdl3::text_input("Grüße 👋")
     check("SDL committed UTF-8 reaches the application intact", committed_text_seen)
@@ -123,7 +123,7 @@ def main() -> i64:
 
     # The size table must reuse an already-open font rather than growing.
     before: usize = UiSdl3::font_count()
-    _ = ui_measure_text_width("again", 20.0)
+    _ = ui_measure_text_width("again", 20.0, false)
     check("repeat sizes reuse the cached font", UiSdl3::font_count() == before)
 
     UiSdl3::fonts_close()

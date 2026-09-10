@@ -16,7 +16,7 @@
 /* Packed as 0xMMmmpp (major, minor, patch). Hosts should check this before
  * submitting an opaque canvas or renderer object to the Skia boundary. */
 #define ELISA_SKIA_ABI_VERSION_MAJOR 0u
-#define ELISA_SKIA_ABI_VERSION_MINOR 4u
+#define ELISA_SKIA_ABI_VERSION_MINOR 5u
 #define ELISA_SKIA_ABI_VERSION_PATCH 0u
 #define ELISA_SKIA_ABI_VERSION \
     ((ELISA_SKIA_ABI_VERSION_MAJOR << 16) | \
@@ -88,12 +88,17 @@ void elisa_skia_canvas_draw_image_source_sampling(size_t canvas, size_t image,
                                                   uint8_t alpha, int32_t sampling);
 void elisa_skia_canvas_draw_text(size_t canvas, const char *text, size_t length, float x, float y,
                                  float size, uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha);
+/* `weight_stroke` is the stem growth to add to the glyph outline, in the same
+ * units as `size`; zero draws the face as it is. The caller chooses the amount,
+ * because how heavy "bold" looks is appearance. A stroke does not change the
+ * advance, so a weighted run occupies the same box an unweighted one does --
+ * which is why measuring accepts the parameter and ignores it. */
 void elisa_skia_canvas_draw_text_weighted(size_t canvas, size_t font, const char *text,
                                           size_t length, float x, float y, float size,
-                                          int32_t weighted, uint8_t red, uint8_t green,
+                                          float weight_stroke, uint8_t red, uint8_t green,
                                           uint8_t blue, uint8_t alpha);
 float elisa_skia_measure_text_width_weighted(size_t font, const char *text, size_t length,
-                                             float size, int32_t weighted);
+                                             float size, float weight_stroke);
 void elisa_skia_canvas_draw_text_with_font(size_t canvas, size_t font, const char *text, size_t length,
                                            float x, float y, float size, uint8_t red, uint8_t green,
                                            uint8_t blue, uint8_t alpha);

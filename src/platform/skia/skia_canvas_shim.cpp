@@ -165,15 +165,19 @@ SkFont font_for(float size, SkTypeface *typeface) {
 // Weight, from the ONE typeface a host lends the renderer.
 //
 // A host hands over a single borrowed SkTypeface for the frame, so there is no
-// bold face to select; `setEmbolden` dilates the outline of the face that is
-// there. Measured against this pin: it does NOT change advances -- the same
-// string measures 297.1406 with and without it -- so a weighted run occupies
-// exactly the box the layout pass measured for it, and text weight costs the
-// framework no second measurement path and no risk of clipped labels.
-SkFont font_for(float size, SkTypeface *typeface, int weighted) {
-    SkFont font = typeface != nullptr ? font_for(size, typeface) : font_for(size);
-    font.setEmbolden(weighted != 0);
-    return font;
+// bold face to select and weight has to be synthesized. `setEmbolden` does that
+// and is what this bridge used, but the AMOUNT was Skia's rather than the
+// framework's -- and measured against a real semibold face it was 30% light. So
+// the caller supplies the stem growth and this applies it as a stroke.
+//
+// A stroke, like embolden, dilates the outline without touching the ADVANCE, so
+// a weighted run still occupies exactly the box the layout pass measured for
+// it: no second measurement path, no risk of clipped labels.
+SkPaint weighted_paint(SkPaint paint, float weight_stroke) {
+    if (!(weight_stroke > 0.0f) || !bounded_extent(weight_stroke)) return paint;
+    paint.setStyle(SkPaint::kStrokeAndFill_Style);
+    paint.setStrokeWidth(weight_stroke);
+    return paint;
 }
 
 }
@@ -433,23 +437,27 @@ extern "C" void elisa_skia_canvas_draw_text_weighted(std::size_t canvas_handle,
                                                        std::size_t font_handle,
                                                        const char *text, std::size_t length,
                                                        float x, float y, float size,
-                                                       std::int32_t weighted,
+                                                       float weight_stroke,
                                                        std::uint8_t red, std::uint8_t green,
                                                        std::uint8_t blue, std::uint8_t alpha) {
     if (SkCanvas *target = canvas(canvas_handle);
         target != nullptr && text != nullptr && length > 0 && bounded_coordinate(x) &&
         bounded_coordinate(y) && bounded_extent(size)) {
-        const SkFont font = font_for(size, reinterpret_cast<SkTypeface *>(font_handle), weighted);
+        const SkFont font = font_for(size, reinterpret_cast<SkTypeface *>(font_handle));
         target->drawSimpleText(text, length, SkTextEncoding::kUTF8, x, y, font,
-                               fill_paint(red, green, blue, alpha));
+                               weighted_paint(fill_paint(red, green, blue, alpha), weight_stroke));
     }
 }
 
+// The advance is the same whatever the stem growth, which is the whole reason
+// weight is a stroke here; the parameter is accepted so the measuring and the
+// drawing entry points stay one contract.
 extern "C" float elisa_skia_measure_text_width_weighted(std::size_t font_handle,
                                                           const char *text, std::size_t length,
-                                                          float size, std::int32_t weighted) {
+                                                          float size, float weight_stroke) {
+    (void)weight_stroke;
     if (text == nullptr || length == 0 || !bounded_extent(size)) return 0.0f;
-    const float measured = font_for(size, reinterpret_cast<SkTypeface *>(font_handle), weighted)
+    const float measured = font_for(size, reinterpret_cast<SkTypeface *>(font_handle))
         .measureText(text, length, SkTextEncoding::kUTF8);
     return finite(measured) && measured >= 0.0f ? measured : 0.0f;
 }

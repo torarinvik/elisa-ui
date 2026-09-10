@@ -12,7 +12,7 @@ def ui_text_line_height(size: f32) -> f32:
     backend_calls <- backend_calls + 1
     return size * 1.25
 
-def ui_measure_text_width(text: sview, size: f32) -> f32:
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
     width_calls <- width_calls + 1
     return text.len.f32() * size * 0.5
 
@@ -36,14 +36,14 @@ def main() -> i64:
     check("reset invalidates frame-local metrics", backend_calls == 3 and UiTextMetrics::miss_count() == 1)
 
     UiTextMetrics::reset()
-    first_width: f32 = UiTextMetrics::width("cached", 10.0)
-    second_width: f32 = UiTextMetrics::width("cached", 10.0)
+    first_width: f32 = UiTextMetrics::width("cached", 10.0, false)
+    second_width: f32 = UiTextMetrics::width("cached", 10.0, false)
     check("width cache preserves the backend metric", first_width == 30.0 and second_width == 30.0)
     check("repeated text crosses width FFI once", width_calls == 1 and UiTextMetrics::width_query_count() == 2 and UiTextMetrics::width_miss_count() == 1)
-    _ = UiTextMetrics::width("cached", 12.0)
+    _ = UiTextMetrics::width("cached", 12.0, false)
     check("width size participates in identity", width_calls == 2 and UiTextMetrics::width_miss_count() == 2)
     UiTextMetrics::reset()
-    _ = UiTextMetrics::width("cached", 10.0)
+    _ = UiTextMetrics::width("cached", 10.0, false)
     check("reset invalidates cached widths", width_calls == 3 and UiTextMetrics::width_miss_count() == 1)
     check("font and scale generations invalidate together", UiTextMetrics::set_context(1, 2) and UiTextMetrics::line_height(10.0) == 12.5 and backend_calls == 4)
     check("same metric context is idempotent", not UiTextMetrics::set_context(1, 2) and UiTextMetrics::line_height(10.0) == 12.5 and backend_calls == 4)
@@ -56,7 +56,7 @@ def main() -> i64:
         large[index] <- 65
     large_view: sview = sview(&large[0], 0, (UiTextMetrics::WIDTH_TEXT_CAPACITY + 1).i64())
     misses_before_large: usize = UiTextMetrics::width_miss_count()
-    _ = UiTextMetrics::width(large_view, 10.0)
+    _ = UiTextMetrics::width(large_view, 10.0, false)
     check("oversized text crosses backend", width_calls > 2)
     check("oversized text records a miss", UiTextMetrics::width_miss_count() == misses_before_large + 1)
 

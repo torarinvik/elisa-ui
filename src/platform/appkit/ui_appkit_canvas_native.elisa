@@ -239,14 +239,18 @@ def appkit_cstr_equals(left: cstr, right: cstr) -> bool:
             break if left_byte == 0
     return condition
 
-def ui_measure_text_width(text: sview, size: f32) -> f32:
+# MEASURE THE FACE YOU DRAW WITH. This decided weight from the point size, and
+# so did the painter, so the two agreed by accident rather than by construction:
+# the moment the painter started reading the run's own flag, a large unweighted
+# label was measured semibold and drawn regular. Weight is a property of the
+# run and now travels with it into both.
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
     return 0.0 if text.len <= 0 or text.data == null
     safe_text: sview = UiCore::bounded_text(text)
     return 0.0 if safe_text.len <= 0 or safe_text.data == null
     pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
     safe_size: f32 = UiCore::bounded_extent(size)
-    semibold: i32 = 1 if safe_size >= 19.0 else 0
-    return UiCore::bounded_extent(UiAppKitCanvas::text_width(pointer, safe_text.len, safe_size, semibold))
+    return UiCore::bounded_extent(UiAppKitCanvas::text_width(pointer, safe_text.len, safe_size, 1 if weighted else 0))
 def ui_measure_text_height(text: sview, size: f32) -> f32:
     return UiAppKitCanvas::font_line_height(UiCore::bounded_extent(size))
 def ui_font_ascent(size: f32) -> f32:

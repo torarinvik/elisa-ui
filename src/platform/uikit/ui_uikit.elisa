@@ -19,14 +19,15 @@ include "./ui_uikit_callbacks.elisa"
 
 # Text metrics the core asks for by name. CoreText is the authority on both
 # Apple platforms, so these forward straight into the UIKit text module.
-def ui_measure_text_width(text: sview, size: f32) -> f32:
+# Measure the face the painter draws with; see the AppKit seam for why the
+# point-size heuristic that used to live here had to go.
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
     return 0.0 if text.len <= 0 or text.data == null
     safe_text: sview = UiCore::bounded_text(text)
     return 0.0 if safe_text.len <= 0 or safe_text.data == null
     pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
     safe_size: f32 = UiCore::bounded_extent(size)
-    semibold: i32 = 1 if safe_size >= 19.0 else 0
-    return UiCore::bounded_extent(UiUIKit::text_width(pointer, safe_text.len, safe_size, semibold))
+    return UiCore::bounded_extent(UiUIKit::text_width(pointer, safe_text.len, safe_size, 1 if weighted else 0))
 
 def ui_measure_text_height(text: sview, size: f32) -> f32:
     return UiUIKit::font_line_height(UiCore::bounded_extent(size))
