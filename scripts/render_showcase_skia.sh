@@ -113,6 +113,25 @@ if cmp -s "$PREFIX-page1.png" "$light_file"; then
   exit 1
 fi
 echo "showcase skia: light palette rendered ${WIDTH}x${HEIGHT} ($light_size bytes) -> $light_file"
+# ...and the reading direction. Every mirrored coordinate in this framework was
+# asserted headlessly and appeared in no picture, which is how a frame that
+# mirrored the content inside each box and none of the boxes themselves shipped:
+# labels and markers at the reader's edge, the fields and buttons they belong to
+# still hard against the other one.
+rtl_file="$PREFIX-rtl.png"
+[[ -s "$rtl_file" ]] || { echo "showcase skia: the right-to-left frame produced no file" >&2; exit 1; }
+rtl_size="$(stat -f%z "$rtl_file")"
+if [[ "$rtl_size" -lt 20000 ]]; then
+  echo "showcase skia: the right-to-left frame rendered almost nothing ($rtl_size bytes)" >&2
+  exit 1
+fi
+# A locale that reached nothing still writes a perfectly good left-to-right
+# frame, which is exactly the failure this is here to catch.
+if cmp -s "$PREFIX-page2.png" "$rtl_file"; then
+  echo "showcase skia: the right-to-left frame is identical to the left-to-right one; nothing mirrored" >&2
+  exit 1
+fi
+echo "showcase skia: right-to-left rendered ${WIDTH}x${HEIGHT} ($rtl_size bytes) -> $rtl_file"
 # ...and the modal, which is a rendering case of its own: a raised sheet with an
 # accent ring, over a shell disabled beneath it.
 dialog_file="$PREFIX-dialog.png"

@@ -32,6 +32,49 @@ in both directions, and hit testing never consults the marker's geometry. It is
 recorded here because it looked like work and was not — checking was cheaper
 than the change would have been.
 
+## What the sizer mirrors
+
+Everything above moves content around *inside* a box. None of it moves the box.
+
+That distinction was invisible while every fixture measured a caret's x, a
+marker's side or a label's origin — quantities that all live inside one
+widget's frame — and it stayed invisible until a right-to-left frame was
+rendered and looked at. The picture was mirrored by halves: section headings,
+field text, checkbox markers and the status line all sat at the reader's edge,
+while the fields, radio rows and buttons they belonged to were still hard
+against the opposite one, with the empty half of the card between them. That is
+not a right-to-left layout. It is two layouts in one frame.
+
+Both layers now mirror the **placement of a child inside its container**, and
+in both it is one reflection of the child's box within the container's content
+span:
+
+```
+mirrored_x = inner_x + span - (child_x - inner_x) - child_width
+```
+
+One line covers cases that would otherwise each want a rule: a row's siblings
+come out in the opposite order, a column's start-aligned child moves to the
+trailing edge, the sealed hierarchy's grid cells reverse across each line, and
+a scrolled row travels the other way — the last one for free, because a
+scrolled child arrives at the reflection with its translation already applied.
+Reflecting rather than recomputing also keeps the child inside its container
+without a clamp, for the same reason the marker stays inside its control.
+
+The reflection composes with the paint-time mirroring above rather than
+competing with it: one decides where the box goes, the other where the content
+sits inside it, and neither can mirror the other's quantity twice.
+
+Hit testing follows for nothing, because both layers hit-test against the same
+stored frames the sizer wrote. A control you can see in one place and grab in
+another is worse than one that was never mirrored, so both fixtures assert the
+pointer at the mirrored coordinate rather than trusting that.
+
+The showcase now renders a right-to-left frame with the real renderer, and the
+gate requires it to differ from the left-to-right one — a locale that reached
+nothing still writes a perfectly good left-to-right picture, which is exactly
+the failure that had to be caught by eye the first time.
+
 ## What the painter mirrors, and what it does not yet
 
 A choice control's **marker and its label** follow the reader's direction: in a

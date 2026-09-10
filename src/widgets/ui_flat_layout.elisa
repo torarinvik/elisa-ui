@@ -245,10 +245,12 @@ extend UiFlat:
                         else:
                             if alignment == UiConst::CrossAlignment.End:
                                 cross_offset <- margin + available_cross - cross_extent
-                    if is_row:
-                        arrange(walk, inner_x + offset + margin, inner_y + cross_offset, UiConstraints::bounded(extent), UiConstraints::bounded(cross_extent), depth + 1)
-                    else:
-                        arrange(walk, inner_x + cross_offset, inner_y + offset + margin, UiConstraints::bounded(cross_extent), UiConstraints::bounded(extent), depth + 1)
+                    child_width: f32 = UiConstraints::bounded(extent if is_row else cross_extent)
+                    child_height: f32 = UiConstraints::bounded(cross_extent if is_row else extent)
+                    unmirrored_x: f32 = inner_x + (offset + margin if is_row else cross_offset)
+                    child_x: f32 = mirrored_child_x(inner_x, inner_width, unmirrored_x, child_width)
+                    child_y: f32 = inner_y + (cross_offset if is_row else offset + margin)
+                    arrange(walk, child_x, child_y, child_width, child_height, depth + 1)
                     offset <- offset + outer_extent + widgets[index].spacing * scale + gap_extra
                 else:
                     collapse(walk, depth + 1)

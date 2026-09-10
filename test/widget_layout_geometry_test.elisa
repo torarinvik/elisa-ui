@@ -362,6 +362,50 @@ def main() -> i64:
     UiFlat::paint()
     check("detached roots remain semantic after layout", UiCore::accessibility_count() == 2 and UiCore::accessibility_at(0).id == first_root and UiCore::accessibility_at(1).id == second_root)
 
+    # A RIGHT-TO-LEFT FRAME MIRRORS THE BOXES, NOT ONLY WHAT IS IN THEM.
+    #
+    # Every mirroring fixture this framework had measured content inside a box
+    # -- a caret's x, a marker's side, a label's origin. None measured where
+    # the box itself was put, so an Arabic frame came out half mirrored: the
+    # labels and markers moved to the reader's edge while the fields, radio
+    # rows and buttons they belonged to stayed hard against the other one.
+    # That is two layouts in one picture, and it was obvious the moment a
+    # right-to-left frame was rendered and looked at.
+    UiFlat::reset()
+    strip: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Row, 0.0, 0.0, UiCore::rgb(20, 22, 28))
+    lead: usize = UiFlat::button(strip, 30.0, 20.0, UiCore::rgb(30, 30, 30), UiCore::rgb(50, 50, 50), UiCore::rgb(15, 15, 15))
+    trail: usize = UiFlat::button(strip, 30.0, 20.0, UiCore::rgb(30, 30, 30), UiCore::rgb(50, 50, 50), UiCore::rgb(15, 15, 15))
+    tower: usize = UiFlat::panel(strip, UiConst::Axis.Column, 0.0, 0.0, UiCore::rgb(20, 22, 28))
+    narrow: usize = UiFlat::button(tower, 30.0, 20.0, UiCore::rgb(30, 30, 30), UiCore::rgb(50, 50, 50), UiCore::rgb(15, 15, 15))
+    UiFlat::set_cross_alignment(narrow, UiConst::CrossAlignment.Start)
+    # The column has to be WIDER than the child it holds, or "at the start" and
+    # "at the end" name the same x and the check cannot tell them apart.
+    UiFlat::set_grow(tower, 1.0)
+    UiFlat::layout(100.0, 40.0)
+    ltr_lead: f32 = UiFlat::widget(lead).x
+    ltr_trail: f32 = UiFlat::widget(trail).x
+    ltr_narrow: f32 = UiFlat::widget(narrow).x
+    check("a row reads from the left by default", ltr_lead < ltr_trail and near(ltr_lead, 0.0))
+    check("and a start-aligned child sits at its container's left", near(ltr_narrow, UiFlat::widget(tower).x))
+    _ = UiLocalization::set_locale("ar-SA")
+    UiFlat::layout(100.0, 40.0)
+    rtl_lead: f32 = UiFlat::widget(lead).x
+    rtl_trail: f32 = UiFlat::widget(trail).x
+    rtl_narrow: f32 = UiFlat::widget(narrow).x
+    check("a right-to-left row runs the other way", rtl_lead > rtl_trail and near(rtl_lead + 30.0, 100.0))
+    check("and its start-aligned child sits at its container's right", near(rtl_narrow + 30.0, UiFlat::widget(tower).x + UiFlat::widget(tower).width))
+    # The reflection is exactly that -- a reflection. A child that was d from
+    # the left edge is d from the right one, so no arrangement needs a second
+    # rule to be mirrored, and none can be mirrored twice.
+    check("the mirror is a reflection about the container", near(ltr_lead + rtl_lead + 30.0, 100.0) and near(ltr_trail + rtl_trail + 30.0, 100.0))
+    check("a mirrored child is still inside its container", rtl_lead >= 0.0 and rtl_trail >= 0.0 and rtl_lead + 30.0 <= 100.0)
+    # A control you can see in one place and grab in another is worse than one
+    # that is not mirrored at all, so the hit test travels with the box.
+    check("and the pointer finds it where it is drawn", UiFlat::hit(rtl_lead + 15.0, 10.0) == lead)
+    _ = UiLocalization::set_locale("en-US")
+    UiFlat::layout(100.0, 40.0)
+    check("and the default reader is unchanged by any of it", near(UiFlat::widget(lead).x, ltr_lead) and near(UiFlat::widget(narrow).x, ltr_narrow))
+
     if test_failures == 0:
         _ = puts("widget layout: all checks passed")
         return 0

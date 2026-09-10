@@ -40,6 +40,27 @@ extend UiFlat:
         def painting_right_to_left() -> bool:
             return UiLocalization::is_rtl(UiLocalization::current_locale())
 
+        # WHERE A CHILD'S BOX SITS INSIDE ITS CONTAINER.
+        #
+        # Every other function in this module moves content around inside a
+        # box that has already been placed. This one places the box, and until
+        # it existed a right-to-left frame was mirrored only halfway: labels
+        # and markers jumped to the reader's edge while the fields, rows and
+        # buttons they belonged to stayed hard against the opposite one. That
+        # is not a right-to-left layout, it is two layouts in one picture, and
+        # it survived because every mirroring fixture measured content inside
+        # a box and none measured the box.
+        #
+        # ONE reflection of the child within the container's content span does
+        # the whole job: it reverses a row's siblings, it turns a column's
+        # start-aligned children out to the trailing edge, and -- because a
+        # scrolled row's children are already translated by its offset when
+        # they arrive here -- it makes a scrolled row travel the other way
+        # without a second rule for scrolling.
+        def mirrored_child_x(inner_x: f32, span: f32, child_x: f32, child_width: f32) -> f32:
+            return child_x if not painting_right_to_left()
+            return UiCore::bounded_coordinate(inner_x + span - (child_x - inner_x) - child_width)
+
 
         # THE FRACTION OF A TRACK, MEASURED FROM THE READER'S START.
         #

@@ -33,6 +33,7 @@ extern "C" std::int32_t elisa_showcase_app_skia_accessible(std::int32_t mode);
 extern "C" std::int32_t elisa_showcase_app_skia_open_dialog();
 extern "C" std::int32_t elisa_showcase_app_skia_hover_button(std::int32_t pressed);
 extern "C" std::int32_t elisa_showcase_app_skia_close_dialog();
+extern "C" std::int32_t elisa_showcase_app_skia_direction(std::int32_t rtl);
 
 namespace {
 
@@ -188,6 +189,34 @@ int main(int argc, char** argv) {
     std::printf("showcase skia: wrote %s\n", light_contrast_path.c_str());
     if (elisa_showcase_app_skia_accessible(0) != 1) {
         std::fprintf(stderr, "showcase skia: could not restore the default preferences\n");
+        return 7;
+    }
+
+    // ...and the reading direction. Every mirrored coordinate in this
+    // framework is asserted headlessly and appears in no picture, which is the
+    // same shape as every other defect found here. This frame is where a
+    // marker on the wrong side of its label is obvious at a glance.
+    if (elisa_showcase_app_skia_direction(1) != 1) {
+        std::fprintf(stderr, "showcase skia: could not select a right-to-left locale\n");
+        return 7;
+    }
+    surface->getCanvas()->clear(SK_ColorTRANSPARENT);
+    const std::int32_t rtl_status = elisa_showcase_app_skia_render(
+        reinterpret_cast<std::size_t>(surface->getCanvas()),
+        reinterpret_cast<std::size_t>(typeface.get()),
+        static_cast<float>(width), static_cast<float>(height), 2, 1.0f);
+    if (rtl_status != 1) {
+        std::fprintf(stderr, "showcase skia: right-to-left page returned status %d\n", rtl_status);
+        return 5;
+    }
+    const std::string rtl_path = prefix + "-rtl.png";
+    if (!write_png(surface.get(), rtl_path)) {
+        std::fprintf(stderr, "showcase skia: failed to write %s\n", rtl_path.c_str());
+        return 6;
+    }
+    std::printf("showcase skia: wrote %s\n", rtl_path.c_str());
+    if (elisa_showcase_app_skia_direction(0) != 1) {
+        std::fprintf(stderr, "showcase skia: could not restore the default locale\n");
         return 7;
     }
 

@@ -549,4 +549,37 @@ def main() -> i64:
             test_failures <- test_failures + 1
             _ = puts("leaf paint exposed raw child")
 
+        # A RIGHT-TO-LEFT FRAME MIRRORS THE BOXES, NOT ONLY WHAT IS IN THEM.
+        # The flat layer's fixture makes the same case at length. Here the
+        # point is that the two layers agree: this one had a painter that put
+        # text and markers on the reader's edge and a sizer that put every box
+        # on the other one.
+        rtl_left: Widget = Button.Push(min_width: 30.0, min_height: 20.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "one", rest: grey(30), hover: grey(40), press: grey(20))
+        rtl_right: Widget = Button.Push(min_width: 30.0, min_height: 20.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "two", rest: grey(30), hover: grey(40), press: grey(20))
+        rtl_left.next_sibling <- rtl_right
+        rtl_row: Widget = Container.Box(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: rtl_left, next_sibling: null, axis: UiConst::Axis.Row, padding: 0.0, spacing: 0.0, fill: grey(15))
+        layout(rtl_row, 100.0, 20.0)
+        ltr_first: f32 = rtl_left.x
+        ltr_second: f32 = rtl_right.x
+        check("a row reads from the left by default", ltr_first, 0.0)
+        _ = UiLocalization::set_locale("ar-SA")
+        layout(rtl_row, 100.0, 20.0)
+        check("a right-to-left row starts at the right edge", rtl_left.x, 70.0)
+        check("and its second child comes to the left of the first", rtl_right.x, 40.0)
+        # The same reflection as the flat layer's, so neither can drift into a
+        # second rule the other does not have.
+        first_reflection: f32 = ltr_first + rtl_left.x + 30.0
+        second_reflection: f32 = ltr_second + rtl_right.x + 30.0
+        check("the mirror is a reflection about the container", first_reflection, 100.0)
+        check("and it holds for every child", second_reflection, 100.0)
+        # Seen in one place, grabbed in another is worse than not mirrored.
+        if hit(rtl_row, 85.0, 10.0) is landed:
+            check("a mirrored row is hit where it is drawn", landed.x, 70.0)
+        else:
+            test_failures <- test_failures + 1
+            _ = puts("a mirrored row is not hit where it is drawn")
+        _ = UiLocalization::set_locale("en-US")
+        layout(rtl_row, 100.0, 20.0)
+        check("and the default reader is unchanged by any of it", rtl_left.x, ltr_first)
+
         return test_failures.i64()

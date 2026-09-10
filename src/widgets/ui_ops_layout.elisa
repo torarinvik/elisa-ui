@@ -185,6 +185,21 @@ extend UiWidgets:
         # the cross axis. A container with no growing child simply leaves the
         # slack unused, which is wxSizer's behaviour when no item has a
         # non-zero proportion.
+        # WHERE A CHILD'S BOX SITS INSIDE ITS CONTAINER, for the sealed
+        # hierarchy. Its flat sibling carries the argument in full; the short
+        # version is that until this existed a right-to-left frame mirrored
+        # only the content inside each box and left every box where a
+        # left-to-right reader would have put it, which is two layouts in one
+        # picture rather than a mirrored one. One reflection within the
+        # container's content span reverses a row and a grid's cells alike,
+        # and -- because a scrolled row's children arrive here already
+        # translated -- turns a scrolled row around with no rule of its own.
+        # A column child spans the full inner width here, so the reflection
+        # lands exactly where it started and costs that case nothing.
+        def mirrored_child_x(inner_x: f32, span: f32, child_x: f32, child_width: f32) -> f32:
+            return child_x if not reading_right_to_left()
+            return UiCore::bounded_coordinate(inner_x + span - (child_x - inner_x) - child_width)
+
         def arrange(w: Widget, x: f32, y: f32, width: f32, height: f32, depth: i32) -> void:
             return if depth >= MAX_HIERARCHY_DEPTH
             safe_x: f32 = UiCore::bounded_coordinate(x)
@@ -244,7 +259,7 @@ extend UiWidgets:
                         arrange_grid_walk_steps <- arrange_grid_walk_steps + 1
                         child_x: f32 = UiCore::bounded_coordinate(inner_x + column * (cell_width + gap))
                         child_y: f32 = UiCore::bounded_coordinate(inner_y + row * (cell_height + gap))
-                        arrange(node, child_x, child_y, cell_width, cell_height, depth + 1)
+                        arrange(node, mirrored_child_x(inner_x, inner_width, child_x, cell_width), child_y, cell_width, cell_height, depth + 1)
                         column <- column + 1.0
                         if column >= columns_count:
                             column <- 0.0
@@ -325,7 +340,7 @@ extend UiWidgets:
                 extent: f32 = safe_sum(base, safe_product(share, node.grow))
                 if is_row:
                     child_x: f32 = UiCore::bounded_coordinate(inner_x + offset - scroll_offset)
-                    arrange(node, child_x, inner_y, extent, inner_height, depth + 1)
+                    arrange(node, mirrored_child_x(inner_x, inner_width, child_x, extent), inner_y, extent, inner_height, depth + 1)
                 else:
                     child_y: f32 = UiCore::bounded_coordinate(inner_y + offset - scroll_offset)
                     arrange(node, inner_x, child_y, inner_width, extent, depth + 1)
