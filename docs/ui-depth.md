@@ -394,3 +394,22 @@ choice rows to avoid — the rim was quietly left doing what the shadow had been
 stopped from doing. The flat bevel is now `14/22` rather than `40/60`, which
 measures as a 12-level step at a row boundary instead of 24, and a fixture
 holds it to under a third of a raised surface's lit edge.
+
+## Glass you cannot see through is a tint, and a tint does not need a blur
+
+Any alpha below opaque used to ask for a backdrop blur. A blur is not a cheap
+effect — a `saveLayer` over the surface's whole box and a Gaussian across it,
+**per surface, per frame** — and a card at alpha 242 transmits five percent of
+what is behind it. That is a full-surface pass to change nothing a reader can
+see, on the exact case an application reaches for when it wants a surface to
+sit a shade into its page rather than to be glass.
+
+The backdrop must now contribute at least a quarter (`alpha <= 191`). Below
+that line the shapes behind the surface matter and blurring them is the whole
+effect; above it, the fill has already covered them.
+
+The showcase is the worked example. Its chrome is translucent over a page that
+is nearly its own colour, so it is a tint and the framework declines to blur
+behind it. Its **modal sheet** sits over the content list, is genuinely
+see-through, and frosts it — which is what says the sheet is in front of the
+content rather than in it.

@@ -302,3 +302,22 @@ def check_vocabulary() -> void:
         check("but not a lit one", flat_row.bevel_alpha <= 24)
         check("nothing like the edge that says a surface is raised", flat_row.bevel_alpha * 3 < lifted_row.bevel_alpha)
         check("and a flat surface is still flat", flat_row.shadow_alpha == 0 and flat_row.contact_alpha == 0)
+
+        # GLASS YOU CANNOT SEE THROUGH IS A TINT.
+        #
+        # Any alpha below opaque used to ask for a backdrop blur, and a blur is
+        # not a cheap effect: a saveLayer over the surface's whole box and a
+        # Gaussian across it, per surface, per frame. A card at alpha 242
+        # transmits five percent of what is behind it -- a full-surface pass to
+        # change nothing a reader can see, on the exact case an application
+        # reaches for when it wants a surface a shade into its page.
+        glass_box: UiCore::Rect = UiCore::Rect(0.0, 0.0, 240.0, 120.0)
+        real_glass: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for(glass_box, UiCore::SurfaceDepth.Raised, UiCore::rgba(24, 28, 36, 150))
+        near_solid: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for(glass_box, UiCore::SurfaceDepth.Raised, UiCore::rgba(24, 28, 36, 242))
+        solid: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for(glass_box, UiCore::SurfaceDepth.Raised, UiCore::rgb(24, 28, 36))
+        check("a surface you can see through frosts what is behind it", UiPaint::has_backdrop_blur(real_glass))
+        check("one you cannot does not pay for a blur", not UiPaint::has_backdrop_blur(near_solid))
+        check("and an opaque one never did", not UiPaint::has_backdrop_blur(solid))
+        # A recess is IN the surface it is cut from, and a flat translucent
+        # fill is a tint by definition -- neither is glass however clear it is.
+        check("only a raised surface is glass", not UiPaint::has_backdrop_blur(UiPaint::rounded_rect_style_for(glass_box, UiCore::SurfaceDepth.Inset, UiCore::rgba(24, 28, 36, 150))))

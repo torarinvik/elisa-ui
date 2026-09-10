@@ -126,8 +126,25 @@ extend UiPaint:
         # the hundred. A fully transparent fill is nothing at all.
         #
         # The radius does NOT scale with the surface -- see the constant.
+        # GLASS YOU CANNOT SEE THROUGH IS A TINT, AND A TINT DOES NOT NEED A
+        # BLUR.
+        #
+        # Any alpha below 255 used to ask for one, and a blur is not a cheap
+        # effect: it is a saveLayer over the surface's whole box and a Gaussian
+        # across it, per surface, per frame. A card at alpha 242 transmits five
+        # percent of what is behind it -- blurring that is a full-surface pass
+        # to change nothing a reader can see, and it is the exact case an
+        # application reaches for when it wants a surface to sit a shade into
+        # its page rather than to be glass.
+        #
+        # A quarter is the line. Below it the backdrop is present enough that
+        # its shapes matter and blurring them is the whole effect; above it,
+        # the fill has already covered them.
+        const BACKDROP_MIN_TRANSMISSION: i64 = 64
+
         def backdrop_blur_for(extent: f32, color: UiCore::Color, elevated: bool) -> f32:
             return 0.0 if not elevated or color.a == 0 or color.a == 255
+            return 0.0 if 255 - color.a.i64() < BACKDROP_MIN_TRANSMISSION
             limit =
                 widest: f32 = extent * BACKDROP_BLUR_EXTENT_RATIO
                 UiCore::bounded_extent(widest)
