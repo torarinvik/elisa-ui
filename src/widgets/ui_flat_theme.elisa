@@ -35,10 +35,20 @@ extend UiFlat:
             current.text_horizontal_padding <- UiConstraints::bounded(metrics.spacing_unit / 2.0)
             current.text_vertical_padding <- UiConstraints::bounded(metrics.spacing_unit / 2.0)
             current.slider_track_height <- UiConstraints::bounded(metrics.focus_ring_width * 2.0)
-            current.choice_text_space <- UiConstraints::bounded(metrics.spacing_unit)
             current.checkbox_size <- 14.0 if metrics.focus_ring_width >= 3.0 else 11.0
             current.radio_outer_radius <- 7.0 if metrics.focus_ring_width >= 3.0 else 5.5
             current.radio_inner_radius <- 3.5 if metrics.focus_ring_width >= 3.0 else 2.8
+            # The marker's centre and its label's origin are ONE measurement,
+            # not two independent tokens. They used to be set apart -- the
+            # label origin was the raw spacing unit, which at the default 8pt
+            # is inside the marker it is supposed to follow. Nothing showed
+            # because the painter centred the label in the leftover space;
+            # a leading-aligned label would have drawn straight through the
+            # box. Deriving both from the marker keeps the gap on either side
+            # of it equal to one spacing unit at any accessibility scale.
+            marker_extent: f32 = current.checkbox_size if current.checkbox_size > current.radio_outer_radius * 2.0 else current.radio_outer_radius * 2.0
+            current.choice_center_x <- UiConstraints::bounded(metrics.spacing_unit + marker_extent / 2.0)
+            current.choice_text_space <- UiConstraints::bounded(current.choice_center_x + marker_extent / 2.0 + metrics.spacing_unit)
             return false if themes_equal(theme(), current)
             set_theme(current)
             return true
