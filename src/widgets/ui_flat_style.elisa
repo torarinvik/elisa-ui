@@ -67,11 +67,29 @@ extend UiFlat:
         def surface_depth_of(index: usize, color: UiCore::Color) -> UiCore::SurfaceDepth:
             kind: UiConst::WidgetKind = widgets[index].kind
             return UiCore::SurfaceDepth.Inset if kind == UiConst::WidgetKind.TextField
-            return UiCore::SurfaceDepth.Raised if kind == UiConst::WidgetKind.Button or kind == UiConst::WidgetKind.RadioButton or kind == UiConst::WidgetKind.CheckBox
+            # A CONTROL YOU CAN PRESS IS LIFTED; ONE YOU ARE PRESSING IS IN.
+            #
+            # Pressing used to be a colour swap and nothing else, which is the
+            # feedback a hyperlink gives. A control that stands off the surface
+            # when idle and sinks INTO it under the finger is the whole reason
+            # the depth policy carries an opposite lighting direction at all --
+            # the recess treatment was written for text fields and grooves and
+            # was never asked for by the one gesture it describes exactly.
+            #
+            # And a control that cannot be pressed is flat. Elevation is an
+            # invitation; a disabled button that still stands off the page is
+            # inviting a press it will not answer.
+            if control_surface(kind):
+                return UiCore::SurfaceDepth.Flat if not effectively_enabled(index)
+                return UiCore::SurfaceDepth.Inset if widgets[index].pressed
+                return UiCore::SurfaceDepth.Raised
             return UiCore::SurfaceDepth.Flat if not panel_is_surface(index, color)
             behind: UiCore::Color = ground_behind(index)
             return UiCore::SurfaceDepth.Inset if UiCore::surface_luminance(color) < UiCore::surface_luminance(behind)
             return UiCore::SurfaceDepth.Raised
+
+        def control_surface(kind: UiConst::WidgetKind) -> bool:
+            return kind == UiConst::WidgetKind.Button or kind == UiConst::WidgetKind.RadioButton or kind == UiConst::WidgetKind.CheckBox
 
         def fill_at_depth(box: UiCore::Rect, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void:
             if depth == UiCore::SurfaceDepth.Inset:

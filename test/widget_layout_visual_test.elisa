@@ -386,8 +386,36 @@ def main() -> i64:
     check("progress exposes its normalized value", near(progress_node.value, 0.4))
     check("progress exposes its normalized range", progress_node.has_range and progress_node.range_min == 0.0 and progress_node.range_max == 1.0 and not progress_node.range_conflict)
 
+    # PRESSING IS A DIRECTION, not a colour. A control that stands off the
+    # surface when idle and sinks INTO it under the finger is the gesture the
+    # recess treatment describes exactly -- it was written for text fields and
+    # grooves, and the one thing that literally goes in never asked for it.
+    # And elevation is an invitation: a control that cannot be pressed should
+    # not stand off the page inviting a press it will not answer.
+    UiFlat::reset()
+    idle_ink: UiCore::Color = UiCore::rgb(60, 90, 200)
+    press_ink: UiCore::Color = UiCore::rgb(40, 60, 150)
+    pressable: usize = UiFlat::button(UiFlat::NONE, 120.0, 40.0, idle_ink, idle_ink, press_ink)
+    UiFlat::layout(120.0, 40.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("an idle control stands off its surface", UiCore::command_depth_at(first_rect_index(idle_ink)) == UiCore::SurfaceDepth.Raised)
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(60.0, 20.0), button: 0)))
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("a control being pressed sinks into it", UiCore::command_depth_at(first_rect_index(press_ink)) == UiCore::SurfaceDepth.Inset)
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(60.0, 20.0), button: 0)))
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("releasing lifts it back", UiCore::command_depth_at(first_rect_index(idle_ink)) == UiCore::SurfaceDepth.Raised)
+    UiFlat::set_enabled(pressable, false)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("a control that cannot be pressed is flat", UiCore::command_depth_at(first_rect_index(UiCore::Color{r: 30, g: 45, b: 100, a: 255})) == UiCore::SurfaceDepth.Flat)
+
     if test_failures == 0:
         _ = puts("widget layout: all checks passed")
         return 0
     _ = puts("widget layout: FAILURES above")
+
     return 1
