@@ -94,3 +94,20 @@ These helpers live in `ui_flat_direction.elisa` rather than beside the colour
 policy. Each of them is the single place its two consumers meet, and that
 matters more here than elsewhere: a second copy of any one is a control you can
 see in one place and grab in another.
+
+## Both widget layers
+
+The sealed hierarchy in `ui_hierarchy.elisa` has its own painter, and it had
+heard none of this: every run was drawn at its box's left edge and every fill
+grew from it. Labels, text boxes and button captions now start at the reader's
+edge there too, a gauge fills from it, and a slider's knob travels from it.
+
+Two widget layers that disagree about which way the reader reads is worse than
+one layer that is simply wrong, because only one of them looks broken and the
+bug becomes a property of which API an application happened to pick.
+
+That layer's slider and gauge are display-only — neither appears in its pointer
+or hit-testing files — so unlike the flat layer's, mirroring the knob had no
+second half to keep in step with it. That was worth checking rather than
+assuming: it is the difference between a two-line change and the paired one the
+flat slider needed.

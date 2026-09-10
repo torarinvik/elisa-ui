@@ -43,6 +43,11 @@ def check(name: cstr, actual: f32, expected: f32) -> void:
     test_failures <- test_failures + 1
     _ = puts(name)
 
+def expect(name: cstr, ok: bool) -> void:
+    return if ok
+    test_failures <- test_failures + 1
+    _ = puts(name)
+
 def grey(v: u8) -> UiCore::Color:
     return UiCore::Color{r: v, g: v, b: v, a: 255}
 
@@ -50,6 +55,13 @@ def command_rect_width(index: usize) -> f32:
     match UiCore::command_at(index):
         UiCore::Command.FillRect(rect, color):
             return rect.size.width
+        _:
+            return -1.0
+
+def command_text_origin_x(index: usize) -> f32:
+    match UiCore::command_at(index):
+        UiCore::Command.DrawText(run, color):
+            return run.origin.x
         _:
             return -1.0
 
@@ -408,6 +420,40 @@ def main() -> i64:
             if knob_x < slider.x or knob_x + slider.height > slider.x + slider.width:
                 test_failures <- test_failures + 1
                 _ = puts("slider knob stays inside its frame")
+
+        # BOTH WIDGET LAYERS READ THE SAME WAY. The sealed hierarchy has its
+        # own painter and it had heard none of the direction work done in the
+        # flat layer: every run was drawn at the box's left edge and every fill
+        # grew from it. Two layers that disagree about which way the reader
+        # reads is worse than one layer that is simply wrong, because the bug
+        # becomes a property of which API the application happened to pick.
+        quarter: Widget = Control.Gauge(min_width: 40.0, min_height: 10.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, fraction: 0.25, track: grey(20), bar: grey(200))
+        layout(quarter, 100.0, 20.0)
+        UiCore::begin_frame()
+        paint(quarter)
+        ltr_bar_x: f32 = command_rect_origin_x(1)
+        ltr_bar_width: f32 = command_rect_width(1)
+        _ = UiLocalization::set_locale("ar-SA")
+        UiCore::begin_frame()
+        paint(quarter)
+        rtl_bar_x: f32 = command_rect_origin_x(1)
+        rtl_bar_width: f32 = command_rect_width(1)
+        expect("a gauge fills from the reader's start edge", ltr_bar_x < rtl_bar_x)
+        expect("with the same width either way", ltr_bar_width == rtl_bar_width)
+        expect("and ending at the far edge", rtl_bar_x + rtl_bar_width > quarter.x + quarter.width - 0.01)
+
+        # A run is placed from the reader's own edge in this layer too.
+        caption: Widget = Control.Label(min_width: 0.0, min_height: 20.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, text: "Save", size: 20.0, ink: grey(240))
+        layout(caption, 200.0, 20.0)
+        UiCore::begin_frame()
+        paint(caption)
+        rtl_caption_x: f32 = command_text_origin_x(0)
+        _ = UiLocalization::set_locale("en-US")
+        UiCore::begin_frame()
+        paint(caption)
+        ltr_caption_x: f32 = command_text_origin_x(0)
+        expect("a label starts at the reader's own edge here as well", rtl_caption_x > ltr_caption_x)
+        expect("and the default reader is unchanged", ltr_caption_x == caption.x)
 
         # The ratio calculation must retain a midpoint when the finite range
         # itself would overflow f32 subtraction.

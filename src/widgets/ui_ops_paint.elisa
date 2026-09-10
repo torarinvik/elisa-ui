@@ -1,5 +1,6 @@
 include "./ui_constraints.elisa"
 include "./ui_text_metrics.elisa"
+include "./ui_localization.elisa"
 
 extend UiWidgets:
     public:
@@ -79,6 +80,31 @@ extend UiWidgets:
                 _:
                     return false
 
+        # LEADING MEANS THE READER'S START, in this layer too.
+        #
+        # The sealed hierarchy has its own painter and it had heard none of the
+        # direction work done in the flat one: every run here was drawn at the
+        # box's left edge and every fill grew from it. Two widget layers that
+        # disagree about which way the reader reads is worse than one layer
+        # that is simply wrong, because only one of them looks broken and the
+        # bug becomes a property of which API an application happened to pick.
+        def reading_right_to_left() -> bool:
+            return UiLocalization::is_rtl(UiLocalization::current_locale())
+
+        def leading_run_x(box_x: f32, box_width: f32, run_width: f32) -> f32:
+            return box_x if not reading_right_to_left()
+            trailing =
+                room: f32 = box_width - run_width
+                box_x + room
+            return box_x if trailing < box_x
+            return trailing
+
+        # A filled span grows from the reader's start edge, so its width is the
+        # value either way and only its origin moves.
+        def leading_fill_x(box_x: f32, box_width: f32, filled: f32) -> f32:
+            return box_x + box_width - filled if reading_right_to_left()
+            return box_x
+
         # The parts that are not just a filled box: text runs and the moving
         # pieces of gauges and sliders.
         def paint_content(w: Widget) -> void:
@@ -103,30 +129,31 @@ extend UiWidgets:
                 Control.Label(text, size, ink):
                     safe_size: f32 = UiConstraints::bounded(size)
                     text_y: f32 = box_y + (box_height - safe_line_height(safe_size)) / 2.0
-                    UiCore::draw(UiCore::TextRun(UiCore::Vec2(box_x, text_y), safe_size, text), ink)
+                    UiCore::draw(UiCore::TextRun(UiCore::Vec2(leading_run_x(box_x, box_width, UiTextMetrics::width(text, safe_size, false)), text_y), safe_size, text), ink)
                 Control.Gauge(fraction, track, bar):
                     filled: f32 = box_width * UiCore::normalized_unit(fraction)
-                    UiCore::fill(UiCore::Rect(box_x, box_y, filled, box_height), bar) if filled > 0.0
+                    UiCore::fill(UiCore::Rect(leading_fill_x(box_x, box_width, filled), box_y, filled, box_height), bar) if filled > 0.0
                 Control.Slider(value, low, high, track, knob):
                     ratio: f32 = normalized_slider_ratio(value, low, high)
-                    knob_x: f32 = box_x + (box_width - box_height) * ratio
+                    span: f32 = box_width - box_height
+                    knob_x: f32 = box_x + span * (1.0 - ratio) if reading_right_to_left() else box_x + span * ratio
                     UiCore::fill(UiCore::Rect(knob_x, box_y, box_height, box_height), knob)
                 Control.TextBox(text, caret, size, ink, fill):
                     safe_size: f32 = UiConstraints::bounded(size)
                     text_y: f32 = box_y + (box_height - safe_line_height(safe_size)) / 2.0
-                    UiCore::draw(UiCore::TextRun(UiCore::Vec2(box_x, text_y), safe_size, text), ink)
+                    UiCore::draw(UiCore::TextRun(UiCore::Vec2(leading_run_x(box_x, box_width, UiTextMetrics::width(text, safe_size, false)), text_y), safe_size, text), ink)
                 Button.Push(label, rest, hover, press):
                     label_y: f32 = box_y + (box_height - safe_line_height(14.0)) / 2.0
-                    UiCore::draw(UiCore::TextRun(UiCore::Vec2(box_x, label_y), 14.0, label), UiCore::rgb(255, 255, 255)) if label.len != 0
+                    UiCore::draw(UiCore::TextRun(UiCore::Vec2(leading_run_x(box_x, box_width, UiTextMetrics::width(label, 14.0, false)), label_y), 14.0, label), UiCore::rgb(255, 255, 255)) if label.len != 0
                 Button.Toggle(label, on, rest, hover, press):
                     label_y: f32 = box_y + (box_height - safe_line_height(14.0)) / 2.0
-                    UiCore::draw(UiCore::TextRun(UiCore::Vec2(box_x, label_y), 14.0, label), UiCore::rgb(255, 255, 255)) if label.len != 0
+                    UiCore::draw(UiCore::TextRun(UiCore::Vec2(leading_run_x(box_x, box_width, UiTextMetrics::width(label, 14.0, false)), label_y), 14.0, label), UiCore::rgb(255, 255, 255)) if label.len != 0
                 Button.Check(label, checked, rest, hover, press):
                     label_y: f32 = box_y + (box_height - safe_line_height(14.0)) / 2.0
-                    UiCore::draw(UiCore::TextRun(UiCore::Vec2(box_x, label_y), 14.0, label), UiCore::rgb(255, 255, 255)) if label.len != 0
+                    UiCore::draw(UiCore::TextRun(UiCore::Vec2(leading_run_x(box_x, box_width, UiTextMetrics::width(label, 14.0, false)), label_y), 14.0, label), UiCore::rgb(255, 255, 255)) if label.len != 0
                 Button.Radio(label, group, selected, rest, hover, press):
                     label_y: f32 = box_y + (box_height - safe_line_height(14.0)) / 2.0
-                    UiCore::draw(UiCore::TextRun(UiCore::Vec2(box_x, label_y), 14.0, label), UiCore::rgb(255, 255, 255)) if label.len != 0
+                    UiCore::draw(UiCore::TextRun(UiCore::Vec2(leading_run_x(box_x, box_width, UiTextMetrics::width(label, 14.0, false)), label_y), 14.0, label), UiCore::rgb(255, 255, 255)) if label.len != 0
 
     public:
         # Intersect two retained clip boxes. A zero-sized result is intentional:
