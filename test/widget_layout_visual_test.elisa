@@ -150,6 +150,34 @@ def main() -> i64:
     check("a ring is painted behind the widget it surrounds", first_rect_index(ring_ink) < first_rect_index(UiCore::rgb(20, 40, 80)))
     check("a ring stands out on every side", ring_box.origin.x < surface_box.origin.x and ring_box.origin.y < surface_box.origin.y and ring_box.size.width > surface_box.size.width and ring_box.size.height > surface_box.size.height)
     check("a ring is not itself an elevated surface", not frame_contains_elevated_rect_color(ring_ink))
+    # A RING ON A CONTROL ITS OWN COLOUR. A primary action filled with the
+    # accent is exactly the control the theme derives its focus ring from, so
+    # an accent band laid straight against it says nothing. The separator is
+    # what a browser buys with outline-offset, without having to know what is
+    # behind the widget in order to punch through to it.
+    UiFlat::reset()
+    accent_ink: UiCore::Color = UiCore::rgb(20, 40, 80)
+    matched: usize = UiFlat::button(UiFlat::NONE, 120.0, 40.0, accent_ink, accent_ink, accent_ink)
+    UiFlat::set_ring(matched, accent_ink)
+    UiFlat::layout(120.0, 40.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    matched_ring: UiCore::Rect = first_rect_box(accent_ink)
+    separator: UiCore::Rect = first_rect_box(UiCore::rgb(255, 255, 255))
+    check("a ring on a control its own colour is separated from it", separator.size.width > UiFlat::widget(matched).width and separator.size.width < matched_ring.size.width)
+    check("the separator surrounds the control on every side", separator.origin.x < UiFlat::widget(matched).x and separator.origin.y < UiFlat::widget(matched).y and separator.size.height > UiFlat::widget(matched).height)
+    check("the separator sits inside the ring rather than replacing it", separator.origin.x > matched_ring.origin.x and separator.origin.y > matched_ring.origin.y)
+    check("the accent band keeps its themed width outside the separator", near(matched_ring.size.width - separator.size.width, UiFlat::theme().focus_inset * 2.0))
+    # A separator picked for the control it hugs, not a fixed colour: a light
+    # control gets a dark one for the same reason a dark one gets white.
+    UiFlat::reset()
+    pale_ink: UiCore::Color = UiCore::rgb(245, 246, 250)
+    pale: usize = UiFlat::button(UiFlat::NONE, 120.0, 40.0, pale_ink, pale_ink, pale_ink)
+    UiFlat::set_ring(pale, pale_ink)
+    UiFlat::layout(120.0, 40.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("a pale control is separated in dark ink", first_rect_index(UiCore::rgb(18, 20, 24)) < UiCore::command_count())
     UiFlat::set_ring(ringed, UiCore::rgba(0, 0, 0, 0))
     UiCore::begin_frame()
     UiFlat::paint()

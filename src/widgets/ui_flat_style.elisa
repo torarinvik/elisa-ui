@@ -132,17 +132,40 @@ extend UiFlat:
             return if widgets[index].ring_color.a == 0
             paint_halo(index, widgets[index].ring_color)
 
+        # A RING THAT SURVIVES BEING ITS CONTROL'S OWN COLOUR.
+        #
+        # The halo is painted behind the widget, so what shows is the band
+        # around it -- and a band of accent immediately against a surface
+        # already filled with the accent is not a ring, it is a slightly wider
+        # button. The showcase has exactly that control: the primary action is
+        # filled with the same accent the theme derives the focus ring from.
+        #
+        # This is why a browser's focus outline has an OFFSET. It cannot be an
+        # offset here, because a retained widget does not know what is behind
+        # it and would have to guess a colour to punch through to. A separator
+        # needs no such guess: one hairline in ink chosen by the control's own
+        # lightness, exactly as a mark on a filled swatch is chosen, and the
+        # accent band keeps its full themed width outside it.
         def paint_halo(index: usize, color: UiCore::Color) -> void:
-            spread: f32 = focus_halo_spread()
-            box: UiCore::Rect = UiCore::Rect(
+            separator: f32 = HALO_SEPARATOR_WIDTH
+            UiCore::fill(inflated_frame(index, focus_halo_spread() + separator), color)
+            UiCore::fill(inflated_frame(index, separator), contrast_ink(color_of(index)))
+
+        def inflated_frame(index: usize, spread: f32) -> UiCore::Rect:
+            return UiCore::Rect(
                 widgets[index].x - spread, widgets[index].y - spread,
                 widgets[index].width + spread * 2.0, widgets[index].height + spread * 2.0)
-            UiCore::fill(box, color)
 
         # How far the halo stands out from the control. Derived from the theme's
         # ring width so a high-contrast or large-text preference grows it with
         # everything else, and bounded so a malformed token cannot paint a
         # focus ring over the rest of the window.
+        # A hairline, and not scaled with the accessibility metrics: it is a
+        # SEPARATOR, and its job is done at one pixel. Growing it with the ring
+        # would eat into the accent band that a large-text preference is asking
+        # to make more visible.
+        const HALO_SEPARATOR_WIDTH: f32 = 1.0
+
         def focus_halo_spread() -> f32:
             requested: f32 = UiConstraints::bounded(current_theme.focus_inset)
             return 1.0 if requested < 1.0
