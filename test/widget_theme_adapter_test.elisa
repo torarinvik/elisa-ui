@@ -87,7 +87,18 @@ def main() -> i64:
     check("system theme resolves and applies", UiHandles::apply_system_theme(high_preferences, false, false))
     high_applied: UiFlat::Theme = UiHandles::theme()
     check("high contrast uses resolved accent", high_applied.focus_ring.r == 0 and high_applied.focus_ring.g == 64 and high_applied.control_mark_strong.r == 0)
-    check("system theme applies scaled geometry", high_applied.slider_track_height == 6.0 and high_applied.focus_inset == 3.0 and high_applied.checkbox_size == 14.0 and high_applied.radio_outer_radius == 7.0)
+    # A MARKER IS TYPOGRAPHY. These preferences ask for double-size text, and
+    # this used to assert that the checkbox stayed 14 points beside it -- the
+    # marker was derived from the focus ring's width, which is deliberately not
+    # scaled. The assertion pinned the bug.
+    unscaled_preferences: UiTheme::Preferences = UiTheme::Preferences{mode: UiTheme::ColorMode.Light, contrast: UiTheme::Contrast.High, text_scale: 1.0, reduced_motion: true}
+    _ = UiHandles::apply_system_theme(unscaled_preferences, false, false)
+    unscaled_marker: f32 = UiHandles::theme().checkbox_size
+    _ = UiHandles::apply_system_theme(high_preferences, false, false)
+    high_applied2: UiFlat::Theme = UiHandles::theme()
+    check("system theme applies scaled geometry", high_applied2.slider_track_height == 6.0 and high_applied2.focus_inset == 3.0)
+    check("a choice marker grows with the text preference", high_applied2.checkbox_size > unscaled_marker * 1.9 and high_applied2.checkbox_size < unscaled_marker * 2.1)
+    check("and the ring stays half the box", high_applied2.radio_outer_radius == high_applied2.checkbox_size / 2.0)
     retained_preferences: UiTheme::Preferences = UiTheme::current_preferences()
     check("system theme retains normalized preferences", retained_preferences.mode == UiTheme::ColorMode.Light and retained_preferences.contrast == UiTheme::Contrast.High and retained_preferences.text_scale == 2.0 and retained_preferences.reduced_motion)
     UiCore::clear_all_invalidations()

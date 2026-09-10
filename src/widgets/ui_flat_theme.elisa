@@ -9,6 +9,9 @@ include "./ui_theme.elisa"
 
 extend UiFlat:
     public:
+        # A choice marker as a multiple of the spacing unit. See apply_metrics.
+        const MARKER_PER_SPACING: f32 = 1.375
+
         # Apply one resolved palette without replacing application-specific
         # widget colors or layout metrics. The return value lets a frame skip
         # work when a host repeats the same appearance facts.
@@ -35,9 +38,22 @@ extend UiFlat:
             current.text_horizontal_padding <- UiConstraints::bounded(metrics.spacing_unit / 2.0)
             current.text_vertical_padding <- UiConstraints::bounded(metrics.spacing_unit / 2.0)
             current.slider_track_height <- UiConstraints::bounded(metrics.focus_ring_width * 2.0)
-            current.checkbox_size <- 14.0 if metrics.focus_ring_width >= 3.0 else 11.0
-            current.radio_outer_radius <- 7.0 if metrics.focus_ring_width >= 3.0 else 5.5
-            current.radio_inner_radius <- 3.5 if metrics.focus_ring_width >= 3.0 else 2.8
+            # A MARKER IS TYPOGRAPHY, so it scales with the text preference.
+            #
+            # These were derived from the focus ring's width, which is a proxy
+            # for "high contrast wants them bigger" and nothing else -- and the
+            # ring's width is deliberately NOT scaled, because thickness is a
+            # style decision. So a reader who asked for double-size text got an
+            # 11pt checkbox beside 28pt words. Every platform grows the control
+            # glyph with dynamic type; a checkbox that stays put is the one
+            # element on the page the preference did not reach.
+            #
+            # The spacing unit is the token that already carries the scale, and
+            # the ratio is chosen to leave the default and high-contrast sizes
+            # where they were: 8 -> 11 and 10 -> 13.75, against 11 and 14.
+            current.checkbox_size <- UiConstraints::bounded(metrics.spacing_unit * MARKER_PER_SPACING)
+            current.radio_outer_radius <- current.checkbox_size / 2.0
+            current.radio_inner_radius <- current.checkbox_size / 4.0
             # The marker's centre and its label's origin are ONE measurement,
             # not two independent tokens. They used to be set apart -- the
             # label origin was the raw spacing unit, which at the default 8pt

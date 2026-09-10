@@ -21,6 +21,17 @@ The adapter changes only framework-wide visual tokens:
 - focus inset, text padding, slider track height, choice spacing, and choice
   marker metrics.
 
+A choice marker is **typography**, and scales with the text preference. The
+checkbox and radio sizes used to be derived from the focus ring's width — a
+proxy for "high contrast wants them bigger" and nothing else — and the ring's
+width is deliberately *not* scaled, because thickness is a style decision. So a
+reader who asked for double-size text got an 11pt checkbox beside 28pt words:
+the one element on the page the preference did not reach. They come from the
+spacing unit now, which already carries the scale, at a ratio that leaves the
+default and high-contrast sizes where they were. The marker's centre and its
+label's origin follow from the marker, so the gap on either side of it stays
+one spacing unit at any scale.
+
 Per-widget surfaces, hover/press colors, text colors, and declared widget frames
 remain application-owned. Applications that need a custom token can still copy
 `UiFlat::theme()`, change the desired field, and call `UiHandles::set_theme()`.
