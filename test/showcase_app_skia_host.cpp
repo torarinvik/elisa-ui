@@ -29,7 +29,7 @@ extern "C" std::int32_t elisa_showcase_app_skia_render(std::size_t canvas, std::
                                                        float scale);
 extern "C" std::int32_t elisa_showcase_app_skia_focus_next();
 extern "C" std::int32_t elisa_showcase_app_skia_toggle_theme();
-extern "C" std::int32_t elisa_showcase_app_skia_accessible(std::int32_t on);
+extern "C" std::int32_t elisa_showcase_app_skia_accessible(std::int32_t mode);
 extern "C" std::int32_t elisa_showcase_app_skia_open_dialog();
 extern "C" std::int32_t elisa_showcase_app_skia_hover_button(std::int32_t pressed);
 extern "C" std::int32_t elisa_showcase_app_skia_close_dialog();
@@ -163,6 +163,29 @@ int main(int argc, char** argv) {
         return 6;
     }
     std::printf("showcase skia: wrote %s\n", contrast_path.c_str());
+    // ...and the same branch on the light palette. The depth policy is weighted
+    // by each surface's own lightness, so the two high-contrast modes do not
+    // exercise the same arithmetic -- and every bug found in this framework's
+    // light palette so far was one the dark one hid.
+    if (elisa_showcase_app_skia_accessible(2) != 1) {
+        std::fprintf(stderr, "showcase skia: could not apply the light accessible preferences\n");
+        return 7;
+    }
+    surface->getCanvas()->clear(SK_ColorTRANSPARENT);
+    const std::int32_t light_contrast_status = elisa_showcase_app_skia_render(
+        reinterpret_cast<std::size_t>(surface->getCanvas()),
+        reinterpret_cast<std::size_t>(typeface.get()),
+        static_cast<float>(width), static_cast<float>(height), 2, 1.0f);
+    if (light_contrast_status != 1) {
+        std::fprintf(stderr, "showcase skia: light contrast page returned status %d\n", light_contrast_status);
+        return 5;
+    }
+    const std::string light_contrast_path = prefix + "-contrast-light.png";
+    if (!write_png(surface.get(), light_contrast_path)) {
+        std::fprintf(stderr, "showcase skia: failed to write %s\n", light_contrast_path.c_str());
+        return 6;
+    }
+    std::printf("showcase skia: wrote %s\n", light_contrast_path.c_str());
     if (elisa_showcase_app_skia_accessible(0) != 1) {
         std::fprintf(stderr, "showcase skia: could not restore the default preferences\n");
         return 7;

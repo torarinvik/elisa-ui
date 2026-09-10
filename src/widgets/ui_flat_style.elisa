@@ -161,6 +161,33 @@ extend UiFlat:
             return widgets[index].x if trailing < widgets[index].x
             return trailing
 
+        # A MARK MUST CONTRAST WITH THE CONTROL, not with the palette's idea
+        # of the page.
+        #
+        # The theme resolves control marks from the SYSTEM palette and the
+        # application paints its OWN surfaces, and nothing made those two agree.
+        # A reader on a light system running an app that draws dark got the
+        # light palette's near-black mark on a near-black control: measured at
+        # luminance 19 against a surface of 56, a gap of 37 where the dark
+        # palette's own mark manages 145. In high contrast, of all places -- the
+        # one preference whose entire purpose is that gap.
+        #
+        # The framework already knows the surface and already has a rule for
+        # choosing ink to put on one. This is that rule, applied to a mark
+        # instead of to a tick, and only when the resolved mark has failed.
+        const MARK_CONTRAST_MINIMUM: i64 = 60
+
+        def readable_mark(index: usize, mark: UiCore::Color) -> UiCore::Color:
+            surface: UiCore::Color = color_of(index)
+            return mark if surface.a == 0 or mark.a == 0
+            gap =
+                mark_light: i64 = UiCore::surface_luminance(mark)
+                surface_light: i64 = UiCore::surface_luminance(surface)
+                mark_light - surface_light if mark_light > surface_light else surface_light - mark_light
+            return mark if gap >= MARK_CONTRAST_MINIMUM
+            ink: UiCore::Color = contrast_ink(surface)
+            return UiCore::rgba(ink.r, ink.g, ink.b, mark.a)
+
         def painting_right_to_left() -> bool:
             return UiLocalization::is_rtl(UiLocalization::current_locale())
 

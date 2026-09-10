@@ -518,6 +518,31 @@ def main() -> i64:
     check("and an overlong one is not pushed off it", first_text_origin_x() >= UiFlat::widget(caption).x)
     _ = UiLocalization::set_locale("en-US")
 
+    # A MARK MUST CONTRAST WITH THE CONTROL, not with the palette's idea of the
+    # page. The theme resolves control marks from the system palette and the
+    # application paints its own surfaces, and nothing made those two agree: a
+    # reader on a light system running a dark-surfaced app got a near-black
+    # mark on a near-black control, in high contrast of all preferences.
+    UiFlat::reset()
+    dim_ink: UiCore::Color = UiCore::rgb(40, 44, 56)
+    dim_box: usize = UiFlat::check_box(UiFlat::NONE, 200.0, 28.0, dim_ink, dim_ink, dim_ink)
+    invisible_theme: mutable UiFlat::Theme = base_theme
+    invisible_theme.control_mark <- UiCore::rgb(38, 42, 54)
+    UiFlat::set_theme(invisible_theme)
+    UiFlat::layout(200.0, 28.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("a mark the palette made invisible is replaced by one that reads", luminance_gap(rect_ink(8.0, 8.5, 11.0, 11.0), dim_ink) >= 60)
+    # ...and one that already reads is left exactly as the palette resolved it.
+    readable_theme: mutable UiFlat::Theme = base_theme
+    readable_theme.control_mark <- UiCore::rgb(255, 255, 255)
+    UiFlat::set_theme(readable_theme)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("and a mark that reads is the palette's own", frame_contains_rect_color(8.0, 8.5, 11.0, 11.0, UiCore::rgb(255, 255, 255)))
+    UiFlat::set_theme(base_theme)
+    _ = dim_box
+
     if test_failures == 0:
         _ = puts("widget layout: all checks passed")
         return 0

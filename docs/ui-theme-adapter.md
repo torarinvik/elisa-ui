@@ -60,3 +60,24 @@ The adapter is pure Elisa and has no dependency on AppKit, SDL, Skia, or a
 window. `test/widget_theme_adapter_test.elisa` exercises it headlessly,
 including palette mapping, idempotence, custom-token preservation, and the
 typed handle surface.
+
+## A mark contrasts with its control, not with the palette
+
+`apply_palette` resolves control marks from the **system** palette; an
+application paints its **own** surfaces. Nothing made those two agree, and the
+combination is not exotic: a reader on a light system running an app that draws
+dark got the light palette's near-black mark on a near-black control. Measured
+in the showcase, the empty checkbox border came out at luminance 19 against a
+surface of 56 — a gap of 37, where the dark palette's own mark manages 145. In
+high contrast, of all preferences: the one whose entire purpose is that gap.
+
+The framework already knows the surface and already has a rule for choosing ink
+to put on one — it is what picks the tick inside a filled checkbox. A mark that
+fails `MARK_CONTRAST_MINIMUM` against its own control is replaced by that ink at
+the mark's own alpha; a mark that passes is left exactly as the palette
+resolved it.
+
+This was found by rendering the mixed case rather than by reasoning about it.
+`showcase-skia-contrast-light.png` is the light-palette high-contrast tokens
+over the showcase's own dark surfaces, and the render gate requires it to
+differ from the dark one.

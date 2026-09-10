@@ -87,6 +87,19 @@ if [[ "$contrast_size" -lt 20000 ]]; then
 fi
 echo "showcase skia: high contrast rendered ${WIDTH}x${HEIGHT} ($contrast_size bytes) -> $contrast_file"
 
+light_contrast_file="$PREFIX-contrast-light.png"
+[[ -s "$light_contrast_file" ]] || { echo "showcase skia: the light high-contrast frame produced no file" >&2; exit 1; }
+light_contrast_size="$(stat -f%z "$light_contrast_file")"
+if [[ "$light_contrast_size" -lt 20000 ]]; then
+  echo "showcase skia: the light high-contrast frame rendered almost nothing ($light_contrast_size bytes)" >&2
+  exit 1
+fi
+if cmp -s "$contrast_file" "$light_contrast_file"; then
+  echo "showcase skia: the two high-contrast palettes rendered the same frame" >&2
+  exit 1
+fi
+echo "showcase skia: light high contrast rendered ${WIDTH}x${HEIGHT} ($light_contrast_size bytes) -> $light_contrast_file"
+
 # ...and the light palette, which exercises the other half of the depth policy.
 light_file="$PREFIX-light.png"
 [[ -s "$light_file" ]] || { echo "showcase skia: the light frame produced no file" >&2; exit 1; }
