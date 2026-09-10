@@ -56,10 +56,22 @@ extend UiFlat:
                 UiCore::fill_inset(track, track_color)
                 UiCore::fill_elevated(thumb, thumb_color)
             else:
-                track: UiCore::Rect = UiCore::Rect(widgets[index].x + widgets[index].width - bar - inset, widgets[index].y + inset, bar, track_extent)
+                track: UiCore::Rect = UiCore::Rect(vertical_bar_x(index, bar, inset), widgets[index].y + inset, bar, track_extent)
                 thumb: UiCore::Rect = UiCore::Rect(track.origin.x + thumb_offset, track.origin.y + thumb_position, thumb_bar, thumb_extent)
                 UiCore::fill_inset(track, track_color)
                 UiCore::fill_elevated(thumb, thumb_color)
+
+        # WHERE A VERTICAL SCROLLBAR SITS, said once.
+        #
+        # This was two copies of the same arithmetic -- one in the painter and
+        # one in the hit test -- which is the shape a drift takes: a scrollbar
+        # you can see and a scrollbar you can grab, in different places. It is
+        # also the only thing that had to change to put the bar on the reader's
+        # trailing edge, and having to change it twice is how that lands as a
+        # bug rather than as a feature.
+        def vertical_bar_x(index: usize, bar: f32, inset: f32) -> f32:
+            return widgets[index].x + inset if painting_right_to_left()
+            return widgets[index].x + widgets[index].width - bar - inset
 
         # Return 2 for the thumb, 1 for the track, and 0 outside the current
         # indicator. Reverse-order callers still choose the innermost nested
@@ -92,7 +104,7 @@ extend UiFlat:
                 thumb_x: f32 = track_x + thumb_position
                 return 2 if x >= thumb_x and x < thumb_x + thumb_extent
                 return 1
-            track_x: f32 = widgets[index].x + widgets[index].width - bar - inset
+            track_x: f32 = vertical_bar_x(index, bar, inset)
             track_y: f32 = widgets[index].y + inset
             return 0 if x < track_x or x >= track_x + bar or y < track_y or y >= track_y + track_extent
             thumb_y: f32 = track_y + thumb_position

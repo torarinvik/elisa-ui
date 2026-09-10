@@ -51,6 +51,24 @@ def filled_fraction(index: usize) -> f32:
     return 0.0 if track <= 0.0
     return widest / track
 
+# Where the filled span starts, as a fraction of the track it sits in.
+def fill_origin_offset(index: usize) -> f32:
+    track_start: mutable f32 = 0.0
+    track_span: mutable f32 = 0.0
+    fill_start: mutable f32 = 0.0
+    for command_index in 0..<UiCore::command_count():
+        match UiCore::command_at(command_index):
+            UiCore::Command.FillRect(rect, color):
+                if rect.size.height <= UiFlat::widget(index).height:
+                    if UiCore::command_depth_at(command_index) == UiCore::SurfaceDepth.Inset and rect.size.width > track_span:
+                        track_span <- rect.size.width
+                        track_start <- rect.origin.x
+                    fill_start <- rect.origin.x if UiCore::command_depth_at(command_index) == UiCore::SurfaceDepth.Flat and rect.size.width > 0.0 else fill_start
+            _:
+                pass
+    return 0.0 if track_span <= 0.0
+    return (fill_start - track_start) / track_span
+
 def repaint() -> void:
     UiCore::begin_frame()
     UiFlat::paint()
@@ -154,6 +172,43 @@ def main() -> i64:
     UiCore::set_frame_time(400.02)
     repaint()
     check("a control under the hand keeps up with it", near(filled_fraction(dragged), UiFlat::widget(dragged).value))
+
+    # A MIRRORED TRACK, PAINTED AND GRABBED THE SAME WAY. This is the pair the
+    # choice marker did not have to worry about: a slider maps pointer
+    # coordinates back to a value, so mirroring the paint alone would leave the
+    # thumb where the finger is not. Both halves call one function, which is
+    # its own inverse.
+    UiFlat::reset()
+    mirrored: usize = UiFlat::slider(UiFlat::NONE, "level", 200.0, 24.0, 0.0, UiCore::rgb(40, 44, 56), UiCore::rgb(80, 140, 240), UiCore::rgb(240, 240, 245))
+    UiFlat::layout(200.0, 24.0)
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(184.0, 12.0), button: 0)))
+    ltr_value: f32 = UiFlat::widget(mirrored).value
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(184.0, 12.0), button: 0)))
+    check("a left-to-right reader raises a slider by dragging right", ltr_value > 0.9)
+    _ = UiLocalization::set_locale("ar-SA")
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(184.0, 12.0), button: 0)))
+    rtl_value: f32 = UiFlat::widget(mirrored).value
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(184.0, 12.0), button: 0)))
+    check("and a right-to-left reader lowers it with the same drag", rtl_value < 0.1)
+    # ...and the FILL's width is the value in either direction. Only its origin
+    # moves. Mirroring the width instead is a mistake that looks right at both
+    # ends and is inverted everywhere between -- an empty track painting itself
+    # full -- and a fraction-only check passes straight through it.
+    UiFlat::set_value(mirrored, 0.0)
+    repaint()
+    check("a mirrored empty track is empty", filled_fraction(mirrored) < 0.05)
+    UiFlat::set_value(mirrored, 1.0)
+    repaint()
+    check("and a mirrored full track is full", filled_fraction(mirrored) > 0.95)
+    UiFlat::set_value(mirrored, 0.25)
+    repaint()
+    rtl_origin: f32 = fill_origin_offset(mirrored)
+    _ = UiLocalization::set_locale("en-US")
+    repaint()
+    ltr_origin: f32 = fill_origin_offset(mirrored)
+    check("a quarter fills from the trailing edge for one reader", rtl_origin > 0.7)
+    check("and from the leading edge for the other", ltr_origin < 0.05)
+    check("with the same width either way", near(filled_fraction(mirrored), 0.25))
 
     if test_failures == 0:
         _ = puts("widget motion: all checks passed")

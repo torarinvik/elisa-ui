@@ -42,8 +42,23 @@ testing and selection. So an Arabic build got a correctly mirrored caret inside
 a field whose checkbox was still nailed to the left with its label running away
 from it. A policy nothing consults is a policy that is not there.
 
-**Still left-to-right**: a slider's fill direction, and the side a scrollbar
-sits on. Both are deliberate omissions rather than oversights — each maps
-pointer coordinates back to a value or an offset, so mirroring the paint
-without mirroring that mapping in the same change would invert the drag. They
-want the painter and `ui_flat_pointer.elisa` moved together.
+A **slider** and a **progress track** fill from the reader's start edge, and a
+vertical **scrollbar** sits on the reader's trailing side. These needed the
+painter and the pointer moved together — each maps pointer coordinates back to
+a value or an offset, and mirroring the paint alone would leave the thumb where
+the finger is not, which is worse than not mirroring at all. Both halves call
+one `track_fraction`, which is its own inverse, so there is no second formula
+to get wrong.
+
+The scrollbar's x had been written twice, once in the painter and once in the
+hit test. That is the shape a drift takes — a scrollbar you can see and a
+scrollbar you can grab, in different places — and it is also the only thing
+that had to change to move the bar, so having to change it twice is how that
+lands as a bug rather than as a feature. It is said once now.
+
+One trap worth naming, because a test walked straight into it: the span a value
+fills runs from the reader's start edge to the thumb, so **its width is the
+value in either direction and only its origin moves**. Mirroring the width
+instead looks right at both ends and is inverted everywhere between — an empty
+track paints itself full — and a check that only compares filled *fractions*
+passes straight through it. Width and origin are asserted separately.
