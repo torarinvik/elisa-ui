@@ -455,6 +455,35 @@ def main() -> i64:
     UiFlat::set_overlay(nested, true)
     check("a child cannot be an overlay", not UiFlat::is_overlay(nested))
 
+    # A LIGHT SAYS A CONTROL IS LIVE, AND A DISABLED ONE IS NOT.
+    #
+    # The fill of a disabled widget is muted; its ramp and its glow were not,
+    # so a disabled primary action kept a full-strength accent light around it
+    # and looked exactly as alive as the enabled one. It showed up the moment
+    # the showcase opened a modal: the shell behind the scrim went inert and
+    # went on glowing.
+    UiFlat::reset()
+    lamp: usize = UiFlat::button(UiFlat::NONE, 120.0, 34.0, UiCore::rgb(60, 120, 240), UiCore::rgb(60, 120, 240), UiCore::rgb(60, 120, 240))
+    UiFlat::set_glow(lamp, UiCore::rgba(60, 120, 240, 90))
+    UiFlat::set_gradient(lamp, UiCore::rgb(30, 80, 200), false)
+    UiFlat::set_corner(lamp, UiCore::CornerStyle.Pill)
+    UiFlat::layout(120.0, 34.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    lit_style: UiCore::SurfaceStyle = UiCore::command_style_at(first_fill_color_command(UiCore::rgb(60, 120, 240)))
+    check("a live control carries its ramp and its light", UiCore::has_glow(lit_style) and UiCore::has_gradient(lit_style))
+    UiFlat::set_enabled(lamp, false)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    dim_style: UiCore::SurfaceStyle = UiCore::command_style_at(0)
+    check("a disabled one carries neither", not UiCore::has_glow(dim_style) and not UiCore::has_gradient(dim_style))
+    # Shape is not a state.
+    check("but its shape is not a state", dim_style.corner == UiCore::CornerStyle.Pill)
+    UiFlat::set_enabled(lamp, true)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("and the light comes back with the control", UiCore::has_glow(UiCore::command_style_at(first_fill_color_command(UiCore::rgb(60, 120, 240)))))
+
     if test_failures == 0:
         _ = puts("widget layout: all checks passed")
         return 0

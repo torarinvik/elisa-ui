@@ -247,8 +247,31 @@ extend UiFlat:
         # ONE WIDGET'S SURFACE, with everything the application said about it.
         # A widget that stated nothing emits exactly the command it always
         # did, which is what keeps the wire format and every fixture stable.
-        def fill_widget_surface(index: usize, box: UiCore::Rect, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void:
+        # A LIGHT SAYS A CONTROL IS LIVE, AND A DISABLED ONE IS NOT.
+        #
+        # The fill of a disabled widget is muted; its ramp and its glow were
+        # not, so a disabled primary action kept a full-strength accent light
+        # around it and ran its ramp to the undimmed colour. It looked exactly
+        # as alive as the enabled one -- visible the moment the showcase
+        # opened its modal and the shell behind it went inert and kept
+        # glowing.
+        #
+        # Shape is not a state, so the corner survives. The ramp and the light
+        # do not: dropping both leaves the muted fill carrying the whole
+        # appearance, which is what it did before either existed.
+        def live_surface_style(index: usize, depth: UiCore::SurfaceDepth) -> UiCore::SurfaceStyle:
             style: UiCore::SurfaceStyle = surface_style_of(index, depth)
+            return style if effectively_enabled(index)
+            return UiCore::SurfaceStyle{
+                depth: style.depth,
+                corner: style.corner,
+                gradient: UiCore::rgba(0, 0, 0, 0),
+                gradient_horizontal: style.gradient_horizontal,
+                glow: UiCore::rgba(0, 0, 0, 0),
+            }
+
+        def fill_widget_surface(index: usize, box: UiCore::Rect, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void:
+            style: UiCore::SurfaceStyle = live_surface_style(index, depth)
             if style.corner == UiCore::CornerStyle.Automatic and not UiCore::has_gradient(style) and not UiCore::has_glow(style):
                 fill_at_depth(box, color, depth)
                 return
