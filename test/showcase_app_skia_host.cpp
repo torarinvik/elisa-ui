@@ -34,6 +34,7 @@ extern "C" std::int32_t elisa_showcase_app_skia_open_dialog();
 extern "C" std::int32_t elisa_showcase_app_skia_hover_button(std::int32_t pressed);
 extern "C" std::int32_t elisa_showcase_app_skia_close_dialog();
 extern "C" std::int32_t elisa_showcase_app_skia_direction(std::int32_t rtl);
+extern "C" std::int32_t elisa_showcase_app_skia_page();
 
 namespace {
 
@@ -317,6 +318,19 @@ int main(int argc, char** argv) {
     }
     std::printf("showcase skia: wrote %s\n", dialog_path.c_str());
 
+    // THE MODAL HAS TO GO FIRST. The retina frame is only worth anything as a
+    // COMPARISON with the 1x frame of the same page, and it was being rendered
+    // with the dialog still open: a modal over a shell the application had
+    // disabled, on whichever page the dialog had been opened from, since a
+    // modal consumes the page shortcuts too. Every pixel in it was dimmed by
+    // the scrim and the disable, so nothing in it could be compared with
+    // anything. It was checked only for its file size, which a frame of the
+    // wrong page at the wrong brightness passes easily.
+    if (elisa_showcase_app_skia_close_dialog() != 1) {
+        std::fprintf(stderr, "showcase skia: could not close the dialog\n");
+        return 7;
+    }
+
     // And once at a RETINA backing scale: the same logical point extent on a
     // canvas with twice the pixels, which is what most Macs actually run. It is
     // where a renderer's radii, hairlines and glyph placement show whether they
@@ -328,6 +342,18 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "showcase skia: no retina raster surface\n");
         return 4;
     }
+    // The 1x reference for the comparison below has to be the SAME page, taken
+    // now: the surface still holds the dialog frame, and the pages rendered at
+    // the top of this run were taken before the palette, the accessibility
+    // preferences and the locale had been moved around and put back.
+    surface->getCanvas()->clear(SK_ColorTRANSPARENT);
+    if (elisa_showcase_app_skia_render(
+            reinterpret_cast<std::size_t>(surface->getCanvas()),
+            reinterpret_cast<std::size_t>(typeface.get()),
+            static_cast<float>(width), static_cast<float>(height), 1, 1.0f) != 1) {
+        std::fprintf(stderr, "showcase skia: could not render the 1x reference frame\n");
+        return 5;
+    }
     retina->getCanvas()->clear(SK_ColorTRANSPARENT);
     const std::int32_t retina_status = elisa_showcase_app_skia_render(
         reinterpret_cast<std::size_t>(retina->getCanvas()),
@@ -337,6 +363,34 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "showcase skia: retina frame returned status %d\n", retina_status);
         return 5;
     }
+    // ...and that it went where it was told. A page is selected by pressing
+    // its shortcut, and a modal consumes every one of them, so a frame can
+    // silently be of another page entirely -- which this one was, for as long
+    // as it existed.
+    if (elisa_showcase_app_skia_page() != 1) {
+        std::fprintf(stderr,
+                     "showcase skia: the retina frame is of page %d, not the page it asked for; "
+                     "something consumed the shortcut\n", elisa_showcase_app_skia_page());
+        return 5;
+    }
+    // THE POINT OF THE FRAME IS THAT IT IS THE SAME PICTURE. Sampling the same
+    // LOGICAL point in both and requiring them to agree is the check the file
+    // size was standing in for -- and the one that would have caught the
+    // frame being of another page entirely.
+    bool retina_matches = true;
+    for (int step = 1; step <= 3; ++step) {
+        const int x = width * step / 4;
+        const int y = height * step / 4;
+        const int one = sampled_luminance(surface.get(), x, y);
+        const int two = sampled_luminance(retina.get(), x * 2, y * 2);
+        if (one < 0 || two < 0 || std::abs(one - two) > 12) {
+            std::fprintf(stderr,
+                         "showcase skia: the retina frame is not the 1x frame at twice the pixels "
+                         "(logical %d,%d: %d vs %d)\n", x, y, one, two);
+            retina_matches = false;
+        }
+    }
+    if (!retina_matches) return 5;
     const std::string retina_path = prefix + "-retina.png";
     if (!write_png(retina.get(), retina_path)) {
         std::fprintf(stderr, "showcase skia: failed to write %s\n", retina_path.c_str());
@@ -346,11 +400,8 @@ int main(int argc, char** argv) {
 
     // A control under the cursor, and the same control held down. Every frame
     // above is of controls at rest, so the two appearances a pointer actually
-    // produces were in no picture at all.
-    if (elisa_showcase_app_skia_close_dialog() != 1) {
-        std::fprintf(stderr, "showcase skia: could not close the dialog\n");
-        return 7;
-    }
+    // produces were in no picture at all. The dialog is already closed: the
+    // retina frame needed it gone before it, for the same reason.)
     for (int pressed = 0; pressed < 2; ++pressed) {
         if (elisa_showcase_app_skia_hover_button(pressed) != 1) {
             std::fprintf(stderr, "showcase skia: could not put the pointer on a control\n");
