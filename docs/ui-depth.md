@@ -28,8 +28,11 @@ being another surface stacked on it.
 painted, and weights three effects by its perceived lightness (Rec. 601, so a
 saturated accent is correctly treated as a dark surface rather than a mid-grey):
 
-- **shadow** — what lifts a LIGHT surface. Wide and soft; a tight dark smudge
-  reads as a border rather than as height.
+- **shadow** — what lifts a LIGHT surface, in two layers. A wide, soft
+  *ambient* shadow is the room's light; a tight, dark *contact* shadow is the
+  sliver of space the object does not quite close. One blur alone is a
+  drop-shadow filter: drop the contact layer and the object floats, drop the
+  ambient and it looks stamped on.
 - **sheen** — a white wash across the face, strongest at the top. The surface is
   lit from above.
 - **bevel** — the rim of that light on the top edge. One pixel, and the
@@ -44,11 +47,39 @@ An inset surface inverts the last two: the wash is shade rather than sheen, and
 the rim moves to the bottom. It casts no shadow of its own — the shadow is
 inside it.
 
+## Why the box is an argument too
+
+Both shadow layers scale with the surface's shorter side, clamped at both ends.
+They used to be four constants — 8pt down and 22pt across for everything — so a
+34pt button and a 600pt sheet were lit by the same lamp at the same distance.
+On the button that is a shadow larger than the object, which does not read as
+height but as haze; on the light palette it spread the alpha thin enough that
+the column of pixels under a button measured as flat background.
+
+The shorter side is the right measurement because a full-width toolbar is not
+lifted further off the page by being wide, and a tall narrow panel is not lifted
+by being tall. The clamps are what stop a bar from casting a fifty-pixel shadow.
+
 ## Which widgets are which
 
 `UiFlat` decides, in `surface_depth_of`:
 
-- Buttons, radios and checkboxes are **raised** — you press them.
+- Buttons are **raised** — you press them — and go **inset** while they are
+  being pressed. Pressing used to be a colour swap and nothing else, which is
+  the feedback a hyperlink gives; the opposite lighting direction this policy
+  has always carried was written for grooves and never asked for by the one
+  gesture it describes exactly.
+- A disabled control is **flat**. Elevation is an invitation, and one that
+  still stands off the page is inviting a press it will not answer.
+- Radios and checkboxes are **flat**, and inset while pressed. They were raised
+  like buttons until a list of twenty-four full-width rows showed what that
+  costs: each row with its own rim and its own shadow is a ladder of floating
+  buttons rather than a list. Nothing about the widget says which it is — the
+  same radio is a segmented option in a form and a row in a list — and the
+  framework cannot see that the rows are adjacent. What it can say is that a
+  choice is announced by its MARKER; the surface behind it is a hit target, and
+  a hit target need not stand off the page to be pressable. Elevation is for
+  what you press, not for what you choose.
 - Text fields are **inset**.
 - A `Panel` is a card when its colour differs from the ground behind it, and a
   layout box when it matches. Panel is both in this model, and nothing else
@@ -57,6 +88,16 @@ inside it.
   parent — a row is usually transparent, and a card inside one sits on whatever
   is behind the row.
 - A card lighter than its ground is raised; darker is recessed.
+
+A choice control's label is leading-aligned immediately after its marker. It
+used to be centred in whatever room the marker left, which floats the words away
+from the box they name and makes a column of switches read as a column of
+buttons. The centring was also concealing a token that had drifted out of
+meaning: `apply_metrics` set `choice_text_space` to the raw spacing unit — 8pt
+at the default — while the marker's centre sits at 13.5 with a radius of 5.5, so
+a leading-aligned label would have been drawn straight through the box it names.
+The marker's centre and the label's origin are one measurement now, and the gap
+on either side of the marker is one spacing unit at any accessibility scale.
 
 ## Rings
 
@@ -75,6 +116,16 @@ The focus ring is one instance. An application asks for its own with
 for a modal's accent frame, a validation error, a tour highlight. Focus wins
 where both apply: where a keyboard user is standing is the more urgent fact, and
 two concentric rings read as neither. A transparent colour is no ring.
+
+A halo drawn straight against the control is not always a ring. The showcase's
+primary action is filled with the same accent the theme derives its focus ring
+from, so an accent band laid against it says nothing — it is a slightly wider
+button. A browser buys the separation with `outline-offset`, which is not
+available here: a retained widget does not know what is behind it and would have
+to guess a colour to punch through to. So the ring carries a one-pixel
+separator, in ink chosen by the control's own lightness — the same rule that
+picks the mark on a filled checkbox — with the accent band keeping its full
+themed width outside it.
 
 It has to be the painter's job rather than an app's frame callback, for two
 reasons that only show up when you render it. Drawn before the retained tree it
@@ -124,9 +175,15 @@ directly, while Quartz has none and must clip to a path (and, for the rim, to a
 stroked path converted into an area) and fill it. That difference is confined to
 one function per backend.
 
+The contact shadow needed no new vocabulary anywhere: it is a style whose shadow
+fields are the contact ones, so each backend draws it with the shadow call it
+already had. Skia draws both layers under one fill; CoreGraphics attaches a
+shadow to a drawing OP, so the two layers are two fills of the same path, and
+the second covers the first's body exactly.
+
 The one thing a backend may still legitimately differ on is text weight, because
-the font stacks differ: Skia synthesizes it with `SkFont::setEmbolden`, CoreText
-asks for the bold symbolic trait. Both now read `TextRun.weighted`; CoreText used
+the font stacks differ: Skia synthesizes it as a stroke added to the outline,
+CoreText asks for the bold symbolic trait. Both now read `TextRun.weighted`; CoreText used
 to infer weight from point size alone, so a weighted stat value came out bold in
 one backend and regular in the other.
 
