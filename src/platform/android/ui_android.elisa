@@ -49,6 +49,14 @@ module UiAndroid:
         const TOUCH_MOVE: i32 = 1
         const TOUCH_UP: i32 = 2
         const TOUCH_CANCEL: i32 = 3
+        # The portable mobile lifecycle vocabulary, numbered as the UIKit
+        # backend numbers its signals, because it is the same vocabulary.
+        const FOCUS_GAINED: i32 = 0
+        const FOCUS_LOST: i32 = 1
+        const BACKGROUND: i32 = 2
+        const FOREGROUND: i32 = 3
+        const SURFACE_LOST: i32 = 4
+        const SURFACE_RESTORED: i32 = 5
 
         # The system bars are edges the page must keep clear of, and on a
         # phone that is edge to edge they lie over the window. The insets
@@ -86,6 +94,21 @@ module UiAndroid:
                 android_started <- true
                 app_init()
                 return true
+
+        # FOCUS IS NOT COSMETIC. UiLifecycle takes input only while the phase
+        # is Active, a session that has started is Active only if it was told
+        # it has focus, and `begin` clears the flag -- so a host that never
+        # says this paints a perfect window that answers no touch at all.
+        # That was the Android backend until this existed.
+        def lifecycle(signal: i32) -> bool:
+            return false if not android_started
+            return UiMobileSurface::focus_gained() if signal == FOCUS_GAINED
+            return UiMobileSurface::focus_lost() if signal == FOCUS_LOST
+            return UiMobileSurface::background() if signal == BACKGROUND
+            return UiMobileSurface::foreground() if signal == FOREGROUND
+            return UiMobileSurface::surface_lost() if signal == SURFACE_LOST
+            return UiMobileSurface::surface_restored() if signal == SURFACE_RESTORED
+            return false
 
         def resize(width: f32, height: f32, scale: f32, safe: UiResponsive::Insets) -> bool:
             return false if not android_started
@@ -151,6 +174,9 @@ def android_resize(width: f32, height: f32, scale: f32, top: f32, right: f32, bo
 def android_stop() -> void:
     UiAndroid::stop()
 
+def android_lifecycle(signal: i32) -> i32:
+    return 1 if UiAndroid::lifecycle(signal) else 0
+
 def android_render(canvas: usize, font: usize, width: f32, height: f32, scale: f32) -> i32:
     can Ui.Draw, Ui.Text, Ui.Input, Unsafe.PointerCast:
         return UiAndroid::render(canvas, font, width, height, scale)
@@ -170,6 +196,7 @@ def android_scroll(x: f32, y: f32, dx: f32, dy: f32) -> void:
 export fn elisa_android_start(width: f32, height: f32, scale: f32, top: f32, right: f32, bottom: f32, left: f32) -> i32 = android_start
 export fn elisa_android_resize(width: f32, height: f32, scale: f32, top: f32, right: f32, bottom: f32, left: f32) -> i32 = android_resize
 export fn elisa_android_stop() -> void = android_stop
+export fn elisa_android_lifecycle(signal: i32) -> i32 = android_lifecycle
 export fn elisa_android_render(canvas: usize, font: usize, width: f32, height: f32, scale: f32) -> i32 = android_render
 export fn elisa_android_frame_delay() -> f32 = android_frame_delay
 export fn elisa_android_touch(phase: i32, x: f32, y: f32) -> void = android_touch

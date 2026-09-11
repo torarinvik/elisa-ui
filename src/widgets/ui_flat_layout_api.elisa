@@ -22,12 +22,32 @@ extend UiFlat:
             return 0.0 if remaining < 0.0
             return remaining
 
+        # THE METRICS ARE PART OF THE LAYOUT. A label's minimum IS its text,
+        # so a tree measured before its host had a typeface measured every
+        # label as nothing. `measure` already redoes that work on every pass;
+        # what was missing is anything ASKING for a pass. The tree had not
+        # changed, so it was not dirty, so the empty boxes stood -- until some
+        # unrelated edit dirtied it and the words appeared. On Android, where
+        # the application is initialised before the window has a font, that
+        # was a first page with no writing on it and four empty cards, and
+        # walking to another page and back was the cure.
+        #
+        # A changed metrics generation is a changed layout. The same applies
+        # to a device-scale change and to Dynamic Type, which is why the scale
+        # generation is here beside the font's.
+        def layout_metrics_changed() -> bool:
+            metrics: UiTextMetrics::Snapshot = UiTextMetrics::snapshot()
+            return metrics.font_generation != layout_font_generation or metrics.scale_generation != layout_scale_generation
+
         def layout(width: f32, height: f32) -> void:
             normalize_widget_enums()
             last_layout_width <- UiConstraints::bounded(width)
             last_layout_height <- UiConstraints::bounded(height)
             layout_initialized <- true
             layout_dirty <- false
+            measured: UiTextMetrics::Snapshot = UiTextMetrics::snapshot()
+            layout_font_generation <- measured.font_generation
+            layout_scale_generation <- measured.scale_generation
             UiCore::clear_invalidations(UiCore::Invalidation.Layout)
             return if widget_count == 0
             # A flat tree may contain more than one detached root.  This is
@@ -53,7 +73,7 @@ extend UiFlat:
         # this in Elisa means a mutation followed immediately by hit testing
         # or scrolling cannot observe stale frames.
         def ensure_layout() -> void:
-            layout(last_layout_width, last_layout_height) if layout_initialized and layout_dirty
+            layout(last_layout_width, last_layout_height) if layout_initialized and (layout_dirty or layout_metrics_changed())
 
         # Scroll geometry is retained in the flat widget row, not in a host
         # object. Setters clamp in Elisa and optionally reflow the remembered

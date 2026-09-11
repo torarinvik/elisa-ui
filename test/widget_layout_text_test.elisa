@@ -519,6 +519,49 @@ def main() -> i64:
     check("a click at the far right is the run's start for one reader and its end for the other", rtl_start_caret == 0 and ltr_end_caret == 4)
     _ = ltr_caret
 
+    # A HOST THAT HAS A WINDOW BUT NOT YET A TYPEFACE measures every label as
+    # nothing. The measurement is redone on every layout pass -- but nothing
+    # was ASKING for a pass, because the tree had not changed, so the empty
+    # boxes stood until some unrelated edit dirtied them. On Android, where
+    # the application is initialised before the window has a font, that was a
+    # first page with no writing on it. A changed metrics generation is a
+    # changed layout.
+    UiFlat::reset()
+    no_text_metrics <- true
+    _ = UiTextMetrics::set_context(41, 1)
+    fontless: usize = UiFlat::label(UiFlat::NONE, "Overview", 22.0, UiCore::rgb(240, 240, 245))
+    UiFlat::layout(300.0, 80.0)
+    check("a label measured before a typeface existed has no box", UiFlat::widget(fontless).min_width == 0.0 and UiFlat::widget(fontless).min_height == 0.0)
+    no_text_metrics <- false
+    _ = UiTextMetrics::set_context(42, 1)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("and has one the moment the typeface does, with nothing else changed", UiFlat::widget(fontless).min_width > 0.0 and UiFlat::widget(fontless).min_height > 0.0)
+
+    # TEXT STAYS INSIDE ITS WIDGET. A label whose words are wider than the box
+    # the layout gave it used to draw them anyway, straight across whatever
+    # stood next to it -- invisible on a surface wide enough for the
+    # composition, and the whole picture at phone width.
+    UiFlat::reset()
+    _ = UiTextMetrics::set_context(43, 1)
+    squeezed: usize = UiFlat::label(UiFlat::NONE, "A caption far wider than its box", 12.0, UiCore::rgb(240, 240, 245))
+    UiFlat::set_max_size(squeezed, 40.0, 20.0)
+    UiFlat::layout(40.0, 20.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    squeezed_runs: mutable usize = 0
+    squeezed_edge: mutable f32 = 0.0
+    for command_index in 0..<UiCore::command_count():
+        match UiCore::command_at(command_index):
+            UiCore::Command.DrawText(run, color):
+                squeezed_runs <- squeezed_runs + 1
+                edge: f32 = run.origin.x + UiTextMetrics::width(run.text, run.size, run.weighted)
+                squeezed_edge <- edge if edge > squeezed_edge
+            _:
+                pass
+    check("a squeezed label still says something", squeezed_runs > 0)
+    check("and says it inside its own box", squeezed_edge <= UiFlat::widget(squeezed).x + UiFlat::widget(squeezed).width + 1.0)
+
     if test_failures == 0:
         _ = puts("widget layout: all checks passed")
         return 0

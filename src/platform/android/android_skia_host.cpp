@@ -42,6 +42,7 @@ extern "C" std::int32_t elisa_android_start(float width, float height, float sca
 extern "C" std::int32_t elisa_android_resize(float width, float height, float scale, float top,
                                              float right, float bottom, float left);
 extern "C" void elisa_android_stop(void);
+extern "C" std::int32_t elisa_android_lifecycle(std::int32_t signal);
 extern "C" std::int32_t elisa_android_render(std::size_t canvas, std::size_t font, float width,
                                              float height, float scale);
 extern "C" float elisa_android_frame_delay(void);
@@ -120,6 +121,11 @@ struct Host {
     float scale = 1.0f;
     bool started = false;
     bool needs_frame = true;
+    // Android reports focus on its own schedule, sometimes before there is a
+    // window to focus. It is remembered rather than only forwarded, because a
+    // signal that arrives before the session starts is dropped by the session.
+    bool focused = false;
+    bool surface_gone = false;
     // The touch that may become a drag.
     bool touching = false;
     bool panning = false;
@@ -128,6 +134,8 @@ struct Host {
 };
 
 const int kTouchDown = 0, kTouchMove = 1, kTouchUp = 2, kTouchCancel = 3;
+const int kFocusGained = 0, kFocusLost = 1, kBackground = 2, kForeground = 3,
+          kSurfaceLost = 4, kSurfaceRestored = 5;
 
 float density_scale(android_app* app) {
     const std::int32_t density = AConfiguration_getDensity(app->config);
@@ -185,6 +193,11 @@ void start_or_resize(Host& host) {
         host.started = elisa_android_start(width, height, host.scale, top, right, bottom, left) == 1;
         ELISA_LOG("start %gx%g @%g insets %g %g %g %g -> %d", width, height, host.scale, top, right,
                   bottom, left, host.started ? 1 : 0);
+        // ...and say the focus again. Starting begins a new session, which
+        // clears whatever focus was reported before there was a window to
+        // report it about, and a session that is not focused is not Active,
+        // and a session that is not Active takes no input.
+        if (host.started && host.focused) elisa_android_lifecycle(kFocusGained);
     } else {
         elisa_android_resize(width, height, host.scale, top, right, bottom, left);
     }
@@ -235,14 +248,39 @@ void on_command(android_app* app, std::int32_t command) {
     Host& host = *static_cast<Host*>(app->userData);
     switch (command) {
         case APP_CMD_INIT_WINDOW:
+            // Before the resize, not after: a surface that is still reported
+            // lost refuses one.
+            if (host.surface_gone) {
+                host.surface_gone = false;
+                elisa_android_lifecycle(kSurfaceRestored);
+            }
+            start_or_resize(host);
+            break;
         case APP_CMD_WINDOW_RESIZED:
         case APP_CMD_CONFIG_CHANGED:
         case APP_CMD_CONTENT_RECT_CHANGED:
             start_or_resize(host);
             break;
         case APP_CMD_TERM_WINDOW:
+            elisa_android_lifecycle(kSurfaceLost);
+            host.surface_gone = true;
+            host.frame.reset();
             break;
         case APP_CMD_GAINED_FOCUS:
+            host.focused = true;
+            elisa_android_lifecycle(kFocusGained);
+            host.needs_frame = true;
+            break;
+        case APP_CMD_LOST_FOCUS:
+            host.focused = false;
+            elisa_android_lifecycle(kFocusLost);
+            break;
+        case APP_CMD_PAUSE:
+            elisa_android_lifecycle(kBackground);
+            break;
+        case APP_CMD_RESUME:
+            elisa_android_lifecycle(kForeground);
+            break;
         case APP_CMD_WINDOW_REDRAW_NEEDED:
             host.needs_frame = true;
             break;

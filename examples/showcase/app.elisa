@@ -45,6 +45,12 @@ module ShowcaseApp:
         global mutable title_label: UiHandles::Handle = UiHandles::invalid()
         global mutable subtitle_label: UiHandles::Handle = UiHandles::invalid()
         global mutable header_spacer: UiHandles::Handle = UiHandles::invalid()
+        # THE SURFACE DECIDES THE FORM. A phone is not a small desktop: the
+        # rail becomes a row of tabs, the toolbar takes two lines, and a
+        # second way to say something already on screen is not said at all.
+        # UiResponsive is the vocabulary for this and the storefront already
+        # speaks it; the showcase did not, which is what made it a smear.
+        global mutable compact_form: bool = false
         global mutable accent_row: UiHandles::Handle = UiHandles::invalid()
         global mutable accent_ids: u32[5] = zeroed
         global mutable dark_box: UiHandles::Handle = UiHandles::invalid()
@@ -138,16 +144,16 @@ module ShowcaseApp:
             UiHandles::set_color(sidebar, ShowcaseTheme::shell())
             UiHandles::set_color(toolbar, ShowcaseTheme::panel())
             UiHandles::set_color(footer, ShowcaseTheme::shell())
-            UiHandles::set_text(title_label, "Elisa UI Showcase", 21.0, ShowcaseTheme::ink())
+            UiHandles::set_text(title_label, "Elisa UI Showcase", 17.0 if compact_form else 21.0, ShowcaseTheme::ink())
             UiHandles::set_text(subtitle_label, backend_subtitle(), 12.0, ShowcaseTheme::muted())
             UiHandles::set_text(version_label, "elisa-ui 0.1 · stage1", 11.0, ShowcaseTheme::muted())
             for index in 0..<ShowcaseTheme::ACCENT_COUNT:
                 UiHandles::set_colors(accent_handle(index), ShowcaseTheme::accent_color(index), ShowcaseTheme::accent_hover_color(index), ShowcaseTheme::accent_press_color(index))
                 UiHandles::set_selected(accent_handle(index), index == ShowcaseTheme::accent())
-            ShowcaseTheme::style_choice(dark_box, "Dark mode", 13.0)
+            ShowcaseTheme::style_choice(dark_box, "" if compact_form else "Dark mode", 13.0)
             UiHandles::set_selected(dark_box, ShowcaseTheme::is_dark())
             for index in 0..<PAGE_COUNT:
-                ShowcaseTheme::style_nav_entry(nav_handle(index), page_name(index), 14.0, index == page_index)
+                ShowcaseTheme::style_nav_entry(nav_handle(index), page_name(index), 11.0 if compact_form else 14.0, index == page_index)
             ShowcaseTheme::style_accent_button(new_button, "New item", 13.0)
             ShowcaseTheme::style_danger_button(hide_button, "Hide item…", 13.0)
             ShowcaseTheme::style_button(save_button, "Save state", 13.0)
@@ -261,6 +267,8 @@ module ShowcaseApp:
             ShowcaseTheme::set_dark(true)
             ShowcaseTheme::set_accent(2)
 
+            compact_form <- UiCore::viewport_width() > 0.0 and UiResponsive::is_compact(UiCore::viewport_width(), UiResponsive::defaults())
+
             root <- UiHandles::column(UiHandles::root_parent(), 0.0, 0.0, ShowcaseTheme::canvas())
             UiHandles::set_gradient(root, ShowcaseTheme::canvas_far(), false)
 
@@ -278,6 +286,10 @@ module ShowcaseApp:
             title_label <- UiHandles::label(header, "Elisa UI Showcase", 21.0, ShowcaseTheme::ink())
             UiHandles::set_text_weight(title_label, true)
             subtitle_label <- UiHandles::label(header, "", 12.0, ShowcaseTheme::muted())
+            # The backend line is the first thing to go: it names what is
+            # already named in the window's own title bar, and on a phone
+            # there is no room for a second voice.
+            UiHandles::set_visible(subtitle_label, not compact_form)
             header_spacer <- UiHandles::row(header, 0.0, 0.0, ShowcaseTheme::transparent())
             UiHandles::set_grow(header_spacer, 1.0)
             accent_row <- UiHandles::row(header, 0.0, 6.0, ShowcaseTheme::transparent())
@@ -286,44 +298,77 @@ module ShowcaseApp:
                 swatch: UiHandles::Handle = UiHandles::radio_button(accent_row, 30.0, 26.0, ShowcaseTheme::accent_color(index), ShowcaseTheme::accent_hover_color(index), ShowcaseTheme::accent_press_color(index))
                 accent_ids[index.usize()] <- UiHandles::index(swatch).u32()
                 UiHandles::set_help(swatch, ShowcaseTheme::accent_name(index))
-            dark_box <- UiHandles::check_box(header, 120.0, 30.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            # Five swatches are a hundred and fifty points of a four-hundred
+            # point screen. The accent is still reachable in compact -- "Next
+            # accent" on the Overview page cycles it -- so the row goes.
+            UiHandles::set_visible(accent_row, not compact_form)
+            dark_box <- UiHandles::check_box(header, 34.0 if compact_form else 120.0, 30.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
             UiHandles::set_help(dark_box, "Switch appearance (keyboard: T)")
 
             body <- UiHandles::row(root, 0.0, 0.0, ShowcaseTheme::transparent())
             UiHandles::set_grow(body, 1.0)
             sidebar <- UiHandles::column(body, 12.0, 6.0, ShowcaseTheme::shell())
             UiHandles::set_grow(sidebar, 0.0)
+            UiHandles::set_visible(sidebar, not compact_form)
+
+            main <- UiHandles::column(body, 0.0, 0.0, ShowcaseTheme::transparent())
+            UiHandles::set_grow(main, 1.0)
+            # The rail's entries and the tab row's are THE SAME WIDGETS, in a
+            # different parent. Everything that reads them -- the selection,
+            # the keyboard shortcuts, the accessibility tree -- is written
+            # once and does not know which form it is looking at.
+            tabs: mutable UiHandles::Handle = sidebar
+            if compact_form:
+                tabs <- UiHandles::row(main, 6.0, 4.0, ShowcaseTheme::shell())
+                UiHandles::set_grow(tabs, 0.0)
             for index in 0..<PAGE_COUNT:
-                entry: UiHandles::Handle = UiHandles::radio_button(sidebar, 168.0, 34.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+                entry: UiHandles::Handle = UiHandles::radio_button(tabs, 0.0 if compact_form else 168.0, 34.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
                 nav_ids[index.usize()] <- UiHandles::index(entry).u32()
-                UiHandles::set_grow(entry, 0.0)
+                UiHandles::set_grow(entry, 1.0 if compact_form else 0.0)
                 UiHandles::set_help(entry, "Open this page (keyboard: 1 to 5)")
             sidebar_spacer <- UiHandles::column(sidebar, 0.0, 0.0, ShowcaseTheme::transparent())
             UiHandles::set_grow(sidebar_spacer, 1.0)
             version_label <- UiHandles::label(sidebar, "", 11.0, ShowcaseTheme::muted())
 
-            main <- UiHandles::column(body, 0.0, 0.0, ShowcaseTheme::transparent())
-            UiHandles::set_grow(main, 1.0)
-            toolbar <- UiHandles::row(main, 10.0, 8.0, ShowcaseTheme::panel())
+            # FIVE ACTIONS DO NOT FIT ON ONE PHONE LINE, so the bar is a
+            # column of two lines there and one row everywhere else. The
+            # buttons grow into whichever line they are on rather than
+            # carrying a width that was measured for a desktop.
+            toolbar <- UiHandles::panel(main, UiConst::Axis.Column if compact_form else UiConst::Axis.Row, 10.0, 8.0, ShowcaseTheme::panel())
             UiHandles::set_grow(toolbar, 0.0)
-            new_button <- UiHandles::button(toolbar, 110.0, 32.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
-            hide_button <- UiHandles::button(toolbar, 110.0, 32.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
-            save_button <- UiHandles::button(toolbar, 110.0, 32.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
-            restore_button <- UiHandles::button(toolbar, 120.0, 32.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
-            theme_button <- UiHandles::button(toolbar, 120.0, 32.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            bar_one: mutable UiHandles::Handle = toolbar
+            bar_two: mutable UiHandles::Handle = toolbar
+            if compact_form:
+                bar_one <- UiHandles::row(toolbar, 0.0, 8.0, ShowcaseTheme::transparent())
+                UiHandles::set_grow(bar_one, 0.0)
+                bar_two <- UiHandles::row(toolbar, 0.0, 8.0, ShowcaseTheme::transparent())
+                UiHandles::set_grow(bar_two, 0.0)
+            bar_width: f32 = 0.0 if compact_form else 110.0
+            bar_grow: f32 = 1.0 if compact_form else 0.0
+            new_button <- UiHandles::button(bar_one, bar_width, 32.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            hide_button <- UiHandles::button(bar_one, bar_width, 32.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            save_button <- UiHandles::button(bar_one, bar_width, 32.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            restore_button <- UiHandles::button(bar_two, 0.0 if compact_form else 120.0, 32.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            theme_button <- UiHandles::button(bar_two, 0.0 if compact_form else 120.0, 32.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            UiHandles::set_grow(new_button, bar_grow)
+            UiHandles::set_grow(hide_button, bar_grow)
+            UiHandles::set_grow(save_button, bar_grow)
+            UiHandles::set_grow(restore_button, bar_grow)
+            UiHandles::set_grow(theme_button, bar_grow)
             UiHandles::set_help(new_button, "Reveal another list row (keyboard: N)")
             UiHandles::set_help(hide_button, "Hide the selected list row after confirming (keyboard: H)")
             UiHandles::set_help(save_button, "Snapshot the app state (keyboard: P)")
             UiHandles::set_help(restore_button, "Restore the last snapshot (keyboard: R)")
             UiHandles::set_help(theme_button, "Switch appearance (keyboard: T)")
-            toolbar_spacer <- UiHandles::row(toolbar, 0.0, 0.0, ShowcaseTheme::transparent())
-            UiHandles::set_grow(toolbar_spacer, 1.0)
-            actions_label <- UiHandles::label(toolbar, "", 12.0, ShowcaseTheme::muted())
+            toolbar_spacer <- UiHandles::row(bar_two, 0.0, 0.0, ShowcaseTheme::transparent())
+            UiHandles::set_grow(toolbar_spacer, 1.0 if not compact_form else 0.0)
+            actions_label <- UiHandles::label(bar_two, "", 12.0, ShowcaseTheme::muted())
+            UiHandles::set_visible(actions_label, not compact_form)
 
             host <- UiHandles::column(main, 18.0, 12.0, ShowcaseTheme::transparent())
             UiHandles::set_grow(host, 1.0)
             ShowcaseDialog::init(host)
-            ShowcaseOverview::init(host)
+            ShowcaseOverview::init(host, compact_form)
             ShowcaseForms::init(host)
             ShowcaseControls::init(host)
             ShowcaseLists::init(host)
@@ -335,6 +380,7 @@ module ShowcaseApp:
             footer_spacer <- UiHandles::row(footer, 0.0, 0.0, ShowcaseTheme::transparent())
             UiHandles::set_grow(footer_spacer, 1.0)
             count_label <- UiHandles::label(footer, "", 12.0, ShowcaseTheme::muted())
+            UiHandles::set_visible(count_label, not compact_form)
 
             apply_theme()
             show_page(0)

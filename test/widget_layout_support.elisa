@@ -14,6 +14,9 @@ global mutable long_text: u8[1100] = zeroed
 global mutable test_clipboard: u8[UiFlat::TEXT_CAPACITY] = zeroed
 global mutable test_clipboard_length: usize = 0
 global mutable hostile_text_metrics: bool = false
+# A host that has a window but not yet a typeface. Every metric is nothing,
+# which is what a backend reports before its font manager exists.
+global mutable no_text_metrics: bool = false
 
 def ui_clipboard_has_text() -> bool:
     return test_clipboard_length > 0
@@ -41,18 +44,22 @@ def test_clipboard_value() -> sview:
 # framework could measure one face and draw another without a test noticing.
 def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
     return 3.0e38 if hostile_text_metrics
+    return 0.0 if no_text_metrics
     return text.len.f32() * size * 0.5 * (1.1 if weighted else 1.0)
 
 def ui_measure_text_height(text: sview, size: f32) -> f32:
     return 3.0e38 if hostile_text_metrics
+    return 0.0 if no_text_metrics
     return size
 
 def ui_font_ascent(size: f32) -> f32:
     return 3.0e38 if hostile_text_metrics
+    return 0.0 if no_text_metrics
     return size
 
 def ui_text_line_height(size: f32) -> f32:
     return 3.0e38 if hostile_text_metrics
+    return 0.0 if no_text_metrics
     return size
 
 def app_widget_event(widget: usize, event: i32) -> void:

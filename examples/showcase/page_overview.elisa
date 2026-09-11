@@ -51,25 +51,44 @@ module ShowcaseOverview:
             set_stat(frames_card, "frames painted", frames)
 
     public:
-        def init(host: UiHandles::Handle) -> void can Unsafe.PointerCast:
+        # FOUR ACROSS IS A NUMBER, NOT A LAYOUT. Both strips here are asked
+        # how many of their items fit in the width actually on offer and are
+        # built that many to a line -- one call each, and the phone gets two
+        # lines of two where the desktop gets one of four.
+        def strip(parent: UiHandles::Handle, spacing: f32) -> UiHandles::Handle:
+            line: UiHandles::Handle = UiHandles::row(parent, 0.0, spacing, ShowcaseTheme::transparent())
+            UiHandles::set_grow(line, 0.0)
+            return line
+
+        def init(host: UiHandles::Handle, compact: bool) -> void can Unsafe.PointerCast:
             page <- UiHandles::column(host, 0.0, 14.0, ShowcaseTheme::transparent())
             UiHandles::set_grow(page, 1.0)
             heading <- UiHandles::label(page, "Overview", 22.0, ShowcaseTheme::ink())
             UiHandles::set_text_weight(heading, true)
             blurb <- UiHandles::label(page, "One retained tree, painted by Elisa into a native window.", 13.0, ShowcaseTheme::muted())
-            stats_row <- UiHandles::row(page, 0.0, 12.0, ShowcaseTheme::transparent())
+            stats_row <- UiHandles::column(page, 0.0, 12.0, ShowcaseTheme::transparent())
             UiHandles::set_grow(stats_row, 0.0)
-            widgets_card <- stat_card(stats_row, "retained widgets")
-            actions_card <- stat_card(stats_row, "actions performed")
-            events_card <- stat_card(stats_row, "input events")
-            frames_card <- stat_card(stats_row, "frames painted")
+            stats_one: UiHandles::Handle = strip(stats_row, 12.0)
+            stats_two: UiHandles::Handle = stats_one if not compact else strip(stats_row, 12.0)
+            widgets_card <- stat_card(stats_one, "retained widgets")
+            actions_card <- stat_card(stats_one, "actions performed")
+            events_card <- stat_card(stats_two, "input events")
+            frames_card <- stat_card(stats_two, "frames painted")
             quick_heading <- UiHandles::label(page, "Quick actions", 14.0, ShowcaseTheme::muted())
-            quick_row <- UiHandles::row(page, 0.0, 10.0, ShowcaseTheme::transparent())
+            quick_row <- UiHandles::column(page, 0.0, 10.0, ShowcaseTheme::transparent())
             UiHandles::set_grow(quick_row, 0.0)
-            go_forms <- UiHandles::button(quick_row, 140.0, 34.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
-            go_canvas <- UiHandles::button(quick_row, 140.0, 34.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
-            toggle_theme <- UiHandles::button(quick_row, 140.0, 34.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
-            next_accent <- UiHandles::button(quick_row, 140.0, 34.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            quick_one: UiHandles::Handle = strip(quick_row, 10.0)
+            quick_two: UiHandles::Handle = quick_one if not compact else strip(quick_row, 10.0)
+            quick_width: f32 = 0.0 if compact else 140.0
+            go_forms <- UiHandles::button(quick_one, quick_width, 34.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            go_canvas <- UiHandles::button(quick_one, quick_width, 34.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            toggle_theme <- UiHandles::button(quick_two, quick_width, 34.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            next_accent <- UiHandles::button(quick_two, quick_width, 34.0, ShowcaseTheme::button(), ShowcaseTheme::button_hover(), ShowcaseTheme::button_press())
+            if compact:
+                UiHandles::set_grow(go_forms, 1.0)
+                UiHandles::set_grow(go_canvas, 1.0)
+                UiHandles::set_grow(toggle_theme, 1.0)
+                UiHandles::set_grow(next_accent, 1.0)
             UiHandles::set_help(go_forms, "Switch to the Forms page")
             UiHandles::set_help(go_canvas, "Switch to the Canvas page")
             UiHandles::set_help(toggle_theme, "Switch between dark and light appearance")

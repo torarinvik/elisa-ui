@@ -165,3 +165,64 @@ extend UiFlat:
         def is_overlay(index: usize) -> bool:
             return false if index >= widget_count
             return widgets[index].overlay
+
+        # TEXT STAYS INSIDE ITS WIDGET.
+        #
+        # A label whose words are wider than the box the layout gave it used to
+        # draw them anyway, straight across whatever stood next to it. On a
+        # surface wide enough for the composition that is invisible, because
+        # nothing is ever squeezed; at phone width the showcase's header read
+        # as two titles printed on top of one another and its action bar as one
+        # illegible smear. A widget's own box is the authority on how much of
+        # its text there is room for, and what will not fit is said with an
+        # ellipsis rather than by painting over the neighbour.
+        #
+        # The run is NOT copied to make room for the mark. The head is a view
+        # of the original bytes and the ellipsis is a second run placed after
+        # it, so a truncated label costs one more draw and no storage at all.
+        def draw_widget_text(index: usize, text_x: f32, text_y: f32, ink: UiCore::Color) -> void:
+            return if index >= widget_count
+            size: f32 = widgets[index].text_size
+            weighted: bool = widgets[index].text_weighted
+            halo: UiCore::Color = widgets[index].text_halo
+            tracking: f32 = widgets[index].text_tracking
+            room: f32 = widgets[index].x + widgets[index].width - text_x
+            advance: f32 = UiTextMetrics::width(widgets[index].text, size, weighted) + UiCore::tracking_width(widgets[index].text, tracking)
+            if advance <= room:
+                UiCore::draw(UiCore::TextRun(UiCore::Vec2(text_x, text_y), size, widgets[index].text, weighted, halo, tracking), ink)
+                return
+            mark_width: f32 = UiTextMetrics::width("…", size, weighted)
+            fitted: usize = fitted_text_length(widgets[index].text, size, weighted, room - mark_width)
+            if fitted == 0:
+                # Not even one character and the mark fit. The mark goes down
+                # anyway: the first half of a letter would only say there are
+                # words here over somebody else's, and saying NOTHING is the
+                # one answer a label may never give -- a backend whose metrics
+                # come back unusably large would silently lose every word in
+                # the interface.
+                UiCore::draw(UiCore::TextRun(UiCore::Vec2(text_x, text_y), size, "…", weighted, halo, 0.0), ink)
+                return
+            head: sview = sview(&widgets[index].text.data[0], 0, fitted.i64())
+            UiCore::draw(UiCore::TextRun(UiCore::Vec2(text_x, text_y), size, head, weighted, halo, tracking), ink)
+            mark_x: f32 = text_x + UiTextMetrics::width(head, size, weighted) + UiCore::tracking_width(head, tracking)
+            UiCore::draw(UiCore::TextRun(UiCore::Vec2(mark_x, text_y), size, "…", weighted, halo, 0.0), ink)
+
+    private:
+        # How much of a run fits, as a byte length on a grapheme boundary.
+        # Cluster by cluster, the way the line planner measures, so the scan
+        # costs one measurement per character SHOWN rather than one per
+        # character offered.
+        def fitted_text_length(text: sview, size: f32, weighted: bool, room: f32) -> usize:
+            return 0 if room <= 0.0 or text.len <= 0 or text.data == null
+            limit: usize = text.len.usize()
+            result: usize =
+                for _ in 0..<limit |fitted: usize = 0, cursor: usize = 0, used: f32 = 0.0| -> fitted:
+                    break if cursor >= limit
+                    after: usize = UiText::next_grapheme(text, cursor)
+                    break if after <= cursor or after > limit
+                    cluster: sview = sview(&text.data[cursor], 0, (after - cursor).i64())
+                    used <- used + UiTextMetrics::width(cluster, size, weighted)
+                    break if used > room
+                    fitted <- after
+                    cursor <- after
+            return result
