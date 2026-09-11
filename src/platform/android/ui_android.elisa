@@ -1,0 +1,176 @@
+# The Android backend: the Skia painter behind a NativeActivity.
+#
+# Android has no CoreGraphics and no view that paints itself, so the picture
+# is made the way the headless fixtures make it: the host locks the window's
+# buffer, wraps it in a Skia surface, and the retained command list is
+# replayed onto it by the same UiSkia painter every Skia frame in this
+# repository goes through. Nothing below is appearance: every alpha, radius
+# and ramp comes from UiPaint, exactly as on every other backend.
+#
+# The host is C++ (android_skia_host.cpp) and owns the window, the input
+# queue, the looper and the fonts. It calls the entry points at the foot of
+# this file and nothing else; the application is reached only through the
+# app_* hooks, as on iOS and macOS. Coordinates cross this boundary in
+# logical points -- the host divides by the density scale before calling.
+
+include "../skia/ui_skia.elisa"
+include "../mobile/ui_mobile_surface.elisa"
+
+# The text metric hooks a retained layout asks its painter for.
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    return UiSkia::active_measure_text_width(text, size, weighted)
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return UiSkia::active_text_line_height(size)
+
+def ui_font_ascent(size: f32) -> f32:
+    return UiSkia::active_font_ascent(size)
+
+def ui_text_line_height(size: f32) -> f32:
+    return UiSkia::active_text_line_height(size)
+
+# No clipboard yet: a NativeActivity reaches the system clipboard only
+# through JNI, and nothing this backend runs asks for it.
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return 0
+
+module UiAndroid:
+    private:
+        global mutable android_started: bool = false
+        # Touch phases, as the host reports them. Tokens match the UIKit
+        # callback so the two mobile hosts read the same.
+        const TOUCH_DOWN: i32 = 0
+        const TOUCH_MOVE: i32 = 1
+        const TOUCH_UP: i32 = 2
+        const TOUCH_CANCEL: i32 = 3
+
+        # The system bars are edges the page must keep clear of, and on a
+        # phone that is edge to edge they lie over the window. The insets
+        # become content insets the layout keeps its children inside of.
+        def publish_content_insets() -> bool:
+            snapshot: UiMobileSurface::Snapshot = UiMobileSurface::snapshot()
+            area: UiResponsive::ContentArea = snapshot.content
+            viewport: UiResponsive::Viewport = snapshot.viewport
+            top: f32 = area.origin.y
+            left: f32 = area.origin.x
+            right: f32 = viewport.width - left - area.size.width
+            bottom: f32 = viewport.height - top - area.size.height
+            return UiCore::set_content_insets(top, UiCore::nonnegative_extent(right), UiCore::nonnegative_extent(bottom), left)
+
+        def dispatch(event: UiCore::Event) -> void can[Ui.Input]:
+            return if not android_started or not UiLifecycle::accepts_input()
+            app_event(event)
+
+    public:
+        def live() -> bool:
+            return android_started and UiLifecycle::is_started()
+
+        # Called once the host has a window with a real size. The lifecycle
+        # transition completes before the application is initialised, so the
+        # tree is built against a viewport that exists -- which is what lets
+        # a composition choose its phone form.
+        def start(width: f32, height: f32, scale: f32, safe: UiResponsive::Insets) -> bool:
+            can Ui.Window, Ui.Draw, Ui.Text, Ui.Input, Unsafe.PointerCast:
+                return false if android_started
+                return false if not UiMobileSurface::start(width, height, scale, safe)
+                UiCapabilities::use_appkit_canvas()
+                _ = UiCapabilities::select_skia_renderer()
+                UiCore::set_viewport(width, height)
+                _ = publish_content_insets()
+                android_started <- true
+                app_init()
+                return true
+
+        def resize(width: f32, height: f32, scale: f32, safe: UiResponsive::Insets) -> bool:
+            return false if not android_started
+            return false if not UiMobileSurface::resize(width, height, scale)
+            _ = UiMobileSurface::set_safe_area(safe)
+            UiCore::set_viewport(width, height)
+            return publish_content_insets()
+
+        def stop() -> void:
+            return if not android_started
+            android_started <- false
+            UiMobileSurface::reset()
+
+        # One frame onto a Skia canvas the host wrapped around the window's
+        # buffer. The shape is the headless fixture's: a deferred frame, the
+        # application's paint, then the replay through the painter at the
+        # backing scale.
+        def render(canvas: usize, font: usize, width: f32, height: f32, scale: f32) -> i32:
+            can Ui.Draw, Ui.Text, Ui.Input, Unsafe.PointerCast:
+                return UiSkia::RenderStatus.SkippedNoSurface.i32() if not android_started or canvas == 0
+                previous_font: usize = UiSkia::begin_frame_font(font)
+                _ = UiTextMetrics::set_context(UiSkia::font_generation(), UiSkia::scale_generation())
+                UiCore::set_viewport(width, height)
+                UiSkia::begin_deferred_frame()
+                UiCore::begin_frame()
+                app_frame()
+                UiSkia::attach_scaled(canvas, scale)
+                status: UiSkia::RenderStatus = UiSkia::render_status_with_font(font)
+                UiSkia::detach()
+                UiSkia::end_deferred_frame()
+                UiSkia::end_frame_font(previous_font)
+                return status.i32()
+
+        # A touch is the pointer. A press supplies the move a mouse would have
+        # delivered first, so a control sees the pointer arrive before the
+        # press; a cancel releases without activating.
+        def touch(phase: i32, x: f32, y: f32) -> void can[Ui.Input]:
+            return if not UiCore::is_finite(x) or not UiCore::is_finite(y)
+            at: UiCore::Vec2 = UiCore::Vec2(x, y)
+            if phase == TOUCH_DOWN:
+                dispatch(UiCore::PointerEvent.Move(at: at))
+                dispatch(UiCore::PointerEvent.Down(at: at, button: UiCore::PointerButton.Primary.i32()))
+                return
+            if phase == TOUCH_MOVE:
+                dispatch(UiCore::PointerEvent.Move(at: at))
+                return
+            if phase == TOUCH_UP:
+                dispatch(UiCore::PointerEvent.Up(at: at, button: UiCore::PointerButton.Primary.i32()))
+                return
+            dispatch(UiCore::PointerEvent.Leave) if phase == TOUCH_CANCEL
+
+        def scroll(x: f32, y: f32, dx: f32, dy: f32) -> void can[Ui.Input]:
+            return if not UiCore::is_finite(x) or not UiCore::is_finite(y) or not UiCore::is_finite(dx) or not UiCore::is_finite(dy)
+            dispatch(UiCore::PointerEvent.Scroll(at: UiCore::Vec2(x, y), delta: UiCore::Vec2(dx, dy)))
+
+def android_start(width: f32, height: f32, scale: f32, top: f32, right: f32, bottom: f32, left: f32) -> i32:
+    can Ui.Window, Ui.Draw, Ui.Text, Ui.Input, Unsafe.PointerCast:
+        return 1 if UiAndroid::start(width, height, scale, UiResponsive::insets(top, right, bottom, left)) else 0
+
+def android_resize(width: f32, height: f32, scale: f32, top: f32, right: f32, bottom: f32, left: f32) -> i32:
+    return 1 if UiAndroid::resize(width, height, scale, UiResponsive::insets(top, right, bottom, left)) else 0
+
+def android_stop() -> void:
+    UiAndroid::stop()
+
+def android_render(canvas: usize, font: usize, width: f32, height: f32, scale: f32) -> i32:
+    can Ui.Draw, Ui.Text, Ui.Input, Unsafe.PointerCast:
+        return UiAndroid::render(canvas, font, width, height, scale)
+
+# Seconds until the frame just drawn wants the next one; zero is idle.
+def android_frame_delay() -> f32:
+    return UiCore::frame_delay()
+
+def android_touch(phase: i32, x: f32, y: f32) -> void:
+    can Ui.Input:
+        UiAndroid::touch(phase, x, y)
+
+def android_scroll(x: f32, y: f32, dx: f32, dy: f32) -> void:
+    can Ui.Input:
+        UiAndroid::scroll(x, y, dx, dy)
+
+export fn elisa_android_start(width: f32, height: f32, scale: f32, top: f32, right: f32, bottom: f32, left: f32) -> i32 = android_start
+export fn elisa_android_resize(width: f32, height: f32, scale: f32, top: f32, right: f32, bottom: f32, left: f32) -> i32 = android_resize
+export fn elisa_android_stop() -> void = android_stop
+export fn elisa_android_render(canvas: usize, font: usize, width: f32, height: f32, scale: f32) -> i32 = android_render
+export fn elisa_android_frame_delay() -> f32 = android_frame_delay
+export fn elisa_android_touch(phase: i32, x: f32, y: f32) -> void = android_touch
+export fn elisa_android_scroll(x: f32, y: f32, dx: f32, dy: f32) -> void = android_scroll

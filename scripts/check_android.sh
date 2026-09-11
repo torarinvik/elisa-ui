@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# Validate the Android backend.
+#
+# Two halves, and the second one is optional:
+#
+#   1. The whole product is cross-compiled and packaged for arm64. A link with
+#      --no-undefined is the strongest available proof that the Elisa object,
+#      the NativeActivity host and the Skia shims agree: every callback the
+#      host calls must be defined by Elisa, and every entry point Elisa
+#      declared extern must exist in the host. The APK is then read back to
+#      check the three things that make it load at all -- the library at its
+#      ABI path, stored rather than deflated, and 16 KB page alignment.
+#   2. If a device or emulator is attached, it is installed, launched and
+#      asked what it drew. A frame that says it is made of one colour is a
+#      window that came up blank, which is the failure this half exists for.
+set -euo pipefail
+
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+EXAMPLE="${1:-storefront}"
+SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
+NDK="${ANDROID_NDK_ROOT:-$(ls -d "$SDK"/ndk/* 2>/dev/null | sort -V | tail -1)}"
+SKIA_ROOT="${SKIA_ROOT:-}"
+SKIA_OUT="${SKIA_ANDROID_OUT:-$SKIA_ROOT/out/elisa-android-arm64}"
+
+# A missing toolchain is UNKNOWN, not PASSED. Say which part is missing.
+if [[ ! -d "$SDK" ]]; then
+  echo "android: skipped (no Android SDK at $SDK)"
+  exit 0
+fi
+if [[ -z "$NDK" || ! -d "$NDK" ]]; then
+  echo "android: skipped (no NDK under $SDK/ndk)"
+  exit 0
+fi
+if [[ -z "$SKIA_ROOT" || ! -f "$SKIA_OUT/libskia.a" ]]; then
+  echo "android: skipped (no Android Skia; run scripts/build_skia_android.sh)"
+  exit 0
+fi
+
+# --- 1. Build and read the package back --------------------------------
+bash "$ROOT/scripts/build_android.sh" "$EXAMPLE" >/dev/null
+OUT="$ROOT/build/android/$EXAMPLE"
+APK="$OUT/$EXAMPLE.apk"
+SO="$OUT/lib$EXAMPLE.so"
+[[ -f "$APK" && -f "$SO" ]] || { echo "android: the build produced no package" >&2; exit 1; }
+
+READELF="$NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-readelf"
+[[ -x "$READELF" ]] || READELF="$(command -v llvm-readelf || true)"
+if [[ -x "$READELF" ]]; then
+  symbols="$("$READELF" --dyn-symbols "$SO")"
+  # android_main is what NativeActivity looks up; the rest is the ABI the
+  # host calls back through, and a missing one is a blank window at runtime.
+  for entry in android_main elisa_android_start elisa_android_resize elisa_android_render \
+               elisa_android_touch elisa_android_scroll elisa_android_frame_delay; do
+    grep -q " $entry\$" <<<"$symbols" || { echo "android: $entry is not exported from lib$EXAMPLE.so" >&2; exit 1; }
+  done
+  # C++ was linked statically on purpose: Android ships no libc++_shared, and
+  # a NativeActivity APK with no Java in it has nothing to load one with.
+  if "$READELF" --dynamic "$SO" | grep -q "libc++_shared"; then
+    echo "android: lib$EXAMPLE.so needs libc++_shared, which this APK cannot supply" >&2
+    exit 1
+  fi
+  echo "android: entry points exported, C++ linked in"
+fi
+
+# extractNativeLibs="false" means the loader maps the library straight out of
+# the APK, which it can only do if the entry is stored and page-aligned.
+listing="$(unzip -lv "$APK" "lib/arm64-v8a/lib$EXAMPLE.so")"
+grep -q "Stored" <<<"$listing" || { echo "android: the library is compressed in the APK" >&2; exit 1; }
+BUILD_TOOLS="$(ls -d "$SDK"/build-tools/* 2>/dev/null | sort -V | tail -1)"
+"$BUILD_TOOLS/zipalign" -c -P 16 4 "$APK" >/dev/null || {
+  echo "android: the APK is not 16 KB page aligned" >&2; exit 1; }
+echo "android: $(basename "$APK") is stored and 16 KB aligned"
+
+# --- 2. A device, if one is attached ------------------------------------
+ADB="${ADB:-$SDK/platform-tools/adb}"
+if [[ ! -x "$ADB" ]] || ! "$ADB" devices | grep -q "	device$"; then
+  echo "android: skipped the device half (nothing attached)"
+  exit 0
+fi
+
+PACKAGE="org.elisa_ui.$EXAMPLE"
+"$ADB" install -r "$APK" >/dev/null
+"$ADB" shell am force-stop "$PACKAGE"
+# The frame trace is what this half reads; it is off unless asked for.
+"$ADB" shell setprop debug.elisa.trace 1
+"$ADB" logcat -c
+"$ADB" shell am start -n "$PACKAGE/android.app.NativeActivity" >/dev/null
+for _ in $(seq 1 20); do
+  sleep 1
+  log="$("$ADB" logcat -d -s elisa-ui)"
+  grep -q "colors=" <<<"$log" && break
+done
+"$ADB" shell am force-stop "$PACKAGE" || true
+
+grep -q "start .* -> 1\$" <<<"$log" || { echo "android: the host never started"; echo "$log" >&2; exit 1; }
+frame="$(grep "colors=" <<<"$log" | tail -1)"
+[[ -n "$frame" ]] || { echo "android: no frame was drawn"; echo "$log" >&2; exit 1; }
+colors="$(sed -n 's/.*colors=\([0-9]*\).*/\1/p' <<<"$frame")"
+[[ "$colors" -gt 64 ]] || { echo "android: the frame is $colors colour(s) -- a blank window" >&2; exit 1; }
+echo "android: ${frame#*elisa-ui: }"

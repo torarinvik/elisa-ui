@@ -1,0 +1,33 @@
+# The storefront on Android, painted by Skia behind a NativeActivity.
+#
+# The same composition as everywhere else. The host hands over the pictures
+# it synthesised as SkImages, one call, the way the Skia fixture's host does;
+# the phone form is chosen by the width the window reports.
+
+include "../../src/platform/android/ui_android.elisa"
+include "app.elisa"
+
+def bound(image: usize, key: sview, width: f32, height: f32) -> UiCore::ImageRef:
+    resource: UiResources::ResourceHandle = UiResources::request(key, 21)
+    return UiCore::image_ref_none() if not UiResources::resource_is_valid(resource)
+    return UiCore::image_ref_none() if not UiResources::set_state(resource, UiResources::State.Ready)
+    _ = UiResources::set_intrinsic_size(resource, width, height)
+    return UiCore::image_ref_none() if not UiSkia::bind_image(resource, image)
+    return UiCore::image_ref(resource.slot, resource.generation)
+
+def android_pictures(brand: usize, glyph: usize, banner: usize, plate: usize, grain: usize) -> i32:
+    return 0 if brand == 0 or glyph == 0 or banner == 0 or plate == 0 or grain == 0
+    StoreApp::set_pictures(
+        bound(brand, "storefront/brand", 48.0, 48.0),
+        bound(glyph, "storefront/glyph", 48.0, 48.0),
+        bound(banner, "storefront/banner", 720.0, 240.0),
+        bound(plate, "storefront/plate", 360.0, 180.0),
+        bound(grain, "storefront/grain", 64.0, 64.0))
+    return 1
+
+export fn elisa_android_pictures(brand: usize, glyph: usize, banner: usize, plate: usize, grain: usize) -> i32 = android_pictures
+
+def main() -> i64:
+    # A NativeActivity has no main: the host's android_main is the entry and
+    # this unit is a library. The symbol exists so the compiler has a program.
+    return 0

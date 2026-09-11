@@ -90,6 +90,12 @@ because a module member's symbol carries its module and those names cannot move.
   safe-area/keyboard/orientation facts layered onto `UiMobileSurface` -- see
   [docs/uikit-backend.md](docs/uikit-backend.md)),
   plus
+  [Android](src/platform/android/ui_android.elisa) (a NativeActivity with no
+  Java in it: the host locks the window's buffer, wraps it in a Skia surface
+  and the same `UiSkia` painter replays the batch onto it, with the content
+  rect as safe-area insets and a hand-written touch-to-pan gesture -- see
+  [docs/android-backend.md](docs/android-backend.md)),
+  plus
   [wasmbrowser](src/platform/wasmbrowser/ui_wasmbrowser.elisa) (a component
   implementing `world app`; the host drives the loop through the exported guest
   interface, canonical-ABI encoding stays in the backend modules, and its

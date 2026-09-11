@@ -198,6 +198,20 @@ an explicit Elisa `Color` through the additive color-aware bridge; the older
 native symbol remains only as a compatibility wrapper for hosts built against
 the previous ABI.
 
+Both shadows are drawn as **blurred round rects**, and that is a performance
+decision worth stating because the obvious spellings are the slow ones. The
+outer shadow was written with `SkImageFilters::DropShadowOnly`, which opens a
+layer and runs a general separable blur over every pixel of it; it is now a
+blur mask filter on the offset round rect, clipped out of the shape, which
+Skia rasterizes from one edge profile stretched into a nine-patch. The inner
+shadow was the blurred **complement** of the shape -- a rectangle with a
+rounded hole in it, which has no fast path at all -- and is now the shadow
+colour filled into a layer with the blurred round rect subtracted from it
+using `kDstOut`. One minus the blurred shape, either way; the same picture to
+within a channel step, out of a shape the rasterizer recognizes. On the CPU
+surfaces (Android, and any offscreen host) the pair was worth roughly 3x the
+whole frame. See [docs/android-backend.md](android-backend.md).
+
 The deferred API has matching `defer_fill_rounded_linear_gradient()` and
 `defer_shadow_rounded_rect()` helpers. Rounded gradients replay through the
 same temporary clip scope as immediate drawing, while shadows carry explicit

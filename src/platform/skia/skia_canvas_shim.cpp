@@ -104,12 +104,21 @@ extern "C" void elisa_skia_canvas_shadow_round_rect_color(std::size_t handle, fl
         alpha != 0) {
         const SkRect rect = SkRect::MakeXYWH(x, y, width, height);
         const SkRRect rounded = SkRRect::MakeRectXY(rect, radius, radius);
-        // DropShadowOnly keeps the source silhouette out of the result while
-        // still using its alpha as the shadow mask. This is the replacement
-        // for the removed SkPaint::setShadowLayer API in current Skia.
-        SkPaint paint = fill_paint(0, 0, 0, 255);
-        paint.setImageFilter(SkImageFilters::DropShadowOnly(
-            offset_x, offset_y, blur, blur, color(red, green, blue, alpha), nullptr));
+        // A blur mask filter on the offset shape, NOT a drop-shadow image
+        // filter. The two produce the same picture -- the shape's alpha,
+        // blurred by the same sigma, moved by the offset, painted in the
+        // shadow colour -- but they cost wildly different amounts on a CPU
+        // raster surface. An image filter has to open a layer, rasterize the
+        // shape into it, run a general separable blur over the whole layer and
+        // composite the result back. A blur mask filter on a round rect is
+        // recognized by the rasterizer, which computes one edge profile and
+        // stretches it into a nine-patch: no layer, no per-pixel blur. A
+        // profile of the Android storefront had over 70% of every frame inside
+        // the general blur; almost all of it was these shadows.
+        SkPaint paint = fill_paint(red, green, blue, alpha);
+        if (blur > 0.0f) {
+            paint.setMaskFilter(SkMaskFilter::MakeBlur(kNormal_SkBlurStyle, blur));
+        }
         // AN OUTER SHADOW IS OUTSIDE. The part of it that falls under the
         // surface is invisible while the surface is opaque and is a stain the
         // moment it is not: a translucent panel would be darkened by its own
@@ -118,7 +127,7 @@ extern "C" void elisa_skia_canvas_shadow_round_rect_color(std::size_t handle, fl
         // the opaque case, where those pixels were being covered anyway.
         target->save();
         target->clipRRect(rounded, SkClipOp::kDifference, true);
-        target->drawRRect(rounded, paint);
+        target->drawRRect(rounded.makeOffset(offset_x, offset_y), paint);
         target->restore();
     }
 }
@@ -190,17 +199,26 @@ extern "C" void elisa_skia_canvas_inner_shadow_round_rect(std::size_t handle, fl
         bounded_coordinate(offset_y) && bounded_extent(blur) && alpha != 0) {
         const SkRect rect = SkRect::MakeXYWH(x, y, width, height);
         const SkRRect rounded = SkRRect::MakeRectXY(rect, radius, radius);
-        SkPaint paint = fill_paint(red, green, blue, alpha);
-        paint.setMaskFilter(SkMaskFilter::MakeBlur(kNormal_SkBlurStyle, blur));
-        // The inverse of the shape: a generous outer rect with the rounded
-        // shape cut from it, even-odd, shifted by the offset.
-        SkPathBuilder builder;
-        builder.setFillType(SkPathFillType::kEvenOdd);
-        builder.addRect(rect.makeOutset(blur * 4.0f + 8.0f, blur * 4.0f + 8.0f).makeOffset(0.0f, offset_y));
-        builder.addRRect(rounded.makeOffset(0.0f, offset_y));
+        // Say that as "the shadow colour everywhere inside the shape, with the
+        // blurred shape taken back out of it" rather than as "the blurred
+        // complement of the shape". The two are the same picture -- one minus
+        // the blurred shape, either way -- but the second asks Skia to blur a
+        // rectangle with a rounded hole in it, which is a mask it has to blur
+        // pixel by pixel, and the first asks it to blur a round rect, which it
+        // builds from a single edge profile and stretches. Subtracting needs a
+        // layer, because no blend mode reads "one minus the source" straight
+        // onto the canvas; the layer is the price of the fast shape.
+        SkPaint cut = fill_paint(0, 0, 0, 255);
+        cut.setBlendMode(SkBlendMode::kDstOut);
+        if (blur > 0.0f) {
+            cut.setMaskFilter(SkMaskFilter::MakeBlur(kNormal_SkBlurStyle, blur));
+        }
         target->save();
         target->clipRRect(rounded, SkClipOp::kIntersect, true);
-        target->drawPath(builder.detach(), paint);
+        target->saveLayer(&rect, nullptr);
+        target->drawColor(color(red, green, blue, alpha));
+        target->drawRRect(rounded.makeOffset(0.0f, offset_y), cut);
+        target->restore();
         target->restore();
     }
 }
