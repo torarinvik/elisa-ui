@@ -17,23 +17,31 @@ include "app.elisa"
 
 global mutable showcase_built: bool = false
 
-# UIKit measures its own controls, so the retained layout only needs something
-# consistent to size boxes with. A native label is told its text and finds its
-# own width; what this decides is how much room the layout leaves it.
+# UIKit measures its own controls, and now it is asked. This used to guess --
+# 0.55 of the point size per character, 1.3 for a line -- which held only while
+# nobody changed the text size. Raise Dynamic Type and the guesses stop being
+# survivable at once: UIKit grows the words, the invented numbers do not grow
+# the boxes, and every caption truncates.
+#
+# The fallbacks are the old guesses, and they are reached only before a scene
+# exists, when there is no UIKit to ask.
 def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    measured: f32 = UiUIKitControls::measure_text(text, size, weighted)
+    return measured if measured > 0.0
     return text.len.f32() * size * 0.55 * (1.08 if weighted else 1.0)
 def ui_measure_text_height(text: sview, size: f32) -> f32:
-    return size
+    return ui_text_line_height(size)
 def ui_font_ascent(size: f32) -> f32:
     return size
 def ui_text_line_height(size: f32) -> f32:
-    return size * 1.3
+    return UiUIKitControls::line_height(size)
 
 def lay_out_and_realize() -> void:
     can Memory.Allocate, Abort.Panic, Ui.Controls, Unsafe.PointerCast, Ui.Window, Ui.Draw, Ui.Text, Ui.Input:
         width: f32 = UiUIKitControls::content_width()
         height: f32 = UiUIKitControls::content_height()
         UiCore::set_viewport(width, height)
+        UiUIKitControls::apply_platform_minimums()
         UiHandles::layout(width, height)
         UiUIKitControls::realize_retained()
 

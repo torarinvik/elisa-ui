@@ -165,6 +165,29 @@ measurements, at the old size — so the words got bigger inside frames that did
 not, which is exactly the clipping this framework was already caught doing on
 Android, for the same reason.
 
+**Re-running the layout is only half of it.** The layout asks its entry point
+how wide a string is and how tall a line is, and on iOS those answers were
+invented — 0.55 of the point size per character, 1.3 for a line, and no notion
+that a button has a minimum. Re-running a layout built from constants produces
+the same boxes, so the first version of this fix changed nothing visible: at
+XXXL the text grew, the boxes did not, and every caption truncated at once.
+
+So iOS asks now, as Android does. `elisa_uikit_controls_measure_text`,
+`line_height` and `minimum_height` measure with the font the control will
+actually draw — the preferred body font, not the app's requested point size,
+which no native control here honours. Measuring one face and drawing another is
+how a framework gets label boxes that fit nothing. `minimum_height` measures a
+real control of each kind through `systemLayoutSizeFittingSize:` and caches it
+against the content size category, dropping the cache exactly when that
+changes. `apply_platform_minimums` then raises each widget's declared minimum
+before layout runs — only ever raises.
+
+Measured on a booted simulator at accessibility XXXL: before, "New item" was
+"New…", "Restore state" was "Restore…", "Page: Overview" was "Page:…" and the
+stat rows clipped their own second line. After, all of those are whole. The tab
+row still truncates, which is correct — five captions do not fit a phone at
+that size, and truncating is what the framework does everywhere else.
+
 The controls view controller now registers for `UITraitPreferredContentSizeCategory`
 and `UITraitUserInterfaceStyle` and re-lays-out on either. It registers rather
 than overriding `-traitCollectionDidChange:`, which is deprecated from iOS 17

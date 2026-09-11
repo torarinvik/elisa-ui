@@ -296,3 +296,26 @@ int elisa_uikit_controls_stub_has_placeholder(int slot) {
 int elisa_uikit_controls_stub_has_hint(int slot) {
     return slot < 0 || slot >= created_count ? -1 : (created_hint[slot] != 0);
 }
+
+// The platform's own measurements, with no platform. Deterministic ratios keep
+// the host assertions exact instead of depending on whichever font a simulator
+// would have loaded -- and returning non-zero is what exercises the path that
+// PREFERS the platform's answer over the entry point's fallback.
+float elisa_uikit_controls_measure_text(const char *utf8, int length, float size, int weighted) {
+    (void)utf8;
+    if (length <= 0) return 0.0f;
+    return (float)length * size * 0.5f * (weighted ? 1.1f : 1.0f);
+}
+
+float elisa_uikit_controls_line_height(float size) {
+    return size * 1.25f;
+}
+
+float elisa_uikit_controls_minimum_height(int kind) {
+    // A button and a field are the kinds UIKit builds tallest; the rest have
+    // no minimum worth raising a box for.
+    if (kind >= 4 && kind <= 8) return 44.0f;
+    return 0.0f;
+}
+
+void elisa_uikit_controls_forget_minimums(void) { }
