@@ -13,6 +13,11 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+# A DIRECTORY OF ITS OWN, so two scripts cannot write one object path. Same
+# reason as the Skia shims: a shared $ROOT/build name is a race between gates
+# that a suite runs in sequence and a person runs one at a time.
+GATE_OBJ_DIR="$ROOT/build/ios/uikit-host"
+mkdir -p "$GATE_OBJ_DIR"
 STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
 RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
 
@@ -134,7 +139,7 @@ grep -Eq 'static (__strong )?UI[A-Za-z]+[[:space:]]*\*[A-Za-z_][A-Za-z0-9_]*[[:s
 [[ -x "$STAGE1/bin/elisac-stage1" ]] || { echo "no stage1 product at $STAGE1/bin/elisac-stage1" >&2; exit 2; }
 [[ -f "$RUNTIME" ]] || { echo "no runtime object at $RUNTIME" >&2; exit 2; }
 mkdir -p "$ROOT/build"
-STUBS="$ROOT/build/uikit_host_stubs.o"
+STUBS="$GATE_OBJ_DIR/uikit_host_stubs.o"
 clang -c -Wall -Wextra -Werror -o "$STUBS" "$ROOT/test/uikit_host_stubs.c"
 BIN="$ROOT/build/hello_uikit"
 bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ROOT/build/hello_uikit.o" \

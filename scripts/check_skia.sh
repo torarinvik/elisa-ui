@@ -3,6 +3,14 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+# A DIRECTORY OF ITS OWN. skia_canvas_shim.o and skia_text_shim.o used to be
+# written to $ROOT/build by SEVEN scripts, with different flags -- check_skia.sh
+# adds $SKIA_CXXFLAGS and build_appkit_skia.sh does not -- while
+# check_appkit_skia.sh linked whichever copy happened to be there. run_tests.sh
+# runs them in one order, check_skia.sh invokes two of them itself, and the
+# result was a gate that failed in a suite and passed alone.
+SKIA_SHIM_DIR="$ROOT/build/skia"
+mkdir -p "$SKIA_SHIM_DIR"
 STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
 require_real="${ELISA_UI_REQUIRE_REAL_SKIA:-1}"
 case "$require_real" in
@@ -78,17 +86,17 @@ if [[ -n "${SKIA_ROOT:-}" ]]; then
   if (( ${#skia_cxxflags[@]} > 0 )); then
     "$cxx" -std=c++17 -fPIC -I"$SKIA_ROOT" "${skia_cxxflags[@]}" \
       -c "$ROOT/src/platform/skia/skia_canvas_shim.cpp" \
-      -o "$ROOT/build/skia_canvas_shim.o"
+      -o "$SKIA_SHIM_DIR/skia_canvas_shim.o"
     "$cxx" -std=c++17 -fPIC -I"$SKIA_ROOT" "${skia_cxxflags[@]}" \
       -c "$ROOT/src/platform/skia/skia_text_shim.cpp" \
-      -o "$ROOT/build/skia_text_shim.o"
+      -o "$SKIA_SHIM_DIR/skia_text_shim.o"
   else
     "$cxx" -std=c++17 -fPIC -I"$SKIA_ROOT" \
       -c "$ROOT/src/platform/skia/skia_canvas_shim.cpp" \
-      -o "$ROOT/build/skia_canvas_shim.o"
+      -o "$SKIA_SHIM_DIR/skia_canvas_shim.o"
     "$cxx" -std=c++17 -fPIC -I"$SKIA_ROOT" \
       -c "$ROOT/src/platform/skia/skia_text_shim.cpp" \
-      -o "$ROOT/build/skia_text_shim.o"
+      -o "$SKIA_SHIM_DIR/skia_text_shim.o"
   fi
   echo "skia: Elisa painter and C++ host shim compile"
   skia_out="${SKIA_OUT:-$SKIA_ROOT/out/elisa}"

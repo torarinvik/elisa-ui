@@ -3,6 +3,14 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+# A DIRECTORY OF ITS OWN. skia_canvas_shim.o and skia_text_shim.o used to be
+# written to $ROOT/build by SEVEN scripts, with different flags -- check_skia.sh
+# adds $SKIA_CXXFLAGS and build_appkit_skia.sh does not -- while
+# check_appkit_skia.sh linked whichever copy happened to be there. run_tests.sh
+# runs them in one order, check_skia.sh invokes two of them itself, and the
+# result was a gate that failed in a suite and passed alone.
+SKIA_SHIM_DIR="$ROOT/build/showcase-skia"
+mkdir -p "$SKIA_SHIM_DIR"
 STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
 SKIA_ROOT="${SKIA_ROOT:?set SKIA_ROOT to the pinned checkout from third_party/skia.lock}"
 SKIA_OUT="${SKIA_OUT:-$SKIA_ROOT/out/elisa}"
@@ -19,8 +27,8 @@ mkdir -p "$ROOT/build"
 ELISA_OBJECT="$ROOT/build/showcase_skia_test.o"
 HOST_OBJECT="$ROOT/build/showcase_skia_host.o"
 HOST_BINARY="$ROOT/build/showcase_skia_test"
-SHIM_OBJECT="$ROOT/build/skia_canvas_shim.o"
-TEXT_SHIM_OBJECT="$ROOT/build/skia_text_shim.o"
+SHIM_OBJECT="$SKIA_SHIM_DIR/skia_canvas_shim.o"
+TEXT_SHIM_OBJECT="$SKIA_SHIM_DIR/skia_text_shim.o"
 bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ELISA_OBJECT" "$ROOT/test/showcase_skia_test.elisa"
 clang++ -std=c++20 -DSK_BUILD_FOR_MAC -fPIC -I"$ROOT" -I"$SKIA_ROOT" -c \
   "$ROOT/test/showcase_skia_host.cpp" -o "$HOST_OBJECT"

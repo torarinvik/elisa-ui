@@ -4,6 +4,11 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+# A DIRECTORY OF ITS OWN, so two scripts cannot write one object path. Same
+# reason as the Skia shims: a shared $ROOT/build name is a race between gates
+# that a suite runs in sequence and a person runs one at a time.
+GATE_OBJ_DIR="$ROOT/build/appkit-check"
+mkdir -p "$GATE_OBJ_DIR"
 STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
 RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
 
@@ -108,10 +113,10 @@ if awk '/void elisa_appkit_present\(void\)/ { inside=1 } inside && /activateIgno
   echo "appkit: visible activation policy leaked back into Objective-C" >&2
   exit 1
 fi
-clang -c -fobjc-arc -o "$ROOT/build/appkit_shim.o" "$ROOT/src/platform/appkit/appkit_shim.m"
+clang -c -fobjc-arc -o "$GATE_OBJ_DIR/appkit_shim.o" "$ROOT/src/platform/appkit/appkit_shim.m"
 bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ROOT/build/appkit_check.o" "$ROOT/src/platform/appkit/appkit_check.elisa"
 clang -Wl,-dead_strip -o "$ROOT/build/appkit_check" \
-  "$ROOT/build/appkit_check.o" "$ROOT/build/appkit_shim.o" "$RUNTIME" -framework Cocoa
+  "$ROOT/build/appkit_check.o" "$GATE_OBJ_DIR/appkit_shim.o" "$RUNTIME" -framework Cocoa
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_window_title$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_button_title$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_field_text$'
