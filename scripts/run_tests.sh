@@ -135,6 +135,15 @@ fi
 # GTK IS THE LINUX HALF OF THE NATIVE STORY, and it is gated the same way: it
 # skips itself when gtk4 is not installed, and the fixture skips again when
 # there is no display, so a machine without either is not failed for it.
+# The framework itself on Linux, not just a backend: the portable corpus
+# cross-compiled, linked and run inside a Linux machine. It skips without one.
+# This is the gate that can tell whether "multi-platform" describes the layout,
+# text, state and event machinery or only the backends bolted to them.
+if ! bash "$ROOT/scripts/check_core_linux.sh"; then
+  echo "FAIL core linux"
+  status=1
+fi
+
 # ...and the same fixture on Linux, which is the platform the GTK backend is
 # for. It skips without an OrbStack machine; check_gtk.sh above still runs the
 # macOS build, because a binding that compiles in two places is worth more than

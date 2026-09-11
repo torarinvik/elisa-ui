@@ -21,24 +21,62 @@ module UiSdl3Draw:
         # fonts are opened on demand and kept in a small table keyed by size;
         # fonts_close releases them at shutdown.
         const MAX_FONTS: usize = 8
-        const DEFAULT_FONT: cstr = "/System/Library/Fonts/Supplemental/Arial.ttf"
+
+        # THERE IS NO PORTABLE FONT PATH, and this was one macOS path -- in the
+        # backend Linux and Windows use for painting. Neither opened a font at
+        # all, and nothing said so: a width fell to zero, while the ascent and
+        # the line height fell back to the requested point size. That is the
+        # failure this project keeps finding in a different costume -- metrics
+        # invented rather than asked of the platform -- and here it was silent
+        # enough that three of the SDL text fixture's own assertions passed on
+        # a machine with no font.
+        #
+        # SDL_ttf enumerates nothing, so the honest answer is to try the places
+        # each platform actually keeps a UI face and let TTF_OpenFont decide.
+        # ELISA_UI_SDL_FONT still overrides the lot.
+        const FONT_CANDIDATES: usize = 7
+
+        def font_candidate(index: usize) -> cstr:
+            return "/System/Library/Fonts/Supplemental/Arial.ttf" if index == 0
+            return "/System/Library/Fonts/Helvetica.ttc" if index == 1
+            return "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf" if index == 2
+            return "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf" if index == 3
+            return "/usr/share/fonts/TTF/DejaVuSans.ttf" if index == 4
+            return "C:\\Windows\\Fonts\\segoeui.ttf" if index == 5
+            return "C:\\Windows\\Fonts\\arial.ttf"
 
         global mutable font_handles: (void&?)[MAX_FONTS] = zeroed
         global mutable font_sizes: f32[MAX_FONTS] = zeroed
         global mutable font_total: usize = 0
         global mutable font_override: cstr? = null
+        # Which candidate answered last time. The first open walks the list;
+        # every later size goes straight to the face already proven to exist,
+        # so a size change costs one TTF_OpenFont and not seven.
+        global mutable font_resolved: usize = FONT_CANDIDATES
 
         def font_path() -> cstr:
             if font_override is override:
                 return override
-            return DEFAULT_FONT
+            return font_candidate(font_resolved if font_resolved < FONT_CANDIDATES else 0)
+
+        def open_font(size: f32) -> void&?:
+            if font_override is override:
+                return TTF_OpenFont(override, size)
+            if font_resolved < FONT_CANDIDATES:
+                return TTF_OpenFont(font_candidate(font_resolved), size)
+            for index in 0..<FONT_CANDIDATES:
+                attempt: void&? = TTF_OpenFont(font_candidate(index), size)
+                if attempt is opened:
+                    font_resolved <- index
+                    return opened
+            return null
 
         def font_for(size: f32) -> void&?:
             safe_size: f32 = UiCore::bounded_extent(size)
             for index in 0..<font_total:
                 return font_handles[index] if font_sizes[index] == safe_size
             return null if font_total >= MAX_FONTS
-            opened: void&? = TTF_OpenFont(font_path(), safe_size)
+            opened: void&? = open_font(safe_size)
             return null if opened == null
             font_handles[font_total] <- opened
             font_sizes[font_total] <- safe_size
@@ -221,6 +259,9 @@ module UiSdl3Draw:
             # process-owned pointer across a later backend run after the
             # previous font table has been torn down.
             font_override <- null
+            # ...and the resolved candidate goes with it: a later run may be on
+            # a machine where a different one of them exists.
+            font_resolved <- FONT_CANDIDATES
 
         def measure_text_width(text: sview, size: f32) -> f32:
             return 0.0 if text.len <= 0 or text.data == null

@@ -5,7 +5,8 @@ _Part of the [elisa-ui implementation baseline](../implementation-baseline.md)._
 
 | Backend/profile | Status | Evidence or limitation |
 | --- | --- | --- |
-| SDL3 native | implemented-tested | `scripts/run_tests.sh`; SDL keymap/text tests and dummy-video smoke path pass. |
+| SDL3 native | implemented-tested on macOS **and Linux** | `scripts/run_tests.sh`; SDL keymap/text tests and dummy-video smoke path pass. `scripts/check_core_linux.sh` runs the same tests on Linux, which is where this backend actually paints — and immediately found that its only default font path was a macOS one, so no font opened on Linux at all while ascent and line height quietly fell back to the requested point size. |
+| The framework itself, on Linux | implemented-tested | `scripts/check_core_linux.sh` cross-compiles the portable corpus (66 of the 73 — all but the Apple-framework and Skia-host fixtures), links and runs it inside an OrbStack machine. Layout, text, state, identity, events and the SDL3 backend are exercised on a second operating system rather than inferred from one. |
 | AppKit native controls | implemented-tested | `scripts/check_appkit.sh` creates and reads real NSWindow/NSView/control objects without ordering a window onscreen. |
 | AppKit custom canvas | implemented-tested | `scripts/check_appkit_canvas.sh` builds/signs the app, renders an off-screen PNG, and exercises semantic-object identity and callbacks. |
 | Skia custom painter | implemented-tested when the pinned SDK/archive is present; required gate | `scripts/build_skia.sh` reproduces the checkout/archive from `third_party/skia.lock`; strict `scripts/check_skia.sh` and `scripts/check_appkit_skia.sh` render headlessly and report pixel/timing evidence. This checkout intentionally does not vendor the multi-gigabyte SDK/build output, so a local run without `SKIA_ROOT` is an explicit non-passing dependency failure. |
