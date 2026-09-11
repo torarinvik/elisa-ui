@@ -21,7 +21,11 @@
 #      component validation rejects the leftover `env` import. That is the
 #      compiler repo's gap, not this one's -- writing a stand-in for a
 #      compiler-internal ABI symbol here is the same mistake as writing the
-#      Windows runtime host in this repo.
+#      Windows runtime host in this repo. Its cache dates the break: every
+#      wasm runtime object written before 2026-08-31 ~14:09 is 218,896 bytes
+#      with 699 symbols and defines the helper, and every one since is a
+#      1.3-3.7 KB stub that does not. A wasm link has succeeded since then
+#      only when the program needed nothing the stub omits.
 # So this gate is red until that is answered, and red is the correct colour: it
 # has been broken since about 2026-09-10 and nothing said so.
 #
