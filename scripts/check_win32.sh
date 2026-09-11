@@ -44,17 +44,40 @@
 #      leaving the other three -- those are exactly the four functions that call the
 #      two Win32 externs.
 #
-#      Ruled OUT by experiment, so the next session need not re-derive them: a nested
-#      zero-argument call as an argument (GetCurrentProcess()); `assert not <call>`;
-#      the multi-line spelling of the extern declaration; declaring an extern inside a
-#      `static if`/`static elif` branch; untyped consts as arguments; a `|` of consts
-#      as an argument. Standalone fixtures with all of those built clean. Hoisting the
-#      two externs to top level does NOT fix it -- it only changes the reported reason
-#      from "call expression" to "expression", which is itself a clue.
+#      NOT the Windows target -- the win32 SOURCE. Force ARENA_BACKEND to the win32
+#      value and compile for x86_64-apple-darwin: the same four decline. So the whole
+#      target/host-predicate machinery is off the hook.
 #
-#      Not root-caused. A callee the backend cannot resolve declines as "call
-#      expression" (src/backend/codegen_error_callee_facts.elisa says so for the
-#      try/catch path), so the next step is instrumenting which lookup fails here.
+#      Branch selection is CORRECT. Put a marker `def` in each branch of both static
+#      chains and read the object with llvm-nm: a Windows build keeps exactly
+#      marker_sel_windows and marker_decl_win32; a macOS build keeps marker_decl_mmap.
+#      The win32 block's own code IS emitted -- and yet its `def`, its `extern` AND its
+#      `const` are all invisible to callers, including a caller written at top level
+#      outside every static if. The mirror on macOS (a top-level call of MAP_FAILED,
+#      declared only inside the mmap block) resolves fine, so the failure is specific
+#      to the Windows configuration rather than to static blocks in general.
+#
+#      Ruled OUT by experiment, so the next session need not re-derive them: a nested
+#      zero-arg call argument (GetCurrentProcess()); `assert not <call>`; the multi-line
+#      extern spelling; untyped const arguments; a `|` of consts; declaring an extern
+#      inside a static if/elif at all; the branch's POSITION (reordering the chain so
+#      win32 comes first changes nothing); the condition's foldability (rewriting it to
+#      the round-0-foldable ELISA_TARGET_OS_WINDOWS changes nothing); hoisting the
+#      declarations to top level (only changes the reported reason to "expression");
+#      hoisting collections.elisai's duplicate win32 block out of its own static chain;
+#      and registering the settling round's consts before `break if settled` in
+#      Backend::select_module_declarations (tried as a compiler patch -- no effect).
+#
+#      Not root-caused. The next step is instrumenting select_module_declarations
+#      (src/backend/codegen_module.elisa) to print, per round, which static lines are
+#      taken and whether the win32 names reach the fn/const tables.
+#
+#      TECHNIQUE, because it cost an afternoon: `static error(...)` is NOT valid at top
+#      level. A probe that plants one there dies as a parse error, prints nothing your
+#      grep matches, and reads exactly like "the branch was skipped". Probe with marker
+#      functions and llvm-nm instead, and always plant a POSITIVE CONTROL in a branch
+#      you know is taken -- three conclusions in this investigation were artifacts that
+#      only a control exposed.
 #   2. elisacore_std/debug_referee.elisa declares kill, sigaction, getpid and
 #      signal with no `static if` around them. The first two have no Windows
 #      equivalent, so the crash-dump path needs a guard whatever else changes.
