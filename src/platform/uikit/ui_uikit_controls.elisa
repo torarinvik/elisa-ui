@@ -76,32 +76,32 @@ module UiUIKitControls:
             return 0.0 if not UiCore::is_finite(value) or value < 0.0
             return value
 
-        def button_is_selectable(kind: UiControls::Kind) -> bool:
-            return kind != UiControls::Kind.PushButton
+        def button_is_selectable(kind: UiControls::ControlKind) -> bool:
+            return kind != UiControls::ControlKind.PushButton
 
         def packed_argb(color: UiCore::Color) -> u32:
             return (color.a.u32() << 24) | (color.r.u32() << 16) | (color.g.u32() << 8) | color.b.u32()
 
-        def kind_is_button(kind: UiControls::Kind) -> bool:
-            return kind == UiControls::Kind.PushButton or kind == UiControls::Kind.ToggleButton or kind == UiControls::Kind.CheckBox or kind == UiControls::Kind.RadioButton
+        def kind_is_button(kind: UiControls::ControlKind) -> bool:
+            return kind == UiControls::ControlKind.PushButton or kind == UiControls::ControlKind.ToggleButton or kind == UiControls::ControlKind.CheckBox or kind == UiControls::ControlKind.RadioButton
 
     public:
         impl Controls for UiKitControls:
-            def create(index: i32, kind: UiControls::Kind, parent: i32, window_mode: UiControls::WindowMode, axis: UiConst::Axis, state: UiControls::ControlState) -> void:
+            def create(index: i32, kind: UiControls::ControlKind, parent: i32, window_mode: UiControls::WindowMode, axis: UiConst::Axis, state: UiControls::ControlState) -> void:
                 can Ui.Controls:
                     # A window's decoration mode has no iOS meaning: the scene
                     # owns the only surface. Accepting the value and ignoring
                     # it is honest; refusing to realize the tree would not be.
                     _ = window_mode
-                    if kind == UiControls::Kind.Window or kind == UiControls::Kind.Panel:
+                    if kind == UiControls::ControlKind.Window or kind == UiControls::ControlKind.Panel:
                         record_created(index, elisa_uikit_controls_create_view(), parent)
                         return
-                    if kind == UiControls::Kind.ScrollView:
+                    if kind == UiControls::ControlKind.ScrollView:
                         vertical: i32 = 0 if axis == UiConst::Axis.Row else 1
                         horizontal: i32 = 1 if axis == UiConst::Axis.Row else 0
                         record_created(index, elisa_uikit_controls_create_scroll_view(vertical, horizontal), parent)
                         return
-                    if kind == UiControls::Kind.Label:
+                    if kind == UiControls::ControlKind.Label:
                         record_created(index, elisa_uikit_controls_create_label(), parent)
                         return
                     if kind_is_button(kind):
@@ -112,21 +112,21 @@ module UiUIKitControls:
                         # rows, so a labelled boolean stays readable.
                         record_created(index, elisa_uikit_controls_create_button(1 if button_is_selectable(kind) else 0), parent)
                         return
-                    if kind == UiControls::Kind.TextField:
+                    if kind == UiControls::ControlKind.TextField:
                         record_created(index, elisa_uikit_controls_create_text_field(), parent)
                         return
-                    if kind == UiControls::Kind.Slider:
+                    if kind == UiControls::ControlKind.Slider:
                         record_created(index, elisa_uikit_controls_create_slider(state.low, state.high, state.value), parent)
                         return
-                    if kind == UiControls::Kind.ProgressBar:
+                    if kind == UiControls::ControlKind.ProgressBar:
                         record_created(index, elisa_uikit_controls_create_progress(), parent)
 
-            def set_frame(index: i32, kind: UiControls::Kind, box: UiCore::Rect) -> void:
+            def set_frame(index: i32, kind: UiControls::ControlKind, box: UiCore::Rect) -> void:
                 can Ui.Controls:
                     handle: usize = native_handle(index)
                     return if handle == 0
                     elisa_uikit_controls_set_frame(handle, box.origin.x, box.origin.y, box.size.width, box.size.height)
-                    if kind == UiControls::Kind.ScrollView:
+                    if kind == UiControls::ControlKind.ScrollView:
                         elisa_uikit_controls_set_content_size(handle, box.size.width, box.size.height)
 
             # WHICH SLOT A COLOUR GOES IN is decided here, in typed Elisa, so
@@ -137,19 +137,19 @@ module UiUIKitControls:
             # arrives with alpha zero and is not applied at all, which is what
             # leaves an unstyled control looking like iOS drew it -- because
             # iOS did.
-            def set_colors(index: i32, kind: UiControls::Kind, ink: UiCore::Color, fill: UiCore::Color) -> void:
+            def set_colors(index: i32, kind: UiControls::ControlKind, ink: UiCore::Color, fill: UiCore::Color) -> void:
                 can Ui.Controls:
                     handle: usize = native_handle(index)
                     return if handle == 0
-                    if kind == UiControls::Kind.Slider or kind == UiControls::Kind.ProgressBar:
+                    if kind == UiControls::ControlKind.Slider or kind == UiControls::ControlKind.ProgressBar:
                         elisa_uikit_controls_set_tint_color(handle, packed_argb(ink)) if ink.a != 0
                         elisa_uikit_controls_set_track_color(handle, packed_argb(fill)) if fill.a != 0
                         return
-                    if kind == UiControls::Kind.Label or kind == UiControls::Kind.TextField or kind_is_button(kind):
+                    if kind == UiControls::ControlKind.Label or kind == UiControls::ControlKind.TextField or kind_is_button(kind):
                         elisa_uikit_controls_set_text_color(handle, packed_argb(ink)) if ink.a != 0
                     elisa_uikit_controls_set_background_color(handle, packed_argb(fill)) if fill.a != 0
 
-            def set_text(index: i32, kind: UiControls::Kind, text: sview) -> void:
+            def set_text(index: i32, kind: UiControls::ControlKind, text: sview) -> void:
                 # Native controls copy this borrowed CoreFoundation string in
                 # their own setter, so the bridge performs only the assignment.
                 value: usize = native_string(text)
@@ -157,17 +157,17 @@ module UiUIKitControls:
                 handle: usize = native_handle(index)
                 if kind_is_button(kind):
                     elisa_uikit_controls_set_button_title(handle, value)
-                if kind == UiControls::Kind.Label:
+                if kind == UiControls::ControlKind.Label:
                     elisa_uikit_controls_set_label_text(handle, value)
-                if kind == UiControls::Kind.TextField:
+                if kind == UiControls::ControlKind.TextField:
                     elisa_uikit_controls_set_field_text(handle, value)
                 # A window has no title bar on iOS and a slider or progress bar
                 # has no caption, so the text becomes what VoiceOver reads.
-                if kind == UiControls::Kind.Window or kind == UiControls::Kind.Slider or kind == UiControls::Kind.ProgressBar:
+                if kind == UiControls::ControlKind.Window or kind == UiControls::ControlKind.Slider or kind == UiControls::ControlKind.ProgressBar:
                     elisa_uikit_controls_set_accessibility_label(handle, value)
                 CFRelease(value)
 
-            def set_action(index: i32, kind: UiControls::Kind) -> void:
+            def set_action(index: i32, kind: UiControls::ControlKind) -> void:
                 can Ui.Controls:
                     handle: usize = native_handle(index)
                     return if handle == 0
@@ -177,17 +177,17 @@ module UiUIKitControls:
                     value_change: bool = UiControls::action_event_for(kind) == UiConst::WidgetEvent.Change
                     elisa_uikit_controls_set_action(handle, 1 if value_change else 0)
 
-            def set_state(index: i32, kind: UiControls::Kind, value: f32, low: f32, high: f32, selected: bool) -> void:
+            def set_state(index: i32, kind: UiControls::ControlKind, value: f32, low: f32, high: f32, selected: bool) -> void:
                 can Ui.Controls:
                     handle: usize = native_handle(index)
                     return if handle == 0
-                    if kind == UiControls::Kind.ToggleButton or kind == UiControls::Kind.CheckBox or kind == UiControls::Kind.RadioButton:
+                    if kind == UiControls::ControlKind.ToggleButton or kind == UiControls::ControlKind.CheckBox or kind == UiControls::ControlKind.RadioButton:
                         elisa_uikit_controls_set_button_selected(handle, 1 if selected else 0)
                         return
-                    if kind == UiControls::Kind.Slider:
+                    if kind == UiControls::ControlKind.Slider:
                         elisa_uikit_controls_set_slider_state(handle, low, high, value)
                         return
-                    if kind == UiControls::Kind.ProgressBar:
+                    if kind == UiControls::ControlKind.ProgressBar:
                         elisa_uikit_controls_set_progress(handle, progress_fraction(value, low, high))
 
         # UIKit reports which control acted and what it now holds. Turning
@@ -196,7 +196,7 @@ module UiUIKitControls:
         def controls_action(handle: usize, value: f32, selected: bool) -> i32:
             index: i32 = UiControls::index_for_native_handle(handle)
             return index if index == UiControls::NO_PARENT
-            kind: UiControls::Kind = UiControls::kind_at(index.usize())
+            kind: UiControls::ControlKind = UiControls::kind_at(index.usize())
             return UiControls::dispatch_native_action(handle, UiControls::action_event_for(kind), value, selected)
 
         # Release the retained handles before the next realization. Children may
@@ -221,31 +221,35 @@ module UiUIKitControls:
         # Realize a laid-out widget tree as native controls. Run
         # UiWidgets::layout first: every control is placed at the box it
         # computed.
-        def realize(root: UiWidgets::Widget) -> void:
+        # REALIZING TWICE REPLACES THE INTERFACE. The scene calls this again
+        # whenever its geometry changes -- a rotation, a split view -- and
+        # releasing the bridge's retain does not take the old tree off the
+        # screen: the scene's own view is still holding it. Detaching the old
+        # root first is what makes the second call a replacement instead of a
+        # second interface stacked on the first, with the dead one taking the
+        # touches.
+        #
+        # The two halves are named because there are two ways to fill the
+        # control list -- a UiWidgets hierarchy and the retained UiFlat tree --
+        # and everything around the filling is the same for both.
+        def begin_realize() -> void:
             can[Ui.Controls]:
-                # REALIZING TWICE REPLACES THE INTERFACE. The scene calls this
-                # again whenever its geometry changes -- a rotation, a split
-                # view -- and releasing the bridge's retain does not take the
-                # old tree off the screen: the scene's own view is still
-                # holding it. Detaching the old root first is what makes the
-                # second call a replacement instead of a second interface
-                # stacked on the first, with the dead one taking the touches.
                 elisa_uikit_controls_remove_from_parent(native_handle(0)) if UiControls::count() > 0
                 release_native_handles()
-                UiControls::reset()
-                UiControls::realize(root, UiControls::NO_PARENT, 0)
-                UiControls::apply[UiKitControls]()
+
+        def finish_realize() -> void:
+            can[Ui.Controls]:
                 # The realized root is emitted at index zero. Attaching it to
-                # the scene's view is the one step the hierarchy walk cannot
-                # do, because that view belongs to UIKit.
+                # the scene's view is the one step neither walk can do,
+                # because that view belongs to UIKit.
                 root_handle: usize = native_handle(0)
                 elisa_uikit_controls_add_child(uikit_controls_root, root_handle)
-                # The hierarchy walk placed the root at the origin of the box it
-                # was laid out in. That box is the safe area, so the root moves
-                # to where the safe area actually starts -- but only once the
-                # scene has reported a geometry. Without one there is no safe
-                # area to move to, and overriding the laid-out frame with zero
-                # would hide the whole tree.
+                # The walk placed the root at the origin of the box it was laid
+                # out in. That box is the safe area, so the root moves to where
+                # the safe area actually starts -- but only once the scene has
+                # reported a geometry. Without one there is no safe area to
+                # move to, and overriding the laid-out frame with zero would
+                # hide the whole tree.
                 if root_handle != 0 and scene_geometry_is_known():
                     elisa_uikit_controls_set_frame(root_handle, content_origin_x(), content_origin_y(), content_width(), content_height())
 

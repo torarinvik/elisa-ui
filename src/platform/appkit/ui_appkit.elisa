@@ -58,16 +58,16 @@ module UiAppKit:
         # the control index. Children are attached only after their constructor
         # has returned a non-zero handle and their parent was created earlier in
         # the parent-first control walk.
-        def record_created(index: i32, handle: usize, parent: i32, parent_kind: UiControls::Kind) -> void:
+        def record_created(index: i32, handle: usize, parent: i32, parent_kind: UiControls::ControlKind) -> void:
             return if index < 0
             UiControls::set_native_handle(index.usize(), handle)
             return if handle == 0 or parent < 0
             parent_handle: usize = native_handle(parent)
             return if parent_handle == 0
-            if parent_kind == UiControls::Kind.Window:
+            if parent_kind == UiControls::ControlKind.Window:
                 UiAppKitNative::native_attach_to_window(handle, parent_handle)
                 return
-            if parent_kind == UiControls::Kind.ScrollView:
+            if parent_kind == UiControls::ControlKind.ScrollView:
                 UiAppKitNative::native_attach_to_scroll_view(handle, parent_handle)
                 return
             UiAppKitNative::native_attach_to_view(handle, parent_handle)
@@ -157,14 +157,14 @@ module UiAppKit:
             return (color.a.u32() << 24) | (color.r.u32() << 16) | (color.g.u32() << 8) | color.b.u32()
 
         impl Controls for AppKitControls:
-            def create(index: i32, kind: UiControls::Kind, parent: i32, window_mode: UiControls::WindowMode, axis: UiConst::Axis, state: UiControls::ControlState) -> void:
+            def create(index: i32, kind: UiControls::ControlKind, parent: i32, window_mode: UiControls::WindowMode, axis: UiConst::Axis, state: UiControls::ControlState) -> void:
                 can Ui.Controls:
                     # Parent placement is decided from the Elisa control list;
                     # native constructors return only a retained opaque object.
-                    parent_kind: mutable UiControls::Kind = UiControls::Kind.Panel
+                    parent_kind: mutable UiControls::ControlKind = UiControls::ControlKind.Panel
                     if parent >= 0:
                         parent_kind <- UiControls::kind_at(parent.usize())
-                    if kind == UiControls::Kind.Window:
+                    if kind == UiControls::ControlKind.Window:
                         if window_mode == UiControls::WindowMode.Floating:
                             handle: usize = UiAppKitNative::native_create_panel_window(UiAppKitNative::floating_panel_style(), elisa_appkit_backing_store_buffered, 1, 1, FLOATING_PANEL_WIDTH, FLOATING_PANEL_HEIGHT)
                             record_created(index, handle, parent, parent_kind)
@@ -172,106 +172,106 @@ module UiAppKit:
                         handle: usize = UiAppKitNative::native_create_window(UiAppKitNative::standard_window_style(window_mode == UiControls::WindowMode.Resizable), elisa_appkit_backing_store_buffered, STANDARD_WINDOW_WIDTH, STANDARD_WINDOW_HEIGHT)
                         record_created(index, handle, parent, parent_kind)
                         return
-                    if kind == UiControls::Kind.Panel:
+                    if kind == UiControls::ControlKind.Panel:
                         handle: usize = UiAppKitNative::native_create_panel()
                         record_created(index, handle, parent, parent_kind)
                         return
-                    if kind == UiControls::Kind.ScrollView:
+                    if kind == UiControls::ControlKind.ScrollView:
                         vertical: i32 = 0 if axis == UiConst::Axis.Row else 1
                         horizontal: i32 = 1 if axis == UiConst::Axis.Row else 0
                         handle: usize = UiAppKitNative::native_create_scroll_view(vertical, horizontal)
                         record_created(index, handle, parent, parent_kind)
                         return
-                    if kind == UiControls::Kind.Label:
+                    if kind == UiControls::ControlKind.Label:
                         empty: usize = UiAppKitNative::empty_native_string()
                         return if empty == 0
                         handle: usize = UiAppKitNative::native_create_label(empty)
                         CFRelease(empty)
                         record_created(index, handle, parent, parent_kind)
                         return
-                    if kind == UiControls::Kind.PushButton:
+                    if kind == UiControls::ControlKind.PushButton:
                         empty: usize = UiAppKitNative::empty_native_string()
                         return if empty == 0
                         handle: usize = UiAppKitNative::native_create_push_button(elisa_appkit_bezel_style_rounded, empty)
                         CFRelease(empty)
                         record_created(index, handle, parent, parent_kind)
                         return
-                    if kind == UiControls::Kind.ToggleButton:
+                    if kind == UiControls::ControlKind.ToggleButton:
                         empty: usize = UiAppKitNative::empty_native_string()
                         return if empty == 0
                         handle: usize = UiAppKitNative::native_create_toggle_button(elisa_appkit_button_type_push_on_push_off, empty)
                         CFRelease(empty)
                         record_created(index, handle, parent, parent_kind)
                         return
-                    if kind == UiControls::Kind.CheckBox:
+                    if kind == UiControls::ControlKind.CheckBox:
                         empty: usize = UiAppKitNative::empty_native_string()
                         return if empty == 0
                         handle: usize = UiAppKitNative::native_create_checkbox(empty)
                         CFRelease(empty)
                         record_created(index, handle, parent, parent_kind)
                         return
-                    if kind == UiControls::Kind.RadioButton:
+                    if kind == UiControls::ControlKind.RadioButton:
                         empty: usize = UiAppKitNative::empty_native_string()
                         return if empty == 0
                         handle: usize = UiAppKitNative::native_create_radio_button(empty)
                         CFRelease(empty)
                         record_created(index, handle, parent, parent_kind)
                         return
-                    if kind == UiControls::Kind.TextField:
+                    if kind == UiControls::ControlKind.TextField:
                         empty: usize = UiAppKitNative::empty_native_string()
                         return if empty == 0
                         handle: usize = UiAppKitNative::native_create_text_field(empty)
                         CFRelease(empty)
                         record_created(index, handle, parent, parent_kind)
                         return
-                    if kind == UiControls::Kind.Slider:
+                    if kind == UiControls::ControlKind.Slider:
                         handle: usize = UiAppKitNative::native_create_slider(state.low, state.high, state.value)
                         record_created(index, handle, parent, parent_kind)
                         return
-                    if kind == UiControls::Kind.ProgressBar:
+                    if kind == UiControls::ControlKind.ProgressBar:
                         handle: usize = UiAppKitNative::native_create_progress_bar(elisa_appkit_progress_style_bar, 0)
                         record_created(index, handle, parent, parent_kind)
 
-            def set_frame(index: i32, kind: UiControls::Kind, box: UiCore::Rect) -> void:
+            def set_frame(index: i32, kind: UiControls::ControlKind, box: UiCore::Rect) -> void:
                 can Ui.Controls:
                     handle: usize = native_handle(index)
                     return if handle == 0
-                    if kind == UiControls::Kind.Window:
+                    if kind == UiControls::ControlKind.Window:
                         UiAppKitNative::native_set_window_frame(handle, box.size.width, box.size.height)
                         return
                     UiAppKitNative::native_set_view_frame(handle, box.origin.x, box.origin.y, box.size.width, box.size.height)
-                    if kind == UiControls::Kind.ScrollView:
+                    if kind == UiControls::ControlKind.ScrollView:
                         UiAppKitNative::native_set_scroll_document_frame(handle, box.size.width, box.size.height)
 
             # The same slots the UIKit backend fills, under AppKit's names.
             # See UiControls::Palette for what reaches here and what does not.
-            def set_colors(index: i32, kind: UiControls::Kind, ink: UiCore::Color, fill: UiCore::Color) -> void:
+            def set_colors(index: i32, kind: UiControls::ControlKind, ink: UiCore::Color, fill: UiCore::Color) -> void:
                 can Ui.Controls:
                     handle: usize = native_handle(index)
                     return if handle == 0
-                    if kind == UiControls::Kind.Slider or kind == UiControls::Kind.ProgressBar:
+                    if kind == UiControls::ControlKind.Slider or kind == UiControls::ControlKind.ProgressBar:
                         elisa_appkit_set_tint_color(handle, controls_packed_argb(ink)) if ink.a != 0
                         return
-                    if kind == UiControls::Kind.Label or kind == UiControls::Kind.TextField:
+                    if kind == UiControls::ControlKind.Label or kind == UiControls::ControlKind.TextField:
                         elisa_appkit_set_text_color(handle, controls_packed_argb(ink)) if ink.a != 0
                     elisa_appkit_set_background_color(handle, controls_packed_argb(fill)) if fill.a != 0
 
-            def set_text(index: i32, kind: UiControls::Kind, text: sview) -> void:
+            def set_text(index: i32, kind: UiControls::ControlKind, text: sview) -> void:
                 # Native controls copy this borrowed CoreFoundation string in
                 # their Cocoa setter. The bridge therefore performs only the
                 # object assignment, not framework-side text conversion.
                 value: usize = UiAppKitNative::native_string(text)
                 return if value == 0
                 handle: usize = native_handle(index)
-                if kind == UiControls::Kind.Window:
+                if kind == UiControls::ControlKind.Window:
                     UiAppKitNative::native_set_window_title(handle, value)
-                if kind == UiControls::Kind.PushButton or kind == UiControls::Kind.ToggleButton or kind == UiControls::Kind.CheckBox or kind == UiControls::Kind.RadioButton:
+                if kind == UiControls::ControlKind.PushButton or kind == UiControls::ControlKind.ToggleButton or kind == UiControls::ControlKind.CheckBox or kind == UiControls::ControlKind.RadioButton:
                     UiAppKitNative::native_set_button_title(handle, value)
-                if kind == UiControls::Kind.Label or kind == UiControls::Kind.TextField:
+                if kind == UiControls::ControlKind.Label or kind == UiControls::ControlKind.TextField:
                     UiAppKitNative::native_set_field_text(handle, value)
                 CFRelease(value)
 
-            def set_action(index: i32, kind: UiControls::Kind) -> void:
+            def set_action(index: i32, kind: UiControls::ControlKind) -> void:
                 can Ui.Controls:
                     handle: usize = native_handle(index)
                     return if handle == 0
@@ -281,17 +281,17 @@ module UiAppKit:
                     continuous: bool = UiControls::action_event_for(kind) == UiConst::WidgetEvent.Change
                     elisa_appkit_controls_set_action(handle, 1 if continuous else 0)
 
-            def set_state(index: i32, kind: UiControls::Kind, value: f32, low: f32, high: f32, selected: bool) -> void:
+            def set_state(index: i32, kind: UiControls::ControlKind, value: f32, low: f32, high: f32, selected: bool) -> void:
                 can Ui.Controls:
                     handle: usize = native_handle(index)
                     return if handle == 0
-                    if kind == UiControls::Kind.ToggleButton or kind == UiControls::Kind.CheckBox or kind == UiControls::Kind.RadioButton:
+                    if kind == UiControls::ControlKind.ToggleButton or kind == UiControls::ControlKind.CheckBox or kind == UiControls::ControlKind.RadioButton:
                         UiAppKitNative::native_set_button_state(handle, elisa_appkit_control_state_on if selected else elisa_appkit_control_state_off)
                         return
-                    if kind == UiControls::Kind.Slider:
+                    if kind == UiControls::ControlKind.Slider:
                         UiAppKitNative::native_set_slider_state(handle, low, high, value)
                         return
-                    if kind == UiControls::Kind.ProgressBar:
+                    if kind == UiControls::ControlKind.ProgressBar:
                         UiAppKitNative::native_set_progress_state(handle, low, high, value)
 
         # Release the retained handles before the next realization. Child views
@@ -314,14 +314,6 @@ module UiAppKit:
                 UiControls::set_native_handle(index, 0) if handle != 0
                 UiAppKitNative::native_release(handle)
 
-        # Realize a laid-out widget tree as native controls. Run UiWidgets::layout
-        # first: every control is placed at the box it computed.
-        def realize(root: UiWidgets::Widget) -> void:
-            can[Ui.Controls]:
-                release_native_handles()
-                UiControls::reset()
-                UiControls::realize(root, UiControls::NO_PARENT, 0)
-                UiControls::apply[AppKitControls]()
 
         def start() -> void:
             # UiControls owns the validated arena, dense index sequence and
@@ -345,7 +337,7 @@ module UiAppKit:
         def controls_action(handle: usize, value: f32, selected: bool) -> i32:
             index: i32 = UiControls::index_for_native_handle(handle)
             return index if index == UiControls::NO_PARENT
-            kind: UiControls::Kind = UiControls::kind_at(index.usize())
+            kind: UiControls::ControlKind = UiControls::kind_at(index.usize())
             return UiControls::dispatch_native_action(handle, UiControls::action_event_for(kind), value, selected)
 
 # Cocoa's control state crosses as its raw SDK value. Which value means "on"

@@ -1,0 +1,38 @@
+# The retained layer, on iOS, as real UIKit controls.
+#
+# The controls backend next door realizes a UiWidgets hierarchy. This one
+# realizes the tree an ordinary elisa-ui application builds -- the one the
+# Skia and CoreGraphics painters draw -- so the same sources that run as a
+# custom-painted canvas can run as UILabels, UIButtons, UISliders and
+# UITextFields instead, with the backend chosen by which entry point the
+# application links.
+#
+# There is no second protocol and no second list: UiControls::realize_retained
+# fills the same records from the other layer, and everything from there down
+# is the code that was already here.
+
+include "./ui_uikit_controls.elisa"
+include "../../widgets/ui_controls_flat.elisa"
+
+extend UiUIKitControls:
+    public:
+        def realize_retained() -> void:
+            can[Ui.Controls]:
+                begin_realize()
+                UiControls::realize_retained()
+                UiControls::apply[UiKitControls]()
+                finish_realize()
+
+# THE RETAINED EDITOR IS NOT THE ONE EDITING. A text field on this path is a
+# real UITextField: iOS owns its selection, its caret, its magnifier and its
+# copy-and-paste menu. The framework's own editor -- and so the clipboard it
+# asks its host for -- is never reached, so these answer honestly rather than
+# reaching for a pasteboard nothing will read.
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return 0

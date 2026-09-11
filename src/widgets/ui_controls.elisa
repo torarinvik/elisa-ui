@@ -43,10 +43,13 @@
 # the one index -> handle table, so a native backend does not need a second
 # capacity, count or lifetime table in C/Objective-C.
 
-include "./ui_hierarchy.elisa"
-# ui_ops `extend`s UiWidgets with the passes; box_of lives there, not in the
-# type declarations.
-include "./ui_ops.elisa"
+# THE SEAM ITSELF KNOWS NEITHER APPLICATION LAYER. Two of them fill this list
+# -- the immediate UiWidgets hierarchy through ui_controls_hierarchy.elisa and
+# the retained UiFlat tree through ui_controls_flat.elisa -- and a program
+# includes the one it uses. They are not merely separable: they cannot be
+# linked together, because the compiler declines a unit holding both layers'
+# tree walks, and neither application ever wants the other's.
+#
 # Placement is mirrored here, so the direction policy is part of this module's
 # vocabulary as well as the painters'.
 include "./ui_localization.elisa"
@@ -75,7 +78,15 @@ module UiControls:
         #   TextField    NSTextField EDIT               GtkEntry           UITextField
         #   Slider       NSSlider    TRACKBAR           GtkScale           UISlider
         #   ProgressBar  NSProgress  msctls_progress32  GtkProgressBar     UIProgressView
-        const enum Kind of i32:
+        # NAMED ControlKind AND NOT Kind. Three other modules in this layer
+        # declare a `Kind` of their own -- a dialog's, a gesture's, a
+        # resource presentation's -- and every record that carries one calls
+        # the field `kind`. The stage1 backend declines a field expression
+        # where two such names meet, which is the same reason PictureFit is
+        # not called ImageFit. The clash was invisible until an application
+        # linked the dialogs and the native controls at once, which is exactly
+        # what realizing a retained tree as controls does.
+        const enum ControlKind of i32:
             Window = 0
             Panel = 1
             ScrollView = 2
@@ -137,28 +148,28 @@ module UiControls:
             # The normalized initial state is available during construction as
             # well as in set_state, so a native control never exposes a
             # backend-specific placeholder range between create and apply.
-            def create(index: i32, kind: Kind, parent: i32, window_mode: WindowMode, axis: UiConst::Axis, state: ControlState) -> void can[Ui.Controls]
+            def create(index: i32, kind: ControlKind, parent: i32, window_mode: WindowMode, axis: UiConst::Axis, state: ControlState) -> void can[Ui.Controls]
             # Absolute placement, at the box UiWidgets::layout computed. The
             # kind crosses with it so a backend can select window-content versus
             # child-view placement in typed Elisa code.
-            def set_frame(index: i32, kind: Kind, box: UiCore::Rect) -> void can[Ui.Controls]
+            def set_frame(index: i32, kind: ControlKind, box: UiCore::Rect) -> void can[Ui.Controls]
             # The control's own text: a label, a button's caption, a window's title.
             # The kind crosses with it so a backend can keep this semantic dispatch
             # in its typed Elisa implementation instead of inspecting native classes.
-            def set_text(index: i32, kind: Kind, text: sview) -> void can[Ui.Controls]
+            def set_text(index: i32, kind: ControlKind, text: sview) -> void can[Ui.Controls]
             # The colours the hierarchy declared, filtered by palette_of. A
             # backend applies what its toolkit has a place for and leaves the
             # rest; alpha zero is the hierarchy saying nothing at all.
-            def set_colors(index: i32, kind: Kind, ink: UiCore::Color, fill: UiCore::Color) -> void can[Ui.Controls]
+            def set_colors(index: i32, kind: ControlKind, ink: UiCore::Color, fill: UiCore::Color) -> void can[Ui.Controls]
             # Initial value/range/selection state, kept separate from caption
             # text so a backend can apply native state with typed setters.
-            def set_state(index: i32, kind: Kind, value: f32, low: f32, high: f32, selected: bool) -> void can[Ui.Controls]
+            def set_state(index: i32, kind: ControlKind, value: f32, low: f32, high: f32, selected: bool) -> void can[Ui.Controls]
             # Ask the toolkit to report what the user does with this control.
             # A backend installs its own action target and calls
             # UiControls::dispatch_native_action from it; which kinds have
             # anything to report, and what acting on one means, are decided by
             # kind_reports_action and action_event_for rather than per backend.
-            def set_action(index: i32, kind: Kind) -> void can[Ui.Controls]
+            def set_action(index: i32, kind: ControlKind) -> void can[Ui.Controls]
 
     private:
         # The list itself. It sits after the vocabulary because that is the reading
@@ -180,7 +191,7 @@ module UiControls:
         const CONTROL_TEXT_STORAGE_SIZE: usize = MAX_CONTROLS * CONTROL_TEXT_CAPACITY
 
         struct ControlOp:
-            kind: mutable Kind
+            kind: mutable ControlKind
             window_mode: mutable WindowMode
             axis: mutable UiConst::Axis
             state_value: mutable f32
@@ -203,6 +214,11 @@ module UiControls:
         global mutable control_text_storage: u8[CONTROL_TEXT_STORAGE_SIZE] = zeroed
         global mutable total: usize = 0
         global mutable control_dropped: bool = false
+
+        # Alpha zero: the hierarchy named no colour here and the platform's
+        # own stands. Both application layers say it the same way.
+        def transparent_ink() -> UiCore::Color:
+            return UiCore::rgba(0, 0, 0, 0)
 
         def copy_control_text(index: usize, value: sview) -> sview:
             return "" if index >= MAX_CONTROLS
@@ -241,8 +257,8 @@ module UiControls:
         def overflowed() -> bool:
             return control_dropped
 
-        def kind_at(index: usize) -> Kind:
-            return Kind.Panel if index >= total
+        def kind_at(index: usize) -> ControlKind:
+            return ControlKind.Panel if index >= total
             return ops[index].kind
 
         def window_mode_at(index: usize) -> WindowMode:
@@ -304,50 +320,6 @@ module UiControls:
             return if index >= total
             ops[index].native_handle <- handle
 
-        # Walk one widget and its subtree, PARENT FIRST, so the OS tree comes out
-        # with the widget tree's shape and a child's parent already exists.
-        #
-        # Past MAX_CONTROLS a subtree is dropped rather than overwriting a live record:
-        # a missing control is visible and fixable, a corrupted one is neither.
-        def realize(w: UiWidgets::Widget, parent: i32, depth: i32) -> void:
-            if depth >= MAX_REALIZE_DEPTH:
-                control_dropped <- true
-                return
-            if total >= MAX_CONTROLS:
-                control_dropped <- true
-                return
-            index: usize = total
-            total <- total + 1
-            ops[index].kind <- kind_of(w)
-            ops[index].window_mode <- window_mode_of(w)
-            ops[index].axis <- UiWidgets::axis_of(w)
-            state: ControlState = state_of(w)
-            # Write the compact state fields explicitly. Besides making the
-            # record layout obvious, this avoids depending on aggregate
-            # assignment for a mixed float/bool payload in stage0.
-            ops[index].state_value <- state.value
-            ops[index].state_low <- state.low
-            ops[index].state_high <- state.high
-            ops[index].state_selected <- state.selected
-            ops[index].parent <- parent
-            ops[index].box <- UiWidgets::box_of(w)
-            ops[index].text <- copy_control_text(index, text_of(w))
-            palette: Palette = palette_of(w)
-            ops[index].ink <- palette.ink
-            ops[index].fill <- palette.fill
-            ops[index].native_handle <- 0
-            cursor: mutable UiWidgets::Widget? = w.first_child if UiWidgets::can_nest(w) else null
-            sibling_steps: mutable i32 = 0
-            while cursor is node |cursor, index, sibling_steps|:
-                if sibling_steps >= MAX_REALIZE_SIBLINGS:
-                    control_dropped <- true
-                    break
-                realize(node, index.i32(), depth + 1)
-                sibling_steps <- sibling_steps + 1
-                cursor <- node.next_sibling
-            # The root call is the one that has a whole tree to mirror.
-            mirror_control_boxes() if parent == NO_PARENT
-
         # MIRRORING ABSOLUTE PLACEMENT.
         #
         # This module's header names RTL mirroring as one of the things you get
@@ -395,5 +367,4 @@ module UiControls:
                 # being given its initial text and state.
                 C.set_action(slot, kind_at(index)) if kind_reports_action(kind_at(index))
 
-        include "./ui_controls_policy.elisa"
         include "./ui_controls_events.elisa"

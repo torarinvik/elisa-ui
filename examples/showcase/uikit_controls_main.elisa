@@ -1,0 +1,64 @@
+# The showcase, on iOS, as REAL native controls.
+#
+# The same five pages, the same theming, the same validation and the same
+# sources the Skia and CoreGraphics builds paint -- realized as UILabels,
+# UIButtons, UISliders and UITextFields instead of drawn. Nothing in
+# examples/showcase changed to make this possible and nothing here is a second
+# version of the application: the retained tree it already builds is walked
+# into the control list every native backend consumes.
+#
+# What the platform draws, it draws its own way. A ramp, a glow, a corner
+# radius and a shadow have no place on a native control -- the reason to
+# realize one is that the OS already decided how it should look -- so the tree
+# arrives with those left behind and its content intact.
+
+include "../../src/platform/uikit/ui_uikit_controls_flat.elisa"
+include "app.elisa"
+
+global mutable showcase_built: bool = false
+
+# UIKit measures its own controls, so the retained layout only needs something
+# consistent to size boxes with. A native label is told its text and finds its
+# own width; what this decides is how much room the layout leaves it.
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    return text.len.f32() * size * 0.55 * (1.08 if weighted else 1.0)
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size
+def ui_font_ascent(size: f32) -> f32:
+    return size
+def ui_text_line_height(size: f32) -> f32:
+    return size * 1.3
+
+def lay_out_and_realize() -> void:
+    can Memory.Allocate, Abort.Panic, Ui.Controls, Unsafe.PointerCast, Ui.Window, Ui.Draw, Ui.Text, Ui.Input:
+        width: f32 = UiUIKitControls::content_width()
+        height: f32 = UiUIKitControls::content_height()
+        UiCore::set_viewport(width, height)
+        UiHandles::layout(width, height)
+        UiUIKitControls::realize_retained()
+
+# The scene calls this once it has a surface, and again whenever that surface
+# changes. The tree is built once; every later call lays the SAME tree out
+# against the new surface and replaces the controls.
+def app_controls_realize() -> void:
+    can Memory.Allocate, Abort.Panic, Ui.Controls, Unsafe.PointerCast, Ui.Window, Ui.Draw, Ui.Text, Ui.Input:
+        if not showcase_built:
+            UiCore::set_viewport(UiUIKitControls::content_width(), UiUIKitControls::content_height())
+            showcase_built <- true
+            ShowcaseApp::init()
+        lay_out_and_realize()
+
+# A native control reported something. The seam has already written the new
+# value into the control list; retained_action carries it into the widget and
+# hands the application the event through the hook it already has. The tree it
+# changes in response is then laid out and realized again, which is the whole
+# loop -- the same one a painted backend runs, with a realize where the paint
+# would be.
+def app_control_event(index: i32, event: i32) -> void:
+    can Memory.Allocate, Abort.Panic, Ui.Controls, Unsafe.PointerCast, Ui.Window, Ui.Draw, Ui.Text, Ui.Input:
+        return if not UiControls::retained_action(index, event)
+        lay_out_and_realize()
+
+def main() -> i64:
+    can Memory.Allocate, Abort.Panic, Ui.Controls, Unsafe.PointerCast:
+        return UiUIKitControls::run()

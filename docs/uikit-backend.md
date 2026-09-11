@@ -48,6 +48,55 @@ screen, because the scene's own view is still holding it. Without detaching the
 old root, a rotation left two complete interfaces stacked with the dead one on
 top, taking the touches.
 
+## The other application layer
+
+elisa-ui has two application-facing layers and until now they were not equally
+served. **Every application in this repository is written against
+`UiHandles`** — the retained tree — and that tree can be painted by Skia, by
+either CoreGraphics canvas, by SDL3 and by the browser. It could not be
+realized as native controls at all, because the controls seam consumed the
+*other* layer: the immediate `UiWidgets` hierarchy. The native backends were
+not missing features so much as missing their applications.
+
+`UiControls::realize_retained` walks the retained arena and fills the same
+control list the hierarchy walk fills. There is no second protocol and no
+second list; a backend cannot tell which layer a control came from.
+`examples/showcase/uikit_controls_main.elisa` is the showcase — the same five
+pages the Skia build paints — as UILabels, UIButtons, UISliders and
+UITextFields, and nothing under `examples/showcase` changed to allow it.
+
+**What does not cross, and why that is not a hole.** A retained widget carries
+a ramp, a glow, a corner style, a picture, a halo and a surface depth. A native
+control has no place for any of them, because it has the platform's own — which
+is the entire reason to realize one. The rule the hierarchy walk already
+applied to a button's rest/hover/press applies to all of it: what a toolkit
+draws for itself stops at the seam, and what is *content* — the words, the
+value, the selection, the colour of text and of the surfaces behind it —
+crosses. A hidden widget is not a control either: the retained layer keeps all
+five showcase pages in the tree and shows one, and realizing the other four
+would hand iOS four interfaces to stack.
+
+**A control's action lands on the widget it came from.** The seam already
+records a new value into the list before the application sees the event;
+`retained_action` carries it the last step, into the retained widget, and then
+calls the application's own `app_widget_event` — the same hook every canvas
+backend calls. The application changes its tree in response, and the entry
+point lays it out and realizes it again. That is the whole loop: the one a
+painted backend runs, with a realize where the paint would be. A field's
+**text** does not come back this way — an action carries a float and a flag,
+and a string has nowhere to ride — so a native field on this path edits itself
+and the retained value does not yet follow it.
+
+**The two layers cannot share a translation unit.** This is not a design
+preference: the compiler declines a unit holding both layers' tree walks. So
+the seam knows neither of them, `ui_controls_hierarchy.elisa` and
+`ui_controls_flat.elisa` each know one, and a program includes the one it uses
+— `ui_uikit_controls_hierarchy.elisa` or `ui_uikit_controls_flat.elisa`. The
+same split found a name clash that had been invisible: `UiControls::Kind` is
+now `ControlKind`, because three other modules in the widget layer declare a
+`Kind` and every record that carries one calls the field `kind`, which stage1
+declines where two such names meet.
+
 `examples/hello/uikit_controls_main.elisa` is the tree that found all three: it
 builds one of every kind the backend realizes, on purpose, because a vocabulary
 with a hole in it looks exactly like one without until somebody builds the

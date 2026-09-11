@@ -82,7 +82,12 @@ because a module member's symbol carries its module and those names cannot move.
   [UIKit controls](src/platform/uikit/ui_uikit_controls.elisa) (real iOS
   controls; UILabels, UIButtons, UISliders and UITextFields that UIKit draws,
   focuses, scales with Dynamic Type and reads aloud, realized through the same
-  backend-neutral `UiControls` protocol the AppKit controls backend implements)
+  backend-neutral `UiControls` protocol the AppKit controls backend implements
+  -- and from either application layer: a `UiWidgets` hierarchy through
+  [ui_controls_hierarchy](src/widgets/ui_controls_hierarchy.elisa) or the
+  retained `UiHandles` tree every example in this repository builds through
+  [ui_controls_flat](src/widgets/ui_controls_flat.elisa), so the same sources
+  the Skia painter draws can be realized as real controls instead)
   and
   [UIKit canvas](src/platform/uikit/ui_uikit.elisa) (a custom-painted iOS `UIView`;
   the same CoreGraphics replay and CoreText shaping as the macOS canvas, with

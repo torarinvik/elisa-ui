@@ -1,0 +1,165 @@
+# The RETAINED tree, realized as native controls.
+#
+# WHY THIS FILE EXISTS. elisa-ui has two application-facing layers and they
+# were not equally served. An application written against UiHandles -- which
+# is every application in this repository: the storefront, the showcase, the
+# hello example -- could be painted by Skia, by either CoreGraphics canvas, by
+# SDL3 and by the browser, and could not be realized as native controls at
+# all, because the controls seam consumed the OTHER layer: the immediate
+# UiWidgets hierarchy. The native backends were not missing features so much
+# as missing their applications.
+#
+# So this walks the retained arena and fills the same control list the
+# hierarchy walk fills. Nothing downstream changes: the list, the protocol,
+# the backends and the placement rule are exactly the ones already there, and
+# a backend cannot tell which layer a control came from.
+#
+# WHAT DOES NOT CROSS, and why that is not a hole. A retained widget carries a
+# ramp, a glow, a corner style, a picture, a halo and a surface depth, and a
+# native control has no place for any of them -- it has the platform's own,
+# which is the entire reason to realize one. The same rule the hierarchy walk
+# applies to a button's rest/hover/press applies to all of it: what a toolkit
+# draws for itself stops here, and what is CONTENT -- the words, the value,
+# the selection, the colour of text and of the surfaces behind it -- crosses.
+
+# An entry point that wants the retained layer realized as native controls
+# includes THIS file; one that hands over a hierarchy includes only the seam.
+# The two application layers stay independently linkable, which is the reason
+# this is a file of its own rather than another page of ui_controls.elisa.
+include "./ui_handles.elisa"
+include "./ui_controls.elisa"
+
+extend UiControls:
+    public:
+        # Fill the control list from the retained tree. The caller then hands
+        # it to a backend with apply, exactly as with a hierarchy.
+        #
+        # Roots are walked in arena order and the FIRST one becomes the
+        # window; a later root is an overlay -- a sheet, a popover -- and
+        # becomes a panel inside that window, because the platforms this seam
+        # targets put a sheet in the window it belongs to rather than in one
+        # of its own.
+        def realize_retained() -> void:
+            reset()
+            for slot in 0..<MAX_CONTROLS:
+                retained_slots[slot] <- UiFlat::NONE
+            first: mutable bool = true
+            for index in 0..<UiFlat::count():
+                node: UiFlat::Widget = UiFlat::widget(index)
+                continue if node.parent != UiFlat::NONE
+                realize_retained_node(index, NO_PARENT, 0, first)
+                first <- false
+
+        # WHICH WIDGET A CONTROL CAME FROM. The list is the platform's view of
+        # the tree and the tree is the application's; an action on a native
+        # control has to land on the retained widget or the interface is a
+        # picture of an application rather than one.
+        def retained_index_at(slot: usize) -> usize:
+            return UiFlat::NONE if slot >= total
+            return retained_slots[slot]
+
+        # A native control reported something. The seam has already written the
+        # new value into the list, so this carries it the last step -- into the
+        # widget -- and then tells the application in the vocabulary its own
+        # hook already speaks, which is the one every canvas backend uses.
+        #
+        # A field's TEXT does not come back this way: the action carries a
+        # float and a flag, and a string has nowhere to ride. That is named
+        # here rather than papered over -- a native field on this path edits
+        # itself and the retained value does not follow it yet.
+        def retained_action(index: i32, event: i32) -> bool:
+            return false if index < 0 or index.usize() >= total
+            slot: usize = index.usize()
+            widget: usize = retained_index_at(slot)
+            return false if widget >= UiFlat::count()
+            kind: ControlKind = kind_at(slot)
+            state: ControlState = state_at(slot)
+            UiFlat::set_value(widget, state.value) if kind == ControlKind.Slider
+            UiFlat::set_selected(widget, state.selected) if kind == ControlKind.CheckBox or kind == ControlKind.RadioButton
+            app_widget_event(widget, event)
+            return true
+
+    private:
+        # The retained widget each control was made from, in the list's own
+        # order. Sized with the list, so a slot always has an answer.
+        global mutable retained_slots: usize[MAX_CONTROLS] = zeroed
+
+        # A retained kind and the control that realizes it. The two
+        # vocabularies were drawn from the same list of things a toolkit has,
+        # so this is a rename and not a policy.
+        def retained_kind_of(node: UiFlat::Widget, is_window: bool) -> ControlKind:
+            return ControlKind.Window if is_window
+            return ControlKind.Panel if node.kind == UiConst::WidgetKind.Panel
+            return ControlKind.ScrollView if node.kind == UiConst::WidgetKind.Scroll
+            return ControlKind.Label if node.kind == UiConst::WidgetKind.Label
+            return ControlKind.PushButton if node.kind == UiConst::WidgetKind.Button
+            return ControlKind.CheckBox if node.kind == UiConst::WidgetKind.CheckBox
+            return ControlKind.RadioButton if node.kind == UiConst::WidgetKind.RadioButton
+            return ControlKind.TextField if node.kind == UiConst::WidgetKind.TextField
+            return ControlKind.Slider if node.kind == UiConst::WidgetKind.Slider
+            return ControlKind.ProgressBar if node.kind == UiConst::WidgetKind.ProgressBar
+            return ControlKind.Panel
+
+        # A retained slider and meter are normalized to the unit interval, so
+        # the range is not a widget field to read but a fact about the layer.
+        def retained_state_of(node: UiFlat::Widget, kind: ControlKind) -> ControlState:
+            return ControlState{value: UiCore::normalized_unit(node.value), low: 0.0, high: 1.0, selected: false} if kind == ControlKind.Slider or kind == ControlKind.ProgressBar
+            return ControlState{value: 0.0, low: 0.0, high: 1.0, selected: node.selected} if kind == ControlKind.CheckBox or kind == ControlKind.RadioButton
+            return ControlState{value: 0.0, low: 0.0, high: 1.0, selected: false}
+
+        # A text field's caption and its VALUE are two different strings, and
+        # the one a native field shows is the value. Every other kind shows
+        # the one string it has.
+        def retained_text_of(index: usize, node: UiFlat::Widget, kind: ControlKind) -> sview:
+            return UiCore::bounded_text(UiFlat::text_value(index)) if kind == ControlKind.TextField
+            return UiCore::bounded_text(node.text)
+
+        # The same two roles palette_of fills, read off a retained widget. A
+        # slider and a meter keep the framework's convention: the fill colour
+        # is the bar and the base colour is the track.
+        def retained_palette_of(node: UiFlat::Widget, kind: ControlKind) -> Palette:
+            return Palette{ink: node.hover_color, fill: node.color} if kind == ControlKind.Slider or kind == ControlKind.ProgressBar
+            return Palette{ink: node.text_color, fill: transparent_ink()} if kind == ControlKind.Label
+            return Palette{ink: node.text_color, fill: node.color} if kind == ControlKind.TextField
+            return Palette{ink: transparent_ink(), fill: transparent_ink()} if kind == ControlKind.PushButton or kind == ControlKind.CheckBox or kind == ControlKind.RadioButton
+            return Palette{ink: transparent_ink(), fill: node.color}
+
+        # One retained widget and its subtree, parent first, with the same two
+        # bounds the hierarchy walk keeps: a depth and a sibling count, so a
+        # malformed arena cannot exhaust the list or the host call stack.
+        def realize_retained_node(index: usize, parent: i32, depth: i32, is_window: bool) -> void:
+            return if depth >= MAX_REALIZE_DEPTH or index >= UiFlat::count()
+            node: UiFlat::Widget = UiFlat::widget(index)
+            # A HIDDEN WIDGET IS NOT A CONTROL. The retained layer keeps every
+            # page of the showcase in the tree and shows one; realizing the
+            # other four would hand the platform four interfaces to stack.
+            return if not node.visible
+            if total >= MAX_CONTROLS:
+                control_dropped <- true
+                return
+            slot: usize = total
+            total <- total + 1
+            kind: ControlKind = retained_kind_of(node, is_window)
+            state: ControlState = retained_state_of(node, kind)
+            palette: Palette = retained_palette_of(node, kind)
+            ops[slot].kind <- kind
+            ops[slot].window_mode <- WindowMode.Resizable if is_window else WindowMode.Fixed
+            ops[slot].axis <- node.axis
+            ops[slot].state_value <- state.value
+            ops[slot].state_low <- state.low
+            ops[slot].state_high <- state.high
+            ops[slot].state_selected <- state.selected
+            ops[slot].parent <- parent
+            ops[slot].box <- UiCore::Rect(node.x, node.y, node.width, node.height)
+            ops[slot].text <- copy_control_text(slot, retained_text_of(index, node, kind))
+            ops[slot].ink <- palette.ink
+            ops[slot].fill <- palette.fill
+            ops[slot].native_handle <- 0
+            retained_slots[slot] <- index
+            cursor: mutable usize = node.first_child
+            for _ in 0..<MAX_REALIZE_SIBLINGS:
+                break if cursor == UiFlat::NONE or cursor >= UiFlat::count()
+                realize_retained_node(cursor, slot.i32(), depth + 1, false)
+                next: usize = UiFlat::widget(cursor).next_sibling
+                break if next == cursor
+                cursor <- next

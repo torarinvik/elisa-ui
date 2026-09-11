@@ -1,9 +1,22 @@
-# Widget-to-native-control policy for UiControls.
+# The IMMEDIATE hierarchy, realized as native controls.
 #
-# The retained control arena stays in ui_controls.elisa. This extension owns
-# only the exhaustive mapping from hierarchy variants to control kinds, state,
-# window decoration, and bounded captions before a backend crosses the FFI.
+# UiWidgets is one of the two application layers that fill the control list;
+# this file is everything the seam needs to know about it and nothing the seam
+# needs to know without it. A program that builds a hierarchy includes this; a
+# program that builds a retained tree includes ui_controls_flat.elisa instead.
+# Linking both is not merely unnecessary, it is not possible: the compiler
+# declines a unit that holds both layers' tree walks.
 
+include "./ui_controls.elisa"
+include "./ui_hierarchy.elisa"
+# ui_ops `extend`s UiWidgets with the passes; box_of lives there, not in the
+# type declarations.
+include "./ui_ops.elisa"
+
+extend UiControls:
+    # The mapping is public for the reason it was before this file existed: a
+    # test asks what a widget kind becomes without realizing a tree.
+    public:
         def normalized_slider(value: f32, low: f32, high: f32) -> ControlState:
             lower: mutable f32 = UiCore::bounded_coordinate(low)
             upper: mutable f32 = UiCore::bounded_coordinate(high)
@@ -17,36 +30,36 @@
 
         # Which OS control realizes this widget. Exhaustive on purpose: a
         # widget kind added without a control is a compile error here.
-        def kind_of(w: UiWidgets::Widget) -> Kind:
+        def kind_of(w: UiWidgets::Widget) -> ControlKind:
             match w:
                 UiWidgets::Window.Top(title, resizable):
-                    return Kind.Window
+                    return ControlKind.Window
                 UiWidgets::Window.Floating(title):
-                    return Kind.Window
+                    return ControlKind.Window
                 UiWidgets::Container.Box(axis, padding, spacing, fill):
-                    return Kind.Panel
+                    return ControlKind.Panel
                 UiWidgets::Container.Grid(columns, padding, spacing, fill):
-                    return Kind.Panel
+                    return ControlKind.Panel
                 UiWidgets::Container.Scroll(axis, offset, fill):
-                    return Kind.ScrollView
+                    return ControlKind.ScrollView
                 UiWidgets::Container.ScrollWithState(axis, state, fill):
-                    return Kind.ScrollView
+                    return ControlKind.ScrollView
                 UiWidgets::Control.Label(text, size, ink):
-                    return Kind.Label
+                    return ControlKind.Label
                 UiWidgets::Control.Gauge(fraction, track, bar):
-                    return Kind.ProgressBar
+                    return ControlKind.ProgressBar
                 UiWidgets::Control.Slider(value, low, high, track, knob):
-                    return Kind.Slider
+                    return ControlKind.Slider
                 UiWidgets::Control.TextBox(text, caret, size, ink, fill):
-                    return Kind.TextField
+                    return ControlKind.TextField
                 UiWidgets::Button.Push(label, rest, hover, press):
-                    return Kind.PushButton
+                    return ControlKind.PushButton
                 UiWidgets::Button.Toggle(label, on, rest, hover, press):
-                    return Kind.ToggleButton
+                    return ControlKind.ToggleButton
                 UiWidgets::Button.Check(label, checked, rest, hover, press):
-                    return Kind.CheckBox
+                    return ControlKind.CheckBox
                 UiWidgets::Button.Radio(label, group, selected, rest, hover, press):
-                    return Kind.RadioButton
+                    return ControlKind.RadioButton
 
         # Which of a widget's colours a native control may honour. See
         # UiControls::Palette for why a button's are not among them.
@@ -75,9 +88,6 @@
                     return Palette{ink: knob, fill: track}
                 _:
                     return Palette{ink: transparent_ink(), fill: transparent_ink()}
-
-        def transparent_ink() -> UiCore::Color:
-            return UiCore::rgba(0, 0, 0, 0)
 
         # The hierarchy's window variants carry the only decoration policy the
         # controls seam needs. All non-window controls use the neutral value.
@@ -131,3 +141,47 @@
 
         def normalized_text(value: sview) -> sview:
             return UiCore::bounded_text(value)
+
+        # Walk one widget and its subtree, PARENT FIRST, so the OS tree comes out
+        # with the widget tree's shape and a child's parent already exists.
+        #
+        # Past MAX_CONTROLS a subtree is dropped rather than overwriting a live record:
+        # a missing control is visible and fixable, a corrupted one is neither.
+        def realize(w: UiWidgets::Widget, parent: i32, depth: i32) -> void:
+            if depth >= MAX_REALIZE_DEPTH:
+                control_dropped <- true
+                return
+            if total >= MAX_CONTROLS:
+                control_dropped <- true
+                return
+            index: usize = total
+            total <- total + 1
+            ops[index].kind <- kind_of(w)
+            ops[index].window_mode <- window_mode_of(w)
+            ops[index].axis <- UiWidgets::axis_of(w)
+            state: ControlState = state_of(w)
+            # Write the compact state fields explicitly. Besides making the
+            # record layout obvious, this avoids depending on aggregate
+            # assignment for a mixed float/bool payload in stage0.
+            ops[index].state_value <- state.value
+            ops[index].state_low <- state.low
+            ops[index].state_high <- state.high
+            ops[index].state_selected <- state.selected
+            ops[index].parent <- parent
+            ops[index].box <- UiWidgets::box_of(w)
+            ops[index].text <- copy_control_text(index, text_of(w))
+            palette: Palette = palette_of(w)
+            ops[index].ink <- palette.ink
+            ops[index].fill <- palette.fill
+            ops[index].native_handle <- 0
+            cursor: mutable UiWidgets::Widget? = w.first_child if UiWidgets::can_nest(w) else null
+            sibling_steps: mutable i32 = 0
+            while cursor is node |cursor, index, sibling_steps|:
+                if sibling_steps >= MAX_REALIZE_SIBLINGS:
+                    control_dropped <- true
+                    break
+                realize(node, index.i32(), depth + 1)
+                sibling_steps <- sibling_steps + 1
+                cursor <- node.next_sibling
+            # The root call is the one that has a whole tree to mirror.
+            mirror_control_boxes() if parent == NO_PARENT
