@@ -68,9 +68,25 @@
 #      and registering the settling round's consts before `break if settled` in
 #      Backend::select_module_declarations (tried as a compiler patch -- no effect).
 #
-#      Not root-caused. The next step is instrumenting select_module_declarations
-#      (src/backend/codegen_module.elisa) to print, per round, which static lines are
-#      taken and whether the win32 names reach the fn/const tables.
+#      INSTRUMENTED, and this is the sharpest fact so far: declare_extern is NEVER
+#      CALLED for the win32 externs. Planting a marker at the entry of
+#      Backend::declare_extern (src/backend/codegen_declare_extern.elisa) that fires
+#      for "GetCurrentProcess", alongside a positive control that fires for "malloc",
+#      a Windows build reports the control twice (entered + registered) and the test
+#      not at all. So the externs never reach the declare pass, which walks the
+#      FLATTENED `top` list (src/backend/codegen_debug.elisa) -- while a marker `def`
+#      planted in the very same block IS emitted into the object.
+#
+#      Next step: probe what `top` actually holds at that loop -- whether the win32
+#      block's `def` (win_commit_round_up) arrives while its externs do not. Use
+#      record_declined_function(name, m, ctx) as the output channel; it needs no print
+#      plumbing, since the names land in the same "backend declined" warning.
+#
+#      Note when instrumenting: two functions in codegen_declare_extern.elisa open with
+#      the identical line `if declaration is Decl.Extern(...)`, so a naive
+#      first-occurrence patch lands in register_one_opaque_extern instead. Anchor after
+#      `def declare_extern(`. And the seed refuses to run concurrently with another
+#      seed on the host, so a patch-seed-probe loop must serialize.
 #
 #      TECHNIQUE, because it cost an afternoon: `static error(...)` is NOT valid at top
 #      level. A probe that plants one there dies as a parse error, prints nothing your
