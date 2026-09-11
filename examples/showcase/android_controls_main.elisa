@@ -1,0 +1,72 @@
+# The showcase, on Android, as REAL native controls.
+#
+# The same five pages, the same theming, the same validation and the same
+# sources the Skia build paints -- realized as TextViews, Buttons, CheckBoxes,
+# EditTexts, SeekBars and ProgressBars instead of drawn. Nothing in
+# examples/showcase changed to make this possible: the retained tree it already
+# builds is walked into the control list every native backend consumes, and the
+# backend is chosen by which entry point the application links.
+
+include "../../src/platform/android/ui_android_controls_flat.elisa"
+include "app.elisa"
+
+global mutable showcase_built: bool = false
+
+# Android measures its own views, so the retained layout only needs something
+# consistent to size boxes with. A native label is told its text and finds its
+# own width; what this decides is how much room the layout leaves it.
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    return text.len.f32() * size * 0.55 * (1.08 if weighted else 1.0)
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size
+def ui_font_ascent(size: f32) -> f32:
+    return size
+def ui_text_line_height(size: f32) -> f32:
+    return size * 1.3
+
+# THE RETAINED EDITOR IS NOT THE ONE EDITING. A text field on this path is a
+# real EditText: Android owns its selection, its caret and its own copy and
+# paste. The framework's editor -- and so the clipboard it asks its host for --
+# is never reached.
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return 0
+
+def lay_out_and_realize() -> void:
+    can Memory.Allocate, Abort.Panic, Ui.Controls, Unsafe.PointerCast, Ui.Window, Ui.Draw, Ui.Text, Ui.Input:
+        width: f32 = UiAndroidControls::surface_width()
+        height: f32 = UiAndroidControls::surface_height()
+        UiCore::set_viewport(width, height)
+        UiHandles::layout(width, height)
+        UiAndroidControls::realize_retained()
+
+# The Activity calls this once it has a laid-out root, and again whenever that
+# root changes size. The tree is built once; every later call lays the SAME
+# tree out against the new surface and replaces the views.
+def app_controls_realize() -> void:
+    can Memory.Allocate, Abort.Panic, Ui.Controls, Unsafe.PointerCast, Ui.Window, Ui.Draw, Ui.Text, Ui.Input:
+        if not showcase_built:
+            UiCore::set_viewport(UiAndroidControls::surface_width(), UiAndroidControls::surface_height())
+            showcase_built <- true
+            ShowcaseApp::init()
+        lay_out_and_realize()
+
+# A native view reported something. The seam has already written the new value
+# into the control list; retained_action carries it into the widget and hands
+# the application the event through the hook it already has. The tree it
+# changes in response is laid out and realized again -- the same loop a painted
+# backend runs, with a realize where the paint would be.
+def app_control_event(index: i32, event: i32) -> void:
+    can Memory.Allocate, Abort.Panic, Ui.Controls, Unsafe.PointerCast, Ui.Window, Ui.Draw, Ui.Text, Ui.Input:
+        return if not UiControls::retained_action(index, event)
+        lay_out_and_realize()
+
+def main() -> i64:
+    # An Activity is the entry; this unit is a library. The symbol exists so
+    # the compiler has a program.
+    return 0

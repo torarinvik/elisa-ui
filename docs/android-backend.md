@@ -157,6 +157,61 @@ The soft keyboard follows the retained focus and nothing else: the host asks
 because those calls are posted to the UI thread and repeating them would fight
 whatever the user is doing with the keyboard themselves.
 
+# The Android native-controls backend
+
+Android has two backends, mirroring macOS and iOS: the Skia canvas above, and
+one that owns no pixels at all
+([`ui_android_controls.elisa`](../src/platform/android/ui_android_controls.elisa)).
+It creates **TextViews, Buttons, CheckBoxes, RadioButtons, EditTexts, SeekBars
+and ProgressBars** and lets Android draw them, lay out their text, run its own
+IME, mirror right-to-left and speak to TalkBack — the things you cannot get by
+drawing rectangles, and the reason to want native controls at all.
+
+```
+scripts/build_android_controls.sh showcase
+```
+
+**This is the one backend that needs Java.** Everywhere else on Android this
+framework gets by without it: the canvas is a NativeActivity whose APK has
+`hasCode="false"`, because a surface to draw into is the one thing the NDK
+hands over directly. A real `android.widget.Button` is not — the widget toolkit
+lives on the Java side and has no C API — so this APK carries a `classes.dex`
+with exactly two classes and the library talks to them over JNI:
+
+| | |
+|---|---|
+| [`ElisaControlsActivity.java`](../src/platform/android/java/org/elisa_ui/ElisaControlsActivity.java) | Owns the native library, one root view, and the moments Elisa is told the surface exists or changed size. |
+| [`ElisaControls.java`](../src/platform/android/java/org/elisa_ui/ElisaControls.java) | A bridge of static methods: create an object, place it, set a property. No decision. |
+| [`android_controls_jni.c`](../src/platform/android/android_controls_jni.c) | The crossing. One static method per entry point, looked up once. |
+
+Every decision — which control a widget becomes, where it sits, which of its
+colours may cross, what an action means — is taken in Elisa before any of that
+runs. The Java is a bridge and the C is a crossing; neither has a policy in it.
+
+**It realizes the retained tree**, the same one the Skia backend paints, through
+the same `UiControls` seam the Apple backends use. `examples/showcase/android_controls_main.elisa`
+is the showcase — all five pages, the same sources — as real Android views, and
+nothing under `examples/showcase` changed to allow it. See
+[docs/uikit-backend.md](uikit-backend.md) for what crosses the seam and what
+stops at it; the rules are the seam's, not a platform's.
+
+Three things this platform decides differently, and they are worth knowing:
+
+- **A `SeekBar` counts whole steps.** The framework carries a unit interval, so
+  the backend gives it a thousand of them, which is finer than a finger on any
+  screen that has shipped.
+- **A layout listener fires on every layout pass**, and realizing adds and
+  removes views, which asks for another pass. Without remembering the size it
+  last realized against, the Activity and the realization drive each other and
+  the interface never settles — which is exactly what happened, at 24% of a
+  CPU, before the Activity started comparing.
+- **A native view wants to be bigger than the box it is given.** Android's
+  widgets carry a minimum height, generous vertical padding and an extra line
+  of font padding, all sized for a toolkit that measures its own layout. Placed
+  at a box the framework already computed, a view that insists on more does not
+  grow — it clips its own words. The minimums and the vertical padding go; the
+  horizontal padding stays, because a check box's mark lives in it.
+
 ## What is not here yet
 
 No clipboard (a NativeActivity reaches the system one only through JNI), no IME

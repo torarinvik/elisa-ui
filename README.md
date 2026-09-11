@@ -98,7 +98,14 @@ because a module member's symbol carries its module and those names cannot move.
   [Android](src/platform/android/ui_android.elisa) (a NativeActivity with no
   Java in it: the host locks the window's buffer, wraps it in a Skia surface
   and the same `UiSkia` painter replays the batch onto it, with the content
-  rect as safe-area insets and a hand-written touch-to-pan gesture -- see
+  rect as safe-area insets and a hand-written touch-to-pan gesture)
+  and
+  [Android controls](src/platform/android/ui_android_controls.elisa) (real
+  android.widget views -- TextViews, Buttons, CheckBoxes, EditTexts, SeekBars
+  and ProgressBars -- realized from the same retained tree through the same
+  `UiControls` protocol the Apple backends implement; the one backend here
+  that needs Java, because the widget toolkit has no C API, so the APK carries
+  two classes and the library talks to them over JNI -- see
   [docs/android-backend.md](docs/android-backend.md)),
   plus
   [wasmbrowser](src/platform/wasmbrowser/ui_wasmbrowser.elisa) (a component

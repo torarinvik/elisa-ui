@@ -1,0 +1,163 @@
+# The Android native-controls backend: real android.widget views.
+#
+# The other Android backend paints every pixel with Skia into a NativeActivity
+# window. This one paints none: it creates TextViews, Buttons, CheckBoxes,
+# EditTexts, SeekBars and ProgressBars and lets Android draw them, lay out
+# their text, run its own IME, mirror right-to-left and speak to TalkBack.
+# Those are the things you cannot get by drawing rectangles, and they are the
+# reason to want native controls at all.
+#
+# THE WIDGET TOOLKIT LIVES ON THE JAVA SIDE and has no C API, so unlike every
+# other backend here this one cannot be a shim over a platform header. The
+# bridge is JNI, the Java half is a class of static methods that create an
+# object and set a property, and every decision -- which control a widget
+# becomes, where it sits, which of its colours may cross, what an action means
+# -- is taken here, before any of it runs.
+
+include "../../core/ui_capabilities.elisa"
+include "../../widgets/ui_controls.elisa"
+
+extern elisa_android_controls_create(kind: i32, vertical: i32) -> i32
+extern elisa_android_controls_add_child(parent: i32, child: i32) -> void
+extern elisa_android_controls_set_frame(handle: i32, x: f32, y: f32, width: f32, height: f32) -> void
+extern elisa_android_controls_set_text(handle: i32, bytes: u8&, length: usize) -> void
+extern elisa_android_controls_set_text_color(handle: i32, color: u32) -> void
+extern elisa_android_controls_set_background_color(handle: i32, color: u32) -> void
+extern elisa_android_controls_set_tint_color(handle: i32, color: u32) -> void
+extern elisa_android_controls_set_track_color(handle: i32, color: u32) -> void
+extern elisa_android_controls_set_state(handle: i32, value: f32, selected: i32) -> void
+extern elisa_android_controls_set_action(handle: i32) -> void
+extern elisa_android_controls_release_all() -> void
+extern elisa_android_controls_attach_root(handle: i32) -> void
+
+module UiAndroidControls:
+    public:
+        # The backend. A TYPE, not a value: native handles live in UiControls'
+        # retained records, so methods are static and the specialization
+        # inlines straight through to the typed C entry points.
+        struct AndroidControls:
+            unused: i32
+
+        def native_handle(index: i32) -> i32:
+            return 0 if index < 0 or index.usize() >= UiControls::count()
+            return UiControls::native_handle_at(index.usize()).i32()
+
+        def surface_width() -> f32:
+            return android_controls_width
+
+        def surface_height() -> f32:
+            return android_controls_height
+
+        def live() -> bool:
+            return android_controls_started
+
+        def set_surface(width: f32, height: f32) -> bool:
+            return false if not UiCore::is_finite(width) or not UiCore::is_finite(height)
+            return false if width <= 0.0 or height <= 0.0
+            android_controls_width <- UiCore::bounded_extent(width)
+            android_controls_height <- UiCore::bounded_extent(height)
+            android_controls_started <- true
+            return true
+
+        def stop() -> void:
+            can[Ui.Controls]:
+                android_controls_started <- false
+                elisa_android_controls_release_all()
+                UiControls::reset()
+
+        # The two halves every realization shares, named for the same reason
+        # the iOS ones are: there are two ways to fill the control list and
+        # everything around the filling is common to both.
+        def begin_realize() -> void:
+            can[Ui.Controls]:
+                elisa_android_controls_release_all()
+
+        def finish_realize() -> void:
+            can[Ui.Controls]:
+                elisa_android_controls_attach_root(native_handle(0))
+
+    private:
+        global mutable android_controls_started: bool = false
+        global mutable android_controls_width: f32 = 0.0
+        global mutable android_controls_height: f32 = 0.0
+
+        def record_created(index: i32, handle: i32, parent: i32) -> void:
+            can[Ui.Controls]:
+                return if handle == 0 or index < 0
+                UiControls::set_native_handle(index.usize(), handle.usize())
+                parent_handle: i32 = native_handle(parent)
+                elisa_android_controls_add_child(parent_handle, handle) if parent >= 0 and parent_handle != 0
+
+        def packed_argb(color: UiCore::Color) -> u32:
+            return (color.a.u32() << 24) | (color.r.u32() << 16) | (color.g.u32() << 8) | color.b.u32()
+
+        def kind_is_button(kind: UiControls::ControlKind) -> bool:
+            return kind == UiControls::ControlKind.PushButton or kind == UiControls::ControlKind.ToggleButton or kind == UiControls::ControlKind.CheckBox or kind == UiControls::ControlKind.RadioButton
+
+        # A meter has no range of its own on this platform either, so the
+        # value is normalized here and the bridge stays free of framework
+        # value policy.
+        def unit_fraction(value: f32, low: f32, high: f32) -> f32:
+            return 0.0 if not UiCore::is_finite(value) or not UiCore::is_finite(low) or not UiCore::is_finite(high)
+            span: f32 = high - low
+            return 0.0 if span <= 0.0
+            fraction: f32 = (value - low) / span
+            return 0.0 if fraction < 0.0
+            return 1.0 if fraction > 1.0
+            return fraction
+
+    public:
+        impl Controls for AndroidControls:
+            def create(index: i32, kind: UiControls::ControlKind, parent: i32, window_mode: UiControls::WindowMode, axis: UiConst::Axis, state: UiControls::ControlState) -> void:
+                can Ui.Controls:
+                    # An Activity owns the only window, so a Window control is
+                    # an ordinary container view here for the same reason it is
+                    # on iOS: inventing a second one the platform would never
+                    # show is worse than keeping the hierarchy as given.
+                    _ = window_mode
+                    _ = state
+                    vertical: i32 = 0 if axis == UiConst::Axis.Row else 1
+                    record_created(index, elisa_android_controls_create(kind.i32(), vertical), parent)
+
+            def set_frame(index: i32, kind: UiControls::ControlKind, box: UiCore::Rect) -> void:
+                can Ui.Controls:
+                    _ = kind
+                    handle: i32 = native_handle(index)
+                    return if handle == 0
+                    elisa_android_controls_set_frame(handle, box.origin.x, box.origin.y, box.size.width, box.size.height)
+
+            # The same four slots the Apple backends fill, under Android's
+            # names. See UiControls::Palette for what reaches here.
+            def set_colors(index: i32, kind: UiControls::ControlKind, ink: UiCore::Color, fill: UiCore::Color) -> void:
+                can Ui.Controls:
+                    handle: i32 = native_handle(index)
+                    return if handle == 0
+                    if kind == UiControls::ControlKind.Slider or kind == UiControls::ControlKind.ProgressBar:
+                        elisa_android_controls_set_tint_color(handle, packed_argb(ink)) if ink.a != 0
+                        elisa_android_controls_set_track_color(handle, packed_argb(fill)) if fill.a != 0
+                        return
+                    if kind == UiControls::ControlKind.Label or kind == UiControls::ControlKind.TextField or kind_is_button(kind):
+                        elisa_android_controls_set_text_color(handle, packed_argb(ink)) if ink.a != 0
+                    elisa_android_controls_set_background_color(handle, packed_argb(fill)) if fill.a != 0
+
+            def set_text(index: i32, kind: UiControls::ControlKind, text: sview) -> void:
+                can Ui.Controls:
+                    _ = kind
+                    handle: i32 = native_handle(index)
+                    return if handle == 0
+                    safe: sview = UiCore::bounded_text(text)
+                    return if safe.len <= 0 or safe.data == null
+                    elisa_android_controls_set_text(handle, safe.data[0], safe.len.usize())
+
+            def set_state(index: i32, kind: UiControls::ControlKind, value: f32, low: f32, high: f32, selected: bool) -> void:
+                can Ui.Controls:
+                    handle: i32 = native_handle(index)
+                    return if handle == 0
+                    fraction: f32 = unit_fraction(value, low, high) if kind == UiControls::ControlKind.Slider or kind == UiControls::ControlKind.ProgressBar else 0.0
+                    elisa_android_controls_set_state(handle, fraction, 1 if selected else 0)
+
+            def set_action(index: i32, kind: UiControls::ControlKind) -> void:
+                can Ui.Controls:
+                    _ = kind
+                    handle: i32 = native_handle(index)
+                    elisa_android_controls_set_action(handle) if handle != 0

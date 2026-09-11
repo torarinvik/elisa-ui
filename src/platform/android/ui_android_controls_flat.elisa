@@ -1,0 +1,53 @@
+# The retained layer, on Android, as real android.widget views.
+#
+# The sibling of the iOS file of the same shape, and for the same reason: the
+# controls seam has two application layers, a program links one of them, and
+# the compiler declines a unit holding both. This is the half that knows the
+# retained tree -- the one every application in this repository builds, and
+# the one the Skia backend paints.
+
+include "./ui_android_controls.elisa"
+include "../../widgets/ui_controls_flat.elisa"
+
+extend UiAndroidControls:
+    public:
+        def realize_retained() -> void:
+            can[Ui.Controls]:
+                begin_realize()
+                UiControls::realize_retained()
+                UiControls::apply[AndroidControls]()
+                finish_realize()
+
+# The Activity's own moments, and a control's. Each is one call from Java, and
+# the application's entry point decides what happens next -- which is the same
+# contract every other backend here offers.
+def android_controls_start(width: f32, height: f32) -> i32:
+    can Memory.Allocate, Abort.Panic, Ui.Controls, Unsafe.PointerCast, Ui.Window, Ui.Draw, Ui.Text, Ui.Input:
+        return 0 if not UiAndroidControls::set_surface(width, height)
+        UiCapabilities::use_android_controls()
+        app_controls_realize()
+        return 1
+
+def android_controls_resize(width: f32, height: f32) -> void:
+    can Memory.Allocate, Abort.Panic, Ui.Controls, Unsafe.PointerCast, Ui.Window, Ui.Draw, Ui.Text, Ui.Input:
+        return if not UiAndroidControls::live()
+        return if not UiAndroidControls::set_surface(width, height)
+        app_controls_realize()
+
+def android_controls_stop() -> void:
+    can Ui.Controls:
+        UiAndroidControls::stop()
+
+# A view reported something. The seam resolves the handle back to the control
+# index, records the new value, and calls the application -- the same path
+# every other native backend's action callback takes.
+def android_controls_event(handle: i32, event: i32, value: f32, selected: i32) -> void:
+    can Memory.Allocate, Abort.Panic, Ui.Controls, Unsafe.PointerCast, Ui.Window, Ui.Draw, Ui.Text, Ui.Input:
+        return if handle <= 0
+        kind: UiConst::WidgetEvent = UiConst::WidgetEvent.Change if event == UiConst::WidgetEvent.Change.i32() else UiConst::WidgetEvent.Click
+        _ = UiControls::dispatch_native_action(handle.usize(), kind, value, selected != 0)
+
+export fn elisa_android_controls_start(width: f32, height: f32) -> i32 = android_controls_start
+export fn elisa_android_controls_resize(width: f32, height: f32) -> void = android_controls_resize
+export fn elisa_android_controls_stop() -> void = android_controls_stop
+export fn elisa_android_controls_event(handle: i32, event: i32, value: f32, selected: i32) -> void = android_controls_event
