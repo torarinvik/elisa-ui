@@ -127,11 +127,13 @@ the host stubs therefore records the widget KIND rather than a boolean: zero is
 a push button and non-zero is selectable, so the old reading still holds, and
 `uikit_controls_test` now asserts the exact kind so the mapping cannot drift.
 
-**Not verified:** the unticked appearance. The showcase's only captionless
-selectable starts ticked, and driving a tap on the simulator needs the XCUITest
-runner. The mechanism is the standard one — the handler swaps on `isSelected`,
-which `set_button_selected` drives and the host test already covers — but the
-empty square has not been looked at.
+**Both halves are verified.** `examples/hello/uikit_controls_main.elisa` now
+carries a captionless, *unticked* check box, which it did not before -- an
+example whose purpose is to exercise every kind had no control of the one shape
+this mark exists for, so the unticked branch was the single thing in this
+backend nothing here could show. On a booted simulator it draws as an empty
+`square` beside "Wrap lines", which is captioned, ticked, and correctly wears
+no mark at all.
 
 A composite (a `UIView` holding a `UILabel` and a real `UISwitch`, the
 container being the control's handle) is still the thing that would make the
