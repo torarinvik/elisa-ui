@@ -86,12 +86,16 @@
 #      `ARENA_BACKEND == ARENA_BACKEND_WIN32_VIRTUALALLOC` at all, while it does fold the
 #      LINUX_MMAP arm of the same chain on a macOS build.
 #
-#      That is the lead to pull next, and note that ARENA_BACKEND is declared TWICE in the
-#      std -- arena.elisa and collections.elisai each carry their own copy of the selection
-#      chain, and collections.elisai additionally defines a local `const
-#      ELISA_TARGET_OS_WASM: bool = false`. register_target_consts refuses to re-register a
-#      name that already exists (`continue if const_index_of(...) >= 0`), so which file's
-#      ARENA_BACKEND wins, and with what value, is worth measuring before anything else.
+#      ARENA_BACKEND is declared TWICE in the std -- arena.elisa and collections.elisai each
+#      carry their own copy of the selection chain, and the .elisai also defines a local
+#      `const ELISA_TARGET_OS_WASM: bool = false`. That looked like the answer and is NOT:
+#      replacing the .elisai's whole chain with an unconditional
+#      `const ARENA_BACKEND: int = ARENA_BACKEND_WIN32_VIRTUALALLOC` leaves all four
+#      declines in place. So the interface file's copy is not what the fold consults.
+#
+#      What is left to try: instrument fold_const_expr itself on that comparison and see
+#      what it resolves ARENA_BACKEND to (and whether it resolves it at all) on a Windows
+#      build, against a macOS build as the control.
 #
 #      Unexplained alongside it, and worth reconciling: a marker `def` planted in that same
 #      win32 block IS emitted into the object (llvm-nm, with marker_decl_mmap absent on the
