@@ -335,11 +335,47 @@ public final class ElisaControls {
         }
     }
 
-    public static void setState(int handle, float value, boolean selected) {
+    public static void setState(int handle, float value, boolean selected, boolean enabled, boolean secure) {
         View view = viewOf(handle);
+        if (view == null) return;
+        // A disabled control is not a greyer one: Android changes its own
+        // contrast, stops its touches and tells TalkBack it is unavailable.
+        view.setEnabled(enabled);
+        if (view instanceof EditText) {
+            EditText field = (EditText) view;
+            // SECURE IS AN INPUT TYPE HERE, and setting it also picks the
+            // keyboard, turns off suggestions and stops the IME learning what
+            // was typed. Setting it again would reset the typeface and the
+            // caret, so only a real change is written.
+            int wanted = android.text.InputType.TYPE_CLASS_TEXT
+                | (secure ? android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+                          : android.text.InputType.TYPE_TEXT_VARIATION_NORMAL);
+            if (field.getInputType() != wanted) {
+                int caret = field.getSelectionStart();
+                field.setInputType(wanted);
+                // setInputType resets the typeface to monospace for a password
+                // field; Android's own fields keep the theme's.
+                field.setTypeface(Typeface.DEFAULT);
+                int length = field.getText() == null ? 0 : field.getText().length();
+                field.setSelection(caret < 0 ? 0 : (caret > length ? length : caret));
+            }
+            return;
+        }
         if (view instanceof SeekBar) ((SeekBar) view).setProgress(Math.round(value * SLIDER_STEPS));
         else if (view instanceof ProgressBar) ((ProgressBar) view).setProgress(Math.round(value * SLIDER_STEPS));
         else if (view instanceof CompoundButton) ((CompoundButton) view).setChecked(selected);
+    }
+
+    // A placeholder is a hint on Android; the help text is what TalkBack reads
+    // beyond whatever caption the view already carries. Before this, nothing
+    // here set a contentDescription at all.
+    public static void setHelp(int handle, String placeholder, String help) {
+        View view = viewOf(handle);
+        if (view == null) return;
+        if (view instanceof EditText) ((EditText) view).setHint(placeholder == null ? "" : placeholder);
+        // An empty description is not a description: leaving it null lets the
+        // view's own text speak, which is what a Button or a TextView wants.
+        view.setContentDescription(help == null || help.length() == 0 ? null : help);
     }
 
     // The toolkit reports the raw fact; Elisa decides what it means. A

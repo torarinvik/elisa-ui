@@ -90,6 +90,40 @@ that an unchanged report raises nothing (which is what stops a backend that
 re-realizes on every event from chasing its own tail), that clearing a field is
 a real edit, and that a label refuses a write-back it should never receive.
 
+## What a control is, beyond its words and its value
+
+Three facts the seam did not carry, and what each costs when it does not:
+
+- **`secure`.** `UiHandles::secure_text_field` exists and the painted backends
+  mask it; the native ones realized a plain `UITextField` with the characters
+  in the clear. It travels in `ControlState` rather than beside the caption
+  because the platforms decide it at construction — AppKit needs
+  `NSSecureTextField`, a different class — and a backend already receives the
+  state at `create`. On iOS it is a property, so the showcase's "Show password"
+  checkbox flips it on the same field.
+- **`enabled`.** A disabled control is not a greyer control: UIKit changes its
+  contrast, stops its touches and tells VoiceOver it is unavailable. None of
+  that is reachable by drawing.
+- **The strings that are not the caption.** A field's placeholder is the
+  platform's own affordance, and the help text is what VoiceOver adds after the
+  label. Both are content, so by this seam's rule they cross; neither is the
+  control's text, so neither can ride on `set_text`. Hence `set_help`.
+
+`set_state` takes the record whole rather than four scalars, which is what kept
+this from being a four-backend edit — and what will keep the next fact from
+being one.
+
+**A comparison that forgets a field makes that field unchangeable.** Adding
+`secure` and `enabled` without adding them to the reconciler's state comparison
+left the "show password" toggle doing nothing, silently. The test caught it
+immediately, which is the only reason this sentence is about a near miss.
+
+**AppKit implements `set_help` as a no-op and says so.** It has a place for all
+three — `NSControl.enabled`, `NSTextField.placeholderString`,
+`NSView.accessibilityHelp` — but it is the one backend that cannot be watched
+from here, and adding four setters blind would be claiming a nativeness nothing
+has looked at.
+
 ## Realizing again keeps what did not change
 
 Realizing used to mean destroying every control and building a new one. For a

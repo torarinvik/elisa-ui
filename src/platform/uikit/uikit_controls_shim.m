@@ -301,6 +301,34 @@ void elisa_uikit_controls_focus(size_t handle, int caret) {
     input.selectedTextRange = [input textRangeFromPosition:position toPosition:position];
 }
 
+void elisa_uikit_controls_set_accessibility_hint(size_t handle, size_t text) {
+    elisa_uikit_controls_view(handle).accessibilityHint = elisa_uikit_controls_string(text);
+}
+
+void elisa_uikit_controls_set_placeholder(size_t handle, size_t text) {
+    UIView *view = elisa_uikit_controls_view(handle);
+    if ([view isKindOfClass:[UITextField class]]) ((UITextField *)view).placeholder = elisa_uikit_controls_string(text);
+}
+
+// A disabled control is not a greyer control: UIKit changes its contrast, stops
+// its touches and tells VoiceOver it is not available. None of that is
+// reachable by drawing.
+void elisa_uikit_controls_set_enabled(size_t handle, int enabled) {
+    UIView *view = elisa_uikit_controls_view(handle);
+    if ([view isKindOfClass:[UIControl class]]) ((UIControl *)view).enabled = enabled != 0;
+    else view.userInteractionEnabled = enabled != 0;
+}
+
+// secureTextEntry is a property rather than a class here, so a "show password"
+// toggle flips it on the same field.
+void elisa_uikit_controls_set_secure(size_t handle, int secure) {
+    UIView *view = elisa_uikit_controls_view(handle);
+    if (![view isKindOfClass:[UITextField class]]) return;
+    UITextField *field = (UITextField *)view;
+    if (field.secureTextEntry == (secure != 0)) return;
+    field.secureTextEntry = secure != 0;
+}
+
 void elisa_uikit_controls_set_accessibility_label(size_t handle, size_t text) {
     elisa_uikit_controls_view(handle).accessibilityLabel = elisa_uikit_controls_string(text);
 }

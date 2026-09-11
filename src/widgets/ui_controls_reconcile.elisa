@@ -70,6 +70,12 @@ extend UiControls:
         global mutable applied_height: f32[MAX_CONTROLS] = zeroed
         global mutable applied_value: f32[MAX_CONTROLS] = zeroed
         global mutable applied_selected: bool[MAX_CONTROLS] = zeroed
+        global mutable applied_enabled: bool[MAX_CONTROLS] = zeroed
+        global mutable applied_secure: bool[MAX_CONTROLS] = zeroed
+        global mutable applied_placeholder_length: usize[MAX_CONTROLS] = zeroed
+        global mutable applied_help_length: usize[MAX_CONTROLS] = zeroed
+        global mutable applied_placeholder: u8[CONTROL_HINT_STORAGE_SIZE] = zeroed
+        global mutable applied_help: u8[CONTROL_HINT_STORAGE_SIZE] = zeroed
         global mutable applied_ink: u32[MAX_CONTROLS] = zeroed
         global mutable applied_fill: u32[MAX_CONTROLS] = zeroed
 
@@ -126,9 +132,17 @@ extend UiControls:
             same_size: bool = placed.size.width == applied_width[index] and placed.size.height == applied_height[index]
             return same_origin and same_size
 
+        # EVERY FIELD OF THE STATE, not the two it started with. A comparison
+        # that forgets one makes that field unchangeable: adding `secure` and
+        # `enabled` without adding them here left a "show password" toggle
+        # doing nothing at all, silently.
         def state_unchanged_at(index: usize) -> bool:
             return false if index >= MAX_CONTROLS
-            return ops[index].state_value == applied_value[index] and ops[index].state_selected == applied_selected[index]
+            same_value: bool = ops[index].state_value == applied_value[index]
+            same_selected: bool = ops[index].state_selected == applied_selected[index]
+            same_enabled: bool = ops[index].state_enabled == applied_enabled[index]
+            same_secure: bool = ops[index].state_secure == applied_secure[index]
+            return same_value and same_selected and same_enabled and same_secure
 
         # THE ONE THAT MATTERS. A field the user is typing in reports its text,
         # the framework writes it into the list, and the next realization would
@@ -159,6 +173,8 @@ extend UiControls:
             return if index >= MAX_CONTROLS
             applied_value[index] <- ops[index].state_value
             applied_selected[index] <- ops[index].state_selected
+            applied_enabled[index] <- ops[index].state_enabled
+            applied_secure[index] <- ops[index].state_secure
 
         # A COLOUR IS NOT DECORATION. The showcase turns a validation message
         # from its danger colour to its success colour and leaves the words
@@ -179,6 +195,32 @@ extend UiControls:
         # One word per colour, so a comparison is one integer and not four.
         def packed_color(color: UiCore::Color) -> u32:
             return (color.a.u32() << 24) | (color.r.u32() << 16) | (color.g.u32() << 8) | color.b.u32()
+
+        def hint_matches(stored: u8&, stored_length: usize, offset: usize, value: sview) -> bool:
+            return false if value.len.usize() != stored_length
+            same: bool =
+                for byte_index in 0..<value.len.usize() |same = true| -> same:
+                    same <- false if value.data[byte_index] != stored[offset + byte_index]
+                    break if not same
+            return same
+
+        def hints_unchanged_at(index: usize) -> bool:
+            return false if index >= MAX_CONTROLS
+            offset: usize = index * CONTROL_HINT_CAPACITY
+            return false if not hint_matches(&applied_placeholder[0], applied_placeholder_length[index], offset, placeholder_at(index))
+            return hint_matches(&applied_help[0], applied_help_length[index], offset, help_at(index))
+
+        def note_applied_hints(index: usize) -> void:
+            return if index >= MAX_CONTROLS
+            offset: usize = index * CONTROL_HINT_CAPACITY
+            prompt: sview = placeholder_at(index)
+            applied_placeholder_length[index] <- prompt.len.usize()
+            for byte_index in 0..<prompt.len.usize():
+                applied_placeholder[offset + byte_index] <- prompt.data[byte_index]
+            hint: sview = help_at(index)
+            applied_help_length[index] <- hint.len.usize()
+            for byte_index in 0..<hint.len.usize():
+                applied_help[offset + byte_index] <- hint.data[byte_index]
 
         def note_applied_text(index: usize) -> void:
             return if index >= MAX_CONTROLS

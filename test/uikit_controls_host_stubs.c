@@ -259,3 +259,40 @@ void elisa_uikit_controls_set_progress(size_t handle, float fraction) {
     int slot = slot_of(handle);
     if (slot >= 0) created_progress[slot] = fraction;
 }
+
+// The facts a control carries beyond its words and its value. Recorded rather
+// than ignored, so the host-side test can assert that a secure field crosses
+// as secure without an iOS runtime in sight.
+static int created_secure[ELISA_UIKIT_CONTROLS_MAX];
+static int created_enabled[ELISA_UIKIT_CONTROLS_MAX];
+static size_t created_placeholder[ELISA_UIKIT_CONTROLS_MAX];
+static size_t created_hint[ELISA_UIKIT_CONTROLS_MAX];
+
+void elisa_uikit_controls_set_secure(size_t handle, int secure) {
+    int slot = slot_of(handle);
+    if (slot >= 0) created_secure[slot] = secure;
+}
+void elisa_uikit_controls_set_enabled(size_t handle, int enabled) {
+    int slot = slot_of(handle);
+    if (slot >= 0) created_enabled[slot] = enabled;
+}
+void elisa_uikit_controls_set_placeholder(size_t handle, size_t text) {
+    int slot = slot_of(handle);
+    if (slot >= 0) created_placeholder[slot] = text;
+}
+void elisa_uikit_controls_set_accessibility_hint(size_t handle, size_t text) {
+    int slot = slot_of(handle);
+    if (slot >= 0) created_hint[slot] = text;
+}
+int elisa_uikit_controls_stub_secure(int slot) {
+    return slot < 0 || slot >= created_count ? -1 : created_secure[slot];
+}
+int elisa_uikit_controls_stub_enabled(int slot) {
+    return slot < 0 || slot >= created_count ? -1 : created_enabled[slot];
+}
+int elisa_uikit_controls_stub_has_placeholder(int slot) {
+    return slot < 0 || slot >= created_count ? -1 : (created_placeholder[slot] != 0);
+}
+int elisa_uikit_controls_stub_has_hint(int slot) {
+    return slot < 0 || slot >= created_count ? -1 : (created_hint[slot] != 0);
+}

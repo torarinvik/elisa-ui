@@ -180,18 +180,44 @@ module UiUIKitControls:
                     value_change: bool = UiControls::action_event_for(kind) == UiConst::WidgetEvent.Change
                     elisa_uikit_controls_set_action(handle, 1 if value_change else 0)
 
-            def set_state(index: i32, kind: UiControls::ControlKind, value: f32, low: f32, high: f32, selected: bool) -> void:
+            def set_state(index: i32, kind: UiControls::ControlKind, state: UiControls::ControlState) -> void:
                 can Ui.Controls:
                     handle: usize = native_handle(index)
                     return if handle == 0
+                    # Enabled first, and for every kind: a disabled control has
+                    # its own iOS look, its own contrast and its own answer for
+                    # VoiceOver, and gets none of them by being drawn greyer.
+                    elisa_uikit_controls_set_enabled(handle, 1 if state.enabled else 0)
+                    if kind == UiControls::ControlKind.TextField:
+                        # secureTextEntry is a property here, so a "show
+                        # password" toggle needs no new control.
+                        elisa_uikit_controls_set_secure(handle, 1 if state.secure else 0)
+                        return
                     if kind == UiControls::ControlKind.ToggleButton or kind == UiControls::ControlKind.CheckBox or kind == UiControls::ControlKind.RadioButton:
-                        elisa_uikit_controls_set_button_selected(handle, 1 if selected else 0)
+                        elisa_uikit_controls_set_button_selected(handle, 1 if state.selected else 0)
                         return
                     if kind == UiControls::ControlKind.Slider:
-                        elisa_uikit_controls_set_slider_state(handle, low, high, value)
+                        elisa_uikit_controls_set_slider_state(handle, state.low, state.high, state.value)
                         return
                     if kind == UiControls::ControlKind.ProgressBar:
-                        elisa_uikit_controls_set_progress(handle, progress_fraction(value, low, high))
+                        elisa_uikit_controls_set_progress(handle, progress_fraction(state.value, state.low, state.high))
+
+            # A PLACEHOLDER IS THE FIELD'S OWN AFFORDANCE and the hint is what
+            # VoiceOver adds after the label. Only a field has somewhere to put
+            # the first; everything gets the second.
+            def set_help(index: i32, kind: UiControls::ControlKind, placeholder: sview, help: sview) -> void:
+                can Ui.Controls:
+                    handle: usize = native_handle(index)
+                    return if handle == 0
+                    if kind == UiControls::ControlKind.TextField:
+                        prompt: usize = native_string(placeholder)
+                        if prompt != 0:
+                            elisa_uikit_controls_set_placeholder(handle, prompt)
+                            CFRelease(prompt)
+                    hint: usize = native_string(help)
+                    return if hint == 0
+                    elisa_uikit_controls_set_accessibility_hint(handle, hint)
+                    CFRelease(hint)
 
         # UIKit reports which control acted and what it now holds. Turning
         # that into a control index, recording the value and choosing the event

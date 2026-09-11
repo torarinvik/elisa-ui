@@ -28,7 +28,7 @@ static jmethodID m_set_background_color, m_set_tint_color, m_set_track_color;
 static jmethodID m_set_state, m_set_action, m_release_all, m_attach_root;
 static jmethodID m_measure_text, m_line_height, m_minimum_height;
 static jmethodID m_is_focused, m_caret, m_focus;
-static jmethodID m_release;
+static jmethodID m_release, m_set_help;
 
 static JNIEnv *elisa_env(void) {
     JNIEnv *env = NULL;
@@ -57,7 +57,8 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
     m_set_background_color = (*env)->GetStaticMethodID(env, c, "setBackgroundColor", "(II)V");
     m_set_tint_color = (*env)->GetStaticMethodID(env, c, "setTintColor", "(II)V");
     m_set_track_color = (*env)->GetStaticMethodID(env, c, "setTrackColor", "(II)V");
-    m_set_state = (*env)->GetStaticMethodID(env, c, "setState", "(IFZ)V");
+    m_set_state = (*env)->GetStaticMethodID(env, c, "setState", "(IFZZZ)V");
+    m_set_help = (*env)->GetStaticMethodID(env, c, "setHelp", "(ILjava/lang/String;Ljava/lang/String;)V");
     m_set_action = (*env)->GetStaticMethodID(env, c, "setAction", "(I)V");
     m_release_all = (*env)->GetStaticMethodID(env, c, "releaseAll", "()V");
     m_attach_root = (*env)->GetStaticMethodID(env, c, "attachRoot", "(I)V");
@@ -175,10 +176,38 @@ void elisa_android_controls_set_track_color(int32_t handle, uint32_t argb) {
     if (env != NULL) (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_set_track_color, handle, (jint)argb);
 }
 
-void elisa_android_controls_set_state(int32_t handle, float value, int32_t selected) {
+void elisa_android_controls_set_state(int32_t handle, float value, int32_t selected,
+                                      int32_t enabled, int32_t secure) {
     JNIEnv *env = elisa_env();
     if (env != NULL) (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_set_state, handle, value,
-                                                  selected != 0 ? JNI_TRUE : JNI_FALSE);
+                                                  selected != 0 ? JNI_TRUE : JNI_FALSE,
+                                                  enabled != 0 ? JNI_TRUE : JNI_FALSE,
+                                                  secure != 0 ? JNI_TRUE : JNI_FALSE);
+}
+
+// Two short strings across in one call, each bounded the same way a caption is.
+void elisa_android_controls_set_help(int32_t handle, const uint8_t *prompt, size_t prompt_length,
+                                     const uint8_t *help, size_t help_length) {
+    JNIEnv *env = elisa_env();
+    if (env == NULL) return;
+    char prompt_buffer[ELISA_CONTROLS_TEXT_MAX + 1];
+    char help_buffer[ELISA_CONTROLS_TEXT_MAX + 1];
+    size_t prompt_take = prompt_length > ELISA_CONTROLS_TEXT_MAX ? ELISA_CONTROLS_TEXT_MAX : prompt_length;
+    size_t help_take = help_length > ELISA_CONTROLS_TEXT_MAX ? ELISA_CONTROLS_TEXT_MAX : help_length;
+    if (prompt_take > 0 && prompt != NULL) memcpy(prompt_buffer, prompt, prompt_take);
+    if (help_take > 0 && help != NULL) memcpy(help_buffer, help, help_take);
+    prompt_buffer[prompt_take] = '\0';
+    help_buffer[help_take] = '\0';
+    jstring prompt_text = (*env)->NewStringUTF(env, prompt_buffer);
+    if (prompt_text == NULL) return;
+    jstring help_text = (*env)->NewStringUTF(env, help_buffer);
+    if (help_text == NULL) {
+        (*env)->DeleteLocalRef(env, prompt_text);
+        return;
+    }
+    (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_set_help, handle, prompt_text, help_text);
+    (*env)->DeleteLocalRef(env, prompt_text);
+    (*env)->DeleteLocalRef(env, help_text);
 }
 
 void elisa_android_controls_set_action(int32_t handle) {

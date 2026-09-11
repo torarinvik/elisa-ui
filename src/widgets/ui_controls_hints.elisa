@@ -1,0 +1,45 @@
+# THE STRINGS THAT ARE NOT THE CAPTION.
+#
+# A field's placeholder is the platform's own affordance -- iOS greys it inside
+# the field, Android calls it a hint -- and the help text is what a screen
+# reader says beyond the label. Both are content, so by the seam's own rule
+# they cross to a native control; neither is the control's text, so neither can
+# ride on set_text.
+#
+# They live in a file of their own for the reason the driver does: the
+# vocabulary file had reached the length this project holds a source to.
+
+extend UiControls:
+    private:
+        global mutable control_placeholder_storage: u8[CONTROL_HINT_STORAGE_SIZE] = zeroed
+        global mutable control_help_storage: u8[CONTROL_HINT_STORAGE_SIZE] = zeroed
+
+        # The two short strings share one shape; a caller names which arena.
+        def copy_control_hint(storage: mutable u8&, index: usize, value: sview) -> sview:
+            return "" if index >= MAX_CONTROLS
+            safe: sview = UiCore::bounded_text(value)
+            offset: usize = index * CONTROL_HINT_CAPACITY
+            for byte_index in 0..<CONTROL_HINT_CAPACITY:
+                storage[offset + byte_index] <- 0
+            room: usize = safe.len.usize() if safe.len.usize() < CONTROL_HINT_CAPACITY else CONTROL_HINT_CAPACITY
+            # Clip on a UTF-8 boundary; half a sequence is not a short string,
+            # it is a broken one, and every consumer of this view decodes it.
+            take: usize = UiText::valid_utf8_prefix(safe, room)
+            for byte_index in 0..<take:
+                storage[offset + byte_index] <- safe.data[byte_index]
+            return sview(&storage[offset], 0, take.i64())
+
+        def copy_control_placeholder(index: usize, value: sview) -> sview:
+            return copy_control_hint(&control_placeholder_storage[0], index, value)
+
+        def copy_control_help(index: usize, value: sview) -> sview:
+            return copy_control_hint(&control_help_storage[0], index, value)
+
+    public:
+        def placeholder_at(index: usize) -> sview:
+            return "" if index >= total
+            return ops[index].placeholder
+
+        def help_at(index: usize) -> sview:
+            return "" if index >= total
+            return ops[index].help

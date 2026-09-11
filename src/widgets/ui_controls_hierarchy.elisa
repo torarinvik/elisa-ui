@@ -26,7 +26,7 @@ extend UiControls:
                 upper <- swap
             candidate: f32 = UiCore::bounded_coordinate(value)
             safe_value: f32 = lower if candidate < lower else (upper if candidate > upper else candidate)
-            return ControlState{value: safe_value, low: lower, high: upper, selected: false}
+            return ControlState{value: safe_value, low: lower, high: upper, selected: false, enabled: true, secure: false}
 
         # Which OS control realizes this widget. Exhaustive on purpose: a
         # widget kind added without a control is a compile error here.
@@ -101,20 +101,26 @@ extend UiControls:
                     return WindowMode.Fixed
 
         # Extract widget values once, in Elisa, before the native boundary.
+        #
+        # THIS LAYER CARRIES NO `enabled`, `secure`, PLACEHOLDER OR HELP. The
+        # immediate hierarchy's variants do not have those fields, so every
+        # control it realizes is enabled, unmasked and unhinted -- stated here
+        # rather than left as a silent default, because the retained layer next
+        # door does carry all four and a reader will wonder.
         def state_of(w: UiWidgets::Widget) -> ControlState:
             match w:
                 UiWidgets::Control.Gauge(fraction, track, bar):
-                    return ControlState{value: UiCore::normalized_unit(fraction), low: 0.0, high: 1.0, selected: false}
+                    return ControlState{value: UiCore::normalized_unit(fraction), low: 0.0, high: 1.0, selected: false, enabled: true, secure: false}
                 UiWidgets::Control.Slider(value, low, high, track, knob):
                     return normalized_slider(value, low, high)
                 UiWidgets::Button.Toggle(label, on, rest, hover, press):
-                    return ControlState{value: 0.0, low: 0.0, high: 1.0, selected: on}
+                    return ControlState{value: 0.0, low: 0.0, high: 1.0, selected: on, enabled: true, secure: false}
                 UiWidgets::Button.Check(label, checked, rest, hover, press):
-                    return ControlState{value: 0.0, low: 0.0, high: 1.0, selected: checked}
+                    return ControlState{value: 0.0, low: 0.0, high: 1.0, selected: checked, enabled: true, secure: false}
                 UiWidgets::Button.Radio(label, group, selected, rest, hover, press):
-                    return ControlState{value: 0.0, low: 0.0, high: 1.0, selected: selected}
+                    return ControlState{value: 0.0, low: 0.0, high: 1.0, selected: selected, enabled: true, secure: false}
                 _:
-                    return ControlState{value: 0.0, low: 0.0, high: 1.0, selected: false}
+                    return ControlState{value: 0.0, low: 0.0, high: 1.0, selected: false, enabled: true, secure: false}
 
         # The text a control shows. Empty for anything that carries none, so a
         # backend can set it unconditionally.
@@ -167,9 +173,13 @@ extend UiControls:
             ops[index].state_low <- state.low
             ops[index].state_high <- state.high
             ops[index].state_selected <- state.selected
+            ops[index].state_enabled <- state.enabled
+            ops[index].state_secure <- state.secure
             ops[index].parent <- parent
             ops[index].box <- UiWidgets::box_of(w)
             ops[index].text <- copy_control_text(index, text_of(w))
+            ops[index].placeholder <- copy_control_placeholder(index, "")
+            ops[index].help <- copy_control_help(index, "")
             palette: Palette = palette_of(w)
             ops[index].ink <- palette.ink
             ops[index].fill <- palette.fill

@@ -266,12 +266,42 @@ reason — Android throws `IllegalStateException` for a child that still has a
 parent, and through JNI a pending exception becomes a CheckJNI abort on the
 *next* call, which is why that crash first appeared inside `set_action`.
 
+## A password field is a password field
+
+`UiHandles::secure_text_field` exists and the painted backends mask it. The
+native backends carried no such fact, so the showcase's password field was a
+plain `EditText` with the characters in the clear — and the platform's own
+accessibility dump said so: `password="false"` on all three fields, and
+`hint=""` on every one of them.
+
+`secure` and `enabled` now travel in `ControlState`, which a backend already
+receives at `create` — that ordering matters, because AppKit needs a different
+class for a secure field rather than a property. Here it is an input type, and
+setting it also picks the keyboard, turns off suggestions and stops the IME
+learning what was typed. It is written only on a real change: `setInputType`
+resets the typeface to monospace and drops the caret, so a field being typed in
+would lose both on every keystroke.
+
+The same call carries `enabled`, because a disabled control is not a greyer
+one — Android changes its contrast, stops its touches and tells TalkBack it is
+unavailable. And `setHelp` carries the two strings that are not the caption: a
+field's placeholder becomes its hint, and a widget's help text becomes the
+`contentDescription`.
+
+Verified on a Pixel 9 through `uiautomator dump`: `password="true"` on the
+secure field alone, the real placeholder on each of the three, and the
+showcase's own "Show password" checkbox flipping `password` back to `false`
+live — which is the reconciler carrying a state change to an adopted control.
+
 ## What is not here yet
 
 No clipboard (a NativeActivity reaches the system one only through JNI), no IME
-composition (the same), no accessibility — **TalkBack gets whatever caption a
-view happens to carry and nothing else; no `contentDescription` is set** — and
-no configuration changes beyond resize. The manifest declares
+composition (the same), and no configuration changes beyond resize.
+
+Accessibility is partly here now: a widget's help text becomes the view's
+`contentDescription`, so TalkBack reads more than whatever caption a view
+happens to carry. What is still missing is a role or a live-region hint for
+anything the platform cannot infer from the view class. The manifest declares
 `configChanges="orientation|screenSize|screenLayout|keyboardHidden|density"`, so
 a rotation arrives as a resize rather than a restart, which the backend already
 handles.

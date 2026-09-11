@@ -81,6 +81,10 @@ global mutable released: usize = 0
 global mutable log_state_writes: i32[LOG_CAP] = zeroed
 global mutable log_color_writes: i32[LOG_CAP] = zeroed
 global mutable log_ink: u8[LOG_CAP] = zeroed
+global mutable log_prompt_len: i64[LOG_CAP] = zeroed
+global mutable log_help_len: i64[LOG_CAP] = zeroed
+global mutable log_secure: bool[LOG_CAP] = zeroed
+global mutable log_enabled: bool[LOG_CAP] = zeroed
 global mutable log_text_writes: i32[LOG_CAP] = zeroed
 
 struct RecordingControls:
@@ -112,9 +116,16 @@ impl Controls for RecordingControls:
         log_text_first[index.usize()] <- text.data[0] if text.len > 0 else 0
         log_text_writes[index.usize()] <- log_text_writes[index.usize()] + 1
 
-    def set_state(index: i32, kind: UiControls::ControlKind, value: f32, low: f32, high: f32, selected: bool) -> void can[Ui.Controls]:
+    def set_state(index: i32, kind: UiControls::ControlKind, state: UiControls::ControlState) -> void can[Ui.Controls]:
         return if index < 0 or index.usize() >= LOG_CAP
         log_state_writes[index.usize()] <- log_state_writes[index.usize()] + 1
+        log_secure[index.usize()] <- state.secure
+        log_enabled[index.usize()] <- state.enabled
+
+    def set_help(index: i32, kind: UiControls::ControlKind, placeholder: sview, help: sview) -> void can[Ui.Controls]:
+        return if index < 0 or index.usize() >= LOG_CAP
+        log_prompt_len[index.usize()] <- placeholder.len
+        log_help_len[index.usize()] <- help.len
 
     def set_action(index: i32, kind: UiControls::ControlKind) -> void can[Ui.Controls]:
         pass
@@ -462,6 +473,43 @@ def main() -> i64:
         UiFlat::layout(320.0, 480.0)
         realize_reconciling()
         check("an unchanged colour is not rewritten", log_color_writes[status_slot] == 0)
+
+        # ---- a password field is not a plain field --------------------------
+        #
+        # UiHandles::secure_text_field exists and the painted backends mask it.
+        # The native backends carried no such fact at all, so the showcase's
+        # password field was a plain UITextField and a plain EditText with the
+        # characters in the clear. A screenshot would not have told you; the
+        # platform's own view dump did -- password="false" on all three.
+        UiFlat::reset()
+        UiControls::reset()
+        form: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 0.0, 0.0, grey(20))
+        plain: UiHandles::Handle = UiHandles::text_field(form, "Email", "you@example.org", "", 200.0, 30.0, 12.0, grey(230), grey(40))
+        secret: UiHandles::Handle = UiHandles::secure_text_field(form, "Password", "at least 8", "", 200.0, 30.0, 12.0, grey(230), grey(40))
+        UiHandles::set_enabled(plain, false)
+        UiHandles::layout(320.0, 480.0)
+        UiControls::realize_retained()
+        UiControls::apply[RecordingControls]()
+        plain_slot: usize = slot_for_widget(UiHandles::index(plain))
+        secret_slot: usize = slot_for_widget(UiHandles::index(secret))
+        check("a secure field crosses as secure", log_secure[secret_slot])
+        check("an ordinary field does not", not log_secure[plain_slot])
+        check("a disabled widget crosses as disabled", not log_enabled[plain_slot])
+        check("an ordinary widget stays enabled", log_enabled[secret_slot])
+
+        # A placeholder is the platform's own affordance; before this it was
+        # dropped and every native field showed an empty hint.
+        check("a field's placeholder crosses", log_prompt_len[secret_slot] == 10)
+        check("and its help text crosses", log_help_len[secret_slot] >= 0)
+
+        # Turning secure OFF is what a "show password" toggle does, and it has
+        # to reach the control like any other state change.
+        log_state_writes[secret_slot] <- 0
+        UiHandles::set_secure(secret, false)
+        UiFlat::layout(320.0, 480.0)
+        realize_reconciling()
+        check("clearing secure reaches the control", log_state_writes[secret_slot] == 1)
+        check("and the control is no longer secure", not log_secure[secret_slot])
 
         if test_failures == 0:
             _ = puts("controls flat: all checks passed")

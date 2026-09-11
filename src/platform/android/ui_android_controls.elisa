@@ -25,7 +25,8 @@ extern elisa_android_controls_set_text_color(handle: i32, color: u32) -> void
 extern elisa_android_controls_set_background_color(handle: i32, color: u32) -> void
 extern elisa_android_controls_set_tint_color(handle: i32, color: u32) -> void
 extern elisa_android_controls_set_track_color(handle: i32, color: u32) -> void
-extern elisa_android_controls_set_state(handle: i32, value: f32, selected: i32) -> void
+extern elisa_android_controls_set_state(handle: i32, value: f32, selected: i32, enabled: i32, secure: i32) -> void
+extern elisa_android_controls_set_help(handle: i32, prompt: u8&, prompt_length: usize, help: u8&, help_length: usize) -> void
 extern elisa_android_controls_set_action(handle: i32) -> void
 extern elisa_android_controls_release_all() -> void
 extern elisa_android_controls_release(handle: i32) -> void
@@ -36,6 +37,8 @@ extern elisa_android_controls_minimum_height(kind: i32) -> f32
 extern elisa_android_controls_is_focused(handle: i32) -> i32
 extern elisa_android_controls_caret(handle: i32) -> i32
 extern elisa_android_controls_focus(handle: i32, caret: i32) -> void
+
+const ANDROID_HINT_CAPACITY: usize = 192
 
 module UiAndroidControls:
     public:
@@ -125,6 +128,19 @@ module UiAndroidControls:
         # An edit arrives as borrowed JNI bytes; the seam keeps its view of
         # them until the next one, so they are copied here.
         global mutable android_controls_text_bytes: u8[UiCore::MAX_TEXT_BYTES] = zeroed
+        global mutable android_prompt_bytes: u8[ANDROID_HINT_CAPACITY] = zeroed
+        global mutable android_hint_bytes: u8[ANDROID_HINT_CAPACITY] = zeroed
+
+        # Copy a short string into backend storage and answer its length.
+        def stage_hint(target: mutable u8&, value: sview) -> usize:
+            safe: sview = UiCore::bounded_text(value)
+            room: usize = safe.len.usize() if safe.len.usize() < ANDROID_HINT_CAPACITY else ANDROID_HINT_CAPACITY
+            take: usize = UiText::valid_utf8_prefix(safe, room)
+            for index in 0..<ANDROID_HINT_CAPACITY:
+                target[index] <- 0
+            for index in 0..<take:
+                target[index] <- safe.data[index]
+            return take
         global mutable android_controls_width: f32 = 0.0
         global mutable android_controls_height: f32 = 0.0
 
@@ -196,12 +212,25 @@ module UiAndroidControls:
                     return if safe.len <= 0 or safe.data == null
                     elisa_android_controls_set_text(handle, safe.data[0], safe.len.usize())
 
-            def set_state(index: i32, kind: UiControls::ControlKind, value: f32, low: f32, high: f32, selected: bool) -> void:
+            def set_state(index: i32, kind: UiControls::ControlKind, state: UiControls::ControlState) -> void:
                 can Ui.Controls:
                     handle: i32 = native_handle(index)
                     return if handle == 0
-                    fraction: f32 = unit_fraction(value, low, high) if kind == UiControls::ControlKind.Slider or kind == UiControls::ControlKind.ProgressBar else 0.0
-                    elisa_android_controls_set_state(handle, fraction, 1 if selected else 0)
+                    fraction: f32 = unit_fraction(state.value, state.low, state.high) if kind == UiControls::ControlKind.Slider or kind == UiControls::ControlKind.ProgressBar else 0.0
+                    elisa_android_controls_set_state(handle, fraction, 1 if state.selected else 0, 1 if state.enabled else 0, 1 if state.secure else 0)
+
+            # A hint inside the field, and what TalkBack says beyond whatever
+            # caption the view already carries.
+            def set_help(index: i32, kind: UiControls::ControlKind, placeholder: sview, help: sview) -> void:
+                can Ui.Controls:
+                    handle: i32 = native_handle(index)
+                    return if handle == 0
+                    # Copied into storage this backend owns, so an empty
+                    # string still has an address to hand across: JNI wants a
+                    # pointer either way and a zero-length view has none.
+                    prompt_length: usize = stage_hint(&android_prompt_bytes[0], placeholder)
+                    hint_length: usize = stage_hint(&android_hint_bytes[0], help)
+                    elisa_android_controls_set_help(handle, android_prompt_bytes[0], prompt_length, android_hint_bytes[0], hint_length)
 
             def set_action(index: i32, kind: UiControls::ControlKind) -> void:
                 can Ui.Controls:

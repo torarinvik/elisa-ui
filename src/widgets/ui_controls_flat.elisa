@@ -122,10 +122,14 @@ extend UiControls:
 
         # A retained slider and meter are normalized to the unit interval, so
         # the range is not a widget field to read but a fact about the layer.
+        # `secure` is only meaningful on a field, but it is read off the
+        # widget rather than guessed: UiFlat keeps it per widget and a "show
+        # password" toggle turns it off on the same one.
         def retained_state_of(node: UiFlat::Widget, kind: ControlKind) -> ControlState:
-            return ControlState{value: UiCore::normalized_unit(node.value), low: 0.0, high: 1.0, selected: false} if kind == ControlKind.Slider or kind == ControlKind.ProgressBar
-            return ControlState{value: 0.0, low: 0.0, high: 1.0, selected: node.selected} if kind == ControlKind.CheckBox or kind == ControlKind.RadioButton
-            return ControlState{value: 0.0, low: 0.0, high: 1.0, selected: false}
+            return ControlState{value: UiCore::normalized_unit(node.value), low: 0.0, high: 1.0, selected: false, enabled: node.enabled, secure: false} if kind == ControlKind.Slider or kind == ControlKind.ProgressBar
+            return ControlState{value: 0.0, low: 0.0, high: 1.0, selected: node.selected, enabled: node.enabled, secure: false} if kind == ControlKind.CheckBox or kind == ControlKind.RadioButton
+            return ControlState{value: 0.0, low: 0.0, high: 1.0, selected: false, enabled: node.enabled, secure: node.secure} if kind == ControlKind.TextField
+            return ControlState{value: 0.0, low: 0.0, high: 1.0, selected: false, enabled: node.enabled, secure: false}
 
         # A text field's caption and its VALUE are two different strings, and
         # the one a native field shows is the value. Every other kind shows
@@ -169,9 +173,13 @@ extend UiControls:
             ops[slot].state_low <- state.low
             ops[slot].state_high <- state.high
             ops[slot].state_selected <- state.selected
+            ops[slot].state_enabled <- state.enabled
+            ops[slot].state_secure <- state.secure
             ops[slot].parent <- parent
             ops[slot].box <- UiCore::Rect(node.x, node.y, node.width, node.height)
             ops[slot].text <- copy_control_text(slot, retained_text_of(index, node, kind))
+            ops[slot].placeholder <- copy_control_placeholder(slot, node.placeholder)
+            ops[slot].help <- copy_control_help(slot, node.help)
             ops[slot].ink <- palette.ink
             ops[slot].fill <- palette.fill
             ops[slot].native_handle <- 0
