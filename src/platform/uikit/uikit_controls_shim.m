@@ -53,6 +53,38 @@ extern int elisa_uikit_controls_realize(size_t rootView, float width, float heig
     self.elisaRealizedSize = CGSizeZero;
     [self.view setNeedsLayout];
 }
+
+// DYNAMIC TYPE AND DARK MODE CHANGE THE LAYOUT, NOT JUST THE PIXELS.
+//
+// Every control here opts into `adjustsFontForContentSizeCategory`, so UIKit
+// grows their text when the reader asks for larger type. Nothing grew the
+// BOXES: the retained layout computed those from the entry point's
+// measurements, once, at the old size -- so the words got bigger inside frames
+// that did not, which is the clipping this framework has already been caught
+// doing on Android, for the same reason.
+//
+// A trait change therefore re-lays-out and realizes again. It costs almost
+// nothing now that a realization adopts the controls that did not change, and
+// it is the only way a native control's own Dynamic Type behaviour reaches a
+// layout the framework owns. The same registration covers a light/dark switch,
+// whose colours the application resolves in its own theme.
+//
+// Registered rather than overridden: -traitCollectionDidChange: is deprecated
+// from iOS 17 and this target builds with -Werror.
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    __weak ElisaUiKitControlsViewController *weakSelf = self;
+    [self registerForTraitChanges:@[UITraitPreferredContentSizeCategory.class,
+                                    UITraitUserInterfaceStyle.class]
+                      withHandler:^(id<UITraitEnvironment> environment, UITraitCollection *previous) {
+        (void)environment;
+        (void)previous;
+        ElisaUiKitControlsViewController *controller = weakSelf;
+        if (controller == nil) return;
+        controller.elisaRealizedSize = CGSizeZero;
+        [controller.view setNeedsLayout];
+    }];
+}
 @end
 
 @interface ElisaUiKitControlsAppDelegate : UIResponder <UIApplicationDelegate>

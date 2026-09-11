@@ -90,6 +90,33 @@ that an unchanged report raises nothing (which is what stops a backend that
 re-realizes on every event from chasing its own tail), that clearing a field is
 a real edit, and that a label refuses a write-back it should never receive.
 
+## Dynamic Type and dark mode change the layout, not just the pixels
+
+Every control this backend builds opts into `adjustsFontForContentSizeCategory`,
+so UIKit grows its text when the reader asks for larger type. Nothing grew the
+**boxes**: the retained layout computed those once, from the entry point's
+measurements, at the old size — so the words got bigger inside frames that did
+not, which is exactly the clipping this framework was already caught doing on
+Android, for the same reason.
+
+The controls view controller now registers for `UITraitPreferredContentSizeCategory`
+and `UITraitUserInterfaceStyle` and re-lays-out on either. It registers rather
+than overriding `-traitCollectionDidChange:`, which is deprecated from iOS 17
+and this target builds with `-Werror`. Re-realizing on a trait change costs
+almost nothing now that a realization adopts the controls that did not change,
+and it is the only way a native control's own Dynamic Type behaviour reaches a
+layout the framework owns.
+
+**The mapping table used to promise controls this backend has never built.**
+Its iOS column said `UISwitch` for a toggle and `UISegmented` for a radio
+group; the code builds a selectable `UIButton` for all three, and always has. A
+switch carries no caption and a segmented control is one control for a whole
+group, while this seam realizes one widget as one control and each of these
+widgets carries its own words. Splitting a labelled boolean into a label plus a
+switch is a real upgrade and a real change to the list's shape — not something
+a table can promise on the code's behalf. The table now says what the code
+does; the upgrade is still open.
+
 ## What a control is, beyond its words and its value
 
 Three facts the seam did not carry, and what each costs when it does not:
