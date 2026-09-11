@@ -410,10 +410,20 @@ std::int32_t on_input(android_app* app, AInputEvent* event) {
         if (code == AKEYCODE_BACK) return 0;
         const std::int32_t key = framework_key(code);
         if (key != 0) elisa_android_key(key, action == AKEY_EVENT_ACTION_DOWN ? 1 : 0);
-        if (action == AKEY_EVENT_ACTION_DOWN) {
-            const std::uint32_t scalar = printable_scalar(code, AKeyEvent_getMetaState(event));
-            if (scalar != 0) elisa_android_text(scalar);
-        }
+        // TEXT COMES FROM THE IME NOW, NOT FROM THIS TABLE.
+        //
+        // Turning a key code into a character here was the only way to type
+        // while this APK had no Java and therefore no InputConnection. It is
+        // also a hardcoded US layout, which is a poor way to serve a keyboard
+        // the user chose. Now that ElisaCanvasActivity supplies a real input
+        // connection, the IME delivers text -- and leaving both paths on
+        // inserted every character twice, which is exactly what "Hello"
+        // arriving as "HeellIloo" looked like on the first run.
+        //
+        // The key events themselves still flow: arrows, backspace, tab, enter
+        // and the clipboard chords are navigation and editing, not text, and
+        // the IME does not deliver them.
+        (void)printable_scalar;
         host.needs_frame = true;
         return key != 0 ? 1 : 0;
     }

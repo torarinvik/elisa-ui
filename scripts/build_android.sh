@@ -58,6 +58,7 @@ grep -q "pthread_attr_setstacksize" "$OUT/android_native_app_glue.c" || { echo "
 "$CLANGXX" -c "${CXXFLAGS[@]}" -I"$NDK/sources/android/native_app_glue" \
   -o "$OUT/android_skia_host.o" "$ROOT/src/platform/android/android_skia_host.cpp"
 "$CLANGXX" -c "${CXXFLAGS[@]}" -o "$OUT/android_clipboard.o" "$ROOT/src/platform/android/android_clipboard.cpp"
+"$CLANG" -c -fPIC -o "$OUT/android_ime_jni.o" "$ROOT/src/platform/android/android_ime_jni.c"
 "$CLANGXX" -c "${CXXFLAGS[@]}" -o "$OUT/skia_canvas_shim.o" "$ROOT/src/platform/skia/skia_canvas_shim.cpp"
 "$CLANGXX" -c "${CXXFLAGS[@]}" -o "$OUT/skia_text_shim.o" "$ROOT/src/platform/skia/skia_text_shim.cpp"
 
@@ -82,7 +83,8 @@ printf '%s\\n' "\${args[@]}" > "$OUT/link_args.log"
 exec "$CLANG" -shared -fPIC -Wl,-z,max-page-size=16384 -Wl,--no-undefined \\
   "\${args[@]}" \\
   "$OUT/android_skia_host.o" "$OUT/native_app_glue.o" \\
-  "$OUT/skia_canvas_shim.o" "$OUT/skia_text_shim.o" "$OUT/android_clipboard.o" \\
+  "$OUT/skia_canvas_shim.o" "$OUT/skia_text_shim.o" "$OUT/android_clipboard.o" \
+  "$OUT/android_ime_jni.o" \\
   "$SKIA_OUT/libskia.a" -lc++_static -lc++abi -landroid -llog -lm -ldl -lz
 LINK
 chmod +x "$LINKER"
@@ -111,10 +113,10 @@ cat > "$OUT/AndroidManifest.xml" <<MANIFEST
        first frame took thirty seconds with it on. debuggable: this APK is
        signed with a generated debug key and is a development build; the flag
        is what lets simpleperf attach to it. -->
-  <application android:label="elisa-ui $EXAMPLE" android:hasCode="false"
+  <application android:label="elisa-ui $EXAMPLE" android:hasCode="true"
       android:extractNativeLibs="false" android:memtagMode="off" android:debuggable="true"
       android:theme="@android:style/Theme.Material.NoActionBar">
-    <activity android:name="android.app.NativeActivity" android:exported="true"
+    <activity android:name="org.elisa_ui.ElisaCanvasActivity" android:exported="true"
         android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|density">
       <meta-data android:name="android.app.lib_name" android:value="$EXAMPLE"/>
       <intent-filter>
@@ -126,7 +128,28 @@ cat > "$OUT/AndroidManifest.xml" <<MANIFEST
 </manifest>
 MANIFEST
 UNALIGNED="$OUT/$EXAMPLE-unaligned.apk"
+# --- the Java half ------------------------------------------------------
+# ONE CLASS, AND IT BUYS IME COMPOSITION. hasCode was false here for as long as
+# the canvas needed nothing from Java, which was true until the day a Chinese
+# or Japanese keyboard had to reach a field this backend paints itself:
+# composition arrives through onCreateInputConnection on a View, and a plain
+# NativeActivity has none. The dex is the price of that, and it is the whole
+# price -- the class decides nothing and holds no editing state.
+javac -source 8 -target 8 -nowarn -bootclasspath "$PLATFORM_JAR" -classpath "$PLATFORM_JAR" \
+  -d "$OUT/classes" "$ROOT/src/platform/android/java/org/elisa_ui/ElisaCanvasActivity.java" 2>&1 |
+  grep -v "^warning:" || true
+[[ -f "$OUT/classes/org/elisa_ui/ElisaCanvasActivity.class" ]] || { echo "android: javac produced no canvas activity" >&2; exit 2; }
+# Run from the class root so the file list is relative: this project's own path
+# has a space in it, and an unquoted expansion of absolute names splits.
+(cd "$OUT/classes" && find . -name '*.class' | sort > "$OUT/classes.list")
+(cd "$OUT/classes" && xargs "$BUILD_TOOLS/d8" --min-api "$API" --output "$OUT" < "$OUT/classes.list")
+[[ -f "$OUT/classes.dex" ]] || { echo "android: d8 produced no dex" >&2; exit 2; }
+cp "$OUT/classes.dex" "$STAGE/classes.dex"
+
 "$BUILD_TOOLS/aapt2" link -o "$UNALIGNED" --manifest "$OUT/AndroidManifest.xml" -I "$PLATFORM_JAR"
+# The dex is deflated and the library is stored: only the .so needs to stay
+# uncompressed so the loader can map it in place on a 16 KB-page device.
+(cd "$STAGE" && zip -q -X "$UNALIGNED" classes.dex)
 (cd "$STAGE" && zip -q -0 -X "$UNALIGNED" "lib/arm64-v8a/$LIB.so")
 APK="$OUT/$EXAMPLE.apk"
 rm -f "$APK"

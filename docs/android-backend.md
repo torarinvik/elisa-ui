@@ -352,29 +352,49 @@ route lives in the shared retained layer and serves every backend. Checking
 where `perform_text_action` was called from, and stopping there, is how a
 present feature came to be recorded as absent.)
 
-**IME composition is not here, and the reason is structural rather than
-unfinished.** Composition -- the half-typed pinyin, the kana being chosen, the
-underlined run a Japanese or Chinese keyboard shows before you commit -- is
-delivered through `onCreateInputConnection` on a Java `View`. A `NativeActivity`
-has no such View to override: it gets key events through `AInputQueue` and
-`ANativeActivity_showSoftInput` raises the keyboard, but there is no
-InputConnection anywhere in that path. The framework's side is ready and in
-use elsewhere -- `UiFlat::update_marked_text` and `commit_text` are what the
-UIKit and AppKit canvases drive -- so what is missing is the platform half.
+## Composing text, and the dex that buys it
 
-Closing it means giving the canvas APK a Java class and a `classes.dex`, and
-`android:hasCode="false"` is not an accident: it is the whole reason the Skia
-build needs no javac, no d8 and no dex step, while the controls build next door
-carries all three. That is a real trade and it belongs to whoever wants CJK
-input on the painted backend, not to a passing fix.
+Composition -- the half-typed pinyin, the kana being chosen, the underlined run
+a Japanese or Chinese keyboard shows before you commit -- arrives through
+`onCreateInputConnection` on a Java **View**. A `NativeActivity` has none:
+`AInputQueue` carries key events and `ANativeActivity_showSoftInput` raises the
+keyboard, but no InputConnection exists anywhere in that path. The framework's
+half was already built and already driven by the two Apple canvases, so what
+was missing was a View for the IME to talk to.
 
-**Android users are not without it.** The controls backend realizes a real
-`EditText`, which does its own composition, its own suggestion strip and its
-own dictation -- so the platform's full text story is available today by
-choosing that backend. The gap is specific: a *custom-painted* Android app
-cannot compose.
+The canvas APK now carries exactly one class,
+[`ElisaCanvasActivity`](../src/platform/android/java/org/elisa_ui/ElisaCanvasActivity.java),
+and `hasCode` is `true` where it was deliberately `false`. That is the price and
+it is the whole price: the class decides nothing and holds no editing state.
+Elisa already knows how to place a composing run, replace the previous one and
+put the caret; `BaseInputConnection` wants an `Editable` to scribble in, so it
+gets one nobody reads.
 
-No configuration changes beyond resize.
+Three things cost time and are worth keeping:
+
+- **`onCreateInputConnection` is `View`'s, not `Activity`'s.** The IME needs a
+  view of our own — one point square, focusable, drawing nothing, under the
+  native surface. Every touch still goes to the surface.
+- **`NativeActivity` `dlopen`s the library through its own `loadNativeCode`
+  path, which never tells the VM that library provides natives.** A JNI method
+  declared on our class then resolves to nothing and the first IME callback
+  kills the process with `UnsatisfiedLinkError`. Loading the same library by
+  name first registers it the way the VM expects.
+- **Two input routes insert twice.** The host used to turn key codes into
+  characters through a hardcoded US layout, which was the only way to type with
+  no InputConnection. With both paths live, "Hello" arrived as "HeellIloo". The
+  key events still flow — arrows, backspace, tab, enter and the clipboard
+  chords are navigation and editing, not text — but the characters come from
+  the IME now, which also means the keyboard the user chose decides the layout
+  rather than a table in a C++ file.
+
+**Verified:** text reaches a painted field through the input connection and the
+doubling is gone. **Not verified:** composition itself, which needs a CJK or
+handwriting IME installed on the device; this emulator has none. The commit and
+compose paths share one forwarding function, so the evidence is good but it is
+inference, not a screenshot.
+
+No configuration changes beyond resize.No configuration changes beyond resize.
 
 Accessibility is partly here now: a widget's help text becomes the view's
 `contentDescription`, so TalkBack reads more than whatever caption a view

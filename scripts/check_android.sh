@@ -112,7 +112,7 @@ launch_and_watch() {
   # The frame trace is what this half reads; it is off unless asked for.
   "$ADB" shell setprop debug.elisa.trace 1
   "$ADB" logcat -c
-  "$ADB" shell am start -n "$PACKAGE/android.app.NativeActivity" >/dev/null
+  "$ADB" shell am start -n "$PACKAGE/org.elisa_ui.ElisaCanvasActivity" >/dev/null
   for _ in $(seq 1 20); do
     sleep 1
     log="$("$ADB" logcat -d -s elisa-ui)"

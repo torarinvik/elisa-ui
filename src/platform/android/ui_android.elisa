@@ -51,6 +51,40 @@ extern elisa_android_clipboard_write(text: cstr, length: i32) -> i32
 extern elisa_android_clipboard_read(buffer: mutable u8&, capacity: i32) -> i32
 
 global mutable android_clipboard_staging: u8[UiFlat::TEXT_CAPACITY] = zeroed
+# The IME's own staging. A composing run is replaced on every keystroke of a
+# pinyin or kana entry, so this is written far more often than the clipboard is
+# -- and, like the clipboard, it is copied because JNI owns its bytes only for
+# the length of the call.
+global mutable android_ime_staging: u8[UiFlat::TEXT_CAPACITY] = zeroed
+
+def android_ime_stage(text: cstr, length: i32) -> sview:
+    return "" if length <= 0
+    room: usize = length.usize() if length.usize() < UiFlat::TEXT_CAPACITY else UiFlat::TEXT_CAPACITY
+    for index in 0..<room:
+        android_ime_staging[index] <- android_controls_ime_byte(text, index)
+    return sview(&android_ime_staging[0], 0, room.i64())
+
+# A PROVISIONAL RUN, not an edit. Pinyin, kana, Hangul and handwriting all
+# arrive as a composing stretch the user is still choosing, replaced again and
+# again until it is committed -- and an empty one means the composition was
+# abandoned, which is not the same as committing nothing.
+def android_composing_text(text: cstr, length: i32, selection_start: i32, selection_length: i32) -> void:
+    can Memory.Allocate, Abort.Panic, Ui.Input, Unsafe.PointerCast, Ui.Text:
+        UiFlat::update_marked_text_utf8_characters(android_ime_stage(text, length), selection_start, selection_length)
+
+def android_commit_text(text: cstr, length: i32) -> void:
+    can Memory.Allocate, Abort.Panic, Ui.Input, Unsafe.PointerCast, Ui.Text:
+        UiFlat::commit_text(android_ime_stage(text, length), 0, 0, false)
+
+export fn elisa_android_composing_text(text: cstr, length: i32, selection_start: i32, selection_length: i32) -> void = android_composing_text
+export fn elisa_android_commit_text(text: cstr, length: i32) -> void = android_commit_text
+
+def android_controls_ime_byte(text: cstr, index: usize) -> u8:
+    pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
+    return 0 if pointer == 0.uintptr()
+    trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic]:
+        byte: u8& = (pointer + index.uintptr()).cast[u8&]
+        return byte
 
 def ui_clipboard_has_text() -> bool:
     return elisa_android_clipboard_has_text() != 0
