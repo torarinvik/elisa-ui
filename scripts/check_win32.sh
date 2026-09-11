@@ -77,10 +77,25 @@
 #      FLATTENED `top` list (src/backend/codegen_debug.elisa) -- while a marker `def`
 #      planted in the very same block IS emitted into the object.
 #
-#      Next step: probe what `top` actually holds at that loop -- whether the win32
-#      block's `def` (win_commit_round_up) arrives while its externs do not. Use
-#      record_declined_function(name, m, ctx) as the output channel; it needs no print
-#      plumbing, since the names land in the same "backend declined" warning.
+#      Probed `top` itself, same way, with the malloc control still firing: NEITHER the
+#      win32 externs NOR the block's own `def` (win_commit_round_up) are in it. The block
+#      is missing from the flattened declaration list entirely. Rebuilding `top` from the
+#      selection that codegen_module.elisa recomputes AFTER its rounds (tried as a patch,
+#      rebuilt, measured) does not help either -- so that FINAL selection does not contain
+#      the block's line, which means `fold_const_expr` never folds
+#      `ARENA_BACKEND == ARENA_BACKEND_WIN32_VIRTUALALLOC` at all, while it does fold the
+#      LINUX_MMAP arm of the same chain on a macOS build.
+#
+#      That is the lead to pull next, and note that ARENA_BACKEND is declared TWICE in the
+#      std -- arena.elisa and collections.elisai each carry their own copy of the selection
+#      chain, and collections.elisai additionally defines a local `const
+#      ELISA_TARGET_OS_WASM: bool = false`. register_target_consts refuses to re-register a
+#      name that already exists (`continue if const_index_of(...) >= 0`), so which file's
+#      ARENA_BACKEND wins, and with what value, is worth measuring before anything else.
+#
+#      Unexplained alongside it, and worth reconciling: a marker `def` planted in that same
+#      win32 block IS emitted into the object (llvm-nm, with marker_decl_mmap absent on the
+#      same build as the control). Declaration and emission are disagreeing about the block.
 #
 #      Note when instrumenting: two functions in codegen_declare_extern.elisa open with
 #      the identical line `if declaration is Decl.Extern(...)`, so a naive
