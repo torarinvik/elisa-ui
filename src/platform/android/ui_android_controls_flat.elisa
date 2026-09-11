@@ -37,11 +37,26 @@ extend UiAndroidControls:
         def realize_retained() -> void:
             can[Ui.Controls]:
                 remember_focus()
-                begin_realize()
+                # The iOS file of this shape carries the reasoning: the
+                # retained path keeps the controls that did not change rather
+                # than tearing the whole interface down for every event.
+                UiControls::begin_reconcile()
                 UiControls::realize_retained()
+                UiControls::adopt_unchanged()
+                discard_unadopted()
                 UiControls::apply[AndroidControls]()
                 finish_realize()
                 restore_focus()
+
+        # Release exactly what the new list did not adopt, children first.
+        def discard_unadopted() -> void can[Ui.Controls]:
+            count: usize = UiControls::discarded_count()
+            index: mutable usize = count
+            for _ in 0..<count:
+                index <- index - 1
+                handle: usize = UiControls::discarded_handle_at(index)
+                continue if handle == 0
+                elisa_android_controls_release(handle.i32())
 
     private:
         # FOCUS OUTLIVES THE INTERFACE THAT HELD IT. The iOS file of this shape
@@ -73,6 +88,12 @@ extend UiAndroidControls:
                 continue if UiControls::retained_index_at(slot) != android_focus_widget
                 handle: i32 = UiAndroidControls::native_handle(slot.i32())
                 return if handle == 0
+                # ALREADY THERE IS NOT A MOVE. Reconciliation usually adopts
+                # the field being typed into, so it never lost focus -- and
+                # putting focus back on a control that has it is not free:
+                # Android's restartInput tears the IME's connection down and
+                # builds it again, mid-word, on every keystroke. Ask first.
+                return if elisa_android_controls_is_focused(handle) != 0
                 elisa_android_controls_focus(handle, android_focus_caret)
                 return
 

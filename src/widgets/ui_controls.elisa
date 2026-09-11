@@ -214,6 +214,9 @@ module UiControls:
         global mutable control_text_storage: u8[CONTROL_TEXT_STORAGE_SIZE] = zeroed
         global mutable total: usize = 0
         global mutable control_dropped: bool = false
+        # True while apply is writing state into controls, so the reports that
+        # writing provokes are not mistaken for the user acting.
+        global mutable applying: bool = false
 
         # Alpha zero: the hierarchy named no colour here and the platform's
         # own stands. Both application layers say it the same way.
@@ -349,22 +352,6 @@ module UiControls:
                 placed: f32 = container.origin.x + room if room >= 0.0 else container.origin.x
                 ops[index].box <- UiCore::Rect(UiCore::bounded_coordinate(placed), own.origin.y, own.size.width, own.size.height)
 
-        # Hand the list to a backend, in order. The only generic here, and it
-        # never touches a widget handle.
-        def apply[C: Controls]() -> void can[Ui.Controls]:
-            for index in 0..<count():
-                slot: i32 = index.i32()
-                state: ControlState = state_at(index)
-                C.create(slot, kind_at(index), parent_at(index), window_mode_at(index), axis_at(index), state)
-                C.set_frame(slot, kind_at(index), placed_box_at(index))
-                # Colour before caption: a label that is given its words first
-                # shows them in the platform's default for one frame.
-                palette: Palette = colors_at(index)
-                C.set_colors(slot, kind_at(index), palette.ink, palette.fill)
-                C.set_text(slot, kind_at(index), text_at(index))
-                C.set_state(slot, kind_at(index), state.value, state.low, state.high, state.selected)
-                # Last, so a control never reports an action while it is still
-                # being given its initial text and state.
-                C.set_action(slot, kind_at(index)) if kind_reports_action(kind_at(index))
-
         include "./ui_controls_events.elisa"
+        include "./ui_controls_apply.elisa"
+        include "./ui_controls_reconcile.elisa"

@@ -28,6 +28,7 @@ static jmethodID m_set_background_color, m_set_tint_color, m_set_track_color;
 static jmethodID m_set_state, m_set_action, m_release_all, m_attach_root;
 static jmethodID m_measure_text, m_line_height, m_minimum_height;
 static jmethodID m_is_focused, m_caret, m_focus;
+static jmethodID m_release;
 
 static JNIEnv *elisa_env(void) {
     JNIEnv *env = NULL;
@@ -66,6 +67,7 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
     m_is_focused = (*env)->GetStaticMethodID(env, c, "isFocused", "(I)Z");
     m_caret = (*env)->GetStaticMethodID(env, c, "caret", "(I)I");
     m_focus = (*env)->GetStaticMethodID(env, c, "focus", "(II)V");
+    m_release = (*env)->GetStaticMethodID(env, c, "release", "(I)V");
     return JNI_VERSION_1_6;
 }
 
@@ -245,4 +247,13 @@ void elisa_android_controls_focus(int32_t handle, int32_t caret) {
     JNIEnv *env = elisa_env();
     if (env == NULL || elisa_controls_class == NULL) return;
     (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_focus, handle, caret);
+}
+
+// One control, given back. Reconciliation releases exactly what the new
+// realization did not adopt, so this is the ordinary path and release_all is
+// only for tearing the whole interface down.
+void elisa_android_controls_release(int32_t handle) {
+    JNIEnv *env = elisa_env();
+    if (env == NULL || elisa_controls_class == NULL) return;
+    (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_release, handle);
 }

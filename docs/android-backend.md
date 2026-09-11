@@ -248,11 +248,23 @@ just destroyed, so the keyboard talks to a dead input connection.
 `InputMethodManager.restartInput` is what rebinds it. Measured on a Pixel 9
 before that call, typing five characters left one.
 
-**Still lossy under fast input.** With it, five characters leave three. The
-remaining loss is not the IME — it is that the whole native tree is torn down
-and rebuilt on every keystroke, so a character that arrives mid-rebuild has
-nowhere to land. The fix is reconciliation (adopting the controls that did not
-change) rather than anything in this file.
+**And the tree is no longer rebuilt for a keystroke.** Restoring focus was not
+enough on its own while every realization destroyed all forty-odd views: a
+character arriving mid-rebuild had nowhere to land. Realizations now reconcile
+— see [docs/uikit-backend.md](uikit-backend.md), where the rules are written
+down once, because they are the seam's and not a platform's. Traced on a Pixel
+9, typing `Grace` into the name field produces five `afterTextChanged` calls
+and **zero** `create` calls, the retained tree takes each one, and the
+application's own validation answers in the status label beside it.
+
+One Android-specific consequence: a view's handle is its identity across a
+realization, so `ElisaControls` hands slots out individually and takes them
+back individually. While that table was a bump pointer that reset with the
+whole interface, the first realization's handles were handed straight back out
+to the second realization's controls. Attachment is idempotent for the same
+reason — Android throws `IllegalStateException` for a child that still has a
+parent, and through JNI a pending exception becomes a CheckJNI abort on the
+*next* call, which is why that crash first appeared inside `set_action`.
 
 ## What is not here yet
 

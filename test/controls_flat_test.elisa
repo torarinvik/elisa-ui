@@ -77,6 +77,11 @@ global mutable log_y: f32[LOG_CAP] = zeroed
 global mutable log_text_len: i64[LOG_CAP] = zeroed
 global mutable log_text_first: u8[LOG_CAP] = zeroed
 global mutable created: usize = 0
+global mutable released: usize = 0
+global mutable log_state_writes: i32[LOG_CAP] = zeroed
+global mutable log_color_writes: i32[LOG_CAP] = zeroed
+global mutable log_ink: u8[LOG_CAP] = zeroed
+global mutable log_text_writes: i32[LOG_CAP] = zeroed
 
 struct RecordingControls:
     unused: i32
@@ -97,15 +102,19 @@ impl Controls for RecordingControls:
         log_y[index.usize()] <- box.origin.y
 
     def set_colors(index: i32, kind: UiControls::ControlKind, ink: UiCore::Color, fill: UiCore::Color) -> void can[Ui.Controls]:
-        pass
+        return if index < 0 or index.usize() >= LOG_CAP
+        log_color_writes[index.usize()] <- log_color_writes[index.usize()] + 1
+        log_ink[index.usize()] <- ink.r
 
     def set_text(index: i32, kind: UiControls::ControlKind, text: sview) -> void can[Ui.Controls]:
         return if index < 0 or index.usize() >= LOG_CAP
         log_text_len[index.usize()] <- text.len
         log_text_first[index.usize()] <- text.data[0] if text.len > 0 else 0
+        log_text_writes[index.usize()] <- log_text_writes[index.usize()] + 1
 
     def set_state(index: i32, kind: UiControls::ControlKind, value: f32, low: f32, high: f32, selected: bool) -> void can[Ui.Controls]:
-        pass
+        return if index < 0 or index.usize() >= LOG_CAP
+        log_state_writes[index.usize()] <- log_state_writes[index.usize()] + 1
 
     def set_action(index: i32, kind: UiControls::ControlKind) -> void can[Ui.Controls]:
         pass
@@ -119,6 +128,20 @@ def slot_for_widget(widget: usize) -> usize:
 
 def grey(level: u8) -> UiCore::Color:
     return UiCore::rgba(level, level, level, 255)
+
+# What a native backend's realize_retained does, with the platform left out:
+# move the old list aside, build the new one, adopt what did not change, and
+# release only the rest.
+def realize_reconciling() -> void can[Ui.Controls, Memory.Allocate, Abort.Panic, Ui.Draw, Ui.Text, Ui.Input, Ui.Window, Unsafe.PointerCast]:
+    UiControls::begin_reconcile()
+    UiControls::realize_retained()
+    UiControls::adopt_unchanged()
+    count: usize = UiControls::discarded_count()
+    index: mutable usize = count
+    for _ in 0..<count:
+        index <- index - 1
+        released <- released + 1 if UiControls::discarded_handle_at(index) != 0
+    UiControls::apply[RecordingControls]()
 
 def main() -> i64:
     can Memory.Allocate, Abort.Panic, Ui.Controls, Ui.Draw, Ui.Text, Ui.Input, Ui.Window, Unsafe.PointerCast:
@@ -244,6 +267,201 @@ def main() -> i64:
         UiHandles::set_visible(press, false)
         UiControls::realize_retained()
         check("a hidden widget is left out", UiControls::count() == 6)
+
+        # ---- realizing again keeps the controls that did not change ---------
+        #
+        # WHY THIS MATTERS. An application that lays out again when its text
+        # changes turns every keystroke into a realization. Rebuilding the
+        # whole native tree for one of those destroys the field being typed
+        # into -- the keyboard drops, the caret goes, and a character that
+        # arrives mid-rebuild lands on a view that no longer exists. Measured
+        # on a Pixel 9 before this: typing five characters left three.
+        UiHandles::set_visible(press, true)
+        UiFlat::layout(320.0, 480.0)
+        UiControls::reset()
+        created <- 0
+        UiControls::realize_retained()
+        UiControls::apply[RecordingControls]()
+        total_controls: usize = UiControls::count()
+        check("a first realization creates everything", created == total_controls)
+
+        # The same tree again: nothing changed, so nothing is built and nothing
+        # is released.
+        created <- 0
+        released <- 0
+        realize_reconciling()
+        check("an unchanged tree creates nothing", created == 0)
+        check("an unchanged tree releases nothing", released == 0)
+        check("every control was adopted", UiControls::adopted_count() == total_controls)
+        check("the tree is still all there", UiControls::count() == total_controls)
+
+        # A value change is not a structural change: the slider moves, the
+        # controls stay. This is the keystroke case.
+        created <- 0
+        released <- 0
+        UiHandles::set_value(knob, 0.5)
+        UiFlat::layout(320.0, 480.0)
+        realize_reconciling()
+        check("a value change rebuilds nothing", created == 0 and released == 0)
+
+        # Hiding a widget removes a control. What is left keeps its identity up
+        # to the point where the shape diverges; the rest is rebuilt, which is
+        # correct and only slower.
+        created <- 0
+        released <- 0
+        UiHandles::set_visible(press, false)
+        UiFlat::layout(320.0, 480.0)
+        realize_reconciling()
+        check("a removed widget leaves one fewer control", UiControls::count() == total_controls - 1)
+        check("a shape change releases something", released > 0)
+
+        # A CHILD IS NEVER ADOPTED INTO A PARENT THAT WAS REBUILT. Every
+        # toolkit here holds a child inside its parent, so a rebuilt parent has
+        # no children, and an adopted child would be a live native object
+        # attached to a view being released. The label below keeps its own kind
+        # AND its own parent index across the two trees -- only what the parent
+        # IS changes -- so nothing but the inherited rule can catch it.
+        UiFlat::reset()
+        UiControls::reset()
+        panel_root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 10.0, 6.0, grey(20))
+        middle: UiHandles::Handle = UiHandles::column(panel_root, 4.0, 4.0, grey(30))
+        _ = UiHandles::label(middle, "deep", 12.0, grey(200))
+        UiHandles::layout(320.0, 480.0)
+        UiControls::realize_retained()
+        UiControls::apply[RecordingControls]()
+        nested: usize = UiControls::count()
+        check("the nested tree realized", nested == 3)
+
+        # The same shape with a SCROLL in the middle: slot for slot identical
+        # except for that one kind. The control list is deliberately NOT reset
+        # here -- begin_reconcile is what moves it aside, and resetting first
+        # would throw away the very realization this is meant to compare
+        # against. (It did, and two mutations walked straight through.)
+        UiFlat::reset()
+        scroll_root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 10.0, 6.0, grey(20))
+        scroller: UiHandles::Handle = UiHandles::scroll(scroll_root, UiConst::Axis.Column, 4.0, 4.0, grey(30))
+        _ = UiHandles::label(scroller, "deep", 12.0, grey(200))
+        UiHandles::layout(320.0, 480.0)
+        created <- 0
+        released <- 0
+        realize_reconciling()
+        # The root is unchanged and keeps its control; the container whose
+        # KIND changed is rebuilt, and its label goes with it even though the
+        # label's own kind and parent index are identical in both trees. Two
+        # of the three, exactly.
+        check("a changed parent is rebuilt", created > 0)
+        check("its child is rebuilt with it", created == UiControls::count() - 1)
+
+        # A CONTROL THAT CHANGED PARENTS IS NOT THE SAME CONTROL. Position and
+        # kind can both match while the thing it hangs from has changed, and a
+        # native control adopted across that ends up inside the wrong view --
+        # visibly, at the wrong place on screen. Both trees below emit
+        # root, A, L, M in that order with M a Label either way; only M's
+        # parent differs.
+        UiFlat::reset()
+        UiControls::reset()
+        home: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 0.0, 0.0, grey(20))
+        box_a: UiHandles::Handle = UiHandles::column(home, 0.0, 0.0, grey(30))
+        _ = UiHandles::label(box_a, "L", 12.0, grey(200))
+        _ = UiHandles::label(box_a, "M", 12.0, grey(200))
+        UiHandles::layout(320.0, 480.0)
+        UiControls::realize_retained()
+        UiControls::apply[RecordingControls]()
+        check("the move tree realized four controls", UiControls::count() == 4)
+        moved_slot: usize = 3
+        check("the moving control starts under the inner box", UiControls::parent_at(moved_slot) == 1)
+
+        UiFlat::reset()
+        home_again: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 0.0, 0.0, grey(20))
+        box_again: UiHandles::Handle = UiHandles::column(home_again, 0.0, 0.0, grey(30))
+        _ = UiHandles::label(box_again, "L", 12.0, grey(200))
+        _ = UiHandles::label(home_again, "M", 12.0, grey(200))
+        UiHandles::layout(320.0, 480.0)
+        created <- 0
+        released <- 0
+        realize_reconciling()
+        check("the control did move parents", UiControls::parent_at(moved_slot) == 0)
+        check("a control that moved parents is rebuilt", created == 1)
+
+        # ---- a skipped setter must never skip a real change -----------------
+        #
+        # THE BUG THIS WAS WRITTEN FOR. Skipping a setter whose value has not
+        # changed needs a record of what each control was actually GIVEN. The
+        # first version compared against the control LIST instead, and
+        # note_selection turns a radio's siblings off in the list without
+        # telling those controls -- so the list already agreed, the un-check was
+        # skipped, and both tabs read as selected in Android's own view dump.
+        UiFlat::reset()
+        UiControls::reset()
+        tabs_root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 0.0, 0.0, grey(20))
+        tab_one: UiHandles::Handle = UiHandles::radio_button(tabs_root, 60.0, 24.0, grey(60), grey(70), grey(50))
+        tab_two: UiHandles::Handle = UiHandles::radio_button(tabs_root, 60.0, 24.0, grey(60), grey(70), grey(50))
+        UiHandles::set_selected(tab_one, true)
+        UiHandles::layout(320.0, 480.0)
+        UiControls::realize_retained()
+        UiControls::apply[RecordingControls]()
+        one_slot: usize = slot_for_widget(UiHandles::index(tab_one))
+        two_slot: usize = slot_for_widget(UiHandles::index(tab_two))
+        check("the first tab starts selected", UiControls::state_at(one_slot).selected)
+
+        # The user picks the other one. The toolkit told us about the control
+        # they touched; the one that must go dark was never told anything.
+        _ = UiControls::dispatch_native_action(UiControls::native_handle_at(two_slot), UiConst::WidgetEvent.Click, 0.0, true)
+        _ = UiControls::retained_action(two_slot.i32(), UiConst::WidgetEvent.Click.i32())
+        log_state_writes[one_slot] <- 0
+        log_state_writes[two_slot] <- 0
+        UiFlat::layout(320.0, 480.0)
+        realize_reconciling()
+        check("the tab that was turned off is told", log_state_writes[one_slot] == 1)
+        check("it is actually off", not UiControls::state_at(one_slot).selected)
+        # The control the user touched already holds what it reported, so
+        # writing it back would be the framework arguing with the toolkit.
+        check("the tab the user touched is not rewritten", log_state_writes[two_slot] == 0)
+
+        # And the same rule for text: a field that reported its own edit must
+        # not be handed that edit back, because setText moves the caret.
+        UiFlat::reset()
+        UiControls::reset()
+        field_root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 0.0, 0.0, grey(20))
+        typed_field: UiHandles::Handle = UiHandles::text_field(field_root, "n", "p", "", 200.0, 30.0, 12.0, grey(230), grey(40))
+        UiHandles::layout(320.0, 480.0)
+        UiControls::realize_retained()
+        UiControls::apply[RecordingControls]()
+        typed_slot: usize = slot_for_widget(UiHandles::index(typed_field))
+        _ = UiControls::dispatch_native_text(UiControls::native_handle_at(typed_slot), "Grace")
+        _ = UiControls::retained_action(typed_slot.i32(), UiConst::WidgetEvent.Change.i32())
+        log_text_writes[typed_slot] <- 0
+        UiFlat::layout(320.0, 480.0)
+        realize_reconciling()
+        check("a field is not handed back its own edit", log_text_writes[typed_slot] == 0)
+        check("and it still holds it", UiFlat::text_value(UiHandles::index(typed_field)).len == 5)
+
+        # A COLOUR THAT CHANGED MUST REACH THE CONTROL. The showcase recolours
+        # a validation message without touching its words, and a realization
+        # that treats colour as decoration says "Email looks good." in red --
+        # which is what it did, on a phone, before this assertion existed.
+        UiFlat::reset()
+        UiControls::reset()
+        note_root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 0.0, 0.0, grey(20))
+        status: UiHandles::Handle = UiHandles::label(note_root, "Checking", 12.0, grey(200))
+        UiHandles::layout(320.0, 480.0)
+        UiControls::realize_retained()
+        UiControls::apply[RecordingControls]()
+        status_slot: usize = slot_for_widget(UiHandles::index(status))
+
+        # Same words, different colour.
+        log_color_writes[status_slot] <- 0
+        UiHandles::set_text(status, "Checking", 12.0, UiCore::rgba(40, 200, 90, 255))
+        UiFlat::layout(320.0, 480.0)
+        realize_reconciling()
+        check("a recoloured label is told", log_color_writes[status_slot] == 1)
+        check("and told the new colour", log_ink[status_slot] == 40)
+
+        # Nothing changed at all: it is not told again.
+        log_color_writes[status_slot] <- 0
+        UiFlat::layout(320.0, 480.0)
+        realize_reconciling()
+        check("an unchanged colour is not rewritten", log_color_writes[status_slot] == 0)
 
         if test_failures == 0:
             _ = puts("controls flat: all checks passed")

@@ -90,6 +90,58 @@ that an unchanged report raises nothing (which is what stops a backend that
 re-realizes on every event from chasing its own tail), that clearing a field is
 a real edit, and that a label refuses a write-back it should never receive.
 
+## Realizing again keeps what did not change
+
+Realizing used to mean destroying every control and building a new one. For a
+rotation — the only moment a realization used to happen — that cost nothing
+anybody could see. Then a field started reporting what the user typed, and an
+application that lays out again when its text changes turned every keystroke
+into a full teardown of the control being typed into.
+
+So a realization now reconciles. The previous list is moved aside, the new one
+is built beside it, and a control is **adopted** — its native object carried
+over untouched — when nothing a toolkit would have to rebuild for has changed.
+What counts as unchanged is deliberately narrow: **same position in the list,
+same kind, same parent**. Not the frame, the colours, the text or the state —
+those are applied to an adopted control exactly as to a new one. It is the
+identity that has to match, and position-plus-kind is the identity a list
+without keys can offer; a tree that changes shape gets the old behaviour for
+the part that shifted, which is never wrong, only slower.
+
+**A child is only adopted if its parent was.** Every toolkit here holds a child
+inside its parent, so a rebuilt parent has no children, and an adopted child
+would be a live native object attached to a view being released. The list is
+parent-first, so one pass carries that rule down a subtree.
+
+Two things fell out of this that are worth stating, because both were bugs
+before they were rules:
+
+- **A control answering a change the framework just made is not the user.**
+  Setting a toggle's selection or a slider's value makes a toolkit call the
+  action it was given — `setChecked` fires `onCheckedChanged`, a `UIControl`
+  sends its target — so the write-back arrives as if a finger had done it.
+  Ordering used to cover this: a fresh control is given its action last, after
+  its state. An adopted control still carries the action it was given the first
+  time, so the guard moved into the seam: `apply` refuses reports while it is
+  writing.
+- **A setter is skipped only when it would write what the control already
+  holds**, and that needs a record of what each control was actually *given*.
+  Comparing against the control list instead is a different thing and it is
+  wrong: `note_selection` turns a radio's siblings off in the list without
+  telling those controls, so the list already agreed, the un-check was skipped,
+  and both tabs read as selected in Android's own view dump. The record is
+  written where the applying happens, and by the `note_` functions — a control
+  that *reported* a value is holding it already, which is exactly why a field
+  is never handed back its own edit. `setText` on the field being typed in puts
+  its caret back to the start.
+
+Skipping is only safe when the value matches; "probably harmless" is not the
+same test. Colours were skipped for adopted controls on that reasoning, and the
+showcase's validation message said "Email looks good." in red.
+
+Measured on a Pixel 9: typing into a native field now creates and releases
+nothing, and the five characters of "Grace" arrive as five.
+
 ## The other application layer
 
 elisa-ui has two application-facing layers and until now they were not equally

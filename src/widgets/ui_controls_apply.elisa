@@ -1,0 +1,72 @@
+# HANDING THE LIST TO A BACKEND.
+#
+# The one generic in the seam, and the only thing here that ever touches a
+# backend. It never sees a widget handle: the list is plain data by the time it
+# reaches this, which is what lets a test assert a realization with no OS
+# control in sight.
+#
+# It lives in a file of its own because ui_controls.elisa reached the length
+# this project holds a source to, and the driver is the part of it that is a
+# loop rather than a vocabulary.
+
+extend UiControls:
+    public:
+        # Hand the list to a backend, in order. The only generic here, and it
+        # never touches a widget handle.
+        def apply[C: Controls]() -> void can[Ui.Controls]:
+            # A CONTROL ANSWERING A CHANGE THE FRAMEWORK JUST MADE IS NOT THE
+            # USER. Setting a toggle's selection or a slider's value makes a
+            # toolkit call the action it was given -- setChecked fires
+            # onCheckedChanged, and a UIControl sends its target -- so the
+            # write-back arrives as if a finger had done it, the application
+            # responds, and the response realizes again.
+            #
+            # Ordering used to cover this: a freshly built control is given its
+            # action LAST, after its state, so nothing is listening while the
+            # state is applied. Reconciliation broke that, because an adopted
+            # control still carries the action it was given the first time --
+            # and the first tab tap after it landed re-entered instead of
+            # switching the page. The guard belongs here rather than in each
+            # backend: which reports count as input is the seam's policy, and
+            # every toolkit this targets has the same behaviour.
+            applying <- true
+            for index in 0..<count():
+                slot: i32 = index.i32()
+                state: ControlState = state_at(index)
+                # A control the reconciler adopted already has its native
+                # object, and asking a backend to build a second one would
+                # leak the first and orphan every child attached to it.
+                # Everything BELOW this line still runs: a frame, a colour, a
+                # caption and a state are cheap setters, and a control that
+                # merely moved is still the same control.
+                fresh: bool = native_handle_at(index) == 0
+                C.create(slot, kind_at(index), parent_at(index), window_mode_at(index), axis_at(index), state) if fresh
+                # A SETTER IS SKIPPED WHEN IT WOULD WRITE WHAT IS ALREADY
+                # THERE. For a fresh control nothing has been applied yet, so
+                # everything runs; for an adopted one only what actually
+                # changed does. This is not an optimization -- setText on the
+                # field the user is typing in puts its caret back to the start.
+                C.set_frame(slot, kind_at(index), placed_box_at(index)) if fresh or not frame_unchanged_at(index)
+                # Colour before caption: a label that is given its words first
+                # shows them in the platform's default for one frame.
+                palette: Palette = colors_at(index)
+                C.set_colors(slot, kind_at(index), palette.ink, palette.fill) if fresh or not colors_unchanged_at(index)
+                C.set_text(slot, kind_at(index), text_at(index)) if fresh or not text_unchanged_at(index)
+                C.set_state(slot, kind_at(index), state.value, state.low, state.high, state.selected) if fresh or not state_unchanged_at(index)
+                # Only for a control that was just built. An adopted one is
+                # still carrying the action it was given when it was created,
+                # and a toolkit that ADDS rather than replaces -- Android's
+                # addTextChangedListener -- would end up with one watcher per
+                # realization, each reporting the same keystroke.
+                C.set_action(slot, kind_at(index)) if fresh and kind_reports_action(kind_at(index))
+                # Whether it was written or skipped as already-equal, this is
+                # what the control holds now.
+                note_applied_frame(index)
+                note_applied_colors(index)
+                note_applied_state(index)
+                note_applied_text(index)
+            applying <- false
+            # Apply is the last reader of the previous realization, so it is
+            # what retires it. A backend that reconciled does not have to
+            # remember to.
+            end_reconcile()

@@ -23,6 +23,7 @@
             return false if not UiCore::is_finite(value)
             ops[index].state_value <- value
             ops[index].state_selected <- selected
+            note_applied_state(index)
             return true
 
         # A selectable control is one of a group: turning one on turns its
@@ -31,6 +32,11 @@
         def note_selection(index: usize, selected: bool) -> bool:
             return false if index >= total
             ops[index].state_selected <- selected
+            # Only the control that reported is holding the new value. Its
+            # siblings are turned off in the LIST below and have not been told,
+            # so their applied record must stand -- that is what makes the next
+            # realization actually un-check them.
+            note_applied_state(index)
             return true if not selected or ops[index].kind != ControlKind.RadioButton
             parent: i32 = ops[index].parent
             for sibling in 0..<total:
@@ -64,12 +70,14 @@
             # keeps a bridge that lost its buffer from clearing a live field.
             return false if text.len < 0 or (text.len > 0 and text.data == null)
             ops[index].text <- copy_control_text(index, text)
+            note_applied_text(index)
             return true
 
         # The text sibling of dispatch_native_action, and the same contract: a
         # handle from the toolkit, resolved here, written back here, and only
         # then does the application hear about it.
         def dispatch_native_text(handle: usize, text: sview) -> i32:
+            return NO_PARENT if applying
             index: i32 = index_for_native_handle(handle)
             return NO_PARENT if index == NO_PARENT
             return NO_PARENT if not note_text(index.usize(), text)
@@ -81,6 +89,9 @@
         # live control -- which is what a late callback from a torn-down tree
         # looks like, and must not reach the application.
         def dispatch_native_action(handle: usize, event: UiConst::WidgetEvent, value: f32, selected: bool) -> i32:
+            # See apply: a control reporting the state the framework just wrote
+            # into it is not the user acting.
+            return NO_PARENT if applying
             index: i32 = index_for_native_handle(handle)
             return NO_PARENT if index == NO_PARENT
             slot: usize = index.usize()

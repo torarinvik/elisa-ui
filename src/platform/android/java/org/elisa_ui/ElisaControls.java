@@ -51,6 +51,13 @@ public final class ElisaControls {
     private static final int MAX_CONTROLS = 512;
     private static final View[] views = new View[MAX_CONTROLS];
     private static final int[] kinds = new int[MAX_CONTROLS];
+    // A LIVE COUNT, NOT A BUMP POINTER. Reconciliation carries a control over
+    // from one realization to the next, and a handle IS that control's
+    // identity -- so a slot is taken and given back individually, and the next
+    // create fills a hole rather than appending past everything still in use.
+    // While this was a bump pointer that reset with the whole table, the first
+    // realization's handles were handed straight back out to the second one's
+    // controls, which is the same view table describing two different trees.
     private static int count = 0;
 
     static Activity activity;
@@ -77,8 +84,16 @@ public final class ElisaControls {
     // finer than a finger on any screen that has shipped.
     private static final int SLIDER_STEPS = 1000;
 
+    private static int freeSlot() {
+        for (int index = 0; index < MAX_CONTROLS; index += 1) {
+            if (views[index] == null) return index;
+        }
+        return -1;
+    }
+
     public static int create(int kind, int vertical) {
         if (activity == null || count >= MAX_CONTROLS) return 0;
+        if (freeSlot() < 0) return 0;
         View view;
         switch (kind) {
             case SCROLL_VIEW:
@@ -114,10 +129,24 @@ public final class ElisaControls {
             }
             default: view = new FrameLayout(activity); break;
         }
-        views[count] = view;
-        kinds[count] = kind;
+        int slot = freeSlot();
+        views[slot] = view;
+        kinds[slot] = kind;
         count += 1;
-        return count;
+        return slot + 1;
+    }
+
+    // Give one slot back. Reconciliation releases exactly the controls the new
+    // realization did not adopt, so this is the ordinary path now and
+    // releaseAll is only for tearing the whole interface down.
+    public static void release(int handle) {
+        if (handle <= 0 || handle > MAX_CONTROLS) return;
+        View view = views[handle - 1];
+        if (view == null) return;
+        ViewGroup parent = view.getParent() instanceof ViewGroup ? (ViewGroup) view.getParent() : null;
+        if (parent != null) parent.removeView(view);
+        views[handle - 1] = null;
+        count -= 1;
     }
 
     // WHAT THE PLATFORM WANTS, MEASURED BY THE PLATFORM.
@@ -171,8 +200,7 @@ public final class ElisaControls {
         float points = probe.getMeasuredHeight() / density();
         // The probe was made through the ordinary path, so it took a slot;
         // give it back rather than leaving a control nothing will ever place.
-        views[handle - 1] = null;
-        count -= 1;
+        release(handle);
         minimumHeights[kind] = points;
         return points;
     }
@@ -227,11 +255,27 @@ public final class ElisaControls {
         return service instanceof InputMethodManager ? (InputMethodManager) service : null;
     }
 
+    // ATTACHING IS IDEMPOTENT, because reconciliation means a view can already
+    // be where it belongs. Android throws IllegalStateException outright for a
+    // child that still has a parent -- and through JNI a pending exception is
+    // a CheckJNI abort on the NEXT call, which is why the crash landed in
+    // set_action and not here.
     public static void addChild(int parent, int child) {
         View parentView = viewOf(parent);
         View childView = viewOf(child);
         if (!(parentView instanceof ViewGroup) || childView == null) return;
-        ((ViewGroup) parentView).addView(childView);
+        attach((ViewGroup) parentView, childView, null);
+    }
+
+    private static void attach(ViewGroup parent, View child, ViewGroup.LayoutParams params) {
+        ViewGroup current = child.getParent() instanceof ViewGroup ? (ViewGroup) child.getParent() : null;
+        if (current == parent) {
+            if (params != null) child.setLayoutParams(params);
+            return;
+        }
+        if (current != null) current.removeView(child);
+        if (params == null) parent.addView(child);
+        else parent.addView(child, params);
     }
 
     // Absolute placement inside the parent, which is what the seam hands over.
@@ -349,14 +393,16 @@ public final class ElisaControls {
     // second interface stacked on the first, exactly as on iOS.
     public static void releaseAll() {
         if (root != null) root.removeAllViews();
-        for (int index = 0; index < count; index += 1) views[index] = null;
+        // Every slot, not the first `count` of them: with individual release
+        // the live views are no longer a prefix of the table.
+        for (int index = 0; index < MAX_CONTROLS; index += 1) views[index] = null;
         count = 0;
     }
 
     public static void attachRoot(int handle) {
         View view = viewOf(handle);
         if (root == null || view == null) return;
-        root.addView(view, new FrameLayout.LayoutParams(
+        attach(root, view, new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 }

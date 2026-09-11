@@ -56,6 +56,11 @@ extend UiUIKitControls:
                 continue if UiControls::retained_index_at(slot) != uikit_focus_widget
                 handle: usize = UiControls::native_handle_at(slot)
                 return if handle == 0
+                # ALREADY THERE IS NOT A MOVE. Reconciliation usually adopts
+                # the field being typed into, so it never lost focus, and
+                # becoming first responder again would reset the selection
+                # UIKit is in the middle of maintaining.
+                return if elisa_uikit_controls_is_focused(handle) != 0
                 elisa_uikit_controls_focus(handle, uikit_focus_caret)
                 return
 
@@ -63,11 +68,29 @@ extend UiUIKitControls:
         def realize_retained() -> void:
             can[Ui.Controls]:
                 remember_focus()
-                begin_realize()
+                # begin_realize is the hierarchy path's teardown: it detaches
+                # the root and releases every handle. The retained path keeps
+                # what it can instead, so it reconciles rather than tears down.
+                UiControls::begin_reconcile()
                 UiControls::realize_retained()
+                UiControls::adopt_unchanged()
+                discard_unadopted()
                 UiControls::apply[UiKitControls]()
                 finish_realize()
                 restore_focus()
+
+        # Release exactly what the new list did not adopt. In REVERSE: the old
+        # list was parent-first, and releasing a parent first would invalidate
+        # a child handle still waiting its turn.
+        def discard_unadopted() -> void can[Ui.Controls]:
+            count: usize = UiControls::discarded_count()
+            index: mutable usize = count
+            for _ in 0..<count:
+                index <- index - 1
+                handle: usize = UiControls::discarded_handle_at(index)
+                continue if handle == 0
+                elisa_uikit_controls_remove_from_parent(handle)
+                elisa_uikit_controls_release(handle)
 
 # THE RETAINED EDITOR IS NOT THE ONE EDITING. A text field on this path is a
 # real UITextField: iOS owns its selection, its caret, its magnifier and its

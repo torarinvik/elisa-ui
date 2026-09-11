@@ -1,0 +1,206 @@
+# ADOPTING THE CONTROLS THAT DID NOT CHANGE.
+#
+# Realizing again used to mean destroying every native control and building a
+# new one. That is the simplest thing that shows a tree that changed, and for a
+# rotation -- the only moment a realization used to happen -- it cost nothing
+# anybody could see.
+#
+# Then a native field started reporting what the user typed, and an application
+# that lays out again when its text changes turned every keystroke into a full
+# teardown. The field being typed into is destroyed by the keystroke it just
+# reported: the keyboard drops, the caret is lost, a composing IME is cut off
+# mid-word, and characters that arrive while the tree is being rebuilt land on
+# a view that no longer exists. Measured on a Pixel 9, typing five characters
+# left three. Restoring focus afterwards recovers the cursor but not the
+# characters, because the loss happens in the gap.
+#
+# So the realization keeps what it can. The previous list is moved aside, the
+# new one is built beside it, and a control is ADOPTED -- its native object
+# carried over untouched -- when nothing a toolkit would have to rebuild for
+# has changed. Everything else is created as before, and only what no new
+# control adopted is released.
+#
+# WHAT COUNTS AS UNCHANGED is deliberately narrow: same position in the list,
+# same kind, same parent. Not the frame, not the colours, not the text or the
+# state -- those are applied to an adopted control exactly as they are to a new
+# one, because they are cheap setters and a control that moved is still the
+# same control. It is the identity that has to match, and position-plus-kind is
+# the identity a list without keys can offer. A tree that changes shape gets
+# the old behaviour for the part that shifted, which is correct and never
+# wrong -- only slower.
+#
+# A CHILD MAY ONLY BE ADOPTED IF ITS PARENT WAS. Every toolkit here holds a
+# child inside its parent, so a recreated parent has no children: adopting a
+# child into it would leave a live native object attached to a view that is
+# being released. The list is parent-first, so one pass in order is enough to
+# carry that rule down a subtree -- a parent that was not adopted disinherits
+# everything under it.
+
+extend UiControls:
+    private:
+        # The realization being replaced. Sized with the list, so every slot
+        # has an answer without a second bound to keep in step.
+        global mutable prior_kind: ControlKind[MAX_CONTROLS] = zeroed
+        global mutable prior_parent: i32[MAX_CONTROLS] = zeroed
+        global mutable prior_handle: usize[MAX_CONTROLS] = zeroed
+        global mutable prior_adopted: bool[MAX_CONTROLS] = zeroed
+        global mutable prior_total: usize = 0
+        # WHAT EACH CONTROL WAS ACTUALLY GIVEN, so a setter can be skipped when
+        # it would write the value the control already holds. Structure is only
+        # half of reconciliation: adopting a text field and then calling setText
+        # on it every keystroke puts its caret back to the start, and the
+        # characters come out reversed and short -- measured, "Grace" arriving
+        # as "cG".
+        #
+        # THIS IS A RECORD OF WHAT WAS APPLIED, NOT OF WHAT THE LIST HELD. The
+        # first version snapshotted the list at the start of a realization, and
+        # that is a different thing: note_selection turns a radio's SIBLINGS off
+        # in the list without anyone telling those controls, so the snapshot
+        # already agreed with the new value and the un-check was skipped. Both
+        # tabs then read as selected -- on screen, in Android's own dump.
+        #
+        # So these are written where the applying happens, and by the three
+        # note_ functions, which are the other way a control comes to hold a
+        # value: a control that REPORTED one is holding it already.
+        global mutable applied_text: u8[CONTROL_TEXT_STORAGE_SIZE] = zeroed
+        global mutable applied_text_length: usize[MAX_CONTROLS] = zeroed
+        global mutable applied_x: f32[MAX_CONTROLS] = zeroed
+        global mutable applied_y: f32[MAX_CONTROLS] = zeroed
+        global mutable applied_width: f32[MAX_CONTROLS] = zeroed
+        global mutable applied_height: f32[MAX_CONTROLS] = zeroed
+        global mutable applied_value: f32[MAX_CONTROLS] = zeroed
+        global mutable applied_selected: bool[MAX_CONTROLS] = zeroed
+        global mutable applied_ink: u32[MAX_CONTROLS] = zeroed
+        global mutable applied_fill: u32[MAX_CONTROLS] = zeroed
+
+    public:
+        # Move the current realization aside and clear the list for the next
+        # one. Call this INSTEAD of reset when the next realization should be
+        # allowed to keep what did not change.
+        def begin_reconcile() -> void:
+            prior_total <- total
+            for index in 0..<total:
+                prior_kind[index] <- ops[index].kind
+                prior_parent[index] <- ops[index].parent
+                prior_handle[index] <- ops[index].native_handle
+                prior_adopted[index] <- false
+            reset()
+
+        # Carry the unchanged controls over, once the new list is filled and
+        # before it is applied. A slot that ends up with a handle is adopted;
+        # `apply` creates only the ones still at zero.
+        def adopt_unchanged() -> void:
+            for index in 0..<total:
+                break if index >= prior_total
+                continue if prior_handle[index] == 0
+                continue if prior_kind[index] != ops[index].kind
+                continue if prior_parent[index] != ops[index].parent
+                # A recreated parent has no children to adopt into.
+                origin: i32 = ops[index].parent
+                continue if origin >= 0 and not prior_adopted[origin.usize()]
+                ops[index].native_handle <- prior_handle[index]
+                prior_adopted[index] <- true
+
+        # What the new list did not take. A backend detaches and releases
+        # these, and nothing else -- an adopted control's native object is
+        # still live and still on screen.
+        def discarded_count() -> usize:
+            return prior_total
+
+        # Zero for an adopted slot, so a backend can walk the whole range and
+        # release what answers. Walk it in REVERSE: the list is parent-first,
+        # so a parent's deallocation must not invalidate a child handle that
+        # has not been released yet.
+        def discarded_handle_at(index: usize) -> usize:
+            return 0 if index >= prior_total
+            return 0 if prior_adopted[index]
+            return prior_handle[index]
+
+        # Whether a setter would write what the control already holds. Only
+        # meaningful for an adopted slot; a fresh control has nothing applied
+        # yet, and apply asks about that first.
+        def frame_unchanged_at(index: usize) -> bool:
+            return false if index >= MAX_CONTROLS
+            placed: UiCore::Rect = placed_box_at(index)
+            same_origin: bool = placed.origin.x == applied_x[index] and placed.origin.y == applied_y[index]
+            same_size: bool = placed.size.width == applied_width[index] and placed.size.height == applied_height[index]
+            return same_origin and same_size
+
+        def state_unchanged_at(index: usize) -> bool:
+            return false if index >= MAX_CONTROLS
+            return ops[index].state_value == applied_value[index] and ops[index].state_selected == applied_selected[index]
+
+        # THE ONE THAT MATTERS. A field the user is typing in reports its text,
+        # the framework writes it into the list, and the next realization would
+        # hand that identical string straight back to the control -- which
+        # resets its selection under the caret.
+        def text_unchanged_at(index: usize) -> bool:
+            return false if index >= MAX_CONTROLS
+            own_text: sview = ops[index].text
+            return false if own_text.len.usize() != applied_text_length[index]
+            same: bool =
+                for byte_index in 0..<own_text.len.usize() |same = true| -> same:
+                    same <- false if own_text.data[byte_index] != applied_text[index * CONTROL_TEXT_CAPACITY + byte_index]
+                    break if not same
+            return same
+
+        # Record what a control now holds. Called from apply for everything it
+        # just wrote, and from the note_ functions for a control that reported a
+        # value of its own -- which is holding it without being told.
+        def note_applied_frame(index: usize) -> void:
+            return if index >= MAX_CONTROLS
+            placed: UiCore::Rect = placed_box_at(index)
+            applied_x[index] <- placed.origin.x
+            applied_y[index] <- placed.origin.y
+            applied_width[index] <- placed.size.width
+            applied_height[index] <- placed.size.height
+
+        def note_applied_state(index: usize) -> void:
+            return if index >= MAX_CONTROLS
+            applied_value[index] <- ops[index].state_value
+            applied_selected[index] <- ops[index].state_selected
+
+        # A COLOUR IS NOT DECORATION. The showcase turns a validation message
+        # from its danger colour to its success colour and leaves the words
+        # alone, so a realization that skips colours for an adopted control
+        # says "Email looks good." in red. Skipping is only ever safe when the
+        # value MATCHES; "probably harmless" is not the same test.
+        def colors_unchanged_at(index: usize) -> bool:
+            return false if index >= MAX_CONTROLS
+            palette: Palette = colors_at(index)
+            return packed_color(palette.ink) == applied_ink[index] and packed_color(palette.fill) == applied_fill[index]
+
+        def note_applied_colors(index: usize) -> void:
+            return if index >= MAX_CONTROLS
+            palette: Palette = colors_at(index)
+            applied_ink[index] <- packed_color(palette.ink)
+            applied_fill[index] <- packed_color(palette.fill)
+
+        # One word per colour, so a comparison is one integer and not four.
+        def packed_color(color: UiCore::Color) -> u32:
+            return (color.a.u32() << 24) | (color.r.u32() << 16) | (color.g.u32() << 8) | color.b.u32()
+
+        def note_applied_text(index: usize) -> void:
+            return if index >= MAX_CONTROLS
+            own_text: sview = ops[index].text
+            applied_text_length[index] <- own_text.len.usize()
+            for byte_index in 0..<own_text.len.usize():
+                applied_text[index * CONTROL_TEXT_CAPACITY + byte_index] <- own_text.data[byte_index]
+
+        # Forget the previous realization. A backend calls this once it has
+        # released what it had to, so a later reset cannot hand the same
+        # handles out twice.
+        def end_reconcile() -> void:
+            for index in 0..<prior_total:
+                prior_handle[index] <- 0
+                prior_adopted[index] <- false
+            prior_total <- 0
+
+        # How many controls the last realization kept. Nothing in the framework
+        # branches on this; it is what lets a test assert that reconciliation
+        # happened at all rather than inferring it from a handle table.
+        def adopted_count() -> usize:
+            live: usize =
+                for index in 0..<total |live = 0| -> live:
+                    live <- live + 1 if ops[index].native_handle != 0
+            return live
