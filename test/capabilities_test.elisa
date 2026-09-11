@@ -30,6 +30,15 @@ def main() -> i64:
     check("AppKit canvas exposes semantics and snapshots", canvas.backend == UiCapabilities::Backend.AppKitCanvas and canvas.renderer == UiCapabilities::Renderer.CoreGraphics and canvas.custom_paint and canvas.offscreen and canvas.semantics)
     check("custom profile can select Skia", UiCapabilities::select_skia_renderer() and canvas.renderer != UiCapabilities::Renderer.Skia and UiCapabilities::renderer() == UiCapabilities::Renderer.Skia and UiCapabilities::supports_skia() and UiCapabilities::supports_scale_changes())
 
+    # THE PAINTED ANDROID BACKEND IS NOT THE MAC ONE. It answered use_appkit_canvas
+    # until this profile existed, so an application asking what it ran on was told
+    # macOS -- and was told it had semantics and off-screen snapshots it does not
+    # have, and that its scale would never change on a device you can rotate.
+    UiCapabilities::use_android()
+    android: UiCapabilities::Snapshot = UiCapabilities::snapshot()
+    check("the painted Android backend says which platform it is", android.backend == UiCapabilities::Backend.Android and android.renderer == UiCapabilities::Renderer.Skia and android.custom_paint and not android.native_controls)
+    check("it claims no semantics and no snapshot, and does change scale", not android.semantics and not android.offscreen and android.scale_changes and android.composition and android.clipboard)
+
     UiCapabilities::use_wasm_browser()
     hosted: UiCapabilities::Snapshot = UiCapabilities::snapshot()
     check("WasmBrowser identifies hosted presentation", hosted.backend == UiCapabilities::Backend.WasmBrowser and hosted.renderer == UiCapabilities::Renderer.Hosted and hosted.hosted and not hosted.native_window and hosted.custom_paint)

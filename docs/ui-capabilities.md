@@ -33,9 +33,33 @@ Current profiles:
 - `AppKitCanvas`: custom painting, native text/IME, native semantics, and
   off-screen snapshots; the current fallback reports `CoreGraphics`, while a
   live `UiSkia` canvas selects renderer `Skia` and enables scale changes.
+- `UiKit`: the same retained batch painted through CoreGraphics on iOS. It
+  differs from the Mac canvas in what an application may rely on: the surface
+  changes scale and orientation under it, and there is no second window.
+- `UiKitControls`: real UIKit controls. UIKit owns every pixel, the IME,
+  mirroring, Dynamic Type and VoiceOver, so no custom paint and no off-screen
+  frame are claimed; renderer `Native`.
+- `Android`: the Skia-painted canvas on Android — custom painting, native
+  text/IME through a real `InputConnection`, and the system clipboard. It
+  claims **no** semantics (TalkBack is served by `AndroidControls`, not by the
+  painted canvas) and **no** off-screen snapshot, and it does change scale,
+  because the device rotates. Renderer `Skia`.
+- `AndroidControls`: real `android.widget` views; the toolkit draws, runs its
+  own IME and speaks to TalkBack. Renderer `Native`.
+- `Gtk`: real GTK controls, which is how Linux gets a native backend at all.
+  The toolkit draws, runs its own IME and speaks to Orca; multiple windows are
+  a `GtkWindow` away. Renderer `Native`.
+- `Win32`: real Windows controls — the toolkit draws, runs its own IME and
+  speaks to Narrator, with real multiple windows. Renderer `Native`.
 - `WasmBrowser`: hosted command presentation and host-mediated text/IME and
   clipboard; native-window and local-semantic capabilities are not claimed;
   renderer `Hosted`.
+
+A profile is a set of claims an application is entitled to act on, so a backend
+borrowing the nearest existing one is a bug rather than a shortcut. The painted
+Android backend answered `use_appkit_canvas()` until it had a profile of its
+own, which told every caller it was running on macOS with semantics and
+snapshots it has never had.
 
 The read-only projection is also included in `UiInspector::Frame` so diagnostics
 can record both the selected profile and the live lifecycle state.

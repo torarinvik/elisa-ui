@@ -156,6 +156,15 @@ if ! SKIA_ROOT="${SKIA_ROOT:-}" bash "$ROOT/scripts/check_android.sh"; then
   status=1
 fi
 
+# Composition is a separate gate because it needs a separate thing: a device
+# with a live IME framework, and the one example that has a text field on the
+# painted backend. It skips itself without those, and it is the only check in
+# this suite that can tell a composing run that arrived from one that did not.
+if ! SKIA_ROOT="${SKIA_ROOT:-}" bash "$ROOT/scripts/check_android_ime.sh"; then
+  echo "FAIL android ime"
+  status=1
+fi
+
 # The AppKit/Skia compositor extends the required CPU-raster gate when it is
 # available on macOS; its fixture remains headless and never foregrounds a UI.
 if [[ "$require_real_skia" == "1" ]]; then

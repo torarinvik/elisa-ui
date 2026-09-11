@@ -79,6 +79,34 @@ def android_commit_text(text: cstr, length: i32) -> void:
 export fn elisa_android_composing_text(text: cstr, length: i32, selection_start: i32, selection_length: i32) -> void = android_composing_text
 export fn elisa_android_commit_text(text: cstr, length: i32) -> void = android_commit_text
 
+# WHAT THE FRAMEWORK HOLDS ONCE THE IME HAS SPOKEN.
+#
+# Composition was the one part of this backend that could only be argued for.
+# There is no CJK IME on the emulator to type pinyin into, so every claim about
+# a composing run was inference from the Latin path -- which is the exact shape
+# of claim this project has been wrong about before. These two answers are what
+# let the gate stop inferring: the host drives the real input connection with
+# the calls an IME makes, and then reads back what actually landed.
+global mutable android_ime_report: u8[UiFlat::TEXT_CAPACITY] = zeroed
+
+def android_ime_text() -> cstr:
+    can Memory.Allocate, Abort.Panic, Ui.Input, Unsafe.PointerCast, Ui.Text:
+        value: sview = UiFlat::text_value(UiFlat::focused())
+        room: usize = value.len.usize() if value.len.usize() < UiFlat::TEXT_CAPACITY - 1 else UiFlat::TEXT_CAPACITY - 1
+        for index in 0..<room:
+            android_ime_report[index] <- value.data[index]
+        android_ime_report[room] <- 0
+        return (&android_ime_report[0]).cast[cstr] can Unsafe.PointerCast
+
+# UTF-16 units, because that is what the IME counts in and what a wrong answer
+# here would be wrong in.
+def android_ime_marked_units() -> i32:
+    can Memory.Allocate, Abort.Panic, Ui.Input, Unsafe.PointerCast, Ui.Text:
+        return UiFlat::marked_utf16_length(UiFlat::focused()).i32()
+
+export fn elisa_android_ime_text() -> cstr = android_ime_text
+export fn elisa_android_ime_marked_units() -> i32 = android_ime_marked_units
+
 def android_controls_ime_byte(text: cstr, index: usize) -> u8:
     pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
     return 0 if pointer == 0.uintptr()
@@ -164,7 +192,7 @@ module UiAndroid:
             can Ui.Window, Ui.Draw, Ui.Text, Ui.Input, Unsafe.PointerCast:
                 return false if android_started
                 return false if not UiMobileSurface::start(width, height, scale, safe)
-                UiCapabilities::use_appkit_canvas()
+                UiCapabilities::use_android()
                 _ = UiCapabilities::select_skia_renderer()
                 UiCore::set_viewport(width, height)
                 _ = publish_content_insets()

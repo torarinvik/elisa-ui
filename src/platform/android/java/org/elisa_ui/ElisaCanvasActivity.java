@@ -36,6 +36,11 @@ public final class ElisaCanvasActivity extends NativeActivity {
     public static native void nativeComposingText(String text, int selectionStart, int selectionLength);
     public static native void nativeCommitText(String text);
 
+    // The probe's two questions, answered by the framework rather than by
+    // anything in Java. See startImeProbe below for why they exist.
+    public static native int nativeImeReady();
+    public static native void nativeImeReport(String tag);
+
     // THE CONNECTION COMES FROM A VIEW, NOT FROM THE ACTIVITY. This was the
     // first thing to get wrong here: onCreateInputConnection is View's, and a
     // NativeActivity gives you an Activity whose content is a surface created
@@ -69,6 +74,57 @@ public final class ElisaCanvasActivity extends NativeActivity {
         input.setFocusable(true);
         input.setFocusableInTouchMode(true);
         input.requestFocus();
+        if (getIntent() != null && getIntent().getBooleanExtra(PROBE_EXTRA, false)) startImeProbe();
+    }
+
+    private static final String PROBE_EXTRA = "elisa.ime.probe";
+
+    // DRIVING THE CONNECTION AN IME WOULD BE HANDED.
+    //
+    // Composition was the one claim about this backend that rested on
+    // inference. There is no CJK IME on the emulator to type pinyin into, and
+    // a composing run that never arrives draws exactly as many colours as one
+    // that does, so no frame check could catch it either.
+    //
+    // This is not a mock. ElisaInputConnection is the production class, it is
+    // built by the production onCreateInputConnection, and every byte it
+    // forwards crosses the same JNI boundary a real IME's would. The calls are
+    // the calls a pinyin keyboard makes: a provisional run, a longer
+    // provisional run, then a commit of characters the Latin key path could
+    // not have produced.
+    //
+    // What it does NOT prove is that an IME chooses this view -- that is what
+    // onCheckIsTextEditor and the EditorInfo above answer, and a keyboard
+    // coming up on a real device is the evidence for it.
+    private void startImeProbe() {
+        final View view = input;
+        view.postDelayed(new Runnable() {
+            private int waited;
+
+            @Override
+            public void run() {
+                // Nothing to compose into until the framework has a focused
+                // text field, and reaching one is the gate's job, not this
+                // probe's -- so it waits rather than guessing at a tap.
+                if (nativeImeReady() == 0) {
+                    if (waited++ < 100) view.postDelayed(this, 200);
+                    else nativeImeReport("no-field");
+                    return;
+                }
+                InputConnection connection = view.onCreateInputConnection(new EditorInfo());
+                if (connection == null) {
+                    nativeImeReport("no-connection");
+                    return;
+                }
+                connection.setComposingText("ni", 1);
+                nativeImeReport("composing-1");
+                connection.setComposingText("nihao", 1);
+                nativeImeReport("composing-2");
+                connection.commitText("\u4f60\u597d", 1);
+                connection.finishComposingText();
+                nativeImeReport("committed");
+            }
+        }, 200);
     }
 
     private static final class ElisaInputView extends View {
@@ -76,9 +132,19 @@ public final class ElisaCanvasActivity extends NativeActivity {
             super(context);
         }
 
+        // ANSWERED BY THE FRAMEWORK, NOT BY THIS CLASS.
+        //
+        // This used to return a flat true, and the cost was visible the first
+        // time the canvas was watched on a device rather than read about: the
+        // platform decided the app was editing text from the moment it
+        // launched, and put its handwriting affordance over an Overview page
+        // with no field on it at all. A view that says it is a text editor is
+        // making a claim about the application's state, and the application's
+        // state is in Elisa -- which already answers exactly this question for
+        // the host, to decide whether the soft keyboard belongs on screen.
         @Override
         public boolean onCheckIsTextEditor() {
-            return true;
+            return nativeImeReady() != 0;
         }
 
         @Override

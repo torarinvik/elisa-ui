@@ -314,6 +314,14 @@ secure field alone, the real placeholder on each of the three, and the
 showcase's own "Show password" checkbox flipping `password` back to `false`
 live — which is the reconciler carrying a state change to an adopted control.
 
+# Back to the painted backend
+
+Everything from "The Android native-controls backend" down to here describes
+real `android.widget` views. What follows is the painted canvas again -- its
+clipboard, its composition, and what each one cost. The two backends share this
+file and nothing else, and a reader who lost the thread here would have read
+canvas facts as if they were claims about `EditText`.
+
 ## What is not here yet
 
 The clipboard is here now. It was the only canvas backend in the framework
@@ -388,18 +396,43 @@ Three things cost time and are worth keeping:
   the IME now, which also means the keyboard the user chose decides the layout
   rather than a table in a C++ file.
 
-**Verified:** text reaches a painted field through the input connection and the
-doubling is gone. **Not verified:** composition itself, which needs a CJK or
-handwriting IME installed on the device; this emulator has none. The commit and
-compose paths share one forwarding function, so the evidence is good but it is
-inference, not a screenshot.
+- **A view that says it is a text editor is making a claim about the app.**
+  `onCheckIsTextEditor` returned a flat `true`, and the cost showed the first
+  time the canvas was watched on a device rather than read about: the platform
+  decided the app was editing from the moment it launched and put its
+  handwriting panel over an Overview page with no field on it. It now returns
+  what Elisa already tells the host to decide whether the soft keyboard
+  belongs on screen.
 
-No configuration changes beyond resize.No configuration changes beyond resize.
+**Verified, on a device:** text reaches a painted field through the input
+connection, the doubling is gone, and composition itself now has a gate —
+[`check_android_ime.sh`](../scripts/check_android_ime.sh). This used to read
+"not verified: composition needs a CJK IME and the emulator has none", with the
+shared forwarding function offered as the reason to believe it anyway. That was
+inference standing in for evidence.
 
-Accessibility is partly here now: a widget's help text becomes the view's
-`contentDescription`, so TalkBack reads more than whatever caption a view
-happens to carry. What is still missing is a role or a live-region hint for
-anything the platform cannot infer from the view class. The manifest declares
+The emulator still has no pinyin keyboard. What changed is that it does not need
+one: the probe asks the view for an input connection exactly as the input method
+manager does and calls it with the calls a pinyin keyboard makes — a provisional
+run, a longer one, then a commit. `ElisaInputConnection` is the production class,
+built by the production `onCreateInputConnection`, and every byte crosses the
+same JNI boundary. The gate asserts three separate ways it could be wrong: the
+provisional run arrives and is marked, the next one **replaces** rather than
+appends (the failure that turned "Hello" into "HeellIloo" on this backend), and
+the commit swaps in 你好 and clears the mark. The field draws it.
+
+What that does not prove is that an IME *chooses* the view — `onCheckIsTextEditor`
+answers that, and a keyboard coming up on a real device is the evidence for it.
+
+No configuration changes beyond resize.
+
+Accessibility, on the **native-controls** backend, is partly here: a widget's
+help text becomes the view's `contentDescription`, so TalkBack reads more than
+whatever caption a view happens to carry. What is still missing there is a role
+or a live-region hint for anything the platform cannot infer from the view
+class. The painted backend has none of this and does not claim it -- its
+capability profile answers `semantics: false`, because a canvas TalkBack cannot
+read is not an accessible canvas. The manifest declares
 `configChanges="orientation|screenSize|screenLayout|keyboardHidden|density"`, so
 a rotation arrives as a resize rather than a restart, which the backend already
 handles.
