@@ -28,9 +28,33 @@
 #      ELISA_HOST_WINDOWS exists, this gate sets it, and the runtime now resolves
 #      VirtualAllocEx, InitializeCriticalSection and GetActiveProcessorCount.
 #      What still blocks an image is that the Windows arena branch had never been
-#      compiled by stage1 and the backend declines four of its bodies
-#      (new_region_with_owner, new_region_reserve, arena_region_ensure_committed,
-#      free_region) -- zero declines for the same source on Linux or macOS.
+#      compiled by stage1 and the backend declines four of its bodies.
+#
+#      REPRODUCE IT IN ONE COMMAND, from the compiler repo (2026-09-11):
+#        ELISA_HOST_WINDOWS=1 ELISA_HOST_X86_64=1 bash scripts/elisac_stage1.sh \
+#          -O0 -target-triple x86_64-pc-windows-gnu -o /tmp/a.o elisacore_std/arena.elisa
+#      It exits 0 and warns: "backend declined 4 function body(ies); the object does
+#      not define: new_region_with_owner, new_region_reserve,
+#      arena_region_ensure_committed, free_region (call expression)". The same source
+#      compiled for x86_64-unknown-linux-gnu (ELISA_HOST_LINUX=1) or x86_64-apple-darwin
+#      declines NOTHING, so it is the Windows branch, not the file.
+#
+#      Localized: the VirtualAllocEx/VirtualFreeEx CALLS. Swapping just the
+#      VirtualAllocEx in new_region_with_owner for malloc() drops the count 4 -> 3,
+#      leaving the other three -- those are exactly the four functions that call the
+#      two Win32 externs.
+#
+#      Ruled OUT by experiment, so the next session need not re-derive them: a nested
+#      zero-argument call as an argument (GetCurrentProcess()); `assert not <call>`;
+#      the multi-line spelling of the extern declaration; declaring an extern inside a
+#      `static if`/`static elif` branch; untyped consts as arguments; a `|` of consts
+#      as an argument. Standalone fixtures with all of those built clean. Hoisting the
+#      two externs to top level does NOT fix it -- it only changes the reported reason
+#      from "call expression" to "expression", which is itself a clue.
+#
+#      Not root-caused. A callee the backend cannot resolve declines as "call
+#      expression" (src/backend/codegen_error_callee_facts.elisa says so for the
+#      try/catch path), so the next step is instrumenting which lookup fails here.
 #   2. elisacore_std/debug_referee.elisa declares kill, sigaction, getpid and
 #      signal with no `static if` around them. The first two have no Windows
 #      equivalent, so the crash-dump path needs a guard whatever else changes.
