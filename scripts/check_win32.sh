@@ -12,6 +12,21 @@
 # sound, not that the port is finished -- and saying so is the difference
 # between this gate and a mapping table that listed HWND for years with nothing
 # behind it.
+#
+# WHY THERE IS NO .exe TO RUN, precisely, because "never run" on its own is not
+# a finding anyone can act on. The backend is not what blocks it: both halves
+# compile for the Windows triple, and so does the Elisa runtime object. The link
+# then fails on what the runtime itself needs from a POSIX host --
+#
+#   mmap munmap kill sigaction sysctlbyname backtrace backtrace_symbols_fd
+#   va_copy va_end, plus the elisa_native_callback_* family the stage1 driver
+#   supplies at its own link step and mingw's ld never sees.
+#
+# Those are the compiler repo's to answer, not this one's. Writing a Windows
+# stand-in for them here would put a copy of the runtime's host assumptions in
+# the UI project, where it would rot the first time the runtime gained a symbol
+# -- which is the exact failure write_profiler_hook_fallbacks.sh exists to
+# prevent. So the gate stops at the object files and says why.
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -45,4 +60,4 @@ for symbol in $(grep -o '^extern elisa_win32_[a-z_]*' "$ROOT/src/platform/win32/
     echo "win32: Elisa declares $symbol and the shim defines nothing" >&2; exit 1; }
 done
 
-echo "win32: cross-compiled against real Windows headers; every export resolves in both directions (never run)"
+echo "win32: cross-compiled against real Windows headers; every export resolves in both directions (no image: the Elisa runtime has no Windows host yet)"

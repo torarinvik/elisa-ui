@@ -35,6 +35,14 @@ module UiWin32:
         def start() -> bool:
             return elisa_win32_init() != 0
 
+        # What the parent will answer about this control the next time Windows
+        # asks. On a machine with no Windows this is the whole of what can be
+        # checked; on one with Windows it is still the first thing to check,
+        # because a repaint that never happens is not a wrong colour.
+        def color_reply(index: i32, want_ink: bool) -> u32:
+            return 0 if native_handle(index) == 0
+            return elisa_win32_color_reply(native_handle(index), 1 if want_ink else 0)
+
     private:
         global mutable win32_text_bytes: u8[UiCore::MAX_TEXT_BYTES] = zeroed
         global mutable win32_prompt_bytes: u8[UiCore::MAX_TEXT_BYTES] = zeroed
@@ -57,6 +65,9 @@ module UiWin32:
         def parent_handle(parent: i32) -> usize:
             return 0 if parent < 0
             return native_handle(parent)
+
+        def packed_argb(color: UiCore::Color) -> u32:
+            return (color.a.u32() << 24) | (color.r.u32() << 16) | (color.g.u32() << 8) | color.b.u32()
 
         def record_created(index: i32, handle: usize) -> void:
             return if handle == 0 or index < 0
@@ -106,17 +117,23 @@ module UiWin32:
                     return if handle == 0
                     elisa_win32_set_frame(handle, box.origin.x, box.origin.y, box.size.width, box.size.height)
 
-            # WIN32 COLOURS ARE OWNER-DRAW OR WM_CTLCOLOR, and both mean this
-            # backend starts drawing the control itself -- which is the one
-            # thing a native backend exists not to do. An unstyled Win32 control
-            # looks like Windows drew it, the same outcome alpha-zero gives
-            # everywhere else in this seam.
+            # WIN32 COLOURS ARE THE PARENT'S ANSWER. This used to do nothing,
+            # on the reasoning that colouring a Win32 control meant drawing it.
+            # That was true of owner-draw and false of WM_CTLCOLOR*, which are
+            # not the same mechanism: Windows asks the parent for the colours
+            # and then Windows draws the control. The shim answers; nothing
+            # here draws anything.
+            #
+            # A themed push button is the exception, because visual styles
+            # never ask about one. It keeps the system's colours, and the
+            # alternative -- BS_OWNERDRAW -- is the line this backend does not
+            # cross for the sake of one caption.
             def set_colors(index: i32, kind: UiControls::ControlKind, ink: UiCore::Color, fill: UiCore::Color) -> void:
                 can Ui.Controls:
-                    _ = index
                     _ = kind
-                    _ = ink
-                    _ = fill
+                    handle: usize = native_handle(index)
+                    return if handle == 0
+                    elisa_win32_set_colors(handle, packed_argb(ink), packed_argb(fill))
 
             def set_text(index: i32, kind: UiControls::ControlKind, text: sview) -> void:
                 can Ui.Controls:

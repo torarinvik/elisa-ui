@@ -37,6 +37,9 @@ static wchar_t *to_wide(const char *utf8, wchar_t *buffer, int capacity) {
 
 static HWND hwnd_of(size_t handle) { return (HWND)(void *)handle; }
 
+static int color_slot_of(HWND control);
+static LRESULT color_reply(HDC context, int slot);
+
 // Elisa resolves the control back to an index and decides what an action
 // means; this window procedure only reports that one happened.
 extern int32_t elisa_win32_action(size_t handle, float value, int32_t selected);
@@ -70,6 +73,14 @@ static LRESULT CALLBACK elisa_window_proc(HWND window, UINT message, WPARAM w, L
             (void)elisa_win32_action((size_t)(void *)control, (float)position, 0);
             return 0;
         }
+    }
+    // Windows asks the parent what colour a child should be, once per repaint.
+    // A control the framework never coloured is not in the table and falls
+    // through to DefWindowProc, which is what keeps it looking like Windows.
+    if (message == WM_CTLCOLORSTATIC || message == WM_CTLCOLOREDIT ||
+        message == WM_CTLCOLORBTN || message == WM_CTLCOLORLISTBOX) {
+        const int slot = color_slot_of((HWND)l);
+        if (slot >= 0) return color_reply((HDC)w, slot);
     }
     if (message == WM_DESTROY) { PostQuitMessage(0); return 0; }
     return DefWindowProcW(window, message, w, l);
@@ -142,6 +153,111 @@ size_t elisa_win32_create_progress(size_t parent) {
     return (size_t)(void *)child(hwnd_of(parent), PROGRESS_CLASSW, 0, 0);
 }
 
+// ---- COLOUR IS THE PARENT'S ANSWER ---------------------------------------
+//
+// WIN32 HAS NO SetControlColor, and the conclusion drawn from that here was
+// that colouring a control meant drawing it -- which is the one thing a native
+// backend exists not to do. That conflated two different mechanisms. Owner-draw
+// does mean drawing the control yourself. WM_CTLCOLOR* does not: Windows asks
+// the parent for a text colour, a background colour and a brush, and then
+// Windows draws the control. It is the platform's own colour affordance, the
+// exact counterpart of GTK's CSS, and it was available the whole time.
+//
+// So the parent answers, from a table this file keeps, and the framework's
+// colours arrive without a single pixel being drawn here.
+//
+// WHAT IT DOES NOT REACH: a themed BS_PUSHBUTTON. Visual styles draw push
+// buttons through the theme and never send WM_CTLCOLORBTN, so a push button
+// keeps the system's colours. Reaching it needs BS_OWNERDRAW, and that is the
+// line -- the caption colour of one control is not worth this backend taking
+// over the drawing of it. Labels, edits, check boxes, radios, panels and the
+// window all take the colours they are given.
+//
+// ALPHA IS A MESSAGE, NOT A CHANNEL. GDI controls have no alpha; zero means
+// "leave it to Windows", as everywhere else in this seam, and any other value
+// means the colour is used opaque.
+
+#define ELISA_WIN32_MAX_COLORED 128
+
+static struct {
+    HWND control;
+    COLORREF ink;
+    COLORREF fill;
+    HBRUSH brush;
+    int has_ink;
+    int has_fill;
+} colored[ELISA_WIN32_MAX_COLORED];
+static int colored_count;
+
+static COLORREF colorref_of(uint32_t argb) {
+    return RGB((argb >> 16) & 0xFFu, (argb >> 8) & 0xFFu, argb & 0xFFu);
+}
+
+static int color_slot_of(HWND control) {
+    for (int slot = 0; slot < colored_count; slot++) {
+        if (colored[slot].control == control) return slot;
+    }
+    return -1;
+}
+
+// The answer to one WM_CTLCOLOR*. Returning the brush is not optional: letting
+// DefWindowProc answer would put the system's colours back into the DC and
+// undo the SetTextColor above it.
+static LRESULT color_reply(HDC context, int slot) {
+    if (colored[slot].has_ink) SetTextColor(context, colored[slot].ink);
+    if (colored[slot].has_fill) {
+        SetBkColor(context, colored[slot].fill);
+        return (LRESULT)colored[slot].brush;
+    }
+    SetBkColor(context, GetSysColor(COLOR_WINDOW));
+    return (LRESULT)GetSysColorBrush(COLOR_WINDOW);
+}
+
+void elisa_win32_set_colors(size_t handle, uint32_t ink, uint32_t fill) {
+    HWND control = hwnd_of(handle);
+    if (control == NULL) return;
+    const int has_ink = ((ink >> 24) & 0xFFu) != 0;
+    const int has_fill = ((fill >> 24) & 0xFFu) != 0;
+    if (!has_ink && !has_fill) return;
+    int slot = color_slot_of(control);
+    if (slot < 0) {
+        if (colored_count == ELISA_WIN32_MAX_COLORED) return;
+        slot = colored_count++;
+        colored[slot].control = control;
+    }
+    colored[slot].has_ink = has_ink;
+    colored[slot].has_fill = has_fill;
+    colored[slot].ink = colorref_of(ink);
+    if (has_fill) {
+        const COLORREF wanted = colorref_of(fill);
+        // One brush per control, replaced only when the colour actually
+        // changes -- a GDI object leaked per repaint is the classic way to
+        // exhaust a desktop heap.
+        if (colored[slot].brush == NULL || colored[slot].fill != wanted) {
+            if (colored[slot].brush != NULL) DeleteObject(colored[slot].brush);
+            colored[slot].brush = CreateSolidBrush(wanted);
+        }
+        colored[slot].fill = wanted;
+    }
+    // The colour is only read when Windows next asks for it, so the control
+    // has to be told there is something to ask about.
+    InvalidateRect(control, NULL, TRUE);
+}
+
+// Facts a fixture on a Windows machine can check without a screenshot: the
+// table took the colour, and the window procedure answers for that control.
+uint32_t elisa_win32_color_reply(size_t handle, int32_t want_ink) {
+    const int slot = color_slot_of(hwnd_of(handle));
+    if (slot < 0) return 0;
+    if (want_ink && !colored[slot].has_ink) return 0;
+    if (!want_ink && !colored[slot].has_fill) return 0;
+    // A COLORREF is 0x00BBGGRR and the framework speaks ARGB, so this reports
+    // the colour the way the caller named it rather than the way GDI stores it.
+    const COLORREF value = want_ink ? colored[slot].ink : colored[slot].fill;
+    return 0xFF000000u | ((uint32_t)GetRValue(value) << 16) |
+           ((uint32_t)GetGValue(value) << 8) | (uint32_t)GetBValue(value);
+}
+
 void elisa_win32_set_frame(size_t handle, float x, float y, float width, float height) {
     HWND control = hwnd_of(handle);
     if (control == NULL) return;
@@ -185,10 +301,6 @@ void elisa_win32_set_help(size_t handle, const char *placeholder, const char *he
     }
     (void)help;
 }
-
-// Win32 delivers actions to the PARENT through WM_COMMAND, so nothing has to
-// be installed per control -- the window procedure above already reports them.
-
 
 // Win32 delivers actions to the PARENT through WM_COMMAND, so nothing has to
 // be installed per control -- the window procedure above already reports them.
