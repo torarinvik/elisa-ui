@@ -91,19 +91,42 @@ fi
 
 PACKAGE="org.elisa_ui.$EXAMPLE"
 "$ADB" install -r "$APK" >/dev/null
-"$ADB" shell am force-stop "$PACKAGE"
-# The frame trace is what this half reads; it is off unless asked for.
-"$ADB" shell setprop debug.elisa.trace 1
-"$ADB" logcat -c
-"$ADB" shell am start -n "$PACKAGE/android.app.NativeActivity" >/dev/null
-for _ in $(seq 1 20); do
-  sleep 1
-  log="$("$ADB" logcat -d -s elisa-ui)"
-  grep -q "colors=" <<<"$log" && break
-done
-"$ADB" shell am force-stop "$PACKAGE" || true
+# LAUNCH AND WATCH, WITH ONE RETRY. This gate failed once inside a loaded suite
+# with a log full of rendered frames and no "start -> 1" line -- the host had
+# plainly run, and the check that says it did not had been green twice that
+# hour. I could not reproduce it: alone, and with the process deliberately left
+# alive first, it passes every time. So the cause is not established, and the
+# honest response is the one check_uikit_touch.sh already uses for a busy
+# device rather than a confident fix for a diagnosis I do not have.
+#
+# Force-stop is a request, not a fact, and `am start` on a process that is
+# still alive RESUMES the activity: the app redraws, so the frame lines appear
+# as usual, but the one-time start line does not. Waiting for the process to go
+# is strictly better whether or not it was the cause here.
+launch_and_watch() {
+  "$ADB" shell am force-stop "$PACKAGE"
+  for _ in $(seq 1 20); do
+    [[ -z "$("$ADB" shell pidof "$PACKAGE" 2>/dev/null | tr -d '\r')" ]] && break
+    sleep 0.5
+  done
+  # The frame trace is what this half reads; it is off unless asked for.
+  "$ADB" shell setprop debug.elisa.trace 1
+  "$ADB" logcat -c
+  "$ADB" shell am start -n "$PACKAGE/android.app.NativeActivity" >/dev/null
+  for _ in $(seq 1 20); do
+    sleep 1
+    log="$("$ADB" logcat -d -s elisa-ui)"
+    grep -q "colors=" <<<"$log" && break
+  done
+  "$ADB" shell am force-stop "$PACKAGE" || true
+  grep -q "start .* -> 1\$" <<<"$log"
+}
 
-grep -q "start .* -> 1\$" <<<"$log" || { echo "android: the host never started"; echo "$log" >&2; exit 1; }
+if ! launch_and_watch; then
+  echo "android: first attempt saw no start line; retrying once in case the device was busy" >&2
+  sleep 3
+  launch_and_watch || { echo "android: the host never started"; echo "$log" >&2; exit 1; }
+fi
 frame="$(grep "colors=" <<<"$log" | tail -1)"
 [[ -n "$frame" ]] || { echo "android: no frame was drawn"; echo "$log" >&2; exit 1; }
 colors="$(sed -n 's/.*colors=\([0-9]*\).*/\1/p' <<<"$frame")"
