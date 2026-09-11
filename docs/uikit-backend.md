@@ -90,6 +90,34 @@ that an unchanged report raises nothing (which is what stops a backend that
 re-realizes on every event from chasing its own tail), that clearing a field is
 a real edit, and that a label refuses a write-back it should never receive.
 
+## A selectable button with no caption is invisible — known, unfixed
+
+UIKit draws a system button as its title, so a check box whose whole content is
+its state renders as nothing: an empty patch you can tap but cannot see. The
+showcase's dark-mode toggle is one, and it is the round nothing in the top
+right of the header. Android shows a check box there, because Android's
+`CheckBox` draws a box whether or not it has words.
+
+This was attempted and **reverted**, twice, and the attempts are worth
+recording because both failures were instructive:
+
+- Giving every selectable button an SF Symbol mark (`square` /
+  `checkmark.square.fill`, `circle` / `largecircle.fill.circle`) made the
+  dark-mode box visible and the radio marks correct — and collapsed the tab row
+  from "Overview" to "O...", because the mark takes horizontal room inside a
+  box the layout sized for words alone. That trades a visible control for an
+  unreadable one.
+- Narrowing it to *captionless* buttons only did not work either: with a
+  `UIButtonConfiguration` set, `-setImage:forState:` does not compose the way
+  the legacy API does, and the marks stayed while the selected state broke.
+  That is the same configuration-copy trap as above, one level deeper.
+
+The honest fix is a composite — a `UIView` holding a `UILabel` and a real
+`UISwitch`, with the container as the control's handle — which is also what
+would finally make the `UISwitch` line in the seam's mapping table true. That
+is a change to what a backend may build for one widget, not a property to set,
+and it wants doing deliberately rather than at the end of a session.
+
 ## A caption that does not fit is cut, not hyphenated
 
 A `UILabel` defaults to one line and truncates. A `UIButton`'s title does
