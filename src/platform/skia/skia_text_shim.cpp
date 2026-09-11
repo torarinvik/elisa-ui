@@ -123,7 +123,19 @@ extern "C" int elisa_skia_text_covers(std::size_t font_handle, const char *text,
     return 1;
 }
 
+// A bold face that is not bold is worse than none: with one in hand the
+// renderer draws a weighted run with it AND withholds the synthetic stem
+// growth, so a regular face lent as "bold" loses the weight twice over. That
+// is exactly what CoreText hands back for the null family -- Helvetica at
+// 400 for every style asked -- and every heading in the storefront was drawn
+// at regular weight because of it. A face is kept only if it is at least
+// semibold; anything lighter is refused and weight is synthesised as before.
 extern "C" void elisa_skia_set_bold_typeface(std::size_t font) {
+    const SkTypeface *face = reinterpret_cast<const SkTypeface *>(font);
+    if (face != nullptr && face->fontStyle().weight() < SkFontStyle::kSemiBold_Weight) {
+        elisa_skia_bold_typeface = 0;
+        return;
+    }
     elisa_skia_bold_typeface = font;
 }
 

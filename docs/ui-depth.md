@@ -282,6 +282,15 @@ the regular face. That is what keeps the AppKit/Skia compositor honest: it
 MEASURES with CoreText, which picks the bold symbolic trait, and DRAWS with
 Skia, so the two have to be handed faces from the same place.
 
+A bold face that is not bold is worse than none: with one in hand the renderer
+draws a weighted run with it *and* withholds the synthetic stem growth, so a
+regular face lent as bold loses the weight twice over. That is exactly what
+CoreText hands back for the null family — Helvetica at 400 for every style
+asked — and every heading in the storefront was drawn at regular weight for as
+long as the hosts asked that way. The shim now refuses a face lighter than
+semibold (600) and synthesises weight as before; the hosts ask for the system UI
+face by the name CoreText matches (`.AppleSystemUIFont`), whose bold is bold.
+
 `UiTextMetrics` was already keying its cache on weight; Skia's own metric cache
 now does too. It did not have to while weight was a stroke — a stroke leaves
 the advance alone, so bold and regular measured the same — and a cache that

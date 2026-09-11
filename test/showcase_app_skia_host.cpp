@@ -53,6 +53,23 @@ int sampled_luminance(SkSurface* surface, int x, int y) {
     return (SkColorGetR(color) * 54 + SkColorGetG(color) * 183 + SkColorGetB(color) * 19) >> 8;
 }
 
+// The mean luminance of one LOGICAL point at a backing scale: the scale-by-
+// scale block of pixels it covers. Two frames of the same picture at 1x and
+// 2x agree on this where they cannot agree on a single pixel -- a glyph edge
+// or a hairline is anti-aliased differently at each scale, and a probe that
+// lands on one compares two renderings of the same edge, not two pictures.
+int logical_luminance(SkSurface* surface, int x, int y, int scale) {
+    int total = 0;
+    for (int dy = 0; dy < scale; ++dy) {
+        for (int dx = 0; dx < scale; ++dx) {
+            const int one = sampled_luminance(surface, x * scale + dx, y * scale + dy);
+            if (one < 0) return -1;
+            total += one;
+        }
+    }
+    return total / (scale * scale);
+}
+
 // A picture for the application's mark, made here rather than loaded, so the
 // fixture needs no asset on disk and no decoder: what is being proved is that
 // an image reaches a retained widget, not that a PNG can be read. A diagonal
@@ -97,11 +114,11 @@ int main(int argc, char** argv) {
 
     sk_sp<SkFontMgr> font_manager = SkFontMgr_New_CoreText(nullptr);
     sk_sp<SkTypeface> typeface =
-        font_manager ? font_manager->matchFamilyStyle(nullptr, SkFontStyle::Normal()) : nullptr;
+        font_manager ? font_manager->matchFamilyStyle(".AppleSystemUIFont", SkFontStyle::Normal()) : nullptr;
     // The system bold face, lent for the life of the host: weighted runs are
     // drawn and measured with a designed bold instead of a synthetic stroke.
     sk_sp<SkTypeface> bold_typeface =
-        font_manager ? font_manager->matchFamilyStyle(nullptr, SkFontStyle::Bold()) : nullptr;
+        font_manager ? font_manager->matchFamilyStyle(".AppleSystemUIFont", SkFontStyle::Bold()) : nullptr;
     elisa_skia_set_bold_typeface(reinterpret_cast<std::size_t>(bold_typeface.get()));
     elisa_skia_set_font_manager(reinterpret_cast<std::size_t>(font_manager.get()));
     if (!typeface) {
@@ -445,12 +462,25 @@ int main(int argc, char** argv) {
     // LOGICAL point in both and requiring them to agree is the check the file
     // size was standing in for -- and the one that would have caught the
     // frame being of another page entirely.
+    // A logical point is compared as the block it covers at each scale, and
+    // as a 3x3 of those: the sample grid landed on a glyph edge the moment
+    // the host lent a real bold face, and an edge is not the same at two
+    // scales. Same picture, compared at the picture's own resolution.
     bool retina_matches = true;
     for (int step = 1; step <= 3; ++step) {
         const int x = width * step / 4;
         const int y = height * step / 4;
-        const int one = sampled_luminance(surface.get(), x, y);
-        const int two = sampled_luminance(retina.get(), x * 2, y * 2);
+        int one = 0, two = 0;
+        for (int dy = -1; dy <= 1; ++dy) {
+            for (int dx = -1; dx <= 1; ++dx) {
+                const int a = logical_luminance(surface.get(), x + dx, y + dy, 1);
+                const int b = logical_luminance(retina.get(), x + dx, y + dy, 2);
+                one = (a < 0 || one < 0) ? -1 : one + a;
+                two = (b < 0 || two < 0) ? -1 : two + b;
+            }
+        }
+        if (one >= 0) one /= 9;
+        if (two >= 0) two /= 9;
         if (one < 0 || two < 0 || std::abs(one - two) > 12) {
             std::fprintf(stderr,
                          "showcase skia: the retina frame is not the 1x frame at twice the pixels "

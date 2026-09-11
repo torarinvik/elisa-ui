@@ -167,12 +167,12 @@ int main(int argc, char** argv) {
     const auto font_manager = SkFontMgr_New_CoreText(nullptr);
     const auto typeface = font_manager == nullptr
         ? nullptr
-        : font_manager->matchFamilyStyle(nullptr, SkFontStyle::Normal());
+        : font_manager->matchFamilyStyle(".AppleSystemUIFont", SkFontStyle::Normal());
     // The system bold face, lent for the life of the host: weighted runs are
     // drawn and measured with a designed bold instead of a synthetic stroke.
     const auto bold_typeface = font_manager == nullptr
         ? nullptr
-        : font_manager->matchFamilyStyle(nullptr, SkFontStyle::Bold());
+        : font_manager->matchFamilyStyle(".AppleSystemUIFont", SkFontStyle::Bold());
     elisa_skia_set_bold_typeface(reinterpret_cast<std::size_t>(bold_typeface.get()));
     if (typeface == nullptr) {
         std::fprintf(stderr, "skia showcase: failed to resolve the CoreText default typeface\n");

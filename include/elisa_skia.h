@@ -114,7 +114,9 @@ void elisa_skia_canvas_draw_text_weighted(size_t canvas, size_t font, const char
 /* Lend the renderer a designed bold face, or pass zero to take it back. With
  * one in hand a weighted run is DRAWN and MEASURED with it and the synthetic
  * stem growth is not applied; without one the renderer synthesises weight as
- * before. Borrowed like every other font handle: the host owns it. */
+ * before. A face lighter than semibold (600) is refused -- it would take the
+ * synthetic weight away and give none back -- and reads as zero afterwards.
+ * Borrowed like every other font handle: the host owns it. */
 void elisa_skia_set_bold_typeface(size_t font);
 /* A font manager for per-code-point fallback, or 0 to take it back. */
 void elisa_skia_set_font_manager(size_t manager);

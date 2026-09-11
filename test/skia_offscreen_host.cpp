@@ -24,6 +24,7 @@
 extern "C" void elisa_skia_set_font_manager(std::size_t manager);
 extern "C" int elisa_skia_text_covers(std::size_t font, const char *text, std::size_t length);
 extern "C" void elisa_skia_set_bold_typeface(std::size_t font);
+extern "C" std::size_t elisa_skia_bold_typeface_handle(void);
 extern "C" std::int32_t elisa_skia_offscreen_render(std::size_t canvas, std::size_t font);
 
 namespace {
@@ -177,15 +178,26 @@ int main(int argc, char** argv) {
     const auto font_manager = SkFontMgr_New_CoreText(nullptr);
     const auto typeface = font_manager == nullptr
         ? nullptr
-        : font_manager->matchFamilyStyle(nullptr, SkFontStyle::Normal());
+        : font_manager->matchFamilyStyle(".AppleSystemUIFont", SkFontStyle::Normal());
     // Lend the renderer the system BOLD face as well. A weighted run is then
     // drawn and measured with a designed bold rather than with a stroke added
     // to the regular outline, which is what the framework falls back to when a
     // host has none.
     const auto bold_typeface = font_manager == nullptr
         ? nullptr
-        : font_manager->matchFamilyStyle(nullptr, SkFontStyle::Bold());
+        : font_manager->matchFamilyStyle(".AppleSystemUIFont", SkFontStyle::Bold());
+    // A regular face lent as bold must be refused, or weighted runs lose
+    // their synthetic weight and gain nothing for it.
+    elisa_skia_set_bold_typeface(reinterpret_cast<std::size_t>(typeface.get()));
+    if (typeface && elisa_skia_bold_typeface_handle() != 0) {
+        std::fprintf(stderr, "skia offscreen: a regular face was accepted as bold\n");
+        return 1;
+    }
     elisa_skia_set_bold_typeface(reinterpret_cast<std::size_t>(bold_typeface.get()));
+    if (bold_typeface && elisa_skia_bold_typeface_handle() == 0) {
+        std::fprintf(stderr, "skia offscreen: the bold face was refused\n");
+        return 1;
+    }
     if (typeface == nullptr) {
         std::fprintf(stderr, "skia offscreen: failed to resolve the CoreText default typeface\n");
         return 7;
@@ -209,7 +221,10 @@ int main(int argc, char** argv) {
     // the manager supplies? The command glyph is one the default face lacks.
     {
         sk_sp<SkFontMgr> manager = SkFontMgr_New_CoreText(nullptr);
-        sk_sp<SkTypeface> plain = manager ? manager->matchFamilyStyle(nullptr, SkFontStyle::Normal()) : nullptr;
+        // Helvetica by name: it lacks the command glyph, which is what the
+        // fallback has to supply. The system UI face has it and would make
+        // this check unable to fail.
+        sk_sp<SkTypeface> plain = manager ? manager->matchFamilyStyle("Helvetica", SkFontStyle::Normal()) : nullptr;
         if (plain) {
             const char *command = "\xE2\x8C\x98 K";
             elisa_skia_set_font_manager(0);

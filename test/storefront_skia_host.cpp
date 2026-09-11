@@ -157,11 +157,16 @@ int main(int argc, char** argv) {
     const int height = argc > 3 ? std::atoi(argv[3]) : 812;
     const float scale = argc > 4 ? static_cast<float>(std::atof(argv[4])) : 1.0f;
 
+    // THE NULL FAMILY IS NOT THE SYSTEM FONT. Asked for no family at all,
+    // CoreText answers Helvetica at weight 400 whatever style is requested,
+    // so the "bold" face this host lent was the regular one and every heading
+    // was drawn at regular weight. The system UI face has a name CoreText
+    // matches, and its bold is bold.
     sk_sp<SkFontMgr> font_manager = SkFontMgr_New_CoreText(nullptr);
     sk_sp<SkTypeface> typeface =
-        font_manager ? font_manager->matchFamilyStyle(nullptr, SkFontStyle::Normal()) : nullptr;
+        font_manager ? font_manager->matchFamilyStyle(".AppleSystemUIFont", SkFontStyle::Normal()) : nullptr;
     sk_sp<SkTypeface> bold =
-        font_manager ? font_manager->matchFamilyStyle(nullptr, SkFontStyle::Bold()) : nullptr;
+        font_manager ? font_manager->matchFamilyStyle(".AppleSystemUIFont", SkFontStyle::Bold()) : nullptr;
     elisa_skia_set_bold_typeface(reinterpret_cast<std::size_t>(bold.get()));
     elisa_skia_set_font_manager(reinterpret_cast<std::size_t>(font_manager.get()));
     if (!typeface) {
