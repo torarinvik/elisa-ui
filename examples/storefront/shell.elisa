@@ -21,6 +21,10 @@ module StoreShell:
         global mutable promo_arrow: UiHandles::Handle = UiHandles::invalid()
         global mutable caption_total: usize = 0
         global mutable selected: i32 = 1
+        # THE PHONE FORM: marks only. The captions, the section names, the
+        # brand line and the promo are built and hidden, so the rail is the
+        # same tree at either width and only its cloth changes.
+        global mutable compact_form: bool = false
 
         def mark(parent: UiHandles::Handle) -> UiHandles::Handle:
             tile: UiHandles::Handle = UiHandles::column(parent, 0.0, 0.0, StoreTheme::transparent())
@@ -34,6 +38,7 @@ module StoreShell:
             label: UiHandles::Handle = UiHandles::label(parent, text, 14.0, StoreTheme::rail_ink())
             UiHandles::set_grow(label, 1.0)
             UiHandles::set_cross_alignment(label, UiConst::CrossAlignment.Center)
+            UiHandles::set_visible(label, not compact_form)
             captions[caption_total] <- UiHandles::index(label).u32()
             caption_total <- caption_total + 1
 
@@ -54,6 +59,7 @@ module StoreShell:
             # Tracked small caps: a section label is read as a landmark, not
             # as a word, and the gaps are what say so.
             UiHandles::set_text_tracking(heading, 1.6)
+            UiHandles::set_visible(heading, not compact_form)
             rule: UiHandles::Handle = UiHandles::column(rail, 0.0, 0.0, StoreTheme::hairline())
             UiHandles::set_grow(rule, 0.0)
             UiHandles::set_min_size(rule, 0.0, 1.0)
@@ -72,13 +78,14 @@ module StoreShell:
         def entry(parent: UiHandles::Handle) -> UiHandles::Handle:
             row: UiHandles::Handle = UiHandles::row(parent, 9.0, 10.0, StoreTheme::transparent())
             UiHandles::set_grow(row, 0.0)
-            UiHandles::set_min_size(row, 224.0, 40.0)
+            UiHandles::set_min_size(row, 40.0 if compact_form else 224.0, 40.0)
             UiHandles::set_max_size(row, 4096.0, 40.0)
             return row
 
     public:
-        def init(host: UiHandles::Handle) -> void:
-            rail <- UiHandles::column(host, 16.0, 6.0, StoreTheme::rail())
+        def init(host: UiHandles::Handle, compact: bool) -> void:
+            compact_form <- compact
+            rail <- UiHandles::column(host, 12.0 if compact else 16.0, 6.0, StoreTheme::rail())
             UiHandles::set_grow(rail, 0.0)
             UiHandles::set_gradient(rail, StoreTheme::rail_far(), false)
 
@@ -94,6 +101,7 @@ module StoreShell:
             brand_name: UiHandles::Handle = UiHandles::label(brand_text, "WasmBrowser", 16.0, StoreTheme::rail_ink())
             UiHandles::set_text_weight(brand_name, true)
             _ = UiHandles::label(brand_text, "The Open Web. Beyond.", 11.0, StoreTheme::rail_muted())
+            UiHandles::set_visible(brand_text, not compact)
 
             gap: UiHandles::Handle = UiHandles::column(rail, 0.0, 0.0, StoreTheme::transparent())
             UiHandles::set_grow(gap, 0.0)
@@ -132,6 +140,7 @@ module StoreShell:
             UiHandles::set_max_size(promo, 4096.0, 96.0)
             UiHandles::set_glow(promo, StoreTheme::rgba(37, 118, 236, 120))
             UiHandles::set_floating(promo, true)
+            UiHandles::set_visible(promo, not compact)
             promo_scrim: UiHandles::Handle = UiHandles::row(promo, 14.0, 8.0, StoreTheme::rgba(12, 30, 80, 200))
             UiHandles::set_grow(promo_scrim, 1.0)
             UiHandles::set_gradient(promo_scrim, StoreTheme::rgba(12, 30, 80, 40), true)

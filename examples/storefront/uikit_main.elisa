@@ -4,12 +4,20 @@
 # a tablet takes its surface from UIKit at launch; the snapshot dimensions
 # below are only what the headless smoke path renders when nothing is on
 # screen -- an iPad in landscape at its native scale, which is the shape the
-# composition was built for.
+# composition was built for. The pictures are made here with CoreGraphics and
+# bound before launch; the tree picks them up when the surface arrives.
 
 include "../../src/platform/uikit/ui_uikit_flat.elisa"
 include "app.elisa"
+include "pictures_cg.elisa"
+
+def bound(slot: u32, image: usize) -> UiCore::ImageRef:
+    return UiCore::image_ref_none() if not UiUIKit::bind_picture(slot, 1, image)
+    return UiCore::image_ref(slot, 1)
 
 def main() -> i64:
+    pictures: StorePictures::Set = StorePictures::make()
+    StoreApp::set_pictures(bound(1, pictures.brand), bound(2, pictures.glyph), bound(3, pictures.banner), bound(4, pictures.plate), bound(5, pictures.grain))
     options: mutable UiUIKit::LaunchOptions = UiUIKit::default_launch_options()
     options.status_bar <- false
     options.idle_timer <- false

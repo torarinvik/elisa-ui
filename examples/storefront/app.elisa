@@ -15,6 +15,27 @@ module StoreApp:
         global mutable root: UiHandles::Handle = UiHandles::invalid()
         global mutable body: UiHandles::Handle = UiHandles::invalid()
         global mutable started: bool = false
+        # Narrower than this at the moment the tree is built, and the
+        # composition takes its phone form. A tablet or a window is wide.
+        const COMPACT_WIDTH: f32 = 700.0
+        # Pictures handed over before the tree exists wait here. An entry
+        # point that makes its own pictures has them before the backend has
+        # a surface, and the backend is what decides when `init` runs.
+        global mutable pending: bool = false
+        global mutable pending_brand: UiCore::ImageRef = UiCore::image_ref_none()
+        global mutable pending_glyph: UiCore::ImageRef = UiCore::image_ref_none()
+        global mutable pending_banner: UiCore::ImageRef = UiCore::image_ref_none()
+        global mutable pending_plate: UiCore::ImageRef = UiCore::image_ref_none()
+        global mutable pending_grain: UiCore::ImageRef = UiCore::image_ref_none()
+
+        def apply_pictures() -> void:
+            # GRAIN over the page ramp: a tile at its own size, at a few
+            # percent. A smooth ramp reads as vector; this reads as a surface.
+            UiHandles::set_image(root, pending_grain)
+            UiHandles::set_image_fit(root, UiCore::PictureFit.Tile)
+            UiHandles::set_image_alpha(root, 14)
+            StoreShell::set_marks(pending_brand, pending_glyph, pending_banner)
+            StoreCatalog::set_pictures(pending_banner, pending_plate, pending_glyph)
 
     public:
         def init() -> void:
@@ -24,8 +45,10 @@ module StoreApp:
             UiHandles::set_gradient(root, StoreTheme::page_far(), false)
             body <- UiHandles::row(root, 0.0, 0.0, StoreTheme::transparent())
             UiHandles::set_grow(body, 1.0)
-            StoreShell::init(body)
-            StoreCatalog::init(body)
+            compact: bool = UiCore::viewport_width() > 0.0 and UiCore::viewport_width() < COMPACT_WIDTH
+            StoreShell::init(body, compact)
+            StoreCatalog::init(body, compact)
+            apply_pictures() if pending
 
         # Where the primary action sits, so a host can put the pointer on it.
         def primary_centre() -> UiCore::Vec2:
@@ -39,15 +62,16 @@ module StoreApp:
             UiCore::clear(StoreTheme::page_near())
             UiHandles::paint()
 
-        # One call for the host to hand over every picture the frame uses.
+        # One call for the host to hand over every picture the frame uses,
+        # before or after the tree exists.
         def set_pictures(brand: UiCore::ImageRef, glyph: UiCore::ImageRef, banner: UiCore::ImageRef, plate: UiCore::ImageRef, grain: UiCore::ImageRef) -> void:
-            # GRAIN over the page ramp: a tile at its own size, at a few
-            # percent. A smooth ramp reads as vector; this reads as a surface.
-            UiHandles::set_image(root, grain)
-            UiHandles::set_image_fit(root, UiCore::PictureFit.Tile)
-            UiHandles::set_image_alpha(root, 14)
-            StoreShell::set_marks(brand, glyph, banner)
-            StoreCatalog::set_pictures(banner, plate, glyph)
+            pending <- true
+            pending_brand <- brand
+            pending_glyph <- glyph
+            pending_banner <- banner
+            pending_plate <- plate
+            pending_grain <- grain
+            apply_pictures() if started
 
 def app_init() -> void:
     StoreApp::init()

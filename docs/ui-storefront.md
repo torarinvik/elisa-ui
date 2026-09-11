@@ -74,3 +74,30 @@ nothing to.
 `PictureFit.Tile` repeats a picture at its own size across a box. The page
 carries a 64-pixel tile of blue-tinted noise at 14/255: a mathematically smooth
 ramp reads as vector, and this is what makes a background read as a surface.
+
+## The same pictures through CoreGraphics
+
+The Skia fixture is handed its pictures by a C++ host that synthesises them
+pixel by pixel. An AppKit window and an iOS app have no host, so
+`examples/storefront/pictures_cg.elisa` draws the same scenes with the
+painter's own primitives — a ramp for the sky, a radial bloom for the sun, two
+sine ridgelines, an even-odd ring for the mark, a field of one-point rects for
+the grain — into bitmap contexts that become `CGImage`s. It declares no
+CoreGraphics entry of its own beyond what both backends already call, and the
+painters expose one door, `bind_picture(slot, generation, image)`, through
+which an entry point hands a picture over by the two numbers a command carries.
+The pictures are made before the backend has a surface; `StoreApp::set_pictures`
+keeps them until the tree exists and applies them then.
+
+## The phone form
+
+The composition was built at tablet width, and at phone width it crushed the
+grid and ran the tabs into the title. The form is chosen once, when the tree is
+built, from the width the surface reported (under 700 points): the rail keeps
+its marks and hides its captions, section names, brand line and promo; the
+top row keeps the search and the account capsule; the tabs take a row of their
+own under the title and the create action becomes a `+`; the hero tightens its
+copy; the cards run in one column; and the page sits in a scroll viewport,
+which a finger pans. Everything hidden is still built, so the tree is the same
+at either width and only its cloth changes. Rotating a phone after launch does
+not re-form the page — the form is a construction decision, not a layout one.

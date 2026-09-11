@@ -115,7 +115,12 @@ miss reports no region, so UIKit keeps its own default rather than snapping to a
 rectangle the framework did not choose.
 
 Indirect scrolling arrives at a `UIPanGestureRecognizer` restricted to the
-indirect pointer, so it cannot compete with finger touches.
+indirect pointer. A finger has a pan recognizer of its own, with the same
+handler and the same Elisa entry: UIKit decides when a touch has become a drag,
+cancels the forwarded touches when it does — the pressed control releases
+without activating — and every update from then on is a scroll delta to
+whatever viewport is under it. A tap stays a tap; a drag scrolls; the widgets
+see one event for a finger, a wheel and a trackpad.
 
 ## Building and testing
 

@@ -1,0 +1,83 @@
+# The hero: one panel with a picture, a scrim, and the page's copy on it.
+
+include "./style.elisa"
+
+module StoreHero:
+    private:
+        global mutable hero: UiHandles::Handle = UiHandles::invalid()
+        global mutable primary: UiHandles::Handle = UiHandles::invalid()
+
+    public:
+        # The phone form is the same panel with tighter copy: a smaller
+        # headline, the body broken where a phone's width breaks it, the
+        # two actions narrow enough to share a row.
+        def init(parent: UiHandles::Handle, compact: bool) -> void:
+            # THE HERO IS ONE PANEL. Its picture is its own record and its
+            # copy is its children, so the text lands on the image with no
+            # second layer and no overlay widget -- a widget paints its fill,
+            # then its picture, then everything inside it.
+            hero <- UiHandles::column(parent, 0.0, 0.0, StoreTheme::rgb(20, 40, 84))
+            UiHandles::set_grow(hero, 0.0)
+            height: f32 = 200.0 if compact else 206.0
+            UiHandles::set_min_size(hero, 0.0, height)
+            UiHandles::set_max_size(hero, 4096.0, height)
+            UiHandles::set_image_fit(hero, UiCore::PictureFit.Cover)
+            # The hero stands clear of the cards beneath it: a third height.
+            UiHandles::set_floating(hero, true)
+            # THE COPY READS BECAUSE OF A SCRIM, not because the picture
+            # happens to be dark where the words fall. A ramp from a deep
+            # blue at the leading edge to nothing at the trailing one, laid
+            # over the picture and under the text: one panel, one gradient
+            # with a transparent far end, and the words sit on it.
+            scrim: UiHandles::Handle = UiHandles::column(hero, 16.0 if compact else 26.0, 6.0, StoreTheme::rgba(10, 22, 56, 214))
+            UiHandles::set_grow(scrim, 1.0)
+            UiHandles::set_gradient(scrim, StoreTheme::rgba(10, 22, 56, 0), true)
+            # A scrim is a FALLOFF, not a slope: most of its weight in the
+            # first third, then a long tail into the picture.
+            UiHandles::set_gradient_mid(scrim, StoreTheme::rgba(10, 22, 56, 120), 0.36)
+            eyebrow: UiHandles::Handle = UiHandles::label(scrim, "A MORE OPEN", 10.0, StoreTheme::rgba(186, 214, 255, 255))
+            UiHandles::set_text_tracking(eyebrow, 2.0)
+            UiHandles::set_text_weight(eyebrow, true)
+            headline: UiHandles::Handle = UiHandles::label(scrim, "Marketplace Ecosystem", 22.0 if compact else 30.0, StoreTheme::rgb(255, 255, 255))
+            UiHandles::set_text_weight(headline, true)
+            UiHandles::set_text_halo(headline, StoreTheme::rgba(6, 16, 48, 160))
+            body_line: UiHandles::Handle = UiHandles::label(scrim, "Discover independent stores," if compact else "Discover independent stores, curated by creators", 12.0 if compact else 13.0, StoreTheme::rgba(222, 236, 255, 255))
+            UiHandles::set_text_halo(body_line, StoreTheme::rgba(6, 16, 48, 140))
+            body_line2: UiHandles::Handle = UiHandles::label(scrim, "curated by creators worldwide." if compact else "and communities around the world.", 12.0 if compact else 13.0, StoreTheme::rgba(222, 236, 255, 255))
+            UiHandles::set_text_halo(body_line2, StoreTheme::rgba(6, 16, 48, 140))
+            actions: UiHandles::Handle = UiHandles::row(scrim, 0.0, 10.0, StoreTheme::transparent())
+            UiHandles::set_grow(actions, 0.0)
+            UiHandles::set_min_size(actions, 0.0, 40.0)
+            UiHandles::set_max_size(actions, 4096.0, 40.0)
+            browse: UiHandles::Handle = UiHandles::button(actions, 124.0 if compact else 148.0, 36.0, StoreTheme::accent(), StoreTheme::accent(), StoreTheme::accent())
+            UiHandles::set_grow(browse, 0.0)
+            UiHandles::set_cross_alignment(browse, UiConst::CrossAlignment.Center)
+            StoreStyle::primary(browse, "Browse Stores", 13.0)
+            primary <- browse
+            learn: UiHandles::Handle = UiHandles::button(actions, 96.0 if compact else 110.0, 36.0, StoreTheme::transparent(), StoreTheme::transparent(), StoreTheme::transparent())
+            UiHandles::set_grow(learn, 0.0)
+            UiHandles::set_cross_alignment(learn, UiConst::CrossAlignment.Center)
+            StoreStyle::secondary(learn, "Learn More", 13.0)
+            hero_gap: UiHandles::Handle = UiHandles::column(actions, 0.0, 0.0, StoreTheme::transparent())
+            UiHandles::set_grow(hero_gap, 1.0)
+            # Page dots, the current one lit and the rest glass.
+            dots: UiHandles::Handle = UiHandles::row(scrim, 0.0, 6.0, StoreTheme::transparent())
+            UiHandles::set_grow(dots, 0.0)
+            UiHandles::set_cross_alignment(dots, UiConst::CrossAlignment.Center)
+            for dot in 0..<5:
+                pip: UiHandles::Handle = UiHandles::column(dots, 0.0, 0.0, StoreTheme::accent_lifted() if dot == 0 else StoreTheme::rgba(255, 255, 255, 110))
+                UiHandles::set_grow(pip, 0.0)
+                UiHandles::set_min_size(pip, 8.0, 8.0)
+                UiHandles::set_max_size(pip, 8.0, 8.0)
+                UiHandles::set_corner(pip, UiCore::CornerStyle.Pill)
+                UiHandles::set_glow(pip, StoreTheme::rgba(96, 168, 255, 120) if dot == 0 else StoreTheme::transparent())
+
+        def set_picture(banner: UiCore::ImageRef) -> void:
+            UiHandles::set_image(hero, banner)
+
+        # Where the primary action sits, so a host can put the pointer on it.
+        def primary_centre() -> UiCore::Vec2:
+            UiHandles::ensure_layout()
+            if UiHandles::widget(primary) is row:
+                return UiCore::Vec2(row.x + row.width / 2.0, row.y + row.height / 2.0)
+            return UiCore::Vec2(0.0, 0.0)

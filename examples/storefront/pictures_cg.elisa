@@ -1,0 +1,157 @@
+# The storefront's pictures, made with CoreGraphics.
+#
+# The Skia fixture is handed its pictures by a C++ host that synthesises them
+# pixel by pixel. An AppKit window and an iOS app have no host and no pixel
+# buffer to hand over, so the same scenes are drawn here with the painter's
+# own primitives -- a ramp for the sky, a bloom for the sun, two ridgelines,
+# a ring for the mark, a field of one-point rects for the grain -- into
+# bitmap contexts that become CGImages. What the painter then does with them
+# is exactly what it does with any picture: nothing here is special to it.
+#
+# This file is shared by the AppKit and UIKit entry points and declares no
+# CoreGraphics entry of its own: every call below is one both backends
+# already make. `sinf` is the one addition, for the ridgelines.
+
+extern sinf(value: f32) -> f32
+
+module StorePictures:
+    private:
+        const BITS_PER_COMPONENT: usize = 8
+        const PREMULTIPLIED_LAST: u32 = 1
+        const RIDGE_STEPS: i32 = 40
+        const GRAIN_SIZE: i32 = 64
+        const GLYPH_SIZE: i32 = 48
+
+        # A bitmap context in the painter's space: CoreGraphics counts from
+        # the bottom, the composition counts from the top, so flip once here
+        # and draw every scene y-down like everything else in the framework.
+        def canvas(width: i32, height: i32) -> usize:
+            space: usize = CGColorSpaceCreateDeviceRGB()
+            return 0 if space == 0
+            context: usize = CGBitmapContextCreate(0, width.usize(), height.usize(), BITS_PER_COMPONENT, 0, space, PREMULTIPLIED_LAST)
+            CGColorSpaceRelease(space)
+            return 0 if context == 0
+            CGContextClearRect(context, rect(0.0, 0.0, width.f32(), height.f32()))
+            CGContextTranslateCTM(context, 0.0, height.f64())
+            CGContextScaleCTM(context, 1.0, -1.0)
+            return context
+
+        def finish(context: usize) -> usize:
+            image: usize = CGBitmapContextCreateImage(context)
+            CGContextRelease(context)
+            return image
+
+        def rect(x: f32, y: f32, width: f32, height: f32) -> NativeImageRect:
+            return NativeImageRect{x: x.f64(), y: y.f64(), width: width.f64(), height: height.f64()}
+
+        def point(x: f32, y: f32) -> NativePoint:
+            return NativePoint{x: x.f64(), y: y.f64()}
+
+        # Two colours, two stops. The same call the painter's own ramps use.
+        def gradient(near_r: f32, near_g: f32, near_b: f32, near_a: f32, far_r: f32, far_g: f32, far_b: f32, far_a: f32) -> usize:
+            space: usize = CGColorSpaceCreateDeviceRGB()
+            return 0 if space == 0
+            components: f64[8] = [near_r.f64(), near_g.f64(), near_b.f64(), near_a.f64(), far_r.f64(), far_g.f64(), far_b.f64(), far_a.f64()]
+            locations: f64[2] = [0.0, 1.0]
+            component_pointer: f64& = (&components[0]).cast[f64&] can Unsafe.PointerCast
+            location_pointer: f64& = (&locations[0]).cast[f64&] can Unsafe.PointerCast
+            result: usize = CGGradientCreateWithColorComponents(space, component_pointer, location_pointer, 2)
+            CGColorSpaceRelease(space)
+            return result
+
+        # A BLOOM: a radial ramp from a colour at its centre to nothing at
+        # its edge. The sun is one; a cloud is a fainter one.
+        def bloom(context: usize, x: f32, y: f32, radius: f32, r: f32, g: f32, b: f32, alpha: f32) -> void:
+            ramp: usize = gradient(r, g, b, alpha, r, g, b, 0.0)
+            return if ramp == 0
+            CGContextDrawRadialGradient(context, ramp, point(x, y), 0.0, point(x, y), radius.f64(), 0)
+            CGGradientRelease(ramp)
+
+        # A RIDGELINE: a polygon whose top edge is a sum of sines and whose
+        # bottom is the picture's, filled with a translucent dark so the sky
+        # shows through it -- the far one hazed, the near one not.
+        def ridge(context: usize, width: f32, height: f32, base: f32, swell: f32, frequency: f32, phase: f32, detail: f32, r: f32, g: f32, b: f32, alpha: f32) -> void:
+            CGContextSetRGBFillColor(context, r.f64(), g.f64(), b.f64(), alpha.f64())
+            CGContextBeginPath(context)
+            CGContextMoveToPoint(context, 0.0, height.f64())
+            for step in 0..=RIDGE_STEPS:
+                u: f32 = step.f32() / RIDGE_STEPS.f32()
+                crest: f32 = base + swell * sinf(u * frequency + phase) + detail * sinf(u * frequency * 2.4 + 0.7)
+                CGContextAddLineToPoint(context, (u * width).f64(), (crest * height).f64())
+            CGContextAddLineToPoint(context, width.f64(), height.f64())
+            CGContextClosePath(context)
+            CGContextFillPath(context)
+
+        # The same landscape the Skia host synthesises: a sky toward the
+        # horizon, a sun low on the right, some cloud, two ridges.
+        def scene(width: i32, height: i32, hue_r: f32, hue_g: f32, hue_b: f32) -> usize:
+            context: usize = canvas(width, height)
+            return 0 if context == 0
+            w: f32 = width.f32()
+            h: f32 = height.f32()
+            sky: usize = gradient(hue_r, hue_g, hue_b, 1.0, hue_r * 0.45, hue_g * 0.50, hue_b * 0.60, 1.0)
+            return finish(context) if sky == 0
+            CGContextDrawLinearGradient(context, sky, point(0.0, 0.0), point(0.0, h), 0)
+            CGGradientRelease(sky)
+            bloom(context, w * 0.72, h * 0.34, w * 0.30, 1.0, 0.96, 0.82, 0.55)
+            bloom(context, w * 0.72, h * 0.34, w * 0.07, 1.0, 1.0, 1.0, 0.85)
+            bloom(context, w * 0.18, h * 0.24, w * 0.16, 1.0, 1.0, 1.0, 0.14)
+            bloom(context, w * 0.42, h * 0.31, w * 0.13, 1.0, 1.0, 1.0, 0.12)
+            bloom(context, w * 0.90, h * 0.14, w * 0.18, 1.0, 1.0, 1.0, 0.11)
+            ridge(context, w, h, 0.56, 0.06, 7.0, 0.0, 0.03, 0.12, 0.17, 0.16, 0.40)
+            ridge(context, w, h, 0.72, 0.10, 4.0, 1.3, 0.02, 0.05, 0.11, 0.09, 0.58)
+            return finish(context)
+
+        # A ROUNDED DIAMOND with its centre open: two diamonds, even-odd.
+        def diamond(context: usize, centre: f32, radius: f32, rounding: f32) -> void:
+            CGContextMoveToPoint(context, (centre + radius / 2.0).f64(), (centre - radius / 2.0).f64())
+            CGContextAddArcToPoint(context, (centre + radius).f64(), centre.f64(), centre.f64(), (centre + radius).f64(), rounding.f64())
+            CGContextAddArcToPoint(context, centre.f64(), (centre + radius).f64(), (centre - radius).f64(), centre.f64(), rounding.f64())
+            CGContextAddArcToPoint(context, (centre - radius).f64(), centre.f64(), centre.f64(), (centre - radius).f64(), rounding.f64())
+            CGContextAddArcToPoint(context, centre.f64(), (centre - radius).f64(), (centre + radius).f64(), centre.f64(), rounding.f64())
+            CGContextClosePath(context)
+
+        def glyph() -> usize:
+            context: usize = canvas(GLYPH_SIZE, GLYPH_SIZE)
+            return 0 if context == 0
+            centre: f32 = GLYPH_SIZE.f32() / 2.0
+            CGContextSetRGBFillColor(context, 1.0, 1.0, 1.0, 0.92)
+            CGContextBeginPath(context)
+            diamond(context, centre, 17.0, 7.0)
+            diamond(context, centre, 10.5, 4.5)
+            CGContextEOFillPath(context)
+            return finish(context)
+
+        # GRAIN: one point of blue-tinted noise per pixel, from a generator
+        # small enough to run in i64 without ever overflowing it.
+        def grain() -> usize:
+            context: usize = canvas(GRAIN_SIZE, GRAIN_SIZE)
+            return 0 if context == 0
+            seed: mutable i64 = 2654435769
+            for y in 0..<GRAIN_SIZE:
+                for x in 0..<GRAIN_SIZE:
+                    seed <- (seed * 1103515245 + 12345) % 2147483648
+                    level: i64 = 160 + (seed / 65536) % 96
+                    lift: i64 = 255 if level > 220 else level + 24
+                    CGContextSetRGBFillColor(context, level.f64() / 255.0, level.f64() / 255.0, lift.f64() / 255.0, 1.0)
+                    CGContextFillRect(context, rect(x.f32(), y.f32(), 1.0, 1.0))
+            return finish(context)
+
+    public:
+        # Every picture the composition names, as CGImages the caller owns.
+        # A zero is a picture that could not be made; the card shows its fill.
+        struct Set:
+            brand: usize
+            glyph: usize
+            banner: usize
+            plate: usize
+            grain: usize
+
+        def make() -> Set:
+            return Set{
+                brand: glyph(),
+                glyph: glyph(),
+                banner: scene(720, 240, 150.0 / 255.0, 190.0 / 255.0, 250.0 / 255.0),
+                plate: scene(360, 180, 170.0 / 255.0, 160.0 / 255.0, 235.0 / 255.0),
+                grain: grain(),
+            }

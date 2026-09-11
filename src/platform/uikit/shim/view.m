@@ -60,12 +60,16 @@
     [self forwardTouches:touches phase:4];
 }
 
-// --- Indirect scrolling ------------------------------------------------
+// --- Scrolling ----------------------------------------------------------
 //
 // A trackpad or mouse attached to an iPad delivers scrolling to a pan gesture
-// whose allowedScrollTypesMask includes the indirect types. Restricting the
-// recognizer to the indirect pointer keeps it from competing with the finger
-// touches handled above.
+// whose allowedScrollTypesMask includes the indirect types. A finger delivers
+// it to a second pan recognizer of its own: UIKit decides when a touch has
+// become a drag, and when it does it cancels the touches forwarded above --
+// the pressed control releases without activating -- and every update from
+// then on arrives here as a scroll delta. A tap stays a tap; a drag scrolls
+// whatever viewport is under it. Both recognizers share one handler and one
+// Elisa entry, so a finger pan and a wheel are the same event to the widgets.
 
 - (void)elisaInstallScrollRecognizer {
     UIPanGestureRecognizer *pan =
@@ -73,6 +77,11 @@
     pan.allowedScrollTypesMask = UIScrollTypeMaskAll;
     pan.allowedTouchTypes = @[@(UITouchTypeIndirectPointer)];
     [self addGestureRecognizer:pan];
+    UIPanGestureRecognizer *finger =
+        [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(elisaScroll:)];
+    finger.allowedTouchTypes = @[@(UITouchTypeDirect)];
+    finger.maximumNumberOfTouches = 1;
+    [self addGestureRecognizer:finger];
 }
 
 - (void)elisaScroll:(UIPanGestureRecognizer *)pan {
