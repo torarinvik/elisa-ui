@@ -17,6 +17,8 @@ package org.elisa_ui;
 
 import android.app.Activity;
 import android.graphics.Color;
+import android.graphics.Typeface;
+import android.text.TextPaint;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.Gravity;
@@ -110,30 +112,67 @@ public final class ElisaControls {
             }
             default: view = new FrameLayout(activity); break;
         }
-        fitToItsBox(view);
         views[count] = view;
         kinds[count] = kind;
         count += 1;
         return count;
     }
 
-    // A NATIVE VIEW WANTS TO BE BIGGER THAN THE BOX IT IS GIVEN. Android's
-    // widgets carry a minimum height, generous vertical padding and an extra
-    // line of font padding, all sized for a toolkit that measures its own
-    // layout. This one is placed at a box the framework already computed, and
-    // a view that insists on more than that box does not grow -- it clips its
-    // own words. So the minimums go, and the padding that goes with them: the
-    // horizontal padding stays, because a check box's mark lives in it.
-    private static void fitToItsBox(View view) {
-        if (!(view instanceof TextView)) return;
-        TextView text = (TextView) view;
-        text.setMinHeight(0);
-        text.setMinimumHeight(0);
-        text.setMinWidth(0);
-        text.setMinimumWidth(0);
-        text.setIncludeFontPadding(false);
-        text.setPadding(text.getPaddingLeft(), 0, text.getPaddingRight(), 0);
-        if (view instanceof Button) text.setAllCaps(false);
+    // WHAT THE PLATFORM WANTS, MEASURED BY THE PLATFORM.
+    //
+    // The framework lays out before a single view exists, from numbers its
+    // application's entry point supplies. Given invented ones -- a character
+    // width guessed at, a line height guessed at, no idea that a Button has a
+    // minimum -- it hands each control a box smaller than Android's widgets
+    // are built for, and a widget that is given less than it needs does not
+    // shrink: it clips its own words. The first attempt at this file answered
+    // by taking the minimums and the padding AWAY, which fits the box and
+    // stops it looking like Android.
+    //
+    // These are the other answer. Android measures its own text and its own
+    // widgets, in points, before the layout runs -- so the box is big enough
+    // and the control keeps everything that makes it native.
+    private static final TextPaint measurePaint = new TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+    private static final float[] minimumHeights = new float[PROGRESS_BAR + 1];
+
+    public static float measureTextWidth(String text, float sizePoints, boolean weighted) {
+        if (activity == null || text == null) return 0.0f;
+        measurePaint.setTextSize(sizePoints * density());
+        measurePaint.setTypeface(weighted ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
+        return measurePaint.measureText(text) / density();
+    }
+
+    public static float textLineHeight(float sizePoints) {
+        if (activity == null) return sizePoints;
+        measurePaint.setTextSize(sizePoints * density());
+        measurePaint.setTypeface(Typeface.DEFAULT);
+        android.graphics.Paint.FontMetrics metrics = measurePaint.getFontMetrics();
+        // top and bottom, NOT ascent and descent. A TextView reserves the
+        // font's full extent for a line -- that is what includeFontPadding
+        // means -- and a box measured from the tighter pair is a box the view
+        // will clip its own descenders out of.
+        return (metrics.bottom - metrics.top) / density();
+    }
+
+    // What a control of this kind is at its smallest, asked of a real one.
+    // Measured once per kind and remembered: the answer is a property of the
+    // theme, not of any particular control.
+    public static float minimumHeight(int kind) {
+        if (activity == null || kind < 0 || kind >= minimumHeights.length) return 0.0f;
+        if (minimumHeights[kind] > 0.0f) return minimumHeights[kind];
+        int handle = create(kind, 1);
+        View probe = viewOf(handle);
+        if (probe == null) return 0.0f;
+        if (probe instanceof TextView) ((TextView) probe).setText("Ag");
+        probe.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+                      View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        float points = probe.getMeasuredHeight() / density();
+        // The probe was made through the ordinary path, so it took a slot;
+        // give it back rather than leaving a control nothing will ever place.
+        views[handle - 1] = null;
+        count -= 1;
+        minimumHeights[kind] = points;
+        return points;
     }
 
     public static void addChild(int parent, int child) {

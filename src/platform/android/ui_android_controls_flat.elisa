@@ -11,6 +11,29 @@ include "../../widgets/ui_controls_flat.elisa"
 
 extend UiAndroidControls:
     public:
+        # THE PLATFORM'S MINIMUMS, BEFORE THE LAYOUT RUNS.
+        #
+        # An application declares how big its controls are in the terms of the
+        # backend it was written for, and this one was written for a painted
+        # canvas: a thirty-two point button is a perfectly good button to
+        # draw. Android builds a Button larger than that, with the padding and
+        # the touch target its own guidelines ask for, and a widget given less
+        # room than it needs does not shrink -- it clips its own words.
+        #
+        # So the platform's answer is raised into the layout's own numbers
+        # before it runs. Only ever raised: an application that already asks
+        # for more than Android's minimum keeps what it asked for.
+        def apply_platform_minimums() -> void:
+            can[Ui.Controls]:
+                for index in 0..<UiFlat::count():
+                    kind: UiControls::ControlKind = UiControls::retained_control_kind(index)
+                    continue if kind == UiControls::ControlKind.Panel or kind == UiControls::ControlKind.ScrollView or kind == UiControls::ControlKind.Window
+                    wanted: f32 = minimum_height(kind)
+                    continue if wanted <= 0.0
+                    node: UiFlat::Widget = UiFlat::widget(index)
+                    continue if node.declared_min_height >= wanted
+                    UiFlat::set_min_size(index, node.declared_min_width, wanted)
+
         def realize_retained() -> void:
             can[Ui.Controls]:
                 begin_realize()

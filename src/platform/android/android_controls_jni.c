@@ -25,6 +25,7 @@ static jclass elisa_controls_class = NULL;
 static jmethodID m_create, m_add_child, m_set_frame, m_set_text, m_set_text_color;
 static jmethodID m_set_background_color, m_set_tint_color, m_set_track_color;
 static jmethodID m_set_state, m_set_action, m_release_all, m_attach_root;
+static jmethodID m_measure_text, m_line_height, m_minimum_height;
 
 static JNIEnv *elisa_env(void) {
     JNIEnv *env = NULL;
@@ -57,6 +58,9 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
     m_set_action = (*env)->GetStaticMethodID(env, c, "setAction", "(I)V");
     m_release_all = (*env)->GetStaticMethodID(env, c, "releaseAll", "()V");
     m_attach_root = (*env)->GetStaticMethodID(env, c, "attachRoot", "(I)V");
+    m_measure_text = (*env)->GetStaticMethodID(env, c, "measureTextWidth", "(Ljava/lang/String;FZ)F");
+    m_line_height = (*env)->GetStaticMethodID(env, c, "textLineHeight", "(F)F");
+    m_minimum_height = (*env)->GetStaticMethodID(env, c, "minimumHeight", "(I)F");
     return JNI_VERSION_1_6;
 }
 
@@ -162,4 +166,37 @@ void elisa_android_controls_release_all(void) {
 void elisa_android_controls_attach_root(int32_t handle) {
     JNIEnv *env = elisa_env();
     if (env != NULL) (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_attach_root, handle);
+}
+
+// --- What the platform wants ------------------------------------------
+//
+// Asked before the layout runs and answered by Android itself, in points.
+// The framework has no other way to know how big a native control is, and
+// guessing is how it hands one a box it cannot fit its own words into.
+
+float elisa_android_controls_measure_text(const uint8_t *bytes, size_t length, float size, int32_t weighted) {
+    JNIEnv *env = elisa_env();
+    if (env == NULL) return 0.0f;
+    char buffer[ELISA_CONTROLS_TEXT_MAX + 1];
+    size_t take = length > ELISA_CONTROLS_TEXT_MAX ? ELISA_CONTROLS_TEXT_MAX : length;
+    if (take > 0 && bytes != NULL) memcpy(buffer, bytes, take);
+    buffer[take] = '\0';
+    jstring text = (*env)->NewStringUTF(env, buffer);
+    if (text == NULL) return 0.0f;
+    jfloat width = (*env)->CallStaticFloatMethod(env, elisa_controls_class, m_measure_text, text, size,
+                                                 weighted != 0 ? JNI_TRUE : JNI_FALSE);
+    (*env)->DeleteLocalRef(env, text);
+    return width;
+}
+
+float elisa_android_controls_line_height(float size) {
+    JNIEnv *env = elisa_env();
+    if (env == NULL) return size;
+    return (*env)->CallStaticFloatMethod(env, elisa_controls_class, m_line_height, size);
+}
+
+float elisa_android_controls_minimum_height(int32_t kind) {
+    JNIEnv *env = elisa_env();
+    if (env == NULL) return 0.0f;
+    return (*env)->CallStaticFloatMethod(env, elisa_controls_class, m_minimum_height, kind);
 }

@@ -12,17 +12,21 @@ include "app.elisa"
 
 global mutable showcase_built: bool = false
 
-# Android measures its own views, so the retained layout only needs something
-# consistent to size boxes with. A native label is told its text and finds its
-# own width; what this decides is how much room the layout leaves it.
+# ANDROID MEASURES ITS OWN TEXT, so the layout asks it rather than guessing.
+# A guessed character width is how a control ends up with a box smaller than
+# the platform builds its widgets for, and a widget given less room than it
+# needs does not shrink -- it clips its own words. Before the surface exists
+# there is nothing to ask, and the fallbacks below are only for that moment.
 def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    measured: f32 = UiAndroidControls::measure_text(text, size, weighted)
+    return measured if measured > 0.0
     return text.len.f32() * size * 0.55 * (1.08 if weighted else 1.0)
 def ui_measure_text_height(text: sview, size: f32) -> f32:
-    return size
+    return ui_text_line_height(size)
 def ui_font_ascent(size: f32) -> f32:
     return size
 def ui_text_line_height(size: f32) -> f32:
-    return size * 1.3
+    return UiAndroidControls::line_height(size)
 
 # THE RETAINED EDITOR IS NOT THE ONE EDITING. A text field on this path is a
 # real EditText: Android owns its selection, its caret and its own copy and
@@ -42,6 +46,7 @@ def lay_out_and_realize() -> void:
         width: f32 = UiAndroidControls::surface_width()
         height: f32 = UiAndroidControls::surface_height()
         UiCore::set_viewport(width, height)
+        UiAndroidControls::apply_platform_minimums()
         UiHandles::layout(width, height)
         UiAndroidControls::realize_retained()
 

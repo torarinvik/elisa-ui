@@ -365,7 +365,20 @@ module ShowcaseApp:
             actions_label <- UiHandles::label(bar_two, "", 12.0, ShowcaseTheme::muted())
             UiHandles::set_visible(actions_label, not compact_form)
 
-            host <- UiHandles::column(main, 18.0, 12.0, ShowcaseTheme::transparent())
+            # A PHONE PAGE IS TALLER THAN ITS SCREEN, and a column that cannot
+            # fit its children squeezes them rather than losing them: on a
+            # painted backend that shows as text ellipsized to nothing, and on
+            # a native one as a control clipping its own words. The viewport
+            # scrolls and the column inside it is as tall as its content,
+            # which is what the storefront's phone form does for the same
+            # reason. Native controls are larger than painted ones, so this
+            # page overflows there first -- but it overflowed on both.
+            page_host: mutable UiHandles::Handle = main
+            if compact_form:
+                viewport: UiHandles::Handle = UiHandles::scroll(main, UiConst::Axis.Column, 0.0, 0.0, ShowcaseTheme::transparent())
+                UiHandles::set_grow(viewport, 1.0)
+                page_host <- viewport
+            host <- UiHandles::column(page_host, 18.0, 12.0, ShowcaseTheme::transparent())
             UiHandles::set_grow(host, 1.0)
             ShowcaseDialog::init(host)
             ShowcaseOverview::init(host, compact_form)

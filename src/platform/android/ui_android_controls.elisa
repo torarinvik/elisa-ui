@@ -29,6 +29,9 @@ extern elisa_android_controls_set_state(handle: i32, value: f32, selected: i32) 
 extern elisa_android_controls_set_action(handle: i32) -> void
 extern elisa_android_controls_release_all() -> void
 extern elisa_android_controls_attach_root(handle: i32) -> void
+extern elisa_android_controls_measure_text(bytes: u8&, length: usize, size: f32, weighted: i32) -> f32
+extern elisa_android_controls_line_height(size: f32) -> f32
+extern elisa_android_controls_minimum_height(kind: i32) -> f32
 
 module UiAndroidControls:
     public:
@@ -47,6 +50,31 @@ module UiAndroidControls:
 
         def surface_height() -> f32:
             return android_controls_height
+
+        # WHAT THE PLATFORM WANTS, asked of the platform. The framework lays
+        # out before a view exists, so without these its application's entry
+        # point has to invent a character width and a line height -- and a
+        # control handed a box smaller than Android builds its widgets for
+        # does not shrink, it clips its own words.
+        def measure_text(text: sview, size: f32, weighted: bool) -> f32:
+            return 0.0 if not android_controls_started
+            safe: sview = UiCore::bounded_text(text)
+            return 0.0 if safe.len <= 0 or safe.data == null
+            return UiCore::bounded_extent(elisa_android_controls_measure_text(safe.data[0], safe.len.usize(), size, 1 if weighted else 0))
+
+        def line_height(size: f32) -> f32:
+            return size if not android_controls_started
+            measured: f32 = elisa_android_controls_line_height(size)
+            return size if not UiCore::is_finite(measured) or measured <= 0.0
+            return UiCore::bounded_extent(measured)
+
+        # The smallest a control of this kind can be, measured once per kind
+        # by measuring a real one. A theme's property, not a control's.
+        def minimum_height(kind: UiControls::ControlKind) -> f32:
+            return 0.0 if not android_controls_started
+            measured: f32 = elisa_android_controls_minimum_height(kind.i32())
+            return 0.0 if not UiCore::is_finite(measured) or measured <= 0.0
+            return UiCore::bounded_extent(measured)
 
         def live() -> bool:
             return android_controls_started
