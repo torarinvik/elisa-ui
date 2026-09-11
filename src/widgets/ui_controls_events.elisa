@@ -39,6 +39,43 @@
                 ops[sibling].state_selected <- false
             return true
 
+        # WHAT THE USER TYPED, ON ITS WAY BACK IN.
+        #
+        # A native field is the strongest reason to realize native controls at
+        # all: it brings the IME, dictation, autocorrect, the selection
+        # magnifier, spell checking and the system paste menu, none of which a
+        # framework that draws its own caret can borrow. All of that is worth
+        # nothing if the words never reach the application, and until this
+        # existed they did not -- an action carried a float and a flag, and a
+        # string had nowhere to ride.
+        #
+        # It rides on its own. A value and a caption are different enough that
+        # squeezing text through the numeric channel would mean encoding it;
+        # the backend hands over bytes and this copies them into the arena the
+        # list already owns, so `text_at` answers with what the field now holds
+        # rather than what it was realized with.
+        def note_text(index: usize, text: sview) -> bool:
+            return false if index >= total
+            # Only a field edits itself. A caption that came from the tree is
+            # the application's to change, and a toolkit reporting one back
+            # would be a loop, not an edit.
+            return false if ops[index].kind != ControlKind.TextField
+            # A null-backed counted view is not an empty string; refusing it
+            # keeps a bridge that lost its buffer from clearing a live field.
+            return false if text.len < 0 or (text.len > 0 and text.data == null)
+            ops[index].text <- copy_control_text(index, text)
+            return true
+
+        # The text sibling of dispatch_native_action, and the same contract: a
+        # handle from the toolkit, resolved here, written back here, and only
+        # then does the application hear about it.
+        def dispatch_native_text(handle: usize, text: sview) -> i32:
+            index: i32 = index_for_native_handle(handle)
+            return NO_PARENT if index == NO_PARENT
+            return NO_PARENT if not note_text(index.usize(), text)
+            app_control_event(index, UiConst::WidgetEvent.Change.i32())
+            return index
+
         # The one entry point a backend's action callback needs. Returns the
         # resolved control index, or NO_PARENT when the handle belongs to no
         # live control -- which is what a late callback from a torn-down tree

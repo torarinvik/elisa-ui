@@ -1,0 +1,251 @@
+# THE RETAINED TREE, REALIZED AS NATIVE CONTROLS -- with no OS control in sight.
+#
+# controls_test.elisa asserts the other application layer: the immediate
+# UiWidgets hierarchy. This one asserts the layer every application in this
+# repository actually uses, and the one both mobile backends run -- and which
+# had no test at all, so the seam that turns a UiHandles tree into UILabels and
+# android.widget.Buttons was covered only by looking at a phone.
+#
+# A RECORDING backend stands in for UIKit and Android. That is enough for the
+# things a screenshot cannot tell you: that the control tree has the same shape
+# as the widget tree, that every kind maps to the control a platform has, and
+# -- the part this file was written for -- that what a user types into a native
+# field arrives back in the retained widget, exactly once.
+
+include "../src/widgets/ui_controls_flat.elisa"
+
+using UiControls
+
+extern puts(text: cstr) -> i64
+
+global mutable test_failures: i32 = 0
+global mutable widget_events: i32 = 0
+global mutable last_widget: usize = UiFlat::NONE
+global mutable last_widget_event: i32 = -1
+
+def near(actual: f32, expected: f32) -> bool:
+    delta: f32 = actual - expected if actual > expected else expected - actual
+    return delta < 0.01
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    test_failures <- test_failures + 1
+    _ = puts(name)
+
+def app_widget_event(index: usize, event: i32) -> void:
+    widget_events <- widget_events + 1
+    last_widget <- index
+    last_widget_event <- event
+
+# The retained layer calls this when a CONTROL acts; an application routes it
+# into retained_action. The tests below call retained_action directly, so this
+# only has to exist.
+def app_control_event(index: i32, event: i32) -> void:
+    pass
+
+# Text measurement is part of the platform contract; a test with no backend
+# supplies deterministic stubs rather than depending on a host's fonts.
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size
+
+def ui_font_ascent(size: f32) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return 0
+
+# ---------------------------------------------------------------- the recorder
+
+const LOG_CAP: usize = 64
+
+global mutable log_kind: i32[LOG_CAP] = zeroed
+global mutable log_parent: i32[LOG_CAP] = zeroed
+global mutable log_x: f32[LOG_CAP] = zeroed
+global mutable log_y: f32[LOG_CAP] = zeroed
+global mutable log_text_len: i64[LOG_CAP] = zeroed
+global mutable log_text_first: u8[LOG_CAP] = zeroed
+global mutable created: usize = 0
+
+struct RecordingControls:
+    unused: i32
+
+impl Controls for RecordingControls:
+    def create(index: i32, kind: UiControls::ControlKind, parent: i32, window_mode: UiControls::WindowMode, axis: UiConst::Axis, state: UiControls::ControlState) -> void can[Ui.Controls]:
+        return if index < 0 or index.usize() >= LOG_CAP
+        created <- created + 1
+        log_kind[index.usize()] <- kind.i32()
+        log_parent[index.usize()] <- parent
+        # A backend's own identity. Index + 1 so that zero stays "no handle",
+        # which is the contract the seam's handle table keeps.
+        UiControls::set_native_handle(index.usize(), index.usize() + 1)
+
+    def set_frame(index: i32, kind: UiControls::ControlKind, box: UiCore::Rect) -> void can[Ui.Controls]:
+        return if index < 0 or index.usize() >= LOG_CAP
+        log_x[index.usize()] <- box.origin.x
+        log_y[index.usize()] <- box.origin.y
+
+    def set_colors(index: i32, kind: UiControls::ControlKind, ink: UiCore::Color, fill: UiCore::Color) -> void can[Ui.Controls]:
+        pass
+
+    def set_text(index: i32, kind: UiControls::ControlKind, text: sview) -> void can[Ui.Controls]:
+        return if index < 0 or index.usize() >= LOG_CAP
+        log_text_len[index.usize()] <- text.len
+        log_text_first[index.usize()] <- text.data[0] if text.len > 0 else 0
+
+    def set_state(index: i32, kind: UiControls::ControlKind, value: f32, low: f32, high: f32, selected: bool) -> void can[Ui.Controls]:
+        pass
+
+    def set_action(index: i32, kind: UiControls::ControlKind) -> void can[Ui.Controls]:
+        pass
+
+# The control slot a given retained widget was realized into. A test asserts
+# about widgets; the seam's own map runs the other way.
+def slot_for_widget(widget: usize) -> usize:
+    for slot in 0..<UiControls::count():
+        return slot if UiControls::retained_index_at(slot) == widget
+    return UiControls::capacity()
+
+def grey(level: u8) -> UiCore::Color:
+    return UiCore::rgba(level, level, level, 255)
+
+def main() -> i64:
+    can Memory.Allocate, Abort.Panic, Ui.Controls, Ui.Draw, Ui.Text, Ui.Input, Ui.Window, Unsafe.PointerCast:
+        UiFlat::reset()
+        UiControls::reset()
+
+        root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 10.0, 6.0, grey(20))
+        caption: UiHandles::Handle = UiHandles::label(root, "Name", 12.0, grey(200))
+        field: UiHandles::Handle = UiHandles::text_field(root, "Name", "who?", "ada", 200.0, 30.0, 12.0, grey(230), grey(40))
+        press: UiHandles::Handle = UiHandles::button(root, 80.0, 30.0, grey(60), grey(70), grey(50))
+        first_choice: UiHandles::Handle = UiHandles::radio_button(root, 60.0, 24.0, grey(60), grey(70), grey(50))
+        second_choice: UiHandles::Handle = UiHandles::radio_button(root, 60.0, 24.0, grey(60), grey(70), grey(50))
+        knob: UiHandles::Handle = UiHandles::slider(root, 120.0, 24.0, 0.25, grey(40), grey(120), grey(200))
+
+        UiHandles::set_selected(first_choice, true)
+        UiHandles::layout(320.0, 480.0)
+
+        UiControls::realize_retained()
+        UiControls::apply[RecordingControls]()
+
+        # ---- the tree arrives, with the shape it had -------------------------
+        check("every visible widget became a control", UiControls::count() == 7)
+        check("the backend was asked to create each one", created == UiControls::count())
+        check("the first root is a window", log_kind[0] == UiControls::ControlKind.Window.i32())
+        check("the window has no parent", log_parent[0] == UiControls::NO_PARENT)
+
+        field_slot: usize = slot_for_widget(UiHandles::index(field))
+        press_slot: usize = slot_for_widget(UiHandles::index(press))
+        first_slot: usize = slot_for_widget(UiHandles::index(first_choice))
+        second_slot: usize = slot_for_widget(UiHandles::index(second_choice))
+        knob_slot: usize = slot_for_widget(UiHandles::index(knob))
+        caption_slot: usize = slot_for_widget(UiHandles::index(caption))
+
+        check("a retained field becomes a native field", log_kind[field_slot] == UiControls::ControlKind.TextField.i32())
+        check("a retained button becomes a push button", log_kind[press_slot] == UiControls::ControlKind.PushButton.i32())
+        check("a retained radio becomes a radio button", log_kind[first_slot] == UiControls::ControlKind.RadioButton.i32())
+        check("a retained slider becomes a slider", log_kind[knob_slot] == UiControls::ControlKind.Slider.i32())
+        check("a retained label becomes a label", log_kind[caption_slot] == UiControls::ControlKind.Label.i32())
+
+        # A CHILD IS PLACED INSIDE ITS PARENT. The layout computes absolute
+        # boxes and every toolkit here takes a child's frame in its parent's
+        # coordinates, so a control must arrive at the difference.
+        absolute: UiCore::Rect = UiControls::box_at(field_slot)
+        container: UiCore::Rect = UiControls::box_at(UiControls::parent_at(field_slot).usize())
+        check("a child is placed inside its parent", near(log_x[field_slot], absolute.origin.x - container.origin.x) and near(log_y[field_slot], absolute.origin.y - container.origin.y))
+
+        # A FIELD SHOWS ITS VALUE, NOT ITS CAPTION. Both are strings on the
+        # widget and only one of them is what a native field displays.
+        check("a field is realized with its value", log_text_len[field_slot] == 3 and log_text_first[field_slot] == 97)
+
+        # ---- what the user types comes back ----------------------------------
+        #
+        # THE POINT OF THE FILE. A native field runs the IME, autocorrect and
+        # dictation and then reports the finished string; until the text
+        # channel existed the action carried a float and a flag and the words
+        # were dropped on the floor.
+        widget_events <- 0
+        handle: usize = UiControls::native_handle_at(field_slot)
+        check("a realized control has a backend handle", handle != 0)
+        resolved: i32 = UiControls::dispatch_native_text(handle, "grace")
+        check("a text action resolves to its control", resolved == field_slot.i32())
+        check("the control list holds what was typed", UiControls::text_at(field_slot).len == 5)
+
+        # The seam wrote it into the list; retained_action carries it the last
+        # step, into the widget the application owns.
+        check("the widget takes the typed text", UiControls::retained_action(field_slot.i32(), UiConst::WidgetEvent.Change.i32()))
+        typed: sview = UiFlat::text_value(UiHandles::index(field))
+        check("the retained field holds the new text", typed.len == 5 and typed.data[0] == 103)
+        # replace_text emits the Change itself, so the field must not also fall
+        # through to the shared event below: one keystroke is one edit.
+        check("one edit reaches the application once", widget_events == 1)
+        check("the edit names the field", last_widget == UiHandles::index(field) and last_widget_event == UiConst::WidgetEvent.Change.i32())
+
+        # AN UNCHANGED EDIT IS NOT AN EDIT. A backend that re-realizes on every
+        # event would otherwise chase its own tail: realize writes the text
+        # back into the native field, which reports it, which realizes again.
+        widget_events <- 0
+        _ = UiControls::dispatch_native_text(handle, "grace")
+        check("re-reporting the same text carries it", UiControls::retained_action(field_slot.i32(), UiConst::WidgetEvent.Change.i32()))
+        check("an unchanged edit raises no event", widget_events == 0)
+
+        # A caption is the application's to set. A toolkit reporting one back
+        # would be a loop and not an edit, so the seam refuses it by kind.
+        check("a label refuses a text write-back", not UiControls::note_text(caption_slot, "hijacked"))
+        check("a label keeps its own words", UiControls::text_at(caption_slot).len == 4)
+
+        # A report from a handle no live control owns is what a late callback
+        # from a torn-down tree looks like, and must not reach the application.
+        widget_events <- 0
+        check("an unknown handle resolves to nothing", UiControls::dispatch_native_text(0, "x") == UiControls::NO_PARENT)
+        check("a stale handle raises no event", widget_events == 0)
+        check("the field kept its text", UiFlat::text_value(UiHandles::index(field)).len == 5)
+
+        # CLEARING A FIELD IS A REAL EDIT. A user who selects everything and
+        # deletes has said something, and an empty string is what they said --
+        # so this is the one write-back that must NOT be mistaken for a bridge
+        # reporting nothing.
+        widget_events <- 0
+        _ = UiControls::dispatch_native_text(handle, "")
+        check("an emptied field carries an empty string", UiControls::text_at(field_slot).len == 0)
+        check("the emptied edit reaches the widget", UiControls::retained_action(field_slot.i32(), UiConst::WidgetEvent.Change.i32()))
+        check("the retained field is now empty", UiFlat::text_value(UiHandles::index(field)).len == 0)
+        check("clearing raises exactly one event", widget_events == 1)
+        # Put it back, so the checks below read a field with content.
+        _ = UiControls::dispatch_native_text(handle, "grace")
+        _ = UiControls::retained_action(field_slot.i32(), UiConst::WidgetEvent.Change.i32())
+
+        # ---- the numeric channel still works ---------------------------------
+        widget_events <- 0
+        knob_handle: usize = UiControls::native_handle_at(knob_slot)
+        _ = UiControls::dispatch_native_action(knob_handle, UiConst::WidgetEvent.Change, 0.75, false)
+        check("a slider drag carries its value", UiControls::retained_action(knob_slot.i32(), UiConst::WidgetEvent.Change.i32()))
+        check("the retained slider follows the native one", near(UiFlat::widget(UiHandles::index(knob)).value, 0.75))
+
+        # A radio group is the list's knowledge, not the toolkit's: turning one
+        # on turns its siblings off before the application ever sees the click.
+        second_handle: usize = UiControls::native_handle_at(second_slot)
+        _ = UiControls::dispatch_native_action(second_handle, UiConst::WidgetEvent.Click, 0.0, true)
+        check("the clicked radio is selected", UiControls::state_at(second_slot).selected)
+        check("its sibling was turned off", not UiControls::state_at(first_slot).selected)
+
+        # ---- a hidden widget is not a control --------------------------------
+        UiHandles::set_visible(press, false)
+        UiControls::realize_retained()
+        check("a hidden widget is left out", UiControls::count() == 6)
+
+        if test_failures == 0:
+            _ = puts("controls flat: all checks passed")
+            return 0
+        return 1

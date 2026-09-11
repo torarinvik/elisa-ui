@@ -36,10 +36,45 @@ extend UiAndroidControls:
 
         def realize_retained() -> void:
             can[Ui.Controls]:
+                remember_focus()
                 begin_realize()
                 UiControls::realize_retained()
                 UiControls::apply[AndroidControls]()
                 finish_realize()
+                restore_focus()
+
+    private:
+        # FOCUS OUTLIVES THE INTERFACE THAT HELD IT. The iOS file of this shape
+        # carries the reasoning; the policy is the same one and only the two
+        # platform calls differ. The remembered identity is the retained
+        # WIDGET, because a control index belongs to one realization.
+        global mutable android_focus_widget: usize = 0
+        global mutable android_focus_known: bool = false
+        global mutable android_focus_caret: i32 = 0
+
+        def remember_focus() -> void can[Ui.Controls]:
+            android_focus_known <- false
+            for slot in 0..<UiControls::count():
+                continue if UiControls::kind_at(slot) != UiControls::ControlKind.TextField
+                handle: i32 = UiAndroidControls::native_handle(slot.i32())
+                continue if handle == 0
+                continue if elisa_android_controls_is_focused(handle) == 0
+                widget: usize = UiControls::retained_index_at(slot)
+                continue if widget >= UiFlat::count()
+                android_focus_widget <- widget
+                android_focus_caret <- elisa_android_controls_caret(handle)
+                android_focus_known <- true
+                return
+
+        def restore_focus() -> void can[Ui.Controls]:
+            return if not android_focus_known
+            android_focus_known <- false
+            for slot in 0..<UiControls::count():
+                continue if UiControls::retained_index_at(slot) != android_focus_widget
+                handle: i32 = UiAndroidControls::native_handle(slot.i32())
+                return if handle == 0
+                elisa_android_controls_focus(handle, android_focus_caret)
+                return
 
 # The Activity's own moments, and a control's. Each is one call from Java, and
 # the application's entry point decides what happens next -- which is the same
@@ -70,7 +105,15 @@ def android_controls_event(handle: i32, event: i32, value: f32, selected: i32) -
         kind: UiConst::WidgetEvent = UiConst::WidgetEvent.Change if event == UiConst::WidgetEvent.Change.i32() else UiConst::WidgetEvent.Click
         _ = UiControls::dispatch_native_action(handle.usize(), kind, value, selected != 0)
 
+# A field reported what it now holds. The text takes a channel of its own: the
+# numeric event carries a value and a flag, and neither can hold a string.
+def android_controls_text(handle: i32, text: cstr, length: i32) -> void:
+    can Memory.Allocate, Abort.Panic, Ui.Controls, Unsafe.PointerCast, Ui.Window, Ui.Draw, Ui.Text, Ui.Input:
+        return if handle <= 0
+        _ = UiControls::dispatch_native_text(handle.usize(), UiAndroidControls::copy_native_text(text, length))
+
 export fn elisa_android_controls_start(width: f32, height: f32) -> i32 = android_controls_start
 export fn elisa_android_controls_resize(width: f32, height: f32) -> void = android_controls_resize
 export fn elisa_android_controls_stop() -> void = android_controls_stop
 export fn elisa_android_controls_event(handle: i32, event: i32, value: f32, selected: i32) -> void = android_controls_event
+export fn elisa_android_controls_text(handle: i32, text: cstr, length: i32) -> void = android_controls_text

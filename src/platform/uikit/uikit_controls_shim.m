@@ -14,6 +14,8 @@
 // decided in ui_uikit_controls.elisa.
 
 #import <UIKit/UIKit.h>
+#include <limits.h>
+#include <string.h>
 #include <stdint.h>
 
 // Elisa realizes the control tree once the scene has a surface.
@@ -260,6 +262,45 @@ void elisa_uikit_controls_set_progress(size_t handle, float fraction) {
     if ([view isKindOfClass:[UIProgressView class]]) ((UIProgressView *)view).progress = fraction;
 }
 
+// WHICH CONTROL THE USER IS TYPING IN, and where their caret sits.
+//
+// Realizing again replaces the whole interface, so without these a keystroke
+// would destroy the field that reported it: the keyboard would drop, the caret
+// would be lost and a composing IME would be cut off mid-word. Elisa owns the
+// handle table, so it asks each control rather than this walking a view tree --
+// UIKit publishes no first responder to walk to.
+int elisa_uikit_controls_is_focused(size_t handle) {
+    UIView *view = elisa_uikit_controls_view(handle);
+    return (view != nil && view.isFirstResponder) ? 1 : 0;
+}
+
+// UTF-16 offsets, which is what UITextInput counts in. The value is only ever
+// handed back to the same platform, so the unit never has to leave this file.
+int elisa_uikit_controls_caret(size_t handle) {
+    UIView *view = elisa_uikit_controls_view(handle);
+    if (![view conformsToProtocol:@protocol(UITextInput)]) return 0;
+    id<UITextInput> input = (id<UITextInput>)view;
+    UITextRange *selection = input.selectedTextRange;
+    if (selection == nil) return 0;
+    NSInteger offset = [input offsetFromPosition:input.beginningOfDocument
+                                      toPosition:selection.start];
+    return offset < 0 ? 0 : (int)offset;
+}
+
+void elisa_uikit_controls_focus(size_t handle, int caret) {
+    UIView *view = elisa_uikit_controls_view(handle);
+    if (view == nil || ![view becomeFirstResponder]) return;
+    if (![view conformsToProtocol:@protocol(UITextInput)]) return;
+    id<UITextInput> input = (id<UITextInput>)view;
+    // A caret past the end is what a realization that shortened the text
+    // leaves behind; UIKit answers nil for it and the selection is left where
+    // becomeFirstResponder put it rather than being forced somewhere invalid.
+    UITextPosition *position = [input positionFromPosition:input.beginningOfDocument
+                                                    offset:caret < 0 ? 0 : caret];
+    if (position == nil) return;
+    input.selectedTextRange = [input textRangeFromPosition:position toPosition:position];
+}
+
 void elisa_uikit_controls_set_accessibility_label(size_t handle, size_t text) {
     elisa_uikit_controls_view(handle).accessibilityLabel = elisa_uikit_controls_string(text);
 }
@@ -271,6 +312,9 @@ void elisa_uikit_controls_set_accessibility_label(size_t handle, size_t text) {
 // kind of event it was.
 
 extern int elisa_uikit_controls_action(size_t handle, float value, int selected);
+// A field's text needs its own channel: the numeric action carries a value and
+// a flag, and a string fits in neither.
+extern int elisa_uikit_controls_text_action(size_t handle, const char *text, int length);
 
 @interface ElisaUiKitControlsTarget : NSObject
 + (instancetype)shared;
@@ -289,6 +333,19 @@ extern int elisa_uikit_controls_action(size_t handle, float value, int selected)
 
 - (void)controlActed:(id)sender {
     if (![sender isKindOfClass:[UIControl class]]) return;
+    // A field reports the string UIKit's own editor produced -- after the IME,
+    // autocorrect, dictation or a paste have had their say -- so it takes the
+    // text channel and not the numeric one, which has nothing to carry for it.
+    // -UTF8String's buffer is autoreleased and valid for this call; Elisa
+    // copies it before the dispatch returns.
+    if ([sender isKindOfClass:[UITextField class]]) {
+        NSString *text = ((UITextField *)sender).text ?: @"";
+        const char *utf8 = text.UTF8String;
+        NSUInteger length = utf8 ? strlen(utf8) : 0;
+        if (length > (NSUInteger)INT_MAX) length = (NSUInteger)INT_MAX;
+        (void)elisa_uikit_controls_text_action((size_t)(__bridge void *)sender, utf8, (int)length);
+        return;
+    }
     float value = 0.0f;
     int selected = 0;
     if ([sender isKindOfClass:[UISlider class]]) value = ((UISlider *)sender).value;

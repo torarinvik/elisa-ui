@@ -23,6 +23,7 @@ import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
+import android.view.inputmethod.InputMethodManager;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.CheckBox;
@@ -57,6 +58,7 @@ public final class ElisaControls {
 
     // Elisa's answer to an action, which is where every policy about it lives.
     public static native void nativeControlEvent(int handle, int event, float value, boolean selected);
+    public static native void nativeControlText(int handle, String text);
 
     private static float density() {
         return activity == null ? 1.0f : activity.getResources().getDisplayMetrics().density;
@@ -175,6 +177,56 @@ public final class ElisaControls {
         return points;
     }
 
+    // WHICH CONTROL THE USER IS TYPING IN, and where their caret sits.
+    //
+    // Realizing again replaces the whole interface, so without these a
+    // keystroke would destroy the field that reported it: the soft keyboard
+    // would drop, the caret would be lost and a composing IME would be cut off
+    // mid-word. Elisa owns the handle table and asks each control in turn.
+    public static boolean isFocused(int handle) {
+        View view = viewOf(handle);
+        return view != null && view.hasFocus();
+    }
+
+    // Java char offsets -- UTF-16 code units, the same unit iOS counts in. The
+    // value only ever goes back to the platform it came from.
+    public static int caret(int handle) {
+        View view = viewOf(handle);
+        if (!(view instanceof EditText)) return 0;
+        int at = ((EditText) view).getSelectionStart();
+        return at < 0 ? 0 : at;
+    }
+
+    public static void focus(final int handle, final int caret) {
+        View view = viewOf(handle);
+        if (view == null) return;
+        view.setFocusableInTouchMode(true);
+        if (!view.requestFocus()) return;
+        if (view instanceof EditText) {
+            EditText field = (EditText) view;
+            // A caret past the end is what a realization that shortened the
+            // text leaves behind; clamp rather than throwing out of setSelection.
+            int length = field.getText() == null ? 0 : field.getText().length();
+            field.setSelection(caret < 0 ? 0 : (caret > length ? length : caret));
+        }
+        // FOCUS IS NOT THE INPUT CONNECTION. requestFocus moves the cursor;
+        // the IME is still bound to the view that was just destroyed, so
+        // without restartInput the keyboard is talking to a dead connection
+        // and every keystroke after the first one lands nowhere -- which is
+        // exactly what a realization-per-keystroke produces. Measured on a
+        // Pixel 9: one character arrived and the rest vanished.
+        InputMethodManager ime = imeManager();
+        if (ime == null) return;
+        ime.restartInput(view);
+        if (view instanceof EditText) ime.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT);
+    }
+
+    private static InputMethodManager imeManager() {
+        if (activity == null) return null;
+        Object service = activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
+        return service instanceof InputMethodManager ? (InputMethodManager) service : null;
+    }
+
     public static void addChild(int parent, int child) {
         View parentView = viewOf(parent);
         View childView = viewOf(child);
@@ -272,8 +324,13 @@ public final class ElisaControls {
             ((EditText) view).addTextChangedListener(new TextWatcher() {
                 public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
                 public void onTextChanged(CharSequence s, int a, int b, int c) { }
+                // afterTextChanged is the point the IME, autocorrect, a
+                // dictation result and a paste have all finished with: what
+                // `s` holds here is the string the user meant, which is what
+                // the application needs and what the numeric event could
+                // never carry.
                 public void afterTextChanged(Editable s) {
-                    nativeControlEvent(handle, EVENT_CHANGE, 0.0f, false);
+                    nativeControlText(handle, s == null ? "" : s.toString());
                 }
             });
             return;

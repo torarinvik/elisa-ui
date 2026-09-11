@@ -71,10 +71,19 @@ extend UiControls:
         # widget -- and then tells the application in the vocabulary its own
         # hook already speaks, which is the one every canvas backend uses.
         #
-        # A field's TEXT does not come back this way: the action carries a
-        # float and a flag, and a string has nowhere to ride. That is named
-        # here rather than papered over -- a native field on this path edits
-        # itself and the retained value does not follow it yet.
+        # A FIELD'S TEXT COMES BACK TOO. The seam's note_text has already put
+        # what the user typed into the control list, so this carries it the
+        # last step like any other value -- through UiFlat::replace_text,
+        # which is the retained layer's own editing entry point and not a
+        # second one written for native backends. It validates the UTF-8,
+        # clips on a grapheme boundary, records an undo step, bumps the text
+        # revision and emits the Change event itself.
+        #
+        # That last part is why a field returns HERE rather than falling
+        # through to the shared `app_widget_event` below: emitting it twice
+        # would hand the application two edits for one keystroke. It also
+        # emits NOTHING when the text is unchanged, which is what keeps a
+        # backend that re-realizes on every event from chasing its own tail.
         def retained_action(index: i32, event: i32) -> bool:
             return false if index < 0 or index.usize() >= total
             slot: usize = index.usize()
@@ -82,6 +91,9 @@ extend UiControls:
             return false if widget >= UiFlat::count()
             kind: ControlKind = kind_at(slot)
             state: ControlState = state_at(slot)
+            if kind == ControlKind.TextField:
+                UiFlat::replace_text(widget, text_at(slot))
+                return true
             UiFlat::set_value(widget, state.value) if kind == ControlKind.Slider
             UiFlat::set_selected(widget, state.selected) if kind == ControlKind.CheckBox or kind == ControlKind.RadioButton
             app_widget_event(widget, event)

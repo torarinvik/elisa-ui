@@ -15,13 +15,59 @@ include "./ui_uikit_controls.elisa"
 include "../../widgets/ui_controls_flat.elisa"
 
 extend UiUIKitControls:
+    private:
+        # FOCUS OUTLIVES THE INTERFACE THAT HELD IT.
+        #
+        # Realizing again REPLACES every control, which is what makes a tree
+        # that changed show up. It is also what would make a native field
+        # unusable: an application that lays out again when the text changes
+        # destroys the very field that reported the keystroke -- dropping the
+        # soft keyboard, losing the caret and cutting off a composing IME
+        # mid-word. The text write-back is worth nothing without this.
+        #
+        # The remembered identity is the RETAINED WIDGET and not the control
+        # index. An index belongs to one realization -- a validation message
+        # that appears when the text becomes invalid shifts every control
+        # after it -- while the widget is what the application itself holds.
+        # Looking the slot up again afterwards is what survives a tree that
+        # changed shape.
+        global mutable uikit_focus_widget: usize = 0
+        global mutable uikit_focus_known: bool = false
+        global mutable uikit_focus_caret: i32 = 0
+
+        def remember_focus() -> void can[Ui.Controls]:
+            uikit_focus_known <- false
+            for slot in 0..<UiControls::count():
+                continue if UiControls::kind_at(slot) != UiControls::ControlKind.TextField
+                handle: usize = UiControls::native_handle_at(slot)
+                continue if handle == 0
+                continue if elisa_uikit_controls_is_focused(handle) == 0
+                widget: usize = UiControls::retained_index_at(slot)
+                continue if widget >= UiFlat::count()
+                uikit_focus_widget <- widget
+                uikit_focus_caret <- elisa_uikit_controls_caret(handle)
+                uikit_focus_known <- true
+                return
+
+        def restore_focus() -> void can[Ui.Controls]:
+            return if not uikit_focus_known
+            uikit_focus_known <- false
+            for slot in 0..<UiControls::count():
+                continue if UiControls::retained_index_at(slot) != uikit_focus_widget
+                handle: usize = UiControls::native_handle_at(slot)
+                return if handle == 0
+                elisa_uikit_controls_focus(handle, uikit_focus_caret)
+                return
+
     public:
         def realize_retained() -> void:
             can[Ui.Controls]:
+                remember_focus()
                 begin_realize()
                 UiControls::realize_retained()
                 UiControls::apply[UiKitControls]()
                 finish_realize()
+                restore_focus()
 
 # THE RETAINED EDITOR IS NOT THE ONE EDITING. A text field on this path is a
 # real UITextField: iOS owns its selection, its caret, its magnifier and its

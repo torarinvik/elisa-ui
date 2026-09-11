@@ -19,6 +19,7 @@ extern int32_t elisa_android_controls_start(float width, float height);
 extern void elisa_android_controls_resize(float width, float height);
 extern void elisa_android_controls_stop(void);
 extern void elisa_android_controls_event(int32_t handle, int32_t event, float value, int32_t selected);
+extern void elisa_android_controls_text(int32_t handle, const char *text, int32_t length);
 
 static JavaVM *elisa_vm = NULL;
 static jclass elisa_controls_class = NULL;
@@ -26,6 +27,7 @@ static jmethodID m_create, m_add_child, m_set_frame, m_set_text, m_set_text_colo
 static jmethodID m_set_background_color, m_set_tint_color, m_set_track_color;
 static jmethodID m_set_state, m_set_action, m_release_all, m_attach_root;
 static jmethodID m_measure_text, m_line_height, m_minimum_height;
+static jmethodID m_is_focused, m_caret, m_focus;
 
 static JNIEnv *elisa_env(void) {
     JNIEnv *env = NULL;
@@ -61,6 +63,9 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
     m_measure_text = (*env)->GetStaticMethodID(env, c, "measureTextWidth", "(Ljava/lang/String;FZ)F");
     m_line_height = (*env)->GetStaticMethodID(env, c, "textLineHeight", "(F)F");
     m_minimum_height = (*env)->GetStaticMethodID(env, c, "minimumHeight", "(I)F");
+    m_is_focused = (*env)->GetStaticMethodID(env, c, "isFocused", "(I)Z");
+    m_caret = (*env)->GetStaticMethodID(env, c, "caret", "(I)I");
+    m_focus = (*env)->GetStaticMethodID(env, c, "focus", "(II)V");
     return JNI_VERSION_1_6;
 }
 
@@ -88,6 +93,27 @@ JNIEXPORT void JNICALL Java_org_elisa_1ui_ElisaControls_nativeControlEvent(
         JNIEnv *env, jclass self, jint handle, jint event, jfloat value, jboolean selected) {
     (void)env; (void)self;
     elisa_android_controls_event(handle, event, value, selected == JNI_TRUE ? 1 : 0);
+}
+
+// A field's text takes a channel of its own: the numeric event carries a value
+// and a flag, and a string fits in neither. GetStringUTFChars gives modified
+// UTF-8, which differs from the real thing only for NUL and for characters
+// outside the BMP -- and Elisa validates the UTF-8 before it keeps any of it,
+// so a surrogate pair that arrives mangled is clipped at its boundary rather
+// than stored. The bytes are released as soon as Elisa has copied them.
+JNIEXPORT void JNICALL Java_org_elisa_1ui_ElisaControls_nativeControlText(
+        JNIEnv *env, jclass self, jint handle, jstring text) {
+    (void)self;
+    if (env == NULL) return;
+    if (text == NULL) {
+        elisa_android_controls_text(handle, "", 0);
+        return;
+    }
+    const char *utf8 = (*env)->GetStringUTFChars(env, text, NULL);
+    if (utf8 == NULL) return;
+    jsize length = (*env)->GetStringUTFLength(env, text);
+    elisa_android_controls_text(handle, utf8, (int32_t)length);
+    (*env)->ReleaseStringUTFChars(env, text, utf8);
 }
 
 // --- Elisa calling Java -------------------------------------------------
@@ -199,4 +225,24 @@ float elisa_android_controls_minimum_height(int32_t kind) {
     JNIEnv *env = elisa_env();
     if (env == NULL) return 0.0f;
     return (*env)->CallStaticFloatMethod(env, elisa_controls_class, m_minimum_height, kind);
+}
+
+// Focus, across a realization that replaces every view. Elisa decides which
+// control should have it back; these only carry the question and the answer.
+int32_t elisa_android_controls_is_focused(int32_t handle) {
+    JNIEnv *env = elisa_env();
+    if (env == NULL || elisa_controls_class == NULL) return 0;
+    return (*env)->CallStaticBooleanMethod(env, elisa_controls_class, m_is_focused, handle) == JNI_TRUE ? 1 : 0;
+}
+
+int32_t elisa_android_controls_caret(int32_t handle) {
+    JNIEnv *env = elisa_env();
+    if (env == NULL || elisa_controls_class == NULL) return 0;
+    return (*env)->CallStaticIntMethod(env, elisa_controls_class, m_caret, handle);
+}
+
+void elisa_android_controls_focus(int32_t handle, int32_t caret) {
+    JNIEnv *env = elisa_env();
+    if (env == NULL || elisa_controls_class == NULL) return;
+    (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_focus, handle, caret);
 }

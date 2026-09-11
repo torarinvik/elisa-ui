@@ -32,6 +32,9 @@ extern elisa_android_controls_attach_root(handle: i32) -> void
 extern elisa_android_controls_measure_text(bytes: u8&, length: usize, size: f32, weighted: i32) -> f32
 extern elisa_android_controls_line_height(size: f32) -> f32
 extern elisa_android_controls_minimum_height(kind: i32) -> f32
+extern elisa_android_controls_is_focused(handle: i32) -> i32
+extern elisa_android_controls_caret(handle: i32) -> i32
+extern elisa_android_controls_focus(handle: i32, caret: i32) -> void
 
 module UiAndroidControls:
     public:
@@ -44,6 +47,18 @@ module UiAndroidControls:
         def native_handle(index: i32) -> i32:
             return 0 if index < 0 or index.usize() >= UiControls::count()
             return UiControls::native_handle_at(index.usize()).i32()
+
+        # WHAT ANDROID'S OWN EDITOR PRODUCED. An EditText reports after the
+        # IME, autocorrect, a dictation result or a paste have already had
+        # their say, so what arrives is the finished string and not a
+        # keystroke. The bytes belong to the JNI call; copy them before the
+        # seam keeps a view of them.
+        def copy_native_text(text: cstr, length: i32) -> sview:
+            return "" if length < 0
+            room: usize = length.usize() if length.usize() < UiCore::MAX_TEXT_BYTES else UiCore::MAX_TEXT_BYTES
+            for index in 0..<room:
+                android_controls_text_bytes[index] <- android_controls_cstr_byte(text, index)
+            return sview(&android_controls_text_bytes[0], 0, room.i64())
 
         def surface_width() -> f32:
             return android_controls_width
@@ -106,6 +121,9 @@ module UiAndroidControls:
 
     private:
         global mutable android_controls_started: bool = false
+        # An edit arrives as borrowed JNI bytes; the seam keeps its view of
+        # them until the next one, so they are copied here.
+        global mutable android_controls_text_bytes: u8[UiCore::MAX_TEXT_BYTES] = zeroed
         global mutable android_controls_width: f32 = 0.0
         global mutable android_controls_height: f32 = 0.0
 
@@ -189,3 +207,13 @@ module UiAndroidControls:
                     _ = kind
                     handle: i32 = native_handle(index)
                     elisa_android_controls_set_action(handle) if handle != 0
+
+# The inbound direction of the outbound byte buffer set_text uses. JNI owns the
+# bytes for the length of the call, so they are read one at a time into storage
+# this backend owns rather than the pointer being kept.
+def android_controls_cstr_byte(text: cstr, index: usize) -> u8:
+    pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
+    return 0 if pointer == 0.uintptr()
+    trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic]:
+        byte: u8& = (pointer + index.uintptr()).cast[u8&]
+        return byte

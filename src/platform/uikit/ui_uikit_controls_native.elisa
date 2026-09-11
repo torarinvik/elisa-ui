@@ -31,6 +31,9 @@ extern elisa_uikit_controls_set_tint_color(handle: usize, color: u32) -> void
 extern elisa_uikit_controls_set_track_color(handle: usize, color: u32) -> void
 extern elisa_uikit_controls_set_accessibility_label(handle: usize, text: usize) -> void
 extern elisa_uikit_controls_set_action(handle: usize, value_change: i32) -> void
+extern elisa_uikit_controls_is_focused(handle: usize) -> i32
+extern elisa_uikit_controls_caret(handle: usize) -> i32
+extern elisa_uikit_controls_focus(handle: usize, caret: i32) -> void
 
 const UIKIT_CONTROLS_UTF8_ENCODING: u32 = 0x08000100
 
@@ -43,3 +46,13 @@ def native_string(text: sview) -> usize:
     pointer: mutable cstr = empty
     pointer <- safe_text.data.cast[cstr] can Unsafe.PointerCast if safe_text.len > 0
     return CFStringCreateWithBytes(0, pointer, safe_text.len, UIKIT_CONTROLS_UTF8_ENCODING, false)
+
+# The inbound direction of native_string. UIKit hands an edit over as bytes it
+# owns for the length of the call, so a backend reads them one at a time into
+# storage of its own rather than keeping the pointer.
+def uikit_controls_cstr_byte(text: cstr, index: usize) -> u8:
+    pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
+    return 0 if pointer == 0.uintptr()
+    trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic]:
+        byte: u8& = (pointer + index.uintptr()).cast[u8&]
+        return byte

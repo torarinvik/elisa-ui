@@ -164,8 +164,10 @@ one that owns no pixels at all
 ([`ui_android_controls.elisa`](../src/platform/android/ui_android_controls.elisa)).
 It creates **TextViews, Buttons, CheckBoxes, RadioButtons, EditTexts, SeekBars
 and ProgressBars** and lets Android draw them, lay out their text, run its own
-IME, mirror right-to-left and speak to TalkBack — the things you cannot get by
-drawing rectangles, and the reason to want native controls at all.
+IME and mirror right-to-left — the things you cannot get by drawing rectangles,
+and the reason to want native controls at all. (TalkBack reads whatever caption
+a view carries, but nothing here sets a `contentDescription` yet; see *What is
+not here yet*.)
 
 ```
 scripts/build_android_controls.sh showcase
@@ -212,11 +214,52 @@ Three things this platform decides differently, and they are worth knowing:
   grow — it clips its own words. The minimums and the vertical padding go; the
   horizontal padding stays, because a check box's mark lives in it.
 
+## Typing in a real EditText
+
+A native field is the strongest single reason to realize native controls: it
+brings the IME, autocorrect, dictation, the selection handles and the system
+paste menu, none of which a framework that draws its own caret can borrow. All
+of that is worth nothing if the words never reach the application, and for a
+while they did not — an action carried a float and a flag, and a string had
+nowhere to ride.
+
+It now has a channel of its own. `ElisaControls`' `TextWatcher` reports in
+`afterTextChanged`, which is the point the IME, autocorrect and a paste have
+all finished with, so what crosses is the string the user meant rather than a
+keystroke. `nativeControlText` carries it through
+[`android_controls_jni.c`](../src/platform/android/android_controls_jni.c) —
+`GetStringUTFChars`, whose modified UTF-8 differs from the real thing only for
+NUL and for characters outside the BMP, and Elisa validates the encoding before
+keeping any of it — into `UiControls::dispatch_native_text`. From there it is
+the retained layer's own `UiFlat::replace_text`, not a second editing path
+written for native backends: it clips on a grapheme boundary, records an undo
+step, bumps the text revision and emits the change event exactly once.
+
+**Focus has to outlive the interface.** Realizing again replaces every view,
+which is how a tree that changed shows up — and it would also destroy the very
+field that reported the keystroke. The realization remembers which *retained
+widget* was focused (not which control index: a validation message appearing
+shifts every index after it) and gives focus back to whichever view realizes
+that widget, caret included.
+
+Restoring focus is not enough on its own, and this cost real time to find:
+`requestFocus` moves the cursor while the IME stays bound to the view that was
+just destroyed, so the keyboard talks to a dead input connection.
+`InputMethodManager.restartInput` is what rebinds it. Measured on a Pixel 9
+before that call, typing five characters left one.
+
+**Still lossy under fast input.** With it, five characters leave three. The
+remaining loss is not the IME — it is that the whole native tree is torn down
+and rebuilt on every keystroke, so a character that arrives mid-rebuild has
+nowhere to land. The fix is reconciliation (adopting the controls that did not
+change) rather than anything in this file.
+
 ## What is not here yet
 
 No clipboard (a NativeActivity reaches the system one only through JNI), no IME
-composition (the same), no accessibility, and no configuration changes beyond
-resize. The manifest declares
+composition (the same), no accessibility — **TalkBack gets whatever caption a
+view happens to carry and nothing else; no `contentDescription` is set** — and
+no configuration changes beyond resize. The manifest declares
 `configChanges="orientation|screenSize|screenLayout|keyboardHidden|density"`, so
 a rotation arrives as a resize rather than a restart, which the backend already
 handles.

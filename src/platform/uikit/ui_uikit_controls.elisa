@@ -47,6 +47,9 @@ module UiUIKitControls:
         global mutable uikit_controls_inset_right: f32 = 0.0
         global mutable uikit_controls_inset_bottom: f32 = 0.0
         global mutable uikit_controls_inset_left: f32 = 0.0
+        # An edit arrives as borrowed bytes; the seam keeps its view until the
+        # next one, so they are copied here rather than into a caller's frame.
+        global mutable uikit_controls_text_bytes: u8[UiCore::MAX_TEXT_BYTES] = zeroed
 
         # Keep the retained UIKit identity in the same Elisa record that owns
         # the control index. A child is attached only after its constructor
@@ -199,6 +202,22 @@ module UiUIKitControls:
             kind: UiControls::ControlKind = UiControls::kind_at(index.usize())
             return UiControls::dispatch_native_action(handle, UiControls::action_event_for(kind), value, selected)
 
+        # WHAT UIKIT'S OWN EDITOR PRODUCED. A UITextField reports an edit
+        # after the IME, autocorrect, dictation or a paste have already had
+        # their say, so what arrives here is the finished string and not a
+        # keystroke. Copy it before dispatching: the bytes belong to a
+        # CoreFoundation string the shim releases as soon as this returns, and
+        # the seam keeps the view it is given until the next edit.
+        def copy_native_text(text: cstr, length: i32) -> sview:
+            return "" if length < 0
+            room: usize = length.usize() if length.usize() < UiCore::MAX_TEXT_BYTES else UiCore::MAX_TEXT_BYTES
+            for index in 0..<room:
+                uikit_controls_text_bytes[index] <- uikit_controls_cstr_byte(text, index)
+            return sview(&uikit_controls_text_bytes[0], 0, room.i64())
+
+        def controls_text_action(handle: usize, text: cstr, length: i32) -> i32:
+            return UiControls::dispatch_native_text(handle, copy_native_text(text, length))
+
         # Release the retained handles before the next realization. Children may
         # still be retained by their old superview, but dropping every Elisa
         # ownership reference lets ARC tear the old tree down without a second
@@ -318,3 +337,10 @@ def uikit_controls_action(handle: usize, value: f32, selected: i32) -> i32:
     return UiUIKitControls::controls_action(handle, value, selected != 0)
 
 export fn elisa_uikit_controls_action(handle: usize, value: f32, selected: i32) -> i32 = uikit_controls_action
+
+# A field's text needs a channel of its own: the numeric action carries a value
+# and a flag, and neither can hold a string.
+def uikit_controls_text_action(handle: usize, text: cstr, length: i32) -> i32:
+    return UiUIKitControls::controls_text_action(handle, text, length)
+
+export fn elisa_uikit_controls_text_action(handle: usize, text: cstr, length: i32) -> i32 = uikit_controls_text_action

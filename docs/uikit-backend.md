@@ -48,6 +48,48 @@ screen, because the scene's own view is still holding it. Without detaching the
 old root, a rotation left two complete interfaces stacked with the dead one on
 top, taking the touches.
 
+## Typing in a real UITextField
+
+A native field is the strongest single reason to realize native controls: it
+brings the IME, autocorrect, dictation, the selection magnifier and the system
+paste menu, none of which a framework that draws its own caret can borrow. All
+of that is worth nothing if the words never reach the application, and for a
+while they did not — the action carried a float and a flag, and a string had
+nowhere to ride.
+
+It now has a channel of its own, `elisa_uikit_controls_text_action`. The shim's
+one target reports a `UITextField` through it rather than through the numeric
+path, because what `UIControlEventEditingChanged` delivers is the string
+UIKit's own editor produced — after the IME, autocorrect, dictation or a paste
+have had their say — and not a keystroke. Elisa copies the bytes (they belong
+to an autoreleased buffer valid only for the call) and hands them to
+`UiControls::dispatch_native_text`, which writes them into the control list and
+then into the retained widget through `UiFlat::replace_text` — the retained
+layer's own editing entry point, not a second one written for native backends.
+It validates the UTF-8, clips on a grapheme boundary, records an undo step and
+emits the change event exactly once, which is why a field returns early instead
+of also falling through to the shared action event.
+
+**Focus has to outlive the interface.** Realizing again replaces every control,
+which is how a tree that changed shows up — and it would also destroy the very
+field that reported the keystroke, dropping the keyboard, losing the caret and
+cutting a composing IME off mid-word. The realization remembers which *retained
+widget* held focus, and its caret in UTF-16 units, then gives focus back to
+whichever control realizes that widget. The identity is deliberately the widget
+and not the control index: an index belongs to one realization, and a
+validation message that appears when the text becomes invalid shifts every
+index after it, while the widget is what the application itself holds.
+
+UIKit publishes no first responder to walk to, so Elisa asks each control it
+owns — `elisa_uikit_controls_is_focused` — rather than the shim walking a view
+tree it does not own the table for.
+
+`test/controls_flat_test.elisa` pins all of this with a recording backend and no
+OS control in sight: that the text arrives, that one keystroke is one edit,
+that an unchanged report raises nothing (which is what stops a backend that
+re-realizes on every event from chasing its own tail), that clearing a field is
+a real edit, and that a label refuses a write-back it should never receive.
+
 ## The other application layer
 
 elisa-ui has two application-facing layers and until now they were not equally
