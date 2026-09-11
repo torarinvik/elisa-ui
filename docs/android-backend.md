@@ -207,6 +207,22 @@ Three things this platform decides differently, and they are worth knowing:
   last realized against, the Activity and the realization drive each other and
   the interface never settles — which is exactly what happened, at 24% of a
   CPU, before the Activity started comparing.
+- **A view given too little room wrapped, where every other backend
+  truncates.** The painted backends draw a single line and end it with an
+  ellipsis; UIKit truncates; Android alone broke the caption across two lines,
+  so the showcase's tab row read "Overvi / ew" and "Contro / ls". That is not a
+  platform difference worth keeping — it is this backend disagreeing with its
+  own framework about what a box means — so a caption is now one line with an
+  ellipsis. A field is left alone: its text scrolls as you type, which is the
+  platform's behaviour and the right one.
+
+  The fix has a trap in it. `setSingleLine` installs a transformation method of
+  its own, and that is the slot Material's Button already uses for
+  `textAllCaps` — so it quietly turned every "SAVE STATE" into "Save state",
+  which is the same mistake as stripping the platform's minimums: a native look
+  given away to fix a layout problem. `setMaxLines(1)` leaves the
+  transformation alone.
+
 - **A native view wants to be bigger than the box it is given.** Android's
   widgets carry a minimum height, generous vertical padding and an extra line
   of font padding, all sized for a toolkit that measures its own layout. Placed

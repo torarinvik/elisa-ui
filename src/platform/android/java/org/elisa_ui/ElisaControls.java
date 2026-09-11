@@ -129,6 +129,29 @@ public final class ElisaControls {
             }
             default: view = new FrameLayout(activity); break;
         }
+        // ONE LINE, AND AN ELLIPSIS WHEN IT DOES NOT FIT.
+        //
+        // A box came from a layout that already decided how much room these
+        // words get, and every other backend answers a box that is too small
+        // the same way: the painted ones draw a single line and end it with an
+        // ellipsis, and UIKit truncates. Android alone WRAPPED, so the
+        // showcase's tab row read "Overvi / ew" and "Contro / ls" -- which is
+        // not a platform difference worth keeping, it is this backend
+        // disagreeing with its own framework about what a box means.
+        //
+        // A field is left alone: its text scrolls as you type rather than
+        // being cut, which is the platform's behaviour and the right one.
+        // setMaxLines, NOT setSingleLine. setSingleLine installs a
+        // transformation method of its own, and that is the slot Material's
+        // Button already uses for textAllCaps -- so it quietly turned every
+        // "SAVE STATE" into "Save state". That is the same mistake as
+        // stripping the platform's minimums: a native look given away to fix
+        // a layout problem. setMaxLines leaves the transformation alone.
+        if (view instanceof TextView && !(view instanceof EditText)) {
+            TextView label = (TextView) view;
+            label.setMaxLines(1);
+            label.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        }
         int slot = freeSlot();
         views[slot] = view;
         kinds[slot] = kind;
