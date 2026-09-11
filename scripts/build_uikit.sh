@@ -75,6 +75,15 @@ xcrun --sdk "$SDK_NAME" clang -target "$TRIPLE" -isysroot "$SDK" \
 # The Objective-C shim, one translation unit.
 xcrun --sdk "$SDK_NAME" clang -target "$TRIPLE" -isysroot "$SDK" -fobjc-arc \
   -c -Wall -Wextra -Werror -o "$OUT/uikit_shim.o" "$SHIM"
+# The controls bridge is two files: the shim, and the measurement half that was
+# split out of it when it reached the project's source-length limit.
+EXTRA_SHIM_OBJECT=""
+if [[ "$BACKEND" == "controls" ]]; then
+  xcrun --sdk "$SDK_NAME" clang -target "$TRIPLE" -isysroot "$SDK" -fobjc-arc \
+    -c -Wall -Wextra -Werror -o "$OUT/uikit_metrics.o" \
+    "$ROOT/src/platform/uikit/uikit_controls_metrics.m"
+  EXTRA_SHIM_OBJECT="\"$OUT/uikit_metrics.o\""
+fi
 
 # The link driver the compiler will invoke. It receives the compiler's own
 # link line and adds only what is specific to this platform.
@@ -83,7 +92,7 @@ cat > "$LINKER" <<LINK
 #!/usr/bin/env bash
 set -euo pipefail
 exec xcrun --sdk "$SDK_NAME" clang -target "$TRIPLE" -isysroot "$SDK" "\$@" \\
-  "$OUT/uikit_shim.o" \\
+  "$OUT/uikit_shim.o" $EXTRA_SHIM_OBJECT \\
   -framework UIKit -framework Foundation -framework CoreGraphics \\
   -framework CoreText -framework ImageIO
 LINK

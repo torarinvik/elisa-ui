@@ -135,9 +135,28 @@ backend nothing here could show. On a booted simulator it draws as an empty
 `square` beside "Wrap lines", which is captioned, ticked, and correctly wears
 no mark at all.
 
-A composite (a `UIView` holding a `UILabel` and a real `UISwitch`, the
-container being the control's handle) is still the thing that would make the
-`UISwitch` line in the seam's mapping table true. This is not that.
+**A toggle and a check box are a real `UISwitch` now.** The mark above is what
+a *radio* wears; booleans went further. A backend may build whatever it likes
+behind the handle it returns — the seam neither knows nor cares how many views
+are under there — so a toggle is a container holding a `UILabel` and a real
+`UISwitch`, the row iOS uses from Settings down. A captionless one is a row with
+an empty label, which leaves a bare switch: right for that case too, and one
+less special case than the mark it replaces. The container is tagged so the
+title setter writes the inner label, the state setter drives the inner switch,
+and the action target reports the *container*, which is the handle Elisa knows.
+
+That makes the `UISwitch` line in the seam's mapping table true for the first
+time. A radio stays a selectable button: a segmented control is one control for
+a whole **group**, which is a change to the shape of the list rather than to
+what one widget builds.
+
+It needed the other half of the measurement work. A `UISwitch` is about 51
+points wide whatever box it is given, and the showcase sizes its dark-mode
+toggle at 34 — so the first build cut the switch in half. `minimum_width` now
+answers for the kinds whose width is a property of the control rather than of
+its words, and `apply_platform_minimums` raises each dimension independently
+and only upward. Exactly the height lesson, one dimension over: a native
+control does not shrink to fit, it overflows.
 
 ## A caption that does not fit is cut, not hyphenated
 

@@ -132,87 +132,6 @@ static NSString *elisa_uikit_controls_string(size_t handle) {
     return [object isKindOfClass:[NSString class]] ? (NSString *)object : nil;
 }
 
-// WHAT THE PLATFORM WANTS, ASKED OF THE PLATFORM.
-//
-// The framework lays out before a control exists, from numbers its entry point
-// supplies -- and on iOS those were invented: a character width guessed at
-// (0.55 of the point size), a line height guessed at (1.3), and no idea what a
-// button is at its smallest. Android was given real measurements months into
-// this and stopped clipping its own words; iOS kept the guesses, and it shows
-// the moment Dynamic Type is raised: the text grows, the boxes do not, and
-// every caption truncates at once.
-//
-// THE FONT MEASURED IS THE FONT DRAWN. Every control here uses the preferred
-// body font with adjustsFontForContentSizeCategory, so that is what is
-// measured -- not the app's requested point size, which no native control
-// here honours. Measuring one face and drawing another is how a framework
-// gets label boxes that fit nothing.
-static UIFont *elisa_uikit_controls_font(int weighted) {
-    UIFont *body = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
-    if (weighted == 0) return body;
-    UIFontDescriptor *bold = [body.fontDescriptor fontDescriptorWithSymbolicTraits:UIFontDescriptorTraitBold];
-    return bold == nil ? body : [UIFont fontWithDescriptor:bold size:0.0];
-}
-
-float elisa_uikit_controls_measure_text(const char *utf8, int length, float size, int weighted) {
-    (void)size;
-    if (utf8 == NULL || length <= 0) return 0.0f;
-    NSString *text = [[NSString alloc] initWithBytes:utf8 length:(NSUInteger)length encoding:NSUTF8StringEncoding];
-    if (text == nil) return 0.0f;
-    CGSize measured = [text sizeWithAttributes:@{NSFontAttributeName: elisa_uikit_controls_font(weighted)}];
-    return (float)measured.width;
-}
-
-// The full line box a UILabel reserves, which is the font's own line height --
-// the same distinction Android's textLineHeight draws between the font's
-// extent and the tighter ascent-to-descent pair.
-float elisa_uikit_controls_line_height(float size) {
-    (void)size;
-    return (float)elisa_uikit_controls_font(0).lineHeight;
-}
-
-// What a control of this kind is at its smallest, asked of a real one and
-// remembered: the answer is a property of the type and the text size, not of
-// any particular control. The cache is dropped whenever Dynamic Type changes,
-// because that is exactly when it stops being true.
-static CGFloat elisa_uikit_controls_minimums[16];
-static NSString *elisa_uikit_controls_minimums_category = nil;
-
-void elisa_uikit_controls_forget_minimums(void) {
-    for (int index = 0; index < 16; index += 1) elisa_uikit_controls_minimums[index] = 0.0;
-}
-
-float elisa_uikit_controls_minimum_height(int kind) {
-    if (kind < 0 || kind >= 16) return 0.0f;
-    NSString *category = UIApplication.sharedApplication.preferredContentSizeCategory;
-    if (![category isEqualToString:elisa_uikit_controls_minimums_category]) {
-        elisa_uikit_controls_forget_minimums();
-        elisa_uikit_controls_minimums_category = category;
-    }
-    if (elisa_uikit_controls_minimums[kind] > 0.0) return (float)elisa_uikit_controls_minimums[kind];
-    UIView *probe = nil;
-    switch (kind) {
-        case 3: { UILabel *label = [[UILabel alloc] init];
-                  label.font = elisa_uikit_controls_font(0);
-                  label.text = @"Ag"; probe = label; break; }
-        case 4: case 5: case 6: case 7: {
-                  UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
-                  button.configuration = [UIButtonConfiguration plainButtonConfiguration];
-                  [button setTitle:@"Ag" forState:UIControlStateNormal];
-                  probe = button; break; }
-        case 8: { UITextField *field = [[UITextField alloc] init];
-                  field.borderStyle = UITextBorderStyleRoundedRect;
-                  field.font = elisa_uikit_controls_font(0);
-                  field.text = @"Ag"; probe = field; break; }
-        case 9: probe = [[UISlider alloc] init]; break;
-        case 10: probe = [[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault]; break;
-        default: return 0.0f;
-    }
-    CGSize wanted = [probe systemLayoutSizeFittingSize:UILayoutFittingCompressedSize];
-    elisa_uikit_controls_minimums[kind] = wanted.height;
-    return (float)wanted.height;
-}
-
 size_t elisa_uikit_controls_create_view(void) {
     return (size_t)CFBridgingRetain([[UIView alloc] initWithFrame:CGRectZero]);
 }
@@ -236,18 +155,83 @@ size_t elisa_uikit_controls_create_label(void) {
     return (size_t)CFBridgingRetain(label);
 }
 
+// A BOOLEAN IS A SWITCH ON iOS, AND A SWITCH CARRIES NO CAPTION.
+//
+// The mapping table promised UISwitch for years while this backend built a
+// selectable UIButton, and the stated reason was true as far as it went: a
+// switch has no title, and this seam realizes one widget as one control, so a
+// labelled boolean had nowhere to put its words.
+//
+// It had nowhere to put them in ONE view. A backend may build whatever it
+// likes behind the handle it returns, and the seam neither knows nor cares how
+// many views are under there -- so a toggle is a container holding a UILabel
+// and a real UISwitch, the row iOS uses from Settings down. A captionless one
+// is a row with an empty label, leaving a bare switch: right for that case
+// too, and one less special case than the mark it replaces.
+//
+// The container is tagged so the rest of this file recognises one without a
+// second table, and the action target reports the CONTAINER, which is the
+// handle Elisa knows.
+#define ELISA_SWITCH_ROW_TAG 0x45535720
+
+static UILabel *elisa_switch_row_label(UIView *row) {
+    for (UIView *child in row.subviews) {
+        if ([child isKindOfClass:[UILabel class]]) return (UILabel *)child;
+    }
+    return nil;
+}
+
+static UISwitch *elisa_switch_row_switch(UIView *row) {
+    for (UIView *child in row.subviews) {
+        if ([child isKindOfClass:[UISwitch class]]) return (UISwitch *)child;
+    }
+    return nil;
+}
+
+static BOOL elisa_is_switch_row(UIView *view) {
+    return view != nil && view.tag == ELISA_SWITCH_ROW_TAG;
+}
+
+size_t elisa_uikit_controls_create_switch_row(void) {
+    UIView *row = [[UIView alloc] initWithFrame:CGRectZero];
+    row.tag = ELISA_SWITCH_ROW_TAG;
+    UILabel *label = [[UILabel alloc] initWithFrame:CGRectZero];
+    label.adjustsFontForContentSizeCategory = YES;
+    label.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+    label.textColor = UIColor.labelColor;
+    label.numberOfLines = 1;
+    label.lineBreakMode = NSLineBreakByTruncatingTail;
+    UISwitch *toggle = [[UISwitch alloc] initWithFrame:CGRectZero];
+    [row addSubview:label];
+    [row addSubview:toggle];
+    return (size_t)CFBridgingRetain(row);
+}
+
+// Switch at the trailing edge at its intrinsic size, label takes what is left
+// -- how a Settings row is built. By hand rather than with constraints, so the
+// absolute placement rule still explains the whole tree.
+static void elisa_layout_switch_row(UIView *row) {
+    UILabel *label = elisa_switch_row_label(row);
+    UISwitch *toggle = elisa_switch_row_switch(row);
+    if (label == nil || toggle == nil) return;
+    CGSize wanted = [toggle sizeThatFits:CGSizeZero];
+    CGFloat height = row.bounds.size.height;
+    CGFloat width = row.bounds.size.width;
+    CGFloat switchX = width - wanted.width;
+    if (switchX < 0.0) switchX = 0.0;
+    toggle.frame = CGRectMake(switchX, (height - wanted.height) * 0.5, wanted.width, wanted.height);
+    CGFloat room = switchX - 8.0;
+    label.frame = CGRectMake(0.0, 0.0, room < 0.0 ? 0.0 : room, height);
+}
+
 // A SELECTABLE BUTTON WITH NO CAPTION IS INVISIBLE, AND ONLY THAT ONE.
 //
-// UIKit draws a system button as its title, so a check box whose whole content
-// is its state came out as nothing at all: an empty patch you could tap but
-// not see. The showcase's dark-mode toggle is one. Android shows a check box
-// there, because Android's CheckBox draws a box whether or not it has words.
-//
-// The mark goes on ONLY when the caption is empty. A mark takes horizontal
-// room inside a box the layout already sized for words, so putting one on
-// every selectable button collapsed the tab row from "Overview" to "O..." --
-// trading a visible control for an unreadable one. A button that shows its
-// words is not invisible and does not need one.
+// UIKit draws a system button as its title, so a radio whose whole content is
+// its state is an empty patch you can tap but not see. The mark goes on ONLY
+// when the caption is empty: it takes horizontal room inside a box the layout
+// sized for words, and putting one on every selectable button collapsed the
+// tab row from "Overview" to "O..." -- a visible control traded for an
+// unreadable one.
 //
 // Through the CONFIGURATION, not -setImage:forState:. A button with a
 // configuration resolves its own image, so the legacy setter does not compose
@@ -351,7 +335,11 @@ void elisa_uikit_controls_remove_from_parent(size_t handle) {
 }
 
 void elisa_uikit_controls_set_frame(size_t handle, float x, float y, float width, float height) {
-    elisa_uikit_controls_view(handle).frame = CGRectMake(x, y, width, height);
+    UIView *view = elisa_uikit_controls_view(handle);
+    view.frame = CGRectMake(x, y, width, height);
+    // A switch row places its own two children, so it has to be told when the
+    // box it sits in changed.
+    if (elisa_is_switch_row(view)) elisa_layout_switch_row(view);
 }
 
 void elisa_uikit_controls_set_content_size(size_t handle, float width, float height) {
@@ -377,6 +365,10 @@ static UIColor *elisa_uikit_controls_color(uint32_t argb) {
 void elisa_uikit_controls_set_text_color(size_t handle, uint32_t argb) {
     UIView *view = elisa_uikit_controls_view(handle);
     UIColor *color = elisa_uikit_controls_color(argb);
+    if (elisa_is_switch_row(view)) {
+        elisa_switch_row_label(view).textColor = color;
+        return;
+    }
     if ([view isKindOfClass:[UILabel class]]) ((UILabel *)view).textColor = color;
     if ([view isKindOfClass:[UITextField class]]) ((UITextField *)view).textColor = color;
     if ([view isKindOfClass:[UIButton class]]) [((UIButton *)view) setTitleColor:color forState:UIControlStateNormal];
@@ -411,6 +403,10 @@ void elisa_uikit_controls_set_label_text(size_t handle, size_t text) {
 
 void elisa_uikit_controls_set_button_title(size_t handle, size_t text) {
     UIView *view = elisa_uikit_controls_view(handle);
+    if (elisa_is_switch_row(view)) {
+        elisa_switch_row_label(view).text = elisa_uikit_controls_string(text);
+        return;
+    }
     if (![view isKindOfClass:[UIButton class]]) return;
     [(UIButton *)view setTitle:elisa_uikit_controls_string(text) forState:UIControlStateNormal];
     // The caption decides whether a mark is needed, so it is re-asked here:
@@ -426,6 +422,12 @@ void elisa_uikit_controls_set_field_text(size_t handle, size_t text) {
 
 void elisa_uikit_controls_set_button_selected(size_t handle, int selected) {
     UIView *view = elisa_uikit_controls_view(handle);
+    // setOn:animated: not the property: a state the framework writes back
+    // must not animate on every realization.
+    if (elisa_is_switch_row(view)) {
+        [elisa_switch_row_switch(view) setOn:selected != 0 animated:NO];
+        return;
+    }
     if ([view isKindOfClass:[UIButton class]]) ((UIButton *)view).selected = selected != 0;
 }
 
@@ -544,6 +546,16 @@ extern int elisa_uikit_controls_text_action(size_t handle, const char *text, int
 
 - (void)controlActed:(id)sender {
     if (![sender isKindOfClass:[UIControl class]]) return;
+    // A switch inside a row acts for the row: the row is the handle Elisa
+    // knows, and the switch is an implementation detail of this file.
+    if ([sender isKindOfClass:[UISwitch class]]) {
+        UIView *row = ((UISwitch *)sender).superview;
+        if (elisa_is_switch_row(row)) {
+            (void)elisa_uikit_controls_action((size_t)(__bridge void *)row,
+                                              0.0f, ((UISwitch *)sender).isOn ? 1 : 0);
+            return;
+        }
+    }
     // A field reports the string UIKit's own editor produced -- after the IME,
     // autocorrect, dictation or a paste have had their say -- so it takes the
     // text channel and not the numeric one, which has nothing to carry for it.
@@ -569,6 +581,14 @@ extern int elisa_uikit_controls_text_action(size_t handle, const char *text, int
 // it from the widget kind; this only performs the subscription.
 void elisa_uikit_controls_set_action(size_t handle, int valueChange) {
     UIView *view = elisa_uikit_controls_view(handle);
+    // The container is not a UIControl; the switch inside it is. The action
+    // goes on the switch and comes back naming the row -- see controlActed:.
+    if (elisa_is_switch_row(view)) {
+        [elisa_switch_row_switch(view) addTarget:[ElisaUiKitControlsTarget shared]
+                                          action:@selector(controlActed:)
+                                forControlEvents:UIControlEventValueChanged];
+        return;
+    }
     if (![view isKindOfClass:[UIControl class]]) return;
     UIControlEvents events = valueChange != 0 ? UIControlEventValueChanged | UIControlEventEditingChanged
                                               : UIControlEventPrimaryActionTriggered;

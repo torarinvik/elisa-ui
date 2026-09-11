@@ -319,3 +319,11 @@ float elisa_uikit_controls_minimum_height(int kind) {
 }
 
 void elisa_uikit_controls_forget_minimums(void) { }
+
+float elisa_uikit_controls_minimum_width(int kind) {
+    // A toggle and a check box are a label beside a real switch on the device;
+    // the stub reports the switch's width so the host test exercises the same
+    // raise the platform would ask for.
+    if (kind == 5 || kind == 6) return 51.0f;
+    return 0.0f;
+}

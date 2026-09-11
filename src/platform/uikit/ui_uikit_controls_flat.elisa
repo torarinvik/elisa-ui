@@ -79,11 +79,17 @@ extend UiUIKitControls:
                 for index in 0..<UiFlat::count():
                     kind: UiControls::ControlKind = UiControls::retained_control_kind(index)
                     continue if kind == UiControls::ControlKind.Panel or kind == UiControls::ControlKind.ScrollView or kind == UiControls::ControlKind.Window
-                    wanted: f32 = minimum_height(kind)
-                    continue if wanted <= 0.0
+                    tall: f32 = minimum_height(kind)
+                    wide: f32 = minimum_width(kind)
                     node: UiFlat::Widget = UiFlat::widget(index)
-                    continue if node.declared_min_height >= wanted
-                    UiFlat::set_min_size(index, node.declared_min_width, wanted)
+                    # Raise each dimension independently, and only upward: an
+                    # application already asking for more keeps what it asked
+                    # for, and a kind with no minimum in one axis does not get
+                    # its other axis flattened by a zero.
+                    height: f32 = tall if tall > node.declared_min_height else node.declared_min_height
+                    width: f32 = wide if wide > node.declared_min_width else node.declared_min_width
+                    continue if height == node.declared_min_height and width == node.declared_min_width
+                    UiFlat::set_min_size(index, width, height)
 
         def realize_retained() -> void:
             can[Ui.Controls]:
