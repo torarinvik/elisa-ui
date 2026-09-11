@@ -21,13 +21,16 @@
 # calls GetActiveProcessorCount. None of it was reachable, for two reasons that
 # are much smaller than a port:
 #
-#   1. stage1's target predicates follow the HOST, not -target-triple. Its own
-#      comment in codegen_static_if.elisa says so, and it exports ELISA_HOST_LINUX
-#      and ELISA_HOST_X86_64 for cross-compiling -- with no Windows equivalent.
-#      So a Windows triple compiles the MACOS branches, which is where mmap,
-#      munmap, sysctlbyname and the pthread family in the link error came from.
-#      check_gtk_linux.sh proves the mechanism: ELISA_HOST_LINUX=1 turns
-#      sysctlbyname into sysconf and the Linux link goes through.
+#   1. stage1's target predicates follow the HOST, not -target-triple, and there
+#      was no Windows equivalent of ELISA_HOST_LINUX -- so a Windows triple
+#      compiled the MACOS branches, which is where mmap, munmap, sysctlbyname and
+#      the pthread family in the link error came from. FIXED 2026-09-11:
+#      ELISA_HOST_WINDOWS exists, this gate sets it, and the runtime now resolves
+#      VirtualAllocEx, InitializeCriticalSection and GetActiveProcessorCount.
+#      What still blocks an image is that the Windows arena branch had never been
+#      compiled by stage1 and the backend declines four of its bodies
+#      (new_region_with_owner, new_region_reserve, arena_region_ensure_committed,
+#      free_region) -- zero declines for the same source on Linux or macOS.
 #   2. elisacore_std/debug_referee.elisa declares kill, sigaction, getpid and
 #      signal with no `static if` around them. The first two have no Windows
 #      equivalent, so the crash-dump path needs a guard whatever else changes.
@@ -55,8 +58,12 @@ mkdir -p "$OUT"
 # The Elisa half for the Windows triple. It is compiled, not linked into an
 # executable: the runtime object here is macOS's, and an image is not what this
 # gate is claiming.
-bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -target-triple x86_64-pc-windows-gnu \
-  -o "$OUT/win32_check.o" "$ROOT/src/platform/win32/win32_check.elisa"
+# ELISA_HOST_WINDOWS is what makes -target-triple mean anything to the std's
+# `static if ELISA_TARGET_OS_*` rows; without it a Windows triple compiles the
+# macOS branches. It exists as of 2026-09-11 (see the header above).
+ELISA_HOST_WINDOWS=1 ELISA_HOST_X86_64=1 \
+  bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -target-triple x86_64-pc-windows-gnu \
+    -o "$OUT/win32_check.o" "$ROOT/src/platform/win32/win32_check.elisa"
 
 # BOTH DIRECTIONS. Every entry the shim calls must be exported by Elisa, and
 # every extern Elisa declares must be defined by the shim -- the check that
@@ -70,4 +77,4 @@ for symbol in $(grep -o '^extern elisa_win32_[a-z_]*' "$ROOT/src/platform/win32/
     echo "win32: Elisa declares $symbol and the shim defines nothing" >&2; exit 1; }
 done
 
-echo "win32: cross-compiled against real Windows headers; every export resolves in both directions (no image: stage1 has no ELISA_HOST_WINDOWS to select the runtime's Windows branches)"
+echo "win32: cross-compiled against real Windows headers; every export resolves in both directions (no image: the runtime's Windows arena branch is declined by the backend)"

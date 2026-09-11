@@ -15,19 +15,22 @@
 #   1. initial linear memory had outgrown 32 pages -- fixed here, in
 #      build_wapp.sh, and the data segments are why a growing heap does not
 #      cover it;
-#   2. the link then fails on `env::ctx_string_views_eq`, the runtime helper a
-#      match over string views compiles to. The NATIVE runtime object defines
-#      it; the wasm one does not, and --allow-undefined cannot help because
-#      component validation rejects the leftover `env` import. That is the
-#      compiler repo's gap, not this one's -- writing a stand-in for a
-#      compiler-internal ABI symbol here is the same mistake as writing the
-#      Windows runtime host in this repo. Its cache dates the break: every
-#      wasm runtime object written before 2026-08-31 ~14:09 is 218,896 bytes
-#      with 699 symbols and defines the helper, and every one since is a
-#      1.3-3.7 KB stub that does not. A wasm link has succeeded since then
-#      only when the program needed nothing the stub omits.
-# So this gate is red until that is answered, and red is the correct colour: it
-# has been broken since about 2026-09-10 and nothing said so.
+#   2. the link then failed on `env::ctx_string_views_eq`, the runtime helper a
+#      match over string views compiles to. A COMPONENT does not link the
+#      native runtime at all -- it links elisacore_std/wasm_component_runtime.elisa,
+#      a deliberately freestanding canonical-ABI allocator that imports no libc
+#      and had no string helpers. So the construct compiled and could not link,
+#      and --allow-undefined could not absorb it because component validation
+#      then rejects the leftover `env` import.
+#
+#      (The first reading of this was wrong and is worth recording as such: the
+#      cached wasm runtime objects are 218 KB for non-component builds and ~1-4 KB
+#      for component ones, and the small ones were read as a regression dated to
+#      2026-08-31 rather than as what they are. Object sizes were evidence of a
+#      difference; the inference about WHICH difference was invented.)
+#
+#      Fixed in the compiler repo by giving the component runtime the helper,
+#      written without memcmp so it imports nothing.
 #
 # It SKIPS, rather than failing, when a prerequisite is absent: the sibling
 # WasmBrowser checkout, its CLI, or the wasm SDK. A missing toolchain is
