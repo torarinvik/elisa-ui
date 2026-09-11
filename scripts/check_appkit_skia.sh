@@ -31,5 +31,18 @@ done
 clang++ -Wl,-dead_strip -o "$ROOT/build/appkit_skia_host_test" "${link_inputs[@]}" \
   -framework CoreFoundation -framework CoreGraphics -framework CoreText -framework Foundation -lz
 "$ROOT/build/appkit_skia_host_test"
-nm -g "$ROOT/build/hello_appkit_skia" | grep -q ' T _elisa_appkit_canvas_skia_replay$'
+
+# SAY WHAT FAILED. This was a bare `nm | grep` under `set -e`, so when it failed
+# the gate exited 1 having printed nothing at all -- which is what it did inside
+# one loaded suite run on 2026-09-11, right after the host test printed its own
+# success line. Alone it passes with an identical pixel digest, so the cause is
+# not established and this is not a fix for it; it is the difference between the
+# next person seeing a symbol name and seeing nothing.
+product="$ROOT/build/hello_appkit_skia"
+[[ -f "$product" ]] || { echo "appkit skia: $product does not exist after the build" >&2; exit 1; }
+if ! nm -g "$product" 2>"$ROOT/build/appkit_skia_nm.err" | grep -q ' T _elisa_appkit_canvas_skia_replay$'; then
+  echo "appkit skia: $product does not export _elisa_appkit_canvas_skia_replay" >&2
+  [[ -s "$ROOT/build/appkit_skia_nm.err" ]] && cat "$ROOT/build/appkit_skia_nm.err" >&2
+  exit 1
+fi
 echo "appkit skia: optional AppKit product and off-screen compositor passed"
