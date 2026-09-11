@@ -93,9 +93,26 @@
 #      `const ARENA_BACKEND: int = ARENA_BACKEND_WIN32_VIRTUALALLOC` leaves all four
 #      declines in place. So the interface file's copy is not what the fold consults.
 #
-#      What is left to try: instrument fold_const_expr itself on that comparison and see
-#      what it resolves ARENA_BACKEND to (and whether it resolves it at all) on a Windows
-#      build, against a macOS build as the control.
+#      fold_const_expr is NOT the problem -- instrumented, with a macOS control: a Windows
+#      build folds ARENA_BACKEND to 2 (WIN32) twenty-six times and macOS folds it to 1
+#      (MMAP) thirty times. Both also show fifteen identical early lookups where the const
+#      is not yet in the table, so the rounds behave the same on both.
+#
+#      The failure is in the static-branch ROW TABLE. selected_static_if_lines runs (three
+#      calls, confirmed by an in-function control that fires at row 0), and its rows carry
+#      lines 137 and 139 -- but NO row carries 158, 159 or 160, which is where the win32
+#      declaration arm lives. With no row for that arm it can never be selected, so the
+#      block never reaches `top`, nothing in it is declared, and every call into it
+#      declines. That is consistent with everything else measured here.
+#
+#      CAUTION for whoever picks this up: do not read those two numbers as "the mmap arm".
+#      The chain header is line 138 and neither 137 nor 139 is it, so the row line is NOT
+#      the header line and the mapping is not understood. Dump file.static_if_lines and
+#      file.static_if_kinds wholesale before interpreting anything -- probing guessed line
+#      numbers is what made this take as long as it did.
+#
+#      Also ruled out since: rewriting the win32 externs as single-line declarations in the
+#      real file (the multi-line spelling is not the trigger).
 #
 #      Unexplained alongside it, and worth reconciling: a marker `def` planted in that same
 #      win32 block IS emitted into the object (llvm-nm, with marker_decl_mmap absent on the
