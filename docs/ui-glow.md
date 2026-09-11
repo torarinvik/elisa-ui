@@ -102,15 +102,35 @@ was doing exactly what it had been told.
 and `UiFlat::clear_gradient` is the way back to a flat fill. A zeroed record
 still means no ramp — `false` is zero — so nothing that predates this changed.
 
+**And then the same symptom came back, from the other end.** The hero went dark
+again on both CoreGraphics painters, with the ramp now saying exactly the right
+thing. Quartz cannot shade a fill and shadow it in one op, so those painters
+drew the surface twice: the flat body with the shadow attached, then the ramp
+clipped over it. That is invisible while the ramp ends opaque and fatal the
+moment it ends transparent — the far end reveals not the picture but the flat
+slab of near colour the first pass laid down. Skia never had the problem
+because there the ramp **is** the fill: one `fill_round_rect_gradient` call, no
+body underneath it. The CoreGraphics painters now say the same thing: when a
+surface has a ramp, the shadows are drawn as shadows *alone* —
+`draw_shadow_outside`, the shape filled with its shadow attached and clipped to
+everything outside the shape, so the fill lands nowhere and only what it casts
+survives — and the ramp is the only thing that fills the shape. The glow takes
+the same route for the same reason: its light was a fill of the surface's own
+path, relying on the body to cover it, and a ramp that ends transparent covers
+nothing.
+
+The rule, stated once: **on a surface with a ramp, nothing but the ramp may
+paint inside the shape before the ramp does.**
+
 ## Three stops, a halo, and a fit
 
 **Two colours make a line.** The surfaces in a current interface are curves —
 a lift at the top edge, the hue through the body, a deep end — and a scrim is a
 falloff, not a slope. `SurfaceStyle.gradient_mid` / `gradient_mid_at` is a
 middle stop at a position in (0, 1); zero means none, so a zeroed record is
-still a two-stop ramp. Skia draws it through a packed-ARGB three-stop entry;
-the CoreGraphics painters draw the two-stop ramp and ignore the middle, which is
-recorded here rather than hidden.
+still a two-stop ramp. Skia draws it through a packed-ARGB three-stop entry and
+the CoreGraphics painters through a three-stop `CGGradient` on either axis, so
+all three now draw the middle.
 
 **A halo behind a run** (`TextRun.halo`) is the same glyphs blurred, drawn
 *first*, so it follows the letterforms rather than boxing them — a headline

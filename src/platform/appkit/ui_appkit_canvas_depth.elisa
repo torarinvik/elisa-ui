@@ -114,8 +114,17 @@ extend UiAppKitCanvas:
         # One primitive, two meanings: see UiPaint::glow_shadow. Quartz hangs a
         # shadow off a drawing op, so the light is a fill of the surface's own
         # path with the glow attached -- and the fill that follows covers it.
-        def draw_glow(context: usize, box: UiCore::Rect, style: UiPaint::RoundedRectStyle, glow: UiCore::Color) -> void can[Ui.Draw]:
+        # Unless the fill that follows is a ramp that ends transparent, in
+        # which case it covers nothing and the glow's own body would show
+        # through as a flat disc of light: then the light is cast from outside
+        # the shape instead, the same way the shadows are.
+        def draw_glow(context: usize, box: UiCore::Rect, style: UiPaint::RoundedRectStyle, glow: UiCore::Color, translucent_body: bool) -> void can[Ui.Draw]:
             halo: UiPaint::RoundedRectStyle = UiPaint::glow_shadow(style, box)
+            if translucent_body:
+                draw_shadow_outside(context, box, halo.radius, halo.shadow_offset_x, halo.shadow_offset_y, halo.shadow_blur, glow)
+                core_only: UiPaint::RoundedRectStyle = UiPaint::glow_core(style, box)
+                draw_shadow_outside(context, box, core_only.radius, 0.0, 0.0, core_only.shadow_blur, glow)
+                return
             CGContextSaveGState(context)
             set_colored_shadow(context, halo.shadow_offset_x, halo.shadow_offset_y, halo.shadow_blur, glow)
             set_fill_color(context, glow)
@@ -146,6 +155,35 @@ extend UiAppKitCanvas:
                 vertical_gradient(context, box, color, surface.gradient)
             CGContextRestoreGState(context)
 
+        # A SHADOW WITH NO BODY: the shape filled with its shadow attached,
+        # clipped to everything OUTSIDE the shape, so the fill itself lands
+        # nowhere and only the shadow it casts survives.
+        #
+        # The ordinary path below fills the shape and lets the body cover the
+        # fill -- cheaper, and exact, as long as something opaque follows. A
+        # surface whose fill is a RAMP WITH A TRANSPARENT END has nothing to
+        # cover it with: the flat fill stays, and the picture the ramp was
+        # supposed to reveal never appears. That is what this is for.
+        def draw_shadow_outside(context: usize, box: UiCore::Rect, radius: f32, offset_x: f32, offset_y: f32, blur: f32, tint: UiCore::Color) -> void can[Ui.Draw]:
+            return if tint.a == 0
+            reach: f32 = offset_x if offset_x > 0.0 else 0.0 - offset_x
+            drop: f32 = offset_y if offset_y > 0.0 else 0.0 - offset_y
+            margin: f32 = blur * 4.0 + 8.0 + reach + drop
+            CGContextSaveGState(context)
+            CGContextBeginPath(context)
+            CGContextMoveToPoint(context, (box.origin.x - margin).f64(), (box.origin.y - margin).f64())
+            CGContextAddLineToPoint(context, (box.origin.x + box.size.width + margin).f64(), (box.origin.y - margin).f64())
+            CGContextAddLineToPoint(context, (box.origin.x + box.size.width + margin).f64(), (box.origin.y + box.size.height + margin).f64())
+            CGContextAddLineToPoint(context, (box.origin.x - margin).f64(), (box.origin.y + box.size.height + margin).f64())
+            CGContextClosePath(context)
+            rounded_subpath(context, box, radius)
+            CGContextEOClip(context)
+            set_colored_shadow(context, offset_x, offset_y, blur, tint)
+            set_fill_color(context, tint)
+            rounded_path(context, box, radius)
+            CGContextFillPath(context)
+            CGContextRestoreGState(context)
+
         def draw_shadowed_body(context: usize, box: UiCore::Rect, style: UiPaint::RoundedRectStyle, color: UiCore::Color) -> void can[Ui.Draw]:
             shadow_alpha: f32 = style.shadow_alpha.f32() / 255.0
             CGContextSaveGState(context)
@@ -170,7 +208,7 @@ extend UiAppKitCanvas:
         # ramp and the light are opt-in and a zeroed record has neither, which
         # is why the call above is the whole of the old behaviour.
         def draw_styled_depth_surface(context: usize, box: UiCore::Rect, style: UiPaint::RoundedRectStyle, color: UiCore::Color, surface: UiCore::SurfaceStyle) -> void can[Ui.Draw]:
-            draw_glow(context, box, style, surface.glow) if UiCore::has_glow(surface)
+            draw_glow(context, box, style, surface.glow, UiCore::has_gradient(surface)) if UiCore::has_glow(surface)
             # CoreGraphics attaches a shadow to a DRAWING OP, so the two
             # layers are two fills of the same path. The second covers the
             # first's body exactly, and each shadow lands under its own fill,
@@ -185,14 +223,19 @@ extend UiAppKitCanvas:
             # translucent surface is the case where the contact layer is worth
             # least anyway.
             contact: UiPaint::RoundedRectStyle = UiPaint::contact_shadow(style)
-            draw_shadowed_body(context, box, contact, color) if UiPaint::has_contact_shadow(style) and color.a == 255
-            draw_shadowed_body(context, box, style, color)
-            # Quartz cannot shade a fill and shadow it in one op, so the ramp
-            # is a second, clipped pass over the body the shadow just placed.
-            # A HORIZONTAL ramp is not expressible with the vertical helper
-            # this painter has, so it is drawn vertically here and the
-            # difference is recorded rather than hidden -- see docs/ui-glow.md.
-            draw_surface_ramp(context, box, style, color, surface) if UiCore::has_gradient(surface)
+            # A RAMP IS THE FILL, not a wash over one. Skia says that in one
+            # call; Quartz cannot shade a fill and shadow it in the same op, so
+            # the ramp has to be a second, clipped pass -- and the body under
+            # it has to be the shadow ALONE, or a ramp that ends transparent
+            # ends on a flat slab of its own near colour instead of on
+            # whatever the surface was meant to be see-through to.
+            if UiCore::has_gradient(surface):
+                draw_shadow_outside(context, box, style.radius, contact.shadow_offset_x, contact.shadow_offset_y, contact.shadow_blur, UiCore::rgba(0, 0, 0, contact.shadow_alpha)) if UiPaint::has_contact_shadow(style)
+                draw_shadow_outside(context, box, style.radius, style.shadow_offset_x, style.shadow_offset_y, style.shadow_blur, UiCore::rgba(0, 0, 0, style.shadow_alpha))
+                draw_surface_ramp(context, box, style, color, surface)
+            else:
+                draw_shadowed_body(context, box, contact, color) if UiPaint::has_contact_shadow(style) and color.a == 255
+                draw_shadowed_body(context, box, style, color)
             draw_surface_sheen(context, box, style)
             # GLASS HAS A THICKNESS. See UiPaint::is_glass and the Skia painter.
             if UiPaint::is_glass(style, color):

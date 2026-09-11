@@ -82,6 +82,32 @@ extend UiAppKitCanvas:
             CGContextFlush(context)
             frame_context <- 0
 
+extend UiAppKitCanvas:
+    public:
+        # The same replay with the application's own paint record: a ramp
+        # across the fill that ends at nothing, which is what a scrim over a
+        # picture is.
+        def probe_ramp(context: usize, box: UiCore::Rect, color: UiCore::Color, far: UiCore::Color) -> void can Ui.Draw, Ui.Text:
+            UiCore::begin_frame()
+            UiCore::fill_styled(box, color, UiCore::SurfaceStyle{
+                depth: UiCore::SurfaceDepth.Raised,
+                corner: UiCore::CornerStyle.Automatic,
+                ramped: true,
+                gradient: far,
+                gradient_horizontal: true,
+                gradient_mid: UiCore::rgba(0, 0, 0, 0),
+                gradient_mid_at: 0.0,
+                glow: UiCore::rgba(0, 0, 0, 0),
+            })
+            frame_context <- context
+            CGContextSaveGState(context)
+            CGContextTranslateCTM(context, 0.0, PROBE_HEIGHT.f64())
+            CGContextScaleCTM(context, 1.0, -1.0)
+            UiPaint::replay[UiAppKitCanvas::AppKitPainter]()
+            CGContextRestoreGState(context)
+            CGContextFlush(context)
+            frame_context <- 0
+
 def probe_box() -> UiCore::Rect:
     return UiCore::Rect{
         origin: UiCore::Vec2{x: PROBE_LEFT, y: PROBE_TOP},
@@ -188,6 +214,24 @@ def main() -> i64:
             check("a raised disc is lit from above", top > bottom)
             check("a raised disc stays inside its own radius", outside == 0)
             CGContextRelease(disc_context)
+
+        # A RAMP IS THE FILL. A scrim -- a ramp from a colour to nothing, so
+        # that copy laid across a picture reads -- is only a scrim if what is
+        # under the surface shows through the far end. This painter drew the
+        # flat body first and the ramp over it, which is invisible while the
+        # ramp ends opaque and hides the picture entirely the moment it ends
+        # transparent: the storefront's hero came out a uniform slab twice,
+        # for two different reasons. See docs/ui-glow.md.
+        ramp_context: usize = new_context()
+        check("the ramp probe bitmap was created", ramp_context != 0)
+        if ramp_context != 0:
+            UiAppKitCanvas::probe_ramp(ramp_context, probe_box(), UiCore::rgba(255, 255, 255, 255), UiCore::rgba(255, 255, 255, 0))
+            row: i32 = ((PROBE_TOP + PROBE_BOTTOM) / 2.0).i32()
+            near: i64 = sample(ramp_context, PROBE_LEFT.i32() + PROBE_INSET_ROWS, row)
+            far: i64 = sample(ramp_context, PROBE_RIGHT.i32() - PROBE_INSET_ROWS, row)
+            check("a ramp to nothing starts at the surface's colour", near > 200)
+            check("a ramp to nothing ends at nothing", far * 3 < near)
+            CGContextRelease(ramp_context)
 
         # An invisible fill stays invisible. The sheen and the rim are white at
         # their own alphas, not scaled by the fill's -- so without a guard a
