@@ -352,7 +352,29 @@ route lives in the shared retained layer and serves every backend. Checking
 where `perform_text_action` was called from, and stopping there, is how a
 present feature came to be recorded as absent.)
 
-No IME composition, and no configuration changes beyond resize.
+**IME composition is not here, and the reason is structural rather than
+unfinished.** Composition -- the half-typed pinyin, the kana being chosen, the
+underlined run a Japanese or Chinese keyboard shows before you commit -- is
+delivered through `onCreateInputConnection` on a Java `View`. A `NativeActivity`
+has no such View to override: it gets key events through `AInputQueue` and
+`ANativeActivity_showSoftInput` raises the keyboard, but there is no
+InputConnection anywhere in that path. The framework's side is ready and in
+use elsewhere -- `UiFlat::update_marked_text` and `commit_text` are what the
+UIKit and AppKit canvases drive -- so what is missing is the platform half.
+
+Closing it means giving the canvas APK a Java class and a `classes.dex`, and
+`android:hasCode="false"` is not an accident: it is the whole reason the Skia
+build needs no javac, no d8 and no dex step, while the controls build next door
+carries all three. That is a real trade and it belongs to whoever wants CJK
+input on the painted backend, not to a passing fix.
+
+**Android users are not without it.** The controls backend realizes a real
+`EditText`, which does its own composition, its own suggestion strip and its
+own dictation -- so the platform's full text story is available today by
+choosing that backend. The gap is specific: a *custom-painted* Android app
+cannot compose.
+
+No configuration changes beyond resize.
 
 Accessibility is partly here now: a widget's help text becomes the view's
 `contentDescription`, so TalkBack reads more than whatever caption a view

@@ -65,7 +65,13 @@ module UiControls:
     public:
         # The control vocabulary every target actually has. Not a copy of the
         # widget taxonomy -- several widget variants collapse onto one OS control,
-        # which is the point of the mapping being explicit and in one place:
+        # which is the point of the mapping being explicit and in one place.
+        #
+        # THREE OF THESE FIVE COLUMNS ARE BACKENDS: AppKit, UIKit and Android
+        # are written and gated. Win32 and GTK are a mapping for backends that
+        # DO NOT EXIST -- Windows and Linux get the Skia canvas through SDL3
+        # and nothing else. Keeping the columns is deliberate, reading them as
+        # a capability list is not.
         #
         #   Window       NSWindow    HWND               GtkWindow          UIWindow
         #   Panel        NSView      HWND (child)       GtkBox             UIView
@@ -76,20 +82,16 @@ module UiControls:
         #   CheckBox     NSButton    BS_CHECKBOX        GtkCheckButton     UIButton
         #   RadioButton  NSButton    BS_RADIOBUTTON     GtkCheckButton     UIButton
         # The iOS column said UISwitch and UISegmented for years and the code
-        # has never built either: a switch carries no caption and a segmented
-        # control is one control for a group, while this seam realizes one
-        # widget as one control and each of these carries its own words.
+        # has never built either: a switch carries no caption while this seam
+        # realizes one widget as one control, and each of these has words.
         #   TextField    NSTextField EDIT               GtkEntry           UITextField
         #   Slider       NSSlider    TRACKBAR           GtkScale           UISlider
         #   ProgressBar  NSProgress  msctls_progress32  GtkProgressBar     UIProgressView
-        # NAMED ControlKind AND NOT Kind. Three other modules in this layer
-        # declare a `Kind` of their own -- a dialog's, a gesture's, a
-        # resource presentation's -- and every record that carries one calls
-        # the field `kind`. The stage1 backend declines a field expression
-        # where two such names meet, which is the same reason PictureFit is
-        # not called ImageFit. The clash was invisible until an application
-        # linked the dialogs and the native controls at once, which is exactly
-        # what realizing a retained tree as controls does.
+        # NAMED ControlKind AND NOT Kind. Three other modules here declare a
+        # `Kind`, and stage1 declines a field expression where two such names
+        # meet -- the same reason PictureFit is not ImageFit. The clash was
+        # invisible until an application linked dialogs and native controls at
+        # once, which is exactly what realizing a retained tree does.
         const enum ControlKind of i32:
             Window = 0
             Panel = 1
@@ -104,9 +106,9 @@ module UiControls:
             ProgressBar = 10
 
         # Window decoration policy is part of the widget hierarchy, not a
-        # native toolkit default. Keeping it typed in the control list lets a
-        # backend choose the corresponding native surface without re-matching
-        # the hierarchy or silently treating every window as resizable.
+        # native toolkit default. Keeping it typed lets a backend choose the
+        # matching native surface without re-matching the hierarchy, or
+        # silently treating every window as resizable.
         const enum WindowMode of i32:
             Fixed = 0
             Resizable = 1
