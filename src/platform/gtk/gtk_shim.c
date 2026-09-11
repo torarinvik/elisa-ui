@@ -146,6 +146,108 @@ void elisa_gtk_set_help(size_t handle, const char *placeholder, const char *help
     }
 }
 
+// ---- COLOUR IS CSS HERE ---------------------------------------------------
+//
+// GTK HAS NO gtk_widget_set_background_color. A widget's colours come from the
+// style, and the supported way to give one widget colours of its own is a CSS
+// class it carries plus a rule a provider on the display holds. One provider,
+// one class per coloured control, and the rule rewritten only when the
+// framework changes a colour -- which the seam already decides, so the rebuild
+// below is not on the per-frame path.
+//
+// ALPHA ZERO MEANS "LEAVE IT TO THE THEME", the convention every backend in
+// this framework follows, and the reason an uncoloured GTK control still looks
+// like GTK drew it rather than like a rectangle someone forgot to fill.
+
+#define ELISA_GTK_MAX_STYLED 128
+#define ELISA_GTK_RULE_BYTES 192
+
+static GtkCssProvider *style_provider;
+static GtkWidget *styled_widget[ELISA_GTK_MAX_STYLED];
+static char styled_rule[ELISA_GTK_MAX_STYLED][ELISA_GTK_RULE_BYTES];
+static int styled_count;
+static int style_errors;
+
+// GTK skips a rule it cannot parse rather than refusing the sheet, so a typo
+// here would otherwise be a colour that silently never arrives. The fixture
+// asks for this count, which makes "the CSS was valid" part of what the gate
+// means by "the colour was set".
+static void on_css_parsing_error(GtkCssProvider *provider, GtkCssSection *section,
+                                 const GError *error, gpointer data) {
+    (void)provider; (void)section; (void)error; (void)data;
+    style_errors += 1;
+}
+
+static void reload_styles(void) {
+    if (style_provider == NULL) {
+        style_provider = gtk_css_provider_new();
+        g_signal_connect(style_provider, "parsing-error", G_CALLBACK(on_css_parsing_error), NULL);
+        gtk_style_context_add_provider_for_display(gdk_display_get_default(),
+                                                   GTK_STYLE_PROVIDER(style_provider),
+                                                   GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    }
+    GString *sheet = g_string_new(NULL);
+    for (int slot = 0; slot < styled_count; slot++) g_string_append(sheet, styled_rule[slot]);
+    gtk_css_provider_load_from_string(style_provider, sheet->str);
+    g_string_free(sheet, TRUE);
+}
+
+static void style_class_name(int slot, char *buffer, size_t capacity) {
+    g_snprintf(buffer, (gulong)capacity, "elisa-s%d", slot);
+}
+
+static int style_slot_of(GtkWidget *widget) {
+    for (int slot = 0; slot < styled_count; slot++) {
+        if (styled_widget[slot] == widget) return slot;
+    }
+    return -1;
+}
+
+static int style_slot_for(GtkWidget *widget) {
+    int slot = style_slot_of(widget);
+    if (slot >= 0) return slot;
+    if (styled_count == ELISA_GTK_MAX_STYLED) return -1;
+    slot = styled_count++;
+    styled_widget[slot] = widget;
+    char name[32];
+    style_class_name(slot, name, sizeof(name));
+    gtk_widget_add_css_class(widget, name);
+    return slot;
+}
+
+static void append_rgba(GString *rule, const char *property, uint32_t argb) {
+    g_string_append_printf(rule, "%s:rgba(%u,%u,%u,%.3f);", property,
+                           (argb >> 16) & 0xFFu, (argb >> 8) & 0xFFu, argb & 0xFFu,
+                           (double)((argb >> 24) & 0xFFu) / 255.0);
+}
+
+void elisa_gtk_set_colors(size_t handle, uint32_t ink, uint32_t fill) {
+    GtkWidget *widget = widget_of(handle);
+    if (widget == NULL) return;
+    const int has_ink = ((ink >> 24) & 0xFFu) != 0;
+    const int has_fill = ((fill >> 24) & 0xFFu) != 0;
+    if (!has_ink && !has_fill) return;
+    const int slot = style_slot_for(widget);
+    if (slot < 0) return;
+    GString *rule = g_string_new(NULL);
+    g_string_append_printf(rule, ".elisa-s%d{", slot);
+    // `color` inherits, so one rule on a GtkButton reaches the GtkLabel inside
+    // it and the caption takes the colour without this file knowing the button
+    // has a child at all.
+    if (has_ink) append_rgba(rule, "color", ink);
+    // A themed GTK control paints a gradient, and a background-color alone
+    // would sit underneath it. `background-image: none` is what makes the
+    // colour the framework asked for the one that shows.
+    if (has_fill) {
+        g_string_append(rule, "background-image:none;");
+        append_rgba(rule, "background-color", fill);
+    }
+    g_string_append_c(rule, '}');
+    g_strlcpy(styled_rule[slot], rule->str, ELISA_GTK_RULE_BYTES);
+    g_string_free(rule, TRUE);
+    reload_styles();
+}
+
 void elisa_gtk_set_state(size_t handle, float value, int32_t selected,
                          int32_t enabled, int32_t secure) {
     GtkWidget *widget = widget_of(handle);
@@ -223,6 +325,23 @@ int32_t elisa_gtk_entry_has_placeholder(size_t handle) {
     return (text != NULL && text[0] != '\0') ? 1 : 0;
 }
 
+// A GLYPH PIXEL IS THE WRONG WAY TO ASK ABOUT TEXT COLOUR -- antialiasing and
+// whichever font the machine has make it a guess. GTK resolves the style itself
+// and will say what colour it is about to draw the text in, so the fixture
+// asks it that and samples pixels only for the fill.
+uint32_t elisa_gtk_text_color(size_t handle) {
+    GtkWidget *widget = widget_of(handle);
+    if (widget == NULL) return 0;
+    GdkRGBA color;
+    gtk_widget_get_color(widget, &color);
+    return ((uint32_t)(color.alpha * 255.0f + 0.5f) << 24) |
+           ((uint32_t)(color.red * 255.0f + 0.5f) << 16) |
+           ((uint32_t)(color.green * 255.0f + 0.5f) << 8) |
+           (uint32_t)(color.blue * 255.0f + 0.5f);
+}
+
+int32_t elisa_gtk_style_errors(void) { return style_errors; }
+
 int32_t elisa_gtk_child_count(size_t handle) {
     GtkWidget *widget = content_of(widget_of(handle));
     if (widget == NULL) return -1;
@@ -232,6 +351,62 @@ int32_t elisa_gtk_child_count(size_t handle) {
         count += 1;
     }
     return count;
+}
+
+// THE COLOUR AS PAINTED, not as asked for. Everything else this file reports is
+// a property read back off the widget; a colour is only real if it reaches the
+// pixels, and GTK will happily accept a rule a theme then overrides. So the
+// fixture presents the window, lets GTK draw a frame, and samples the widget
+// through GSK -- the same standard the Skia and iOS gates are held to, reached
+// here without a screenshot utility because GTK can render a widget to a
+// texture on its own.
+static GskRenderer *sample_renderer;
+
+void elisa_gtk_settle(size_t handle) {
+    GtkWidget *widget = widget_of(handle);
+    if (!GTK_IS_WINDOW(widget)) return;
+    gtk_window_present(GTK_WINDOW(widget));
+    // Bounded: a machine that never draws must leave the gate rather than hang
+    // it, and a caller that gets no frame sees it in the sample instead.
+    for (int spin = 0; spin < 600; spin++) g_main_context_iteration(NULL, FALSE);
+}
+
+uint32_t elisa_gtk_pixel_at(size_t handle, int32_t x, int32_t y, int32_t width, int32_t height) {
+    GtkWidget *widget = widget_of(handle);
+    if (widget == NULL || width <= 0 || height <= 0) return 0;
+    GdkPaintable *paintable = gtk_widget_paintable_new(widget);
+    GtkSnapshot *snapshot = gtk_snapshot_new();
+    gdk_paintable_snapshot(paintable, snapshot, width, height);
+    GskRenderNode *node = gtk_snapshot_free_to_node(snapshot);
+    if (node == NULL) { g_object_unref(paintable); return 0; }
+    if (sample_renderer == NULL) {
+        sample_renderer = gsk_cairo_renderer_new();
+        if (!gsk_renderer_realize(sample_renderer, NULL, NULL)) {
+            g_clear_object(&sample_renderer);
+            gsk_render_node_unref(node);
+            g_object_unref(paintable);
+            return 0;
+        }
+    }
+    graphene_rect_t area = GRAPHENE_RECT_INIT(0.0f, 0.0f, (float)width, (float)height);
+    GdkTexture *texture = gsk_renderer_render_texture(sample_renderer, node, &area);
+    uint32_t packed = 0;
+    if (texture != NULL && x >= 0 && y >= 0 && x < width && y < height) {
+        const size_t stride = (size_t)width * 4u;
+        guchar *pixels = g_malloc(stride * (size_t)height);
+        gdk_texture_download(texture, pixels, stride);
+        // GDK downloads BGRA, premultiplied. The framework speaks packed ARGB,
+        // and every colour a fixture asks about here is opaque, so the two
+        // agree once the channels are put back in order.
+        const guchar *pixel = pixels + (size_t)y * stride + (size_t)x * 4u;
+        packed = ((uint32_t)pixel[3] << 24) | ((uint32_t)pixel[2] << 16) |
+                 ((uint32_t)pixel[1] << 8) | (uint32_t)pixel[0];
+        g_free(pixels);
+    }
+    g_clear_object(&texture);
+    gsk_render_node_unref(node);
+    g_object_unref(paintable);
+    return packed;
 }
 
 void elisa_gtk_destroy_window(size_t handle) {

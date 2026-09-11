@@ -6,11 +6,15 @@
 # backend nobody can trust, and the facts that matter here (a real GtkEntry
 # hiding its text, a real widget going insensitive) exist only on live objects.
 #
-# HEADLESS. Widgets are created and queried but no window is presented, so this
-# runs in a gate without a session taking over the screen. gtk_init_check is
-# what makes that decidable: a machine with no display answers false and the
-# gate skips itself rather than dying, which is the courtesy the iOS device
-# gates already get.
+# MOSTLY HEADLESS. Widgets are created and queried without a window taking over
+# the screen, with one deliberate exception: a colour is only real once it has
+# reached the pixels, and GTK will not draw a widget that was never shown. So
+# the colour assertion at the end presents the window for as long as it takes
+# GTK to produce one frame, samples it, and destroys it.
+#
+# gtk_init_check is what makes all of this decidable: a machine with no display
+# answers false and the gate skips itself rather than dying, which is the
+# courtesy the iOS device gates already get.
 
 include "../../widgets/ui_controls_hierarchy.elisa"
 include "./ui_gtk.elisa"
@@ -43,6 +47,14 @@ def ui_text_line_height(size: f32) -> f32:
 def grey(level: u8) -> UiCore::Color:
     return UiCore::rgba(level, level, level, 255)
 
+# Colours a theme would never choose on its own, so a sampled pixel that matches
+# one of them can only have come from the framework.
+def bar_fill() -> UiCore::Color:
+    return UiCore::rgba(0, 0, 255, 255)
+
+def field_ink() -> UiCore::Color:
+    return UiCore::rgba(255, 0, 0, 255)
+
 def check(failures: mutable i32&, name: cstr, ok: bool) -> void:
     return if ok
     failures[0] <- failures[0] + 1
@@ -58,10 +70,10 @@ def main() -> i64:
 
         press: Widget = Button.Push(min_width: 80.0, min_height: 24.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "Open", rest: grey(60), hover: grey(90), press: grey(30))
         box: Widget = Button.Check(min_width: 90.0, min_height: 24.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "Wrap", checked: true, rest: grey(60), hover: grey(90), press: grey(30))
-        field: Widget = Control.TextBox(min_width: 120.0, min_height: 24.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, text: "typed", caret: 0, size: 12.0, ink: grey(230), fill: grey(40))
+        field: Widget = Control.TextBox(min_width: 120.0, min_height: 24.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, text: "typed", caret: 0, size: 12.0, ink: field_ink(), fill: grey(40))
         press.next_sibling <- box
         box.next_sibling <- field
-        bar: Widget = Container.Box(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: press, next_sibling: null, axis: UiConst::Axis.Row, padding: 4.0, spacing: 4.0, fill: grey(20))
+        bar: Widget = Container.Box(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: press, next_sibling: null, axis: UiConst::Axis.Row, padding: 4.0, spacing: 4.0, fill: bar_fill())
         top: Widget = Window.Top(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: bar, next_sibling: null, title: "gtk check", resizable: true)
 
         UiWidgets::layout(top, 320.0, 200.0)
@@ -95,6 +107,23 @@ def main() -> i64:
         # asserting, because the sense of that flag is the difference between a
         # password field and a plain one.
         check(&failures, "an ordinary entry shows its text", UiGtk::entry_shows_text(4) == 1)
+
+        # COLOUR, BY THE TWO MEASURES THAT MEAN DIFFERENT THINGS.
+        #
+        # GTK colours are CSS, and CSS that fails to parse is skipped in silence
+        # rather than refused -- so the first question is whether GTK accepted
+        # the rules at all.
+        check(&failures, "GTK parsed every rule the backend wrote", UiGtk::style_errors() == 0)
+
+        # Text colour, as GTK itself resolved it. Sampling a glyph would be a
+        # guess about antialiasing and whichever font this machine has; the
+        # style is the thing that was actually set, and GTK will state it.
+        check(&failures, "the field's ink reached the resolved style", UiGtk::text_color(4) == 0xFFFF0000.u32())
+
+        # Fill, as painted. This is the one that catches a rule a theme wins
+        # over, and it costs a presented window and one frame to ask.
+        UiGtk::settle(0)
+        check(&failures, "the bar's fill reached the pixels", UiGtk::pixel_at(1, 50, 10, 100, 20) == 0xFF0000FF.u32())
 
         elisa_gtk_destroy_window(UiControls::native_handle_at(0))
         if failures == 0:

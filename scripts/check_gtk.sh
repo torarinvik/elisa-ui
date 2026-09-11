@@ -11,8 +11,11 @@
 # as having run on Linux and this gate does not pretend it is: what it proves is
 # that the backend compiles against the real headers, links against the real
 # library, and that live GtkWindows, GtkButtons and GtkEntries come out with the
-# types, the state and the tree shape the framework asked for. A GTK widget does
-# not know which platform it is on; the windowing below it does.
+# types, the state, the tree shape and the colours the framework asked for. A
+# GTK widget does not know which platform it is on; the windowing below it does.
+#
+# The colour half briefly presents a window, because GTK does not draw a widget
+# that was never shown and a colour nobody painted is not a colour.
 #
 # It skips itself when GTK is not installed, and the fixture skips itself again
 # when there is no display -- gtk_init_check answers rather than aborting, which
@@ -48,4 +51,4 @@ for symbol in elisa_gtk_action elisa_gtk_text_action; do
 done
 
 "$OUT/gtk_check"
-echo "gtk: real GtkWindows, GtkButtons and GtkEntries built, typed and shaped as asked"
+echo "gtk: real GtkWindows, GtkButtons and GtkEntries built, typed, shaped and coloured as asked"

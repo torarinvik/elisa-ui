@@ -66,6 +66,24 @@ module UiGtk:
             return -1 if native_handle(index) == 0
             return elisa_gtk_child_count(native_handle(index))
 
+        # THE COLOUR AS RESOLVED AND THE COLOUR AS PAINTED. GTK will accept a
+        # rule a theme then wins over, so a fixture that only asked "did the
+        # rule load" would pass on a control nobody coloured. Text colour comes
+        # from GTK's own style resolution; the fill is read out of the pixels.
+        def text_color(index: i32) -> u32:
+            return 0 if native_handle(index) == 0
+            return elisa_gtk_text_color(native_handle(index))
+
+        def style_errors() -> i32:
+            return elisa_gtk_style_errors()
+
+        def settle(index: i32) -> void:
+            elisa_gtk_settle(native_handle(index))
+
+        def pixel_at(index: i32, x: i32, y: i32, width: i32, height: i32) -> u32:
+            return 0 if native_handle(index) == 0
+            return elisa_gtk_pixel_at(native_handle(index), x, y, width, height)
+
     private:
         # GTK takes NUL-terminated strings, and the framework carries counted
         # views. One staging buffer per string that can cross at a time.
@@ -100,6 +118,9 @@ module UiGtk:
 
         def gtk_cstr(value: sview) -> cstr:
             return stage(&gtk_text_bytes[0], value)
+
+        def packed_argb(color: UiCore::Color) -> u32:
+            return (color.a.u32() << 24) | (color.r.u32() << 16) | (color.g.u32() << 8) | color.b.u32()
 
         def record_created(index: i32, handle: usize, parent: i32) -> void:
             return if handle == 0 or index < 0
@@ -151,16 +172,19 @@ module UiGtk:
                     return if handle == 0
                     elisa_gtk_set_frame(handle, box.origin.x, box.origin.y, box.size.width, box.size.height)
 
-            # GTK COLOURS ARE CSS, and a per-widget provider for every control
-            # is a cost this backend has not earned yet. Saying so is the point:
-            # an unstyled GTK control looks like GTK drew it, which is the same
-            # outcome alpha-zero produces everywhere else in this seam.
+            # GTK COLOURS ARE CSS: a rule on a class the widget carries, held
+            # by one provider on the display. The shim owns that bookkeeping so
+            # this stays the same three lines every other backend's set_colors
+            # is -- hand the toolkit two colours the framework already chose.
+            #
+            # Alpha zero still means "leave it to the theme", so an uncoloured
+            # control looks like GTK drew it rather than like a filled box.
             def set_colors(index: i32, kind: UiControls::ControlKind, ink: UiCore::Color, fill: UiCore::Color) -> void:
                 can Ui.Controls:
-                    _ = index
                     _ = kind
-                    _ = ink
-                    _ = fill
+                    handle: usize = native_handle(index)
+                    return if handle == 0
+                    elisa_gtk_set_colors(handle, packed_argb(ink), packed_argb(fill))
 
             def set_text(index: i32, kind: UiControls::ControlKind, text: sview) -> void:
                 can Ui.Controls:
