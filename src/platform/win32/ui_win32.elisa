@@ -1,0 +1,180 @@
+# elisa-ui Win32 backend: the widget tree as real Windows controls.
+#
+# THE LAST COLUMN OF THE SEAM'S MAPPING TABLE. It named HWND, BUTTON, EDIT and
+# msctls_progress32 for years with no backend behind them, which made the table
+# read as a list of platforms that had native controls when two of them did
+# not. GTK closed the Linux half; this closes the Windows one, and the table now
+# describes five backends that exist.
+#
+# HONEST ABOUT ITS EVIDENCE, which matters more here than anywhere else in this
+# framework. It is cross-compiled with mingw-w64 and NEVER RUN: there is no
+# Windows machine here and no emulator for one. That is the standard
+# check_uikit.sh already holds the iOS device build to -- it links an image
+# nothing executes, because a successful link proves the shim and the Elisa
+# exports agree on an ABI. What this backend has is that: it compiles against
+# the real headers and resolves against the real import libraries. What it does
+# not have is a frame anybody has seen, and the gate says so in its own words
+# rather than letting a green tick imply more.
+
+include "../../widgets/ui_controls.elisa"
+include "../../core/ui_capabilities.elisa"
+
+using UiControls
+
+include "./ui_win32_native.elisa"
+
+module UiWin32:
+    public:
+        struct Win32Controls:
+            unused: i32
+
+        def native_handle(index: i32) -> usize:
+            return 0 if index < 0 or index.usize() >= UiControls::count()
+            return UiControls::native_handle_at(index.usize())
+
+        def start() -> bool:
+            return elisa_win32_init() != 0
+
+    private:
+        global mutable win32_text_bytes: u8[UiCore::MAX_TEXT_BYTES] = zeroed
+        global mutable win32_prompt_bytes: u8[UiCore::MAX_TEXT_BYTES] = zeroed
+
+        # Win32 takes NUL-terminated UTF-8 here and widens it at the boundary;
+        # the framework carries counted views, so one staging step per string.
+        def stage(target: mutable u8&, value: sview) -> cstr:
+            safe: sview = UiCore::bounded_text(value)
+            room: usize = safe.len.usize() if safe.len.usize() < UiCore::MAX_TEXT_BYTES - 1 else UiCore::MAX_TEXT_BYTES - 1
+            take: usize = UiText::valid_utf8_prefix(safe, room)
+            for index in 0..<take:
+                target[index] <- safe.data[index]
+            target[take] <- 0
+            return (&target[0]).cast[cstr] can Unsafe.PointerCast
+
+        # EVERY CONTROL IS A CHILD HWND, so unlike the other backends the parent
+        # is needed at construction rather than after it. The window is the one
+        # control with no parent, which is the same fact NO_PARENT already
+        # carries.
+        def parent_handle(parent: i32) -> usize:
+            return 0 if parent < 0
+            return native_handle(parent)
+
+        def record_created(index: i32, handle: usize) -> void:
+            return if handle == 0 or index < 0
+            UiControls::set_native_handle(index.usize(), handle)
+
+    public:
+        impl Controls for Win32Controls:
+            def create(index: i32, kind: UiControls::ControlKind, parent: i32, window_mode: UiControls::WindowMode, axis: UiConst::Axis, state: UiControls::ControlState) -> void:
+                can Ui.Controls:
+                    into: usize = parent_handle(parent)
+                    if kind == UiControls::ControlKind.Window:
+                        resizable: i32 = 0 if window_mode == UiControls::WindowMode.Fixed else 1
+                        record_created(index, elisa_win32_create_window(resizable))
+                        return
+                    return if into == 0
+                    if kind == UiControls::ControlKind.Panel:
+                        record_created(index, elisa_win32_create_panel(into))
+                        return
+                    if kind == UiControls::ControlKind.ScrollView:
+                        record_created(index, elisa_win32_create_scroll(into, 0 if axis == UiConst::Axis.Row else 1))
+                        return
+                    if kind == UiControls::ControlKind.Label:
+                        record_created(index, elisa_win32_create_label(into))
+                        return
+                    if kind == UiControls::ControlKind.PushButton:
+                        record_created(index, elisa_win32_create_button(into))
+                        return
+                    if kind == UiControls::ControlKind.ToggleButton or kind == UiControls::ControlKind.CheckBox:
+                        record_created(index, elisa_win32_create_check(into))
+                        return
+                    if kind == UiControls::ControlKind.RadioButton:
+                        record_created(index, elisa_win32_create_radio(into))
+                        return
+                    if kind == UiControls::ControlKind.TextField:
+                        record_created(index, elisa_win32_create_entry(into, 1 if state.secure else 0))
+                        return
+                    if kind == UiControls::ControlKind.Slider:
+                        record_created(index, elisa_win32_create_slider(into, state.low, state.high, state.value))
+                        return
+                    if kind == UiControls::ControlKind.ProgressBar:
+                        record_created(index, elisa_win32_create_progress(into))
+
+            def set_frame(index: i32, kind: UiControls::ControlKind, box: UiCore::Rect) -> void:
+                can Ui.Controls:
+                    _ = kind
+                    handle: usize = native_handle(index)
+                    return if handle == 0
+                    elisa_win32_set_frame(handle, box.origin.x, box.origin.y, box.size.width, box.size.height)
+
+            # WIN32 COLOURS ARE OWNER-DRAW OR WM_CTLCOLOR, and both mean this
+            # backend starts drawing the control itself -- which is the one
+            # thing a native backend exists not to do. An unstyled Win32 control
+            # looks like Windows drew it, the same outcome alpha-zero gives
+            # everywhere else in this seam.
+            def set_colors(index: i32, kind: UiControls::ControlKind, ink: UiCore::Color, fill: UiCore::Color) -> void:
+                can Ui.Controls:
+                    _ = index
+                    _ = kind
+                    _ = ink
+                    _ = fill
+
+            def set_text(index: i32, kind: UiControls::ControlKind, text: sview) -> void:
+                can Ui.Controls:
+                    _ = kind
+                    handle: usize = native_handle(index)
+                    return if handle == 0
+                    elisa_win32_set_text(handle, stage(&win32_text_bytes[0], text))
+
+            def set_help(index: i32, kind: UiControls::ControlKind, placeholder: sview, help: sview) -> void:
+                can Ui.Controls:
+                    _ = kind
+                    handle: usize = native_handle(index)
+                    return if handle == 0
+                    elisa_win32_set_help(handle, stage(&win32_prompt_bytes[0], placeholder), stage(&win32_text_bytes[0], help))
+
+            def set_state(index: i32, kind: UiControls::ControlKind, state: UiControls::ControlState) -> void:
+                can Ui.Controls:
+                    handle: usize = native_handle(index)
+                    return if handle == 0
+                    fraction: f32 = UiCore::normalized_unit(state.value) if kind == UiControls::ControlKind.ProgressBar else state.value
+                    elisa_win32_set_state(handle, fraction, 1 if state.selected else 0, 1 if state.enabled else 0, 1 if state.secure else 0)
+
+            # Win32 delivers actions to the PARENT through WM_COMMAND, so there
+            # is nothing to install per control -- the window procedure already
+            # reports them, and the seam still decides what each one means.
+            def set_action(index: i32, kind: UiControls::ControlKind) -> void:
+                can Ui.Controls:
+                    _ = kind
+                    elisa_win32_set_action(native_handle(index))
+
+        def controls_action(handle: usize, value: f32, selected: bool) -> i32:
+            index: i32 = UiControls::index_for_native_handle(handle)
+            return index if index == UiControls::NO_PARENT
+            kind: UiControls::ControlKind = UiControls::kind_at(index.usize())
+            return UiControls::dispatch_native_action(handle, UiControls::action_event_for(kind), value, selected)
+
+        def controls_text_action(handle: usize, text: cstr) -> i32:
+            length: usize =
+                for index in 0..<UiCore::MAX_TEXT_BYTES |length = UiCore::MAX_TEXT_BYTES| -> length:
+                    length <- index if win32_cstr_byte(text, index) == 0
+                    break if win32_cstr_byte(text, index) == 0
+            for index in 0..<length:
+                win32_text_bytes[index] <- win32_cstr_byte(text, index)
+            return UiControls::dispatch_native_text(handle, sview(&win32_text_bytes[0], 0, length.i64()))
+
+    private:
+        def win32_cstr_byte(text: cstr, index: usize) -> u8:
+            pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
+            return 0 if pointer == 0.uintptr()
+            trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic]:
+                byte: u8& = (pointer + index.uintptr()).cast[u8&]
+                return byte
+
+def win32_action(handle: usize, value: f32, selected: i32) -> i32:
+    return UiWin32::controls_action(handle, value, selected != 0)
+
+def win32_text_action(handle: usize, text: cstr) -> i32:
+    return UiWin32::controls_text_action(handle, text)
+
+export fn elisa_win32_action(handle: usize, value: f32, selected: i32) -> i32 = win32_action
+export fn elisa_win32_text_action(handle: usize, text: cstr) -> i32 = win32_text_action

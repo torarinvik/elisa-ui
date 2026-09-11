@@ -1,0 +1,57 @@
+# The Win32 backend, compiled for Windows and never run.
+#
+# The Apple and GTK fixtures assert against live objects because this machine
+# can create them. This one cannot: there is no Windows here. So it exists to be
+# COMPILED and LINKED -- the same evidence check_uikit.sh takes from the iOS
+# device image it also never executes. It builds a real tree and realizes it
+# through the real backend, so every call, every signature and every export on
+# the path is checked by the compiler and the linker for the actual target.
+#
+# What it does not do is tell you a window appeared. Nothing here can, and the
+# gate's own header says so rather than letting a green tick imply otherwise.
+
+include "../../widgets/ui_controls_hierarchy.elisa"
+include "./ui_win32.elisa"
+
+using UiWidgets
+using UiControls
+
+global mutable win32_control_events: i32 = 0
+
+def app_widget_event(widget: UiWidgets::Widget, event: i32) -> void:
+    pass
+
+def app_control_event(index: i32, event: i32) -> void:
+    win32_control_events <- win32_control_events + 1
+
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size
+
+def ui_font_ascent(size: f32) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def grey(level: u8) -> UiCore::Color:
+    return UiCore::rgba(level, level, level, 255)
+
+def main() -> i64:
+    can Memory.Allocate, Abort.Panic, Ui.Controls, Ui.Draw, Ui.Text, Ui.Input, Ui.Window, Unsafe.PointerCast:
+        return 0 if not UiWin32::start()
+        press: Widget = Button.Push(min_width: 80.0, min_height: 24.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "Open", rest: grey(60), hover: grey(90), press: grey(30))
+        field: Widget = Control.TextBox(min_width: 120.0, min_height: 24.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, text: "typed", caret: 0, size: 12.0, ink: grey(230), fill: grey(40))
+        press.next_sibling <- field
+        bar: Widget = Container.Box(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: press, next_sibling: null, axis: UiConst::Axis.Row, padding: 4.0, spacing: 4.0, fill: grey(20))
+        top: Widget = Window.Top(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: bar, next_sibling: null, title: "win32 check", resizable: true)
+
+        UiWidgets::layout(top, 320.0, 200.0)
+        UiControls::reset()
+        UiControls::realize(top, UiControls::NO_PARENT, 0)
+        UiControls::apply[UiWin32::Win32Controls]()
+        elisa_win32_destroy_window(UiControls::native_handle_at(0))
+        return 0 if UiControls::count() == 4
+        return 1

@@ -125,6 +125,13 @@ if ! bash "$ROOT/scripts/check_uikit_touch.sh"; then
   status=1
 fi
 
+# WIN32 IS THE LAST COLUMN. It is cross-compiled and never run, which is the
+# same evidence the iOS device build gives, and the gate's own output says so.
+if ! bash "$ROOT/scripts/check_win32.sh"; then
+  echo "FAIL win32"
+  status=1
+fi
+
 # GTK IS THE LINUX HALF OF THE NATIVE STORY, and it is gated the same way: it
 # skips itself when gtk4 is not installed, and the fixture skips again when
 # there is no display, so a machine without either is not failed for it.
