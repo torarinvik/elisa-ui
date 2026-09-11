@@ -39,19 +39,30 @@ ELISA_UI_STAGE1=../wasm-sdk-compiler bash scripts/check_performance.sh
 git diff --check: PASS
 ```
 
-The current stage1 product also builds the hosted package end to end:
+The hosted package does **not** currently build, and this is the note that used
+to say it did. `scripts/check_wapp.sh` is now in `scripts/run_tests.sh` and
+builds the package before inspecting it; the first time it did so it failed:
 
 ```text
-ELISA_UI_STAGE1=../wasm-sdk-compiler bash scripts/build_wapp.sh hello
-  wasm: wrote .../main.wasm and .../main.json
-  packed .../build/hello.wapp
-ELISA_UI_WASMBROWSER=../WasmBrowser bash scripts/check_wapp.sh build/hello.wapp
-  hosted package: compiler-independent profile/import/export inspection passed
+ELISA_UI_STAGE1=../wasm-sdk-compiler bash scripts/check_wapp.sh
+  wasm-ld: error: initial memory too small, 2344864 bytes needed     # fixed: 64 pages
+  error: failed to resolve import `env::ctx_string_views_eq`         # open
 ```
 
-This supersedes the older `/tmp/elisa-ui-stage1-p4` validation note: the
-clean sibling checkout at `c6948142f19d` is the selected compiler product and
-the fresh component build now passes. Runtime launch and device execution
+The first was ours and is fixed in `scripts/build_wapp.sh`: the framework's
+static data had outgrown 32 pages of initial linear memory, and data segments
+must fit at link time regardless of runtime growth.
+
+The second is the compiler repo's. `ctx_string_views_eq` is the runtime helper a
+match over string views compiles to; `build/runtime/elisacore_runtime.o` defines
+it and the cached wasm runtime object does not, and `--allow-undefined` cannot
+absorb it because component validation then rejects the leftover `env` import.
+Writing a stand-in for a compiler-internal ABI symbol in this repo would be the
+same mistake as writing the Windows runtime host here.
+
+The target has been unlinkable since roughly 2026-09-10, and every suite was
+green throughout, because the gate inspected whatever package was left in
+`build/` and nothing invoked the gate. Runtime launch and device execution
 remain separate fixtures.
 
 `bash scripts/build_native.sh hello` likewise produces `build/hello_native`.
