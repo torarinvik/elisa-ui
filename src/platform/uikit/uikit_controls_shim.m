@@ -155,9 +155,24 @@ size_t elisa_uikit_controls_create_label(void) {
 // kinds: UIKit's own selection behaviour rather than a second state machine.
 size_t elisa_uikit_controls_create_button(int selectable) {
     UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
-    button.configuration = [UIButtonConfiguration plainButtonConfiguration];
+    // ONE LINE, AND AN ELLIPSIS WHEN IT DOES NOT FIT -- the same rule the
+    // painted backends and this backend's own labels follow. A UILabel
+    // defaults to one line; a UIButton's titleLabel does NOT, and it
+    // HYPHENATES, so the showcase's tab row read "Over- / view" and "Con- /
+    // trols" on a phone. An earlier comment here claimed UIKit truncated. It
+    // does not, and a screenshot is what said so.
+    //
+    // The line break mode has to be set on the configuration BEFORE it is
+    // assigned: -configuration returns a copy, so mutating it through the
+    // getter changes nothing, which is how the first attempt at this looked
+    // exactly like the bug it was meant to fix.
+    UIButtonConfiguration *configuration = [UIButtonConfiguration plainButtonConfiguration];
+    configuration.titleLineBreakMode = NSLineBreakByTruncatingTail;
+    button.configuration = configuration;
     button.changesSelectionAsPrimaryAction = selectable != 0;
     button.titleLabel.adjustsFontForContentSizeCategory = YES;
+    button.titleLabel.numberOfLines = 1;
+    button.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     return (size_t)CFBridgingRetain(button);
 }
 

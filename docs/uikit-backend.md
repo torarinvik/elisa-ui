@@ -90,6 +90,25 @@ that an unchanged report raises nothing (which is what stops a backend that
 re-realizes on every event from chasing its own tail), that clearing a field is
 a real edit, and that a label refuses a write-back it should never receive.
 
+## A caption that does not fit is cut, not hyphenated
+
+A `UILabel` defaults to one line and truncates. A `UIButton`'s title does
+not — it wraps, and it hyphenates, so the showcase's tab row read "Over- /
+view" and "Con- / trols" on a phone. Every other backend here draws a single
+line and ends it with an ellipsis, which is what the box the layout computed
+means.
+
+Two things about the fix are worth keeping:
+
+- `-configuration` returns a **copy**. Setting `button.configuration.titleLineBreakMode`
+  through the getter changes nothing, and the first attempt looked on screen
+  exactly like the bug it was meant to fix. Build the configuration, set the
+  mode, then assign it.
+- Android needed the same fix and had a trap of its own: `setSingleLine`
+  installs a transformation method, which is the slot Material's Button uses
+  for `textAllCaps`, so it silently turned every "SAVE STATE" into "Save
+  state". `setMaxLines(1)` leaves it alone.
+
 ## Dynamic Type and dark mode change the layout, not just the pixels
 
 Every control this backend builds opts into `adjustsFontForContentSizeCategory`,

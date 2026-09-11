@@ -207,14 +207,19 @@ Three things this platform decides differently, and they are worth knowing:
   last realized against, the Activity and the realization drive each other and
   the interface never settles — which is exactly what happened, at 24% of a
   CPU, before the Activity started comparing.
-- **A view given too little room wrapped, where every other backend
-  truncates.** The painted backends draw a single line and end it with an
-  ellipsis; UIKit truncates; Android alone broke the caption across two lines,
-  so the showcase's tab row read "Overvi / ew" and "Contro / ls". That is not a
-  platform difference worth keeping — it is this backend disagreeing with its
-  own framework about what a box means — so a caption is now one line with an
+- **A view given too little room wrapped, where the framework ellipsizes.**
+  The painted backends draw a single line and end it with an ellipsis; Android
+  broke the caption across two lines, so the showcase's tab row read
+  "Overvi / ew" and "Contro / ls". That is this backend disagreeing with its own
+  framework about what a box means, so a caption is now one line with an
   ellipsis. A field is left alone: its text scrolls as you type, which is the
   platform's behaviour and the right one.
+
+  **iOS did the same thing**, and an earlier version of this paragraph said it
+  truncated. It does not: a `UILabel` defaults to one line but a `UIButton`'s
+  title does not, and it *hyphenates* — "Over- / view". Both backends were
+  fixed, and the claim that one of them was already correct came from assuming
+  rather than from looking at it.
 
   The fix has a trap in it. `setSingleLine` installs a transformation method of
   its own, and that is the slot Material's Button already uses for
