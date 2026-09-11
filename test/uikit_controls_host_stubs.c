@@ -47,6 +47,10 @@ enum {
     ElisaStubField = 5,
     ElisaStubSlider = 6,
     ElisaStubProgress = 7,
+    /* A toggle and a check box are a label beside a real UISwitch on the
+       device, which is a container and not a button -- a distinct token here
+       so the host test asserts the composite rather than the old shape. */
+    ElisaStubSwitchRow = 8,
 };
 
 void elisa_uikit_controls_stub_reset(void) {
@@ -167,6 +171,7 @@ size_t elisa_uikit_controls_create_slider(float low, float high, float value) {
     return create(ElisaStubSlider, -1);
 }
 size_t elisa_uikit_controls_create_progress(void) { return create(ElisaStubProgress, -1); }
+size_t elisa_uikit_controls_create_switch_row(void) { return create(ElisaStubSwitchRow, -1); }
 
 void elisa_uikit_controls_release(size_t handle) {
     if (handle == 0 || released_count >= ELISA_UIKIT_CONTROLS_MAX) return;

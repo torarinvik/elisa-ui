@@ -45,6 +45,7 @@ const STUB_BUTTON: i32 = 4
 const STUB_FIELD: i32 = 5
 const STUB_SLIDER: i32 = 6
 const STUB_PROGRESS: i32 = 7
+const STUB_SWITCH_ROW: i32 = 8
 
 def check(name: cstr, ok: bool) -> void:
     return if ok
@@ -120,7 +121,12 @@ def check_mapping() -> void:
     check("a window becomes a plain view", elisa_uikit_controls_stub_kind(0) == STUB_VIEW)
     check("a container becomes a plain view", elisa_uikit_controls_stub_kind(1) == STUB_VIEW)
     check("a push button becomes a button", elisa_uikit_controls_stub_kind(2) == STUB_BUTTON)
-    check("a check box becomes a button too", elisa_uikit_controls_stub_kind(3) == STUB_BUTTON)
+    # A BOOLEAN IS A SWITCH, NOT A BUTTON. This asserted "a button too" for as
+    # long as the backend built one, while the seam's own mapping table said
+    # UISwitch -- so the test agreed with the code and both disagreed with the
+    # table. A toggle and a check box are now a container holding a label and a
+    # real switch, which is what iOS uses and what the table always claimed.
+    check("a check box becomes a switch row", elisa_uikit_controls_stub_kind(3) == STUB_SWITCH_ROW)
     # A UISwitch carries no caption. A selectable button keeps the widget's
     # text visible, which is why a labelled boolean is not a switch here.
     #
@@ -129,7 +135,9 @@ def check_mapping() -> void:
     # the backend can also choose which mark a captionless one wears. Asserting
     # the exact kind is what keeps that mapping from drifting silently.
     check("a push button is not selectable", elisa_uikit_controls_stub_selectable(2) == 0)
-    check("a check box is selectable, as a check box", elisa_uikit_controls_stub_selectable(3) == 2)
+    # A switch row is not built through the button constructor at all, so it
+    # has no selectable token -- the stub reports -1 for "never asked".
+    check("a switch row has no button selectability", elisa_uikit_controls_stub_selectable(3) == -1)
     check("a text box becomes a text field", elisa_uikit_controls_stub_kind(5) == STUB_FIELD)
     check("a gauge becomes a progress view", elisa_uikit_controls_stub_kind(6) == STUB_PROGRESS)
     check("a label becomes a label", elisa_uikit_controls_stub_kind(7) == STUB_LABEL)
