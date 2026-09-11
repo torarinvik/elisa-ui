@@ -106,6 +106,24 @@ module UiControls:
             high: f32
             selected: bool
 
+        # The colours a control carries, after this seam has decided which of
+        # them a native control may honour.
+        #
+        # THE OS DRAWS ITS OWN CHROME. A button's rest/hover/press colours are
+        # the framework's answer for a surface it paints itself, and a native
+        # button already has a better one; those stop here. What does not stop
+        # here is the colour of TEXT and of the PANELS behind it. An
+        # application that says a label is light grey on a dark box means it,
+        # and a backend that drops both hands the platform a default -- which
+        # on iOS is black, on a dark scene, which is a label nobody can read.
+        #
+        # Alpha zero means the hierarchy said nothing and the platform's own
+        # colour stands. That is the value a zeroed record carries, so every
+        # widget that never mentions colour keeps the native look by default.
+        struct Palette:
+            ink: UiCore::Color
+            fill: UiCore::Color
+
         # The root's parent.
         const NO_PARENT: i32 = -1
 
@@ -128,6 +146,10 @@ module UiControls:
             # The kind crosses with it so a backend can keep this semantic dispatch
             # in its typed Elisa implementation instead of inspecting native classes.
             def set_text(index: i32, kind: Kind, text: sview) -> void can[Ui.Controls]
+            # The colours the hierarchy declared, filtered by palette_of. A
+            # backend applies what its toolkit has a place for and leaves the
+            # rest; alpha zero is the hierarchy saying nothing at all.
+            def set_colors(index: i32, kind: Kind, ink: UiCore::Color, fill: UiCore::Color) -> void can[Ui.Controls]
             # Initial value/range/selection state, kept separate from caption
             # text so a backend can apply native state with typed setters.
             def set_state(index: i32, kind: Kind, value: f32, low: f32, high: f32, selected: bool) -> void can[Ui.Controls]
@@ -168,6 +190,8 @@ module UiControls:
             parent: mutable i32
             box: mutable UiCore::Rect
             text: mutable sview
+            ink: mutable UiCore::Color
+            fill: mutable UiCore::Color
             # Backend-owned opaque identity. Elisa stores it here so the native
             # side can remain a stateless object bridge. Zero means no handle.
             native_handle: mutable usize
@@ -241,6 +265,30 @@ module UiControls:
             return UiCore::Rect(0.0, 0.0, 0.0, 0.0) if index >= total
             return ops[index].box
 
+        # A NATIVE CHILD IS PLACED INSIDE ITS PARENT. Every toolkit this seam
+        # targets takes a child's frame in its PARENT's coordinates -- NSView,
+        # UIView, a child HWND, GtkFixed -- and the hierarchy layout computes
+        # absolute ones. Handing the absolute box straight to the setter is
+        # right for one level and wrong by the parent's origin for every level
+        # after it, compounding down the tree: a control three deep landed at
+        # the sum of its ancestors' origins, which is how a page that looked
+        # plausible under a toolbar at the origin walked off the bottom of the
+        # screen as soon as anything was nested inside it.
+        #
+        # The root keeps its absolute box: it has no parent to sit inside, and
+        # a window's frame is the one a backend places against the screen.
+        def placed_box_at(index: usize) -> UiCore::Rect:
+            own: UiCore::Rect = box_at(index)
+            origin: i32 = parent_at(index)
+            return own if origin < 0 or origin.usize() >= total
+            container: UiCore::Rect = box_at(origin.usize())
+            return UiCore::Rect(own.origin.x - container.origin.x, own.origin.y - container.origin.y,
+                own.size.width, own.size.height)
+
+        def colors_at(index: usize) -> Palette:
+            return Palette{ink: UiCore::rgba(0, 0, 0, 0), fill: UiCore::rgba(0, 0, 0, 0)} if index >= total
+            return Palette{ink: ops[index].ink, fill: ops[index].fill}
+
         def text_at(index: usize) -> sview:
             return "" if index >= total
             return ops[index].text
@@ -284,6 +332,9 @@ module UiControls:
             ops[index].parent <- parent
             ops[index].box <- UiWidgets::box_of(w)
             ops[index].text <- copy_control_text(index, text_of(w))
+            palette: Palette = palette_of(w)
+            ops[index].ink <- palette.ink
+            ops[index].fill <- palette.fill
             ops[index].native_handle <- 0
             cursor: mutable UiWidgets::Widget? = w.first_child if UiWidgets::can_nest(w) else null
             sibling_steps: mutable i32 = 0
@@ -333,7 +384,11 @@ module UiControls:
                 slot: i32 = index.i32()
                 state: ControlState = state_at(index)
                 C.create(slot, kind_at(index), parent_at(index), window_mode_at(index), axis_at(index), state)
-                C.set_frame(slot, kind_at(index), box_at(index))
+                C.set_frame(slot, kind_at(index), placed_box_at(index))
+                # Colour before caption: a label that is given its words first
+                # shows them in the platform's default for one frame.
+                palette: Palette = colors_at(index)
+                C.set_colors(slot, kind_at(index), palette.ink, palette.fill)
                 C.set_text(slot, kind_at(index), text_at(index))
                 C.set_state(slot, kind_at(index), state.value, state.low, state.high, state.selected)
                 # Last, so a control never reports an action while it is still

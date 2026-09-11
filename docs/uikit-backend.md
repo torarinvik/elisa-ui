@@ -17,6 +17,42 @@ is the iOS control for a bare boolean, but it carries no caption, and a
 selectable button keeps the widget's own text visible, which is the same control
 iOS uses for check and radio rows.
 
+Three more, found by building a tree with every control kind in it and looking
+at the result on a phone.
+
+**A child is placed inside its parent.** `UiWidgets::layout` computes absolute
+boxes and every toolkit this seam targets — `NSView`, `UIView`, a child `HWND`,
+`GtkFixed` — takes a child's frame in its *parent's* coordinates. Handing the
+absolute box straight to the setter is right for one level and wrong by the
+parent's origin for every level after it, compounding down the tree. A toolbar
+at the origin looked perfect and hid it; the moment anything was nested two deep
+it walked off the bottom of the screen. `UiControls::placed_box_at` now does the
+subtraction once, for every backend, and the root — which has no parent to sit
+inside — keeps its own box.
+
+**Colour reaches the controls that can show it.** The protocol carried captions,
+state and frames but no colour at all, and a fresh `UILabel`'s `textColor` is
+*black*, not the semantic label colour — so on a dark scene every label in the
+interface was invisible, and every panel's fill was missing. `set_colors` is now
+part of the protocol and `UiControls::palette_of` decides what crosses: a label's
+ink, a panel's fill, a text field's both, and a slider's or gauge's bar and track.
+A **button's** rest/hover/press do not cross, because they are the framework's
+answer for a surface it paints itself and iOS draws a better one. Alpha zero is
+the hierarchy saying nothing, which is what leaves an unstyled control looking
+exactly like the platform drew it — because the platform did.
+
+**Realizing twice replaces the interface.** The scene calls
+`app_controls_realize` again whenever its geometry changes — a rotation, a split
+view — and releasing the bridge's retain does not take the old tree off the
+screen, because the scene's own view is still holding it. Without detaching the
+old root, a rotation left two complete interfaces stacked with the dead one on
+top, taking the touches.
+
+`examples/hello/uikit_controls_main.elisa` is the tree that found all three: it
+builds one of every kind the backend realizes, on purpose, because a vocabulary
+with a hole in it looks exactly like one without until somebody builds the
+widget that falls in it.
+
 # The UIKit canvas backend
 
 elisa-ui runs on iOS through the same architecture as the macOS canvas: Elisa

@@ -110,6 +110,10 @@ size_t elisa_uikit_controls_create_label(void) {
     // UIKit owns line breaking and Dynamic Type; this only opts in.
     label.adjustsFontForContentSizeCategory = YES;
     label.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+    // A fresh UILabel's textColor is BLACK, not the semantic label colour, so
+    // one on a dark scene is a label nobody can read. This is the default the
+    // hierarchy gets when it names no ink of its own.
+    label.textColor = UIColor.labelColor;
     return (size_t)CFBridgingRetain(label);
 }
 
@@ -158,6 +162,13 @@ void elisa_uikit_controls_add_child(size_t parent, size_t child) {
     [parentView addSubview:childView];
 }
 
+// A released handle is not a removed view: the scene's own view still retains
+// the tree it was given. Detaching the old root is the step that makes
+// realizing twice replace the interface rather than stack a second one on it.
+void elisa_uikit_controls_remove_from_parent(size_t handle) {
+    [elisa_uikit_controls_view(handle) removeFromSuperview];
+}
+
 void elisa_uikit_controls_set_frame(size_t handle, float x, float y, float width, float height) {
     elisa_uikit_controls_view(handle).frame = CGRectMake(x, y, width, height);
 }
@@ -166,6 +177,48 @@ void elisa_uikit_controls_set_content_size(size_t handle, float width, float hei
     UIView *view = elisa_uikit_controls_view(handle);
     if (![view isKindOfClass:[UIScrollView class]]) return;
     ((UIScrollView *)view).contentSize = CGSizeMake(width, height);
+}
+
+// --- Colour ------------------------------------------------------------
+//
+// Which colour goes in which slot is decided in Elisa, on the other side of
+// this boundary; these four are the slots. A colour arrives packed ARGB and is
+// applied only when Elisa asked for it, so a control the hierarchy said
+// nothing about keeps the platform's own.
+
+static UIColor *elisa_uikit_controls_color(uint32_t argb) {
+    return [UIColor colorWithRed:((argb >> 16) & 0xFF) / 255.0
+                           green:((argb >> 8) & 0xFF) / 255.0
+                            blue:(argb & 0xFF) / 255.0
+                           alpha:((argb >> 24) & 0xFF) / 255.0];
+}
+
+void elisa_uikit_controls_set_text_color(size_t handle, uint32_t argb) {
+    UIView *view = elisa_uikit_controls_view(handle);
+    UIColor *color = elisa_uikit_controls_color(argb);
+    if ([view isKindOfClass:[UILabel class]]) ((UILabel *)view).textColor = color;
+    if ([view isKindOfClass:[UITextField class]]) ((UITextField *)view).textColor = color;
+    if ([view isKindOfClass:[UIButton class]]) [((UIButton *)view) setTitleColor:color forState:UIControlStateNormal];
+}
+
+void elisa_uikit_controls_set_background_color(size_t handle, uint32_t argb) {
+    elisa_uikit_controls_view(handle).backgroundColor = elisa_uikit_controls_color(argb);
+}
+
+// A slider's tint is the filled part of its track and a progress view's is its
+// bar: the same role, two class names.
+void elisa_uikit_controls_set_tint_color(size_t handle, uint32_t argb) {
+    UIView *view = elisa_uikit_controls_view(handle);
+    UIColor *color = elisa_uikit_controls_color(argb);
+    if ([view isKindOfClass:[UISlider class]]) ((UISlider *)view).minimumTrackTintColor = color;
+    if ([view isKindOfClass:[UIProgressView class]]) ((UIProgressView *)view).progressTintColor = color;
+}
+
+void elisa_uikit_controls_set_track_color(size_t handle, uint32_t argb) {
+    UIView *view = elisa_uikit_controls_view(handle);
+    UIColor *color = elisa_uikit_controls_color(argb);
+    if ([view isKindOfClass:[UISlider class]]) ((UISlider *)view).maximumTrackTintColor = color;
+    if ([view isKindOfClass:[UIProgressView class]]) ((UIProgressView *)view).trackTintColor = color;
 }
 
 // --- Text and state ----------------------------------------------------

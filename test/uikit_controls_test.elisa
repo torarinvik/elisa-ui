@@ -28,6 +28,10 @@ extern elisa_uikit_controls_stub_progress(slot: i32) -> f32
 extern elisa_uikit_controls_stub_content_width(slot: i32) -> f32
 extern elisa_uikit_controls_stub_released(order: i32) -> usize
 extern elisa_uikit_controls_stub_action(slot: i32) -> i32
+extern elisa_uikit_controls_stub_text_color(slot: i32) -> u32
+extern elisa_uikit_controls_stub_background_color(slot: i32) -> u32
+extern elisa_uikit_controls_stub_tint_color(slot: i32) -> u32
+extern elisa_uikit_controls_stub_detached(slot: i32) -> i32
 
 global mutable failures: i32 = 0
 
@@ -183,6 +187,19 @@ def check_actions() -> void:
     check("a text field reports a change",
         UiUIKitControls::controls_action(field, 0.0, false) == 5 and last_control_event == UiConst::WidgetEvent.Change.i32())
 
+# THE COLOURS THE HIERARCHY DECLARED reach the control that can show them and
+# stop at the ones that cannot. A label's ink is its text colour, a panel's
+# fill is its background, a gauge's bar is its tint -- and a button's chrome
+# never crosses, because iOS draws a better one than any palette here.
+def check_colors() -> void:
+    check("a panel's fill becomes its background", elisa_uikit_controls_stub_background_color(1) == 0xFF1E1E1E)
+    check("a text field carries both its ink and its fill",
+        elisa_uikit_controls_stub_text_color(5) == 0xFFE6E6E6 and elisa_uikit_controls_stub_background_color(5) == 0xFF2D2D2D)
+    check("a gauge's bar becomes its tint", elisa_uikit_controls_stub_tint_color(6) == 0xFF787878)
+    check("a label's ink becomes its text colour", elisa_uikit_controls_stub_text_color(7) == 0xFFD2D2D2)
+    check("a button keeps the platform's own chrome",
+        elisa_uikit_controls_stub_text_color(2) == 0 and elisa_uikit_controls_stub_background_color(2) == 0)
+
 def check_rerealization() -> void can[Memory.Allocate, Abort.Panic, Ui.Controls, Unsafe.PointerCast]:
     first_root: usize = elisa_uikit_controls_stub_handle(0)
     last: usize = elisa_uikit_controls_stub_handle(elisa_uikit_controls_stub_count() - 1)
@@ -193,6 +210,11 @@ def check_rerealization() -> void can[Memory.Allocate, Abort.Panic, Ui.Controls,
     # to release.
     check("children are released before their parents",
         elisa_uikit_controls_stub_released(0) == last and elisa_uikit_controls_stub_released(7) == first_root)
+    # A RELEASED HANDLE IS NOT A REMOVED VIEW. The scene's own view still
+    # holds the tree it was given, so realizing again without detaching the
+    # old root leaves two interfaces stacked and the dead one on top taking
+    # the touches. The scene calls this again on every rotation.
+    check("the previous root was taken off the scene", elisa_uikit_controls_stub_detached(0) == 1)
 
 # Once the scene reports its geometry, the tree is laid out against the usable
 # part of it and the root is moved to where the safe area starts -- so a
@@ -222,6 +244,7 @@ def main() -> i64 can[Memory.Allocate, Abort.Panic, Ui.Controls, Unsafe.PointerC
     check_hierarchy_and_geometry()
     check_text_and_state()
     check_actions()
+    check_colors()
     check_rerealization()
     check_scene_geometry()
     if failures == 0:

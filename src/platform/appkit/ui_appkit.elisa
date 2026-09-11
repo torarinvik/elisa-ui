@@ -153,6 +153,9 @@ module UiAppKit:
         def progress_value(index: i32) -> f32:
             return UiAppKitNative::native_progress_value(native_handle(index))
 
+        def controls_packed_argb(color: UiCore::Color) -> u32:
+            return (color.a.u32() << 24) | (color.r.u32() << 16) | (color.g.u32() << 8) | color.b.u32()
+
         impl Controls for AppKitControls:
             def create(index: i32, kind: UiControls::Kind, parent: i32, window_mode: UiControls::WindowMode, axis: UiConst::Axis, state: UiControls::ControlState) -> void:
                 can Ui.Controls:
@@ -239,6 +242,19 @@ module UiAppKit:
                     UiAppKitNative::native_set_view_frame(handle, box.origin.x, box.origin.y, box.size.width, box.size.height)
                     if kind == UiControls::Kind.ScrollView:
                         UiAppKitNative::native_set_scroll_document_frame(handle, box.size.width, box.size.height)
+
+            # The same slots the UIKit backend fills, under AppKit's names.
+            # See UiControls::Palette for what reaches here and what does not.
+            def set_colors(index: i32, kind: UiControls::Kind, ink: UiCore::Color, fill: UiCore::Color) -> void:
+                can Ui.Controls:
+                    handle: usize = native_handle(index)
+                    return if handle == 0
+                    if kind == UiControls::Kind.Slider or kind == UiControls::Kind.ProgressBar:
+                        elisa_appkit_set_tint_color(handle, controls_packed_argb(ink)) if ink.a != 0
+                        return
+                    if kind == UiControls::Kind.Label or kind == UiControls::Kind.TextField:
+                        elisa_appkit_set_text_color(handle, controls_packed_argb(ink)) if ink.a != 0
+                    elisa_appkit_set_background_color(handle, controls_packed_argb(fill)) if fill.a != 0
 
             def set_text(index: i32, kind: UiControls::Kind, text: sview) -> void:
                 # Native controls copy this borrowed CoreFoundation string in

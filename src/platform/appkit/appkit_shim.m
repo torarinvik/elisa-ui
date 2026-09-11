@@ -249,6 +249,46 @@ void elisa_appkit_set_window_frame(size_t handle, float width, float height) {
     [[window contentView] setFrame:NSMakeRect(0, 0, width, height)];
 }
 
+// --- Colour ------------------------------------------------------------
+//
+// Which colour goes in which slot is decided in Elisa; these three are the
+// slots. A colour arrives packed ARGB and is applied only when Elisa asked for
+// it, so a control the hierarchy said nothing about keeps the platform's own.
+
+static NSColor *elisa_appkit_color(uint32_t argb) {
+    return [NSColor colorWithSRGBRed:((argb >> 16) & 0xFF) / 255.0
+                               green:((argb >> 8) & 0xFF) / 255.0
+                                blue:(argb & 0xFF) / 255.0
+                               alpha:((argb >> 24) & 0xFF) / 255.0];
+}
+
+void elisa_appkit_set_text_color(size_t handle, uint32_t argb) {
+    NSTextField *field = (NSTextField *)elisa_appkit_object(handle);
+    if ([field isKindOfClass:[NSTextField class]]) [field setTextColor:elisa_appkit_color(argb)];
+}
+
+// A plain NSView has no colour of its own: it needs a layer to keep one, which
+// is why this asks for one rather than assuming the view already has it.
+void elisa_appkit_set_background_color(size_t handle, uint32_t argb) {
+    NSView *view = (NSView *)elisa_appkit_object(handle);
+    if (![view isKindOfClass:[NSView class]]) return;
+    if ([view isKindOfClass:[NSTextField class]]) {
+        [((NSTextField *)view) setDrawsBackground:YES];
+        [((NSTextField *)view) setBackgroundColor:elisa_appkit_color(argb)];
+        return;
+    }
+    [view setWantsLayer:YES];
+    view.layer.backgroundColor = elisa_appkit_color(argb).CGColor;
+}
+
+// NSSlider's filled track takes a colour; NSProgressIndicator's does not, so a
+// gauge keeps the system accent on this platform and the fact is recorded
+// here rather than hidden behind a silent no-op.
+void elisa_appkit_set_tint_color(size_t handle, uint32_t argb) {
+    NSSlider *slider = (NSSlider *)elisa_appkit_object(handle);
+    if ([slider isKindOfClass:[NSSlider class]]) [slider setTrackFillColor:elisa_appkit_color(argb)];
+}
+
 void elisa_appkit_set_view_frame(size_t handle, float x, float y, float width, float height) {
     NSView *view = (NSView *)elisa_appkit_object(handle);
     if (![view isKindOfClass:[NSView class]]) return;

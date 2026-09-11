@@ -29,6 +29,10 @@ static int created_has_accessibility_label[ELISA_UIKIT_CONTROLS_MAX];
 static int created_selected[ELISA_UIKIT_CONTROLS_MAX];
 static float created_progress[ELISA_UIKIT_CONTROLS_MAX];
 static float created_content_width[ELISA_UIKIT_CONTROLS_MAX];
+static uint32_t created_text_color[ELISA_UIKIT_CONTROLS_MAX];
+static uint32_t created_background_color[ELISA_UIKIT_CONTROLS_MAX];
+static uint32_t created_tint_color[ELISA_UIKIT_CONTROLS_MAX];
+static uint32_t created_track_color[ELISA_UIKIT_CONTROLS_MAX];
 static int created_action[ELISA_UIKIT_CONTROLS_MAX];
 static int created_count = 0;
 
@@ -101,6 +105,22 @@ float elisa_uikit_controls_stub_progress(int slot) {
 float elisa_uikit_controls_stub_content_width(int slot) {
     return slot < 0 || slot >= created_count ? -1.0f : created_content_width[slot];
 }
+
+uint32_t elisa_uikit_controls_stub_text_color(int slot) {
+    return slot < 0 || slot >= created_count ? 0 : created_text_color[slot];
+}
+
+uint32_t elisa_uikit_controls_stub_background_color(int slot) {
+    return slot < 0 || slot >= created_count ? 0 : created_background_color[slot];
+}
+
+int elisa_uikit_controls_stub_detached(int slot) {
+    return slot < 0 || slot >= created_count ? 0 : (created_parent[slot] == 0 ? 1 : 0);
+}
+
+uint32_t elisa_uikit_controls_stub_tint_color(int slot) {
+    return slot < 0 || slot >= created_count ? 0 : created_tint_color[slot];
+}
 size_t elisa_uikit_controls_stub_released(int order) {
     return order < 0 || order >= released_count ? 0 : released_order[order];
 }
@@ -125,6 +145,10 @@ static size_t create(int kind, int selectable) {
     created_selected[slot] = -1;
     created_progress[slot] = -1.0f;
     created_content_width[slot] = -1.0f;
+    created_text_color[slot] = 0;
+    created_background_color[slot] = 0;
+    created_tint_color[slot] = 0;
+    created_track_color[slot] = 0;
     created_action[slot] = -1;
     return created_handle[slot];
 }
@@ -154,6 +178,35 @@ void elisa_uikit_controls_add_child(size_t parent, size_t child) {
     int slot = slot_of(child);
     if (slot < 0) return;
     created_parent[slot] = parent;
+}
+
+// Detaching a released root is what keeps a second realize a replacement.
+// The stub records it the way the host records a parent: by clearing it.
+void elisa_uikit_controls_remove_from_parent(size_t handle) {
+    int slot = slot_of(handle);
+    if (slot >= 0) created_parent[slot] = 0;
+}
+
+// The four colour slots. A recorded value is what Elisa decided to send, so a
+// zero here means the hierarchy named no colour and the platform's own stands.
+void elisa_uikit_controls_set_text_color(size_t handle, uint32_t argb) {
+    int slot = slot_of(handle);
+    if (slot >= 0) created_text_color[slot] = argb;
+}
+
+void elisa_uikit_controls_set_background_color(size_t handle, uint32_t argb) {
+    int slot = slot_of(handle);
+    if (slot >= 0) created_background_color[slot] = argb;
+}
+
+void elisa_uikit_controls_set_tint_color(size_t handle, uint32_t argb) {
+    int slot = slot_of(handle);
+    if (slot >= 0) created_tint_color[slot] = argb;
+}
+
+void elisa_uikit_controls_set_track_color(size_t handle, uint32_t argb) {
+    int slot = slot_of(handle);
+    if (slot >= 0) created_track_color[slot] = argb;
 }
 
 void elisa_uikit_controls_set_frame(size_t handle, float x, float y, float width, float height) {

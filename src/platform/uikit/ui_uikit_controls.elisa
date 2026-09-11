@@ -79,6 +79,9 @@ module UiUIKitControls:
         def button_is_selectable(kind: UiControls::Kind) -> bool:
             return kind != UiControls::Kind.PushButton
 
+        def packed_argb(color: UiCore::Color) -> u32:
+            return (color.a.u32() << 24) | (color.r.u32() << 16) | (color.g.u32() << 8) | color.b.u32()
+
         def kind_is_button(kind: UiControls::Kind) -> bool:
             return kind == UiControls::Kind.PushButton or kind == UiControls::Kind.ToggleButton or kind == UiControls::Kind.CheckBox or kind == UiControls::Kind.RadioButton
 
@@ -125,6 +128,26 @@ module UiUIKitControls:
                     elisa_uikit_controls_set_frame(handle, box.origin.x, box.origin.y, box.size.width, box.size.height)
                     if kind == UiControls::Kind.ScrollView:
                         elisa_uikit_controls_set_content_size(handle, box.size.width, box.size.height)
+
+            # WHICH SLOT A COLOUR GOES IN is decided here, in typed Elisa, so
+            # the shim stays a bridge with four setters and no policy: text
+            # colour for anything that shows words, a background for anything
+            # that is a surface, and a tint and a track for the two controls
+            # that are a bar on a groove. A colour the hierarchy did not name
+            # arrives with alpha zero and is not applied at all, which is what
+            # leaves an unstyled control looking like iOS drew it -- because
+            # iOS did.
+            def set_colors(index: i32, kind: UiControls::Kind, ink: UiCore::Color, fill: UiCore::Color) -> void:
+                can Ui.Controls:
+                    handle: usize = native_handle(index)
+                    return if handle == 0
+                    if kind == UiControls::Kind.Slider or kind == UiControls::Kind.ProgressBar:
+                        elisa_uikit_controls_set_tint_color(handle, packed_argb(ink)) if ink.a != 0
+                        elisa_uikit_controls_set_track_color(handle, packed_argb(fill)) if fill.a != 0
+                        return
+                    if kind == UiControls::Kind.Label or kind == UiControls::Kind.TextField or kind_is_button(kind):
+                        elisa_uikit_controls_set_text_color(handle, packed_argb(ink)) if ink.a != 0
+                    elisa_uikit_controls_set_background_color(handle, packed_argb(fill)) if fill.a != 0
 
             def set_text(index: i32, kind: UiControls::Kind, text: sview) -> void:
                 # Native controls copy this borrowed CoreFoundation string in
@@ -200,6 +223,14 @@ module UiUIKitControls:
         # computed.
         def realize(root: UiWidgets::Widget) -> void:
             can[Ui.Controls]:
+                # REALIZING TWICE REPLACES THE INTERFACE. The scene calls this
+                # again whenever its geometry changes -- a rotation, a split
+                # view -- and releasing the bridge's retain does not take the
+                # old tree off the screen: the scene's own view is still
+                # holding it. Detaching the old root first is what makes the
+                # second call a replacement instead of a second interface
+                # stacked on the first, with the dead one taking the touches.
+                elisa_uikit_controls_remove_from_parent(native_handle(0)) if UiControls::count() > 0
                 release_native_handles()
                 UiControls::reset()
                 UiControls::realize(root, UiControls::NO_PARENT, 0)

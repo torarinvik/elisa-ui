@@ -70,6 +70,9 @@ global mutable frame_calls: usize = 0
 global mutable text_calls: usize = 0
 global mutable state_calls: usize = 0
 global mutable borrowed_caption: u8[8] = zeroed
+global mutable log_ink: u32[LOG_CAP] = zeroed
+global mutable log_fill: u32[LOG_CAP] = zeroed
+global mutable color_calls: usize = 0
 
 # A backend keeps its own index -> handle table; this one keeps a log instead,
 # which is the same thing with the native part left out.
@@ -94,6 +97,13 @@ impl Controls for RecordingControls:
         log_y[row] <- box.origin.y
         log_w[row] <- box.size.width
         log_h[row] <- box.size.height
+
+    def set_colors(index: i32, kind: UiControls::Kind, ink: UiCore::Color, fill: UiCore::Color) -> void can[Ui.Controls]:
+        color_calls <- color_calls + 1
+        return if index < 0 or index.usize() >= LOG_CAP
+        row: usize = index.usize()
+        log_ink[row] <- (ink.a.u32() << 24) | (ink.r.u32() << 16) | (ink.g.u32() << 8) | ink.b.u32()
+        log_fill[row] <- (fill.a.u32() << 24) | (fill.r.u32() << 16) | (fill.g.u32() << 8) | fill.b.u32()
 
     def set_text(index: i32, kind: UiControls::Kind, text: sview) -> void can[Ui.Controls]:
         text_calls <- text_calls + 1
@@ -213,6 +223,26 @@ def main() -> i64:
         check("a push button realizes a PushButton", kind_at(2) == UiControls::Kind.PushButton.i32())
         check("a checkbox carries its selected state", log_state_selected[3])
         check("a label realizes a Label", kind_at(4) == UiControls::Kind.Label.i32())
+
+        # A CONTROL IS PLACED INSIDE ITS PARENT, not at the absolute box the
+        # layout computed. The two agree for a child of the root and differ by
+        # the container's origin for everything deeper, which is the error
+        # that compounds down a tree.
+        bar_box: UiCore::Rect = UiControls::box_at(1)
+        left_abs: UiCore::Rect = UiControls::box_at(2)
+        check("a control is placed inside its parent", log_x[2] == left_abs.origin.x - bar_box.origin.x and log_y[2] == left_abs.origin.y - bar_box.origin.y)
+        check("and the root, having none, keeps its own box", log_x[0] == UiControls::box_at(0).origin.x and log_y[0] == UiControls::box_at(0).origin.y)
+
+        # COLOUR REACHES A NATIVE CONTROL, and only the part of it that has
+        # anywhere to go. A label's ink and a panel's fill are content and
+        # travel; a button's rest/hover/press are chrome the OS draws better
+        # itself and stop at this seam. Alpha zero is the hierarchy saying
+        # nothing, which is what leaves an unstyled control looking native.
+        check("every control was offered its colours", color_calls == UiControls::count())
+        check("a label's ink reaches the backend", log_ink[4] == 0xFFC8C8C8)
+        check("and a label declares no fill of its own", log_fill[4] == 0)
+        check("a panel's fill reaches the backend", log_fill[1] == 0xFF141414)
+        check("a button's colours stop at this seam", log_ink[2] == 0 and log_fill[2] == 0)
 
         # Control records own their captions. A backend may consume the list
         # after the builder's source buffer has been reused, so the retained
