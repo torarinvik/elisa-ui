@@ -13,20 +13,30 @@
 # between this gate and a mapping table that listed HWND for years with nothing
 # behind it.
 #
-# WHY THERE IS NO .exe TO RUN, precisely, because "never run" on its own is not
-# a finding anyone can act on. The backend is not what blocks it: both halves
-# compile for the Windows triple, and so does the Elisa runtime object. The link
-# then fails on what the runtime itself needs from a POSIX host --
+# WHY THERE IS NO .exe TO RUN. This header used to say "the Elisa runtime has no
+# Windows host yet", and that was wrong -- written from a list of undefined
+# symbols rather than from looking at the runtime. The runtime HAS a Windows
+# host: arena.elisa selects ARENA_BACKEND_WIN32_VIRTUALALLOC, the concurrency
+# runtime has CRITICAL_SECTION and CONDITION_VARIABLE branches, and perf_cores
+# calls GetActiveProcessorCount. None of it was reachable, for two reasons that
+# are much smaller than a port:
 #
-#   mmap munmap kill sigaction sysctlbyname backtrace backtrace_symbols_fd
-#   va_copy va_end, plus the elisa_native_callback_* family the stage1 driver
-#   supplies at its own link step and mingw's ld never sees.
+#   1. stage1's target predicates follow the HOST, not -target-triple. Its own
+#      comment in codegen_static_if.elisa says so, and it exports ELISA_HOST_LINUX
+#      and ELISA_HOST_X86_64 for cross-compiling -- with no Windows equivalent.
+#      So a Windows triple compiles the MACOS branches, which is where mmap,
+#      munmap, sysctlbyname and the pthread family in the link error came from.
+#      check_gtk_linux.sh proves the mechanism: ELISA_HOST_LINUX=1 turns
+#      sysctlbyname into sysconf and the Linux link goes through.
+#   2. elisacore_std/debug_referee.elisa declares kill, sigaction, getpid and
+#      signal with no `static if` around them. The first two have no Windows
+#      equivalent, so the crash-dump path needs a guard whatever else changes.
 #
-# Those are the compiler repo's to answer, not this one's. Writing a Windows
-# stand-in for them here would put a copy of the runtime's host assumptions in
-# the UI project, where it would rot the first time the runtime gained a symbol
-# -- which is the exact failure write_profiler_hook_fallbacks.sh exists to
-# prevent. So the gate stops at the object files and says why.
+# Both belong to the compiler repo. Writing Windows stand-ins here would put a
+# copy of the runtime's host assumptions in the UI project, where they would rot
+# the first time the runtime gained a symbol -- the exact failure
+# write_profiler_hook_fallbacks.sh exists to prevent. So the gate stops at the
+# object files and says what would move it.
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -60,4 +70,4 @@ for symbol in $(grep -o '^extern elisa_win32_[a-z_]*' "$ROOT/src/platform/win32/
     echo "win32: Elisa declares $symbol and the shim defines nothing" >&2; exit 1; }
 done
 
-echo "win32: cross-compiled against real Windows headers; every export resolves in both directions (no image: the Elisa runtime has no Windows host yet)"
+echo "win32: cross-compiled against real Windows headers; every export resolves in both directions (no image: stage1 has no ELISA_HOST_WINDOWS to select the runtime's Windows branches)"

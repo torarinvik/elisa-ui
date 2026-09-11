@@ -6,9 +6,11 @@
 # Skia canvas through SDL3 and nothing else. This gate is what keeps the column
 # honest from here on.
 #
-# Run on macOS, where GTK is a supported target, which is what lets it be
-# verified from a machine that is not a Linux box at all. That is not the same
-# as having run on Linux and this gate does not pretend it is: what it proves is
+# Run on macOS, where GTK is a supported target. That is not the same as having
+# run on Linux -- and check_gtk_linux.sh now does exactly that, with this same
+# fixture, inside an OrbStack machine against a real X server. This gate is
+# still worth keeping: a binding that compiles and passes in two places is
+# better evidence than one that does so in one. What it proves is
 # that the backend compiles against the real headers, links against the real
 # library, and that live GtkWindows, GtkButtons and GtkEntries come out with the
 # types, the state, the tree shape and the colours the framework asked for. A

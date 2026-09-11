@@ -135,6 +135,15 @@ fi
 # GTK IS THE LINUX HALF OF THE NATIVE STORY, and it is gated the same way: it
 # skips itself when gtk4 is not installed, and the fixture skips again when
 # there is no display, so a machine without either is not failed for it.
+# ...and the same fixture on Linux, which is the platform the GTK backend is
+# for. It skips without an OrbStack machine; check_gtk.sh above still runs the
+# macOS build, because a binding that compiles in two places is worth more than
+# one that compiles in one.
+if ! bash "$ROOT/scripts/check_gtk_linux.sh"; then
+  echo "FAIL gtk linux"
+  status=1
+fi
+
 if ! bash "$ROOT/scripts/check_gtk.sh"; then
   echo "FAIL gtk"
   status=1
