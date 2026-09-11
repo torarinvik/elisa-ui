@@ -156,6 +156,15 @@ if ! SKIA_ROOT="${SKIA_ROOT:-}" bash "$ROOT/scripts/check_android.sh"; then
   status=1
 fi
 
+# The hosted target, which was outside this suite entirely: check_wapp.sh
+# existed, was documented as the WasmBrowser gate, and nothing invoked it -- the
+# same way check_android.sh sat unrun. It skips when the sibling checkout or its
+# CLI is missing, and it builds the package before inspecting it.
+if ! bash "$ROOT/scripts/check_wapp.sh"; then
+  echo "FAIL wapp"
+  status=1
+fi
+
 # Composition is a separate gate because it needs a separate thing: a device
 # with a live IME framework, and the one example that has a text field on the
 # painted backend. It skips itself without those, and it is the only check in

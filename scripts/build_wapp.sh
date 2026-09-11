@@ -14,7 +14,14 @@ WASM_SDK="${ELISA_UI_WASM_SDK:-$ROOT/../wasm-sdk}"
 WIT="${ELISA_UI_WIT:-$WASMBROWSER/wit/wasmbrowser.wit}"
 EXAMPLE="${1:-hello}"
 OUTPUT="${2:-$ROOT/build/$EXAMPLE.wapp}"
-WASM_INITIAL_PAGES="${ELISA_UI_WASM_INITIAL_PAGES:-32}"
+# 64 pages = 4 MiB of initial linear memory. It was 32, and 32 stopped being
+# enough some days before anyone noticed: the framework's static data outgrew
+# 2 MiB and wasm-ld refused the link with "initial memory too small". Growth is
+# available at runtime (--realloc-via-memory-grow), but the DATA SEGMENTS have
+# to fit in the initial memory at link time, so this is not something a growing
+# heap covers. The gate that would have caught it inspected a package from
+# build/ instead of building one; it builds now.
+WASM_INITIAL_PAGES="${ELISA_UI_WASM_INITIAL_PAGES:-64}"
 WASM_MAX_PAGES="${ELISA_UI_WASM_MAX_PAGES:-32768}"
 
 [[ -x "$STAGE1/bin/elisac-stage1" ]] || { echo "no stage1 product at $STAGE1/bin/elisac-stage1 (run scripts/elisac_stage1.sh --seed there)" >&2; exit 2; }
