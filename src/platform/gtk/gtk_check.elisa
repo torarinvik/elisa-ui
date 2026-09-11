@@ -68,11 +68,28 @@ def main() -> i64:
             return 0
         failures: mutable i32 = 0
 
+        # EVERY CELL OF THE SEAM'S GTK COLUMN, built and then asked what it is.
+        # The table has drifted from the shims twice -- it said GtkBox where a
+        # GtkFixed was built, and GtkToggleButton where a GtkCheckButton was --
+        # so this fixture now realizes one widget of every kind the mapping
+        # names, and the column defends itself.
         press: Widget = Button.Push(min_width: 80.0, min_height: 24.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "Open", rest: grey(60), hover: grey(90), press: grey(30))
+        toggle: Widget = Button.Toggle(min_width: 90.0, min_height: 24.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "Wrap", on: false, rest: grey(60), hover: grey(90), press: grey(30))
         box: Widget = Button.Check(min_width: 90.0, min_height: 24.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "Wrap", checked: true, rest: grey(60), hover: grey(90), press: grey(30))
+        pick: Widget = Button.Radio(min_width: 90.0, min_height: 24.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "One", group: 1, selected: false, rest: grey(60), hover: grey(90), press: grey(30))
         field: Widget = Control.TextBox(min_width: 120.0, min_height: 24.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, text: "typed", caret: 0, size: 12.0, ink: field_ink(), fill: grey(40))
-        press.next_sibling <- box
-        box.next_sibling <- field
+        slide: Widget = Control.Slider(min_width: 120.0, min_height: 24.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, value: 7.0, low: 0.0, high: 10.0, track: grey(20), knob: grey(200))
+        gauge: Widget = Control.Gauge(min_width: 120.0, min_height: 12.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, fraction: 0.5, track: grey(20), bar: grey(200))
+        caption: Widget = Control.Label(min_width: 120.0, min_height: 18.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, text: "Ready", size: 12.0, ink: grey(220))
+        scroll: Widget = Container.Scroll(min_width: 120.0, min_height: 48.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, axis: UiConst::Axis.Column, offset: 0.0, fill: grey(24))
+        press.next_sibling <- toggle
+        toggle.next_sibling <- box
+        box.next_sibling <- pick
+        pick.next_sibling <- field
+        field.next_sibling <- slide
+        slide.next_sibling <- gauge
+        gauge.next_sibling <- caption
+        caption.next_sibling <- scroll
         bar: Widget = Container.Box(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: press, next_sibling: null, axis: UiConst::Axis.Row, padding: 4.0, spacing: 4.0, fill: bar_fill())
         top: Widget = Window.Top(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: bar, next_sibling: null, title: "gtk check", resizable: true)
 
@@ -81,32 +98,39 @@ def main() -> i64:
         UiControls::realize(top, UiControls::NO_PARENT, 0)
         UiControls::apply[UiGtk::GtkControls]()
 
-        check(&failures, "every widget became a control", UiControls::count() == 5)
+        check(&failures, "every widget became a control", UiControls::count() == 11)
         check(&failures, "the root retained a GTK handle", UiControls::native_handle_at(0) != 0)
 
-        # ...and they are the REAL types, not stand-ins.
+        # ...and they are the REAL types the mapping table names, not stand-ins.
         check(&failures, "the root is a GtkWindow", UiGtk::is_type(0, "GtkWindow") == 1)
         check(&failures, "the container is a GtkFixed", UiGtk::is_type(1, "GtkFixed") == 1)
         check(&failures, "the push button is a GtkButton", UiGtk::is_type(2, "GtkButton") == 1)
-        check(&failures, "the check box is a GtkCheckButton", UiGtk::is_type(3, "GtkCheckButton") == 1)
-        check(&failures, "the text box is a GtkEntry", UiGtk::is_type(4, "GtkEntry") == 1)
+        check(&failures, "the toggle is a GtkCheckButton", UiGtk::is_type(3, "GtkCheckButton") == 1)
+        check(&failures, "the check box is a GtkCheckButton", UiGtk::is_type(4, "GtkCheckButton") == 1)
+        check(&failures, "the radio is a GtkCheckButton", UiGtk::is_type(5, "GtkCheckButton") == 1)
+        check(&failures, "the text box is a GtkEntry", UiGtk::is_type(6, "GtkEntry") == 1)
+        check(&failures, "the slider is a GtkScale", UiGtk::is_type(7, "GtkScale") == 1)
+        check(&failures, "the gauge is a GtkProgressBar", UiGtk::is_type(8, "GtkProgressBar") == 1)
+        check(&failures, "the label is a GtkLabel", UiGtk::is_type(9, "GtkLabel") == 1)
+        check(&failures, "the scroller is a GtkScrolledWindow", UiGtk::is_type(10, "GtkScrolledWindow") == 1)
 
         # State the framework decided, read back off the live widget.
-        check(&failures, "the checked box is active", UiGtk::check_is_active(3) == 1)
+        check(&failures, "the checked box is active", UiGtk::check_is_active(4) == 1)
+        check(&failures, "the untouched toggle is not", UiGtk::check_is_active(3) == 0)
         check(&failures, "a button has no active state", UiGtk::check_is_active(2) == -1)
         check(&failures, "a realized control is sensitive", UiGtk::is_sensitive(2) == 1)
 
         # THE SHAPE OF THE TREE. GTK holds a child inside its parent exactly as
         # every other toolkit here does, so the window's content holds the bar
-        # and the bar holds three.
+        # and the bar holds every control under it.
         check(&failures, "the window content holds the bar", UiGtk::child_count(0) == 1)
-        check(&failures, "the bar holds its three controls", UiGtk::child_count(1) == 3)
+        check(&failures, "the bar holds its nine controls", UiGtk::child_count(1) == 9)
 
         # A FIELD THAT IS NOT SECURE SHOWS ITS TEXT. This layer carries no
         # `secure`, so everything it realizes is visible -- which is still worth
         # asserting, because the sense of that flag is the difference between a
         # password field and a plain one.
-        check(&failures, "an ordinary entry shows its text", UiGtk::entry_shows_text(4) == 1)
+        check(&failures, "an ordinary entry shows its text", UiGtk::entry_shows_text(6) == 1)
 
         # COLOUR, BY THE TWO MEASURES THAT MEAN DIFFERENT THINGS.
         #
@@ -118,12 +142,16 @@ def main() -> i64:
         # Text colour, as GTK itself resolved it. Sampling a glyph would be a
         # guess about antialiasing and whichever font this machine has; the
         # style is the thing that was actually set, and GTK will state it.
-        check(&failures, "the field's ink reached the resolved style", UiGtk::text_color(4) == 0xFFFF0000.u32())
+        check(&failures, "the field's ink reached the resolved style", UiGtk::text_color(6) == 0xFFFF0000.u32())
 
         # Fill, as painted. This is the one that catches a rule a theme wins
         # over, and it costs a presented window and one frame to ask.
+        #
+        # The sample sits in the bar's own padding, near its corner. The middle
+        # of the bar is a control, and a pixel there would be reporting on the
+        # button that covers it rather than on the container asked about.
         UiGtk::settle(0)
-        check(&failures, "the bar's fill reached the pixels", UiGtk::pixel_at(1, 50, 10, 100, 20) == 0xFF0000FF.u32())
+        check(&failures, "the bar's fill reached the pixels", UiGtk::pixel_at(1, 1, 1) == 0xFF0000FF.u32())
 
         elisa_gtk_destroy_window(UiControls::native_handle_at(0))
         if failures == 0:

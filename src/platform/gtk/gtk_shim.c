@@ -371,9 +371,16 @@ void elisa_gtk_settle(size_t handle) {
     for (int spin = 0; spin < 600; spin++) g_main_context_iteration(NULL, FALSE);
 }
 
-uint32_t elisa_gtk_pixel_at(size_t handle, int32_t x, int32_t y, int32_t width, int32_t height) {
+// AT THE WIDGET'S OWN SIZE, always. Snapshotting into any other box makes GSK
+// scale the result, and a scaled pixel is a blend of its neighbours -- which
+// read as "nearly the right colour" and failed an exact comparison for a
+// reason that had nothing to do with the colour being wrong.
+uint32_t elisa_gtk_pixel_at(size_t handle, int32_t x, int32_t y) {
     GtkWidget *widget = widget_of(handle);
-    if (widget == NULL || width <= 0 || height <= 0) return 0;
+    if (widget == NULL) return 0;
+    const int32_t width = gtk_widget_get_width(widget);
+    const int32_t height = gtk_widget_get_height(widget);
+    if (width <= 0 || height <= 0) return 0;
     GdkPaintable *paintable = gtk_widget_paintable_new(widget);
     GtkSnapshot *snapshot = gtk_snapshot_new();
     gdk_paintable_snapshot(paintable, snapshot, width, height);
