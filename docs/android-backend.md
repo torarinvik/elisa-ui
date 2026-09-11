@@ -316,8 +316,43 @@ live — which is the reconciler carrying a state change to an adopted control.
 
 ## What is not here yet
 
-No clipboard (a NativeActivity reaches the system one only through JNI), no IME
-composition (the same), and no configuration changes beyond resize.
+The clipboard is here now. It was the only canvas backend in the framework
+without one -- AppKit, UIKit, SDL3 and the browser all have one, and the two
+native-controls backends deliberately do not, because a real `EditText` owns its
+own selection and paste menu. Here the framework owns the caret, so copy and
+paste are the framework's to provide.
+[`android_clipboard.cpp`](../src/platform/android/android_clipboard.cpp) reaches
+`ClipboardManager` over JNI off the activity the OS already handed the host,
+rather than adding a Java class and a dex step the canvas otherwise does not
+want. Lookups are per call and released again: a clipboard operation happens
+when a person presses a key, not every frame, and a cached `jclass` would trade
+a real lifetime hazard for an unmeasurable saving.
+
+**And it is reachable.** `UiFlat`'s keyboard handler already tracks modifier
+keys and already maps the accelerator chords -- `control_active() or
+super_active()` with A, C, X, V and Z becomes select-all, copy, cut, paste,
+undo and redo through `perform_text_action`. The host cooperates: it maps
+`AKEYCODE_CTRL_LEFT` into the framework's key space and returns no text scalar
+while Ctrl is held, so Ctrl+V arrives as a chord rather than as the letter V.
+Every piece of that was already here; the clipboard underneath was the missing
+one, and `ui_clipboard_*` returning false was the whole reason a paste did
+nothing.
+
+Verified on a Pixel 9, inside the canvas showcase: typing into the name field,
+Ctrl+A (the selection highlights), Ctrl+C, then Ctrl+V into the email field
+below puts the text there -- and the form's own validation answers the pasted
+value with "Enter an address like ada@example.org." Copy, select-all and paste
+all reach the system clipboard, and the application sees the result.
+
+(An earlier version of this paragraph, and the commit that introduced it, said
+the opposite -- that nothing could reach the clipboard because only AppKit and
+UIKit call `perform_text_action`. That was wrong: those two call it from the
+platform's edit MENU, which is a second route, not the only one. The chord
+route lives in the shared retained layer and serves every backend. Checking
+where `perform_text_action` was called from, and stopping there, is how a
+present feature came to be recorded as absent.)
+
+No IME composition, and no configuration changes beyond resize.
 
 Accessibility is partly here now: a widget's help text becomes the view's
 `contentDescription`, so TalkBack reads more than whatever caption a view

@@ -12,6 +12,11 @@
 #include <android/input.h>
 #include <android/keycodes.h>
 #include <android/native_activity.h>
+
+// The clipboard reaches Java through this activity; it is published once the
+// host has one and cleared when it goes, so a late call cannot reach a dead
+// object.
+extern "C" void elisa_android_clipboard_attach(ANativeActivity *activity);
 #include <android/log.h>
 #include <sys/system_properties.h>
 #include <android/native_window.h>
@@ -464,6 +469,9 @@ void android_main(android_app* app) {
     app->userData = &host;
     app->onAppCmd = on_command;
     app->onInputEvent = on_input;
+    // Published before the first frame, because a paste can arrive as soon as
+    // there is a window to press a key into.
+    elisa_android_clipboard_attach(app->activity);
     while (true) {
         int events = 0;
         android_poll_source* source = nullptr;

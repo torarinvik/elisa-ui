@@ -57,6 +57,7 @@ grep -q "pthread_attr_setstacksize" "$OUT/android_native_app_glue.c" || { echo "
   -o "$OUT/native_app_glue.o" "$OUT/android_native_app_glue.c"
 "$CLANGXX" -c "${CXXFLAGS[@]}" -I"$NDK/sources/android/native_app_glue" \
   -o "$OUT/android_skia_host.o" "$ROOT/src/platform/android/android_skia_host.cpp"
+"$CLANGXX" -c "${CXXFLAGS[@]}" -o "$OUT/android_clipboard.o" "$ROOT/src/platform/android/android_clipboard.cpp"
 "$CLANGXX" -c "${CXXFLAGS[@]}" -o "$OUT/skia_canvas_shim.o" "$ROOT/src/platform/skia/skia_canvas_shim.cpp"
 "$CLANGXX" -c "${CXXFLAGS[@]}" -o "$OUT/skia_text_shim.o" "$ROOT/src/platform/skia/skia_text_shim.cpp"
 
@@ -81,7 +82,7 @@ printf '%s\\n' "\${args[@]}" > "$OUT/link_args.log"
 exec "$CLANG" -shared -fPIC -Wl,-z,max-page-size=16384 -Wl,--no-undefined \\
   "\${args[@]}" \\
   "$OUT/android_skia_host.o" "$OUT/native_app_glue.o" \\
-  "$OUT/skia_canvas_shim.o" "$OUT/skia_text_shim.o" \\
+  "$OUT/skia_canvas_shim.o" "$OUT/skia_text_shim.o" "$OUT/android_clipboard.o" \\
   "$SKIA_OUT/libskia.a" -lc++_static -lc++abi -landroid -llog -lm -ldl -lz
 LINK
 chmod +x "$LINKER"

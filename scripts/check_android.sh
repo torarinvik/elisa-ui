@@ -31,8 +31,17 @@ if [[ -z "$NDK" || ! -d "$NDK" ]]; then
   echo "android: skipped (no NDK under $SDK/ndk)"
   exit 0
 fi
-if [[ -z "$SKIA_ROOT" || ! -f "$SKIA_OUT/libskia.a" ]]; then
-  echo "android: skipped (no Android Skia; run scripts/build_skia_android.sh)"
+# TWO DIFFERENT SKIPS, because they ask for different things. A machine with no
+# Android Skia has to build it; a machine that HAS it and was not told where is
+# a gate silently declining to run on a machine that could have passed it --
+# which is how both Android backends stayed unverified while every suite ran
+# green.
+if [[ -z "$SKIA_ROOT" ]]; then
+  echo "android: skipped (SKIA_ROOT not set; it is needed even though only the canvas backend uses Skia)"
+  exit 0
+fi
+if [[ ! -f "$SKIA_OUT/libskia.a" ]]; then
+  echo "android: skipped (no Android Skia at $SKIA_OUT; run scripts/build_skia_android.sh)"
   exit 0
 fi
 

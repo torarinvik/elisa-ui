@@ -35,14 +35,49 @@ def ui_text_line_height(size: f32) -> f32:
 
 # No clipboard yet: a NativeActivity reaches the system clipboard only
 # through JNI, and nothing this backend runs asks for it.
+# THE SYSTEM CLIPBOARD. This is the one backend in the framework that draws its
+# own text field and had none: every other canvas backend has one, and the two
+# native-controls backends deliberately do not, because a real EditText owns
+# its own selection and paste menu. Here the framework owns the caret, so copy
+# and paste are the framework's to provide -- and until this existed they
+# silently did nothing.
+#
+# Android's clipboard lives in Java and this APK carries no classes, so the
+# host reaches it over JNI off the activity the OS already handed it. The
+# staging buffer is this module's, because a counted view from the framework
+# has no terminator and JNI wants one.
+extern elisa_android_clipboard_has_text() -> i32
+extern elisa_android_clipboard_write(text: cstr, length: i32) -> i32
+extern elisa_android_clipboard_read(buffer: mutable u8&, capacity: i32) -> i32
+
+global mutable android_clipboard_staging: u8[UiFlat::TEXT_CAPACITY] = zeroed
+
 def ui_clipboard_has_text() -> bool:
-    return false
+    return elisa_android_clipboard_has_text() != 0
 
 def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
-    return false
+    return false if length > 0 and bytes == null
+    take: usize = length if length < UiFlat::TEXT_CAPACITY else UiFlat::TEXT_CAPACITY
+    for index in 0..<take:
+        android_clipboard_staging[index] <- bytes[index]
+    copied: sview = android_clipboard_staging[0:take]
+    # Never hand the platform half a UTF-8 sequence; a clipboard is read by
+    # other applications and a broken one is their problem, not ours.
+    valid: usize = UiText::valid_utf8_prefix(copied, take)
+    pointer: cstr = (&android_clipboard_staging[0]).cast[cstr] can Unsafe.PointerCast
+    wrote: bool = elisa_android_clipboard_write(pointer, valid.i32()) != 0
+    # The staging copy held the user's text -- scrub rather than leave it live
+    # until the next copy, which is what the other backends do.
+    for index in 0..<UiFlat::TEXT_CAPACITY:
+        android_clipboard_staging[index] <- 0
+    return wrote
 
 def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
-    return 0
+    return 0 if capacity > 0 and buffer == null
+    return 0 if capacity == 0
+    written: i32 = elisa_android_clipboard_read(buffer, capacity.i32())
+    return 0 if written <= 0
+    return written.usize()
 
 module UiAndroid:
     private:

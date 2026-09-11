@@ -125,6 +125,22 @@ if ! bash "$ROOT/scripts/check_uikit_touch.sh"; then
   status=1
 fi
 
+# ANDROID IS A PLATFORM THIS FRAMEWORK CLAIMS, SO THE SUITE HAS TO ASK ABOUT IT.
+# Both Android backends -- the Skia canvas and the android.widget controls --
+# were outside this file entirely: the gate existed and nothing ran it, so every
+# green suite here was green about five platforms while saying nothing at all
+# about the sixth. It skips itself when the SDK, the NDK, an emulator or the
+# Android Skia build is missing, which is the same courtesy the iOS device gates
+# get -- but a machine that has all four now has to pass.
+#
+# SKIA_ROOT has to reach it or it skips on a machine that could have run it.
+# That is how it went unnoticed: the skip line reads like a fact about the
+# machine rather than about the environment it was handed.
+if ! SKIA_ROOT="${SKIA_ROOT:-}" bash "$ROOT/scripts/check_android.sh"; then
+  echo "FAIL android"
+  status=1
+fi
+
 # The AppKit/Skia compositor extends the required CPU-raster gate when it is
 # available on macOS; its fixture remains headless and never foregrounds a UI.
 if [[ "$require_real_skia" == "1" ]]; then
