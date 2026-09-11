@@ -224,6 +224,58 @@ size_t elisa_appkit_create_radio_button(size_t text) {
     return elisa_appkit_retain([NSButton radioButtonWithTitle:value target:nil action:nil]);
 }
 
+// A SECURE FIELD IS A DIFFERENT CLASS HERE, not a property -- which is exactly
+// why `secure` travels in ControlState, seen at create.
+size_t elisa_appkit_create_secure_text_field(size_t text) {
+    // Refuse rather than invent a string: text policy lives in Elisa, and the
+    // gate greps this file for an empty literal to keep it that way.
+    NSString *value = elisa_appkit_string(text);
+    if (value == nil) return 0;
+    NSSecureTextField *field = [[NSSecureTextField alloc] initWithFrame:NSZeroRect];
+    field.stringValue = value;
+    return elisa_appkit_retain(field);
+}
+
+// A placeholder is the field's own affordance; the help text is what VoiceOver
+// adds after the label. Both are content by the seam's rule, and neither is the
+// control's text.
+void elisa_appkit_set_placeholder(size_t handle, size_t text) {
+    NSString *value = elisa_appkit_string(text);
+    NSTextField *field = (NSTextField *)elisa_appkit_object(handle);
+    if (value != nil && [field isKindOfClass:[NSTextField class]]) {
+        field.placeholderString = value;
+    }
+}
+
+void elisa_appkit_set_accessibility_help(size_t handle, size_t text) {
+    NSString *value = elisa_appkit_string(text);
+    NSView *view = (NSView *)elisa_appkit_object(handle);
+    if (value != nil && [view isKindOfClass:[NSView class]]) {
+        view.accessibilityHelp = value.length > 0 ? value : nil;
+    }
+}
+
+// A disabled control is not a greyer control: AppKit changes its own drawing,
+// stops its tracking and tells VoiceOver it is unavailable.
+void elisa_appkit_set_enabled(size_t handle, int enabled) {
+    id object = elisa_appkit_object(handle);
+    if ([object isKindOfClass:[NSControl class]]) {
+        [((NSControl *)object) setEnabled:enabled != 0];
+    }
+}
+
+int elisa_appkit_control_is_enabled(size_t handle) {
+    id object = elisa_appkit_object(handle);
+    if (![object isKindOfClass:[NSControl class]]) return -1;
+    return [((NSControl *)object) isEnabled] ? 1 : 0;
+}
+
+int elisa_appkit_field_has_placeholder(size_t handle) {
+    NSTextField *field = (NSTextField *)elisa_appkit_object(handle);
+    if (![field isKindOfClass:[NSTextField class]]) return -1;
+    return field.placeholderString.length > 0 ? 1 : 0;
+}
+
 size_t elisa_appkit_create_text_field(size_t text) {
     NSString *value = elisa_appkit_string(text);
     if (value == nil) return 0;

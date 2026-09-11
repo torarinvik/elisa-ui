@@ -107,6 +107,20 @@ module AppKitCheck:
                 check(failures, "a column scroll view has no horizontal scroller", UiAppKit::scroll_has_horizontal(5) == 0)
                 check(failures, "scroll content is an NSTextField", UiAppKit::class_is(6, "NSTextField") == 1)
 
+                # ENABLED REACHES THE CONTROL. A disabled control is not a
+                # greyer one: AppKit changes its own drawing, stops its
+                # tracking and tells VoiceOver it is unavailable, and got to do
+                # none of that while the fact stopped at the seam. This layer
+                # carries no `enabled` of its own, so everything it realizes is
+                # enabled -- which is still a fact worth asserting, because the
+                # setter is now called for every kind and a wrong sense would
+                # disable the whole interface.
+                check(failures, "a realized button is enabled", UiAppKit::control_is_enabled(2) == 1)
+                check(failures, "a realized checkbox is enabled", UiAppKit::control_is_enabled(3) == 1)
+                # A view that is not an NSControl has no answer, and says so
+                # rather than claiming to be enabled.
+                check(failures, "a plain view has no enabled state", UiAppKit::control_is_enabled(1) == -1)
+
                 # The OS view tree has the widget tree's shape: the window's content
                 # view holds the bar and the caption, and the bar holds the two buttons.
                 check(failures, "the window content holds three children", UiAppKit::subview_count(0) == 3)

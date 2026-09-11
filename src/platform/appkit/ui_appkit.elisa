@@ -97,6 +97,18 @@ module UiAppKit:
         def panel_becomes_key_only(index: i32) -> i32:
             return UiAppKitNative::native_panel_becomes_key_only(native_handle(index))
 
+        # Facts that can only exist on a live NSControl, for the fixture that
+        # asserts them. A control the application disabled, and a field the
+        # application gave a placeholder, are both things a screenshot of a
+        # headless run would never show.
+        def control_is_enabled(index: i32) -> i32:
+            return -1 if native_handle(index) == 0
+            return UiAppKitNative::native_control_is_enabled(native_handle(index))
+
+        def field_has_placeholder(index: i32) -> i32:
+            return -1 if native_handle(index) == 0
+            return UiAppKitNative::native_field_has_placeholder(native_handle(index))
+
         def button_is_on(index: i32) -> i32:
             return UiAppKitNative::native_button_is_on(native_handle(index))
 
@@ -220,7 +232,10 @@ module UiAppKit:
                     if kind == UiControls::ControlKind.TextField:
                         empty: usize = UiAppKitNative::empty_native_string()
                         return if empty == 0
-                        handle: usize = UiAppKitNative::native_create_text_field(empty)
+                        # NSSecureTextField is a class, not a property, so the
+                        # choice is made here -- which is the reason `secure`
+                        # rides in the state a backend sees at create.
+                        handle: usize = UiAppKitNative::native_create_secure_text_field(empty) if state.secure else UiAppKitNative::native_create_text_field(empty)
                         CFRelease(empty)
                         record_created(index, handle, parent, parent_kind)
                         return
@@ -285,6 +300,11 @@ module UiAppKit:
                 can Ui.Controls:
                     handle: usize = native_handle(index)
                     return if handle == 0
+                    # Enabled first, and for every kind: AppKit changes its own
+                    # drawing, stops its tracking and tells VoiceOver the
+                    # control is unavailable. None of that is reachable by
+                    # being drawn greyer.
+                    UiAppKitNative::native_set_enabled(handle, state.enabled)
                     if kind == UiControls::ControlKind.ToggleButton or kind == UiControls::ControlKind.CheckBox or kind == UiControls::ControlKind.RadioButton:
                         UiAppKitNative::native_set_button_state(handle, elisa_appkit_control_state_on if state.selected else elisa_appkit_control_state_off)
                         return
@@ -294,20 +314,26 @@ module UiAppKit:
                     if kind == UiControls::ControlKind.ProgressBar:
                         UiAppKitNative::native_set_progress_state(handle, state.low, state.high, state.value)
 
-            # NOT IMPLEMENTED HERE YET, and stated rather than left silent.
-            # AppKit has a place for all three -- NSControl's `enabled`,
-            # NSTextField's `placeholderString`, NSView's `accessibilityHelp`
-            # -- and a secure field is NSSecureTextField, chosen at
-            # construction, which is why `secure` travels in the state a
-            # backend already sees at `create`. This backend is the one that
-            # cannot be run from here; adding the four setters blind would be
-            # claiming a nativeness nothing has watched.
+            # A PLACEHOLDER IS THE FIELD'S OWN AFFORDANCE and the help text
+            # is what VoiceOver adds after the label. Both are content by this
+            # seam's rule; neither is the control's text, so neither can ride
+            # on set_text. This was a documented no-op until the AppKit fixture
+            # turned out to be able to assert it after all -- appkit_check runs
+            # headless against live objects, so "cannot be watched from here"
+            # was caution, not a fact.
             def set_help(index: i32, kind: UiControls::ControlKind, placeholder: sview, help: sview) -> void:
                 can Ui.Controls:
-                    _ = index
-                    _ = kind
-                    _ = placeholder
-                    _ = help
+                    handle: usize = native_handle(index)
+                    return if handle == 0
+                    if kind == UiControls::ControlKind.TextField:
+                        prompt: usize = UiAppKitNative::native_string(placeholder)
+                        if prompt != 0:
+                            UiAppKitNative::native_set_placeholder(handle, prompt)
+                            CFRelease(prompt)
+                    hint: usize = UiAppKitNative::native_string(help)
+                    return if hint == 0
+                    UiAppKitNative::native_set_accessibility_help(handle, hint)
+                    CFRelease(hint)
 
         # Release the retained handles before the next realization. Child views
         # may still be retained by their old parent, but releasing every Elisa
