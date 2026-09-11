@@ -50,6 +50,16 @@ then feeds the movement through as scroll deltas. This is the same decision the
 UIKit canvas makes with a `UIPanGestureRecognizer`; it is made here by hand
 because a NativeActivity has no gesture recognizers.
 
+**A window that is not focused takes no input.** `UiLifecycle` accepts input
+only while the phase is Active, a started session is Active only if it was told
+it has focus, and starting a session clears whatever focus was reported before
+there was a window to focus. So the host maps the NativeActivity commands onto
+the portable mobile vocabulary the UIKit backend already speaks — focus,
+background, foreground, surface lost and restored, through
+`elisa_android_lifecycle` — and it *remembers* the focus and states it again
+after the start. Without that the window paints perfectly and answers nothing,
+which is exactly what it did.
+
 **The system bars are the content rect.** `app->contentRect` is the region
 between the status bar and the gesture bar; divided by the scale it becomes
 `UiResponsive::Insets`, which becomes `UiCore::set_content_insets`, which is
@@ -124,11 +134,34 @@ a sparse walk of it found, and how long it took. Without the property the host
 prints two lines a run: the surface it started on, and whether the pictures
 took.
 
+## Keys, text, and the keyboard
+
+The NDK hands over a key code and a meta state, never a character: the
+character is a property of the keyboard layout and the layout lives on the Java
+side. So the host answers two different questions from one event.
+`framework_key` says which key it is, in the framework's own numbering — a
+printable key is its uppercase ASCII code and everything else is 256 and up, so
+nothing above the host has ever heard of `AKEYCODE`. `printable_scalar` says
+what it *means as text*, and that one is **the US layout, written out**: a
+device with another layout types this one's letters and punctuation. Saying so
+plainly is better than pretending otherwise; a real answer needs `getUnicodeChar`
+across JNI.
+
+Committed text crosses as one code point — which is what a key event yields —
+and is encoded to UTF-8 on the Elisa side, so no host buffer has to be trusted
+and no pointer has to be cast for a keystroke.
+
+The soft keyboard follows the retained focus and nothing else: the host asks
+`elisa_android_wants_keyboard` once a frame and calls
+`ANativeActivity_showSoftInput` / `hideSoftInput` only when the answer changes,
+because those calls are posted to the UI thread and repeating them would fight
+whatever the user is doing with the keyboard themselves.
+
 ## What is not here yet
 
-No clipboard (a NativeActivity reaches the system one only through JNI), no
-text input (the soft keyboard is the same JNI problem), no accessibility, and
-no configuration changes beyond resize. The manifest declares
+No clipboard (a NativeActivity reaches the system one only through JNI), no IME
+composition (the same), no accessibility, and no configuration changes beyond
+resize. The manifest declares
 `configChanges="orientation|screenSize|screenLayout|keyboardHidden|density"`, so
 a rotation arrives as a resize rather than a restart, which the backend already
 handles.

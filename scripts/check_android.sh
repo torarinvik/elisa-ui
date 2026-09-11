@@ -50,7 +50,9 @@ if [[ -x "$READELF" ]]; then
   # android_main is what NativeActivity looks up; the rest is the ABI the
   # host calls back through, and a missing one is a blank window at runtime.
   for entry in android_main elisa_android_start elisa_android_resize elisa_android_render \
-               elisa_android_touch elisa_android_scroll elisa_android_frame_delay; do
+               elisa_android_touch elisa_android_scroll elisa_android_frame_delay \
+               elisa_android_lifecycle elisa_android_key elisa_android_text \
+               elisa_android_wants_keyboard; do
     grep -q " $entry\$" <<<"$symbols" || { echo "android: $entry is not exported from lib$EXAMPLE.so" >&2; exit 1; }
   done
   # C++ was linked statically on purpose: Android ships no libc++_shared, and

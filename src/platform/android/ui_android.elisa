@@ -15,6 +15,10 @@
 
 include "../skia/ui_skia.elisa"
 include "../mobile/ui_mobile_surface.elisa"
+# The same include the UIKit flat adapter takes, and for the same reason: the
+# keyboard follows the retained focus, and only the widget layer knows where
+# that is.
+include "../../widgets/ui_handles.elisa"
 
 # The text metric hooks a retained layout asks its painter for.
 def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
@@ -57,6 +61,10 @@ module UiAndroid:
         const FOREGROUND: i32 = 3
         const SURFACE_LOST: i32 = 4
         const SURFACE_RESTORED: i32 = 5
+        # Committed text crosses as ONE CODE POINT, which is what an Android
+        # key event yields, and is encoded to UTF-8 here. Nothing on this side
+        # has to trust a host's buffer or cast a pointer for a keystroke.
+        global mutable android_text_bytes: u8[4] = zeroed
 
         # The system bars are edges the page must keep clear of, and on a
         # phone that is edge to edge they lie over the window. The insets
@@ -160,6 +168,44 @@ module UiAndroid:
                 return
             dispatch(UiCore::PointerEvent.Leave) if phase == TOUCH_CANCEL
 
+        # A key in the framework's own vocabulary. The host maps Android's
+        # numbering, so nothing about Android's keycodes crosses this line.
+        def key(code: i32, down: bool) -> void can[Ui.Input]:
+            return if not UiCore::key_is_valid(code)
+            dispatch((UiCore::KeyEvent.Down(code: code.Key())) if down else (UiCore::KeyEvent.Up(code: code.Key())))
+
+        def text(scalar: u32) -> void can[Ui.Input]:
+            return if not android_started or not UiLifecycle::accepts_input()
+            return if scalar == 0 or scalar > 1114111
+            # A surrogate is not a character, and a host that hands one over
+            # has already lost the pair it belonged to.
+            return if scalar >= 55296 and scalar <= 57343
+            length: mutable usize = 4
+            if scalar < 128:
+                length <- 1
+                android_text_bytes[0] <- scalar.u8()
+            elif scalar < 2048:
+                length <- 2
+                android_text_bytes[0] <- (192 | (scalar >> 6)).u8()
+                android_text_bytes[1] <- (128 | (scalar & 63)).u8()
+            elif scalar < 65536:
+                length <- 3
+                android_text_bytes[0] <- (224 | (scalar >> 12)).u8()
+                android_text_bytes[1] <- (128 | ((scalar >> 6) & 63)).u8()
+                android_text_bytes[2] <- (128 | (scalar & 63)).u8()
+            else:
+                android_text_bytes[0] <- (240 | (scalar >> 18)).u8()
+                android_text_bytes[1] <- (128 | ((scalar >> 12) & 63)).u8()
+                android_text_bytes[2] <- (128 | ((scalar >> 6) & 63)).u8()
+                android_text_bytes[3] <- (128 | (scalar & 63)).u8()
+            UiFlat::insert_text(sview(&android_text_bytes[0], 0, length.i64()))
+
+        # Whether the focused widget wants a keyboard. The host raises and
+        # lowers the on-screen one from this and from nothing else: the
+        # retained focus is the only thing that knows.
+        def wants_keyboard() -> bool:
+            return android_started and UiFlat::accepts_text()
+
         def scroll(x: f32, y: f32, dx: f32, dy: f32) -> void can[Ui.Input]:
             return if not UiCore::is_finite(x) or not UiCore::is_finite(y) or not UiCore::is_finite(dx) or not UiCore::is_finite(dy)
             dispatch(UiCore::PointerEvent.Scroll(at: UiCore::Vec2(x, y), delta: UiCore::Vec2(dx, dy)))
@@ -193,6 +239,17 @@ def android_scroll(x: f32, y: f32, dx: f32, dy: f32) -> void:
     can Ui.Input:
         UiAndroid::scroll(x, y, dx, dy)
 
+def android_key(code: i32, down: i32) -> void:
+    can Ui.Input:
+        UiAndroid::key(code, down != 0)
+
+def android_text(scalar: u32) -> void:
+    can Ui.Input:
+        UiAndroid::text(scalar)
+
+def android_wants_keyboard() -> i32:
+    return 1 if UiAndroid::wants_keyboard() else 0
+
 export fn elisa_android_start(width: f32, height: f32, scale: f32, top: f32, right: f32, bottom: f32, left: f32) -> i32 = android_start
 export fn elisa_android_resize(width: f32, height: f32, scale: f32, top: f32, right: f32, bottom: f32, left: f32) -> i32 = android_resize
 export fn elisa_android_stop() -> void = android_stop
@@ -201,3 +258,6 @@ export fn elisa_android_render(canvas: usize, font: usize, width: f32, height: f
 export fn elisa_android_frame_delay() -> f32 = android_frame_delay
 export fn elisa_android_touch(phase: i32, x: f32, y: f32) -> void = android_touch
 export fn elisa_android_scroll(x: f32, y: f32, dx: f32, dy: f32) -> void = android_scroll
+export fn elisa_android_key(code: i32, down: i32) -> void = android_key
+export fn elisa_android_text(scalar: u32) -> void = android_text
+export fn elisa_android_wants_keyboard() -> i32 = android_wants_keyboard

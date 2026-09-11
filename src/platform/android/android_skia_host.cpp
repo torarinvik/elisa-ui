@@ -10,6 +10,8 @@
 
 #include <android/configuration.h>
 #include <android/input.h>
+#include <android/keycodes.h>
+#include <android/native_activity.h>
 #include <android/log.h>
 #include <sys/system_properties.h>
 #include <android/native_window.h>
@@ -43,6 +45,9 @@ extern "C" std::int32_t elisa_android_resize(float width, float height, float sc
                                              float right, float bottom, float left);
 extern "C" void elisa_android_stop(void);
 extern "C" std::int32_t elisa_android_lifecycle(std::int32_t signal);
+extern "C" void elisa_android_key(std::int32_t code, std::int32_t down);
+extern "C" void elisa_android_text(std::uint32_t scalar);
+extern "C" std::int32_t elisa_android_wants_keyboard(void);
 extern "C" std::int32_t elisa_android_render(std::size_t canvas, std::size_t font, float width,
                                              float height, float scale);
 extern "C" float elisa_android_frame_delay(void);
@@ -126,6 +131,7 @@ struct Host {
     // signal that arrives before the session starts is dropped by the session.
     bool focused = false;
     bool surface_gone = false;
+    bool keyboard = false;
     // The touch that may become a drag.
     bool touching = false;
     bool panning = false;
@@ -136,6 +142,88 @@ struct Host {
 const int kTouchDown = 0, kTouchMove = 1, kTouchUp = 2, kTouchCancel = 3;
 const int kFocusGained = 0, kFocusLost = 1, kBackground = 2, kForeground = 3,
           kSurfaceLost = 4, kSurfaceRestored = 5;
+
+// ANDROID NUMBERS ITS KEYS ITS OWN WAY and the framework numbers them the way
+// GLFW does -- a printable key is its uppercase ASCII code, everything else is
+// 256 and up. The translation belongs here, on the platform's side of the
+// boundary, so that nothing above the host has ever heard of AKEYCODE.
+std::int32_t framework_key(std::int32_t code) {
+    if (code >= AKEYCODE_A && code <= AKEYCODE_Z) return 65 + (code - AKEYCODE_A);
+    if (code >= AKEYCODE_0 && code <= AKEYCODE_9) return 48 + (code - AKEYCODE_0);
+    switch (code) {
+        case AKEYCODE_SPACE: return 32;
+        case AKEYCODE_APOSTROPHE: return 39;
+        case AKEYCODE_COMMA: return 44;
+        case AKEYCODE_MINUS: return 45;
+        case AKEYCODE_PERIOD: return 46;
+        case AKEYCODE_SLASH: return 47;
+        case AKEYCODE_SEMICOLON: return 59;
+        case AKEYCODE_EQUALS: return 61;
+        case AKEYCODE_LEFT_BRACKET: return 91;
+        case AKEYCODE_BACKSLASH: return 92;
+        case AKEYCODE_RIGHT_BRACKET: return 93;
+        case AKEYCODE_GRAVE: return 96;
+        case AKEYCODE_ESCAPE: return 256;
+        case AKEYCODE_ENTER: case AKEYCODE_NUMPAD_ENTER: return 257;
+        case AKEYCODE_TAB: return 258;
+        case AKEYCODE_DEL: return 259;
+        case AKEYCODE_INSERT: return 260;
+        case AKEYCODE_FORWARD_DEL: return 261;
+        case AKEYCODE_DPAD_RIGHT: return 262;
+        case AKEYCODE_DPAD_LEFT: return 263;
+        case AKEYCODE_DPAD_DOWN: return 264;
+        case AKEYCODE_DPAD_UP: return 265;
+        case AKEYCODE_PAGE_UP: return 266;
+        case AKEYCODE_PAGE_DOWN: return 267;
+        case AKEYCODE_MOVE_HOME: return 268;
+        case AKEYCODE_MOVE_END: return 269;
+        case AKEYCODE_SHIFT_LEFT: return 340;
+        case AKEYCODE_CTRL_LEFT: return 341;
+        case AKEYCODE_ALT_LEFT: return 342;
+        case AKEYCODE_SHIFT_RIGHT: return 344;
+        case AKEYCODE_CTRL_RIGHT: return 345;
+        case AKEYCODE_ALT_RIGHT: return 346;
+        default: return 0;
+    }
+}
+
+// ...and what that key MEANS as text, which is a different question with a
+// different answer: the NDK hands over a key code and a meta state, never a
+// character, because the character is a property of the layout and the layout
+// lives on the Java side. This is the US layout, written out. A device with
+// another one types its own letters and punctuates like this one, which is
+// worth saying plainly rather than pretending otherwise.
+std::uint32_t printable_scalar(std::int32_t code, std::int32_t meta) {
+    const bool shift = (meta & AMETA_SHIFT_ON) != 0;
+    if ((meta & (AMETA_CTRL_ON | AMETA_ALT_ON | AMETA_META_ON)) != 0) return 0;
+    if (code >= AKEYCODE_A && code <= AKEYCODE_Z) {
+        return static_cast<std::uint32_t>((shift ? 'A' : 'a') + (code - AKEYCODE_A));
+    }
+    if (code >= AKEYCODE_0 && code <= AKEYCODE_9) {
+        static const char* const shifted = ")!@#$%^&*(";
+        const int digit = code - AKEYCODE_0;
+        return static_cast<std::uint32_t>(shift ? shifted[digit] : ('0' + digit));
+    }
+    switch (code) {
+        case AKEYCODE_SPACE: return ' ';
+        case AKEYCODE_APOSTROPHE: return shift ? '"' : '\'';
+        case AKEYCODE_COMMA: return shift ? '<' : ',';
+        case AKEYCODE_MINUS: return shift ? '_' : '-';
+        case AKEYCODE_PERIOD: return shift ? '>' : '.';
+        case AKEYCODE_SLASH: return shift ? '?' : '/';
+        case AKEYCODE_SEMICOLON: return shift ? ':' : ';';
+        case AKEYCODE_EQUALS: return shift ? '+' : '=';
+        case AKEYCODE_LEFT_BRACKET: return shift ? '{' : '[';
+        case AKEYCODE_BACKSLASH: return shift ? '|' : '\\';
+        case AKEYCODE_RIGHT_BRACKET: return shift ? '}' : ']';
+        case AKEYCODE_GRAVE: return shift ? '~' : '`';
+        case AKEYCODE_AT: return '@';
+        case AKEYCODE_PLUS: return '+';
+        case AKEYCODE_STAR: return '*';
+        case AKEYCODE_POUND: return '#';
+        default: return 0;
+    }
+}
 
 float density_scale(android_app* app) {
     const std::int32_t density = AConfiguration_getDensity(app->config);
@@ -236,6 +324,19 @@ void draw(Host& host) {
                     tracing() ? sampled_colors(pixels) : 0, static_cast<long long>(took));
     }
     ANativeWindow_unlockAndPost(window);
+    // THE KEYBOARD FOLLOWS THE FOCUS, and the focus is the framework's to
+    // know. Asked once a frame, acted on only when the answer changes: the
+    // soft-input calls are posted to the UI thread and repeating them would
+    // fight whatever the user is doing with the keyboard themselves.
+    const bool wants_keyboard = elisa_android_wants_keyboard() != 0;
+    if (wants_keyboard != host.keyboard) {
+        host.keyboard = wants_keyboard;
+        if (wants_keyboard) {
+            ANativeActivity_showSoftInput(host.app->activity, ANATIVEACTIVITY_SHOW_SOFT_INPUT_IMPLICIT);
+        } else {
+            ANativeActivity_hideSoftInput(host.app->activity, ANATIVEACTIVITY_HIDE_SOFT_INPUT_NOT_ALWAYS);
+        }
+    }
     host.needs_frame = elisa_android_frame_delay() > 0.0f;
     // Pictures after the first frame, the way the Skia fixture binds them.
     if (!host.banner) {
@@ -295,6 +396,22 @@ void on_command(android_app* app, std::int32_t command) {
 
 std::int32_t on_input(android_app* app, AInputEvent* event) {
     Host& host = *static_cast<Host*>(app->userData);
+    if (AInputEvent_getType(event) == AINPUT_EVENT_TYPE_KEY) {
+        const std::int32_t action = AKeyEvent_getAction(event);
+        if (action != AKEY_EVENT_ACTION_DOWN && action != AKEY_EVENT_ACTION_UP) return 0;
+        const std::int32_t code = AKeyEvent_getKeyCode(event);
+        // Back belongs to the system: swallowing it would leave the user in
+        // an application they cannot leave.
+        if (code == AKEYCODE_BACK) return 0;
+        const std::int32_t key = framework_key(code);
+        if (key != 0) elisa_android_key(key, action == AKEY_EVENT_ACTION_DOWN ? 1 : 0);
+        if (action == AKEY_EVENT_ACTION_DOWN) {
+            const std::uint32_t scalar = printable_scalar(code, AKeyEvent_getMetaState(event));
+            if (scalar != 0) elisa_android_text(scalar);
+        }
+        host.needs_frame = true;
+        return key != 0 ? 1 : 0;
+    }
     if (AInputEvent_getType(event) != AINPUT_EVENT_TYPE_MOTION) return 0;
     const std::int32_t action = AMotionEvent_getAction(event) & AMOTION_EVENT_ACTION_MASK;
     const float x = AMotionEvent_getX(event, 0) / host.scale;
