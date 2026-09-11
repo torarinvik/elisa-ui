@@ -36,9 +36,13 @@ command -v orb >/dev/null || { echo "gtk linux: skipped (no orb; OrbStack provid
 MACHINE="${ELISA_UI_ORB_MACHINE:-$(orb list 2>/dev/null | awk '$2 == "running" {print $1; exit}')}"
 [[ -n "$MACHINE" ]] || { echo "gtk linux: skipped (no running OrbStack machine; orb start <name>)"; exit 0; }
 
-# What the machine has, asked of the machine.
+# What the machine has, asked of the machine. The `uname -m` line is first so an
+# empty answer distinguishes "the machine did not respond" from "the machine is
+# missing a tool" -- a skip line that names the wrong reason is worse than no
+# skip line, because someone acts on it.
 probe="$(orb -m "$MACHINE" bash -c 'uname -m; command -v clang >/dev/null && echo clang; command -v xvfb-run >/dev/null && echo xvfb; pkg-config --exists gtk4 && echo gtk4' 2>/dev/null || true)"
 ARCH="$(head -1 <<<"$probe")"
+[[ -n "$ARCH" ]] || { echo "gtk linux: skipped (machine '$MACHINE' did not answer; orb list)"; exit 0; }
 for tool in clang xvfb gtk4; do
   grep -qx "$tool" <<<"$probe" || {
     echo "gtk linux: skipped ($MACHINE has no $tool; apt install libgtk-4-dev clang pkg-config xvfb)"
