@@ -108,6 +108,11 @@ because a module member's symbol carries its module and those names cannot move.
   two classes and the library talks to them over JNI -- see
   [docs/android-backend.md](docs/android-backend.md)),
   plus
+  [GTK](src/platform/gtk/ui_gtk.elisa) (real GtkWindows, GtkButtons,
+  GtkCheckButtons and GtkEntries through the same `UiControls` seam the Apple
+  and Android backends use -- the Linux native backend, gated by
+  [check_gtk.sh](scripts/check_gtk.sh), which builds and runs it against the
+  real library),
   [wasmbrowser](src/platform/wasmbrowser/ui_wasmbrowser.elisa) (a component
   implementing `world app`; the host drives the loop through the exported guest
   interface, canonical-ABI encoding stays in the backend modules, and its

@@ -1,0 +1,221 @@
+# elisa-ui GTK backend: the widget tree as real GTK controls.
+#
+# THE LINUX HALF OF THE NATIVE STORY. The seam's mapping table has carried a
+# GTK column since it was written, for a backend that did not exist: macOS, iOS
+# and Android each got real controls while Windows and Linux had the Skia
+# canvas through SDL3 and nothing else. A table that names a platform it cannot
+# realize is the defect this project has been corrected for more than once, and
+# the honest ways to end it are to delete the column or to write the backend.
+#
+# It owns no pixels. It creates GtkWindows, GtkButtons, GtkCheckButtons and
+# GtkEntries and lets GTK draw them, lay out their text, run the IME, mirror
+# right-to-left and talk to Orca -- the same bargain every native backend here
+# makes, and the reason to want one.
+#
+# Built and run on macOS, where GTK is a supported target, which is what lets
+# this be verified at all from this machine. That is not the same as having run
+# it on Linux, and the gate says so rather than implying otherwise.
+
+include "../../widgets/ui_controls.elisa"
+include "../../core/ui_capabilities.elisa"
+
+using UiControls
+
+include "./ui_gtk_native.elisa"
+
+module UiGtk:
+    public:
+        # A TYPE, not a value: native handles live in UiControls' retained
+        # records, so methods are static and the specialization inlines
+        # straight through to the typed C entry points.
+        struct GtkControls:
+            unused: i32
+
+        def native_handle(index: i32) -> usize:
+            return 0 if index < 0 or index.usize() >= UiControls::count()
+            return UiControls::native_handle_at(index.usize())
+
+        def start() -> bool:
+            return false if elisa_gtk_init() == 0
+            UiCapabilities::use_gtk()
+            return true
+
+        # Read back from a live widget, for the fixture. A screenshot of a
+        # headless run would show none of this.
+        def is_type(index: i32, name: sview) -> i32:
+            return 0 if native_handle(index) == 0
+            return elisa_gtk_is_type(native_handle(index), gtk_cstr(name))
+
+        def is_sensitive(index: i32) -> i32:
+            return -1 if native_handle(index) == 0
+            return elisa_gtk_is_sensitive(native_handle(index))
+
+        def check_is_active(index: i32) -> i32:
+            return -1 if native_handle(index) == 0
+            return elisa_gtk_check_is_active(native_handle(index))
+
+        def entry_shows_text(index: i32) -> i32:
+            return -1 if native_handle(index) == 0
+            return elisa_gtk_entry_is_visible_text(native_handle(index))
+
+        def entry_has_placeholder(index: i32) -> i32:
+            return -1 if native_handle(index) == 0
+            return elisa_gtk_entry_has_placeholder(native_handle(index))
+
+        def child_count(index: i32) -> i32:
+            return -1 if native_handle(index) == 0
+            return elisa_gtk_child_count(native_handle(index))
+
+    private:
+        # GTK takes NUL-terminated strings, and the framework carries counted
+        # views. One staging buffer per string that can cross at a time.
+        global mutable gtk_text_bytes: u8[UiCore::MAX_TEXT_BYTES] = zeroed
+        global mutable gtk_prompt_bytes: u8[UiCore::MAX_TEXT_BYTES] = zeroed
+        global mutable gtk_help_bytes: u8[UiCore::MAX_TEXT_BYTES] = zeroed
+
+        def stage(target: mutable u8&, value: sview) -> cstr:
+            safe: sview = UiCore::bounded_text(value)
+            room: usize = safe.len.usize() if safe.len.usize() < UiCore::MAX_TEXT_BYTES - 1 else UiCore::MAX_TEXT_BYTES - 1
+            take: usize = UiText::valid_utf8_prefix(safe, room)
+            for index in 0..<take:
+                target[index] <- safe.data[index]
+            target[take] <- 0
+            return (&target[0]).cast[cstr] can Unsafe.PointerCast
+
+        def gtk_cstr_byte(text: cstr, index: usize) -> u8:
+            pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
+            return 0 if pointer == 0.uintptr()
+            trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic]:
+                byte: u8& = (pointer + index.uintptr()).cast[u8&]
+                return byte
+
+        # Bounded by the framework's own text budget, so an unterminated string
+        # is a short read rather than an unbounded walk.
+        def gtk_cstr_length(text: cstr) -> usize:
+            found: usize =
+                for index in 0..<UiCore::MAX_TEXT_BYTES |found = UiCore::MAX_TEXT_BYTES| -> found:
+                    found <- index if gtk_cstr_byte(text, index) == 0
+                    break if gtk_cstr_byte(text, index) == 0
+            return found
+
+        def gtk_cstr(value: sview) -> cstr:
+            return stage(&gtk_text_bytes[0], value)
+
+        def record_created(index: i32, handle: usize, parent: i32) -> void:
+            return if handle == 0 or index < 0
+            UiControls::set_native_handle(index.usize(), handle)
+            parent_handle: usize = native_handle(parent)
+            elisa_gtk_add_child(parent_handle, handle) if parent >= 0 and parent_handle != 0
+
+    public:
+        impl Controls for GtkControls:
+            def create(index: i32, kind: UiControls::ControlKind, parent: i32, window_mode: UiControls::WindowMode, axis: UiConst::Axis, state: UiControls::ControlState) -> void:
+                can Ui.Controls:
+                    if kind == UiControls::ControlKind.Window:
+                        resizable: i32 = 0 if window_mode == UiControls::WindowMode.Fixed else 1
+                        record_created(index, elisa_gtk_create_window(resizable), parent)
+                        return
+                    if kind == UiControls::ControlKind.Panel:
+                        record_created(index, elisa_gtk_create_panel(), parent)
+                        return
+                    if kind == UiControls::ControlKind.ScrollView:
+                        record_created(index, elisa_gtk_create_scroll(0 if axis == UiConst::Axis.Row else 1), parent)
+                        return
+                    if kind == UiControls::ControlKind.Label:
+                        record_created(index, elisa_gtk_create_label(), parent)
+                        return
+                    if kind == UiControls::ControlKind.PushButton:
+                        record_created(index, elisa_gtk_create_button(), parent)
+                        return
+                    if kind == UiControls::ControlKind.ToggleButton or kind == UiControls::ControlKind.CheckBox:
+                        record_created(index, elisa_gtk_create_check(), parent)
+                        return
+                    if kind == UiControls::ControlKind.RadioButton:
+                        record_created(index, elisa_gtk_create_radio(), parent)
+                        return
+                    if kind == UiControls::ControlKind.TextField:
+                        # Secure is a property here, as on iOS and Android, and
+                        # it is known at create because it rides in the state.
+                        record_created(index, elisa_gtk_create_entry(1 if state.secure else 0), parent)
+                        return
+                    if kind == UiControls::ControlKind.Slider:
+                        record_created(index, elisa_gtk_create_slider(state.low.f64(), state.high.f64(), state.value.f64()), parent)
+                        return
+                    if kind == UiControls::ControlKind.ProgressBar:
+                        record_created(index, elisa_gtk_create_progress(), parent)
+
+            def set_frame(index: i32, kind: UiControls::ControlKind, box: UiCore::Rect) -> void:
+                can Ui.Controls:
+                    _ = kind
+                    handle: usize = native_handle(index)
+                    return if handle == 0
+                    elisa_gtk_set_frame(handle, box.origin.x, box.origin.y, box.size.width, box.size.height)
+
+            # GTK COLOURS ARE CSS, and a per-widget provider for every control
+            # is a cost this backend has not earned yet. Saying so is the point:
+            # an unstyled GTK control looks like GTK drew it, which is the same
+            # outcome alpha-zero produces everywhere else in this seam.
+            def set_colors(index: i32, kind: UiControls::ControlKind, ink: UiCore::Color, fill: UiCore::Color) -> void:
+                can Ui.Controls:
+                    _ = index
+                    _ = kind
+                    _ = ink
+                    _ = fill
+
+            def set_text(index: i32, kind: UiControls::ControlKind, text: sview) -> void:
+                can Ui.Controls:
+                    _ = kind
+                    handle: usize = native_handle(index)
+                    return if handle == 0
+                    elisa_gtk_set_label_text(handle, stage(&gtk_text_bytes[0], text))
+
+            def set_help(index: i32, kind: UiControls::ControlKind, placeholder: sview, help: sview) -> void:
+                can Ui.Controls:
+                    _ = kind
+                    handle: usize = native_handle(index)
+                    return if handle == 0
+                    elisa_gtk_set_help(handle, stage(&gtk_prompt_bytes[0], placeholder), stage(&gtk_help_bytes[0], help))
+
+            def set_state(index: i32, kind: UiControls::ControlKind, state: UiControls::ControlState) -> void:
+                can Ui.Controls:
+                    handle: usize = native_handle(index)
+                    return if handle == 0
+                    fraction: f32 = UiCore::normalized_unit(state.value) if kind == UiControls::ControlKind.ProgressBar else state.value
+                    elisa_gtk_set_state(handle, fraction, 1 if state.selected else 0, 1 if state.enabled else 0, 1 if state.secure else 0)
+
+            def set_action(index: i32, kind: UiControls::ControlKind) -> void:
+                can Ui.Controls:
+                    _ = kind
+                    handle: usize = native_handle(index)
+                    return if handle == 0
+                    elisa_gtk_set_action(handle)
+
+        # GTK reports which widget acted; turning that into a control index,
+        # recording the value and choosing the event are all shared with every
+        # other native backend.
+        # GTK hands back a NUL-terminated string it owns for the length of the
+        # call; the seam keeps its view until the next edit, so it is copied.
+        def controls_text_action(handle: usize, text: cstr) -> i32:
+            length: usize = gtk_cstr_length(text)
+            for index in 0..<length:
+                gtk_text_bytes[index] <- gtk_cstr_byte(text, index)
+            return UiControls::dispatch_native_text(handle, sview(&gtk_text_bytes[0], 0, length.i64()))
+
+        def controls_action(handle: usize, value: f32, selected: bool) -> i32:
+            index: i32 = UiControls::index_for_native_handle(handle)
+            return index if index == UiControls::NO_PARENT
+            kind: UiControls::ControlKind = UiControls::kind_at(index.usize())
+            return UiControls::dispatch_native_action(handle, UiControls::action_event_for(kind), value, selected)
+
+def gtk_action(handle: usize, value: f32, selected: i32) -> i32:
+    return UiGtk::controls_action(handle, value, selected != 0)
+
+export fn elisa_gtk_action(handle: usize, value: f32, selected: i32) -> i32 = gtk_action
+
+# A field's text needs a channel of its own: the numeric action carries a value
+# and a flag, and neither can hold a string. Same shape as the UIKit and
+# Android entries, and it lands in the same shared dispatch.
+def gtk_text_action(handle: usize, text: cstr) -> i32:
+    return UiGtk::controls_text_action(handle, text)
+
+export fn elisa_gtk_text_action(handle: usize, text: cstr) -> i32 = gtk_text_action

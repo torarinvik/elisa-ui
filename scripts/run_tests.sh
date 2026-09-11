@@ -125,6 +125,14 @@ if ! bash "$ROOT/scripts/check_uikit_touch.sh"; then
   status=1
 fi
 
+# GTK IS THE LINUX HALF OF THE NATIVE STORY, and it is gated the same way: it
+# skips itself when gtk4 is not installed, and the fixture skips again when
+# there is no display, so a machine without either is not failed for it.
+if ! bash "$ROOT/scripts/check_gtk.sh"; then
+  echo "FAIL gtk"
+  status=1
+fi
+
 # ANDROID IS A PLATFORM THIS FRAMEWORK CLAIMS, SO THE SUITE HAS TO ASK ABOUT IT.
 # Both Android backends -- the Skia canvas and the android.widget controls --
 # were outside this file entirely: the gate existed and nothing ran it, so every

@@ -1,0 +1,104 @@
+# The GTK backend, asserted against live GTK widgets.
+#
+# Not a mock. This creates actual GtkWindows, GtkButtons, GtkCheckButtons and
+# GtkEntries and then asks them what they are -- the same shape as
+# appkit_check.elisa, and for the same reason: a backend nobody watches is a
+# backend nobody can trust, and the facts that matter here (a real GtkEntry
+# hiding its text, a real widget going insensitive) exist only on live objects.
+#
+# HEADLESS. Widgets are created and queried but no window is presented, so this
+# runs in a gate without a session taking over the screen. gtk_init_check is
+# what makes that decidable: a machine with no display answers false and the
+# gate skips itself rather than dying, which is the courtesy the iOS device
+# gates already get.
+
+include "../../widgets/ui_controls_hierarchy.elisa"
+include "./ui_gtk.elisa"
+
+using UiWidgets
+using UiControls
+
+extern puts(text: cstr) -> i64
+
+global mutable gtk_control_events: i32 = 0
+
+def app_widget_event(widget: UiWidgets::Widget, event: i32) -> void:
+    pass
+
+def app_control_event(index: i32, event: i32) -> void:
+    gtk_control_events <- gtk_control_events + 1
+
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size
+
+def ui_font_ascent(size: f32) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def grey(level: u8) -> UiCore::Color:
+    return UiCore::rgba(level, level, level, 255)
+
+def check(failures: mutable i32&, name: cstr, ok: bool) -> void:
+    return if ok
+    failures[0] <- failures[0] + 1
+    _ = puts(name)
+
+def main() -> i64:
+    can Memory.Allocate, Abort.Panic, Ui.Controls, Ui.Draw, Ui.Text, Ui.Input, Ui.Window, Unsafe.PointerCast:
+        if not UiGtk::start():
+            # No display: say so and pass, exactly as the iOS device gates do.
+            _ = puts("gtk: skipped (no display)")
+            return 0
+        failures: mutable i32 = 0
+
+        press: Widget = Button.Push(min_width: 80.0, min_height: 24.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "Open", rest: grey(60), hover: grey(90), press: grey(30))
+        box: Widget = Button.Check(min_width: 90.0, min_height: 24.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "Wrap", checked: true, rest: grey(60), hover: grey(90), press: grey(30))
+        field: Widget = Control.TextBox(min_width: 120.0, min_height: 24.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: null, next_sibling: null, text: "typed", caret: 0, size: 12.0, ink: grey(230), fill: grey(40))
+        press.next_sibling <- box
+        box.next_sibling <- field
+        bar: Widget = Container.Box(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: press, next_sibling: null, axis: UiConst::Axis.Row, padding: 4.0, spacing: 4.0, fill: grey(20))
+        top: Widget = Window.Top(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: bar, next_sibling: null, title: "gtk check", resizable: true)
+
+        UiWidgets::layout(top, 320.0, 200.0)
+        UiControls::reset()
+        UiControls::realize(top, UiControls::NO_PARENT, 0)
+        UiControls::apply[UiGtk::GtkControls]()
+
+        check(&failures, "every widget became a control", UiControls::count() == 5)
+        check(&failures, "the root retained a GTK handle", UiControls::native_handle_at(0) != 0)
+
+        # ...and they are the REAL types, not stand-ins.
+        check(&failures, "the root is a GtkWindow", UiGtk::is_type(0, "GtkWindow") == 1)
+        check(&failures, "the container is a GtkFixed", UiGtk::is_type(1, "GtkFixed") == 1)
+        check(&failures, "the push button is a GtkButton", UiGtk::is_type(2, "GtkButton") == 1)
+        check(&failures, "the check box is a GtkCheckButton", UiGtk::is_type(3, "GtkCheckButton") == 1)
+        check(&failures, "the text box is a GtkEntry", UiGtk::is_type(4, "GtkEntry") == 1)
+
+        # State the framework decided, read back off the live widget.
+        check(&failures, "the checked box is active", UiGtk::check_is_active(3) == 1)
+        check(&failures, "a button has no active state", UiGtk::check_is_active(2) == -1)
+        check(&failures, "a realized control is sensitive", UiGtk::is_sensitive(2) == 1)
+
+        # THE SHAPE OF THE TREE. GTK holds a child inside its parent exactly as
+        # every other toolkit here does, so the window's content holds the bar
+        # and the bar holds three.
+        check(&failures, "the window content holds the bar", UiGtk::child_count(0) == 1)
+        check(&failures, "the bar holds its three controls", UiGtk::child_count(1) == 3)
+
+        # A FIELD THAT IS NOT SECURE SHOWS ITS TEXT. This layer carries no
+        # `secure`, so everything it realizes is visible -- which is still worth
+        # asserting, because the sense of that flag is the difference between a
+        # password field and a plain one.
+        check(&failures, "an ordinary entry shows its text", UiGtk::entry_shows_text(4) == 1)
+
+        elisa_gtk_destroy_window(UiControls::native_handle_at(0))
+        if failures == 0:
+            _ = puts("gtk: all checks passed")
+            return 0
+        _ = puts("gtk: FAILURES above")
+        return 1
