@@ -85,7 +85,19 @@ tap() { "$ADB" shell input tap "$(( width * $1 / 1000 ))" "$(( height * $2 / 100
 tap 265 618   # "Open forms" on the overview page
 sleep 2
 tap 499 413   # the first field on the forms page
-sleep 4
+
+# WAIT FOR THE PROBE TO SPEAK, do not sleep a guess. This was `sleep 4`, and on a
+# freshly booted emulator four seconds was not enough: the gate read the log
+# before the probe had run and failed reporting the absence of a line that was
+# about to appear. The probe polls for a focused field for up to 20s, so the
+# ceiling here is that plus room to finish; every terminal outcome it can reach
+# (committed, no-field, no-connection) ends the wait, so a real failure is still
+# prompt rather than sitting out the timeout.
+for _ in $(seq 1 30); do
+  log="$("$ADB" logcat -d -s elisa-ui)"
+  grep -qE "ime (committed|no-field|no-connection)" <<<"$log" && break
+  sleep 1
+done
 
 log="$("$ADB" logcat -d -s elisa-ui)"
 "$ADB" shell am force-stop "$PACKAGE" || true
