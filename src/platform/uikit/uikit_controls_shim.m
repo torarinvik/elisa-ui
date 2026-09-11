@@ -151,6 +151,49 @@ size_t elisa_uikit_controls_create_label(void) {
     return (size_t)CFBridgingRetain(label);
 }
 
+// A SELECTABLE BUTTON WITH NO CAPTION IS INVISIBLE, AND ONLY THAT ONE.
+//
+// UIKit draws a system button as its title, so a check box whose whole content
+// is its state came out as nothing at all: an empty patch you could tap but
+// not see. The showcase's dark-mode toggle is one. Android shows a check box
+// there, because Android's CheckBox draws a box whether or not it has words.
+//
+// The mark goes on ONLY when the caption is empty. A mark takes horizontal
+// room inside a box the layout already sized for words, so putting one on
+// every selectable button collapsed the tab row from "Overview" to "O..." --
+// trading a visible control for an unreadable one. A button that shows its
+// words is not invisible and does not need one.
+//
+// Through the CONFIGURATION, not -setImage:forState:. A button with a
+// configuration resolves its own image, so the legacy setter does not compose
+// with it -- the marks stayed after being cleared and the selected state
+// stopped tracking. configurationUpdateHandler is the documented seam for an
+// image that depends on state, and it re-runs whenever the button's selection
+// changes, which is what makes a check box fill in when it is ticked.
+static void elisa_uikit_controls_apply_marks(UIButton *button, int style) {
+    NSString *off = nil;
+    NSString *on = nil;
+    switch (style) {
+        case 2: off = @"square"; on = @"checkmark.square.fill"; break;
+        case 3: off = @"circle"; on = @"largecircle.fill.circle"; break;
+        case 1: off = @"circle"; on = @"checkmark.circle.fill"; break;
+        default: return;
+    }
+    if (button.currentTitle.length > 0) {
+        button.configurationUpdateHandler = nil;
+        UIButtonConfiguration *plain = button.configuration;
+        plain.image = nil;
+        button.configuration = plain;
+        return;
+    }
+    button.configurationUpdateHandler = ^(__kindof UIButton *updating) {
+        UIButtonConfiguration *marked = updating.configuration;
+        marked.image = [UIImage systemImageNamed:updating.isSelected ? on : off];
+        updating.configuration = marked;
+    };
+    [button setNeedsUpdateConfiguration];
+}
+
 // selectable is what separates a push button from the toggle, check and radio
 // kinds: UIKit's own selection behaviour rather than a second state machine.
 size_t elisa_uikit_controls_create_button(int selectable) {
@@ -173,6 +216,10 @@ size_t elisa_uikit_controls_create_button(int selectable) {
     button.titleLabel.adjustsFontForContentSizeCategory = YES;
     button.titleLabel.numberOfLines = 1;
     button.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+    // The kind is kept in the button's own tag so the title setter can re-ask
+    // the caption question without a second table.
+    button.tag = selectable;
+    elisa_uikit_controls_apply_marks(button, selectable);
     return (size_t)CFBridgingRetain(button);
 }
 
@@ -281,6 +328,10 @@ void elisa_uikit_controls_set_button_title(size_t handle, size_t text) {
     UIView *view = elisa_uikit_controls_view(handle);
     if (![view isKindOfClass:[UIButton class]]) return;
     [(UIButton *)view setTitle:elisa_uikit_controls_string(text) forState:UIControlStateNormal];
+    // The caption decides whether a mark is needed, so it is re-asked here:
+    // words arrive after construction, and a widget whose words become empty
+    // gets the same answer either way.
+    elisa_uikit_controls_apply_marks((UIButton *)view, (int)view.tag);
 }
 
 void elisa_uikit_controls_set_field_text(size_t handle, size_t text) {

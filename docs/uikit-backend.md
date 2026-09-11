@@ -90,33 +90,52 @@ that an unchanged report raises nothing (which is what stops a backend that
 re-realizes on every event from chasing its own tail), that clearing a field is
 a real edit, and that a label refuses a write-back it should never receive.
 
-## A selectable button with no caption is invisible — known, unfixed
+## A selectable button with no caption is invisible — fixed, narrowly
 
 UIKit draws a system button as its title, so a check box whose whole content is
-its state renders as nothing: an empty patch you can tap but cannot see. The
-showcase's dark-mode toggle is one, and it is the round nothing in the top
+its state rendered as nothing: an empty patch you could tap but not see. The
+showcase's dark-mode toggle is one, and it was the round nothing in the top
 right of the header. Android shows a check box there, because Android's
 `CheckBox` draws a box whether or not it has words.
 
-This was attempted and **reverted**, twice, and the attempts are worth
-recording because both failures were instructive:
+A selectable button with **no caption** now wears the mark iOS itself uses in a
+list row, from SF Symbols — `square` / `checkmark.square.fill` for a check box,
+`circle` / `largecircle.fill.circle` for a radio, `circle` /
+`checkmark.circle.fill` for a toggle. Platform vocabulary rather than a shape
+drawn here, and it scales with Dynamic Type.
 
-- Giving every selectable button an SF Symbol mark (`square` /
-  `checkmark.square.fill`, `circle` / `largecircle.fill.circle`) made the
-  dark-mode box visible and the radio marks correct — and collapsed the tab row
-  from "Overview" to "O...", because the mark takes horizontal room inside a
-  box the layout sized for words alone. That trades a visible control for an
-  unreadable one.
-- Narrowing it to *captionless* buttons only did not work either: with a
-  `UIButtonConfiguration` set, `-setImage:forState:` does not compose the way
-  the legacy API does, and the marks stayed while the selected state broke.
-  That is the same configuration-copy trap as above, one level deeper.
+**Only when the caption is empty**, and that restriction is the whole design.
+The first attempt put a mark on every selectable button: it made the dark-mode
+box visible and the radio marks correct, and collapsed the tab row from
+"Overview" to "O…", because a mark takes horizontal room inside a box the
+layout sized for words alone. That trades a visible control for an unreadable
+one. A button that shows its words is not invisible and does not need a mark.
 
-The honest fix is a composite — a `UIView` holding a `UILabel` and a real
-`UISwitch`, with the container as the control's handle — which is also what
-would finally make the `UISwitch` line in the seam's mapping table true. That
-is a change to what a backend may build for one widget, not a property to set,
-and it wants doing deliberately rather than at the end of a session.
+**Through the configuration, not `-setImage:forState:`.** A button with a
+`UIButtonConfiguration` resolves its own image, so the legacy setter does not
+compose with it — the second attempt left marks in place after clearing them
+and broke the selected state. `configurationUpdateHandler` is the documented
+seam for an image that depends on state, and it re-runs when selection changes,
+which is what fills the box in when it is ticked. Two reverts preceded this;
+both were the same configuration-copy trap as the truncation fix, one level
+deeper each time.
+
+The kind reaches the shim through the button's own `tag`, so the title setter
+can re-ask the caption question — words arrive after construction, and a widget
+whose words become empty gets the same answer either way. `set_selectable` in
+the host stubs therefore records the widget KIND rather than a boolean: zero is
+a push button and non-zero is selectable, so the old reading still holds, and
+`uikit_controls_test` now asserts the exact kind so the mapping cannot drift.
+
+**Not verified:** the unticked appearance. The showcase's only captionless
+selectable starts ticked, and driving a tap on the simulator needs the XCUITest
+runner. The mechanism is the standard one — the handler swaps on `isSelected`,
+which `set_button_selected` drives and the host test already covers — but the
+empty square has not been looked at.
+
+A composite (a `UIView` holding a `UILabel` and a real `UISwitch`, the
+container being the control's handle) is still the thing that would make the
+`UISwitch` line in the seam's mapping table true. This is not that.
 
 ## A caption that does not fit is cut, not hyphenated
 
