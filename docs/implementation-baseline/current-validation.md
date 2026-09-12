@@ -77,6 +77,8 @@ test/virtual_list_test.elisa
   bounded realization: stable visible slots, generation change on return, owner isolation, slot budget: PASS
 test/sdl3_device_loss_test.elisa
   SDL render targets-reset/device-reset/device-lost handled headlessly; renderer recreated, app state preserved: PASS
+bash scripts/check_rust.sh
+  safe Rust wrapper over the C ABI links and passes (event/text/IME/viewport); skips without rustc: PASS
 scripts/package_release.sh
   emits build/release/elisa-ui-0.1.0 with LICENSE, release.json (version/revision/toolchain), and files.sha256; integrity verified: PASS
 git diff --check: PASS

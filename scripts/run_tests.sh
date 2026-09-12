@@ -89,6 +89,13 @@ if ! bash "$ROOT/scripts/check_capi.sh"; then
   status=1
 fi
 
+# The same C boundary has a Rust face; the wrapper enforces borrowed-text and
+# opaque-handle lifetimes in the type system. Skips itself without rustc.
+if ! bash "$ROOT/scripts/check_rust.sh"; then
+  echo "FAIL rust"
+  status=1
+fi
+
 # The AppKit backend builds REAL NSViews, so it needs Cocoa and its own link
 # line. Skips itself off macOS. It never shows a window.
 if ! bash "$ROOT/scripts/check_appkit.sh"; then

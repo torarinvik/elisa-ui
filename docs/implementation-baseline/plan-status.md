@@ -26,7 +26,7 @@ evidence and any external blocker. Statuses mean:
 | UI-09 | implemented-elisa-boundary | `UiFeatureView` lifecycle, tokens, retry, owner disposal | SDK/host component activation |
 | UI-10 | implemented-tested (partial) | `UiInspector` hierarchy/bounds/dirty/focus/semantics/timings; `UiHarness`; release packaging; per-build toolchain display | SDK log/source-location integration |
 | UI-11 | implemented-elisa-boundary | `UiRemote` negotiation/lifecycle/acknowledgement/limitations | WasmBrowser/SDK transport adapter |
-| UI-12 | implemented-tested (C/C++) | `elisa_ui.h`, C host + C++17 header check, header↔symbol cross-check in `check_capi.sh`, bound ABI version | Rust wrapper types and Go bindings |
+| UI-12 | implemented-tested (C/C++/Rust) | `elisa_ui.h`, C host + C++17 header check, header↔symbol cross-check in `check_capi.sh`, bound ABI version, safe Rust wrapper + example (`check_rust.sh`) | Go bindings |
 | UI-13 | implemented-tested (partial) | `UiBuild` version + compatibility; backend matrix; `check_performance.sh`; `package_release.sh` with LICENSE/integrity | reference-device budgets, GPU upload, idle-CPU, energy measurements |
 
 The first implementation batch (plan §21) is satisfied: UI-00 is complete, the

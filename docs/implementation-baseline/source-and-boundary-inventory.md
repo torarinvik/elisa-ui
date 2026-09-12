@@ -14,7 +14,9 @@ the top-level `app_init`, `app_event`, `app_text_input`, `app_text_editing`,
 
 Externally imposed symbols are kept at the edges:
 
-- C ABI declarations and exports in `include/elisa_ui.h` and `src/capi/`.
+- C ABI declarations and exports in `include/elisa_ui.h` and `src/capi/`. A
+  safe Rust wrapper in `bindings/rust/elisa_ui.rs` and its example in
+  `examples/rust/rust_host.rs` consume the same ABI without widening it.
 - SDL3/SDL_ttf C functions in `src/platform/sdl3/ui_sdl3.elisa`; the
   `UiSdl3Draw` module in `src/platform/sdl3/ui_sdl3_draw.elisa` owns renderer,
   font, raster, and painter state behind that boundary.

@@ -341,6 +341,10 @@ and IME callbacks without seeing retained widget storage. The adjacent
 the same header C++17-compatible. `scripts/check_capi.sh` compiles both
 examples and links the C host against the Elisa adapter; this path is optional
 and does not add a dependency to native SDL, AppKit, Skia, or WasmBrowser apps.
+A third, optional consumer is a safe Rust wrapper
+([bindings/rust/elisa_ui.rs](bindings/rust/elisa_ui.rs)) driven by
+[examples/rust/rust_host.rs](examples/rust/rust_host.rs); `scripts/check_rust.sh`
+links it against the same ABI and skips itself without `rustc`.
 
 wxWidgets serves as an architectural reference (widget hierarchy, sizers, event
 routing) — studied, not ported.
