@@ -11,6 +11,9 @@ ENTRY="$ROOT/examples/$EXAMPLE/appkit_canvas_main.elisa"
 [[ -x "$STAGE1/bin/elisac-stage1" ]] || { echo "no stage1 product at $STAGE1/bin/elisac-stage1 (run scripts/elisac_stage1.sh --seed there)" >&2; exit 2; }
 [[ -f "$RUNTIME" ]] || { echo "no runtime object at $RUNTIME (run scripts/build_runtime_object.sh there)" >&2; exit 2; }
 [[ -f "$ENTRY" ]] || { echo "no AppKit canvas entry: examples/$EXAMPLE/appkit_canvas_main.elisa" >&2; exit 2; }
+# Show the resolved compiler/runtime revision and hashes this build actually
+# used, and warn (without failing) on a dirty or stale compiler checkout.
+bash "$ROOT/scripts/check_toolchain.sh" --report >&2
 mkdir -p "$ROOT/build"
 clang -c -fobjc-arc -Wall -Wextra -Werror -o "$ROOT/build/appkit_canvas_shim.o" "$ROOT/src/platform/appkit/appkit_canvas_shim.m"
 bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ROOT/build/${EXAMPLE}_appkit_canvas.o" "$ENTRY"

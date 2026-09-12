@@ -334,7 +334,10 @@ routing) — studied, not ported.
 ## Build
 
 The scripts use the synchronized `../wasm-sdk-compiler` checkout by default
-(override with `ELISA_UI_STAGE1`):
+(override with `ELISA_UI_STAGE1`). Every build script prints the resolved
+compiler branch/revision and product/runtime SHA-256 it used, and warns without
+failing on a dirty or stale compiler checkout (`scripts/check_toolchain.sh
+--report`); the test suite runs the same check in strict mode.
 
 ```sh
 scripts/build_native.sh   # -> build/hello_native (needs brew's sdl3 and sdl3_ttf)

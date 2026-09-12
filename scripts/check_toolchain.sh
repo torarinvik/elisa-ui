@@ -4,7 +4,14 @@
 # The compiler wrapper has its own stale-source guard, but this separate gate
 # makes the selected product auditable before a suite starts and catches a
 # dirty compiler checkout that could otherwise make a result irreproducible.
+#
+# `--report` prints the same resolved tuple but downgrades dirty/stale/unverified
+# compiler state to warnings, so an ordinary build can show the toolchain it
+# used without failing a developer who is intentionally editing the compiler.
 set -euo pipefail
+
+REPORT=0
+[[ "${1:-}" == "--report" ]] && REPORT=1
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 STAGE1_INPUT="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
@@ -20,9 +27,13 @@ if git -C "$STAGE1" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     branch="$(git -C "$STAGE1" branch --show-current)"
     branch="${branch:-detached}"
     if [[ -n "$(git -C "$STAGE1" status --porcelain --untracked-files=all)" && "${ELISA_ALLOW_DIRTY_STAGE1:-0}" != 1 ]]; then
-        echo "toolchain: compiler checkout is dirty: $STAGE1" >&2
-        echo "set ELISA_ALLOW_DIRTY_STAGE1=1 only for intentional compiler archaeology" >&2
-        exit 2
+        if [[ "$REPORT" == 1 ]]; then
+            echo "toolchain: WARNING compiler checkout is dirty: $STAGE1" >&2
+        else
+            echo "toolchain: compiler checkout is dirty: $STAGE1" >&2
+            echo "set ELISA_ALLOW_DIRTY_STAGE1=1 only for intentional compiler archaeology" >&2
+            exit 2
+        fi
     fi
     if git -C "$STAGE1" rev-parse --verify origin/main >/dev/null 2>&1; then
         read -r ahead behind <<<"$(git -C "$STAGE1" rev-list --left-right --count HEAD...origin/main)"
@@ -32,9 +43,12 @@ if git -C "$STAGE1" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     fi
 else
     echo "toolchain: stage1 checkout has no git provenance: $STAGE1" >&2
-    if [[ "${ELISA_ALLOW_UNVERIFIED_STAGE1:-0}" != 1 ]]; then
+    if [[ "${ELISA_ALLOW_UNVERIFIED_STAGE1:-0}" != 1 && "$REPORT" != 1 ]]; then
         echo "set ELISA_ALLOW_UNVERIFIED_STAGE1=1 only for an intentional packaged-product check" >&2
         exit 2
+    fi
+    if [[ "$REPORT" == 1 && "${ELISA_ALLOW_UNVERIFIED_STAGE1:-0}" != 1 ]]; then
+        echo "toolchain: WARNING unverified stage1 product permitted by --report" >&2
     fi
 fi
 
@@ -48,9 +62,13 @@ for source_root in "$STAGE1/src" "$STAGE1/elisacore_std"; do
     fi
 done
 if [[ -n "$stale_source" && "${ELISA_ALLOW_STALE_STAGE1:-0}" != 1 ]]; then
-    echo "toolchain: stage1 product is older than compiler source $stale_source" >&2
-    echo "rebuild it with $STAGE1/scripts/elisac_stage1.sh --seed" >&2
-    exit 2
+    if [[ "$REPORT" == 1 ]]; then
+        echo "toolchain: WARNING stale product permitted by --report: $stale_source" >&2
+    else
+        echo "toolchain: stage1 product is older than compiler source $stale_source" >&2
+        echo "rebuild it with $STAGE1/scripts/elisac_stage1.sh --seed" >&2
+        exit 2
+    fi
 fi
 if [[ -n "$stale_source" ]]; then
     echo "toolchain: WARNING stale product permitted by ELISA_ALLOW_STALE_STAGE1=1" >&2
@@ -71,9 +89,13 @@ for runtime_input in "$STAGE1/elisacore_std" "$STAGE1/scripts/build_runtime_obje
     fi
 done
 if [[ -n "$stale_runtime" && "${ELISA_ALLOW_STALE_STAGE1:-0}" != 1 ]]; then
-    echo "toolchain: runtime object is older than its input $stale_runtime" >&2
-    echo "rebuild it with $STAGE1/scripts/build_runtime_object.sh (a --seed does this too)" >&2
-    exit 2
+    if [[ "$REPORT" == 1 ]]; then
+        echo "toolchain: WARNING stale runtime object permitted by --report: $stale_runtime" >&2
+    else
+        echo "toolchain: runtime object is older than its input $stale_runtime" >&2
+        echo "rebuild it with $STAGE1/scripts/build_runtime_object.sh (a --seed does this too)" >&2
+        exit 2
+    fi
 fi
 if [[ -n "$stale_runtime" ]]; then
     echo "toolchain: WARNING stale runtime object permitted by ELISA_ALLOW_STALE_STAGE1=1" >&2

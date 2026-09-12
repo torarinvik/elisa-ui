@@ -54,6 +54,11 @@ bash scripts/check_appkit_skia.sh / check_showcase_skia.sh (no SKIA_ROOT)
   skipped, exit 0: NOT VERIFIED here (needs pinned checkout from third_party/skia.lock)
 bash scripts/check_android.sh / check_android_ime.sh (no SKIA_ROOT/SDK)
   skipped, exit 0: NOT VERIFIED here (needs SDK + NDK + emulator + Android Skia build)
+bash scripts/check_toolchain.sh --report
+  prints the resolved compiler revision + product/runtime SHA-256; downgrades dirty/stale to warnings: PASS
+  (called by build_native.sh, build_appkit_canvas.sh, and build_wapp.sh so every build shows its toolchain)
+test/services_test.elisa
+  permission/picker state machines, anti-prompt gate, settings sync, logical selection, owner disposal: PASS
 git diff --check: PASS
 ```
 
