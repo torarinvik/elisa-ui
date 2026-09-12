@@ -41,3 +41,15 @@ channel and forward its events through this contract; no remote host object or
 raw pointer crosses into the retained widget framework. `test/remote_test.elisa`
 covers negotiation, scale conversion, lifecycle overlays, generation changes,
 and input acknowledgement behavior headlessly.
+
+## Capability limitations
+
+A presentation profile says how pixels arrive; it does not say whether text
+input, IME, semantics, the clipboard, or file dialogs work. `Offer` therefore
+carries those service facts, and `limitations(offer)` turns each missing one
+into an explicit `Limitations` record (`true` means unavailable, with `any` as
+the quick gate). A host can surface the limitation before claiming feature
+parity, and a reduced profile — for example a video-only stream — reports
+exactly which local capabilities it cannot provide instead of silently behaving
+like a local window. A missing capability does not reject the session; it is a
+fact about the offer.

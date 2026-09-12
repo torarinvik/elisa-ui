@@ -18,18 +18,25 @@ def main() -> i64:
     offer: UiRemote::Offer = UiRemote::Offer{
         typed_commands: true, framebuffer: true, video: true,
         physical_width: 1920, physical_height: 1080, scale: 2.0,
+        text_input: true, ime: true, semantics: true, clipboard: true, file_dialogs: true,
     }
+    full_limitations: UiRemote::Limitations = UiRemote::limitations(offer)
+    check("a fully capable remote reports no limitations", not full_limitations.any and not full_limitations.semantics and not full_limitations.clipboard and not full_limitations.ime)
     preferred_framebuffer: UiRemote::Selection = UiRemote::negotiate(offer, UiRemote::Presentation.Framebuffer)
     check("remote honors a supported presentation preference", preferred_framebuffer.accepted and preferred_framebuffer.presentation == UiRemote::Presentation.Framebuffer and preferred_framebuffer.scale == 2.0 and preferred_framebuffer.logical_width == 960.0 and preferred_framebuffer.logical_height == 540.0)
     fallback: UiRemote::Selection = UiRemote::negotiate(UiRemote::Offer{
         typed_commands: true, framebuffer: false, video: true,
         physical_width: 800, physical_height: 600, scale: -2.0,
+        text_input: true, ime: true, semantics: true, clipboard: true, file_dialogs: true,
     }, UiRemote::Presentation.Framebuffer)
     check("remote falls back to typed commands and normalizes scale", fallback.accepted and fallback.presentation == UiRemote::Presentation.TypedCommands and fallback.scale == 1.0 and fallback.logical_width == 800.0 and fallback.logical_height == 600.0)
     unsupported: UiRemote::Offer = UiRemote::Offer{
         typed_commands: false, framebuffer: false, video: false,
         physical_width: 640, physical_height: 480, scale: 1.0,
+        text_input: false, ime: false, semantics: false, clipboard: false, file_dialogs: false,
     }
+    sparse_limitations: UiRemote::Limitations = UiRemote::limitations(unsupported)
+    check("missing remote services are reported as limitations", sparse_limitations.any and sparse_limitations.semantics and sparse_limitations.clipboard and sparse_limitations.file_dialogs and sparse_limitations.ime and sparse_limitations.text_input)
     rejected: UiRemote::Selection = UiRemote::negotiate(unsupported, UiRemote::Presentation.TypedCommands)
     check("remote rejects an offer with no presentation", not rejected.accepted and rejected.presentation == UiRemote::Presentation.Unknown)
     rejected_size: UiCore::Size = UiRemote::logical_size(rejected, 640, 480)
@@ -37,6 +44,7 @@ def main() -> i64:
     zero_offer: UiRemote::Selection = UiRemote::negotiate(UiRemote::Offer{
         typed_commands: true, framebuffer: false, video: false,
         physical_width: 0, physical_height: 720, scale: 1.0,
+        text_input: true, ime: true, semantics: true, clipboard: true, file_dialogs: true,
     }, UiRemote::Presentation.TypedCommands)
     check("remote rejects a zero-sized surface offer", not zero_offer.accepted and zero_offer.presentation == UiRemote::Presentation.Unknown)
 

@@ -67,6 +67,8 @@ test/accessibility_metadata_test.elisa
   Image/Group/List/Status/Alert roles retained; live status/alert keep text and revision: PASS
 bash scripts/check_appkit_canvas.sh, scripts/check_uikit.sh
   AppKit/UIKit role mappings for the new semantic roles build and pass off-screen: PASS
+test/remote_test.elisa
+  capability limitations report missing text/IME/semantics/clipboard/file-dialog services: PASS
 git diff --check: PASS
 ```
 

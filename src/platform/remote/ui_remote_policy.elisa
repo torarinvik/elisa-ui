@@ -44,6 +44,19 @@ extend UiRemote:
                 logical_extent(UiCore::bounded_extent(physical_width.f32()), normalized_scale(selection.scale)),
                 logical_extent(UiCore::bounded_extent(physical_height.f32()), normalized_scale(selection.scale)))
 
+        # Report what a remote session cannot do, so a caller can surface the
+        # limitation before claiming parity. A missing capability is a fact of
+        # the offer, not an error: the session still connects.
+        def limitations(offer: Offer) -> Limitations:
+            return Limitations{
+                text_input: not offer.text_input,
+                ime: not offer.ime,
+                semantics: not offer.semantics,
+                clipboard: not offer.clipboard,
+                file_dialogs: not offer.file_dialogs,
+                any: not (offer.text_input and offer.ime and offer.semantics and offer.clipboard and offer.file_dialogs),
+            }
+
     private:
         def choose_presentation(offer: Offer, preferred: Presentation) -> Presentation:
             return preferred if presentation_is_supported(offer, preferred)
