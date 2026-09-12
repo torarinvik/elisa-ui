@@ -57,6 +57,8 @@ bash scripts/check_android.sh / check_android_ime.sh (no SKIA_ROOT/SDK)
 bash scripts/check_toolchain.sh --report
   prints the resolved compiler revision + product/runtime SHA-256; downgrades dirty/stale to warnings: PASS
   (called by build_native.sh, build_appkit_canvas.sh, and build_wapp.sh so every build shows its toolchain)
+bash scripts/check_capi.sh
+  C example passed; header↔symbol cross-check: 7 host-facing functions and 6 app-facing callbacks agree both directions: PASS
 test/services_test.elisa
   permission/picker state machines, anti-prompt gate, settings sync, logical selection, owner disposal: PASS
 git diff --check: PASS

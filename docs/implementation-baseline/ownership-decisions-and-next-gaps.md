@@ -24,12 +24,15 @@ _Part of the [elisa-ui implementation baseline](../implementation-baseline.md)._
   checkout through `ELISA_UI_WASM_SDK`, while the SDK integration stages its own
   resolved dependency. Elisa retains only the UI-specific policy and canonical
   record lowering around that imported ABI.
-- The C boundary now exposes a packed ABI version from Elisa and checks it
+-   The C boundary now exposes a packed ABI version from Elisa and checks it
   against the public header in `scripts/check_capi.sh`; wire ordinals, record
   layout, counted committed text, and counted IME composition (with scalar-range
   clamping) remain documented in `include/elisa_ui.h` and are exercised by the
   C bridge checks. The same header is compiled as C11 and C++17 in that gate,
-  preserving the opaque boundary for either host language. Event/viewport
+  preserving the opaque boundary for either host language. The gate now also
+  cross-checks every function name in both directions -- the seven host-facing
+  functions Elisa defines and the six app-facing callbacks the header declares --
+  so a symbol added to one description and forgotten on the other fails the gate. Event/viewport
   conversion remains in `ui_capi.elisa`, while the bounded text staging slot
   and committed/IME policies live in the focused `ui_capi_text.elisa` extension.
   The C app callback now receives an opaque, generation-scoped

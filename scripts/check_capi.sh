@@ -11,6 +11,27 @@ STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
 RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
 [[ -x "$STAGE1/bin/elisac-stage1" ]] || { echo "no stage1 product at $STAGE1/bin/elisac-stage1" >&2; exit 2; }
 
+# The header and the Elisa source are two hand-written descriptions of one ABI.
+# Before building, assert they describe the same set of functions in both
+# directions: host-facing functions Elisa defines and the header declares, and
+# app-facing callbacks the header declares and Elisa declares as externs. This
+# catches a symbol added to one side and forgotten on the other.
+header_host="$(grep -oE 'elisa_ui_[a-z_]+\(' "$ROOT/include/elisa_ui.h" | sed 's/($//' | grep -v '^elisa_ui_on_' | sort -u)"
+elisa_host="$(grep -ohE '^def elisa_ui_[a-z_]+\(' "$ROOT"/src/capi/ui_capi.elisa | sed 's/^def //; s/($//' | grep -v '^elisa_ui_on_' | sort -u)"
+header_app="$(grep -oE 'elisa_ui_on_[a-z_]+\(' "$ROOT/include/elisa_ui.h" | sed 's/($//' | sort -u)"
+elisa_app="$(grep -ohE '^extern elisa_ui_on_[a-z_]+\(' "$ROOT"/src/capi/ui_capi_app.elisa | sed 's/^extern //; s/($//' | sort -u)"
+
+if ! diff <(printf '%s\n' "$header_host") <(printf '%s\n' "$elisa_host") >/dev/null; then
+  echo "capi: host-facing symbols differ between include/elisa_ui.h and src/capi/ui_capi.elisa" >&2
+  diff <(printf '%s\n' "$header_host") <(printf '%s\n' "$elisa_host") >&2 || true
+  exit 1
+fi
+if ! diff <(printf '%s\n' "$header_app") <(printf '%s\n' "$elisa_app") >/dev/null; then
+  echo "capi: app-facing callbacks differ between include/elisa_ui.h and src/capi/ui_capi_app.elisa" >&2
+  diff <(printf '%s\n' "$header_app") <(printf '%s\n' "$elisa_app") >&2 || true
+  exit 1
+fi
+
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT INT TERM HUP
 mkdir -p "$ROOT/build"
 
