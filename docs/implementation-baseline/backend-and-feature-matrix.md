@@ -48,3 +48,7 @@ font authorities; hosted text is measured by the WasmBrowser host; AppKit
 accessibility is native while hosted/mobile adapters still need their own host
 fixtures. Clipboard authority is SDL3, AppKit pasteboard, or WasmBrowser's
 declared capability respectively, with byte-oriented Elisa adapters above each.
+The hosted `key-code` enum also exposes `shift` and `control` but not `alt`, so
+word-wise keyboard text navigation uses the Control convention there until
+WasmBrowser widens the WIT vocabulary (WB-05); native SDL and the Apple
+backends accept both Alt/Option and Control.

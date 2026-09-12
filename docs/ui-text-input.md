@@ -20,3 +20,9 @@ Linux/Windows conventions both work. The AppKit canvas reaches the same shared
 helpers through its menu selectors, so both input paths agree.
 `test/word_navigation_test.elisa` covers the routing and the grapheme-safe word
 boundaries.
+
+Known hosted limitation: the current `wasmbrowser:window/guest@0.1.0`
+`key-code` enum has `shift` and `control` but no `alt`, so Control+Left/Right
+and Control+Backspace/Delete work in the hosted backend while Option/Alt does
+not. Adding `alt` is a WasmBrowser WIT change (WB-05), not a local override;
+until then the hosted adapter uses the Control convention.
