@@ -154,6 +154,12 @@ because a module member's symbol carries its module and those names cannot move.
 - **Gestures** ([src/widgets/ui_gestures.elisa](src/widgets/ui_gestures.elisa)) —
   deterministic bounded touch capture with tap, long-press, drag, pinch, and
   lifecycle cancellation policy shared by native and hosted adapters.
+- **Shortcut precedence** ([src/widgets/ui_shortcuts.elisa](src/widgets/ui_shortcuts.elisa)) —
+  one opt-in resolver for who owns a key press: OS-reserved actions first
+  (reported, never consumed), then a focused editable control, then application
+  command bindings, then menu accelerators. Modifiers match exactly, key repeat
+  is explicit, and re-registration is idempotent. See
+  [docs/ui-shortcuts.md](docs/ui-shortcuts.md).
 - **Text layout** ([src/widgets/ui_text_layout.elisa](src/widgets/ui_text_layout.elisa)) —
   bounded UTF-8-safe line ranges, newline and whitespace breaks, and
   deterministic long-word fallback independent of the renderer's shaping API;

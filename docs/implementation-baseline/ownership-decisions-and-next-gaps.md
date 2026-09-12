@@ -429,6 +429,14 @@ _Part of the [elisa-ui implementation baseline](../implementation-baseline.md)._
   pinch classification, duplicate/capacity rejection, and lifecycle
   cancellation. Native/hosted adapters still need to translate device facts;
   coverage lives in `test/gestures_test.elisa`.
+- `UiShortcuts` owns the cross-layer shortcut decision: OS-reserved actions are
+  reported and never consumed, a focused editable control gets first refusal,
+  then application command bindings, then menu accelerators, then unhandled.
+  Modifiers match exactly, key repeat is explicit per binding, and
+  registration is idempotent and bounded. The `UiFlat` router already
+  implements the editable-control layer; applications and adapters use the
+  resolver so their command/menu layers cannot drift. Coverage lives in
+  `test/shortcuts_test.elisa`.
 - `UiResponsive` owns logical orientation and safe-area normalization in
   addition to size classes and touch-target scaling. Hosts provide insets;
   coverage lives in `test/responsive_test.elisa`.

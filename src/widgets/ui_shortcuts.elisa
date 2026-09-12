@@ -1,0 +1,159 @@
+# Shortcut precedence across focused controls, application commands, menus, and
+# OS-reserved actions.
+#
+# Every toolkit eventually needs one answer to "who gets this key?". elisa-ui
+# keeps that answer in Elisa so a native menu, a WasmBrowser host, and a
+# headless test agree. This module is an opt-in registry plus a pure resolver:
+#
+#   1. OS-reserved actions are checked first and are never consumed here; the
+#      host owns them (system media keys, the browser back gesture, and the
+#      like). Registering one prevents the app from stealing it.
+#   2. A focused editable control gets the next refusal. Editing and caret
+#      navigation belong to the field the user is typing in, before any
+#      application accelerator.
+#   3. Application command bindings come next.
+#   4. Menu accelerators come last.
+#   5. An unclaimed key is `Unhandled` so the application can use it as data
+#      (typing into a focused field, for example).
+#
+# Modifiers are matched exactly: a binding for Control+S does not fire for
+# Control+Shift+S unless that binding is registered too. A binding can opt out
+# of key-repeat, so held-key actions stay explicit.
+#
+# The `UiFlat` keyboard router already implements step 2 for the controls it
+# owns; applications and backends use this resolver so their command and menu
+# layers cannot drift from it.
+
+module UiShortcuts:
+    public:
+        const MAX_BINDINGS: usize = 64
+        const NONE: usize = MAX_BINDINGS
+
+        const MOD_CONTROL: u32 = 1
+        const MOD_ALT: u32 = 2
+        const MOD_SHIFT: u32 = 4
+        const MOD_SUPER: u32 = 8
+        const MOD_ALL: u32 = 15
+        const DEFAULT_COMMAND: u32 = 0
+
+        const enum Layer of i32:
+            Reserved = 0
+            FocusedControl = 1
+            ApplicationCommand = 2
+            Menu = 3
+            Unhandled = 4
+
+        struct Decision:
+            layer: Layer
+            command: u32
+            consumed: bool
+
+        struct Snapshot:
+            total: usize
+            reserved: usize
+            application: usize
+            menu: usize
+            overflowed: bool
+
+        def reset() -> void:
+            shortcut_count_state <- 0
+            shortcut_overflowed_state <- false
+
+        # Reserve a key the host owns. The resolver reports it but never
+        # consumes it, so the native/OS action still fires.
+        def reserve_os(key: i32, modifiers: u32) -> bool:
+            return bind(key, modifiers, DEFAULT_COMMAND, false, Layer.Reserved)
+
+        # Bind an application command accelerator.
+        def bind_application(key: i32, modifiers: u32, command: u32, allow_repeat: bool) -> bool:
+            return false if command == DEFAULT_COMMAND
+            return bind(key, modifiers, command, allow_repeat, Layer.ApplicationCommand)
+
+        # Bind a menu item accelerator.
+        def bind_menu(key: i32, modifiers: u32, command: u32, allow_repeat: bool) -> bool:
+            return false if command == DEFAULT_COMMAND
+            return bind(key, modifiers, command, allow_repeat, Layer.Menu)
+
+        # The registry exists to be queried, not to grow forever.
+        def binding_count() -> usize:
+            return shortcut_count_state
+
+        def overflowed() -> bool:
+            return shortcut_overflowed_state
+
+        def clear() -> void:
+            reset()
+
+        # Resolve one key press. `focused_editable` is true when the focused
+        # control accepts text, which is what gives an editable field first
+        # refusal over application accelerators.
+        def resolve(key: i32, modifiers: u32, focused_editable: bool, is_repeat: bool) -> Decision:
+            safe_modifiers: u32 = modifiers & MOD_ALL
+            if matches(key, safe_modifiers, is_repeat, Layer.Reserved):
+                return Decision{layer: Layer.Reserved, command: DEFAULT_COMMAND, consumed: false}
+            if focused_editable:
+                return Decision{layer: Layer.FocusedControl, command: DEFAULT_COMMAND, consumed: true}
+            application: u32 = matched_command(key, safe_modifiers, is_repeat, Layer.ApplicationCommand)
+            if application != DEFAULT_COMMAND:
+                return Decision{layer: Layer.ApplicationCommand, command: application, consumed: true}
+            menu: u32 = matched_command(key, safe_modifiers, is_repeat, Layer.Menu)
+            if menu != DEFAULT_COMMAND:
+                return Decision{layer: Layer.Menu, command: menu, consumed: true}
+            return Decision{layer: Layer.Unhandled, command: DEFAULT_COMMAND, consumed: false}
+
+        def snapshot() -> Snapshot:
+            reserved_count: mutable usize = 0
+            application_count: mutable usize = 0
+            menu_count: mutable usize = 0
+            for index in 0..<shortcut_count_state:
+                reserved_count <- reserved_count + 1 if shortcut_layers[index] == Layer.Reserved
+                application_count <- application_count + 1 if shortcut_layers[index] == Layer.ApplicationCommand
+                menu_count <- menu_count + 1 if shortcut_layers[index] == Layer.Menu
+            return Snapshot{total: shortcut_count_state, reserved: reserved_count,
+                application: application_count, menu: menu_count,
+                overflowed: shortcut_overflowed_state}
+
+    private:
+        global mutable shortcut_count_state: usize = 0
+        global mutable shortcut_overflowed_state: bool = false
+        global mutable shortcut_keys: i32[MAX_BINDINGS] = zeroed
+        global mutable shortcut_modifiers: u32[MAX_BINDINGS] = zeroed
+        global mutable shortcut_commands: u32[MAX_BINDINGS] = zeroed
+        global mutable shortcut_repeat: bool[MAX_BINDINGS] = zeroed
+        global mutable shortcut_layers: Layer[MAX_BINDINGS] = zeroed
+
+        def modifiers_are_valid(modifiers: u32) -> bool:
+            return modifiers & MOD_ALL == modifiers
+
+        def bind(key: i32, modifiers: u32, command: u32, allow_repeat: bool, layer: Layer) -> bool:
+            return false if not modifiers_are_valid(modifiers)
+            # A duplicate (key, modifiers, layer) is idempotent: re-registering
+            # after a rebuild must not accumulate shadow bindings.
+            for index in 0..<shortcut_count_state:
+                if shortcut_keys[index] == key and shortcut_modifiers[index] == modifiers and shortcut_layers[index] == layer:
+                    shortcut_commands[index] <- command
+                    shortcut_repeat[index] <- allow_repeat
+                    return true
+            if shortcut_count_state >= MAX_BINDINGS:
+                shortcut_overflowed_state <- true
+                return false
+            slot: usize = shortcut_count_state
+            shortcut_keys[slot] <- key
+            shortcut_modifiers[slot] <- modifiers
+            shortcut_commands[slot] <- command
+            shortcut_repeat[slot] <- allow_repeat
+            shortcut_layers[slot] <- layer
+            shortcut_count_state <- shortcut_count_state + 1
+            return true
+
+        def matches(key: i32, modifiers: u32, is_repeat: bool, layer: Layer) -> bool:
+            for index in 0..<shortcut_count_state:
+                if shortcut_keys[index] == key and shortcut_modifiers[index] == modifiers and shortcut_layers[index] == layer:
+                    return true if shortcut_repeat[index] or not is_repeat
+            return false
+
+        def matched_command(key: i32, modifiers: u32, is_repeat: bool, layer: Layer) -> u32:
+            for index in 0..<shortcut_count_state:
+                if shortcut_keys[index] == key and shortcut_modifiers[index] == modifiers and shortcut_layers[index] == layer:
+                    return shortcut_commands[index] if shortcut_repeat[index] or not is_repeat
+            return DEFAULT_COMMAND

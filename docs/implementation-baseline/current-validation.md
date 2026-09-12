@@ -69,6 +69,8 @@ bash scripts/check_appkit_canvas.sh, scripts/check_uikit.sh
   AppKit/UIKit role mappings for the new semantic roles build and pass off-screen: PASS
 test/remote_test.elisa
   capability limitations report missing text/IME/semantics/clipboard/file-dialog services: PASS
+test/shortcuts_test.elisa
+  shortcut precedence (reserved > editable > app command > menu), exact modifiers, repeat, idempotence: PASS
 git diff --check: PASS
 ```
 
