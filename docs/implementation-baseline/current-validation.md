@@ -2,6 +2,33 @@
 
 _Part of the [elisa-ui implementation baseline](../implementation-baseline.md)._
 
+## Refresh 2026-09-12 (main `a17b5c1`)
+
+Fresh UI-00 gates from this checkout (macOS arm64, stage1 `986a30b9d6a1`):
+
+```text
+bash scripts/check_toolchain.sh
+  stage1 branch=codex/wasm-sdk revision=986a30b9d6a165ae4a38ac8683687ee0e47b02a4 (ahead=20 behind=72 vs origin/main): PASS
+bash scripts/check_source_sizes.sh
+  all Elisa modules within 400 lines; every other source file within 600: PASS
+bash scripts/check_global_names.sh
+  all mutable module globals unique: PASS
+bash scripts/check_refinements.sh
+  framework discharges its own laws: PASS
+bash scripts/build_native.sh hello
+  built build/hello_native (2.3M): PASS
+SDL_VIDEODRIVER=dummy ELISA_UI_SMOKE_FRAMES=1 ./build/hello_native
+  exit 0: PASS
+bash scripts/check_capi.sh
+  C example passed: PASS
+bash scripts/check_appkit_canvas.sh
+  fresh-process PNG digest sha256=fe983e37bd348cf130b6e8aa0c09aee733f934c6866df0de362d04e34a8da880, bridge/bundle/signature: PASS
+git diff --check: PASS
+```
+
+Full `scripts/run_tests.sh` exceeds the default 120s tool timeout on this
+machine; it is not recorded as pass/fail here. The gates above are the
+verified subset for this refresh.
 
 The following completed headlessly from this checkout:
 
