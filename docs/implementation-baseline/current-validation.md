@@ -73,6 +73,8 @@ test/shortcuts_test.elisa
   shortcut precedence (reserved > editable > app command > menu), exact modifiers, repeat, idempotence: PASS
 test/word_navigation_test.elisa
   Option/Control+Left/Right, Shift word selection, and word deletion reach the shared helpers from the keyboard: PASS
+scripts/package_release.sh
+  emits build/release/elisa-ui-0.1.0 with LICENSE, release.json (version/revision/toolchain), and files.sha256; integrity verified: PASS
 git diff --check: PASS
 ```
 

@@ -359,6 +359,7 @@ scripts/build_wapp.sh     # -> build/hello.wapp (+ build/hello.wasm)
 scripts/check_wapp.sh      # inspect an existing package without recompiling
 scripts/run_tests.sh      # builds and runs test/*_test.elisa
 scripts/check_performance.sh # headless retained-tree CPU/memory safety gate
+scripts/package_release.sh   # -> build/release/elisa-ui-<version> with LICENSE + files.sha256 + release.json
 ```
 
 Headless interaction and frame tests can use the deterministic Elisa-side
