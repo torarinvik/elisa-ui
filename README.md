@@ -184,6 +184,15 @@ because a module member's symbol carries its module and those names cannot move.
   edits when validation tasks finish out of order.
   The hello showcase uses the same public API for an invalid-to-valid project
   name edit, keeping error presentation in the retained tree.
+- **Services** ([src/widgets/ui_services.elisa](src/widgets/ui_services.elisa)) —
+  one portable record for host permission and picker results. It owns the
+  consent and picker state machines, the anti-prompt gate that keeps a
+  denied/restricted/unavailable service from re-raising an OS dialog on the next
+  redraw, the explicitly re-presentable picker flow, and the rule that a
+  selected picker result carries a nonzero logical identity rather than a native
+  path. The host still owns the dialog, settings, and verified bytes; `sync`
+  moves a terminal state when a settings change is observed on resume. See
+  [docs/ui-services.md](docs/ui-services.md).
 - **Widgets** ([src/widgets/ui_widget.elisa](src/widgets/ui_widget.elisa)) — a
   retained tree in one fixed array linked by index, box layout, hit testing, and
   hover/press/focus/disabled/selected state. Buttons, radio buttons, check boxes,

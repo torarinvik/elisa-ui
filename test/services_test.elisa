@@ -1,0 +1,75 @@
+# Headless regression for the portable permission/picker service contract.
+
+include "../src/widgets/ui_services.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiServices::reset()
+    UiCore::clear_all_invalidations()
+    check("services reset is empty", UiServices::snapshot().total == 0 and not UiServices::overflowed())
+
+    camera: mutable UiServices::ServiceHandle = UiServices::request(UiServices::ServiceKind.Camera, 42)
+    check("request stores identity and owner", UiServices::is_valid(camera) and UiServices::kind(camera) == UiServices::ServiceKind.Camera and UiServices::owner(camera) == 42)
+    check("service starts unrequested and promptable", UiServices::consent(camera) == UiServices::ConsentState.Unrequested and UiServices::can_prompt(camera))
+    check("unknown service kind is rejected", not UiServices::is_valid(UiServices::request(UiServices::ServiceKind.Unknown, 42)))
+
+    duplicate: UiServices::ServiceHandle = UiServices::request(UiServices::ServiceKind.Camera, 42)
+    check("same kind and owner is idempotent", duplicate.slot == camera.slot and duplicate.generation == camera.generation)
+    other_owner: UiServices::ServiceHandle = UiServices::request(UiServices::ServiceKind.Camera, 43)
+    check("different owner gets its own record", other_owner.slot != camera.slot)
+
+    check("begin_prompt requests consent", UiServices::begin_prompt(camera) and UiServices::consent(camera) == UiServices::ConsentState.Requested)
+    check("a request in flight cannot prompt again", not UiServices::can_prompt(camera) and not UiServices::begin_prompt(camera))
+    check("granted result rejects contradictory failure", not UiServices::resolve_consent(camera, UiServices::ConsentState.Granted, UiServices::ServiceFailureKind.Denied) and UiServices::consent(camera) == UiServices::ConsentState.Requested)
+    check("only a host fact can grant", UiServices::resolve_consent(camera, UiServices::ConsentState.Granted, UiServices::ServiceFailureKind.Unknown) and UiServices::is_granted(camera))
+    check("granted is terminal and silent", not UiServices::can_prompt(camera) and not UiServices::resolve_consent(camera, UiServices::ConsentState.Denied, UiServices::ServiceFailureKind.Denied))
+
+    mic: mutable UiServices::ServiceHandle = UiServices::request(UiServices::ServiceKind.Microphone, 42)
+    _ = UiServices::begin_prompt(mic)
+    check("denied result records matching failure", UiServices::resolve_consent(mic, UiServices::ConsentState.Denied, UiServices::ServiceFailureKind.Denied) and UiServices::failure(mic) == UiServices::ServiceFailureKind.Denied)
+    check("denied service never auto-prompts again", not UiServices::can_prompt(mic) and not UiServices::begin_prompt(mic))
+    check("a settings change can grant without a prompt", UiServices::sync(mic, UiServices::ConsentState.Granted, UiServices::ServiceFailureKind.Unknown) and UiServices::is_granted(mic))
+    check("stale denied prompt result cannot overwrite a sync", not UiServices::resolve_consent(mic, UiServices::ConsentState.Denied, UiServices::ServiceFailureKind.Denied))
+
+    loc: UiServices::ServiceHandle = UiServices::request(UiServices::ServiceKind.Location, 42)
+    _ = UiServices::begin_prompt(loc)
+    check("retryable failure stays promptable", UiServices::resolve_consent(loc, UiServices::ConsentState.Failed, UiServices::ServiceFailureKind.Retryable) and UiServices::can_prompt(loc))
+    check("retryable failure can prompt again", UiServices::begin_prompt(loc) and UiServices::consent(loc) == UiServices::ConsentState.Requested)
+    check("dismissed prompt is cancellable and promptable", UiServices::cancel_prompt(loc) and UiServices::consent(loc) == UiServices::ConsentState.Cancelled and UiServices::can_prompt(loc))
+
+    picker: UiServices::ServiceHandle = UiServices::request(UiServices::ServiceKind.Files, 42)
+    check("idle picker can present", UiServices::can_present(picker) and UiServices::present_picker(picker) and UiServices::picker(picker) == UiServices::PickerState.Presenting)
+    check("presenting picker cannot present twice", not UiServices::can_present(picker) and not UiServices::present_picker(picker))
+    check("empty selection is not a success", not UiServices::resolve_picker(picker, UiServices::PickerState.Selected, 1, 0) and UiServices::picker(picker) == UiServices::PickerState.Presenting)
+    check("selected picker stores a logical identity", UiServices::resolve_picker(picker, UiServices::PickerState.Selected, 7, 0x1122334455667788) and UiServices::selection_id(picker) == 0x1122334455667788 and UiServices::selection_kind(picker) == 7)
+    check("picker may be re-presented after a selection", UiServices::can_present(picker) and UiServices::present_picker(picker) and UiServices::selection_id(picker) == 0)
+    check("back cancels a presenting picker", UiServices::back(picker) and UiServices::picker(picker) == UiServices::PickerState.Cancelled)
+    check("back does not dismiss consent dialogs", not UiServices::back(camera))
+    check("resolve_picker outside a presentation is rejected", not UiServices::resolve_picker(picker, UiServices::PickerState.Selected, 1, 9))
+    _ = UiServices::present_picker(picker)
+    check("picker failure records retry", UiServices::resolve_picker(picker, UiServices::PickerState.Failed, 0, 0) and UiServices::failure(picker) == UiServices::ServiceFailureKind.Retryable)
+
+    view: UiServices::ServiceView = UiServices::view(picker)
+    check("service view exposes typed facts", view.kind == UiServices::ServiceKind.Files and view.picker == UiServices::PickerState.Failed and view.can_present)
+    check("service changes invalidate presentation", UiCore::is_invalidated(UiCore::Invalidation.Paint) and UiCore::is_invalidated(UiCore::Invalidation.Semantics))
+
+    released: usize = UiServices::dispose_owner(42)
+    counts: UiServices::ServiceSnapshot = UiServices::snapshot()
+    check("owner disposal removes all owned services", released == 4 and counts.total == 1 and not counts.overflowed)
+
+    stale: UiServices::ServiceHandle = UiServices::request(UiServices::ServiceKind.Notifications, 9)
+    _ = UiServices::dispose(stale)
+    check("disposed handle is stale", not UiServices::is_valid(stale) and not UiServices::is_granted(stale))
+
+    if failures == 0:
+        _ = puts("services: all checks passed")
+        return 0
+    _ = puts("services: FAILURES above")
+    return 1

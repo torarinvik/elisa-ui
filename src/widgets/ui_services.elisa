@@ -1,0 +1,391 @@
+# Portable permission and picker service-result policy.
+#
+# Operating systems own consent dialogs, settings, and picker UI; the host owns
+# the native request and returns a typed fact here. This module owns only the
+# application-visible state and the anti-prompt policy around it:
+#
+#   * the framework never manufactures a grant -- `Granted` can only enter
+#     through a host `resolve_consent`/`sync` fact;
+#   * a denied, restricted, or unavailable service stays terminal and
+#     `can_prompt` stays false, so a redraw cannot re-raise an OS dialog the
+#     user already answered;
+#   * a retryable failure or a user-dismissed (`Cancelled`) prompt may prompt
+#     again, which is how "explain, then ask once more" flows are expressed;
+#   * a picker is explicitly user-initiated, so it may be re-presented after
+#     any terminal picker state; it is not an OS "don't ask again" grant;
+#   * a selected picker result carries a nonzero logical `selection_id` that
+#     the host maps to verified bytes or a renderer resource -- never a native
+#     path or URL.
+#
+# Handles are generation-checked like every other retained handle, so a late
+# host callback cannot mutate a recycled service slot.
+
+include "../core/ui_core.elisa"
+
+module UiServices:
+    public:
+        const MAX_SERVICES: usize = 64
+        const NONE_SLOT: usize = MAX_SERVICES
+
+        const enum ServiceKind of i32:
+            Camera = 0
+            Microphone = 1
+            Photos = 2
+            Location = 3
+            Notifications = 4
+            Files = 5
+            Contacts = 6
+            Calendar = 7
+            Bluetooth = 8
+            Unknown = 9
+
+        const enum ConsentState of i32:
+            Unrequested = 0
+            Requested = 1
+            Granted = 2
+            Denied = 3
+            Restricted = 4
+            Unavailable = 5
+            Failed = 6
+            Cancelled = 7
+
+        const enum PickerState of i32:
+            Idle = 0
+            Presenting = 1
+            Selected = 2
+            Cancelled = 3
+            Failed = 4
+            Unavailable = 5
+
+        const enum ServiceFailureKind of i32:
+            Unknown = 0
+            Denied = 1
+            Restricted = 2
+            Unavailable = 3
+            Retryable = 4
+            Cancelled = 5
+
+        struct ServiceHandle:
+            slot: u32
+            generation: u32
+
+        struct ServiceView:
+            handle: ServiceHandle
+            kind: ServiceKind
+            consent: ConsentState
+            picker: PickerState
+            failure: ServiceFailureKind
+            selection_id: u64
+            selection_kind: u32
+            can_prompt: bool
+            can_present: bool
+
+        struct ServiceSnapshot:
+            total: usize
+            unrequested: usize
+            requested: usize
+            granted: usize
+            denied: usize
+            restricted: usize
+            unavailable: usize
+            failed: usize
+            cancelled: usize
+            pickers_active: usize
+            overflowed: bool
+
+        def invalid() -> ServiceHandle:
+            return ServiceHandle{slot: NONE_SLOT.u32(), generation: 0}
+
+        def is_valid(handle: ServiceHandle) -> bool:
+            return handle.slot.usize() < service_count_state and service_active[handle.slot.usize()] and service_generations[handle.slot.usize()] == handle.generation
+
+        def reset() -> void:
+            for slot in 0..<MAX_SERVICES:
+                clear_slot(slot)
+            service_count_state <- 0
+            service_overflowed_state <- false
+            mark_changed()
+
+        # A request is idempotent for (kind, owner): a screen rebuilding its
+        # tree reuses its record instead of accumulating service identities.
+        # Requesting does not itself prompt; `begin_prompt` is the gated step.
+        def request(kind: ServiceKind, owner: u32) -> ServiceHandle:
+            return invalid() if kind == ServiceKind.Unknown
+            for slot in 0..<service_count_state:
+                if service_active[slot] and service_kinds[slot] == kind and service_owners[slot] == owner:
+                    return make_handle(slot)
+
+            free_slot: mutable usize = NONE_SLOT
+            for slot in 0..<MAX_SERVICES:
+                if not service_active[slot]:
+                    free_slot <- slot
+                    break
+            if free_slot == NONE_SLOT:
+                service_overflowed_state <- true
+                return invalid()
+
+            service_active[free_slot] <- true
+            service_generations[free_slot] <- next_generation(service_generations[free_slot])
+            service_kinds[free_slot] <- kind
+            service_owners[free_slot] <- owner
+            service_consents[free_slot] <- ConsentState.Unrequested
+            service_pickers[free_slot] <- PickerState.Idle
+            service_failures[free_slot] <- ServiceFailureKind.Unknown
+            service_selection_ids[free_slot] <- 0
+            service_selection_kinds[free_slot] <- 0
+            service_count_state <- free_slot + 1 if free_slot >= service_count_state else service_count_state
+            mark_changed()
+            return make_handle(free_slot)
+
+        # The one gate an OS consent dialog goes through. Terminal denials are
+        # deliberately excluded: once the user has answered, only an explicit
+        # settings change observed by `sync` can turn them green.
+        def begin_prompt(handle: ServiceHandle) -> bool:
+            return false if not is_valid(handle) or not can_prompt(handle)
+            slot: usize = handle.slot.usize()
+            service_consents[slot] <- ConsentState.Requested
+            service_failures[slot] <- ServiceFailureKind.Unknown
+            mark_changed()
+            return true
+
+        # Host fact after a prompt. Only an in-flight request may resolve; a
+        # terminal state cannot be revived in place, so no stale dialog result
+        # can silently overwrite a newer decision.
+        def resolve_consent(handle: ServiceHandle, next: ConsentState, failure: ServiceFailureKind) -> bool:
+            return false if not is_valid(handle)
+            slot: usize = handle.slot.usize()
+            return false if service_consents[slot] != ConsentState.Requested
+            return false if not consent_fact_is_coherent(next, failure)
+            return false if not consent_state_is_terminal(next)
+            service_consents[slot] <- next
+            service_failures[slot] <- consent_failure_for(next, failure)
+            mark_changed()
+            return true
+
+        # A host-observed current fact that is not a prompt result: the user
+        # changed the setting in OS settings and the app was resumed. This can
+        # move a terminal state without ever raising a dialog.
+        def sync(handle: ServiceHandle, next: ConsentState, failure: ServiceFailureKind) -> bool:
+            return false if not is_valid(handle)
+            slot: usize = handle.slot.usize()
+            return false if service_consents[slot] == ConsentState.Requested
+            return false if not consent_state_is_terminal(next) and next != ConsentState.Unrequested
+            return false if not consent_fact_is_coherent(next, failure)
+            service_consents[slot] <- next
+            service_failures[slot] <- consent_failure_for(next, failure)
+            mark_changed()
+            return true
+
+        def cancel_prompt(handle: ServiceHandle) -> bool:
+            return false if not is_valid(handle) or service_consents[handle.slot.usize()] != ConsentState.Requested
+            service_consents[handle.slot.usize()] <- ConsentState.Cancelled
+            service_failures[handle.slot.usize()] <- ServiceFailureKind.Cancelled
+            mark_changed()
+            return true
+
+        def can_prompt(handle: ServiceHandle) -> bool:
+            return false if not is_valid(handle)
+            current: ConsentState = service_consents[handle.slot.usize()]
+            return current == ConsentState.Unrequested or current == ConsentState.Cancelled or (current == ConsentState.Failed and service_failures[handle.slot.usize()] == ServiceFailureKind.Retryable)
+
+        # ── Picker flow ────────────────────────────────────────────────────
+        # Pickers are user-initiated every time, so any terminal picker state
+        # may present again; this is not the consent "don't ask again" rule.
+        def present_picker(handle: ServiceHandle) -> bool:
+            return false if not is_valid(handle) or not can_present(handle)
+            slot: usize = handle.slot.usize()
+            service_pickers[slot] <- PickerState.Presenting
+            service_failures[slot] <- ServiceFailureKind.Unknown
+            service_selection_ids[slot] <- 0
+            service_selection_kinds[slot] <- 0
+            mark_changed()
+            return true
+
+        def resolve_picker(handle: ServiceHandle, next: PickerState, selection_kind: u32, selection_id: u64) -> bool:
+            return false if not is_valid(handle)
+            slot: usize = handle.slot.usize()
+            return false if service_pickers[slot] != PickerState.Presenting
+            return false if next != PickerState.Selected and next != PickerState.Cancelled and next != PickerState.Failed and next != PickerState.Unavailable
+            # A selected result is a logical identity, never a path or URL; an
+            # empty selection is a cancelled picker, not a successful empty one.
+            return false if next == PickerState.Selected and selection_id == 0
+            service_pickers[slot] <- next
+            service_selection_ids[slot] <- selection_id if next == PickerState.Selected else 0
+            service_selection_kinds[slot] <- selection_kind if next == PickerState.Selected else 0
+            service_failures[slot] <- picker_failure(next)
+            mark_changed()
+            return true
+
+        def cancel_picker(handle: ServiceHandle) -> bool:
+            return false if not is_valid(handle) or service_pickers[handle.slot.usize()] != PickerState.Presenting
+            slot: usize = handle.slot.usize()
+            service_pickers[slot] <- PickerState.Cancelled
+            service_failures[slot] <- ServiceFailureKind.Cancelled
+            service_selection_ids[slot] <- 0
+            service_selection_kinds[slot] <- 0
+            mark_changed()
+            return true
+
+        def can_present(handle: ServiceHandle) -> bool:
+            return false if not is_valid(handle)
+            return service_pickers[handle.slot.usize()] != PickerState.Presenting
+
+        # Back/cancel is a small policy seam: an active picker consumes back by
+        # cancelling. Consent requests return false so the application can
+        # navigate away without the framework dismissing an OS dialog it cannot.
+        def back(handle: ServiceHandle) -> bool:
+            return false if not is_valid(handle) or service_pickers[handle.slot.usize()] != PickerState.Presenting
+            return cancel_picker(handle)
+
+        def dispose(handle: ServiceHandle) -> bool:
+            return false if not is_valid(handle)
+            clear_slot(handle.slot.usize())
+            trim_count()
+            mark_changed()
+            return true
+
+        def dispose_owner(owner: u32) -> usize:
+            released: mutable usize = 0
+            for slot in 0..<service_count_state:
+                if service_active[slot] and service_owners[slot] == owner:
+                    clear_slot(slot)
+                    released <- released + 1
+            trim_count()
+            mark_changed() if released > 0
+            return released
+
+        def kind(handle: ServiceHandle) -> ServiceKind:
+            return ServiceKind.Unknown if not is_valid(handle)
+            return service_kinds[handle.slot.usize()]
+
+        def owner(handle: ServiceHandle) -> u32:
+            return 0 if not is_valid(handle)
+            return service_owners[handle.slot.usize()]
+
+        def consent(handle: ServiceHandle) -> ConsentState:
+            return ConsentState.Unrequested if not is_valid(handle)
+            return service_consents[handle.slot.usize()]
+
+        def picker(handle: ServiceHandle) -> PickerState:
+            return PickerState.Idle if not is_valid(handle)
+            return service_pickers[handle.slot.usize()]
+
+        def failure(handle: ServiceHandle) -> ServiceFailureKind:
+            return ServiceFailureKind.Unknown if not is_valid(handle)
+            return service_failures[handle.slot.usize()]
+
+        def selection_id(handle: ServiceHandle) -> u64:
+            return 0 if not is_valid(handle)
+            return service_selection_ids[handle.slot.usize()]
+
+        def selection_kind(handle: ServiceHandle) -> u32:
+            return 0 if not is_valid(handle)
+            return service_selection_kinds[handle.slot.usize()]
+
+        def is_granted(handle: ServiceHandle) -> bool:
+            return is_valid(handle) and service_consents[handle.slot.usize()] == ConsentState.Granted
+
+        def overflowed() -> bool:
+            return service_overflowed_state
+
+        def view(handle: ServiceHandle) -> ServiceView:
+            return ServiceView{
+                handle: handle,
+                kind: kind(handle),
+                consent: consent(handle),
+                picker: picker(handle),
+                failure: failure(handle),
+                selection_id: selection_id(handle),
+                selection_kind: selection_kind(handle),
+                can_prompt: can_prompt(handle),
+                can_present: can_present(handle),
+            }
+
+        def snapshot() -> ServiceSnapshot:
+            unrequested_count: mutable usize = 0
+            requested_count: mutable usize = 0
+            granted_count: mutable usize = 0
+            denied_count: mutable usize = 0
+            restricted_count: mutable usize = 0
+            unavailable_count: mutable usize = 0
+            failed_count: mutable usize = 0
+            cancelled_count: mutable usize = 0
+            active_pickers: mutable usize = 0
+            for slot in 0..<service_count_state:
+                continue if not service_active[slot]
+                unrequested_count <- unrequested_count + 1 if service_consents[slot] == ConsentState.Unrequested
+                requested_count <- requested_count + 1 if service_consents[slot] == ConsentState.Requested
+                granted_count <- granted_count + 1 if service_consents[slot] == ConsentState.Granted
+                denied_count <- denied_count + 1 if service_consents[slot] == ConsentState.Denied
+                restricted_count <- restricted_count + 1 if service_consents[slot] == ConsentState.Restricted
+                unavailable_count <- unavailable_count + 1 if service_consents[slot] == ConsentState.Unavailable
+                failed_count <- failed_count + 1 if service_consents[slot] == ConsentState.Failed
+                cancelled_count <- cancelled_count + 1 if service_consents[slot] == ConsentState.Cancelled
+                active_pickers <- active_pickers + 1 if service_pickers[slot] == PickerState.Presenting
+            return ServiceSnapshot{
+                total: unrequested_count + requested_count + granted_count + denied_count + restricted_count + unavailable_count + failed_count + cancelled_count,
+                unrequested: unrequested_count, requested: requested_count, granted: granted_count,
+                denied: denied_count, restricted: restricted_count, unavailable: unavailable_count,
+                failed: failed_count, cancelled: cancelled_count, pickers_active: active_pickers,
+                overflowed: service_overflowed_state}
+
+    private:
+        global mutable service_count_state: usize = 0
+        global mutable service_overflowed_state: bool = false
+        global mutable service_active: bool[MAX_SERVICES] = zeroed
+        global mutable service_generations: u32[MAX_SERVICES] = zeroed
+        global mutable service_kinds: ServiceKind[MAX_SERVICES] = zeroed
+        global mutable service_owners: u32[MAX_SERVICES] = zeroed
+        global mutable service_consents: ConsentState[MAX_SERVICES] = zeroed
+        global mutable service_pickers: PickerState[MAX_SERVICES] = zeroed
+        global mutable service_failures: ServiceFailureKind[MAX_SERVICES] = zeroed
+        global mutable service_selection_ids: u64[MAX_SERVICES] = zeroed
+        global mutable service_selection_kinds: u32[MAX_SERVICES] = zeroed
+
+        def next_generation(value: u32) -> u32:
+            next: u32 = value + 1
+            return 1 if next == 0 else next
+
+        def make_handle(slot: usize) -> ServiceHandle:
+            return ServiceHandle{slot: slot.u32(), generation: service_generations[slot]}
+
+        def consent_state_is_terminal(value: ConsentState) -> bool:
+            return value == ConsentState.Granted or value == ConsentState.Denied or value == ConsentState.Restricted or value == ConsentState.Unavailable or value == ConsentState.Failed or value == ConsentState.Cancelled
+
+        def consent_fact_is_coherent(next: ConsentState, failure: ServiceFailureKind) -> bool:
+            return false if next == ConsentState.Granted and failure != ServiceFailureKind.Unknown
+            return false if next == ConsentState.Denied and failure != ServiceFailureKind.Denied
+            return false if next == ConsentState.Restricted and failure != ServiceFailureKind.Restricted
+            return false if next == ConsentState.Unavailable and failure != ServiceFailureKind.Unavailable
+            return false if next == ConsentState.Cancelled and failure != ServiceFailureKind.Cancelled
+            return false if next == ConsentState.Failed and failure != ServiceFailureKind.Retryable and failure != ServiceFailureKind.Unknown
+            return true
+
+        def consent_failure_for(next: ConsentState, failure: ServiceFailureKind) -> ServiceFailureKind:
+            return ServiceFailureKind.Unknown if next == ConsentState.Granted or next == ConsentState.Unrequested else failure
+
+        def picker_failure(next: PickerState) -> ServiceFailureKind:
+            return ServiceFailureKind.Cancelled if next == PickerState.Cancelled
+            return ServiceFailureKind.Unavailable if next == PickerState.Unavailable
+            return ServiceFailureKind.Retryable if next == PickerState.Failed
+            return ServiceFailureKind.Unknown
+
+        def clear_slot(slot: usize) -> void:
+            service_active[slot] <- false
+            service_generations[slot] <- next_generation(service_generations[slot])
+            service_kinds[slot] <- ServiceKind.Unknown
+            service_owners[slot] <- 0
+            service_consents[slot] <- ConsentState.Unrequested
+            service_pickers[slot] <- PickerState.Idle
+            service_failures[slot] <- ServiceFailureKind.Unknown
+            service_selection_ids[slot] <- 0
+            service_selection_kinds[slot] <- 0
+
+        def trim_count() -> void:
+            for _ in 0..<MAX_SERVICES:
+                break if service_count_state == 0 or service_active[service_count_state - 1]
+                service_count_state <- service_count_state - 1
+
+        def mark_changed() -> void:
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+            UiCore::invalidate(UiCore::Invalidation.Semantics)

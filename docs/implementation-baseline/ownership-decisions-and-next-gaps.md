@@ -391,6 +391,15 @@ _Part of the [elisa-ui implementation baseline](../implementation-baseline.md)._
   same state without introducing a downloader, linker, or native pointer;
   coverage lives in `test/feature_view_test.elisa` and
   `test/ui_harness_test.elisa`.
+- `UiServices` maps host permission and picker results into one portable
+  service record. It owns the consent state machine, the anti-prompt gate that
+  keeps a denied/restricted/unavailable service from re-raising an OS dialog,
+  the explicitly re-presentable picker flow, and the rule that a selected
+  picker result carries a nonzero logical identity rather than a native path.
+  The host still owns the dialog, settings, and verified bytes; `sync` lets a
+  settings change observed on resume move a terminal state without prompting.
+  Coverage lives in `test/services_test.elisa` and
+  `docs/ui-services.md`.
 - `UiVirtualList` owns bounded geometry and semantic-window policy for long
   lists. Logical total count, before/after edges, and off-screen focus or
   selection indexes remain available even when row widgets are not realized;
