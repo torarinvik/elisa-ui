@@ -75,6 +75,8 @@ test/word_navigation_test.elisa
   Option/Control+Left/Right, Shift word selection, and word deletion reach the shared helpers from the keyboard: PASS
 test/virtual_list_test.elisa
   bounded realization: stable visible slots, generation change on return, owner isolation, slot budget: PASS
+test/sdl3_device_loss_test.elisa
+  SDL render targets-reset/device-reset/device-lost handled headlessly; renderer recreated, app state preserved: PASS
 scripts/package_release.sh
   emits build/release/elisa-ui-0.1.0 with LICENSE, release.json (version/revision/toolchain), and files.sha256; integrity verified: PASS
 git diff --check: PASS

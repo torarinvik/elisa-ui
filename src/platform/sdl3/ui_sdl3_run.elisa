@@ -6,11 +6,33 @@
 
 extend UiSdl3:
     private:
+        # Render events carry no window id and must be handled before the
+        # window-ownership filter. Targets-reset and device-reset invalidate the
+        # drawable surface; device-lost also recreates the renderer from the
+        # surviving window, preserving the application model.
+        def handle_render_event(running: mutable bool&) -> bool:
+            kind: u32 = event_type()
+            if kind == EVENT_RENDER_TARGETS_RESET or kind == EVENT_RENDER_DEVICE_RESET:
+                UiCore::invalidate(UiCore::Invalidation.Paint)
+                clear_event_buffer()
+                dispatch_queued_events(running)
+                return true
+            if kind == EVENT_RENDER_DEVICE_LOST:
+                if window is lost_window:
+                    _ = UiSdl3Draw::recreate_renderer(lost_window)
+                UiCore::invalidate(UiCore::Invalidation.Paint)
+                clear_event_buffer()
+                dispatch_queued_events(running)
+                return true
+            return false
+
         # Dispatch one event while SDL's borrowed union is still alive. Text
         # callbacks read pointers from the current buffer, whereas typed
         # events are queued and delivered through the shared framework queue.
         # Keeping this in one helper makes polled and waited events identical.
         def dispatch_current_event(event: UiCore::Event, running: mutable bool&) -> void:
+            if handle_render_event(running):
+                return
             # `decode_event` returns Event.None for window events addressed to
             # another SDL window. Text input/editing are the one event family
             # handled directly from the borrowed SDL union, so also repeat the

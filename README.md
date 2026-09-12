@@ -432,7 +432,10 @@ Unicode 15.1.0 `GraphemeBreakTest.txt`; run
 for that data-driven gate.
 SDL supplies monotonic frame time and waits for either input or the earliest
 animation deadline requested by the retained tree, keeping idle windows from
-busy-spinning while preserving caret animation.
+busy-spinning while preserving caret animation. It also handles SDL render
+targets-reset, device-reset, and device-lost facts: a reset invalidates paint,
+and device loss recreates the renderer from the surviving window while fonts and
+application model state are preserved.
 The standard AppKit canvas calls libSystem, CoreGraphics, CoreText and ImageIO
 directly from Elisa for its monotonic clock, path rendering, colors, shadows,
 font metrics and off-screen PNG snapshots; Objective-C remains only where
