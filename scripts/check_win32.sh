@@ -27,118 +27,43 @@
 #      the pthread family in the link error came from. FIXED 2026-09-11:
 #      ELISA_HOST_WINDOWS exists, this gate sets it, and the runtime now resolves
 #      VirtualAllocEx, InitializeCriticalSection and GetActiveProcessorCount.
-#      What still blocks an image is that the Windows arena branch had never been
-#      compiled by stage1 and the backend declines four of its bodies.
+#      BOTH BLOCKERS ARE FIXED (2026-09-12) and this gate now links a real image.
 #
-#      REPRODUCE IT IN ONE COMMAND, from the compiler repo (2026-09-11):
+#      1. The backend declined four arena bodies -- new_region_with_owner,
+#         new_region_reserve, arena_region_ensure_committed, free_region -- so
+#         nothing the Windows arena branch declared was declared at all.
+#         The cause was NOT in the arena. `selected_static_if_lines` tracked
+#         "this chain is already satisfied" in one flag across every static-if
+#         row in source order, and a NESTED chain's rows are recorded between
+#         an outer chain's arms. The nested `static if ELISA_TARGET_OS_LINUX:`
+#         inside the mmap branch took its `static else`, set the flag, and the
+#         outer `static elif ... WIN32 ...` was then skipped as already-handled.
+#         macOS never noticed: the arm it needs is the chain HEAD, taken before
+#         the nested rows appear. Rows now carry their chain's nesting depth and
+#         satisfaction is tracked per depth (wasm-sdk-compiler 365af3c7).
+#
+#      2. elisacore_runtime_concurrency.elisa defines ctx_thread_create/join/
+#         detach in Elisa over pthreads everywhere EXCEPT Windows, where it
+#         declares them as externs for the host to supply -- and nothing did.
+#         The compiler now publishes scripts/win32_thread_fallback.c alongside
+#         its other stand-in families (wasm-sdk-compiler 8d61eb6e).
+#
+#      Reproduce the first one on any host, in one command from the compiler repo:
 #        ELISA_HOST_WINDOWS=1 ELISA_HOST_X86_64=1 bash scripts/elisac_stage1.sh \
 #          -O0 -target-triple x86_64-pc-windows-gnu -o /tmp/a.o elisacore_std/arena.elisa
-#      It exits 0 and warns: "backend declined 4 function body(ies); the object does
-#      not define: new_region_with_owner, new_region_reserve,
-#      arena_region_ensure_committed, free_region (call expression)". The same source
-#      compiled for x86_64-unknown-linux-gnu (ELISA_HOST_LINUX=1) or x86_64-apple-darwin
-#      declines NOTHING, so it is the Windows branch, not the file.
+#      It is the SOURCE, not the target: force ARENA_BACKEND to the win32 value and
+#      compile for darwin and the same four decline.
 #
-#      Localized: the VirtualAllocEx/VirtualFreeEx CALLS. Swapping just the
-#      VirtualAllocEx in new_region_with_owner for malloc() drops the count 4 -> 3,
-#      leaving the other three -- those are exactly the four functions that call the
-#      two Win32 externs.
+#      TECHNIQUE, because it cost most of a day. `static error(...)` is not valid
+#      at top level: a probe planting one there dies as a parse error, prints
+#      nothing your grep matches, and reads exactly like "that branch was skipped".
+#      Three conclusions in that investigation were artifacts of probes with no
+#      control -- including "there is no row for the win32 arm", which was false
+#      and came from guessing line numbers. Probe with marker functions read back
+#      through llvm-nm, or with record_declined_function (its names land in the
+#      "backend declined" warning, so it needs no print plumbing), and ALWAYS
+#      plant a positive control in a branch you know is taken.
 #
-#      NOT the Windows target -- the win32 SOURCE. Force ARENA_BACKEND to the win32
-#      value and compile for x86_64-apple-darwin: the same four decline. So the whole
-#      target/host-predicate machinery is off the hook.
-#
-#      Branch selection is CORRECT. Put a marker `def` in each branch of both static
-#      chains and read the object with llvm-nm: a Windows build keeps exactly
-#      marker_sel_windows and marker_decl_win32; a macOS build keeps marker_decl_mmap.
-#      The win32 block's own code IS emitted -- and yet its `def`, its `extern` AND its
-#      `const` are all invisible to callers, including a caller written at top level
-#      outside every static if. The mirror on macOS (a top-level call of MAP_FAILED,
-#      declared only inside the mmap block) resolves fine, so the failure is specific
-#      to the Windows configuration rather than to static blocks in general.
-#
-#      Ruled OUT by experiment, so the next session need not re-derive them: a nested
-#      zero-arg call argument (GetCurrentProcess()); `assert not <call>`; the multi-line
-#      extern spelling; untyped const arguments; a `|` of consts; declaring an extern
-#      inside a static if/elif at all; the branch's POSITION (reordering the chain so
-#      win32 comes first changes nothing); the condition's foldability (rewriting it to
-#      the round-0-foldable ELISA_TARGET_OS_WINDOWS changes nothing); hoisting the
-#      declarations to top level (only changes the reported reason to "expression");
-#      hoisting collections.elisai's duplicate win32 block out of its own static chain;
-#      and registering the settling round's consts before `break if settled` in
-#      Backend::select_module_declarations (tried as a compiler patch -- no effect).
-#
-#      INSTRUMENTED, and this is the sharpest fact so far: declare_extern is NEVER
-#      CALLED for the win32 externs. Planting a marker at the entry of
-#      Backend::declare_extern (src/backend/codegen_declare_extern.elisa) that fires
-#      for "GetCurrentProcess", alongside a positive control that fires for "malloc",
-#      a Windows build reports the control twice (entered + registered) and the test
-#      not at all. So the externs never reach the declare pass, which walks the
-#      FLATTENED `top` list (src/backend/codegen_debug.elisa) -- while a marker `def`
-#      planted in the very same block IS emitted into the object.
-#
-#      Probed `top` itself, same way, with the malloc control still firing: NEITHER the
-#      win32 externs NOR the block's own `def` (win_commit_round_up) are in it. The block
-#      is missing from the flattened declaration list entirely. Rebuilding `top` from the
-#      selection that codegen_module.elisa recomputes AFTER its rounds (tried as a patch,
-#      rebuilt, measured) does not help either -- so that FINAL selection does not contain
-#      the block's line, which means `fold_const_expr` never folds
-#      `ARENA_BACKEND == ARENA_BACKEND_WIN32_VIRTUALALLOC` at all, while it does fold the
-#      LINUX_MMAP arm of the same chain on a macOS build.
-#
-#      ARENA_BACKEND is declared TWICE in the std -- arena.elisa and collections.elisai each
-#      carry their own copy of the selection chain, and the .elisai also defines a local
-#      `const ELISA_TARGET_OS_WASM: bool = false`. That looked like the answer and is NOT:
-#      replacing the .elisai's whole chain with an unconditional
-#      `const ARENA_BACKEND: int = ARENA_BACKEND_WIN32_VIRTUALALLOC` leaves all four
-#      declines in place. So the interface file's copy is not what the fold consults.
-#
-#      fold_const_expr is NOT the problem -- instrumented, with a macOS control: a Windows
-#      build folds ARENA_BACKEND to 2 (WIN32) twenty-six times and macOS folds it to 1
-#      (MMAP) thirty times. Both also show fifteen identical early lookups where the const
-#      is not yet in the table, so the rounds behave the same on both.
-#
-#      The failure is in the static-branch ROW TABLE. selected_static_if_lines runs (three
-#      calls, confirmed by an in-function control that fires at row 0), and its rows carry
-#      lines 137 and 139 -- but NO row carries 158, 159 or 160, which is where the win32
-#      declaration arm lives. With no row for that arm it can never be selected, so the
-#      block never reaches `top`, nothing in it is declared, and every call into it
-#      declines. That is consistent with everything else measured here.
-#
-#      CAUTION for whoever picks this up: do not read those two numbers as "the mmap arm".
-#      The chain header is line 138 and neither 137 nor 139 is it, so the row line is NOT
-#      the header line and the mapping is not understood. Dump file.static_if_lines and
-#      file.static_if_kinds wholesale before interpreting anything -- probing guessed line
-#      numbers is what made this take as long as it did.
-#
-#      Also ruled out since: rewriting the win32 externs as single-line declarations in the
-#      real file (the multi-line spelling is not the trigger).
-#
-#      Unexplained alongside it, and worth reconciling: a marker `def` planted in that same
-#      win32 block IS emitted into the object (llvm-nm, with marker_decl_mmap absent on the
-#      same build as the control). Declaration and emission are disagreeing about the block.
-#
-#      Note when instrumenting: two functions in codegen_declare_extern.elisa open with
-#      the identical line `if declaration is Decl.Extern(...)`, so a naive
-#      first-occurrence patch lands in register_one_opaque_extern instead. Anchor after
-#      `def declare_extern(`. And the seed refuses to run concurrently with another
-#      seed on the host, so a patch-seed-probe loop must serialize.
-#
-#      TECHNIQUE, because it cost an afternoon: `static error(...)` is NOT valid at top
-#      level. A probe that plants one there dies as a parse error, prints nothing your
-#      grep matches, and reads exactly like "the branch was skipped". Probe with marker
-#      functions and llvm-nm instead, and always plant a POSITIVE CONTROL in a branch
-#      you know is taken -- three conclusions in this investigation were artifacts that
-#      only a control exposed.
-#   2. elisacore_std/debug_referee.elisa declares kill, sigaction, getpid and
-#      signal with no `static if` around them. The first two have no Windows
-#      equivalent, so the crash-dump path needs a guard whatever else changes.
-#
-# Both belong to the compiler repo. Writing Windows stand-ins here would put a
-# copy of the runtime's host assumptions in the UI project, where they would rot
-# the first time the runtime gained a symbol -- the exact failure
-# write_profiler_hook_fallbacks.sh exists to prevent. So the gate stops at the
-# object files and says what would move it.
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -154,9 +79,7 @@ fi
 mkdir -p "$OUT"
 "$CC" -c -Wall -Wextra -Werror -municode -o "$OUT/win32_shim.o" "$ROOT/src/platform/win32/win32_shim.c"
 
-# The Elisa half for the Windows triple. It is compiled, not linked into an
-# executable: the runtime object here is macOS's, and an image is not what this
-# gate is claiming.
+# The Elisa half for the Windows triple.
 # ELISA_HOST_WINDOWS is what makes -target-triple mean anything to the std's
 # `static if ELISA_TARGET_OS_*` rows; without it a Windows triple compiles the
 # macOS branches. It exists as of 2026-09-11 (see the header above).
@@ -176,4 +99,30 @@ for symbol in $(grep -o '^extern elisa_win32_[a-z_]*' "$ROOT/src/platform/win32/
     echo "win32: Elisa declares $symbol and the shim defines nothing" >&2; exit 1; }
 done
 
-echo "win32: cross-compiled against real Windows headers; every export resolves in both directions (no image: the runtime's Windows arena branch is declined by the backend)"
+# AND AN IMAGE. Objects that each resolve say nothing about whether the whole
+# thing links; this gate stopped at objects for months while the runtime's
+# Windows arena branch was declined by the backend and its thread entries had
+# no stand-in. Both are fixed (wasm-sdk-compiler 365af3c7 and 8d61eb6e), so
+# link the real thing and refuse to pass on anything less than a PE32+ binary.
+ELISA_HOST_WINDOWS=1 ELISA_HOST_X86_64=1 \
+  bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -target-triple x86_64-pc-windows-gnu \
+    -o "$OUT/elisacore_runtime_win.o" "$STAGE1/elisacore_std/elisacore_runtime.elisa"
+
+# The three stand-in families the COMPILER publishes for a downstream link. They
+# live there, not here: a copy of the runtime's host assumptions in this project
+# would rot the first time the runtime gained a symbol.
+"$CC" -c -o "$OUT/win32_threads.o" "$STAGE1/scripts/win32_thread_fallback.c"
+bash "$STAGE1/scripts/write_profiler_hook_fallbacks.sh" > "$OUT/profiler_fallbacks.c"
+"$CC" -c -o "$OUT/profiler_fallbacks.o" "$OUT/profiler_fallbacks.c"
+# -fno-builtin: this one defines va_copy/va_end over clang builtins.
+"$CC" -c -fno-builtin -o "$OUT/pymodule_fallback.o" "$STAGE1/scripts/pymodule_runtime_fallback.c"
+
+"$CC" -o "$OUT/elisa_win32.exe" \
+  "$OUT/win32_check.o" "$OUT/win32_shim.o" "$OUT/elisacore_runtime_win.o" \
+  "$OUT/win32_threads.o" "$OUT/profiler_fallbacks.o" "$OUT/pymodule_fallback.o" \
+  -lgdi32 -luser32 -lkernel32 -lcomctl32
+
+file "$OUT/elisa_win32.exe" | grep -q "PE32+ executable" || {
+  echo "win32: linked something, but it is not a PE32+ image" >&2; exit 1; }
+
+echo "win32: a PE32+ image links from real Windows headers -- every export resolves in both directions, and the Elisa runtime cross-compiles with zero declines"
