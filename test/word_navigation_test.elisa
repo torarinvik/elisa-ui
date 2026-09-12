@@ -1,0 +1,52 @@
+# Word-wise caret movement and deletion from the keyboard.
+#
+# The helpers existed for the AppKit menu selectors but no keyboard router
+# reached them, so SDL3, WasmBrowser, and UIKit users could not move or delete
+# by word. This fixture drives the same typed key events those backends deliver.
+
+include "./widget_layout_support.elisa"
+
+def main() -> i64:
+    UiFlat::reset()
+    word_field: usize = UiFlat::text_field(UiFlat::NONE, "Words", "", "alpha beta gamma", 240.0, 36.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
+    UiFlat::layout(240.0, 36.0)
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(120.0, 18.0), button: 0)))
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(120.0, 18.0), button: 0)))
+    check("word field is focused", UiFlat::accepts_text())
+
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Home)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.LeftAlt)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Right)))
+    check("Option+Right moves to the end of the first word", UiFlat::selection_start(word_field) == 5)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Right)))
+    check("Option+Right again reaches the next word start", UiFlat::selection_start(word_field) == 10)
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.LeftAlt)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Right)))
+    check("releasing Option restores character movement", UiFlat::selection_start(word_field) == 11)
+
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Home)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.LeftControl)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Right)))
+    check("Control+Right also moves by word", UiFlat::selection_start(word_field) == 5)
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.LeftShift)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Right)))
+    check("shifted word move extends the selection", UiFlat::selection_end(word_field) == 10)
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.Right)))
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.LeftShift)))
+
+    UiFlat::replace_text(word_field, "alpha beta gamma")
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.LeftControl)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Backspace)))
+    check("Control+Backspace deletes the preceding word", UiFlat::text_value(word_field) == "alpha beta ")
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.LeftControl)))
+
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Home)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.LeftAlt)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.Delete)))
+    check("Option+Delete deletes the next word", UiFlat::text_value(word_field) == " beta ")
+
+    if test_failures == 0:
+        _ = puts("word navigation: all checks passed")
+        return 0
+    _ = puts("word navigation: FAILURES above")
+    return 1

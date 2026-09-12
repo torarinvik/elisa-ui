@@ -71,6 +71,8 @@ test/remote_test.elisa
   capability limitations report missing text/IME/semantics/clipboard/file-dialog services: PASS
 test/shortcuts_test.elisa
   shortcut precedence (reserved > editable > app command > menu), exact modifiers, repeat, idempotence: PASS
+test/word_navigation_test.elisa
+  Option/Control+Left/Right, Shift word selection, and word deletion reach the shared helpers from the keyboard: PASS
 git diff --check: PASS
 ```
 

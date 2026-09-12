@@ -210,7 +210,8 @@ because a module member's symbol carries its module and those names cannot move.
   normalized sliders, progress indicators and editable text fields share value
   and accessibility behavior; sliders support dragging, arrow keys and assistive
   increment/decrement actions. Text fields support Unicode input, caret and range
-  selection, marked IME composition, 32-step undo/redo, clipboard commands and
+  selection, word-wise keyboard navigation and deletion, marked IME composition,
+  32-step undo/redo, clipboard commands and
   assistive editing.
   Clipboard action validation, secure-field restrictions, and desktop shortcut
   routing live in Elisa; AppKit and SDL expose only their byte pasteboards.

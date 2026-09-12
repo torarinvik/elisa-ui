@@ -55,6 +55,12 @@ extend UiFlat:
                     if code == UiCore::Key.RightSuper:
                         right_super_down <- true
                         return
+                    if code == UiCore::Key.LeftAlt:
+                        left_alt_down <- true
+                        return
+                    if code == UiCore::Key.RightAlt:
+                        right_alt_down <- true
+                        return
                     if accepts_text() and (control_active() or super_active()):
                         action: mutable i32 = 0
                         action <- 1 if code == UiCore::Key.A
@@ -71,6 +77,25 @@ extend UiFlat:
                         return
                     if focused_widget < widget_count and widgets[focused_widget].kind == UiConst::WidgetKind.TextField:
                         field: usize = focused_widget
+                        # Word-wise caret movement and deletion are reachable
+                        # from the keyboard on every backend that routes
+                        # through here (SDL3, WasmBrowser, UIKit). Alt/Option
+                        # and Control are both accepted so macOS and
+                        # desktop-Linux/Windows conventions both work; the
+                        # AppKit canvas already reaches the same helpers
+                        # through its menu selectors.
+                        if (alt_active() or control_active()) and code == UiCore::Key.Left:
+                            move_word_left(shift_active())
+                            return
+                        if (alt_active() or control_active()) and code == UiCore::Key.Right:
+                            move_word_right(shift_active())
+                            return
+                        if (alt_active() or control_active()) and code == UiCore::Key.Backspace:
+                            delete_word_backward()
+                            return
+                        if (alt_active() or control_active()) and code == UiCore::Key.Delete:
+                            delete_word_forward()
+                            return
                         if code == UiCore::Key.Left:
                             if not shift_active() and selection_start(field) != selection_end(field):
                                 widgets[field].caret <- selection_start(field)
@@ -147,6 +172,12 @@ extend UiFlat:
                         return
                     if code == UiCore::Key.RightSuper:
                         right_super_down <- false
+                        return
+                    if code == UiCore::Key.LeftAlt:
+                        left_alt_down <- false
+                        return
+                    if code == UiCore::Key.RightAlt:
+                        right_alt_down <- false
                         return
                     if (code == UiCore::Key.Space or code == UiCore::Key.Enter) and focused_widget < widget_count and widgets[focused_widget].kind != UiConst::WidgetKind.Slider and widgets[focused_widget].kind != UiConst::WidgetKind.TextField:
                         return if active_key != code.i32() or flat_active_widget >= widget_count
