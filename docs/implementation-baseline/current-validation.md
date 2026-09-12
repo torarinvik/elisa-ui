@@ -57,6 +57,39 @@ bash scripts/check_android.sh / check_android_ime.sh (no SKIA_ROOT/SDK)
 git diff --check: PASS
 ```
 
+The complete portable `test/*_test.elisa` corpus was run in batches (the
+one-shot `run_tests.sh` exceeds the 120s tool timeout, so each fixture was
+compiled/linked/run individually with the same stage1, runtime, SDL, and
+stub link inputs). Result: 73 of 73 passed, 0 failed.
+
+```text
+batch 1 (15): accessibility_geometry, accessibility_metadata, capabilities,
+  capi_app_text, capi_bridge, capi_lifecycle, capi_widget_handle, color_pack,
+  constraints, controls, core_invalidation, dialog, drop_raii, event_queue,
+  event_wire
+batch 2 (15): feature_view, gestures, hierarchy_build, hierarchy_layout, identity,
+  lifecycle, localization, metrics, mobile_surface, navigation, raster, remote,
+  resource_presentation, resource_state, responsive
+batch 3 (15): sdl3_event_order, sdl3_keymap, sdl3_lifecycle_stop,
+  sdl3_pointer_event, sdl3_resize_event, sdl3_text, sdl3_wait_event,
+  sdl3_window_routing, showcase_workflow, tasks, text_input, text_layout,
+  text_metrics_cache, theme, ui_harness
+batch 4a (15): ui_state, validation, virtual_list_semantics, virtual_list,
+  wasmbrowser_dispatch, wasmbrowser_input_mapping, widget_dispatch,
+  widget_handles, widget_image, widget_inspector, widget_large_tree,
+  widget_layout_geometry, widget_layout_scroll, widget_layout_text,
+  widget_layout_visual
+batch 4b (9): widget_motion, widget_reentrancy, widget_theme_adapter,
+  controls_flat, skia_painter, unicode_conformance, appkit_canvas_appearance,
+  appkit_canvas_keymap, appkit_canvas_surface
+uikit batch (4): uikit_controls, uikit_input, uikit_surface, uikit_text_input
+```
+
+The five real-renderer fixtures excluded by `run_tests.sh` itself
+(`skia_offscreen_test`, `showcase_skia_test`, `showcase_app_skia_test`,
+`storefront_skia_test`, `appkit_skia_host_test`) are owned by the Skia gates
+above and remain NOT VERIFIED here without `SKIA_ROOT`.
+
 Full `scripts/run_tests.sh` exceeds the default 120s tool timeout on this
 machine; it is not recorded as pass/fail here. The gates above are the
 verified subset for this refresh.
