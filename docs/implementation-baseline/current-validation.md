@@ -92,7 +92,7 @@ The complete portable `test/*_test.elisa` corpus was run in batches (the
 one-shot `run_tests.sh` exceeds the 120s tool timeout, so each fixture was
 compiled/linked/run individually with the same stage1, runtime, SDL, and
 stub link inputs). Result after the services/build/shortcuts/semantics/remote
-additions: 79 of 79 passed, 0 failed, 5 real-Skia host fixtures skipped.
+additions: 80 of 80 passed, 0 failed, 5 real-Skia host fixtures skipped.
 
 ```text
 batch 1 (15): accessibility_geometry, accessibility_metadata, capabilities,
@@ -115,7 +115,7 @@ batch 4b (9): widget_motion, widget_reentrancy, widget_theme_adapter,
   controls_flat, skia_painter, unicode_conformance, appkit_canvas_appearance,
   appkit_canvas_keymap, appkit_canvas_surface
 uikit batch (4): uikit_controls, uikit_input, uikit_surface, uikit_text_input
-policy fixtures (6): build, services, shortcuts, word_navigation, ui_table, sdl3_device_loss
+policy fixtures (7): build, services, shortcuts, word_navigation, ui_table, ui_tree, sdl3_device_loss
 ```
 
 The five real-renderer fixtures excluded by `run_tests.sh` itself
