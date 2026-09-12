@@ -13,7 +13,10 @@ extend UiAppKitCanvas:
         def accessibility_value_kind(role: UiCore::AccessibilityRole) -> i32:
             return 1 if role == UiCore::AccessibilityRole.RadioButton or role == UiCore::AccessibilityRole.CheckBox
             return 2 if role == UiCore::AccessibilityRole.Slider or role == UiCore::AccessibilityRole.ProgressBar
-            return 3 if role == UiCore::AccessibilityRole.TextField or role == UiCore::AccessibilityRole.PasswordField
+            # Status and Alert nodes are live text: mapping them to the text
+            # value kind is what lets a changed message post a value
+            # notification instead of changing silently.
+            return 3 if role == UiCore::AccessibilityRole.TextField or role == UiCore::AccessibilityRole.PasswordField or role == UiCore::AccessibilityRole.Status or role == UiCore::AccessibilityRole.Alert
             return 0
 
         def accessibility_cursor(role: UiCore::AccessibilityRole, enabled: bool) -> i32:
@@ -61,8 +64,11 @@ extend UiAppKitCanvas:
             return NSAccessibilityTextFieldRole if role == UiCore::AccessibilityRole.TextField or role == UiCore::AccessibilityRole.PasswordField
             # AppKit has no exported Dialog role constant on all supported SDKs;
             # its Group role is the stable container equivalent for a custom
-            # modal semantic node.
-            return NSAccessibilityGroupRole if role == UiCore::AccessibilityRole.Dialog
+            # modal semantic node. A custom control and a virtualized list use
+            # the same container roles.
+            return NSAccessibilityGroupRole if role == UiCore::AccessibilityRole.Dialog or role == UiCore::AccessibilityRole.Group
+            return NSAccessibilityImageRole if role == UiCore::AccessibilityRole.Image
+            return NSAccessibilityListRole if role == UiCore::AccessibilityRole.List
             return NSAccessibilityStaticTextRole
 
         def accessibility_native_subrole(role: UiCore::AccessibilityRole) -> usize:
@@ -96,6 +102,11 @@ extend UiAppKitCanvas:
             return UiCore::AccessibilityRole.TextField if raw == UiCore::AccessibilityRole.TextField.i32()
             return UiCore::AccessibilityRole.PasswordField if raw == UiCore::AccessibilityRole.PasswordField.i32()
             return UiCore::AccessibilityRole.Dialog if raw == UiCore::AccessibilityRole.Dialog.i32()
+            return UiCore::AccessibilityRole.Image if raw == UiCore::AccessibilityRole.Image.i32()
+            return UiCore::AccessibilityRole.Group if raw == UiCore::AccessibilityRole.Group.i32()
+            return UiCore::AccessibilityRole.List if raw == UiCore::AccessibilityRole.List.i32()
+            return UiCore::AccessibilityRole.Status if raw == UiCore::AccessibilityRole.Status.i32()
+            return UiCore::AccessibilityRole.Alert if raw == UiCore::AccessibilityRole.Alert.i32()
             return UiCore::AccessibilityRole.Label
 
         # Adapt the backend's compact transition cache back into the portable

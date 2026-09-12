@@ -14,20 +14,24 @@ extend UiUIKit:
             return traits
 
         # A node with an activation action is reachable by a VoiceOver double
-        # tap. Progress and label nodes are read but never activated.
+        # tap. Progress, label, image, container, list, status and alert nodes
+        # are read but never activated.
         def accessibility_is_interactive(role: UiCore::AccessibilityRole, enabled: bool) -> bool:
             return false if not enabled
-            return role != UiCore::AccessibilityRole.Label and role != UiCore::AccessibilityRole.ProgressBar
+            return not role_is_passive(role)
 
         # Value kinds match the AppKit adapter's vocabulary so the shared
         # semantic tests read the same way: 0 none, 1 boolean, 2 range, 3 text.
         def accessibility_value_kind(role: UiCore::AccessibilityRole) -> i32:
             return 1 if role == UiCore::AccessibilityRole.CheckBox or role == UiCore::AccessibilityRole.RadioButton
             return 2 if role == UiCore::AccessibilityRole.Slider or role == UiCore::AccessibilityRole.ProgressBar
-            return 3 if role == UiCore::AccessibilityRole.TextField or role == UiCore::AccessibilityRole.PasswordField
+            return 3 if role == UiCore::AccessibilityRole.TextField or role == UiCore::AccessibilityRole.PasswordField or role == UiCore::AccessibilityRole.Status or role == UiCore::AccessibilityRole.Alert
             return 0
 
     private:
+        def role_is_passive(role: UiCore::AccessibilityRole) -> bool:
+            return role == UiCore::AccessibilityRole.Label or role == UiCore::AccessibilityRole.ProgressBar or role == UiCore::AccessibilityRole.Image or role == UiCore::AccessibilityRole.Group or role == UiCore::AccessibilityRole.List or role == UiCore::AccessibilityRole.Status or role == UiCore::AccessibilityRole.Alert
+
         def role_traits(role: UiCore::AccessibilityRole) -> u64:
             return TRAIT_STATIC_TEXT if role == UiCore::AccessibilityRole.Label
             return TRAIT_BUTTON if role == UiCore::AccessibilityRole.Button
@@ -38,6 +42,11 @@ extend UiUIKit:
             return TRAIT_NONE if role == UiCore::AccessibilityRole.TextField
             return TRAIT_NONE if role == UiCore::AccessibilityRole.PasswordField
             return TRAIT_SUMMARY_ELEMENT if role == UiCore::AccessibilityRole.Dialog
+            return TRAIT_IMAGE if role == UiCore::AccessibilityRole.Image
+            return TRAIT_NONE if role == UiCore::AccessibilityRole.Group
+            return TRAIT_NONE if role == UiCore::AccessibilityRole.List
+            return TRAIT_UPDATES_FREQUENTLY if role == UiCore::AccessibilityRole.Status
+            return TRAIT_STATIC_TEXT if role == UiCore::AccessibilityRole.Alert
             return TRAIT_NONE
 
         def role_reports_selection(role: UiCore::AccessibilityRole) -> bool:

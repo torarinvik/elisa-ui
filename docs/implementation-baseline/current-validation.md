@@ -63,6 +63,10 @@ test/services_test.elisa
   permission/picker state machines, anti-prompt gate, settings sync, logical selection, owner disposal: PASS
 test/build_test.elisa
   framework API version, packed version, and typed compatibility verdicts: PASS
+test/accessibility_metadata_test.elisa
+  Image/Group/List/Status/Alert roles retained; live status/alert keep text and revision: PASS
+bash scripts/check_appkit_canvas.sh, scripts/check_uikit.sh
+  AppKit/UIKit role mappings for the new semantic roles build and pass off-screen: PASS
 git diff --check: PASS
 ```
 

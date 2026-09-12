@@ -2,10 +2,21 @@
 
 `UiCore::AccessibilityNode` is the backend-neutral semantic record emitted
 alongside each retained frame's drawing commands. Its portable role set
-includes `Dialog` for modal containers. `UiDialog` can
+includes `Dialog` for modal containers, `Image`, `Group` for custom controls,
+`List` for virtualized lists, and `Status`/`Alert` for live status changes and
+errors. `UiDialog` can
 project its copied title/message and typed result into this role directly;
 AppKit maps it to its stable group-container role while hosted adapters keep the
 same role value.
+
+Live text roles matter because a message that changes without a notification is
+invisible to a screen reader. `Status` and `Alert` use the text value kind in
+both native adapters, so a changed `text_value`/`revision` posts an AppKit value
+notification and is spoken by VoiceOver. UIKit marks `Status` as updating
+frequently and `Alert` as static text, and neither is presented as an
+activatable element. AppKit maps `Image`/`Group`/`List` to Cocoa's image,
+group, and list roles; the role strings are imported framework constants, so no
+new shim state is introduced.
 
 Existing role, label, help, bounds, action, enabled/focused/selected state, text
 values, and revision fields are supplemented by:

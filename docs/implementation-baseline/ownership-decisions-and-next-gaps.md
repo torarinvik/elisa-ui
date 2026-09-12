@@ -417,6 +417,14 @@ _Part of the [elisa-ui implementation baseline](../implementation-baseline.md)._
   SDL3, and WasmBrowser input adapters consume Escape through this same policy
   before delivering it to application code. Coverage lives in
   `test/dialog_test.elisa` plus the backend dispatch fixtures above.
+- The portable semantic role set now covers `Image`, `Group` (custom controls),
+  `List` (virtualized lists), and `Status`/`Alert` (live changes and errors) in
+  addition to the control roles and `Dialog`. `Status` and `Alert` use the text
+  value kind in both native adapters, so a changed live message posts an AppKit
+  value notification and is spoken rather than changing silently; UIKit marks
+  them passive and non-activatable. AppKit's image/group/list role strings are
+  imported framework constants, so the extension adds no shim state. Coverage
+  lives in `test/accessibility_metadata_test.elisa` and the AppKit/UIKit gates.
 - `UiGestures` owns deterministic eight-contact capture, tap/long-press/drag/
   pinch classification, duplicate/capacity rejection, and lifecycle
   cancellation. Native/hosted adapters still need to translate device facts;
