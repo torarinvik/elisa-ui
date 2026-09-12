@@ -1,0 +1,98 @@
+# Bounded stress regression: repeated sessions, resource churn, event pressure,
+# command overflow, and hostile geometry. This is a safety gate, not a benchmark.
+
+include "../src/test/ui_harness.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable failures: i32 = 0
+global mutable init_calls: i32 = 0
+global mutable fill_burst: i32 = 0
+global mutable hostile_geometry: bool = false
+global mutable key_bytes: u8[8] = zeroed
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def app_init() -> void:
+    init_calls <- init_calls + 1
+
+def app_event(event: UiCore::Event) -> void:
+    pass
+
+def app_text_input(text: sview) -> void:
+    pass
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    pass
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def app_frame() -> void:
+    UiCore::clear(UiCore::rgb(0, 0, 0))
+    if hostile_geometry:
+        hostile_geometry <- false
+        zero: f32 = 0.0
+        nan: f32 = zero / zero
+        inf: f32 = 1.0 / zero
+        UiCore::fill(UiCore::Rect(nan, inf, -5.0, 3.0e38), UiCore::rgb(9, 9, 9))
+        UiCore::fill(UiCore::Circle{center: UiCore::Vec2{x: inf, y: nan}, radius: -4.0}, UiCore::rgb(9, 9, 9))
+    for _ in 0..<fill_burst:
+        UiCore::fill(UiCore::Rect(0.0, 0.0, 2.0, 2.0), UiCore::rgb(1, 2, 3))
+
+def key_for(number: i32) -> sview:
+    key_bytes[0] <- 114
+    key_bytes[1] <- (48 + ((number / 100) % 10)).u8()
+    key_bytes[2] <- (48 + ((number / 10) % 10)).u8()
+    key_bytes[3] <- (48 + (number % 10)).u8()
+    return sview(&key_bytes[0], 0, 4)
+
+def main() -> i64:
+    UiHarness::start(320.0, 200.0)
+    for _cycle in 0..<50:
+        UiHarness::start(320.0, 200.0)
+        resource: UiResources::ResourceHandle = UiHarness::request_resource("stress/a", 5)
+        _ = UiHarness::set_resource_progress(resource, 0.5, 0.1)
+        _ = UiHarness::set_resource_demand(resource, 3)
+        _ = UiHarness::cancel_resource(resource)
+        UiHarness::stop()
+    check("repeated start/stop keeps the session clean", init_calls == 51 and not UiHarness::is_running())
+    check("stop releases resources", UiResources::snapshot().total == 0)
+
+    UiHarness::start(320.0, 200.0)
+    resource_owner: u32 = 9
+    for index in 1..<201:
+        handle: UiResources::ResourceHandle = UiHarness::request_resource(key_for(index), resource_owner)
+        if UiResources::resource_is_valid(handle):
+            _ = UiHarness::set_resource_progress(handle, 0.5, 0.5)
+    totals: UiResources::Snapshot = UiResources::snapshot()
+    within_capacity: bool = totals.total <= UiResources::MAX_RESOURCES
+    check("resource capacity overflow is reported, not silent", UiResources::overflowed() and within_capacity)
+    check("owner disposal releases every live resource", UiHarness::dispose_resources_for_owner(resource_owner) > 0 and UiResources::snapshot().total == 0)
+
+    _ = UiEvents::reset()
+    for _index in 0..<5000:
+        _ = UiEvents::enqueue(UiCore::KeyEvent.Down(code: UiCore::Key.A))
+    check("event queue overflow is sticky", UiEvents::overflowed())
+    check("authoritative quit is not stranded behind a burst", UiEvents::enqueue(UiCore::Event.Quit))
+
+    fill_burst <- (UiCore::MAX_COMMANDS + 50).i32()
+    UiHarness::frame()
+    check("command overflow is reported", UiHarness::command_overflowed() and UiHarness::command_count() == UiCore::MAX_COMMANDS)
+    fill_burst <- 0
+
+    hostile_geometry <- true
+    UiHarness::frame()
+    check("hostile geometry cannot escape the geometry envelope", UiHarness::command_count() <= 3)
+
+    UiHarness::stop()
+    check("final stop leaves no live resources", UiResources::snapshot().total == 0 and not UiHarness::is_running())
+
+    if failures == 0:
+        _ = puts("stress: all checks passed")
+        return 0
+    _ = puts("stress: FAILURES above")
+    return 1

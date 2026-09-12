@@ -81,6 +81,8 @@ test/ui_table_test.elisa
   weighted column growth, maximum caps, deficit sharing, minimum floor, overflow report: PASS
 test/ui_tree_test.elisa
   depth-first visible order, expansion/collapse, reveal, visible navigation, invalid registration: PASS
+test/stress_test.elisa
+  50 sessions, resource overflow/churn, 5000-event burst, command overflow, hostile geometry: PASS
 bash scripts/check_rust.sh
   safe Rust wrapper over the C ABI links and passes (event/text/IME/viewport); skips without rustc: PASS
 scripts/package_release.sh
