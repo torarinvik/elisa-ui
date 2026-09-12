@@ -16,6 +16,7 @@ module UiVirtualList:
         const MAX_ITEMS: i32 = 16777216
         const NONE_INDEX: i32 = -1
         const MAX_GEOMETRY_EXTENT: f32 = 16777216.0
+        const MAX_REALIZED: usize = 64
 
         struct VisibleRange:
             first: i32
@@ -25,6 +26,13 @@ module UiVirtualList:
             item_extent: f32
             spacing: f32
             stride: f32
+
+        # Which logical rows currently occupy the bounded realization slots.
+        struct Realization:
+            total: i32
+            first: i32
+            finish: i32
+            realized: i32
 
         # Bounded semantic metadata for a realized window. `total` describes
         # the logical list even when only [first, finish) has widgets. Focus
@@ -159,6 +167,99 @@ module UiVirtualList:
             return NONE_INDEX if next < 0 or next >= total
             return next
 
+        # ── Realization ────────────────────────────────────────────────────
+        # Row widgets remain application-owned; this controller decides which
+        # logical rows currently occupy which bounded slots, so a scrolling list
+        # can recycle a fixed pool instead of building every row. A row that
+        # stays visible keeps its slot and generation; a row that scrolls out
+        # and returns crosses a new generation, so a late callback for the old
+        # occupancy is stale. The visible range may exceed the slot budget; the
+        # caller trades off-screen coverage for memory by choosing `max_slots`.
+
+        def reset_realization() -> void:
+            for slot_index in 0..<MAX_REALIZED:
+                virtual_slot_logical[slot_index] <- NONE_INDEX
+                virtual_slot_owner[slot_index] <- 0
+                virtual_slot_generation[slot_index] <- next_generation(virtual_slot_generation[slot_index])
+            virtual_realized_state <- 0
+
+        def realize(owner: u32, item_count: i32, range: VisibleRange, max_slots: i32) -> Realization:
+            total: i32 = bounded_count(item_count)
+            if total == 0:
+                release_owner(owner)
+                return Realization{total: 0, first: 0, finish: 0, realized: 0}
+            budget: mutable i32 = max_slots
+            budget <- 1 if budget < 1
+            budget <- MAX_REALIZED.i32() if budget > MAX_REALIZED.i32()
+            first: mutable i32 = range.first
+            first <- 0 if first < 0
+            first <- total - 1 if first >= total
+            finish: mutable i32 = range.finish
+            finish <- first + 1 if finish <= first
+            finish <- total if finish > total
+            wanted: mutable i32 = finish - first
+            wanted <- budget if wanted > budget
+            limit: i32 = first + wanted
+            # Free this owner's slots that are no longer in the retained window.
+            for slot_index in 0..<MAX_REALIZED:
+                if virtual_slot_owner[slot_index] == owner and (virtual_slot_logical[slot_index] < first or virtual_slot_logical[slot_index] >= limit):
+                    free_slot(slot_index)
+            # Assign every retained logical row to a stable slot.
+            for logical in first..<limit:
+                if slot_for(owner, logical) == NONE_INDEX:
+                    slot: usize = find_free_slot()
+                    virtual_slot_logical[slot] <- logical
+                    virtual_slot_owner[slot] <- owner
+                    virtual_slot_generation[slot] <- next_generation(virtual_slot_generation[slot])
+            virtual_realized_state <- 0
+            for slot_index in 0..<MAX_REALIZED:
+                virtual_realized_state <- virtual_realized_state + 1 if virtual_slot_owner[slot_index] == owner and virtual_slot_logical[slot_index] != NONE_INDEX
+            return Realization{total: total, first: first, finish: limit, realized: wanted}
+
+        def release_owner(owner: u32) -> void:
+            for slot_index in 0..<MAX_REALIZED:
+                free_slot(slot_index) if virtual_slot_owner[slot_index] == owner
+            virtual_realized_state <- 0
+
+        def slot_for(owner: u32, logical: i32) -> i32:
+            for slot_index in 0..<MAX_REALIZED:
+                return slot_index.i32() if virtual_slot_owner[slot_index] == owner and virtual_slot_logical[slot_index] == logical
+            return NONE_INDEX
+
+        def logical_for_slot(slot: i32) -> i32:
+            return NONE_INDEX if slot < 0 or slot >= MAX_REALIZED.i32()
+            return virtual_slot_logical[slot.usize()]
+
+        def slot_generation(slot: i32) -> u32:
+            return 0 if slot < 0 or slot >= MAX_REALIZED.i32()
+            return virtual_slot_generation[slot.usize()]
+
+        def realized_count() -> usize:
+            return virtual_realized_state
+
         def bounded_extent(value: f32) -> f32:
             safe: f32 = UiCore::nonnegative_extent(value)
             return MAX_GEOMETRY_EXTENT if safe > MAX_GEOMETRY_EXTENT else safe
+
+    private:
+        global mutable virtual_realized_state: usize = 0
+        global mutable virtual_slot_logical: i32[MAX_REALIZED] = zeroed
+        global mutable virtual_slot_owner: u32[MAX_REALIZED] = zeroed
+        global mutable virtual_slot_generation: u32[MAX_REALIZED] = zeroed
+
+        def free_slot(slot: usize) -> void:
+            return if slot >= MAX_REALIZED
+            virtual_slot_logical[slot] <- NONE_INDEX
+            virtual_slot_owner[slot] <- 0
+            virtual_slot_generation[slot] <- next_generation(virtual_slot_generation[slot])
+
+        def find_free_slot() -> usize:
+            for slot_index in 0..<MAX_REALIZED:
+                return slot_index if virtual_slot_logical[slot_index] == NONE_INDEX
+            # The retained window is bounded by the budget, so a free slot
+            # always exists; fall back to slot zero rather than trapping.
+            return 0
+
+        def next_generation(value: u32) -> u32:
+            next: u32 = value + 1
+            return 1 if next == 0 else next

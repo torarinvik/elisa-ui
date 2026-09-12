@@ -136,7 +136,9 @@ because a module member's symbol carries its module and those names cannot move.
   adapters report facts through it while application state remains intact.
 - **Virtual lists** ([src/widgets/ui_virtual_list.elisa](src/widgets/ui_virtual_list.elisa)) —
   bounded visible ranges, edge buffering, item placement, content extents, and
-  semantic navigation metadata shared by every backend.
+  semantic navigation metadata shared by every backend, plus a bounded
+  realization controller that maps retained rows onto recyclable application
+  slots with stale-rejecting generations.
 - **Size constraints** ([src/widgets/ui_constraints.elisa](src/widgets/ui_constraints.elisa)) —
   normalized minimum/preferred/maximum extents, bounded resolution, and
   explicit conflict diagnostics for adaptive layouts.

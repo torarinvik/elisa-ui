@@ -43,6 +43,32 @@ def main() -> i64:
     malformed: UiVirtualList::VisibleRange = UiVirtualList::visible_range(-10, -20.0, -8.0, -100.0, -50.0, 0)
     check("malformed range fails closed", malformed.first == 0 and malformed.finish == 0)
 
+    UiVirtualList::reset_realization()
+    r1: UiVirtualList::Realization = UiVirtualList::realize(1, 100, UiVirtualList::VisibleRange{first: 0, finish: 3}, 8)
+    check("realize reports the retained window", r1.total == 100 and r1.first == 0 and r1.finish == 3 and r1.realized == 3 and UiVirtualList::realized_count() == 3)
+    slot_a: i32 = UiVirtualList::slot_for(1, 0)
+    gen_a: u32 = UiVirtualList::slot_generation(slot_a)
+    check("a retained row has a slot and generation", slot_a != UiVirtualList::NONE_INDEX and gen_a != 0)
+    check("logical lookup is symmetric", UiVirtualList::logical_for_slot(slot_a) == 0)
+    _ = UiVirtualList::realize(1, 100, UiVirtualList::VisibleRange{first: 0, finish: 3}, 8)
+    check("re-realizing keeps a visible row stable", UiVirtualList::slot_for(1, 0) == slot_a and UiVirtualList::slot_generation(slot_a) == gen_a)
+
+    _ = UiVirtualList::realize(1, 100, UiVirtualList::VisibleRange{first: 10, finish: 13}, 8)
+    check("scrolled-out rows release their slots", UiVirtualList::slot_for(1, 0) == UiVirtualList::NONE_INDEX and UiVirtualList::slot_for(1, 10) != UiVirtualList::NONE_INDEX)
+    check("only the retained rows are realized", UiVirtualList::realized_count() == 3)
+    _ = UiVirtualList::realize(1, 100, UiVirtualList::VisibleRange{first: 0, finish: 3}, 8)
+    check("a returning row crosses a new generation", UiVirtualList::slot_for(1, 0) != UiVirtualList::NONE_INDEX and UiVirtualList::slot_generation(UiVirtualList::slot_for(1, 0)) != gen_a)
+
+    _ = UiVirtualList::realize(2, 50, UiVirtualList::VisibleRange{first: 0, finish: 2}, 8)
+    check("a second owner gets its own slots", UiVirtualList::slot_for(2, 0) != UiVirtualList::NONE_INDEX and UiVirtualList::slot_for(2, 0) != UiVirtualList::slot_for(1, 0))
+    UiVirtualList::release_owner(2)
+    check("releasing an owner frees only its rows", UiVirtualList::slot_for(2, 0) == UiVirtualList::NONE_INDEX and UiVirtualList::slot_for(1, 0) != UiVirtualList::NONE_INDEX)
+
+    budgeted: UiVirtualList::Realization = UiVirtualList::realize(3, 100, UiVirtualList::VisibleRange{first: 0, finish: 100}, 4)
+    check("realization honors the slot budget", budgeted.realized == 4 and budgeted.finish == 4)
+    empty_realization: UiVirtualList::Realization = UiVirtualList::realize(4, 0, UiVirtualList::VisibleRange{first: 0, finish: 0}, 8)
+    check("an empty list realizes nothing", empty_realization.realized == 0 and empty_realization.total == 0)
+
     if failures == 0:
         _ = puts("virtual list: all checks passed")
         return 0
