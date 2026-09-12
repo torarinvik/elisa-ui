@@ -23,6 +23,21 @@ bash scripts/check_capi.sh
   C example passed: PASS
 bash scripts/check_appkit_canvas.sh
   fresh-process PNG digest sha256=fe983e37bd348cf130b6e8aa0c09aee733f934c6866df0de362d04e34a8da880, bridge/bundle/signature: PASS
+bash scripts/check_appkit.sh
+  all checks passed: PASS
+bash scripts/check_performance.sh
+  benchmark passed (first_frame_ns=49721000 layout_ns=27872000 paint_ns=77312000 text_ns=75557000 text_input_ns=3164000 peak_rss=6062080): PASS
+bash scripts/check_unicode_conformance.sh
+  UAX #29 15.1.0: 1187 rows passed: PASS
+PATH="$HOME/.cargo/bin:$PATH" bash scripts/check_wapp.sh
+  built from this tree; profile, imports and exports inspected and JS-free: PASS
+  (requires wasm-component-ld 0.5.30 on PATH; build_wapp.sh now preflights this with a hint)
+bash scripts/check_uikit.sh
+  fresh-process PNG digest sha256=31d5af91003c0f43cfd327e7c8abc34173a89bf66223afb624815bc2895a7833, simulator/device/ABI/off-screen: PASS
+bash scripts/check_gtk.sh
+  real GtkWindows/Buttons/Entries built, typed, shaped, coloured: PASS
+bash scripts/check_win32.sh
+  PE32+ image links from real Windows headers, zero declines: PASS
 git diff --check: PASS
 ```
 
