@@ -1,0 +1,49 @@
+# Headless regression for the bounded table column layout.
+
+include "../src/widgets/ui_table.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def near(actual: f32, expected: f32) -> bool:
+    delta: f32 = actual - expected
+    return delta > -0.01 and delta < 0.01
+
+def main() -> i64:
+    UiTable::reset()
+    check("a fresh table is empty", UiTable::column_count() == 0 and UiTable::content_width(8.0) == 0.0)
+    check("invalid bounds are repaired", UiTable::add_column(-10.0, 500.0, 40.0, -3.0) and UiTable::column_width(0) == 40.0)
+    check("a grown table is not yet laid out", not UiTable::laid_out())
+
+    UiTable::reset()
+    _ = UiTable::add_column(50.0, 100.0, 200.0, 1.0)
+    _ = UiTable::add_column(50.0, 80.0, 120.0, 2.0)
+    check("columns register in order", UiTable::column_count() == 2)
+
+    grew: bool = UiTable::layout(300.0, 10.0)
+    check("a fitting table lays out without overflow", grew and not UiTable::overflowed())
+    first_width: f32 = UiTable::column_width(0)
+    check("the flexible column grows by weight", near(first_width, 100.0 + 110.0 / 3.0))
+    check("a capped column stops at its maximum", UiTable::column_width(1) == 120.0)
+    check("column offsets include spacing", near(UiTable::column_x(1, 10.0), first_width + 10.0))
+    check("content width is columns plus spacing", near(UiTable::content_width(10.0), first_width + 120.0 + 10.0))
+
+    shrunk: bool = UiTable::layout(100.0, 10.0)
+    check("a table below its minimums reports overflow", not shrunk and UiTable::overflowed())
+    check("columns fall to their minimums", UiTable::column_width(0) == 50.0 and UiTable::column_width(1) == 50.0)
+
+    UiTable::reset()
+    _ = UiTable::add_column(20.0, 60.0, 100.0, 0.0)
+    check("a single column can shrink exactly to fit", UiTable::layout(40.0, 10.0) and UiTable::column_width(0) == 40.0 and UiTable::content_width(10.0) == 40.0)
+    check("a zero-width surface floors at the minimum and reports overflow", not UiTable::layout(0.0, 10.0) and UiTable::column_width(0) == 20.0 and UiTable::overflowed())
+
+    if failures == 0:
+        _ = puts("table: all checks passed")
+        return 0
+    _ = puts("table: FAILURES above")
+    return 1

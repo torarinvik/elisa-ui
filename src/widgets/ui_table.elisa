@@ -1,0 +1,168 @@
+# Bounded table column layout.
+#
+# A table is rows of cells whose columns must line up. Box layout aligns a
+# single row; it cannot share a column width across independently built rows, so
+# a table needs one geometry authority for its columns. This module owns that:
+# minimum/preferred/maximum widths with grow weights, resolved once against the
+# available width.
+#
+# The algorithm is deterministic and allocation-free:
+#   1. start each column at its preferred width, clamped to [min, max];
+#   2. if the columns fit, share the leftover by grow weight, capped at max;
+#   3. if they do not fit, take the deficit from columns with slack above min;
+#   4. if the minimums still do not fit, keep the minimums and report overflow,
+#      so the caller clips or scrolls rather than silently shrinking text.
+#
+# Row virtualization is separate: `UiVirtualList` decides which rows exist.
+
+include "../core/ui_core.elisa"
+
+module UiTable:
+    public:
+        const MAX_COLUMNS: usize = 32
+        const NONE: usize = MAX_COLUMNS
+
+        struct Snapshot:
+            columns: usize
+            content_width: f32
+            available: f32
+            overflowed: bool
+
+        def reset() -> void:
+            table_columns_state <- 0
+            table_available_state <- 0.0
+            table_overflowed_state <- false
+            table_laid_out_state <- false
+
+        def add_column(minimum: f32, preferred: f32, maximum: f32, grow: f32) -> bool:
+            return false if table_columns_state >= MAX_COLUMNS
+            safe_min: f32 = normalized(minimum)
+            safe_max: mutable f32 = normalized(maximum)
+            safe_max <- safe_min if safe_max < safe_min
+            safe_pref: mutable f32 = normalized(preferred)
+            safe_pref <- safe_min if safe_pref < safe_min
+            safe_pref <- safe_max if safe_pref > safe_max
+            slot: usize = table_columns_state
+            table_minimum[slot] <- safe_min
+            table_preferred[slot] <- safe_pref
+            table_maximum[slot] <- safe_max
+            table_grow[slot] <- normalized(grow)
+            table_width[slot] <- safe_pref
+            table_columns_state <- slot + 1
+            table_laid_out_state <- false
+            return true
+
+        def column_count() -> usize:
+            return table_columns_state
+
+        def overflowed() -> bool:
+            return table_overflowed_state
+
+        def laid_out() -> bool:
+            return table_laid_out_state
+
+        # Resolve widths against the available content width. `spacing` is the
+        # gap between adjacent columns; a zero-column table reserves nothing.
+        def layout(available: f32, spacing: f32) -> bool:
+            count: i32 = table_columns_state.i32()
+            if count <= 0:
+                table_available_state <- normalized(available)
+                table_overflowed_state <- false
+                table_laid_out_state <- true
+                return true
+            safe_available: f32 = normalized(available)
+            safe_spacing: f32 = normalized(spacing)
+            total_spacing: f32 = (count - 1).f32() * safe_spacing
+            budget: mutable f32 = safe_available - total_spacing
+            budget <- 0.0 if budget < 0.0
+            # Start at preferred.
+            for index in 0..<count.usize():
+                table_width[index] <- table_preferred[index]
+            # Grow if there is room.
+            used: f32 = sum_widths()
+            if used < budget:
+                table_share_extra(budget - used)
+            else:
+                table_take_deficit(used - budget)
+            table_available_state <- safe_available
+            total: f32 = sum_widths() + total_spacing
+            table_overflowed_state <- total > safe_available + 0.001
+            table_laid_out_state <- true
+            return not table_overflowed_state
+
+        def column_width(index: usize) -> f32:
+            return 0.0 if index >= table_columns_state
+            return table_width[index]
+
+        def column_x(index: usize, spacing: f32) -> f32:
+            return 0.0 if index >= table_columns_state
+            offset: mutable f32 = 0.0
+            for column in 0..<index:
+                offset <- offset + table_width[column] + normalized(spacing)
+            return offset
+
+        def content_width(spacing: f32) -> f32:
+            if table_columns_state == 0:
+                return 0.0
+            return sum_widths() + (table_columns_state.i32() - 1).f32() * normalized(spacing)
+
+        def snapshot() -> Snapshot:
+            return Snapshot{columns: table_columns_state, content_width: content_width(0.0),
+                available: table_available_state, overflowed: table_overflowed_state}
+
+    private:
+        global mutable table_columns_state: usize = 0
+        global mutable table_available_state: f32 = 0.0
+        global mutable table_overflowed_state: bool = false
+        global mutable table_laid_out_state: bool = false
+        global mutable table_minimum: f32[MAX_COLUMNS] = zeroed
+        global mutable table_preferred: f32[MAX_COLUMNS] = zeroed
+        global mutable table_maximum: f32[MAX_COLUMNS] = zeroed
+        global mutable table_grow: f32[MAX_COLUMNS] = zeroed
+        global mutable table_width: f32[MAX_COLUMNS] = zeroed
+
+        def normalized(value: f32) -> f32:
+            safe: f32 = UiCore::nonnegative_extent(value)
+            return UiCore::MAX_GEOMETRY_EXTENT if safe > UiCore::MAX_GEOMETRY_EXTENT else safe
+
+        def sum_widths() -> f32:
+            total: mutable f32 = 0.0
+            for index in 0..<table_columns_state:
+                total <- total + table_width[index]
+            return total
+
+        # Share `extra` by grow weight among columns below their maximum. A
+        # single proportional pass is enough because the result is bounded by
+        # the per-column cap, and any weightless leftover stays unused.
+        def table_share_extra(extra: f32) -> void:
+            total_weight: mutable f32 = 0.0
+            for index in 0..<table_columns_state:
+                total_weight <- total_weight + table_grow[index] if table_width[index] < table_maximum[index]
+            if total_weight <= 0.0:
+                return
+            for index in 0..<table_columns_state:
+                headroom: f32 = table_maximum[index] - table_width[index]
+                return if headroom <= 0.0 or table_grow[index] <= 0.0
+                share: mutable f32 = extra * (table_grow[index] / total_weight)
+                share <- headroom if share > headroom
+                table_width[index] <- table_width[index] + share
+
+        # Remove `deficit` from columns that have slack above their minimum,
+        # proportional to that slack. If the slack is insufficient the widths
+        # fall to their minimums and the remaining deficit becomes overflow.
+        def table_take_deficit(deficit: f32) -> void:
+            total_slack: mutable f32 = 0.0
+            for index in 0..<table_columns_state:
+                slack: f32 = table_width[index] - table_minimum[index]
+                total_slack <- total_slack + slack if slack > 0.0
+            if total_slack <= 0.0:
+                return
+            remaining: mutable f32 = deficit
+            for index in 0..<table_columns_state:
+                slack: f32 = table_width[index] - table_minimum[index]
+                return if slack <= 0.0
+                take: mutable f32 = deficit * (slack / total_slack)
+                take <- remaining if take > remaining
+                take <- slack if take > slack
+                table_width[index] <- table_width[index] - take
+                remaining <- remaining - take

@@ -77,6 +77,8 @@ test/virtual_list_test.elisa
   bounded realization: stable visible slots, generation change on return, owner isolation, slot budget: PASS
 test/sdl3_device_loss_test.elisa
   SDL render targets-reset/device-reset/device-lost handled headlessly; renderer recreated, app state preserved: PASS
+test/ui_table_test.elisa
+  weighted column growth, maximum caps, deficit sharing, minimum floor, overflow report: PASS
 bash scripts/check_rust.sh
   safe Rust wrapper over the C ABI links and passes (event/text/IME/viewport); skips without rustc: PASS
 scripts/package_release.sh
