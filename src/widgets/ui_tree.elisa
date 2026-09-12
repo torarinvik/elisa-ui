@@ -1,0 +1,225 @@
+# Bounded tree structure and visible-order policy.
+#
+# Applications own their data and row widgets; this module owns the hierarchy
+# policy a tree control needs: expansion state, the flattened visible order, and
+# logical navigation that stays coherent when nodes are collapsed.
+#
+# A parent must be registered before its children. Child and sibling links are
+# built at registration time, so the visible order is a real depth-first walk
+# rather than registration order, and flattening stays a bounded iterative
+# traversal with no recursion. Duplicate ids, unknown parents, and the zero id
+# fail closed.
+#
+# Everything is fixed-capacity and allocation-free. `reveal` expands the
+# ancestors of a logical node so an off-screen target can be brought into the
+# visible window, which is what assistive navigation needs when it moves to a
+# node that a collapsed parent hid.
+
+module UiTree:
+    public:
+        const MAX_NODES: usize = 256
+        const ROOT: u32 = 0
+        const NONE_INDEX: usize = MAX_NODES
+
+        struct Snapshot:
+            nodes: usize
+            visible: usize
+            expanded: usize
+            overflowed: bool
+
+        def reset() -> void:
+            tree_node_count_state <- 0
+            tree_visible_count_state <- 0
+            tree_overflowed_state <- false
+            tree_root_head_state <- NONE_INDEX
+
+        def register(id: u32, parent: u32) -> bool:
+            return false if id == ROOT
+            return false if tree_node_count_state >= MAX_NODES
+            return false if index_of(id) != NONE_INDEX
+            parent_index: mutable usize = NONE_INDEX
+            parent_depth: mutable u32 = 0
+            if parent != ROOT:
+                parent_index <- index_of(parent)
+                return false if parent_index == NONE_INDEX
+                parent_depth <- tree_depth[parent_index]
+            slot: usize = tree_node_count_state
+            tree_ids[slot] <- id
+            tree_parent_index[slot] <- parent_index
+            tree_depth[slot] <- parent_depth + 1
+            tree_expanded[slot] <- false
+            tree_first_child[slot] <- NONE_INDEX
+            tree_next_sibling[slot] <- NONE_INDEX
+            tree_node_count_state <- slot + 1
+            if parent_index == NONE_INDEX:
+                append_root(slot)
+            else:
+                append_child(parent_index, slot)
+            rebuild()
+            return true
+
+        def set_expanded(id: u32, expanded: bool) -> bool:
+            slot: usize = index_of(id)
+            return false if slot == NONE_INDEX
+            return false if tree_expanded[slot] == expanded
+            tree_expanded[slot] <- expanded
+            rebuild()
+            return true
+
+        def toggle(id: u32) -> bool:
+            slot: usize = index_of(id)
+            return false if slot == NONE_INDEX
+            tree_expanded[slot] <- not tree_expanded[slot]
+            rebuild()
+            return true
+
+        # Expand every collapsed ancestor so `id` becomes visible. Returns the
+        # visible index, or NONE_INDEX when the id is unknown.
+        def reveal(id: u32) -> usize:
+            slot: usize = index_of(id)
+            return NONE_INDEX if slot == NONE_INDEX
+            ancestor: mutable usize = tree_parent_index[slot]
+            for _ in 0..<MAX_NODES:
+                break if ancestor == NONE_INDEX
+                tree_expanded[ancestor] <- true
+                ancestor <- tree_parent_index[ancestor]
+            rebuild()
+            return visible_index_of(id)
+
+        def clear() -> void:
+            reset()
+
+        def index_of(id: u32) -> usize:
+            for slot in 0..<tree_node_count_state:
+                return slot if tree_ids[slot] == id
+            return NONE_INDEX
+
+        def visible_count() -> usize:
+            return tree_visible_count_state
+
+        def visible_id(index: usize) -> u32:
+            return ROOT if index >= tree_visible_count_state
+            return tree_visible_ids[index]
+
+        def visible_index_of(id: u32) -> usize:
+            for index in 0..<tree_visible_count_state:
+                return index if tree_visible_ids[index] == id
+            return NONE_INDEX
+
+        def depth_of(id: u32) -> u32:
+            slot: usize = index_of(id)
+            return 0 if slot == NONE_INDEX
+            return tree_depth[slot]
+
+        def parent_of(id: u32) -> u32:
+            slot: usize = index_of(id)
+            return ROOT if slot == NONE_INDEX or tree_parent_index[slot] == NONE_INDEX
+            return tree_ids[tree_parent_index[slot]]
+
+        def is_expanded(id: u32) -> bool:
+            slot: usize = index_of(id)
+            return false if slot == NONE_INDEX
+            return tree_expanded[slot]
+
+        def has_children(id: u32) -> bool:
+            slot: usize = index_of(id)
+            return false if slot == NONE_INDEX
+            return tree_first_child[slot] != NONE_INDEX
+
+        def is_visible(id: u32) -> bool:
+            return visible_index_of(id) != NONE_INDEX
+
+        # Move one step in the visible order. Collapsed descendants are skipped
+        # because they are not in the visible order at all.
+        def move_visible(id: u32, forward: bool) -> u32:
+            index: usize = visible_index_of(id)
+            return ROOT if index == NONE_INDEX
+            if forward:
+                return id if index + 1 >= tree_visible_count_state
+                return tree_visible_ids[index + 1]
+            return id if index == 0
+            return tree_visible_ids[index - 1]
+
+        def overflowed() -> bool:
+            return tree_overflowed_state
+
+        def snapshot() -> Snapshot:
+            expanded_count: mutable usize = 0
+            for slot in 0..<tree_node_count_state:
+                expanded_count <- expanded_count + 1 if tree_expanded[slot]
+            return Snapshot{nodes: tree_node_count_state, visible: tree_visible_count_state,
+                expanded: expanded_count, overflowed: tree_overflowed_state}
+
+    private:
+        global mutable tree_node_count_state: usize = 0
+        global mutable tree_visible_count_state: usize = 0
+        global mutable tree_overflowed_state: bool = false
+        global mutable tree_root_head_state: usize = NONE_INDEX
+        global mutable tree_ids: u32[MAX_NODES] = zeroed
+        global mutable tree_parent_index: usize[MAX_NODES] = zeroed
+        global mutable tree_depth: u32[MAX_NODES] = zeroed
+        global mutable tree_expanded: bool[MAX_NODES] = zeroed
+        global mutable tree_first_child: usize[MAX_NODES] = zeroed
+        global mutable tree_next_sibling: usize[MAX_NODES] = zeroed
+        global mutable tree_visible_ids: u32[MAX_NODES] = zeroed
+
+        def append_root(slot: usize) -> void:
+            node_cursor: mutable usize = tree_root_head_state
+            if node_cursor == NONE_INDEX:
+                tree_root_head_state <- slot
+                return
+            for _ in 0..<MAX_NODES:
+                break if tree_next_sibling[node_cursor] == NONE_INDEX
+                node_cursor <- tree_next_sibling[node_cursor]
+            tree_next_sibling[node_cursor] <- slot
+
+        def append_child(parent: usize, slot: usize) -> void:
+            node_cursor: mutable usize = tree_first_child[parent]
+            if node_cursor == NONE_INDEX:
+                tree_first_child[parent] <- slot
+                return
+            for _ in 0..<MAX_NODES:
+                break if tree_next_sibling[node_cursor] == NONE_INDEX
+                node_cursor <- tree_next_sibling[node_cursor]
+            tree_next_sibling[node_cursor] <- slot
+
+        # Iterative depth-first walk. Children are pushed onto the pending work
+        # list in reverse so they pop in registration order.
+        def rebuild() -> void:
+            pending: mutable usize[256] = zeroed
+            staging: mutable usize[256] = zeroed
+            pending_size: mutable usize = 0
+            roots: mutable usize = 0
+            root: mutable usize = tree_root_head_state
+            for _ in 0..<MAX_NODES:
+                break if root == NONE_INDEX
+                staging[roots] <- root
+                roots <- roots + 1
+                root <- tree_next_sibling[root]
+            index: mutable usize = roots
+            for _ in 0..<roots:
+                index <- index - 1
+                pending[pending_size] <- staging[index]
+                pending_size <- pending_size + 1
+            visible_count: mutable usize = 0
+            for _ in 0..<MAX_NODES:
+                break if pending_size == 0
+                pending_size <- pending_size - 1
+                node: usize = pending[pending_size]
+                tree_visible_ids[visible_count] <- tree_ids[node]
+                visible_count <- visible_count + 1
+                if tree_expanded[node] and tree_first_child[node] != NONE_INDEX:
+                    children: mutable usize = 0
+                    child: mutable usize = tree_first_child[node]
+                    for _ in 0..<MAX_NODES:
+                        break if child == NONE_INDEX
+                        staging[children] <- child
+                        children <- children + 1
+                        child <- tree_next_sibling[child]
+                    index <- children
+                    for _ in 0..<children:
+                        index <- index - 1
+                        pending[pending_size] <- staging[index]
+                        pending_size <- pending_size + 1
+            tree_visible_count_state <- visible_count
+            tree_overflowed_state <- false

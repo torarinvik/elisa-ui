@@ -5,7 +5,7 @@ _Part of the [elisa-ui implementation baseline](../implementation-baseline.md)._
 
 Public framework modules are `UiCore`, `UiBuild`, `UiLifecycle`, `UiMetrics`, `UiState`, `UiTasks`, `UiCapabilities`, `UiEvents`, `UiPaint`, `UiRaster`,
 `UiConst`, `UiWidgets`, `UiFlat`, `UiHandles`, `UiResources`, `UiResourcePresentation`,
-`UiResponsive`, `UiVirtualList`, `UiTable`, `UiConstraints`, `UiIdentity`, `UiTheme`,
+`UiResponsive`, `UiVirtualList`, `UiTable`, `UiTree`, `UiConstraints`, `UiIdentity`, `UiTheme`,
 `UiLocalization`, `UiValidation`, `UiFeatureView`, `UiServices`, `UiShortcuts`, `UiDialog`, `UiNavigation`, `UiBack`, `UiGestures`, `UiTextLayout`, `UiTextMeasureLayout`, `UiTextInput`, `UiControls`, `UiCapi`, `UiAppKit`, `UiSkia`, `UiRemote`,
 `UiAppKitNative`, `UiAppKitCanvas`, `UiSdl3`, `UiSdl3Draw`, `UiWasmBrowser`,
 `UiMobileSurface`, and `UiInspector`. The application contract is

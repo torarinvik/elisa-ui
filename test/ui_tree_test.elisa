@@ -1,0 +1,42 @@
+# Headless regression for the bounded tree flattening policy.
+
+include "../src/widgets/ui_tree.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiTree::reset()
+    check("a fresh tree is empty", UiTree::visible_count() == 0 and not UiTree::overflowed())
+
+    check("roots and nested nodes register in order", UiTree::register(1, UiTree::ROOT) and UiTree::register(2, UiTree::ROOT) and UiTree::register(3, 1) and UiTree::register(4, 1) and UiTree::register(5, 3) and UiTree::register(6, 2))
+    check("collapsed roots are the whole visible order", UiTree::visible_count() == 2 and UiTree::visible_id(0) == 1 and UiTree::visible_id(1) == 2)
+    check("depth and parent are tracked", UiTree::depth_of(1) == 1 and UiTree::depth_of(3) == 2 and UiTree::depth_of(5) == 3 and UiTree::parent_of(5) == 3 and UiTree::parent_of(1) == UiTree::ROOT)
+    check("has_children scans the hierarchy", UiTree::has_children(1) and not UiTree::has_children(5))
+    check("hidden nodes are not visible", not UiTree::is_visible(3) and UiTree::visible_index_of(3) == UiTree::NONE_INDEX)
+
+    check("invalid registrations fail closed", not UiTree::register(1, UiTree::ROOT) and not UiTree::register(UiTree::ROOT, UiTree::ROOT) and not UiTree::register(7, 999))
+    check("a rejected registration does not change the tree", UiTree::snapshot().nodes == 6)
+
+    check("expanding a node reveals its children", UiTree::set_expanded(1, true) and UiTree::visible_count() == 4 and UiTree::visible_id(1) == 3 and UiTree::visible_id(2) == 4)
+    check("expanding a nested node reveals grandchildren", UiTree::set_expanded(3, true) and UiTree::visible_count() == 5 and UiTree::visible_id(2) == 5)
+    check("visible navigation follows the flattened order", UiTree::move_visible(1, true) == 3 and UiTree::move_visible(5, true) == 4 and UiTree::move_visible(2, true) == 2 and UiTree::move_visible(1, false) == 1)
+
+    check("collapsing hides descendants again", UiTree::set_expanded(1, false) and UiTree::visible_count() == 2 and not UiTree::is_visible(5))
+    check("reveal expands the ancestor chain", UiTree::reveal(5) == 2 and UiTree::is_visible(5) and UiTree::is_expanded(1) and UiTree::is_expanded(3) and UiTree::visible_count() == 5)
+    check("reveal of a hidden sibling branch works too", UiTree::reveal(6) == 5 and UiTree::is_expanded(2) and UiTree::visible_id(5) == 6)
+    check("unknown ids fail closed", UiTree::reveal(99) == UiTree::NONE_INDEX and UiTree::move_visible(99, true) == UiTree::ROOT and not UiTree::set_expanded(99, true) and not UiTree::toggle(99))
+
+    counts: UiTree::Snapshot = UiTree::snapshot()
+    check("snapshot reports nodes, visible rows and expansions", counts.nodes == 6 and counts.visible == 6 and counts.expanded == 3 and not counts.overflowed)
+
+    if failures == 0:
+        _ = puts("tree: all checks passed")
+        return 0
+    _ = puts("tree: FAILURES above")
+    return 1

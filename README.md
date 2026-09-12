@@ -144,6 +144,11 @@ because a module member's symbol carries its module and those names cannot move.
   resolved once against the available width. Weighted growth, deficit sharing,
   and an explicit overflow report replace per-row width guessing. See
   [docs/ui-table.md](docs/ui-table.md).
+- **Trees** ([src/widgets/ui_tree.elisa](src/widgets/ui_tree.elisa)) —
+  bounded parent/child registration, expansion state, an iterative depth-first
+  visible order, logical navigation that skips collapsed descendants, and
+  `reveal` to expand an ancestor chain for an off-screen target. See
+  [docs/ui-tree.md](docs/ui-tree.md).
 - **Size constraints** ([src/widgets/ui_constraints.elisa](src/widgets/ui_constraints.elisa)) —
   normalized minimum/preferred/maximum extents, bounded resolution, and
   explicit conflict diagnostics for adaptive layouts.
