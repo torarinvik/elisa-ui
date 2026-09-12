@@ -9,6 +9,10 @@ Wasmtime component host that loads `.wapp` packages whose only payload is
 `manifest.json` plus a Wasm component. Nothing here emits JavaScript, an ESM
 loader, or TypeScript declarations, and nothing should.
 
+New to the framework? Start with [docs/getting-started.md](docs/getting-started.md),
+then read the runnable [examples/hello](examples/hello) and the larger
+[examples/showcase](examples/showcase).
+
 ## Architecture
 
 Drawing is **retained**. An app's frame appends to a command batch; the backend
