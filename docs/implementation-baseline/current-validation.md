@@ -38,6 +38,22 @@ bash scripts/check_gtk.sh
   real GtkWindows/Buttons/Entries built, typed, shaped, coloured: PASS
 bash scripts/check_win32.sh
   PE32+ image links from real Windows headers, zero declines: PASS
+bash scripts/check_uikit_simulator.sh
+  both iOS backends run on a booted device (canvas + controls screenshots): PASS
+bash scripts/check_core_linux.sh
+  66 of the portable corpus compiled for aarch64 Linux, linked and passed there: PASS
+bash scripts/check_gtk_linux.sh
+  same fixture on aarch64 Linux against a real X server: PASS
+bash scripts/check_uikit_touch.sh
+  real system-level touch reached the retained model and semantic tree: PASS
+bash scripts/check_skia.sh (strict default, no SKIA_ROOT)
+  Elisa painter + AppKit compositor entries compile; real-renderer checks skipped without the pinned checkout: PASS-as-skip (not raster evidence)
+ELISA_UI_REQUIRE_REAL_SKIA=0 bash scripts/check_skia.sh
+  compiler-only edit loop: PASS (not renderer evidence)
+bash scripts/check_appkit_skia.sh / check_showcase_skia.sh (no SKIA_ROOT)
+  skipped, exit 0: NOT VERIFIED here (needs pinned checkout from third_party/skia.lock)
+bash scripts/check_android.sh / check_android_ime.sh (no SKIA_ROOT/SDK)
+  skipped, exit 0: NOT VERIFIED here (needs SDK + NDK + emulator + Android Skia build)
 git diff --check: PASS
 ```
 
