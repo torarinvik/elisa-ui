@@ -39,3 +39,4 @@ The baseline is recorded in one chapter per audit area:
 - [Current validation](implementation-baseline/current-validation.md)
 - [Ownership decisions and next gaps](implementation-baseline/ownership-decisions-and-next-gaps.md)
 - [Workstream status and evidence](implementation-baseline/plan-status.md)
+- [Decision records](implementation-baseline/decision-records.md)
