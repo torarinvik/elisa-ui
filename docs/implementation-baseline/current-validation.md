@@ -41,7 +41,7 @@ bash scripts/check_win32.sh
 bash scripts/check_uikit_simulator.sh
   both iOS backends run on a booted device (canvas + controls screenshots): PASS
 bash scripts/check_core_linux.sh
-  66 of the portable corpus compiled for aarch64 Linux, linked and passed there: PASS
+  70 of the portable corpus compiled for aarch64 Linux, linked and passed there: PASS
 bash scripts/check_gtk_linux.sh
   same fixture on aarch64 Linux against a real X server: PASS
 bash scripts/check_uikit_touch.sh
