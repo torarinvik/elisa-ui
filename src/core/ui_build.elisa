@@ -1,0 +1,50 @@
+# The framework's own public API version.
+#
+# This is the version an application or host compares against to decide whether
+# it was built against a compatible elisa-ui. It is deliberately separate from
+# the C boundary's packed ABI version (`include/elisa_ui.h`) and the Skia
+# bridge's ABI version (`include/elisa_skia.h`): those describe single wire
+# formats, while this describes the framework's public API as a whole. The same
+# rule applies to both -- a major difference is incompatible, minor and patch
+# differences preserve the existing contract.
+#
+# Hosts and inspectors can read this without a backend; it is a pure value.
+
+module UiBuild:
+    public:
+        const VERSION_MAJOR: u32 = 0
+        const VERSION_MINOR: u32 = 1
+        const VERSION_PATCH: u32 = 0
+
+        struct Version:
+            major: u32
+            minor: u32
+            patch: u32
+
+        const enum Compatibility of i32:
+            Compatible = 0
+            FrameworkOlder = 1
+            FrameworkNewer = 2
+            MajorMismatch = 3
+
+        def version() -> Version:
+            return Version{major: VERSION_MAJOR, minor: VERSION_MINOR, patch: VERSION_PATCH}
+
+        def packed_version() -> u32:
+            return (VERSION_MAJOR << 16) | (VERSION_MINOR << 8) | VERSION_PATCH
+
+        # `host` is the version the caller was built against. An exact match is
+        # `Compatible`; a same-major host ahead of or behind this build is
+        # reported by direction so diagnostics can say which side is stale,
+        # while `compatible` stays true for any minor/patch difference.
+        def compatibility(host: Version) -> Compatibility:
+            return Compatibility.MajorMismatch if host.major != VERSION_MAJOR
+            return Compatibility.Compatible if host.minor == VERSION_MINOR and host.patch == VERSION_PATCH
+            return Compatibility.FrameworkOlder if host.minor > VERSION_MINOR or (host.minor == VERSION_MINOR and host.patch > VERSION_PATCH)
+            return Compatibility.FrameworkNewer
+
+        def compatible(host: Version) -> bool:
+            return host.major == VERSION_MAJOR
+
+        def is_current(host: Version) -> bool:
+            return host.major == VERSION_MAJOR and host.minor == VERSION_MINOR and host.patch == VERSION_PATCH

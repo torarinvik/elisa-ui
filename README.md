@@ -32,6 +32,11 @@ because a module member's symbol carries its module and those names cannot move.
   invalidation reasons for layout, paint, semantics, resources, and animation,
   plus a monotonic invalidation sequence for detecting repeated dirty requests.
   Knows nothing about any wire format.
+- **Build version** ([src/core/ui_build.elisa](src/core/ui_build.elisa)) — the
+  framework's own public API version as a queryable value, separate from the C
+  and Skia ABI versions. A host or inspector compares the version it was built
+  against and gets a typed verdict: a major difference is incompatible, while
+  minor and patch differences stay compatible and report which side is stale.
 - **Lifecycle** ([src/core/ui_lifecycle.elisa](src/core/ui_lifecycle.elisa)) —
   one typed startup/focus/background/surface/stop state machine shared by the
   headless harness and every backend. It owns session generations and derived

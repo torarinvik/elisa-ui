@@ -61,6 +61,8 @@ bash scripts/check_capi.sh
   C example passed; header↔symbol cross-check: 7 host-facing functions and 6 app-facing callbacks agree both directions: PASS
 test/services_test.elisa
   permission/picker state machines, anti-prompt gate, settings sync, logical selection, owner disposal: PASS
+test/build_test.elisa
+  framework API version, packed version, and typed compatibility verdicts: PASS
 git diff --check: PASS
 ```
 

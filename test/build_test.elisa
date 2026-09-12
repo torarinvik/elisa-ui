@@ -1,0 +1,32 @@
+# Headless regression for the framework version/compatibility surface.
+
+include "../src/core/ui_build.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    current: UiBuild::Version = UiBuild::version()
+    check("version exposes the constants", current.major == UiBuild::VERSION_MAJOR and current.minor == UiBuild::VERSION_MINOR and current.patch == UiBuild::VERSION_PATCH)
+    check("packed version matches the fields", UiBuild::packed_version() == (UiBuild::VERSION_MAJOR << 16) | (UiBuild::VERSION_MINOR << 8) | UiBuild::VERSION_PATCH)
+    check("current version is compatible and current", UiBuild::compatible(current) and UiBuild::is_current(current) and UiBuild::compatibility(current) == UiBuild::Compatibility.Compatible)
+
+    same_major_newer: UiBuild::Version = UiBuild::Version{major: UiBuild::VERSION_MAJOR, minor: UiBuild::VERSION_MINOR + 1, patch: 0}
+    check("a newer same-major host is compatible and reports the framework older", UiBuild::compatible(same_major_newer) and not UiBuild::is_current(same_major_newer) and UiBuild::compatibility(same_major_newer) == UiBuild::Compatibility.FrameworkOlder)
+
+    same_major_older: UiBuild::Version = UiBuild::Version{major: UiBuild::VERSION_MAJOR, minor: 0, patch: 0}
+    check("an older same-major host is compatible and reports the framework newer", UiBuild::compatible(same_major_older) and UiBuild::compatibility(same_major_older) == UiBuild::Compatibility.FrameworkNewer)
+
+    major_mismatch: UiBuild::Version = UiBuild::Version{major: UiBuild::VERSION_MAJOR + 1, minor: 0, patch: 0}
+    check("a major mismatch is incompatible", not UiBuild::compatible(major_mismatch) and UiBuild::compatibility(major_mismatch) == UiBuild::Compatibility.MajorMismatch)
+
+    if failures == 0:
+        _ = puts("build: all checks passed")
+        return 0
+    _ = puts("build: FAILURES above")
+    return 1
