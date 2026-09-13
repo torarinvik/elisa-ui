@@ -1,0 +1,35 @@
+# The replay receiver is a value: same-type instances must not collapse together.
+include "../src/core/ui_paint.elisa"
+using UiPaint
+
+global mutable recorded: i32 = 0
+struct RecordingPainter:
+    id: i32
+impl Painter for RecordingPainter:
+    def push_clip(self: Self, box: UiCore::Rect) -> void can[Ui.Draw]:
+        pass
+    def pop_clip(self: Self) -> void can[Ui.Draw]:
+        pass
+    def clear(self: Self, color: UiCore::Color) -> void can[Ui.Draw]:
+        recorded <- recorded * 10 + self.id
+    def fill_rect(self: Self, box: UiCore::Rect, color: UiCore::Color, style: UiCore::SurfaceStyle) -> void can[Ui.Draw]:
+        pass
+    def draw_image(self: Self, draw: UiCore::ImageDraw) -> void can[Ui.Draw]:
+        pass
+    def fill_circle(self: Self, disc: UiCore::Circle, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void can[Ui.Draw]:
+        pass
+    def fill_triangle(self: Self, tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]:
+        pass
+    def fill_line(self: Self, segment: UiCore::Line, color: UiCore::Color, width: f32) -> void can[Ui.Draw]:
+        pass
+    def draw_text(self: Self, run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
+        pass
+
+def main() -> i32:
+    UiCore::begin_frame()
+    UiCore::clear(UiCore::rgb(20, 30, 40))
+    first: RecordingPainter = RecordingPainter{id: 1}
+    second: RecordingPainter = RecordingPainter{id: 2}
+    UiPaint::replay(first)
+    UiPaint::replay(second)
+    return 0 if recorded == 12 else 1

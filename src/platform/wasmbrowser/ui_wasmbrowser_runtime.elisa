@@ -154,7 +154,7 @@ module UiWasmBrowser:
         def present() -> void:
             total: usize = UiCore::command_count()
             wire_reset()
-            UiPaint::replay[WasmPainter]()
+            UiPaint::replay(painter())
             commands: void& = (&wire_buffer[0]).cast[void&] can Unsafe.PointerCast
             can Host.Present:
                 host_present_commands(UiCore::viewport_width().u32(), UiCore::viewport_height().u32(), commands, total.u32())
@@ -296,39 +296,42 @@ module UiWasmBrowser:
         struct WasmPainter:
             unused: i32
 
+        def painter() -> WasmPainter:
+            return WasmPainter{unused: 0}
+
         impl Painter for WasmPainter:
             # Clip metadata is intentionally side-band to the render-command
             # ABI. The browser host keeps the existing wire layout; it can
             # evolve clipping independently without changing these records.
-            def push_clip(box: UiCore::Rect) -> void can[Ui.Draw]:
+            def push_clip(self: Self, box: UiCore::Rect) -> void can[Ui.Draw]:
                 pass
 
-            def pop_clip() -> void can[Ui.Draw]:
+            def pop_clip(self: Self) -> void can[Ui.Draw]:
                 pass
 
-            def clear(color: UiCore::Color) -> void can[Ui.Draw]:
+            def clear(self: Self, color: UiCore::Color) -> void can[Ui.Draw]:
                 encode_clear(wire_take_slot(), color)
 
-            def fill_rect(box: UiCore::Rect, color: UiCore::Color, style: UiCore::SurfaceStyle) -> void can[Ui.Draw]:
+            def fill_rect(self: Self, box: UiCore::Rect, color: UiCore::Color, style: UiCore::SurfaceStyle) -> void can[Ui.Draw]:
                 encode_fill_rect(wire_take_slot(), box, color)
 
             # The wire carries the command whether or not this side can draw
             # it: the host is handed a count, and a command that writes no
             # record leaves the host reading a stale slot. Whether a browser
             # canvas has the image is the host's question, not this side's.
-            def draw_image(draw: UiCore::ImageDraw) -> void can[Ui.Draw]:
+            def draw_image(self: Self, draw: UiCore::ImageDraw) -> void can[Ui.Draw]:
                 encode_draw_image(wire_take_slot(), draw)
 
-            def fill_circle(disc: UiCore::Circle, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void can[Ui.Draw]:
+            def fill_circle(self: Self, disc: UiCore::Circle, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void can[Ui.Draw]:
                 # The wire carries geometry, not lighting; the host canvas
                 # applies its own treatment, as it does for rectangles.
                 encode_fill_circle(wire_take_slot(), disc, color)
 
-            def fill_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]:
+            def fill_triangle(self: Self, tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]:
                 encode_fill_triangle(wire_take_slot(), tri, color)
 
-            def fill_line(segment: UiCore::Line, color: UiCore::Color, width: f32) -> void can[Ui.Draw]:
+            def fill_line(self: Self, segment: UiCore::Line, color: UiCore::Color, width: f32) -> void can[Ui.Draw]:
                 encode_fill_line(wire_take_slot(), segment, color, width)
 
-            def draw_text(run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
+            def draw_text(self: Self, run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
                 encode_draw_text(wire_take_slot(), run, color)

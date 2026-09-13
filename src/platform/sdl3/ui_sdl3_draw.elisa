@@ -297,8 +297,11 @@ module UiSdl3Draw:
         struct Sdl3Painter:
             unused: i32
 
+        def painter() -> Sdl3Painter:
+            return Sdl3Painter{unused: 0}
+
         impl Painter for Sdl3Painter:
-            def push_clip(box: UiCore::Rect) -> void can[Ui.Draw]:
+            def push_clip(self: Self, box: UiCore::Rect) -> void can[Ui.Draw]:
                 if sdl3_clip_depth == 0:
                     saved_clip_enabled <- SDL_RenderClipEnabled(ren())
                     _ = SDL_GetRenderClipRect(ren(), (&saved_clip_rect[0]).cast[void&] can Unsafe.PointerCast)
@@ -310,7 +313,7 @@ module UiSdl3Draw:
                 clip: mutable i32[4] = [left.i32(), top.i32(), (right - left).i32(), (bottom - top).i32()]
                 _ = SDL_SetRenderClipRect(ren(), (&clip[0]).cast[void&] can Unsafe.PointerCast)
 
-            def pop_clip() -> void can[Ui.Draw]:
+            def pop_clip(self: Self) -> void can[Ui.Draw]:
                 return if sdl3_clip_depth == 0
                 sdl3_clip_depth <- sdl3_clip_depth - 1
                 return if sdl3_clip_depth != 0
@@ -319,32 +322,32 @@ module UiSdl3Draw:
                 else:
                     _ = SDL_SetRenderClipRect(ren(), null)
 
-            def clear(color: UiCore::Color) -> void can[Ui.Draw]:
+            def clear(self: Self, color: UiCore::Color) -> void can[Ui.Draw]:
                 paint_clear(color)
 
-            def fill_rect(box: UiCore::Rect, color: UiCore::Color, style: UiCore::SurfaceStyle) -> void can[Ui.Draw]:
+            def fill_rect(self: Self, box: UiCore::Rect, color: UiCore::Color, style: UiCore::SurfaceStyle) -> void can[Ui.Draw]:
                 paint_rect(box, color)
 
             # No image support: this painter has none, so it draws nothing rather
             # than a placeholder. A grey rectangle where a thumbnail should be is
             # a worse frame than a gap, and it hides that the image never arrived.
-            def draw_image(draw: UiCore::ImageDraw) -> void can[Ui.Draw]:
+            def draw_image(self: Self, draw: UiCore::ImageDraw) -> void can[Ui.Draw]:
                 _ = draw
 
-            def fill_circle(disc: UiCore::Circle, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void can[Ui.Draw]:
+            def fill_circle(self: Self, disc: UiCore::Circle, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void can[Ui.Draw]:
                 # SDL3's renderer has no shaded primitive, so a raised disc is
                 # painted flat here exactly as a raised rectangle is.
                 paint_circle(disc, color)
 
-            def fill_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]:
+            def fill_triangle(self: Self, tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]:
                 paint_triangle(tri, color)
 
-            def fill_line(segment: UiCore::Line, color: UiCore::Color, width: f32) -> void can[Ui.Draw]:
+            def fill_line(self: Self, segment: UiCore::Line, color: UiCore::Color, width: f32) -> void can[Ui.Draw]:
                 # Weight used to be recorded and lost here. It cost the
                 # checkmark: two weighted diagonals drawn as hairlines is a
                 # tick you cannot see, which is the defect the weight
                 # vocabulary exists to fix.
                 paint_stroke(segment, color, width)
 
-            def draw_text(run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
+            def draw_text(self: Self, run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
                 blit_text(run, color)

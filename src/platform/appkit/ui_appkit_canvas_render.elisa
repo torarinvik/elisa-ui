@@ -191,11 +191,14 @@ extend UiAppKitCanvas:
             accessibility_force_layout <- false if committed
 
         struct AppKitPainter:
-            unused: i32
+            context: usize
+
+        def painter() -> AppKitPainter:
+            return AppKitPainter{context: current_context()}
 
         impl Painter for AppKitPainter:
-            def push_clip(box: UiCore::Rect) -> void can[Ui.Draw]:
-                context: usize = current_context()
+            def push_clip(self: Self, box: UiCore::Rect) -> void can[Ui.Draw]:
+                context: usize = self.context
                 CGContextSaveGState(context)
                 CGContextBeginPath(context)
                 CGContextMoveToPoint(context, box.origin.x.f64(), box.origin.y.f64())
@@ -204,10 +207,10 @@ extend UiAppKitCanvas:
                 CGContextAddLineToPoint(context, box.origin.x.f64(), (box.origin.y + box.size.height).f64())
                 CGContextClosePath(context)
                 CGContextClip(context)
-            def pop_clip() -> void can[Ui.Draw]:
-                CGContextRestoreGState(current_context())
-            def clear(color: UiCore::Color) -> void can[Ui.Draw]:
-                context: usize = current_context()
+            def pop_clip(self: Self) -> void can[Ui.Draw]:
+                CGContextRestoreGState(self.context)
+            def clear(self: Self, color: UiCore::Color) -> void can[Ui.Draw]:
+                context: usize = self.context
                 set_fill_color(context, color)
                 CGContextBeginPath(context)
                 CGContextMoveToPoint(context, 0.0, 0.0)
@@ -219,7 +222,7 @@ extend UiAppKitCanvas:
             # The colour is passed to the STYLE, not just to the fill: the whole
             # depth policy is weighted by how light the surface is, and this
             # painter used to ask for a style that could not know.
-            def fill_rect(box: UiCore::Rect, color: UiCore::Color, style: UiCore::SurfaceStyle) -> void can[Ui.Draw]:
+            def fill_rect(self: Self, box: UiCore::Rect, color: UiCore::Color, style: UiCore::SurfaceStyle) -> void can[Ui.Draw]:
                 # An invisible fill must stay invisible. The depth treatment
                 # paints a white sheen and a white rim that are NOT scaled by
                 # the fill's alpha, so a transparent rect -- which the widget
@@ -230,23 +233,23 @@ extend UiAppKitCanvas:
                 return if color.a == 0
                 return if box.size.width <= 0.0 or box.size.height <= 0.0
                 treatment: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for_shaped(box, style.depth, style.corner, color)
-                draw_styled_depth_surface(current_context(), box, treatment, color, style)
+                draw_styled_depth_surface(self.context, box, treatment, color, style)
             # A picture the host bound to this resource, or nothing: no placeholder.
-            def draw_image(draw: UiCore::ImageDraw) -> void can[Ui.Draw]:
-                draw_bound_picture(current_context(), draw)
+            def draw_image(self: Self, draw: UiCore::ImageDraw) -> void can[Ui.Draw]:
+                draw_bound_picture(self.context, draw)
 
-            def fill_circle(disc: UiCore::Circle, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void can[Ui.Draw]:
+            def fill_circle(self: Self, disc: UiCore::Circle, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void can[Ui.Draw]:
                 return if color.a == 0 or disc.radius <= 0.0
                 if depth != UiCore::SurfaceDepth.Flat:
-                    draw_depth_disc(current_context(), disc, color, depth)
+                    draw_depth_disc(self.context, disc, color, depth)
                     return
-                context: usize = current_context()
+                context: usize = self.context
                 set_fill_color(context, color)
                 CGContextBeginPath(context)
                 CGContextAddArc(context, disc.center.x.f64(), disc.center.y.f64(), disc.radius.f64(), 0.0, 6.283185307179586, 0)
                 CGContextFillPath(context)
-            def fill_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]:
-                context: usize = current_context()
+            def fill_triangle(self: Self, tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]:
+                context: usize = self.context
                 set_fill_color(context, color)
                 CGContextBeginPath(context)
                 CGContextMoveToPoint(context, tri.a.x.f64(), tri.a.y.f64())
@@ -254,9 +257,9 @@ extend UiAppKitCanvas:
                 CGContextAddLineToPoint(context, tri.c.x.f64(), tri.c.y.f64())
                 CGContextClosePath(context)
                 CGContextFillPath(context)
-            def fill_line(segment: UiCore::Line, color: UiCore::Color, width: f32) -> void can[Ui.Draw]:
+            def fill_line(self: Self, segment: UiCore::Line, color: UiCore::Color, width: f32) -> void can[Ui.Draw]:
                 return if color.a == 0 or width <= 0.0
-                context: usize = current_context()
+                context: usize = self.context
                 set_stroke_color(context, color)
                 CGContextSetLineWidth(context, width.f64())
                 CGContextSetLineCap(context, CG_LINE_CAP_ROUND if UiPaint::stroke_cap_is_round(width) else CG_LINE_CAP_BUTT)
@@ -264,7 +267,7 @@ extend UiAppKitCanvas:
                 CGContextMoveToPoint(context, segment.from_point.x.f64(), segment.from_point.y.f64())
                 CGContextAddLineToPoint(context, segment.to_point.x.f64(), segment.to_point.y.f64())
                 CGContextStrokePath(context)
-            def draw_text(run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
+            def draw_text(self: Self, run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
                 return if run.text.len == 0
                 safe_text: sview = UiCore::bounded_text(run.text)
                 pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
@@ -276,4 +279,4 @@ extend UiAppKitCanvas:
                 # nothing in the model saying which was intended. An app that
                 # wants a heavy heading marks it, and then every backend agrees.
                 semibold: i32 = 1 if run.weighted else 0
-                draw_text_line_styled(pointer, safe_text.len, run.size, semibold, run.origin.x, run.origin.y, color, run.halo, run.tracking)
+                draw_text_line_styled(self.context, pointer, safe_text.len, run.size, semibold, run.origin.x, run.origin.y, color, run.halo, run.tracking)
