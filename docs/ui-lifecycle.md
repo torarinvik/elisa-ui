@@ -14,6 +14,15 @@ gives adapters and tests a stable session identity for rejecting callbacks from
 an older run. `ready()` is called only after application initialization has
 completed, so construction-time callbacks cannot enter the app frame pipeline.
 
+Surface availability and application visibility can change in either order.
+While the phase is `SurfaceLost`, focus, pause, and resume notifications are
+recorded against the phase to restore without making the app renderable or
+input-active. `surface_restored()` then returns to that staged phase: a paused
+app remains `Background`, while a foregrounded app becomes `Active` or
+`Inactive` according to its focus. This covers both `PAUSE → TERM_WINDOW →
+INIT_WINDOW → RESUME` and `TERM_WINDOW → PAUSE → RESUME → INIT_WINDOW` without
+letting an app draw to a missing surface.
+
 The derived predicates are intentionally small and backend-neutral:
 
 - `accepts_input()` is true only in `Active`;

@@ -41,6 +41,7 @@ module UiLifecycle:
         def reset() -> void:
             phase_state <- Phase.New
             focused_state <- false
+            surface_return_phase_state <- Phase.New
             # A reset starts a fresh owner/session. Invalidate every pending
             # task token before a new app can create work, so callbacks from a
             # previous surface cannot target recycled view state.
@@ -54,6 +55,7 @@ module UiLifecycle:
             generation_state <- next_generation(generation_state)
             phase_state <- Phase.Starting
             focused_state <- false
+            surface_return_phase_state <- Phase.New
             return true
 
         def ready() -> bool:
@@ -66,37 +68,64 @@ module UiLifecycle:
             return true
 
         def focus_gained() -> bool:
-            return false if phase_state == Phase.New or phase_state == Phase.Stopped or phase_state == Phase.SurfaceLost
+            return false if phase_state == Phase.New or phase_state == Phase.Stopped
             focused_state <- true
-            phase_state <- Phase.Active if phase_state == Phase.Inactive else phase_state
+            if phase_state == Phase.SurfaceLost:
+                surface_return_phase_state <- Phase.Active if surface_return_phase_state == Phase.Inactive
+            else:
+                phase_state <- Phase.Active if phase_state == Phase.Inactive
             return true
 
         def focus_lost() -> bool:
+            if phase_state == Phase.SurfaceLost:
+                return false if surface_return_phase_state != Phase.Active and surface_return_phase_state != Phase.Inactive
+                focused_state <- false
+                surface_return_phase_state <- Phase.Inactive if surface_return_phase_state == Phase.Active
+                return true
             return false if phase_state != Phase.Active and phase_state != Phase.Inactive
             focused_state <- false
             phase_state <- Phase.Inactive
             return true
 
         def suspend() -> bool:
-            return false if phase_state == Phase.New or phase_state == Phase.Stopped or phase_state == Phase.SurfaceLost
+            return false if phase_state == Phase.New or phase_state == Phase.Stopped
             focused_state <- false
-            phase_state <- Phase.Background
+            if phase_state == Phase.SurfaceLost:
+                surface_return_phase_state <- Phase.Background
+            else:
+                phase_state <- Phase.Background
             return true
 
         def resume() -> bool:
-            return false if phase_state != Phase.Background and phase_state != Phase.SurfaceLost
+            if phase_state == Phase.SurfaceLost:
+                # Host lifecycle notifications can arrive in either order
+                # around surface recreation. Stage foregrounding against the
+                # phase to restore, but never expose a renderable phase until
+                # the host confirms the surface is back.
+                return false if surface_return_phase_state != Phase.Background
+                focused_state <- true
+                surface_return_phase_state <- Phase.Active
+                return true
+            return false if phase_state != Phase.Background
             focused_state <- true
             phase_state <- Phase.Active
             return true
 
         def surface_lost() -> bool:
             return false if phase_state == Phase.New or phase_state == Phase.Stopped
+            # Surface loss temporarily replaces the public phase, so preserve
+            # the app's phase for focus, pause, and resume callbacks that may
+            # arrive before the replacement surface. Repeated loss reports
+            # must not erase that staged state.
+            if phase_state != Phase.SurfaceLost:
+                surface_return_phase_state <- phase_state
             phase_state <- Phase.SurfaceLost
             return true
 
         def surface_restored() -> bool:
             return false if phase_state != Phase.SurfaceLost
-            phase_state <- Phase.Active if focused_state else Phase.Inactive
+            phase_state <- surface_return_phase_state
+            surface_return_phase_state <- Phase.New
             return true
 
         # Stop is idempotent so every backend can call it from both an explicit
@@ -105,6 +134,7 @@ module UiLifecycle:
             return false if phase_state == Phase.New or phase_state == Phase.Stopped
             phase_state <- Phase.Stopped
             focused_state <- false
+            surface_return_phase_state <- Phase.New
             # Stopping is a teardown boundary, not merely a phase label. Drop
             # all task generations so late host completions fail closed even if
             # the application never had an owner-specific disposal hook.
@@ -165,6 +195,7 @@ module UiLifecycle:
         global mutable phase_state: Phase = Phase.New
         global mutable generation_state: u32 = 0
         global mutable focused_state: bool = false
+        global mutable surface_return_phase_state: Phase = Phase.New
 
         # Generation zero is reserved for an object that has never belonged to
         # a session.  Keep it reserved even after the 32-bit counter wraps so a
