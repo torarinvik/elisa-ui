@@ -19,6 +19,10 @@ def main() -> i64:
     check("request stores identity and owner", UiServices::is_valid(camera) and UiServices::kind(camera) == UiServices::ServiceKind.Camera and UiServices::owner(camera) == 42)
     check("service starts unrequested and promptable", UiServices::consent(camera) == UiServices::ConsentState.Unrequested and UiServices::can_prompt(camera))
     check("unknown service kind is rejected", not UiServices::is_valid(UiServices::request(UiServices::ServiceKind.Unknown, 42)))
+    negative_service_kind: UiServices::ServiceKind = (-1).i32().ServiceKind()
+    check("negative service ordinal is rejected", not UiServices::is_valid(UiServices::request(negative_service_kind, 42)))
+    past_service_kind: UiServices::ServiceKind = 10.i32().ServiceKind()
+    check("out-of-range service ordinal is rejected", not UiServices::is_valid(UiServices::request(past_service_kind, 42)))
 
     duplicate: UiServices::ServiceHandle = UiServices::request(UiServices::ServiceKind.Camera, 42)
     check("same kind and owner is idempotent", duplicate.slot == camera.slot and duplicate.generation == camera.generation)
