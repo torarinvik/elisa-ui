@@ -73,7 +73,7 @@ extend UiFlat:
         # this in Elisa means a mutation followed immediately by hit testing
         # or scrolling cannot observe stale frames.
         def ensure_layout() -> void:
-            layout(last_layout_width, last_layout_height) if layout_initialized and (layout_dirty or layout_metrics_changed())
+            layout(last_layout_width, last_layout_height) if layout_initialized and layout_needs_refresh()
 
         # Scroll geometry is retained in the flat widget row, not in a host
         # object. Setters clamp in Elisa and optionally reflow the remembered
@@ -94,6 +94,8 @@ extend UiFlat:
             content: f32 = widgets[index].scroll_content_width if widgets[index].axis == UiConst::Axis.Row else widgets[index].scroll_content_height
             return content - viewport if content > viewport else 0.0
 
+extend UiFlat:
+    public:
         def set_scroll_offset(index: usize, requested: f32) -> bool:
             ensure_layout()
             return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Scroll or not UiCore::is_finite(requested)
@@ -126,3 +128,12 @@ extend UiFlat:
             left_alt_down <- false
             right_alt_down <- false
             clear_hover()
+
+extend UiFlat:
+    private:
+        # Some layout-affecting state lives outside the retained widget arena
+        # (resource metadata, locale and system preferences). Those owners
+        # publish the shared invalidation, so geometry consumers must honor it
+        # alongside mutations that can set the arena-local dirty bit.
+        def layout_needs_refresh() -> bool:
+            return layout_dirty or layout_metrics_changed() or UiCore::is_invalidated(UiCore::Invalidation.Layout)

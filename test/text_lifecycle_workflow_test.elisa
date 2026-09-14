@@ -1,0 +1,127 @@
+# Integrated public-API regression for retained text across edit, validation,
+# resource relayout, and view teardown.
+
+include "../src/widgets/ui_handles.elisa"
+include "../src/widgets/ui_validation.elisa"
+include "../src/widgets/ui_resources.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable failures: i32 = 0
+
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size
+
+def ui_font_ascent(size: f32) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return 0
+
+def app_init() -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    pass
+
+def app_text_input(text: sview) -> void:
+    pass
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    pass
+
+def app_frame() -> void:
+    pass
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def build_view(initial: sview) -> UiHandles::Handle:
+    root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 8.0, 6.0, UiCore::rgb(20, 24, 32))
+    field: UiHandles::Handle = UiHandles::text_field(root, "Name", "", initial, 180.0, 36.0, 14.0, UiCore::rgb(240, 240, 248), UiCore::rgb(32, 38, 50))
+    _ = UiHandles::request_focus(field)
+    UiHandles::layout(360.0, 200.0)
+    return field
+
+def main() -> i64:
+    UiHandles::reset()
+    UiResources::reset()
+    field: UiHandles::Handle = build_view("seed")
+    check("public retained field starts valid and focused", UiHandles::is_valid(field) and UiHandles::is_focused(field) and UiHandles::text_value(field) == "seed")
+
+    # A composition arrives through the same public callback used by platform
+    # adapters. Programmatic replacement is authoritative and clears that mark.
+    UiHandles::update_marked_text_utf8_characters("候補", 1, 1)
+    check("IME composition is retained on the focused field", UiHandles::marked_length(field) > 0 and UiHandles::text_value(field) == "seed候補")
+    UiHandles::replace_text(field, "programmatic ✓")
+    check("programmatic replacement updates text and cancels composition", UiHandles::text_value(field) == "programmatic ✓" and UiHandles::marked_length(field) == 0)
+
+    # Resolve an older asynchronous request after the field has changed. The
+    # stale completion must not change the current validation result or value.
+    validation: UiValidation::Handle = UiValidation::bind(7001)
+    first_token: u32 = UiValidation::begin(validation)
+    UiHandles::replace_text(field, "newer ✓")
+    current_token: u32 = UiValidation::begin(validation)
+    check("late validation result is rejected after an edit", not UiValidation::reject(validation, first_token, "stale") and UiValidation::is_pending(validation))
+    check("current asynchronous validation resolves", UiValidation::accept(validation, current_token) and UiValidation::status(validation) == UiValidation::Status.Valid)
+    check("validation never replaces the application-owned draft", UiHandles::text_value(field) == "newer ✓")
+
+    # A changed logical asset's intrinsic geometry invalidates layout. Running
+    # the normal retained layout pass must preserve text, selection, focus and
+    # the active IME mark while recomputing the tree.
+    UiHandles::set_selection_utf16(field, 0, 0)
+    UiHandles::update_marked_text_utf8_characters("名", 1, 0)
+    value_before_relayout: sview = UiHandles::text_value(field)
+    mark_before_relayout: usize = UiHandles::marked_length(field)
+    check("second composition is active before resource relayout", mark_before_relayout > 0)
+    if UiHandles::widget(field) is before:
+        x_before: f32 = before.x
+        y_before: f32 = before.y
+        width_before: f32 = before.width
+        height_before: f32 = before.height
+        UiCore::clear_all_invalidations()
+        resource: UiResources::ResourceHandle = UiResources::request("fonts/body", 51)
+        _ = UiResources::set_intrinsic_size(resource, 800.0, 24.0)
+        check("resource metadata requests retained relayout", UiCore::is_invalidated(UiCore::Invalidation.Layout))
+        UiHandles::ensure_layout()
+        if UiHandles::widget(field) is after:
+            check("resource relayout preserves the same field and IME state", UiHandles::is_valid(field) and UiHandles::is_focused(field) and UiHandles::text_value(field) == value_before_relayout and UiHandles::marked_length(field) == mark_before_relayout)
+            check("resource relayout retains field geometry", after.x == x_before and after.y == y_before and after.width == width_before and after.height == height_before)
+        else:
+            check("resource relayout retains the field", false)
+        check("layout pass consumes resource invalidation", not UiCore::is_invalidated(UiCore::Invalidation.Layout))
+    else:
+        check("field has retained pre-relayout geometry", false)
+
+    # Teardown advances both retained-tree and validation identities before a
+    # replacement view can reuse their slots.
+    late_token: u32 = UiValidation::begin(validation)
+    UiHandles::reset()
+    _ = UiValidation::dispose(validation)
+    replacement: UiHandles::Handle = build_view("replacement")
+    check("view teardown invalidates the old typed field", not UiHandles::is_valid(field) and UiHandles::is_valid(replacement))
+    check("view teardown rejects pending validation completion", not UiValidation::is_valid(validation) and not UiValidation::accept(validation, late_token))
+    check("late result leaves replacement view untouched", UiHandles::text_value(replacement) == "replacement")
+
+    if failures == 0:
+        _ = puts("text lifecycle workflow: all checks passed")
+        return 0
+    _ = puts("text lifecycle workflow: FAILURES above")
+    return failures.i64()
