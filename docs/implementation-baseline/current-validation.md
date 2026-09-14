@@ -2,11 +2,12 @@
 
 _Part of the [elisa-ui implementation baseline](../implementation-baseline.md)._
 
-## Refresh 2026-09-14 (code through 6a8f016)
+## Refresh 2026-09-14 (code through f5d991d)
 
 Current host: macOS 26.6.2 (Darwin 25.6.0), arm64; Homebrew clang 23.1.1.
-The UI worktree is not clean: existing AppKit canvas, SDL3, and paint changes
-were preserved and excluded from the commits recorded here.
+The UI worktree is not clean: existing AppKit canvas, SDL3, and paint changes,
+including the untracked SDL3 image module and fixture, were preserved and
+excluded from the commits recorded here.
 
 ```text
 scripts/check_toolchain.sh
@@ -38,6 +39,18 @@ check_unicode_conformance.sh with ELISA_STAGE1_NO_SEMANTIC_GATE=1
 test/text_lifecycle_workflow_test.elisa and test/showcase_workflow_test.elisa
   public retained editing/validation/resource relayout/teardown and app workflow: PASS
   (both executed in stage1 diagnostic mode with semantic gate disabled)
+test/virtual_list_test.elisa
+  latest stage1, semantic gate enabled: shared-pool exhaustion, cross-owner
+  identity preservation, lazy initialization and global count: PASS
+test/text_lifecycle_workflow_test.elisa
+  diagnostic mode: identical replacement clears an IME mark and invalidates
+  paint/semantics while preserving the text: PASS
+scripts/package_release.sh
+  injected copy failure in an isolated output: old bundle content preserved;
+  staging and backup directories cleaned: PASS
+test/sdl3_image_binding_test.elisa (pre-existing uncommitted worktree addition)
+  diagnostic mode with SDL dummy driver: upload/readback, fit, alpha,
+  replacement, generation reuse and renderer teardown: PASS
 ```
 
 Semantic-enabled compilation of src/platform/skia/ui_skia.elisa remained at
