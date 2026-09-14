@@ -47,11 +47,18 @@ pub mod event_kind {
 
 /// Opaque retained-widget identity. The token is valid only for the current
 /// retained-tree lifetime; zero means invalid.
+#[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct WidgetHandle(pub u64);
+pub struct WidgetHandle(u64);
 
 impl WidgetHandle {
     pub const INVALID: WidgetHandle = WidgetHandle(0);
+
+    /// Wrap a token received from `elisa_ui_on_widget_event` without exposing
+    /// its slot/epoch encoding. Keep it only while the retained tree is live.
+    pub const fn from_callback_token(token: u64) -> WidgetHandle {
+        WidgetHandle(token)
+    }
 
     pub fn is_valid(self) -> bool {
         self.0 != 0
