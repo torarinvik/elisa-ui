@@ -130,7 +130,7 @@ module UiServices:
             service_owners[free_slot] <- owner
             service_consents[free_slot] <- ConsentState.Unrequested
             service_pickers[free_slot] <- PickerState.Idle
-            service_failures[free_slot] <- ServiceFailureKind.Unknown
+            clear_workflow_failures(free_slot)
             service_selection_ids[free_slot] <- 0
             service_selection_kinds[free_slot] <- 0
             service_count_state <- free_slot + 1 if free_slot >= service_count_state else service_count_state
@@ -144,7 +144,7 @@ module UiServices:
             return false if not is_valid(handle) or not can_prompt(handle)
             slot: usize = handle.slot.usize()
             service_consents[slot] <- ConsentState.Requested
-            service_failures[slot] <- ServiceFailureKind.Unknown
+            record_consent_failure(slot, ServiceFailureKind.Unknown)
             mark_changed()
             return true
 
@@ -158,7 +158,7 @@ module UiServices:
             return false if not consent_fact_is_coherent(next, failure)
             return false if not consent_state_is_terminal(next)
             service_consents[slot] <- next
-            service_failures[slot] <- consent_failure_for(next, failure)
+            record_consent_failure(slot, consent_failure_for(next, failure))
             mark_changed()
             return true
 
@@ -172,21 +172,21 @@ module UiServices:
             return false if not consent_state_is_terminal(next) and next != ConsentState.Unrequested
             return false if not consent_fact_is_coherent(next, failure)
             service_consents[slot] <- next
-            service_failures[slot] <- consent_failure_for(next, failure)
+            record_consent_failure(slot, consent_failure_for(next, failure))
             mark_changed()
             return true
 
         def cancel_prompt(handle: ServiceHandle) -> bool:
             return false if not is_valid(handle) or service_consents[handle.slot.usize()] != ConsentState.Requested
             service_consents[handle.slot.usize()] <- ConsentState.Cancelled
-            service_failures[handle.slot.usize()] <- ServiceFailureKind.Cancelled
+            record_consent_failure(handle.slot.usize(), ServiceFailureKind.Cancelled)
             mark_changed()
             return true
 
         def can_prompt(handle: ServiceHandle) -> bool:
             return false if not is_valid(handle)
             current: ConsentState = service_consents[handle.slot.usize()]
-            return current == ConsentState.Unrequested or current == ConsentState.Cancelled or (current == ConsentState.Failed and service_failures[handle.slot.usize()] == ServiceFailureKind.Retryable)
+            return current == ConsentState.Unrequested or current == ConsentState.Cancelled or (current == ConsentState.Failed and consent_failure(handle) == ServiceFailureKind.Retryable)
 
         # ── Picker flow ────────────────────────────────────────────────────
         # Pickers are user-initiated every time, so any terminal picker state
@@ -195,7 +195,7 @@ module UiServices:
             return false if not is_valid(handle) or not can_present(handle)
             slot: usize = handle.slot.usize()
             service_pickers[slot] <- PickerState.Presenting
-            service_failures[slot] <- ServiceFailureKind.Unknown
+            record_picker_failure(slot, ServiceFailureKind.Unknown)
             service_selection_ids[slot] <- 0
             service_selection_kinds[slot] <- 0
             mark_changed()
@@ -212,7 +212,7 @@ module UiServices:
             service_pickers[slot] <- next
             service_selection_ids[slot] <- selection_id if next == PickerState.Selected else 0
             service_selection_kinds[slot] <- selection_kind if next == PickerState.Selected else 0
-            service_failures[slot] <- picker_failure(next)
+            record_picker_failure(slot, picker_failure_for(next))
             mark_changed()
             return true
 
@@ -220,7 +220,7 @@ module UiServices:
             return false if not is_valid(handle) or service_pickers[handle.slot.usize()] != PickerState.Presenting
             slot: usize = handle.slot.usize()
             service_pickers[slot] <- PickerState.Cancelled
-            service_failures[slot] <- ServiceFailureKind.Cancelled
+            record_picker_failure(slot, ServiceFailureKind.Cancelled)
             service_selection_ids[slot] <- 0
             service_selection_kinds[slot] <- 0
             mark_changed()
@@ -364,7 +364,7 @@ module UiServices:
         def consent_failure_for(next: ConsentState, failure: ServiceFailureKind) -> ServiceFailureKind:
             return ServiceFailureKind.Unknown if next == ConsentState.Granted or next == ConsentState.Unrequested else failure
 
-        def picker_failure(next: PickerState) -> ServiceFailureKind:
+        def picker_failure_for(next: PickerState) -> ServiceFailureKind:
             return ServiceFailureKind.Cancelled if next == PickerState.Cancelled
             return ServiceFailureKind.Unavailable if next == PickerState.Unavailable
             return ServiceFailureKind.Retryable if next == PickerState.Failed
@@ -377,7 +377,7 @@ module UiServices:
             service_owners[slot] <- 0
             service_consents[slot] <- ConsentState.Unrequested
             service_pickers[slot] <- PickerState.Idle
-            service_failures[slot] <- ServiceFailureKind.Unknown
+            clear_workflow_failures(slot)
             service_selection_ids[slot] <- 0
             service_selection_kinds[slot] <- 0
 
@@ -389,3 +389,5 @@ module UiServices:
         def mark_changed() -> void:
             UiCore::invalidate(UiCore::Invalidation.Paint)
             UiCore::invalidate(UiCore::Invalidation.Semantics)
+
+include "./ui_services_failures.elisa"

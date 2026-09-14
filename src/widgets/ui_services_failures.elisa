@@ -1,0 +1,29 @@
+# Keep the independent consent and picker failure facts from overwriting each
+# other; `failure()` remains the legacy most-recent-workflow diagnostic.
+
+extend UiServices:
+    public:
+        def consent_failure(handle: ServiceHandle) -> ServiceFailureKind:
+            return ServiceFailureKind.Unknown if not is_valid(handle)
+            return service_consent_failures[handle.slot.usize()]
+
+        def picker_failure(handle: ServiceHandle) -> ServiceFailureKind:
+            return ServiceFailureKind.Unknown if not is_valid(handle)
+            return service_picker_failures[handle.slot.usize()]
+
+    private:
+        global mutable service_consent_failures: ServiceFailureKind[MAX_SERVICES] = zeroed
+        global mutable service_picker_failures: ServiceFailureKind[MAX_SERVICES] = zeroed
+
+        def clear_workflow_failures(slot: usize) -> void:
+            service_consent_failures[slot] <- ServiceFailureKind.Unknown
+            service_picker_failures[slot] <- ServiceFailureKind.Unknown
+            service_failures[slot] <- ServiceFailureKind.Unknown
+
+        def record_consent_failure(slot: usize, value: ServiceFailureKind) -> void:
+            service_consent_failures[slot] <- value
+            service_failures[slot] <- value
+
+        def record_picker_failure(slot: usize, value: ServiceFailureKind) -> void:
+            service_picker_failures[slot] <- value
+            service_failures[slot] <- value

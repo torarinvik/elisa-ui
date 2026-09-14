@@ -16,6 +16,9 @@ and presents a typed result without ever manufacturing authority.
   `Idle → Presenting → {Selected, Cancelled, Failed, Unavailable}`.
 - The anti-prompt gate (`can_prompt`) and the picker re-presentation gate
   (`can_present`).
+- Independent consent and picker failure facts (`consent_failure` and
+  `picker_failure`); the older `failure` accessor remains the most recent
+  workflow failure for compatibility.
 - Invalidation of paint and semantics whenever a state changes.
 
 ## What the host owns
@@ -46,7 +49,9 @@ again" grant.
 `Restricted`, `Unavailable` requires `Unavailable`, and `Failed` requires a
 retryable or unknown failure. `resolve_picker` rejects an empty
 (`selection_id == 0`) "selected" result, so a cancelled picker cannot be
-mistaken for a successful empty one.
+mistaken for a successful empty one. Consent and picker errors are recorded
+separately: a picker operation can no longer erase the retryable consent
+failure that controls `can_prompt`.
 
 ## Lifetime
 

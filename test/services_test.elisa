@@ -49,6 +49,12 @@ def main() -> i64:
     check("dismissed prompt is cancellable and promptable", UiServices::cancel_prompt(loc) and UiServices::consent(loc) == UiServices::ConsentState.Cancelled and UiServices::can_prompt(loc))
 
     picker: UiServices::ServiceHandle = UiServices::request(UiServices::ServiceKind.Files, 42)
+    _ = UiServices::begin_prompt(picker)
+    _ = UiServices::resolve_consent(picker, UiServices::ConsentState.Failed, UiServices::ServiceFailureKind.Retryable)
+    check("picker presentation preserves retryable consent", UiServices::present_picker(picker) and UiServices::can_prompt(picker) and UiServices::consent_failure(picker) == UiServices::ServiceFailureKind.Retryable and UiServices::picker_failure(picker) == UiServices::ServiceFailureKind.Unknown)
+    check("picker result keeps consent retry independent", UiServices::resolve_picker(picker, UiServices::PickerState.Failed, 0, 0) and UiServices::can_prompt(picker) and UiServices::consent_failure(picker) == UiServices::ServiceFailureKind.Retryable and UiServices::picker_failure(picker) == UiServices::ServiceFailureKind.Retryable)
+    check("consent retry reset preserves picker result", UiServices::begin_prompt(picker) and UiServices::picker_failure(picker) == UiServices::ServiceFailureKind.Retryable)
+    _ = UiServices::cancel_prompt(picker)
     check("idle picker can present", UiServices::can_present(picker) and UiServices::present_picker(picker) and UiServices::picker(picker) == UiServices::PickerState.Presenting)
     check("presenting picker cannot present twice", not UiServices::can_present(picker) and not UiServices::present_picker(picker))
     check("empty selection is not a success", not UiServices::resolve_picker(picker, UiServices::PickerState.Selected, 1, 0) and UiServices::picker(picker) == UiServices::PickerState.Presenting)
