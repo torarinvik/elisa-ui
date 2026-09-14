@@ -1,0 +1,171 @@
+# Retained virtual-list viewport, logical scrolling, and recycled row identity.
+# The application owns row data and builds a small fixed set of direct child
+# widgets; UiFlat maps those children onto the visible logical window.
+
+extend UiFlat:
+    private:
+        def virtual_viewport_extent(index: usize) -> f32:
+            return 0.0 if index >= widget_count
+            available: f32 = widgets[index].height - widgets[index].padding * 2.0
+            return UiCore::nonnegative_extent(available)
+
+        def virtual_child_capacity(index: usize) -> i32:
+            return 0 if index >= widget_count or not widgets[index].virtual_list
+            capacity: mutable i32 = 0
+            child: mutable usize = widgets[index].first_child
+            for _ in 0..<MAX_TRAVERSAL_SIBLINGS:
+                break if child == NONE or child >= widget_count
+                capacity <- capacity + 1 if widgets[child].visible
+                child <- widgets[child].next_sibling
+            capacity <- UiVirtualList::MAX_REALIZED.i32() if capacity > UiVirtualList::MAX_REALIZED.i32()
+            return capacity
+
+        def virtual_parent_for_row(index: usize) -> usize:
+            return widgets[index].parent if index < widget_count and widgets[index].parent < widget_count and widgets[widgets[index].parent].virtual_list else NONE
+
+        def next_virtual_generation(value: u32) -> u32:
+            next: u32 = value + 1
+            return 1 if next == 0
+            return next
+
+        def set_virtual_row_identity(index: usize, logical: i32) -> void:
+            return if index >= widget_count
+            return if widgets[index].virtual_row_index == logical
+            # Rebinding a recycled control changes what its retained state
+            # means. Do not transfer a press, focus, hover, or built-in
+            # selection from the old logical item to the new one; applications
+            # reapply item-owned state after observing the row generation.
+            release_active_press() if flat_active_widget == index
+            if focused_widget == index:
+                widgets[index].focused <- false
+                focused_widget <- NONE
+            widgets[index] with { pressed <- false, hovered <- false, selected <- false }
+            widgets[index].virtual_row_index <- logical
+            widgets[index].virtual_row_generation <- next_virtual_generation(widgets[index].virtual_row_generation)
+
+        def arrange_virtual_rows(index: usize, x: f32, y: f32, width: f32, height: f32, depth: usize) -> void:
+            total: i32 = UiVirtualList::bounded_count(widgets[index].virtual_total)
+            viewport: f32 = UiCore::nonnegative_extent(height)
+            anchor: UiVirtualList::ScrollAnchor = UiVirtualList::scroll_by(
+                UiVirtualList::ScrollAnchor{index: widgets[index].virtual_anchor_index, offset: widgets[index].virtual_anchor_offset},
+                0.0, total, widgets[index].virtual_item_extent, widgets[index].virtual_spacing, viewport)
+            widgets[index].virtual_anchor_index <- anchor.index
+            widgets[index].virtual_anchor_offset <- anchor.offset
+            slots: i32 = virtual_child_capacity(index)
+            window: UiVirtualList::AnchoredWindow = UiVirtualList::anchored_window(
+                total, widgets[index].virtual_item_extent, widgets[index].virtual_spacing,
+                anchor, viewport, slots)
+            if widgets[index].virtual_window_first != window.first or widgets[index].virtual_window_finish != window.finish:
+                widgets[index].virtual_window_first <- window.first
+                widgets[index].virtual_window_finish <- window.finish
+                widgets[index].virtual_generation <- next_virtual_generation(widgets[index].virtual_generation)
+            child: mutable usize = widgets[index].first_child
+            ordinal: mutable i32 = 0
+            for _ in 0..<MAX_TRAVERSAL_SIBLINGS:
+                break if child == NONE or child >= widget_count
+                next_child: usize = widgets[child].next_sibling
+                if widgets[child].visible and ordinal < window.finish - window.first:
+                    logical: i32 = window.first + ordinal
+                    set_virtual_row_identity(child, logical)
+                    position: UiVirtualList::ItemPosition = UiVirtualList::item_position(logical, window, widgets[index].virtual_item_extent, widgets[index].virtual_spacing)
+                    arrange(child, x, UiCore::bounded_coordinate(y + position.top), width, widgets[index].virtual_item_extent, depth + 1) if position.valid
+                    ordinal <- ordinal + 1
+                else:
+                    set_virtual_row_identity(child, -1)
+                    collapse(child, depth + 1)
+                child <- next_child
+
+    public:
+        # Uniform vertical rows are the first supported virtualization profile.
+        # Row widgets are ordinary retained children and stay app-owned; only
+        # this viewport owns logical position and bounded realization.
+        def virtual_list(parent: usize, label: sview, item_count: i32, item_extent: f32, spacing: f32, min_width: f32, min_height: f32, color: UiCore::Color) -> usize:
+            index: usize = new_widget(parent, UiConst::WidgetKind.Scroll)
+            return index if index == NONE
+            layout: UiVirtualList::Metrics = UiVirtualList::metrics(item_extent, spacing)
+            safe_width: f32 = UiConstraints::bounded(min_width)
+            safe_height: f32 = UiConstraints::bounded(min_height)
+            widgets[index] with {
+                axis <- UiConst::Axis.Column,
+                declared_min_width <- safe_width, declared_min_height <- safe_height,
+                min_width <- safe_width, min_height <- safe_height,
+                color, hover_color <- color, press_color <- color,
+                virtual_list <- true, virtual_total <- UiVirtualList::bounded_count(item_count),
+                virtual_item_extent <- layout.item_extent, virtual_spacing <- layout.spacing,
+                text <- copy_retained_text(index, 0, label),
+            }
+            return index
+
+        def set_virtual_item_count(index: usize, item_count: i32) -> bool:
+            return false if index >= widget_count or not widgets[index].virtual_list
+            count: i32 = UiVirtualList::bounded_count(item_count)
+            return false if widgets[index].virtual_total == count
+            widgets[index].virtual_total <- count
+            mark_layout_dirty()
+            ensure_layout()
+            return true
+
+        def virtual_item_count(index: usize) -> i32:
+            return 0 if index >= widget_count or not widgets[index].virtual_list
+            return widgets[index].virtual_total
+
+        def virtual_scroll_anchor(index: usize) -> UiVirtualList::ScrollAnchor:
+            ensure_layout()
+            return UiVirtualList::ScrollAnchor{index: 0, offset: 0.0} if index >= widget_count or not widgets[index].virtual_list
+            return UiVirtualList::ScrollAnchor{index: widgets[index].virtual_anchor_index, offset: widgets[index].virtual_anchor_offset}
+
+        def set_virtual_scroll_anchor(index: usize, requested: UiVirtualList::ScrollAnchor) -> bool:
+            return false if index >= widget_count or not widgets[index].virtual_list
+            ensure_layout()
+            next: UiVirtualList::ScrollAnchor = UiVirtualList::scroll_by(requested, 0.0, widgets[index].virtual_total, widgets[index].virtual_item_extent, widgets[index].virtual_spacing, virtual_viewport_extent(index))
+            changed: bool = next.index != widgets[index].virtual_anchor_index or next.offset != widgets[index].virtual_anchor_offset
+            return false if not changed
+            widgets[index].virtual_anchor_index <- next.index
+            widgets[index].virtual_anchor_offset <- next.offset
+            mark_layout_dirty()
+            ensure_layout()
+            return true
+
+        def scroll_virtual_by(index: usize, delta: f32) -> bool:
+            return false if index >= widget_count or not widgets[index].virtual_list or not UiCore::is_finite(delta)
+            current: UiVirtualList::ScrollAnchor = virtual_scroll_anchor(index)
+            next: UiVirtualList::ScrollAnchor = UiVirtualList::scroll_by(current, delta, widgets[index].virtual_total, widgets[index].virtual_item_extent, widgets[index].virtual_spacing, virtual_viewport_extent(index))
+            return set_virtual_scroll_anchor(index, next)
+
+        def scroll_virtual_to(index: usize, item_index: i32) -> bool:
+            return false if index >= widget_count or not widgets[index].virtual_list
+            return set_virtual_scroll_anchor(index, UiVirtualList::ScrollAnchor{index: item_index, offset: 0.0})
+
+        def scroll_virtual_to_fraction(index: usize, fraction: f32) -> bool:
+            return false if index >= widget_count or not widgets[index].virtual_list or not UiCore::is_finite(fraction)
+            next: UiVirtualList::ScrollAnchor = UiVirtualList::scroll_to_fraction(fraction, widgets[index].virtual_total, widgets[index].virtual_item_extent, widgets[index].virtual_spacing, virtual_viewport_extent(index))
+            return set_virtual_scroll_anchor(index, next)
+
+        def virtual_scroll_fraction(index: usize) -> f32:
+            return 0.0 if index >= widget_count or not widgets[index].virtual_list
+            return UiVirtualList::scroll_fraction(virtual_scroll_anchor(index), widgets[index].virtual_total, widgets[index].virtual_item_extent, widgets[index].virtual_spacing, virtual_viewport_extent(index))
+
+        def virtual_thumb_fraction(index: usize) -> f32:
+            ensure_layout()
+            return 1.0 if index >= widget_count or not widgets[index].virtual_list
+            return UiVirtualList::viewport_fraction(widgets[index].virtual_total, widgets[index].virtual_item_extent, widgets[index].virtual_spacing, virtual_viewport_extent(index))
+
+        def virtual_scroll_can_consume(index: usize, delta: f32) -> bool:
+            return false if index >= widget_count or not widgets[index].virtual_list or not UiCore::is_finite(delta)
+            current: UiVirtualList::ScrollAnchor = virtual_scroll_anchor(index)
+            next: UiVirtualList::ScrollAnchor = UiVirtualList::scroll_by(current, delta, widgets[index].virtual_total, widgets[index].virtual_item_extent, widgets[index].virtual_spacing, virtual_viewport_extent(index))
+            return next.index != current.index or next.offset != current.offset
+
+        def virtual_item_index(index: usize) -> i32:
+            return -1 if index >= widget_count
+            return widgets[index].virtual_row_index
+
+        def virtual_item_generation(index: usize) -> u32:
+            return 0 if index >= widget_count or widgets[index].virtual_row_index < 0
+            return widgets[index].virtual_row_generation
+
+        def virtual_press_is_current(parent: usize, generation: u32, row: usize, row_generation: u32, row_index: i32) -> bool:
+            return true if parent >= widget_count
+            return false if row >= widget_count or virtual_parent_for_row(row) != parent
+            return false if widgets[parent].virtual_generation != generation
+            return widgets[row].virtual_row_generation == row_generation and widgets[row].virtual_row_index == row_index and row_index >= 0

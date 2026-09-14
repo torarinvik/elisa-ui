@@ -33,6 +33,42 @@ extend UiVirtualList:
             position: f64 = current.index.f64() * layout.stride.f64() + current.offset.f64() + UiCore::finite_or_zero(delta).f64()
             return scroll_anchor_at(position, total, layout, viewport_extent)
 
+        # Scrollbar thumbs work in normalized space. Keeping the conversion in
+        # f64 lets a thumb reach the final row without ever constructing a
+        # global pixel coordinate in f32.
+        def scroll_fraction(anchor: ScrollAnchor, item_count: i32, item_extent: f32, spacing: f32, viewport_extent: f32) -> f32:
+            total: i32 = bounded_count(item_count)
+            return 0.0 if total == 0
+            layout: Metrics = metrics(item_extent, spacing)
+            current: ScrollAnchor = normalize_scroll_anchor(anchor.index, anchor.offset, total, layout, viewport_extent)
+            maximum: f64 = max_scroll_position(total, layout, viewport_extent)
+            return 0.0 if maximum <= 0.0
+            position: f64 = current.index.f64() * layout.stride.f64() + current.offset.f64()
+            ratio: mutable f64 = position / maximum
+            ratio <- 0.0 if ratio < 0.0
+            ratio <- 1.0 if ratio > 1.0
+            return ratio.f32()
+
+        def scroll_to_fraction(fraction: f32, item_count: i32, item_extent: f32, spacing: f32, viewport_extent: f32) -> ScrollAnchor:
+            total: i32 = bounded_count(item_count)
+            return ScrollAnchor{index: 0, offset: 0.0} if total == 0
+            layout: Metrics = metrics(item_extent, spacing)
+            ratio: mutable f64 = UiCore::finite_or_zero(fraction).f64()
+            ratio <- 0.0 if ratio < 0.0
+            ratio <- 1.0 if ratio > 1.0
+            position: f64 = max_scroll_position(total, layout, viewport_extent) * ratio
+            return scroll_anchor_at(position, total, layout, viewport_extent)
+
+        def viewport_fraction(item_count: i32, item_extent: f32, spacing: f32, viewport_extent: f32) -> f32:
+            total: i32 = bounded_count(item_count)
+            return 1.0 if total == 0
+            layout: Metrics = metrics(item_extent, spacing)
+            content: f64 = total.f64() * layout.item_extent.f64() + (total - 1).f64() * layout.spacing.f64()
+            viewport: f64 = UiCore::nonnegative_extent(viewport_extent).f64()
+            return 1.0 if content <= 0.0 or viewport >= content
+            ratio: f64 = viewport / content
+            return ratio.f32()
+
         # The shared slot-pool ceiling is also the realization ceiling, even
         # if a caller supplies an untrusted, larger max_visible value.
         def anchored_window(item_count: i32, item_extent: f32, spacing: f32, anchor: ScrollAnchor, viewport_extent: f32, max_visible: i32) -> AnchoredWindow:

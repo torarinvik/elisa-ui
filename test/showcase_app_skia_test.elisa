@@ -184,6 +184,85 @@ def showcase_app_skia_page() -> i32:
     return 0 if not showcase_started
     return ShowcaseApp::current_page() + 1
 
+def showcase_app_skia_click_button(label: sview) -> bool can Ui.Input:
+    UiHandles::ensure_layout()
+    for index in 0..<UiHandles::count():
+        row: UiFlat::Widget = UiFlat::widget(index)
+        continue if row.kind != UiConst::WidgetKind.Button or row.text != label or row.width <= 0.0 or row.height <= 0.0
+        continue if not UiHandles::is_enabled(UiHandles::from_index(index))
+        centre: UiCore::Vec2 = UiCore::Vec2(row.x + row.width / 2.0, row.y + row.height / 2.0)
+        continue if UiFlat::hit(centre.x, centre.y) != index
+        app_event(UiCore::PointerEvent.Down(centre, UiCore::PointerButton.Primary.i32()))
+        app_event(UiCore::PointerEvent.Up(centre, UiCore::PointerButton.Primary.i32()))
+        return true
+    return false
+
+def showcase_app_skia_click_virtual_item(list: UiHandles::Handle, logical: i32) -> bool can Ui.Input:
+    UiHandles::ensure_layout()
+    parent: usize = UiHandles::index(list)
+    for index in 0..<UiHandles::count():
+        row: UiFlat::Widget = UiFlat::widget(index)
+        continue if row.parent != parent or UiHandles::virtual_item_index(UiHandles::from_index(index)) != logical
+        centre: UiCore::Vec2 = UiCore::Vec2(row.x + row.width / 2.0, row.y + row.height / 2.0)
+        continue if UiFlat::hit(centre.x, centre.y) != index
+        app_event(UiCore::PointerEvent.Down(centre, UiCore::PointerButton.Primary.i32()))
+        app_event(UiCore::PointerEvent.Up(centre, UiCore::PointerButton.Primary.i32()))
+        return true
+    return false
+
+# The required real-Skia gate drives the shipped Lists page through public
+# application events, not direct calls into ShowcaseLists. It loads the
+# million-item collection, scrolls to the last row, selects and hides it
+# through the confirmation dialog, then restores it with the New shortcut.
+def showcase_app_skia_virtual_list_workflow() -> i32 can Ui.Input:
+    return 0 if not showcase_started
+    app_event(UiCore::KeyEvent.Down(UiCore::Key.Digit4))
+    UiHandles::ensure_layout()
+    list: mutable UiHandles::Handle = UiHandles::invalid()
+    for index in 0..<UiHandles::count():
+        row: UiFlat::Widget = UiFlat::widget(index)
+        if row.virtual_list:
+            list <- UiHandles::from_index(index)
+            break
+    return 2 if not UiHandles::is_valid(list) or UiHandles::virtual_item_count(list) != 50000
+    widget_total: usize = UiHandles::count()
+    return 3 if not showcase_app_skia_click_button("Load all")
+    return 4 if UiHandles::virtual_item_count(list) != 1000000 or UiHandles::count() != widget_total
+    return 5 if not showcase_app_skia_click_button("Scroll to end")
+    return 6 if not showcase_app_skia_click_virtual_item(list, 999999)
+    return 7 if ShowcaseLists::selected_caption() != "Item 1000000 · Relay"
+    app_event(UiCore::KeyEvent.Down(UiCore::Key.H))
+    return 8 if not showcase_app_skia_click_button("Hide")
+    return 9 if UiHandles::virtual_item_count(list) != 999999
+    return 14 if not showcase_app_skia_click_button("New item")
+    return 10 if UiHandles::virtual_item_count(list) != 1000000
+    return 13 if UiHandles::count() != widget_total
+    return 11 if ShowcaseLists::selected_caption() != "Item 1000000 · Relay"
+    restored_tail_visible: mutable bool = false
+    for index in 0..<UiHandles::count():
+        row: UiFlat::Widget = UiFlat::widget(index)
+        restored_tail_visible <- true if row.parent == UiHandles::index(list) and UiHandles::virtual_item_index(UiHandles::from_index(index)) == 999999
+    return 12 if not restored_tail_visible
+    return 1
+
+# A lifecycle rebuild must reset app-owned collection state along with the
+# retained widget arena; exercise this after rendered workflows have finished.
+def showcase_app_skia_virtual_list_reinit() -> i32 can Ui.Input:
+    return 0 if not showcase_started
+    app_init()
+    app_event(UiCore::KeyEvent.Down(UiCore::Key.Digit4))
+    UiHandles::ensure_layout()
+    list: mutable UiHandles::Handle = UiHandles::invalid()
+    first_item_visible: mutable bool = false
+    for index in 0..<UiHandles::count():
+        row: UiFlat::Widget = UiFlat::widget(index)
+        if row.virtual_list:
+            list <- UiHandles::from_index(index)
+        first_item_visible <- true if row.parent == UiHandles::index(list) and UiHandles::virtual_item_index(UiHandles::from_index(index)) == 0
+    return 0 if not UiHandles::is_valid(list) or UiHandles::virtual_item_count(list) != 50000
+    return 0 if not first_item_visible or ShowcaseLists::selected_caption() != "Item 1 · Sensor node"
+    return 1
+
 # BIND A PICTURE, the way a host does: a resource the framework knows by slot
 # and generation, an image the host loaded, and one call that ties them
 # together. Nothing above this line -- not the widget, not the command, not the
@@ -203,6 +282,8 @@ def showcase_app_skia_bind_image(image: usize) -> i32:
 
 export fn elisa_showcase_app_skia_bind_image(image: usize) -> i32 = showcase_app_skia_bind_image
 export fn elisa_showcase_app_skia_page() -> i32 = showcase_app_skia_page
+export fn elisa_showcase_app_skia_virtual_list_workflow() -> i32 = showcase_app_skia_virtual_list_workflow
+export fn elisa_showcase_app_skia_virtual_list_reinit() -> i32 = showcase_app_skia_virtual_list_reinit
 export fn elisa_showcase_app_skia_close_dialog() -> i32 = showcase_app_skia_close_dialog
 export fn elisa_showcase_app_skia_hover_button(pressed: i32) -> i32 = showcase_app_skia_hover_button
 export fn elisa_showcase_app_skia_render(canvas: usize, font: usize, width: f32, height: f32, page: i32, scale: f32) -> i32 = showcase_app_skia_render

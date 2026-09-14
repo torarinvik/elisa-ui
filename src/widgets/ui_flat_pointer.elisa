@@ -50,8 +50,10 @@ extend UiFlat:
                 order_index <- order_index - 1
                 scan: usize = paint_order[order_index]
                 if widgets[scan].kind == UiConst::WidgetKind.Scroll and effectively_enabled(scan) and effectively_visible(scan) and inside_scroll_viewports(scan, x, y) and contains(scan, x, y):
-                    limit: f32 = scroll_limit(scan)
                     delta: f32 = UiCore::finite_or_zero(dx if widgets[scan].axis == UiConst::Axis.Row else dy)
+                    if widgets[scan].virtual_list:
+                        return scan if virtual_scroll_can_consume(scan, -delta)
+                    limit: f32 = scroll_limit(scan)
                     current: f32 = widgets[scan].scroll_offset
                     can_move: bool = limit > 0.0 and ((delta > 0.0 and current > 0.0) or (delta < 0.0 and current < limit))
                     return scan if can_move
@@ -116,7 +118,7 @@ extend UiFlat:
                     target: usize = scroll_target(scroll_at.x, scroll_at.y, scroll_delta.x, scroll_delta.y)
                     if target != NONE:
                         amount: f32 = scroll_delta.x if widgets[target].axis == UiConst::Axis.Row else scroll_delta.y
-                        _ = set_scroll_offset(target, scroll_offset(target) - amount)
+                        _ = scroll_virtual_by(target, -amount) if widgets[target].virtual_list else set_scroll_offset(target, scroll_offset(target) - amount)
                 _:
                     return
 
@@ -135,7 +137,7 @@ extend UiFlat:
                         if scrollbar_part(scroll_bar, press_at.x, press_at.y) == 2:
                             active_scroll <- scroll_bar
                             active_scroll_pointer <- scrollbar_coordinate(scroll_bar, press_at.x, press_at.y)
-                            active_scroll_offset <- widgets[scroll_bar].scroll_offset
+                            active_scroll_offset <- virtual_scroll_fraction(scroll_bar) if widgets[scroll_bar].virtual_list else widgets[scroll_bar].scroll_offset
                             active_pointer_button <- press_button
                         else:
                             scroll_page(scroll_bar, press_at.x, press_at.y)
@@ -143,6 +145,10 @@ extend UiFlat:
                     return if target == NONE
                     focus(target)
                     flat_active_widget <- target
+                    active_virtual_parent <- virtual_parent_for_row(target)
+                    active_virtual_generation <- widgets[active_virtual_parent].virtual_generation if active_virtual_parent < widget_count else 0
+                    active_virtual_row_generation <- widgets[target].virtual_row_generation if active_virtual_parent < widget_count else 0
+                    active_virtual_row_index <- widgets[target].virtual_row_index if active_virtual_parent < widget_count else -1
                     active_pointer_button <- press_button
                     widgets[target].pressed <- true
                     if widgets[target].kind == UiConst::WidgetKind.TextField:
@@ -155,11 +161,15 @@ extend UiFlat:
                         track_length: f32 = scrollbar_track_length(active_scroll)
                         thumb_length: f32 = scrollbar_thumb_length(active_scroll)
                         travel: f32 = track_length - thumb_length
-                        limit: f32 = scroll_limit(active_scroll)
                         coordinate: f32 = scrollbar_coordinate(active_scroll, move_at.x, move_at.y)
                         dragged: f32 = (coordinate - active_scroll_pointer) * scroll_drag_direction(widgets[active_scroll].axis == UiConst::Axis.Row)
-                        requested: f32 = active_scroll_offset + dragged * limit / travel if travel > 0.0 else active_scroll_offset
-                        _ = set_scroll_offset(active_scroll, requested)
+                        if widgets[active_scroll].virtual_list:
+                            requested_fraction: f32 = active_scroll_offset + dragged / travel if travel > 0.0 else active_scroll_offset
+                            _ = scroll_virtual_to_fraction(active_scroll, requested_fraction)
+                        else:
+                            limit: f32 = scroll_limit(active_scroll)
+                            requested: f32 = active_scroll_offset + dragged * limit / travel if travel > 0.0 else active_scroll_offset
+                            _ = set_scroll_offset(active_scroll, requested)
                         return
                     if active_pointer_button >= 0 and flat_active_widget < widget_count:
                         if widgets[flat_active_widget].kind == UiConst::WidgetKind.Slider:
@@ -181,7 +191,12 @@ extend UiFlat:
                         return
                     return if active_pointer_button < 0 or flat_active_widget == NONE or release_button != active_pointer_button
                     held: usize = flat_active_widget
+                    virtual_current: bool = virtual_press_is_current(active_virtual_parent, active_virtual_generation, held, active_virtual_row_generation, active_virtual_row_index)
                     flat_active_widget <- NONE
+                    active_virtual_parent <- NONE
+                    active_virtual_generation <- 0
+                    active_virtual_row_generation <- 0
+                    active_virtual_row_index <- -1
                     active_pointer_button <- UiCore::NO_POINTER_BUTTON
                     active_key <- -1
                     widgets[held].pressed <- false
@@ -190,6 +205,7 @@ extend UiFlat:
                     elif widgets[held].kind == UiConst::WidgetKind.TextField:
                         pass
                     elif held == target:
+                        return if not virtual_current
                         dispatch_activation(held)
                 UiCore::PointerEvent.Leave:
                     # Leave has no meaningful coordinates. The common

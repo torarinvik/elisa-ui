@@ -73,6 +73,14 @@ extend UiFlat:
             return if not effectively_visible(index)
             cursor: mutable usize = widgets[index].first_child
             return if cursor == NONE
+            if widgets[index].virtual_list:
+                for _ in 0..<MAX_TRAVERSAL_SIBLINGS:
+                    break if cursor == NONE or cursor >= widget_count
+                    measure(cursor, depth + 1) if widgets[cursor].visible
+                    cursor <- widgets[cursor].next_sibling
+                widgets[index].scroll_content_width <- widgets[index].declared_min_width
+                widgets[index].scroll_content_height <- UiVirtualList::content_extent(widgets[index].virtual_total, widgets[index].virtual_item_extent, widgets[index].virtual_spacing)
+                return
             is_row: bool = widgets[index].axis == UiConst::Axis.Row
             along: mutable f32 = 0.0
             across: mutable f32 = 0.0
@@ -128,6 +136,9 @@ extend UiFlat:
             raw_inner_height: f32 = safe_height - pad * 2.0
             inner_width: f32 = raw_inner_width if raw_inner_width > 0.0 else 0.0
             inner_height: f32 = raw_inner_height if raw_inner_height > 0.0 else 0.0
+            if widgets[index].virtual_list:
+                arrange_virtual_rows(index, inner_x, inner_y, inner_width, inner_height, depth)
+                return
             is_row: bool = widgets[index].axis == UiConst::Axis.Row
             scrolling: bool = widgets[index].kind == UiConst::WidgetKind.Scroll
 

@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -38,6 +39,8 @@ extern "C" std::int32_t elisa_showcase_app_skia_close_dialog();
 extern "C" std::int32_t elisa_showcase_app_skia_direction(std::int32_t rtl);
 extern "C" std::int32_t elisa_showcase_app_skia_page();
 extern "C" std::int32_t elisa_showcase_app_skia_bind_image(std::size_t image);
+extern "C" std::int32_t elisa_showcase_app_skia_virtual_list_workflow();
+extern "C" std::int32_t elisa_showcase_app_skia_virtual_list_reinit();
 
 namespace {
 
@@ -51,6 +54,22 @@ int sampled_luminance(SkSurface* surface, int x, int y) {
     if (x < 0 || y < 0 || x >= pixels.width() || y >= pixels.height()) return -1;
     const SkColor color = pixels.getColor(x, y);
     return (SkColorGetR(color) * 54 + SkColorGetG(color) * 183 + SkColorGetB(color) * 19) >> 8;
+}
+
+std::uint64_t pixel_region_hash(SkSurface* surface) {
+    SkPixmap pixels;
+    if (!surface->peekPixels(&pixels)) return 0;
+    std::uint64_t hash = 14695981039346656037ull;
+    // The full frame includes the list's layout, row text and scrollbar. A
+    // deterministic pixel digest proves that the completed user workflow was
+    // actually repainted by Skia rather than merely changing model state.
+    for (int y = 0; y < pixels.height(); ++y) {
+        for (int x = 0; x < pixels.width(); ++x) {
+            hash ^= pixels.getColor(x, y);
+            hash *= 1099511628211ull;
+        }
+    }
+    return hash;
 }
 
 // The mean luminance of one LOGICAL point at a backing scale: the scale-by-
@@ -160,6 +179,7 @@ int main(int argc, char** argv) {
     // than a guess about what an empty tile looks like.
     const int tile_before = sampled_luminance(surface.get(), 32, 30);
 
+    std::uint64_t lists_initial_hash = 0;
     for (std::int32_t page = 1; page <= 5; ++page) {
         surface->getCanvas()->clear(SK_ColorTRANSPARENT);
         const std::int32_t status = elisa_showcase_app_skia_render(
@@ -175,8 +195,37 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "showcase skia: failed to write %s\n", path.c_str());
             return 6;
         }
+        if (page == 4) lists_initial_hash = pixel_region_hash(surface.get());
         std::printf("showcase skia: wrote %s\n", path.c_str());
     }
+
+    const auto list_workflow_start = std::chrono::steady_clock::now();
+    const std::int32_t lists_workflow = elisa_showcase_app_skia_virtual_list_workflow();
+    if (lists_workflow != 1) {
+        std::fprintf(stderr, "showcase skia: retained Lists workflow failed at stage %d\n", lists_workflow);
+        return 7;
+    }
+    surface->getCanvas()->clear(SK_ColorTRANSPARENT);
+    const std::int32_t list_tail_status = elisa_showcase_app_skia_render(
+        reinterpret_cast<std::size_t>(surface->getCanvas()),
+        reinterpret_cast<std::size_t>(typeface.get()),
+        static_cast<float>(width), static_cast<float>(height), 0, 1.0f);
+    const std::uint64_t list_tail_hash = pixel_region_hash(surface.get());
+    const auto list_workflow_end = std::chrono::steady_clock::now();
+    if (list_tail_status != 1 || list_tail_hash == lists_initial_hash) {
+        std::fprintf(stderr, "showcase skia: scrolling/rebinding the retained list did not change rendered pixels\n");
+        return 7;
+    }
+    const std::string list_tail_path = prefix + "-list-tail.png";
+    if (!write_png(surface.get(), list_tail_path)) {
+        std::fprintf(stderr, "showcase skia: failed to write %s\n", list_tail_path.c_str());
+        return 7;
+    }
+    const auto list_workflow_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        list_workflow_end - list_workflow_start).count();
+    std::printf("showcase skia: million-item list workflow_ns=%lld tail_pixel_digest=%016llx rendered %s\n",
+                static_cast<long long>(list_workflow_ns),
+                static_cast<unsigned long long>(list_tail_hash), list_tail_path.c_str());
 
     // The mark's own pixel, after the picture was bound. It is the first thing
     // in any frame this framework has rendered that is an image rather than a
@@ -520,6 +569,10 @@ int main(int argc, char** argv) {
             return 6;
         }
         std::printf("showcase skia: wrote %s\n", pointer_path.c_str());
+    }
+    if (elisa_showcase_app_skia_virtual_list_reinit() != 1) {
+        std::fprintf(stderr, "showcase skia: list state was not reset by application reinitialization\n");
+        return 7;
     }
     return 0;
 }

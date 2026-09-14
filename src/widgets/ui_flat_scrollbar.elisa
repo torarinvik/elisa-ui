@@ -7,6 +7,32 @@ extend UiFlat:
         # How much of the channel the painted thumb takes across its width.
         const SCROLL_THUMB_FILL: f32 = 0.6
 
+        def scrollbar_has_overflow(index: usize) -> bool:
+            if widgets[index].virtual_list:
+                total: i32 = UiVirtualList::bounded_count(widgets[index].virtual_total)
+                return false if total == 0
+                layout: UiVirtualList::Metrics = UiVirtualList::metrics(widgets[index].virtual_item_extent, widgets[index].virtual_spacing)
+                content: f64 = total.f64() * layout.item_extent.f64() + (total - 1).f64() * layout.spacing.f64()
+                viewport: f64 = UiCore::nonnegative_extent(widgets[index].height - widgets[index].padding * 2.0).f64()
+                return content > viewport
+            viewport: f32 = widgets[index].width if widgets[index].axis == UiConst::Axis.Row else widgets[index].height
+            content: f32 = widgets[index].scroll_content_width if widgets[index].axis == UiConst::Axis.Row else widgets[index].scroll_content_height
+            return content > viewport
+
+        def scrollbar_thumb_extent(index: usize, track_extent: f32) -> f32:
+            return track_extent * virtual_thumb_fraction(index) if widgets[index].virtual_list
+            viewport: f32 = widgets[index].width if widgets[index].axis == UiConst::Axis.Row else widgets[index].height
+            content: f32 = widgets[index].scroll_content_width if widgets[index].axis == UiConst::Axis.Row else widgets[index].scroll_content_height
+            # Preserve the legacy operation order at the half-open thumb edge;
+            # the mathematically equivalent ratio-first form differs by an ULP
+            # for some spans and can turn a track click into a drag.
+            return track_extent * viewport / content if content > 0.0 else 0.0
+
+        def scrollbar_thumb_position(index: usize, travel: f32) -> f32:
+            return travel * virtual_scroll_fraction(index) if widgets[index].virtual_list
+            limit: f32 = scroll_limit(index)
+            return travel * widgets[index].scroll_offset / limit if limit > 0.0 else 0.0
+
         # Scroll indicators are drawn by the flat painter itself, so a canvas
         # backend does not need an NSScroller or a browser scrollbar. The thumb
         # length reflects the viewport/content ratio and its travel follows the
@@ -15,8 +41,7 @@ extend UiFlat:
             return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Scroll
             is_row: bool = widgets[index].axis == UiConst::Axis.Row
             viewport: f32 = widgets[index].width if is_row else widgets[index].height
-            content: f32 = widgets[index].scroll_content_width if is_row else widgets[index].scroll_content_height
-            return if content <= viewport or viewport <= 0.0
+            return if not scrollbar_has_overflow(index) or viewport <= 0.0
             cross_extent: f32 = widgets[index].height if is_row else widgets[index].width
             inset: f32 = clamped_inset(current_theme.scrollbar_inset, cross_extent)
             bar: mutable f32 = current_theme.scrollbar_width
@@ -24,13 +49,12 @@ extend UiFlat:
             return if bar <= 0.0
             track_extent: f32 = viewport - inset * 2.0
             return if track_extent <= 0.0
-            thumb_extent: mutable f32 = track_extent * viewport / content
+            thumb_extent: mutable f32 = scrollbar_thumb_extent(index, track_extent)
             minimum_thumb: f32 = 24.0 if track_extent >= 24.0 else track_extent
             thumb_extent <- minimum_thumb if thumb_extent < minimum_thumb else thumb_extent
             thumb_extent <- track_extent if thumb_extent > track_extent else thumb_extent
-            limit: f32 = content - viewport
             travel: f32 = track_extent - thumb_extent
-            thumb_position: f32 = travel * widgets[index].scroll_offset / limit if limit > 0.0 else 0.0
+            thumb_position: f32 = scrollbar_thumb_position(index, travel)
             thumb_color: mutable UiCore::Color = current_theme.scrollbar_thumb
             enabled: bool = effectively_enabled(index)
             thumb_color <- muted_ink(index, thumb_color) if not enabled
@@ -81,8 +105,7 @@ extend UiFlat:
             return 0 if not effectively_enabled(index) or not effectively_visible(index) or not inside_scroll_viewports(index, x, y)
             is_row: bool = widgets[index].axis == UiConst::Axis.Row
             viewport: f32 = widgets[index].width if is_row else widgets[index].height
-            content: f32 = widgets[index].scroll_content_width if is_row else widgets[index].scroll_content_height
-            return 0 if content <= viewport or viewport <= 0.0
+            return 0 if not scrollbar_has_overflow(index) or viewport <= 0.0
             cross_extent: f32 = widgets[index].height if is_row else widgets[index].width
             inset: f32 = clamped_inset(current_theme.scrollbar_inset, cross_extent)
             bar: mutable f32 = current_theme.scrollbar_width
@@ -90,13 +113,12 @@ extend UiFlat:
             return 0 if bar <= 0.0
             track_extent: f32 = viewport - inset * 2.0
             return 0 if track_extent <= 0.0
-            thumb_extent: mutable f32 = track_extent * viewport / content
+            thumb_extent: mutable f32 = scrollbar_thumb_extent(index, track_extent)
             minimum_thumb: f32 = 24.0 if track_extent >= 24.0 else track_extent
             thumb_extent <- minimum_thumb if thumb_extent < minimum_thumb else thumb_extent
             thumb_extent <- track_extent if thumb_extent > track_extent else thumb_extent
-            limit: f32 = content - viewport
             travel: f32 = track_extent - thumb_extent
-            thumb_position: f32 = travel * widgets[index].scroll_offset / limit if limit > 0.0 else 0.0
+            thumb_position: f32 = scrollbar_thumb_position(index, travel)
             if is_row:
                 track_x: f32 = widgets[index].x + inset
                 track_y: f32 = widgets[index].y + widgets[index].height - bar - inset
@@ -138,10 +160,9 @@ extend UiFlat:
 
         def scrollbar_thumb_length(index: usize) -> f32:
             viewport: f32 = widgets[index].width if widgets[index].axis == UiConst::Axis.Row else widgets[index].height
-            content: f32 = widgets[index].scroll_content_width if widgets[index].axis == UiConst::Axis.Row else widgets[index].scroll_content_height
             track_length: f32 = scrollbar_track_length(index)
-            return 0.0 if content <= viewport or track_length <= 0.0
-            thumb: mutable f32 = track_length * viewport / content
+            return 0.0 if not scrollbar_has_overflow(index) or track_length <= 0.0
+            thumb: mutable f32 = scrollbar_thumb_extent(index, track_length)
             minimum_thumb: f32 = 24.0 if track_length >= 24.0 else track_length
             thumb <- minimum_thumb if thumb < minimum_thumb else thumb
             return track_length if thumb > track_length else thumb
@@ -150,9 +171,8 @@ extend UiFlat:
             coordinate: f32 = scrollbar_coordinate(index, x, y)
             start: f32 = scrollbar_track_start(index)
             thumb: f32 = scrollbar_thumb_length(index)
-            limit: f32 = scroll_limit(index)
             travel: f32 = scrollbar_track_length(index) - thumb
-            thumb_position: f32 = travel * widgets[index].scroll_offset / limit if limit > 0.0 else 0.0
+            thumb_position: f32 = scrollbar_thumb_position(index, travel)
             thumb_start: f32 = start + thumb_position
             # Keep the thumb's far edge half-open, matching `scrollbar_part`.
             # A pointer exactly on that edge is on the track and should page;
@@ -160,7 +180,10 @@ extend UiFlat:
             # paging target and a drag target depending on the entry path.
             return if coordinate >= thumb_start and coordinate < thumb_start + thumb
             viewport: f32 = widgets[index].width if widgets[index].axis == UiConst::Axis.Row else widgets[index].height
-            _ = set_scroll_offset(index, widgets[index].scroll_offset - viewport if coordinate < thumb_start else widgets[index].scroll_offset + viewport)
+            if widgets[index].virtual_list:
+                _ = scroll_virtual_by(index, -viewport if coordinate < thumb_start else viewport)
+            else:
+                _ = set_scroll_offset(index, widgets[index].scroll_offset - viewport if coordinate < thumb_start else widgets[index].scroll_offset + viewport)
 
         # Build a bounded pre-order snapshot from the retained links. The flat
         # layer normally receives well-formed links from its constructors, but

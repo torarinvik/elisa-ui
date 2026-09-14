@@ -1,0 +1,141 @@
+# End-to-end retained virtual list: bounded child widgets, anchored scrolling,
+# row identity, pointer dispatch, and portable list semantics.
+
+include "../src/widgets/ui_handles.elisa"
+
+extern puts(text: cstr) -> i64
+
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size
+
+def ui_font_ascent(size: f32) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+global mutable clicked_item: i32 = -2
+global mutable failures: i32 = 0
+
+def app_init() -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    pass
+
+def app_text_input(text: sview) -> void:
+    pass
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    pass
+
+def app_frame() -> void:
+    pass
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    return if not UiHandles::event_is(event, UiConst::WidgetEvent.Click)
+    clicked_item <- UiHandles::virtual_item_index(UiHandles::from_index(widget))
+
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiHandles::reset()
+    UiCore::set_viewport(320.0, 240.0)
+    root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 0.0, 0.0, UiCore::rgb(15, 18, 24))
+    list: UiHandles::Handle = UiHandles::virtual_list(root, "Million-row device list", 1000000, 32.0, 4.0, 280.0, 180.0, UiCore::rgb(28, 34, 44))
+    UiHandles::set_grow(list, 1.0)
+    rows: UiHandles::Handle[8] = zeroed
+    for slot in 0..<8:
+        row: UiHandles::Handle = UiHandles::radio_button(list, 240.0, 32.0, UiCore::rgb(38, 45, 58), UiCore::rgb(48, 58, 74), UiCore::rgb(58, 72, 92))
+        rows[slot] <- row
+        UiHandles::set_text(row, "Device row", 13.0, UiCore::rgb(235, 239, 246))
+    UiHandles::layout(320.0, 240.0)
+
+    check("million-row logical collection is retained", UiHandles::virtual_item_count(list) == 1000000)
+    check("retained tree stores only a bounded row pool", UiHandles::count() == 10)
+    check("visible slot maps to first logical row", UiHandles::virtual_item_index(rows[0]) == 0)
+    check("visible window maps each direct child in order", UiHandles::virtual_item_index(rows[6]) == 6)
+    check("unused pool tail has no logical identity", UiHandles::virtual_item_index(rows[7]) == -1)
+    initial_generation: u32 = UiHandles::virtual_item_generation(rows[0])
+
+    UiCore::begin_frame()
+    UiHandles::paint()
+    list_semantic: mutable bool = false
+    for node_index in 0..<UiCore::accessibility_count():
+        node: UiCore::AccessibilityNode = UiCore::accessibility_at(node_index)
+        if node.role == UiCore::AccessibilityRole.List and node.label == "Million-row device list":
+            list_semantic <- node.first_child_id == UiHandles::index(rows[0])
+    check("retained list publishes a List semantic parent", list_semantic)
+
+    list_box: mutable UiFlat::Widget = UiFlat::widget(UiHandles::index(list))
+    row_box: mutable UiFlat::Widget = UiFlat::widget(UiHandles::index(rows[0]))
+    at: mutable UiCore::Vec2 = UiCore::Vec2(row_box.x + row_box.width / 2.0, row_box.y + row_box.height / 2.0)
+    UiHandles::handle(UiCore::PointerEvent.Scroll(UiCore::Vec2(list_box.x + 8.0, list_box.y + 8.0), UiCore::Vec2(0.0, -1.0)))
+    check("wheel input updates the local pixel anchor", UiHandles::virtual_scroll_anchor(list).offset == 1.0)
+
+    _ = UiHandles::scroll_virtual_to(list, 0)
+    list_box <- UiFlat::widget(UiHandles::index(list))
+    bar_x: f32 = list_box.x + list_box.width - 8.0
+    thumb_start_y: f32 = list_box.y + 16.0
+    thumb_end_y: f32 = list_box.y + list_box.height - 16.0
+    UiHandles::handle(UiCore::PointerEvent.Down(UiCore::Vec2(bar_x, thumb_start_y), UiCore::PointerButton.Primary.i32()))
+    check("virtual scrollbar thumb captures pointer", UiFlat::scroll_dragging())
+    UiHandles::handle(UiCore::PointerEvent.Move(UiCore::Vec2(bar_x, thumb_end_y)))
+    UiHandles::handle(UiCore::PointerEvent.Up(UiCore::Vec2(bar_x, thumb_end_y), UiCore::PointerButton.Primary.i32()))
+    check("virtual scrollbar drag reaches the normalized tail", UiHandles::virtual_scroll_fraction(list) == 1.0 and not UiFlat::scroll_dragging())
+
+    _ = UiHandles::scroll_virtual_to(list, 349526)
+    anchor: UiVirtualList::ScrollAnchor = UiHandles::virtual_scroll_anchor(list)
+    check("programmatic navigation crosses the former f32 pixel boundary", anchor.index == 349526 and anchor.offset == 0.0)
+    check("recycled slot exposes its current logical identity", UiHandles::virtual_item_index(rows[0]) == 349526)
+    check("recycled slot generation changes with its item", UiHandles::virtual_item_generation(rows[0]) != initial_generation)
+    check("large-list scrollbar progress stays normalized", UiHandles::virtual_scroll_fraction(list) > 0.34 and UiHandles::virtual_scroll_fraction(list) < 0.36)
+
+    clicked_item <- -2
+    UiHandles::layout(320.0, 240.0)
+    row_box <- UiFlat::widget(UiHandles::index(rows[0]))
+    at <- UiCore::Vec2(row_box.x + row_box.width / 2.0, row_box.y + row_box.height / 2.0)
+    UiHandles::handle(UiCore::PointerEvent.Down(at, UiCore::PointerButton.Primary.i32()))
+    UiHandles::handle(UiCore::PointerEvent.Up(at, UiCore::PointerButton.Primary.i32()))
+    check("pointer callback resolves a recycled row to current data", clicked_item == 349526)
+
+    _ = UiHandles::scroll_virtual_to(list, 0)
+    row_box <- UiFlat::widget(UiHandles::index(rows[0]))
+    at <- UiCore::Vec2(row_box.x + row_box.width / 2.0, row_box.y + row_box.height / 2.0)
+    clicked_item <- -2
+    UiHandles::handle(UiCore::PointerEvent.Down(at, UiCore::PointerButton.Primary.i32()))
+    _ = UiHandles::scroll_virtual_to(list, 700000)
+    UiHandles::handle(UiCore::PointerEvent.Up(at, UiCore::PointerButton.Primary.i32()))
+    check("a press cannot activate a different item after slot reuse", clicked_item == -2)
+
+    _ = UiHandles::scroll_virtual_to(list, 999999)
+    tail_anchor: UiVirtualList::ScrollAnchor = UiHandles::virtual_scroll_anchor(list)
+    tail_item: i32 = UiHandles::virtual_item_index(rows[6])
+    check("tail remains reachable after f32 global-pixel saturation", tail_item == 999999 and tail_anchor.index > 999990)
+    check("tail scrollbar progress reaches one", UiHandles::virtual_scroll_fraction(list) == 1.0)
+
+    _ = UiHandles::set_virtual_item_count(list, 0)
+    check("empty virtual list releases every logical row", UiHandles::virtual_item_count(list) == 0 and UiHandles::virtual_item_index(rows[0]) == -1)
+    _ = UiHandles::set_virtual_item_count(list, 1000000)
+    check("restoring items keeps the retained pool reusable", UiHandles::virtual_item_index(rows[0]) == 0)
+
+    if failures == 0:
+        _ = puts("retained virtual list: all checks passed")
+        return 0
+    _ = puts("retained virtual list: FAILURES above")
+    return 1

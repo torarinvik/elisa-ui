@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Render every page of the shipped showcase with real Skia, off-screen.
+# The million-item Lists workflow is replayed in two fresh processes; identical
+# tail-frame pixel digests make both application behavior and raster output a
+# reproducible required check rather than a saved-image smoke test.
 #
 # The hello fixture next door asserts pixels. This one produces the pictures:
 # five pages of the showcase -- its theme, its controls, its scrolling list and
@@ -51,7 +54,18 @@ done
 clang++ -Wl,-dead_strip -o "$ROOT/build/showcase_app_skia" "${link_inputs[@]}" \
   -framework CoreFoundation -framework CoreGraphics -framework CoreText -framework Foundation -lz
 
-"$ROOT/build/showcase_app_skia" "$PREFIX" "$WIDTH" "$HEIGHT" >/dev/null
+first_output="$("$ROOT/build/showcase_app_skia" "$PREFIX" "$WIDTH" "$HEIGHT")"
+replay_dir="$(mktemp -d "${TMPDIR:-/tmp}/elisa-ui-showcase-replay.XXXXXX")"
+trap 'rm -rf "$replay_dir"' EXIT INT TERM HUP
+second_output="$("$ROOT/build/showcase_app_skia" "$replay_dir/showcase" "$WIDTH" "$HEIGHT")"
+first_list_digest="$(sed -n 's/.*tail_pixel_digest=\([[:xdigit:]]*\).*/\1/p' <<<"$first_output" | tail -n 1)"
+second_list_digest="$(sed -n 's/.*tail_pixel_digest=\([[:xdigit:]]*\).*/\1/p' <<<"$second_output" | tail -n 1)"
+[[ -n "$first_list_digest" && "$first_list_digest" == "$second_list_digest" ]] || {
+  echo "showcase skia: million-item list fresh-process pixel digest mismatch (first=$first_list_digest second=$second_list_digest)" >&2
+  exit 1
+}
+printf '%s\n' "$first_output" | rg 'million-item list workflow_ns='
+echo "showcase skia: million-item list fresh-process digest verified tail_pixel_digest=$first_list_digest"
 
 # A page that failed to lay out still writes a PNG -- of almost nothing. A
 # flat frame compresses to a fraction of a populated one, so a floor here is
@@ -107,6 +121,18 @@ if cmp -s "$contrast_file" "$light_contrast_file"; then
   exit 1
 fi
 echo "showcase skia: light high contrast rendered ${WIDTH}x${HEIGHT} ($light_contrast_size bytes) -> $light_contrast_file"
+
+# The actual Lists page is driven through load-all, tail scrolling, selection,
+# confirmed hide and restore. The C++ host compares the real Skia frame digest;
+# this file check ensures the post-workflow picture remains available to inspect.
+list_tail_file="$PREFIX-list-tail.png"
+[[ -s "$list_tail_file" ]] || { echo "showcase skia: million-item list workflow produced no frame" >&2; exit 1; }
+list_tail_size="$(stat -f%z "$list_tail_file")"
+if [[ "$list_tail_size" -lt 20000 ]]; then
+  echo "showcase skia: million-item list rendered almost nothing ($list_tail_size bytes)" >&2
+  exit 1
+fi
+echo "showcase skia: million-item list workflow rendered ${WIDTH}x${HEIGHT} ($list_tail_size bytes) -> $list_tail_file"
 
 # ...and the light palette, which exercises the other half of the depth policy.
 light_file="$PREFIX-light.png"

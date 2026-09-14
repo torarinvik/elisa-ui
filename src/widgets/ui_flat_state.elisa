@@ -48,6 +48,10 @@ extend UiFlat:
         global mutable pointer_y: f32 = 0.0
         global mutable pointer_inside: bool = false
         global mutable flat_active_widget: usize = NONE
+        global mutable active_virtual_parent: usize = NONE
+        global mutable active_virtual_generation: u32 = 0
+        global mutable active_virtual_row_generation: u32 = 0
+        global mutable active_virtual_row_index: i32 = -1
         global mutable active_scroll: usize = NONE
         global mutable active_scroll_pointer: f32 = 0.0
         global mutable active_scroll_offset: f32 = 0.0
@@ -168,6 +172,10 @@ extend UiFlat:
                 widgets[index].scroll_offset <- UiConstraints::bounded(widgets[index].scroll_offset)
                 widgets[index].scroll_content_width <- UiConstraints::bounded(widgets[index].scroll_content_width)
                 widgets[index].scroll_content_height <- UiConstraints::bounded(widgets[index].scroll_content_height)
+                widgets[index].virtual_total <- UiVirtualList::bounded_count(widgets[index].virtual_total) if widgets[index].virtual_list
+                widgets[index].virtual_item_extent <- UiVirtualList::metrics(widgets[index].virtual_item_extent, widgets[index].virtual_spacing).item_extent if widgets[index].virtual_list
+                widgets[index].virtual_spacing <- UiVirtualList::metrics(widgets[index].virtual_item_extent, widgets[index].virtual_spacing).spacing if widgets[index].virtual_list
+                widgets[index].virtual_anchor_offset <- UiCore::finite_or_zero(widgets[index].virtual_anchor_offset) if widgets[index].virtual_list
         # The frame clock as paint last saw it, and the interval it measured
         # this frame. A host that never calls `UiCore::set_frame_time` leaves
         # the clock at zero, the interval at zero, and every transition
@@ -343,6 +351,9 @@ extend UiFlat:
                 interactive: false, focus_order: index, selection_group: parent, visible: true, enabled: true, hovered: false, pressed: false, focused: false, selected: false, value: 0.0, step: 0.05,
                 input_length: 0, caret: 0, selection_anchor: 0, marked_start: 0, marked_end: 0, text_revision: 0, text_truncated: false,
                 scroll_offset: 0.0, scroll_content_width: 0.0, scroll_content_height: 0.0,
+                virtual_list: false, virtual_total: 0, virtual_item_extent: 1.0, virtual_spacing: 0.0,
+                virtual_anchor_index: 0, virtual_anchor_offset: 0.0, virtual_window_first: -1, virtual_window_finish: -1, virtual_generation: 1,
+                virtual_row_index: -1, virtual_row_generation: 1,
                 shown_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, shown_settled: false,
                 shown_value: 0.0, shown_value_settled: false, shown_lift: 0.0, shown_lift_settled: false,
             }
