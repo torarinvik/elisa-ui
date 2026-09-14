@@ -66,10 +66,11 @@ teardown with SDL's dummy video driver. It also builds a nested image widget
 through `UiHandles`, lays it out, paints the retained command list through the
 SDL painter, and verifies the resulting pixels. The separate
 `test/sdl3_showcase_image_workflow_test.elisa` exercises the shipped
-`ShowcaseApp::set_brand_image` API end to end: it renders a baseline, binds a
-ready resource, rerenders the retained showcase, and checks the brand tile's
-actual SDL pixels. Both fixtures run with SDL's dummy video driver and are
-picked up by the required test suite.
+`ShowcaseApp::set_brand_image` API end to end: it renders a baseline, records a
+retained image command, binds and replaces the ready resource before replay,
+then checks that the existing command paints the replacement pixels in the
+brand tile. Both fixtures run with SDL's dummy video driver and are picked up
+by the required test suite.
 
 **A backend that cannot draw an image draws nothing** — no placeholder. A grey
 rectangle where a thumbnail should be is a worse frame than a gap, and it hides

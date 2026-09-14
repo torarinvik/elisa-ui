@@ -33,6 +33,15 @@ def brand_widget() -> UiFlat::Widget?:
             return row if row.kind == UiConst::WidgetKind.Panel and row.width == 34.0 and row.height == 34.0
     return null
 
+def frame_contains_image(image: UiCore::ImageRef) -> bool:
+    for command_index in 0..<UiCore::command_count():
+        match UiCore::command_at(command_index):
+            UiCore::Command.DrawImage(draw):
+                return true if draw.image.slot == image.slot and draw.image.generation == image.generation
+            _:
+                pass
+    return false
+
 def sample_brand_pixel(r: mutable u8&, g: mutable u8&, b: mutable u8&, a: mutable u8&) -> bool:
     if brand_widget() is tile:
         # The centre is safely inside the image, even if the tile is rounded.
@@ -69,11 +78,23 @@ def run_showcase_workflow() -> void:
         238, 32, 180, 255, 238, 32, 180, 255, 238, 32, 180, 255, 238, 32, 180, 255,
     ]
     pixel_pointer: u8& = (&pixels[0]).cast[u8&] can Unsafe.PointerCast
-    check("SDL binds uploaded pixels to the showcase resource", UiSdl3Draw::bind_image_rgba32(image, pixel_pointer, 64, 4, 4, 16))
     ShowcaseApp::set_brand_image(image)
 
+    # Record the public retained-widget command first. Then upload and replace
+    # its renderer binding before replay: the command must resolve the current
+    # resource identity, not a texture pointer captured while building a frame.
     UiCore::begin_frame()
     app_frame()
+    check("showcase records its image command before upload", frame_contains_image(image))
+    check("SDL uploads pixels after the showcase command was recorded", UiSdl3Draw::bind_image_rgba32(image, pixel_pointer, 64, 4, 4, 16))
+    replacement: mutable u8[64] = [
+        24, 190, 226, 255, 24, 190, 226, 255, 24, 190, 226, 255, 24, 190, 226, 255,
+        24, 190, 226, 255, 24, 190, 226, 255, 24, 190, 226, 255, 24, 190, 226, 255,
+        24, 190, 226, 255, 24, 190, 226, 255, 24, 190, 226, 255, 24, 190, 226, 255,
+        24, 190, 226, 255, 24, 190, 226, 255, 24, 190, 226, 255, 24, 190, 226, 255,
+    ]
+    replacement_pointer: u8& = (&replacement[0]).cast[u8&] can Unsafe.PointerCast
+    check("same-generation resource replacement succeeds before replay", UiSdl3Draw::bind_image_rgba32(image, replacement_pointer, 64, 4, 4, 16))
     UiPaint::replay(UiSdl3Draw::painter())
     check("showcase retained command refers to the bound generation", UiSdl3Draw::is_image_bound(image))
     after_r: mutable u8 = 0
@@ -82,9 +103,9 @@ def run_showcase_workflow() -> void:
     after_a: mutable u8 = 0
     after_read: bool = sample_brand_pixel(&after_r, &after_g, &after_b, &after_a)
     check("rendered showcase brand pixel is readable", after_read)
-    check("the SDL renderer paints the uploaded brand-image red channel", after_r >= 236 and after_r <= 240)
-    check("the SDL renderer paints the uploaded brand-image green channel", after_g >= 30 and after_g <= 34)
-    check("the SDL renderer paints the uploaded brand-image blue channel", after_b >= 178 and after_b <= 182)
+    check("replayed command paints replacement red channel", after_r >= 22 and after_r <= 26)
+    check("replayed command paints replacement green channel", after_g >= 188 and after_g <= 192)
+    check("replayed command paints replacement blue channel", after_b >= 224 and after_b <= 228)
     check("binding the image visibly changes the showcase tile", before_r != after_r or before_g != after_g or before_b != after_b)
 
 def main() -> i32:
