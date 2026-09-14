@@ -13,6 +13,7 @@ set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
 EXAMPLE="${1:-storefront}"
+[[ "$EXAMPLE" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "invalid Android example name: $EXAMPLE" >&2; exit 2; }
 ENTRY="$ROOT/examples/$EXAMPLE/android_main.elisa"
 SKIA_ROOT="${SKIA_ROOT:?set SKIA_ROOT to the pinned checkout from third_party/skia.lock}"
 SKIA_OUT="${SKIA_ANDROID_OUT:-$SKIA_ROOT/out/elisa-android-arm64}"
@@ -22,7 +23,21 @@ API="${ELISA_UI_ANDROID_API:-30}"
 BUILD_TOOLS="$(ls -d "$SDK"/build-tools/* 2>/dev/null | sort -V | tail -1)"
 PLATFORM_JAR="$(ls "$SDK"/platforms/*/android.jar 2>/dev/null | sort -V | tail -1)"
 TRIPLE="aarch64-linux-android$API"
-TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/darwin-x86_64"
+case "$(uname -s):$(uname -m)" in
+  Darwin:arm64) ndk_host_tags=(darwin-arm64 darwin-x86_64) ;;
+  Darwin:*) ndk_host_tags=(darwin-x86_64 darwin-arm64) ;;
+  Linux:*) ndk_host_tags=(linux-$(uname -m) linux-x86_64) ;;
+  *) ndk_host_tags=() ;;
+esac
+TOOLCHAIN=""
+for host_tag in "${ndk_host_tags[@]}"; do
+  candidate="$NDK/toolchains/llvm/prebuilt/$host_tag"
+  if [[ -x "$candidate/bin/$TRIPLE-clang" ]]; then
+    TOOLCHAIN="$candidate"
+    break
+  fi
+done
+[[ -n "$TOOLCHAIN" ]] || { echo "no NDK LLVM toolchain for $(uname -s)/$(uname -m) under $NDK" >&2; exit 2; }
 CLANG="$TOOLCHAIN/bin/$TRIPLE-clang"
 CLANGXX="$TOOLCHAIN/bin/$TRIPLE-clang++"
 
@@ -135,13 +150,22 @@ UNALIGNED="$OUT/$EXAMPLE-unaligned.apk"
 # composition arrives through onCreateInputConnection on a View, and a plain
 # NativeActivity has none. The dex is the price of that, and it is the whole
 # price -- the class decides nothing and holds no editing state.
+rm -rf "$OUT/classes"
+mkdir -p "$OUT/classes"
+javac_log="$OUT/javac.log"
 javac -source 8 -target 8 -nowarn -bootclasspath "$PLATFORM_JAR" -classpath "$PLATFORM_JAR" \
-  -d "$OUT/classes" "$ROOT/src/platform/android/java/org/elisa_ui/ElisaCanvasActivity.java" 2>&1 |
-  grep -v "^warning:" || true
+  -d "$OUT/classes" "$ROOT/src/platform/android/java/org/elisa_ui/ElisaCanvasActivity.java" >"$javac_log" 2>&1 || {
+    javac_status=$?
+    cat "$javac_log" >&2
+    echo "android: javac failed" >&2
+    exit "$javac_status"
+  }
+grep -v "^warning:" "$javac_log" || true
 [[ -f "$OUT/classes/org/elisa_ui/ElisaCanvasActivity.class" ]] || { echo "android: javac produced no canvas activity" >&2; exit 2; }
 # Run from the class root so the file list is relative: this project's own path
 # has a space in it, and an unquoted expansion of absolute names splits.
 (cd "$OUT/classes" && find . -name '*.class' | sort > "$OUT/classes.list")
+rm -f "$OUT/classes.dex"
 (cd "$OUT/classes" && xargs "$BUILD_TOOLS/d8" --min-api "$API" --output "$OUT" < "$OUT/classes.list")
 [[ -f "$OUT/classes.dex" ]] || { echo "android: d8 produced no dex" >&2; exit 2; }
 cp "$OUT/classes.dex" "$STAGE/classes.dex"

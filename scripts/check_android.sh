@@ -53,25 +53,33 @@ SO="$OUT/lib$EXAMPLE.so"
 [[ -f "$APK" && -f "$SO" ]] || { echo "android: the build produced no package" >&2; exit 1; }
 
 READELF="$NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-readelf"
-[[ -x "$READELF" ]] || READELF="$(command -v llvm-readelf || true)"
-if [[ -x "$READELF" ]]; then
-  symbols="$("$READELF" --dyn-symbols "$SO")"
-  # android_main is what NativeActivity looks up; the rest is the ABI the
-  # host calls back through, and a missing one is a blank window at runtime.
-  for entry in android_main elisa_android_start elisa_android_resize elisa_android_render \
-               elisa_android_touch elisa_android_scroll elisa_android_frame_delay \
-               elisa_android_lifecycle elisa_android_key elisa_android_text \
-               elisa_android_wants_keyboard; do
-    grep -q " $entry\$" <<<"$symbols" || { echo "android: $entry is not exported from lib$EXAMPLE.so" >&2; exit 1; }
+if [[ ! -x "$READELF" ]]; then
+  for candidate in "$NDK"/toolchains/llvm/prebuilt/*/bin/llvm-readelf; do
+    if [[ -x "$candidate" ]]; then
+      READELF="$candidate"
+      break
+    fi
   done
-  # C++ was linked statically on purpose: Android ships no libc++_shared, and
-  # a NativeActivity APK with no Java in it has nothing to load one with.
-  if "$READELF" --dynamic "$SO" | grep -q "libc++_shared"; then
-    echo "android: lib$EXAMPLE.so needs libc++_shared, which this APK cannot supply" >&2
-    exit 1
-  fi
-  echo "android: entry points exported, C++ linked in"
 fi
+[[ -x "$READELF" ]] || READELF="$(command -v llvm-readelf || true)"
+[[ -x "$READELF" ]] || { echo "android: llvm-readelf is required to verify exported entry points" >&2; exit 1; }
+symbols="$("$READELF" --dyn-symbols "$SO")"
+# android_main is what NativeActivity looks up; the rest is the ABI the
+# host calls back through, and a missing one is a blank window at runtime.
+for entry in android_main elisa_android_start elisa_android_resize elisa_android_render \
+             elisa_android_touch elisa_android_scroll elisa_android_frame_delay \
+             elisa_android_lifecycle elisa_android_key elisa_android_text \
+             elisa_android_wants_keyboard; do
+  grep -q " $entry\$" <<<"$symbols" || { echo "android: $entry is not exported from lib$EXAMPLE.so" >&2; exit 1; }
+done
+# C++ was linked statically on purpose: Android ships no libc++_shared, and
+# a NativeActivity APK with no Java in it has nothing to load one with.
+dynamic_symbols="$("$READELF" --dynamic "$SO")"
+if grep -q "libc++_shared" <<<"$dynamic_symbols"; then
+  echo "android: lib$EXAMPLE.so needs libc++_shared, which this APK cannot supply" >&2
+  exit 1
+fi
+echo "android: entry points exported, C++ linked in"
 
 # extractNativeLibs="false" means the loader maps the library straight out of
 # the APK, which it can only do if the entry is stored and page-aligned.

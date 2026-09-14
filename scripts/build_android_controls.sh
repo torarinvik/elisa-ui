@@ -14,6 +14,7 @@ set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
 EXAMPLE="${1:-showcase}"
+[[ "$EXAMPLE" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "invalid Android controls example name: $EXAMPLE" >&2; exit 2; }
 ENTRY="$ROOT/examples/$EXAMPLE/android_controls_main.elisa"
 SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
 NDK="${ANDROID_NDK_ROOT:-$(ls -d "$SDK"/ndk/* 2>/dev/null | sort -V | tail -1)}"
@@ -21,7 +22,21 @@ API="${ELISA_UI_ANDROID_API:-30}"
 BUILD_TOOLS="$(ls -d "$SDK"/build-tools/* 2>/dev/null | sort -V | tail -1)"
 PLATFORM_JAR="$(ls "$SDK"/platforms/*/android.jar 2>/dev/null | sort -V | tail -1)"
 TRIPLE="aarch64-linux-android$API"
-CLANG="$NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/$TRIPLE-clang"
+case "$(uname -s):$(uname -m)" in
+  Darwin:arm64) ndk_host_tags=(darwin-arm64 darwin-x86_64) ;;
+  Darwin:*) ndk_host_tags=(darwin-x86_64 darwin-arm64) ;;
+  Linux:*) ndk_host_tags=(linux-$(uname -m) linux-x86_64) ;;
+  *) ndk_host_tags=() ;;
+esac
+CLANG=""
+for host_tag in "${ndk_host_tags[@]}"; do
+  candidate="$NDK/toolchains/llvm/prebuilt/$host_tag/bin/$TRIPLE-clang"
+  if [[ -x "$candidate" ]]; then
+    CLANG="$candidate"
+    break
+  fi
+done
+[[ -n "$CLANG" ]] || { echo "no NDK clang for $(uname -s)/$(uname -m) under $NDK" >&2; exit 2; }
 
 [[ -f "$ENTRY" ]] || { echo "no Android controls entry: $ENTRY" >&2; exit 2; }
 [[ -x "$STAGE1/bin/elisac-stage1" ]] || { echo "no stage1 product at $STAGE1/bin/elisac-stage1" >&2; exit 2; }
@@ -67,13 +82,20 @@ ELISA_CLANG="$LINKER" ELISA_RUNTIME_OBJ="$OUT/elisacore_runtime.o" \
   -o "$OUT/apk/lib/arm64-v8a/$LIB.so" "$ENTRY"
 
 # --- the Java half -----------------------------------------------------
+javac_log="$OUT/javac.log"
 javac -source 8 -target 8 -nowarn -bootclasspath "$PLATFORM_JAR" -classpath "$PLATFORM_JAR" \
-  -d "$OUT/classes" "$ROOT"/src/platform/android/java/org/elisa_ui/*.java 2>&1 |
-  grep -v "^warning:" || true
+  -d "$OUT/classes" "$ROOT"/src/platform/android/java/org/elisa_ui/*.java >"$javac_log" 2>&1 || {
+    javac_status=$?
+    cat "$javac_log" >&2
+    echo "android controls: javac failed" >&2
+    exit "$javac_status"
+  }
+grep -v "^warning:" "$javac_log" || true
 [[ -f "$OUT/classes/org/elisa_ui/ElisaControls.class" ]] || { echo "android controls: javac produced no classes" >&2; exit 2; }
 # Run from the class root so the file list is relative: this project's own
 # path has a space in it, and an unquoted expansion of absolute names splits.
 (cd "$OUT/classes" && find . -name '*.class' | sort > "$OUT/classes.list")
+rm -f "$OUT/classes.dex"
 (cd "$OUT/classes" && xargs "$BUILD_TOOLS/d8" --min-api "$API" --output "$OUT" < "$OUT/classes.list")
 [[ -f "$OUT/classes.dex" ]] || { echo "android controls: d8 produced no dex" >&2; exit 2; }
 cp "$OUT/classes.dex" "$OUT/apk/classes.dex"
