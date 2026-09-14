@@ -11,11 +11,11 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui code revision | 3e1ae9c on main (worktree also contains unrelated existing edits) |
+| elisa-ui code revision | fe8162f on main (worktree also contains unrelated in-progress edits) |
 | Host and C compiler | macOS 26.6.2 (Darwin 25.6.0), arm64; Homebrew clang 23.1.1 |
-| Elisa stage1 | ../wasm-sdk-compiler/bin/elisac-stage1, clean codex/wasm-sdk at 9791a8e1cd924bb03e43cb46da2d3530b4c9fbb0, ahead=0 behind=0 vs origin/main; SHA-256 78a8cb9da1443a420d2c6bab437339628bd285a8993ee4f9a959af0ffb034d15 |
-| Elisa runtime | ../wasm-sdk-compiler/build/runtime/elisacore_runtime.o; SHA-256 f9f7c011927606bf15c6feb62855ca4885d86b6efd5466193274a8aaccf94afb |
-| Skia source/archive | chrome/m150 at 9c7b2dffb2433f5a0cc2b77f06025a09126807ed; libskia.a SHA-256 39774ff993bd3b84943c27548738c8b8b8208396237d536c1a4ed1c6e147c775 |
+| Elisa stage1 | ../Elisa-compiler/bin/elisac-stage1, clean main at fd2cb3cff470319500db362e5fce2833cbe300de, ahead=0 behind=0 vs origin/main; SHA-256 eebb4f562b8128ceedf4761225fd106335978c0a495c44754ec269da5fec1884 |
+| Elisa runtime | ../Elisa-compiler/build/runtime/elisacore_runtime.o; SHA-256 a58618f5358e30e8c19cf1344d47bddd3a7520ee61f83a471222bb0660e48a8f |
+| Skia source/archive | chrome/m150 at 9c7b2dffb2433f5a0cc2b77f06025a09126807ed; libskia.a SHA-256 b38ff7fa726628efeeb336fe61c72e22d4d6b7bf9549252c65d897730d90c68f |
 | WasmBrowser | ../WasmBrowser at 3ac9b25b0ea74000846625f46c2115ac93d16cf1; checkout has pre-existing local changes; WIT SHA-256 unchanged at 9032a1c59a5495d4868bc7cdf494153096708ff6f2321b4ea2ffeff752c627d6 |
 | wasm-sdk | ../wasm-sdk at fa832f0e812254b0edb0447a17078397911c3d01; checkout has pre-existing local changes |
 | Rust/Wasm linker | rustc 1.98.1 (Homebrew); wasm-component-ld is not on PATH |
