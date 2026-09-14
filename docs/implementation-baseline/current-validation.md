@@ -69,7 +69,12 @@ source changes and was only read/executed, not modified; it is not used for
 performance baselines. The WasmBrowser CLI and SDK bindings are present, but the
 package gate cannot inspect a freshly built `.wapp` until the compiler/runtime
 intrinsic lowering is corrected. This is a compiler blocker, not evidence of
-hosted API parity.
+hosted API parity. The framework's PATH-only linker preflight was removed so
+the compiler can use its Cargo/Rustup resolver. A follow-up `check_wapp.sh` run
+with the default shell `PATH` and the latest local c605b3fa stage1 product
+reached the same LLVM diagnostic, confirming linker discovery no longer masks
+the actual failure. `check_wapp.sh` now documents that it builds with the
+compiler/linker but does not launch WasmBrowser or a window.
 
 The portable retained-tree benchmark has separate exact budgets for upstream
 `main` (`6cdcdf45`) and the newer `c605b3fa` compiler product. Both required

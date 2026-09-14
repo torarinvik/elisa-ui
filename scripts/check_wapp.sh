@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Build the hosted package and inspect it without invoking Elisa,
-# wasm-component-ld, or a windowing runtime. The inspection itself is
-# compiler-independent: it proves the artifact carries the public profile and
-# the guest/host contract.
+# Build the hosted package through the Elisa compiler and component linker,
+# then inspect the artifact without launching WasmBrowser or a windowing
+# runtime. Inspection proves the package carries the public profile and the
+# guest/host contract; it does not by itself prove successful execution.
 #
 # IT BUILDS FIRST, AND IT IS IN THE SUITE. Neither was true before. run_tests.sh
 # never called this gate, so the WasmBrowser target sat outside every green run
