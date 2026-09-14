@@ -31,14 +31,13 @@ status=0
 REFINEMENT_PATTERN='refinement on (argument|the return)'
 
 compile_fixture() {
-  # Compiles one source and echoes the compiler's own diagnostics. A compile
-  # that fails outright is reported by the caller: the fixtures are here to
-  # produce refinement findings, not build errors.
+  # Compile one source while preserving both the compiler's diagnostics and
+  # status so an unrelated error cannot masquerade as a refinement result.
   local source="$1" object="$2"
-  bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$object" "$source" 2>&1 || true
+  bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$object" "$source" 2>&1
 }
 
-negative="$(compile_fixture "$ROOT/test/refinements/unproven_channel.elisa" "$WORK/unproven.o")"
+negative="$(compile_fixture "$ROOT/test/refinements/unproven_channel.elisa" "$WORK/unproven.o")" || true
 if grep -Eq "$REFINEMENT_PATTERN" <<<"$negative"; then
   echo "refinements: an unproven channel is reported"
 else
@@ -48,8 +47,12 @@ else
   status=1
 fi
 
-positive="$(compile_fixture "$ROOT/test/refinements/proven_channel.elisa" "$WORK/proven.o")"
-if grep -Eq "$REFINEMENT_PATTERN" <<<"$positive"; then
+if positive="$(compile_fixture "$ROOT/test/refinements/proven_channel.elisa" "$WORK/proven.o")"; then
+  positive_status=0
+else
+  positive_status=$?
+fi
+if [[ "$positive_status" -ne 0 ]] || grep -Eq "$REFINEMENT_PATTERN" <<<"$positive"; then
   echo "FAIL refinements: a value carried through UiCore::channel was still reported unproven" >&2
   echo "  the vocabulary cannot be satisfied, which makes it unusable rather than safe" >&2
   printf '%s\n' "$positive" | sed 's/^/  /' >&2
@@ -64,9 +67,17 @@ fi
 
 # The framework itself. Every law in src/ has to be dischargeable by the code
 # that declares it, or it is a bound nobody can honour.
-framework="$(compile_fixture "$ROOT/test/color_pack_test.elisa" "$WORK/framework.o")"
-if grep -Eq "$REFINEMENT_PATTERN" <<<"$framework"; then
+if framework="$(compile_fixture "$ROOT/test/color_pack_test.elisa" "$WORK/framework.o")"; then
+  framework_status=0
+else
+  framework_status=$?
+fi
+if [[ "$framework_status" -ne 0 ]] || grep -Eq "$REFINEMENT_PATTERN" <<<"$framework"; then
   echo "FAIL refinements: the framework leaves a refinement obligation undischarged" >&2
+  printf '%s\n' "$framework" | sed 's/^/  /' >&2
+  status=1
+elif [[ ! -f "$WORK/framework.o" ]]; then
+  echo "FAIL refinements: the framework fixture did not produce an object" >&2
   printf '%s\n' "$framework" | sed 's/^/  /' >&2
   status=1
 else

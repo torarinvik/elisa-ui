@@ -83,6 +83,17 @@ def main() -> i64:
     check("current asynchronous validation resolves", UiValidation::accept(validation, current_token) and UiValidation::status(validation) == UiValidation::Status.Valid)
     check("validation never replaces the application-owned draft", UiHandles::text_value(field) == "newer ✓")
 
+    # Identical replacement still resets transient editing state; hosts need
+    # invalidation even though the retained bytes and text revision are stable.
+    UiHandles::set_selection_utf16(field, 0, 0)
+    UiHandles::update_marked_text_utf8_characters("候補", 1, 1)
+    same_value: sview = UiHandles::text_value(field)
+    check("composition is active before identical programmatic replacement", UiHandles::marked_length(field) > 0)
+    UiCore::clear_all_invalidations()
+    UiHandles::replace_text(field, same_value)
+    check("identical replacement clears composition without changing the text", UiHandles::marked_length(field) == 0 and UiHandles::text_value(field) == same_value)
+    check("identical replacement invalidates paint and semantics", UiCore::is_invalidated(UiCore::Invalidation.Paint) and UiCore::is_invalidated(UiCore::Invalidation.Semantics))
+
     # A changed logical asset's intrinsic geometry invalidates layout. Running
     # the normal retained layout pass must preserve text, selection, focus and
     # the active IME mark while recomputing the tree.

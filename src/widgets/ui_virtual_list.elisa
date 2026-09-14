@@ -173,17 +173,18 @@ module UiVirtualList:
         # can recycle a fixed pool instead of building every row. A row that
         # stays visible keeps its slot and generation; a row that scrolls out
         # and returns crosses a new generation, so a late callback for the old
-        # occupancy is stale. The visible range may exceed the slot budget; the
-        # caller trades off-screen coverage for memory by choosing `max_slots`.
+        # occupancy is stale. `max_slots` bounds this owner and the shared
+        # global pool may bound it further; the result reports what fit.
 
         def reset_realization() -> void:
+            ensure_realization_initialized()
             for slot_index in 0..<MAX_REALIZED:
                 virtual_slot_logical[slot_index] <- NONE_INDEX
                 virtual_slot_owner[slot_index] <- 0
                 virtual_slot_generation[slot_index] <- next_generation(virtual_slot_generation[slot_index])
-            virtual_realized_state <- 0
 
         def realize(owner: u32, item_count: i32, range: VisibleRange, max_slots: i32) -> Realization:
+            ensure_realization_initialized()
             total: i32 = bounded_count(item_count)
             if total == 0:
                 release_owner(owner)
@@ -199,53 +200,86 @@ module UiVirtualList:
             finish <- total if finish > total
             wanted: mutable i32 = finish - first
             wanted <- budget if wanted > budget
-            limit: i32 = first + wanted
+            limit: mutable i32 = first + wanted
             # Free this owner's slots that are no longer in the retained window.
             for slot_index in 0..<MAX_REALIZED:
-                if virtual_slot_owner[slot_index] == owner and (virtual_slot_logical[slot_index] < first or virtual_slot_logical[slot_index] >= limit):
+                if virtual_slot_logical[slot_index] != NONE_INDEX and virtual_slot_owner[slot_index] == owner and (virtual_slot_logical[slot_index] < first or virtual_slot_logical[slot_index] >= limit):
+                    free_slot(slot_index)
+            # This is a shared bounded pool: a caller may consume only its
+            # retained slots plus currently free ones, never another owner's
+            # slots. Limit the reported window before assigning so exhaustion
+            # is explicit and never silently steals a row from a different list.
+            usable_capacity: mutable usize = 0
+            for slot_index in 0..<MAX_REALIZED:
+                usable_capacity <- usable_capacity + 1 if virtual_slot_logical[slot_index] == NONE_INDEX or virtual_slot_owner[slot_index] == owner
+            actual_budget: mutable i32 = wanted
+            actual_budget <- usable_capacity.i32() if usable_capacity < wanted.usize()
+            limit <- first + actual_budget
+            # Retain only rows in the contiguous window this call can report.
+            for slot_index in 0..<MAX_REALIZED:
+                if virtual_slot_logical[slot_index] != NONE_INDEX and virtual_slot_owner[slot_index] == owner and virtual_slot_logical[slot_index] >= limit:
                     free_slot(slot_index)
             # Assign every retained logical row to a stable slot.
             for logical in first..<limit:
                 if slot_for(owner, logical) == NONE_INDEX:
                     slot: usize = find_free_slot()
+                    if slot >= MAX_REALIZED:
+                        limit <- logical
+                        break
                     virtual_slot_logical[slot] <- logical
                     virtual_slot_owner[slot] <- owner
                     virtual_slot_generation[slot] <- next_generation(virtual_slot_generation[slot])
-            virtual_realized_state <- 0
+            # If a defensive allocation check shortened the window, release any
+            # retained tail rows so the result still describes a contiguous set.
             for slot_index in 0..<MAX_REALIZED:
-                virtual_realized_state <- virtual_realized_state + 1 if virtual_slot_owner[slot_index] == owner and virtual_slot_logical[slot_index] != NONE_INDEX
-            return Realization{total: total, first: first, finish: limit, realized: wanted}
+                if virtual_slot_logical[slot_index] != NONE_INDEX and virtual_slot_owner[slot_index] == owner and virtual_slot_logical[slot_index] >= limit:
+                    free_slot(slot_index)
+            return Realization{total: total, first: first, finish: limit, realized: limit - first}
 
         def release_owner(owner: u32) -> void:
+            ensure_realization_initialized()
             for slot_index in 0..<MAX_REALIZED:
-                free_slot(slot_index) if virtual_slot_owner[slot_index] == owner
-            virtual_realized_state <- 0
+                free_slot(slot_index) if virtual_slot_logical[slot_index] != NONE_INDEX and virtual_slot_owner[slot_index] == owner
 
         def slot_for(owner: u32, logical: i32) -> i32:
+            ensure_realization_initialized()
             for slot_index in 0..<MAX_REALIZED:
                 return slot_index.i32() if virtual_slot_owner[slot_index] == owner and virtual_slot_logical[slot_index] == logical
             return NONE_INDEX
 
         def logical_for_slot(slot: i32) -> i32:
+            ensure_realization_initialized()
             return NONE_INDEX if slot < 0 or slot >= MAX_REALIZED.i32()
             return virtual_slot_logical[slot.usize()]
 
         def slot_generation(slot: i32) -> u32:
+            ensure_realization_initialized()
             return 0 if slot < 0 or slot >= MAX_REALIZED.i32()
             return virtual_slot_generation[slot.usize()]
 
         def realized_count() -> usize:
-            return virtual_realized_state
+            ensure_realization_initialized()
+            count: mutable usize = 0
+            for slot_index in 0..<MAX_REALIZED:
+                count <- count + 1 if virtual_slot_logical[slot_index] != NONE_INDEX
+            return count
 
         def bounded_extent(value: f32) -> f32:
             safe: f32 = UiCore::nonnegative_extent(value)
             return MAX_GEOMETRY_EXTENT if safe > MAX_GEOMETRY_EXTENT else safe
 
     private:
-        global mutable virtual_realized_state: usize = 0
+        global mutable virtual_realization_initialized: bool = false
         global mutable virtual_slot_logical: i32[MAX_REALIZED] = zeroed
         global mutable virtual_slot_owner: u32[MAX_REALIZED] = zeroed
         global mutable virtual_slot_generation: u32[MAX_REALIZED] = zeroed
+
+        def ensure_realization_initialized() -> void:
+            return if virtual_realization_initialized
+            for slot_index in 0..<MAX_REALIZED:
+                virtual_slot_logical[slot_index] <- NONE_INDEX
+                virtual_slot_owner[slot_index] <- 0
+            virtual_realization_initialized <- true
 
         def free_slot(slot: usize) -> void:
             return if slot >= MAX_REALIZED
@@ -256,9 +290,7 @@ module UiVirtualList:
         def find_free_slot() -> usize:
             for slot_index in 0..<MAX_REALIZED:
                 return slot_index if virtual_slot_logical[slot_index] == NONE_INDEX
-            # The retained window is bounded by the budget, so a free slot
-            # always exists; fall back to slot zero rather than trapping.
-            return 0
+            return MAX_REALIZED
 
         def next_generation(value: u32) -> u32:
             next: u32 = value + 1

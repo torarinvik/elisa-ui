@@ -43,6 +43,8 @@ def main() -> i64:
     malformed: UiVirtualList::VisibleRange = UiVirtualList::visible_range(-10, -20.0, -8.0, -100.0, -50.0, 0)
     check("malformed range fails closed", malformed.first == 0 and malformed.finish == 0)
 
+    first_without_reset: UiVirtualList::Realization = UiVirtualList::realize(0, 10, UiVirtualList::VisibleRange{first: 0, finish: 1}, 1)
+    check("realization lazily initializes its empty slot pool", first_without_reset.realized == 1 and UiVirtualList::slot_for(0, 0) != UiVirtualList::NONE_INDEX)
     UiVirtualList::reset_realization()
     r1: UiVirtualList::Realization = UiVirtualList::realize(1, 100, UiVirtualList::VisibleRange{first: 0, finish: 3}, 8)
     check("realize reports the retained window", r1.total == 100 and r1.first == 0 and r1.finish == 3 and r1.realized == 3 and UiVirtualList::realized_count() == 3)
@@ -60,7 +62,7 @@ def main() -> i64:
     check("a returning row crosses a new generation", UiVirtualList::slot_for(1, 0) != UiVirtualList::NONE_INDEX and UiVirtualList::slot_generation(UiVirtualList::slot_for(1, 0)) != gen_a)
 
     _ = UiVirtualList::realize(2, 50, UiVirtualList::VisibleRange{first: 0, finish: 2}, 8)
-    check("a second owner gets its own slots", UiVirtualList::slot_for(2, 0) != UiVirtualList::NONE_INDEX and UiVirtualList::slot_for(2, 0) != UiVirtualList::slot_for(1, 0))
+    check("a second owner gets its own slots", UiVirtualList::slot_for(2, 0) != UiVirtualList::NONE_INDEX and UiVirtualList::slot_for(2, 0) != UiVirtualList::slot_for(1, 0) and UiVirtualList::realized_count() == 5)
     UiVirtualList::release_owner(2)
     check("releasing an owner frees only its rows", UiVirtualList::slot_for(2, 0) == UiVirtualList::NONE_INDEX and UiVirtualList::slot_for(1, 0) != UiVirtualList::NONE_INDEX)
 
@@ -68,6 +70,14 @@ def main() -> i64:
     check("realization honors the slot budget", budgeted.realized == 4 and budgeted.finish == 4)
     empty_realization: UiVirtualList::Realization = UiVirtualList::realize(4, 0, UiVirtualList::VisibleRange{first: 0, finish: 0}, 8)
     check("an empty list realizes nothing", empty_realization.realized == 0 and empty_realization.total == 0)
+
+    UiVirtualList::reset_realization()
+    full_owner: UiVirtualList::Realization = UiVirtualList::realize(10, 100, UiVirtualList::VisibleRange{first: 0, finish: 100}, UiVirtualList::MAX_REALIZED.i32())
+    preserved_slot: i32 = UiVirtualList::slot_for(10, 0)
+    preserved_generation: u32 = UiVirtualList::slot_generation(preserved_slot)
+    blocked_owner: UiVirtualList::Realization = UiVirtualList::realize(11, 10, UiVirtualList::VisibleRange{first: 0, finish: 1}, 1)
+    check("a full shared pool reports partial realization without evicting another owner", full_owner.realized == UiVirtualList::MAX_REALIZED.i32() and blocked_owner.realized == 0 and blocked_owner.finish == blocked_owner.first and UiVirtualList::slot_for(11, 0) == UiVirtualList::NONE_INDEX)
+    check("pool exhaustion preserves prior owner identity and generation", UiVirtualList::slot_for(10, 0) == preserved_slot and UiVirtualList::slot_generation(preserved_slot) == preserved_generation and UiVirtualList::realized_count() == UiVirtualList::MAX_REALIZED)
 
     if failures == 0:
         _ = puts("virtual list: all checks passed")

@@ -114,7 +114,7 @@ extend UiFlat:
             # limit from all later consumers. Keep a separate signal so the
             # public diagnostic still reports that the original edit was
             # clipped, even when the bounded prefix itself fits storage.
-            widgets[index].text_truncated <- text.len > UiCore::MAX_TEXT_BYTES.i64() or text.len != safe_text.len or take < safe_text.len
+            next_truncated: bool = text.len > UiCore::MAX_TEXT_BYTES.i64() or text.len != safe_text.len or take < safe_text.len
 
             offset: usize = index * TEXT_CAPACITY
             old_length: usize = widgets[index].input_length
@@ -123,15 +123,24 @@ extend UiFlat:
                     changed <- true if text_storage[offset + compare] != single_line_byte(safe_text, compare)
                     break if changed
 
+            # A byte-identical programmatic replacement is still observable
+            # when it cancels composition, collapses selection, moves the caret,
+            # or changes the truncation diagnostic.
+            state_changed: mutable bool = changed
+            state_changed <- true if widgets[index].caret != take or widgets[index].selection_anchor != take
+            state_changed <- true if widgets[index].marked_start != 0 or widgets[index].marked_end != 0
+            state_changed <- true if widgets[index].text_truncated != next_truncated
+
             history_slot: usize = begin_text_history(index) if changed else TEXT_HISTORY_CAPACITY
             for byte_index in 0..<take:
                 text_storage[offset + byte_index] <- single_line_byte(safe_text, byte_index)
             for byte_index in take..<old_length:
                 text_storage[offset + byte_index] <- 0
+            widgets[index].text_truncated <- next_truncated
             widgets[index] with { input_length <- take, caret <- take, selection_anchor <- take, marked_start <- 0, marked_end <- 0 }
             widgets[index].text_revision <- widgets[index].text_revision + 1 if changed
-            restart_caret_blink() if changed and index == focused_widget
-            mark_state_dirty() if changed
+            restart_caret_blink() if state_changed and index == focused_widget
+            mark_state_dirty() if state_changed
             callback_epoch: usize = widget_epoch
             emit_widget_event(index, UiConst::WidgetEvent.Change) if changed
             finish_text_history(history_slot, index) if widget_epoch == callback_epoch
