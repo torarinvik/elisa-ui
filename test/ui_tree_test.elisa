@@ -35,6 +35,18 @@ def main() -> i64:
     counts: UiTree::Snapshot = UiTree::snapshot()
     check("snapshot reports nodes, visible rows and expansions", counts.nodes == 6 and counts.visible == 6 and counts.expanded == 3 and not counts.overflowed)
 
+    UiTree::reset()
+    registered: usize =
+        for index in 0..<UiTree::MAX_NODES |registered: usize = 0| -> registered:
+            parent: u32 = UiTree::ROOT if index == 0 else index.u32()
+            registered <- registered + 1 if UiTree::register(index.u32() + 1, parent)
+    check("tree accepts every slot up to its capacity", registered == UiTree::MAX_NODES)
+    check("tree rejects the first registration beyond capacity", not UiTree::register(UiTree::MAX_NODES.u32() + 1, UiTree::ROOT))
+    check("capacity rejection is reported by the sticky overflow query", UiTree::overflowed())
+    check("capacity rejection is reported in snapshots", UiTree::snapshot().overflowed)
+    UiTree::reset()
+    check("reset clears the tree overflow diagnostic", not UiTree::overflowed())
+
     if failures == 0:
         _ = puts("tree: all checks passed")
         return 0
