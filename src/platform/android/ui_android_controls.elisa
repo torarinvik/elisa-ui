@@ -125,11 +125,15 @@ module UiAndroidControls:
 
     private:
         global mutable android_controls_started: bool = false
-        # An edit arrives as borrowed JNI bytes; the seam keeps its view of
-        # them until the next one, so they are copied here.
+        # An edit arrives as borrowed JNI bytes; stage it only for the
+        # synchronous dispatch that copies it into retained control storage.
         global mutable android_controls_text_bytes: u8[UiCore::MAX_TEXT_BYTES] = zeroed
         global mutable android_prompt_bytes: u8[ANDROID_HINT_CAPACITY] = zeroed
         global mutable android_hint_bytes: u8[ANDROID_HINT_CAPACITY] = zeroed
+
+        def clear_native_text_staging() -> void:
+            for index in 0..<UiCore::MAX_TEXT_BYTES:
+                android_controls_text_bytes[index] <- 0
 
         # Copy a short string into backend storage and answer its length.
         def stage_hint(target: mutable u8&, value: sview) -> usize:

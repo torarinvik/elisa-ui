@@ -64,6 +64,12 @@ def android_ime_stage(text: cstr, length: i32) -> sview:
         android_ime_staging[index] <- android_controls_ime_byte(text, index)
     return sview(&android_ime_staging[0], 0, room.i64())
 
+def android_ime_clear_staging() -> void:
+    # Composition and committed input can contain secure user text. The edit
+    # layer copies synchronously, so do not leave an extra static copy behind.
+    for index in 0..<UiFlat::TEXT_CAPACITY:
+        android_ime_staging[index] <- 0
+
 # A PROVISIONAL RUN, not an edit. Pinyin, kana, Hangul and handwriting all
 # arrive as a composing stretch the user is still choosing, replaced again and
 # again until it is committed -- and an empty one means the composition was
@@ -75,10 +81,12 @@ def android_composing_text(text: cstr, length: i32, selection_start: i32, select
         selected_location: usize = selection_start.usize() if selection_start > 0 else 0
         selected_length: usize = selection_length.usize() if selection_length > 0 else 0
         UiFlat::update_marked_text(android_ime_stage(text, length), selected_location, selected_length, 0, 0, false)
+        android_ime_clear_staging()
 
 def android_commit_text(text: cstr, length: i32) -> void:
     can Memory.Allocate, Abort.Panic, Ui.Input, Unsafe.PointerCast, Ui.Text:
         UiFlat::commit_text(android_ime_stage(text, length), 0, 0, false)
+        android_ime_clear_staging()
 
 export fn elisa_android_composing_text(text: cstr, length: i32, selection_start: i32, selection_length: i32) -> void = android_composing_text
 export fn elisa_android_commit_text(text: cstr, length: i32) -> void = android_commit_text

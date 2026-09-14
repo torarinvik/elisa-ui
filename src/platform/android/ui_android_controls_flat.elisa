@@ -48,6 +48,16 @@ extend UiAndroidControls:
                 finish_realize()
                 restore_focus()
 
+        # The retained control arena copies this view synchronously. Keep the
+        # borrowed JNI text only for dispatch, and scrub even stale callbacks.
+        def dispatch_native_text(handle: i32, text: cstr, length: i32) -> i32 can[Memory.Allocate, Abort.Panic, Ui.Controls, Unsafe.PointerCast, Ui.Window, Ui.Draw, Ui.Text, Ui.Input]:
+            result: i32 = UiControls::NO_PARENT
+            if handle > 0:
+                copied: sview = copy_native_text(text, length)
+                result <- UiControls::dispatch_native_text(handle.usize(), copied)
+            clear_native_text_staging()
+            return result
+
         # Release exactly what the new list did not adopt, children first.
         def discard_unadopted() -> void can[Ui.Controls]:
             count: usize = UiControls::discarded_count()
@@ -130,8 +140,7 @@ def android_controls_event(handle: i32, event: i32, value: f32, selected: i32) -
 # numeric event carries a value and a flag, and neither can hold a string.
 def android_controls_text(handle: i32, text: cstr, length: i32) -> void:
     can Memory.Allocate, Abort.Panic, Ui.Controls, Unsafe.PointerCast, Ui.Window, Ui.Draw, Ui.Text, Ui.Input:
-        return if handle <= 0
-        _ = UiControls::dispatch_native_text(handle.usize(), UiAndroidControls::copy_native_text(text, length))
+        _ = UiAndroidControls::dispatch_native_text(handle, text, length)
 
 export fn elisa_android_controls_start(width: f32, height: f32) -> i32 = android_controls_start
 export fn elisa_android_controls_resize(width: f32, height: f32) -> void = android_controls_resize
