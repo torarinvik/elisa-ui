@@ -61,6 +61,7 @@ cp "$STAGE1/scripts/pymodule_runtime_fallback.c" "$OUT/host_fallbacks.c"
 cp "$ROOT/src/platform/gtk/gtk_shim.c" "$OUT/gtk_shim.c"
 
 for unit in "$ROOT/src/platform/gtk/gtk_check.elisa:gtk_check" \
+            "$ROOT/src/platform/gtk/gtk_style_lifecycle_check.elisa:gtk_style_lifecycle_check" \
             "$STAGE1/elisacore_std/native_runtime_support.elisa:runtime"; do
   env ELISA_HOST_LINUX=1 ${HOST_ARCH_FLAG:+"$HOST_ARCH_FLAG"} \
     bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -target-triple "$TRIPLE" \
@@ -75,14 +76,16 @@ set -e
 work=\$(mktemp -d)
 trap 'rm -rf \"\$work\"' EXIT
 cd \"\$work\"
-cp '$GUEST'/gtk_check.o '$GUEST'/runtime.o '$GUEST'/gtk_shim.c '$GUEST'/profiler_fallbacks.c '$GUEST'/host_fallbacks.c .
+cp '$GUEST'/gtk_check.o '$GUEST'/gtk_style_lifecycle_check.o '$GUEST'/runtime.o '$GUEST'/gtk_shim.c '$GUEST'/profiler_fallbacks.c '$GUEST'/host_fallbacks.c .
 clang -c -Wall -Wextra -Werror \$(pkg-config --cflags gtk4) -o gtk_shim.o gtk_shim.c
 clang -c -o profiler_fallbacks.o profiler_fallbacks.c
 # -fno-builtin: this file defines va_copy and va_end, which a current clang
 # refuses to let a program redeclare over its builtins.
 clang -fno-builtin -c -o host_fallbacks.o host_fallbacks.c
 clang -o gtk_check gtk_check.o gtk_shim.o runtime.o profiler_fallbacks.o host_fallbacks.o \$(pkg-config --libs gtk4) -lpthread -lm
+clang -o gtk_style_lifecycle_check gtk_style_lifecycle_check.o gtk_shim.o runtime.o profiler_fallbacks.o host_fallbacks.o \$(pkg-config --libs gtk4) -lpthread -lm
 xvfb-run -a ./gtk_check
+xvfb-run -a ./gtk_style_lifecycle_check
 " >"$OUT/run.log" 2>"$OUT/run.err" || { echo "gtk linux: the fixture failed" >&2; cat "$OUT/run.log" "$OUT/run.err" >&2; exit 1; }
 
 if grep -q "skipped (no display)" "$OUT/run.log"; then
@@ -91,5 +94,7 @@ if grep -q "skipped (no display)" "$OUT/run.log"; then
 fi
 grep -q "gtk: all checks passed" "$OUT/run.log" || {
   echo "gtk linux: the fixture did not pass" >&2; cat "$OUT/run.log" >&2; exit 1; }
+grep -q "gtk style lifetime: all checks passed (256 lifetimes, peak 128)" "$OUT/run.log" || {
+  echo "gtk linux: the headless style-lifetime fixture did not pass" >&2; cat "$OUT/run.log" >&2; exit 1; }
 
 echo "gtk linux: same fixture, $ARCH Linux, real X server -- every type, state, shape and colour asserted"

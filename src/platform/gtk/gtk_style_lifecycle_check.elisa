@@ -1,0 +1,51 @@
+# Headless GTK regression for CSS-slot lifetime and widget-pointer reuse.
+#
+# Each wave keeps exactly 128 colored GtkLabels alive, the entire current
+# styling capacity. Destroying its GtkWindow releases the tree; a second wave
+# must style another 128 widgets successfully without relying on fresh process
+# state. No window is presented, so the Linux gate can run this under Xvfb.
+
+include "./ui_gtk_native.elisa"
+
+extern puts(text: cstr) -> i64
+
+# The shared C shim also contains callbacks for the full backend. This
+# lifetime-only fixture never connects or emits them, but supplies harmless
+# exports so the shim can link without pulling the whole controls backend in.
+def unused_action(handle: usize, value: f32, selected: i32) -> i32:
+    return 0
+
+def unused_text_action(handle: usize, text: cstr) -> i32:
+    return 0
+
+export fn elisa_gtk_action(handle: usize, value: f32, selected: i32) -> i32 = unused_action
+export fn elisa_gtk_text_action(handle: usize, text: cstr) -> i32 = unused_text_action
+
+const STYLE_WIDGETS: usize = 128
+const FIRST_INK: u32 = 0xFF123456
+const SECOND_INK: u32 = 0xFF654321
+
+def style_and_destroy_wave(ink: u32) -> i32:
+    window: usize = elisa_gtk_create_window(0)
+    failures: mutable i32 = 0
+    for index in 0..<STYLE_WIDGETS:
+        label: usize = elisa_gtk_create_label()
+        elisa_gtk_add_child(window, label)
+        elisa_gtk_set_colors(label, ink, 0)
+        failures <- failures + 1 if elisa_gtk_text_color(label) != ink
+    elisa_gtk_destroy_window(window)
+    return failures
+
+def main() -> i64:
+    if elisa_gtk_init() == 0:
+        _ = puts("gtk style lifetime: skipped (no display)")
+        return 0
+
+    failures: i32 = style_and_destroy_wave(FIRST_INK) + style_and_destroy_wave(SECOND_INK)
+    if elisa_gtk_style_errors() != 0:
+        failures <- failures + 1
+    if failures != 0:
+        _ = puts("gtk style lifetime: FAIL")
+        return 1
+    _ = puts("gtk style lifetime: all checks passed (256 lifetimes, peak 128)")
+    return 0

@@ -168,6 +168,21 @@ static char styled_rule[ELISA_GTK_MAX_STYLED][ELISA_GTK_RULE_BYTES];
 static int styled_count;
 static int style_errors;
 
+// Slots describe a widget's lifetime, not a handle-table lifetime. GTK owns
+// widgets through their parents, and an Elisa reset or unparent does not mean
+// that a widget is dead (it may still be retained or reparented). A weak notify
+// is the point at which the raw pointer can safely be forgotten and reused.
+static void on_styled_widget_finalized(gpointer data, GObject *where_object_was) {
+    const int slot = GPOINTER_TO_INT(data);
+    if (slot < 0 || slot >= styled_count) return;
+    if (styled_widget[slot] != (GtkWidget *)(void *)where_object_was) return;
+    styled_widget[slot] = NULL;
+    styled_rule[slot][0] = '\0';
+    // Do not reload the provider during GObject finalization. The stale
+    // selector has no live widget; the next style update rebuilds the sheet
+    // without this rule, while the fixed-size table bounds any idle residue.
+}
+
 // GTK skips a rule it cannot parse rather than refusing the sheet, so a typo
 // here would otherwise be a colour that silently never arrives. The fixture
 // asks for this count, which makes "the CSS was valid" part of what the gate
@@ -206,9 +221,16 @@ static int style_slot_of(GtkWidget *widget) {
 static int style_slot_for(GtkWidget *widget) {
     int slot = style_slot_of(widget);
     if (slot >= 0) return slot;
-    if (styled_count == ELISA_GTK_MAX_STYLED) return -1;
-    slot = styled_count++;
+    for (slot = 0; slot < styled_count; slot++) {
+        if (styled_widget[slot] == NULL) break;
+    }
+    if (slot == styled_count) {
+        if (styled_count == ELISA_GTK_MAX_STYLED) return -1;
+        styled_count++;
+    }
     styled_widget[slot] = widget;
+    g_object_weak_ref(G_OBJECT(widget), on_styled_widget_finalized,
+                      GINT_TO_POINTER(slot));
     char name[32];
     style_class_name(slot, name, sizeof(name));
     gtk_widget_add_css_class(widget, name);
