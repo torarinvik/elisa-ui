@@ -9,7 +9,7 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # that a suite runs in sequence and a person runs one at a time.
 GATE_OBJ_DIR="$ROOT/build/appkit-check"
 mkdir -p "$GATE_OBJ_DIR"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
+STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
 RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then

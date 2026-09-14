@@ -14,7 +14,7 @@ REPORT=0
 [[ "${1:-}" == "--report" ]] && REPORT=1
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-STAGE1_INPUT="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
+STAGE1_INPUT="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
 STAGE1="$(cd -- "$STAGE1_INPUT" && pwd)"
 PRODUCT="$STAGE1/bin/elisac-stage1"
 RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"

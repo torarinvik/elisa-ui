@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
+STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
 RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
 LOCK="$ROOT/third_party/unicode.lock"
 DATA="${ELISA_UI_UNICODE_DATA:-$ROOT/third_party/unicode/GraphemeBreakTest-15.1.0.txt}"

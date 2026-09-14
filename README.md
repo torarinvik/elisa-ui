@@ -367,7 +367,7 @@ routing) — studied, not ported.
 
 ## Build
 
-The scripts use the synchronized `../wasm-sdk-compiler` checkout by default
+The scripts use the current `../Elisa-compiler` checkout by default
 (override with `ELISA_UI_STAGE1`). Every build script prints the resolved
 compiler branch/revision and product/runtime SHA-256 it used, and warns without
 failing on a dirty or stale compiler checkout (`scripts/check_toolchain.sh
@@ -448,7 +448,7 @@ the default. Text still measures through the platform contract on both
 backends, so layout agrees even though the rasterizers differ.
 The text boundary walker is checked against all 1,187 rows in the pinned
 Unicode 15.1.0 `GraphemeBreakTest.txt`; run
-`ELISA_UI_STAGE1=../wasm-sdk-compiler bash scripts/check_unicode_conformance.sh`
+`bash scripts/check_unicode_conformance.sh`
 for that data-driven gate.
 SDL supplies monotonic frame time and waits for either input or the earliest
 animation deadline requested by the retained tree, keeping idle windows from

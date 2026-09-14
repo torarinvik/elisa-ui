@@ -12,7 +12,7 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
+STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
 EXAMPLE="${1:-showcase}"
 [[ "$EXAMPLE" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "invalid Android controls example name: $EXAMPLE" >&2; exit 2; }
 ENTRY="$ROOT/examples/$EXAMPLE/android_controls_main.elisa"

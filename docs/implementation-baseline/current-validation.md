@@ -28,7 +28,41 @@ Maximum process high-water RSS was 3,604,480 bytes. The exact M5 budget passed;
 the acceptance suite now treats an unmatched host/compiler/workload as a
 failure rather than silently skipping product-budget evaluation.
 
-## Refresh 2026-09-14 (code through 3e1ae9c)
+## Latest compiler refresh (2026-09-14)
+
+The default compiler is now `../Elisa-compiler`, clean `main` at
+`fd2cb3cff470319500db362e5fce2833cbe300de`, equal to `origin/main`.
+`scripts/check_toolchain.sh` confirms product SHA-256
+`eebb4f562b8128ceedf4761225fd106335978c0a495c44754ec269da5fec1884` and
+runtime SHA-256
+`a58618f5358e30e8c19cf1344d47bddd3a7520ee61f83a471222bb0660e48a8f`.
+Previously stale script defaults pointed to a second compiler checkout 14
+commits behind; all build/check scripts retain `ELISA_UI_STAGE1` as an explicit
+override.
+
+`SKIA_ROOT=/tmp/elisa-skia-check-20260914 bash scripts/check_skia.sh` passed
+with the pinned CPU-raster archive and semantic checks enabled (no diagnostic
+bypass): off-screen digest `26b1baa0682e064d`, public showcase digest
+`f8cc2ba20c07b5bd`, fresh-process stability, all five pages and the state/scale
+variants. `ELISA_UI_REQUIRE_PERF_BUDGET=1 bash scripts/check_performance.sh`
+also passed as a standalone required gate against the exact M5/compiler tuple.
+Its three-process aggregate medians were 11.212 ms first-frame batches,
+5.063 ms layout, 22.372 ms paint, 58.434 ms text, 0.475 ms text-input, and
+0.156 ms for 128 anchored virtual-list windows; maximum RSS was 3,620,864 bytes.
+
+The complete `scripts/run_tests.sh` matrix has not yet passed end to end. A
+run after the compiler switch reported Win32 link failures for `kill` and
+`sigaction`, Core/GTK Linux cross-target failures, and a WasmBrowser build
+blocked by missing `wasm-component-ld`; Android device checks skipped without
+the Android Skia archive. That run also exposed outdated hierarchy-constructor
+and resource-lifecycle test fixtures. Those fixtures were corrected and the
+affected tests, the remaining Elisa test batch, strict Skia, and the standalone
+performance gate passed in focused reruns; a complete matrix rerun is still
+needed before claiming the full suite green. One in-suite performance attempt
+also had a noisy 1.996 ms text-input outlier; the isolated required budget run
+passed with a 0.625 ms maximum.
+
+## Historical refresh (code through 3e1ae9c; compiler 9791a8e)
 
 Current host: macOS 26.6.2 (Darwin 25.6.0), arm64; Homebrew clang 23.1.1.
 The UI worktree is not clean: existing AppKit canvas, SDL3, paint, and harness

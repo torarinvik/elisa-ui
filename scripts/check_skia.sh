@@ -11,7 +11,7 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # result was a gate that failed in a suite and passed alone.
 SKIA_SHIM_DIR="$ROOT/build/skia"
 mkdir -p "$SKIA_SHIM_DIR"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
+STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
 require_real="${ELISA_UI_REQUIRE_REAL_SKIA:-1}"
 case "$require_real" in
   0|1) ;;

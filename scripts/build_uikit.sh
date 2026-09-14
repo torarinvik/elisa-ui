@@ -12,7 +12,7 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
+STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
 EXAMPLE="${1:-hello}"
 FLAVOR="${2:-simulator}"
 # The two iOS backends are separate products: the canvas paints every pixel,

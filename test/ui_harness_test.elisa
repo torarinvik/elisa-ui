@@ -61,7 +61,10 @@ def main() -> i64:
     check("harness injects resource completion", UiHarness::set_resource_state(resource, UiResources::State.Ready) and UiHarness::resource_state(resource) == UiResources::State.Ready)
     second_resource: UiResources::ResourceHandle = UiHarness::request_resource("images/second", 5)
     check("harness cancels resources by owner", UiHarness::cancel_resources_for_owner(5) == 2 and UiHarness::resource_state(resource) == UiResources::State.Cancelled and UiHarness::resource_state(second_resource) == UiResources::State.Cancelled)
-    check("harness disposes resources by owner", UiHarness::dispose_resources_for_owner(5) == 2 and not UiResources::resource_is_valid(resource) and not UiResources::resource_is_valid(second_resource))
+    check("cancelled resources remain valid without an owner lease", UiHarness::dispose_resources_for_owner(5) == 0 and UiResources::resource_is_valid(resource) and UiResources::resource_is_valid(second_resource))
+    disposable_resource: UiResources::ResourceHandle = UiHarness::request_resource("images/dispose-first", 6)
+    second_disposable_resource: UiResources::ResourceHandle = UiHarness::request_resource("images/dispose-second", 6)
+    check("harness disposes resources by owner", UiHarness::dispose_resources_for_owner(6) == 2 and not UiResources::resource_is_valid(disposable_resource) and not UiResources::resource_is_valid(second_disposable_resource))
 
     feature: UiFeatureView::FeatureHandle = UiHarness::request_feature(3, 1, "1.0.0", 6)
     check("harness injects a feature request", UiFeatureView::is_valid(feature) and UiFeatureView::state(feature) == UiFeatureView::FeatureState.Requested)

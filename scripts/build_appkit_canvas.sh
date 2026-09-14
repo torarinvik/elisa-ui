@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
+STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
 RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
 EXAMPLE="${1:-hello}"
 ENTRY="$ROOT/examples/$EXAMPLE/appkit_canvas_main.elisa"

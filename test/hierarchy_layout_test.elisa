@@ -120,11 +120,11 @@ def main() -> i64:
 
         # A button is a Control is a Widget: all three types accept it, which is
         # the whole point of the sealed split.
-        interactive: bool = is_interactive(root)
+        interactive: bool = UiWidgets::is_interactive(root)
         test_failures <- test_failures + 1 if interactive
 
         # The panel is inert, so a click inside it falls through to the button.
-        hit_widget: Widget? = hit(root, 20.0, 30.0)
+        hit_widget: Widget? = UiWidgets::hit(root, 20.0, 30.0)
         if hit_widget is hit_node:
             check("hit x", hit_node.x, 10.0)
         else:
@@ -132,12 +132,12 @@ def main() -> i64:
             _ = puts("no hit")
 
         # A click outside every widget hits nothing.
-        miss: Widget? = hit(root, 500.0, 500.0)
+        miss: Widget? = UiWidgets::hit(root, 500.0, 500.0)
         test_failures <- test_failures + 1 if miss != null
 
         # Press then release on the same widget is a click.
-        pointer(root, (UiCore::PointerEvent.Down(at: UiCore::Vec2(20.0, 30.0), button: 0)))
-        pointer(root, (UiCore::PointerEvent.Up(at: UiCore::Vec2(20.0, 30.0), button: 0)))
+        pointer(root, (UiCore::PointerEvent.Down(UiCore::Vec2(20.0, 30.0), 0)))
+        pointer(root, (UiCore::PointerEvent.Up(UiCore::Vec2(20.0, 30.0), 0)))
         test_failures <- test_failures + 1 if test_click_count != 1
         if test_click_count != 1:
             _ = puts("click not delivered")
@@ -145,19 +145,19 @@ def main() -> i64:
         # Secondary-button presses are pointer input, not primary activation.
         # The hierarchy and flat layers must agree so a context-menu gesture
         # cannot accidentally invoke a button action.
-        pointer(root, (UiCore::PointerEvent.Down(at: UiCore::Vec2(20.0, 30.0), button: UiCore::PointerButton.Secondary.i32())))
-        pointer(root, (UiCore::PointerEvent.Up(at: UiCore::Vec2(20.0, 30.0), button: UiCore::PointerButton.Secondary.i32())))
+        pointer(root, (UiCore::PointerEvent.Down(UiCore::Vec2(20.0, 30.0), UiCore::PointerButton.Secondary.i32())))
+        pointer(root, (UiCore::PointerEvent.Up(UiCore::Vec2(20.0, 30.0), UiCore::PointerButton.Secondary.i32())))
         test_failures <- test_failures + 1 if test_click_count != 1
 
         # Press, then release somewhere else: cancelled, no second click.
-        pointer(root, (UiCore::PointerEvent.Down(at: UiCore::Vec2(20.0, 30.0), button: 0)))
-        pointer(root, (UiCore::PointerEvent.Up(at: UiCore::Vec2(500.0, 500.0), button: 0)))
+        pointer(root, (UiCore::PointerEvent.Down(UiCore::Vec2(20.0, 30.0), 0)))
+        pointer(root, (UiCore::PointerEvent.Up(UiCore::Vec2(500.0, 500.0), 0)))
         test_failures <- test_failures + 1 if test_click_count != 1
         if test_click_count != 1:
             _ = puts("drag-off should cancel")
 
         # Hover state follows the pointer and clears when it leaves.
-        pointer(root, (UiCore::PointerEvent.Move(at: UiCore::Vec2(20.0, 30.0))))
+        pointer(root, (UiCore::PointerEvent.Move(UiCore::Vec2(20.0, 30.0))))
         test_failures <- test_failures + 1 if hot() == null
         pointer(root, (UiCore::PointerEvent.Leave))
         test_failures <- test_failures + 1 if hot() != null
@@ -204,33 +204,33 @@ def main() -> i64:
         test_failures <- test_failures + 1 if (scroll_invalidations & UiCore::Invalidation.Semantics.i32()) == 0
         layout(stateful_scroll, 100.0, 50.0)
         check("stateful scroll lays out translated content", scroll_b.y, 18.0)
-        pointer(stateful_scroll, (UiCore::PointerEvent.Move(at: UiCore::Vec2(10.0, 45.0))))
+        pointer(stateful_scroll, (UiCore::PointerEvent.Move(UiCore::Vec2(10.0, 45.0))))
         hover_before_wheel: mutable bool = false
         if hot() is hot_before:
             match hot_before:
-                Button.Push(label, rest, hover, press):
+                UiWidgets::Button.Push(label, rest, hover, press):
                     hover_before_wheel <- label == "b"
                 _:
                     pass
         test_failures <- test_failures + 1 if not hover_before_wheel or not scroll_b.hovered
-        pointer(stateful_scroll, (UiCore::PointerEvent.Scroll(at: UiCore::Vec2(10.0, 45.0), delta: UiCore::Vec2(0.0, -10.0))))
+        pointer(stateful_scroll, (UiCore::PointerEvent.Scroll(UiCore::Vec2(10.0, 45.0), UiCore::Vec2(0.0, -10.0))))
         check("wheel input refreshes hierarchy hover", scroll_state.offset, 22.0)
         hover_after_wheel: mutable bool = false
         if hot() is hot_after:
             match hot_after:
-                Button.Push(label, rest, hover, press):
+                UiWidgets::Button.Push(label, rest, hover, press):
                     hover_after_wheel <- label == "c"
                 _:
                     pass
         test_failures <- test_failures + 1 if not hover_after_wheel or not scroll_c.hovered or scroll_b.hovered
         _ = scroll_to(stateful_scroll, 12.0)
         layout(stateful_scroll, 100.0, 50.0)
-        pointer(stateful_scroll, (UiCore::PointerEvent.Scroll(at: UiCore::Vec2(10.0, 10.0), delta: UiCore::Vec2(0.0, -10.0))))
+        pointer(stateful_scroll, (UiCore::PointerEvent.Scroll(UiCore::Vec2(10.0, 10.0), UiCore::Vec2(0.0, -10.0))))
         check("wheel input advances stateful scroll", scroll_state.offset, 22.0)
         check("wheel input reflows content", scroll_c.y, 38.0)
-        pointer(stateful_scroll, (UiCore::PointerEvent.Scroll(at: UiCore::Vec2(10.0, 10.0), delta: UiCore::Vec2(0.0, -100.0))))
+        pointer(stateful_scroll, (UiCore::PointerEvent.Scroll(UiCore::Vec2(10.0, 10.0), UiCore::Vec2(0.0, -100.0))))
         check("wheel input clamps at content end", scroll_state.offset, 40.0)
-        pointer(stateful_scroll, (UiCore::PointerEvent.Scroll(at: UiCore::Vec2(200.0, 10.0), delta: UiCore::Vec2(0.0, -10.0))))
+        pointer(stateful_scroll, (UiCore::PointerEvent.Scroll(UiCore::Vec2(200.0, 10.0), UiCore::Vec2(0.0, -10.0))))
         check("wheel outside viewport is ignored", scroll_state.offset, 40.0)
 
         # Direct typed hierarchy events must fail closed just like events that
@@ -238,7 +238,7 @@ def main() -> i64:
         # synthetic jump to either scroll endpoint.
         invalid_scroll_delta: f32 = 1.0 / 0.0
         before_invalid_wheel: f32 = scroll_state.offset
-        pointer(stateful_scroll, (UiCore::PointerEvent.Scroll(at: UiCore::Vec2(10.0, 10.0), delta: UiCore::Vec2(0.0, invalid_scroll_delta))))
+        pointer(stateful_scroll, (UiCore::PointerEvent.Scroll(UiCore::Vec2(10.0, 10.0), UiCore::Vec2(0.0, invalid_scroll_delta))))
         check("typed hierarchy wheel rejects non-finite delta", scroll_state.offset, before_invalid_wheel)
         invalid_scroll_request: f32 = 0.0 / 0.0
         before_invalid_request: f32 = scroll_state.offset
@@ -266,7 +266,7 @@ def main() -> i64:
         _ = scroll_to(nested_inner, 40.0)
         layout(nested_inner, 100.0, 50.0)
         check("nested inner viewport reaches its edge", nested_inner_state.offset, 40.0)
-        pointer(nested_outer, (UiCore::PointerEvent.Scroll(at: UiCore::Vec2(10.0, 10.0), delta: UiCore::Vec2(0.0, -20.0))))
+        pointer(nested_outer, (UiCore::PointerEvent.Scroll(UiCore::Vec2(10.0, 10.0), UiCore::Vec2(0.0, -20.0))))
         check("edge-clamped nested wheel bubbles to its parent", nested_inner_state.offset, 40.0)
         check("parent viewport consumes bubbled wheel", nested_outer_state.offset, 20.0)
 
@@ -493,20 +493,20 @@ def main() -> i64:
         # capture pointers far outside any useful surface, or turn NaN/Inf
         # pointer coordinates into an accidental origin hit.
         hostile_hit: Widget = Button.Push(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 3.0e38, height: 3.0e38, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "hostile", rest: grey(30), hover: grey(40), press: grey(20))
-        if hit(hostile_hit, 20000000.0, 20000000.0) != null:
+        if UiWidgets::hit(hostile_hit, 20000000.0, 20000000.0) != null:
             test_failures <- test_failures + 1
             _ = puts("hostile hit geometry was not bounded")
         zero_hit: f32 = 0.0
         nan_hit: f32 = zero_hit / zero_hit
         inf_hit: f32 = 1.0 / zero_hit
-        if hit(hostile_hit, nan_hit, 1.0) != null:
+        if UiWidgets::hit(hostile_hit, nan_hit, 1.0) != null:
             test_failures <- test_failures + 1
             _ = puts("NaN hit coordinate did not fail closed")
-        if hit(hostile_hit, inf_hit, 1.0) != null:
+        if UiWidgets::hit(hostile_hit, inf_hit, 1.0) != null:
             test_failures <- test_failures + 1
             _ = puts("infinite hit coordinate did not fail closed")
         edge_hit: Widget = Button.Push(min_width: 0.0, min_height: 0.0, grow: 0.0, x: UiCore::MAX_GEOMETRY_EXTENT, y: UiCore::MAX_GEOMETRY_EXTENT, width: 4.0, height: 4.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "edge", rest: grey(30), hover: grey(40), press: grey(20))
-        if hit(edge_hit, UiCore::MAX_GEOMETRY_EXTENT + 1.0, UiCore::MAX_GEOMETRY_EXTENT + 1.0) != null:
+        if UiWidgets::hit(edge_hit, UiCore::MAX_GEOMETRY_EXTENT + 1.0, UiCore::MAX_GEOMETRY_EXTENT + 1.0) != null:
             test_failures <- test_failures + 1
             _ = puts("derived hit edge escaped geometry bound")
 
@@ -518,7 +518,7 @@ def main() -> i64:
         cyclic.first_child <- cyclic
         layout(cyclic, 40.0, 20.0)
         check("cyclic layout keeps the root box", cyclic.width, 40.0)
-        _ = hit(cyclic, 1.0, 1.0)
+        _ = UiWidgets::hit(cyclic, 1.0, 1.0)
         UiCore::begin_frame()
         paint(cyclic)
         test_failures <- test_failures + 1 if UiCore::command_count() != 0
@@ -530,7 +530,7 @@ def main() -> i64:
         sibling_cycle.next_sibling <- sibling_cycle
         layout(sibling_parent, 80.0, 20.0)
         check("sibling cycle keeps the parent box", sibling_parent.width, 80.0)
-        _ = hit(sibling_parent, 1.0, 1.0)
+        _ = UiWidgets::hit(sibling_parent, 1.0, 1.0)
 
         # A public raw constructor can still write a child into a leaf's
         # mutable common link. The builder rejects that shape, and the typed
@@ -540,7 +540,7 @@ def main() -> i64:
         malformed_leaf: Widget = Control.Label(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, first_child: malformed_leaf_child, next_sibling: null, text: "leaf", size: 12.0, ink: grey(200))
         layout(malformed_leaf, 40.0, 20.0)
         check("leaf layout ignores raw child", malformed_leaf_child.x, 4.0)
-        if hit(malformed_leaf, 6.0, 6.0) != null:
+        if UiWidgets::hit(malformed_leaf, 6.0, 6.0) != null:
             test_failures <- test_failures + 1
             _ = puts("leaf hit exposed raw child")
         UiCore::begin_frame()
@@ -573,7 +573,7 @@ def main() -> i64:
         check("the mirror is a reflection about the container", first_reflection, 100.0)
         check("and it holds for every child", second_reflection, 100.0)
         # Seen in one place, grabbed in another is worse than not mirrored.
-        if hit(rtl_row, 85.0, 10.0) is landed:
+        if UiWidgets::hit(rtl_row, 85.0, 10.0) is landed:
             check("a mirrored row is hit where it is drawn", landed.x, 70.0)
         else:
             test_failures <- test_failures + 1

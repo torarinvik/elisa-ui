@@ -11,7 +11,7 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # result was a gate that failed in a suite and passed alone.
 SKIA_SHIM_DIR="$ROOT/build/skia-offscreen"
 mkdir -p "$SKIA_SHIM_DIR"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
+STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
 SKIA_ROOT="${SKIA_ROOT:?set SKIA_ROOT to the pinned checkout from third_party/skia.lock}"
 SKIA_OUT="${SKIA_OUT:-$SKIA_ROOT/out/elisa}"
 RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
