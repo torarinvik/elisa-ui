@@ -40,6 +40,37 @@ not started because another stage1 seed already held the compiler's host-wide
 build lock. The shared compiler checkout and the in-progress seed were left
 untouched.
 
+### Hosted open-vertical-slice gate (2026-09-15)
+
+The earlier note that the hosted build was blocked by a missing component
+linker was incomplete. `wasm-component-ld` 0.5.30 is installed at
+`/Users/torarinvikbjarko/.cargo/bin/wasm-component-ld` (SHA-256
+`8ad10b6fe07ca0efd4032102c1f1621b1c4b9111980c2d6f16181b1ff30ca305`); its
+directory is simply absent from the interactive shell's default `PATH`.
+With that directory added for the command, the required fresh package gate
+reached component-runtime compilation but failed before linking or packaging:
+
+```text
+PATH="/Users/torarinvikbjarko/.cargo/bin:$PATH" \
+ELISA_UI_STAGE1=/tmp/elisa-ui-compiler-c605-20260915 \
+ELISA_ALLOW_DIRTY_STAGE1=1 ELISA_ALLOW_STALE_STAGE1=1 \
+bash scripts/check_wapp.sh
+
+error: backend generated invalid LLVM IR; refusing to optimize or emit
+Intrinsic name not mangled correctly for type arguments!
+Should be: llvm.wasm.memory.grow.i32
+declare i32 @llvm.wasm.memory.grow.i32.i32(i32, i32)
+```
+
+The exact committed c605b3fa stage1 product (`111753af...8091861f`) and the
+newer local stage1 product on the same commit (`2ff6d2ce...98534d067`) both
+reproduced this diagnostic. The latter compiler checkout contains uncommitted
+source changes and was only read/executed, not modified; it is not used for
+performance baselines. The WasmBrowser CLI and SDK bindings are present, but the
+package gate cannot inspect a freshly built `.wapp` until the compiler/runtime
+intrinsic lowering is corrected. This is a compiler blocker, not evidence of
+hosted API parity.
+
 The portable retained-tree benchmark has separate exact budgets for upstream
 `main` (`6cdcdf45`) and the newer `c605b3fa` compiler product. Both required
 runs passed. The workload measures 21 samples per phase, 221 widgets/commands,
