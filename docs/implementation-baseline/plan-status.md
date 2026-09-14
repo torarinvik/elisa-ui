@@ -14,12 +14,12 @@ evidence and any external blocker. Statuses mean:
 
 | ID | Status | Evidence | Remaining blocker |
 | --- | --- | --- | --- |
-| UI-00 | implemented-tested | `docs/implementation-baseline*`; `check_toolchain.sh`, `check_source_sizes.sh`, `check_global_names.sh`, `check_refinements.sh` | none |
-| UI-01 | implemented-tested | `UiHandles` builders/stale checks, compatibility entrypoints, generated SDK host bindings; hello builds native and `.wapp` (`build_native.sh`, `check_wapp.sh`) | none |
+| UI-00 | implemented-tested (refreshed 2026-09-14) | `docs/implementation-baseline*`; latest compiler tuple; `check_toolchain.sh`, `check_source_sizes.sh`, `check_global_names.sh`, `check_refinements.sh` | observed semantic-enabled compile of the retained Skia unit remained at 99% CPU without output for 72 seconds |
+| UI-01 | implemented-tested (native; hosted build pending) | `UiHandles` builders/stale checks, compatibility entrypoints, generated SDK host bindings; native hello and `.wapp` build gate | `.wapp` verification needs `wasm-component-ld` on PATH; it is absent on this host |
 | UI-02 | implemented-tested | `UiLifecycle`, `UiState`, `UiTasks`, `UiEvents`, `UiHarness`; idle wait in `sdl3_wait_event_test`/`sdl3_lifecycle_stop_test` | none |
-| UI-03 | implemented-tested (portable) | `UiCore` commands, `UiRaster`, `UiPaint`, images/gradients/rounded/shadows, text pipeline, `UiTextMetrics` cache, geometry validation; `skia_painter_test`; SDL render targets/device reset and device-loss renderer recreation (`sdl3_device_loss_test`) | real-Skia raster gate needs the pinned SDK; color space is sRGB-only |
+| UI-03 | implemented-tested (portable + real CPU-raster Skia) | `UiCore` commands, `UiRaster`, `UiPaint`, images/gradients/rounded/shadows, text pipeline, `UiTextMetrics` cache, geometry validation; pinned `check_skia.sh` fresh-process pixel digests and all showcase page/state PNGs; off-screen AppKit/Skia compositor; SDL device-loss fixture | the reproducible real-renderer gate passes with the compiler semantic-gate bypass; full semantic-enabled `ui_skia.elisa` compilation still stalls; color space is sRGB-only |
 | UI-04 | implemented-tested (portable + iOS/Android backends) | `UiResponsive`, `UiMobileSurface`, `UiNavigation`, `UiServices`; `check_uikit.sh`, `check_uikit_simulator.sh`, `check_uikit_touch.sh`; Android gate exists | native permission/picker adapters; Android re-verify needs SDK/NDK/emulator |
-| UI-05 | implemented-tested | key/text/IME/focus/gesture/secure policy; `UiShortcuts`; word navigation; `unicode_conformance_test` (1187 rows) | hosted Alt key-code is a WasmBrowser WIT gap (WB-05) |
+| UI-05 | implemented-tested (portable; hosted/device edges remain) | key/text/IME/focus/gesture/secure policy; `UiShortcuts`; word navigation; pinned Unicode corpus (1187 rows); `text_lifecycle_workflow_test` covers typed-handle editing, stale async validation, resource-triggered relayout, blur, and view teardown | hosted Alt key-code is a WasmBrowser WIT gap (WB-05); physical-device IME/accessibility paths remain separate acceptance work |
 | UI-06 | implemented-tested (portable + AppKit/UIKit) | `UiCore` semantics incl. Image/Group/List/Status/Alert; `accessibility_metadata_test`, `accessibility_geometry_test`; AppKit/UIKit adapters | hosted semantics has no WasmBrowser host channel (WB-05); real screen-reader device runs not verified here |
 | UI-07 | implemented-tested (partial) | sizer/layout corpus, `UiConstraints`, `UiTheme`, `UiLocalization`, `UiValidation`, `UiIdentity`, `UiVirtualList` geometry + bounded realization/slot reuse, `UiTable` column layout, `UiTree` flattening/navigation | third-party control groups |
 | UI-08 | implemented-elisa-boundary | `UiResources` state machine, `UiResourcePresentation`, network/decode progress, demand/prefetch, intrinsic geometry | SDK/host transport integration |
@@ -29,7 +29,8 @@ evidence and any external blocker. Statuses mean:
 | UI-12 | implemented-tested (C/C++/Rust) | `elisa_ui.h`, C host + C++17 header check, header↔symbol cross-check in `check_capi.sh`, bound ABI version, safe Rust wrapper + example (`check_rust.sh`) | Go bindings |
 | UI-13 | implemented-tested (partial) | `UiBuild` version + compatibility; backend matrix; `check_performance.sh`; `test/stress_test.elisa` (sessions/churn/event pressure/command overflow/hostile geometry); `package_release.sh` with LICENSE/integrity; `docs/getting-started.md` tutorial; `docs/migrations.md` | reference-device budgets, GPU upload, idle-CPU, energy measurements |
 
-The first implementation batch (plan §21) is satisfied: UI-00 is complete, the
-public backend/API map consumes pinned SDK bindings, the hello reference screen
-covers persistence/text/resource errors, and it runs on the hosted profile and
-native backends. Mobile execution proceeds through the iOS/Android gates above.
+The first implementation batch (plan §21) is partially evidenced: the public
+backend/API map consumes pinned SDK bindings, and the hello reference screen
+covers persistence, text, and resource errors on native backends. Current hosted
+package verification is blocked until `wasm-component-ld` is available. Mobile
+execution proceeds through the iOS/Android gates above.

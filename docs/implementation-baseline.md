@@ -1,11 +1,29 @@
 # elisa-ui implementation baseline
 
-Recorded 2026-09-08 on macOS arm64; refreshed 2026-09-12 on main.
+Recorded 2026-09-08 on macOS arm64; refreshed 2026-09-14 on main.
 This is the durable UI-00 audit for the
 local implementation plan; it records observed behavior, not an assumption of
 parity on untested platforms.
 
 ## Reproducibility tuple
+
+### Active toolchain snapshot (2026-09-14)
+
+| Item | Observed value |
+| --- | --- |
+| elisa-ui code revision | 6a8f016 on main (documentation refresh follows; worktree also contains unrelated existing edits) |
+| Host and C compiler | macOS 26.6.2 (Darwin 25.6.0), arm64; Homebrew clang 23.1.1 |
+| Elisa stage1 | ../wasm-sdk-compiler/bin/elisac-stage1, clean codex/wasm-sdk at 9791a8e1cd924bb03e43cb46da2d3530b4c9fbb0, ahead=0 behind=0 vs origin/main; SHA-256 78a8cb9da1443a420d2c6bab437339628bd285a8993ee4f9a959af0ffb034d15 |
+| Elisa runtime | ../wasm-sdk-compiler/build/runtime/elisacore_runtime.o; SHA-256 f9f7c011927606bf15c6feb62855ca4885d86b6efd5466193274a8aaccf94afb |
+| Skia source/archive | chrome/m150 at 9c7b2dffb2433f5a0cc2b77f06025a09126807ed; libskia.a SHA-256 39774ff993bd3b84943c27548738c8b8b8208396237d536c1a4ed1c6e147c775 |
+| WasmBrowser | ../WasmBrowser at 3ac9b25b0ea74000846625f46c2115ac93d16cf1; checkout has pre-existing local changes; WIT SHA-256 unchanged at 9032a1c59a5495d4868bc7cdf494153096708ff6f2321b4ea2ffeff752c627d6 |
+| wasm-sdk | ../wasm-sdk at fa832f0e812254b0edb0447a17078397911c3d01; checkout has pre-existing local changes |
+| Rust/Wasm linker | rustc 1.98.1 (Homebrew); wasm-component-ld is not on PATH |
+| Native libraries | Homebrew SDL3 3.4.16 and SDL_ttf 3.2.2 under /opt/homebrew/lib |
+
+The renderer status and exact verification outcomes are in
+[current validation](implementation-baseline/current-validation.md) and
+[renderer verification](implementation-baseline/renderer-verification-status.md).
 
 | Item | Observed value (2026-09-08) | Observed value (2026-09-12, main) |
 | --- | --- | --- |

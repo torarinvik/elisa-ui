@@ -2,6 +2,63 @@
 
 _Part of the [elisa-ui implementation baseline](../implementation-baseline.md)._
 
+## Refresh 2026-09-14 (code through 6a8f016)
+
+Current host: macOS 26.6.2 (Darwin 25.6.0), arm64; Homebrew clang 23.1.1.
+The UI worktree is not clean: existing AppKit canvas, SDL3, and paint changes
+were preserved and excluded from the commits recorded here.
+
+```text
+scripts/check_toolchain.sh
+  stage1 branch=codex/wasm-sdk revision=9791a8e1cd924bb03e43cb46da2d3530b4c9fbb0
+    (ahead=0 behind=0 vs origin/main)
+  product_sha256=78a8cb9da1443a420d2c6bab437339628bd285a8993ee4f9a959af0ffb034d15
+  runtime_sha256=f9f7c011927606bf15c6feb62855ca4885d86b6efd5466193274a8aaccf94afb
+scripts/check_source_sizes.sh / check_global_names.sh
+  Elisa modules <=400 lines; other source <=600; mutable globals unique: PASS
+scripts/check_refinements.sh
+  semantic-enabled refinement diagnostics and framework laws: PASS
+SKIA_ROOT=/tmp/elisa-skia-check-20260914 (pinned revision 9c7b2dffb2433f5a0cc2b77f06025a09126807ed)
+  libskia.a sha256=39774ff993bd3b84943c27548738c8b8b8208396237d536c1a4ed1c6e147c775
+  build provenance verified: PASS
+check_skia.sh with ELISA_STAGE1_NO_SEMANTIC_GATE=1, real-raster requirement left at 1
+  off-screen replay: pixel_digest=26b1baa0682e064d; 16 iterations, 535987 ns average
+  public showcase: pixel_digest=f8cc2ba20c07b5bd; 70 commands, 25 semantics,
+    19 art commands, deferred=2, resource_deferred=2, generations=2->3,
+    16 iterations, 4919679 ns average; fresh-process digest stable
+  five pages plus focus/high contrast/light/RTL/dialog/2x/hover/pressed PNGs: PASS
+check_appkit_skia.sh with ELISA_STAGE1_NO_SEMANTIC_GATE=1
+  off-screen CoreGraphics compositor: pixel_digest=96591d2368f57d1a: PASS
+check_performance.sh with ELISA_STAGE1_NO_SEMANTIC_GATE=1
+  32 iterations: first frame 11560000 ns, layout 5147000 ns, paint 22494000 ns,
+  text 73104000 ns, text input 673000 ns, large tree 221 widgets/commands,
+  peak RSS 3620864 bytes: PASS
+check_unicode_conformance.sh with ELISA_STAGE1_NO_SEMANTIC_GATE=1
+  UAX #29 15.1.0: 1187 rows, data sha256=ed9c5e92fd0911ccbeeb63c97cb19c519ea272ff1112ce843abd991582dd848f: PASS
+test/text_lifecycle_workflow_test.elisa and test/showcase_workflow_test.elisa
+  public retained editing/validation/resource relayout/teardown and app workflow: PASS
+  (both executed in stage1 diagnostic mode with semantic gate disabled)
+```
+
+Semantic-enabled compilation of src/platform/skia/ui_skia.elisa remained at
+99% CPU with no output for 72 seconds on compiler
+9791a8e1cd924bb03e43cb46da2d3530b4c9fbb0 and was stopped. The new retained
+text lifecycle fixture showed the same large-unit semantic-analysis delay at
+70 seconds. This is not a renderer failure: the
+same fixtures pass with the semantic gate bypassed, but it prevents recording
+the complete suite as passing. The current small refinement gate does pass
+with semantic analysis enabled. run_tests.sh was not completed on this latest
+compiler revision; the earlier compiler-only full run stopped on separate
+compiler/platform/linker issues and is not treated as acceptance evidence.
+
+The WasmBrowser checkout was at
+3ac9b25b0ea74000846625f46c2115ac93d16cf1 with pre-existing local changes; its
+WIT SHA-256 remains
+9032a1c59a5495d4868bc7cdf494153096708ff6f2321b4ea2ffeff752c627d6. The
+standalone wasm-sdk checkout was at fa832f0e812254b0edb0447a17078397911c3d01
+and also had pre-existing local changes. wasm-component-ld was not on PATH,
+so the hosted component gate remains unavailable in this refresh.
+
 ## Refresh 2026-09-12 (main `a17b5c1`)
 
 Fresh UI-00 gates from this checkout (macOS arm64, stage1 `986a30b9d6a1`):
