@@ -39,6 +39,20 @@ int main(void) {
         if (require(elisa_appkit_canvas_set_title(opened, (size_t)(__bridge void *)title),
                     @"valid window title was rejected")) return 1;
         test_window_handle = opened;
+        test_appearance_callback_count = 0;
+        elisa_appkit_canvas_report_appearance(opened);
+        if (require(test_appearance_window == opened && test_appearance_name != 0 &&
+                        test_appearance_callback_count == 1,
+                    @"post-publication appearance report did not carry the window identity")) return 1;
+        ElisaCanvasView *appearanceView = elisa_appkit_canvas_view(opened);
+        [appearanceView viewDidMoveToWindow];
+        [appearanceView viewDidMoveToWindow];
+        test_appearance_callback_count = 0;
+        [[NSWorkspace sharedWorkspace].notificationCenter
+            postNotificationName:NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification
+                          object:nil];
+        if (require(test_appearance_callback_count == 1,
+                    @"repeated window moves registered duplicate appearance observers")) return 1;
         elisa_appkit_canvas_timer_fired(opened, 17, 19);
         if (require(test_timer_fired_window == opened,
                     @"timer callback did not carry the window handle")) return 1;

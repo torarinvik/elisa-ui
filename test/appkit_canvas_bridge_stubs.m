@@ -176,8 +176,10 @@ size_t test_appearance_window = 0;
 size_t test_appearance_name = 0;
 int test_appearance_increase_contrast = -1;
 int test_appearance_reduce_motion = -1;
+int test_appearance_callback_count = 0;
 void elisa_appkit_canvas_appearance_changed(size_t windowHandle, size_t appearanceName,
                                             int increaseContrast, int reduceMotion) {
+    if (windowHandle == test_window_handle) test_appearance_callback_count += 1;
     test_appearance_window = windowHandle;
     test_appearance_name = appearanceName;
     test_appearance_increase_contrast = increaseContrast;

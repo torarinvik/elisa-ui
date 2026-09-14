@@ -253,14 +253,27 @@
 }
 - (void)viewDidMoveToWindow {
     [super viewDidMoveToWindow];
-    if (self.window == nil) return;
+    NSNotificationCenter *center = [NSWorkspace sharedWorkspace].notificationCenter;
+    // AppKit may report a move repeatedly. Own exactly one observer while
+    // attached, and remove it if the view leaves its window.
+    if (self.window == nil) {
+        if (observingAccessibilityDisplayOptions) {
+            [center removeObserver:self
+                              name:NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification
+                            object:nil];
+            observingAccessibilityDisplayOptions = NO;
+        }
+        return;
+    }
     // Reduce Motion and Increase Contrast are workspace settings rather than
     // view appearance, so they arrive by notification instead.
-    [[NSWorkspace sharedWorkspace].notificationCenter
-        addObserver:self
-           selector:@selector(accessibilityDisplayOptionsChanged:)
-               name:NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification
-             object:nil];
+    if (!observingAccessibilityDisplayOptions) {
+        [center addObserver:self
+                    selector:@selector(accessibilityDisplayOptionsChanged:)
+                        name:NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification
+                      object:nil];
+        observingAccessibilityDisplayOptions = YES;
+    }
     [self reportAppearance];
 }
 - (void)dealloc {

@@ -81,6 +81,15 @@ int elisa_appkit_canvas_set_title(size_t windowHandle, size_t title) {
     return 1;
 }
 
+// AppKit calls `viewDidMoveToWindow` while the window is being constructed,
+// before Elisa can publish the returned opaque handle. Re-sample after the
+// owner installs that handle; the view supplies OS facts and Elisa still
+// decides how they affect its theme.
+void elisa_appkit_canvas_report_appearance(size_t windowHandle) {
+    ElisaCanvasView *view = elisa_appkit_canvas_view(windowHandle);
+    if (view != nil) [view reportAppearance];
+}
+
 void elisa_appkit_canvas_release_window(size_t handle) {
     if (handle == 0) return;
     id object = (__bridge id)(void *)handle;

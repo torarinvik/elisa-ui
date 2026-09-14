@@ -11,6 +11,10 @@
 #import <Cocoa/Cocoa.h>
 
 @interface ElisaCanvasView : NSView <NSTextInputClient, NSUserInterfaceValidations>
+{
+    BOOL observingAccessibilityDisplayOptions;
+}
+- (void)reportAppearance;
 @end
 
 static NSWindow *elisa_appkit_canvas_window(size_t handle) {
