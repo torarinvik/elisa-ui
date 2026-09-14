@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 
-PHASES = ("first_frame", "layout", "paint", "text", "text_input")
+PHASES = ("first_frame", "layout", "paint", "text", "text_input", "virtual_list_window")
 DEFAULT_ELISA_FLAGS = "-O2"
 DEFAULT_C_FLAGS = "-O0 -std=c11 -Wall -Wextra -Werror"
 DEFAULT_LINK_FLAGS = "-Wl,-dead_strip"
@@ -39,6 +39,8 @@ def file_hashes(root: Path) -> dict[str, str]:
     paths = {
         "benchmark_c": "test/performance_benchmark.c",
         "benchmark_elisa": "test/performance_benchmark.elisa",
+        "virtual_list_elisa": "src/widgets/ui_virtual_list.elisa",
+        "virtual_list_anchored_elisa": "src/widgets/ui_virtual_list_anchored.elisa",
     }
     return {name: sha256(root / path) for name, path in paths.items()}
 

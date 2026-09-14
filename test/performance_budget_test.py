@@ -29,17 +29,21 @@ class PerformanceBudgetTest(unittest.TestCase):
             },
             "clang": {"version": "clang 1.0", "binary_sha256": "clang-hash"},
             "workload": {
-                "id": "retained-tree-v2", "iterations": 32, "warmups": 2,
+                "id": "retained-tree-v3-large-list", "iterations": 32, "warmups": 2,
                 "repetitions": 7, "process_repetitions": 3,
                 "compile_flags": {
                     "elisa": budget.DEFAULT_ELISA_FLAGS,
                     "c": budget.DEFAULT_C_FLAGS,
                     "linker": budget.DEFAULT_LINK_FLAGS,
                 },
-                "source_sha256": {"benchmark_c": "c-hash", "benchmark_elisa": "elisa-hash"},
+                "source_sha256": {
+                    "benchmark_c": "c-hash", "benchmark_elisa": "elisa-hash",
+                    "virtual_list_elisa": "virtual-list-hash",
+                    "virtual_list_anchored_elisa": "virtual-list-window-hash",
+                },
                 "operations_per_batch": {
                     "first_frame": 32, "layout": 32, "paint": 32,
-                    "text": 2048, "text_input": 512,
+                    "text": 2048, "text_input": 512, "virtual_list_window": 128,
                 },
             },
         }
@@ -98,7 +102,7 @@ class PerformanceBudgetTest(unittest.TestCase):
         if not (stage1 / "bin/elisac-stage1").is_file():
             self.skipTest("latest compiler checkout is unavailable")
         record = {
-            "workload_id": "retained-tree-v2",
+            "workload_id": "retained-tree-v3-large-list",
             "iterations": 32,
             "warmups": 2,
             "repetitions": 7,
@@ -106,7 +110,7 @@ class PerformanceBudgetTest(unittest.TestCase):
                 name: {"operations_per_batch": count}
                 for name, count in {
                     "first_frame": 32, "layout": 32, "paint": 32,
-                    "text": 2048, "text_input": 512,
+                    "text": 2048, "text_input": 512, "virtual_list_window": 128,
                 }.items()
             },
         }
@@ -115,7 +119,7 @@ class PerformanceBudgetTest(unittest.TestCase):
         entry = budget.select_budget(metadata, manifest["reference_budgets"])
         if entry is None:
             self.skipTest("this host/compiler tuple has no reference budget")
-        self.assertEqual(entry["id"], "macos26-mac17-4-apple-m5-fd2cb3c-retained-tree-v2")
+        self.assertEqual(entry["id"], "macos26-mac17-4-apple-m5-fd2cb3c-retained-tree-v3-large-list")
         self.assertEqual(budget.evaluate_limits(entry["observed"], entry), [])
 
     def test_required_mode_accepts_exact_budget_and_rejects_missing_budget(self):
@@ -124,23 +128,30 @@ class PerformanceBudgetTest(unittest.TestCase):
             self.skipTest("latest compiler checkout is unavailable")
         manifest_path = ROOT / "test/performance_budgets.json"
         manifest = json.loads(manifest_path.read_text())
+        operation_counts = {
+            "first_frame": 32, "layout": 32, "paint": 32,
+            "text": 2048, "text_input": 512, "virtual_list_window": 128,
+        }
         record = {
             "schema_version": 1,
-            "workload_id": "retained-tree-v2",
+            "workload_id": "retained-tree-v3-large-list",
             "iterations": 32,
             "warmups": 2,
             "repetitions": 7,
-            "large_tree_widgets": 221,
-            "large_tree_commands": 221,
-            "peak_rss_bytes": 3604480,
-            "phases": {},
+            "phases": {
+                name: {"operations_per_batch": operations}
+                for name, operations in operation_counts.items()
+            },
         }
-        observed = manifest["reference_budgets"][0]["observed"]
+        metadata = budget.make_metadata(ROOT, stage1.resolve(), [record], 3)
+        entry = budget.select_budget(metadata, manifest["reference_budgets"])
+        if entry is None:
+            self.skipTest("this host/compiler/workload tuple has no reference budget")
+        observed = entry["observed"]
+        record["large_tree_widgets"] = 221
+        record["large_tree_commands"] = 221
+        record["peak_rss_bytes"] = observed["peak_rss_bytes"]
         for name, phase in observed["phases"].items():
-            operation_counts = {
-                "first_frame": 32, "layout": 32, "paint": 32,
-                "text": 2048, "text_input": 512,
-            }
             record["phases"][name] = {
                 "samples_ns": [phase["median_batch_ns"]] * 6 + [phase["max_sample_ns"]],
                 "operations_per_batch": operation_counts[name],
@@ -167,12 +178,9 @@ class PerformanceBudgetTest(unittest.TestCase):
                 capture = io.StringIO()
                 with contextlib.redirect_stdout(capture):
                     result = budget.main()
-                metadata = budget.make_metadata(ROOT, stage1.resolve(), [record], 3)
-                if budget.select_budget(metadata, manifest["reference_budgets"]) is None:
-                    self.skipTest("this host/compiler tuple has no reference budget")
                 self.assertEqual(result, 0)
                 self.assertIn(
-                    "reference_budget=macos26-mac17-4-apple-m5-fd2cb3c-retained-tree-v2 status=PASS",
+                    "reference_budget=macos26-mac17-4-apple-m5-fd2cb3c-retained-tree-v3-large-list status=PASS",
                     capture.getvalue(),
                 )
 
@@ -230,7 +238,7 @@ class PerformanceBudgetTest(unittest.TestCase):
     def test_incomplete_measurement_record_is_rejected(self):
         record = {
             "schema_version": 1,
-            "workload_id": "retained-tree-v2",
+            "workload_id": "retained-tree-v3-large-list",
             "iterations": 32,
             "warmups": 2,
             "repetitions": 7,

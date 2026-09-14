@@ -2,7 +2,7 @@
 
 _Part of the [elisa-ui implementation baseline](../implementation-baseline.md)._
 
-## UI-13 strict performance-budget gate (2026-09-14)
+## UI-13 strict performance-budget gate (2026-09-14, large-list refresh)
 
 `ELISA_UI_STAGE1=../Elisa-compiler ELISA_UI_REQUIRE_PERF_BUDGET=1 bash scripts/check_performance.sh`
 completed headlessly and matched the exact reference entry. The compiler was
@@ -11,15 +11,18 @@ clean `main` at `fd2cb3cff470319500db362e5fce2833cbe300de`, equal to
 [`implementation-baseline.md`](../implementation-baseline.md). Homebrew clang
 23.1.1 was also identified by binary SHA-256. The workload used three processes
 and seven 32-iteration samples per phase per process, with 221 widgets and
-commands; its raw samples are retained in `test/performance_budgets.json`.
+commands. The virtual-list phase covers 128 anchored windows per batch at four
+logical locations across a 16,777,216-item list. All raw samples are retained
+in `test/performance_budgets.json`.
 
 | Phase | Median batch | Maximum of 21 batches |
 | --- | ---: | ---: |
-| First frame | 10.698 ms | 14.524 ms |
-| Layout | 5.072 ms | 11.162 ms |
-| Paint | 22.285 ms | 42.769 ms |
-| Text | 72.434 ms | 83.408 ms |
-| Text input | 0.688 ms | 0.800 ms |
+| First frame | 7.112 ms | 7.744 ms |
+| Layout | 3.280 ms | 4.315 ms |
+| Paint | 14.511 ms | 19.014 ms |
+| Text | 38.123 ms | 40.602 ms |
+| Text input | 0.318 ms | 0.338 ms |
+| Virtual-list window | 0.106 ms | 0.114 ms |
 
 Maximum process high-water RSS was 3,604,480 bytes. The exact M5 budget passed;
 the acceptance suite now treats an unmatched host/compiler/workload as a

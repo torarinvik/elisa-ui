@@ -12,6 +12,8 @@ extern void elisa_ui_benchmark_paint(void);
 extern void elisa_ui_benchmark_text(void);
 extern void elisa_ui_benchmark_prepare_text(void);
 extern void elisa_ui_benchmark_text_input(void);
+extern void elisa_ui_benchmark_prepare_virtual_list(void);
+extern int32_t elisa_ui_benchmark_virtual_list_window(void);
 extern int32_t elisa_ui_benchmark_widget_count(void);
 extern int32_t elisa_ui_benchmark_command_count(void);
 
@@ -91,6 +93,16 @@ static int measure_text_input(int iterations, uint64_t *elapsed) {
     return elapsed_ns(start, elapsed);
 }
 
+static int measure_virtual_list_window(int iterations, uint64_t *elapsed) {
+    elisa_ui_benchmark_prepare_virtual_list();
+    uint64_t start = 0;
+    if (!monotonic_ns(&start)) return 0;
+    for (int index = 0; index < iterations; ++index) {
+        if (elisa_ui_benchmark_virtual_list_window() != 4) return 0;
+    }
+    return elapsed_ns(start, elapsed);
+}
+
 static int measure_samples(measure_phase_fn phase, phase_samples *result) {
     *result = (phase_samples){0};
     uint64_t sorted[SAMPLE_REPETITIONS];
@@ -147,7 +159,8 @@ int main(void) {
         !measure_layout(WARMUP_ITERATIONS, &warmup_elapsed) ||
         !measure_paint(WARMUP_ITERATIONS, &warmup_elapsed) ||
         !measure_text(WARMUP_ITERATIONS, &warmup_elapsed) ||
-        !measure_text_input(WARMUP_ITERATIONS, &warmup_elapsed)) {
+        !measure_text_input(WARMUP_ITERATIONS, &warmup_elapsed) ||
+        !measure_virtual_list_window(WARMUP_ITERATIONS, &warmup_elapsed)) {
         puts("performance: monotonic clock failed during warmup");
         return 5;
     }
@@ -163,11 +176,13 @@ int main(void) {
     phase_samples paint = {0};
     phase_samples text = {0};
     phase_samples text_input = {0};
+    phase_samples virtual_list_window = {0};
     if (!measure_samples(measure_first_frame, &first_frame) ||
         !measure_samples(measure_layout, &layout) ||
         !measure_samples(measure_paint, &paint) ||
         !measure_samples(measure_text, &text) ||
-        !measure_samples(measure_text_input, &text_input)) {
+        !measure_samples(measure_text_input, &text_input) ||
+        !measure_samples(measure_virtual_list_window, &virtual_list_window)) {
         puts("performance: monotonic clock failed while sampling");
         return 5;
     }
@@ -187,12 +202,12 @@ int main(void) {
     const uint64_t phase_limit = UINT64_C(15000000000);
     if (first_frame.maximum_ns > phase_limit || layout.maximum_ns > phase_limit ||
         paint.maximum_ns > phase_limit || text.maximum_ns > phase_limit ||
-        text_input.maximum_ns > phase_limit) {
+        text_input.maximum_ns > phase_limit || virtual_list_window.maximum_ns > phase_limit) {
         puts("performance: benchmark exceeded safety ceiling");
         return 4;
     }
 
-    printf("{\"schema_version\":1,\"workload_id\":\"retained-tree-v2\",\"iterations\":%d,\"warmups\":%d,\"repetitions\":%d,\"large_tree_widgets\":%d,\"large_tree_commands\":%d,\"peak_rss_bytes\":%llu,\"phases\":{",
+    printf("{\"schema_version\":1,\"workload_id\":\"retained-tree-v3-large-list\",\"iterations\":%d,\"warmups\":%d,\"repetitions\":%d,\"large_tree_widgets\":%d,\"large_tree_commands\":%d,\"peak_rss_bytes\":%llu,\"phases\":{",
            ITERATIONS, WARMUP_ITERATIONS, SAMPLE_REPETITIONS,
            large_tree_widgets, large_tree_commands, (unsigned long long)peak_rss);
     print_phase("first_frame", &first_frame, ITERATIONS);
@@ -204,6 +219,8 @@ int main(void) {
     print_phase("text", &text, ITERATIONS * 64);
     putchar(',');
     print_phase("text_input", &text_input, ITERATIONS * 16);
+    putchar(',');
+    print_phase("virtual_list_window", &virtual_list_window, ITERATIONS * 4);
     puts("}}");
     puts("performance: benchmark passed");
     return 0;

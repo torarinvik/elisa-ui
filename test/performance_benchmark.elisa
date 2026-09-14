@@ -6,6 +6,7 @@
 
 include "../src/widgets/ui_handles.elisa"
 include "../src/widgets/ui_text_layout.elisa"
+include "../src/widgets/ui_virtual_list.elisa"
 
 def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
     return text.len.f32() * size * 0.5
@@ -52,6 +53,7 @@ module UiPerformanceBenchmark:
         global mutable probe: UiHandles::Handle = UiHandles::invalid()
         global mutable field: UiHandles::Handle = UiHandles::invalid()
         global mutable margin_phase: bool = false
+        global mutable virtual_list_checksum: i64 = 0
 
     public:
         def reset() -> void:
@@ -99,6 +101,44 @@ module UiPerformanceBenchmark:
             for _ in 0..<16:
                 UiHandles::commit_text("é👋", 0, 0, false)
 
+        # Warm the realization pool outside each timed sample, then leave it
+        # initialized and empty so pool initialization is not measured.
+        def prepare_virtual_list() -> void:
+            UiVirtualList::reset_realization()
+            _ = virtual_list_windows()
+            UiVirtualList::reset_realization()
+            virtual_list_checksum <- 0
+
+        def virtual_list_windows() -> i32:
+            valid: mutable i32 = 0
+            for point in 0..<4:
+                index: mutable i32 = 0
+                index <- 349526 if point == 1
+                index <- UiVirtualList::MAX_ITEMS / 2 if point == 2
+                index <- UiVirtualList::MAX_ITEMS - 1 if point == 3
+                valid <- valid + 1 if virtual_list_window_at(index)
+            return valid
+
+        def virtual_list_window_at(index: i32) -> bool:
+            window: UiVirtualList::AnchoredWindow = UiVirtualList::anchored_window(
+                UiVirtualList::MAX_ITEMS, 40.0, 8.0,
+                UiVirtualList::ScrollAnchor{index: index, offset: 12.0}, 768.0,
+                UiVirtualList::MAX_REALIZED.i32())
+            range: UiVirtualList::VisibleRange = UiVirtualList::VisibleRange{first: window.first, finish: window.finish}
+            realized: UiVirtualList::Realization = UiVirtualList::realize(77, UiVirtualList::MAX_ITEMS, range, UiVirtualList::MAX_REALIZED.i32())
+            semantic: UiVirtualList::SemanticWindow = UiVirtualList::semantic_window(UiVirtualList::MAX_ITEMS, range, index, index)
+            target: UiVirtualList::ItemPosition = UiVirtualList::item_position(index, window, 40.0, 8.0)
+            return false if realized.total != UiVirtualList::MAX_ITEMS or realized.first != window.first or realized.finish != window.finish
+            return false if not semantic.focus_visible or not semantic.selection_visible or semantic.total != UiVirtualList::MAX_ITEMS
+            return false if not target.valid or UiVirtualList::slot_for(77, index) == UiVirtualList::NONE_INDEX
+            virtual_list_checksum <- virtual_list_checksum + semantic.focused.i64() + realized.realized.i64()
+            for row in realized.first..<realized.finish:
+                slot: i32 = UiVirtualList::slot_for(77, row)
+                position: UiVirtualList::ItemPosition = UiVirtualList::item_position(row, window, 40.0, 8.0)
+                return false if slot == UiVirtualList::NONE_INDEX or UiVirtualList::logical_for_slot(slot) != row
+                return false if UiVirtualList::slot_generation(slot) == 0 or not position.valid
+            return true
+
         def widget_count() -> i32:
             return UiHandles::count().i32()
 
@@ -144,6 +184,16 @@ export fn elisa_ui_benchmark_text_input() -> void = benchmark_text_input
 
 def benchmark_text_input() -> void:
     UiPerformanceBenchmark::text_input()
+
+export fn elisa_ui_benchmark_prepare_virtual_list() -> void = benchmark_prepare_virtual_list
+
+def benchmark_prepare_virtual_list() -> void:
+    UiPerformanceBenchmark::prepare_virtual_list()
+
+export fn elisa_ui_benchmark_virtual_list_window() -> i32 = benchmark_virtual_list_window
+
+def benchmark_virtual_list_window() -> i32:
+    return UiPerformanceBenchmark::virtual_list_windows()
 
 export fn elisa_ui_benchmark_widget_count() -> i32 = benchmark_widget_count
 

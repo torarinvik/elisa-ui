@@ -10,6 +10,23 @@ def check(name: cstr, ok: bool) -> void:
     failures <- failures + 1
     _ = puts(name)
 
+def check_large_window(index: i32) -> void:
+    window: UiVirtualList::AnchoredWindow = UiVirtualList::anchored_window(
+        UiVirtualList::MAX_ITEMS, 40.0, 8.0,
+        UiVirtualList::ScrollAnchor{index: index, offset: 0.0}, 96.0,
+        UiVirtualList::MAX_REALIZED.i32())
+    range: UiVirtualList::VisibleRange = UiVirtualList::VisibleRange{first: window.first, finish: window.finish}
+    realized: UiVirtualList::Realization = UiVirtualList::realize(20, UiVirtualList::MAX_ITEMS, range, UiVirtualList::MAX_REALIZED.i32())
+    semantic: UiVirtualList::SemanticWindow = UiVirtualList::semantic_window(UiVirtualList::MAX_ITEMS, range, index, index)
+    position: UiVirtualList::ItemPosition = UiVirtualList::item_position(index, window, 40.0, 8.0)
+    expected_top: mutable f32 = 0.0
+    expected_top <- 56.0 if index == UiVirtualList::MAX_ITEMS - 1
+    check("anchored window preserves full logical total", window.total == UiVirtualList::MAX_ITEMS)
+    check("deep target belongs to bounded visible range", UiVirtualList::contains(range, index) and position.valid)
+    check("deep row realizes into bounded slot pool", realized.realized == UiVirtualList::count(range) and realized.realized <= UiVirtualList::MAX_REALIZED.i32() and UiVirtualList::slot_for(20, index) != UiVirtualList::NONE_INDEX)
+    check("deep window semantics retains focus and selection", semantic.total == UiVirtualList::MAX_ITEMS and semantic.focused == index and semantic.selected == index and semantic.focus_visible and semantic.selection_visible)
+    check("deep row is placed in viewport-local coordinates", position.top == expected_top)
+
 def main() -> i64:
     layout: UiVirtualList::Metrics = UiVirtualList::metrics(40.0, 8.0)
     check("metrics normalize item extent", layout.item_extent == 40.0 and layout.spacing == 8.0 and layout.stride == 48.0)
@@ -42,6 +59,45 @@ def main() -> i64:
     check("empty range is half open", blank.first == 0 and blank.finish == 0 and UiVirtualList::count(blank) == 0)
     malformed: UiVirtualList::VisibleRange = UiVirtualList::visible_range(-10, -20.0, -8.0, -100.0, -50.0, 0)
     check("malformed range fails closed", malformed.first == 0 and malformed.finish == 0)
+
+    # Exercise a complete public window -> realization -> local placement ->
+    # semantics workflow at the start, former f32 saturation boundary, middle,
+    # and tail of the maximum supported logical list.
+    UiVirtualList::reset_realization()
+    check_large_window(0)
+    check_large_window(349526)
+    check_large_window(UiVirtualList::MAX_ITEMS / 2)
+    check_large_window(UiVirtualList::MAX_ITEMS - 1)
+
+    carried: UiVirtualList::AnchoredWindow = UiVirtualList::anchored_window(UiVirtualList::MAX_ITEMS, 40.0, 8.0, UiVirtualList::ScrollAnchor{index: 2, offset: 99.0}, 96.0, 64)
+    check("local scroll offset carries across logical rows", carried.first == 4 and carried.leading_offset == 3.0)
+    negative_offset: UiVirtualList::AnchoredWindow = UiVirtualList::anchored_window(UiVirtualList::MAX_ITEMS, 40.0, 8.0, UiVirtualList::ScrollAnchor{index: 2, offset: -24.0}, 96.0, 64)
+    check("negative local offset retreats to the preceding row", negative_offset.first == 1 and negative_offset.leading_offset == 24.0)
+    invalid_anchor: UiVirtualList::AnchoredWindow = UiVirtualList::anchored_window(100, 40.0, 8.0, UiVirtualList::ScrollAnchor{index: -10, offset: 1000.0}, 96.0, 64)
+    check("negative logical identity ignores malformed local offset", invalid_anchor.first == 0 and invalid_anchor.leading_offset == 0.0)
+    down: UiVirtualList::ScrollAnchor = UiVirtualList::scroll_by(UiVirtualList::ScrollAnchor{index: 0, offset: 0.0}, 96.0, UiVirtualList::MAX_ITEMS, 40.0, 8.0, 96.0)
+    check("scroll delta advances logical anchor", down.index == 2 and down.offset == 0.0)
+    deep_step: UiVirtualList::ScrollAnchor = UiVirtualList::scroll_by(UiVirtualList::ScrollAnchor{index: 349526, offset: 0.0}, 1.0, UiVirtualList::MAX_ITEMS, 40.0, 8.0, 96.0)
+    check("one-pixel scroll remains precise beyond old f32 extent", deep_step.index == 349526 and deep_step.offset == 1.0)
+    up: UiVirtualList::ScrollAnchor = UiVirtualList::scroll_by(down, -48.0, UiVirtualList::MAX_ITEMS, 40.0, 8.0, 96.0)
+    check("negative scroll delta retreats logical anchor", up.index == 1 and up.offset == 0.0)
+    top: UiVirtualList::ScrollAnchor = UiVirtualList::scroll_by(UiVirtualList::ScrollAnchor{index: 0, offset: 0.0}, -500.0, UiVirtualList::MAX_ITEMS, 40.0, 8.0, 96.0)
+    check("scrolling before the start clamps to the first row", top.index == 0 and top.offset == 0.0)
+    tail_anchor: UiVirtualList::ScrollAnchor = UiVirtualList::scroll_by(UiVirtualList::ScrollAnchor{index: 0, offset: 0.0}, 1000000000.0, UiVirtualList::MAX_ITEMS, 40.0, 8.0, 96.0)
+    check("large scroll delta reaches the logical tail", tail_anchor.index == UiVirtualList::MAX_ITEMS - 3 and tail_anchor.offset == 40.0)
+
+    negative_anchor: UiVirtualList::AnchoredWindow = UiVirtualList::anchored_window(100, 40.0, 8.0, UiVirtualList::ScrollAnchor{index: -10, offset: 0.0}, 96.0, 64)
+    check("negative logical anchor fails safely to the top", negative_anchor.first == 0 and negative_anchor.leading_offset == 0.0)
+    short_content: UiVirtualList::ScrollAnchor = UiVirtualList::scroll_by(UiVirtualList::ScrollAnchor{index: 2, offset: 30.0}, 1000.0, 3, 40.0, 8.0, 500.0)
+    check("viewport larger than content clamps to top", short_content.index == 0 and short_content.offset == 0.0)
+    zero_viewport: UiVirtualList::AnchoredWindow = UiVirtualList::anchored_window(100, 40.0, 8.0, UiVirtualList::ScrollAnchor{index: 50, offset: 0.0}, 0.0, 0)
+    check("zero viewport still exposes one logical row", zero_viewport.first == 50 and zero_viewport.finish == 51)
+    capped_window: UiVirtualList::AnchoredWindow = UiVirtualList::anchored_window(UiVirtualList::MAX_ITEMS, 40.0, 8.0, UiVirtualList::ScrollAnchor{index: 100, offset: 0.0}, 1000000000.0, 1000000)
+    check("anchored window clamps requested realization budget", capped_window.finish - capped_window.first == UiVirtualList::MAX_REALIZED.i32())
+    outside_position: UiVirtualList::ItemPosition = UiVirtualList::item_position(1000, capped_window, 40.0, 8.0)
+    check("local placement rejects rows outside the realized range", not outside_position.valid)
+    huge_extent_window: UiVirtualList::AnchoredWindow = UiVirtualList::anchored_window(UiVirtualList::MAX_ITEMS, 1000000000.0, 1000000000.0, UiVirtualList::ScrollAnchor{index: 8388608, offset: 0.0}, 96.0, 64)
+    check("large row geometry keeps deep logical index addressable", huge_extent_window.total == UiVirtualList::MAX_ITEMS and huge_extent_window.first == 8388608 and huge_extent_window.finish == 8388609)
 
     first_without_reset: UiVirtualList::Realization = UiVirtualList::realize(0, 10, UiVirtualList::VisibleRange{first: 0, finish: 1}, 1)
     check("realization lazily initializes its empty slot pool", first_without_reset.realized == 1 and UiVirtualList::slot_for(0, 0) != UiVirtualList::NONE_INDEX)

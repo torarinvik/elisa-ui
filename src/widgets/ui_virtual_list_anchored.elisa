@@ -1,0 +1,100 @@
+# Logical-coordinate scrolling for lists whose extent exceeds safe f32
+# geometry. The public facade remains UiVirtualList; this slice owns only
+# anchored viewport math and leaves row data/realization with the caller.
+
+extend UiVirtualList:
+    public:
+        # A large list's scroll location is a logical row plus a local pixel
+        # offset. It must never be encoded as one global f32 coordinate.
+        struct ScrollAnchor:
+            index: i32
+            offset: f32
+
+        # The first row may begin above the viewport by `leading_offset`.
+        # Positions within this bounded window remain ordinary local geometry.
+        struct AnchoredWindow:
+            total: i32
+            first: i32
+            finish: i32
+            leading_offset: f32
+
+        struct ItemPosition:
+            valid: bool
+            top: f32
+
+        # Scroll without forming a global pixel coordinate. `anchor.offset`
+        # is local to its row stride; f64 arithmetic keeps the logical tail
+        # reachable even though published geometry remains capped.
+        def scroll_by(anchor: ScrollAnchor, delta: f32, item_count: i32, item_extent: f32, spacing: f32, viewport_extent: f32) -> ScrollAnchor:
+            total: i32 = bounded_count(item_count)
+            return ScrollAnchor{index: 0, offset: 0.0} if total == 0
+            layout: Metrics = metrics(item_extent, spacing)
+            current: ScrollAnchor = normalize_scroll_anchor(anchor.index, anchor.offset, total, layout, viewport_extent)
+            position: f64 = current.index.f64() * layout.stride.f64() + current.offset.f64() + UiCore::finite_or_zero(delta).f64()
+            return scroll_anchor_at(position, total, layout, viewport_extent)
+
+        # The shared slot-pool ceiling is also the realization ceiling, even
+        # if a caller supplies an untrusted, larger max_visible value.
+        def anchored_window(item_count: i32, item_extent: f32, spacing: f32, anchor: ScrollAnchor, viewport_extent: f32, max_visible: i32) -> AnchoredWindow:
+            total: i32 = bounded_count(item_count)
+            return AnchoredWindow{total: 0, first: 0, finish: 0, leading_offset: 0.0} if total == 0
+            layout: Metrics = metrics(item_extent, spacing)
+            safe_anchor: ScrollAnchor = normalize_scroll_anchor(anchor.index, anchor.offset, total, layout, viewport_extent)
+            remaining: i32 = total - safe_anchor.index
+            budget: mutable i32 = max_visible if max_visible > 0 else 1
+            budget <- MAX_REALIZED.i32() if budget > MAX_REALIZED.i32()
+            budget <- remaining if budget > remaining
+            local_extent: f64 = safe_anchor.offset.f64() + UiCore::nonnegative_extent(viewport_extent).f64()
+            row_ratio: f64 = local_extent / layout.stride.f64()
+            rows: mutable i32 = remaining
+            rows <- row_ratio.i32() + 1 if row_ratio < remaining.f64()
+            rows <- budget if rows > budget
+            rows <- 1 if rows < 1
+            return AnchoredWindow{
+                total: total,
+                first: safe_anchor.index,
+                finish: safe_anchor.index + rows,
+                leading_offset: safe_anchor.offset,
+            }
+
+        # Convert a visible logical row into viewport-local placement. Rows
+        # outside the half-open window are rejected rather than mis-positioned.
+        def item_position(index: i32, window: AnchoredWindow, item_extent: f32, spacing: f32) -> ItemPosition:
+            return ItemPosition{valid: false, top: 0.0} if index < 0 or index >= window.total or index < window.first or index >= window.finish
+            layout: Metrics = metrics(item_extent, spacing)
+            relative: f64 = (index - window.first).f64() * layout.stride.f64() - window.leading_offset.f64()
+            top: f32 = UiCore::finite_or_zero_f64(relative).f32()
+            return ItemPosition{valid: true, top: UiCore::bounded_coordinate(top)}
+
+    private:
+        def normalize_scroll_anchor(index: i32, offset: f32, total: i32, layout: Metrics, viewport_extent: f32) -> ScrollAnchor:
+            safe_index: mutable i32 = index
+            safe_index <- 0 if safe_index < 0
+            safe_index <- total - 1 if safe_index >= total
+            safe_offset: f32 = UiCore::finite_or_zero(offset) if index >= 0 else 0.0
+            absolute: f64 = safe_index.f64() * layout.stride.f64() + safe_offset.f64()
+            return scroll_anchor_at(absolute, total, layout, viewport_extent)
+
+        def scroll_anchor_at(position: f64, total: i32, layout: Metrics, viewport_extent: f32) -> ScrollAnchor:
+            return ScrollAnchor{index: 0, offset: 0.0} if total <= 0
+            safe_position: mutable f64 = UiCore::finite_or_zero_f64(position)
+            safe_position <- 0.0 if safe_position < 0.0
+            maximum: f64 = max_scroll_position(total, layout, viewport_extent)
+            safe_position <- maximum if safe_position > maximum
+            stride: f64 = layout.stride.f64()
+            row_ratio: f64 = safe_position / stride
+            index: mutable i32 = total - 1
+            index <- row_ratio.i32() if row_ratio < total.f64()
+            offset64: f64 = safe_position - index.f64() * stride
+            offset: mutable f32 = offset64.f32()
+            offset <- 0.0 if offset < 0.0
+            if offset >= layout.stride and index < total - 1:
+                index <- index + 1
+                offset <- 0.0
+            return ScrollAnchor{index: index, offset: offset}
+
+        def max_scroll_position(total: i32, layout: Metrics, viewport_extent: f32) -> f64:
+            return 0.0 if total <= 0
+            content: f64 = total.f64() * layout.item_extent.f64() + (total - 1).f64() * layout.spacing.f64()
+            viewport: f64 = UiCore::nonnegative_extent(viewport_extent).f64()
+            return content - viewport if content > viewport else 0.0

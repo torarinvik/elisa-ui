@@ -13,15 +13,15 @@ ELISA_UI_STAGE1=../Elisa-compiler ELISA_UI_REQUIRE_PERF_BUDGET=1 bash scripts/ch
 ```
 
 The script compiles the fixture with the current stage1 product at `-O2`,
-links the checked-in Elisa runtime, and reports nanoseconds for five phases.
+links the checked-in Elisa runtime, and reports nanoseconds for six phases.
 It launches three independent benchmark processes by default; each process
 warms each phase twice and records seven measured batches of 32 iterations.
 The result includes every batch duration, the median and maximum across all
 21 batches, per-operation median, and process peak RSS. A versioned workload
-ID and hashes for both workload sources prevent a changed fixture from silently
-reusing an old threshold. The tuple also records the exact stage1/runtime and
-Clang binary hashes, host identity, all compile/link flags, and per-phase
-operation counts.
+ID and hashes for the workload sources, including both virtual-list modules,
+prevent a changed fixture from silently reusing an old threshold. The tuple
+also records the exact stage1/runtime and Clang binary hashes, host identity,
+all compile/link flags, and per-phase operation counts.
 
 - first frame: build 64 retained rows and paint, repeated 32 times;
 - relayout: mutate a retained margin and arrange a 221-node tree, repeated 32
@@ -31,6 +31,9 @@ operation counts.
   32 times.
 - text input: focus a retained field and commit a UTF-8 `é👋` sequence 16 times
   per iteration, repeated 32 times (including edit-history bookkeeping).
+- virtual-list window: calculate, realize, map, position, and project semantic
+  rows at the start, former f32 saturation boundary, midpoint, and tail of a
+  16,777,216-item list (128 bounded windows per 32-iteration batch).
 
 Typography queries are cached in Elisa for the duration of each paint. The
 bounded `UiTextMetrics` table removes repeated line-height and caption/range
