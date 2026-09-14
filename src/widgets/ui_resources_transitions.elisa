@@ -80,7 +80,10 @@ extend UiResources:
         def fail(handle: ResourceHandle, kind: FailureKind) -> bool:
             return false if not UiResources::resource_is_valid(handle) or not resource_failure_kind_is_valid(kind)
             slot: usize = handle.slot.usize()
-            return false if resource_states[slot] == State.Ready or resource_states[slot] == State.Cancelled
+            # A completion resolves exactly one request generation. If a host
+            # learns a better diagnosis later, it must retry with a new token
+            # rather than rewriting a terminal result in place.
+            return false if resource_states[slot] != State.Requested
             resource_states[slot] <- State.Failed
             resource_failure_kinds[slot] <- kind
             resource_mark_changed()
@@ -93,15 +96,10 @@ extend UiResources:
             # Requested starts a new host operation and must rotate its
             # generation through request() or retry(), never in place.
             return false if next == State.Requested
-            # A terminal/offline/denied record cannot be revived in place by a
-            # late host completion. Retry rotates the generation first, so a
-            # ready result is valid only for the operation that was Requested.
-            return false if next == State.Ready and resource_states[slot] != State.Requested
-            # Ready is a successful terminal result for this generation. A
-            # late failure/offline/denial callback must not discard usable
-            # content; explicit cancellation remains available to release it.
-            return false if resource_states[slot] == State.Ready and next != State.Cancelled
-            return false if resource_states[slot] == next
+            # The first completion is terminal for this generation, regardless
+            # of outcome. Only explicit cancellation may supersede it; retry
+            # rotates the token before another completion can be accepted.
+            return false if next != State.Cancelled and resource_states[slot] != State.Requested
             resource_states[slot] <- next
             if next == State.Cancelled:
                 resource_clear_all_owner_demands(slot)

@@ -313,8 +313,9 @@ because a module member's symbol carries its module and those names cannot move.
   backed by cohesive identity, query, demand/progress, transition, and metadata
   modules. Requests deduplicate by key, keep owner/generation lifetimes,
   separate network and decode progress, expose retry/cancel/dispose transitions,
-  and raise resource/paint invalidation while hosts and SDKs retain authority
-  over bytes, caching and decoding.
+  and accept only one completion per generation; retry rotates the generation
+  before new results can be applied. It raises resource/paint invalidation while
+  hosts and SDKs retain authority over bytes, caching and decoding.
 - **Resource presentation** ([src/widgets/ui_resource_presentation.elisa](src/widgets/ui_resource_presentation.elisa)) —
   maps resource lifecycle into explicit placeholder/loading/ready/fallback
   records with declared-or-intrinsic reserved geometry, independent progress,
