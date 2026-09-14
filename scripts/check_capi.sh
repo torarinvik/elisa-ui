@@ -32,22 +32,23 @@ if ! diff <(printf '%s\n' "$header_app") <(printf '%s\n' "$elisa_app") >/dev/nul
   exit 1
 fi
 
-WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT INT TERM HUP
 mkdir -p "$ROOT/build"
+WORK="$(mktemp -d "$ROOT/build/capi-check.XXXXXX")"
+trap 'rm -rf "$WORK"' EXIT INT TERM HUP
 
 # The Elisa side: both adapters at once, which also proves they can coexist.
 cat > "$WORK/bridge.elisa" <<'EOF'
-include "../src/capi/ui_capi.elisa"
-include "../src/capi/ui_capi_app.elisa"
+include "../../src/capi/ui_capi.elisa"
+include "../../src/capi/ui_capi_app.elisa"
 EOF
-# `include` is resolved relative to the including file, so build it in place.
-cp "$WORK/bridge.elisa" "$ROOT/build/capi_bridge_link.elisa"
-bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$WORK/bridge.o" "$ROOT/build/capi_bridge_link.elisa"
+# Keep the generated source beside its temporary outputs. The relative include
+# starts at build/capi-check.XXXXXX/bridge.elisa and reaches this repository's
+# src directory without occupying a fixed, potentially user-owned path.
+bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$WORK/bridge.o" "$WORK/bridge.elisa"
 
 clang -std=c11 -Wall -Wextra -I"$ROOT/include" \
   -c -o "$WORK/host.o" "$ROOT/examples/capi/c_host.c"
 clang++ -std=c++17 -Wall -Wextra -Werror -I"$ROOT/include" \
   -c -o "$WORK/header_cpp.o" "$ROOT/examples/capi/cpp_header_check.cc"
 clang -Wl,-dead_strip -o "$WORK/capi_host" "$WORK/host.o" "$WORK/bridge.o" "$RUNTIME"
-rm -f "$ROOT/build/capi_bridge_link.elisa"
 "$WORK/capi_host"

@@ -38,6 +38,14 @@ extern "C" {
 
 uint32_t elisa_ui_abi_version(void);
 
+/* THREADING AND CALLBACKS: except for the pure ABI-version query above, this
+ * boundary is single-threaded and does not marshal or synchronize calls. The
+ * host must serialize every stateful elisa_ui_* call on one UI-owner thread;
+ * elisa_ui_on_* callbacks run synchronously on that same thread. Post worker
+ * completions to the UI thread before calling back into the framework. Event
+ * dispatch from inside an app callback is queued; nested text dispatch is
+ * ignored while Elisa's borrowed-text staging buffer is in use. */
+
 /* Wire ordinals. Stable: they are what crosses this boundary and the
  * wasmbrowser one, and UiCore::wire_kind is exhaustive over them, so a kind
  * added without a number here is a compile error on the Elisa side. */
