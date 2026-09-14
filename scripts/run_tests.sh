@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Build and run the elisa-ui test programs. These need no window or backend:
-# each links against the core plus the layer under test and reports through its
-# exit status.
+# Build and run the elisa-ui test programs. Pure-policy tests need no window;
+# renderer fixtures use an off-screen SDL dummy driver and read back pixels,
+# without foregrounding an interactive app.
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"

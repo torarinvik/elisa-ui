@@ -62,7 +62,14 @@ SDL3 takes RGBA32 bytes from the application; it does not decode image files.
 The resource must be `Ready` before binding. The headless
 `test/sdl3_image_binding_test.elisa` checks upload bounds, fitting, alpha,
 rounded clipping, replacement, generation reuse, disposal, and renderer
-teardown with SDL's dummy video driver.
+teardown with SDL's dummy video driver. It also builds a nested image widget
+through `UiHandles`, lays it out, paints the retained command list through the
+SDL painter, and verifies the resulting pixels. The separate
+`test/sdl3_showcase_image_workflow_test.elisa` exercises the shipped
+`ShowcaseApp::set_brand_image` API end to end: it renders a baseline, binds a
+ready resource, rerenders the retained showcase, and checks the brand tile's
+actual SDL pixels. Both fixtures run with SDL's dummy video driver and are
+picked up by the required test suite.
 
 **A backend that cannot draw an image draws nothing** — no placeholder. A grey
 rectangle where a thumbnail should be is a worse frame than a gap, and it hides
@@ -99,7 +106,7 @@ command, that one with a picture emits it into its own box with the reference
 the application gave, at full strength by default, dimmed when disabled, and
 that a reference to nothing draws nothing.
 
-The showcase gate samples the application's mark before and after the host
+The showcase fixture samples the application's mark before and after the host
 binds a picture and requires it to change. A binding that fails silently, a
 command the painter drops, a reference that resolves to nothing — each produces
 a perfectly good frame with an empty tile, which is exactly what a file-size

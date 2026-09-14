@@ -1,7 +1,7 @@
 # SDL3 retained-image upload, identity, renderer lifetime, fitting, and actual
 # renderer pixels. SDL's dummy driver keeps the test headless and deterministic.
 
-include "../src/platform/sdl3/ui_sdl3.elisa"
+include "../src/platform/sdl3/ui_sdl3_flat.elisa"
 
 extern SDL_setenv_unsafe(name: cstr, value: cstr, overwrite: i32) -> i32
 extern puts(text: cstr) -> i64
@@ -23,6 +23,10 @@ def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> 
 def app_frame() -> void:
     pass
 
+def app_widget_event(index: usize, event: i32) -> void:
+    _ = index
+    _ = event
+
 def check(label: cstr, passed: bool) -> void:
     if not passed:
         failures <- failures + 1
@@ -36,6 +40,32 @@ def replay_image(image: UiCore::ImageRef, box: UiCore::Rect, alpha: u8, fit: UiC
     UiCore::clear(UiCore::rgb(0, 0, 0))
     UiCore::draw_image_fitted(box, image, alpha, corner, fit)
     UiPaint::replay(UiSdl3Draw::painter())
+
+def replay_widget_image(image: UiCore::ImageRef) -> void:
+    UiHandles::reset()
+    red: mutable u8 = 0
+    green: mutable u8 = 0
+    blue: mutable u8 = 0
+    alpha: mutable u8 = 0
+    root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 0.0, 0.0, UiCore::rgb(0, 0, 0))
+    image_panel: UiHandles::Handle = UiHandles::panel(root, UiConst::Axis.Column, 0.0, 0.0, UiCore::rgb(0, 0, 0))
+    check("typed application builds nested image widgets", UiHandles::is_valid(root) and UiHandles::is_valid(image_panel))
+    UiHandles::set_min_size(root, 8.0, 8.0)
+    UiHandles::set_min_size(image_panel, 8.0, 8.0)
+    UiHandles::set_corner(image_panel, UiCore::CornerStyle.Pill)
+    UiHandles::set_image(image_panel, image)
+    UiHandles::set_image_fit(image_panel, UiCore::PictureFit.Stretch)
+    UiHandles::layout(8.0, 8.0)
+    if UiHandles::widget(image_panel) is row:
+        check("nested image widget receives retained layout bounds", row.width == 8.0 and row.height == 8.0)
+    else:
+        check("nested image widget remains queryable after layout", false)
+    UiCore::begin_frame()
+    UiCore::clear(UiCore::rgb(0, 0, 0))
+    UiHandles::paint()
+    UiPaint::replay(UiSdl3Draw::painter())
+    check("public widget flow renders image pixels", read_frame_pixel(4, 4, &red, &green, &blue, &alpha) and (red > 0 or green > 0 or blue > 0))
+    check("public widget flow clips the rounded image corner", read_frame_pixel(0, 0, &red, &green, &blue, &alpha) and red == 0 and green == 0 and blue == 0)
 
 def run_image_checks() -> void:
     UiResources::reset()
@@ -70,6 +100,8 @@ def run_image_checks() -> void:
     check("readback obtains top-right source pixel", read_frame_pixel(1, 0, &red, &green, &blue, &alpha) and red == 0 and green == 255 and blue == 0 and alpha == 255)
     check("readback obtains bottom-left source pixel", read_frame_pixel(0, 1, &red, &green, &blue, &alpha) and red == 0 and green == 0 and blue == 255 and alpha == 255)
     check("readback obtains bottom-right source pixel", read_frame_pixel(1, 1, &red, &green, &blue, &alpha) and red == 255 and green == 255 and blue == 255 and alpha == 255)
+
+    replay_widget_image(image)
 
     check("Pill radius is half the short side", UiPaint::corner_radius_for(UiCore::Rect(0.0, 0.0, 4.0, 4.0), UiCore::CornerStyle.Pill) == 2.0)
     replay_image(image, UiCore::Rect(0.0, 0.0, 8.0, 8.0), 255, UiCore::PictureFit.Stretch, UiCore::CornerStyle.Pill)

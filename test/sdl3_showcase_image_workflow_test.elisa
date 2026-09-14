@@ -1,0 +1,115 @@
+# Headless public-API workflow: showcase image resource -> retained widget -> SDL pixels.
+#
+# This deliberately exercises the shipped ShowcaseApp instead of synthesizing a
+# DrawImage command. SDL's dummy video driver keeps it off-screen.
+
+include "../src/platform/sdl3/ui_sdl3.elisa"
+include "../examples/showcase/app.elisa"
+
+extern SDL_setenv_unsafe(name: cstr, value: cstr, overwrite: i32) -> i32
+
+global mutable failures: i32 = 0
+
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return 0
+
+def check(label: cstr, passed: bool) -> void:
+    return if passed
+    failures <- failures + 1
+    _ = puts(label)
+
+def brand_widget() -> UiFlat::Widget?:
+    for index in 0..<UiHandles::count():
+        handle: UiHandles::Handle = UiHandles::from_index(index)
+        if UiHandles::widget(handle) is row:
+            # ShowcaseApp owns this fixed 34×34 panel. Identify it by retained
+            # layout facts rather than exposing its private handle for testing.
+            return row if row.kind == UiConst::WidgetKind.Panel and row.width == 34.0 and row.height == 34.0
+    return null
+
+def sample_brand_pixel(r: mutable u8&, g: mutable u8&, b: mutable u8&, a: mutable u8&) -> bool:
+    if brand_widget() is tile:
+        # The centre is safely inside the image, even if the tile is rounded.
+        x: i32 = tile.x.i32() + (tile.width / 2.0).i32()
+        y: i32 = tile.y.i32() + (tile.height / 2.0).i32()
+        return UiSdl3Draw::read_pixel_rgba(x, y, r, g, b, a)
+    return false
+
+def run_showcase_workflow() -> void:
+    UiCapabilities::use_sdl3()
+    UiResources::reset()
+    UiCore::set_viewport(800.0, 680.0)
+    app_init()
+
+    UiCore::begin_frame()
+    app_frame()
+    UiPaint::replay(UiSdl3Draw::painter())
+    check("showcase creates its retained brand-image widget", brand_widget() != null)
+    before_r: mutable u8 = 0
+    before_g: mutable u8 = 0
+    before_b: mutable u8 = 0
+    before_a: mutable u8 = 0
+    before_read: bool = sample_brand_pixel(&before_r, &before_g, &before_b, &before_a)
+    check("unbound showcase brand tile is readable", before_read)
+
+    resource: UiResources::ResourceHandle = UiResources::request("showcase/sdl3-brand-workflow", 11)
+    check("showcase image resource receives a live identity", UiResources::resource_is_valid(resource))
+    check("showcase image resource transitions to Ready", UiResources::set_state(resource, UiResources::State.Ready))
+    image: UiCore::ImageRef = UiCore::image_ref(resource.slot, resource.generation)
+    pixels: mutable u8[64] = [
+        238, 32, 180, 255, 238, 32, 180, 255, 238, 32, 180, 255, 238, 32, 180, 255,
+        238, 32, 180, 255, 238, 32, 180, 255, 238, 32, 180, 255, 238, 32, 180, 255,
+        238, 32, 180, 255, 238, 32, 180, 255, 238, 32, 180, 255, 238, 32, 180, 255,
+        238, 32, 180, 255, 238, 32, 180, 255, 238, 32, 180, 255, 238, 32, 180, 255,
+    ]
+    pixel_pointer: u8& = (&pixels[0]).cast[u8&] can Unsafe.PointerCast
+    check("SDL binds uploaded pixels to the showcase resource", UiSdl3Draw::bind_image_rgba32(image, pixel_pointer, 64, 4, 4, 16))
+    ShowcaseApp::set_brand_image(image)
+
+    UiCore::begin_frame()
+    app_frame()
+    UiPaint::replay(UiSdl3Draw::painter())
+    check("showcase retained command refers to the bound generation", UiSdl3Draw::is_image_bound(image))
+    after_r: mutable u8 = 0
+    after_g: mutable u8 = 0
+    after_b: mutable u8 = 0
+    after_a: mutable u8 = 0
+    after_read: bool = sample_brand_pixel(&after_r, &after_g, &after_b, &after_a)
+    check("rendered showcase brand pixel is readable", after_read)
+    check("the SDL renderer paints the uploaded brand-image red channel", after_r >= 236 and after_r <= 240)
+    check("the SDL renderer paints the uploaded brand-image green channel", after_g >= 30 and after_g <= 34)
+    check("the SDL renderer paints the uploaded brand-image blue channel", after_b >= 178 and after_b <= 182)
+    check("binding the image visibly changes the showcase tile", before_r != after_r or before_g != after_g or before_b != after_b)
+
+def main() -> i32:
+    _ = SDL_setenv_unsafe("SDL_VIDEODRIVER", "dummy", 1)
+    if not SDL_Init(0x20):
+        _ = puts("FAIL SDL initialization for showcase image workflow")
+        return 1
+    ttf_ready: bool = TTF_Init()
+    window_opt: void&? = SDL_CreateWindow("SDL3 showcase image workflow", 800, 680, 0)
+    if window_opt == null:
+        _ = puts("FAIL SDL dummy window for showcase image workflow")
+        TTF_Quit() if ttf_ready
+        SDL_Quit()
+        return 1
+    if window_opt is window:
+        if not UiSdl3Draw::create_renderer(window):
+            _ = puts("FAIL SDL renderer for showcase image workflow")
+            failures <- failures + 1
+        else:
+            run_showcase_workflow()
+            UiSdl3Draw::destroy_renderer()
+            UiSdl3Draw::fonts_close()
+        SDL_DestroyWindow(window)
+    TTF_Quit() if ttf_ready
+    SDL_Quit()
+    if failures == 0:
+        _ = puts("SDL3 showcase image workflow: passed")
+    return failures
