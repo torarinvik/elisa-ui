@@ -11,7 +11,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui code revision | f5d991d on main (worktree also contains unrelated existing edits) |
+| elisa-ui code revision | 3e1ae9c on main (worktree also contains unrelated existing edits) |
 | Host and C compiler | macOS 26.6.2 (Darwin 25.6.0), arm64; Homebrew clang 23.1.1 |
 | Elisa stage1 | ../wasm-sdk-compiler/bin/elisac-stage1, clean codex/wasm-sdk at 9791a8e1cd924bb03e43cb46da2d3530b4c9fbb0, ahead=0 behind=0 vs origin/main; SHA-256 78a8cb9da1443a420d2c6bab437339628bd285a8993ee4f9a959af0ffb034d15 |
 | Elisa runtime | ../wasm-sdk-compiler/build/runtime/elisacore_runtime.o; SHA-256 f9f7c011927606bf15c6feb62855ca4885d86b6efd5466193274a8aaccf94afb |

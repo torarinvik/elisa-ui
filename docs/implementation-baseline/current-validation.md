@@ -2,12 +2,12 @@
 
 _Part of the [elisa-ui implementation baseline](../implementation-baseline.md)._
 
-## Refresh 2026-09-14 (code through f5d991d)
+## Refresh 2026-09-14 (code through 3e1ae9c)
 
 Current host: macOS 26.6.2 (Darwin 25.6.0), arm64; Homebrew clang 23.1.1.
-The UI worktree is not clean: existing AppKit canvas, SDL3, and paint changes,
-including the untracked SDL3 image module and fixture, were preserved and
-excluded from the commits recorded here.
+The UI worktree is not clean: existing AppKit canvas, SDL3, paint, and harness
+changes, including the untracked SDL3 image module and fixture, were preserved
+and excluded from the commits recorded here.
 
 ```text
 scripts/check_toolchain.sh
@@ -51,17 +51,49 @@ scripts/package_release.sh
 test/sdl3_image_binding_test.elisa (pre-existing uncommitted worktree addition)
   diagnostic mode with SDL dummy driver: upload/readback, fit, alpha,
   replacement, generation reuse and renderer teardown: PASS
+scripts/check_utf8_utf16_codec.sh
+  ASan/UBSan host test: BMP, supplementary scalars, counted NUL, malformed
+  UTF-8/UTF-16, and scalar-aligned capacity limits: PASS
+Android NDK arm64 syntax checks and Java compile
+  android_controls_jni.c, android_ime_jni.c, android_clipboard.cpp, and the
+  canvas Java sources: PASS; Android package/device IME gate not run
+test/lifecycle_test.elisa and test/mobile_surface_test.elisa
+  latest stage1, semantic gate enabled: lifecycle/surface ordering and mobile
+  surface facts: PASS
+test/widget_layout_text_test.elisa
+  UTF-16 composition range selects `b` after `a😀`: PASS in diagnostic mode;
+  semantic-enabled compilation ran at 93% CPU without output for 90 seconds
+  and was stopped, consistent with the large-unit stall described below
+test/ui_table_test.elisa
+  latest stage1, semantic gate enabled: fixed first column no longer prevents
+  the following flexible column receiving its remaining width: PASS
+scripts/check_gtk_linux.sh
+  diagnostic compiler mode, aarch64 Linux under Xvfb: existing GTK checks plus
+  256 sequential styled-widget lifetimes at peak 128: PASS
+scripts/check_win32.sh
+  Win32 shim cross-compiles with -Wall -Wextra -Werror; semantic-enabled Elisa
+  fixture compile was stopped after 118 seconds at 95% CPU without output;
+  diagnostic-mode full link fails on unresolved `kill` and `sigaction` in the
+  sibling compiler runtime, so no PE link/runtime pass is claimed
+scripts/check_source_sizes.sh / check_global_names.sh / check_refinements.sh
+  post-change source limits, unique mutable globals, framework laws: PASS
 ```
 
 Semantic-enabled compilation of src/platform/skia/ui_skia.elisa remained at
 99% CPU with no output for 72 seconds on compiler
 9791a8e1cd924bb03e43cb46da2d3530b4c9fbb0 and was stopped. The new retained
 text lifecycle fixture showed the same large-unit semantic-analysis delay at
-70 seconds. This is not a renderer failure: the
+70 seconds, and the larger text-layout editing unit did likewise at 90 seconds.
+The GTK Linux rendering/lifetime gate passed under its diagnostic-only compiler
+mode; its normal semantic-enabled compile also stalled on the existing
+`gtk_check.elisa`. This is not a renderer failure: the
 same fixtures pass with the semantic gate bypassed, but it prevents recording
 the complete suite as passing. The current small refinement gate does pass
-with semantic analysis enabled. run_tests.sh was not completed on this latest
-compiler revision; the earlier compiler-only full run stopped on separate
+with semantic analysis enabled. `run_tests.sh` was not completed on this latest
+compiler revision; no Android package or device IME run is claimed in this
+refresh. The Win32 diagnostic-mode link also remains blocked by unresolved
+`kill` and `sigaction` references in the sibling compiler runtime, so the
+Windows PE image is not verified in this refresh. The earlier compiler-only full run stopped on separate
 compiler/platform/linker issues and is not treated as acceptance evidence.
 
 The WasmBrowser checkout was at
