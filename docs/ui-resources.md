@@ -49,6 +49,10 @@ starts a fresh generation. `retry` accepts only recoverable denied/offline/
 failed states and returns a fresh generation handle. Replace the old handle
 with that result; late callbacks from the previous operation cannot update the
 retry.
+`Ready` is stable for its generation: a late offline, denied, or failure result
+cannot discard usable content. Explicit cancellation remains available; a new
+host operation must retry a recoverable failure or release/cancel the old
+generation before requesting again.
 
 Network and decode progress are separate normalized fractions. A value of 1.0
 for network progress never implies that a resource is ready to paint. State or
