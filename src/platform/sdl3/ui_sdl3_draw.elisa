@@ -230,11 +230,48 @@ module UiSdl3Draw:
         def has_drawable_viewport() -> bool:
             return viewport_is_drawable()
 
+        def read_pixel_rgba(x: i32, y: i32, r: mutable u8&, g: mutable u8&, b: mutable u8&, a: mutable u8&) -> bool:
+            return false if renderer == null
+            return UiSdl3Images::read_pixel_rgba(ren(), x, y, r, g, b, a)
+
+        # Upload a caller-owned RGBA byte array into the renderer's retained
+        # texture table. SDL_UpdateTexture copies the pixels before this call
+        # returns, so the caller can release or reuse its buffer afterwards.
+        # The explicit byte_length is part of the API safety contract: without
+        # it row-stride validation cannot prove that SDL's read stays inside the
+        # supplied allocation.
+        def bind_image_rgba32(image: UiCore::ImageRef, pixels: u8&?, byte_length: usize, width: usize, height: usize, row_stride: usize) -> bool:
+            return false if renderer == null
+            return UiSdl3Images::bind_image_rgba32(ren(), image, pixels, byte_length, width, height, row_stride)
+
+        # Unbind only the exact slot+generation key supplied by the caller. A
+        # stale handle cannot evict a newer generation occupying that slot.
+        def unbind_image(image: UiCore::ImageRef) -> bool:
+            return UiSdl3Images::unbind_image(image)
+
+        # The query also lazily releases a matching texture when its logical
+        # resource has been disposed or moved out of Ready state.
+        def is_image_bound(image: UiCore::ImageRef) -> bool:
+            return UiSdl3Images::is_image_bound(image)
+
+        def image_binding_count() -> usize:
+            return UiSdl3Images::image_binding_count()
+
+        # Renderer loss invalidates every texture at once. Logical
+        # UiResources identities survive and the host can upload them again
+        # after the renderer has been recreated.
+        def clear_image_bindings() -> void:
+            UiSdl3Images::clear_image_bindings()
+
         def create_renderer(window: void&) -> bool:
+            # A direct second create is treated like recreation; no texture may
+            # outlive the renderer that created it.
+            destroy_renderer() if renderer != null
             renderer <- SDL_CreateRenderer(window, null)
             return renderer != null
 
         def destroy_renderer() -> void:
+            UiSdl3Images::clear_image_bindings()
             if renderer is done_renderer:
                 SDL_DestroyRenderer(done_renderer)
             renderer <- null
@@ -242,9 +279,8 @@ module UiSdl3Draw:
 
         # GPU device loss discards the renderer but not the window or the
         # application model. Recreate the renderer from the surviving window;
-        # fonts are rendered to CPU surfaces and survive unchanged, and every
-        # glyph texture is created and destroyed per frame, so there is no
-        # retained texture cache to rebuild.
+        # retained textures are destroyed before the old renderer and must be
+        # rebound by the image owner after the new renderer is available.
         def recreate_renderer(window: void&) -> bool:
             destroy_renderer()
             return create_renderer(window)
@@ -328,11 +364,9 @@ module UiSdl3Draw:
             def fill_rect(self: Self, box: UiCore::Rect, color: UiCore::Color, style: UiCore::SurfaceStyle) -> void can[Ui.Draw]:
                 paint_rect(box, color)
 
-            # No image support: this painter has none, so it draws nothing rather
-            # than a placeholder. A grey rectangle where a thumbnail should be is
-            # a worse frame than a gap, and it hides that the image never arrived.
             def draw_image(self: Self, draw: UiCore::ImageDraw) -> void can[Ui.Draw]:
-                _ = draw
+                return if renderer == null
+                UiSdl3Images::draw_image(ren(), draw)
 
             def fill_circle(self: Self, disc: UiCore::Circle, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void can[Ui.Draw]:
                 # SDL3's renderer has no shaded primitive, so a raised disc is

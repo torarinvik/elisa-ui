@@ -1,0 +1,160 @@
+# SDL3 retained-image upload, identity, renderer lifetime, fitting, and actual
+# renderer pixels. SDL's dummy driver keeps the test headless and deterministic.
+
+include "../src/platform/sdl3/ui_sdl3.elisa"
+
+extern SDL_setenv_unsafe(name: cstr, value: cstr, overwrite: i32) -> i32
+extern puts(text: cstr) -> i64
+
+global mutable failures: i32 = 0
+
+def app_init() -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    pass
+
+def app_text_input(text: sview) -> void:
+    pass
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    pass
+
+def app_frame() -> void:
+    pass
+
+def check(label: cstr, passed: bool) -> void:
+    if not passed:
+        failures <- failures + 1
+        _ = puts(label)
+
+def read_frame_pixel(x: i32, y: i32, r: mutable u8&, g: mutable u8&, b: mutable u8&, a: mutable u8&) -> bool:
+    return UiSdl3Draw::read_pixel_rgba(x, y, r, g, b, a)
+
+def replay_image(image: UiCore::ImageRef, box: UiCore::Rect, alpha: u8, fit: UiCore::PictureFit, corner: UiCore::CornerStyle) -> void:
+    UiCore::begin_frame()
+    UiCore::clear(UiCore::rgb(0, 0, 0))
+    UiCore::draw_image_fitted(box, image, alpha, corner, fit)
+    UiPaint::replay(UiSdl3Draw::painter())
+
+def run_image_checks() -> void:
+    UiResources::reset()
+    UiCore::set_viewport(8.0, 8.0)
+
+    initial: UiResources::ResourceHandle = UiResources::request("sdl3-image-binding-test", 17)
+    image: UiCore::ImageRef = UiCore::image_ref(initial.slot, initial.generation)
+    bytes: mutable u8[24] = [
+        255, 0, 0, 255,  0, 255, 0, 255,  7, 7, 7, 7,
+        0, 0, 255, 255,  255, 255, 255, 255,  9, 9, 9, 9,
+    ]
+    byte_pointer: u8& = (&bytes[0]).cast[u8&] can Unsafe.PointerCast
+
+    check("rejects non-Ready logical resources", not UiSdl3Draw::bind_image_rgba32(image, byte_pointer, 20, 2, 2, 12))
+    check("rejects a null pixel pointer", not UiSdl3Draw::bind_image_rgba32(image, null, 0, 2, 2, 8))
+    check("rejects the zero-generation sentinel", not UiSdl3Draw::bind_image_rgba32(UiCore::image_ref(0, 0), byte_pointer, 16, 2, 2, 8))
+    check("rejects an out-of-range slot", not UiSdl3Draw::bind_image_rgba32(UiCore::image_ref(128, 1), byte_pointer, 16, 2, 2, 8))
+    check("rejects zero image dimensions", not UiSdl3Draw::bind_image_rgba32(image, byte_pointer, 0, 0, 2, 8))
+    check("rejects a row stride shorter than RGBA pixels", not UiSdl3Draw::bind_image_rgba32(image, byte_pointer, 20, 2, 2, 7))
+    check("rejects a byte length shorter than the final pixel", not UiSdl3Draw::bind_image_rgba32(image, byte_pointer, 19, 2, 2, 12))
+    check("rejects an image whose addressed bytes exceed four MiB", not UiSdl3Draw::bind_image_rgba32(image, byte_pointer, 4194304, 1024, 1025, 4096))
+    check("logical resource can become Ready", UiResources::set_state(initial, UiResources::State.Ready))
+    check("accepts padded RGBA32 rows and uploads them", UiSdl3Draw::bind_image_rgba32(image, byte_pointer, 20, 2, 2, 12))
+    check("reports exact live binding", UiSdl3Draw::is_image_bound(image) and UiSdl3Draw::image_binding_count() == 1)
+
+    replay_image(image, UiCore::Rect(0.0, 0.0, 2.0, 2.0), 255, UiCore::PictureFit.Stretch, UiCore::CornerStyle.Square)
+    red: mutable u8 = 0
+    green: mutable u8 = 0
+    blue: mutable u8 = 0
+    alpha: mutable u8 = 0
+    check("readback obtains top-left source pixel", read_frame_pixel(0, 0, &red, &green, &blue, &alpha) and red == 255 and green == 0 and blue == 0 and alpha == 255)
+    check("readback obtains top-right source pixel", read_frame_pixel(1, 0, &red, &green, &blue, &alpha) and red == 0 and green == 255 and blue == 0 and alpha == 255)
+    check("readback obtains bottom-left source pixel", read_frame_pixel(0, 1, &red, &green, &blue, &alpha) and red == 0 and green == 0 and blue == 255 and alpha == 255)
+    check("readback obtains bottom-right source pixel", read_frame_pixel(1, 1, &red, &green, &blue, &alpha) and red == 255 and green == 255 and blue == 255 and alpha == 255)
+
+    check("Pill radius is half the short side", UiPaint::corner_radius_for(UiCore::Rect(0.0, 0.0, 4.0, 4.0), UiCore::CornerStyle.Pill) == 2.0)
+    replay_image(image, UiCore::Rect(0.0, 0.0, 8.0, 8.0), 255, UiCore::PictureFit.Stretch, UiCore::CornerStyle.Pill)
+    rounded_corner_read: bool = read_frame_pixel(0, 0, &red, &green, &blue, &alpha)
+    check("Pill image corner pixel is readable", rounded_corner_read)
+    check("Pill image corner preserves the cleared red channel", red == 0)
+    check("Pill image corner preserves the cleared green channel", green == 0)
+    check("Pill image corner preserves the cleared blue channel", blue == 0)
+    rounded_center_has_image: bool = read_frame_pixel(4, 4, &red, &green, &blue, &alpha) and (red > 0 or green > 0 or blue > 0)
+    check("Pill image preserves its center pixels", rounded_center_has_image)
+    check("Pill clears top-right corner", read_frame_pixel(7, 0, &red, &green, &blue, &alpha) and red == 0 and green == 0 and blue == 0)
+    check("Pill clears bottom-left corner", read_frame_pixel(0, 7, &red, &green, &blue, &alpha) and red == 0 and green == 0 and blue == 0)
+    check("Pill clears bottom-right corner", read_frame_pixel(7, 7, &red, &green, &blue, &alpha) and red == 0 and green == 0 and blue == 0)
+
+    replay_image(image, UiCore::Rect(0.0, 0.0, 4.0, 2.0), 255, UiCore::PictureFit.Contain, UiCore::CornerStyle.Square)
+    check("Contain preserves aspect ratio and leaves centered side margins", read_frame_pixel(0, 0, &red, &green, &blue, &alpha) and red == 0 and green == 0 and blue == 0 and read_frame_pixel(1, 0, &red, &green, &blue, &alpha) and red == 255 and green == 0 and blue == 0)
+
+    replay_image(image, UiCore::Rect(0.0, 0.0, 4.0, 2.0), 128, UiCore::PictureFit.Cover, UiCore::CornerStyle.Square)
+    cover_top_left: bool = read_frame_pixel(0, 0, &red, &green, &blue, &alpha)
+    check("Cover renders its top-left pixel", cover_top_left)
+    check("Cover fills its top-left destination edge", red > 0 or green > 0 or blue > 0)
+    cover_bottom_right: bool = read_frame_pixel(3, 1, &red, &green, &blue, &alpha)
+    check("Cover renders its bottom-right pixel", cover_bottom_right)
+    check("Cover fills the far destination edge without a letterbox margin", red > 0 or green > 0 or blue > 0)
+
+    cover_handle: UiResources::ResourceHandle = UiResources::request("sdl3-image-cover-test", 17)
+    cover_image: UiCore::ImageRef = UiCore::image_ref(cover_handle.slot, cover_handle.generation)
+    cover_pixels: mutable u8[64] = [
+        255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255,
+        0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255,
+        0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255,
+        255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+    ]
+    cover_pointer: u8& = (&cover_pixels[0]).cast[u8&] can Unsafe.PointerCast
+    _ = UiResources::set_state(cover_handle, UiResources::State.Ready)
+    check("four-row test image uploads", UiSdl3Draw::bind_image_rgba32(cover_image, cover_pointer, 64, 4, 4, 16))
+    replay_image(cover_image, UiCore::Rect(0.0, 0.0, 4.0, 2.0), 255, UiCore::PictureFit.Cover, UiCore::CornerStyle.Square)
+    check("Cover samples the centered green source row at the top", read_frame_pixel(0, 0, &red, &green, &blue, &alpha) and red == 0 and green == 255 and blue == 0)
+    check("Cover samples the centered blue source row at the bottom", read_frame_pixel(0, 1, &red, &green, &blue, &alpha) and red == 0 and green == 0 and blue == 255)
+    check("temporary fit test binding is released", UiSdl3Draw::unbind_image(cover_image) and UiResources::dispose(cover_handle) and UiSdl3Draw::image_binding_count() == 1)
+
+    replay_image(image, UiCore::Rect(0.0, 0.0, 2.0, 2.0), 128, UiCore::PictureFit.Stretch, UiCore::CornerStyle.Square)
+    check("per-draw alpha modulates copied pixels", read_frame_pixel(0, 0, &red, &green, &blue, &alpha) and red >= 126 and red <= 130 and green == 0 and blue == 0)
+
+    replacement: mutable u8[16] = [255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255]
+    replacement_pointer: u8& = (&replacement[0]).cast[u8&] can Unsafe.PointerCast
+    check("replacing a generation-identical binding succeeds", UiSdl3Draw::bind_image_rgba32(image, replacement_pointer, 16, 2, 2, 8) and UiSdl3Draw::image_binding_count() == 1)
+    replay_image(image, UiCore::Rect(0.0, 0.0, 2.0, 2.0), 255, UiCore::PictureFit.Stretch, UiCore::CornerStyle.Square)
+    check("readback sees replacement texture pixels", read_frame_pixel(0, 0, &red, &green, &blue, &alpha) and red == 255 and green == 255 and blue == 0 and alpha == 255)
+
+    check("disposing the image resource succeeds", UiResources::dispose(initial))
+    check("disposed generation is no longer bound", not UiSdl3Draw::is_image_bound(image) and UiSdl3Draw::image_binding_count() == 0)
+    next_handle: UiResources::ResourceHandle = UiResources::request("sdl3-image-binding-test-next", 17)
+    next_image: UiCore::ImageRef = UiCore::image_ref(next_handle.slot, next_handle.generation)
+    check("reused slot advances its generation", next_handle.slot == initial.slot and next_handle.generation != initial.generation)
+    check("recycled non-Ready generation cannot bind", not UiSdl3Draw::bind_image_rgba32(next_image, replacement_pointer, 16, 2, 2, 8))
+    _ = UiResources::set_state(next_handle, UiResources::State.Ready)
+    check("new generation binds into the reused slot", UiSdl3Draw::bind_image_rgba32(next_image, replacement_pointer, 16, 2, 2, 8))
+    check("stale generation cannot evict or resolve as the new binding", not UiSdl3Draw::is_image_bound(image) and UiSdl3Draw::is_image_bound(next_image) and UiSdl3Draw::image_binding_count() == 1)
+    check("unbinding an old generation cannot destroy the current one", not UiSdl3Draw::unbind_image(image) and UiSdl3Draw::is_image_bound(next_image))
+
+def main() -> i32:
+    _ = SDL_setenv_unsafe("SDL_VIDEODRIVER", "dummy", 1)
+    if not SDL_Init(0x20):
+        _ = puts("FAIL SDL initialization for retained-image test")
+        return 1
+    window_opt: void&? = SDL_CreateWindow("SDL3 retained image", 8, 8, 0)
+    if window_opt == null:
+        _ = puts("FAIL SDL dummy window for retained-image test")
+        SDL_Quit()
+        return 1
+    if window_opt is window:
+        if not UiSdl3Draw::create_renderer(window):
+            _ = puts("FAIL SDL renderer for retained-image test")
+            failures <- failures + 1
+        else:
+            run_image_checks()
+            check("current texture remains bound before teardown", UiSdl3Draw::image_binding_count() == 1 and UiSdl3Draw::is_image_bound(UiCore::image_ref(0, 2)))
+            UiSdl3Draw::destroy_renderer()
+            check("all textures are destroyed before renderer teardown returns", UiSdl3Draw::image_binding_count() == 0 and not UiSdl3Draw::is_image_bound(UiCore::image_ref(0, 2)))
+            check("renderer can be recreated after teardown", UiSdl3Draw::create_renderer(window))
+            check("old retained identities need a fresh upload after recreation", not UiSdl3Draw::is_image_bound(UiCore::image_ref(0, 2)))
+            UiSdl3Draw::destroy_renderer()
+        SDL_DestroyWindow(window)
+    SDL_Quit()
+    if failures == 0:
+        _ = puts("SDL3 retained-image binding: passed")
+    return failures

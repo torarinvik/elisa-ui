@@ -55,8 +55,14 @@ corners to cut.
 | --- | --- |
 | Skia | yes — resolves the reference through its existing binding table |
 | AppKit / UIKit canvas | no |
-| SDL3 | no |
+| SDL3 | yes — `UiSdl3Draw::bind_image_rgba32` binds copied pixels to the resource generation |
 | wasm wire | encodes it; the host canvas decides |
+
+SDL3 takes RGBA32 bytes from the application; it does not decode image files.
+The resource must be `Ready` before binding. The headless
+`test/sdl3_image_binding_test.elisa` checks upload bounds, fitting, alpha,
+rounded clipping, replacement, generation reuse, disposal, and renderer
+teardown with SDL's dummy video driver.
 
 **A backend that cannot draw an image draws nothing** — no placeholder. A grey
 rectangle where a thumbnail should be is a worse frame than a gap, and it hides

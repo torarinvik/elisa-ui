@@ -1,0 +1,330 @@
+# SDL3 retained-image texture bindings. Kept beside, rather than inside, the
+# painter implementation so resource upload and fit policy stay independently
+# auditable and the native shape/text module remains below the source-size gate.
+
+module UiSdl3Images:
+    private:
+        const MAX_IMAGE_BINDINGS: usize = UiResources::MAX_RESOURCES
+        const MAX_IMAGE_BYTES: usize = 4 * 1024 * 1024
+        const ROUNDED_ARC_STEPS: usize = 8
+        const ROUNDED_POINT_CAPACITY: usize = 40
+        global mutable image_textures: void&?[MAX_IMAGE_BINDINGS] = zeroed
+        global mutable image_generations: u32[MAX_IMAGE_BINDINGS] = zeroed
+        global mutable image_widths: usize[MAX_IMAGE_BINDINGS] = zeroed
+        global mutable image_heights: usize[MAX_IMAGE_BINDINGS] = zeroed
+        global mutable image_active: bool[MAX_IMAGE_BINDINGS] = zeroed
+
+        def image_index(image: UiCore::ImageRef) -> usize:
+            return MAX_IMAGE_BINDINGS if not UiCore::image_ref_is_valid(image)
+            return MAX_IMAGE_BINDINGS if image.slot.usize() >= MAX_IMAGE_BINDINGS
+            index: usize = image.slot.usize()
+            return MAX_IMAGE_BINDINGS if not image_active[index] or image_generations[index] != image.generation
+            return index
+
+        def clear_image_binding(index: usize) -> void:
+            return if index >= MAX_IMAGE_BINDINGS
+            if image_textures[index] is texture:
+                SDL_DestroyTexture(texture)
+            image_textures[index] <- null
+            image_generations[index] <- 0
+            image_widths[index] <- 0
+            image_heights[index] <- 0
+            image_active[index] <- false
+
+        def image_resource_is_ready(image: UiCore::ImageRef) -> bool:
+            return false if not UiCore::image_ref_is_valid(image) or image.slot.usize() >= MAX_IMAGE_BINDINGS
+            resource: UiResources::ResourceHandle = UiResources::ResourceHandle{slot: image.slot, generation: image.generation}
+            return UiResources::state(resource) == UiResources::State.Ready
+
+        def prune_image_bindings() -> usize:
+            removed: mutable usize = 0
+            for index in 0..<MAX_IMAGE_BINDINGS:
+                if image_active[index]:
+                    image: UiCore::ImageRef = UiCore::image_ref(index.u32(), image_generations[index])
+                    if not image_resource_is_ready(image):
+                        clear_image_binding(index)
+                        removed <- removed + 1
+            return removed
+
+        # Validate arithmetic before narrowing dimensions and pitch to SDL's
+        # signed ints or allowing SDL to read caller-owned memory. Only bytes
+        # through the final pixel are required; final-row padding is optional.
+        def rgba32_buffer_is_valid(width: usize, height: usize, row_stride: usize, byte_length: usize) -> bool:
+            return false if width == 0 or height == 0
+            return false if width > MAX_IMAGE_BYTES / 4
+            row_bytes: usize = width * 4
+            return false if row_stride < row_bytes or row_stride == 0 or row_stride > MAX_IMAGE_BYTES
+            return false if height - 1 > (MAX_IMAGE_BYTES - row_bytes) / row_stride
+            required_bytes: usize = (height - 1) * row_stride + row_bytes
+            return false if required_bytes > byte_length or required_bytes > MAX_IMAGE_BYTES
+            return true
+
+        def rounded_arc_unit(index: usize) -> UiCore::Vec2:
+            return UiCore::Vec2(1.0, 0.0) if index == 0
+            return UiCore::Vec2(0.9807853, 0.1950903) if index == 1
+            return UiCore::Vec2(0.9238795, 0.3826834) if index == 2
+            return UiCore::Vec2(0.8314696, 0.5555702) if index == 3
+            return UiCore::Vec2(0.7071068, 0.7071068) if index == 4
+            return UiCore::Vec2(0.5555702, 0.8314696) if index == 5
+            return UiCore::Vec2(0.3826834, 0.9238795) if index == 6
+            return UiCore::Vec2(0.1950903, 0.9807853)
+
+        # A 32-point convex contour; each corner is an eight-segment quarter
+        # arc. Geometry is generated in Elisa and SDL only consumes flat FFI
+        # buffers, keeping shape policy out of native glue.
+        def rounded_contour_point(box: UiCore::Rect, radius: f32, index: usize) -> UiCore::Vec2:
+            corner: usize = index / ROUNDED_ARC_STEPS
+            unit: UiCore::Vec2 = rounded_arc_unit(index % ROUNDED_ARC_STEPS)
+            center_x: f32 = box.origin.x + radius if corner == 0 or corner == 3 else box.origin.x + box.size.width - radius
+            center_y: f32 = box.origin.y + radius if corner == 0 or corner == 1 else box.origin.y + box.size.height - radius
+            match corner:
+                0: return UiCore::Vec2(center_x - radius * unit.x, center_y - radius * unit.y)
+                1: return UiCore::Vec2(center_x + radius * unit.y, center_y - radius * unit.x)
+                2: return UiCore::Vec2(center_x + radius * unit.x, center_y + radius * unit.y)
+                _: return UiCore::Vec2(center_x - radius * unit.y, center_y + radius * unit.x)
+
+        def point_in_clip_edge(point: UiCore::Vec2, axis: i32, keep_greater: bool, boundary: f32) -> bool:
+            value: f32 = point.x if axis == 0 else point.y
+            return value >= boundary if keep_greater else value <= boundary
+
+        def clip_polygon_edge(input: UiCore::Vec2[ROUNDED_POINT_CAPACITY]&, count: usize, output: mutable UiCore::Vec2[ROUNDED_POINT_CAPACITY]&, axis: i32, keep_greater: bool, boundary: f32) -> usize:
+            return 0 if count == 0
+            output_count: mutable usize = 0
+            previous: UiCore::Vec2 = input[count - 1]
+            previous_inside: bool = point_in_clip_edge(previous, axis, keep_greater, boundary)
+            previous_value: f32 = previous.x if axis == 0 else previous.y
+            for index in 0..<count:
+                current: UiCore::Vec2 = input[index]
+                current_inside: bool = point_in_clip_edge(current, axis, keep_greater, boundary)
+                current_value: f32 = current.x if axis == 0 else current.y
+                if current_inside != previous_inside:
+                    fraction: f32 = (boundary - previous_value) / (current_value - previous_value)
+                    intersection: UiCore::Vec2 = UiCore::Vec2(previous.x + (current.x - previous.x) * fraction, previous.y + (current.y - previous.y) * fraction)
+                    return 0 if output_count >= ROUNDED_POINT_CAPACITY
+                    output[output_count] <- intersection
+                    output_count <- output_count + 1
+                if current_inside:
+                    return 0 if output_count >= ROUNDED_POINT_CAPACITY
+                    output[output_count] <- current
+                    output_count <- output_count + 1
+                previous <- current
+                previous_value <- current_value
+                previous_inside <- current_inside
+            return output_count
+
+        # Paint the intersection of a rounded image box and its fitted target.
+        # For Contain this clips the contained target only where it reaches the
+        # rounded outer corners; Cover crops source UVs, and Tile wraps them.
+        def render_rounded_image_geometry(renderer: void&, draw: UiCore::ImageDraw, index: usize, texture: void&, radius: f32) -> bool can[Ui.Draw]:
+            box: UiCore::Rect = UiCore::Rect(UiCore::bounded_coordinate(draw.box.origin.x), UiCore::bounded_coordinate(draw.box.origin.y), UiCore::bounded_extent(draw.box.size.width), UiCore::bounded_extent(draw.box.size.height))
+            return false if box.size.width <= 0.0 or box.size.height <= 0.0 or radius <= 0.0
+            image_width: f32 = image_widths[index].f32()
+            image_height: f32 = image_heights[index].f32()
+            return false if image_width <= 0.0 or image_height <= 0.0
+            target: UiCore::Rect = box
+            target <- UiPaint::fitted_rect(box, UiCore::Size(image_width, image_height), draw.fit) if draw.fit == UiCore::PictureFit.Contain
+            return false if target.size.width <= 0.0 or target.size.height <= 0.0
+            source_x: mutable f32 = 0.0
+            source_y: mutable f32 = 0.0
+            source_width: mutable f32 = image_width
+            source_height: mutable f32 = image_height
+            if draw.fit == UiCore::PictureFit.Cover:
+                source_aspect: f32 = image_width / image_height
+                target_aspect: f32 = box.size.width / box.size.height
+                return false if not UiCore::is_finite(source_aspect) or not UiCore::is_finite(target_aspect) or source_aspect <= 0.0 or target_aspect <= 0.0
+                if source_aspect > target_aspect:
+                    source_width <- image_height * target_aspect
+                    source_x <- (image_width - source_width) * 0.5
+                else:
+                    source_height <- image_width / target_aspect
+                    source_y <- (image_height - source_height) * 0.5
+
+            first: mutable UiCore::Vec2[ROUNDED_POINT_CAPACITY] = zeroed
+            second: mutable UiCore::Vec2[ROUNDED_POINT_CAPACITY] = zeroed
+            for point_index in 0..<(ROUNDED_ARC_STEPS * 4):
+                first[point_index] <- rounded_contour_point(box, radius, point_index)
+            point_count: mutable usize = ROUNDED_ARC_STEPS * 4
+            if draw.fit == UiCore::PictureFit.Contain:
+                point_count <- clip_polygon_edge(first, point_count, second, 0, true, target.origin.x)
+                point_count <- clip_polygon_edge(second, point_count, first, 0, false, target.origin.x + target.size.width)
+                point_count <- clip_polygon_edge(first, point_count, second, 1, true, target.origin.y)
+                point_count <- clip_polygon_edge(second, point_count, first, 1, false, target.origin.y + target.size.height)
+            return false if point_count < 3
+
+            xy: mutable f32[240] = zeroed
+            colors: mutable f32[480] = zeroed
+            uv: mutable f32[240] = zeroed
+            center: UiCore::Vec2 = UiCore::Vec2(box.origin.x + box.size.width * 0.5, box.origin.y + box.size.height * 0.5)
+            alpha: f32 = draw.alpha.f32() / 255.0
+            for triangle in 0..<point_count:
+                next: usize = (triangle + 1) % point_count
+                for vertex in 0..<3:
+                    position: UiCore::Vec2 = center if vertex == 0 else first[triangle] if vertex == 1 else first[next]
+                    vertex_index: usize = triangle * 3 + vertex
+                    xy_offset: usize = vertex_index * 2
+                    xy[xy_offset] <- position.x
+                    xy[xy_offset + 1] <- position.y
+                    colors_offset: usize = vertex_index * 4
+                    colors[colors_offset] <- 1.0
+                    colors[colors_offset + 1] <- 1.0
+                    colors[colors_offset + 2] <- 1.0
+                    colors[colors_offset + 3] <- alpha
+                    if draw.fit == UiCore::PictureFit.Tile:
+                        uv[xy_offset] <- (position.x - box.origin.x) / image_width
+                        uv[xy_offset + 1] <- (position.y - box.origin.y) / image_height
+                    else:
+                        horizontal: f32 = (position.x - target.origin.x) / target.size.width
+                        vertical: f32 = (position.y - target.origin.y) / target.size.height
+                        uv[xy_offset] <- (source_x + horizontal * source_width) / image_width
+                        uv[xy_offset + 1] <- (source_y + vertical * source_height) / image_height
+
+            restore_texture_address: mutable bool = false
+            previous_u: mutable i32 = 0
+            previous_v: mutable i32 = 0
+            if draw.fit == UiCore::PictureFit.Tile:
+                return false if not SDL_GetRenderTextureAddressMode(renderer, &previous_u, &previous_v)
+                return false if not SDL_SetRenderTextureAddressMode(renderer, 2, 2)
+                restore_texture_address <- true
+            xy_pointer: f32& = (&xy[0]).cast[f32&] can Unsafe.PointerCast
+            color_pointer: f32& = (&colors[0]).cast[f32&] can Unsafe.PointerCast
+            uv_pointer: f32& = (&uv[0]).cast[f32&] can Unsafe.PointerCast
+            rendered: bool = SDL_RenderGeometryRaw(renderer, texture, xy_pointer, 8, color_pointer, 16, uv_pointer, 8, (point_count * 3).i32(), null, 0, 0)
+            if restore_texture_address:
+                _ = SDL_SetRenderTextureAddressMode(renderer, previous_u, previous_v)
+            return rendered
+
+        # Match SDL_PIXELFORMAT_RGBA32's byte-array semantics for either host
+        # byte order. The installed SDL3 3.4.16 header on this little-endian
+        # arm64 host aliases it to SDL_PIXELFORMAT_ABGR8888 (0x16762004).
+        def rgba32_pixel_format() -> u32:
+            probe: mutable u32 = 0x01020304
+            first_byte: u8& = (&probe).cast[u8&] can Unsafe.PointerCast
+            if first_byte[0] == 4:
+                return SDL_GetPixelFormatForMasks(32, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000)
+            return SDL_GetPixelFormatForMasks(32, 0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff)
+
+        def render_image_texture(renderer: void&, draw: UiCore::ImageDraw, index: usize, texture: void&) -> void can[Ui.Draw]:
+            return if draw.alpha == 0
+            safe_width: f32 = UiCore::bounded_extent(draw.box.size.width)
+            safe_height: f32 = UiCore::bounded_extent(draw.box.size.height)
+            return if safe_width <= 0.0 or safe_height <= 0.0
+            if not SDL_SetTextureAlphaMod(texture, draw.alpha):
+                _ = SDL_SetTextureAlphaMod(texture, 255)
+                return
+            destination: mutable array[f32, 4] = [draw.box.origin.x, draw.box.origin.y, safe_width, safe_height]
+            destination_pointer: void& = (&destination[0]).cast[void&] can Unsafe.PointerCast
+            if draw.fit == UiCore::PictureFit.Tile:
+                _ = SDL_RenderTextureTiled(renderer, texture, null, 1.0, destination_pointer)
+            elif draw.fit == UiCore::PictureFit.Cover:
+                source_width: f32 = image_widths[index].f32()
+                source_height: f32 = image_heights[index].f32()
+                source_aspect: f32 = source_width / source_height
+                destination_aspect: f32 = safe_width / safe_height
+                return if not UiCore::is_finite(source_aspect) or source_aspect <= 0.0
+                return if not UiCore::is_finite(destination_aspect) or destination_aspect <= 0.0
+                source: mutable array[f32, 4] = [0.0, 0.0, source_width, source_height]
+                if source_aspect > destination_aspect:
+                    cropped_width: f32 = source_height * destination_aspect
+                    source[0] <- (source_width - cropped_width) * 0.5
+                    source[2] <- cropped_width
+                else:
+                    cropped_height: f32 = source_width / destination_aspect
+                    source[1] <- (source_height - cropped_height) * 0.5
+                    source[3] <- cropped_height
+                source_pointer: void& = (&source[0]).cast[void&] can Unsafe.PointerCast
+                _ = SDL_RenderTexture(renderer, texture, source_pointer, destination_pointer)
+            elif draw.fit == UiCore::PictureFit.Contain:
+                source_size: UiCore::Size = UiCore::Size{width: image_widths[index].f32(), height: image_heights[index].f32()}
+                target: UiCore::Rect = UiPaint::fitted_rect(draw.box, source_size, draw.fit)
+                contained: mutable array[f32, 4] = [target.origin.x, target.origin.y, target.size.width, target.size.height]
+                contained_pointer: void& = (&contained[0]).cast[void&] can Unsafe.PointerCast
+                _ = SDL_RenderTexture(renderer, texture, null, contained_pointer)
+            else:
+                _ = SDL_RenderTexture(renderer, texture, null, destination_pointer)
+            # Alpha is a property of one draw, never of the shared image.
+            _ = SDL_SetTextureAlphaMod(texture, 255)
+
+    public:
+        def bind_image_rgba32(renderer: void&, image: UiCore::ImageRef, pixels: u8&?, byte_length: usize, width: usize, height: usize, row_stride: usize) -> bool:
+            _ = prune_image_bindings()
+            return false if pixels == null
+            return false if not UiCore::image_ref_is_valid(image) or image.slot.usize() >= MAX_IMAGE_BINDINGS
+            return false if not image_resource_is_ready(image)
+            return false if not rgba32_buffer_is_valid(width, height, row_stride, byte_length)
+            if pixels is rgba_bytes:
+                format: u32 = rgba32_pixel_format()
+                return false if format == 0
+                # SDL_TEXTUREACCESS_STATIC = 0. SDL_SetTextureBlendMode uses
+                # SDL_BLENDMODE_BLEND = 1, and SDL_SCALEMODE_LINEAR = 1.
+                texture_opt: void&? = SDL_CreateTexture(renderer, format, 0, width.i32(), height.i32())
+                return false if texture_opt == null
+                if texture_opt is texture_handle:
+                    if not SDL_SetTextureBlendMode(texture_handle, 1):
+                        SDL_DestroyTexture(texture_handle)
+                        return false
+                    if not SDL_SetTextureScaleMode(texture_handle, 1):
+                        SDL_DestroyTexture(texture_handle)
+                        return false
+                    pointer: void& = rgba_bytes.cast[void&] can Unsafe.PointerCast
+                    if not SDL_UpdateTexture(texture_handle, null, pointer, row_stride.i32()):
+                        SDL_DestroyTexture(texture_handle)
+                        return false
+                    index: usize = image.slot.usize()
+                    previous: void&? = image_textures[index]
+                    image_textures[index] <- texture_handle
+                    image_generations[index] <- image.generation
+                    image_widths[index] <- width
+                    image_heights[index] <- height
+                    image_active[index] <- true
+                    # Only replace after a complete upload; an error above
+                    # leaves the previously bound texture untouched.
+                    if previous is old_texture:
+                        SDL_DestroyTexture(old_texture)
+                    return true
+            return false
+
+        def unbind_image(image: UiCore::ImageRef) -> bool:
+            index: usize = image_index(image)
+            return false if index >= MAX_IMAGE_BINDINGS
+            clear_image_binding(index)
+            return true
+
+        def is_image_bound(image: UiCore::ImageRef) -> bool:
+            index: usize = image_index(image)
+            return false if index >= MAX_IMAGE_BINDINGS
+            if not image_resource_is_ready(image):
+                clear_image_binding(index)
+                return false
+            return true
+
+        def image_binding_count() -> usize:
+            _ = prune_image_bindings()
+            count: mutable usize = 0
+            for index in 0..<MAX_IMAGE_BINDINGS:
+                count <- count + 1 if image_active[index]
+            return count
+
+        def clear_image_bindings() -> void:
+            for index in 0..<MAX_IMAGE_BINDINGS:
+                clear_image_binding(index)
+
+        def read_pixel_rgba(renderer: void&, x: i32, y: i32, r: mutable u8&, g: mutable u8&, b: mutable u8&, a: mutable u8&) -> bool:
+            surface_opt: void&? = SDL_RenderReadPixels(renderer, null)
+            if surface_opt is surface:
+                result: bool = SDL_ReadSurfacePixel(surface, x, y, r, g, b, a)
+                SDL_DestroySurface(surface)
+                return result
+            return false
+
+        def draw_image(renderer: void&, draw: UiCore::ImageDraw) -> void can[Ui.Draw]:
+            _ = prune_image_bindings()
+            return if not is_image_bound(draw.image)
+            return if draw.alpha == 0
+            index: usize = image_index(draw.image)
+            return if index >= MAX_IMAGE_BINDINGS
+            if image_textures[index] is texture:
+                radius: f32 = UiPaint::corner_radius_for(draw.box, draw.corner)
+                if radius > 0.0:
+                    if render_rounded_image_geometry(renderer, draw, index, texture, radius):
+                        return
+                render_image_texture(renderer, draw, index, texture)
