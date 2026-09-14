@@ -1,0 +1,110 @@
+# Independent owners of a coalesced optional-feature activation.
+
+extend UiFeatureView:
+    private:
+        def feature_owner_index(slot: usize, owner_id: u32) -> usize:
+            for index in 0..<MAX_FEATURE_OWNER_LEASES:
+                if feature_owner_lease_active[index] and feature_owner_lease_slots[index].usize() == slot and feature_owner_lease_ids[index] == owner_id:
+                    return index
+            return MAX_FEATURE_OWNER_LEASES
+
+        def feature_owner_add(slot: usize, owner_id: u32) -> bool:
+            return true if feature_owner_index(slot, owner_id) < MAX_FEATURE_OWNER_LEASES
+            for index in 0..<MAX_FEATURE_OWNER_LEASES:
+                if not feature_owner_lease_active[index]:
+                    feature_owner_lease_active[index] <- true
+                    feature_owner_lease_slots[index] <- slot.u32()
+                    feature_owner_lease_ids[index] <- owner_id
+                    return true
+            feature_overflowed_state <- true
+            return false
+
+        def feature_owner_remove(slot: usize, owner_id: u32) -> bool:
+            index: usize = feature_owner_index(slot, owner_id)
+            return false if index >= MAX_FEATURE_OWNER_LEASES
+            feature_owner_lease_active[index] <- false
+            feature_owner_lease_slots[index] <- 0
+            feature_owner_lease_ids[index] <- 0
+            return true
+
+        def feature_owner_count(slot: usize) -> usize:
+            count: usize =
+                for index in 0..<MAX_FEATURE_OWNER_LEASES |count: usize = 0| -> count:
+                    count <- count + 1 if feature_owner_lease_active[index] and feature_owner_lease_slots[index].usize() == slot
+            return count
+
+        def feature_owner_first(slot: usize) -> u32:
+            for index in 0..<MAX_FEATURE_OWNER_LEASES:
+                if feature_owner_lease_active[index] and feature_owner_lease_slots[index].usize() == slot:
+                    return feature_owner_lease_ids[index]
+            return 0
+
+        def feature_owner_clear_slot(slot: usize) -> void:
+            for index in 0..<MAX_FEATURE_OWNER_LEASES:
+                if feature_owner_lease_active[index] and feature_owner_lease_slots[index].usize() == slot:
+                    feature_owner_lease_active[index] <- false
+                    feature_owner_lease_slots[index] <- 0
+                    feature_owner_lease_ids[index] <- 0
+
+        def feature_owner_reset() -> void:
+            for index in 0..<MAX_FEATURE_OWNER_LEASES:
+                feature_owner_lease_active[index] <- false
+                feature_owner_lease_slots[index] <- 0
+                feature_owner_lease_ids[index] <- 0
+
+        def feature_cancel_if_final_owner(slot: usize) -> bool:
+            return false if feature_owner_count(slot) != 0 or feature_states[slot] == FeatureState.Cancelled
+            has_host_token: bool = feature_activation_ids[slot] != 0
+            pending: bool = feature_states[slot] == FeatureState.Requested or feature_states[slot] == FeatureState.Loading
+            return false if not has_host_token and not pending
+            feature_states[slot] <- FeatureState.Cancelled
+            feature_failures[slot] <- FeatureFailureKind.Unknown
+            return true
+
+    public:
+        # Releasing one observer never changes the shared activation while
+        # another owner remains attached to its slot and generation. The
+        # result counts activations cancelled, not leases removed.
+        def cancel_owner(owner_id: u32) -> usize:
+            cancelled: mutable usize = 0
+            removed: mutable usize = 0
+            for slot in 0..<feature_count_state:
+                if feature_active[slot] and feature_owner_remove(slot, owner_id):
+                    removed <- removed + 1
+                    cancelled <- cancelled + 1 if feature_cancel_if_final_owner(slot)
+            mark_changed() if removed > 0
+            return cancelled
+
+        # Handle-scoped cancellation for one observer. The legacy cancel()
+        # remains a deliberate cancellation of the coalesced activation.
+        def cancel_for_owner(handle: FeatureHandle, owner_id: u32) -> bool:
+            return false if not is_valid(handle)
+            slot: usize = handle.slot.usize()
+            return false if not feature_owner_remove(slot, owner_id)
+            _ = feature_cancel_if_final_owner(slot)
+            mark_changed()
+            return true
+
+        # Disposal releases every lease for the owner. A final in-flight or
+        # ready activation becomes a cancelled tombstone until the host
+        # acknowledges its opaque activation token; only then can its handle
+        # generation be invalidated and the slot reused.
+        def dispose_owner(owner_id: u32) -> usize:
+            released: mutable usize = 0
+            changed: mutable bool = false
+            for slot in 0..<feature_count_state:
+                if feature_active[slot] and feature_owner_remove(slot, owner_id):
+                    released <- released + 1
+                    changed <- true
+                    if feature_owner_count(slot) == 0:
+                        activation: u64 = feature_activation_ids[slot]
+                        if activation != 0:
+                            feature_states[slot] <- FeatureState.Cancelled
+                            feature_failures[slot] <- FeatureFailureKind.Unknown
+                            changed <- true
+                        else:
+                            clear_slot(slot)
+                            changed <- true
+            trim_count()
+            mark_changed() if changed
+            return released
