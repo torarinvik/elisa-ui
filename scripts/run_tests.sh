@@ -25,11 +25,11 @@ bash "$ROOT/scripts/check_toolchain.sh"
 mkdir -p "$ROOT/build"
 status=0
 
-# JNI uses UTF-16 Strings while the retained framework owns standard UTF-8.
-# Keep their explicit, host-runnable conversion contract under the ordinary
-# suite so this boundary does not wait for an emulator to catch regressions.
-if ! bash "$ROOT/scripts/check_android_text_codec.sh"; then
-  echo "FAIL android text codec"
+# Platform APIs use UTF-16 while the retained framework owns standard UTF-8.
+# Keep their shared, host-runnable conversion contract under the ordinary
+# suite so Unicode regressions do not wait for a device or Windows machine.
+if ! bash "$ROOT/scripts/check_utf8_utf16_codec.sh"; then
+  echo "FAIL UTF-8/UTF-16 codec"
   status=1
 fi
 

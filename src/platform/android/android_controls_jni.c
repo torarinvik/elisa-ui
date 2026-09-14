@@ -13,7 +13,7 @@
 #include <jni.h>
 #include <stddef.h>
 #include <stdint.h>
-#include "android_utf8_utf16.h"
+#include "../common/utf8_utf16.h"
 #include <string.h>
 
 #define ELISA_CONTROLS_TEXT_MAX 1024
@@ -115,8 +115,8 @@ JNIEXPORT void JNICALL Java_org_elisa_1ui_ElisaControls_nativeControlText(
     const jchar *units = (*env)->GetStringChars(env, text, NULL);
     if (units == NULL) return;
     uint8_t utf8[ELISA_CONTROLS_TEXT_MAX];
-    size_t length = elisa_android_utf16_to_utf8((const uint16_t *)units,
-                                                 (size_t)units_length, utf8, sizeof(utf8));
+    size_t length = elisa_utf16_to_utf8((const uint16_t *)units,
+                                        (size_t)units_length, utf8, sizeof(utf8));
     elisa_android_controls_text(handle, (const char *)utf8, (int32_t)length);
     memset(utf8, 0, sizeof(utf8));
     (*env)->ReleaseStringChars(env, text, units);
@@ -144,8 +144,8 @@ void elisa_android_controls_set_frame(int32_t handle, float x, float y, float wi
 // takes an explicit code-unit length, so embedded U+0000 is preserved.
 static jstring elisa_controls_string_from_utf8(JNIEnv *env, const uint8_t *bytes, size_t length) {
     uint16_t units[ELISA_CONTROLS_TEXT_MAX];
-    size_t count = elisa_android_utf8_to_utf16(bytes, length, units,
-                                                sizeof(units) / sizeof(units[0]));
+    size_t count = elisa_utf8_to_utf16(bytes, length, units,
+                                       sizeof(units) / sizeof(units[0]));
     jstring text = (*env)->NewString(env, (const jchar *)units, (jsize)count);
     memset(units, 0, sizeof(units));
     return text;

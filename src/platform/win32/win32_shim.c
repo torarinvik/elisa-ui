@@ -21,8 +21,11 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <stdint.h>
+#include <string.h>
+#include "../common/utf8_utf16.h"
 
 static const wchar_t *ELISA_PANEL_CLASS = L"ElisaUiPanel";
+enum { ELISA_WIN32_TEXT_UNITS = 1024, ELISA_WIN32_UTF8_BYTES = 3 * ELISA_WIN32_TEXT_UNITS + 1 };
 
 // Win32 text is UTF-16. The framework carries UTF-8, so it converts here
 // rather than anywhere a wide string could leak into the seam -- and uses the
@@ -57,12 +60,18 @@ static LRESULT CALLBACK elisa_window_proc(HWND window, UINT message, WPARAM w, L
             return 0;
         }
         if (control != NULL && code == EN_CHANGE) {
-            char utf8[1024];
-            wchar_t wide[1024];
-            const int length = GetWindowTextW(control, wide, 1024);
-            WideCharToMultiByte(CP_UTF8, 0, wide, length, utf8, (int)sizeof(utf8) - 1, NULL, NULL);
-            utf8[length < 1023 ? length : 1023] = '\0';
+            // Up to three UTF-8 bytes per UTF-16 code unit (surrogate pairs
+            // use four bytes for two units). Terminate at the converter's byte
+            // count, never the code-unit count returned by GetWindowTextW.
+            char utf8[ELISA_WIN32_UTF8_BYTES];
+            wchar_t wide[ELISA_WIN32_TEXT_UNITS];
+            const int units = GetWindowTextW(control, wide, ELISA_WIN32_TEXT_UNITS);
+            const size_t bytes = elisa_utf16_to_utf8((const uint16_t *)wide,
+                units > 0 ? (size_t)units : 0, (uint8_t *)utf8, sizeof(utf8) - 1);
+            utf8[bytes] = '\0';
             (void)elisa_win32_text_action((size_t)(void *)control, utf8);
+            memset(utf8, 0, sizeof(utf8));
+            memset(wide, 0, sizeof(wide));
             return 0;
         }
     }

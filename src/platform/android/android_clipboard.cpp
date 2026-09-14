@@ -22,7 +22,7 @@
 
 #include <android/native_activity.h>
 #include <jni.h>
-#include "android_utf8_utf16.h"
+#include "../common/utf8_utf16.h"
 #include <string.h>
 
 namespace {
@@ -113,7 +113,7 @@ int32_t elisa_android_clipboard_write(const char *utf8, int32_t length) {
     // NewString takes counted UTF-16. JNI's UTF helpers use modified UTF-8,
     // which cannot faithfully carry every scalar in the framework's UTF-8.
     uint16_t units[4095];
-    size_t unit_count = elisa_android_utf8_to_utf16(
+    size_t unit_count = elisa_utf8_to_utf16(
         reinterpret_cast<const uint8_t *>(utf8), static_cast<size_t>(length),
         units, sizeof(units) / sizeof(units[0]));
 
@@ -194,7 +194,7 @@ int32_t elisa_android_clipboard_read(char *buffer, int32_t capacity) {
                                     jsize unit_count = env->GetStringLength(string);
                                     const jchar *units = env->GetStringChars(string, nullptr);
                                     if (units != nullptr) {
-                                        written = static_cast<int32_t>(elisa_android_utf16_to_utf8(
+                                        written = static_cast<int32_t>(elisa_utf16_to_utf8(
                                             reinterpret_cast<const uint16_t *>(units),
                                             static_cast<size_t>(unit_count),
                                             reinterpret_cast<uint8_t *>(buffer),

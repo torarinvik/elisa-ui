@@ -1,8 +1,8 @@
-// The Android Java boundary speaks UTF-16; Elisa's text views speak standard
-// UTF-8. JNI's *UTF* byte helpers are modified UTF-8, so this tiny codec is
-// deliberately independent of JNI and can be tested on the host.
-#ifndef ELISA_ANDROID_UTF8_UTF16_H
-#define ELISA_ANDROID_UTF8_UTF16_H
+// Platform text APIs use UTF-16 while Elisa's text views use standard UTF-8.
+// JNI's *UTF* byte helpers are modified UTF-8, so this small shared codec is
+// deliberately independent of host APIs and can be tested on the host.
+#ifndef ELISA_UTF8_UTF16_H
+#define ELISA_UTF8_UTF16_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -10,8 +10,8 @@
 // Decode one standard UTF-8 scalar. Ill-formed input consumes one byte and
 // becomes U+FFFD. This makes the malformed-input policy deterministic without
 // ever passing invalid UTF-8 into the retained text layer.
-static inline size_t elisa_android_decode_utf8(const uint8_t *bytes, size_t length,
-                                               uint32_t *scalar) {
+static inline size_t elisa_decode_utf8(const uint8_t *bytes, size_t length,
+                                       uint32_t *scalar) {
     if (bytes == NULL || length == 0 || scalar == NULL) return 0;
 
     uint8_t first = bytes[0];
@@ -55,15 +55,15 @@ static inline size_t elisa_android_decode_utf8(const uint8_t *bytes, size_t leng
 // Convert a counted standard UTF-8 view to UTF-16 code units. The output is
 // always a scalar-aligned prefix; no terminator is reserved or written, so U+0000
 // remains ordinary counted text. The capacity bounds both output and work.
-static inline size_t elisa_android_utf8_to_utf16(const uint8_t *bytes, size_t length,
-                                                  uint16_t *units, size_t capacity) {
+static inline size_t elisa_utf8_to_utf16(const uint8_t *bytes, size_t length,
+                                          uint16_t *units, size_t capacity) {
     if (bytes == NULL || units == NULL || capacity == 0) return 0;
 
     size_t input = 0;
     size_t output = 0;
     while (input < length && output < capacity) {
         uint32_t scalar = 0;
-        size_t consumed = elisa_android_decode_utf8(bytes + input, length - input, &scalar);
+        size_t consumed = elisa_decode_utf8(bytes + input, length - input, &scalar);
         if (consumed == 0) break;
         size_t needed = scalar > 0xffff ? 2 : 1;
         if (needed > capacity - output) break;
@@ -80,7 +80,7 @@ static inline size_t elisa_android_utf8_to_utf16(const uint8_t *bytes, size_t le
     return output;
 }
 
-static inline size_t elisa_android_encode_utf8(uint32_t scalar, uint8_t bytes[4]) {
+static inline size_t elisa_encode_utf8(uint32_t scalar, uint8_t bytes[4]) {
     if (scalar <= 0x7f) {
         bytes[0] = (uint8_t)scalar;
         return 1;
@@ -105,8 +105,8 @@ static inline size_t elisa_android_encode_utf8(uint32_t scalar, uint8_t bytes[4]
 
 // Convert counted UTF-16 to standard UTF-8. Valid surrogate pairs become one
 // scalar; lone surrogates become U+FFFD. Never emit a partial UTF-8 sequence.
-static inline size_t elisa_android_utf16_to_utf8(const uint16_t *units, size_t length,
-                                                  uint8_t *bytes, size_t capacity) {
+static inline size_t elisa_utf16_to_utf8(const uint16_t *units, size_t length,
+                                          uint8_t *bytes, size_t capacity) {
     if (units == NULL || bytes == NULL || capacity == 0) return 0;
 
     size_t input = 0;
@@ -126,7 +126,7 @@ static inline size_t elisa_android_utf16_to_utf8(const uint16_t *units, size_t l
         }
 
         uint8_t encoded[4];
-        size_t produced = elisa_android_encode_utf8(scalar, encoded);
+        size_t produced = elisa_encode_utf8(scalar, encoded);
         if (produced > capacity - output) break;
         for (size_t index = 0; index < produced; index += 1) bytes[output + index] = encoded[index];
         output += produced;

@@ -8,7 +8,7 @@
 #include <android/log.h>
 #include <jni.h>
 #include <stdint.h>
-#include "android_utf8_utf16.h"
+#include "../common/utf8_utf16.h"
 #include <string.h>
 
 #define ELISA_IME_TEXT_MAX 1024
@@ -40,8 +40,8 @@ static void elisa_ime_forward(JNIEnv *env, jstring text, int32_t selection_start
     const jchar *units = (*env)->GetStringChars(env, text, NULL);
     if (units == NULL) return;
     uint8_t utf8[ELISA_IME_TEXT_MAX];
-    size_t length = elisa_android_utf16_to_utf8((const uint16_t *)units,
-                                                 (size_t)units_length, utf8, sizeof(utf8));
+    size_t length = elisa_utf16_to_utf8((const uint16_t *)units,
+                                        (size_t)units_length, utf8, sizeof(utf8));
     if (composing) elisa_android_composing_text((const char *)utf8, (int32_t)length,
                                                  selection_start, selection_length);
     else elisa_android_commit_text((const char *)utf8, (int32_t)length);
@@ -80,9 +80,9 @@ JNIEXPORT void JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeImeReport(
         jsize tag_length = (*env)->GetStringLength(env, tag);
         tag_units = (*env)->GetStringChars(env, tag, NULL);
         if (tag_units != NULL) {
-            label_length = elisa_android_utf16_to_utf8((const uint16_t *)tag_units,
-                                                        (size_t)tag_length, label,
-                                                        sizeof(label) - 1);
+            label_length = elisa_utf16_to_utf8((const uint16_t *)tag_units,
+                                               (size_t)tag_length, label,
+                                               sizeof(label) - 1);
         }
     }
     if (tag_units == NULL) {
