@@ -18,11 +18,26 @@ extend UiFlat:
             active_key <- -1
             mark_paint_dirty()
 
+        # A host IME owns a transient marked range only while the field is
+        # focused. Losing focus commits the current composition and closes its
+        # coalesced history record; otherwise a hidden field keeps an orphaned
+        # underline and can strand later edits in the composition transaction.
+        def finish_marked_text_on_blur(index: usize) -> void:
+            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            history_slot: usize = composition_history_slot
+            if history_slot < TEXT_HISTORY_CAPACITY and history_widget[history_slot] == index:
+                store_history_state(history_slot, index, true)
+                composition_history_slot <- TEXT_HISTORY_CAPACITY
+            if widgets[index].marked_start != widgets[index].marked_end:
+                widgets[index] with { marked_start <- 0, marked_end <- 0 }
+                mark_state_dirty()
+
         def focus(index: usize) -> void:
             target: mutable usize = index
             target <- NONE if target < widget_count and (not widgets[target].interactive or not effectively_enabled(target) or not effectively_visible(target))
             changed: bool = target != focused_widget
             release_active_press() if target != focused_widget
+            finish_marked_text_on_blur(focused_widget) if changed and focused_widget < widget_count
             if focused_widget < widget_count:
                 widgets[focused_widget].focused <- false
             focused_widget <- target

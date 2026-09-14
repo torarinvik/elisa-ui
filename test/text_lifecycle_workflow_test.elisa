@@ -110,8 +110,17 @@ def main() -> i64:
     else:
         check("field has retained pre-relayout geometry", false)
 
+    UiHandles::set_visible(field, false)
+    check("hiding a composing field clears focus and marked range", not UiHandles::is_focused(field) and UiHandles::marked_length(field) == 0)
+    check("hiding a composing field keeps its draft text", UiHandles::text_value(field) == value_before_relayout)
+
     # Teardown advances both retained-tree and validation identities before a
     # replacement view can reuse their slots.
+    UiHandles::set_visible(field, true)
+    _ = UiHandles::request_focus(field)
+    UiHandles::replace_text(field, "after blur ✓")
+    check("editing after composition blur enters text history", UiHandles::can_undo_text())
+    check("composition blur does not strand later undo", UiHandles::undo_text() and UiHandles::text_value(field) == value_before_relayout)
     late_token: u32 = UiValidation::begin(validation)
     UiHandles::reset()
     _ = UiValidation::dispose(validation)
