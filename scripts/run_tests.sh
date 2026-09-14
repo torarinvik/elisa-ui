@@ -5,7 +5,8 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../wasm-sdk-compiler}"
+STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
+export ELISA_UI_STAGE1="$STAGE1"
 RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
 SDL_LIB="${ELISA_UI_SDL_LIB:-/opt/homebrew/lib}"
 require_real_skia="${ELISA_UI_REQUIRE_REAL_SKIA:-1}"
@@ -81,10 +82,9 @@ if ! bash "$ROOT/scripts/check_unicode_conformance.sh"; then
   status=1
 fi
 
-# Keep a measured retained-tree workload in the required suite. This is a
-# safety/performance gate for application-scale layout, paint, text and editing
-# work; it never opens a native window and reports its own timing/RSS evidence.
-if ! bash "$ROOT/scripts/check_performance.sh"; then
+# Require a matching reference-device budget for the retained-tree workload.
+# It measures application-scale layout, paint, text and editing headlessly.
+if ! ELISA_UI_REQUIRE_PERF_BUDGET=1 bash "$ROOT/scripts/check_performance.sh"; then
   echo "FAIL performance benchmark"
   status=1
 fi

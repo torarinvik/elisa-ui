@@ -9,11 +9,19 @@ semantic, text, and editing modules used by applications.
 Run it without opening a native window:
 
 ```sh
-ELISA_UI_STAGE1=../wasm-sdk-compiler bash scripts/check_performance.sh
+ELISA_UI_STAGE1=../Elisa-compiler ELISA_UI_REQUIRE_PERF_BUDGET=1 bash scripts/check_performance.sh
 ```
 
 The script compiles the fixture with the current stage1 product at `-O2`,
-links the checked-in Elisa runtime, and reports nanoseconds for five phases:
+links the checked-in Elisa runtime, and reports nanoseconds for five phases.
+It launches three independent benchmark processes by default; each process
+warms each phase twice and records seven measured batches of 32 iterations.
+The result includes every batch duration, the median and maximum across all
+21 batches, per-operation median, and process peak RSS. A versioned workload
+ID and hashes for both workload sources prevent a changed fixture from silently
+reusing an old threshold. The tuple also records the exact stage1/runtime and
+Clang binary hashes, host identity, all compile/link flags, and per-phase
+operation counts.
 
 - first frame: build 64 retained rows and paint, repeated 32 times;
 - relayout: mutate a retained margin and arrange a 221-node tree, repeated 32
@@ -47,6 +55,22 @@ timings.
 harness). The 15-second per-phase ceilings are intentionally generous safety
 limits for CI and catch accidental unbounded work; they are not product-frame
 budgets or cross-machine performance claims.
+
+`test/performance_budgets.json` holds measured reference-device thresholds.
+The current entry is for macOS 26.6.2 build 25G83 on Mac17,4 / Apple M5, using
+Homebrew clang 23.1.1 and Elisa `fd2cb3c`; it records three processes, all 21
+raw samples per phase, verified median/maximum/RSS, and separate median and
+outlier limits. A budget matches only the exact OS, device, compiler
+product/runtime, Clang binary, workload version/counts/flags, and workload
+source hashes. No other device inherits the M5 thresholds. Without an exact
+match the default mode prints `UNBUDGETED` and keeps only the generic safety
+ceiling; `ELISA_UI_REQUIRE_PERF_BUDGET=1` fails instead of treating that as a
+budget pass. The acceptance suite sets this flag, so an unknown device,
+compiler, or workload cannot pass `run_tests.sh` without its own measured entry.
+For exploratory data collection on an unbaselined machine, run the script with
+`ELISA_UI_REQUIRE_PERF_BUDGET=0`; that is not an acceptance pass. Add a
+reference entry only after collecting repeated samples on that device and
+recording its complete metadata.
 
 This gate measures CPU-side framework work and retained memory only. It does
 not claim GPU upload latency, display-vsync pacing, battery/energy use, mobile
