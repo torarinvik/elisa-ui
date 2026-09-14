@@ -18,8 +18,9 @@ command -v rustc >/dev/null 2>&1 || { echo "rust: skipped (no rustc on PATH)"; e
 [[ -x "$STAGE1/bin/elisac-stage1" ]] || { echo "no stage1 product at $STAGE1/bin/elisac-stage1" >&2; exit 2; }
 [[ -f "$RUNTIME" ]] || { echo "no runtime object at $RUNTIME" >&2; exit 2; }
 
-WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT INT TERM HUP
 mkdir -p "$ROOT/build"
+WORK="$(mktemp -d "$ROOT/build/rust-check.XXXXXX")"
+trap 'rm -rf "$WORK"' EXIT INT TERM HUP
 
 # Compile the binding as a separate crate so these checks exercise the public
 # surface exactly as a downstream Rust application sees it. The token may be
@@ -48,15 +49,14 @@ echo "rust: widget handle opacity passed"
 
 # The Elisa side: ui_capi supplies the host-facing functions, ui_capi_app
 # supplies the app contract and forwards to the elisa_ui_on_* callbacks the
-# Rust example implements. `include` resolves relative to the including file,
-# so build it in place.
+# Rust example implements. `include` resolves relative to the including file;
+# this unique temporary source lives under build/ so the paths reach src/ without
+# borrowing a fixed path another check or user may already own.
 cat > "$WORK/bridge.elisa" <<'EOF'
-include "../src/capi/ui_capi.elisa"
-include "../src/capi/ui_capi_app.elisa"
+include "../../src/capi/ui_capi.elisa"
+include "../../src/capi/ui_capi_app.elisa"
 EOF
-cp "$WORK/bridge.elisa" "$ROOT/build/rust_bridge_link.elisa"
-bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$WORK/bridge.o" "$ROOT/build/rust_bridge_link.elisa"
-rm -f "$ROOT/build/rust_bridge_link.elisa"
+bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$WORK/bridge.o" "$WORK/bridge.elisa"
 
 rustc --edition 2021 -O "$ROOT/examples/rust/rust_host.rs" -o "$WORK/rust_host" \
   -C link-arg="$WORK/bridge.o" -C link-arg="$RUNTIME"
