@@ -37,6 +37,7 @@ def main() -> i64:
     check("state stores float", UiState::put_f32(11, 1.25))
     malformed_float: f32 = 0.0 / 0.0
     check("state rejects non-finite float on save", not UiState::put_f32(15, malformed_float))
+    check("rejected non-finite float marks the snapshot failed", UiState::saved().failed)
     check("state stores integer", UiState::put_i32(12, -42))
     check("state stores boolean", UiState::put_bool(13, true))
     check("state rejects duplicate IDs", not UiState::put_i32(12, 99) and UiState::saved().failed)
@@ -105,14 +106,15 @@ def main() -> i64:
 
     UiState::begin()
     oversized_text: sview = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-    check("state rejects oversized foreign text before narrowing", not UiState::put_text(6, oversized_text))
+    check("state rejects oversized foreign text before narrowing", not UiState::put_text(6, oversized_text) and UiState::saved().failed)
 
+    UiState::begin()
     malformed_text: mutable u8[3] = zeroed
     malformed_text[0] <- 65
     malformed_text[1] <- 255
     malformed_text[2] <- 66
     malformed_view: sview = sview(&malformed_text[0], 0, 3)
-    check("state rejects malformed text before saving", not UiState::put_text(7, malformed_view))
+    check("state rejects malformed text before saving", not UiState::put_text(7, malformed_view) and UiState::saved().failed)
     UiState::begin()
     _ = UiState::put_text(8, "ABC")
     malformed_blob_length: usize = UiState::copy_to(&blob[0], UiState::MAX_BYTES)

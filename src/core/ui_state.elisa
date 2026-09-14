@@ -62,22 +62,30 @@ module UiState:
             # Keep the signed ABI extent signed until the fixed text limit has
             # been checked. Narrowing a hostile positive length first can wrap
             # on wasm32 and make the append arithmetic underflow.
-            return false if value.len < 0 or value.len > MAX_TEXT_BYTES.i64()
+            if value.len < 0 or value.len > MAX_TEXT_BYTES.i64():
+                save_failed <- true
+                return false
             # Normalize through the shared safe-view helper before any direct
             # byte walk. A positive-length null-backed view becomes empty, as
             # does a malformed/truncated UTF-8 prefix; requiring an exact
             # length match rejects both without dereferencing foreign storage.
             safe_value: sview = UiCore::bounded_text(value)
-            return false if safe_value.len != value.len
+            if safe_value.len != value.len:
+                save_failed <- true
+                return false
             value_length: usize = safe_value.len.usize()
-            return false if UiText::valid_utf8_prefix(safe_value, value_length) != value_length
+            if UiText::valid_utf8_prefix(safe_value, value_length) != value_length:
+                save_failed <- true
+                return false
             return false if not ready_for_put(value_length)
             return append_header(id, ValueKind.Text, value_length) and append_bytes(safe_value, value_length)
 
         def put_f32(id: u32, value: f32) -> bool can Unsafe.PointerCast:
             # Persistence is a validation boundary: do not silently turn a
             # malformed application value into a different saved state.
-            return false if not UiCore::is_finite(value)
+            if not UiCore::is_finite(value):
+                save_failed <- true
+                return false
             safe: mutable f32 = value
             bits: mutable u32& = (&safe).cast[mutable u32&] can Unsafe.PointerCast
             return append_u32_record(id, ValueKind.F32, bits[0])
