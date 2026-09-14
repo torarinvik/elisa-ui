@@ -2,7 +2,58 @@
 
 _Part of the [elisa-ui implementation baseline](../implementation-baseline.md)._
 
-## UI-13 strict performance-budget gate (2026-09-14, large-list refresh)
+## Latest compiler and renderer evidence (2026-09-15)
+
+The latest fetched upstream `main` is
+`fd2cb3cff470319500db362e5fce2833cbe300de`. The shared compiler checkout is on
+`codex/shared-typed-edir-lowering`, whose latest committed revision is
+`c605b3faa516de7b2f4945a9ac4ccb21d78ae2e0` (two commits ahead of upstream,
+including narrow typed-scalar lowering); it also contains uncommitted compiler
+work. I left that checkout untouched and built the committed revision in a clean
+isolated clone at `/tmp/elisa-ui-compiler-c605-20260915`. Its stage1 SHA-256 is
+`111753afaa2b7dd159fc926cffb4aef5fc3caf51ce5ba21ca935a06c8091861f`; runtime
+SHA-256 is `a58618f5358e30e8c19cf1344d47bddd3a7520ee61f83a471222bb0660e48a8f`.
+The clean upstream-main build was also separately checked (stage1 SHA-256
+`6cdcdf45fb396d319ce1d0d4e0c5d35e9b3161bd3e81f8d2e594ee60ac76c2a8`). Both
+Elisa benchmark and Showcase fixtures compile with `-O2`. Exact toolchain and
+Skia provenance is recorded in [`implementation-baseline.md`](../implementation-baseline.md).
+
+`scripts/check_skia.sh` passed with semantic checks enabled and no diagnostic
+bypass against both isolated compiler products. Each run verified the pinned
+CPU-raster archive, off-screen and public Showcase pixel digests,
+fresh-process stability, all five pages and their state/scale variants. The
+million-item public Showcase workflow has separate exact-tuple budgets for the
+two compiler products. The upstream-main baseline is 12.397 ms median / 12.744
+ms maximum, and its latest strict run passed at 10.942 / 11.575 ms. The newer
+`c605b3fa` baseline is 11.288 / 11.839 ms, and its latest strict run passed at
+25.582 / 27.790 ms while a compiler build shared the host. Both use 30 ms median / 40 ms maximum thresholds and
+reproduced tail pixel digest `1ac21e37972207bb`. Raw samples and exact
+provenance are in `test/showcase_skia_performance_budgets.json`.
+
+The portable retained-tree benchmark has separate exact budgets for upstream
+`main` (`6cdcdf45`) and the newer `c605b3fa` compiler product. Both required
+runs passed. The workload measures 21 samples per phase, 221 widgets/commands,
+and 128 anchored windows per batch over a 16,777,216-item list:
+
+| Phase | Upstream-main median / max | `c605b3fa` median / max |
+| --- | ---: | ---: |
+| First frame | 6.190 / 13.866 ms | 8.338 / 10.192 ms |
+| Layout | 2.919 / 3.219 ms | 3.608 / 4.007 ms |
+| Paint | 12.418 / 12.792 ms | 16.027 / 17.689 ms |
+| Text | 32.230 / 34.821 ms | 43.033 / 47.041 ms |
+| Text input | 0.281 / 0.286 ms | 0.370 / 0.392 ms |
+| Virtual-list window | 0.094 / 0.098 ms | 0.123 / 0.129 ms |
+
+Maximum process high-water RSS was 3,620,864 bytes on both products. Two
+earlier upstream-main attempts during unrelated compiler builds exceeded
+isolated-sample maxima (text input and layout); after that load ended, the
+required exact-tuple gate passed. Their raw samples remain available in the
+command output, while the accepted raw references are recorded in
+`test/performance_budgets.json`. The earlier
+`eebb4f56` compiler-product reference remains a historical, exact-product
+record, not evidence for the current `6cdcdf45` build.
+
+### Historical portable performance run (2026-09-14; product `eebb4f56`)
 
 `ELISA_UI_STAGE1=../Elisa-compiler ELISA_UI_REQUIRE_PERF_BUDGET=1 bash scripts/check_performance.sh`
 completed headlessly and matched the exact reference entry. The compiler was
@@ -28,7 +79,7 @@ Maximum process high-water RSS was 3,604,480 bytes. The exact M5 budget passed;
 the acceptance suite now treats an unmatched host/compiler/workload as a
 failure rather than silently skipping product-budget evaluation.
 
-## Latest compiler refresh (2026-09-14)
+### Historical compiler refresh (2026-09-14; product `eebb4f56`)
 
 The default compiler is now `../Elisa-compiler`, clean `main` at
 `fd2cb3cff470319500db362e5fce2833cbe300de`, equal to `origin/main`.

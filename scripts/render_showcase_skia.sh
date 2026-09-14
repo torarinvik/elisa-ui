@@ -37,16 +37,18 @@ SKIA_ROOT="$SKIA_ROOT" SKIA_OUT="$SKIA_OUT" SKIA_LIB="$SKIA_LIB" bash "$ROOT/scr
 [[ -f "$RUNTIME" ]] || { echo "showcase skia: no runtime object at $RUNTIME" >&2; exit 2; }
 
 mkdir -p "$ROOT/build"
-bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ROOT/build/showcase_app_skia_test.o" \
+bash "$STAGE1/scripts/elisac_stage1.sh" -O2 -o "$ROOT/build/showcase_app_skia_test.o" \
   "$ROOT/test/showcase_app_skia_test.elisa"
 clang++ -std=c++20 -DSK_BUILD_FOR_MAC -fPIC -I"$ROOT" -I"$SKIA_ROOT" -c \
   "$ROOT/test/showcase_app_skia_host.cpp" -o "$ROOT/build/showcase_app_skia_host.o"
+clang++ -std=c++20 -DSK_BUILD_FOR_MAC -fPIC -I"$ROOT" -I"$SKIA_ROOT" -c \
+  "$ROOT/test/showcase_skia_list_benchmark.cpp" -o "$ROOT/build/showcase_skia_list_benchmark.o"
 clang++ -std=c++17 -fPIC -I"$SKIA_ROOT" -c \
   "$ROOT/src/platform/skia/skia_canvas_shim.cpp" -o "$SKIA_SHIM_DIR/skia_canvas_shim.o"
 clang++ -std=c++17 -fPIC -I"$SKIA_ROOT" -c \
   "$ROOT/src/platform/skia/skia_text_shim.cpp" -o "$SKIA_SHIM_DIR/skia_text_shim.o"
 
-link_inputs=("$ROOT/build/showcase_app_skia_host.o" "$ROOT/build/showcase_app_skia_test.o"
+link_inputs=("$ROOT/build/showcase_app_skia_host.o" "$ROOT/build/showcase_skia_list_benchmark.o" "$ROOT/build/showcase_app_skia_test.o"
              "$SKIA_SHIM_DIR/skia_canvas_shim.o" "$SKIA_SHIM_DIR/skia_text_shim.o" "$RUNTIME" "$SKIA_LIB")
 for extra in "$SKIA_OUT/libpng.a" "$SKIA_OUT/libzlib.a"; do
   [[ -f "$extra" ]] && link_inputs+=("$extra")
@@ -58,13 +60,29 @@ first_output="$("$ROOT/build/showcase_app_skia" "$PREFIX" "$WIDTH" "$HEIGHT")"
 replay_dir="$(mktemp -d "${TMPDIR:-/tmp}/elisa-ui-showcase-replay.XXXXXX")"
 trap 'rm -rf "$replay_dir"' EXIT INT TERM HUP
 second_output="$("$ROOT/build/showcase_app_skia" "$replay_dir/showcase" "$WIDTH" "$HEIGHT")"
+third_output="$("$ROOT/build/showcase_app_skia" "$replay_dir/showcase-third" "$WIDTH" "$HEIGHT")"
 first_list_digest="$(sed -n 's/.*tail_pixel_digest=\([[:xdigit:]]*\).*/\1/p' <<<"$first_output" | tail -n 1)"
 second_list_digest="$(sed -n 's/.*tail_pixel_digest=\([[:xdigit:]]*\).*/\1/p' <<<"$second_output" | tail -n 1)"
-[[ -n "$first_list_digest" && "$first_list_digest" == "$second_list_digest" ]] || {
-  echo "showcase skia: million-item list fresh-process pixel digest mismatch (first=$first_list_digest second=$second_list_digest)" >&2
+third_list_digest="$(sed -n 's/.*tail_pixel_digest=\([[:xdigit:]]*\).*/\1/p' <<<"$third_output" | tail -n 1)"
+[[ -n "$first_list_digest" && "$first_list_digest" == "$second_list_digest" && "$first_list_digest" == "$third_list_digest" ]] || {
+  echo "showcase skia: million-item list fresh-process pixel digest mismatch (first=$first_list_digest second=$second_list_digest third=$third_list_digest)" >&2
   exit 1
 }
-printf '%s\n' "$first_output" | rg 'million-item list workflow_ns='
+{
+  printf '%s\n%s\n%s\n' "$first_output" "$second_output" "$third_output" \
+    | sed -n '/^{"workload_id":"showcase-million-list-skia-v1"/p'
+} >"$replay_dir/performance.log"
+[[ "$(wc -l <"$replay_dir/performance.log" | tr -d ' ')" == 3 ]] || {
+  echo "showcase skia: expected one latency record from each fresh process" >&2
+  exit 1
+}
+sed -n '1,3p' "$replay_dir/performance.log"
+python3 "$ROOT/scripts/check_showcase_skia_performance.py" \
+  --root "$ROOT" --stage1 "$STAGE1" --skia-root "$SKIA_ROOT" \
+  --skia-out "$SKIA_OUT" --skia-lib "$SKIA_LIB" \
+  --log "$replay_dir/performance.log" \
+  --manifest "$ROOT/test/showcase_skia_performance_budgets.json" \
+  --process-repetitions 3 --width "$WIDTH" --height "$HEIGHT"
 echo "showcase skia: million-item list fresh-process digest verified tail_pixel_digest=$first_list_digest"
 
 # A page that failed to lay out still writes a PNG -- of almost nothing. A

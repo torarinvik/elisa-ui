@@ -104,6 +104,7 @@ if [[ -n "${SKIA_ROOT:-}" ]]; then
     SKIA_ROOT="$SKIA_ROOT" SKIA_OUT="$skia_out" SKIA_LIB="$skia_out/libskia.a" bash "$ROOT/scripts/verify_skia_build.sh"
     SKIA_ROOT="$SKIA_ROOT" SKIA_OUT="$skia_out" bash "$ROOT/scripts/check_skia_offscreen.sh"
     SKIA_ROOT="$SKIA_ROOT" SKIA_OUT="$skia_out" bash "$ROOT/scripts/check_showcase_skia.sh"
+    python3 "$ROOT/test/showcase_skia_performance_test.py"
     # Every page of the shipped showcase, through the real painter. The hello
     # fixture above asserts pixels on one frame; this covers the theme, the
     # controls, the scrolling list and the custom canvas, and leaves the

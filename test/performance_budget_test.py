@@ -119,7 +119,9 @@ class PerformanceBudgetTest(unittest.TestCase):
         entry = budget.select_budget(metadata, manifest["reference_budgets"])
         if entry is None:
             self.skipTest("this host/compiler tuple has no reference budget")
-        self.assertEqual(entry["id"], "macos26-mac17-4-apple-m5-fd2cb3c-retained-tree-v3-large-list")
+        expected_match = budget.flattened(metadata)
+        expected_match.pop("schema_version", None)
+        self.assertEqual(entry["match"], expected_match)
         self.assertEqual(budget.evaluate_limits(entry["observed"], entry), [])
 
     def test_required_mode_accepts_exact_budget_and_rejects_missing_budget(self):
@@ -179,10 +181,7 @@ class PerformanceBudgetTest(unittest.TestCase):
                 with contextlib.redirect_stdout(capture):
                     result = budget.main()
                 self.assertEqual(result, 0)
-                self.assertIn(
-                    "reference_budget=macos26-mac17-4-apple-m5-fd2cb3c-retained-tree-v3-large-list status=PASS",
-                    capture.getvalue(),
-                )
+                self.assertIn(f"reference_budget={entry['id']} status=PASS", capture.getvalue())
 
                 empty_manifest = temp_path / "empty.json"
                 empty_manifest.write_text('{"schema_version":1,"reference_budgets":[]}')
@@ -191,7 +190,7 @@ class PerformanceBudgetTest(unittest.TestCase):
                     self.assertEqual(budget.main(), 5)
 
                 partial_manifest = temp_path / "partial.json"
-                partial_entry = dict(manifest["reference_budgets"][0])
+                partial_entry = dict(entry)
                 partial_entry["limits"] = dict(partial_entry["limits"])
                 del partial_entry["limits"]["text_input"]
                 partial_manifest.write_text(json.dumps({

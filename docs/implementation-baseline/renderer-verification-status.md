@@ -3,7 +3,7 @@
 _Part of the [elisa-ui implementation baseline](../implementation-baseline.md)._
 
 
-## Latest verification: 2026-09-14
+## Latest verification: 2026-09-15
 
 The pinned Skia checkout and CPU-raster archive are now built locally. From a
 fresh checkout, provision them without opening a window:
@@ -14,13 +14,20 @@ export SKIA_OUT="$SKIA_ROOT/out/elisa"
 bash scripts/build_skia.sh
 ```
 
-The required CPU-raster gate was run against compiler revision
-`fd2cb3cff470319500db362e5fce2833cbe300de` and Skia revision
-`9c7b2dffb2433f5a0cc2b77f06025a09126807ed`. The archive SHA-256 is
+The required CPU-raster gate was run against both the latest fetched upstream
+`main` (`fd2cb3cff470319500db362e5fce2833cbe300de`) and the latest committed
+shared compiler branch (`c605b3faa516de7b2f4945a9ac4ccb21d78ae2e0`), with Skia
+revision `9c7b2dffb2433f5a0cc2b77f06025a09126807ed`. The archive SHA-256 is
 `39774ff993bd3b84943c27548738c8b8b8208396237d536c1a4ed1c6e147c775`.
+Each compiler revision was built from a clean isolated source tree because the
+shared checkout has unfinished edits. Stage1 hashes are `6cdcdf45fb396d319ce1d0d4e0c5d35e9b3161bd3e81f8d2e594ee60ac76c2a8`
+for upstream `main` and `111753afaa2b7dd159fc926cffb4aef5fc3caf51ce5ba21ca935a06c8091861f`
+for `c605b3fa`; both used runtime SHA-256
+`a58618f5358e30e8c19cf1344d47bddd3a7520ee61f83a471222bb0660e48a8f`.
 
 ```sh
 PATH="/path/to/depot_tools:$PATH" \
+ELISA_UI_STAGE1=/path/to/clean-elisa-compiler \
 SKIA_ROOT=/path/to/elisa-skia \
 SKIA_OUT="$SKIA_ROOT/out/elisa" \
 bash scripts/check_skia.sh
@@ -34,23 +41,46 @@ high-contrast, light, RTL, dialog, 2x, hover, and pressed images under
 `ELISA_STAGE1_NO_SEMANTIC_GATE`; it supersedes the older compiler's prolonged
 region-escape analysis noted in historical validation below.
 
+The required showcase renderer gate now compiles its Elisa fixture with `-O2`
+and also measures the public million-item list workflow plus its resulting
+Skia CPU-raster frame. It collects seven samples in each of three fresh
+processes after two warmups. Reinitialization, pixel scanning, and PNG encoding
+are outside the measured interval; the gate separately checks that the tail
+pixels differ from the initial list and match across all samples/processes.
+Exact host, compiler product/runtime, Skia source/archive/build, workload flags,
+dimensions, and source-bundle provenance are required to select its budget.
+
 Observed on the current host:
 
-- Off-screen Skia: 16 iterations, average `536179 ns`, pixel digest
+- Off-screen Skia (`c605b3fa`): 16 iterations, average `580013 ns`, pixel digest
   `26b1baa0682e064d`; a fresh process reproduced the digest.
 - Public hello showcase workflow: 70 commands, 25 semantic nodes, 19 custom
   art commands, deferred commands on both sides of retained drawing, two
   generation-bound deferred images (`2 -> 3`), 16 render iterations averaging
-  `5684078 ns`, pixel digest `f8cc2ba20c07b5bd`; a fresh process reproduced it.
+  `3689687 ns`, pixel digest `f8cc2ba20c07b5bd`; a fresh process reproduced it.
 - All five showcase pages and nine state/scale variants rendered: focus,
   high contrast, light high contrast, light, RTL, dialog, 2x, hover, and
   pressed. The 1x pages
   are 1180x800; the retina frame is 2360x1600.
 - The AppKit/Skia compositor passed its off-screen CoreGraphics presentation
   check (`render_ns=13470291`, pixel digest `96591d2368f57d1a`).
+- Million-item Showcase workflow plus Skia tail frame: separate baselines cover
+  both compiler products. The newest (`c605b3fa`) baseline median is `11.288 ms`,
+  maximum `11.839 ms`; its latest required run passed at `25.582 ms` median /
+  `27.790 ms` maximum while a compiler build shared the host. Both use `30 ms`
+  median / `40 ms` maximum thresholds. The upstream-main latest verified run
+  passed at `10.942 / 11.575 ms`.
+  Both use thresholds `30 ms` median / `40 ms` maximum. Pixel digest
+  `1ac21e37972207bb` was stable across the benchmark and fresh processes. Raw
+  samples and exact reference tuples are in
+  `test/showcase_skia_performance_budgets.json`.
 
 The strict Skia gate, semantic-enabled UI suite fixtures, Unicode corpus, and
-standalone exact M5 performance-budget gate all passed with this compiler. A
+standalone exact M5 performance-budget gate all passed on both compiler
+products. The newest `c605b3fa` retained-tree run had three-process aggregate
+medians of 8.338 ms first-frame batches, 3.608 ms layout, 16.027 ms paint,
+43.033 ms text, 0.370 ms text-input, and 0.123 ms for 128 anchored
+virtual-list windows; maximum RSS was 3,620,864 bytes. A
 separate full matrix attempt remains incomplete: its cross-target legs reported
 Win32 `kill`/`sigaction` link failures, Linux cross-target failures, and a
 WasmBrowser build missing `wasm-component-ld`. The SDL/Android checks skipped
@@ -59,7 +89,8 @@ are summarized in [`current-validation.md`](current-validation.md).
 
 The complete strict command remains `bash scripts/run_tests.sh` with the
 pinned `SKIA_ROOT`; do not set `ELISA_UI_REQUIRE_REAL_SKIA=0` for an acceptance
-run. This current verification used the default `../Elisa-compiler` checkout.
+run. Set `ELISA_UI_STAGE1` to a clean latest compiler build when the shared
+`../Elisa-compiler` worktree is dirty.
 
 ## Renderer policy and prior milestones
 

@@ -1,21 +1,25 @@
 # elisa-ui implementation baseline
 
-Recorded 2026-09-08 on macOS arm64; refreshed 2026-09-14 on main.
+Recorded 2026-09-08 on macOS arm64; refreshed 2026-09-15 on main.
 This is the durable UI-00 audit for the
 local implementation plan; it records observed behavior, not an assumption of
 parity on untested platforms.
 
 ## Reproducibility tuple
 
-### Active toolchain snapshot (2026-09-14)
+### Active toolchain snapshot (2026-09-15)
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui code revision | fe8162f on main (worktree also contains unrelated in-progress edits) |
+| elisa-ui code revision | af95f88 on main (task changes plus three preserved pre-existing edits) |
 | Host and C compiler | macOS 26.6.2 (Darwin 25.6.0), arm64; Homebrew clang 23.1.1 |
-| Elisa stage1 | ../Elisa-compiler/bin/elisac-stage1, clean main at fd2cb3cff470319500db362e5fce2833cbe300de, ahead=0 behind=0 vs origin/main; SHA-256 eebb4f562b8128ceedf4761225fd106335978c0a495c44754ec269da5fec1884 |
-| Elisa runtime | ../Elisa-compiler/build/runtime/elisacore_runtime.o; SHA-256 a58618f5358e30e8c19cf1344d47bddd3a7520ee61f83a471222bb0660e48a8f |
-| Skia source/archive | chrome/m150 at 9c7b2dffb2433f5a0cc2b77f06025a09126807ed; libskia.a SHA-256 b38ff7fa726628efeeb336fe61c72e22d4d6b7bf9549252c65d897730d90c68f |
+| Elisa stage1 | clean isolated clone `/tmp/elisa-ui-compiler-c605-20260915/bin/elisac-stage1`, latest committed branch revision c605b3faa516de7b2f4945a9ac4ccb21d78ae2e0 (two commits ahead of fetched origin/main); SHA-256 111753afaa2b7dd159fc926cffb4aef5fc3caf51ce5ba21ca935a06c8091861f |
+| Elisa runtime | `/tmp/elisa-ui-compiler-c605-20260915/build/runtime/elisacore_runtime.o`; SHA-256 a58618f5358e30e8c19cf1344d47bddd3a7520ee61f83a471222bb0660e48a8f |
+| Elisa stage1 driver | `scripts/elisac_stage1.sh` from the isolated compiler; SHA-256 9b23b66c0b8edbf292d14b444f506c2e30be237943126ffe455d1c8e2873756f |
+| Upstream-main compiler reference | clean isolated build at fd2cb3cff470319500db362e5fce2833cbe300de, verified against fetched `origin/main`; stage1 SHA-256 6cdcdf45fb396d319ce1d0d4e0c5d35e9b3161bd3e81f8d2e594ee60ac76c2a8 |
+| Shared compiler checkout | `../Elisa-compiler` is on branch `codex/shared-typed-edir-lowering` at c605b3fa with uncommitted edits; those edits were not used, and the checkout was left untouched |
+| Clang binary | `/opt/homebrew/opt/llvm/bin/clang++`, Homebrew clang 23.1.1; SHA-256 570c488e53383b198796e706e91b5ce5ec45bb730683a5af5e822d56a2eb1888 |
+| Skia source/archive | chrome/m150 at 9c7b2dffb2433f5a0cc2b77f06025a09126807ed; `out/elisa/libskia.a` SHA-256 39774ff993bd3b84943c27548738c8b8b8208396237d536c1a4ed1c6e147c775; optional `libpng.a` SHA-256 13fda447a526c821e1bff29f66b3a582857d702e9f8fd8e5f29b5628dfe2690f |
 | WasmBrowser | ../WasmBrowser at 3ac9b25b0ea74000846625f46c2115ac93d16cf1; checkout has pre-existing local changes; WIT SHA-256 unchanged at 9032a1c59a5495d4868bc7cdf494153096708ff6f2321b4ea2ffeff752c627d6 |
 | wasm-sdk | ../wasm-sdk at fa832f0e812254b0edb0447a17078397911c3d01; checkout has pre-existing local changes |
 | Rust/Wasm linker | rustc 1.98.1 (Homebrew); wasm-component-ld is not on PATH |
