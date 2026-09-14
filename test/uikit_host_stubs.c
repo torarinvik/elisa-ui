@@ -20,11 +20,14 @@ const size_t elisa_uikit_not_found = (size_t)-1;
 static size_t elisa_uikit_stub_view = 0;
 static size_t elisa_uikit_stub_children = 0;
 static int elisa_uikit_stub_live_elements = 0;
+static int elisa_uikit_stub_layout_changes = 0;
 
 /* Test-facing controls. Declared in the Elisa test as externs. */
 void elisa_uikit_stub_set_view(size_t handle) { elisa_uikit_stub_view = handle; }
 size_t elisa_uikit_stub_committed_children(void) { return elisa_uikit_stub_children; }
 int elisa_uikit_stub_live_element_count(void) { return elisa_uikit_stub_live_elements; }
+int elisa_uikit_stub_layout_change_count(void) { return elisa_uikit_stub_layout_changes; }
+void elisa_uikit_stub_clear_layout_change_count(void) { elisa_uikit_stub_layout_changes = 0; }
 
 int elisa_uikit_run(void) { return 0; }
 void elisa_uikit_stop(void) {}
@@ -80,7 +83,10 @@ int elisa_uikit_accessibility_commit(size_t viewHandle, size_t children) {
     return 1;
 }
 
-void elisa_uikit_accessibility_post_layout_changed(size_t viewHandle) { (void)viewHandle; }
+void elisa_uikit_accessibility_post_layout_changed(size_t viewHandle) {
+    (void)viewHandle;
+    elisa_uikit_stub_layout_changes += 1;
+}
 static size_t elisa_uikit_stub_focused = 0;
 size_t elisa_uikit_stub_focused_element(void) { return elisa_uikit_stub_focused; }
 void elisa_uikit_accessibility_focus(size_t viewHandle, size_t handle) {

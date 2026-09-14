@@ -11,9 +11,9 @@ the item data and widget identities; the module supplies the shared geometry:
   and an explicit maximum-realized budget; and
 - `item_offset`, `count`, and `contains` keep placement and membership checks
   consistent with that interval.
-- `semantic_window` publishes bounded accessibility metadata for the logical
-  list, including before/after navigation edges and focused/selected indexes
-  even when those rows are outside the realized range; and
+- `semantic_window` computes bounded accessibility navigation metadata for
+  logical focus/selection and before/after edges, including targets outside
+  the realized range; and
 - `move` advances a logical target without requiring its row widget to exist.
 - `realize` maps a retained `VisibleRange` onto a bounded pool of application
   row slots, `slot_for` resolves a logical row to its current slot, and
@@ -36,5 +36,17 @@ The policy is pure Elisa and is included by `UiWidgets`; native and hosted
 adapters only need to realize the returned rows and apply their existing
 viewport clipping. This keeps virtualization, scrolling, paint order, and
 semantic navigation on the same retained framework facts. Semantic adapters
-should expose `total` and the logical focus/selection indexes, then realize or
-scroll to an off-screen target when assistive navigation requests it.
+should expose the logical count independently of the realized widget count.
+The retained semantic projection does this today: a virtual-list node carries
+its full `collection_count`, while each visible semantic row carries a
+one-based `collection_position` and the full `collection_size`. Rebinding a
+row slot therefore changes semantic collection metadata even when its stable
+widget identity and label stay the same.
+
+This portable metadata is not yet full native screen-reader virtualization.
+AppKit needs list/row accessibility objects to publish row indexes and total
+row count; UIKit needs a custom list container that lazily vends logical rows.
+The current adapters use collection changes to invalidate the semantic layout,
+but do not yet expose off-screen virtual rows or implement focus-and-scroll
+navigation. Physical VoiceOver/Accessibility Inspector verification remains
+required before claiming native collection conformance.

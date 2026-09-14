@@ -11,6 +11,8 @@ extern puts(text: cstr) -> i64
 extern elisa_uikit_stub_set_view(handle: usize) -> void
 extern elisa_uikit_stub_live_element_count() -> i32
 extern elisa_uikit_stub_focused_element() -> usize
+extern elisa_uikit_stub_layout_change_count() -> i32
+extern elisa_uikit_stub_clear_layout_change_count() -> void
 
 global mutable failures: i32 = 0
 global mutable frames_painted: i32 = 0
@@ -225,6 +227,30 @@ def check_offscreen_frame() -> void can[Ui.Draw, Ui.Text, Ui.Input, Ui.Window, U
     check("release frees every element", elisa_uikit_stub_live_element_count() == 0)
     check("a released session is not live", not UiUIKit::live())
 
+def emit_virtual_collection(position: usize, item_count: usize) -> void can Unsafe.PointerCast:
+    UiCore::begin_frame()
+    UiCore::accessibility(UiCore::AccessibilityRole.List, "Rows", "", UiCore::Rect(0.0, 0.0, 200.0, 160.0), 40, UiFlat::NONE, true, false, false, 0.0, "", "", 0, 0, 0)
+    UiCore::accessibility_set_collection_count(40, item_count)
+    UiCore::accessibility(UiCore::AccessibilityRole.RadioButton, "Row", "", UiCore::Rect(0.0, 0.0, 200.0, 32.0), 41, 41, true, false, false, 0.0, "", "", 0, 0, 0)
+    UiCore::accessibility_set_collection_position(41, position, item_count)
+    UiUIKit::sync_accessibility()
+
+def check_virtual_collection_invalidation() -> void can Unsafe.PointerCast:
+    elisa_uikit_stub_clear_layout_change_count()
+    emit_virtual_collection(2, 1000)
+    # The first committed tree can announce a layout even when the exact host
+    # startup path varies, so measure only transitions after this baseline.
+    elisa_uikit_stub_clear_layout_change_count()
+    emit_virtual_collection(2, 1000)
+    check("unchanged UIKit collection metadata posts no layout event", elisa_uikit_stub_layout_change_count() == 0)
+    emit_virtual_collection(2, 2000)
+    check("changed UIKit collection size posts a layout event", elisa_uikit_stub_layout_change_count() == 1)
+    elisa_uikit_stub_clear_layout_change_count()
+    emit_virtual_collection(731, 2000)
+    check("recycled UIKit row position posts a layout event", elisa_uikit_stub_layout_change_count() == 1)
+    UiUIKit::release_canvas()
+    check("collection semantics release their elements", elisa_uikit_stub_live_element_count() == 0)
+
 def main() -> i64 can[Ui.Draw, Ui.Text, Ui.Input, Ui.Window, Unsafe.PointerCast]:
     elisa_uikit_stub_set_view(0)
     check_capability_profile()
@@ -233,6 +259,7 @@ def main() -> i64 can[Ui.Draw, Ui.Text, Ui.Input, Ui.Window, Unsafe.PointerCast]
     check_system_appearance()
     check_edit_menu()
     check_offscreen_frame()
+    check_virtual_collection_invalidation()
     if failures == 0:
         _ = puts("uikit surface: all checks passed")
         return 0

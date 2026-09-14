@@ -191,6 +191,8 @@ def main() -> i64:
         first_child_id: UiCore::MAX_ACCESSIBILITY_NODES,
         next_sibling_id: UiCore::MAX_ACCESSIBILITY_NODES,
         has_range: false, range_min: 0.0, range_max: 1.0, range_conflict: false,
+        has_collection_position: false, collection_position: 0,
+        collection_size: 0, collection_count: 0,
     }
     after: mutable UiAppKitCanvas::AccessibilityState = before
     check("new accessibility nodes stay quiet", UiAppKitCanvas::accessibility_notifications(false, before, after), 0)
@@ -223,6 +225,12 @@ def main() -> i64:
     after.parent_id <- UiCore::MAX_ACCESSIBILITY_NODES
     after.range_max <- 2.0
     check("range changes invalidate semantic layout", 1 if UiAppKitCanvas::accessibility_layout_changed(true, before, after) else 0, 1)
+    after.range_max <- 1.0
+    after.parent_id <- UiCore::MAX_ACCESSIBILITY_NODES
+    after.has_collection_position <- true
+    after.collection_position <- 12
+    after.collection_size <- 1000
+    check("virtual-row rebinding invalidates semantic layout", 1 if UiAppKitCanvas::accessibility_layout_changed(true, before, after) else 0, 1)
     check("new semantic nodes invalidate layout", 1 if UiAppKitCanvas::accessibility_layout_changed(false, before, before) else 0, 1)
 
     if keymap_failures == 0:

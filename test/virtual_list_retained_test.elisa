@@ -79,8 +79,13 @@ def main() -> i64:
     for node_index in 0..<UiCore::accessibility_count():
         node: UiCore::AccessibilityNode = UiCore::accessibility_at(node_index)
         if node.role == UiCore::AccessibilityRole.List and node.label == "Million-row device list":
-            list_semantic <- node.first_child_id == UiHandles::index(rows[0])
+            list_semantic <- node.first_child_id == UiHandles::index(rows[0]) and node.collection_count == 1000000
     check("retained list publishes a List semantic parent", list_semantic)
+    initial_row_slot: usize = UiCore::accessibility_index_for_id(UiHandles::index(rows[0]))
+    initial_row_semantic: mutable UiCore::AccessibilityNode = UiCore::accessibility_at(0)
+    initial_row_semantic <- UiCore::accessibility_at(initial_row_slot) if initial_row_slot < UiCore::accessibility_count()
+    check("realized row publishes its one-based logical position and total size", initial_row_slot < UiCore::accessibility_count() and initial_row_semantic.has_collection_position and initial_row_semantic.collection_position == 1 and initial_row_semantic.collection_size == 1000000)
+    check("unused row slots are absent from the semantic projection", UiCore::accessibility_index_for_id(UiHandles::index(rows[7])) == UiCore::MAX_ACCESSIBILITY_NODES)
 
     list_box: mutable UiFlat::Widget = UiFlat::widget(UiHandles::index(list))
     row_box: mutable UiFlat::Widget = UiFlat::widget(UiHandles::index(rows[0]))
@@ -105,6 +110,13 @@ def main() -> i64:
     check("recycled slot exposes its current logical identity", UiHandles::virtual_item_index(rows[0]) == 349526)
     check("recycled slot generation changes with its item", UiHandles::virtual_item_generation(rows[0]) != initial_generation)
     check("large-list scrollbar progress stays normalized", UiHandles::virtual_scroll_fraction(list) > 0.34 and UiHandles::virtual_scroll_fraction(list) < 0.36)
+    UiCore::begin_frame()
+    UiHandles::paint()
+    recycled_row_slot: usize = UiCore::accessibility_index_for_id(UiHandles::index(rows[0]))
+    recycled_row_semantic: mutable UiCore::AccessibilityNode = UiCore::accessibility_at(0)
+    recycled_row_semantic <- UiCore::accessibility_at(recycled_row_slot) if recycled_row_slot < UiCore::accessibility_count()
+    check("recycled semantic row announces the new logical position", recycled_row_semantic.has_collection_position and recycled_row_semantic.collection_position == 349527 and recycled_row_semantic.collection_size == 1000000)
+    check("recycled row position changes invalidate collection semantics", UiCore::accessibility_diff(initial_row_semantic, recycled_row_semantic) & UiCore::AccessibilityChange.Collection.i32() != 0)
 
     clicked_item <- -2
     UiHandles::layout(320.0, 240.0)

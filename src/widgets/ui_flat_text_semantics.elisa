@@ -38,6 +38,29 @@ extend UiFlat:
                 cursor <- widgets[cursor].next_sibling
             return UiCore::MAX_ACCESSIBILITY_NODES
 
+        # A semantic child may sit below non-semantic retained layout
+        # wrappers. If its nearest semantic parent is a virtual list, trace
+        # back to the direct realized row so every exposed control in that row
+        # can carry the same logical one-based position without materializing
+        # off-screen widgets.
+        def set_virtual_collection_position(index: usize) -> void:
+            return if index >= widget_count
+            list: usize = semantic_parent_id(index)
+            return if list >= widget_count or not widgets[list].virtual_list
+            row: mutable usize = index
+            found: mutable bool = false
+            for _ in 0..<MAX_TRAVERSAL_DEPTH:
+                break if row >= widget_count
+                if widgets[row].parent == list:
+                    found <- true
+                    break
+                row <- widgets[row].parent
+            return if not found or row >= widget_count
+            logical: i32 = widgets[row].virtual_row_index
+            total: i32 = widgets[list].virtual_total
+            return if logical < 0 or logical >= total
+            UiCore::accessibility_set_collection_position(index, (logical + 1).usize(), total.usize())
+
         # Keyboard focus must never disappear into a translated viewport. The
         # child frame already contains the current offset, so recover its
         # unscrolled edge and request the smallest offset that reveals it.
@@ -93,5 +116,7 @@ extend UiFlat:
             elif widgets[index].virtual_list:
                 UiCore::accessibility(UiCore::AccessibilityRole.List, widgets[index].text, widgets[index].help, frame, index, NONE, enabled, false, false, 0.0, "", "", 0, 0, 0)
             UiCore::accessibility_set_relationships(index, semantic_parent_id(index), semantic_child_id(index), semantic_next_sibling_id(index))
+            UiCore::accessibility_set_collection_count(index, widgets[index].virtual_total.usize()) if widgets[index].virtual_list
+            set_virtual_collection_position(index)
             if widgets[index].kind == UiConst::WidgetKind.Slider or widgets[index].kind == UiConst::WidgetKind.ProgressBar:
                 UiCore::accessibility_set_range(index, 0.0, 1.0)

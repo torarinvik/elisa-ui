@@ -25,10 +25,20 @@ fresh-process stability, all five pages and their state/scale variants. The
 million-item public Showcase workflow has separate exact-tuple budgets for the
 two compiler products. The upstream-main baseline is 12.397 ms median / 12.744
 ms maximum, and its latest strict run passed at 10.942 / 11.575 ms. The newer
-`c605b3fa` baseline is 11.288 / 11.839 ms, and its latest strict run passed at
-25.582 / 27.790 ms while a compiler build shared the host. Both use 30 ms median / 40 ms maximum thresholds and
-reproduced tail pixel digest `1ac21e37972207bb`. Raw samples and exact
+`c605b3fa` baseline for the prior source bundle is 11.288 / 11.839 ms. The
+collection-semantics source bundle passed its new exact-tuple gate at 19.773 /
+27.568 ms over 21 samples. Both use 30 ms median / 40 ms maximum thresholds
+and reproduced tail pixel digest `1ac21e37972207bb`. Raw samples and exact
 provenance are in `test/showcase_skia_performance_budgets.json`.
+
+The collection-semantics rerun used the recorded c605b3fa stage1 product and
+runtime hashes above. A concurrent compiler edit made the isolated source
+checkout newer than that already-built product, so the compiler wrapper's
+dirty/stale-source checks were explicitly permitted for that run; no compiler
+source edits were incorporated into the product. A clean c605b3fa reseed was
+not started because another stage1 seed already held the compiler's host-wide
+build lock. The shared compiler checkout and the in-progress seed were left
+untouched.
 
 The portable retained-tree benchmark has separate exact budgets for upstream
 `main` (`6cdcdf45`) and the newer `c605b3fa` compiler product. Both required

@@ -21,7 +21,19 @@ def main() -> i64:
     check("metadata preserves stable identity", node.id == 7 and node.action == 7)
     check("metadata preserves relationships", node.parent_id == 2 and node.first_child_id == 8 and node.next_sibling_id == 9)
     check("metadata preserves numeric range", node.has_range and node.range_min == -1.0 and node.range_max == 1.0 and not node.range_conflict)
+    check("ordinary semantic nodes default to no collection position", not node.has_collection_position and node.collection_position == 0 and node.collection_size == 0 and node.collection_count == 0)
     check("semantic identity index resolves the retained slot", UiCore::accessibility_index_for_id(7) == 0)
+
+    UiCore::accessibility_set_collection_count(7, 1000)
+    UiCore::accessibility_set_collection_position(7, 3, 500)
+    node <- UiCore::accessibility_at(0)
+    check("collection node separates logical count from positioned set size", node.collection_count == 1000 and node.has_collection_position and node.collection_position == 3 and node.collection_size == 500)
+    collection_changed: mutable UiCore::AccessibilityNode = node
+    collection_changed.collection_position <- 4
+    check("semantic diff reports collection position changes", UiCore::accessibility_diff(node, collection_changed) & UiCore::AccessibilityChange.Collection.i32() != 0)
+    UiCore::accessibility_set_collection_position(7, 501, 500)
+    node <- UiCore::accessibility_at(0)
+    check("out-of-set collection positions fail closed", not node.has_collection_position and node.collection_position == 0 and node.collection_size == 500)
 
     changed: mutable UiCore::AccessibilityNode = node
     changed.frame <- UiCore::Rect(5.0, 8.0, 100.0, 24.0)

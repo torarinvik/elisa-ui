@@ -16,7 +16,8 @@ extend UiCore:
             Text = 32
             Selection = 64
             Range = 128
-            All = 255
+            Collection = 256
+            All = 511
 
         # Compare two nodes without allocating or inspecting native handles.
         # A caller can map each bit to the smallest host operation: structural
@@ -32,6 +33,7 @@ extend UiCore:
             changes <- changes | AccessibilityChange.Text.i32() if before.label != after.label or before.help != after.help or before.text_value != after.text_value or before.selected_text != after.selected_text or before.revision != after.revision
             changes <- changes | AccessibilityChange.Selection.i32() if before.selection_location != after.selection_location or before.selection_length != after.selection_length
             changes <- changes | AccessibilityChange.Range.i32() if before.has_range != after.has_range or before.range_min != after.range_min or before.range_max != after.range_max or before.range_conflict != after.range_conflict
+            changes <- changes | AccessibilityChange.Collection.i32() if before.has_collection_position != after.has_collection_position or before.collection_position != after.collection_position or before.collection_size != after.collection_size or before.collection_count != after.collection_count
             return changes
 
 extend UiCore:
@@ -72,6 +74,32 @@ extend UiCore:
             value <- safe_minimum if value < safe_minimum
             value <- safe_maximum if value > safe_maximum
             accessibility_nodes[existing].value <- value
+            invalidate(Invalidation.Semantics)
+
+        # A collection container can expose its logical item count even while
+        # only a small realized window is present in the semantic tree.
+        def accessibility_set_collection_count(id: usize, count: usize) -> void:
+            existing: usize = accessibility_index_for_id(id)
+            return if existing >= accessibility_total.usize()
+            return if accessibility_nodes[existing].collection_count == count
+            accessibility_nodes[existing].collection_count <- count
+            invalidate(Invalidation.Semantics)
+
+        # Child position and set size are stored together to avoid publishing
+        # a position without a meaningful collection extent. Positions are
+        # one-based; invalid tuples clear the positional portion but preserve
+        # a valid set size for diagnostics and future consumers.
+        def accessibility_set_collection_position(id: usize, position: usize, size: usize) -> void:
+            existing: usize = accessibility_index_for_id(id)
+            return if existing >= accessibility_total.usize()
+            valid: bool = size > 0 and position > 0 and position <= size
+            safe_position: usize = position if valid else 0
+            safe_size: usize = size if size > 0 else 0
+            has_position: bool = valid
+            return if accessibility_nodes[existing].has_collection_position == has_position and accessibility_nodes[existing].collection_position == safe_position and accessibility_nodes[existing].collection_size == safe_size
+            accessibility_nodes[existing].has_collection_position <- has_position
+            accessibility_nodes[existing].collection_position <- safe_position
+            accessibility_nodes[existing].collection_size <- safe_size
             invalidate(Invalidation.Semantics)
 
         def accessibility_count() -> usize:
