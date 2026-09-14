@@ -35,6 +35,7 @@ module UiResourcePresentation:
 
         struct Record:
             handle: UiResources::ResourceHandle
+            owner: u32
             kind: Kind
             state: DisplayState
             failure: UiResources::FailureKind
@@ -84,7 +85,7 @@ module UiResourcePresentation:
         # presentation record. Applications can keep that typed handle for
         # later completion, retry, cancellation, or disposal.
         def request(key: sview, owner: u32, options: Options) -> Record:
-            return UiResourcePresentation::record(UiResources::request(key, owner), options)
+            return UiResourcePresentation::record_for_owner(UiResources::request(key, owner), owner, options)
 
         # Request and publish a visibility/prefetch hint together. The logical
         # request remains idempotent, while the returned snapshot reflects the
@@ -92,8 +93,8 @@ module UiResourcePresentation:
         # returns the same neutral record as request().
         def request_with_demand(key: sview, owner: u32, priority: u32, options: Options) -> Record:
             handle: UiResources::ResourceHandle = UiResources::request(key, owner)
-            _ = UiResources::set_demand(handle, priority)
-            return UiResourcePresentation::record(handle, options)
+            _ = UiResources::set_demand_for_owner(handle, owner, priority)
+            return UiResourcePresentation::record_for_owner(handle, owner, options)
 
         def request_kind(key: sview, owner: u32, kind: Kind) -> Record:
             safe_kind: Kind = normalize_kind(kind)
@@ -155,11 +156,16 @@ module UiResourcePresentation:
         def retry(handle: UiResources::ResourceHandle) -> UiResources::ResourceHandle:
             return UiResources::retry(handle)
 
+        # Explicitly cancels the shared logical operation for every owner.
+        # Use cancel_record() when only this widget should stop observing it.
         def cancel(handle: UiResources::ResourceHandle) -> bool:
             return UiResources::cancel(handle)
 
+        def cancel_record(value: Record) -> bool:
+            return UiResources::cancel_for_owner(value.handle, value.owner)
+
         def clear_demand(value: Record) -> bool:
-            return UiResources::clear_demand(value.handle)
+            return UiResources::clear_demand_for_owner(value.handle, value.owner)
 
         # Emit the stable visual fallback owned by the framework. Ready assets
         # intentionally emit nothing: the host resolves verified bytes through
@@ -194,6 +200,14 @@ module UiResourcePresentation:
             }, mark)
 
         def record(handle: UiResources::ResourceHandle, options: Options) -> Record:
+            return UiResourcePresentation::record_for_owner(handle, UiResources::owner(handle), options)
+
+        def normalize_kind(kind: Kind) -> Kind:
+            return kind if kind == Kind.Image or kind == Kind.Font or kind == Kind.Document
+            return Kind.Generic
+
+    public:
+        def record_for_owner(handle: UiResources::ResourceHandle, owner: u32, options: Options) -> Record:
             current: DisplayState = display_state(handle)
             retryable: bool = options.allow_retry and can_retry(handle)
             intrinsic: UiCore::Size = UiResources::intrinsic_size(handle)
@@ -206,6 +220,7 @@ module UiResourcePresentation:
             reserved_height <- intrinsic.height if options.reserved_height == 0.0
             return Record{
                 handle: handle,
+                owner: owner,
                 kind: normalize_kind(options.kind),
                 state: current,
                 failure: UiResources::failure(handle),
@@ -220,7 +235,3 @@ module UiResourcePresentation:
                 interaction_enabled: current == DisplayState.Ready or retryable,
                 reserved_size: UiCore::Size(reserved_width, reserved_height),
             }
-
-        def normalize_kind(kind: Kind) -> Kind:
-            return kind if kind == Kind.Image or kind == Kind.Font or kind == Kind.Document
-            return Kind.Generic

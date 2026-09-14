@@ -8,6 +8,7 @@ the state that a live view can safely present while that work happens elsewhere.
 The public include is intentionally a small facade over cohesive Elisa modules:
 `ui_resources_types.elisa` owns the fixed-capacity records and enums,
 `ui_resources_identity.elisa` owns generation-safe identity and key matching,
+`ui_resources_owners.elisa` owns independent observer leases,
 `ui_resources_queries.elisa` owns read-only projections,
 `ui_resources_demand.elisa` owns visibility hints and progress, and
 `ui_resources_transitions.elisa` owns requests, completion, retry, and teardown.
@@ -21,21 +22,33 @@ include "src/widgets/ui_resources.elisa"
 UiResources::reset()
 logo: UiResources::ResourceHandle = UiResources::request("images/logo", 7)
 UiResources::set_progress(logo, network_fraction, decode_fraction)
-UiResources::set_demand(logo, 10) # visibility/prefetch priority hint
+UiResources::set_demand_for_owner(logo, 7, 10) # visibility/prefetch hint
 if UiResources::state(logo) == UiResources::State.Ready:
     # Resolve the verified resource through the backend-owned renderer.
 elif UiResources::state(logo) == UiResources::State.UnavailableOffline:
     # Keep the rest of the view interactive and offer retry/offline help.
 ```
 
-Requests are idempotent by logical identifier while a record is live, so a
-view rebuild cannot start duplicate work. Each handle contains a slot and a
-generation. `dispose` advances the generation before releasing the identifier;
-late completions holding the old token become no-ops even if the slot is reused.
-`cancel` preserves the record for a possible re-request, while `retry` accepts
-only recoverable denied/offline/failed states and returns a fresh generation
-handle. Replace the old handle with that result; the old handle is invalidated
-so late callbacks from the previous operation cannot update the retry.
+Requests coalesce by logical identifier while a record is live, so several
+views share one handle and do not start duplicate host work. Each `(resource,
+owner)` pair has its own bounded lease; repeating a request for that owner is
+idempotent, and a different owner does not replace the existing observer.
+`owner_count()` and `owns()` inspect membership; `owner()` is a compatibility
+projection of the first live owner. Each handle contains a slot and a
+generation. `dispose(handle)` is the forceful, global release: it advances the
+generation before releasing the identifier, so late completions holding the
+old token become no-ops even if the slot is reused. For ordinary view teardown,
+`dispose_owner(owner)` removes only that owner's leases and frees a resource
+only after its final owner leaves.
+
+`cancel(handle)` explicitly cancels the shared operation. Use
+`cancel_for_owner(handle, owner)` or `cancel_owner(owner)` when one view should
+stop observing it; the host request is marked Cancelled only after the final
+owner leaves. A cancelled record remains available for a later request, which
+starts a fresh generation. `retry` accepts only recoverable denied/offline/
+failed states and returns a fresh generation handle. Replace the old handle
+with that result; late callbacks from the previous operation cannot update the
+retry.
 
 Network and decode progress are separate normalized fractions. A value of 1.0
 for network progress never implies that a resource is ready to paint. State or
@@ -45,9 +58,13 @@ resource reason after it has consumed the change.
 Progress is monotonic within one resource generation; out-of-order decreases
 are rejected, while `retry` starts a fresh operation with zeroed progress.
 
-Visible views can add an idempotent `set_demand(handle, priority)` hint and
-remove it with `clear_demand`. The priority is framework state for host/SDK
-coalescing; it does not grant bandwidth, bypass cache policy, or force a fetch.
+Visible views can add an idempotent `set_demand_for_owner(handle, owner,
+priority)` hint and remove it with `clear_demand_for_owner`. The compatibility
+helpers `set_demand` and `clear_demand` target the first live owner. Each
+owner's priority is retained independently; the host sees one aggregate hint
+at the highest live priority, with a deterministic owner on ties. Demand is
+framework state for host/SDK coalescing; it does not grant bandwidth, bypass
+cache policy, or force a fetch.
 Hosts can inspect the bounded `demand_count()` / `demand_at(index)` snapshot or
 select `highest_priority_demand()`. Each returned `DemandHint` includes the
 generation-safe handle, owner, and priority; enumeration is deterministic and
@@ -94,7 +111,9 @@ resources. `record(handle, options)` returns a read-only snapshot containing:
   arrive.
 
 `retry` and `cancel` are explicit actions that forward to `UiResources`; the
-presentation layer never starts a fetch by itself. Failed resources carry a
+presentation layer never starts a fetch by itself. `cancel(handle)` cancels
+the coalesced operation globally; `cancel_record(record)` releases only the
+record owner's lease. Failed resources carry a
 typed `FailureKind`: `RetryableTransport` permits retry, while `Corrupt` and
 `Incompatible` remain terminal until a new package/resource identity is
 selected. This keeps offline/denied states recoverable without retry loops and
@@ -109,10 +128,11 @@ the same coalescing and typed-handle lifetime rules.
 When visibility is known at request time, `request_image_with_demand`,
 `request_font_with_demand`, `request_document_with_demand`, or the generic
 `request_with_demand` combines the logical request with one demand hint and
-returns a record containing `demanded` and `demand_priority`. Repeating the
-helper for a live key updates its owner and priority without creating a second
-resource. `clear_demand(record)` releases only that generation's hint; it does
-not cancel or dispose the logical resource.
+returns a record containing the requesting owner, `demanded`, and aggregate
+`demand_priority`. Repeating the helper for a live key adds/reuses that owner's
+lease and updates only that owner's priority. `clear_demand(record)` releases
+only that record owner's hint; it does not cancel or dispose the logical
+resource.
 
 `paint(box, record, options)` emits the backend-neutral placeholder, decoded
 progress strip, or fallback card (including its diagnostic mark) through the

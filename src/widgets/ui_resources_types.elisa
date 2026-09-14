@@ -6,6 +6,10 @@ module UiResources:
     public:
         const MAX_RESOURCES: usize = 128
         const IDENTIFIER_CAPACITY: usize = 256
+        # A logical asset can be observed by several independently-lived
+        # widgets. Keep those leases bounded separately from the resource
+        # arena so coalescing never makes one widget own another's lifetime.
+        const MAX_RESOURCE_OWNER_LEASES: usize = 1024
 
         const enum State of i32:
             Unrequested = 0
@@ -42,10 +46,15 @@ module UiResources:
         global mutable resource_generations: u32[MAX_RESOURCES] = zeroed
         global mutable resource_states: State[MAX_RESOURCES] = zeroed
         global mutable resource_failure_kinds: FailureKind[MAX_RESOURCES] = zeroed
-        global mutable resource_owners: u32[MAX_RESOURCES] = zeroed
         global mutable resource_identifier_lengths: usize[MAX_RESOURCES] = zeroed
         global mutable resource_identifier_storage: u8[MAX_RESOURCES * IDENTIFIER_CAPACITY] = zeroed
         global mutable resource_downloaded: f32[MAX_RESOURCES] = zeroed
         global mutable resource_decoded: f32[MAX_RESOURCES] = zeroed
         global mutable resource_demanded: bool[MAX_RESOURCES] = zeroed
         global mutable resource_priorities: u32[MAX_RESOURCES] = zeroed
+        global mutable resource_demand_owners: u32[MAX_RESOURCES] = zeroed
+        global mutable resource_owner_lease_active: bool[MAX_RESOURCE_OWNER_LEASES] = zeroed
+        global mutable resource_owner_lease_slots: u32[MAX_RESOURCE_OWNER_LEASES] = zeroed
+        global mutable resource_owner_lease_ids: u32[MAX_RESOURCE_OWNER_LEASES] = zeroed
+        global mutable resource_owner_lease_demanded: bool[MAX_RESOURCE_OWNER_LEASES] = zeroed
+        global mutable resource_owner_lease_priorities: u32[MAX_RESOURCE_OWNER_LEASES] = zeroed

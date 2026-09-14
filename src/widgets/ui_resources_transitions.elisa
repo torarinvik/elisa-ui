@@ -8,7 +8,6 @@ extend UiResources:
                 resource_generations[slot] <- 1 if next_generation == 0 else next_generation
                 resource_states[slot] <- State.Unrequested
                 resource_failure_kinds[slot] <- FailureKind.Unknown
-                resource_owners[slot] <- 0
                 resource_identifier_lengths[slot] <- 0
                 for byte_index in 0..<IDENTIFIER_CAPACITY:
                     resource_identifier_storage[slot * IDENTIFIER_CAPACITY + byte_index] <- 0
@@ -17,6 +16,8 @@ extend UiResources:
                 resource_decoded[slot] <- 0.0
                 resource_demanded[slot] <- false
                 resource_priorities[slot] <- 0
+                resource_demand_owners[slot] <- 0
+            resource_owner_reset()
             resource_count <- 0
             resource_overflowed <- false
             UiCore::clear_invalidations(UiCore::Invalidation.Resources)
@@ -35,7 +36,7 @@ extend UiResources:
             return UiResources::resource_invalid() if safe_key.len <= 0 or safe_key.len != key.len or safe_key.len >= IDENTIFIER_CAPACITY.i64()
             for slot in 0..<resource_count:
                 if resource_states[slot] != State.Unrequested and resource_key_matches(slot, safe_key):
-                    resource_owners[slot] <- owner
+                    return UiResources::resource_invalid() if not resource_owner_add(slot, owner)
                     if resource_states[slot] == State.Cancelled:
                         next_generation: u32 = resource_generations[slot] + 1
                         resource_generations[slot] <- 1 if next_generation == 0 else next_generation
@@ -44,8 +45,7 @@ extend UiResources:
                         resource_downloaded[slot] <- 0.0
                         resource_decoded[slot] <- 0.0
                         # Demand hints belong to the cancelled host operation.
-                        resource_demanded[slot] <- false
-                        resource_priorities[slot] <- 0
+                        resource_clear_all_owner_demands(slot)
                         resource_mark_changed()
                     return resource_make_handle(slot)
 
@@ -60,16 +60,17 @@ extend UiResources:
 
             generation: u32 = resource_generations[free_slot]
             resource_generations[free_slot] <- 1 if generation == 0 else generation
+            return UiResources::resource_invalid() if not resource_owner_add(free_slot, owner)
             offset: usize = free_slot * IDENTIFIER_CAPACITY
             for index in 0..<IDENTIFIER_CAPACITY:
                 resource_identifier_storage[offset + index] <- safe_key.data[index] if index < safe_key.len else 0
             resource_identifier_lengths[free_slot] <- safe_key.len.usize()
-            resource_owners[free_slot] <- owner
             resource_states[free_slot] <- State.Requested
             resource_downloaded[free_slot] <- 0.0
             resource_decoded[free_slot] <- 0.0
             resource_demanded[free_slot] <- false
             resource_priorities[free_slot] <- 0
+            resource_demand_owners[free_slot] <- 0
             resource_count <- free_slot + 1 if free_slot >= resource_count else resource_count
             resource_mark_changed()
             return resource_make_handle(free_slot)
@@ -99,8 +100,7 @@ extend UiResources:
             return false if resource_states[slot] == next
             resource_states[slot] <- next
             if next == State.Cancelled:
-                resource_demanded[slot] <- false
-                resource_priorities[slot] <- 0
+                resource_clear_all_owner_demands(slot)
             resource_failure_kinds[slot] <- FailureKind.RetryableTransport if next == State.Failed else FailureKind.Unknown
             if next == State.Ready:
                 resource_downloaded[slot] <- 1.0
@@ -110,6 +110,24 @@ extend UiResources:
 
         def cancel(handle: ResourceHandle) -> bool:
             return set_state(handle, State.Cancelled)
+
+        # A widget can stop observing its shared resource without cancelling
+        # work still needed by another widget. The logical record remains as
+        # a cancelled tombstone if this was its last live owner, allowing a
+        # later request for the same key to begin with a fresh generation.
+        def cancel_for_owner(handle: ResourceHandle, owner: u32) -> bool:
+            return false if not UiResources::resource_is_valid(handle)
+            slot: usize = handle.slot.usize()
+            return false if not resource_owner_remove(slot, owner)
+            resource_refresh_demand(slot)
+            if resource_owner_count(slot) == 0 and resource_states[slot] != State.Cancelled:
+                resource_states[slot] <- State.Cancelled
+                resource_failure_kinds[slot] <- FailureKind.Unknown
+                resource_downloaded[slot] <- 0.0
+                resource_decoded[slot] <- 0.0
+                resource_clear_all_owner_demands(slot)
+            resource_mark_changed()
+            return true
 
         # Start a recoverable resource operation with a fresh generation. The
         # returned handle must replace the caller's old handle.
@@ -122,8 +140,7 @@ extend UiResources:
             resource_failure_kinds[slot] <- FailureKind.Unknown
             resource_downloaded[slot] <- 0.0
             resource_decoded[slot] <- 0.0
-            resource_demanded[slot] <- false
-            resource_priorities[slot] <- 0
+            resource_clear_all_owner_demands(slot)
             resource_mark_changed()
             return resource_make_handle(slot)
 
@@ -143,26 +160,21 @@ extend UiResources:
         def dispose_owner(owner: u32) -> usize:
             released: mutable usize = 0
             for slot in 0..<resource_count:
-                if resource_states[slot] != State.Unrequested and resource_owners[slot] == owner:
-                    resource_clear_slot(slot)
+                if resource_states[slot] != State.Unrequested and resource_owner_remove(slot, owner):
                     released <- released + 1
+                    resource_refresh_demand(slot)
+                    resource_clear_slot(slot) if resource_owner_count(slot) == 0
             for _ in 0..<MAX_RESOURCES:
                 break if resource_count == 0 or resource_states[resource_count - 1] != State.Unrequested
                 resource_count <- resource_count - 1
             resource_mark_changed() if released > 0
             return released
 
-        # Cancellation keeps the logical record available for a re-request.
+        # Cancellation removes this owner's leases. A coalesced operation is
+        # cancelled only after its final interested owner has gone away.
         def cancel_owner(owner: u32) -> usize:
-            cancelled: mutable usize = 0
+            released: mutable usize = 0
             for slot in 0..<resource_count:
-                if resource_states[slot] != State.Unrequested and resource_owners[slot] == owner and resource_states[slot] != State.Cancelled:
-                    resource_states[slot] <- State.Cancelled
-                    resource_failure_kinds[slot] <- FailureKind.Unknown
-                    resource_downloaded[slot] <- 0.0
-                    resource_decoded[slot] <- 0.0
-                    resource_demanded[slot] <- false
-                    resource_priorities[slot] <- 0
-                    cancelled <- cancelled + 1
-            resource_mark_changed() if cancelled > 0
-            return cancelled
+                if resource_states[slot] != State.Unrequested and resource_owner_lease_index(slot, owner) < MAX_RESOURCE_OWNER_LEASES:
+                    released <- released + 1 if UiResources::cancel_for_owner(resource_make_handle(slot), owner)
+            return released

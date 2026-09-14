@@ -1,0 +1,61 @@
+# Independent owner leases for coalesced logical resources.
+
+extend UiResources:
+    private:
+        def resource_owner_lease_index(slot: usize, owner_id: u32) -> usize:
+            for index in 0..<MAX_RESOURCE_OWNER_LEASES:
+                if resource_owner_lease_active[index] and resource_owner_lease_slots[index].usize() == slot and resource_owner_lease_ids[index] == owner_id:
+                    return index
+            return MAX_RESOURCE_OWNER_LEASES
+
+        def resource_owner_add(slot: usize, owner_id: u32) -> bool:
+            return true if resource_owner_lease_index(slot, owner_id) < MAX_RESOURCE_OWNER_LEASES
+            for index in 0..<MAX_RESOURCE_OWNER_LEASES:
+                if not resource_owner_lease_active[index]:
+                    resource_owner_lease_active[index] <- true
+                    resource_owner_lease_slots[index] <- slot.u32()
+                    resource_owner_lease_ids[index] <- owner_id
+                    resource_owner_lease_demanded[index] <- false
+                    resource_owner_lease_priorities[index] <- 0
+                    return true
+            resource_overflowed <- true
+            return false
+
+        def resource_owner_remove(slot: usize, owner_id: u32) -> bool:
+            index: usize = resource_owner_lease_index(slot, owner_id)
+            return false if index >= MAX_RESOURCE_OWNER_LEASES
+            resource_owner_lease_active[index] <- false
+            resource_owner_lease_slots[index] <- 0
+            resource_owner_lease_ids[index] <- 0
+            resource_owner_lease_demanded[index] <- false
+            resource_owner_lease_priorities[index] <- 0
+            return true
+
+        def resource_owner_count(slot: usize) -> usize:
+            count: usize =
+                for index in 0..<MAX_RESOURCE_OWNER_LEASES |count: usize = 0| -> count:
+                    count <- count + 1 if resource_owner_lease_active[index] and resource_owner_lease_slots[index].usize() == slot
+            return count
+
+        def resource_owner_first(slot: usize) -> u32:
+            for index in 0..<MAX_RESOURCE_OWNER_LEASES:
+                if resource_owner_lease_active[index] and resource_owner_lease_slots[index].usize() == slot:
+                    return resource_owner_lease_ids[index]
+            return 0
+
+        def resource_owner_clear_slot(slot: usize) -> void:
+            for index in 0..<MAX_RESOURCE_OWNER_LEASES:
+                if resource_owner_lease_active[index] and resource_owner_lease_slots[index].usize() == slot:
+                    resource_owner_lease_active[index] <- false
+                    resource_owner_lease_slots[index] <- 0
+                    resource_owner_lease_ids[index] <- 0
+                    resource_owner_lease_demanded[index] <- false
+                    resource_owner_lease_priorities[index] <- 0
+
+        def resource_owner_reset() -> void:
+            for index in 0..<MAX_RESOURCE_OWNER_LEASES:
+                resource_owner_lease_active[index] <- false
+                resource_owner_lease_slots[index] <- 0
+                resource_owner_lease_ids[index] <- 0
+                resource_owner_lease_demanded[index] <- false
+                resource_owner_lease_priorities[index] <- 0

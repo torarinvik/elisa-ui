@@ -1,6 +1,28 @@
 # Resource visibility demand hints and independent progress channels.
 
 extend UiResources:
+    private:
+        def resource_refresh_demand(slot: usize) -> void:
+            selected: mutable usize = MAX_RESOURCE_OWNER_LEASES
+            selected_priority: mutable u32 = 0
+            selected_owner: mutable u32 = 0
+            for index in 0..<MAX_RESOURCE_OWNER_LEASES:
+                continue if not resource_owner_lease_active[index] or resource_owner_lease_slots[index].usize() != slot or not resource_owner_lease_demanded[index]
+                if selected == MAX_RESOURCE_OWNER_LEASES or resource_owner_lease_priorities[index] > selected_priority or (resource_owner_lease_priorities[index] == selected_priority and resource_owner_lease_ids[index] < selected_owner):
+                    selected <- index
+                    selected_priority <- resource_owner_lease_priorities[index]
+                    selected_owner <- resource_owner_lease_ids[index]
+            resource_demanded[slot] <- selected < MAX_RESOURCE_OWNER_LEASES
+            resource_priorities[slot] <- selected_priority
+            resource_demand_owners[slot] <- selected_owner
+
+        def resource_clear_all_owner_demands(slot: usize) -> void:
+            for index in 0..<MAX_RESOURCE_OWNER_LEASES:
+                if resource_owner_lease_active[index] and resource_owner_lease_slots[index].usize() == slot:
+                    resource_owner_lease_demanded[index] <- false
+                    resource_owner_lease_priorities[index] <- 0
+            resource_refresh_demand(slot)
+
     public:
         struct DemandHint:
             handle: ResourceHandle
@@ -13,18 +35,36 @@ extend UiResources:
         # changes, so scrolling cannot create a request storm.
         def set_demand(handle: ResourceHandle, priority: u32) -> bool:
             return false if not UiResources::resource_is_valid(handle)
-            return false if UiResources::state(handle) == State.Cancelled
             slot: usize = handle.slot.usize()
-            return false if resource_demanded[slot] and resource_priorities[slot] == priority
-            resource_demanded[slot] <- true
-            resource_priorities[slot] <- priority
+            return UiResources::set_demand_for_owner(handle, resource_owner_first(slot), priority)
+
+        # A visibility hint belongs to the particular widget lease, not to
+        # every consumer of the coalesced resource. The host still sees one
+        # aggregate hint with the highest live owner priority.
+        def set_demand_for_owner(handle: ResourceHandle, owner_id: u32, priority: u32) -> bool:
+            return false if not UiResources::resource_is_valid(handle) or UiResources::state(handle) == State.Cancelled
+            slot: usize = handle.slot.usize()
+            index: usize = resource_owner_lease_index(slot, owner_id)
+            return false if index >= MAX_RESOURCE_OWNER_LEASES
+            return false if resource_owner_lease_demanded[index] and resource_owner_lease_priorities[index] == priority
+            resource_owner_lease_demanded[index] <- true
+            resource_owner_lease_priorities[index] <- priority
+            resource_refresh_demand(slot)
             resource_mark_changed()
             return true
 
         def clear_demand(handle: ResourceHandle) -> bool:
-            return false if not UiResources::resource_is_valid(handle) or not resource_demanded[handle.slot.usize()]
-            resource_demanded[handle.slot.usize()] <- false
-            resource_priorities[handle.slot.usize()] <- 0
+            return false if not UiResources::resource_is_valid(handle)
+            return UiResources::clear_demand_for_owner(handle, resource_owner_first(handle.slot.usize()))
+
+        def clear_demand_for_owner(handle: ResourceHandle, owner_id: u32) -> bool:
+            return false if not UiResources::resource_is_valid(handle)
+            slot: usize = handle.slot.usize()
+            index: usize = resource_owner_lease_index(slot, owner_id)
+            return false if index >= MAX_RESOURCE_OWNER_LEASES or not resource_owner_lease_demanded[index]
+            resource_owner_lease_demanded[index] <- false
+            resource_owner_lease_priorities[index] <- 0
+            resource_refresh_demand(slot)
             resource_mark_changed()
             return true
 
@@ -34,10 +74,12 @@ extend UiResources:
         # the resources themselves.
         def clear_demand_owner(owner: u32) -> usize:
             cleared: mutable usize = 0
-            for slot in 0..<resource_count:
-                if resource_states[slot] != State.Unrequested and resource_owners[slot] == owner and resource_demanded[slot]:
-                    resource_demanded[slot] <- false
-                    resource_priorities[slot] <- 0
+            for index in 0..<MAX_RESOURCE_OWNER_LEASES:
+                if resource_owner_lease_active[index] and resource_owner_lease_ids[index] == owner and resource_owner_lease_demanded[index]:
+                    slot: usize = resource_owner_lease_slots[index].usize()
+                    resource_owner_lease_demanded[index] <- false
+                    resource_owner_lease_priorities[index] <- 0
+                    resource_refresh_demand(slot)
                     cleared <- cleared + 1
             resource_mark_changed() if cleared > 0
             return cleared
@@ -63,7 +105,7 @@ extend UiResources:
             found: mutable usize = 0
             for slot in 0..<resource_count:
                 continue if resource_states[slot] == State.Unrequested or not resource_demanded[slot]
-                return DemandHint{handle: resource_make_handle(slot), owner: resource_owners[slot], priority: resource_priorities[slot]} if found == index
+                return DemandHint{handle: resource_make_handle(slot), owner: resource_demand_owners[slot], priority: resource_priorities[slot]} if found == index
                 found <- found + 1
             return DemandHint{handle: UiResources::resource_invalid(), owner: 0, priority: 0}
 
@@ -79,7 +121,7 @@ extend UiResources:
                     selected <- slot
                     selected_priority <- resource_priorities[slot]
             return DemandHint{handle: resource_invalid(), owner: 0, priority: 0} if selected == MAX_RESOURCES
-            return DemandHint{handle: resource_make_handle(selected), owner: resource_owners[selected], priority: selected_priority}
+            return DemandHint{handle: resource_make_handle(selected), owner: resource_demand_owners[selected], priority: selected_priority}
 
         # Hosts report transport/decode progress independently. Both fractions
         # are normalized before storage; network completion therefore does not
