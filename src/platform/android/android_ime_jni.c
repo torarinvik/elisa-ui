@@ -9,7 +9,6 @@
 #include <jni.h>
 #include <stdint.h>
 #include "../common/utf8_utf16.h"
-#include <string.h>
 
 #define ELISA_IME_TEXT_MAX 1024
 
@@ -48,7 +47,7 @@ static void elisa_ime_forward(JNIEnv *env, jstring text, int32_t new_cursor_posi
                                                  new_cursor_position);
     else elisa_android_commit_text((const char *)utf8, (int32_t)length,
                                    new_cursor_position);
-    memset(utf8, 0, sizeof(utf8));
+    elisa_secure_clear(utf8, sizeof(utf8));
     (*env)->ReleaseStringChars(env, text, units);
 }
 

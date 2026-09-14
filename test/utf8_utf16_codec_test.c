@@ -55,6 +55,12 @@ int main(void) {
     CHECK(elisa_utf16_to_utf8(expected_units + 3, 2, roundtrip, 4) == 4 &&
           memcmp(roundtrip, emoji, sizeof(emoji)) == 0, "supplementary scalar at exact capacity");
 
+    uint8_t short_lived_text[] = {0x73, 0x65, 0x63, 0x72, 0x65, 0x74};
+    elisa_secure_clear(short_lived_text, sizeof(short_lived_text));
+    for (size_t index = 0; index < sizeof(short_lived_text); index += 1) {
+        CHECK(short_lived_text[index] == 0, "short-lived text staging is securely cleared");
+    }
+
     puts("UTF-8/UTF-16 codec: all checks passed");
     return 0;
 }

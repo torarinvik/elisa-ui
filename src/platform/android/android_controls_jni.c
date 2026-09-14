@@ -118,7 +118,7 @@ JNIEXPORT void JNICALL Java_org_elisa_1ui_ElisaControls_nativeControlText(
     size_t length = elisa_utf16_to_utf8((const uint16_t *)units,
                                         (size_t)units_length, utf8, sizeof(utf8));
     elisa_android_controls_text(handle, (const char *)utf8, (int32_t)length);
-    memset(utf8, 0, sizeof(utf8));
+    elisa_secure_clear(utf8, sizeof(utf8));
     (*env)->ReleaseStringChars(env, text, units);
 }
 

@@ -7,6 +7,18 @@
 #include <stddef.h>
 #include <stdint.h>
 
+// Clear short-lived text staging through volatile stores so ordinary dead-
+// store elimination cannot discard the wipe after the foreign call returns.
+static inline void elisa_secure_clear(void *memory, size_t length) {
+    volatile uint8_t *bytes = (volatile uint8_t *)memory;
+    if (bytes == NULL) return;
+    while (length > 0) {
+        *bytes = 0;
+        bytes += 1;
+        length -= 1;
+    }
+}
+
 // Decode one standard UTF-8 scalar. Ill-formed input consumes one byte and
 // becomes U+FFFD. This makes the malformed-input policy deterministic without
 // ever passing invalid UTF-8 into the retained text layer.
