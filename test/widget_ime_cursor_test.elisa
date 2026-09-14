@@ -1,0 +1,52 @@
+# Android InputConnection cursor rules, kept separate from the broad widget
+# fixture so each test module stays quick to compile and easy to diagnose.
+
+include "./widget_layout_support.elisa"
+
+def main() -> i64:
+    UiFlat::reset()
+    field: usize = UiFlat::text_field(UiFlat::NONE, "Project name", "Type a name", "", 220.0, 36.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
+    UiFlat::layout(220.0, 36.0)
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(100.0, 18.0), button: 0)))
+    UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(100.0, 18.0), button: 0)))
+
+    UiFlat::replace_text(field, "uvwxyz")
+    UiFlat::set_selection_utf16(field, 1, 0)
+    UiFlat::update_marked_text_at_utf16_cursor("A😀B", true, 0)
+    check("composing end counts the supplementary scalar", UiFlat::selection_utf16_location(field) == 5 and UiFlat::marked_utf16_length(field) == 4)
+    UiFlat::update_marked_text_at_utf16_cursor("A😀B", false, 0)
+    check("composing start uses the marked run origin", UiFlat::selection_utf16_location(field) == 1)
+    UiFlat::update_marked_text_at_utf16_cursor("A😀B", false, -2)
+    check("negative composing cursor clamps at field start", UiFlat::selection_utf16_location(field) == 0)
+    UiFlat::update_marked_text_at_utf16_cursor("A😀B", true, 2)
+    check("positive composing cursor is relative to the marked end", UiFlat::selection_utf16_location(field) == 7)
+    UiFlat::update_marked_text_at_utf16_cursor("A😀B", true, 99)
+    check("composing cursor clamps to the field end", UiFlat::selection_utf16_location(field) == 10)
+    UiFlat::update_marked_text("", 0, 0, 0, 0, false)
+
+    UiFlat::replace_text(field, "uvwxyz")
+    UiFlat::set_selection_utf16(field, 1, 0)
+    UiFlat::commit_text_at_utf16_cursor("A😀B", 0, 0, false, true, 2)
+    check("committed cursor offset follows accepted supplementary text", UiFlat::text_value(field) == "uA😀Bvwxyz" and UiFlat::selection_utf16_location(field) == 7)
+    UiFlat::set_selection_utf16(field, 3, 0)
+    check("a cursor inside a surrogate pair resolves to its leading boundary", UiFlat::selection_utf16_location(field) == 2)
+
+    UiFlat::replace_text(field, "uvwxyz")
+    UiFlat::set_selection_utf16(field, 1, 0)
+    UiFlat::update_marked_text("A😀B", 0, 0, 0, 0, false)
+    UiFlat::commit_text_at_utf16_cursor("Q", 0, 0, false, true, 0)
+    check("composition commit places caret before history capture", UiFlat::text_value(field) == "uQvwxyz" and UiFlat::selection_utf16_location(field) == 2 and UiFlat::widget(field).marked_start == 0 and UiFlat::widget(field).marked_end == 0)
+    check("composition commit cursor is undoable", UiFlat::undo_text() and UiFlat::text_value(field) == "uvwxyz")
+    check("composition commit cursor is redoable", UiFlat::redo_text() and UiFlat::text_value(field) == "uQvwxyz" and UiFlat::selection_utf16_location(field) == 2)
+
+    UiFlat::replace_text(field, "abcdef")
+    UiFlat::set_selection_utf16(field, 2, 2)
+    UiFlat::commit_text_at_utf16_cursor("", 0, 0, false, true, 1)
+    check("empty commit replaces selection and applies cursor", UiFlat::text_value(field) == "abef" and UiFlat::selection_utf16_location(field) == 3)
+    check("empty commit deletion is undoable", UiFlat::undo_text() and UiFlat::text_value(field) == "abcdef")
+
+    if test_failures == 0:
+        _ = puts("widget IME cursor: all checks passed")
+        return 0
+    _ = puts("widget IME cursor: FAILURES above")
+    return 1

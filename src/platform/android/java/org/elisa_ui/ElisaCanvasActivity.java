@@ -33,11 +33,11 @@ import android.view.inputmethod.InputConnection;
 // editing state at all: BaseInputConnection wants an Editable to scribble in,
 // so it gets one nobody reads.
 public final class ElisaCanvasActivity extends NativeActivity {
-    public static native void nativeComposingText(String text, int selectionStart, int selectionLength);
-    public static native void nativeCommitText(String text);
+    public static native void nativeComposingText(String text, int newCursorPosition);
+    public static native void nativeCommitText(String text, int newCursorPosition);
 
-    // The probe's two questions, answered by the framework rather than by
-    // anything in Java. See startImeProbe below for why they exist.
+    // Probe state is answered by the framework rather than by anything in
+    // Java. See startImeProbe below for why those queries exist.
     public static native int nativeImeReady();
     public static native void nativeImeReport(String tag);
 
@@ -116,13 +116,20 @@ public final class ElisaCanvasActivity extends NativeActivity {
                     nativeImeReport("no-connection");
                     return;
                 }
+                // A start-relative caret in text containing a supplementary
+                // scalar proves the native cursor protocol counts UTF-16.
+                connection.setComposingText("A\ud83d\ude00B", 0);
+                nativeImeReport("cursor-at-start");
                 connection.setComposingText("ni", 1);
                 nativeImeReport("composing-1");
                 connection.setComposingText("nihao", 1);
                 nativeImeReport("composing-2");
                 // Include a supplementary scalar: this path crosses JNI's
                 // UTF-16 String boundary and must return standard UTF-8 intact.
-                connection.commitText("\u4f60\u597d\ud83d\udc4b", 1);
+                // A zero cursor request places the caret at the committed
+                // run's start; the Elisa side must apply this before emitting
+                // the change callback, just as it does for compositions.
+                connection.commitText("\u4f60\u597d\ud83d\udc4b", 0);
                 connection.finishComposingText();
                 nativeImeReport("committed");
             }
@@ -173,10 +180,10 @@ public final class ElisaCanvasActivity extends NativeActivity {
         @Override
         public boolean setComposingText(CharSequence text, int newCursorPosition) {
             String value = text == null ? "" : text.toString();
-            // The composing run is the whole provisional string, and the
-            // selection Elisa is told about is its end -- which is where every
-            // IME on this platform puts the caret while choosing.
-            nativeComposingText(value, value.length(), 0);
+            // The composing run is the whole provisional string. Forward the
+            // platform's relative cursor rule; Elisa resolves it against the
+            // final bounded UTF-16 run rather than assuming every IME means end.
+            nativeComposingText(value, newCursorPosition);
             return super.setComposingText(text, newCursorPosition);
         }
 
@@ -184,13 +191,13 @@ public final class ElisaCanvasActivity extends NativeActivity {
         public boolean finishComposingText() {
             // An empty composing run is how the framework is told the
             // provisional text is gone, which is not the same as committing it.
-            nativeComposingText("", 0, 0);
+            nativeComposingText("", 0);
             return super.finishComposingText();
         }
 
         @Override
         public boolean commitText(CharSequence text, int newCursorPosition) {
-            nativeCommitText(text == null ? "" : text.toString());
+            nativeCommitText(text == null ? "" : text.toString(), newCursorPosition);
             // The base class keeps its own Editable in step; nothing reads it,
             // but an IME may ask this connection about its own state.
             Editable editable = getEditable();

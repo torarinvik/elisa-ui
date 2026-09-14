@@ -148,22 +148,48 @@ extend UiFlat:
             emit_widget_event(index, UiConst::WidgetEvent.Change)
 
         def remove_text(index: usize, start: usize, stop: usize) -> void:
-            return if stop <= start or stop > widgets[index].input_length
-            widgets[index].text_truncated <- false
-            history_slot: usize = begin_text_history(index)
-            offset: usize = index * TEXT_CAPACITY
-            old_length: usize = widgets[index].input_length
-            removed: usize = stop - start
-            for cursor in stop..<widgets[index].input_length:
-                text_storage[offset + cursor - removed] <- text_storage[offset + cursor]
-            widgets[index].input_length <- widgets[index].input_length - removed
-            for byte_index in widgets[index].input_length..<old_length:
-                text_storage[offset + byte_index] <- 0
-            widgets[index].text_revision <- widgets[index].text_revision + 1
-            widgets[index].caret <- start
-            widgets[index].selection_anchor <- start
-            widgets[index] with { marked_start <- 0, marked_end <- 0 }
-            restart_caret_blink() if index == focused_widget
-            callback_epoch: usize = widget_epoch
-            emit_widget_event(index, UiConst::WidgetEvent.Change)
-            finish_text_history(history_slot, index) if widget_epoch == callback_epoch
+            remove_text_with_cursor(index, start, stop, false, 0)
+
+        def remove_text_at_utf16_cursor(index: usize, start: usize, stop: usize, offset: i32) -> void:
+            remove_text_with_cursor(index, start, stop, true, offset)
+
+        def remove_text_with_cursor(index: usize, start: usize, stop: usize, relative_cursor: bool, cursor_offset: i32) -> void:
+            input_length: usize = widgets[index].input_length
+            has_range: bool = stop > start and stop <= input_length
+            return if not has_range and not relative_cursor
+            insertion_start: usize = start if start <= input_length else input_length
+            if has_range:
+                widgets[index].text_truncated <- false
+                history_slot: usize = begin_text_history(index)
+                offset: usize = index * TEXT_CAPACITY
+                old_length: usize = input_length
+                removed: usize = stop - start
+                for cursor in stop..<input_length:
+                    text_storage[offset + cursor - removed] <- text_storage[offset + cursor]
+                widgets[index].input_length <- input_length - removed
+                for byte_index in widgets[index].input_length..<old_length:
+                    text_storage[offset + byte_index] <- 0
+                widgets[index].text_revision <- widgets[index].text_revision + 1
+                widgets[index] with { marked_start <- 0, marked_end <- 0 }
+                if relative_cursor:
+                    base: i64 = text_utf16_offset(index, insertion_start).i64()
+                    requested: mutable i64 = base + cursor_offset.i64()
+                    requested <- 0 if requested < 0
+                    total_units: usize = text_utf16_length(index)
+                    requested <- total_units.i64() if requested > total_units.i64()
+                    set_selection_utf16(index, requested.usize(), 0)
+                else:
+                    widgets[index].caret <- insertion_start
+                    widgets[index].selection_anchor <- insertion_start
+                    restart_caret_blink() if index == focused_widget
+                callback_epoch: usize = widget_epoch
+                emit_widget_event(index, UiConst::WidgetEvent.Change)
+                finish_text_history(history_slot, index) if widget_epoch == callback_epoch
+            else:
+                # A zero-width empty commit can still carry a cursor move.
+                base: i64 = text_utf16_offset(index, insertion_start).i64()
+                requested: mutable i64 = base + cursor_offset.i64()
+                requested <- 0 if requested < 0
+                total_units: usize = text_utf16_length(index)
+                requested <- total_units.i64() if requested > total_units.i64()
+                set_selection_utf16(index, requested.usize(), 0)

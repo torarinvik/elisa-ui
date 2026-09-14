@@ -108,17 +108,20 @@ if grep -q "ime no-field" <<<"$log"; then
   exit 1
 fi
 
-# THREE FACTS, and each one is a different way composition can be wrong.
+# FIVE FACTS, and each one catches a different way IME editing can be wrong.
+#   Android's start-relative cursor is honored for a supplementary scalar;
 #   a provisional run arrives and is marked;
 #   the next one REPLACES it rather than appending -- the failure that once
 #     turned "Hello" into "HeellIloo" on this very backend;
 #   the commit replaces the composing run with BMP and supplementary characters
 #     the key path could not have produced, and clears the mark.
+#   the final log includes the commit's requested start-relative caret.
 expect() {
   grep -qF "$1" <<<"$log" || { echo "android ime: expected [$1]" >&2; grep "ime " <<<"$log" >&2 || true; exit 1; }
 }
+expect "ime cursor-at-start text=[A😀B] marked=4 cursor=0"
 expect "ime composing-1 text=[ni] marked=2"
 expect "ime composing-2 text=[nihao] marked=5"
-expect "ime committed text=[你好👋] marked=0"
+expect "ime committed text=[你好👋] marked=0 cursor=0"
 
 echo "android ime: a composing run arrived, was replaced, and committed as 你好👋 in the painted field"

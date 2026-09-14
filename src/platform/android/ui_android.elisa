@@ -74,22 +74,30 @@ def android_ime_clear_staging() -> void:
 # arrive as a composing stretch the user is still choosing, replaced again and
 # again until it is committed -- and an empty one means the composition was
 # abandoned, which is not the same as committing nothing.
-def android_composing_text(text: cstr, length: i32, selection_start: i32, selection_length: i32) -> void:
+def android_composing_text(text: cstr, length: i32, new_cursor_position: i32) -> void:
     can Memory.Allocate, Abort.Panic, Ui.Input, Unsafe.PointerCast, Ui.Text:
-        # InputConnection reports UTF-16 code-unit ranges. Keep these distinct
-        # from SDL's scalar-count protocol and let UiFlat map the native range.
-        selected_location: usize = selection_start.usize() if selection_start > 0 else 0
-        selected_length: usize = selection_length.usize() if selection_length > 0 else 0
-        UiFlat::update_marked_text(android_ime_stage(text, length), selected_location, selected_length, 0, 0, false)
+        staged: sview = android_ime_stage(text, length)
+        # Android positions its cursor from the new composing run's end for
+        # positive values (1 means exactly at the end), and from its start for
+        # zero/negative values. The editing layer resolves this against the
+        # actual UTF-16 length that survived bounded insertion.
+        if new_cursor_position > 0:
+            UiFlat::update_marked_text_at_utf16_cursor(staged, true, new_cursor_position - 1)
+        else:
+            UiFlat::update_marked_text_at_utf16_cursor(staged, false, new_cursor_position)
         android_ime_clear_staging()
 
-def android_commit_text(text: cstr, length: i32) -> void:
+def android_commit_text(text: cstr, length: i32, new_cursor_position: i32) -> void:
     can Memory.Allocate, Abort.Panic, Ui.Input, Unsafe.PointerCast, Ui.Text:
-        UiFlat::commit_text(android_ime_stage(text, length), 0, 0, false)
+        staged: sview = android_ime_stage(text, length)
+        if new_cursor_position > 0:
+            UiFlat::commit_text_at_utf16_cursor(staged, 0, 0, false, true, new_cursor_position - 1)
+        else:
+            UiFlat::commit_text_at_utf16_cursor(staged, 0, 0, false, false, new_cursor_position)
         android_ime_clear_staging()
 
-export fn elisa_android_composing_text(text: cstr, length: i32, selection_start: i32, selection_length: i32) -> void = android_composing_text
-export fn elisa_android_commit_text(text: cstr, length: i32) -> void = android_commit_text
+export fn elisa_android_composing_text(text: cstr, length: i32, new_cursor_position: i32) -> void = android_composing_text
+export fn elisa_android_commit_text(text: cstr, length: i32, new_cursor_position: i32) -> void = android_commit_text
 
 # WHAT THE FRAMEWORK HOLDS ONCE THE IME HAS SPOKEN.
 #
@@ -116,8 +124,16 @@ def android_ime_marked_units() -> i32:
     can Memory.Allocate, Abort.Panic, Ui.Input, Unsafe.PointerCast, Ui.Text:
         return UiFlat::marked_utf16_length(UiFlat::focused()).i32()
 
+def android_ime_cursor_from_mark() -> i32:
+    can Memory.Allocate, Abort.Panic, Ui.Input, Unsafe.PointerCast, Ui.Text:
+        field: usize = UiFlat::focused()
+        return 0 if field >= UiFlat::count()
+        relative: i64 = UiFlat::selection_utf16_location(field).i64() - UiFlat::marked_utf16_location(field).i64()
+        return relative.i32()
+
 export fn elisa_android_ime_text() -> cstr = android_ime_text
 export fn elisa_android_ime_marked_units() -> i32 = android_ime_marked_units
+export fn elisa_android_ime_cursor_from_mark() -> i32 = android_ime_cursor_from_mark
 
 def android_controls_ime_byte(text: cstr, index: usize) -> u8:
     pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast

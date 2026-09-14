@@ -14,8 +14,9 @@
 #define ELISA_IME_TEXT_MAX 1024
 
 extern void elisa_android_composing_text(const char *text, int32_t length,
-                                         int32_t selection_start, int32_t selection_length);
-extern void elisa_android_commit_text(const char *text, int32_t length);
+                                         int32_t new_cursor_position);
+extern void elisa_android_commit_text(const char *text, int32_t length,
+                                      int32_t new_cursor_position);
 
 // READING BACK, for the gate. Composition is the one thing on this backend
 // that no display could show and no frame count could catch: a composing run
@@ -24,16 +25,17 @@ extern void elisa_android_commit_text(const char *text, int32_t length);
 // the same log the frame trace uses.
 extern const char *elisa_android_ime_text(void);
 extern int32_t elisa_android_ime_marked_units(void);
+extern int32_t elisa_android_ime_cursor_from_mark(void);
 extern int32_t elisa_android_wants_keyboard(void);
 
 // Java strings are UTF-16; the retained text API takes standard UTF-8. Convert
 // here, while preserving the IME's selection offsets in their native UTF-16 unit.
-static void elisa_ime_forward(JNIEnv *env, jstring text, int32_t selection_start,
-                              int32_t selection_length, int composing) {
+static void elisa_ime_forward(JNIEnv *env, jstring text, int32_t new_cursor_position,
+                              int composing) {
     if (env == NULL) return;
     if (text == NULL) {
-        if (composing) elisa_android_composing_text("", 0, 0, 0);
-        else elisa_android_commit_text("", 0);
+        if (composing) elisa_android_composing_text("", 0, new_cursor_position);
+        else elisa_android_commit_text("", 0, new_cursor_position);
         return;
     }
     jsize units_length = (*env)->GetStringLength(env, text);
@@ -43,22 +45,23 @@ static void elisa_ime_forward(JNIEnv *env, jstring text, int32_t selection_start
     size_t length = elisa_utf16_to_utf8((const uint16_t *)units,
                                         (size_t)units_length, utf8, sizeof(utf8));
     if (composing) elisa_android_composing_text((const char *)utf8, (int32_t)length,
-                                                 selection_start, selection_length);
-    else elisa_android_commit_text((const char *)utf8, (int32_t)length);
+                                                 new_cursor_position);
+    else elisa_android_commit_text((const char *)utf8, (int32_t)length,
+                                   new_cursor_position);
     memset(utf8, 0, sizeof(utf8));
     (*env)->ReleaseStringChars(env, text, units);
 }
 
 JNIEXPORT void JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeComposingText(
-        JNIEnv *env, jclass self, jstring text, jint selection_start, jint selection_length) {
+        JNIEnv *env, jclass self, jstring text, jint new_cursor_position) {
     (void)self;
-    elisa_ime_forward(env, text, (int32_t)selection_start, (int32_t)selection_length, 1);
+    elisa_ime_forward(env, text, (int32_t)new_cursor_position, 1);
 }
 
 JNIEXPORT void JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeCommitText(
-        JNIEnv *env, jclass self, jstring text) {
+        JNIEnv *env, jclass self, jstring text, jint new_cursor_position) {
     (void)self;
-    elisa_ime_forward(env, text, 0, 0, 0);
+    elisa_ime_forward(env, text, (int32_t)new_cursor_position, 0);
 }
 
 // The probe's three questions. None of them is a test double: the text and the
@@ -90,8 +93,9 @@ JNIEXPORT void JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeImeReport(
         label_length = 1;
     }
     label[label_length] = 0;
-    __android_log_print(ANDROID_LOG_INFO, "elisa-ui", "ime %s text=[%s] marked=%d",
+    __android_log_print(ANDROID_LOG_INFO, "elisa-ui", "ime %s text=[%s] marked=%d cursor=%d",
                         (const char *)label,
-                        elisa_android_ime_text(), (int)elisa_android_ime_marked_units());
+                        elisa_android_ime_text(), (int)elisa_android_ime_marked_units(),
+                        (int)elisa_android_ime_cursor_from_mark());
     if (tag_units != NULL) (*env)->ReleaseStringChars(env, tag, tag_units);
 }
