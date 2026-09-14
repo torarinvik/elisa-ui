@@ -28,16 +28,20 @@ NINJA="$(command -v autoninja || command -v ninja || true)"
   exit 2
 }
 
+fresh_checkout=0
 if [[ ! -d "$SKIA_ROOT" ]]; then
   mkdir -p "$(dirname -- "$SKIA_ROOT")"
   git clone --no-checkout "$repository" "$SKIA_ROOT"
+  fresh_checkout=1
 elif ! git -C "$SKIA_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
   echo "skia build: existing SKIA_ROOT is not a git checkout: $SKIA_ROOT" >&2
   exit 2
 fi
 
-if ! git -C "$SKIA_ROOT" diff --quiet || ! git -C "$SKIA_ROOT" diff --cached --quiet ||
-   [[ -n "$(git -C "$SKIA_ROOT" status --porcelain --untracked-files=all)" ]]; then
+if [[ "$fresh_checkout" == 0 ]] && {
+  ! git -C "$SKIA_ROOT" diff --quiet || ! git -C "$SKIA_ROOT" diff --cached --quiet ||
+  [[ -n "$(git -C "$SKIA_ROOT" status --porcelain --untracked-files=all)" ]]
+}; then
   echo "skia build: refusing to change a dirty checkout: $SKIA_ROOT" >&2
   exit 2
 fi
