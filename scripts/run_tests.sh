@@ -25,6 +25,14 @@ bash "$ROOT/scripts/check_toolchain.sh"
 mkdir -p "$ROOT/build"
 status=0
 
+# JNI uses UTF-16 Strings while the retained framework owns standard UTF-8.
+# Keep their explicit, host-runnable conversion contract under the ordinary
+# suite so this boundary does not wait for an emulator to catch regressions.
+if ! bash "$ROOT/scripts/check_android_text_codec.sh"; then
+  echo "FAIL android text codec"
+  status=1
+fi
+
 SKIA_TEST_SHIM="$ROOT/build/skia_painter_shim.o"
 clang -c -Wall -Wextra -Werror -o "$SKIA_TEST_SHIM" "$ROOT/test/skia_painter_shim.c"
 # The UIKit tests exercise the whole backend below the Objective-C shim, so

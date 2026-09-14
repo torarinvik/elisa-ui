@@ -8,6 +8,7 @@
 #include <android/log.h>
 #include <jni.h>
 #include <stdint.h>
+#include "android_utf8_utf16.h"
 #include <string.h>
 
 #define ELISA_IME_TEXT_MAX 1024
@@ -25,11 +26,8 @@ extern const char *elisa_android_ime_text(void);
 extern int32_t elisa_android_ime_marked_units(void);
 extern int32_t elisa_android_wants_keyboard(void);
 
-// GetStringUTFChars gives modified UTF-8, which differs from the real thing
-// only for NUL and for characters outside the BMP. Elisa validates the encoding
-// before keeping any of it, so a mangled surrogate pair is clipped at its
-// boundary rather than stored -- the same contract the control backend's text
-// channel has.
+// Java strings are UTF-16; the retained text API takes standard UTF-8. Convert
+// here, while preserving the IME's selection offsets in their native UTF-16 unit.
 static void elisa_ime_forward(JNIEnv *env, jstring text, int32_t selection_start,
                               int32_t selection_length, int composing) {
     if (env == NULL) return;
@@ -38,13 +36,17 @@ static void elisa_ime_forward(JNIEnv *env, jstring text, int32_t selection_start
         else elisa_android_commit_text("", 0);
         return;
     }
-    const char *utf8 = (*env)->GetStringUTFChars(env, text, NULL);
-    if (utf8 == NULL) return;
-    jsize length = (*env)->GetStringUTFLength(env, text);
-    if (length > ELISA_IME_TEXT_MAX) length = ELISA_IME_TEXT_MAX;
-    if (composing) elisa_android_composing_text(utf8, (int32_t)length, selection_start, selection_length);
-    else elisa_android_commit_text(utf8, (int32_t)length);
-    (*env)->ReleaseStringUTFChars(env, text, utf8);
+    jsize units_length = (*env)->GetStringLength(env, text);
+    const jchar *units = (*env)->GetStringChars(env, text, NULL);
+    if (units == NULL) return;
+    uint8_t utf8[ELISA_IME_TEXT_MAX];
+    size_t length = elisa_android_utf16_to_utf8((const uint16_t *)units,
+                                                 (size_t)units_length, utf8, sizeof(utf8));
+    if (composing) elisa_android_composing_text((const char *)utf8, (int32_t)length,
+                                                 selection_start, selection_length);
+    else elisa_android_commit_text((const char *)utf8, (int32_t)length);
+    memset(utf8, 0, sizeof(utf8));
+    (*env)->ReleaseStringChars(env, text, units);
 }
 
 JNIEXPORT void JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeComposingText(
@@ -71,9 +73,25 @@ JNIEXPORT jint JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeImeReady(
 JNIEXPORT void JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeImeReport(
         JNIEnv *env, jclass self, jstring tag) {
     (void)self;
-    const char *label = tag == NULL ? "?" : (*env)->GetStringUTFChars(env, tag, NULL);
+    uint8_t label[128];
+    size_t label_length = 0;
+    const jchar *tag_units = NULL;
+    if (tag != NULL && env != NULL) {
+        jsize tag_length = (*env)->GetStringLength(env, tag);
+        tag_units = (*env)->GetStringChars(env, tag, NULL);
+        if (tag_units != NULL) {
+            label_length = elisa_android_utf16_to_utf8((const uint16_t *)tag_units,
+                                                        (size_t)tag_length, label,
+                                                        sizeof(label) - 1);
+        }
+    }
+    if (tag_units == NULL) {
+        label[0] = '?';
+        label_length = 1;
+    }
+    label[label_length] = 0;
     __android_log_print(ANDROID_LOG_INFO, "elisa-ui", "ime %s text=[%s] marked=%d",
-                        label == NULL ? "?" : label,
+                        (const char *)label,
                         elisa_android_ime_text(), (int)elisa_android_ime_marked_units());
-    if (tag != NULL && label != NULL) (*env)->ReleaseStringUTFChars(env, tag, label);
+    if (tag_units != NULL) (*env)->ReleaseStringChars(env, tag, tag_units);
 }

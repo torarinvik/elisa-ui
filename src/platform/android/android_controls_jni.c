@@ -13,7 +13,10 @@
 #include <jni.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "android_utf8_utf16.h"
 #include <string.h>
+
+#define ELISA_CONTROLS_TEXT_MAX 1024
 
 extern int32_t elisa_android_controls_start(float width, float height);
 extern void elisa_android_controls_resize(float width, float height);
@@ -98,12 +101,8 @@ JNIEXPORT void JNICALL Java_org_elisa_1ui_ElisaControls_nativeControlEvent(
     elisa_android_controls_event(handle, event, value, selected == JNI_TRUE ? 1 : 0);
 }
 
-// A field's text takes a channel of its own: the numeric event carries a value
-// and a flag, and a string fits in neither. GetStringUTFChars gives modified
-// UTF-8, which differs from the real thing only for NUL and for characters
-// outside the BMP -- and Elisa validates the UTF-8 before it keeps any of it,
-// so a surrogate pair that arrives mangled is clipped at its boundary rather
-// than stored. The bytes are released as soon as Elisa has copied them.
+// Java strings are UTF-16; the retained layer owns standard UTF-8. Keep the
+// conversion at this boundary and pass a counted byte view, including NUL.
 JNIEXPORT void JNICALL Java_org_elisa_1ui_ElisaControls_nativeControlText(
         JNIEnv *env, jclass self, jint handle, jstring text) {
     (void)self;
@@ -112,11 +111,15 @@ JNIEXPORT void JNICALL Java_org_elisa_1ui_ElisaControls_nativeControlText(
         elisa_android_controls_text(handle, "", 0);
         return;
     }
-    const char *utf8 = (*env)->GetStringUTFChars(env, text, NULL);
-    if (utf8 == NULL) return;
-    jsize length = (*env)->GetStringUTFLength(env, text);
-    elisa_android_controls_text(handle, utf8, (int32_t)length);
-    (*env)->ReleaseStringUTFChars(env, text, utf8);
+    jsize units_length = (*env)->GetStringLength(env, text);
+    const jchar *units = (*env)->GetStringChars(env, text, NULL);
+    if (units == NULL) return;
+    uint8_t utf8[ELISA_CONTROLS_TEXT_MAX];
+    size_t length = elisa_android_utf16_to_utf8((const uint16_t *)units,
+                                                 (size_t)units_length, utf8, sizeof(utf8));
+    elisa_android_controls_text(handle, (const char *)utf8, (int32_t)length);
+    memset(utf8, 0, sizeof(utf8));
+    (*env)->ReleaseStringChars(env, text, units);
 }
 
 // --- Elisa calling Java -------------------------------------------------
@@ -137,20 +140,21 @@ void elisa_android_controls_set_frame(int32_t handle, float x, float y, float wi
     if (env != NULL) (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_set_frame, handle, x, y, width, height);
 }
 
-// A caption crosses as bytes and a length, because that is what Elisa owns: a
-// counted view into its own storage, never a terminated C string. The copy is
-// bounded here rather than trusted, and the Java string is released before the
-// call returns so a realization does not leave a reference per control behind.
-#define ELISA_CONTROLS_TEXT_MAX 1024
+// A counted standard UTF-8 view becomes a bounded Java UTF-16 String. NewString
+// takes an explicit code-unit length, so embedded U+0000 is preserved.
+static jstring elisa_controls_string_from_utf8(JNIEnv *env, const uint8_t *bytes, size_t length) {
+    uint16_t units[ELISA_CONTROLS_TEXT_MAX];
+    size_t count = elisa_android_utf8_to_utf16(bytes, length, units,
+                                                sizeof(units) / sizeof(units[0]));
+    jstring text = (*env)->NewString(env, (const jchar *)units, (jsize)count);
+    memset(units, 0, sizeof(units));
+    return text;
+}
 
 void elisa_android_controls_set_text(int32_t handle, const uint8_t *bytes, size_t length) {
     JNIEnv *env = elisa_env();
     if (env == NULL) return;
-    char buffer[ELISA_CONTROLS_TEXT_MAX + 1];
-    size_t take = length > ELISA_CONTROLS_TEXT_MAX ? ELISA_CONTROLS_TEXT_MAX : length;
-    if (take > 0 && bytes != NULL) memcpy(buffer, bytes, take);
-    buffer[take] = '\0';
-    jstring text = (*env)->NewStringUTF(env, buffer);
+    jstring text = elisa_controls_string_from_utf8(env, bytes, length);
     if (text == NULL) return;
     (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_set_text, handle, text);
     (*env)->DeleteLocalRef(env, text);
@@ -190,17 +194,9 @@ void elisa_android_controls_set_help(int32_t handle, const uint8_t *prompt, size
                                      const uint8_t *help, size_t help_length) {
     JNIEnv *env = elisa_env();
     if (env == NULL) return;
-    char prompt_buffer[ELISA_CONTROLS_TEXT_MAX + 1];
-    char help_buffer[ELISA_CONTROLS_TEXT_MAX + 1];
-    size_t prompt_take = prompt_length > ELISA_CONTROLS_TEXT_MAX ? ELISA_CONTROLS_TEXT_MAX : prompt_length;
-    size_t help_take = help_length > ELISA_CONTROLS_TEXT_MAX ? ELISA_CONTROLS_TEXT_MAX : help_length;
-    if (prompt_take > 0 && prompt != NULL) memcpy(prompt_buffer, prompt, prompt_take);
-    if (help_take > 0 && help != NULL) memcpy(help_buffer, help, help_take);
-    prompt_buffer[prompt_take] = '\0';
-    help_buffer[help_take] = '\0';
-    jstring prompt_text = (*env)->NewStringUTF(env, prompt_buffer);
+    jstring prompt_text = elisa_controls_string_from_utf8(env, prompt, prompt_length);
     if (prompt_text == NULL) return;
-    jstring help_text = (*env)->NewStringUTF(env, help_buffer);
+    jstring help_text = elisa_controls_string_from_utf8(env, help, help_length);
     if (help_text == NULL) {
         (*env)->DeleteLocalRef(env, prompt_text);
         return;
@@ -234,11 +230,7 @@ void elisa_android_controls_attach_root(int32_t handle) {
 float elisa_android_controls_measure_text(const uint8_t *bytes, size_t length, float size, int32_t weighted) {
     JNIEnv *env = elisa_env();
     if (env == NULL) return 0.0f;
-    char buffer[ELISA_CONTROLS_TEXT_MAX + 1];
-    size_t take = length > ELISA_CONTROLS_TEXT_MAX ? ELISA_CONTROLS_TEXT_MAX : length;
-    if (take > 0 && bytes != NULL) memcpy(buffer, bytes, take);
-    buffer[take] = '\0';
-    jstring text = (*env)->NewStringUTF(env, buffer);
+    jstring text = elisa_controls_string_from_utf8(env, bytes, length);
     if (text == NULL) return 0.0f;
     jfloat width = (*env)->CallStaticFloatMethod(env, elisa_controls_class, m_measure_text, text, size,
                                                  weighted != 0 ? JNI_TRUE : JNI_FALSE);

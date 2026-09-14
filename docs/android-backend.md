@@ -248,10 +248,10 @@ It now has a channel of its own. `ElisaControls`' `TextWatcher` reports in
 `afterTextChanged`, which is the point the IME, autocorrect and a paste have
 all finished with, so what crosses is the string the user meant rather than a
 keystroke. `nativeControlText` carries it through
-[`android_controls_jni.c`](../src/platform/android/android_controls_jni.c) —
-`GetStringUTFChars`, whose modified UTF-8 differs from the real thing only for
-NUL and for characters outside the BMP, and Elisa validates the encoding before
-keeping any of it — into `UiControls::dispatch_native_text`. From there it is
+[`android_controls_jni.c`](../src/platform/android/android_controls_jni.c),
+which converts Java's UTF-16 String to standard UTF-8 at the JNI boundary,
+including supplementary characters and embedded NUL, into
+`UiControls::dispatch_native_text`. From there it is
 the retained layer's own `UiFlat::replace_text`, not a second editing path
 written for native backends: it clips on a grapheme boundary, records an undo
 step, bumps the text revision and emits the change event exactly once.

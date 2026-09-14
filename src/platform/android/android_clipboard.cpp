@@ -22,6 +22,7 @@
 
 #include <android/native_activity.h>
 #include <jni.h>
+#include "android_utf8_utf16.h"
 #include <string.h>
 
 namespace {
@@ -109,16 +110,15 @@ int32_t elisa_android_clipboard_write(const char *utf8, int32_t length) {
     jobject manager = clipboard_manager(env, g_activity->clazz);
     if (manager == nullptr) return 0;
 
-    // NewStringUTF wants a terminated buffer; the framework hands a counted one.
-    char terminated[4096];
-    size_t take = static_cast<size_t>(length) < sizeof(terminated) - 1
-                      ? static_cast<size_t>(length)
-                      : sizeof(terminated) - 1;
-    if (take > 0) memcpy(terminated, utf8, take);
-    terminated[take] = '\0';
+    // NewString takes counted UTF-16. JNI's UTF helpers use modified UTF-8,
+    // which cannot faithfully carry every scalar in the framework's UTF-8.
+    uint16_t units[4095];
+    size_t unit_count = elisa_android_utf8_to_utf16(
+        reinterpret_cast<const uint8_t *>(utf8), static_cast<size_t>(length),
+        units, sizeof(units) / sizeof(units[0]));
 
     int32_t wrote = 0;
-    jstring text = env->NewStringUTF(terminated);
+    jstring text = env->NewString(reinterpret_cast<const jchar *>(units), static_cast<jsize>(unit_count));
     if (text != nullptr && !failed(env)) {
         jclass clip_data = env->FindClass("android/content/ClipData");
         if (clip_data != nullptr && !failed(env)) {
@@ -143,8 +143,8 @@ int32_t elisa_android_clipboard_write(const char *utf8, int32_t length) {
         }
         env->DeleteLocalRef(text);
     }
-    // The staged copy held the user's text; do not leave it in .bss.
-    memset(terminated, 0, sizeof(terminated));
+    // The staged copy held the user's text; do not leave it in this stack frame.
+    memset(units, 0, sizeof(units));
     env->DeleteLocalRef(manager);
     return wrote;
 }
@@ -191,15 +191,15 @@ int32_t elisa_android_clipboard_read(char *buffer, int32_t capacity) {
                                 jstring string = static_cast<jstring>(
                                     env->CallObjectMethod(text, to_string));
                                 if (string != nullptr && !failed(env)) {
-                                    const char *bytes = env->GetStringUTFChars(string, nullptr);
-                                    if (bytes != nullptr) {
-                                        size_t length = strlen(bytes);
-                                        size_t take = length < static_cast<size_t>(capacity)
-                                                          ? length
-                                                          : static_cast<size_t>(capacity);
-                                        memcpy(buffer, bytes, take);
-                                        written = static_cast<int32_t>(take);
-                                        env->ReleaseStringUTFChars(string, bytes);
+                                    jsize unit_count = env->GetStringLength(string);
+                                    const jchar *units = env->GetStringChars(string, nullptr);
+                                    if (units != nullptr) {
+                                        written = static_cast<int32_t>(elisa_android_utf16_to_utf8(
+                                            reinterpret_cast<const uint16_t *>(units),
+                                            static_cast<size_t>(unit_count),
+                                            reinterpret_cast<uint8_t *>(buffer),
+                                            static_cast<size_t>(capacity)));
+                                        env->ReleaseStringChars(string, units);
                                     }
                                     env->DeleteLocalRef(string);
                                 }

@@ -112,13 +112,13 @@ fi
 #   a provisional run arrives and is marked;
 #   the next one REPLACES it rather than appending -- the failure that once
 #     turned "Hello" into "HeellIloo" on this very backend;
-#   the commit replaces the composing run with characters the key path could
-#     not have produced, and clears the mark.
+#   the commit replaces the composing run with BMP and supplementary characters
+#     the key path could not have produced, and clears the mark.
 expect() {
   grep -qF "$1" <<<"$log" || { echo "android ime: expected [$1]" >&2; grep "ime " <<<"$log" >&2 || true; exit 1; }
 }
 expect "ime composing-1 text=[ni] marked=2"
 expect "ime composing-2 text=[nihao] marked=5"
-expect "ime committed text=[你好] marked=0"
+expect "ime committed text=[你好👋] marked=0"
 
-echo "android ime: a composing run arrived, was replaced, and committed as 你好 in the painted field"
+echo "android ime: a composing run arrived, was replaced, and committed as 你好👋 in the painted field"

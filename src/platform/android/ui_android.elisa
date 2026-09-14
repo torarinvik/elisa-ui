@@ -70,7 +70,11 @@ def android_ime_stage(text: cstr, length: i32) -> sview:
 # abandoned, which is not the same as committing nothing.
 def android_composing_text(text: cstr, length: i32, selection_start: i32, selection_length: i32) -> void:
     can Memory.Allocate, Abort.Panic, Ui.Input, Unsafe.PointerCast, Ui.Text:
-        UiFlat::update_marked_text_utf8_characters(android_ime_stage(text, length), selection_start, selection_length)
+        # InputConnection reports UTF-16 code-unit ranges. Keep these distinct
+        # from SDL's scalar-count protocol and let UiFlat map the native range.
+        selected_location: usize = selection_start.usize() if selection_start > 0 else 0
+        selected_length: usize = selection_length.usize() if selection_length > 0 else 0
+        UiFlat::update_marked_text(android_ime_stage(text, length), selected_location, selected_length, 0, 0, false)
 
 def android_commit_text(text: cstr, length: i32) -> void:
     can Memory.Allocate, Abort.Panic, Ui.Input, Unsafe.PointerCast, Ui.Text:

@@ -120,7 +120,9 @@ public final class ElisaCanvasActivity extends NativeActivity {
                 nativeImeReport("composing-1");
                 connection.setComposingText("nihao", 1);
                 nativeImeReport("composing-2");
-                connection.commitText("\u4f60\u597d", 1);
+                // Include a supplementary scalar: this path crosses JNI's
+                // UTF-16 String boundary and must return standard UTF-8 intact.
+                connection.commitText("\u4f60\u597d\ud83d\udc4b", 1);
                 connection.finishComposingText();
                 nativeImeReport("committed");
             }
