@@ -17,15 +17,23 @@ extend UiWidgets:
         # wheel delta. A child is searched first so nested scroll areas consume
         # the wheel before an ancestor; an edge-clamped child is skipped so the
         # remaining delta can bubble to the next viewport.
-        def scroll_target(w: Widget, x: f32, y: f32, dx: f32, dy: f32, depth: i32) -> Widget?:
+        def scroll_target(w: Widget, x: f32, y: f32, dx: f32, dy: f32, depth: i32, clip_allows_pointer: bool) -> Widget?:
             return null if depth >= MAX_HIERARCHY_DEPTH
-            return null if not contains(w, x, y)
+            return null if not clip_allows_pointer
             scroll_steps: mutable i32 = 0
-            cursor: mutable Widget? = w.first_child if can_nest(w) else null
+            child_clip_allows_pointer: mutable bool = clip_allows_pointer
+            match w:
+                Container.Scroll(axis, offset, fill):
+                    child_clip_allows_pointer <- contains(w, x, y)
+                Container.ScrollWithState(axis, state, fill):
+                    child_clip_allows_pointer <- contains(w, x, y)
+                _:
+                    pass
+            cursor: mutable Widget? = w.first_child if can_nest(w) and child_clip_allows_pointer else null
             while cursor is node |cursor, x, y, dx, dy, scroll_steps|:
                 break if scroll_steps >= MAX_HIERARCHY_SIBLINGS
                 scroll_steps <- scroll_steps + 1
-                found: Widget? = scroll_target(node, x, y, dx, dy, depth + 1)
+                found: Widget? = scroll_target(node, x, y, dx, dy, depth + 1, child_clip_allows_pointer)
                 return found if found != null
                 cursor <- node.next_sibling
             match w:
@@ -36,7 +44,7 @@ extend UiWidgets:
                     current: f32 = scroll_offset_of(w)
                     limit: f32 = scroll_limit(w)
                     can_move: bool = limit > 0.0 and ((amount > 0.0 and current > 0.0) or (amount < 0.0 and current < limit))
-                    return w if can_move
+                    return w if can_move and contains(w, x, y)
                     return null
                 _:
                     return null
@@ -45,7 +53,7 @@ extend UiWidgets:
         # deltas follow AppKit/SDL convention (negative means content moves
         # down), hence subtracting the delta from the logical offset.
         def scroll_pointer(root: Widget, at: UiCore::Vec2, delta: UiCore::Vec2) -> void:
-            target: Widget? = scroll_target(root, at.x, at.y, delta.x, delta.y, 0)
+            target: Widget? = scroll_target(root, at.x, at.y, delta.x, delta.y, 0, true)
             return if target == null
             if target is viewport:
                 axis: UiConst::Axis = axis_of(viewport)

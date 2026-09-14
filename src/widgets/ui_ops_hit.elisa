@@ -23,25 +23,44 @@ extend UiWidgets:
             return false if not x_finite or not y_finite
             return safe_pointer_x >= safe_x and safe_pointer_y >= safe_y and safe_pointer_x < safe_right and safe_pointer_y < safe_bottom
 
-    public:
-        # The topmost interactive widget under the pointer. Children are
-        # painted after their parent, so a depth-first walk that prefers the
-        # LAST matching descendant returns what the user sees on top.
-        def hit_depth(w: Widget, x: f32, y: f32, depth: i32) -> Widget?:
+        def hit_position_is_finite(x: f32, y: f32) -> bool:
+            x_difference: f32 = x - x
+            y_difference: f32 = y - y
+            return x_difference == x_difference and y_difference == y_difference
+
+        def hit_depth_clipped(w: Widget, x: f32, y: f32, depth: i32, clip_allows_pointer: bool) -> Widget?:
             return null if depth >= MAX_HIERARCHY_DEPTH
-            return null if not contains(w, x, y)
+            return null if not clip_allows_pointer
             found: mutable Widget? = null
             hit_steps: mutable i32 = 0
-            cursor: mutable Widget? = w.first_child if can_nest(w) else null
+            child_clip_allows_pointer: mutable bool = clip_allows_pointer
+            match w:
+                Container.Scroll(axis, offset, fill):
+                    child_clip_allows_pointer <- contains(w, x, y)
+                Container.ScrollWithState(axis, state, fill):
+                    child_clip_allows_pointer <- contains(w, x, y)
+                _:
+                    pass
+            cursor: mutable Widget? = w.first_child if can_nest(w) and child_clip_allows_pointer else null
             while cursor is node |found, cursor, x, y, hit_steps|:
                 break if hit_steps >= MAX_HIERARCHY_SIBLINGS
                 hit_steps <- hit_steps + 1
-                deeper: Widget? = hit_depth(node, x, y, depth + 1)
+                deeper: Widget? = hit_depth_clipped(node, x, y, depth + 1, child_clip_allows_pointer)
                 found <- deeper if deeper != null
                 cursor <- node.next_sibling
             return found if found != null
-            return w if is_interactive(w)
+            return w if is_interactive(w) and contains(w, x, y)
             return null
 
+    public:
+        # The topmost interactive widget under the pointer. Children are
+        # painted after their parent, so a depth-first walk that prefers the
+        # LAST matching descendant returns what the user sees on top. Ordinary
+        # containers do not clip in paint_depth; only scroll viewports constrain
+        # descendants, so carry that effective clip as a point-membership flag.
+        def hit_depth(w: Widget, x: f32, y: f32, depth: i32) -> Widget?:
+            return hit_depth_clipped(w, x, y, depth, true)
+
         def hit(w: Widget, x: f32, y: f32) -> Widget?:
+            return null if not hit_position_is_finite(x, y)
             return hit_depth(w, x, y, 0)

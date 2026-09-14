@@ -1,0 +1,64 @@
+# Keep retained paint and hit testing consistent for overflowing children.
+include "../src/widgets/ui_ops.elisa"
+
+using UiWidgets
+
+extern puts(text: cstr) -> i64
+
+global mutable test_failures: i32 = 0
+
+def app_widget_event(widget: UiWidgets::Widget, event: i32) -> void:
+    pass
+
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size
+
+def ui_font_ascent(size: f32) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def command_text_origin_x(index: usize) -> f32:
+    match UiCore::command_at(index):
+        UiCore::Command.DrawText(run, color):
+            return run.origin.x
+        _:
+            return -1.0
+
+def expect(name: cstr, ok: bool) -> void:
+    return if ok
+    test_failures <- test_failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    can Memory.Allocate, Abort.Panic:
+        # Ordinary containers do not clip in paint_depth, so an explicitly
+        # positioned child that overflows one must still paint and receive input.
+        overflow_button: Widget = Button.Push(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 16.0, y: 16.0, width: 20.0, height: 20.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "overflow", rest: UiCore::rgb(60, 60, 60), hover: UiCore::rgb(90, 90, 90), press: UiCore::rgb(30, 30, 30))
+        overflow_parent: Widget = Container.Box(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 10.0, height: 10.0, hovered: false, pressed: false, first_child: overflow_button, next_sibling: null, axis: UiConst::Axis.Column, padding: 0.0, spacing: 0.0, fill: UiCore::rgb(20, 20, 20))
+        overflow_hit: Widget? = hit(overflow_parent, 20.0, 20.0)
+        expect("overflowing child was not hit", overflow_hit is overflow_hit_node)
+        UiCore::begin_frame()
+        paint(overflow_parent)
+        overflow_text_painted: mutable bool = false
+        for command_index in 0..<UiCore::command_count():
+            overflow_text_painted <- true if command_text_origin_x(command_index) == 16.0
+        expect("overflowing child was not painted", overflow_text_painted)
+
+        # Scroll containers do clip children, including children whose parent
+        # ordinary container itself does not contain the pointer.
+        scroll_state: ScrollState = ScrollState{offset: 0.0}
+        scroll_child: Widget = Button.Push(min_width: 20.0, min_height: 10.0, grow: 0.0, x: 20.0, y: 0.0, width: 20.0, height: 10.0, hovered: false, pressed: false, first_child: null, next_sibling: null, label: "scroll", rest: UiCore::rgb(60, 60, 60), hover: UiCore::rgb(90, 90, 90), press: UiCore::rgb(30, 30, 30))
+        scroll: Widget = Container.ScrollWithState(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 20.0, y: 0.0, width: 10.0, height: 10.0, hovered: false, pressed: false, first_child: scroll_child, next_sibling: null, axis: UiConst::Axis.Row, state: &scroll_state, fill: UiCore::rgb(18, 18, 18))
+        scroll_parent: Widget = Container.Box(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 10.0, height: 10.0, hovered: false, pressed: false, first_child: scroll, next_sibling: null, axis: UiConst::Axis.Column, padding: 0.0, spacing: 0.0, fill: UiCore::rgb(20, 20, 20))
+        scroll_hit: Widget? = hit(scroll_parent, 25.0, 5.0)
+        expect("overflowing child inside the scroll viewport was not hit", scroll_hit is scroll_hit_node)
+        expect("scroll viewport failed to clip hit testing", hit(scroll_parent, 35.0, 5.0) == null)
+        pointer(scroll_parent, (UiCore::PointerEvent.Scroll(at: UiCore::Vec2(25.0, 5.0), delta: UiCore::Vec2(-5.0, 0.0))))
+        expect("wheel failed to reach overflowing nested viewport", scroll_state.offset == 5.0)
+
+        return test_failures
