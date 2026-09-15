@@ -1,0 +1,275 @@
+# Bounded variable-height virtualization policy.
+#
+# Uniform rows are the cheapest representation, but real applications often
+# have labels, thumbnails, and disclosure content whose heights differ. This
+# extension keeps that policy in Elisa: it stores a bounded set of measured
+# overrides, estimates the rest, and uses f64 prefix math so a million-item
+# list remains addressable without materializing every row or forming a global
+# f32 pixel coordinate.
+
+extend UiVirtualList:
+    public:
+        const MAX_VARIABLE_LISTS: usize = 16
+        const MAX_VARIABLE_MEASUREMENTS: usize = 256
+
+        struct VariableWindow:
+            total: i32
+            first: i32
+            finish: i32
+            leading_offset: f32
+
+        struct VariableItemPosition:
+            valid: bool
+            top: f32
+
+        # Register one logical list. `owner` is an application-owned opaque
+        # identity; the bounded table makes disposal explicit and prevents a
+        # dead list from retaining measured heights forever.
+        def variable_init(owner: u32, item_count: i32, estimated_height: f32, spacing: f32) -> bool:
+            return false if owner == 0
+            slot: mutable i32 = variable_slot(owner)
+            if slot == NONE_INDEX:
+                for candidate in 0..<MAX_VARIABLE_LISTS:
+                    if not variable_valid[candidate]:
+                        slot <- candidate.i32()
+                        break
+            return false if slot == NONE_INDEX
+            safe_estimate: f32 = safe_variable_height(estimated_height)
+            safe_spacing: f32 = bounded_extent(spacing)
+            variable_valid[slot.usize()] <- true
+            variable_owners[slot.usize()] <- owner
+            variable_totals[slot.usize()] <- bounded_count(item_count)
+            variable_estimates[slot.usize()] <- safe_estimate
+            variable_spacings[slot.usize()] <- safe_spacing
+            variable_measurement_counts[slot.usize()] <- 0
+            variable_measurement_next[slot.usize()] <- 0
+            base: usize = slot.usize() * MAX_VARIABLE_MEASUREMENTS
+            for offset in 0..<MAX_VARIABLE_MEASUREMENTS:
+                variable_measurement_indexes[base + offset] <- NONE_INDEX
+                variable_measurement_heights[base + offset] <- 0.0
+            return true
+
+        def variable_release(owner: u32) -> bool:
+            slot: i32 = variable_slot(owner)
+            return false if slot == NONE_INDEX
+            variable_valid[slot.usize()] <- false
+            variable_owners[slot.usize()] <- 0
+            variable_measurement_counts[slot.usize()] <- 0
+            return true
+
+        def variable_set_item_count(owner: u32, item_count: i32) -> bool:
+            slot: i32 = variable_slot(owner)
+            return false if slot == NONE_INDEX
+            next: i32 = bounded_count(item_count)
+            return false if variable_totals[slot.usize()] == next
+            variable_totals[slot.usize()] <- next
+            prune_variable_measurements(slot, next)
+            return true
+
+        # Record a realized row's measured height. Re-measurement updates the
+        # same logical identity; once the bounded table is full, a ring slot is
+        # replaced rather than growing without limit.
+        def variable_set_height(owner: u32, index: i32, height: f32) -> bool:
+            slot: i32 = variable_slot(owner)
+            return false if slot == NONE_INDEX or index < 0 or index >= variable_totals[slot.usize()]
+            safe_height: f32 = safe_variable_height(height)
+            found: i32 = variable_measurement(slot, index)
+            if found != NONE_INDEX:
+                changed: bool = variable_measurement_heights[found.usize()] != safe_height
+                variable_measurement_heights[found.usize()] <- safe_height
+                return changed
+            count: usize = variable_measurement_counts[slot.usize()]
+            position: usize = variable_measurement_next[slot.usize()] if count >= MAX_VARIABLE_MEASUREMENTS else count
+            base: usize = slot.usize() * MAX_VARIABLE_MEASUREMENTS
+            variable_measurement_indexes[base + position] <- index
+            variable_measurement_heights[base + position] <- safe_height
+            variable_measurement_counts[slot.usize()] <- count + 1 if count < MAX_VARIABLE_MEASUREMENTS else count
+            variable_measurement_next[slot.usize()] <- (position + 1) % MAX_VARIABLE_MEASUREMENTS
+            return true
+
+        def variable_measurement_count(owner: u32) -> usize:
+            slot: i32 = variable_slot(owner)
+            return 0 if slot == NONE_INDEX
+            return variable_measurement_counts[slot.usize()]
+
+        def variable_height(owner: u32, index: i32) -> f32:
+            slot: i32 = variable_slot(owner)
+            return 0.0 if slot == NONE_INDEX or index < 0 or index >= variable_totals[slot.usize()]
+            found: i32 = variable_measurement(slot, index)
+            return variable_measurement_heights[found.usize()] if found != NONE_INDEX
+            return variable_estimates[slot.usize()]
+
+        # Prefix geometry includes the measured correction for every known row
+        # before `index`; unknown rows use the current estimate. The scan is
+        # capped at MAX_VARIABLE_MEASUREMENTS, independent of logical count.
+        def variable_offset(owner: u32, index: i32) -> f32:
+            slot: i32 = variable_slot(owner)
+            return 0.0 if slot == NONE_INDEX
+            return variable_offset_at(slot, index)
+
+        def variable_content_extent(owner: u32) -> f32:
+            slot: i32 = variable_slot(owner)
+            return 0.0 if slot == NONE_INDEX
+            total: i32 = variable_totals[slot.usize()]
+            return 0.0 if total <= 0
+            estimate: f64 = variable_estimates[slot.usize()].f64()
+            spacing: f64 = variable_spacings[slot.usize()].f64()
+            extent: mutable f64 = total.f64() * estimate + (total - 1).f64() * spacing
+            count: usize = variable_measurement_counts[slot.usize()]
+            base: usize = slot.usize() * MAX_VARIABLE_MEASUREMENTS
+            for measurement in 0..<MAX_VARIABLE_MEASUREMENTS:
+                break if measurement >= count
+                measured_index: i32 = variable_measurement_indexes[base + measurement]
+                if measured_index >= 0 and measured_index < total:
+                    height: f64 = variable_measurement_heights[base + measurement].f64()
+                    extent <- extent + height - estimate
+            # Content extent is scroll-space, not a paint coordinate. Do not
+            # apply the ordinary 16M geometry cap here: a large list must keep
+            # its normalized tail reachable even when each realized row is
+            # placed through a small local window.
+            return UiCore::finite_or_zero_f64(extent).f32()
+
+        # Find the row containing a content-space offset with binary search.
+        # Each prefix query is bounded by the measured table, so the entire
+        # operation is O(MAX_VARIABLE_MEASUREMENTS * log2(item_count)).
+        def variable_item_at_offset(owner: u32, offset: f32) -> i32:
+            slot: i32 = variable_slot(owner)
+            return NONE_INDEX if slot == NONE_INDEX
+            total: i32 = variable_totals[slot.usize()]
+            return NONE_INDEX if total <= 0
+            content: f32 = variable_content_extent(owner)
+            safe_offset: mutable f64 = UiCore::finite_or_zero(offset).f64()
+            safe_offset <- 0.0 if safe_offset < 0.0
+            safe_offset <- content.f64() if safe_offset > content.f64()
+            low: mutable i32 = 0
+            high: mutable i32 = total
+            while low < high:
+                middle: i32 = low + (high - low) / 2
+                next_top: f64 = variable_offset_at(slot, middle + 1).f64()
+                if next_top <= safe_offset:
+                    low <- middle + 1
+                else:
+                    high <- middle
+            result: mutable i32 = low
+            result <- total - 1 if result >= total
+            return result
+
+        # Return a bounded retained window with one extra row at the lower
+        # edge. `leading_offset` is local to the first row, so placement never
+        # publishes a huge absolute coordinate to a backend.
+        def variable_window(owner: u32, scroll_offset: f32, viewport_extent: f32, max_visible: i32) -> VariableWindow:
+            slot: i32 = variable_slot(owner)
+            return VariableWindow{total: 0, first: 0, finish: 0, leading_offset: 0.0} if slot == NONE_INDEX
+            total: i32 = variable_totals[slot.usize()]
+            return VariableWindow{total: 0, first: 0, finish: 0, leading_offset: 0.0} if total <= 0
+            content: f32 = variable_content_extent(owner)
+            viewport: f32 = UiCore::nonnegative_extent(viewport_extent)
+            maximum: f32 = content - viewport if content > viewport else 0.0
+            safe_scroll: mutable f32 = UiCore::finite_or_zero(scroll_offset)
+            safe_scroll <- 0.0 if safe_scroll < 0.0
+            safe_scroll <- maximum if safe_scroll > maximum
+            first: i32 = variable_item_at_offset(owner, safe_scroll)
+            first_top: f32 = variable_offset_at(slot, first)
+            leading: mutable f32 = safe_scroll - first_top
+            leading <- 0.0 if leading < 0.0
+            budget: mutable i32 = max_visible if max_visible > 0 else 1
+            budget <- MAX_REALIZED.i32() if budget > MAX_REALIZED.i32()
+            budget <- total - first if budget > total - first
+            finish: mutable i32 = first + 1
+            if viewport > 0.0:
+                last: i32 = variable_item_at_offset(owner, safe_scroll + viewport)
+                finish <- last + 2
+            finish <- first + budget if finish > first + budget
+            finish <- total if finish > total
+            finish <- first + 1 if finish <= first
+            return VariableWindow{total: total, first: first, finish: finish, leading_offset: UiCore::bounded_extent(leading)}
+
+        def variable_item_position(owner: u32, index: i32, window: VariableWindow) -> VariableItemPosition:
+            return VariableItemPosition{valid: false, top: 0.0} if index < window.first or index >= window.finish or index < 0 or index >= window.total
+            first_top: f32 = variable_offset(owner, window.first)
+            top: f32 = variable_offset(owner, index) - first_top - window.leading_offset
+            return VariableItemPosition{valid: true, top: UiCore::bounded_coordinate(top)}
+
+        def variable_scroll_by(owner: u32, scroll_offset: f32, delta: f32, viewport_extent: f32) -> f32:
+            slot: i32 = variable_slot(owner)
+            return 0.0 if slot == NONE_INDEX
+            content: f32 = variable_content_extent(owner)
+            viewport: f32 = UiCore::nonnegative_extent(viewport_extent)
+            maximum: f64 = content.f64() - viewport.f64() if content > viewport else 0.0
+            next: mutable f64 = UiCore::finite_or_zero(scroll_offset).f64() + UiCore::finite_or_zero(delta).f64()
+            next <- 0.0 if next < 0.0
+            next <- maximum if next > maximum
+            return UiCore::finite_or_zero_f64(next).f32()
+
+        def variable_scroll_fraction(owner: u32, scroll_offset: f32, viewport_extent: f32) -> f32:
+            content: f32 = variable_content_extent(owner)
+            viewport: f32 = UiCore::nonnegative_extent(viewport_extent)
+            maximum: f32 = content - viewport if content > viewport else 0.0
+            return 0.0 if maximum <= 0.0
+            position: f32 = variable_scroll_by(owner, scroll_offset, 0.0, viewport)
+            return position / maximum
+
+    private:
+        global mutable variable_valid: bool[MAX_VARIABLE_LISTS] = zeroed
+        global mutable variable_owners: u32[MAX_VARIABLE_LISTS] = zeroed
+        global mutable variable_totals: i32[MAX_VARIABLE_LISTS] = zeroed
+        global mutable variable_estimates: f32[MAX_VARIABLE_LISTS] = zeroed
+        global mutable variable_spacings: f32[MAX_VARIABLE_LISTS] = zeroed
+        global mutable variable_measurement_counts: usize[MAX_VARIABLE_LISTS] = zeroed
+        global mutable variable_measurement_next: usize[MAX_VARIABLE_LISTS] = zeroed
+        global mutable variable_measurement_indexes: i32[MAX_VARIABLE_LISTS * MAX_VARIABLE_MEASUREMENTS] = zeroed
+        global mutable variable_measurement_heights: f32[MAX_VARIABLE_LISTS * MAX_VARIABLE_MEASUREMENTS] = zeroed
+
+        def variable_slot(owner: u32) -> i32:
+            return NONE_INDEX if owner == 0
+            for slot in 0..<MAX_VARIABLE_LISTS:
+                return slot.i32() if variable_valid[slot] and variable_owners[slot] == owner
+            return NONE_INDEX
+
+        def variable_measurement(slot: i32, index: i32) -> i32:
+            return NONE_INDEX if slot < 0 or slot >= MAX_VARIABLE_LISTS.i32()
+            count: usize = variable_measurement_counts[slot.usize()]
+            base: usize = slot.usize() * MAX_VARIABLE_MEASUREMENTS
+            for offset in 0..<MAX_VARIABLE_MEASUREMENTS:
+                break if offset >= count
+                return (base + offset).i32() if variable_measurement_indexes[base + offset] == index
+            return NONE_INDEX
+
+        def prune_variable_measurements(slot: i32, total: i32) -> void:
+            return if slot < 0 or slot >= MAX_VARIABLE_LISTS.i32()
+            count: usize = variable_measurement_counts[slot.usize()]
+            base: usize = slot.usize() * MAX_VARIABLE_MEASUREMENTS
+            kept: mutable usize = 0
+            for offset in 0..<MAX_VARIABLE_MEASUREMENTS:
+                break if offset >= count
+                index: i32 = variable_measurement_indexes[base + offset]
+                if index >= 0 and index < total:
+                    variable_measurement_indexes[base + kept] <- index
+                    variable_measurement_heights[base + kept] <- variable_measurement_heights[base + offset]
+                    kept <- kept + 1
+            for offset in kept..<MAX_VARIABLE_MEASUREMENTS:
+                variable_measurement_indexes[base + offset] <- NONE_INDEX
+                variable_measurement_heights[base + offset] <- 0.0
+            variable_measurement_counts[slot.usize()] <- kept
+            variable_measurement_next[slot.usize()] <- kept % MAX_VARIABLE_MEASUREMENTS
+
+        def variable_offset_at(slot: i32, index: i32) -> f32:
+            return 0.0 if slot < 0 or slot >= MAX_VARIABLE_LISTS.i32()
+            total: i32 = variable_totals[slot.usize()]
+            return 0.0 if total <= 0 or index <= 0
+            safe_index: mutable i32 = index
+            safe_index <- total if safe_index > total
+            estimate: f64 = variable_estimates[slot.usize()].f64()
+            spacing: f64 = variable_spacings[slot.usize()].f64()
+            result: mutable f64 = safe_index.f64() * (estimate + spacing)
+            count: usize = variable_measurement_counts[slot.usize()]
+            base: usize = slot.usize() * MAX_VARIABLE_MEASUREMENTS
+            for offset in 0..<MAX_VARIABLE_MEASUREMENTS:
+                break if offset >= count
+                measured_index: i32 = variable_measurement_indexes[base + offset]
+                result <- result + variable_measurement_heights[base + offset].f64() - estimate if measured_index >= 0 and measured_index < safe_index
+            return UiCore::finite_or_zero_f64(result).f32()
+
+        def safe_variable_height(height: f32) -> f32:
+            safe: f32 = UiCore::bounded_extent(height)
+            return 1.0 if safe == 0.0 else safe

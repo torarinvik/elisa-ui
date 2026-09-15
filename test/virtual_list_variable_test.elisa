@@ -1,0 +1,60 @@
+# Headless variable-height virtualization policy.
+#
+# Measured rows are sparse and bounded; all unknown rows use an estimate. The
+# test deliberately addresses a million-item tail so the policy cannot hide
+# an O(item_count) prefix scan or a f32 global-pixel overflow.
+
+include "../src/widgets/ui_virtual_list.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    owner: u32 = 41
+    check("variable list registers", UiVirtualList::variable_init(owner, 1000000, 32.0, 4.0))
+    check("variable list keeps its bounded total", UiVirtualList::variable_content_extent(owner) > 35999900.0)
+    check("unknown rows use the estimate", UiVirtualList::variable_height(owner, 100) == 32.0)
+
+    check("first measured row changes its height", UiVirtualList::variable_set_height(owner, 0, 48.0))
+    check("second measured row changes its height", UiVirtualList::variable_set_height(owner, 2, 96.0))
+    check("tail measurement is accepted", UiVirtualList::variable_set_height(owner, 900000, 64.0))
+    check("measurement count is sparse", UiVirtualList::variable_measurement_count(owner) == 3)
+    check("measured height is returned", UiVirtualList::variable_height(owner, 2) == 96.0)
+    check("prefix includes sparse measured corrections", UiVirtualList::variable_offset(owner, 2) == 72.0 + 16.0)
+    check("later prefix includes all earlier corrections", UiVirtualList::variable_offset(owner, 3) == 108.0 + 16.0 + 64.0)
+    check("tail prefix remains finite", UiVirtualList::variable_offset(owner, 900001) > 0.0)
+
+    check("offset hit testing finds the first measured row", UiVirtualList::variable_item_at_offset(owner, 10.0) == 0)
+    check("offset hit testing finds the following row", UiVirtualList::variable_item_at_offset(owner, 55.0) == 1)
+    check("offset hit testing reaches the million-item tail", UiVirtualList::variable_item_at_offset(owner, UiVirtualList::variable_offset(owner, 900000) + 1.0) == 900000)
+
+    window: UiVirtualList::VariableWindow = UiVirtualList::variable_window(owner, UiVirtualList::variable_offset(owner, 900000), 120.0, 8)
+    check("tail window starts at its logical row", window.first == 900000)
+    check("tail window is bounded", window.finish > window.first and window.finish - window.first <= 8)
+    position: UiVirtualList::VariableItemPosition = UiVirtualList::variable_item_position(owner, window.first, window)
+    check("first tail row is placed at the viewport origin", position.valid and position.top == 0.0)
+    outside: UiVirtualList::VariableItemPosition = UiVirtualList::variable_item_position(owner, window.finish, window)
+    check("rows outside the retained window are rejected", not outside.valid)
+
+    moved: f32 = UiVirtualList::variable_scroll_by(owner, 0.0, 500.0, 120.0)
+    check("scrolling remains bounded", moved == 500.0)
+    check("scroll fraction is normalized", UiVirtualList::variable_scroll_fraction(owner, moved, 120.0) > 0.0 and UiVirtualList::variable_scroll_fraction(owner, moved, 120.0) < 1.0)
+    tail_scroll: f32 = UiVirtualList::variable_scroll_by(owner, 0.0, 999999999.0, 120.0)
+    check("oversized scroll reaches the normalized tail", UiVirtualList::variable_scroll_fraction(owner, tail_scroll, 120.0) == 1.0)
+
+    check("setting the same measurement is idempotent", not UiVirtualList::variable_set_height(owner, 2, 96.0))
+    check("shrinking the collection prunes removed measurements", UiVirtualList::variable_set_item_count(owner, 1) and UiVirtualList::variable_measurement_count(owner) == 1 and UiVirtualList::variable_content_extent(owner) == 48.0)
+    check("count changes are bounded", UiVirtualList::variable_set_item_count(owner, 0) and UiVirtualList::variable_content_extent(owner) == 0.0)
+    check("release clears the owner", UiVirtualList::variable_release(owner) and UiVirtualList::variable_content_extent(owner) == 0.0)
+    check("released owner rejects new measurements", not UiVirtualList::variable_set_height(owner, 0, 20.0))
+
+    if failures == 0:
+        _ = puts("variable virtual list: all checks passed")
+        return 0
+    _ = puts("variable virtual list: FAILURES above")
+    return 1
