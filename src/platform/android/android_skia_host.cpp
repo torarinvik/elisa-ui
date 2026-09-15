@@ -140,6 +140,10 @@ struct Host {
     // The touch that may become a drag.
     bool touching = false;
     bool panning = false;
+    // Android motion coordinates are indexed by slot, not by identity. Keep
+    // the pointer id that began the gesture so a slot reorder cannot make a
+    // move or release belong to a different finger.
+    std::int32_t active_pointer_id = -1;
     float down_x = 0.0f, down_y = 0.0f;
     float last_x = 0.0f, last_y = 0.0f;
 };
@@ -147,6 +151,28 @@ struct Host {
 const int kTouchDown = 0, kTouchMove = 1, kTouchUp = 2, kTouchCancel = 3;
 const int kFocusGained = 0, kFocusLost = 1, kBackground = 2, kForeground = 3,
           kSurfaceLost = 4, kSurfaceRestored = 5;
+
+std::int32_t pointer_index_for_id(const AInputEvent* event, std::int32_t id) {
+    if (id < 0) return -1;
+    const std::size_t count = AMotionEvent_getPointerCount(event);
+    for (std::size_t index = 0; index < count; ++index) {
+        if (AMotionEvent_getPointerId(event, index) == id) return static_cast<std::int32_t>(index);
+    }
+    return -1;
+}
+
+void cancel_touch(Host& host) {
+    if (!host.touching) return;
+    // A panning touch already cancelled its press when it crossed the slop;
+    // there is no second pointer capture to release. A pending tap, however,
+    // must receive the cancellation before lifecycle makes the framework stop
+    // accepting input, otherwise a later focus/Surface loss can activate it
+    // when the matching release never arrives.
+    if (!host.panning) elisa_android_touch(kTouchCancel, host.last_x, host.last_y);
+    host.touching = false;
+    host.panning = false;
+    host.active_pointer_id = -1;
+}
 
 // ANDROID NUMBERS ITS KEYS ITS OWN WAY and the framework numbers them the way
 // GLFW does -- a printable key is its uppercase ASCII code, everything else is
@@ -367,6 +393,7 @@ void on_command(android_app* app, std::int32_t command) {
             start_or_resize(host);
             break;
         case APP_CMD_TERM_WINDOW:
+            cancel_touch(host);
             elisa_android_lifecycle(kSurfaceLost);
             host.surface_gone = true;
             host.frame.reset();
@@ -378,9 +405,11 @@ void on_command(android_app* app, std::int32_t command) {
             break;
         case APP_CMD_LOST_FOCUS:
             host.focused = false;
+            cancel_touch(host);
             elisa_android_lifecycle(kFocusLost);
             break;
         case APP_CMD_PAUSE:
+            cancel_touch(host);
             elisa_android_lifecycle(kBackground);
             break;
         case APP_CMD_RESUME:
@@ -390,6 +419,7 @@ void on_command(android_app* app, std::int32_t command) {
             host.needs_frame = true;
             break;
         case APP_CMD_DESTROY:
+            cancel_touch(host);
             elisa_android_stop();
             host.started = false;
             // Clipboard calls can arrive after the final lifecycle callback
@@ -420,9 +450,18 @@ std::int32_t on_input(android_app* app, AInputEvent* event) {
         return key != 0 ? 1 : 0;
     }
     if (AInputEvent_getType(event) != AINPUT_EVENT_TYPE_MOTION) return 0;
-    const std::int32_t action = AMotionEvent_getAction(event) & AMOTION_EVENT_ACTION_MASK;
-    const float x = AMotionEvent_getX(event, 0) / host.scale;
-    const float y = AMotionEvent_getY(event, 0) / host.scale;
+    const std::int32_t raw_action = AMotionEvent_getAction(event);
+    const std::int32_t action = raw_action & AMOTION_EVENT_ACTION_MASK;
+    const std::size_t pointer_count = AMotionEvent_getPointerCount(event);
+    if (pointer_count == 0) return 0;
+    const std::int32_t action_index =
+        (raw_action & AMOTION_EVENT_ACTION_POINTER_INDEX_MASK) >> AMOTION_EVENT_ACTION_POINTER_INDEX_SHIFT;
+    std::int32_t pointer_index = pointer_index_for_id(event, host.active_pointer_id);
+    if (pointer_index < 0 || static_cast<std::size_t>(pointer_index) >= pointer_count) {
+        pointer_index = action_index >= 0 && static_cast<std::size_t>(action_index) < pointer_count ? action_index : 0;
+    }
+    const float x = AMotionEvent_getX(event, static_cast<std::size_t>(pointer_index)) / host.scale;
+    const float y = AMotionEvent_getY(event, static_cast<std::size_t>(pointer_index)) / host.scale;
     // Past this many logical points a touch is a drag, not a press.
     const float slop = 8.0f;
     ELISA_TRACE("motion action=%d at %g,%g panning=%d", action, x, y, host.panning ? 1 : 0);
@@ -430,9 +469,23 @@ std::int32_t on_input(android_app* app, AInputEvent* event) {
         case AMOTION_EVENT_ACTION_DOWN:
             host.touching = true;
             host.panning = false;
+            host.active_pointer_id = AMotionEvent_getPointerId(event, static_cast<std::size_t>(pointer_index));
             host.down_x = host.last_x = x;
             host.down_y = host.last_y = y;
             elisa_android_touch(kTouchDown, x, y);
+            break;
+        case AMOTION_EVENT_ACTION_POINTER_DOWN:
+            // The single-pointer API cannot represent a pinch identity. Once
+            // another finger arrives, cancel the pending press and keep the
+            // interaction in scroll mode instead of feeding slot-zero events
+            // into the old tap target.
+            if (!host.touching) break;
+            if (!host.panning) {
+                host.panning = true;
+                elisa_android_touch(kTouchCancel, x, y);
+            }
+            host.last_x = x;
+            host.last_y = y;
             break;
         case AMOTION_EVENT_ACTION_MOVE:
             if (!host.touching) break;
@@ -448,13 +501,39 @@ std::int32_t on_input(android_app* app, AInputEvent* event) {
             host.last_x = x;
             host.last_y = y;
             break;
+        case AMOTION_EVENT_ACTION_POINTER_UP: {
+            if (!host.touching) break;
+            const std::int32_t lifted_id =
+                action_index >= 0 && static_cast<std::size_t>(action_index) < pointer_count
+                    ? AMotionEvent_getPointerId(event, static_cast<std::size_t>(action_index))
+                    : -1;
+            if (lifted_id == host.active_pointer_id) {
+                std::int32_t replacement = -1;
+                for (std::size_t index = 0; index < pointer_count; ++index) {
+                    if (static_cast<std::int32_t>(index) == action_index) continue;
+                    replacement = AMotionEvent_getPointerId(event, index);
+                    break;
+                }
+                if (replacement >= 0) {
+                    host.active_pointer_id = replacement;
+                    const std::int32_t replacement_index = pointer_index_for_id(event, replacement);
+                    if (replacement_index >= 0) {
+                        host.last_x = AMotionEvent_getX(event, static_cast<std::size_t>(replacement_index)) / host.scale;
+                        host.last_y = AMotionEvent_getY(event, static_cast<std::size_t>(replacement_index)) / host.scale;
+                    }
+                }
+            }
+            break;
+        }
         case AMOTION_EVENT_ACTION_UP:
             if (!host.panning) elisa_android_touch(kTouchUp, x, y);
             host.touching = host.panning = false;
+            host.active_pointer_id = -1;
             break;
         case AMOTION_EVENT_ACTION_CANCEL:
             if (!host.panning) elisa_android_touch(kTouchCancel, x, y);
             host.touching = host.panning = false;
+            host.active_pointer_id = -1;
             break;
         default:
             return 0;

@@ -131,6 +131,18 @@ grep -Fq 'tracing() && pixels_valid ? sampled_colors(pixels) : 0' "$HOST" || {
   echo "android: frame tracing may sample an uninitialized SkPixmap" >&2
   exit 1
 }
+grep -Fq 'active_pointer_id' "$HOST" || {
+  echo "android: touch routing does not retain pointer identity" >&2
+  exit 1
+}
+grep -Fq 'AMOTION_EVENT_ACTION_POINTER_DOWN' "$HOST" || {
+  echo "android: touch routing does not handle a secondary pointer" >&2
+  exit 1
+}
+grep -Fq 'pointer_index_for_id' "$HOST" || {
+  echo "android: motion coordinates still assume pointer slot zero" >&2
+  exit 1
+}
 
 # --- 2. A device, if one is attached ------------------------------------
 ADB="${ADB:-$SDK/platform-tools/adb}"
