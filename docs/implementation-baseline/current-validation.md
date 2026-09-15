@@ -80,11 +80,13 @@ bash scripts/check_skia.sh
 executes the pinned UAX #29 15.1.0 corpus (1,187 rows).
 
 The full real-Skia Showcase path reached its required exact-tuple benchmark
-with the clean latest 8d7db056 product. Three fresh processes produced 21 tail
-pixel-stable samples, with a recorded median of 31.211 ms and a maximum of
-37.325 ms, inside the recorded 40/55 ms policy limits. The tuple is recorded in
-`test/showcase_skia_performance_budgets.json`; a different compiler or host
-must add its own measured reference instead of inheriting this result.
+with the clean latest 8d7db056 product after the Win32 source refresh. Three
+fresh processes produced 21 tail-pixel-stable samples, with a recorded median
+of 29.926 ms and a maximum of 34.985 ms, inside the current 50/80 ms policy
+limits. The exact source-bundle tuple is recorded in
+`test/showcase_skia_performance_budgets.json`; a different compiler, source
+bundle, or host must add its own measured reference instead of inheriting this
+result.
 
 The hosted open-vertical-slice gate reaches component-runtime compilation but
 still fails on compiler-generated invalid LLVM IR:
@@ -94,7 +96,12 @@ declare i32 @llvm.wasm.memory.grow.i32.i32(i32, i32)
 ```
 
 The expected intrinsic is `llvm.wasm.memory.grow.i32`. This is a compiler
-backend blocker, not evidence of a framework or WasmBrowser API failure.
+backend blocker, not evidence of a framework or WasmBrowser API failure. A
+source-level `@link_name` workaround produces valid IR but is not a safe
+framework change: the next link then exposes a missing component-runtime
+`ctx_string_views_eq` definition. The fix belongs in the compiler's intrinsic
+overload handling and component runtime, so the framework gate keeps reporting
+the failure instead of masking it.
 
 ## Known optimized AppKit pixel issue
 

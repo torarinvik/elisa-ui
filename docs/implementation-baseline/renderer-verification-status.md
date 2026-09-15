@@ -63,24 +63,25 @@ Observed on the current host:
   are 1180x800; the retina frame is 2360x1600.
 - The AppKit/Skia compositor passed its off-screen CoreGraphics presentation
   check (`render_ns=11272500`, pixel digest `96591d2368f57d1a`).
-- Million-item Showcase workflow plus Skia tail frame: the latest `8d7db056`
-  tuple has a recorded median of `31.211 ms` and maximum `37.325 ms`, within
-  its `40 ms` median / `55 ms` maximum limits. Pixel digest
-  `1ac21e37972207bb` was stable across the benchmark and fresh processes. Raw
-  samples and the exact reference tuple are in
+- Million-item Showcase workflow plus Skia tail frame: after the Win32 source
+  refresh, the latest `8d7db056` tuple has a recorded median of `29.926 ms` and
+  maximum `34.985 ms`, within its `50 ms` median / `80 ms` maximum limits. Pixel
+  digest `1ac21e37972207bb` was stable across the benchmark and fresh processes.
+  Raw samples and the exact source-bundle reference tuple are in
   `test/showcase_skia_performance_budgets.json`.
 
 The strict Skia gate, semantic-enabled UI suite fixtures, Unicode corpus, and
 standalone exact M5 performance-budget gate passed with the clean latest
-`8d7db056` product. Its retained-tree run had three-process aggregate medians
-of 13.545 ms first-frame batches, 6.316 ms layout, 27.552 ms paint, 79.225 ms
-text, 0.726 ms text-input, and 0.301 ms for 128 anchored virtual-list windows;
-maximum RSS was 3,653,632 bytes. A
-separate full matrix attempt remains incomplete: its cross-target legs reported
-Win32 `kill`/`sigaction` link failures, Linux cross-target failures, and a
-WasmBrowser build missing `wasm-component-ld`. The SDL/Android checks skipped
-because the Android Skia archive is not installed. The exact current outcomes
-are summarized in [`current-validation.md`](current-validation.md).
+`8d7db056` product. Its recorded retained-tree reference has three-process
+aggregate medians of 8.065 ms first-frame batches, 3.780 ms layout, 16.373 ms
+paint, 44.392 ms text, 0.437 ms text-input, and 0.135 ms for 128 anchored
+virtual-list windows; maximum RSS was 3,653,632 bytes. The exact tuple keeps
+source/compiler hashes strict and adds only a bounded scheduling-variance
+margin around timings. The full matrix now links the Win32 image through the
+Elisa debug-referee adapter; Linux and Android device/Skia legs remain
+environment-dependent, and the hosted leg is blocked by the compiler intrinsic
+issue described in current validation. The exact current outcomes are
+summarized in [`current-validation.md`](current-validation.md).
 
 The complete strict command remains `bash scripts/run_tests.sh` with the
 pinned `SKIA_ROOT`; do not set `ELISA_UI_REQUIRE_REAL_SKIA=0` for an acceptance
