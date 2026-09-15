@@ -5,6 +5,15 @@ _Part of the [elisa-ui implementation baseline](../implementation-baseline.md)._
 
 ## Latest verification: 2026-09-15
 
+The current required CPU-raster tuple uses clean upstream `main` at
+`45cb0ded70e7e8c8a41d21c63a09939706322ca4`, with stage1 product SHA-256
+`447c5c64ec9914e0ea99bc2a9f396e93fdf353cf1238cb647f472493e1c73548` and
+runtime SHA-256
+`85f1107eef00a7dd903e511df366b8b6cade4d8573cf0478f1de91604ea5beb9`.
+The exact Showcase budget for this tuple records a 13.492 ms median and
+17.620 ms maximum over 21 fresh-process samples; the tail digest is
+`1ac21e37972207bb`.
+
 The pinned Skia checkout and CPU-raster archive are now built locally. From a
 fresh checkout, provision them without opening a window:
 
@@ -14,8 +23,14 @@ export SKIA_OUT="$SKIA_ROOT/out/elisa"
 bash scripts/build_skia.sh
 ```
 
-The required CPU-raster gate was run against the clean isolated latest compiler
-`8d7db0561d0f72c1f548fa6a73d071c86b2fe57f` (14 commits ahead of fetched
+The historical 8d7 CPU-raster tuple was run against an older compiler; the
+current tuple above supersedes it. Its recorded details remain below for
+comparison.
+The required CPU-raster gate was run against the clean isolated compiler
+`8d7db0561d0f72c1f548fa6a73d071c86b2fe57f` (the historical compiler tuple),
+
+Its historical fetched upstream was `fd2cb3cff470319500db362e5fce283cbe300de`;
+
 upstream `main` `fd2cb3cff470319500db362e5fce2833cbe300de`), with Skia revision
 `9c7b2dffb2433f5a0cc2b77f06025a09126807ed`. The archive SHA-256 is
 `39774ff993bd3b84943c27548738c8b8b8208396237d536c1a4ed1c6e147c775`.
@@ -51,28 +66,29 @@ dimensions, and source-bundle provenance are required to select its budget.
 
 Observed on the current host:
 
-- Off-screen Skia (`8d7db056`): 16 iterations, average `820242 ns`, pixel
+- Off-screen Skia (`45cb0ded`): 16 iterations, average `362291 ns`, pixel
   digest `26b1baa0682e064d`; a fresh process reproduced the digest.
 - Public hello showcase workflow: 70 commands, 25 semantic nodes, 19 custom
   art commands, deferred commands on both sides of retained drawing, two
   generation-bound deferred images (`2 -> 3`), 16 render iterations averaging
-  `4309755 ns`, pixel digest `f8cc2ba20c07b5bd`; a fresh process reproduced it.
+  `3225981 ns`, pixel digest `f8cc2ba20c07b5bd`; a fresh process reproduced it.
 - All five showcase pages and nine state/scale variants rendered: focus,
   high contrast, light high contrast, light, RTL, dialog, 2x, hover, and
   pressed. The 1x pages
   are 1180x800; the retina frame is 2360x1600.
 - The AppKit/Skia compositor passed its off-screen CoreGraphics presentation
   check (`render_ns=11272500`, pixel digest `96591d2368f57d1a`).
-- Million-item Showcase workflow plus Skia tail frame: after the Win32 source
-  refresh, the latest `8d7db056` tuple has a recorded median of `29.926 ms` and
-  maximum `34.985 ms`, within its `50 ms` median / `80 ms` maximum limits. Pixel
+- Million-item Showcase workflow plus Skia tail frame: the latest `45cb0ded`
+  tuple has a recorded median of `11.297 ms` and maximum `12.897 ms`, within its
+  `50 ms` median / `80 ms` maximum limits. Pixel
   digest `1ac21e37972207bb` was stable across the benchmark and fresh processes.
   Raw samples and the exact source-bundle reference tuple are in
   `test/showcase_skia_performance_budgets.json`.
 
 The strict Skia gate, semantic-enabled UI suite fixtures, Unicode corpus, and
-standalone exact M5 performance-budget gate passed with the clean latest
-`8d7db056` product. Its recorded retained-tree reference has three-process
+standalone exact M5 performance-budget gate passed with the clean current
+`45cb0ded` product. The existing retained-tree reference (recorded with the
+8d7 product) has three-process
 aggregate medians of 8.065 ms first-frame batches, 3.780 ms layout, 16.373 ms
 paint, 44.392 ms text, 0.437 ms text-input, and 0.135 ms for 128 anchored
 virtual-list windows; maximum RSS was 3,653,632 bytes. The exact tuple keeps
