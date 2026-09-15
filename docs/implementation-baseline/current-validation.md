@@ -10,42 +10,42 @@ The fetched upstream `main` is
 with uncommitted work; it was left untouched. Framework gates use a clean
 isolated compiler checkout instead.
 
-The latest clean isolated stage1 used for the AppKit check is at
-`/tmp/elisa-ui-compiler-c605-20260915`, revision
-`ce9e0292f40a6618b7803a4b9b07961d08033a5e`, three commits ahead of fetched
+The latest clean usable stage1 used for the current gates is at
+`/private/tmp/elisa-compiler-proof-depth-latest`, revision
+`4cf3d6a82106cb11414d9fe9980ebf085fd6710d`, six commits ahead of fetched
 upstream `main`. Its stage1 SHA-256 is
-`9c8e31c9902ba6d0106c9e2eb2cbcdb68992efd3faa264ed8c220e2ab5387682` and its
+`6b4b6eae97e47034598633465124181c4355e262a63f1e6d73390755233abdd6` and its
 runtime SHA-256 is
 `a58618f5358e30e8c19cf1344d47bddd3a7520ee61f83a471222bb0660e48a8f`.
-`ELISA_UI_STAGE1=/tmp/elisa-ui-compiler-c605-20260915 bash
+`ELISA_UI_STAGE1=/private/tmp/elisa-compiler-proof-depth-latest bash
 scripts/check_toolchain.sh` passes the strict dirty/stale checks.
 
 The pinned Skia checkout is revision
 `9c7b2dffb2433f5a0cc2b77f06025a09126807ed`; `out/elisa/libskia.a` has SHA-256
 `39774ff993bd3b84943c27548738c8b8b8208396237d536c1a4ed1c6e147c775`.
-The clean upstream-main and c605 compiler products have separate exact
-performance tuples recorded in `test/showcase_skia_performance_budgets.json`.
+The clean upstream-main, c605, ce9e, and 4cf3 compiler products have separate
+exact performance tuples recorded in `test/showcase_skia_performance_budgets.json`.
 
 With the clean latest compiler and pinned Skia, the following headless gates
 passed without opening or foregrounding a window:
 
 ```text
-ELISA_UI_STAGE1=/tmp/elisa-ui-compiler-c605-20260915 \
+ELISA_UI_STAGE1=/private/tmp/elisa-compiler-proof-depth-latest \
 bash scripts/check_appkit_canvas.sh
   -O2 AppKit canvas build, fresh-process PNG, accessibility bridge,
   callbacks, bundle and signature: PASS
   fresh-process PNG sha256=
   07f328d5e73e0f2863b08135085ff85046d6b5ffb451622d965d914b4c9011d1
 
-ELISA_UI_STAGE1=/tmp/elisa-ui-compiler-c605-20260915 \
+ELISA_UI_STAGE1=/private/tmp/elisa-compiler-proof-depth-latest \
 bash scripts/check_capi.sh
   C header/Elisa symbol agreement and C example: PASS
 
-ELISA_UI_STAGE1=/tmp/elisa-ui-compiler-c605-20260915 \
+ELISA_UI_STAGE1=/private/tmp/elisa-compiler-proof-depth-latest \
 bash scripts/check_uikit.sh
   UIKit SDK syntax, ABI, off-screen frame and semantic boundary: PASS
 
-ELISA_UI_STAGE1=/tmp/elisa-ui-compiler-c605-20260915 \
+ELISA_UI_STAGE1=/private/tmp/elisa-compiler-proof-depth-latest \
 SKIA_ROOT=/tmp/elisa-skia-check-20260914 \
 bash scripts/check_skia.sh
   CPU-raster painter, off-screen pixels, fresh-process replay, Showcase pages,
@@ -56,12 +56,12 @@ bash scripts/check_skia.sh
 `check_unicode_conformance.sh` also pass with this compiler. The Unicode gate
 executes the pinned UAX #29 15.1.0 corpus (1,187 rows).
 
-The full `run_tests.sh` invocation reached all early headless checks and the
-public million-item Showcase workflow, but its required exact-tuple benchmark
-correctly stopped because the ce9e product was not yet represented in the
-recorded budget. One run also had a transient 48.6 ms sample, above the 40 ms
-maximum. Existing c605 and upstream-main tuples remain the accepted performance
-references; an unbudgeted product is not silently accepted.
+The full real-Skia Showcase path reached its required exact-tuple benchmark
+with the clean 4cf3d6a8 product. Three fresh processes produced 21 stable tail
+pixel samples, with a median of 28.348 ms and a maximum of 31.674 ms, inside
+the 30/40 ms policy limits. The tuple is recorded in
+`test/showcase_skia_performance_budgets.json`; a different compiler or host
+must add its own measured reference instead of inheriting this result.
 
 The hosted open-vertical-slice gate reaches component-runtime compilation but
 still fails on compiler-generated invalid LLVM IR:

@@ -11,13 +11,13 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui code revision | 0b0ebae on main (committed task state; three pre-existing edits remain uncommitted and preserved) |
+| elisa-ui code revision | 8127a23 on main (committed task state; working tree clean) |
 | Host and C compiler | macOS 26.6.2 (Darwin 25.6.0), arm64; Homebrew clang 23.1.1 |
-| Elisa stage1 | clean isolated clone `/tmp/elisa-ui-compiler-c605-20260915/bin/elisac-stage1`, revision ce9e0292f40a6618b7803a4b9b07961d08033a5e (three commits ahead of fetched origin/main; includes the typed-lowering optimization branch); SHA-256 9c8e31c9902ba6d0106c9e2eb2cbcdb68992efd3faa264ed8c220e2ab5387682 |
-| Elisa runtime | `/tmp/elisa-ui-compiler-c605-20260915/build/runtime/elisacore_runtime.o`; SHA-256 a58618f5358e30e8c19cf1344d47bddd3a7520ee61f83a471222bb0660e48a8f |
+| Elisa stage1 | clean isolated latest usable build `/private/tmp/elisa-compiler-proof-depth-latest/bin/elisac-stage1`, revision 4cf3d6a82106cb11414d9fe9980ebf085fd6710d (six commits ahead of fetched origin/main; includes the typed-lowering optimization branch); SHA-256 6b4b6eae97e47034598633465124181c4355e262a63f1e6d73390755233abdd6 |
+| Elisa runtime | `/private/tmp/elisa-compiler-proof-depth-latest/build/runtime/elisacore_runtime.o`; SHA-256 a58618f5358e30e8c19cf1344d47bddd3a7520ee61f83a471222bb0660e48a8f |
 | Elisa stage1 driver | `scripts/elisac_stage1.sh` from the isolated compiler; SHA-256 9b23b66c0b8edbf292d14b444f506c2e30be237943126ffe455d1c8e2873756f |
 | Upstream-main compiler reference | clean isolated build at fd2cb3cff470319500db362e5fce2833cbe300de, verified against fetched `origin/main`; stage1 SHA-256 6cdcdf45fb396d319ce1d0d4e0c5d35e9b3161bd3e81f8d2e594ee60ac76c2a8 |
-| Shared compiler checkout | `../Elisa-compiler` is on branch `codex/shared-typed-edir-lowering` at c605b3fa with uncommitted edits; it was left untouched. The clean isolated ce9e029 build was used for the AppKit `-O2` gate. |
+| Shared compiler checkout | `../Elisa-compiler` is on branch `codex/shared-typed-edir-lowering` at c605b3fa with uncommitted edits; it was left untouched. The clean isolated 4cf3d6a8 build is used for current gates. |
 | Clang binary | `/opt/homebrew/opt/llvm/bin/clang++`, Homebrew clang 23.1.1; SHA-256 570c488e53383b198796e706e91b5ce5ec45bb730683a5af5e822d56a2eb1888 |
 | Skia source/archive | chrome/m150 at 9c7b2dffb2433f5a0cc2b77f06025a09126807ed; `out/elisa/libskia.a` SHA-256 39774ff993bd3b84943c27548738c8b8b8208396237d536c1a4ed1c6e147c775; optional `libpng.a` SHA-256 13fda447a526c821e1bff29f66b3a582857d702e9f8fd8e5f29b5628dfe2690f |
 | WasmBrowser | ../WasmBrowser at 3ac9b25b0ea74000846625f46c2115ac93d16cf1; checkout has pre-existing local changes; WIT SHA-256 unchanged at 9032a1c59a5495d4868bc7cdf494153096708ff6f2321b4ea2ffeff752c627d6 |
