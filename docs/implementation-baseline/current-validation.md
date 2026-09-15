@@ -4,7 +4,8 @@ Part of the [elisa-ui implementation baseline](../implementation-baseline.md).
 
 ## Latest compiler and renderer evidence (2026-09-16)
 
-The current framework revision is `a857322`. Its variable-height list cache
+The current framework revision is `3fe05b8` (with the preceding Android JNI
+hardening commits `89f1e24`, `7505ea9`, and `9f48f51`). Its variable-height list cache
 uses deterministic least-recently-updated eviction at the fixed 256-entry
 limit, typed handles expose a versioned snapshot/restore path, and the direct
 Skia text ABI rejects malformed or oversized UTF-8 before measurement or draw;
@@ -87,13 +88,23 @@ bash scripts/check_skia.sh
 executes the pinned UAX #29 15.1.0 corpus (1,187 rows).
 
 The full real-Skia Showcase path reached its required exact-tuple benchmark
-with the clean latest d6a693c0 product after the caret-alignment correction.
-Three fresh processes produced 21 tail-pixel-stable samples, with a recorded
-median of 18.302 ms and a maximum of 24.124 ms, inside the current 50/80 ms
-policy limits. The exact source-bundle tuple is recorded in
+with the clean latest d6a693c0 product after the Android JNI boundary and
+clipboard-capacity fixes. Three fresh processes produced 21 tail-pixel-stable
+samples, with a recorded median of 20.504 ms and a maximum of 24.386 ms,
+inside the current 50/80 ms policy limits. The exact source-bundle tuple is
+recorded in
 `test/showcase_skia_performance_budgets.json`; a different compiler, source
 bundle, or host must add its own measured reference instead of inheriting this
 result.
+
+The complete `SKIA_ROOT=/private/tmp/elisa-skia-check-20260914
+bash scripts/run_tests.sh` matrix now passes every local compiler, renderer,
+native, mobile-simulator, cross-target, Unicode, and portable fixture. Its only
+nonzero outcome is the separately reported hosted Wapp blocker below (malformed
+Wasm intrinsic IR); the custom Android canvas leg is skipped because this host
+has no built Android Skia archive or attached Android device. The Android
+native-controls package half is independently green through
+`scripts/check_android_controls.sh showcase`.
 
 Variable-height retained lists also accept a synchronous application
 measurement provider. The provider can supply logical row extents before
