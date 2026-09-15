@@ -15,6 +15,37 @@ global mutable stop_during_dispatch: bool = false
 global mutable nested_dispatch_on_event: bool = false
 global mutable nested_dispatch_sent: bool = false
 
+# UiHarness itself is backend-neutral, but it deliberately exercises the same
+# retained widget stack that production apps use. Supply deterministic metric,
+# clipboard, and callback hooks so this test remains a complete standalone
+# application rather than depending on another fixture's declarations.
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    _ = weighted
+    return text.len.f32() * size * 0.5
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    _ = text
+    return size
+
+def ui_font_ascent(size: f32) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    _ = bytes
+    _ = length
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    _ = buffer
+    _ = capacity
+    return 0
+
 def app_init() -> void:
     init_calls <- init_calls + 1
 
@@ -28,6 +59,10 @@ def app_event(event: UiCore::Event) -> void:
         stop_during_dispatch <- false
         _ = UiEvents::enqueue(UiCore::KeyEvent.Down(code: UiCore::Key.A))
         UiHarness::stop()
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    _ = widget
+    _ = event
 
 def app_frame() -> void:
     frame_calls <- frame_calls + 1
