@@ -102,6 +102,8 @@ void elisa_skia_canvas_draw_image_source_sampling(size_t canvas, size_t image,
                                                   uint8_t alpha, int32_t sampling);
 void elisa_skia_canvas_draw_text(size_t canvas, const char *text, size_t length, float x, float y,
                                  float size, uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha);
+/* Text entry points accept only a complete UTF-8 view within Elisa's 1024-byte
+ * text budget; malformed or oversized direct C calls are ignored/return zero. */
 /* `weight_stroke` is the stem growth to add to the glyph outline, in the same
  * units as `size`; zero draws the face as it is. The caller chooses the amount,
  * because how heavy "bold" looks is appearance. A stroke does not change the
