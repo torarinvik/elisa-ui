@@ -187,16 +187,15 @@ extend UiVirtualList:
             safe_offset: mutable f64 = UiCore::finite_or_zero(offset).f64()
             safe_offset <- 0.0 if safe_offset < 0.0
             safe_offset <- content.f64() if safe_offset > content.f64()
-            low: mutable i32 = 0
-            high: mutable i32 = total
-            while low < high:
-                middle: i32 = low + (high - low) / 2
-                next_top: f64 = variable_offset_at(slot, middle + 1).f64()
-                if next_top <= safe_offset:
-                    low <- middle + 1
-                else:
-                    high <- middle
-            result: mutable i32 = low
+            result: mutable i32 =
+                for _ in 0..<MAX_VARIABLE_SEARCH_STEPS |low: i32 = 0, high: i32 = total| -> low:
+                    break if low >= high
+                    middle: i32 = low + (high - low) / 2
+                    next_top: f64 = variable_offset_at(slot, middle + 1).f64()
+                    if next_top <= safe_offset:
+                        low <- middle + 1
+                    else:
+                        high <- middle
             result <- total - 1 if result >= total
             return result
 
@@ -256,6 +255,11 @@ extend UiVirtualList:
             return position / maximum
 
     private:
+        # `UiVirtualList::MAX_ITEMS` is 2^24, so 32 iterations cover the complete
+        # retained item domain while keeping the search visibly bounded even
+        # if a malformed table ever stops shrinking its interval.
+        const MAX_VARIABLE_SEARCH_STEPS: usize = 32
+
         global mutable variable_valid: bool[MAX_VARIABLE_LISTS] = zeroed
         global mutable variable_owners: u32[MAX_VARIABLE_LISTS] = zeroed
         global mutable variable_totals: i32[MAX_VARIABLE_LISTS] = zeroed
