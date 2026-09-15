@@ -13,7 +13,6 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include <stdlib.h>
 
 const size_t elisa_uikit_not_found = (size_t)-1;
 
@@ -23,6 +22,14 @@ static int elisa_uikit_stub_live_elements = 0;
 static int elisa_uikit_stub_layout_changes = 0;
 static int elisa_uikit_stub_updates = 0;
 static int elisa_uikit_stub_updates_at_last_commit = 0;
+static size_t elisa_uikit_stub_handles[512];
+static int elisa_uikit_stub_handle_count = 0;
+/* Keep test handles unique after eviction. A malloc/free pair is allowed to
+ * reuse the same address immediately, which would make a deliberately stale
+ * proxy look like a newly allocated row. Static opaque tokens model UIKit's
+ * object identity without making this host stub's lifetime observable. */
+static unsigned char elisa_uikit_stub_tokens[512];
+static int elisa_uikit_stub_token_count = 0;
 
 /* Test-facing controls. Declared in the Elisa test as externs. */
 void elisa_uikit_stub_set_view(size_t handle) { elisa_uikit_stub_view = handle; }
@@ -33,6 +40,13 @@ void elisa_uikit_stub_clear_layout_change_count(void) { elisa_uikit_stub_layout_
 int elisa_uikit_stub_update_count(void) { return elisa_uikit_stub_updates; }
 int elisa_uikit_stub_updates_after_last_commit(void) {
     return elisa_uikit_stub_updates - elisa_uikit_stub_updates_at_last_commit;
+}
+int elisa_uikit_stub_accessibility_handle_count(void) {
+    return elisa_uikit_stub_handle_count;
+}
+size_t elisa_uikit_stub_accessibility_handle(int index) {
+    if (index < 0 || index >= elisa_uikit_stub_handle_count) return 0;
+    return elisa_uikit_stub_handles[index];
 }
 void elisa_uikit_stub_clear_update_stats(void) {
     elisa_uikit_stub_updates = 0;
@@ -65,9 +79,14 @@ size_t elisa_uikit_accessibility_add(size_t viewHandle, size_t previousHandle, i
     (void)viewHandle; (void)identifier; (void)traits; (void)label; (void)hint; (void)value;
     (void)x; (void)y; (void)width; (void)height; (void)enabled;
     if (isNew == 0 && previousHandle != 0) return previousHandle;
-    void *element = malloc(1);
-    if (element == NULL) return 0;
+    if (elisa_uikit_stub_token_count >= (int)(sizeof(elisa_uikit_stub_tokens) / sizeof(elisa_uikit_stub_tokens[0]))) return 0;
+    void *element = &elisa_uikit_stub_tokens[elisa_uikit_stub_token_count];
+    elisa_uikit_stub_token_count += 1;
     elisa_uikit_stub_live_elements += 1;
+    if (elisa_uikit_stub_handle_count < (int)(sizeof(elisa_uikit_stub_handles) / sizeof(elisa_uikit_stub_handles[0]))) {
+        elisa_uikit_stub_handles[elisa_uikit_stub_handle_count] = (size_t)element;
+        elisa_uikit_stub_handle_count += 1;
+    }
     return (size_t)element;
 }
 
@@ -84,7 +103,6 @@ int elisa_uikit_accessibility_update(size_t viewHandle, size_t handle,
 void elisa_uikit_accessibility_release(size_t handle) {
     if (handle == 0) return;
     elisa_uikit_stub_live_elements -= 1;
-    free((void *)handle);
 }
 
 int elisa_uikit_accessibility_commit(size_t viewHandle, size_t children) {

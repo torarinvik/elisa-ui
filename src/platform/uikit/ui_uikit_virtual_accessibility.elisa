@@ -1,0 +1,204 @@
+# Lazy UIKit container access for retained virtual lists.
+#
+# UIKit asks a semantic list for a child only when an assistive client needs
+# it. The list may contain millions of logical rows while UiFlat retains only
+# a bounded visual window, so this adapter resolves one provider item, reveals
+# its logical anchor and creates a bounded proxy identity on demand. The
+# Objective-C shim only forwards the three UIAccessibilityContainer calls.
+
+extend UiUIKit:
+    private:
+        def virtual_list_index_for_handle(handle: usize) -> usize:
+            return UiFlat::NONE if handle == 0
+            for index in 0..<uikit_accessibility_previous_count:
+                continue if uikit_accessibility_previous_handles[index] != handle
+                id: usize = uikit_accessibility_previous_ids[index]
+                return id if id < UiFlat::count() and UiFlat::widget(id).virtual_list
+                return UiFlat::NONE
+            return UiFlat::NONE
+
+        def virtual_item_frame(list_index: usize, item_index: i32) -> UiCore::Rect:
+            zero: UiCore::Rect = UiCore::Rect(0.0, 0.0, 0.0, 0.0)
+            return zero if list_index >= UiFlat::count()
+            UiFlat::ensure_layout()
+            list: mutable UiFlat::Widget = UiFlat::widget(list_index)
+            return zero if not list.virtual_list
+            total: i32 = UiFlat::virtual_item_count(list_index)
+            return zero if not UiVirtualAccessibility::index_is_valid(item_index, total)
+            padding: f32 = UiCore::nonnegative_extent(list.padding)
+            viewport: mutable f32 = UiCore::nonnegative_extent(list.height - padding * 2.0)
+            anchor: mutable UiVirtualList::ScrollAnchor = UiFlat::virtual_scroll_anchor(list_index)
+            window: mutable UiVirtualList::AnchoredWindow = UiVirtualList::anchored_window(
+                total, list.virtual_item_extent, list.virtual_spacing, anchor,
+                viewport, UiVirtualList::MAX_REALIZED.i32())
+            position: mutable UiVirtualList::ItemPosition = UiVirtualList::item_position(
+                item_index, window, list.virtual_item_extent, list.virtual_spacing)
+            if not position.valid:
+                # A provider query is allowed to reveal an off-screen logical
+                # row. The anchor is the retained identity; no giant pixel
+                # coordinate is ever formed for the list's full extent.
+                _ = UiFlat::set_virtual_scroll_anchor(list_index,
+                    UiVirtualList::ScrollAnchor{index: item_index, offset: 0.0})
+                list <- UiFlat::widget(list_index)
+                anchor <- UiFlat::virtual_scroll_anchor(list_index)
+                viewport <- UiCore::nonnegative_extent(list.height - padding * 2.0)
+                window <- UiVirtualList::anchored_window(
+                    total, list.virtual_item_extent, list.virtual_spacing, anchor,
+                    viewport, UiVirtualList::MAX_REALIZED.i32())
+                position <- UiVirtualList::item_position(
+                    item_index, window, list.virtual_item_extent, list.virtual_spacing)
+            return zero if not position.valid
+            width: f32 = UiCore::nonnegative_extent(list.width - padding * 2.0)
+            height: f32 = UiCore::nonnegative_extent(list.virtual_item_extent)
+            return UiCore::Rect(
+                UiCore::bounded_coordinate(list.x + padding),
+                UiCore::bounded_coordinate(list.y + padding + position.top),
+                width, height)
+
+        def virtual_proxy_slot(list_handle: usize, item_index: i32) -> usize:
+            for slot in 0..<uikit_virtual_proxy_count:
+                return slot if uikit_virtual_proxy_list_handles[slot] == list_handle and uikit_virtual_proxy_indices[slot] == item_index
+            return VIRTUAL_ACCESSIBILITY_PROXY_CAPACITY
+
+        def virtual_proxy_open_slot() -> usize:
+            # A failed native allocation leaves a hole. Reuse it before
+            # evicting a live proxy, keeping the bounded pool self-healing.
+            for slot in 0..<uikit_virtual_proxy_count:
+                return slot if uikit_virtual_proxy_handles[slot] == 0
+            return uikit_virtual_proxy_count if uikit_virtual_proxy_count < VIRTUAL_ACCESSIBILITY_PROXY_CAPACITY else VIRTUAL_ACCESSIBILITY_PROXY_CAPACITY
+
+        def virtual_proxy_evict_slot(slot: usize) -> void:
+            return if slot >= uikit_virtual_proxy_count
+            old_handle: usize = uikit_virtual_proxy_handles[slot]
+            elisa_uikit_accessibility_release(old_handle) if old_handle != 0
+            uikit_virtual_proxy_list_handles[slot] <- 0
+            uikit_virtual_proxy_indices[slot] <- -1
+            uikit_virtual_proxy_handles[slot] <- 0
+
+        def virtual_proxy_replacement_slot() -> usize:
+            slot: mutable usize = uikit_virtual_proxy_cursor
+            slot <- 0 if slot >= VIRTUAL_ACCESSIBILITY_PROXY_CAPACITY
+            next: usize = slot + 1
+            uikit_virtual_proxy_cursor <- 0 if next >= VIRTUAL_ACCESSIBILITY_PROXY_CAPACITY
+            uikit_virtual_proxy_cursor <- next if next < VIRTUAL_ACCESSIBILITY_PROXY_CAPACITY
+            return slot
+
+        def virtual_proxy_handle_for_item(list_handle: usize, list_index: usize,
+                                          item_index: i32, item: UiVirtualAccessibility::Item,
+                                          frame: UiCore::Rect) -> usize can Unsafe.PointerCast:
+            existing: usize = virtual_proxy_slot(list_handle, item_index)
+            slot: mutable usize = existing
+            fresh: mutable bool = false
+            if existing >= VIRTUAL_ACCESSIBILITY_PROXY_CAPACITY:
+                slot <- virtual_proxy_open_slot()
+                if slot >= VIRTUAL_ACCESSIBILITY_PROXY_CAPACITY:
+                    slot <- virtual_proxy_replacement_slot()
+                    virtual_proxy_evict_slot(slot)
+                else:
+                    fresh <- true
+                    uikit_virtual_proxy_count <- uikit_virtual_proxy_count + 1 if slot == uikit_virtual_proxy_count
+            previous: usize = uikit_virtual_proxy_handles[slot]
+            enabled: bool = item.enabled and UiFlat::is_enabled(list_index)
+            stable_id: usize = item.stable_id if item.stable_id != 0 else item_index.usize()
+            native_identifier: usize = native_string(accessibility_identifier(stable_id))
+            native_label: usize = native_string(item.label)
+            native_hint: mutable usize = 0
+            native_hint <- native_string(item.help) if item.help.len > 0
+            native_value: usize = accessibility_value_string_for_item(item)
+            handle: usize = elisa_uikit_accessibility_add(uikit_canvas_view, previous,
+                1 if previous == 0 else 0, native_identifier,
+                accessibility_traits(item.role, enabled, item.selected), native_label,
+                native_hint, native_value, frame.origin.x, frame.origin.y,
+                frame.size.width, frame.size.height, 1 if enabled else 0)
+            if handle == 0:
+                CFRelease(native_identifier) if native_identifier != 0
+                CFRelease(native_label) if native_label != 0
+                CFRelease(native_hint) if native_hint != 0
+                CFRelease(native_value) if native_value != 0
+                uikit_virtual_proxy_count <- uikit_virtual_proxy_count - 1 if fresh and slot + 1 == uikit_virtual_proxy_count
+                return 0
+            # A native host may replace a stale object when asked to reuse it.
+            # The cache owns the old reference, so release it once the new one
+            # is known; the normal path returns the exact same opaque identity.
+            elisa_uikit_accessibility_release(previous) if previous != 0 and handle != previous
+            if previous != 0 and handle == previous:
+                _ = elisa_uikit_accessibility_update(uikit_canvas_view, handle,
+                    native_identifier, accessibility_traits(item.role, enabled, item.selected),
+                    native_label, native_hint, native_value,
+                    frame.origin.x, frame.origin.y, frame.size.width,
+                    frame.size.height, 1 if enabled else 0)
+            CFRelease(native_identifier) if native_identifier != 0
+            CFRelease(native_label) if native_label != 0
+            CFRelease(native_hint) if native_hint != 0
+            CFRelease(native_value) if native_value != 0
+            uikit_virtual_proxy_list_handles[slot] <- list_handle
+            uikit_virtual_proxy_indices[slot] <- item_index
+            uikit_virtual_proxy_handles[slot] <- handle
+            return handle
+
+    public:
+        # Resolve a proxy handle back to a logical row for activation. The
+        # lookup is deliberately bounded by the proxy pool and never walks a
+        # native object graph.
+        def virtual_accessibility_proxy_target(handle: usize,
+                                               list_index: mutable usize&,
+                                               item_index: mutable i32&) -> bool:
+            return false if list_index == null or item_index == null or handle == 0
+            list_index <- UiFlat::NONE
+            item_index <- -1
+            for slot in 0..<uikit_virtual_proxy_count:
+                if uikit_virtual_proxy_handles[slot] == handle:
+                    resolved: usize = virtual_list_index_for_handle(uikit_virtual_proxy_list_handles[slot])
+                    return false if resolved == UiFlat::NONE
+                    list_index <- resolved
+                    item_index <- uikit_virtual_proxy_indices[slot]
+                    return true
+            return false
+
+        def virtual_accessibility_count(view_handle: usize, list_handle: usize) -> i64:
+            return 0 if not live() or view_handle != UiUIKit::view_handle()
+            list_index: usize = virtual_list_index_for_handle(list_handle)
+            return 0 if list_index == UiFlat::NONE or not UiFlat::is_visible(list_index)
+            return 0 if not UiFlat::virtual_accessibility_provider_is_set(list_index)
+            return UiFlat::virtual_item_count(list_index).i64()
+
+        def virtual_accessibility_element_at(view_handle: usize,
+                                                        list_handle: usize,
+                                                        item_index: i64) -> usize can Unsafe.PointerCast:
+            return 0 if not live() or view_handle != UiUIKit::view_handle()
+            return 0 if item_index < 0 or item_index > UiVirtualList::MAX_ITEMS.i64()
+            list_index: usize = virtual_list_index_for_handle(list_handle)
+            return 0 if list_index == UiFlat::NONE or not UiFlat::is_visible(list_index)
+            return 0 if not UiFlat::virtual_accessibility_provider_is_set(list_index)
+            logical: i32 = item_index.i32()
+            tree_lifetime: usize = UiFlat::lifetime()
+            item: mutable UiVirtualAccessibility::Item = UiVirtualAccessibility::empty()
+            return 0 if not UiFlat::virtual_accessibility_item(list_index, logical, item)
+            return 0 if UiFlat::lifetime() != tree_lifetime or not live()
+            frame: UiCore::Rect = virtual_item_frame(list_index, logical)
+            return 0 if frame.size.width <= 0.0 or frame.size.height <= 0.0
+            return virtual_proxy_handle_for_item(list_handle, list_index, logical, item, frame)
+
+        def virtual_accessibility_index_of(view_handle: usize,
+                                                      list_handle: usize,
+                                                      element_handle: usize) -> i64:
+            return UiUIKit::not_found().i64() if not live() or view_handle != UiUIKit::view_handle()
+            for slot in 0..<uikit_virtual_proxy_count:
+                return uikit_virtual_proxy_indices[slot].i64() if uikit_virtual_proxy_list_handles[slot] == list_handle and uikit_virtual_proxy_handles[slot] == element_handle
+            return UiUIKit::not_found().i64()
+
+# Keep the C-facing names at top level, alongside the other UIKit flat
+# callbacks. Their implementation remains in UiUIKit so it can use the
+# retained proxy state without widening the native boundary.
+def uikit_flat_accessibility_virtual_count(view_handle: usize, list_handle: usize) -> i64:
+    return UiUIKit::virtual_accessibility_count(view_handle, list_handle)
+
+def uikit_flat_accessibility_virtual_element_at(view_handle: usize,
+                                                list_handle: usize,
+                                                item_index: i64) -> usize can Unsafe.PointerCast:
+    return UiUIKit::virtual_accessibility_element_at(view_handle, list_handle, item_index)
+
+def uikit_flat_accessibility_virtual_index_of(view_handle: usize,
+                                              list_handle: usize,
+                                              element_handle: usize) -> i64:
+    return UiUIKit::virtual_accessibility_index_of(view_handle, list_handle, element_handle)

@@ -8,6 +8,7 @@
 include "./ui_uikit.elisa"
 include "./ui_uikit_clipboard.elisa"
 include "../../widgets/ui_handles.elisa"
+include "./ui_uikit_virtual_accessibility.elisa"
 
 # A touch is both a pointer transition and a text-selection click. Keeping that
 # ordering here means every native host reports the same interaction; the shim
@@ -123,7 +124,14 @@ def uikit_flat_text_action_valid_selector(view_handle: usize, selector: usize) -
 def uikit_flat_accessibility_activate(view_handle: usize, handle: usize) -> i32:
     return 0 if not UiUIKit::live() or view_handle != UiUIKit::view_handle() or not UiLifecycle::accepts_input()
     index: usize = UiUIKit::accessibility_action_for_handle(handle)
-    return 0 if index == UiUIKit::not_found()
+    if index == UiUIKit::not_found():
+        list_index: mutable usize = UiFlat::NONE
+        item_index: mutable i32 = -1
+        return 0 if not UiUIKit::virtual_accessibility_proxy_target(handle, list_index, item_index)
+        activated_virtual: bool = UiFlat::virtual_accessibility_activate(list_index, item_index)
+        return 0 if not activated_virtual or not UiUIKit::live()
+        UiUIKit::redraw()
+        return 1
     activated: bool = UiFlat::activate(index)
     return 0 if not activated or not UiUIKit::live()
     UiUIKit::redraw()

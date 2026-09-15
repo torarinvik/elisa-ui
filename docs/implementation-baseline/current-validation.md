@@ -46,6 +46,11 @@ ELISA_UI_STAGE1=/private/tmp/elisa-compiler-ui-latest \
 bash scripts/check_uikit.sh
   UIKit SDK syntax, ABI, off-screen frame and semantic boundary: PASS
 
+`test/uikit_virtual_accessibility_test.elisa` (compiled and linked with the
+same latest stage1/runtime and `test/uikit_host_stubs.c`): headless UIKit
+virtual-container provider, million-row reveal, bounded proxy identities,
+activation and teardown: PASS
+
 ELISA_UI_STAGE1=/private/tmp/elisa-compiler-ui-latest \
 SKIA_ROOT=/tmp/elisa-skia-check-20260914 \
 bash scripts/check_skia.sh

@@ -5,6 +5,8 @@
 # hint and value strings -- so the mapping is the whole adapter. Elisa decides
 # every bit of it; the shim only assigns what it is handed.
 
+include "../../widgets/ui_virtual_accessibility.elisa"
+
 extend UiUIKit:
     public:
         def accessibility_traits(role: UiCore::AccessibilityRole, enabled: bool, selected: bool) -> u64:
@@ -98,3 +100,13 @@ extend UiUIKit:
                 return 0 if node.role == UiCore::AccessibilityRole.PasswordField
                 return native_string(node.text_value)
             return 0
+
+        # Virtual rows carry the same role/value vocabulary as ordinary
+        # semantic nodes, but intentionally do not pretend to be text fields:
+        # their provider contract has one bounded label and hint, not an
+        # editable text buffer. Keep the range spelling identical to ordinary
+        # sliders so VoiceOver does not hear two formats for one control.
+        def accessibility_value_string_for_item(item: UiVirtualAccessibility::Item) -> usize can Unsafe.PointerCast:
+            kind: i32 = accessibility_value_kind(item.role)
+            return 0 if kind != 2
+            return native_string(percent_text(range_percent(item.value, item.has_range, 0.0, 1.0)))

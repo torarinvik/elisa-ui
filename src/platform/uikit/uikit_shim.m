@@ -73,6 +73,9 @@ extern int elisa_uikit_accessibility_adjust(size_t viewHandle, size_t handle, in
 extern int elisa_uikit_accessibility_set_text(size_t viewHandle, size_t handle, size_t text);
 extern int elisa_uikit_accessibility_increment_direction(void);
 extern int elisa_uikit_accessibility_decrement_direction(void);
+extern int64_t elisa_uikit_accessibility_virtual_count(size_t viewHandle, size_t listHandle);
+extern size_t elisa_uikit_accessibility_virtual_element_at(size_t viewHandle, size_t listHandle, int64_t index);
+extern int64_t elisa_uikit_accessibility_virtual_index_of(size_t viewHandle, size_t listHandle, size_t elementHandle);
 
 // The one sentinel Elisa and UIKit must agree on.
 const size_t elisa_uikit_not_found = NSNotFound;

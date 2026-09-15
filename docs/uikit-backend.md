@@ -403,6 +403,7 @@ Every decision that follows from those facts is in Elisa:
 | Safe area, keyboard frame, size, scale | `ui_uikit_surface.elisa` over `UiMobileSurface` — validation, insets, orientation, and the logical viewport |
 | Semantic role | `ui_uikit_accessibility.elisa` — `UIAccessibilityTraits`, and the value string VoiceOver speaks |
 | Element identity and reuse | `ui_uikit_semantics.elisa` — the shim is told whether an element is new; it never probes a handle |
+| Virtual list child lookup | `ui_uikit_virtual_accessibility.elisa` — logical count, provider validation, anchored reveal, bounded proxy identity and activation; the shim only forwards `UIAccessibilityContainer` calls |
 | When the assistive cursor should move | `ui_uikit_semantics.elisa` — a fresh tree is a *screen* change; a moved retained focus moves VoiceOver; an ordinary repaint moves nothing |
 | Application notifications | `ui_uikit_callbacks.elisa` — one lifecycle vocabulary shared with every other backend |
 
@@ -548,6 +549,22 @@ This is also why the semantic tree is published unconditionally rather than only
 when VoiceOver is running: assistive technology is not its only reader. Voice
 Control, Full Keyboard Access, the accessibility inspector and UI automation all
 consume it, and several have no public "is running" flag to gate on.
+
+### Virtual-list containers
+
+The custom canvas can expose a retained `UiFlat` virtual list as a dynamic
+UIKit accessibility container. Its element reports the full logical count, but
+`accessibilityElementAtIndex:` asks Elisa for exactly one
+`UiVirtualAccessibility::Item`. Elisa validates the provider result, scrolls the
+anchored viewport to an off-screen row when needed, and reuses a bounded proxy
+identity keyed by `(list handle, logical index)`. Activation follows the proxy
+back to the typed `ActivateProvider`; no off-screen widget is allocated and no
+global pixel offset is formed. The pool is released with the UIKit session.
+
+The headless `uikit_virtual_accessibility_test` fixture proves this workflow
+against the same host ABI as the SDK gate, including a million-row Unicode
+query, proxy eviction and teardown. A physical VoiceOver/Accessibility
+Inspector run is still the final announcement/scroll acceptance test.
 
 `test/uikit_input_test.elisa`, `test/uikit_surface_test.elisa` and
 `test/uikit_text_input_test.elisa` pin the input mapping, the surface facts, the

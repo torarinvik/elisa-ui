@@ -1,0 +1,141 @@
+# UIKit's lazy virtual-list accessibility contract.
+#
+# The fixture is headless: UIKit's C shim is replaced by bounded host stubs,
+# while the real Elisa provider, anchored reveal and proxy pool run unchanged.
+# It proves that a million-row list can be queried, activated and released
+# without materializing a million native objects.
+
+include "../src/platform/uikit/ui_uikit_flat.elisa"
+
+extern puts(text: cstr) -> i64
+extern elisa_uikit_stub_set_view(handle: usize) -> void
+extern elisa_uikit_stub_accessibility_handle_count() -> i32
+extern elisa_uikit_stub_accessibility_handle(index: i32) -> usize
+extern elisa_uikit_stub_live_element_count() -> i32
+
+const ROW_COUNT: i32 = 1000000
+const PROXY_CAPACITY: usize = UiUIKit::VIRTUAL_ACCESSIBILITY_PROXY_CAPACITY
+
+global mutable failures: i32 = 0
+global mutable provider_calls: i32 = 0
+global mutable activated_list: usize = UiFlat::NONE
+global mutable activated_index: i32 = -1
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def row_provider(list_index: usize, item_index: i32,
+                 item: mutable UiVirtualAccessibility::Item&) -> bool:
+    provider_calls <- provider_calls + 1
+    item <- UiVirtualAccessibility::empty()
+    item.stable_id <- (item_index + 1).usize()
+    item.role <- UiCore::AccessibilityRole.Button
+    item.label <- "Virtual row"
+    item.help <- "Activate this row"
+    item.enabled <- true
+    item.selected <- item_index == 700000
+    if item_index == 700000:
+        item.label <- "Virtual row 👋 café"
+        item.help <- "Unicode provider row"
+    _ = list_index
+    return true
+
+def row_activate(list_index: usize, item_index: i32) -> bool:
+    activated_list <- list_index
+    activated_index <- item_index
+    return true
+
+def app_init() -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    _ = event
+
+def app_text_input(text: sview) -> void:
+    _ = text
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    _ = text
+    _ = selected_start
+    _ = selected_length
+
+def app_frame() -> void:
+    pass
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    _ = widget
+    _ = event
+
+module UiKitVirtualTestApp:
+    public:
+        def list() -> UiHandles::Handle:
+            return rows
+
+        def build() -> void:
+            UiHandles::reset()
+            root <- UiHandles::column(UiHandles::root_parent(), 8.0, 8.0, UiCore::rgb(16, 18, 24))
+            rows <- UiHandles::virtual_list(root, "Rows", ROW_COUNT, 28.0, 4.0, 300.0, 180.0, UiCore::rgb(28, 32, 42))
+            _ = UiHandles::set_virtual_accessibility_provider(rows, row_provider)
+            _ = UiHandles::set_virtual_accessibility_activate_provider(rows, row_activate)
+
+    private:
+        global mutable root: UiHandles::Handle = UiHandles::invalid()
+        global mutable rows: UiHandles::Handle = UiHandles::invalid()
+
+def publish_tree() -> void can[Ui.Draw, Ui.Text, Unsafe.PointerCast]:
+    UiCore::begin_frame()
+    UiHandles::layout(320.0, 240.0)
+    UiHandles::paint()
+    UiUIKit::sync_accessibility()
+
+def find_list_handle() -> usize:
+    count: i32 = elisa_uikit_stub_accessibility_handle_count()
+    found: usize =
+        for index in 0..<count.usize() |found = 0| -> found:
+            candidate: usize = elisa_uikit_stub_accessibility_handle(index.i32())
+            found <- candidate if uikit_flat_accessibility_virtual_count(UiUIKit::view_handle(), candidate) == ROW_COUNT.i64()
+            break if found != 0
+    return found
+
+def check_lazy_rows(list_handle: usize, list_index: usize) -> void can Unsafe.PointerCast:
+    check("a foreign list has no rows", uikit_flat_accessibility_virtual_count(UiUIKit::view_handle(), 1) == 0)
+    check("the logical count stays million-scale", uikit_flat_accessibility_virtual_count(UiUIKit::view_handle(), list_handle) == ROW_COUNT.i64())
+    old_calls: i32 = provider_calls
+    first: usize = uikit_flat_accessibility_virtual_element_at(UiUIKit::view_handle(), list_handle, 700000)
+    check("a distant row resolves lazily", first != 0)
+    check("the provider ran once", provider_calls == old_calls + 1)
+    check("reveal uses the logical anchor", UiFlat::virtual_scroll_anchor(list_index).index == 700000)
+    check("index lookup round-trips", uikit_flat_accessibility_virtual_index_of(UiUIKit::view_handle(), list_handle, first) == 700000)
+    second: usize = uikit_flat_accessibility_virtual_element_at(UiUIKit::view_handle(), list_handle, 700000)
+    check("the same row keeps its proxy identity", second == first)
+    check("a Unicode row remains queryable", provider_calls == old_calls + 2)
+
+    for index in 0..<80:
+        _ = uikit_flat_accessibility_virtual_element_at(UiUIKit::view_handle(), list_handle, index.i64())
+    check("proxy identities stay bounded", UiUIKit::virtual_accessibility_proxy_count() <= PROXY_CAPACITY)
+    check("native objects stay bounded", elisa_uikit_stub_live_element_count() <= 2 + PROXY_CAPACITY.i32())
+    check("an evicted proxy is no longer activatable", uikit_flat_accessibility_activate(UiUIKit::view_handle(), first) == 0)
+    newest: usize = uikit_flat_accessibility_virtual_element_at(UiUIKit::view_handle(), list_handle, 79)
+    check("the newest proxy remains addressable", newest != 0 and uikit_flat_accessibility_virtual_index_of(UiUIKit::view_handle(), list_handle, newest) == 79)
+    check("a virtual row activates through Elisa", uikit_flat_accessibility_activate(UiUIKit::view_handle(), newest) == 1)
+    check("activation receives the logical list", activated_list == list_index and activated_index == 79)
+
+def main() -> i64 can[Ui.Draw, Ui.Text, Ui.Input, Ui.Window, Unsafe.PointerCast]:
+    elisa_uikit_stub_set_view(0)
+    check("a headless UIKit session starts", UiUIKit::begin_headless_session(320.0, 240.0, 2.0))
+    UiKitVirtualTestApp::build()
+    publish_tree()
+    check("headless session accepts accessibility actions", UiMobileSurface::focus_gained())
+    list_handle: usize = find_list_handle()
+    list_index: usize = UiHandles::index(UiKitVirtualTestApp::list())
+    check("the virtual list is published", list_handle != 0 and list_index != UiFlat::NONE)
+    check_lazy_rows(list_handle, list_index) if list_handle != 0 and list_index != UiFlat::NONE
+    UiUIKit::release_canvas()
+    check("releasing the session frees proxies", elisa_uikit_stub_live_element_count() == 0)
+    if failures == 0:
+        _ = puts("uikit virtual accessibility: all checks passed")
+        return 0
+    _ = puts("uikit virtual accessibility: FAILURES above")
+    return 1

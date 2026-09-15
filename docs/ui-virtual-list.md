@@ -55,11 +55,20 @@ an `ActivateProvider`. Elisa validates the logical index, invokes it
 synchronously, and rejects its result if the callback rebuilt the tree during
 the call. This keeps activation out of recycled visual-row slots.
 
-This portable metadata is not yet full native screen-reader virtualization.
-The AppKit canvas now publishes a list object with the full logical row count
-and accessibility proxies only for currently realized rows; those proxies carry
-one-based positions and stable `(list_id, position)` identities. It does not
-materialize off-screen rows or yet implement focus-and-scroll traversal. UIKit
-still needs a lazy list container wired to these providers and a logical
-scroll transaction. Physical VoiceOver / Accessibility Inspector
-verification remains required before claiming native collection conformance.
+The Apple adapters now consume this contract lazily. The AppKit canvas publishes
+a list object with the full logical row count and proxies for its realized rows;
+UIKit additionally implements `UIAccessibilityContainer` on the list element:
+`accessibilityElementCount` reports the logical count, and an element-at-index
+query asks Elisa for one provider item, moves the anchored viewport to that row,
+and returns a bounded proxy. Repeated queries reuse the same `(list, index)`
+identity, while the FIFO pool is capped at `MAX_ACCESSIBILITY_NODES / 4` and
+evicted handles no longer route activation. `ActivateProvider` therefore works
+for an off-screen row without creating a retained widget or a giant pixel
+offset. `test/uikit_virtual_accessibility_test.elisa` exercises a million-row
+headless query, Unicode metadata, reveal, identity reuse, eviction, activation,
+and teardown against the same C boundary used by the SDK gate.
+
+Physical VoiceOver / Accessibility Inspector verification remains required
+before claiming complete native collection conformance; the headless fixture
+proves the Elisa/provider/ABI workflow and bounded ownership, not a device's
+announcement wording.

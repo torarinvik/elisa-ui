@@ -40,6 +40,16 @@ extend UiUIKit:
         global mutable uikit_accessibility_stale_count: usize = 0
         global mutable uikit_accessibility_previous_count: usize = 0
         global mutable uikit_accessibility_force_layout: bool = true
+        # UIKit asks a virtual list for logical rows on demand. Keep only a
+        # bounded set of retained proxy handles; evicted objects are released
+        # here and can still survive if UIKit itself is holding a borrowed
+        # reference, but they are no longer valid framework callback targets.
+        const VIRTUAL_ACCESSIBILITY_PROXY_CAPACITY: usize = UiCore::MAX_ACCESSIBILITY_NODES / 4
+        global mutable uikit_virtual_proxy_list_handles: usize[VIRTUAL_ACCESSIBILITY_PROXY_CAPACITY] = zeroed
+        global mutable uikit_virtual_proxy_indices: i32[VIRTUAL_ACCESSIBILITY_PROXY_CAPACITY] = zeroed
+        global mutable uikit_virtual_proxy_handles: usize[VIRTUAL_ACCESSIBILITY_PROXY_CAPACITY] = zeroed
+        global mutable uikit_virtual_proxy_count: usize = 0
+        global mutable uikit_virtual_proxy_cursor: usize = 0
         # Which committed element the retained model considers focused. VoiceOver
         # is moved to it only when it changes, so an ordinary frame does not
         # yank the cursor back on every repaint.
@@ -58,7 +68,21 @@ extend UiUIKit:
             return index if index < uikit_accessibility_previous_count and uikit_accessibility_previous_ids[index] == id
             return UiCore::MAX_ACCESSIBILITY_NODES
 
+        def release_virtual_accessibility_proxies() -> void:
+            for slot in 0..<uikit_virtual_proxy_count:
+                handle: usize = uikit_virtual_proxy_handles[slot]
+                elisa_uikit_accessibility_release(handle) if handle != 0
+                uikit_virtual_proxy_list_handles[slot] <- 0
+                uikit_virtual_proxy_indices[slot] <- -1
+                uikit_virtual_proxy_handles[slot] <- 0
+            uikit_virtual_proxy_count <- 0
+            uikit_virtual_proxy_cursor <- 0
+
+        def clear_virtual_accessibility_proxies() -> void:
+            release_virtual_accessibility_proxies()
+
         def release_accessibility_handles() -> void:
+            release_virtual_accessibility_proxies()
             for index in 0..<uikit_accessibility_previous_count:
                 handle: usize = uikit_accessibility_previous_handles[index]
                 old_id: usize = uikit_accessibility_previous_ids[index]
@@ -95,6 +119,9 @@ extend UiUIKit:
             return sview(&uikit_accessibility_identifier_storage[0], 0, (prefix.len.usize() + digits).i64())
 
     public:
+        def virtual_accessibility_proxy_count() -> usize:
+            return uikit_virtual_proxy_count
+
         def accessibility_action_for_handle(handle: usize) -> usize:
             return not_found() if handle == 0
             for index in 0..<uikit_accessibility_previous_count:
