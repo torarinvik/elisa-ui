@@ -73,7 +73,7 @@ for entry in android_main elisa_android_start elisa_android_resize elisa_android
   grep -q " $entry\$" <<<"$symbols" || { echo "android: $entry is not exported from lib$EXAMPLE.so" >&2; exit 1; }
 done
 # C++ was linked statically on purpose: Android ships no libc++_shared, and
-# a NativeActivity APK with no Java in it has nothing to load one with.
+# the NativeActivity APK keeps its Java side limited to the IME bridge.
 dynamic_symbols="$("$READELF" --dynamic "$SO")"
 if grep -q "libc++_shared" <<<"$dynamic_symbols"; then
   echo "android: lib$EXAMPLE.so needs libc++_shared, which this APK cannot supply" >&2

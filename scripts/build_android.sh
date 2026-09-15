@@ -5,7 +5,7 @@
 # through the compiler's own `-emit exe` path, driven by a wrapper that makes
 # the NDK's clang produce a shared library and add the host, the Skia shims,
 # Skia itself and the platform libraries. The result is a NativeActivity APK
-# with no Java in it, signed with a debug key.
+# with one small Java IME bridge, signed with a debug key.
 #
 # Usage: SKIA_ROOT=~/skia scripts/build_android.sh [example]
 set -euo pipefail

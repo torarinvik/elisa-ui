@@ -1,9 +1,9 @@
 // The Java half of the Android native-controls backend.
 //
 // WHY THERE IS JAVA HERE AT ALL. Everywhere else on Android this framework
-// gets by without it: the canvas backend is a NativeActivity whose APK has
-// hasCode="false", because a surface to draw into is the one thing the NDK
-// hands over directly. A real android.widget.Button is not: the widget toolkit
+// gets by without a control toolkit: the canvas backend is a NativeActivity
+// whose only Java class is the IME bridge. A real android.widget.Button is not:
+// the widget toolkit
 // lives on the Java side and there is no C API for it, so a backend that
 // realizes real controls has to be able to call it.
 //

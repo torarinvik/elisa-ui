@@ -8,10 +8,11 @@ batch is replayed by [`UiSkia`](../src/platform/skia/ui_skia.elisa) — the same
 painter behind every Skia frame in the project. Nothing about appearance lives
 on this side. Every alpha, radius, ramp and shadow still comes from `UiPaint`.
 
-The application is a NativeActivity with **no Java in it at all**: the APK holds
-a manifest and one `.so`, and `android_main` is the entry point. That is not a
-stunt, it is the shape the framework already has — Elisa owns the tree, the
-host owns the window — and it keeps the whole backend readable as two files.
+The application is a NativeActivity with one deliberately tiny Java class for
+IME composition: the APK holds a manifest, a `classes.dex`, and one `.so`, and
+`android_main` is still the entry point. The Java class is only an
+`InputConnection` bridge; Elisa owns the tree, the host owns the window, and
+the class owns no editing state or appearance policy.
 
 ## The pieces
 
@@ -89,8 +90,8 @@ adds the host, the glue, the Skia shims, Skia and the platform libraries, and
 asks for a shared library aligned for 16 KB pages. The wrapper drives the **C**
 compiler, not the C++ one, because the compiler also hands the linker a C file
 of weak fallbacks whose names a C++ driver would mangle. C++ itself is linked
-statically: Android ships no `libc++_shared`, and an APK with no Java in it has
-nothing to load one with.
+statically: Android ships no `libc++_shared`, and this APK keeps Java limited to
+the one IME bridge instead of introducing a native-controls toolkit.
 
 ## Fonts
 
@@ -168,12 +169,11 @@ not here yet*.)
 scripts/build_android_controls.sh showcase
 ```
 
-**This is the one backend that needs Java.** Everywhere else on Android this
-framework gets by without it: the canvas is a NativeActivity whose APK has
-`hasCode="false"`, because a surface to draw into is the one thing the NDK
-hands over directly. A real `android.widget.Button` is not — the widget toolkit
-lives on the Java side and has no C API — so this APK carries a `classes.dex`
-with exactly two classes and the library talks to them over JNI:
+**This is the backend that owns Android controls.** The canvas also carries a
+single Java class now, but only for IME composition; it does not realize any
+Android widgets. A real `android.widget.Button` is not — the widget toolkit
+lives on the Java side and has no C API — so this controls APK carries a
+`classes.dex` with exactly two classes and the library talks to them over JNI:
 
 | | |
 |---|---|
@@ -367,8 +367,9 @@ was missing was a View for the IME to talk to.
 
 The canvas APK now carries exactly one class,
 [`ElisaCanvasActivity`](../src/platform/android/java/org/elisa_ui/ElisaCanvasActivity.java),
-and `hasCode` is `true` where it was deliberately `false`. That is the price and
-it is the whole price: the class decides nothing and holds no editing state.
+and `hasCode` is `true` because the class provides the IME's
+`InputConnection`. That is the price and it is the whole price: the class
+decides nothing and holds no editing state.
 Elisa already knows how to place a composing run, replace the previous one and
 put the caret; `BaseInputConnection` wants an `Editable` to scribble in, so it
 gets one nobody reads.

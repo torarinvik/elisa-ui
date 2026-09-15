@@ -106,8 +106,8 @@ cat > "$OUT/AndroidManifest.xml" <<MANIFEST
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="org.elisa_ui.${EXAMPLE}_controls" android:versionCode="1" android:versionName="1.0">
   <uses-sdk android:minSdkVersion="$API" android:targetSdkVersion="34"/>
-  <!-- hasCode is true here and false in the Skia build, which is the whole
-       difference between the two backends said in one attribute. -->
+  <!-- Both Android backends carry Java now: the controls backend needs its
+       widget bridge, while the Skia backend carries the smaller IME bridge. -->
   <application android:label="elisa-ui $EXAMPLE controls" android:hasCode="true"
       android:extractNativeLibs="false" android:memtagMode="off" android:debuggable="true"
       android:theme="@android:style/Theme.Material.NoActionBar">

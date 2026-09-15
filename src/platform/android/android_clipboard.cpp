@@ -7,12 +7,10 @@
 // own paste menu. Here the framework owns the caret, so copy and paste are the
 // framework's to provide, and until this file they silently did nothing.
 //
-// Android's clipboard lives in Java and the canvas APK carries no classes of
-// its own: its manifest says hasCode="false", which is the whole reason the
-// Skia backend needs no dex. So this reaches the platform the way a
-// NativeActivity is meant to -- through JNI, off the activity object the OS
-// already handed us -- rather than by adding a Java class and a build step the
-// canvas does not otherwise want.
+// Android's clipboard lives in Java. The canvas APK already carries one Java
+// class for IME composition, but the clipboard still reaches the platform the
+// way a NativeActivity is meant to -- through JNI, off the activity object the
+// OS already handed us -- rather than adding clipboard state to that class.
 //
 // Every lookup is done per call and released again. A clipboard operation
 // happens when a person presses a key, not every frame, so caching class and
