@@ -64,6 +64,17 @@ def main() -> i64:
     check("refreshing a measurement keeps it hot", UiVirtualList::variable_set_height(eviction_owner, 0, 99.0))
     check("least recently updated entry is evicted", UiVirtualList::variable_set_height(eviction_owner, 1500, 55.0) and UiVirtualList::variable_measurement_known(eviction_owner, 0) and not UiVirtualList::variable_measurement_known(eviction_owner, 1) and UiVirtualList::variable_measurement_known(eviction_owner, 1500))
 
+    snapshot_bytes: mutable u8[UiVirtualList::MAX_VARIABLE_MEASUREMENT_SNAPSHOT_BYTES] = zeroed
+    required: usize = UiVirtualList::variable_measurement_snapshot_size(eviction_owner)
+    short_snapshot: UiVirtualList::MeasurementSnapshot = UiVirtualList::variable_measurement_snapshot(eviction_owner, &snapshot_bytes[0], required - 1)
+    check("measurement snapshot reports short destinations", short_snapshot.overflowed and short_snapshot.length == required and not short_snapshot.valid)
+    snapshot: UiVirtualList::MeasurementSnapshot = UiVirtualList::variable_measurement_snapshot(eviction_owner, &snapshot_bytes[0], UiVirtualList::MAX_VARIABLE_MEASUREMENT_SNAPSHOT_BYTES)
+    check("measurement snapshot is versioned and complete", snapshot.valid and snapshot.records == UiVirtualList::MAX_VARIABLE_MEASUREMENTS and snapshot.length == required)
+    truncated: UiVirtualList::MeasurementSnapshot = UiVirtualList::variable_restore_measurements(eviction_owner, &snapshot_bytes[0], snapshot.length - 1)
+    check("truncated measurement snapshot is rejected atomically", not truncated.valid and UiVirtualList::variable_measurement_count(eviction_owner) == snapshot.records)
+    restored: UiVirtualList::MeasurementSnapshot = UiVirtualList::variable_restore_measurements(eviction_owner, &snapshot_bytes[0], snapshot.length)
+    check("measurement snapshot restores through the public policy", restored.valid and restored.records == snapshot.records and UiVirtualList::variable_height(eviction_owner, 0) == 99.0 and UiVirtualList::variable_height(eviction_owner, 1500) == 55.0)
+
     if failures == 0:
         _ = puts("variable virtual list: all checks passed")
         return 0

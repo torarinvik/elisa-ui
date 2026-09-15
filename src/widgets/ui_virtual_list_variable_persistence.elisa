@@ -1,0 +1,108 @@
+# Versioned, pointer-free snapshots for sparse variable-list measurements.
+#
+# The application still decides when and where to persist bytes, but Elisa
+# owns the format and validation. Restores are validated completely before the
+# current cache is cleared, so malformed or stale data cannot leave a partial
+# measurement set behind.
+
+extend UiVirtualList:
+    public:
+        const VARIABLE_MEASUREMENT_SNAPSHOT_HEADER_BYTES: usize = 12
+        const VARIABLE_MEASUREMENT_SNAPSHOT_RECORD_BYTES: usize = 8
+        const MAX_VARIABLE_MEASUREMENT_SNAPSHOT_BYTES: usize = VARIABLE_MEASUREMENT_SNAPSHOT_HEADER_BYTES + MAX_VARIABLE_MEASUREMENTS * VARIABLE_MEASUREMENT_SNAPSHOT_RECORD_BYTES
+        const VARIABLE_MEASUREMENT_SNAPSHOT_VERSION: u32 = 1
+
+        struct MeasurementSnapshot:
+            length: usize
+            records: usize
+            overflowed: bool
+            valid: bool
+
+        def variable_item_count(owner: u32) -> i32:
+            slot: i32 = variable_slot(owner)
+            return 0 if slot == NONE_INDEX
+            return variable_totals[slot.usize()]
+
+        # Return the exact buffer size required for the current sparse cache.
+        # An invalid owner returns zero, while an empty valid list still needs
+        # the fixed header for a round-trip snapshot.
+        def variable_measurement_snapshot_size(owner: u32) -> usize:
+            return 0 if variable_slot(owner) == NONE_INDEX
+            return VARIABLE_MEASUREMENT_SNAPSHOT_HEADER_BYTES + variable_measurement_count(owner) * VARIABLE_MEASUREMENT_SNAPSHOT_RECORD_BYTES
+
+        # Copy one complete snapshot. The operation is all-or-nothing: a
+        # short destination receives no bytes and reports the exact required
+        # length in `length` so the host can provision a suitable buffer.
+        def variable_measurement_snapshot(owner: u32, destination: mutable u8&, capacity: usize) -> MeasurementSnapshot:
+            required: usize = variable_measurement_snapshot_size(owner)
+            return MeasurementSnapshot{length: 0, records: 0, overflowed: false, valid: false} if required == 0
+            return MeasurementSnapshot{length: required, records: variable_measurement_count(owner), overflowed: true, valid: false} if capacity < required or destination == null
+            count: usize = variable_measurement_count(owner)
+            store_u32(destination, 0, 0x31564d45)
+            store_u32(destination, 4, VARIABLE_MEASUREMENT_SNAPSHOT_VERSION)
+            store_u32(destination, 8, count.u32())
+            for ordinal in 0..<MAX_VARIABLE_MEASUREMENTS:
+                break if ordinal >= count
+                offset: usize = VARIABLE_MEASUREMENT_SNAPSHOT_HEADER_BYTES + ordinal * VARIABLE_MEASUREMENT_SNAPSHOT_RECORD_BYTES
+                store_u32(destination, offset, variable_measurement_index(owner, ordinal).u32())
+                height: mutable f32 = variable_measurement_height(owner, ordinal)
+                bits: mutable u32& = (&height).cast[mutable u32&] can Unsafe.PointerCast
+                store_u32(destination, offset + 4, bits[0])
+            return MeasurementSnapshot{length: required, records: count, overflowed: false, valid: true}
+
+        # Validate the whole snapshot before replacing the live cache. Records
+        # are checked against the current logical count and duplicate indexes
+        # are rejected so restore order never changes the resulting geometry.
+        def variable_restore_measurements(owner: u32, source: u8&, length: usize) -> MeasurementSnapshot can Unsafe.PointerCast:
+            required_owner: usize = variable_measurement_snapshot_size(owner)
+            return MeasurementSnapshot{length: 0, records: 0, overflowed: false, valid: false} if required_owner == 0 or source == null
+            return MeasurementSnapshot{length: 0, records: 0, overflowed: false, valid: false} if length < VARIABLE_MEASUREMENT_SNAPSHOT_HEADER_BYTES or length > MAX_VARIABLE_MEASUREMENT_SNAPSHOT_BYTES
+            return MeasurementSnapshot{length: 0, records: 0, overflowed: false, valid: false} if load_u32(source, 0) != 0x31564d45 or load_u32(source, 4) != VARIABLE_MEASUREMENT_SNAPSHOT_VERSION
+            count: usize = load_u32(source, 8).usize()
+            return MeasurementSnapshot{length: 0, records: 0, overflowed: false, valid: false} if count > MAX_VARIABLE_MEASUREMENTS
+            required: usize = VARIABLE_MEASUREMENT_SNAPSHOT_HEADER_BYTES + count * VARIABLE_MEASUREMENT_SNAPSHOT_RECORD_BYTES
+            return MeasurementSnapshot{length: 0, records: 0, overflowed: false, valid: false} if required != length
+            total: i32 = variable_item_count(owner)
+            for ordinal in 0..<MAX_VARIABLE_MEASUREMENTS:
+                break if ordinal >= count
+                offset: usize = VARIABLE_MEASUREMENT_SNAPSHOT_HEADER_BYTES + ordinal * VARIABLE_MEASUREMENT_SNAPSHOT_RECORD_BYTES
+                index: i32 = load_u32(source, offset).i32()
+                return MeasurementSnapshot{length: 0, records: 0, overflowed: false, valid: false} if index < 0 or index >= total
+                bits: u32 = load_u32(source, offset + 4)
+                return MeasurementSnapshot{length: 0, records: 0, overflowed: false, valid: false} if (bits & 0x7f800000) == 0x7f800000
+                height: mutable f32& = (&bits).cast[mutable f32&] can Unsafe.PointerCast
+                return MeasurementSnapshot{length: 0, records: 0, overflowed: false, valid: false} if not UiCore::is_finite(height[0]) or height[0] <= 0.0
+                duplicate: bool =
+                    for prior in 0..<MAX_VARIABLE_MEASUREMENTS |found: bool = false| -> found:
+                        break if prior >= ordinal
+                        prior_offset: usize = VARIABLE_MEASUREMENT_SNAPSHOT_HEADER_BYTES + prior * VARIABLE_MEASUREMENT_SNAPSHOT_RECORD_BYTES
+                        if load_u32(source, prior_offset) == index.u32():
+                            found <- true
+                            break
+                return MeasurementSnapshot{length: 0, records: 0, overflowed: false, valid: false} if duplicate
+
+            clear_count: mutable usize = variable_measurement_count(owner)
+            for _ in 0..<MAX_VARIABLE_MEASUREMENTS:
+                break if clear_count == 0
+                old_index: i32 = variable_measurement_index(owner, 0)
+                break if old_index == NONE_INDEX
+                _ = variable_clear_height(owner, old_index)
+                clear_count <- clear_count - 1
+            for ordinal in 0..<MAX_VARIABLE_MEASUREMENTS:
+                break if ordinal >= count
+                offset: usize = VARIABLE_MEASUREMENT_SNAPSHOT_HEADER_BYTES + ordinal * VARIABLE_MEASUREMENT_SNAPSHOT_RECORD_BYTES
+                index: i32 = load_u32(source, offset).i32()
+                bits: mutable u32 = load_u32(source, offset + 4)
+                height: mutable f32& = (&bits).cast[mutable f32&] can Unsafe.PointerCast
+                return MeasurementSnapshot{length: 0, records: ordinal, overflowed: false, valid: false} if not variable_set_height(owner, index, height[0])
+            return MeasurementSnapshot{length: length, records: count, overflowed: false, valid: true}
+
+    private:
+        def store_u32(buffer: mutable u8&, offset: usize, value: u32) -> void:
+            buffer[offset] <- value.u8()
+            buffer[offset + 1] <- (value >> 8).u8()
+            buffer[offset + 2] <- (value >> 16).u8()
+            buffer[offset + 3] <- (value >> 24).u8()
+
+        def load_u32(buffer: u8&, offset: usize) -> u32:
+            return buffer[offset].u32() | (buffer[offset + 1].u32() << 8) | (buffer[offset + 2].u32() << 16) | (buffer[offset + 3].u32() << 24)

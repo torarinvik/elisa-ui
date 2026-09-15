@@ -294,6 +294,12 @@ def main() -> i64:
     UiHandles::layout(420.0, 260.0)
     check("cleared variable row is measured again", UiHandles::virtual_item_height(variable, 2) == 80.0 and UiFlat::widget(UiHandles::index(variable_row_c)).height == 80.0)
     check("variable measurements expose sparse logical identity", UiHandles::virtual_item_height_measurement_count(variable) == 3 and UiHandles::virtual_item_height_measurement_index(variable, 2) == 2 and UiHandles::virtual_item_height_measurement(variable, 2) == 80.0)
+    variable_snapshot_bytes: mutable u8[UiVirtualList::MAX_VARIABLE_MEASUREMENT_SNAPSHOT_BYTES] = zeroed
+    variable_snapshot: UiVirtualList::MeasurementSnapshot = UiHandles::virtual_measurement_snapshot(variable, &variable_snapshot_bytes[0], UiVirtualList::MAX_VARIABLE_MEASUREMENT_SNAPSHOT_BYTES)
+    check("typed variable list exports a versioned measurement snapshot", variable_snapshot.valid and variable_snapshot.records == 3)
+    _ = UiHandles::set_virtual_item_height(variable, 0, 120.0)
+    variable_restored: UiVirtualList::MeasurementSnapshot = UiHandles::restore_virtual_measurements(variable, &variable_snapshot_bytes[0], variable_snapshot.length)
+    check("typed variable list restores measurements atomically", variable_restored.valid and UiHandles::virtual_item_height(variable, 0) == 48.0 and UiHandles::virtual_item_height(variable, 2) == 80.0)
     check("variable measurement provider attaches to the typed list", UiHandles::set_variable_virtual_measure_provider(variable, variable_measure_provider) and UiHandles::variable_virtual_measure_provider_is_set(variable))
     check("variable measurement provider overrides intrinsic extent", UiHandles::clear_virtual_item_height(variable, 2))
     UiHandles::layout(420.0, 260.0)

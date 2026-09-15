@@ -93,10 +93,10 @@ result.
 
 Variable-height retained lists also accept a synchronous application
 measurement provider. The provider can supply logical row extents before
-intrinsic fallback, while the typed handle surface exposes bounded measured
-identities and heights so applications can persist and restore their own cache
-without reaching into `UiFlat` storage. `test/widget_handles_test.elisa` covers
-provider replacement, cache invalidation, intrinsic fallback, and enumeration.
+intrinsic fallback. Typed handles expose a bounded, versioned measurement
+snapshot/restore path owned by Elisa, with full validation before cache
+replacement; `test/widget_handles_test.elisa` covers provider replacement,
+cache invalidation, intrinsic fallback, enumeration, and persistence.
 
 The hosted open-vertical-slice gate reaches component-runtime compilation but
 still fails on compiler-generated invalid LLVM IR:

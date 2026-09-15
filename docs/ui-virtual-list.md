@@ -95,10 +95,10 @@ breaking); remeasuring an existing row refreshes its recency. This keeps the
 retained memory bound deterministic while preventing active rows from being
 discarded ahead of stale measurements.
 
-The bounded measurement cache is intentionally not serialized by the
-framework. `virtual_item_height_measurement_count`,
-`virtual_item_height_measurement_index`, and `virtual_item_height_measurement`
-let an application copy logical identities and extents into its own state and
-restore them later through `set_virtual_item_height`. This keeps persistence
-versioned and application-owned instead of exposing `UiFlat` storage or raw
-arena indexes.
+Measurement persistence is available through
+`virtual_measurement_snapshot_size`, `virtual_measurement_snapshot`, and
+`restore_virtual_measurements` on the typed handle. Elisa owns the
+little-endian, versioned, pointer-free format and validates every logical
+index, finite positive extent, record count, and duplicate before replacing
+the live cache. The application still chooses when and where to store the
+returned bytes; no `UiFlat` storage or raw arena index is exposed.

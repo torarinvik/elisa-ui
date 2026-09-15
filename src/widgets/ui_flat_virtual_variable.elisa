@@ -179,6 +179,26 @@ extend UiFlat:
             owner: u32 = variable_virtual_owner_at(index)
             return UiVirtualList::variable_measurement_height(owner, ordinal) if owner != 0 else 0.0
 
+        # Versioned sparse-measurement persistence stays behind the flat
+        # facade, so callers never need to know the owner identity used by the
+        # variable-list policy.
+        def variable_virtual_measurement_snapshot_size(index: usize) -> usize:
+            owner: u32 = variable_virtual_owner_at(index)
+            return 0 if owner == 0
+            return UiVirtualList::variable_measurement_snapshot_size(owner)
+
+        def variable_virtual_measurement_snapshot(index: usize, destination: mutable u8&, capacity: usize) -> UiVirtualList::MeasurementSnapshot:
+            owner: u32 = variable_virtual_owner_at(index)
+            return UiVirtualList::MeasurementSnapshot{length: 0, records: 0, overflowed: false, valid: false} if owner == 0
+            return UiVirtualList::variable_measurement_snapshot(owner, destination, capacity)
+
+        def variable_virtual_restore_measurements(index: usize, source: u8&, length: usize) -> UiVirtualList::MeasurementSnapshot:
+            owner: u32 = variable_virtual_owner_at(index)
+            return UiVirtualList::MeasurementSnapshot{length: 0, records: 0, overflowed: false, valid: false} if owner == 0
+            restored: UiVirtualList::MeasurementSnapshot = UiVirtualList::variable_restore_measurements(owner, source, length)
+            mark_layout_dirty() if restored.valid
+            return restored
+
         def measure_variable_virtual_row(index: usize, child: usize) -> void:
             owner: u32 = variable_virtual_owner_at(index)
             return if owner == 0 or child >= widget_count
