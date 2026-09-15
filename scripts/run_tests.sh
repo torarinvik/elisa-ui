@@ -193,6 +193,15 @@ if ! SKIA_ROOT="${SKIA_ROOT:-}" bash "$ROOT/scripts/check_android.sh"; then
   status=1
 fi
 
+# The native-controls APK is a separate Android product from the Skia canvas:
+# it carries Java and realizes android.widget views through its own JNI seam.
+# Keep its build, ABI, package and optional device launch in the required
+# matrix as well, so the canvas gate cannot stand in for controls parity.
+if ! bash "$ROOT/scripts/check_android_controls.sh"; then
+  echo "FAIL android controls"
+  status=1
+fi
+
 # The hosted target, which was outside this suite entirely: check_wapp.sh
 # existed, was documented as the WasmBrowser gate, and nothing invoked it -- the
 # same way check_android.sh sat unrun. It skips when the sibling checkout or its

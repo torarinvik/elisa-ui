@@ -55,6 +55,13 @@ activation and teardown: PASS
 stubs): nested ordinary parent/child lookup, root-only publication, invalid
 index handling and teardown: PASS
 
+`ELISA_UI_STAGE1=/private/tmp/elisa-compiler-ui-latest bash
+scripts/check_android_controls.sh showcase` builds the real Android
+`android.widget` controls APK, verifies the distinct Elisa/JNI entry points,
+absence of Skia/shared C++ dependencies, Java code and 16 KB alignment, and
+reports the device half separately when no device is attached: PASS (package
+half; device half skipped because no Android device was attached).
+
 ELISA_UI_STAGE1=/private/tmp/elisa-compiler-ui-latest \
 SKIA_ROOT=/tmp/elisa-skia-check-20260914 \
 bash scripts/check_skia.sh

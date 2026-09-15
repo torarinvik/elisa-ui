@@ -76,7 +76,11 @@ public final class ElisaControls {
     }
 
     private static View viewOf(int handle) {
-        return handle <= 0 || handle > count ? null : views[handle - 1];
+        // `count` is the number of live views, not the highest occupied slot.
+        // Reconciliation releases individual slots, so a valid handle may be
+        // above the live count while lower slots are holes. Bound by the
+        // table itself; the slot's null value remains the liveness check.
+        return handle <= 0 || handle > MAX_CONTROLS ? null : views[handle - 1];
     }
 
     // A SLIDER IS AN INTEGER TRACK ON THIS PLATFORM. SeekBar counts whole
