@@ -113,7 +113,8 @@ if awk '/void elisa_appkit_present\(void\)/ { inside=1 } inside && /activateIgno
   echo "appkit: visible activation policy leaked back into Objective-C" >&2
   exit 1
 fi
-clang -c -fobjc-arc -o "$GATE_OBJ_DIR/appkit_shim.o" "$ROOT/src/platform/appkit/appkit_shim.m"
+clang -c -fobjc-arc -Wall -Wextra -Wconversion -Wsign-conversion -Werror \
+  -o "$GATE_OBJ_DIR/appkit_shim.o" "$ROOT/src/platform/appkit/appkit_shim.m"
 bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ROOT/build/appkit_check.o" "$ROOT/src/platform/appkit/appkit_check.elisa"
 clang -Wl,-dead_strip -o "$ROOT/build/appkit_check" \
   "$ROOT/build/appkit_check.o" "$GATE_OBJ_DIR/appkit_shim.o" "$RUNTIME" -framework Cocoa

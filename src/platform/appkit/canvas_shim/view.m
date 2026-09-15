@@ -51,7 +51,7 @@
 - (void)setFrameSize:(NSSize)size {
     [super setFrameSize:size];
     size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
-    elisa_appkit_canvas_resize(windowHandle, size.width, size.height);
+    elisa_appkit_canvas_resize(windowHandle, (float)size.width, (float)size.height);
 }
 - (NSPoint)eventPoint:(NSEvent *)event {
     return [self convertPoint:[event locationInWindow] fromView:nil];
@@ -70,12 +70,12 @@
     // events a press/release produces and preserves the press-side text-click
     // ordering; this adapter only supplies Cocoa's coordinate and click data.
     size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
-    elisa_appkit_canvas_pointer_button(windowHandle, p.x, p.y, button, down, (int)event.clickCount);
+    elisa_appkit_canvas_pointer_button(windowHandle, (float)p.x, (float)p.y, button, down, (int)event.clickCount);
 }
 - (void)mouseMoved:(NSEvent *)event {
     NSPoint p = [self eventPoint:event];
     size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
-    NSCursor *nativeCursor = elisa_appkit_canvas_cursor(elisa_appkit_canvas_pointer_move_event(windowHandle, p.x, p.y));
+    NSCursor *nativeCursor = elisa_appkit_canvas_cursor(elisa_appkit_canvas_pointer_move_event(windowHandle, (float)p.x, (float)p.y));
     if (nativeCursor != nil) [nativeCursor set];
 }
 - (void)mouseEntered:(NSEvent *)event { [self mouseMoved:event]; }
@@ -97,7 +97,9 @@
 - (void)scrollWheel:(NSEvent *)event {
     NSPoint p = [self eventPoint:event];
     size_t windowHandle = self.window == nil ? 0 : (size_t)(__bridge void *)self.window;
-    elisa_appkit_canvas_pointer_scroll(windowHandle, p.x, p.y, [event scrollingDeltaX], [event scrollingDeltaY]);
+    elisa_appkit_canvas_pointer_scroll(windowHandle, (float)p.x, (float)p.y,
+                                       (float)[event scrollingDeltaX],
+                                       (float)[event scrollingDeltaY]);
 }
 - (void)keyDown:(NSEvent *)event {
     NSString *chars = [event charactersIgnoringModifiers];
@@ -212,7 +214,7 @@
     size_t windowHandle = (size_t)(__bridge void *)self.window;
     NSPoint inWindow = [self.window convertPointFromScreen:point];
     NSPoint local = [self convertPoint:inWindow fromView:nil];
-    return elisa_appkit_canvas_character_at_x(windowHandle, local.x);
+    return elisa_appkit_canvas_character_at_x(windowHandle, (float)local.x);
 }
 - (NSRect)firstRectForCharacterRange:(NSRange)range actualRange:(NSRangePointer)actualRange {
     if (self.window == nil) {

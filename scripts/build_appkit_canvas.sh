@@ -18,7 +18,8 @@ OPT_LEVEL="${ELISA_UI_OPT_LEVEL:-2}"
 bash "$ROOT/scripts/check_toolchain.sh" --report >&2
 echo "appkit canvas: Elisa compiler optimization -O$OPT_LEVEL" >&2
 mkdir -p "$ROOT/build"
-clang -c -fobjc-arc -Wall -Wextra -Werror -o "$ROOT/build/appkit_canvas_shim.o" "$ROOT/src/platform/appkit/appkit_canvas_shim.m"
+clang -c -fobjc-arc -Wall -Wextra -Wconversion -Wsign-conversion -Werror \
+  -o "$ROOT/build/appkit_canvas_shim.o" "$ROOT/src/platform/appkit/appkit_canvas_shim.m"
 bash "$STAGE1/scripts/elisac_stage1.sh" "-O$OPT_LEVEL" -o "$ROOT/build/${EXAMPLE}_appkit_canvas.o" "$ENTRY"
 clang -Wl,-dead_strip -o "$ROOT/build/${EXAMPLE}_appkit_canvas" \
   "$ROOT/build/${EXAMPLE}_appkit_canvas.o" "$ROOT/build/appkit_canvas_shim.o" "$RUNTIME" -framework Cocoa -framework CoreText -framework CoreGraphics -framework ImageIO
