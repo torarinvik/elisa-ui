@@ -150,6 +150,15 @@ extend UiFlat:
             return 0 if owner == 0
             return UiVirtualList::variable_measurement_count(owner)
 
+        def measure_variable_virtual_row(index: usize, child: usize) -> void:
+            owner: u32 = variable_virtual_owner_at(index)
+            return if owner == 0 or child >= widget_count
+            logical: i32 = widgets[child].virtual_row_index
+            return if logical < 0 or UiVirtualList::variable_measurement_known(owner, logical)
+            measured: f32 = widgets[child].min_width if widgets[index].axis == UiConst::Axis.Row else widgets[child].min_height
+            return if not UiCore::is_finite(measured) or measured <= 0.0
+            _ = UiVirtualList::variable_set_height(owner, logical, measured)
+
         def virtual_variable_content_extent(index: usize) -> f32:
             owner: u32 = variable_virtual_owner_at(index)
             return 0.0 if owner == 0

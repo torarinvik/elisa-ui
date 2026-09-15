@@ -80,8 +80,8 @@ executes the pinned UAX #29 15.1.0 corpus (1,187 rows).
 The full real-Skia Showcase path reached its required exact-tuple benchmark
 with the clean latest 45cb0ded product after variable-height measurement was
 integrated into the retained adapter. Three fresh processes produced 21
-tail-pixel-stable samples, with a recorded median of 13.885 ms and a maximum of
-18.947 ms, inside the current 50/80 ms policy limits. The exact source-bundle
+tail-pixel-stable samples, with a recorded median of 10.936 ms and a maximum of
+12.872 ms, inside the current 50/80 ms policy limits. The exact source-bundle
 tuple is recorded in
 `test/showcase_skia_performance_budgets.json`; a different compiler, source
 bundle, or host must add its own measured reference instead of inheriting this

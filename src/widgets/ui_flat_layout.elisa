@@ -74,9 +74,22 @@ extend UiFlat:
             cursor: mutable usize = widgets[index].first_child
             return if cursor == NONE
             if widgets[index].virtual_list:
+                ordinal: mutable i32 = 0
+                total: i32 = UiVirtualList::bounded_count(widgets[index].virtual_total)
                 for _ in 0..<MAX_TRAVERSAL_SIBLINGS:
                     break if cursor == NONE or cursor >= widget_count
-                    measure(cursor, depth + 1) if widgets[cursor].visible
+                    if widgets[cursor].visible:
+                        # The first measure precedes arrange, so a newly built
+                        # variable list has no row identities yet. Seed those
+                        # slots from the requested anchor; later passes keep
+                        # the identities assigned by the retained window.
+                        if variable_virtual_is_enabled(index) and widgets[cursor].virtual_row_index < 0:
+                            logical: mutable i32 = widgets[index].virtual_anchor_index + ordinal
+                            logical <- total - 1 if logical >= total and total > 0
+                            set_virtual_row_identity(cursor, logical) if logical >= 0 and logical < total
+                        measure(cursor, depth + 1)
+                        measure_variable_virtual_row(index, cursor) if variable_virtual_is_enabled(index)
+                        ordinal <- ordinal + 1
                     cursor <- widgets[cursor].next_sibling
                 virtual_extent: f32 = virtual_variable_content_extent(index) if variable_virtual_is_enabled(index) else UiVirtualList::content_extent(widgets[index].virtual_total, widgets[index].virtual_item_extent, widgets[index].virtual_spacing)
                 if widgets[index].axis == UiConst::Axis.Row:
