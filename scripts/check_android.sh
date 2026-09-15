@@ -122,6 +122,15 @@ grep -Fq 'value == NULL ? "" : value' "$IME" || {
   echo "android: IME diagnostics do not guard a null framework string" >&2
   exit 1
 }
+HOST="$ROOT/src/platform/android/android_skia_host.cpp"
+grep -Fq 'bool pixels_valid = false;' "$HOST" || {
+  echo "android: frame tracing does not track SkPixmap validity" >&2
+  exit 1
+}
+grep -Fq 'tracing() && pixels_valid ? sampled_colors(pixels) : 0' "$HOST" || {
+  echo "android: frame tracing may sample an uninitialized SkPixmap" >&2
+  exit 1
+}
 
 # --- 2. A device, if one is attached ------------------------------------
 ADB="${ADB:-$SDK/platform-tools/adb}"

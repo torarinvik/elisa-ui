@@ -308,7 +308,9 @@ void draw(Host& host) {
             static_cast<float>(buffer.width) / host.scale, static_cast<float>(buffer.height) / host.scale,
             host.scale);
         SkPixmap pixels;
+        bool pixels_valid = false;
         if (target->peekPixels(&pixels)) {
+            pixels_valid = true;
             const std::size_t row_bytes = static_cast<std::size_t>(buffer.width) * 4;
             if (direct_window_surface ||
                 (pixels.addr() != nullptr && pixels.rowBytes() >= row_bytes)) {
@@ -323,7 +325,7 @@ void draw(Host& host) {
         const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(
                               std::chrono::steady_clock::now() - began).count();
         ELISA_TRACE("frame %dx%d status=%d colors=%d in %lld ms", buffer.width, buffer.height, status,
-                    tracing() ? sampled_colors(pixels) : 0, static_cast<long long>(took));
+                    tracing() && pixels_valid ? sampled_colors(pixels) : 0, static_cast<long long>(took));
     }
     ANativeWindow_unlockAndPost(window);
     // THE KEYBOARD FOLLOWS THE FOCUS, and the focus is the framework's to
