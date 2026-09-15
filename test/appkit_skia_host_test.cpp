@@ -176,6 +176,47 @@ int main() {
         return 7;
     }
 
+    // A flipped NSView is the live presentation path. Render the same frame
+    // into a context carrying the AppKit top-left transform and ask the
+    // oriented entry point to compensate only while drawing the CGImage. The
+    // resulting bitmap must match the ordinary bottom-left context byte for
+    // byte; a vertical mirror here is exactly what the visible window used to
+    // expose.
+    CGColorSpaceRef flipped_color_space = CGColorSpaceCreateDeviceRGB();
+    CGContextRef flipped_context = CGBitmapContextCreate(nullptr, width, height, 8,
+                                                           row_bytes, flipped_color_space, bitmap_info);
+    CGColorSpaceRelease(flipped_color_space);
+    if (flipped_context == nullptr) {
+        std::fprintf(stderr, "appkit skia host: failed to create flipped bitmap context\n");
+        CGContextRelease(context);
+        return 11;
+    }
+    CGContextTranslateCTM(flipped_context, 0.0, static_cast<CGFloat>(height));
+    CGContextScaleCTM(flipped_context, 1.0, -1.0);
+    const std::int32_t flipped_prepared = elisa_appkit_canvas_skia_prepare_context(
+        reinterpret_cast<std::size_t>(flipped_context), static_cast<float>(height));
+    const std::int32_t flipped_status = elisa_appkit_canvas_skia_present(
+        0, reinterpret_cast<std::size_t>(flipped_context), 320.0f, 200.0f,
+        static_cast<float>(width), static_cast<float>(height));
+    elisa_appkit_canvas_skia_restore_context(reinterpret_cast<std::size_t>(flipped_context));
+    const auto* flipped_pixels = static_cast<const std::uint8_t*>(CGBitmapContextGetData(flipped_context));
+    bool flipped_matches = flipped_pixels != nullptr && pixels != nullptr;
+    if (flipped_matches) {
+        for (int byte = 0; byte < row_bytes * height; ++byte) {
+            if (flipped_pixels[byte] != pixels[byte]) {
+                flipped_matches = false;
+                break;
+            }
+        }
+    }
+    if (flipped_prepared != 1 || flipped_status != 1 || !flipped_matches) {
+        std::fprintf(stderr, "appkit skia host: flipped-context presentation is not upright\n");
+        CGContextRelease(flipped_context);
+        CGContextRelease(context);
+        return 12;
+    }
+    CGContextRelease(flipped_context);
+
     // A pre-frame rejection leaves the CoreGraphics target untouched and is
     // the only result that permits the Objective-C caller to run its fallback
     // path. This must remain distinct from a negative post-frame failure.

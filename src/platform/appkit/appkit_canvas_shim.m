@@ -34,6 +34,10 @@ extern void elisa_appkit_canvas_appearance_changed(size_t windowHandle, size_t a
 extern void elisa_appkit_canvas_report_appearance(size_t windowHandle);
 extern void elisa_appkit_canvas_window_closed(size_t windowHandle);
 extern void elisa_appkit_canvas_rebuild_cursor_rects(size_t windowHandle);
+#if defined(ELISA_UI_USE_SKIA)
+extern int32_t elisa_appkit_canvas_skia_prepare_context(size_t context, float height);
+extern void elisa_appkit_canvas_skia_restore_context(size_t context);
+#endif
 extern int elisa_appkit_canvas_render_headless(size_t windowHandle,
                                                size_t snapshot,
                                                int pixelsWidth,

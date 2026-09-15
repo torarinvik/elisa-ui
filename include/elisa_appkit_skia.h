@@ -27,6 +27,18 @@ int32_t elisa_appkit_canvas_skia_present(size_t window_handle, size_t context,
                                          float logical_width, float logical_height,
                                          float pixel_width, float pixel_height);
 
+/* Elisa-owned FFI helpers for the temporary AppKit flipped-context transform.
+ * The prepare/restore pair is balanced by the caller around presentation;
+ * prepare returns zero when it refuses malformed input. */
+int32_t elisa_appkit_canvas_skia_prepare_context(size_t context, float height);
+void elisa_appkit_canvas_skia_restore_context(size_t context);
+
+/* Variant used by an NSView whose drawing context has a top-left (flipped)
+ * user space. Skia's raster surface is y-down, while CGContextDrawImage
+ * interprets a CGImage in the context's native image space. The orientation
+ * bit keeps that one presentation fact at the native boundary instead of
+ * leaking a transform into Elisa's layout or paint coordinates. A zero bit
+ * is equivalent to elisa_appkit_canvas_skia_present(). */
 #ifdef __cplusplus
 }
 #endif

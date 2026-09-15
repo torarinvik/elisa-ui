@@ -84,12 +84,10 @@ CGImageRef image_from_pixels(const SkPixmap& pixels) {
 
 }  // namespace
 
-extern "C" std::int32_t elisa_appkit_canvas_skia_present(std::size_t window_handle,
-                                                           std::size_t context_handle,
-                                                           float logical_width,
-                                                           float logical_height,
-                                                           float pixel_width_value,
-                                                           float pixel_height_value) {
+extern "C" std::int32_t elisa_appkit_canvas_skia_present(
+    std::size_t window_handle, std::size_t context_handle,
+    float logical_width, float logical_height,
+    float pixel_width_value, float pixel_height_value) {
     // Reject an incompatible Elisa painter before creating a surface or
     // handing any borrowed Skia object across the callback boundary. Zero is
     // the documented pre-frame result, so the Objective-C caller may use its

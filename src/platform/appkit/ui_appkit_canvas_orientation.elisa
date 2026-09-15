@@ -1,0 +1,38 @@
+# CoreGraphics presentation orientation owned by Elisa.
+#
+# AppKit supplies a flipped NSView context while Skia raster surfaces use the
+# same y-down logical coordinates as UiCore. Keep the temporary CGContext state
+# change at this narrow FFI boundary, so neither the retained layout nor the
+# Skia compositor needs a second coordinate convention.
+
+include "../../core/ui_core.elisa"
+
+extern CGContextSaveGState(context: usize) -> void
+extern CGContextRestoreGState(context: usize) -> void
+extern CGContextTranslateCTM(context: usize, x: f64, y: f64) -> void
+extern CGContextScaleCTM(context: usize, x: f64, y: f64) -> void
+
+module UiAppKitCanvasOrientation:
+    public:
+        # Return one only when a balanced temporary transform was installed.
+        # The caller must pass that result to restore_context; malformed
+        # dimensions therefore cannot leave an unmatched CGContext save.
+        def prepare_context(context: usize, height: f32) -> i32:
+            return 0 if context == 0 or not UiCore::is_finite(height) or height <= 0.0
+            CGContextSaveGState(context)
+            CGContextTranslateCTM(context, 0.0, height.f64())
+            CGContextScaleCTM(context, 1.0, -1.0)
+            return 1
+
+        def restore_context(context: usize) -> void:
+            return if context == 0
+            CGContextRestoreGState(context)
+
+def appkit_canvas_skia_prepare_context(context: usize, height: f32) -> i32:
+    return UiAppKitCanvasOrientation::prepare_context(context, height)
+
+def appkit_canvas_skia_restore_context(context: usize) -> void:
+    UiAppKitCanvasOrientation::restore_context(context)
+
+export fn elisa_appkit_canvas_skia_prepare_context(context: usize, height: f32) -> i32 = appkit_canvas_skia_prepare_context
+export fn elisa_appkit_canvas_skia_restore_context(context: usize) -> void = appkit_canvas_skia_restore_context
