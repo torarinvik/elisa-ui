@@ -48,9 +48,18 @@ clang++ -Wl,-dead_strip -o "$ROOT/build/appkit_skia_host_test" "${link_inputs[@]
 # next person seeing a symbol name and seeing nothing.
 product="$ROOT/build/hello_appkit_skia"
 [[ -f "$product" ]] || { echo "appkit skia: $product does not exist after the build" >&2; exit 1; }
-if ! nm -g "$product" 2>"$ROOT/build/appkit_skia_nm.err" | grep -q ' T _elisa_appkit_canvas_skia_replay$'; then
+nm_error="$ROOT/build/appkit_skia_nm.err"
+if ! nm_symbols="$(nm -g "$product" 2>"$nm_error")"; then
+  echo "appkit skia: nm could not inspect $product" >&2
+  [[ -s "$nm_error" ]] && cat "$nm_error" >&2
+  exit 1
+fi
+# Keep nm's complete table in memory before searching it. With `pipefail`, a
+# successful `grep -q` can close a pipe while nm is still writing; nm then
+# exits with SIGPIPE and turns an actually-present export into a false failure.
+if ! grep -Eq '[[:space:]]T[[:space:]]+_elisa_appkit_canvas_skia_replay$' <<<"$nm_symbols"; then
   echo "appkit skia: $product does not export _elisa_appkit_canvas_skia_replay" >&2
-  [[ -s "$ROOT/build/appkit_skia_nm.err" ]] && cat "$ROOT/build/appkit_skia_nm.err" >&2
+  [[ -s "$nm_error" ]] && cat "$nm_error" >&2
   exit 1
 fi
 echo "appkit skia: optional AppKit product and off-screen compositor passed"
