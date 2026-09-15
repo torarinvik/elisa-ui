@@ -72,3 +72,27 @@ Physical VoiceOver / Accessibility Inspector verification remains required
 before claiming complete native collection conformance; the headless fixture
 proves the Elisa/provider/ABI workflow and bounded ownership, not a device's
 announcement wording.
+
+## Variable row extents
+
+`UiHandles::variable_virtual_list` and
+`UiHandles::horizontal_variable_virtual_list` keep the same bounded row pool
+while allowing sparse measured heights or widths. Unknown rows use the
+estimated extent; realized rows are measured automatically and can be adjusted
+with `set_virtual_item_height` or invalidated with `clear_virtual_item_height`.
+
+Applications that already know their data can install a synchronous
+`UiVirtualList::MeasureProvider` with
+`set_variable_virtual_measure_provider`. It receives the flat-list identity
+and logical row index, returning a positive finite extent or a non-positive
+value to fall back to the realized row's intrinsic minimum. Providers must not
+mutate or rebuild the retained tree during the callback; Elisa rejects a
+callback that nevertheless changes the tree lifetime.
+
+The bounded measurement cache is intentionally not serialized by the
+framework. `virtual_item_height_measurement_count`,
+`virtual_item_height_measurement_index`, and `virtual_item_height_measurement`
+let an application copy logical identities and extents into its own state and
+restore them later through `set_virtual_item_height`. This keeps persistence
+versioned and application-owned instead of exposing `UiFlat` storage or raw
+arena indexes.
