@@ -7,13 +7,13 @@ Part of the [elisa-ui implementation baseline](../implementation-baseline.md).
 The fetched upstream `main` is
 `45cb0ded70e7e8c8a41d21c63a09939706322ca4`. The shared compiler checkout is
 clean on `main` at
-`565ccb2fd585d03f94457185376f526e1930b1cb` (ahead=5, behind=0 versus the
+`d6a693c0f724c05f7b71418658dd8bda95ba73b3` (ahead=7, behind=0 versus the
 fetched `origin/main`). Framework gates use this latest local build.
 
 The latest clean stage1 used for the current gates is
 `../Elisa-compiler/bin/elisac-stage1`, revision
-`565ccb2fd585d03f94457185376f526e1930b1cb`. Its stage1 SHA-256 is
-`2324bf11c796433ac2868b4dc5d4c8ab26f4e471e30dfafb3d3067a1f159dd17` and its
+`d6a693c0f724c05f7b71418658dd8bda95ba73b3`. Its stage1 SHA-256 is
+`82543b75bb15bafd4e7a12aab824446b565f661a89a9870b34513c5722f34fc7` and its
 runtime SHA-256 is
 `85f1107eef00a7dd903e511df366b8b6cade4d8573cf0478f1de91604ea5beb9`.
 The product and runtime were freshly self-hosted from the current stage0 and
@@ -22,30 +22,30 @@ the strict `ELISA_UI_REQUIRE_CURRENT_STAGE1=1` toolchain check passes.
 The pinned Skia checkout is revision
 `9c7b2dffb2433f5a0cc2b77f06025a09126807ed`; `out/elisa/libskia.a` has SHA-256
 `39774ff993bd3b84943c27548738c8b8b8208396237d536c1a4ed1c6e147c775`.
-The clean upstream-main, c605, ce9e, 4cf3, 0f08, 8d7, and latest 45cb compiler
-products have separate exact performance tuples recorded in
+The clean upstream-main, c605, ce9e, 4cf3, 0f08, 8d7, 45cb, and latest d6a
+compiler products have separate exact performance tuples recorded in
 `test/showcase_skia_performance_budgets.json`.
 
 With the clean latest compiler and pinned Skia, the following headless gates
 passed without opening or foregrounding a window:
 
 ```text
-ELISA_UI_STAGE1=/private/tmp/elisa-compiler-ui-current \
+ELISA_UI_STAGE1=../Elisa-compiler \
 bash scripts/check_appkit_canvas.sh
   -O2 AppKit canvas build, fresh-process PNG, accessibility bridge,
   callbacks, ordinary nested hierarchy, bundle and signature: PASS
   fresh-process PNG sha256=
   07f328d5e73e0f2863b08135085ff85046d6b5ffb451622d965d914b4c9011d1
 
-ELISA_UI_STAGE1=/private/tmp/elisa-compiler-ui-current \
+ELISA_UI_STAGE1=../Elisa-compiler \
 bash scripts/check_capi.sh
   C header/Elisa symbol agreement and C example: PASS
 
-ELISA_UI_STAGE1=/private/tmp/elisa-compiler-ui-current \
+ELISA_UI_STAGE1=../Elisa-compiler \
 bash scripts/check_go.sh
   Go/cgo binding, real Elisa adapter, callback/text/viewport example: PASS
 
-ELISA_UI_STAGE1=/private/tmp/elisa-compiler-ui-current \
+ELISA_UI_STAGE1=../Elisa-compiler \
 bash scripts/check_uikit.sh
   UIKit SDK syntax, ABI, off-screen frame and semantic boundary: PASS
 
@@ -58,14 +58,14 @@ activation and teardown: PASS
 stubs): nested ordinary parent/child lookup, root-only publication, invalid
 index handling and teardown: PASS
 
-`ELISA_UI_STAGE1=/private/tmp/elisa-compiler-ui-current bash
+`ELISA_UI_STAGE1=../Elisa-compiler bash
 scripts/check_android_controls.sh showcase` builds the real Android
 `android.widget` controls APK, verifies the distinct Elisa/JNI entry points,
 absence of Skia/shared C++ dependencies, Java code and 16 KB alignment, and
 reports the device half separately when no device is attached: PASS (package
 half; device half skipped because no Android device was attached).
 
-ELISA_UI_STAGE1=/private/tmp/elisa-compiler-ui-current \
+ELISA_UI_STAGE1=../Elisa-compiler \
 SKIA_ROOT=/private/tmp/elisa-skia-check-20260914 \
 bash scripts/check_skia.sh
   CPU-raster painter, off-screen pixels, fresh-process replay, Showcase pages,
@@ -77,10 +77,10 @@ bash scripts/check_skia.sh
 executes the pinned UAX #29 15.1.0 corpus (1,187 rows).
 
 The full real-Skia Showcase path reached its required exact-tuple benchmark
-with the clean latest 45cb0ded product after variable-height measurement was
-integrated into the retained adapter. Three fresh processes produced 21
-tail-pixel-stable samples, with a recorded median of 12.072 ms and a maximum of
-15.303 ms, inside the current 50/80 ms policy limits. The exact source-bundle
+with the clean latest d6a693c0 product after owner-scoped resource demand and
+budget refresh. Three fresh processes produced 21 tail-pixel-stable samples,
+with a recorded median of 10.835 ms and a maximum of 11.333 ms, inside the
+current 50/80 ms policy limits. The exact source-bundle
 tuple is recorded in
 `test/showcase_skia_performance_budgets.json`; a different compiler, source
 bundle, or host must add its own measured reference instead of inheriting this
