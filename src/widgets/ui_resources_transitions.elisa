@@ -103,6 +103,12 @@ extend UiResources:
             resource_states[slot] <- next
             if next == State.Cancelled:
                 resource_clear_all_owner_demands(slot)
+                # Cancellation ends the operation even when a caller releases
+                # an already-resolved or partially-progressed generation.
+                # Do not leave stale completion fractions visible on the
+                # cancelled presentation record.
+                resource_downloaded[slot] <- 0.0
+                resource_decoded[slot] <- 0.0
             resource_failure_kinds[slot] <- FailureKind.RetryableTransport if next == State.Failed else FailureKind.Unknown
             if next == State.Ready:
                 resource_downloaded[slot] <- 1.0
