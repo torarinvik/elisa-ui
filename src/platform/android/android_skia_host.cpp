@@ -271,25 +271,53 @@ void draw(Host& host) {
         host.needs_frame = false;
         return;
     }
+    // A successful lock should always carry a writable, positive-sized RGBA
+    // buffer. Keep the check at this ABI boundary anyway: a malformed or
+    // transient buffer must not turn the row copy below into an out-of-bounds
+    // write. There is no useful frame to submit in that case, so release the
+    // lock and wait for the next surface/redraw notification.
+    const bool valid_buffer = buffer.bits != nullptr && buffer.width > 0 && buffer.height > 0 &&
+                              buffer.stride >= buffer.width;
+    if (!valid_buffer) {
+        host.needs_frame = false;
+        ANativeWindow_unlockAndPost(window);
+        return;
+    }
     const SkImageInfo info = SkImageInfo::Make(buffer.width, buffer.height, kRGBA_8888_SkColorType,
                                                kPremul_SkAlphaType);
     if (!host.frame || host.frame->width() != buffer.width || host.frame->height() != buffer.height) {
         host.frame = SkSurfaces::Raster(info);
     }
-    if (host.frame) {
+    // Raster allocation is normally cheap and keeps all blending off the
+    // window's write-combined memory. If allocation fails (usually transient
+    // pressure during surface recreation), wrap the locked pixels directly so
+    // the application still gets a complete frame instead of presenting stale
+    // contents forever. The fallback is deliberately local and is discarded
+    // before the next frame can allocate the fast path again.
+    sk_sp<SkSurface> target = host.frame;
+    const bool direct_window_surface = !target;
+    if (direct_window_surface) {
+        target = SkSurfaces::WrapPixels(info, buffer.bits, static_cast<std::size_t>(buffer.stride) * 4);
+    }
+    if (target) {
         const auto began = std::chrono::steady_clock::now();
-        SkCanvas* canvas = host.frame->getCanvas();
+        SkCanvas* canvas = target->getCanvas();
         canvas->clear(SK_ColorBLACK);
         const std::int32_t status = elisa_android_render(
             reinterpret_cast<std::size_t>(canvas), reinterpret_cast<std::size_t>(host.regular.get()),
             static_cast<float>(buffer.width) / host.scale, static_cast<float>(buffer.height) / host.scale,
             host.scale);
         SkPixmap pixels;
-        if (host.frame->peekPixels(&pixels)) {
+        if (target->peekPixels(&pixels)) {
             const std::size_t row_bytes = static_cast<std::size_t>(buffer.width) * 4;
-            for (int y = 0; y < buffer.height; ++y) {
-                std::memcpy(static_cast<std::uint8_t*>(buffer.bits) + static_cast<std::size_t>(y) * buffer.stride * 4,
-                            static_cast<const std::uint8_t*>(pixels.addr()) + static_cast<std::size_t>(y) * pixels.rowBytes(), row_bytes);
+            if (direct_window_surface ||
+                (pixels.addr() != nullptr && pixels.rowBytes() >= row_bytes)) {
+                if (!direct_window_surface) {
+                    for (int y = 0; y < buffer.height; ++y) {
+                        std::memcpy(static_cast<std::uint8_t*>(buffer.bits) + static_cast<std::size_t>(y) * buffer.stride * 4,
+                                    static_cast<const std::uint8_t*>(pixels.addr()) + static_cast<std::size_t>(y) * pixels.rowBytes(), row_bytes);
+                    }
+                }
             }
         }
         const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(
