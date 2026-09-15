@@ -163,9 +163,11 @@ size_t elisa_uikit_accessibility_add(size_t viewHandle, size_t previousHandle, i
     if (view == nil) return 0;
     if (isNew == 0) {
         ElisaUiKitAccessibilityElement *reused = elisa_uikit_element(previousHandle);
-        if (reused != nil) {
-            return previousHandle;
-        }
+        // Reuse is valid only inside the same live UIKit view. A stale
+        // element from another scene must not be retargeted merely because
+        // its opaque address is still nonzero.
+        if (reused == nil || reused.viewHandle != viewHandle) return 0;
+        return previousHandle;
     }
     ElisaUiKitAccessibilityElement *element =
         [[ElisaUiKitAccessibilityElement alloc] initWithAccessibilityContainer:view];
@@ -180,9 +182,9 @@ int elisa_uikit_accessibility_update(size_t viewHandle, size_t handle,
                                      size_t identifier, uint64_t traits,
                                      size_t label, size_t hint, size_t value,
                                      float x, float y, float width, float height, int enabled) {
-    (void)viewHandle;
+    ElisaUiKitView *view = elisa_uikit_view(viewHandle);
     ElisaUiKitAccessibilityElement *element = elisa_uikit_element(handle);
-    if (element == nil) return 0;
+    if (view == nil || element == nil || element.viewHandle != viewHandle) return 0;
     elisa_uikit_apply_element(element, identifier, traits, label, hint, value,
                               x, y, width, height, enabled);
     return 1;
@@ -196,7 +198,7 @@ int elisa_uikit_accessibility_set_container(size_t viewHandle, size_t handle,
                                             size_t container) {
     ElisaUiKitView *view = elisa_uikit_view(viewHandle);
     ElisaUiKitAccessibilityElement *element = elisa_uikit_element(handle);
-    if (view == nil || element == nil || container == 0) return 0;
+    if (view == nil || element == nil || element.viewHandle != viewHandle || container == 0) return 0;
     id parent = container == viewHandle
         ? (id)view : (__bridge id)(void *)container;
     if (parent == nil) return 0;
@@ -220,6 +222,10 @@ int elisa_uikit_accessibility_commit(size_t viewHandle, size_t children) {
     if (view == nil || children == 0) return 0;
     id list = (__bridge id)(void *)children;
     if (![list isKindOfClass:[NSArray class]]) return 0;
+    for (id object in (NSArray *)list) {
+        if (![object isKindOfClass:[ElisaUiKitAccessibilityElement class]] ||
+            ((ElisaUiKitAccessibilityElement *)object).viewHandle != viewHandle) return 0;
+    }
     view.elisaElements = (NSArray *)list;
     return 1;
 }
