@@ -26,7 +26,7 @@ extern "C" void elisa_skia_canvas_draw_text_with_font(std::size_t canvas_handle,
                                                         std::uint8_t red, std::uint8_t green,
                                                         std::uint8_t blue, std::uint8_t alpha) {
     if (SkCanvas *target = canvas(canvas_handle);
-        target != nullptr && font_handle != 0 && text != nullptr && length > 0 && bounded_coordinate(x) &&
+        target != nullptr && font_handle != 0 && valid_utf8_text(text, length) && bounded_coordinate(x) &&
         bounded_coordinate(y) && bounded_extent(size)) {
         SkTypeface *lent = reinterpret_cast<SkTypeface *>(font_handle);
         draw_runs(target, font_for(size, lent), fill_paint(red, green, blue, alpha), lent, text, length, x, y);
@@ -37,7 +37,7 @@ extern "C" void elisa_skia_canvas_draw_text_with_font(std::size_t canvas_handle,
 extern "C" float elisa_skia_measure_text_width_with_font(std::size_t font_handle,
                                                            const char *text, std::size_t length,
                                                            float size) {
-    if (font_handle == 0 || text == nullptr || length == 0 || !bounded_extent(size)) return 0.0f;
+    if (font_handle == 0 || !valid_utf8_text(text, length) || !bounded_extent(size)) return 0.0f;
     SkTypeface *lent = reinterpret_cast<SkTypeface *>(font_handle);
     const float measured = measure_runs(font_for(size, lent), lent, text, length);
     return finite(measured) && measured >= 0.0f ? measured : 0.0f;
@@ -52,7 +52,7 @@ extern "C" void elisa_skia_canvas_draw_text_weighted(std::size_t canvas_handle,
                                                        std::uint8_t red, std::uint8_t green,
                                                        std::uint8_t blue, std::uint8_t alpha) {
     if (SkCanvas *target = canvas(canvas_handle);
-        target != nullptr && text != nullptr && length > 0 && bounded_coordinate(x) &&
+        target != nullptr && valid_utf8_text(text, length) && bounded_coordinate(x) &&
         bounded_coordinate(y) && bounded_extent(size)) {
         const SkFont font = weighted_font_for(size, font_handle, weight_stroke);
         draw_runs(target, font, weighted_paint(fill_paint(red, green, blue, alpha), weight_stroke),
@@ -71,7 +71,7 @@ extern "C" void elisa_skia_canvas_draw_text_halo(std::size_t canvas_handle, std:
                                                    std::uint8_t red, std::uint8_t green,
                                                    std::uint8_t blue, std::uint8_t alpha) {
     if (SkCanvas *target = canvas(canvas_handle);
-        target != nullptr && text != nullptr && length > 0 && alpha != 0 && bounded_coordinate(x) &&
+        target != nullptr && valid_utf8_text(text, length) && alpha != 0 && bounded_coordinate(x) &&
         bounded_coordinate(y) && bounded_extent(size)) {
         const SkFont font = weighted_font_for(size, font_handle, weight_stroke);
         SkPaint paint = weighted_paint(fill_paint(red, green, blue, alpha), weight_stroke);
@@ -87,7 +87,7 @@ extern "C" void elisa_skia_canvas_draw_text_halo(std::size_t canvas_handle, std:
 extern "C" float elisa_skia_measure_text_width_weighted(std::size_t font_handle,
                                                           const char *text, std::size_t length,
                                                           float size, float weight_stroke) {
-    if (text == nullptr || length == 0 || !bounded_extent(size)) return 0.0f;
+    if (!valid_utf8_text(text, length) || !bounded_extent(size)) return 0.0f;
     const SkFont font = weighted_font_for(size, font_handle, weight_stroke);
     const float measured = measure_runs(font, font.getTypeface(), text, length);
     return finite(measured) && measured >= 0.0f ? measured : 0.0f;
@@ -111,7 +111,7 @@ extern "C" void elisa_skia_set_font_manager(std::size_t manager) {
 // fixture can ask that a rendered pixel cannot: a box glyph has ink too.
 extern "C" int elisa_skia_text_covers(std::size_t font_handle, const char *text, std::size_t length) {
     SkTypeface *lent = reinterpret_cast<SkTypeface *>(font_handle);
-    if (lent == nullptr || text == nullptr) return 0;
+    if (lent == nullptr || !valid_utf8_text(text, length)) return 0;
     for (const TextRun &run : split_runs(lent, text, length)) {
         SkTypeface *face = run.face ? run.face.get() : lent;
         std::size_t index = run.begin;
@@ -166,7 +166,7 @@ extern "C" void elisa_skia_canvas_draw_text(std::size_t handle, const char *text
                                               float x, float y, float size, std::uint8_t red,
                                               std::uint8_t green, std::uint8_t blue, std::uint8_t alpha) {
     if (SkCanvas *target = canvas(handle);
-        target != nullptr && text != nullptr && length > 0 && bounded_coordinate(x) && bounded_coordinate(y) &&
+        target != nullptr && valid_utf8_text(text, length) && bounded_coordinate(x) && bounded_coordinate(y) &&
         bounded_extent(size)) {
         target->drawSimpleText(text, length, SkTextEncoding::kUTF8, x, y, font_for(size),
                                fill_paint(red, green, blue, alpha));
@@ -175,7 +175,7 @@ extern "C" void elisa_skia_canvas_draw_text(std::size_t handle, const char *text
 
 
 extern "C" float elisa_skia_measure_text_width(const char *text, std::size_t length, float size) {
-    if (text == nullptr || length == 0 || !bounded_extent(size)) return 0.0f;
+    if (!valid_utf8_text(text, length) || !bounded_extent(size)) return 0.0f;
     const float measured = font_for(size).measureText(text, length, SkTextEncoding::kUTF8);
     return finite(measured) && measured >= 0.0f ? measured : 0.0f;
 }

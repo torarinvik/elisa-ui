@@ -169,6 +169,8 @@ int main(int argc, char** argv) {
     elisa_skia_canvas_fill_line(reinterpret_cast<std::size_t>(canvas), 0.0f, nan, 20.0f, 20.0f, 1.0f, 0, 240, 240, 245, 255);
     SkPixmap malformed_pixels;
     if (elisa_skia_measure_text_width("x", 1, hostile) != 0.0f ||
+        elisa_skia_measure_text_width("\xF0\x28\x8C\xBC", 4, 16.0f) != 0.0f ||
+        elisa_skia_measure_text_width("x", 1025, 16.0f) != 0.0f ||
         elisa_skia_font_ascent(hostile) != 0.0f || elisa_skia_text_line_height(hostile) != 0.0f ||
         !surface->peekPixels(&malformed_pixels) ||
         !expect_color(malformed_pixels, 80, 130, SkColorSetARGB(255, 18, 24, 32), "malformed no-op")) {
@@ -201,6 +203,11 @@ int main(int argc, char** argv) {
     if (typeface == nullptr) {
         std::fprintf(stderr, "skia offscreen: failed to resolve the CoreText default typeface\n");
         return 7;
+    }
+    if (elisa_skia_text_covers(reinterpret_cast<std::size_t>(typeface.get()), "\xF0\x28\x8C\xBC", 4) != 0 ||
+        elisa_skia_text_covers(reinterpret_cast<std::size_t>(typeface.get()), "x", 1025) != 0) {
+        std::fprintf(stderr, "skia text boundary: malformed or oversized UTF-8 was accepted\n");
+        return 11;
     }
     const std::int32_t status = elisa_skia_offscreen_render(
         reinterpret_cast<std::size_t>(canvas), reinterpret_cast<std::size_t>(typeface.get()));

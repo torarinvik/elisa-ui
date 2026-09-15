@@ -50,6 +50,7 @@ inline bool finite(float value) {
 }
 
 constexpr float max_geometry_extent = 16777216.0f;
+constexpr std::size_t max_text_bytes = 1024;
 
 inline bool bounded_coordinate(float value) {
     return finite(value) && value >= -max_geometry_extent && value <= max_geometry_extent;
@@ -100,6 +101,49 @@ inline bool valid_stroked_circle(float x, float y, float radius, float stroke_wi
 
 inline bool valid_scale(float x, float y) {
     return bounded_extent(x) && bounded_extent(y);
+}
+
+// Elisa normally validates counted text before it reaches this bridge, but the
+// exported C ABI is also callable directly by a host. Keep that path equally
+// strict: Skia's UTF-8 decoder is permissive about malformed input, while the
+// framework's text contract is a complete, bounded UTF-8 view. Reject
+// overlong, surrogate, out-of-range and truncated sequences before any native
+// text measurement or draw call can observe them.
+inline bool valid_utf8_text(const char *text, std::size_t length) {
+    if (text == nullptr || length == 0 || length > max_text_bytes) return false;
+    std::size_t index = 0;
+    while (index < length) {
+        const auto byte = [&](std::size_t at) {
+            return static_cast<unsigned char>(text[at]);
+        };
+        const unsigned char first = byte(index);
+        std::size_t width = 0;
+        if (first <= 0x7Fu) {
+            width = 1;
+        } else if (first >= 0xC2u && first <= 0xDFu) {
+            width = 2;
+        } else if (first >= 0xE0u && first <= 0xEFu) {
+            width = 3;
+        } else if (first >= 0xF0u && first <= 0xF4u) {
+            width = 4;
+        } else {
+            return false;
+        }
+        if (width > length - index) return false;
+        for (std::size_t offset = 1; offset < width; ++offset) {
+            const unsigned char continuation = byte(index + offset);
+            if (continuation < 0x80u || continuation > 0xBFu) return false;
+        }
+        const unsigned char second = width > 1 ? byte(index + 1) : 0;
+        if ((first == 0xE0u && second < 0xA0u) ||
+            (first == 0xEDu && second >= 0xA0u) ||
+            (first == 0xF0u && second < 0x90u) ||
+            (first == 0xF4u && second >= 0x90u)) {
+            return false;
+        }
+        index += width;
+    }
+    return true;
 }
 
 inline SkColor color(std::uint8_t red, std::uint8_t green, std::uint8_t blue, std::uint8_t alpha) {
