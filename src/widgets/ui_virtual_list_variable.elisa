@@ -97,6 +97,24 @@ extend UiVirtualList:
             return false if slot == NONE_INDEX or index < 0
             return variable_measurement(slot, index) != NONE_INDEX
 
+        def variable_clear_height(owner: u32, index: i32) -> bool:
+            slot: i32 = variable_slot(owner)
+            return false if slot == NONE_INDEX or index < 0
+            found: i32 = variable_measurement(slot, index)
+            return false if found == NONE_INDEX
+            count: usize = variable_measurement_counts[slot.usize()]
+            return false if count == 0
+            base: usize = slot.usize() * MAX_VARIABLE_MEASUREMENTS
+            last: usize = base + count - 1
+            target: usize = found.usize()
+            variable_measurement_indexes[target] <- variable_measurement_indexes[last]
+            variable_measurement_heights[target] <- variable_measurement_heights[last]
+            variable_measurement_indexes[last] <- NONE_INDEX
+            variable_measurement_heights[last] <- 0.0
+            variable_measurement_counts[slot.usize()] <- count - 1
+            variable_measurement_next[slot.usize()] <- (count - 1) % MAX_VARIABLE_MEASUREMENTS
+            return true
+
         def variable_height(owner: u32, index: i32) -> f32:
             slot: i32 = variable_slot(owner)
             return 0.0 if slot == NONE_INDEX or index < 0 or index >= variable_totals[slot.usize()]

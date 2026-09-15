@@ -10,8 +10,8 @@ The current required CPU-raster tuple uses clean upstream `main` at
 `447c5c64ec9914e0ea99bc2a9f396e93fdf353cf1238cb647f472493e1c73548` and
 runtime SHA-256
 `85f1107eef00a7dd903e511df366b8b6cade4d8573cf0478f1de91604ea5beb9`.
-The exact Showcase budget for this source bundle records a 10.936 ms median
-and 12.872 ms maximum over 21 fresh-process samples; the tail digest is
+The exact Showcase budget for this source bundle records a 12.072 ms median
+and 15.303 ms maximum over 21 fresh-process samples; the tail digest is
 `1ac21e37972207bb`.
 
 The pinned Skia checkout and CPU-raster archive are now built locally. From a
