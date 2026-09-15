@@ -40,17 +40,37 @@ static JNIEnv *elisa_env(void) {
     return env;
 }
 
+// A Java exception is sticky on a JNIEnv. Leaving one behind turns a
+// recoverable control failure into a CheckJNI abort at an unrelated later
+// call, so every boundary entry consumes it before returning to Elisa.
+static int elisa_controls_clear_exception(JNIEnv *env) {
+    if (env == NULL || (*env)->ExceptionCheck(env) != JNI_TRUE) return 0;
+    (*env)->ExceptionClear(env);
+    return 1;
+}
+
+static int elisa_controls_ready(JNIEnv *env) {
+    return env != NULL && elisa_controls_class != NULL;
+}
+
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
     (void)reserved;
     elisa_vm = vm;
     JNIEnv *env = elisa_env();
     if (env == NULL) return JNI_ERR;
     jclass local = (*env)->FindClass(env, "org/elisa_ui/ElisaControls");
-    if (local == NULL) return JNI_ERR;
+    if (local == NULL) {
+        elisa_controls_clear_exception(env);
+        return JNI_ERR;
+    }
     // A class reference from FindClass is local and dies with the call that
     // made it; the one this keeps has to outlive every one of them.
     elisa_controls_class = (jclass)(*env)->NewGlobalRef(env, local);
-    if (elisa_controls_class == NULL) return JNI_ERR;
+    if (elisa_controls_class == NULL) {
+        elisa_controls_clear_exception(env);
+        (*env)->DeleteLocalRef(env, local);
+        return JNI_ERR;
+    }
     jclass c = elisa_controls_class;
     m_create = (*env)->GetStaticMethodID(env, c, "create", "(II)I");
     m_add_child = (*env)->GetStaticMethodID(env, c, "addChild", "(II)V");
@@ -131,8 +151,13 @@ JNIEXPORT void JNICALL Java_org_elisa_1ui_ElisaControls_nativeControlText(
         return;
     }
     jsize units_length = (*env)->GetStringLength(env, text);
+    if (elisa_controls_clear_exception(env)) return;
     const jchar *units = (*env)->GetStringChars(env, text, NULL);
-    if (units == NULL) return;
+    if (units == NULL) {
+        (void)elisa_controls_clear_exception(env);
+        return;
+    }
+    if (elisa_controls_clear_exception(env)) return;
     uint8_t utf8[ELISA_CONTROLS_TEXT_MAX];
     size_t length = elisa_utf16_to_utf8((const uint16_t *)units,
                                         (size_t)units_length, utf8, sizeof(utf8));
@@ -145,28 +170,39 @@ JNIEXPORT void JNICALL Java_org_elisa_1ui_ElisaControls_nativeControlText(
 
 int32_t elisa_android_controls_create(int32_t kind, int32_t vertical) {
     JNIEnv *env = elisa_env();
-    if (env == NULL || elisa_controls_class == NULL) return 0;
-    return (*env)->CallStaticIntMethod(env, elisa_controls_class, m_create, kind, vertical);
+    if (!elisa_controls_ready(env)) return 0;
+    jint handle = (*env)->CallStaticIntMethod(env, elisa_controls_class, m_create, kind, vertical);
+    return elisa_controls_clear_exception(env) ? 0 : (int32_t)handle;
 }
 
 void elisa_android_controls_add_child(int32_t parent, int32_t child) {
     JNIEnv *env = elisa_env();
-    if (env != NULL) (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_add_child, parent, child);
+    if (!elisa_controls_ready(env)) return;
+    (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_add_child, parent, child);
+    (void)elisa_controls_clear_exception(env);
 }
 
 void elisa_android_controls_set_frame(int32_t handle, float x, float y, float width, float height) {
     JNIEnv *env = elisa_env();
-    if (env != NULL) (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_set_frame, handle, x, y, width, height);
+    if (!elisa_controls_ready(env)) return;
+    (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_set_frame, handle, x, y, width, height);
+    (void)elisa_controls_clear_exception(env);
 }
 
 // A counted standard UTF-8 view becomes a bounded Java UTF-16 String. NewString
 // takes an explicit code-unit length, so embedded U+0000 is preserved.
 static jstring elisa_controls_string_from_utf8(JNIEnv *env, const uint8_t *bytes, size_t length) {
+    if (env == NULL || (bytes == NULL && length != 0)) return NULL;
     uint16_t units[ELISA_CONTROLS_TEXT_MAX];
     size_t count = elisa_utf8_to_utf16(bytes, length, units,
                                        sizeof(units) / sizeof(units[0]));
     jstring text = (*env)->NewString(env, (const jchar *)units, (jsize)count);
     memset(units, 0, sizeof(units));
+    if (text == NULL) {
+        (void)elisa_controls_clear_exception(env);
+        return NULL;
+    }
+    if (elisa_controls_clear_exception(env)) return NULL;
     return text;
 }
 
@@ -176,36 +212,47 @@ void elisa_android_controls_set_text(int32_t handle, const uint8_t *bytes, size_
     jstring text = elisa_controls_string_from_utf8(env, bytes, length);
     if (text == NULL) return;
     (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_set_text, handle, text);
+    (void)elisa_controls_clear_exception(env);
     (*env)->DeleteLocalRef(env, text);
 }
 
 void elisa_android_controls_set_text_color(int32_t handle, uint32_t argb) {
     JNIEnv *env = elisa_env();
-    if (env != NULL) (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_set_text_color, handle, (jint)argb);
+    if (!elisa_controls_ready(env)) return;
+    (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_set_text_color, handle, (jint)argb);
+    (void)elisa_controls_clear_exception(env);
 }
 
 void elisa_android_controls_set_background_color(int32_t handle, uint32_t argb) {
     JNIEnv *env = elisa_env();
-    if (env != NULL) (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_set_background_color, handle, (jint)argb);
+    if (!elisa_controls_ready(env)) return;
+    (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_set_background_color, handle, (jint)argb);
+    (void)elisa_controls_clear_exception(env);
 }
 
 void elisa_android_controls_set_tint_color(int32_t handle, uint32_t argb) {
     JNIEnv *env = elisa_env();
-    if (env != NULL) (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_set_tint_color, handle, (jint)argb);
+    if (!elisa_controls_ready(env)) return;
+    (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_set_tint_color, handle, (jint)argb);
+    (void)elisa_controls_clear_exception(env);
 }
 
 void elisa_android_controls_set_track_color(int32_t handle, uint32_t argb) {
     JNIEnv *env = elisa_env();
-    if (env != NULL) (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_set_track_color, handle, (jint)argb);
+    if (!elisa_controls_ready(env)) return;
+    (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_set_track_color, handle, (jint)argb);
+    (void)elisa_controls_clear_exception(env);
 }
 
 void elisa_android_controls_set_state(int32_t handle, float value, int32_t selected,
                                       int32_t enabled, int32_t secure) {
     JNIEnv *env = elisa_env();
-    if (env != NULL) (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_set_state, handle, value,
-                                                  selected != 0 ? JNI_TRUE : JNI_FALSE,
-                                                  enabled != 0 ? JNI_TRUE : JNI_FALSE,
-                                                  secure != 0 ? JNI_TRUE : JNI_FALSE);
+    if (!elisa_controls_ready(env)) return;
+    (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_set_state, handle, value,
+                                 selected != 0 ? JNI_TRUE : JNI_FALSE,
+                                 enabled != 0 ? JNI_TRUE : JNI_FALSE,
+                                 secure != 0 ? JNI_TRUE : JNI_FALSE);
+    (void)elisa_controls_clear_exception(env);
 }
 
 // Two short strings across in one call, each bounded the same way a caption is.
@@ -221,23 +268,30 @@ void elisa_android_controls_set_help(int32_t handle, const uint8_t *prompt, size
         return;
     }
     (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_set_help, handle, prompt_text, help_text);
+    (void)elisa_controls_clear_exception(env);
     (*env)->DeleteLocalRef(env, prompt_text);
     (*env)->DeleteLocalRef(env, help_text);
 }
 
 void elisa_android_controls_set_action(int32_t handle) {
     JNIEnv *env = elisa_env();
-    if (env != NULL) (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_set_action, handle);
+    if (!elisa_controls_ready(env)) return;
+    (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_set_action, handle);
+    (void)elisa_controls_clear_exception(env);
 }
 
 void elisa_android_controls_release_all(void) {
     JNIEnv *env = elisa_env();
-    if (env != NULL) (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_release_all);
+    if (!elisa_controls_ready(env)) return;
+    (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_release_all);
+    (void)elisa_controls_clear_exception(env);
 }
 
 void elisa_android_controls_attach_root(int32_t handle) {
     JNIEnv *env = elisa_env();
-    if (env != NULL) (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_attach_root, handle);
+    if (!elisa_controls_ready(env)) return;
+    (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_attach_root, handle);
+    (void)elisa_controls_clear_exception(env);
 }
 
 // --- What the platform wants ------------------------------------------
@@ -248,45 +302,51 @@ void elisa_android_controls_attach_root(int32_t handle) {
 
 float elisa_android_controls_measure_text(const uint8_t *bytes, size_t length, float size, int32_t weighted) {
     JNIEnv *env = elisa_env();
-    if (env == NULL) return 0.0f;
+    if (!elisa_controls_ready(env)) return 0.0f;
     jstring text = elisa_controls_string_from_utf8(env, bytes, length);
     if (text == NULL) return 0.0f;
     jfloat width = (*env)->CallStaticFloatMethod(env, elisa_controls_class, m_measure_text, text, size,
                                                  weighted != 0 ? JNI_TRUE : JNI_FALSE);
+    if (elisa_controls_clear_exception(env)) width = 0.0f;
     (*env)->DeleteLocalRef(env, text);
     return width;
 }
 
 float elisa_android_controls_line_height(float size) {
     JNIEnv *env = elisa_env();
-    if (env == NULL) return size;
-    return (*env)->CallStaticFloatMethod(env, elisa_controls_class, m_line_height, size);
+    if (!elisa_controls_ready(env)) return size;
+    jfloat height = (*env)->CallStaticFloatMethod(env, elisa_controls_class, m_line_height, size);
+    return elisa_controls_clear_exception(env) ? size : height;
 }
 
 float elisa_android_controls_minimum_height(int32_t kind) {
     JNIEnv *env = elisa_env();
-    if (env == NULL) return 0.0f;
-    return (*env)->CallStaticFloatMethod(env, elisa_controls_class, m_minimum_height, kind);
+    if (!elisa_controls_ready(env)) return 0.0f;
+    jfloat height = (*env)->CallStaticFloatMethod(env, elisa_controls_class, m_minimum_height, kind);
+    return elisa_controls_clear_exception(env) ? 0.0f : height;
 }
 
 // Focus, across a realization that replaces every view. Elisa decides which
 // control should have it back; these only carry the question and the answer.
 int32_t elisa_android_controls_is_focused(int32_t handle) {
     JNIEnv *env = elisa_env();
-    if (env == NULL || elisa_controls_class == NULL) return 0;
-    return (*env)->CallStaticBooleanMethod(env, elisa_controls_class, m_is_focused, handle) == JNI_TRUE ? 1 : 0;
+    if (!elisa_controls_ready(env)) return 0;
+    jboolean focused = (*env)->CallStaticBooleanMethod(env, elisa_controls_class, m_is_focused, handle);
+    return elisa_controls_clear_exception(env) ? 0 : (focused == JNI_TRUE ? 1 : 0);
 }
 
 int32_t elisa_android_controls_caret(int32_t handle) {
     JNIEnv *env = elisa_env();
-    if (env == NULL || elisa_controls_class == NULL) return 0;
-    return (*env)->CallStaticIntMethod(env, elisa_controls_class, m_caret, handle);
+    if (!elisa_controls_ready(env)) return 0;
+    jint caret = (*env)->CallStaticIntMethod(env, elisa_controls_class, m_caret, handle);
+    return elisa_controls_clear_exception(env) ? 0 : (int32_t)caret;
 }
 
 void elisa_android_controls_focus(int32_t handle, int32_t caret) {
     JNIEnv *env = elisa_env();
-    if (env == NULL || elisa_controls_class == NULL) return;
+    if (!elisa_controls_ready(env)) return;
     (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_focus, handle, caret);
+    (void)elisa_controls_clear_exception(env);
 }
 
 // One control, given back. Reconciliation releases exactly what the new
@@ -294,6 +354,7 @@ void elisa_android_controls_focus(int32_t handle, int32_t caret) {
 // only for tearing the whole interface down.
 void elisa_android_controls_release(int32_t handle) {
     JNIEnv *env = elisa_env();
-    if (env == NULL || elisa_controls_class == NULL) return;
+    if (!elisa_controls_ready(env)) return;
     (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_release, handle);
+    (void)elisa_controls_clear_exception(env);
 }

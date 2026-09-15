@@ -105,6 +105,28 @@ if grep -Fq 'handle <= 0 || handle > count ?' "$JAVA"; then
   exit 1
 fi
 
+# JNI exceptions are sticky. Every Elisa-to-Java call must consume one before
+# returning to the retained layer, and the Java-to-Elisa text path must not
+# read a string after a failed UTF-16 access. Keep these checks at the package
+# gate so a source-only regression cannot hide behind an otherwise valid APK.
+JNI="$ROOT/src/platform/android/android_controls_jni.c"
+grep -Fq 'static int elisa_controls_clear_exception(JNIEnv *env)' "$JNI" || {
+  echo "android controls: JNI exception guard is missing" >&2
+  exit 1
+}
+grep -Fq 'static int elisa_controls_ready(JNIEnv *env)' "$JNI" || {
+  echo "android controls: JNI class readiness guard is missing" >&2
+  exit 1
+}
+if grep -Fq 'if (env != NULL) (*env)->CallStatic' "$JNI"; then
+  echo "android controls: an outgoing JNI call bypasses the readiness guard" >&2
+  exit 1
+fi
+grep -Fq 'if (elisa_controls_clear_exception(env)) return;' "$JNI" || {
+  echo "android controls: text conversion does not clear JNI failures" >&2
+  exit 1
+}
+
 grep -q 'android:hasCode="true"' "$OUT/AndroidManifest.xml" || {
   echo "android controls: manifest does not carry the Java bridge" >&2
   exit 1
