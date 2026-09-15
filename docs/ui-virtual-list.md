@@ -50,12 +50,16 @@ borrowed label/help into framework scratch before returning the item. Providers
 are synchronous and cleared with the retained tree, so a stale list handle
 cannot query old application data. Native adapters must copy the returned
 scratch views immediately; the provider itself remains application-owned.
+For assistive activation of an off-screen row, the same handle can also carry
+an `ActivateProvider`. Elisa validates the logical index, invokes it
+synchronously, and rejects its result if the callback rebuilt the tree during
+the call. This keeps activation out of recycled visual-row slots.
 
 This portable metadata is not yet full native screen-reader virtualization.
 The AppKit canvas now publishes a list object with the full logical row count
 and accessibility proxies only for currently realized rows; those proxies carry
 one-based positions and stable `(list_id, position)` identities. It does not
 materialize off-screen rows or yet implement focus-and-scroll traversal. UIKit
-still needs a lazy list container wired to this provider and a logical
-activation/scroll transaction. Physical VoiceOver / Accessibility Inspector
+still needs a lazy list container wired to these providers and a logical
+scroll transaction. Physical VoiceOver / Accessibility Inspector
 verification remains required before claiming native collection conformance.

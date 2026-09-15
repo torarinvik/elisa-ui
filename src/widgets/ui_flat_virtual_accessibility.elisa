@@ -8,12 +8,14 @@
 extend UiFlat:
     private:
         global mutable virtual_accessibility_providers: UiVirtualAccessibility::Provider?[MAX_WIDGETS] = zeroed
+        global mutable virtual_accessibility_activate_providers: UiVirtualAccessibility::ActivateProvider?[MAX_WIDGETS] = zeroed
         global mutable virtual_accessibility_label_storage: u8[UiCore::MAX_TEXT_BYTES] = zeroed
         global mutable virtual_accessibility_help_storage: u8[UiCore::MAX_TEXT_BYTES] = zeroed
 
         def clear_virtual_accessibility_providers() -> void:
             for index in 0..<MAX_WIDGETS:
                 virtual_accessibility_providers[index] <- null
+                virtual_accessibility_activate_providers[index] <- null
             for index in 0..<UiCore::MAX_TEXT_BYTES:
                 virtual_accessibility_label_storage[index] <- 0
                 virtual_accessibility_help_storage[index] <- 0
@@ -38,6 +40,31 @@ extend UiFlat:
         def virtual_accessibility_provider_is_set(index: usize) -> bool:
             return false if index >= widget_count or not widgets[index].virtual_list
             return virtual_accessibility_providers[index] != null
+
+        # Attach or replace the logical activation route for off-screen rows.
+        # It is intentionally independent of metadata: an app may expose a
+        # read-only list, or use one callback for several lists.
+        def set_virtual_accessibility_activate_provider(index: usize, provider: UiVirtualAccessibility::ActivateProvider?) -> bool:
+            return false if index >= widget_count or not widgets[index].virtual_list
+            virtual_accessibility_activate_providers[index] <- provider
+            mark_semantics_dirty()
+            return true
+
+        def virtual_accessibility_activate_provider_is_set(index: usize) -> bool:
+            return false if index >= widget_count or not widgets[index].virtual_list
+            return virtual_accessibility_activate_providers[index] != null
+
+        # Activate a logical row without requiring it to be realized. Capture
+        # the tree lifetime because the synchronous callback may rebuild the
+        # retained tree as part of its action.
+        def virtual_accessibility_activate(index: usize, item_index: i32) -> bool:
+            return false if index >= widget_count or not widgets[index].virtual_list
+            return false if not UiVirtualAccessibility::index_is_valid(item_index, widgets[index].virtual_total)
+            provider: UiVirtualAccessibility::ActivateProvider? = virtual_accessibility_activate_providers[index]
+            return false if provider == null
+            callback_epoch: usize = widget_epoch
+            accepted: bool = provider(index, item_index)
+            return accepted and widget_epoch == callback_epoch
 
         # Resolve one logical item into caller-owned output. The returned text
         # views point at fixed UiFlat scratch and remain valid until the next
