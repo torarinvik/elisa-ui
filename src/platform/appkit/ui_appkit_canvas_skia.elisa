@@ -7,6 +7,15 @@
 include "../skia/ui_skia.elisa"
 include "./ui_appkit_canvas_orientation.elisa"
 
+# Keep the function value passed through the FFI-facing adapter as a plain
+# top-level Elisa symbol. The stage1 compiler can lower this form directly,
+# while the widget cache remains unaware of the concrete Skia module.
+def appkit_skia_metric_width_provider(text: sview, size: f32, weighted: bool) -> f32:
+    return UiSkia::active_measure_text_width(text, size, weighted)
+
+def appkit_skia_metric_line_height_provider(size: f32) -> f32:
+    return UiSkia::active_text_line_height(size)
+
 extend UiAppKitCanvas:
     public:
         # A zero result is reserved for rejection before app_frame mutates the
@@ -33,6 +42,12 @@ extend UiAppKitCanvas:
             # application's full draw order.
             UiSkia::begin_deferred_frame()
             previous_font: usize = UiSkia::begin_frame_font(font)
+            # The flat widget layer must measure with the same active face as
+            # the Skia painter. Install the borrowed provider before app_frame
+            # runs, because layout, hit testing, and caret geometry all happen
+            # while the application builds its retained frame.
+            UiTextMetrics::set_width_provider(appkit_skia_metric_width_provider)
+            UiTextMetrics::set_line_height_provider(appkit_skia_metric_line_height_provider)
             # UiSkia reports the typeface/scale generations; this adapter is
             # what knows about the widget layer, so it is what invalidates the
             # shared metric cache when either changes.
@@ -53,6 +68,10 @@ extend UiAppKitCanvas:
             UiAppKitCanvas::end_native_frame()
             UiSkia::end_deferred_frame()
             UiSkia::end_frame_font(previous_font)
+            # The provider is borrowed from this frame's Skia font scope. Do
+            # not let a later CoreGraphics/native frame call back into it.
+            UiTextMetrics::clear_width_provider()
+            UiTextMetrics::clear_line_height_provider()
             if same_session:
                 UiMetrics::finish_frame(UiAppKitCanvas::monotonic_time())
             objc_autoreleasePoolPop(autorelease_pool)

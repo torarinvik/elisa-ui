@@ -9,6 +9,31 @@ include "./ui_constraints.elisa"
 
 module UiTextMetrics:
     public:
+        # A renderer can temporarily lend the widget layer the exact metric
+        # authority it is about to use for drawing. This keeps retained
+        # hit-testing and caret geometry on the same font/scale path without
+        # making the portable widget core know about a specific backend.
+        # Providers are synchronous and borrowed; hosts clear them before the
+        # renderer or its font scope goes away.
+        type WidthProvider = fn(sview, f32, bool) -> f32
+        type LineHeightProvider = fn(f32) -> f32
+
+        def set_width_provider(provider: WidthProvider?) -> void:
+            text_metrics_width_provider <- provider
+            reset()
+
+        def clear_width_provider() -> void:
+            text_metrics_width_provider <- null
+            reset()
+
+        def set_line_height_provider(provider: LineHeightProvider?) -> void:
+            text_metrics_line_height_provider <- provider
+            reset()
+
+        def clear_line_height_provider() -> void:
+            text_metrics_line_height_provider <- null
+            reset()
+
         const MAX_LINE_HEIGHT_ENTRIES: usize = 32
         const MAX_WIDTH_ENTRIES: usize = 64
         const WIDTH_TEXT_CAPACITY: usize = 128
@@ -59,7 +84,7 @@ module UiTextMetrics:
             line_height_queries <- line_height_queries + 1
             for index in 0..<MAX_LINE_HEIGHT_ENTRIES:
                 return line_height_values[index] if line_height_valid[index] and line_height_sizes[index] == safe_size
-            measured: f32 = UiConstraints::bounded(ui_text_line_height(safe_size))
+            measured: f32 = measure_line_height(safe_size)
             slot: usize = line_height_next
             line_height_sizes[slot] <- safe_size
             line_height_values[slot] <- measured
@@ -139,9 +164,18 @@ module UiTextMetrics:
         global mutable width_misses: usize = 0
         global mutable text_metrics_font_generation: u32 = 0
         global mutable text_metrics_scale_generation: u32 = 0
+        global mutable text_metrics_width_provider: WidthProvider? = zeroed
+        global mutable text_metrics_line_height_provider: LineHeightProvider? = zeroed
 
         def measure_width(text: sview, size: f32, weighted: bool) -> f32:
+            provider: WidthProvider? = text_metrics_width_provider
+            return UiConstraints::bounded(provider(text, size, weighted)) if provider != null
             return UiConstraints::bounded(ui_measure_text_width(text, size, weighted))
+
+        def measure_line_height(size: f32) -> f32:
+            provider: LineHeightProvider? = text_metrics_line_height_provider
+            return UiConstraints::bounded(provider(size)) if provider != null
+            return UiConstraints::bounded(ui_text_line_height(size))
 
         def text_hash(text: sview, length: usize) -> u64:
             result: mutable u64 = 14695981039346656037

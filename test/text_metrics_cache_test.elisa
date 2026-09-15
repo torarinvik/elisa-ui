@@ -7,6 +7,8 @@ extern puts(text: cstr) -> i64
 global mutable failures: i32 = 0
 global mutable backend_calls: usize = 0
 global mutable width_calls: usize = 0
+global mutable provider_calls: usize = 0
+global mutable line_provider_calls: usize = 0
 
 def ui_text_line_height(size: f32) -> f32:
     backend_calls <- backend_calls + 1
@@ -15,6 +17,14 @@ def ui_text_line_height(size: f32) -> f32:
 def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
     width_calls <- width_calls + 1
     return text.len.f32() * size * 0.5
+
+def provider_width(text: sview, size: f32, weighted: bool) -> f32:
+    provider_calls <- provider_calls + 1
+    return text.len.f32() * size * 0.75
+
+def provider_line_height(size: f32) -> f32:
+    line_provider_calls <- line_provider_calls + 1
+    return size * 1.5
 
 def check(name: cstr, ok: bool) -> void:
     return if ok
@@ -59,6 +69,29 @@ def main() -> i64:
     _ = UiTextMetrics::width(large_view, 10.0, false)
     check("oversized text crosses backend", width_calls > 2)
     check("oversized text records a miss", UiTextMetrics::width_miss_count() == misses_before_large + 1)
+
+    # A custom renderer may lend the exact metric authority it uses for paint.
+    # The cache keeps the provider borrowed and still deduplicates repeated
+    # queries, while clearing it returns to the platform hook.
+    UiTextMetrics::set_width_provider(provider_width)
+    UiTextMetrics::reset()
+    provided_first: f32 = UiTextMetrics::width("provider", 10.0, false)
+    provided_second: f32 = UiTextMetrics::width("provider", 10.0, false)
+    check("renderer metric provider overrides the platform hook", provided_first == 60.0 and provided_second == 60.0)
+    check("renderer provider is cached", provider_calls == 1 and width_calls > 2)
+    UiTextMetrics::clear_width_provider()
+    UiTextMetrics::reset()
+    fallback: f32 = UiTextMetrics::width("provider", 10.0, false)
+    check("clearing renderer provider restores platform hook", fallback == 40.0 and width_calls > 3)
+
+    UiTextMetrics::set_line_height_provider(provider_line_height)
+    UiTextMetrics::reset()
+    provided_height: f32 = UiTextMetrics::line_height(10.0)
+    check("renderer line-height provider overrides the platform hook", provided_height == 15.0 and line_provider_calls == 1 and backend_calls == 4)
+    UiTextMetrics::clear_line_height_provider()
+    UiTextMetrics::reset()
+    fallback_height: f32 = UiTextMetrics::line_height(10.0)
+    check("clearing renderer line-height provider restores platform hook", fallback_height == 12.5 and backend_calls == 5)
 
     if failures == 0:
         _ = puts("text metrics cache: all checks passed")
