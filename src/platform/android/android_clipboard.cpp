@@ -21,23 +21,26 @@
 #include <android/native_activity.h>
 #include <jni.h>
 #include "../common/utf8_utf16.h"
+#include <atomic>
 #include <string.h>
 
 namespace {
 
-ANativeActivity *g_activity = nullptr;
+std::atomic<ANativeActivity *> g_activity{nullptr};
 
 // A JNIEnv belongs to a thread. The native activity's own thread is attached
 // already; anything else has to ask, and has to detach again or the VM keeps
 // the thread alive.
 struct ScopedEnv {
     JNIEnv *env = nullptr;
+    JavaVM *vm = nullptr;
     bool attached = false;
 
     explicit ScopedEnv(ANativeActivity *activity) {
         if (activity == nullptr || activity->vm == nullptr) return;
-        if (activity->vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) == JNI_OK) return;
-        if (activity->vm->AttachCurrentThread(&env, nullptr) == JNI_OK) {
+        vm = activity->vm;
+        if (vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) == JNI_OK) return;
+        if (vm->AttachCurrentThread(&env, nullptr) == JNI_OK) {
             attached = true;
             return;
         }
@@ -45,9 +48,7 @@ struct ScopedEnv {
     }
 
     ~ScopedEnv() {
-        if (attached && g_activity != nullptr && g_activity->vm != nullptr) {
-            g_activity->vm->DetachCurrentThread();
-        }
+        if (attached && vm != nullptr) vm->DetachCurrentThread();
     }
 
     bool ok() const { return env != nullptr; }
@@ -101,16 +102,17 @@ extern "C" {
 // The host calls this once it has an activity, and again with null when the
 // activity goes away, so a late clipboard call cannot reach a dead object.
 void elisa_android_clipboard_attach(ANativeActivity *activity) {
-    g_activity = activity;
+    g_activity.store(activity, std::memory_order_release);
 }
 
 int32_t elisa_android_clipboard_write(const char *utf8, int32_t length) {
-    if (g_activity == nullptr || utf8 == nullptr || length < 0) return 0;
-    ScopedEnv scoped(g_activity);
+    ANativeActivity *activity = g_activity.load(std::memory_order_acquire);
+    if (activity == nullptr || utf8 == nullptr || length < 0) return 0;
+    ScopedEnv scoped(activity);
     if (!scoped.ok()) return 0;
     JNIEnv *env = scoped.env;
 
-    jobject manager = clipboard_manager(env, g_activity->clazz);
+    jobject manager = clipboard_manager(env, activity->clazz);
     if (manager == nullptr) return 0;
 
     // NewString takes counted UTF-16. JNI's UTF helpers use modified UTF-8,
@@ -159,12 +161,13 @@ int32_t elisa_android_clipboard_write(const char *utf8, int32_t length) {
 // text -- coerceToText is what turns a URI or an intent into words the way the
 // platform's own paste does.
 int32_t elisa_android_clipboard_read(char *buffer, int32_t capacity) {
-    if (g_activity == nullptr || buffer == nullptr || capacity <= 0) return 0;
-    ScopedEnv scoped(g_activity);
+    ANativeActivity *activity = g_activity.load(std::memory_order_acquire);
+    if (activity == nullptr || buffer == nullptr || capacity <= 0) return 0;
+    ScopedEnv scoped(activity);
     if (!scoped.ok()) return 0;
     JNIEnv *env = scoped.env;
 
-    jobject manager = clipboard_manager(env, g_activity->clazz);
+    jobject manager = clipboard_manager(env, activity->clazz);
     if (manager == nullptr) return 0;
 
     int32_t written = 0;
@@ -192,7 +195,7 @@ int32_t elisa_android_clipboard_read(char *buffer, int32_t capacity) {
                                             item_class, "coerceToText",
                                             "(Landroid/content/Context;)Ljava/lang/CharSequence;");
                                         if (coerce != nullptr && !failed(env)) {
-                                            jobject text = env->CallObjectMethod(item, coerce, g_activity->clazz);
+                                            jobject text = env->CallObjectMethod(item, coerce, activity->clazz);
                                             if (text != nullptr && !failed(env)) {
                                                 jclass text_class = env->GetObjectClass(text);
                                                 if (text_class != nullptr && !failed(env)) {
@@ -244,12 +247,13 @@ int32_t elisa_android_clipboard_read(char *buffer, int32_t capacity) {
 // greys "Paste" out before anyone presses it, and reading the whole clip to
 // answer that would put the user's clipboard through this process for nothing.
 int32_t elisa_android_clipboard_has_text(void) {
-    if (g_activity == nullptr) return 0;
-    ScopedEnv scoped(g_activity);
+    ANativeActivity *activity = g_activity.load(std::memory_order_acquire);
+    if (activity == nullptr) return 0;
+    ScopedEnv scoped(activity);
     if (!scoped.ok()) return 0;
     JNIEnv *env = scoped.env;
 
-    jobject manager = clipboard_manager(env, g_activity->clazz);
+    jobject manager = clipboard_manager(env, activity->clazz);
     if (manager == nullptr) return 0;
 
     int32_t has = 0;

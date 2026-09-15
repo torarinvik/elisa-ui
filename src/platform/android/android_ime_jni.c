@@ -50,7 +50,10 @@ static void elisa_ime_forward(JNIEnv *env, jstring text, int32_t new_cursor_posi
         (void)elisa_ime_failed(env);
         return;
     }
-    if (elisa_ime_failed(env)) return;
+    if (elisa_ime_failed(env)) {
+        (*env)->ReleaseStringChars(env, text, units);
+        return;
+    }
     uint8_t utf8[ELISA_IME_TEXT_MAX];
     size_t length = elisa_utf16_to_utf8((const uint16_t *)units,
                                         (size_t)units_length, utf8, sizeof(utf8));
