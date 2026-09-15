@@ -11,7 +11,7 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui code revision | 9a22b1d on main (implementation/performance evidence commit; working tree clean at refresh) |
+| elisa-ui code revision | aaf7e29 on main (variable-list eviction policy and regression evidence; working tree clean at refresh) |
 | Host and C compiler | macOS 26.6.2 (Darwin 25.6.0), arm64; Homebrew clang 23.1.1 |
 | Elisa stage1 | latest local build `../Elisa-compiler/bin/elisac-stage1`, revision d6a693c0f724c05f7b71418658dd8bda95ba73b3 (main, ahead of fetched origin/main); SHA-256 82543b75bb15bafd4e7a12aab824446b565f661a89a9870b34513c5722f34fc7 |
 | Elisa runtime | `../Elisa-compiler/build/runtime/elisacore_runtime.o`; SHA-256 85f1107eef00a7dd903e511df366b8b6cade4d8573cf0478f1de91604ea5beb9 |
