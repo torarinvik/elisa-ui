@@ -4,12 +4,14 @@ Part of the [elisa-ui implementation baseline](../implementation-baseline.md).
 
 ## Latest compiler and renderer evidence (2026-09-16)
 
-The current framework revision is `0628183`. Its variable-height list cache
+The current framework revision is `a857322`. Its variable-height list cache
 uses deterministic least-recently-updated eviction at the fixed 256-entry
 limit, typed handles expose a versioned snapshot/restore path, and the direct
 Skia text ABI rejects malformed or oversized UTF-8 before measurement or draw;
-`test/virtual_list_variable_test.elisa`, `test/widget_handles_test.elisa`, and
-the real Skia off-screen host cover these boundaries.
+the retained text-field caret keeps its public rectangle-origin contract while
+painting a centered hairline; `test/virtual_list_variable_test.elisa`,
+`test/widget_handles_test.elisa`, `test/widget_layout_text_test.elisa`, and the
+real Skia off-screen host cover these boundaries.
 
 The fetched upstream `main` is
 `45cb0ded70e7e8c8a41d21c63a09939706322ca4`. The shared compiler checkout is
@@ -84,10 +86,10 @@ bash scripts/check_skia.sh
 executes the pinned UAX #29 15.1.0 corpus (1,187 rows).
 
 The full real-Skia Showcase path reached its required exact-tuple benchmark
-with the clean latest d6a693c0 product after adding strict direct-ABI UTF-8
-validation. Three fresh processes produced 21 tail-pixel-stable samples, with
-a recorded median of 16.641 ms and a maximum of 21.608 ms, inside the current
-50/80 ms policy limits. The exact source-bundle tuple is recorded in
+with the clean latest d6a693c0 product after the caret-alignment correction.
+Three fresh processes produced 21 tail-pixel-stable samples, with a recorded
+median of 18.302 ms and a maximum of 24.124 ms, inside the current 50/80 ms
+policy limits. The exact source-bundle tuple is recorded in
 `test/showcase_skia_performance_budgets.json`; a different compiler, source
 bundle, or host must add its own measured reference instead of inheriting this
 result.

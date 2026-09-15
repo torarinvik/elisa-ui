@@ -10,8 +10,8 @@ The current required CPU-raster tuple uses the clean latest local compiler
 SHA-256 `82543b75bb15bafd4e7a12aab824446b565f661a89a9870b34513c5722f34fc7`
 and runtime SHA-256
 `85f1107eef00a7dd903e511df366b8b6cade4d8573cf0478f1de91604ea5beb9`.
-The exact Showcase budget for this source bundle records a 16.641 ms median
-and 21.608 ms maximum over 21 fresh-process samples; the tail digest is
+The exact Showcase budget for this source bundle records an 18.302 ms median
+and 24.124 ms maximum over 21 fresh-process samples; the tail digest is
 `1ac21e37972207bb`.
 
 The pinned Skia checkout and CPU-raster archive are now built locally. From a
@@ -66,7 +66,7 @@ Observed on the current host:
 - The AppKit/Skia compositor passed its off-screen CoreGraphics presentation
   check (`render_ns=11272500`, pixel digest `96591d2368f57d1a`).
 - Million-item Showcase workflow plus Skia tail frame: the latest `d6a693c0`
-  tuple has a recorded median of `16.641 ms` and maximum `21.608 ms`, within its
+  tuple has a recorded median of `18.302 ms` and maximum `24.124 ms`, within its
   `50 ms` median / `80 ms` maximum limits. Pixel
   digest `1ac21e37972207bb` was stable across the benchmark and fresh processes.
   Raw samples and the exact source-bundle reference tuple are in
