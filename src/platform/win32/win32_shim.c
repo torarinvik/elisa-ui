@@ -43,6 +43,7 @@ static HWND hwnd_of(size_t handle) { return (HWND)(void *)handle; }
 static int color_slot_of(HWND control);
 static LRESULT color_reply(HDC context, int slot);
 static void forget_color_slot(HWND control);
+static void forget_help_slot(HWND control);
 
 // Elisa resolves the control back to an index and decides what an action
 // means; this window procedure only reports that one happened.
@@ -105,6 +106,7 @@ static LRESULT CALLBACK elisa_window_proc(HWND window, UINT message, WPARAM w, L
         // boundary so a later control cannot inherit stale colours and the
         // associated GDI brush is released exactly once.
         forget_color_slot(window);
+        forget_help_slot(window);
     }
     return DefWindowProcW(window, message, w, l);
 }
@@ -211,6 +213,59 @@ static struct {
     int has_fill;
 } colored[ELISA_WIN32_MAX_COLORED];
 static int colored_count;
+
+// A tooltip is the Win32-native help affordance for a child control. Keep its
+// text in an Elisa-owned bounded table: TOOLINFO stores the pointer rather than
+// copying the string, and the UTF-8 staging buffer in `set_help` is gone as soon
+// as that call returns.
+#define ELISA_WIN32_MAX_HELP 128
+#define ELISA_WIN32_HELP_UNITS 1024
+static struct {
+    HWND control;
+    wchar_t text[ELISA_WIN32_HELP_UNITS];
+} help_entries[ELISA_WIN32_MAX_HELP];
+static int help_count;
+static HWND help_tooltip;
+
+static int help_slot_of(HWND control) {
+    for (int slot = 0; slot < help_count; slot++) {
+        if (help_entries[slot].control == control) return slot;
+    }
+    return -1;
+}
+
+static HWND ensure_help_tooltip(void) {
+    if (help_tooltip != NULL && IsWindow(help_tooltip)) return help_tooltip;
+    help_tooltip = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, NULL,
+                                   WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
+                                   CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+                                   CW_USEDEFAULT, NULL, NULL, GetModuleHandleW(NULL), NULL);
+    return help_tooltip;
+}
+
+static TOOLINFOW help_tool(HWND control, wchar_t *text) {
+    TOOLINFOW info;
+    ZeroMemory(&info, sizeof(info));
+    info.cbSize = sizeof(info);
+    info.uFlags = TTF_IDISHWND;
+    info.hwnd = GetParent(control);
+    info.uId = (UINT_PTR)control;
+    info.lpszText = text;
+    return info;
+}
+
+static void forget_help_slot(HWND control) {
+    const int slot = help_slot_of(control);
+    if (slot < 0) return;
+    if (help_tooltip != NULL && IsWindow(help_tooltip)) {
+        TOOLINFOW info = help_tool(control, help_entries[slot].text);
+        SendMessageW(help_tooltip, TTM_DELTOOLW, 0, (LPARAM)&info);
+    }
+    ZeroMemory(&help_entries[slot], sizeof(help_entries[slot]));
+    help_entries[slot] = help_entries[help_count - 1];
+    ZeroMemory(&help_entries[help_count - 1], sizeof(help_entries[0]));
+    help_count -= 1;
+}
 
 static COLORREF colorref_of(uint32_t argb) {
     return RGB((argb >> 16) & 0xFFu, (argb >> 8) & 0xFFu, argb & 0xFFu);
@@ -333,18 +388,38 @@ void elisa_win32_set_state(size_t handle, float value, int32_t selected,
 }
 
 // A placeholder is EM_SETCUEBANNER on an EDIT, which is the platform's own
-// affordance; the help text becomes the tooltip-shaped accessible name Windows
-// reads. Both are content by the seam's rule and neither is the caption.
+// affordance; help is a real Win32 tooltip. Both are content by the seam's rule
+// and neither is the caption. Empty values clear their previous native state.
 void elisa_win32_set_help(size_t handle, const char *placeholder, const char *help) {
     HWND control = hwnd_of(handle);
     if (control == NULL) return;
     wchar_t wide[1024];
     wchar_t cls[64];
     GetClassNameW(control, cls, 64);
-    if (lstrcmpiW(cls, L"EDIT") == 0 && placeholder != NULL) {
+    if (lstrcmpiW(cls, L"EDIT") == 0) {
         SendMessageW(control, EM_SETCUEBANNER, TRUE, (LPARAM)to_wide(placeholder, wide, 1024));
     }
-    (void)help;
+    if (help == NULL || help[0] == '\0') {
+        forget_help_slot(control);
+        return;
+    }
+    int slot = help_slot_of(control);
+    if (slot < 0) {
+        if (help_count == ELISA_WIN32_MAX_HELP) return;
+        slot = help_count++;
+        help_entries[slot].control = control;
+    } else if (help_tooltip != NULL && IsWindow(help_tooltip)) {
+        TOOLINFOW old = help_tool(control, help_entries[slot].text);
+        SendMessageW(help_tooltip, TTM_DELTOOLW, 0, (LPARAM)&old);
+    }
+    to_wide(help, help_entries[slot].text, ELISA_WIN32_HELP_UNITS);
+    HWND tooltip = ensure_help_tooltip();
+    if (tooltip == NULL) {
+        forget_help_slot(control);
+        return;
+    }
+    TOOLINFOW info = help_tool(control, help_entries[slot].text);
+    if (!SendMessageW(tooltip, TTM_ADDTOOLW, 0, (LPARAM)&info)) forget_help_slot(control);
 }
 
 // Win32 delivers actions to the PARENT through WM_COMMAND, so nothing has to

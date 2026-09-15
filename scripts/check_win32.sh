@@ -107,6 +107,12 @@ grep -q 'forget_color_slot(control);' "$ROOT/src/platform/win32/win32_shim.c" ||
   echo "win32: color clearing does not release stale records" >&2; exit 1; }
 grep -q 'colored\[slot\]\.brush = NULL;' "$ROOT/src/platform/win32/win32_shim.c" || {
   echo "win32: ink-only color updates do not release stale brushes" >&2; exit 1; }
+grep -q 'TTM_ADDTOOLW' "$ROOT/src/platform/win32/win32_shim.c" || {
+  echo "win32: help text is not installed as a native tooltip" >&2; exit 1; }
+grep -q 'forget_help_slot(window);' "$ROOT/src/platform/win32/win32_shim.c" || {
+  echo "win32: tooltip state is not retired with its HWND" >&2; exit 1; }
+grep -q 'EM_SETCUEBANNER' "$ROOT/src/platform/win32/win32_shim.c" || {
+  echo "win32: edit placeholders are not forwarded to the native control" >&2; exit 1; }
 
 # AND AN IMAGE. Objects that each resolve say nothing about whether the whole
 # thing links; this gate stopped at objects for months while the runtime's
