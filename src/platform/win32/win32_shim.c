@@ -42,6 +42,7 @@ static HWND hwnd_of(size_t handle) { return (HWND)(void *)handle; }
 
 static int color_slot_of(HWND control);
 static LRESULT color_reply(HDC context, int slot);
+static void forget_color_slot(HWND control);
 
 // Elisa resolves the control back to an index and decides what an action
 // means; this window procedure only reports that one happened.
@@ -91,7 +92,20 @@ static LRESULT CALLBACK elisa_window_proc(HWND window, UINT message, WPARAM w, L
         const int slot = color_slot_of((HWND)l);
         if (slot >= 0) return color_reply((HDC)w, slot);
     }
-    if (message == WM_DESTROY) { PostQuitMessage(0); return 0; }
+    // Child panels and scroll containers use this same class. Only the
+    // top-level window owns the message loop; posting WM_QUIT for a child
+    // teardown would terminate a live application while its tree is merely
+    // being reconciled.
+    if (message == WM_DESTROY) {
+        if (GetParent(window) == NULL) PostQuitMessage(0);
+        return 0;
+    }
+    if (message == WM_NCDESTROY) {
+        // HWND values are reusable. Forget the entry at the final lifetime
+        // boundary so a later control cannot inherit stale colours and the
+        // associated GDI brush is released exactly once.
+        forget_color_slot(window);
+    }
     return DefWindowProcW(window, message, w, l);
 }
 
@@ -207,6 +221,15 @@ static int color_slot_of(HWND control) {
         if (colored[slot].control == control) return slot;
     }
     return -1;
+}
+
+static void forget_color_slot(HWND control) {
+    const int slot = color_slot_of(control);
+    if (slot < 0) return;
+    if (colored[slot].brush != NULL) DeleteObject(colored[slot].brush);
+    colored[slot] = colored[colored_count - 1];
+    ZeroMemory(&colored[colored_count - 1], sizeof(colored[0]));
+    colored_count -= 1;
 }
 
 // The answer to one WM_CTLCOLOR*. Returning the brush is not optional: letting
