@@ -56,6 +56,14 @@ def main() -> i64:
     check("release clears the owner", UiVirtualList::variable_release(owner) and UiVirtualList::variable_content_extent(owner) == 0.0)
     check("released owner rejects new measurements", not UiVirtualList::variable_set_height(owner, 0, 20.0))
 
+    eviction_owner: u32 = 42
+    check("eviction list registers", UiVirtualList::variable_init(eviction_owner, 2000, 20.0, 0.0))
+    for index in 0..<UiVirtualList::MAX_VARIABLE_MEASUREMENTS:
+        check("bounded cache accepts initial measurements", UiVirtualList::variable_set_height(eviction_owner, index.i32(), 20.0 + index.f32()))
+    check("bounded cache reaches its fixed capacity", UiVirtualList::variable_measurement_count(eviction_owner) == UiVirtualList::MAX_VARIABLE_MEASUREMENTS)
+    check("refreshing a measurement keeps it hot", UiVirtualList::variable_set_height(eviction_owner, 0, 99.0))
+    check("least recently updated entry is evicted", UiVirtualList::variable_set_height(eviction_owner, 1500, 55.0) and UiVirtualList::variable_measurement_known(eviction_owner, 0) and not UiVirtualList::variable_measurement_known(eviction_owner, 1) and UiVirtualList::variable_measurement_known(eviction_owner, 1500))
+
     if failures == 0:
         _ = puts("variable virtual list: all checks passed")
         return 0

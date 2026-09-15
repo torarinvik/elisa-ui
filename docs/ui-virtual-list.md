@@ -89,6 +89,12 @@ value to fall back to the realized row's intrinsic minimum. Providers must not
 mutate or rebuild the retained tree during the callback; Elisa rejects a
 callback that nevertheless changes the tree lifetime.
 
+The cache is bounded to 256 sparse entries per list. When it is full, Elisa
+evicts the least recently updated measurement (with stable first-entry tie
+breaking); remeasuring an existing row refreshes its recency. This keeps the
+retained memory bound deterministic while preventing active rows from being
+discarded ahead of stale measurements.
+
 The bounded measurement cache is intentionally not serialized by the
 framework. `virtual_item_height_measurement_count`,
 `virtual_item_height_measurement_index`, and `virtual_item_height_measurement`

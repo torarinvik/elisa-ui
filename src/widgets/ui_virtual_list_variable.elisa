@@ -47,11 +47,12 @@ extend UiVirtualList:
             variable_estimates[slot.usize()] <- safe_estimate
             variable_spacings[slot.usize()] <- safe_spacing
             variable_measurement_counts[slot.usize()] <- 0
-            variable_measurement_next[slot.usize()] <- 0
+            variable_measurement_clock[slot.usize()] <- 0
             base: usize = slot.usize() * MAX_VARIABLE_MEASUREMENTS
             for offset in 0..<MAX_VARIABLE_MEASUREMENTS:
                 variable_measurement_indexes[base + offset] <- NONE_INDEX
                 variable_measurement_heights[base + offset] <- 0.0
+                variable_measurement_last_used[base + offset] <- 0
             return true
 
         def variable_release(owner: u32) -> bool:
@@ -72,24 +73,30 @@ extend UiVirtualList:
             return true
 
         # Record a realized row's measured height. Re-measurement updates the
-        # same logical identity; once the bounded table is full, a ring slot is
-        # replaced rather than growing without limit.
+        # same logical identity; once the bounded table is full, the least
+        # recently updated entry is replaced rather than growing without
+        # limit. This keeps hot rows stable while retaining deterministic,
+        # bounded memory.
         def variable_set_height(owner: u32, index: i32, height: f32) -> bool:
             slot: i32 = variable_slot(owner)
             return false if slot == NONE_INDEX or index < 0 or index >= variable_totals[slot.usize()]
             safe_height: f32 = safe_variable_height(height)
+            clock: mutable usize = variable_measurement_clock[slot.usize()] + 1
+            clock <- 1 if clock == 0
+            variable_measurement_clock[slot.usize()] <- clock
             found: i32 = variable_measurement(slot, index)
             if found != NONE_INDEX:
                 changed: bool = variable_measurement_heights[found.usize()] != safe_height
                 variable_measurement_heights[found.usize()] <- safe_height
+                variable_measurement_last_used[found.usize()] <- clock
                 return changed
             count: usize = variable_measurement_counts[slot.usize()]
-            position: usize = variable_measurement_next[slot.usize()] if count >= MAX_VARIABLE_MEASUREMENTS else count
+            position: usize = count if count < MAX_VARIABLE_MEASUREMENTS else least_recent_measurement(slot, count)
             base: usize = slot.usize() * MAX_VARIABLE_MEASUREMENTS
             variable_measurement_indexes[base + position] <- index
             variable_measurement_heights[base + position] <- safe_height
+            variable_measurement_last_used[base + position] <- clock
             variable_measurement_counts[slot.usize()] <- count + 1 if count < MAX_VARIABLE_MEASUREMENTS else count
-            variable_measurement_next[slot.usize()] <- (position + 1) % MAX_VARIABLE_MEASUREMENTS
             return true
 
         def variable_measurement_count(owner: u32) -> usize:
@@ -132,10 +139,11 @@ extend UiVirtualList:
             target: usize = found.usize()
             variable_measurement_indexes[target] <- variable_measurement_indexes[last]
             variable_measurement_heights[target] <- variable_measurement_heights[last]
+            variable_measurement_last_used[target] <- variable_measurement_last_used[last]
             variable_measurement_indexes[last] <- NONE_INDEX
             variable_measurement_heights[last] <- 0.0
+            variable_measurement_last_used[last] <- 0
             variable_measurement_counts[slot.usize()] <- count - 1
-            variable_measurement_next[slot.usize()] <- (count - 1) % MAX_VARIABLE_MEASUREMENTS
             return true
 
         def variable_height(owner: u32, index: i32) -> f32:
@@ -266,9 +274,10 @@ extend UiVirtualList:
         global mutable variable_estimates: f32[MAX_VARIABLE_LISTS] = zeroed
         global mutable variable_spacings: f32[MAX_VARIABLE_LISTS] = zeroed
         global mutable variable_measurement_counts: usize[MAX_VARIABLE_LISTS] = zeroed
-        global mutable variable_measurement_next: usize[MAX_VARIABLE_LISTS] = zeroed
+        global mutable variable_measurement_clock: usize[MAX_VARIABLE_LISTS] = zeroed
         global mutable variable_measurement_indexes: i32[MAX_VARIABLE_LISTS * MAX_VARIABLE_MEASUREMENTS] = zeroed
         global mutable variable_measurement_heights: f32[MAX_VARIABLE_LISTS * MAX_VARIABLE_MEASUREMENTS] = zeroed
+        global mutable variable_measurement_last_used: usize[MAX_VARIABLE_LISTS * MAX_VARIABLE_MEASUREMENTS] = zeroed
 
         def variable_slot(owner: u32) -> i32:
             return NONE_INDEX if owner == 0
@@ -296,12 +305,25 @@ extend UiVirtualList:
                 if index >= 0 and index < total:
                     variable_measurement_indexes[base + kept] <- index
                     variable_measurement_heights[base + kept] <- variable_measurement_heights[base + offset]
+                    variable_measurement_last_used[base + kept] <- variable_measurement_last_used[base + offset]
                     kept <- kept + 1
             for offset in kept..<MAX_VARIABLE_MEASUREMENTS:
                 variable_measurement_indexes[base + offset] <- NONE_INDEX
                 variable_measurement_heights[base + offset] <- 0.0
+                variable_measurement_last_used[base + offset] <- 0
             variable_measurement_counts[slot.usize()] <- kept
-            variable_measurement_next[slot.usize()] <- kept % MAX_VARIABLE_MEASUREMENTS
+
+        def least_recent_measurement(slot: i32, count: usize) -> usize:
+            return 0 if slot < 0 or slot >= MAX_VARIABLE_LISTS.i32() or count == 0
+            base: usize = slot.usize() * MAX_VARIABLE_MEASUREMENTS
+            result: usize =
+                for offset in 1..<MAX_VARIABLE_MEASUREMENTS |candidate: usize = 0, oldest: usize = variable_measurement_last_used[base]| -> candidate:
+                    break if offset >= count
+                    stamp: usize = variable_measurement_last_used[base + offset]
+                    if stamp < oldest:
+                        candidate <- offset
+                        oldest <- stamp
+            return result
 
         def variable_offset_at(slot: i32, index: i32) -> f32:
             return 0.0 if slot < 0 or slot >= MAX_VARIABLE_LISTS.i32()
