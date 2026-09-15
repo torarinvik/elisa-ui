@@ -47,8 +47,14 @@ extend UiControls:
             for index in 0..<UiFlat::count():
                 node: UiFlat::Widget = UiFlat::widget(index)
                 continue if node.parent != UiFlat::NONE
+                before: usize = total
                 realize_retained_node(index, NO_PARENT, 0, first)
-                first <- false
+                # Hidden roots (and roots dropped after a bounded-arena
+                # overflow) do not own a native window. Do not let one of
+                # those consume the window position, or the first visible
+                # root would be realized as an unattached panel instead of
+                # the application's surface.
+                first <- false if total > before
 
         # What a retained widget will become, asked before anything is
         # realized. A backend needs this to tell the layout how big the

@@ -511,6 +511,20 @@ def main() -> i64:
         check("clearing secure reaches the control", log_state_writes[secret_slot] == 1)
         check("and the control is no longer secure", not log_secure[secret_slot])
 
+        # A hidden root is not a window. It must not consume the first-root
+        # position, or the first visible root would be sent to a backend as an
+        # unattached panel with no native surface to host it.
+        UiFlat::reset()
+        UiControls::reset()
+        hidden_root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 0.0, 0.0, grey(20))
+        _ = UiHandles::label(hidden_root, "hidden", 12.0, grey(200))
+        UiHandles::set_visible(hidden_root, false)
+        visible_root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 0.0, 0.0, grey(30))
+        _ = UiHandles::label(visible_root, "visible", 12.0, grey(200))
+        UiHandles::layout(320.0, 480.0)
+        UiControls::realize_retained()
+        check("a hidden root does not consume the window slot", UiControls::count() == 2 and UiControls::kind_at(0) == UiControls::ControlKind.Window)
+
         if test_failures == 0:
             _ = puts("controls flat: all checks passed")
             return 0
