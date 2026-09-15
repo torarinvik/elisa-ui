@@ -97,6 +97,22 @@ grep -Fq 'elisa_android_clipboard_attach(nullptr)' "$ROOT/src/platform/android/a
   echo "android: clipboard activity is not detached during host teardown" >&2
   exit 1
 }
+# Every JNI lookup in the clipboard bridge must be guarded before a method is
+# queried or called. A missing framework class/method is a recoverable
+# clipboard-unavailable state, not a CheckJNI abort that takes down the app.
+CLIPBOARD="$ROOT/src/platform/android/android_clipboard.cpp"
+grep -Fq 'if (activity_class == nullptr || failed(env))' "$CLIPBOARD" || {
+  echo "android: clipboard activity class lookup is not guarded" >&2
+  exit 1
+}
+grep -Fq 'if (manager_class != nullptr && !failed(env))' "$CLIPBOARD" || {
+  echo "android: clipboard manager class lookup is not guarded" >&2
+  exit 1
+}
+grep -Fq 'if (clip_class != nullptr && !failed(env))' "$CLIPBOARD" || {
+  echo "android: clipboard clip class lookup is not guarded" >&2
+  exit 1
+}
 
 # --- 2. A device, if one is attached ------------------------------------
 ADB="${ADB:-$SDK/platform-tools/adb}"
