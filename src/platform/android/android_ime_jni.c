@@ -46,7 +46,11 @@ static void elisa_ime_forward(JNIEnv *env, jstring text, int32_t new_cursor_posi
     jsize units_length = (*env)->GetStringLength(env, text);
     if (elisa_ime_failed(env)) return;
     const jchar *units = (*env)->GetStringChars(env, text, NULL);
-    if (units == NULL || elisa_ime_failed(env)) return;
+    if (units == NULL) {
+        (void)elisa_ime_failed(env);
+        return;
+    }
+    if (elisa_ime_failed(env)) return;
     uint8_t utf8[ELISA_IME_TEXT_MAX];
     size_t length = elisa_utf16_to_utf8((const uint16_t *)units,
                                         (size_t)units_length, utf8, sizeof(utf8));
@@ -89,7 +93,9 @@ JNIEXPORT void JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeImeReport(
         jsize tag_length = (*env)->GetStringLength(env, tag);
         if (!elisa_ime_failed(env)) {
             tag_units = (*env)->GetStringChars(env, tag, NULL);
-            if (tag_units != NULL && !elisa_ime_failed(env)) {
+            if (tag_units == NULL) {
+                (void)elisa_ime_failed(env);
+            } else if (!elisa_ime_failed(env)) {
                 label_length = elisa_utf16_to_utf8((const uint16_t *)tag_units,
                                                    (size_t)tag_length, label,
                                                    sizeof(label) - 1);

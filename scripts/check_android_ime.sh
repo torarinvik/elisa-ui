@@ -43,6 +43,19 @@ PACKAGE="org.elisa_ui.showcase"
 [[ -n "$NDK" && -d "$NDK" ]] || { echo "android ime: skipped (no NDK under $SDK/ndk)"; exit 0; }
 [[ -n "$SKIA_ROOT" ]] || { echo "android ime: skipped (SKIA_ROOT not set)"; exit 0; }
 [[ -f "$SKIA_OUT/libskia.a" ]] || { echo "android ime: skipped (no Android Skia at $SKIA_OUT)"; exit 0; }
+
+# A null JNI string pointer can itself be the failure signal. Keep the
+# exception clear separate from that null check so a failed conversion cannot
+# poison the next callback with a pending Java exception.
+IME_JNI="$ROOT/src/platform/android/android_ime_jni.c"
+grep -Fq 'if (units == NULL) {' "$IME_JNI" || {
+  echo "android ime: UTF-16 input does not handle a null string pointer" >&2
+  exit 1
+}
+grep -Fq 'if (tag_units == NULL) {' "$IME_JNI" || {
+  echo "android ime: diagnostic tag does not handle a null string pointer" >&2
+  exit 1
+}
 if [[ ! -x "$ADB" ]] || ! "$ADB" devices | grep -q "	device$"; then
   echo "android ime: skipped (nothing attached; composition needs a running IME framework)"
   exit 0
