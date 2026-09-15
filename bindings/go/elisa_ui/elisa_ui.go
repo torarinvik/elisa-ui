@@ -16,6 +16,9 @@ _Static_assert(offsetof(elisa_ui_event, code) == 20, "elisa_ui_event code offset
 
 enum {
 	elisa_go_abi_version = ELISA_UI_ABI_VERSION,
+	elisa_go_abi_version_major = ELISA_UI_ABI_VERSION_MAJOR,
+	elisa_go_abi_version_minor = ELISA_UI_ABI_VERSION_MINOR,
+	elisa_go_abi_version_patch = ELISA_UI_ABI_VERSION_PATCH,
 	elisa_go_event_none = ELISA_UI_EVENT_NONE,
 	elisa_go_event_quit = ELISA_UI_EVENT_QUIT,
 	elisa_go_event_pointer_move = ELISA_UI_EVENT_POINTER_MOVE,
@@ -71,9 +74,9 @@ const (
 // ABI version components are kept as Go constants for callers that want to
 // reject a major mismatch before making stateful calls.
 const (
-	ABIVersionMajor uint32 = 1
-	ABIVersionMinor uint32 = 0
-	ABIVersionPatch uint32 = 0
+	ABIVersionMajor uint32 = C.elisa_go_abi_version_major
+	ABIVersionMinor uint32 = C.elisa_go_abi_version_minor
+	ABIVersionPatch uint32 = C.elisa_go_abi_version_patch
 )
 
 // WidgetHandle is an opaque generation-scoped retained-widget token received
