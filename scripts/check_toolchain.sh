@@ -19,6 +19,13 @@ REPORT=0
 # Developers doing compiler archaeology can opt out explicitly while keeping
 # the ordinary strict gate honest.
 REQUIRE_CURRENT="${ELISA_UI_REQUIRE_CURRENT_STAGE1:-0}"
+case "$REQUIRE_CURRENT" in
+    0|1) ;;
+    *)
+        echo "toolchain: ELISA_UI_REQUIRE_CURRENT_STAGE1 must be 0 or 1 (got $REQUIRE_CURRENT)" >&2
+        exit 2
+        ;;
+esac
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 STAGE1_INPUT="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
@@ -52,6 +59,11 @@ if git -C "$STAGE1" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         fi
     else
         echo "toolchain: stage1 branch=$branch revision=$revision"
+        if [[ "$REQUIRE_CURRENT" == 1 ]]; then
+            echo "toolchain: selected compiler has no fetched origin/main baseline" >&2
+            echo "fetch origin/main or set ELISA_UI_REQUIRE_CURRENT_STAGE1=0 only for intentional compiler archaeology" >&2
+            exit 2
+        fi
     fi
 else
     echo "toolchain: stage1 checkout has no git provenance: $STAGE1" >&2
