@@ -137,7 +137,35 @@ inline std::size_t elisa_skia_font_manager = 0;
 // Extra advance after every scalar but the last, set per run by the painter
 // and put back to zero after. Zero draws exactly as before.
 inline float elisa_skia_text_tracking = 0.0f;
-inline std::unordered_map<std::uint32_t, sk_sp<SkTypeface>> elisa_skia_fallback_cache;
+// A fallback face is selected from both the missing scalar and the requested
+// style. Caching only by scalar makes a regular lookup poison a later bold
+// lookup when both runs share the same font manager.
+struct FallbackKey {
+    std::uint32_t code;
+    std::int32_t weight;
+    std::int32_t width;
+    std::int32_t slant;
+
+    bool operator==(const FallbackKey &other) const {
+        return code == other.code && weight == other.weight && width == other.width &&
+            slant == other.slant;
+    }
+};
+
+struct FallbackKeyHash {
+    std::size_t operator()(const FallbackKey &key) const {
+        std::size_t hash = static_cast<std::size_t>(key.code);
+        hash ^= static_cast<std::size_t>(key.weight) + static_cast<std::size_t>(0x9e3779b9u) +
+            (hash << 6) + (hash >> 2);
+        hash ^= static_cast<std::size_t>(key.width) + static_cast<std::size_t>(0x9e3779b9u) +
+            (hash << 6) + (hash >> 2);
+        hash ^= static_cast<std::size_t>(key.slant) + static_cast<std::size_t>(0x9e3779b9u) +
+            (hash << 6) + (hash >> 2);
+        return hash;
+    }
+};
+
+inline std::unordered_map<FallbackKey, sk_sp<SkTypeface>, FallbackKeyHash> elisa_skia_fallback_cache;
 
 // One run of text drawn with one face. A string is split into these at every
 // point where the lent face has no glyph and a fallback does -- and drawn
@@ -164,14 +192,15 @@ inline std::uint32_t decode_utf8(const char *text, std::size_t length, std::size
 
 inline sk_sp<SkTypeface> fallback_face_for(std::uint32_t code, SkTypeface *lent) {
     if (elisa_skia_font_manager == 0) return nullptr;
-    const auto cached = elisa_skia_fallback_cache.find(code);
-    if (cached != elisa_skia_fallback_cache.end()) return cached->second;
     SkFontMgr *manager = reinterpret_cast<SkFontMgr *>(elisa_skia_font_manager);
     const SkFontStyle style = lent != nullptr ? lent->fontStyle() : SkFontStyle::Normal();
+    const FallbackKey key{code, style.weight(), style.width(), static_cast<std::int32_t>(style.slant())};
+    const auto cached = elisa_skia_fallback_cache.find(key);
+    if (cached != elisa_skia_fallback_cache.end()) return cached->second;
     sk_sp<SkTypeface> found = manager->matchFamilyStyleCharacter(nullptr, style, nullptr, 0,
                                                                    static_cast<SkUnichar>(code));
     // Remember misses too: a code point no face has is asked about once.
-    elisa_skia_fallback_cache.emplace(code, found);
+    elisa_skia_fallback_cache.emplace(key, found);
     return found;
 }
 
