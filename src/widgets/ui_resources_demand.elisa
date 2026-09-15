@@ -91,6 +91,21 @@ extend UiResources:
             return 0 if not UiResources::resource_is_valid(handle) or not resource_demanded[handle.slot.usize()]
             return resource_priorities[handle.slot.usize()]
 
+        # Presentation records belong to one owner lease, while hosts consume
+        # the aggregate highest-priority hint above. Keep the owner-specific
+        # query explicit so a coalesced resource cannot make an unrelated
+        # widget appear visible merely because another owner requested it.
+        def is_demanded_for_owner(handle: ResourceHandle, owner_id: u32) -> bool:
+            return false if owner_id == 0 or not UiResources::resource_is_valid(handle)
+            index: usize = resource_owner_lease_index(handle.slot.usize(), owner_id)
+            return index < MAX_RESOURCE_OWNER_LEASES and resource_owner_lease_demanded[index]
+
+        def demand_priority_for_owner(handle: ResourceHandle, owner_id: u32) -> u32:
+            return 0 if owner_id == 0 or not UiResources::resource_is_valid(handle)
+            index: usize = resource_owner_lease_index(handle.slot.usize(), owner_id)
+            return 0 if index >= MAX_RESOURCE_OWNER_LEASES or not resource_owner_lease_demanded[index]
+            return resource_owner_lease_priorities[index]
+
         # Hosts enumerate a bounded snapshot of visibility/prefetch work rather
         # than reaching into the resource arena. Results are ordered by slot so
         # repeated polling is deterministic; each hint carries its priority for
