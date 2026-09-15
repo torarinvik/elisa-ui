@@ -1,0 +1,39 @@
+# Direction-aware retained caret geometry.
+#
+# The public text-caret query returns a rectangle origin for native protocols;
+# the retained painter centers its hairline inside that one-point rectangle.
+# Keep both directions in a focused fixture so this contract stays visible
+# without growing the broader text-editing corpus.
+
+include "./widget_layout_support.elisa"
+
+def caret_line_x() -> f32:
+    for index in 0..<UiCore::command_count():
+        match UiCore::command_at(index):
+            UiCore::Command.FillLine(line, color):
+                return line.from_point.x if line.from_point.y != line.to_point.y
+            _:
+                pass
+    return -1.0
+
+def main() -> i64:
+    UiFlat::reset()
+    field: usize = UiFlat::text_field(UiFlat::NONE, "Name", "", "abcd", 200.0, 30.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
+    _ = UiFlat::request_focus(field)
+    UiFlat::layout(200.0, 30.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    ltr_origin: f32 = UiFlat::text_caret_x(field)
+    check("ltr caret centers inside its public rectangle", near(caret_line_x(), ltr_origin + UiCore::DEFAULT_STROKE_WIDTH * 0.5))
+
+    _ = UiLocalization::set_locale("he-IL")
+    UiCore::begin_frame()
+    UiFlat::paint()
+    rtl_origin: f32 = UiFlat::text_caret_x(field)
+    check("rtl caret centers toward the field's trailing edge", near(caret_line_x(), rtl_origin - UiCore::DEFAULT_STROKE_WIDTH * 0.5))
+
+    if test_failures == 0:
+        _ = puts("widget caret alignment: all checks passed")
+        return 0
+    _ = puts("widget caret alignment: FAILURES above")
+    return 1

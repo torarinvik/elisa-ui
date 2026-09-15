@@ -528,23 +528,12 @@ def main() -> i64:
     UiCore::begin_frame()
     UiFlat::paint()
     ltr_run: f32 = first_text_origin_x()
-    ltr_caret: usize = UiFlat::widget(mirrored_field).caret
     _ = UiLocalization::set_locale("he-IL")
     UiCore::begin_frame()
     UiFlat::paint()
     rtl_run: f32 = first_text_origin_x()
-    rtl_caret_origin: f32 = UiFlat::text_caret_x(mirrored_field)
-    rtl_caret_seen: mutable bool = false
-    for command_index in 0..<UiCore::command_count():
-        match UiCore::command_at(command_index):
-            UiCore::Command.FillLine(line, color):
-                rtl_center: f32 = rtl_caret_origin - UiCore::DEFAULT_STROKE_WIDTH * 0.5
-                rtl_caret_seen <- true if line.from_point.x == rtl_center and line.to_point.x == rtl_center
-            _:
-                pass
     check("a mirrored field's content starts at the reader's edge", rtl_run > ltr_run)
     check("and stays inside the field", rtl_run >= UiFlat::widget(mirrored_field).x and rtl_run <= UiFlat::widget(mirrored_field).x + UiFlat::widget(mirrored_field).width)
-    check("rtl caret centers toward the field's trailing edge", rtl_caret_seen)
     # The click mapping is the inverse of the draw. Clicking near the reader's
     # own start edge puts the caret at the beginning of the text in either
     # direction; the same x means opposite ends of the run.
@@ -556,7 +545,6 @@ def main() -> i64:
     ltr_end_caret: usize = UiFlat::widget(mirrored_field).caret
     UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(197.0, 15.0), button: 0)))
     check("a click at the far right is the run's start for one reader and its end for the other", rtl_start_caret == 0 and ltr_end_caret == 4)
-    _ = ltr_caret
 
     # A HOST THAT HAS A WINDOW BUT NOT YET A TYPEFACE measures every label as
     # nothing. The measurement is redone on every layout pass -- but nothing
