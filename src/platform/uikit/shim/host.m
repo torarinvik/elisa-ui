@@ -188,6 +188,26 @@ int elisa_uikit_accessibility_update(size_t viewHandle, size_t handle,
     return 1;
 }
 
+// Assign one retained semantic element's UIKit container after a successful
+// root-list commit. The relationship is deliberately a narrow setter: Elisa
+// has already validated the graph and chosen the parent identity, while the
+// shim only bridges the opaque handles to UIAccessibilityElement's property.
+int elisa_uikit_accessibility_set_container(size_t viewHandle, size_t handle,
+                                            size_t container) {
+    ElisaUiKitView *view = elisa_uikit_view(viewHandle);
+    ElisaUiKitAccessibilityElement *element = elisa_uikit_element(handle);
+    if (view == nil || element == nil || container == 0) return 0;
+    id parent = container == viewHandle
+        ? (id)view : (__bridge id)(void *)container;
+    if (parent == nil) return 0;
+    if (container != viewHandle) {
+        if (![parent isKindOfClass:[ElisaUiKitAccessibilityElement class]]) return 0;
+        if (((ElisaUiKitAccessibilityElement *)parent).viewHandle != viewHandle) return 0;
+    }
+    element.accessibilityContainer = parent;
+    return 1;
+}
+
 void elisa_uikit_accessibility_release(size_t handle) {
     if (handle == 0) return;
     CFRelease((CFTypeRef)(void *)handle);

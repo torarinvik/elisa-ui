@@ -1,0 +1,83 @@
+# UIKit ordinary semantic hierarchy.
+#
+# The root view owns only the current semantic roots. Child lookup follows
+# UiCore's retained relationship IDs from the last committed frame, so UIKit
+# can walk nested groups without asking the native shim to discover a graph.
+# Every walk is bounded by the semantic arena and invalid handles fail closed.
+
+extend UiUIKit:
+    private:
+        def previous_accessibility_index_for_handle(handle: usize) -> usize:
+            return UiCore::MAX_ACCESSIBILITY_NODES if handle == 0
+            for index in 0..<uikit_accessibility_previous_count:
+                return index if uikit_accessibility_previous_handles[index] == handle
+            return UiCore::MAX_ACCESSIBILITY_NODES
+
+        def previous_accessibility_child_index(parent_handle: usize, ordinal: usize) -> usize:
+            parent_index: usize = previous_accessibility_index_for_handle(parent_handle)
+            return UiCore::MAX_ACCESSIBILITY_NODES if parent_index >= uikit_accessibility_previous_count
+            child_id: mutable usize = uikit_accessibility_previous_first_child_ids[parent_index]
+            for step in 0..<UiCore::MAX_ACCESSIBILITY_NODES:
+                return UiCore::MAX_ACCESSIBILITY_NODES if child_id >= UiCore::MAX_ACCESSIBILITY_NODES
+                child_index: usize = previous_accessibility_index(child_id)
+                return UiCore::MAX_ACCESSIBILITY_NODES if child_index >= uikit_accessibility_previous_count
+                return child_index if step == ordinal
+                child_id <- uikit_accessibility_previous_next_sibling_ids[child_index]
+            return UiCore::MAX_ACCESSIBILITY_NODES
+
+        def previous_accessibility_child_count(parent_handle: usize) -> usize:
+            parent_index: usize = previous_accessibility_index_for_handle(parent_handle)
+            return 0 if parent_index >= uikit_accessibility_previous_count
+            child_id: mutable usize = uikit_accessibility_previous_first_child_ids[parent_index]
+            count: mutable usize = 0
+            for _ in 0..<UiCore::MAX_ACCESSIBILITY_NODES:
+                break if child_id >= UiCore::MAX_ACCESSIBILITY_NODES
+                child_index: usize = previous_accessibility_index(child_id)
+                break if child_index >= uikit_accessibility_previous_count
+                count <- count + 1
+                child_id <- uikit_accessibility_previous_next_sibling_ids[child_index]
+            return count
+
+    public:
+        # The view and every ordinary semantic element use the same callbacks.
+        # A root handle is valid only for the current committed UIKit session;
+        # a stale or foreign handle returns an empty container.
+        def accessibility_child_count(view_handle: usize, parent_handle: usize) -> i64:
+            return 0 if not live() or view_handle != UiUIKit::view_handle()
+            return previous_accessibility_child_count(parent_handle).i64()
+
+        def accessibility_child_at(view_handle: usize, parent_handle: usize,
+                                   ordinal: i64) -> usize:
+            return 0 if not live() or view_handle != UiUIKit::view_handle()
+            return 0 if ordinal < 0 or ordinal >= UiCore::MAX_ACCESSIBILITY_NODES.i64()
+            child_index: usize = previous_accessibility_child_index(parent_handle, ordinal.usize())
+            return 0 if child_index >= uikit_accessibility_previous_count
+            return uikit_accessibility_previous_handles[child_index]
+
+        def accessibility_child_index_of(view_handle: usize, parent_handle: usize,
+                                         child_handle: usize) -> i64:
+            return UiUIKit::not_found().i64() if not live() or view_handle != UiUIKit::view_handle()
+            return UiUIKit::not_found().i64() if child_handle == 0
+            parent_index: usize = previous_accessibility_index_for_handle(parent_handle)
+            return UiUIKit::not_found().i64() if parent_index >= uikit_accessibility_previous_count
+            child_id: mutable usize = uikit_accessibility_previous_first_child_ids[parent_index]
+            for ordinal in 0..<UiCore::MAX_ACCESSIBILITY_NODES:
+                break if child_id >= UiCore::MAX_ACCESSIBILITY_NODES
+                child_index: usize = previous_accessibility_index(child_id)
+                break if child_index >= uikit_accessibility_previous_count
+                return ordinal.i64() if uikit_accessibility_previous_handles[child_index] == child_handle
+                child_id <- uikit_accessibility_previous_next_sibling_ids[child_index]
+            return UiUIKit::not_found().i64()
+
+# Keep the Objective-C ABI names at top level; all graph policy stays in the
+# retained UiUIKit extension above.
+def uikit_flat_accessibility_child_count(view_handle: usize, parent_handle: usize) -> i64:
+    return UiUIKit::accessibility_child_count(view_handle, parent_handle)
+
+def uikit_flat_accessibility_child_at(view_handle: usize, parent_handle: usize,
+                                      ordinal: i64) -> usize:
+    return UiUIKit::accessibility_child_at(view_handle, parent_handle, ordinal)
+
+def uikit_flat_accessibility_child_index_of(view_handle: usize, parent_handle: usize,
+                                            child_handle: usize) -> i64:
+    return UiUIKit::accessibility_child_index_of(view_handle, parent_handle, child_handle)

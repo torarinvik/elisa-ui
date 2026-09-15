@@ -50,4 +50,7 @@ guard at the public lookup boundary.
 `UiCore::accessibility_diff` compares two nodes and returns typed change bits
 for identity, structure, geometry, state, value, text, selection, and range.
 Adapters can use the mask to issue incremental native notifications while the
-retained frame remains the sole semantic source of truth.
+retained frame remains the sole semantic source of truth. UIKit publishes only
+the committed roots from its view container; `ui_uikit_accessibility_hierarchy`
+resolves ordinary child/count/index queries from that same relationship
+history, so nested groups are traversable without a native widget graph.

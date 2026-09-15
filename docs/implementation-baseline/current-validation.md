@@ -51,6 +51,10 @@ same latest stage1/runtime and `test/uikit_host_stubs.c`): headless UIKit
 virtual-container provider, million-row reveal, bounded proxy identities,
 activation and teardown: PASS
 
+`test/uikit_accessibility_hierarchy_test.elisa` (same latest stage1/runtime and
+stubs): nested ordinary parent/child lookup, root-only publication, invalid
+index handling and teardown: PASS
+
 ELISA_UI_STAGE1=/private/tmp/elisa-compiler-ui-latest \
 SKIA_ROOT=/tmp/elisa-skia-check-20260914 \
 bash scripts/check_skia.sh

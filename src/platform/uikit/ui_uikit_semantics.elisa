@@ -7,6 +7,48 @@
 
 extend UiUIKit:
     private:
+        # Resolve a bounded relationship ID to the staged semantic slot. A
+        # missing parent is treated as a root: UiCore uses the max-node
+        # sentinel for "no relationship", and an application may publish a
+        # node before its optional container in a frame.
+        def next_parent_index(index: usize, count: usize) -> usize:
+            return UiCore::MAX_ACCESSIBILITY_NODES if index >= count
+            parent_id: usize = uikit_accessibility_next_parent_ids[index]
+            return UiCore::MAX_ACCESSIBILITY_NODES if parent_id >= UiCore::MAX_ACCESSIBILITY_NODES
+            for candidate in 0..<count:
+                return candidate if uikit_accessibility_next_ids[candidate] == parent_id
+            return UiCore::MAX_ACCESSIBILITY_NODES
+
+        # UIKit only sees roots through the view container. Reject a malformed
+        # cycle before replacing that root array; otherwise a valid previous
+        # tree could be hidden behind an unreachable accessibility island.
+        def next_node_reaches_root(index: usize, count: usize) -> bool:
+            return false if index >= count
+            current: mutable usize = index
+            for _ in 0..<count:
+                parent: usize = next_parent_index(current, count)
+                return true if parent >= count
+                return false if parent == current
+                current <- parent
+            return false
+
+        # Ordinary children are real UIAccessibilityElement objects, but their
+        # parent container is still assigned by Elisa. Headless tests have no
+        # native view, so the callback is deliberately skipped there.
+        def apply_accessibility_containers(requested_count: usize) -> bool can Unsafe.PointerCast:
+            return true if uikit_canvas_view == 0
+            for index in 0..<requested_count:
+                parent_index: usize = next_parent_index(index, requested_count)
+                child: usize = uikit_accessibility_next_handles[index]
+                return false if child == 0
+                if parent_index >= requested_count:
+                    return false if elisa_uikit_accessibility_set_container(uikit_canvas_view, child, uikit_canvas_view) == 0
+                else:
+                    parent: usize = uikit_accessibility_next_handles[parent_index]
+                    return false if parent == 0
+                    return false if elisa_uikit_accessibility_set_container(uikit_canvas_view, child, parent) == 0
+            return true
+
         # Reused UIKit elements stay untouched while the replacement child list
         # is validated and committed. Applying their staged metadata afterward
         # keeps a failed commit from mutating the tree VoiceOver is still
@@ -33,6 +75,8 @@ extend UiUIKit:
 
         def commit_accessibility_children(requested_count: usize) -> bool can Unsafe.PointerCast:
             return false if requested_count > UiCore::MAX_ACCESSIBILITY_NODES
+            for index in 0..<requested_count:
+                return false if not next_node_reaches_root(index, requested_count)
             count: mutable usize = 0
             for index in 0..<requested_count:
                 handle: usize = uikit_accessibility_next_handles[index]
@@ -41,9 +85,12 @@ extend UiUIKit:
                 # Elisa published, leaving nodes assistive clients can never
                 # reach.
                 return false if handle == 0
-                uikit_accessibility_commit_handles[count] <- handle
-                count <- count + 1
+                parent_index: usize = next_parent_index(index, requested_count)
+                if parent_index >= requested_count:
+                    uikit_accessibility_commit_handles[count] <- handle
+                    count <- count + 1
             return false if count > UiCore::MAX_ACCESSIBILITY_NODES
+            return false if requested_count > 0 and count == 0
             values_pointer: usize& = (&uikit_accessibility_commit_handles[0]).cast[usize&] can Unsafe.PointerCast
             children: usize = CFArrayCreate(0, values_pointer, count.i64(), 0)
             return false if children == 0
@@ -83,6 +130,9 @@ extend UiUIKit:
                 previous_handle: usize = uikit_accessibility_previous_handles[previous_index] if existed else 0
                 layout_changed <- true if index >= previous_count or uikit_accessibility_previous_ids[index] != node.id
                 layout_changed <- true if existed and uikit_accessibility_previous_traits[previous_index] != traits
+                layout_changed <- true if existed and uikit_accessibility_previous_parent_ids[previous_index] != node.parent_id
+                layout_changed <- true if existed and uikit_accessibility_previous_first_child_ids[previous_index] != node.first_child_id
+                layout_changed <- true if existed and uikit_accessibility_previous_next_sibling_ids[previous_index] != node.next_sibling_id
                 layout_changed <- true if existed and uikit_accessibility_previous_has_collection_position[previous_index] != node.has_collection_position
                 layout_changed <- true if existed and uikit_accessibility_previous_collection_positions[previous_index] != node.collection_position
                 layout_changed <- true if existed and uikit_accessibility_previous_collection_sizes[previous_index] != node.collection_size
@@ -94,6 +144,9 @@ extend UiUIKit:
                     node.frame.size.width, node.frame.size.height,
                     1 if node.enabled else 0)
                 uikit_accessibility_next_ids[index] <- node.id
+                uikit_accessibility_next_parent_ids[index] <- node.parent_id
+                uikit_accessibility_next_first_child_ids[index] <- node.first_child_id
+                uikit_accessibility_next_next_sibling_ids[index] <- node.next_sibling_id
                 uikit_accessibility_next_handles[index] <- handle
                 uikit_accessibility_next_needs_update[index] <- is_new == 0 and previous_handle != 0 and handle == previous_handle
                 uikit_accessibility_next_traits[index] <- traits
@@ -118,6 +171,7 @@ extend UiUIKit:
                     uikit_accessibility_stale_count <- uikit_accessibility_stale_count + 1
             if commit_accessibility_children(next_count):
                 update_committed_elements(next_count)
+                _ = apply_accessibility_containers(next_count)
                 publish_accessibility_history(next_count)
                 for stale_index in 0..<uikit_accessibility_stale_count:
                     stale_handle: usize = uikit_accessibility_stale_handles[stale_index]
@@ -155,6 +209,9 @@ extend UiUIKit:
                 id: usize = uikit_accessibility_next_ids[index]
                 uikit_accessibility_previous_ids[index] <- id
                 uikit_accessibility_previous_slot_by_id[id] <- index if id < UiCore::MAX_ACCESSIBILITY_NODES
+                uikit_accessibility_previous_parent_ids[index] <- uikit_accessibility_next_parent_ids[index]
+                uikit_accessibility_previous_first_child_ids[index] <- uikit_accessibility_next_first_child_ids[index]
+                uikit_accessibility_previous_next_sibling_ids[index] <- uikit_accessibility_next_next_sibling_ids[index]
                 uikit_accessibility_previous_handles[index] <- uikit_accessibility_next_handles[index]
                 uikit_accessibility_previous_traits[index] <- uikit_accessibility_next_traits[index]
                 uikit_accessibility_previous_has_collection_position[index] <- uikit_accessibility_next_has_collection_position[index]

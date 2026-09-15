@@ -100,6 +100,13 @@ int elisa_uikit_accessibility_update(size_t viewHandle, size_t handle,
     return handle != 0;
 }
 
+int elisa_uikit_accessibility_set_container(size_t viewHandle, size_t handle,
+                                            size_t container) {
+    (void)viewHandle;
+    (void)container;
+    return handle != 0;
+}
+
 void elisa_uikit_accessibility_release(size_t handle) {
     if (handle == 0) return;
     elisa_uikit_stub_live_elements -= 1;

@@ -403,6 +403,7 @@ Every decision that follows from those facts is in Elisa:
 | Safe area, keyboard frame, size, scale | `ui_uikit_surface.elisa` over `UiMobileSurface` — validation, insets, orientation, and the logical viewport |
 | Semantic role | `ui_uikit_accessibility.elisa` — `UIAccessibilityTraits`, and the value string VoiceOver speaks |
 | Element identity and reuse | `ui_uikit_semantics.elisa` — the shim is told whether an element is new; it never probes a handle |
+| Ordinary semantic child lookup | `ui_uikit_accessibility_hierarchy.elisa` — bounded parent/child traversal from committed relationship history; the shim only assigns UIKit's container property |
 | Virtual list child lookup | `ui_uikit_virtual_accessibility.elisa` — logical count, provider validation, anchored reveal, bounded proxy identity and activation; the shim only forwards `UIAccessibilityContainer` calls |
 | When the assistive cursor should move | `ui_uikit_semantics.elisa` — a fresh tree is a *screen* change; a moved retained focus moves VoiceOver; an ordinary repaint moves nothing |
 | Application notifications | `ui_uikit_callbacks.elisa` — one lifecycle vocabulary shared with every other backend |
@@ -565,6 +566,18 @@ The headless `uikit_virtual_accessibility_test` fixture proves this workflow
 against the same host ABI as the SDK gate, including a million-row Unicode
 query, proxy eviction and teardown. A physical VoiceOver/Accessibility
 Inspector run is still the final announcement/scroll acceptance test.
+
+### Nested ordinary containers
+
+Ordinary semantic groups can contain other retained semantic nodes. Elisa stages
+their parent, first-child and sibling IDs with each frame, validates that every
+node reaches a root without a cycle, and commits only the root handles to the
+view's `accessibilityElements` array. Each element implements the same UIKit
+container callbacks: count, ordinal lookup and reverse lookup walk the previous
+committed relationship history in bounded time. After a root commit, the narrow
+shim setter assigns each child's `accessibilityContainer` to its retained
+parent. `test/uikit_accessibility_hierarchy_test.elisa` covers nested lookup,
+round-tripping, invalid indices and teardown without a foregrounded app.
 
 `test/uikit_input_test.elisa`, `test/uikit_surface_test.elisa` and
 `test/uikit_text_input_test.elisa` pin the input mapping, the surface facts, the

@@ -1,0 +1,112 @@
+# Headless proof of UIKit's ordinary nested accessibility container path.
+#
+# The native UIKit view is replaced by the same C stubs as the surface tests;
+# Elisa still builds the complete retained graph, exposes only its roots from
+# the view and resolves child/index queries from the committed relationship
+# history.
+
+include "../src/platform/uikit/ui_uikit_flat.elisa"
+
+extern puts(text: cstr) -> i64
+extern elisa_uikit_stub_set_view(handle: usize) -> void
+extern elisa_uikit_stub_accessibility_handle_count() -> i32
+extern elisa_uikit_stub_accessibility_handle(index: i32) -> usize
+extern elisa_uikit_stub_live_element_count() -> i32
+extern elisa_uikit_stub_committed_children() -> usize
+
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def app_init() -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    _ = event
+
+def app_text_input(text: sview) -> void:
+    _ = text
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    _ = text
+    _ = selected_start
+    _ = selected_length
+
+def app_frame() -> void:
+    pass
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    _ = widget
+    _ = event
+
+def emit_tree() -> void:
+    sentinel: usize = UiCore::MAX_ACCESSIBILITY_NODES
+    UiCore::begin_frame()
+    UiCore::accessibility_with_metadata(
+        UiCore::AccessibilityRole.Group, "Container", "", UiCore::Rect(0.0, 0.0, 300.0, 200.0),
+        10, sentinel, true, false, false, 0.0, "", "", 0, 0, 0,
+        sentinel, 20, sentinel, 0.0, 1.0, false)
+    UiCore::accessibility_with_metadata(
+        UiCore::AccessibilityRole.Button, "First", "", UiCore::Rect(4.0, 4.0, 100.0, 30.0),
+        20, 20, true, false, false, 0.0, "", "", 0, 0, 0,
+        10, sentinel, 30, 0.0, 1.0, false)
+    UiCore::accessibility_with_metadata(
+        UiCore::AccessibilityRole.Label, "Second", "", UiCore::Rect(4.0, 40.0, 100.0, 30.0),
+        30, sentinel, true, false, false, 0.0, "", "", 0, 0, 0,
+        10, sentinel, sentinel, 0.0, 1.0, false)
+    UiUIKit::sync_accessibility()
+
+def find_parent_handle() -> usize:
+    count: i32 = elisa_uikit_stub_accessibility_handle_count()
+    found: usize =
+        for index in 0..<count.usize() |found = 0| -> found:
+            candidate: usize = elisa_uikit_stub_accessibility_handle(index.i32())
+            found <- candidate if uikit_flat_accessibility_child_count(0, candidate) == 2
+            break if found != 0
+    return found
+
+def emit_cycle() -> void:
+    sentinel: usize = UiCore::MAX_ACCESSIBILITY_NODES
+    UiCore::begin_frame()
+    UiCore::accessibility_with_metadata(
+        UiCore::AccessibilityRole.Group, "Cycle A", "", UiCore::Rect(0.0, 0.0, 100.0, 40.0),
+        10, sentinel, true, false, false, 0.0, "", "", 0, 0, 0,
+        20, sentinel, sentinel, 0.0, 1.0, false)
+    UiCore::accessibility_with_metadata(
+        UiCore::AccessibilityRole.Button, "Cycle B", "", UiCore::Rect(0.0, 40.0, 100.0, 40.0),
+        20, 20, true, false, false, 0.0, "", "", 0, 0, 0,
+        10, sentinel, sentinel, 0.0, 1.0, false)
+    UiUIKit::sync_accessibility()
+
+def main() -> i64 can[Ui.Draw, Ui.Text, Ui.Input, Ui.Window, Unsafe.PointerCast]:
+    elisa_uikit_stub_set_view(0)
+    check("a headless UIKit session starts", UiUIKit::begin_headless_session(320.0, 240.0, 2.0))
+    emit_tree()
+    parent: usize = find_parent_handle()
+    check("the semantic group is published", parent != 0)
+    if parent != 0:
+        check("ordinary child count is retained", uikit_flat_accessibility_child_count(0, parent) == 2)
+        first: usize = uikit_flat_accessibility_child_at(0, parent, 0)
+        second: usize = uikit_flat_accessibility_child_at(0, parent, 1)
+        check("first child resolves", first != 0)
+        check("second child resolves", second != 0 and second != first)
+        check("child index round-trips", uikit_flat_accessibility_child_index_of(0, parent, first) == 0 and uikit_flat_accessibility_child_index_of(0, parent, second) == 1)
+        check("a leaf has no children", uikit_flat_accessibility_child_count(0, first) == 0)
+        check("negative child index fails closed", uikit_flat_accessibility_child_at(0, parent, -1) == 0)
+        check("an out-of-range child fails closed", uikit_flat_accessibility_child_at(0, parent, 2) == 0)
+        check("a foreign child is not indexed", uikit_flat_accessibility_child_index_of(0, parent, 1) == UiUIKit::not_found().i64())
+    committed: usize = elisa_uikit_stub_committed_children()
+    emit_cycle()
+    check("a cyclic frame is rejected transactionally", elisa_uikit_stub_committed_children() == committed)
+    check("the previous hierarchy remains owned", elisa_uikit_stub_live_element_count() == 3)
+    check("native element ownership is bounded", elisa_uikit_stub_live_element_count() == 3)
+    UiUIKit::release_canvas()
+    check("releasing the session frees nested elements", elisa_uikit_stub_live_element_count() == 0)
+    if failures == 0:
+        _ = puts("uikit accessibility hierarchy: all checks passed")
+        return 0
+    _ = puts("uikit accessibility hierarchy: FAILURES above")
+    return 1
