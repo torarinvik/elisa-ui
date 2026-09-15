@@ -23,22 +23,9 @@ export SKIA_OUT="$SKIA_ROOT/out/elisa"
 bash scripts/build_skia.sh
 ```
 
-The historical 8d7 CPU-raster tuple was run against an older compiler; the
-current tuple above supersedes it. Its recorded details remain below for
-comparison.
-The required CPU-raster gate was run against the clean isolated compiler
-`8d7db0561d0f72c1f548fa6a73d071c86b2fe57f` (the historical compiler tuple),
-
-Its historical fetched upstream was `fd2cb3cff470319500db362e5fce283cbe300de`;
-
-upstream `main` `fd2cb3cff470319500db362e5fce2833cbe300de`), with Skia revision
-`9c7b2dffb2433f5a0cc2b77f06025a09126807ed`. The archive SHA-256 is
-`39774ff993bd3b84943c27548738c8b8b8208396237d536c1a4ed1c6e147c775`.
-The stage1 product SHA-256 is
-`ee985c68ab22bc9bb59787bace15708f8946db7e47c2f53240a93831c89a8e2a`; it uses
-runtime SHA-256
-`a58618f5358e30e8c19cf1344d47bddd3a7520ee61f83a471222bb0660e48a8f`.
-
+Historical compiler tuples remain recorded in the budget manifest for
+comparison, but the required gate uses only the clean upstream-main 45cb0ded
+tuple above.
 ```sh
 PATH="/path/to/depot_tools:$PATH" \
 ELISA_UI_STAGE1=/path/to/clean-elisa-compiler \
@@ -79,7 +66,7 @@ Observed on the current host:
 - The AppKit/Skia compositor passed its off-screen CoreGraphics presentation
   check (`render_ns=11272500`, pixel digest `96591d2368f57d1a`).
 - Million-item Showcase workflow plus Skia tail frame: the latest `45cb0ded`
-  tuple has a recorded median of `11.297 ms` and maximum `12.897 ms`, within its
+  tuple has a recorded median of `12.072 ms` and maximum `15.303 ms`, within its
   `50 ms` median / `80 ms` maximum limits. Pixel
   digest `1ac21e37972207bb` was stable across the benchmark and fresh processes.
   Raw samples and the exact source-bundle reference tuple are in
