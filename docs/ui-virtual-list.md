@@ -43,11 +43,19 @@ one-based `collection_position` and the full `collection_size`. Rebinding a
 row slot therefore changes semantic collection metadata even when its stable
 widget identity and label stay the same.
 
+For rows that are not realized, an application can attach a typed
+`UiVirtualAccessibility::Provider` through `UiHandles`. Elisa validates the
+logical index, role, finite value, and bounded UTF-8, then copies the provider's
+borrowed label/help into framework scratch before returning the item. Providers
+are synchronous and cleared with the retained tree, so a stale list handle
+cannot query old application data. Native adapters must copy the returned
+scratch views immediately; the provider itself remains application-owned.
+
 This portable metadata is not yet full native screen-reader virtualization.
 The AppKit canvas now publishes a list object with the full logical row count
 and accessibility proxies only for currently realized rows; those proxies carry
 one-based positions and stable `(list_id, position)` identities. It does not
 materialize off-screen rows or yet implement focus-and-scroll traversal. UIKit
-still needs a lazy list container that vends logical rows. Physical VoiceOver /
-Accessibility Inspector verification remains required before claiming native
-collection conformance.
+still needs a lazy list container wired to this provider and a logical
+activation/scroll transaction. Physical VoiceOver / Accessibility Inspector
+verification remains required before claiming native collection conformance.
