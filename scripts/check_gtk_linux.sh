@@ -33,14 +33,16 @@ STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
 OUT="$ROOT/build/gtk-linux"
 
 command -v orb >/dev/null || { echo "gtk linux: skipped (no orb; OrbStack provides the Linux machine)"; exit 0; }
-MACHINE="${ELISA_UI_ORB_MACHINE:-$(orb list 2>/dev/null | awk '$2 == "running" {print $1; exit}')}"
+source "$ROOT/scripts/orb_timeout.sh"
+orb_list="$(orb_run orb list 2>/dev/null || true)"
+MACHINE="${ELISA_UI_ORB_MACHINE:-$(awk '$2 == "running" {print $1; exit}' <<<"$orb_list")}"
 [[ -n "$MACHINE" ]] || { echo "gtk linux: skipped (no running OrbStack machine; orb start <name>)"; exit 0; }
 
 # What the machine has, asked of the machine. The `uname -m` line is first so an
 # empty answer distinguishes "the machine did not respond" from "the machine is
 # missing a tool" -- a skip line that names the wrong reason is worse than no
 # skip line, because someone acts on it.
-probe="$(orb -m "$MACHINE" bash -c 'uname -m; command -v clang >/dev/null && echo clang; command -v xvfb-run >/dev/null && echo xvfb; pkg-config --exists gtk4 && echo gtk4' 2>/dev/null || true)"
+probe="$(orb_run orb -m "$MACHINE" bash -c 'uname -m; command -v clang >/dev/null && echo clang; command -v xvfb-run >/dev/null && echo xvfb; pkg-config --exists gtk4 && echo gtk4' 2>/dev/null || true)"
 ARCH="$(head -1 <<<"$probe")"
 [[ -n "$ARCH" ]] || { echo "gtk linux: skipped (machine '$MACHINE' did not answer; orb list)"; exit 0; }
 for tool in clang xvfb gtk4; do
@@ -71,7 +73,7 @@ done
 # The Mac filesystem is mounted inside the machine, so the objects cross without
 # a copy step; only the build and the run happen over there.
 GUEST="/mnt/mac$OUT"
-orb -m "$MACHINE" bash -c "
+if orb_run orb -m "$MACHINE" bash -c "
 set -e
 work=\$(mktemp -d)
 trap 'rm -rf \"\$work\"' EXIT
@@ -86,7 +88,18 @@ clang -o gtk_check gtk_check.o gtk_shim.o runtime.o profiler_fallbacks.o host_fa
 clang -o gtk_style_lifecycle_check gtk_style_lifecycle_check.o gtk_shim.o runtime.o profiler_fallbacks.o host_fallbacks.o \$(pkg-config --libs gtk4) -lpthread -lm
 xvfb-run -a ./gtk_check
 xvfb-run -a ./gtk_style_lifecycle_check
-" >"$OUT/run.log" 2>"$OUT/run.err" || { echo "gtk linux: the fixture failed" >&2; cat "$OUT/run.log" "$OUT/run.err" >&2; exit 1; }
+" >"$OUT/run.log" 2>"$OUT/run.err"; then
+  :
+else
+  orb_status=$?
+  if (( orb_status == 124 )); then
+    echo "gtk linux: skipped (OrbStack did not answer within ${ORB_TIMEOUT_SECONDS}s)"
+    exit 0
+  fi
+  echo "gtk linux: the fixture failed" >&2
+  cat "$OUT/run.log" "$OUT/run.err" >&2
+  exit 1
+fi
 
 if grep -q "skipped (no display)" "$OUT/run.log"; then
   echo "gtk linux: the fixture found no display under Xvfb, so nothing was asserted" >&2

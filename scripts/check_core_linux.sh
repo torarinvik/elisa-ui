@@ -29,38 +29,15 @@ STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
 OUT="$ROOT/build/core-linux"
 
 command -v orb >/dev/null || { echo "core linux: skipped (no orb; OrbStack provides the Linux machine)"; exit 0; }
+source "$ROOT/scripts/orb_timeout.sh"
 # OrbStack can leave a client call waiting forever while a VM is starting or
 # its host service is unavailable. Keep that external condition from wedging
 # the entire required matrix; real guest failures still return nonzero below.
-ORB_TIMEOUT_SECONDS="${ELISA_UI_ORB_TIMEOUT_SECONDS:-30}"
-case "$ORB_TIMEOUT_SECONDS" in
-  ''|*[!0-9]*|0) echo "core linux: ELISA_UI_ORB_TIMEOUT_SECONDS must be a positive integer" >&2; exit 2 ;;
-esac
-run_orb() {
-  local child elapsed
-  "$@" &
-  child=$!
-  elapsed=0
-  while kill -0 "$child" 2>/dev/null; do
-    if (( elapsed >= ORB_TIMEOUT_SECONDS )); then
-      echo "core linux: orb command timed out after ${ORB_TIMEOUT_SECONDS}s" >&2
-      kill -TERM "$child" 2>/dev/null || true
-      sleep 1
-      kill -KILL "$child" 2>/dev/null || true
-      wait "$child" 2>/dev/null || true
-      return 124
-    fi
-    sleep 1
-    elapsed=$((elapsed + 1))
-  done
-  wait "$child"
-}
-
-orb_list="$(run_orb orb list 2>/dev/null || true)"
+orb_list="$(orb_run orb list 2>/dev/null || true)"
 MACHINE="${ELISA_UI_ORB_MACHINE:-$(awk '$2 == "running" {print $1; exit}' <<<"$orb_list")}"
 [[ -n "$MACHINE" ]] || { echo "core linux: skipped (no running OrbStack machine; orb start <name>)"; exit 0; }
 
-probe="$(run_orb orb -m "$MACHINE" bash -c 'uname -m; command -v clang >/dev/null && echo clang; pkg-config --exists sdl3 && echo sdl3; pkg-config --exists sdl3-ttf && echo sdl3ttf' 2>/dev/null || true)"
+probe="$(orb_run orb -m "$MACHINE" bash -c 'uname -m; command -v clang >/dev/null && echo clang; pkg-config --exists sdl3 && echo sdl3; pkg-config --exists sdl3-ttf && echo sdl3ttf' 2>/dev/null || true)"
 ARCH="$(head -1 <<<"$probe")"
 [[ -n "$ARCH" ]] || { echo "core linux: skipped (machine '$MACHINE' did not answer; orb list)"; exit 0; }
 for tool in clang sdl3 sdl3ttf; do
@@ -101,7 +78,7 @@ for source in "$ROOT"/test/*_test.elisa; do
 done
 
 GUEST="/mnt/mac$OUT"
-if run_orb orb -m "$MACHINE" bash -c "
+if orb_run orb -m "$MACHINE" bash -c "
 set -u
 work=\$(mktemp -d); mkdir -p \"\$work/test\" \"\$work/include\"
 trap 'rm -rf \"\$work\"' EXIT
