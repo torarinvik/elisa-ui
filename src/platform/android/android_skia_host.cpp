@@ -301,7 +301,14 @@ void draw(Host& host) {
     ANativeWindow* window = host.app->window;
     if (window == nullptr || !host.started) return;
     ANativeWindow_Buffer buffer;
-    if (ANativeWindow_lock(window, &buffer, nullptr) != 0) return;
+    // A surface can reject one lock while it is being resized or restored.
+    // Clear the outstanding frame request so the looper does not retry in a
+    // timeout-zero spin; the next window/redraw lifecycle command schedules a
+    // fresh attempt once the buffer is usable again.
+    if (ANativeWindow_lock(window, &buffer, nullptr) != 0) {
+        host.needs_frame = false;
+        return;
+    }
     const SkImageInfo info = SkImageInfo::Make(buffer.width, buffer.height, kRGBA_8888_SkColorType,
                                                kPremul_SkAlphaType);
     if (!host.frame || host.frame->width() != buffer.width || host.frame->height() != buffer.height) {
