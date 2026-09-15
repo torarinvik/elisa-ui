@@ -21,6 +21,8 @@ static size_t elisa_uikit_stub_view = 0;
 static size_t elisa_uikit_stub_children = 0;
 static int elisa_uikit_stub_live_elements = 0;
 static int elisa_uikit_stub_layout_changes = 0;
+static int elisa_uikit_stub_updates = 0;
+static int elisa_uikit_stub_updates_at_last_commit = 0;
 
 /* Test-facing controls. Declared in the Elisa test as externs. */
 void elisa_uikit_stub_set_view(size_t handle) { elisa_uikit_stub_view = handle; }
@@ -28,6 +30,14 @@ size_t elisa_uikit_stub_committed_children(void) { return elisa_uikit_stub_child
 int elisa_uikit_stub_live_element_count(void) { return elisa_uikit_stub_live_elements; }
 int elisa_uikit_stub_layout_change_count(void) { return elisa_uikit_stub_layout_changes; }
 void elisa_uikit_stub_clear_layout_change_count(void) { elisa_uikit_stub_layout_changes = 0; }
+int elisa_uikit_stub_update_count(void) { return elisa_uikit_stub_updates; }
+int elisa_uikit_stub_updates_after_last_commit(void) {
+    return elisa_uikit_stub_updates - elisa_uikit_stub_updates_at_last_commit;
+}
+void elisa_uikit_stub_clear_update_stats(void) {
+    elisa_uikit_stub_updates = 0;
+    elisa_uikit_stub_updates_at_last_commit = 0;
+}
 
 int elisa_uikit_run(void) { return 0; }
 void elisa_uikit_stop(void) {}
@@ -67,6 +77,7 @@ int elisa_uikit_accessibility_update(size_t viewHandle, size_t handle,
                                      float x, float y, float width, float height, int enabled) {
     (void)viewHandle; (void)identifier; (void)traits; (void)label; (void)hint; (void)value;
     (void)x; (void)y; (void)width; (void)height; (void)enabled;
+    elisa_uikit_stub_updates += 1;
     return handle != 0;
 }
 
@@ -80,6 +91,7 @@ int elisa_uikit_accessibility_commit(size_t viewHandle, size_t children) {
     (void)viewHandle;
     if (children == 0) return 0;
     elisa_uikit_stub_children = children;
+    elisa_uikit_stub_updates_at_last_commit = elisa_uikit_stub_updates;
     return 1;
 }
 

@@ -7,6 +7,30 @@
 
 extend UiUIKit:
     private:
+        # Reused UIKit elements stay untouched while the replacement child list
+        # is validated and committed. Applying their staged metadata afterward
+        # keeps a failed commit from mutating the tree VoiceOver is still
+        # reading, matching AppKit's two-phase accessibility transaction.
+        def update_committed_elements(requested_count: usize) -> void can Unsafe.PointerCast:
+            for index in 0..<requested_count:
+                continue if not uikit_accessibility_next_needs_update[index]
+                node: UiCore::AccessibilityNode = UiCore::accessibility_at(index)
+                native_identifier: usize = native_string(accessibility_identifier(node.id))
+                native_label: usize = native_string(node.label)
+                native_hint: mutable usize = 0
+                native_hint <- native_string(node.help) if node.help.len > 0
+                native_value: usize = accessibility_value_string(node)
+                _ = elisa_uikit_accessibility_update(uikit_canvas_view, uikit_accessibility_next_handles[index],
+                    native_identifier, accessibility_traits(node.role, node.enabled, node.selected),
+                    native_label, native_hint, native_value,
+                    node.frame.origin.x, node.frame.origin.y,
+                    node.frame.size.width, node.frame.size.height,
+                    1 if node.enabled else 0)
+                CFRelease(native_identifier) if native_identifier != 0
+                CFRelease(native_label) if native_label != 0
+                CFRelease(native_hint) if native_hint != 0
+                CFRelease(native_value) if native_value != 0
+
         def commit_accessibility_children(requested_count: usize) -> bool can Unsafe.PointerCast:
             return false if requested_count > UiCore::MAX_ACCESSIBILITY_NODES
             count: mutable usize = 0
@@ -71,6 +95,7 @@ extend UiUIKit:
                     1 if node.enabled else 0)
                 uikit_accessibility_next_ids[index] <- node.id
                 uikit_accessibility_next_handles[index] <- handle
+                uikit_accessibility_next_needs_update[index] <- is_new == 0 and previous_handle != 0 and handle == previous_handle
                 uikit_accessibility_next_traits[index] <- traits
                 uikit_accessibility_next_has_collection_position[index] <- node.has_collection_position
                 uikit_accessibility_next_collection_positions[index] <- node.collection_position
@@ -92,6 +117,7 @@ extend UiUIKit:
                     uikit_accessibility_stale_handles[uikit_accessibility_stale_count] <- previous_handle
                     uikit_accessibility_stale_count <- uikit_accessibility_stale_count + 1
             if commit_accessibility_children(next_count):
+                update_committed_elements(next_count)
                 publish_accessibility_history(next_count)
                 for stale_index in 0..<uikit_accessibility_stale_count:
                     stale_handle: usize = uikit_accessibility_stale_handles[stale_index]

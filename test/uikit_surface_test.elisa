@@ -13,6 +13,9 @@ extern elisa_uikit_stub_live_element_count() -> i32
 extern elisa_uikit_stub_focused_element() -> usize
 extern elisa_uikit_stub_layout_change_count() -> i32
 extern elisa_uikit_stub_clear_layout_change_count() -> void
+extern elisa_uikit_stub_update_count() -> i32
+extern elisa_uikit_stub_updates_after_last_commit() -> i32
+extern elisa_uikit_stub_clear_update_stats() -> void
 
 global mutable failures: i32 = 0
 global mutable frames_painted: i32 = 0
@@ -236,6 +239,7 @@ def emit_virtual_collection(position: usize, item_count: usize) -> void can Unsa
     UiUIKit::sync_accessibility()
 
 def check_virtual_collection_invalidation() -> void can Unsafe.PointerCast:
+    elisa_uikit_stub_clear_update_stats()
     elisa_uikit_stub_clear_layout_change_count()
     emit_virtual_collection(2, 1000)
     # The first committed tree can announce a layout even when the exact host
@@ -243,6 +247,8 @@ def check_virtual_collection_invalidation() -> void can Unsafe.PointerCast:
     elisa_uikit_stub_clear_layout_change_count()
     emit_virtual_collection(2, 1000)
     check("unchanged UIKit collection metadata posts no layout event", elisa_uikit_stub_layout_change_count() == 0)
+    check("reused UIKit elements receive staged metadata", elisa_uikit_stub_update_count() > 0)
+    check("staged metadata updates follow the child-list commit", elisa_uikit_stub_updates_after_last_commit() > 0)
     emit_virtual_collection(2, 2000)
     check("changed UIKit collection size posts a layout event", elisa_uikit_stub_layout_change_count() == 1)
     elisa_uikit_stub_clear_layout_change_count()

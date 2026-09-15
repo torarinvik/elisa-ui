@@ -152,6 +152,9 @@ static void elisa_uikit_apply_element(ElisaUiKitAccessibilityElement *element,
 }
 
 // Returns a +1 reference for a new element, or the reused handle unchanged.
+// Reuse is deliberately non-mutating: Elisa first commits the replacement
+// child list, then calls the update primitive. That preserves the old tree's
+// metadata if commit validation fails.
 size_t elisa_uikit_accessibility_add(size_t viewHandle, size_t previousHandle, int isNew,
                                      size_t identifier, uint64_t traits,
                                      size_t label, size_t hint, size_t value,
@@ -161,8 +164,6 @@ size_t elisa_uikit_accessibility_add(size_t viewHandle, size_t previousHandle, i
     if (isNew == 0) {
         ElisaUiKitAccessibilityElement *reused = elisa_uikit_element(previousHandle);
         if (reused != nil) {
-            elisa_uikit_apply_element(reused, identifier, traits, label, hint, value,
-                                      x, y, width, height, enabled);
             return previousHandle;
         }
     }
