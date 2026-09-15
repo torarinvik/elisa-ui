@@ -72,6 +72,25 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
     m_caret = (*env)->GetStaticMethodID(env, c, "caret", "(I)I");
     m_focus = (*env)->GetStaticMethodID(env, c, "focus", "(II)V");
     m_release = (*env)->GetStaticMethodID(env, c, "release", "(I)V");
+    // A missing method otherwise leaves a null jmethodID behind. JNI does not
+    // turn that into a recoverable call failure: the first CallStatic* is a
+    // VM abort. Fail library loading while the error is still diagnosable,
+    // and release both references acquired during this initialization.
+    const int methods_ready =
+        m_create != NULL && m_add_child != NULL && m_set_frame != NULL && m_set_text != NULL &&
+        m_set_text_color != NULL && m_set_background_color != NULL && m_set_tint_color != NULL &&
+        m_set_track_color != NULL && m_set_state != NULL && m_set_help != NULL &&
+        m_set_action != NULL && m_release_all != NULL && m_attach_root != NULL &&
+        m_measure_text != NULL && m_line_height != NULL && m_minimum_height != NULL &&
+        m_is_focused != NULL && m_caret != NULL && m_focus != NULL && m_release != NULL;
+    if (!methods_ready || (*env)->ExceptionCheck(env) == JNI_TRUE) {
+        if ((*env)->ExceptionCheck(env) == JNI_TRUE) (*env)->ExceptionClear(env);
+        (*env)->DeleteGlobalRef(env, elisa_controls_class);
+        elisa_controls_class = NULL;
+        (*env)->DeleteLocalRef(env, local);
+        return JNI_ERR;
+    }
+    (*env)->DeleteLocalRef(env, local);
     return JNI_VERSION_1_6;
 }
 
