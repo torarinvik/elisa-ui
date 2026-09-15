@@ -1,0 +1,29 @@
+# Windows replacements for the two POSIX names used by the optional Elisa
+# execution trace.  Keep this compatibility layer in Elisa: the native shim
+# remains concerned only with Win32 controls.
+
+@callconv(winapi)
+extern GetCurrentProcessId() -> u32
+
+@callconv(winapi)
+extern GetCurrentProcess() -> void&
+
+@callconv(winapi)
+extern TerminateProcess(process: void&, exit_code: u32) -> bool
+
+def win32_kill(pid: i32, sig: i32) -> i32:
+    return -1 if pid < 0
+    current: u32 = GetCurrentProcessId()
+    return -1 if pid.u32() != current
+    _ = TerminateProcess(GetCurrentProcess(), sig.u32())
+    return 0
+
+def win32_sigaction(sig: i32, act: void&, oldact: void&?) -> i32:
+    # The Elisa trace handler has the POSIX SA_SIGINFO three-argument ABI;
+    # forwarding it to the one-argument MSVCRT `signal` callback would corrupt
+    # the stack/register contract. Report the optional feature as unsupported
+    # until a real Windows exception-filter adapter exists.
+    return -1
+
+export fn kill(pid: i32, sig: i32) -> i32 = win32_kill
+export fn sigaction(sig: i32, act: void&, oldact: void&?) -> i32 = win32_sigaction

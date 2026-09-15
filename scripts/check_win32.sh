@@ -117,6 +117,21 @@ ELISA_HOST_WINDOWS=1 ELISA_HOST_X86_64=1 \
   bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -target-triple x86_64-pc-windows-gnu \
     -o "$OUT/elisacore_runtime_win.o" "$STAGE1/elisacore_std/elisacore_runtime.elisa"
 
+# The optional execution-trace module is part of elisacore and declares the
+# POSIX `kill`/`sigaction` names unconditionally. Windows has neither symbol;
+# keep that portability seam in Elisa rather than adding another control
+# callback to win32_shim.c. The adapter terminates the current process for the
+# trace handler's final re-raise and reports sigaction as unsupported, which is
+# safer than passing a three-argument Elisa handler to the one-argument CRT
+# `signal` API. The trace remains opt-in, so this does not affect ordinary apps.
+ELISA_HOST_WINDOWS=1 ELISA_HOST_X86_64=1 \
+  bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -target-triple x86_64-pc-windows-gnu \
+    -o "$OUT/win32_debug_referee.o" "$ROOT/src/platform/win32/win32_debug_referee.elisa"
+x86_64-w64-mingw32-nm "$OUT/win32_debug_referee.o" | grep -q " T kill" || {
+  echo "win32: Elisa debug-referee adapter does not export kill" >&2; exit 1; }
+x86_64-w64-mingw32-nm "$OUT/win32_debug_referee.o" | grep -q " T sigaction" || {
+  echo "win32: Elisa debug-referee adapter does not export sigaction" >&2; exit 1; }
+
 # The three stand-in families the COMPILER publishes for a downstream link. They
 # live there, not here: a copy of the runtime's host assumptions in this project
 # would rot the first time the runtime gained a symbol.
@@ -128,6 +143,7 @@ bash "$STAGE1/scripts/write_profiler_hook_fallbacks.sh" > "$OUT/profiler_fallbac
 
 "$CC" -o "$OUT/elisa_win32.exe" \
   "$OUT/win32_check.o" "$OUT/win32_shim.o" "$OUT/elisacore_runtime_win.o" \
+  "$OUT/win32_debug_referee.o" \
   "$OUT/win32_threads.o" "$OUT/profiler_fallbacks.o" "$OUT/pymodule_fallback.o" \
   -lgdi32 -luser32 -lkernel32 -lcomctl32
 
