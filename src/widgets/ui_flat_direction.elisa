@@ -26,6 +26,19 @@ extend UiFlat:
             return widgets[index].x + widgets[index].width - inset - distance if painting_right_to_left()
             return widgets[index].x + inset + distance
 
+        # `text_caret_x()` is the rectangle ORIGIN exposed to native text
+        # protocols. A retained painter strokes a hairline, whose coordinate is
+        # its CENTER, so using the origin directly makes the visible caret sit
+        # half a pixel into the glyph at its leading edge. Keep the public
+        # rectangle convention and translate only the paint coordinate. RTL
+        # fields measure their caret from the opposite edge, hence the mirrored
+        # sign.
+        def caret_paint_x(index: usize, inset: f32, distance: f32) -> f32:
+            raw: f32 = field_run_x(index, inset, distance)
+            half_width: f32 = UiCore::DEFAULT_STROKE_WIDTH * 0.5
+            return UiCore::bounded_coordinate(raw - half_width) if painting_right_to_left()
+            return UiCore::bounded_coordinate(raw + half_width)
+
         def field_run_distance(index: usize, inset: f32, pointer_x: f32) -> f32:
             return widgets[index].x + widgets[index].width - inset - pointer_x if painting_right_to_left()
             return pointer_x - widgets[index].x - inset
