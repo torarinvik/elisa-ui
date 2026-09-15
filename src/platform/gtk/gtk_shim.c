@@ -423,14 +423,16 @@ uint32_t elisa_gtk_pixel_at(size_t handle, int32_t x, int32_t y) {
     if (texture != NULL && x >= 0 && y >= 0 && x < width && y < height) {
         const size_t stride = (size_t)width * 4u;
         guchar *pixels = g_malloc(stride * (size_t)height);
-        gdk_texture_download(texture, pixels, stride);
-        // GDK downloads BGRA, premultiplied. The framework speaks packed ARGB,
-        // and every colour a fixture asks about here is opaque, so the two
-        // agree once the channels are put back in order.
-        const guchar *pixel = pixels + (size_t)y * stride + (size_t)x * 4u;
-        packed = ((uint32_t)pixel[3] << 24) | ((uint32_t)pixel[2] << 16) |
-                 ((uint32_t)pixel[1] << 8) | (uint32_t)pixel[0];
-        g_free(pixels);
+        if (pixels != NULL) {
+            gdk_texture_download(texture, pixels, stride);
+            // GDK downloads BGRA, premultiplied. The framework speaks packed ARGB,
+            // and every colour a fixture asks about here is opaque, so the two
+            // agree once the channels are put back in order.
+            const guchar *pixel = pixels + (size_t)y * stride + (size_t)x * 4u;
+            packed = ((uint32_t)pixel[3] << 24) | ((uint32_t)pixel[2] << 16) |
+                     ((uint32_t)pixel[1] << 8) | (uint32_t)pixel[0];
+            g_free(pixels);
+        }
     }
     g_clear_object(&texture);
     gsk_render_node_unref(node);
