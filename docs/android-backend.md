@@ -138,18 +138,13 @@ took.
 
 The NDK hands over a key code and a meta state, never a character: the
 character is a property of the keyboard layout and the layout lives on the Java
-side. So the host answers two different questions from one event.
-`framework_key` says which key it is, in the framework's own numbering — a
+side. `framework_key` maps navigation/editing keys into Elisa's vocabulary — a
 printable key is its uppercase ASCII code and everything else is 256 and up, so
-nothing above the host has ever heard of `AKEYCODE`. `printable_scalar` says
-what it *means as text*, and that one is **the US layout, written out**: a
-device with another layout types this one's letters and punctuation. Saying so
-plainly is better than pretending otherwise; a real answer needs `getUnicodeChar`
-across JNI.
+nothing above the host has ever heard of `AKEYCODE`.
 
-Committed text crosses as one code point — which is what a key event yields —
-and is encoded to UTF-8 on the Elisa side, so no host buffer has to be trusted
-and no pointer has to be cast for a keystroke.
+Committed text comes from the IME, including the user's keyboard layout and
+composition, and crosses as a Unicode scalar before Elisa encodes it to UTF-8.
+No host buffer has to be trusted and no pointer has to be cast for a keystroke.
 
 The soft keyboard follows the retained focus and nothing else: the host asks
 `elisa_android_wants_keyboard` once a frame and calls

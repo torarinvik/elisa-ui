@@ -192,44 +192,6 @@ std::int32_t framework_key(std::int32_t code) {
     }
 }
 
-// ...and what that key MEANS as text, which is a different question with a
-// different answer: the NDK hands over a key code and a meta state, never a
-// character, because the character is a property of the layout and the layout
-// lives on the Java side. This is the US layout, written out. A device with
-// another one types its own letters and punctuates like this one, which is
-// worth saying plainly rather than pretending otherwise.
-std::uint32_t printable_scalar(std::int32_t code, std::int32_t meta) {
-    const bool shift = (meta & AMETA_SHIFT_ON) != 0;
-    if ((meta & (AMETA_CTRL_ON | AMETA_ALT_ON | AMETA_META_ON)) != 0) return 0;
-    if (code >= AKEYCODE_A && code <= AKEYCODE_Z) {
-        return static_cast<std::uint32_t>((shift ? 'A' : 'a') + (code - AKEYCODE_A));
-    }
-    if (code >= AKEYCODE_0 && code <= AKEYCODE_9) {
-        static const char* const shifted = ")!@#$%^&*(";
-        const int digit = code - AKEYCODE_0;
-        return static_cast<std::uint32_t>(shift ? shifted[digit] : ('0' + digit));
-    }
-    switch (code) {
-        case AKEYCODE_SPACE: return ' ';
-        case AKEYCODE_APOSTROPHE: return shift ? '"' : '\'';
-        case AKEYCODE_COMMA: return shift ? '<' : ',';
-        case AKEYCODE_MINUS: return shift ? '_' : '-';
-        case AKEYCODE_PERIOD: return shift ? '>' : '.';
-        case AKEYCODE_SLASH: return shift ? '?' : '/';
-        case AKEYCODE_SEMICOLON: return shift ? ':' : ';';
-        case AKEYCODE_EQUALS: return shift ? '+' : '=';
-        case AKEYCODE_LEFT_BRACKET: return shift ? '{' : '[';
-        case AKEYCODE_BACKSLASH: return shift ? '|' : '\\';
-        case AKEYCODE_RIGHT_BRACKET: return shift ? '}' : ']';
-        case AKEYCODE_GRAVE: return shift ? '~' : '`';
-        case AKEYCODE_AT: return '@';
-        case AKEYCODE_PLUS: return '+';
-        case AKEYCODE_STAR: return '*';
-        case AKEYCODE_POUND: return '#';
-        default: return 0;
-    }
-}
-
 float density_scale(android_app* app) {
     const std::int32_t density = AConfiguration_getDensity(app->config);
     if (density <= 0 || density == ACONFIGURATION_DENSITY_NONE) return 1.0f;
@@ -417,20 +379,9 @@ std::int32_t on_input(android_app* app, AInputEvent* event) {
         if (code == AKEYCODE_BACK) return 0;
         const std::int32_t key = framework_key(code);
         if (key != 0) elisa_android_key(key, action == AKEY_EVENT_ACTION_DOWN ? 1 : 0);
-        // TEXT COMES FROM THE IME NOW, NOT FROM THIS TABLE.
-        //
-        // Turning a key code into a character here was the only way to type
-        // while this APK had no Java and therefore no InputConnection. It is
-        // also a hardcoded US layout, which is a poor way to serve a keyboard
-        // the user chose. Now that ElisaCanvasActivity supplies a real input
-        // connection, the IME delivers text -- and leaving both paths on
-        // inserted every character twice, which is exactly what "Hello"
-        // arriving as "HeellIloo" looked like on the first run.
-        //
-        // The key events themselves still flow: arrows, backspace, tab, enter
-        // and the clipboard chords are navigation and editing, not text, and
-        // the IME does not deliver them.
-        (void)printable_scalar;
+        // Text comes from the IME, whose layout and composition state are
+        // authoritative. Key events still carry navigation/editing commands
+        // such as arrows, backspace, tab, enter and clipboard chords.
         host.needs_frame = true;
         return key != 0 ? 1 : 0;
     }
