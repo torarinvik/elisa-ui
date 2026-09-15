@@ -44,6 +44,7 @@ extend UiFlat:
             widgets[index].virtual_row_generation <- next_virtual_generation(widgets[index].virtual_row_generation)
 
         def arrange_virtual_rows(index: usize, x: f32, y: f32, width: f32, height: f32, depth: usize) -> void:
+            return arrange_variable_virtual_rows(index, x, y, width, height, depth) if variable_virtual_is_enabled(index)
             total: i32 = UiVirtualList::bounded_count(widgets[index].virtual_total)
             is_row: bool = widgets[index].axis == UiConst::Axis.Row
             viewport: f32 = UiCore::nonnegative_extent(width if is_row else height)
@@ -115,6 +116,7 @@ extend UiFlat:
             count: i32 = UiVirtualList::bounded_count(item_count)
             return false if widgets[index].virtual_total == count
             widgets[index].virtual_total <- count
+            variable_virtual_item_count_changed(index, count) if variable_virtual_is_enabled(index)
             mark_layout_dirty()
             ensure_layout()
             return true
@@ -126,11 +128,13 @@ extend UiFlat:
         def virtual_scroll_anchor(index: usize) -> UiVirtualList::ScrollAnchor:
             ensure_layout()
             return UiVirtualList::ScrollAnchor{index: 0, offset: 0.0} if index >= widget_count or not widgets[index].virtual_list
+            return variable_virtual_anchor(index) if variable_virtual_is_enabled(index)
             return UiVirtualList::ScrollAnchor{index: widgets[index].virtual_anchor_index, offset: widgets[index].virtual_anchor_offset}
 
         def set_virtual_scroll_anchor(index: usize, requested: UiVirtualList::ScrollAnchor) -> bool:
             return false if index >= widget_count or not widgets[index].virtual_list
             ensure_layout()
+            return variable_virtual_set_anchor(index, requested) if variable_virtual_is_enabled(index)
             next: UiVirtualList::ScrollAnchor = UiVirtualList::scroll_by(requested, 0.0, widgets[index].virtual_total, widgets[index].virtual_item_extent, widgets[index].virtual_spacing, virtual_viewport_extent(index))
             changed: bool = next.index != widgets[index].virtual_anchor_index or next.offset != widgets[index].virtual_anchor_offset
             return false if not changed
@@ -142,30 +146,42 @@ extend UiFlat:
 
         def scroll_virtual_by(index: usize, delta: f32) -> bool:
             return false if index >= widget_count or not widgets[index].virtual_list or not UiCore::is_finite(delta)
+            if variable_virtual_is_enabled(index):
+                return set_variable_virtual_scroll_position(index, variable_virtual_scroll_position(index) + delta)
             current: UiVirtualList::ScrollAnchor = virtual_scroll_anchor(index)
             next: UiVirtualList::ScrollAnchor = UiVirtualList::scroll_by(current, delta, widgets[index].virtual_total, widgets[index].virtual_item_extent, widgets[index].virtual_spacing, virtual_viewport_extent(index))
             return set_virtual_scroll_anchor(index, next)
 
         def scroll_virtual_to(index: usize, item_index: i32) -> bool:
             return false if index >= widget_count or not widgets[index].virtual_list
+            return set_variable_virtual_scroll_position(index, UiVirtualList::variable_offset(variable_virtual_owner_at(index), item_index)) if variable_virtual_is_enabled(index)
             return set_virtual_scroll_anchor(index, UiVirtualList::ScrollAnchor{index: item_index, offset: 0.0})
 
         def scroll_virtual_to_fraction(index: usize, fraction: f32) -> bool:
             return false if index >= widget_count or not widgets[index].virtual_list or not UiCore::is_finite(fraction)
+            if variable_virtual_is_enabled(index):
+                owner: u32 = variable_virtual_owner_at(index)
+                content: f32 = UiVirtualList::variable_content_extent(owner)
+                viewport: f32 = virtual_viewport_extent(index)
+                maximum: f32 = content - viewport if content > viewport else 0.0
+                return set_variable_virtual_scroll_position(index, UiCore::normalized_unit(fraction) * maximum)
             next: UiVirtualList::ScrollAnchor = UiVirtualList::scroll_to_fraction(fraction, widgets[index].virtual_total, widgets[index].virtual_item_extent, widgets[index].virtual_spacing, virtual_viewport_extent(index))
             return set_virtual_scroll_anchor(index, next)
 
         def virtual_scroll_fraction(index: usize) -> f32:
             return 0.0 if index >= widget_count or not widgets[index].virtual_list
+            return virtual_variable_scroll_fraction(index) if variable_virtual_is_enabled(index)
             return UiVirtualList::scroll_fraction(virtual_scroll_anchor(index), widgets[index].virtual_total, widgets[index].virtual_item_extent, widgets[index].virtual_spacing, virtual_viewport_extent(index))
 
         def virtual_thumb_fraction(index: usize) -> f32:
             ensure_layout()
             return 1.0 if index >= widget_count or not widgets[index].virtual_list
+            return virtual_variable_thumb_fraction(index) if variable_virtual_is_enabled(index)
             return UiVirtualList::viewport_fraction(widgets[index].virtual_total, widgets[index].virtual_item_extent, widgets[index].virtual_spacing, virtual_viewport_extent(index))
 
         def virtual_scroll_can_consume(index: usize, delta: f32) -> bool:
             return false if index >= widget_count or not widgets[index].virtual_list or not UiCore::is_finite(delta)
+            return virtual_variable_scroll_can_consume(index, delta) if variable_virtual_is_enabled(index)
             current: UiVirtualList::ScrollAnchor = virtual_scroll_anchor(index)
             next: UiVirtualList::ScrollAnchor = UiVirtualList::scroll_by(current, delta, widgets[index].virtual_total, widgets[index].virtual_item_extent, widgets[index].virtual_spacing, virtual_viewport_extent(index))
             return next.index != current.index or next.offset != current.offset

@@ -271,6 +271,20 @@ def main() -> i64:
     rebuilt: UiFlat::Widget = UiFlat::widget(0)
     check("stale mutation does not reach rebuilt slot", rebuilt.text == "")
 
+    variable: UiHandles::Handle = UiHandles::variable_virtual_list(fresh, "Variable", 1000000, 24.0, 4.0, 180.0, 180.0, UiCore::rgb(24, 28, 36))
+    variable_row_a: UiHandles::Handle = UiHandles::button(variable, 120.0, 24.0, UiCore::rgb(35, 45, 60), UiCore::rgb(45, 55, 72), UiCore::rgb(25, 35, 50))
+    variable_row_b: UiHandles::Handle = UiHandles::button(variable, 120.0, 24.0, UiCore::rgb(35, 45, 60), UiCore::rgb(45, 55, 72), UiCore::rgb(25, 35, 50))
+    variable_row_c: UiHandles::Handle = UiHandles::button(variable, 120.0, 24.0, UiCore::rgb(35, 45, 60), UiCore::rgb(45, 55, 72), UiCore::rgb(25, 35, 50))
+    check("typed variable list is valid", UiHandles::is_valid(variable) and UiHandles::variable_virtual_list_is_enabled(variable))
+    check("variable list starts with no measurements", UiHandles::virtual_item_height_measurement_count(variable) == 0)
+    check("variable row handles are valid", UiHandles::is_valid(variable_row_a) and UiHandles::is_valid(variable_row_b) and UiHandles::is_valid(variable_row_c))
+    check("variable height measurement updates Elisa policy", UiHandles::set_virtual_item_height(variable, 0, 48.0) and UiHandles::set_virtual_item_height(variable, 1, 64.0))
+    check("variable height measurement is sparse", UiHandles::virtual_item_height_measurement_count(variable) == 2 and UiHandles::virtual_item_height(variable, 1) == 64.0)
+    UiHandles::layout(420.0, 260.0)
+    variable_row: UiFlat::Widget = UiFlat::widget(UiHandles::index(variable_row_b))
+    check("variable realization places measured row", variable_row.height == 64.0 and variable_row.y > UiFlat::widget(UiHandles::index(variable_row_a)).y)
+    check("variable scroll reaches logical tail", UiHandles::scroll_virtual_to(variable, 999999) and UiHandles::virtual_scroll_fraction(variable) > 0.99)
+
     if failures == 0:
         _ = puts("widget handles: all checks passed")
     return failures.i64()

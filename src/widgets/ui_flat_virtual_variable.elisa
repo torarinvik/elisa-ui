@@ -1,0 +1,184 @@
+# UiFlat adapter for the Elisa-owned variable-height virtualization policy.
+#
+# The retained Widget record keeps the uniform-list fields for compatibility;
+# this side table adds the optional variable profile without making every row
+# pay for measurement metadata. The owner identity is derived from the stable
+# flat slot and is released whenever the retained tree is reset.
+
+extend UiFlat:
+    private:
+        global mutable variable_virtual_enabled: bool[MAX_WIDGETS] = zeroed
+        global mutable variable_virtual_owner: u32[MAX_WIDGETS] = zeroed
+
+        def variable_virtual_owner_for(index: usize) -> u32:
+            return 0 if index >= MAX_WIDGETS
+            return (index + 1).u32()
+
+        def variable_virtual_is_enabled(index: usize) -> bool:
+            return index < widget_count and variable_virtual_enabled[index] and variable_virtual_owner[index] != 0
+
+        def variable_virtual_owner_at(index: usize) -> u32:
+            return 0 if not variable_virtual_is_enabled(index)
+            return variable_virtual_owner[index]
+
+        def variable_virtual_scroll_position(index: usize) -> f32:
+            owner: u32 = variable_virtual_owner_at(index)
+            return 0.0 if owner == 0
+            raw: f32 = UiVirtualList::variable_offset(owner, widgets[index].virtual_anchor_index) + widgets[index].virtual_anchor_offset
+            return UiVirtualList::variable_scroll_by(owner, raw, 0.0, virtual_viewport_extent(index))
+
+        def set_variable_virtual_scroll_position(index: usize, requested: f32) -> bool:
+            owner: u32 = variable_virtual_owner_at(index)
+            return false if owner == 0
+            next: f32 = UiVirtualList::variable_scroll_by(owner, requested, 0.0, virtual_viewport_extent(index))
+            window: UiVirtualList::VariableWindow = UiVirtualList::variable_window(owner, next, virtual_viewport_extent(index), virtual_child_capacity(index))
+            changed: bool = widgets[index].virtual_anchor_index != window.first or widgets[index].virtual_anchor_offset != window.leading_offset
+            return false if not changed
+            widgets[index].virtual_anchor_index <- window.first
+            widgets[index].virtual_anchor_offset <- window.leading_offset
+            mark_layout_dirty()
+            ensure_layout()
+            return true
+
+        def variable_virtual_anchor(index: usize) -> UiVirtualList::ScrollAnchor:
+            return UiVirtualList::ScrollAnchor{index: 0, offset: 0.0} if not variable_virtual_is_enabled(index)
+            return UiVirtualList::ScrollAnchor{index: widgets[index].virtual_anchor_index, offset: widgets[index].virtual_anchor_offset}
+
+        def variable_virtual_set_anchor(index: usize, requested: UiVirtualList::ScrollAnchor) -> bool:
+            return false if not variable_virtual_is_enabled(index)
+            owner: u32 = variable_virtual_owner[index]
+            raw: f32 = UiVirtualList::variable_offset(owner, requested.index) + UiCore::finite_or_zero(requested.offset)
+            return set_variable_virtual_scroll_position(index, raw)
+
+        def arrange_variable_virtual_rows(index: usize, x: f32, y: f32, width: f32, height: f32, depth: usize) -> void:
+            owner: u32 = variable_virtual_owner_at(index)
+            return if owner == 0
+            total: i32 = UiVirtualList::bounded_count(widgets[index].virtual_total)
+            is_row: bool = widgets[index].axis == UiConst::Axis.Row
+            viewport: f32 = UiCore::nonnegative_extent(width if is_row else height)
+            scroll: f32 = variable_virtual_scroll_position(index)
+            slots: i32 = virtual_child_capacity(index)
+            window: UiVirtualList::VariableWindow = UiVirtualList::variable_window(owner, scroll, viewport, slots)
+            widgets[index].virtual_anchor_index <- window.first
+            widgets[index].virtual_anchor_offset <- window.leading_offset
+            if widgets[index].virtual_window_first != window.first or widgets[index].virtual_window_finish != window.finish:
+                widgets[index].virtual_window_first <- window.first
+                widgets[index].virtual_window_finish <- window.finish
+                widgets[index].virtual_generation <- next_virtual_generation(widgets[index].virtual_generation)
+            child: mutable usize = widgets[index].first_child
+            ordinal: mutable i32 = 0
+            for _ in 0..<MAX_TRAVERSAL_SIBLINGS:
+                break if child == NONE or child >= widget_count
+                next_child: usize = widgets[child].next_sibling
+                if widgets[child].visible and ordinal < window.finish - window.first:
+                    logical: i32 = window.first + ordinal
+                    set_virtual_row_identity(child, logical)
+                    position: UiVirtualList::VariableItemPosition = UiVirtualList::variable_item_position(owner, logical, window)
+                    if position.valid:
+                        extent: f32 = UiVirtualList::variable_height(owner, logical)
+                        child_x: f32 = UiCore::bounded_coordinate(x + position.top) if is_row else x
+                        child_y: f32 = y if is_row else UiCore::bounded_coordinate(y + position.top)
+                        child_width: f32 = extent if is_row else width
+                        child_height: f32 = height if is_row else extent
+                        arrange(child, child_x, child_y, child_width, child_height, depth + 1)
+                    ordinal <- ordinal + 1
+                else:
+                    set_virtual_row_identity(child, -1)
+                    collapse(child, depth + 1)
+                child <- next_child
+
+        def reset_variable_virtual_lists() -> void:
+            for index in 0..<MAX_WIDGETS:
+                if variable_virtual_enabled[index] and variable_virtual_owner[index] != 0:
+                    _ = UiVirtualList::variable_release(variable_virtual_owner[index])
+                variable_virtual_enabled[index] <- false
+                variable_virtual_owner[index] <- 0
+
+    public:
+        def variable_virtual_capacity_available() -> bool:
+            used: mutable usize = 0
+            for index in 0..<MAX_WIDGETS:
+                used <- used + 1 if variable_virtual_enabled[index]
+            return used < UiVirtualList::MAX_VARIABLE_LISTS
+
+        # Build a vertical variable-height list using the same retained row
+        # pool as `virtual_list`. The estimate is used until a realized row is
+        # measured by `set_virtual_item_height`.
+        def variable_virtual_list(parent: usize, label: sview, item_count: i32, estimated_height: f32, spacing: f32, min_width: f32, min_height: f32, color: UiCore::Color) -> usize:
+            return NONE if not variable_virtual_capacity_available()
+            index: usize = virtual_list(parent, label, item_count, estimated_height, spacing, min_width, min_height, color)
+            return NONE if index == NONE
+            return NONE if not enable_variable_virtual_list(index, estimated_height, spacing)
+            return index
+
+        def horizontal_variable_virtual_list(parent: usize, label: sview, item_count: i32, estimated_width: f32, spacing: f32, min_width: f32, min_height: f32, color: UiCore::Color) -> usize:
+            return NONE if not variable_virtual_capacity_available()
+            index: usize = horizontal_virtual_list(parent, label, item_count, estimated_width, spacing, min_width, min_height, color)
+            return NONE if index == NONE
+            return NONE if not enable_variable_virtual_list(index, estimated_width, spacing)
+            return index
+
+        def enable_variable_virtual_list(index: usize, estimated_extent: f32, spacing: f32) -> bool:
+            return false if index >= widget_count or not widgets[index].virtual_list
+            owner: u32 = variable_virtual_owner_for(index)
+            return false if owner == 0
+            return false if not UiVirtualList::variable_init(owner, widgets[index].virtual_total, estimated_extent, spacing)
+            variable_virtual_enabled[index] <- true
+            variable_virtual_owner[index] <- owner
+            widgets[index].virtual_item_extent <- UiVirtualList::variable_height(owner, 0)
+            widgets[index].virtual_spacing <- UiCore::nonnegative_extent(spacing)
+            mark_layout_dirty()
+            return true
+
+        def variable_virtual_list_is_enabled(index: usize) -> bool:
+            return variable_virtual_is_enabled(index)
+
+        def set_virtual_item_height(index: usize, item_index: i32, height: f32) -> bool:
+            owner: u32 = variable_virtual_owner_at(index)
+            return false if owner == 0
+            changed: bool = UiVirtualList::variable_set_height(owner, item_index, height)
+            mark_layout_dirty() if changed
+            return changed
+
+        def virtual_item_height(index: usize, item_index: i32) -> f32:
+            owner: u32 = variable_virtual_owner_at(index)
+            return 0.0 if owner == 0
+            return UiVirtualList::variable_height(owner, item_index)
+
+        def virtual_item_height_measurement_count(index: usize) -> usize:
+            owner: u32 = variable_virtual_owner_at(index)
+            return 0 if owner == 0
+            return UiVirtualList::variable_measurement_count(owner)
+
+        def virtual_variable_content_extent(index: usize) -> f32:
+            owner: u32 = variable_virtual_owner_at(index)
+            return 0.0 if owner == 0
+            return UiVirtualList::variable_content_extent(owner)
+
+        def virtual_variable_scroll_fraction(index: usize) -> f32:
+            owner: u32 = variable_virtual_owner_at(index)
+            return 0.0 if owner == 0
+            content: f32 = UiVirtualList::variable_content_extent(owner)
+            viewport: f32 = virtual_viewport_extent(index)
+            return UiVirtualList::variable_scroll_fraction(owner, variable_virtual_scroll_position(index), viewport) if content > viewport
+            return 0.0
+
+        def virtual_variable_thumb_fraction(index: usize) -> f32:
+            owner: u32 = variable_virtual_owner_at(index)
+            return 1.0 if owner == 0
+            content: f32 = UiVirtualList::variable_content_extent(owner)
+            viewport: f32 = virtual_viewport_extent(index)
+            return 1.0 if content <= 0.0
+            return UiCore::nonnegative_extent(viewport / content)
+
+        def virtual_variable_scroll_can_consume(index: usize, delta: f32) -> bool:
+            owner: u32 = variable_virtual_owner_at(index)
+            return false if owner == 0 or not UiCore::is_finite(delta)
+            current: f32 = variable_virtual_scroll_position(index)
+            next: f32 = UiVirtualList::variable_scroll_by(owner, current, delta, virtual_viewport_extent(index))
+            return next != current
+
+        def variable_virtual_item_count_changed(index: usize, item_count: i32) -> void:
+            owner: u32 = variable_virtual_owner_at(index)
+            return if owner == 0
+            _ = UiVirtualList::variable_set_item_count(owner, item_count)
