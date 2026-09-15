@@ -233,11 +233,18 @@ extend UiCore:
         def set_content_insets(top: f32, right: f32, bottom: f32, left: f32) -> bool:
             return false if not is_finite(top) or not is_finite(right) or not is_finite(bottom) or not is_finite(left)
             return false if top < 0.0 or right < 0.0 or bottom < 0.0 or left < 0.0
-            changed: bool = top != content_inset_top_state or right != content_inset_right_state or bottom != content_inset_bottom_state or left != content_inset_left_state
-            content_inset_top_state <- top
-            content_inset_right_state <- right
-            content_inset_bottom_state <- bottom
-            content_inset_left_state <- left
+            # Insets are extents too. A direct caller can bypass the
+            # responsive facade, so cap each edge before it becomes a layout
+            # origin or is subtracted from a viewport.
+            safe_top: f32 = bounded_extent(top)
+            safe_right: f32 = bounded_extent(right)
+            safe_bottom: f32 = bounded_extent(bottom)
+            safe_left: f32 = bounded_extent(left)
+            changed: bool = safe_top != content_inset_top_state or safe_right != content_inset_right_state or safe_bottom != content_inset_bottom_state or safe_left != content_inset_left_state
+            content_inset_top_state <- safe_top
+            content_inset_right_state <- safe_right
+            content_inset_bottom_state <- safe_bottom
+            content_inset_left_state <- safe_left
             if changed:
                 invalidate(Invalidation.Layout)
                 invalidate(Invalidation.Paint)
