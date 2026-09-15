@@ -61,6 +61,38 @@ extend UiFlat:
             return if logical < 0 or logical >= total
             UiCore::accessibility_set_collection_position(index, (logical + 1).usize(), total.usize())
 
+        # A virtual list does not keep one global pixel offset: its retained
+        # anchor is a logical row plus a local offset. Reuse the child's
+        # already-arranged frame to request only the delta needed to reveal a
+        # focused row, then let the anchored list policy normalize and reflow
+        # it. This keeps focus navigation precise even past f32's old global
+        # pixel range.
+        def ensure_virtual_visible(index: usize, list: usize) -> void:
+            return if index >= widget_count or list >= widget_count
+            return if not widgets[list].virtual_list
+            row: mutable usize = index
+            found: mutable bool = false
+            for _ in 0..<MAX_TRAVERSAL_DEPTH |row, found|:
+                break if row >= widget_count
+                if widgets[row].parent == list:
+                    found <- true
+                    break
+                row <- widgets[row].parent
+            return if not found or row >= widget_count
+            logical: i32 = widgets[row].virtual_row_index
+            return if logical < 0 or logical >= widgets[list].virtual_total
+            padding: f32 = UiCore::nonnegative_extent(widgets[list].padding)
+            viewport_start: f32 = widgets[list].y + padding
+            viewport_end: mutable f32 = widgets[list].y + widgets[list].height - padding
+            viewport_end <- viewport_start if viewport_end < viewport_start
+            child_start: f32 = widgets[index].y
+            child_end: f32 = child_start + widgets[index].height
+            delta: mutable f32 = 0.0
+            delta <- child_start - viewport_start if child_start < viewport_start
+            delta <- child_end - viewport_end if child_end > viewport_end and child_start >= viewport_start
+            return if delta == 0.0
+            _ = scroll_virtual_by(list, delta)
+
         # Keyboard focus must never disappear into a translated viewport. The
         # child frame already contains the current offset, so recover its
         # unscrolled edge and request the smallest offset that reveals it.
@@ -69,27 +101,29 @@ extend UiFlat:
             for _ in 0..<MAX_TRAVERSAL_DEPTH:
                 break if cursor >= widget_count
                 if widgets[cursor].kind == UiConst::WidgetKind.Scroll:
-                    current: f32 = widgets[cursor].scroll_offset
-                    requested: mutable f32 = current
-                    if widgets[cursor].axis == UiConst::Axis.Row:
-                        viewport_start: f32 = widgets[cursor].x
-                        viewport_end: f32 = viewport_start + widgets[cursor].width
-                        child_start: f32 = widgets[index].x
-                        child_end: f32 = child_start + widgets[index].width
-                        unscrolled_start: f32 = child_start + current
-                        unscrolled_end: f32 = child_end + current
-                        requested <- unscrolled_start - viewport_start if child_start < viewport_start
-                        requested <- unscrolled_end - viewport_end if child_end > viewport_end and child_start >= viewport_start
-                    else:
-                        viewport_start: f32 = widgets[cursor].y
-                        viewport_end: f32 = viewport_start + widgets[cursor].height
-                        child_start: f32 = widgets[index].y
-                        child_end: f32 = child_start + widgets[index].height
-                        unscrolled_start: f32 = child_start + current
-                        unscrolled_end: f32 = child_end + current
-                        requested <- unscrolled_start - viewport_start if child_start < viewport_start
-                        requested <- unscrolled_end - viewport_end if child_end > viewport_end and child_start >= viewport_start
-                    _ = set_scroll_offset(cursor, requested)
+                    ensure_virtual_visible(index, cursor) if widgets[cursor].virtual_list
+                    if not widgets[cursor].virtual_list:
+                        current: f32 = widgets[cursor].scroll_offset
+                        requested: mutable f32 = current
+                        if widgets[cursor].axis == UiConst::Axis.Row:
+                            viewport_start: f32 = widgets[cursor].x
+                            viewport_end: f32 = viewport_start + widgets[cursor].width
+                            child_start: f32 = widgets[index].x
+                            child_end: f32 = child_start + widgets[index].width
+                            unscrolled_start: f32 = child_start + current
+                            unscrolled_end: f32 = child_end + current
+                            requested <- unscrolled_start - viewport_start if child_start < viewport_start
+                            requested <- unscrolled_end - viewport_end if child_end > viewport_end and child_start >= viewport_start
+                        else:
+                            viewport_start: f32 = widgets[cursor].y
+                            viewport_end: f32 = viewport_start + widgets[cursor].height
+                            child_start: f32 = widgets[index].y
+                            child_end: f32 = child_start + widgets[index].height
+                            unscrolled_start: f32 = child_start + current
+                            unscrolled_end: f32 = child_end + current
+                            requested <- unscrolled_start - viewport_start if child_start < viewport_start
+                            requested <- unscrolled_end - viewport_end if child_end > viewport_end and child_start >= viewport_start
+                        _ = set_scroll_offset(cursor, requested)
                 cursor <- widgets[cursor].parent
 
         def emit_accessibility(index: usize) -> void:

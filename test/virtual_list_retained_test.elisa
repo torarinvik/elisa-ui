@@ -93,6 +93,23 @@ def main() -> i64:
     UiHandles::handle(UiCore::PointerEvent.Scroll(UiCore::Vec2(list_box.x + 8.0, list_box.y + 8.0), UiCore::Vec2(0.0, -1.0)))
     check("wheel input updates the local pixel anchor", UiHandles::virtual_scroll_anchor(list).offset == 1.0)
 
+    # Keyboard focus must reveal a realized row through the logical anchor,
+    # not the ordinary Scroll offset (virtual lists deliberately keep that
+    # field unused). Put the first realized row just above the viewport, then
+    # request focus and verify the anchored reflow brings it back inside.
+    _ = UiHandles::scroll_virtual_to(list, 3)
+    _ = UiHandles::scroll_virtual_by(list, 20.0)
+    before_focus_anchor: UiVirtualList::ScrollAnchor = UiHandles::virtual_scroll_anchor(list)
+    focus_row_box: mutable UiFlat::Widget = UiFlat::widget(UiHandles::index(rows[0]))
+    focus_list_box: mutable UiFlat::Widget = UiFlat::widget(UiHandles::index(list))
+    check("a focused virtual row starts above the viewport", focus_row_box.y < focus_list_box.y + focus_list_box.padding)
+    check("focus accepts a realized virtual row", UiHandles::request_focus(rows[0]))
+    after_focus_anchor: UiVirtualList::ScrollAnchor = UiHandles::virtual_scroll_anchor(list)
+    focus_row_box <- UiFlat::widget(UiHandles::index(rows[0]))
+    focus_list_box <- UiFlat::widget(UiHandles::index(list))
+    check("focus scrolls the logical anchor", after_focus_anchor.index != before_focus_anchor.index or after_focus_anchor.offset != before_focus_anchor.offset)
+    check("focus reveals the virtual row", focus_row_box.y >= focus_list_box.y + focus_list_box.padding and focus_row_box.y + focus_row_box.height <= focus_list_box.y + focus_list_box.height - focus_list_box.padding)
+
     _ = UiHandles::scroll_virtual_to(list, 0)
     list_box <- UiFlat::widget(UiHandles::index(list))
     bar_x: f32 = list_box.x + list_box.width - 8.0
