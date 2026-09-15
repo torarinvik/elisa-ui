@@ -1,17 +1,17 @@
 # elisa-ui implementation baseline
 
-Recorded 2026-09-08 on macOS arm64; refreshed 2026-09-15 on main.
+Recorded 2026-09-08 on macOS arm64; refreshed 2026-09-16 on main.
 This is the durable UI-00 audit for the
 local implementation plan; it records observed behavior, not an assumption of
 parity on untested platforms.
 
 ## Reproducibility tuple
 
-### Active toolchain snapshot (2026-09-15)
+### Active toolchain snapshot (2026-09-16)
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui code revision | 0882574 on main (typed variable-list measurement snapshots, deterministic eviction, and regression evidence; working tree clean at refresh) |
+| elisa-ui code revision | 0628183 on main (strict direct-ABI Skia UTF-8 validation and regression evidence; working tree clean at refresh) |
 | Host and C compiler | macOS 26.6.2 (Darwin 25.6.0), arm64; Homebrew clang 23.1.1 |
 | Elisa stage1 | latest local build `../Elisa-compiler/bin/elisac-stage1`, revision d6a693c0f724c05f7b71418658dd8bda95ba73b3 (main, ahead of fetched origin/main); SHA-256 82543b75bb15bafd4e7a12aab824446b565f661a89a9870b34513c5722f34fc7 |
 | Elisa runtime | `../Elisa-compiler/build/runtime/elisacore_runtime.o`; SHA-256 85f1107eef00a7dd903e511df366b8b6cade4d8573cf0478f1de91604ea5beb9 |
