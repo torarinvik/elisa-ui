@@ -332,12 +332,13 @@ extend UiFlat:
             forward: bool = code == UiCore::Key.PageDown or (is_row and code == UiCore::Key.Right) or (not is_row and code == UiCore::Key.Down)
             backward: bool = code == UiCore::Key.PageUp or (is_row and code == UiCore::Key.Left) or (not is_row and code == UiCore::Key.Up)
             if code == UiCore::Key.Home:
-                return set_scroll_offset(target, 0.0)
+                return scroll_virtual_to(target, 0) if widgets[target].virtual_list else set_scroll_offset(target, 0.0)
             if code == UiCore::Key.End:
-                return set_scroll_offset(target, scroll_limit(target))
+                return scroll_virtual_to(target, widgets[target].virtual_total - 1) if widgets[target].virtual_list else set_scroll_offset(target, scroll_limit(target))
             return false if not forward and not backward
             viewport: f32 = widgets[target].width if is_row else widgets[target].height
             page: bool = code == UiCore::Key.PageDown or code == UiCore::Key.PageUp
             amount: mutable f32 = viewport if page else KEYBOARD_SCROLL_STEP
             amount <- -amount if backward
+            return scroll_virtual_by(target, amount) if widgets[target].virtual_list
             return set_scroll_offset(target, widgets[target].scroll_offset + amount)
