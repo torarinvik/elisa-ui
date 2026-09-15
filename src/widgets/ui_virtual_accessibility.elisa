@@ -1,0 +1,68 @@
+# App-owned content for lazily exposed virtual-list accessibility rows.
+#
+# A virtual list can contain millions of logical items while retaining only a
+# bounded set of visual row widgets. Native accessibility adapters must be
+# able to ask Elisa for one logical row at a time without inventing a label or
+# rebuilding the application's data model. This module is only the contract:
+# it owns no list state and has no native dependencies.
+
+include "../core/ui_core.elisa"
+
+module UiVirtualAccessibility:
+    public:
+        # The application fills one item synchronously when its provider is
+        # asked for a logical row. Text views are borrowed from application
+        # storage at callback time; UiFlat copies them before returning.
+        struct Item:
+            stable_id: mutable usize
+            role: mutable UiCore::AccessibilityRole
+            label: mutable sview
+            help: mutable sview
+            enabled: mutable bool
+            selected: mutable bool
+            value: mutable f32
+            has_range: mutable bool
+
+        # A provider is attached to one retained virtual-list widget. Returning
+        # false means that the requested logical row has no accessible item.
+        # `list_index` lets one application callback serve several lists while
+        # `item_index` remains the virtual list's i32 logical identity.
+        # Providers must be synchronous and must not rebuild the UiFlat tree or
+        # retain the output Item after returning.
+        type Provider = fn(usize, i32, mutable Item&) -> bool
+
+        # A zeroed item is a safe scratch value for callers and providers that
+        # want to fill only the fields relevant to their role.
+        def empty() -> Item:
+            return Item{
+                stable_id: 0,
+                role: UiCore::AccessibilityRole.Label,
+                label: "",
+                help: "",
+                enabled: false,
+                selected: false,
+                value: 0.0,
+                has_range: false,
+            }
+
+        def index_is_valid(item_index: i32, item_count: i32) -> bool:
+            return item_index >= 0 and item_index < item_count
+
+        # Validate the provider's borrowed result before any copy or native
+        # conversion. Labels are required and must be complete bounded UTF-8;
+        # help is optional but follows the same counted-view rules. The
+        # contract intentionally does not enforce stable-ID uniqueness because
+        # only the application knows which IDs are stable across data updates.
+        def text_is_valid(value: sview, required: bool) -> bool:
+            return false if value.len < 0 or value.len > UiCore::MAX_TEXT_BYTES.i64()
+            return false if required and value.len == 0
+            return false if value.len > 0 and value.data == null
+            return true if value.len == 0
+            return UiText::valid_utf8_prefix(value, value.len.usize()) == value.len.usize()
+
+        def is_valid(item: Item, item_index: i32, item_count: i32) -> bool:
+            return false if not index_is_valid(item_index, item_count)
+            return false if not text_is_valid(item.label, true) or not text_is_valid(item.help, false)
+            return false if not UiCore::is_finite(item.value)
+            return false if item.role.i32() < UiCore::AccessibilityRole.Label.i32() or item.role.i32() > UiCore::AccessibilityRole.Alert.i32()
+            return true

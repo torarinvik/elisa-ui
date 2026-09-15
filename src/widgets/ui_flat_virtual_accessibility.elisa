@@ -1,0 +1,62 @@
+# UiFlat storage and resolution for app-owned virtual-list accessibility rows.
+#
+# The provider callback remains application-owned. UiFlat owns only its
+# attachment lifetime, bounded query checks, and one-call text snapshots so a
+# native adapter never has to retain an application view or duplicate list
+# validation policy.
+
+extend UiFlat:
+    private:
+        global mutable virtual_accessibility_providers: UiVirtualAccessibility::Provider?[MAX_WIDGETS] = zeroed
+        global mutable virtual_accessibility_label_storage: u8[UiCore::MAX_TEXT_BYTES] = zeroed
+        global mutable virtual_accessibility_help_storage: u8[UiCore::MAX_TEXT_BYTES] = zeroed
+
+        def clear_virtual_accessibility_providers() -> void:
+            for index in 0..<MAX_WIDGETS:
+                virtual_accessibility_providers[index] <- null
+            for index in 0..<UiCore::MAX_TEXT_BYTES:
+                virtual_accessibility_label_storage[index] <- 0
+                virtual_accessibility_help_storage[index] <- 0
+
+        def copy_virtual_accessibility_text(storage: mutable u8&, value: sview) -> sview:
+            return "" if value.len <= 0
+            length: usize = value.len.usize()
+            for index in 0..<length:
+                storage[index] <- value.data[index]
+            return sview(&storage[0], 0, value.len)
+
+    public:
+        # Attach or replace the provider for one virtual-list widget. Passing
+        # null clears it. The list slot remains the application's identity;
+        # replacing its provider never changes retained row widgets.
+        def set_virtual_accessibility_provider(index: usize, provider: UiVirtualAccessibility::Provider?) -> bool:
+            return false if index >= widget_count or not widgets[index].virtual_list
+            virtual_accessibility_providers[index] <- provider
+            mark_semantics_dirty()
+            return true
+
+        def virtual_accessibility_provider_is_set(index: usize) -> bool:
+            return false if index >= widget_count or not widgets[index].virtual_list
+            return virtual_accessibility_providers[index] != null
+
+        # Resolve one logical item into caller-owned output. The returned text
+        # views point at fixed UiFlat scratch and remain valid until the next
+        # query; native adapters should copy them immediately into their own
+        # object, just as they do for ordinary semantic nodes.
+        def virtual_accessibility_item(index: usize, item_index: i32, item: mutable UiVirtualAccessibility::Item&) -> bool:
+            return false if index >= widget_count or not widgets[index].virtual_list
+            return false if not UiVirtualAccessibility::index_is_valid(item_index, widgets[index].virtual_total)
+            provider: UiVirtualAccessibility::Provider? = virtual_accessibility_providers[index]
+            return false if provider == null
+            candidate: mutable UiVirtualAccessibility::Item = UiVirtualAccessibility::empty()
+            return false if not provider(index, item_index, candidate)
+            return false if not UiVirtualAccessibility::is_valid(candidate, item_index, widgets[index].virtual_total)
+            # Clear the previous contents before copying so an empty help view
+            # cannot leave a stale string observable through the output item.
+            for byte_index in 0..<UiCore::MAX_TEXT_BYTES:
+                virtual_accessibility_label_storage[byte_index] <- 0
+                virtual_accessibility_help_storage[byte_index] <- 0
+            candidate.label <- copy_virtual_accessibility_text(&virtual_accessibility_label_storage[0], candidate.label)
+            candidate.help <- copy_virtual_accessibility_text(&virtual_accessibility_help_storage[0], candidate.help)
+            item <- candidate
+            return true

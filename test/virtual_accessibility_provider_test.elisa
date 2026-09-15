@@ -1,0 +1,124 @@
+# Headless contract test for app-owned lazy accessibility rows.
+#
+# The provider is deliberately a normal Elisa function. No UIKit object or
+# native adapter is involved: the test proves a large retained list can query
+# application-owned labels and metadata on demand, reject malformed output,
+# and clear the callback at the tree-lifetime boundary.
+
+include "../src/widgets/ui_handles.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable failures: i32 = 0
+global mutable provider_calls: i32 = 0
+global mutable oversized_text: u8[UiCore::MAX_TEXT_BYTES + 1] = zeroed
+
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size
+
+def ui_font_ascent(size: f32) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return 0
+
+def app_init() -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    pass
+
+def app_text_input(text: sview) -> void:
+    pass
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    pass
+
+def app_frame() -> void:
+    pass
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def row_provider(list_index: usize, item_index: i32, item: mutable UiVirtualAccessibility::Item&) -> bool:
+    provider_calls <- provider_calls + 1
+    return false if list_index != 1 or item_index == 8
+    item.stable_id <- 900000 + item_index.usize()
+    item.role <- UiCore::AccessibilityRole.RadioButton if item_index % 2 == 0 else UiCore::AccessibilityRole.Button
+    item.label <- "Sensor Café" if item_index == 7 else "Application-owned row"
+    item.help <- "Temperature in °C" if item_index == 7 else "Owned by the row model"
+    item.enabled <- item_index != 9
+    item.selected <- item_index == 7
+    item.value <- 0.75 if item_index == 7 else 0.0
+    item.has_range <- false
+    return true
+
+def malformed_provider(list_index: usize, item_index: i32, item: mutable UiVirtualAccessibility::Item&) -> bool:
+    item.stable_id <- 11
+    item.role <- UiCore::AccessibilityRole.Label
+    item.label <- sview(&oversized_text[0], 0, (UiCore::MAX_TEXT_BYTES + 1).i64())
+    item.help <- ""
+    item.enabled <- true
+    item.selected <- false
+    item.value <- 0.0
+    item.has_range <- false
+    return true
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    for index in 0..<UiCore::MAX_TEXT_BYTES + 1:
+        oversized_text[index] <- 88
+
+    UiHandles::reset()
+    root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 0.0, 0.0, UiCore::rgb(20, 22, 28))
+    list: UiHandles::Handle = UiHandles::virtual_list(root, "Devices", 1000000, 32.0, 4.0, 280.0, 180.0, UiCore::rgb(28, 32, 42))
+    check("large virtual list handle is valid", UiHandles::is_valid(list) and UiHandles::virtual_item_count(list) == 1000000)
+    check("provider registration reaches Elisa", UiHandles::set_virtual_accessibility_provider(list, row_provider))
+    check("provider registration is observable", UiHandles::virtual_accessibility_provider_is_set(list))
+
+    item: mutable UiVirtualAccessibility::Item = UiVirtualAccessibility::empty()
+    check("a deep logical row resolves without realization", UiHandles::virtual_accessibility_item(list, 700000, item))
+    check("provider receives the logical index", provider_calls == 1 and item.stable_id == 1600000)
+    check("provider preserves app-owned role and state", item.role == UiCore::AccessibilityRole.RadioButton and not item.selected and item.enabled and item.value == 0.0)
+    check("provider preserves app-owned fallback content", item.label == "Application-owned row" and item.help == "Owned by the row model")
+
+    item <- UiVirtualAccessibility::empty()
+    check("provider preserves non-ASCII app content", UiHandles::virtual_accessibility_item(list, 7, item) and item.label == "Sensor Café" and item.help == "Temperature in °C" and item.selected and item.value == 0.75)
+    check("provider callback is called only for valid queries", provider_calls == 2)
+
+    item <- UiVirtualAccessibility::empty()
+    check("provider can omit one logical row", not UiHandles::virtual_accessibility_item(list, 8, item))
+    check("omitted row still invokes only its provider query", provider_calls == 3)
+    check("out-of-range query is rejected before provider invocation", not UiHandles::virtual_accessibility_item(list, 1000000, item) and provider_calls == 3)
+
+    check("malformed text provider is rejected", UiHandles::set_virtual_accessibility_provider(list, malformed_provider) and not UiHandles::virtual_accessibility_item(list, 3, item))
+    check("provider can be cleared without changing list identity", UiHandles::set_virtual_accessibility_provider(list, null) and not UiHandles::virtual_accessibility_provider_is_set(list) and UiHandles::virtual_item_count(list) == 1000000)
+
+    old_list: UiHandles::Handle = list
+    UiHandles::reset()
+    fresh_root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 0.0, 0.0, UiCore::rgb(20, 22, 28))
+    fresh_list: UiHandles::Handle = UiHandles::virtual_list(fresh_root, "Fresh devices", 12, 32.0, 4.0, 280.0, 180.0, UiCore::rgb(28, 32, 42))
+    check("old provider handle is stale after tree reset", not UiHandles::set_virtual_accessibility_provider(old_list, row_provider))
+    check("provider storage is cleared for a reused slot", not UiHandles::virtual_accessibility_provider_is_set(fresh_list))
+
+    if failures == 0:
+        _ = puts("virtual accessibility provider: all checks passed")
+        return 0
+    _ = puts("virtual accessibility provider: FAILURES above")
+    return 1
