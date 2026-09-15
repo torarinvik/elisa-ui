@@ -99,6 +99,8 @@ snapshot/restore path owned by Elisa, with full validation before cache
 replacement; `test/widget_handles_test.elisa` covers provider replacement,
 cache invalidation, intrinsic fallback, enumeration, and persistence.
 
+## Hosted open vertical-slice gate (2026-09-16)
+
 The hosted open-vertical-slice gate reaches component-runtime compilation but
 still fails on compiler-generated invalid LLVM IR:
 
