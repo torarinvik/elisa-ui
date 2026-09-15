@@ -33,6 +33,8 @@ Requests coalesce by logical identifier while a record is live, so several
 views share one handle and do not start duplicate host work. Each `(resource,
 owner)` pair has its own bounded lease; repeating a request for that owner is
 idempotent, and a different owner does not replace the existing observer.
+Owner identities are nonzero; `0` is reserved for an invalid/no-owner result
+and is rejected by `request`.
 `owner_count()` and `owns()` inspect membership; `owner()` is a compatibility
 projection of the first live owner. Each handle contains a slot and a
 generation. `dispose(handle)` is the forceful, global release: it advances the
