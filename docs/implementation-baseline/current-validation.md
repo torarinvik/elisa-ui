@@ -83,11 +83,10 @@ bash scripts/check_skia.sh
 executes the pinned UAX #29 15.1.0 corpus (1,187 rows).
 
 The full real-Skia Showcase path reached its required exact-tuple benchmark
-with the clean latest d6a693c0 product after owner-scoped resource demand and
-budget refresh. Three fresh processes produced 21 tail-pixel-stable samples,
-with a recorded median of 10.835 ms and a maximum of 11.333 ms, inside the
-current 50/80 ms policy limits. The exact source-bundle
-tuple is recorded in
+with the clean latest d6a693c0 product after adding typed measurement
+snapshot/restore. Three fresh processes produced 21 tail-pixel-stable samples,
+with a recorded median of 19.761 ms and a maximum of 24.194 ms, inside the
+current 50/80 ms policy limits. The exact source-bundle tuple is recorded in
 `test/showcase_skia_performance_budgets.json`; a different compiler, source
 bundle, or host must add its own measured reference instead of inheriting this
 result.
