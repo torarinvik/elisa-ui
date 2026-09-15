@@ -51,12 +51,12 @@ dimensions, and source-bundle provenance are required to select its budget.
 
 Observed on the current host:
 
-- Off-screen Skia (`0f08a3ca`): 16 iterations, average `1011208 ns`, pixel
+- Off-screen Skia (`0f08a3ca`): 16 iterations, average `700403 ns`, pixel
   digest `26b1baa0682e064d`; a fresh process reproduced the digest.
 - Public hello showcase workflow: 70 commands, 25 semantic nodes, 19 custom
   art commands, deferred commands on both sides of retained drawing, two
   generation-bound deferred images (`2 -> 3`), 16 render iterations averaging
-  `3689687 ns`, pixel digest `f8cc2ba20c07b5bd`; a fresh process reproduced it.
+  `6746963 ns`, pixel digest `f8cc2ba20c07b5bd`; a fresh process reproduced it.
 - All five showcase pages and nine state/scale variants rendered: focus,
   high contrast, light high contrast, light, RTL, dialog, 2x, hover, and
   pressed. The 1x pages
@@ -64,7 +64,7 @@ Observed on the current host:
 - The AppKit/Skia compositor passed its off-screen CoreGraphics presentation
   check (`render_ns=13470291`, pixel digest `96591d2368f57d1a`).
 - Million-item Showcase workflow plus Skia tail frame: the latest `0f08a3ca`
-  tuple has a recorded median of `32.053 ms` and maximum `43.254 ms`, within
+  tuple has a recorded median of `25.385 ms` and maximum `28.488 ms`, within
   its `40 ms` median / `55 ms` maximum limits. Pixel digest
   `1ac21e37972207bb` was stable across the benchmark and fresh processes. Raw
   samples and the exact reference tuple are in
