@@ -202,13 +202,18 @@ extend UiAppKitCanvas:
             if not appkit_accessibility_prepare_rows(requested_count):
                 appkit_accessibility_discard_rows()
                 return false
+            if not appkit_hierarchy_prepare(requested_count):
+                appkit_hierarchy_release()
+                appkit_accessibility_discard_rows()
+                return false
             if not appkit_accessibility_lists_reach_roots(requested_count):
+                appkit_hierarchy_release()
                 appkit_accessibility_discard_rows()
                 return false
             valid: mutable bool = true
             root_count: mutable usize = 0
             for index in 0..<requested_count:
-                if appkit_next_accessibility_node_rows[index] >= UiCore::MAX_ACCESSIBILITY_NODES:
+                if appkit_next_accessibility_node_rows[index] >= UiCore::MAX_ACCESSIBILITY_NODES and appkit_hierarchy_is_root(index, requested_count):
                     if accessibility_next_handles[index] == 0:
                         valid <- false
                     else:
@@ -291,13 +296,17 @@ extend UiAppKitCanvas:
             row_children_pointer: usize& = (&appkit_accessibility_row_children[0]).cast[usize&] can Unsafe.PointerCast
             row_indices_pointer: usize& = (&appkit_accessibility_row_indices[0]).cast[usize&] can Unsafe.PointerCast
             row_frames_pointer: f32& = (&appkit_accessibility_row_frames[0]).cast[f32&] can Unsafe.PointerCast
+            hierarchy_parents_pointer: usize& = (&appkit_hierarchy_parent_handles[0]).cast[usize&] can Unsafe.PointerCast
+            hierarchy_children_pointer: usize& = (&appkit_hierarchy_children_arrays[0]).cast[usize&] can Unsafe.PointerCast
             committed: mutable bool = false
             if valid:
                 committed <- elisa_appkit_canvas_accessibility_commit_graph(
                     canvas_window, appkit_accessibility_graph_root,
                     appkit_next_accessibility_list_count, list_handles_pointer, list_rows_pointer, list_counts_pointer,
                     appkit_next_accessibility_row_count, row_handles_pointer, row_parents_pointer,
-                    row_children_pointer, row_indices_pointer, row_frames_pointer) != 0
+                    row_children_pointer, row_indices_pointer, row_frames_pointer,
+                    appkit_hierarchy_count, hierarchy_parents_pointer, hierarchy_children_pointer) != 0
+            appkit_hierarchy_release()
             appkit_accessibility_release_graph_arrays()
             appkit_accessibility_publish_rows() if committed else appkit_accessibility_discard_rows()
             return committed

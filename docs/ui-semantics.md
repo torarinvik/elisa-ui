@@ -40,6 +40,15 @@ metadata when assigning native accessibility values and treats relationship or
 range changes as semantic-layout changes; Cocoa object/protocol plumbing stays
 in the native shim.
 
+The AppKit canvas now publishes ordinary semantic groups as a checked batch:
+Elisa validates bounded parent chains and ordered sibling links, creates the
+child arrays, and sends only semantic roots plus those arrays through the
+existing graph transaction. The native shim validates same-window identities
+before assigning `accessibilityChildren`/`accessibilityParent`, so a malformed
+hierarchy leaves the previous native graph intact. Collection-positioned nodes
+remain owned by the virtual-list row projection and are not duplicated in the
+ordinary hierarchy.
+
 The semantic buffer remains fixed-capacity and deduplicated by stable ID. A
 duplicate declaration replaces the prior node in its original position, and
 overflow is reported rather than growing an unbounded frame allocation.

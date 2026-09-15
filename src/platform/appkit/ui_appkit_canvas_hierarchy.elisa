@@ -1,0 +1,123 @@
+# AppKit's ordinary semantic hierarchy.
+#
+# The custom canvas publishes only semantic roots on the view. Direct children
+# are assembled from UiCore's retained parent/first-child/sibling links and
+# handed to one narrow Cocoa transaction after the root/list graph is accepted.
+# Virtual-list rows remain owned by the collection graph; this module therefore
+# skips collection-positioned nodes instead of fighting that projection.
+
+extend UiAppKitCanvas:
+    private:
+        global mutable appkit_hierarchy_parent_handles: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable appkit_hierarchy_children_arrays: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable appkit_hierarchy_child_handles: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable appkit_hierarchy_reached: bool[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable appkit_hierarchy_count: usize = 0
+
+        def appkit_hierarchy_index_for_id(id: usize, count: usize) -> usize:
+            return UiCore::MAX_ACCESSIBILITY_NODES if id >= UiCore::MAX_ACCESSIBILITY_NODES
+            slot: usize =
+                for index in 0..<count |slot: usize = UiCore::MAX_ACCESSIBILITY_NODES| -> slot:
+                    slot <- index if accessibility_next_ids[index] == id
+                    break if slot < UiCore::MAX_ACCESSIBILITY_NODES
+            return slot
+
+        def appkit_hierarchy_parent_index(index: usize, count: usize) -> usize:
+            return UiCore::MAX_ACCESSIBILITY_NODES if index >= count
+            parent_id: usize = accessibility_next[index].parent_id
+            return appkit_hierarchy_index_for_id(parent_id, count)
+
+        # A missing parent is the framework's root sentinel (or an optional
+        # parent omitted from this semantic frame), so only a resolvable parent
+        # keeps a node out of the view's root list.
+        def appkit_hierarchy_is_root(index: usize, count: usize) -> bool:
+            return appkit_hierarchy_parent_index(index, count) >= count
+
+        # Every ordinary node must eventually reach the view root. Collection
+        # positioned nodes are checked by the row projection; an ordinary node
+        # pointing at one is malformed rather than a second native hierarchy.
+        # The bounded walk rejects self/cyclic parent links without recursion.
+        def appkit_hierarchy_parents_reach_roots(count: usize) -> bool:
+            for start in 0..<count:
+                continue if accessibility_next[start].has_collection_position
+                reaches_root: bool =
+                    for _ in 0..<count |reaches_root: bool = false, current: usize = start| -> reaches_root:
+                        parent_index: usize = appkit_hierarchy_parent_index(current, count)
+                        if parent_index >= count:
+                            reaches_root <- true
+                            break
+                        break if accessibility_next[parent_index].has_collection_position
+                        current <- parent_index
+                return false if not reaches_root
+            return true
+
+        def appkit_hierarchy_release() -> void:
+            for index in 0..<appkit_hierarchy_count:
+                array: usize = appkit_hierarchy_children_arrays[index]
+                CFRelease(array) if array != 0
+                appkit_hierarchy_parent_handles[index] <- 0
+                appkit_hierarchy_children_arrays[index] <- 0
+            appkit_hierarchy_count <- 0
+
+        # Build immutable child arrays before any native hierarchy property is
+        # touched. A malformed sibling chain, a child that names the wrong
+        # parent, or a missing direct child rejects the frame rather than
+        # publishing a partially reachable accessibility tree.
+        def appkit_hierarchy_prepare(count: usize) -> bool can Unsafe.PointerCast:
+            appkit_hierarchy_release()
+            return false if count > UiCore::MAX_ACCESSIBILITY_NODES
+            for index in 0..<count:
+                return false if accessibility_next_handles[index] == 0
+                appkit_hierarchy_reached[index] <- false
+            for parent_index in 0..<count:
+                parent: AccessibilityState = accessibility_next[parent_index]
+                continue if parent.has_collection_position
+                # Virtual-list containers publish their visible rows through
+                # the collection graph below; an ordinary empty array here
+                # would erase that projection after it is committed.
+                continue if parent.role == UiCore::AccessibilityRole.List.i32()
+                first_child: usize = parent.first_child_id
+                child_count: mutable usize = 0
+                cursor: mutable usize = first_child
+                terminated: mutable bool = false
+                parent_id: usize = accessibility_next_ids[parent_index]
+                if first_child >= UiCore::MAX_ACCESSIBILITY_NODES:
+                    terminated <- true
+                else:
+                    for _ in 0..<count:
+                        if cursor >= UiCore::MAX_ACCESSIBILITY_NODES:
+                            terminated <- true
+                            break
+                        child_index: usize = appkit_hierarchy_index_for_id(cursor, count)
+                        return false if child_index >= count or child_index == parent_index
+                        child: AccessibilityState = accessibility_next[child_index]
+                        if not child.has_collection_position:
+                            return false if child.parent_id != parent_id
+                            return false if child_count >= UiCore::MAX_ACCESSIBILITY_NODES
+                            appkit_hierarchy_child_handles[child_count] <- accessibility_next_handles[child_index]
+                            return false if appkit_hierarchy_child_handles[child_count] == 0
+                            child_count <- child_count + 1
+                            appkit_hierarchy_reached[child_index] <- true
+                        cursor <- child.next_sibling_id
+                terminated <- true if cursor >= UiCore::MAX_ACCESSIBILITY_NODES
+                return false if not terminated
+                return false if appkit_hierarchy_count >= UiCore::MAX_ACCESSIBILITY_NODES
+                parent_handle: usize = accessibility_next_handles[parent_index]
+                return false if parent_handle == 0
+                children_pointer: usize& = (&appkit_hierarchy_child_handles[0]).cast[usize&] can Unsafe.PointerCast
+                children: usize = CFArrayCreate(0, children_pointer, child_count.i64(), 0)
+                return false if children == 0
+                slot: usize = appkit_hierarchy_count
+                appkit_hierarchy_parent_handles[slot] <- parent_handle
+                appkit_hierarchy_children_arrays[slot] <- children
+                appkit_hierarchy_count <- slot + 1
+            # A non-row node with a resolvable ordinary parent must occur in
+            # that parent's declared child chain. Collection-positioned nodes
+            # are intentionally checked by AppKit's row graph instead.
+            for child_index in 0..<count:
+                child: AccessibilityState = accessibility_next[child_index]
+                continue if child.has_collection_position
+                parent_index: usize = appkit_hierarchy_parent_index(child_index, count)
+                continue if parent_index >= count or accessibility_next[parent_index].has_collection_position
+                return false if not appkit_hierarchy_reached[child_index]
+            return appkit_hierarchy_parents_reach_roots(count)

@@ -22,6 +22,29 @@ def app_event(event: UiCore::Event) -> void:
 
 extend UiAppKitCanvas:
     public:
+        def check_accessibility_hierarchy_parents() -> void:
+            sentinel: usize = UiCore::MAX_ACCESSIBILITY_NODES
+            accessibility_next_ids[0] <- 11
+            accessibility_next_ids[1] <- 22
+            accessibility_next[0].parent_id <- sentinel
+            accessibility_next[1].parent_id <- 11
+            accessibility_next[0].has_collection_position <- false
+            accessibility_next[1].has_collection_position <- false
+            check("ordinary parent chains reach the root",
+                  appkit_hierarchy_parents_reach_roots(2))
+
+            # A sibling-valid semantic frame can still be an unreachable
+            # island when its parent links cycle. The bounded parent validator
+            # rejects that frame before AppKit receives any array.
+            accessibility_next[0].parent_id <- 22
+            accessibility_next[1].parent_id <- 11
+            check("cycle first parent resolves",
+                  appkit_hierarchy_parent_index(0, 2) == 1)
+            check("cycle second parent resolves",
+                  appkit_hierarchy_parent_index(1, 2) == 0)
+            check("ordinary parent cycles are rejected",
+                  not appkit_hierarchy_parents_reach_roots(2))
+
         def check_accessibility_list_graphs() -> void:
             appkit_next_accessibility_list_count <- 2
             appkit_next_accessibility_list_ids[0] <- 11
@@ -56,5 +79,6 @@ extend UiAppKitCanvas:
                   not appkit_accessibility_lists_reach_roots(1))
 
 def main() -> i64:
+    UiAppKitCanvas::check_accessibility_hierarchy_parents()
     UiAppKitCanvas::check_accessibility_list_graphs()
     return failures.i64()

@@ -34,7 +34,7 @@ passed without opening or foregrounding a window:
 ELISA_UI_STAGE1=/private/tmp/elisa-compiler-ui-latest \
 bash scripts/check_appkit_canvas.sh
   -O2 AppKit canvas build, fresh-process PNG, accessibility bridge,
-  callbacks, bundle and signature: PASS
+  callbacks, ordinary nested hierarchy, bundle and signature: PASS
   fresh-process PNG sha256=
   07f328d5e73e0f2863b08135085ff85046d6b5ffb451622d965d914b4c9011d1
 

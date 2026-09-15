@@ -249,7 +249,8 @@ int elisa_appkit_canvas_accessibility_commit(size_t windowHandle, size_t childre
     return 1;
 }
 
-// Elisa owns the retained list/row hierarchy. This adapter checks only the
+// Elisa owns the retained list/row hierarchy and supplies one ordered batch
+// for ordinary parents. This adapter checks only the
 // values it must safely pass to Cocoa, then applies the complete batch after
 // validation so an invalid handle, API value, index, or frame cannot partially
 // replace the currently exposed tree.
@@ -259,14 +260,19 @@ int elisa_appkit_canvas_accessibility_commit_graph(
     const size_t *listRowsArrays, const size_t *listLogicalCounts,
     size_t rowCount, const size_t *rowHandles,
     const size_t *rowListHandles, const size_t *rowChildrenArrays,
-    const size_t *rowIndices, const float *rowFrames) {
+    const size_t *rowIndices, const float *rowFrames,
+    size_t hierarchyCount, const size_t *hierarchyParents,
+    const size_t *hierarchyChildrenArrays) {
     if (listCount > ELISA_APPKIT_CANVAS_ACCESSIBILITY_GRAPH_CAPACITY ||
-        rowCount > ELISA_APPKIT_CANVAS_ACCESSIBILITY_GRAPH_CAPACITY) return 0;
+        rowCount > ELISA_APPKIT_CANVAS_ACCESSIBILITY_GRAPH_CAPACITY ||
+        hierarchyCount > ELISA_APPKIT_CANVAS_ACCESSIBILITY_GRAPH_CAPACITY) return 0;
     if ((listCount != 0 && (listHandles == NULL || listRowsArrays == NULL ||
                             listLogicalCounts == NULL)) ||
         (rowCount != 0 && (rowHandles == NULL || rowListHandles == NULL ||
                            rowChildrenArrays == NULL || rowIndices == NULL ||
-                           rowFrames == NULL))) return 0;
+                           rowFrames == NULL)) ||
+        (hierarchyCount != 0 && (hierarchyParents == NULL ||
+                                 hierarchyChildrenArrays == NULL))) return 0;
 
     ElisaCanvasView *view = elisa_appkit_canvas_view(windowHandle);
     NSWindow *window = elisa_appkit_canvas_window(windowHandle);
@@ -319,6 +325,38 @@ int elisa_appkit_canvas_accessibility_commit_graph(
         }
     }
 
+    // Validate the complete ordinary hierarchy before mutating any AppKit
+    // parent or child property. Elisa has already ordered these arrays and
+    // excluded collection-row projections; this pass only checks same-window
+    // object identity, empty-array clearing, and duplicate parent entries at
+    // the native boundary.
+    for (size_t index = 0; index < hierarchyCount; index += 1) {
+        ElisaAccessibilityElement *parent =
+            elisa_appkit_canvas_element(hierarchyParents[index]);
+        NSArray *children = elisa_appkit_canvas_array(hierarchyChildrenArrays[index]);
+        if (parent == nil || children == nil ||
+            elisa_appkit_canvas_element_window_handle(parent) != windowHandle) return 0;
+        for (size_t previous = 0; previous < index; previous += 1) {
+            if (hierarchyParents[previous] == hierarchyParents[index]) return 0;
+        }
+        for (NSUInteger childIndex = 0; childIndex < children.count; childIndex += 1) {
+            id child = children[childIndex];
+            if (![child isKindOfClass:[ElisaAccessibilityElement class]] ||
+                elisa_appkit_canvas_element_window_handle(child) != windowHandle) return 0;
+            if (child == parent) return 0;
+            for (NSUInteger previousIndex = 0; previousIndex < childIndex; previousIndex += 1) {
+                if (children[previousIndex] == child) return 0;
+            }
+            for (size_t previousParent = 0; previousParent < index; previousParent += 1) {
+                NSArray *previousChildren =
+                    elisa_appkit_canvas_array(hierarchyChildrenArrays[previousParent]);
+                for (id previousChild in previousChildren) {
+                    if (previousChild == child) return 0;
+                }
+            }
+        }
+    }
+
     // All bridge safety checks have passed. Apply Elisa's prepared ordering and
     // parent relationships without reconstructing or second-guessing them.
     for (size_t index = 0; index < rowCount; index += 1) {
@@ -343,6 +381,19 @@ int elisa_appkit_canvas_accessibility_commit_graph(
         NSArray *visibleRows = elisa_appkit_canvas_array(listRowsArrays[index]);
         [list elisaSetAccessibilityRows:visibleRows
                                rowCount:(NSInteger)listLogicalCounts[index]];
+    }
+    // Ordinary parents are applied before roots are finally attached to the
+    // view. Every object was validated above, so this batch cannot leave a
+    // mixed graph through a mid-loop type or ownership failure.
+    for (size_t index = 0; index < hierarchyCount; index += 1) {
+        ElisaAccessibilityElement *parent =
+            elisa_appkit_canvas_element(hierarchyParents[index]);
+        NSArray *children = elisa_appkit_canvas_array(hierarchyChildrenArrays[index]);
+        parent.accessibilityChildren = children;
+        parent.accessibilityChildrenInNavigationOrder = children;
+        for (id child in children) {
+            ((ElisaAccessibilityElement *)child).accessibilityParent = parent;
+        }
     }
     for (id root in rootsInput) {
         ((ElisaAccessibilityElement *)root).accessibilityParent = view;

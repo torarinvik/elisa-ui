@@ -369,6 +369,76 @@ int main(void) {
                     @"increment action did not carry its window identity")) return 1;
         if (require(fabs(test_slider_value - 0.80f) < 0.001f, @"increment action did not reach the app")) return 1;
 
+        // Ordinary semantic groups use the same native graph transaction as
+        // virtual-list rows. The root array contains only the group; its
+        // children are attached by the hierarchy batch before the root is
+        // finally assigned to the view.
+        size_t groupHandle = elisa_appkit_canvas_accessibility_add(
+            opened, 0, 1, 0, (size_t)(__bridge void *)NSAccessibilityGroupRole, 0,
+            (size_t)(__bridge void *)@"Group", 0, 0, 0, 180, 80, 1, 0);
+        size_t groupChildHandles[2] = {
+            elisa_appkit_canvas_accessibility_add(
+                opened, 0, 1, 0, (size_t)(__bridge void *)NSAccessibilityButtonRole, 0,
+                (size_t)(__bridge void *)@"Nested button", 0, 4, 5, 80, 20, 1, 0),
+            elisa_appkit_canvas_accessibility_add(
+                opened, 0, 1, 0, (size_t)(__bridge void *)NSAccessibilityStaticTextRole, 0,
+                (size_t)(__bridge void *)@"Nested label", 0, 4, 30, 80, 20, 1, 0)
+        };
+        ElisaAccessibilityElement *groupElement =
+            (__bridge ElisaAccessibilityElement *)(void *)groupHandle;
+        ElisaAccessibilityElement *groupChildren[2] = {
+            (__bridge ElisaAccessibilityElement *)(void *)groupChildHandles[0],
+            (__bridge ElisaAccessibilityElement *)(void *)groupChildHandles[1]
+        };
+        NSArray *groupChildrenArray = @[ groupChildren[0], groupChildren[1] ];
+        NSArray *ordinaryRoots = @[ groupElement ];
+        size_t hierarchyParents[1] = { groupHandle };
+        size_t hierarchyChildren[1] = { (size_t)(__bridge void *)groupChildrenArray };
+        if (require(elisa_appkit_canvas_accessibility_commit_graph(
+                        opened, (size_t)(__bridge void *)ordinaryRoots,
+                        0, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL,
+                        1, hierarchyParents, hierarchyChildren),
+                    @"valid ordinary accessibility hierarchy was rejected")) return 1;
+        if (require([elisa_appkit_canvas_view(opened).accessibilityChildren isEqualToArray:ordinaryRoots] &&
+                        [groupElement.accessibilityChildren isEqualToArray:groupChildrenArray] &&
+                        groupChildren[0].accessibilityParent == groupElement &&
+                        groupChildren[1].accessibilityParent == groupElement,
+                    @"ordinary semantic parent/child relationships were not published")) return 1;
+
+        // A malformed native child must be rejected before the root or the
+        // already committed group is touched.
+        NSObject *invalidHierarchyChild = [NSObject new];
+        NSArray *invalidHierarchyChildren = @[ invalidHierarchyChild ];
+        size_t invalidHierarchyChildrenArray[1] = {
+            (size_t)(__bridge void *)invalidHierarchyChildren
+        };
+        if (require(!elisa_appkit_canvas_accessibility_commit_graph(
+                        opened, (size_t)(__bridge void *)ordinaryRoots,
+                        0, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL,
+                        1, hierarchyParents, invalidHierarchyChildrenArray),
+                    @"invalid ordinary accessibility hierarchy was accepted")) return 1;
+        if (require([[elisa_appkit_canvas_view(opened) accessibilityChildren]
+                        isEqualToArray:ordinaryRoots] &&
+                        [groupElement.accessibilityChildren isEqualToArray:groupChildrenArray] &&
+                        groupChildren[0].accessibilityParent == groupElement &&
+                        groupChildren[1].accessibilityParent == groupElement,
+                    @"rejected ordinary hierarchy partially mutated the committed tree")) return 1;
+
+        // Empty ordinary child arrays clear a retained group without relying
+        // on native-side graph discovery.
+        NSArray *emptyGroupChildren = @[];
+        size_t emptyGroupChildrenArray[1] = {
+            (size_t)(__bridge void *)emptyGroupChildren
+        };
+        if (require(elisa_appkit_canvas_accessibility_commit_graph(
+                        opened, (size_t)(__bridge void *)ordinaryRoots,
+                        0, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL,
+                        1, hierarchyParents, emptyGroupChildrenArray),
+                    @"empty ordinary accessibility hierarchy was rejected")) return 1;
+        if (require(groupElement.accessibilityChildren.count == 0 &&
+                        [groupElement.accessibilityChildrenInNavigationOrder count] == 0,
+                    @"empty ordinary hierarchy did not clear stale children")) return 1;
+
         size_t listHandle = elisa_appkit_canvas_accessibility_add(
             opened, 0, 1, 0, (size_t)(__bridge void *)NSAccessibilityListRole, 0,
             (size_t)(__bridge void *)@"Virtual results", 0, 0, 0, 160, 80, 1, 0);
@@ -416,7 +486,7 @@ int main(void) {
                         opened, (size_t)(__bridge void *)graphRoots,
                         1, listHandles, listRowsArrayHandles, listLogicalCounts,
                         2, rowHandles, rowListHandles, rowChildrenArrayHandles,
-                        rowIndices, rowFrames),
+                        rowIndices, rowFrames, 0, NULL, NULL),
                     @"valid virtual-list accessibility graph was rejected")) return 1;
         if (require([listElement.accessibilityRole isEqualToString:NSAccessibilityListRole] &&
                         listElement.accessibilityRowCount == 1000000 &&
@@ -451,7 +521,7 @@ int main(void) {
                         opened, (size_t)(__bridge void *)graphRoots,
                         1, listHandles, listRowsArrayHandles, listLogicalCounts,
                         2, rowHandles, rowListHandles, rowChildrenArrayHandles,
-                        invalidRowIndices, rowFrames),
+                        invalidRowIndices, rowFrames, 0, NULL, NULL),
                     @"out-of-range row index was accepted")) return 1;
         NSArray *committedRoots = [elisa_appkit_canvas_view(opened) accessibilityChildren];
         if (require(committedRoots.count == 1 && committedRoots[0] == listElement &&
@@ -468,6 +538,9 @@ int main(void) {
         elisa_appkit_canvas_accessibility_release(rowChildHandles[1]);
         elisa_appkit_canvas_accessibility_release(rowHandles[0]);
         elisa_appkit_canvas_accessibility_release(rowHandles[1]);
+        elisa_appkit_canvas_accessibility_release(groupHandle);
+        elisa_appkit_canvas_accessibility_release(groupChildHandles[0]);
+        elisa_appkit_canvas_accessibility_release(groupChildHandles[1]);
         for (ElisaAccessibilityElement *element in secondChildren) {
             elisa_appkit_canvas_accessibility_release((size_t)(__bridge void *)element);
         }
