@@ -5,16 +5,15 @@ Part of the [elisa-ui implementation baseline](../implementation-baseline.md).
 ## Latest compiler and renderer evidence (2026-09-15)
 
 The fetched upstream `main` is
-`45cb0ded70e7e8c8a41d21c63a09939706322ca4`. The shared compiler checkout is on
-`main` at `0d92a608c789a697b2321c985bd74483e03e196a` with uncommitted work; it
-was left untouched. Framework gates use a clean isolated compiler checkout
-instead.
+`45cb0ded70e7e8c8a41d21c63a09939706322ca4`. The shared compiler checkout is
+clean on `main` at
+`565ccb2fd585d03f94457185376f526e1930b1cb` (ahead=5, behind=0 versus the
+fetched `origin/main`). Framework gates use this latest local build.
 
-The latest clean stage1 used for the current gates is at
-`/private/tmp/elisa-compiler-ui-current`, revision
-`45cb0ded70e7e8c8a41d21c63a09939706322ca4`, exactly matching fetched upstream
-`main`. Its stage1 SHA-256 is
-`447c5c64ec9914e0ea99bc2a9f396e93fdf353cf1238cb647f472493e1c73548` and its
+The latest clean stage1 used for the current gates is
+`../Elisa-compiler/bin/elisac-stage1`, revision
+`565ccb2fd585d03f94457185376f526e1930b1cb`. Its stage1 SHA-256 is
+`2324bf11c796433ac2868b4dc5d4c8ab26f4e471e30dfafb3d3067a1f159dd17` and its
 runtime SHA-256 is
 `85f1107eef00a7dd903e511df366b8b6cade4d8573cf0478f1de91604ea5beb9`.
 The product and runtime were freshly self-hosted from the current stage0 and

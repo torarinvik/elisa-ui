@@ -11,13 +11,13 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui code revision | c86216b on main (committed task state; working tree clean) |
+| elisa-ui code revision | b61b97a on main (committed task state; working tree clean) |
 | Host and C compiler | macOS 26.6.2 (Darwin 25.6.0), arm64; Homebrew clang 23.1.1 |
-| Elisa stage1 | clean isolated latest build `/private/tmp/elisa-compiler-ui-current/bin/elisac-stage1`, revision 45cb0ded70e7e8c8a41d21c63a09939706322ca4 (exactly fetched upstream/main); SHA-256 447c5c64ec9914e0ea99bc2a9f396e93fdf353cf1238cb647f472493e1c73548 |
-| Elisa runtime | `/private/tmp/elisa-compiler-ui-current/build/runtime/elisacore_runtime.o`; SHA-256 85f1107eef00a7dd903e511df366b8b6cade4d8573cf0478f1de91604ea5beb9 |
-| Elisa stage1 driver | `scripts/elisac_stage1.sh` from the isolated compiler; SHA-256 9b23b66c0b8edbf292d14b444f506c2e30be237943126ffe455d1c8e2873756f |
-| Upstream-main compiler reference | same clean isolated `45cb0ded70e7e8c8a41d21c63a09939706322ca4` build above; stage1 SHA-256 447c5c64ec9914e0ea99bc2a9f396e93fdf353cf1238cb647f472493e1c73548 |
-| Shared compiler checkout | `../Elisa-compiler` is on branch `codex/shared-typed-edir-lowering` at 8d7db056 with uncommitted edits; it was left untouched. Current gates use the clean isolated 8d7db056 build. |
+| Elisa stage1 | latest local build `../Elisa-compiler/bin/elisac-stage1`, revision 565ccb2fd585d03f94457185376f526e1930b1cb (main, ahead of fetched origin/main); SHA-256 2324bf11c796433ac2868b4dc5d4c8ab26f4e471e30dfafb3d3067a1f159dd17 |
+| Elisa runtime | `../Elisa-compiler/build/runtime/elisacore_runtime.o`; SHA-256 85f1107eef00a7dd903e511df366b8b6cade4d8573cf0478f1de91604ea5beb9 |
+| Elisa stage1 driver | `scripts/elisac_stage1.sh` from the latest local compiler; SHA-256 9b23b66c0b8edbf292d14b444f506c2e30be237943126ffe455d1c8e2873756f |
+| Upstream-main compiler reference | fetched `origin/main` at 45cb0ded70e7e8c8a41d21c63a09939706322ca4; the local main build above is five commits ahead and zero behind |
+| Shared compiler checkout | `../Elisa-compiler` is on clean branch `main` at 565ccb2fd585d03f94457185376f526e1930b1cb (ahead=5, behind=0 versus fetched `origin/main`); current gates use this latest local build. |
 | Clang binary | `/opt/homebrew/opt/llvm/bin/clang++`, Homebrew clang 23.1.1; SHA-256 570c488e53383b198796e706e91b5ce5ec45bb730683a5af5e822d56a2eb1888 |
 | Skia source/archive | chrome/m150 at 9c7b2dffb2433f5a0cc2b77f06025a09126807ed; `out/elisa/libskia.a` SHA-256 39774ff993bd3b84943c27548738c8b8b8208396237d536c1a4ed1c6e147c775; optional `libpng.a` SHA-256 13fda447a526c821e1bff29f66b3a582857d702e9f8fd8e5f29b5628dfe2690f |
 | WasmBrowser | ../WasmBrowser at 3ac9b25b0ea74000846625f46c2115ac93d16cf1; checkout has pre-existing local changes; WIT SHA-256 unchanged at 9032a1c59a5495d4868bc7cdf494153096708ff6f2321b4ea2ffeff752c627d6 |
