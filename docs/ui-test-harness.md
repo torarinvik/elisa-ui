@@ -16,6 +16,10 @@ UiHarness::frame()
 ```
 
 The harness calls the normal `app_init`, `app_event`, and `app_frame` contract.
+Each `start()` begins a fresh retained-widget session: the prior `UiHandles`
+tree is retired before `app_init`, and `stop()` retires it immediately. Handles
+from a stopped or replaced session therefore fail the normal typed validity
+check instead of silently referring to a recycled slot.
 An application that uses `UiFlat` routes the injected event to
 `UiFlat::handle` in `app_event`, exactly as its production entrypoint does.
 `frame()` clears the command and semantic batches with `UiCore::begin_frame`

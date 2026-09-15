@@ -1,0 +1,82 @@
+# The deterministic harness must retire retained widgets between sessions.
+# This is a headless lifecycle fixture: no native surface is opened.
+
+include "../src/test/ui_harness.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable failures: i32 = 0
+global mutable root: UiHandles::Handle = UiHandles::invalid()
+global mutable button: UiHandles::Handle = UiHandles::invalid()
+
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size
+
+def ui_font_ascent(size: f32) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return 0
+
+def app_init() -> void:
+    root <- UiHandles::column(UiHandles::root_parent(), 8.0, 4.0, UiCore::rgb(10, 12, 16))
+    button <- UiHandles::button(root, 80.0, 24.0, UiCore::rgb(20, 30, 50), UiCore::rgb(30, 45, 70), UiCore::rgb(10, 20, 35))
+    UiHandles::set_text(button, "Fresh view", 14.0, UiCore::rgb(240, 240, 245))
+    UiHandles::layout(320.0, 200.0)
+
+def app_event(event: UiCore::Event) -> void:
+    pass
+
+def app_text_input(text: sview) -> void:
+    pass
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    pass
+
+def app_frame() -> void:
+    pass
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiHarness::start(320.0, 200.0)
+    first_root: UiHandles::Handle = root
+    first_button: UiHandles::Handle = button
+    check("harness app_init builds a retained tree", UiHandles::count() == 2 and UiHandles::is_valid(first_root) and UiHandles::is_valid(first_button))
+    check("harness builds the expected parent link", UiHandles::parent(first_button).widget_id == first_root.widget_id)
+
+    UiHarness::stop()
+    check("harness stop retires retained widgets", UiHandles::count() == 0 and not UiHandles::is_valid(first_root) and not UiHandles::is_valid(first_button))
+
+    UiHarness::start(320.0, 200.0)
+    second_root: UiHandles::Handle = root
+    second_button: UiHandles::Handle = button
+    check("harness restart creates a bounded fresh tree", UiHandles::count() == 2 and UiHandles::is_valid(second_root) and UiHandles::is_valid(second_button))
+    check("harness restart changes tree lifetime", second_root.tree_id != first_root.tree_id and not UiHandles::is_valid(first_root))
+    check("harness restart does not recycle stale child identity", second_button.tree_id != first_button.tree_id and not UiHandles::is_valid(first_button))
+
+    UiHarness::stop()
+    check("repeated harness disposal remains empty", UiHandles::count() == 0 and not UiHarness::is_running())
+    if failures == 0:
+        _ = puts("harness retained tree: all checks passed")
+        return 0
+    _ = puts("harness retained tree: FAILURES above")
+    return 1

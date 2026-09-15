@@ -10,6 +10,7 @@ include "../core/ui_core.elisa"
 include "../core/ui_capabilities.elisa"
 include "../core/ui_lifecycle.elisa"
 include "../core/ui_metrics.elisa"
+include "../widgets/ui_handles.elisa"
 include "../widgets/ui_resources.elisa"
 include "../widgets/ui_feature_view.elisa"
 include "../platform/remote/ui_remote.elisa"
@@ -27,6 +28,11 @@ module UiHarness:
             UiLifecycle::reset()
             UiCapabilities::use_harness()
             UiEvents::reset()
+            # A harness session owns a fresh retained view just like a native
+            # backend owns a fresh application instance. Retire the previous
+            # tree before app_init so repeated starts cannot append into an
+            # old arena or leave handles from the prior session looking live.
+            UiHandles::reset()
             # A reused harness session must not expose the previous owner's
             # command or semantic batch before the replacement app has built
             # its first frame. Keep durable resource/layout policy separate;
@@ -45,6 +51,11 @@ module UiHarness:
             _ = UiLifecycle::ready()
 
         def stop() -> void:
+            # Retained widgets belong to the session, not to the test driver.
+            # Clear them at the same disposal boundary as resources and
+            # features so callbacks and diagnostic handles fail closed as soon
+            # as a test stops its application.
+            UiHandles::reset()
             UiResources::reset()
             UiFeatureView::reset()
             UiRemote::disconnect()
