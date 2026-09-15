@@ -135,7 +135,9 @@ void elisa_gtk_set_label_text(size_t handle, const char *text) {
 void elisa_gtk_set_help(size_t handle, const char *placeholder, const char *help) {
     GtkWidget *widget = widget_of(handle);
     if (widget == NULL) return;
-    if (GTK_IS_ENTRY(widget) && placeholder != NULL) {
+    if (GTK_IS_ENTRY(widget)) {
+        // NULL is GTK's explicit "no placeholder" value. Always write it so
+        // a retained field cannot keep a hint from an earlier realization.
         gtk_entry_set_placeholder_text(GTK_ENTRY(widget), placeholder);
     }
     // GTK's accessibility is a property on the widget itself, which is the
@@ -143,6 +145,11 @@ void elisa_gtk_set_help(size_t handle, const char *placeholder, const char *help
     if (help != NULL && help[0] != '\0') {
         gtk_accessible_update_property(GTK_ACCESSIBLE(widget),
                                        GTK_ACCESSIBLE_PROPERTY_DESCRIPTION, help, -1);
+    } else {
+        // Updating with an empty string still leaves a description for assistive
+        // technology. Reset the property so clearing a retained hint is real.
+        gtk_accessible_reset_property(GTK_ACCESSIBLE(widget),
+                                      GTK_ACCESSIBLE_PROPERTY_DESCRIPTION);
     }
 }
 

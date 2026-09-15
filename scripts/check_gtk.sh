@@ -37,6 +37,17 @@ fi
 mkdir -p "$OUT"
 clang -c -Wall -Wextra -Werror $(pkg-config --cflags gtk4) \
   -o "$OUT/gtk_shim.o" "$ROOT/src/platform/gtk/gtk_shim.c"
+# Help and placeholder values are mutable retained state. Keep the clear path
+# visible in the source gate so a future refactor cannot leave stale assistive
+# text attached while still producing a linkable GTK backend.
+grep -Fq 'gtk_accessible_reset_property(GTK_ACCESSIBLE(widget)' "$ROOT/src/platform/gtk/gtk_shim.c" || {
+  echo "gtk: clearing help does not reset the accessibility property" >&2
+  exit 1
+}
+grep -Fq 'gtk_entry_set_placeholder_text(GTK_ENTRY(widget), placeholder)' "$ROOT/src/platform/gtk/gtk_shim.c" || {
+  echo "gtk: clearing a placeholder does not reach GtkEntry" >&2
+  exit 1
+}
 bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$OUT/gtk_check.o" \
   "$ROOT/src/platform/gtk/gtk_check.elisa"
 clang -Wl,-dead_strip -o "$OUT/gtk_check" \
