@@ -113,6 +113,15 @@ grep -Fq 'if (clip_class != nullptr && !failed(env))' "$CLIPBOARD" || {
   echo "android: clipboard clip class lookup is not guarded" >&2
   exit 1
 }
+IME="$ROOT/src/platform/android/android_ime_jni.c"
+grep -Fq 'if (elisa_ime_failed(env)) return;' "$IME" || {
+  echo "android: IME string conversion does not clear JNI failures" >&2
+  exit 1
+}
+grep -Fq 'value == NULL ? "" : value' "$IME" || {
+  echo "android: IME diagnostics do not guard a null framework string" >&2
+  exit 1
+}
 
 # --- 2. A device, if one is attached ------------------------------------
 ADB="${ADB:-$SDK/platform-tools/adb}"
