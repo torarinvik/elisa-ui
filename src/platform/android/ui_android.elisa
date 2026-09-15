@@ -162,7 +162,12 @@ def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
 def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
     return 0 if capacity > 0 and buffer == null
     return 0 if capacity == 0
-    written: i32 = elisa_android_clipboard_read(buffer, capacity.i32())
+    # The JNI bridge takes an i32 capacity. Keep the public usize boundary
+    # bounded by the same text budget as every other framework adapter before
+    # narrowing, so a hostile or accidental oversized request cannot wrap to a
+    # negative native capacity.
+    safe_capacity: usize = capacity if capacity < UiFlat::TEXT_CAPACITY else UiFlat::TEXT_CAPACITY
+    written: i32 = elisa_android_clipboard_read(buffer, safe_capacity.i32())
     return 0 if written <= 0
     return written.usize()
 
