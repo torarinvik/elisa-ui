@@ -6,7 +6,7 @@ extend UiFlat:
     private:
         def virtual_viewport_extent(index: usize) -> f32:
             return 0.0 if index >= widget_count
-            available: f32 = widgets[index].height - widgets[index].padding * 2.0
+            available: f32 = (widgets[index].width if widgets[index].axis == UiConst::Axis.Row else widgets[index].height) - widgets[index].padding * 2.0
             return UiCore::nonnegative_extent(available)
 
         def virtual_child_capacity(index: usize) -> i32:
@@ -45,7 +45,8 @@ extend UiFlat:
 
         def arrange_virtual_rows(index: usize, x: f32, y: f32, width: f32, height: f32, depth: usize) -> void:
             total: i32 = UiVirtualList::bounded_count(widgets[index].virtual_total)
-            viewport: f32 = UiCore::nonnegative_extent(height)
+            is_row: bool = widgets[index].axis == UiConst::Axis.Row
+            viewport: f32 = UiCore::nonnegative_extent(width if is_row else height)
             anchor: UiVirtualList::ScrollAnchor = UiVirtualList::scroll_by(
                 UiVirtualList::ScrollAnchor{index: widgets[index].virtual_anchor_index, offset: widgets[index].virtual_anchor_offset},
                 0.0, total, widgets[index].virtual_item_extent, widgets[index].virtual_spacing, viewport)
@@ -68,7 +69,12 @@ extend UiFlat:
                     logical: i32 = window.first + ordinal
                     set_virtual_row_identity(child, logical)
                     position: UiVirtualList::ItemPosition = UiVirtualList::item_position(logical, window, widgets[index].virtual_item_extent, widgets[index].virtual_spacing)
-                    arrange(child, x, UiCore::bounded_coordinate(y + position.top), width, widgets[index].virtual_item_extent, depth + 1) if position.valid
+                    if position.valid:
+                        child_x: f32 = UiCore::bounded_coordinate(x + position.top) if is_row else x
+                        child_y: f32 = y if is_row else UiCore::bounded_coordinate(y + position.top)
+                        child_width: f32 = widgets[index].virtual_item_extent if is_row else width
+                        child_height: f32 = height if is_row else widgets[index].virtual_item_extent
+                        arrange(child, child_x, child_y, child_width, child_height, depth + 1)
                     ordinal <- ordinal + 1
                 else:
                     set_virtual_row_identity(child, -1)
@@ -76,17 +82,25 @@ extend UiFlat:
                 child <- next_child
 
     public:
-        # Uniform vertical rows are the first supported virtualization profile.
-        # Row widgets are ordinary retained children and stay app-owned; only
-        # this viewport owns logical position and bounded realization.
+        # Uniform rows are the first supported virtualization profile. The
+        # logical axis follows the viewport axis: Column gives a vertical list
+        # and Row gives a horizontal strip. Row widgets are ordinary retained
+        # children and stay app-owned; only this viewport owns logical position
+        # and bounded realization.
         def virtual_list(parent: usize, label: sview, item_count: i32, item_extent: f32, spacing: f32, min_width: f32, min_height: f32, color: UiCore::Color) -> usize:
+            return virtual_list_with_axis(parent, label, item_count, item_extent, spacing, min_width, min_height, color, UiConst::Axis.Column)
+
+        def horizontal_virtual_list(parent: usize, label: sview, item_count: i32, item_extent: f32, spacing: f32, min_width: f32, min_height: f32, color: UiCore::Color) -> usize:
+            return virtual_list_with_axis(parent, label, item_count, item_extent, spacing, min_width, min_height, color, UiConst::Axis.Row)
+
+        def virtual_list_with_axis(parent: usize, label: sview, item_count: i32, item_extent: f32, spacing: f32, min_width: f32, min_height: f32, color: UiCore::Color, axis: UiConst::Axis) -> usize:
             index: usize = new_widget(parent, UiConst::WidgetKind.Scroll)
             return index if index == NONE
             layout: UiVirtualList::Metrics = UiVirtualList::metrics(item_extent, spacing)
             safe_width: f32 = UiConstraints::bounded(min_width)
             safe_height: f32 = UiConstraints::bounded(min_height)
             widgets[index] with {
-                axis <- UiConst::Axis.Column,
+                axis <- UiConst::normalize_axis(axis),
                 declared_min_width <- safe_width, declared_min_height <- safe_height,
                 min_width <- safe_width, min_height <- safe_height,
                 color, hover_color <- color, press_color <- color,

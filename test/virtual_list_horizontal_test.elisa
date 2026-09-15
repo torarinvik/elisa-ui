@@ -1,0 +1,121 @@
+# Headless retained horizontal virtualization workflow.
+#
+# The list keeps a fixed row pool while logical items advance along the x
+# axis. This exercises the same typed scrolling, recycling, hit testing, and
+# collection semantics used by the vertical million-row path.
+
+include "../src/widgets/ui_handles.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable failures: i32 = 0
+global mutable clicked_item: i32 = -2
+
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size
+
+def ui_font_ascent(size: f32) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return 0
+
+def app_init() -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    pass
+
+def app_text_input(text: sview) -> void:
+    pass
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    pass
+
+def app_frame() -> void:
+    pass
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    return if not UiHandles::event_is(event, UiConst::WidgetEvent.Click)
+    clicked_item <- UiHandles::virtual_item_index(UiHandles::from_index(widget))
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiHandles::reset()
+    UiCore::set_viewport(320.0, 120.0)
+    root: UiHandles::Handle = UiHandles::row(UiHandles::root_parent(), 0.0, 0.0, UiCore::rgb(12, 16, 24))
+    strip: UiHandles::Handle = UiHandles::horizontal_virtual_list(root, "Albums", 1000000, 72.0, 8.0, 160.0, 88.0, UiCore::rgb(26, 32, 44))
+    UiHandles::set_grow(strip, 1.0)
+    cards: UiHandles::Handle[5] = zeroed
+    for slot in 0..<5:
+        card: UiHandles::Handle = UiHandles::button(strip, 72.0, 56.0, UiCore::rgb(36, 48, 68), UiCore::rgb(48, 64, 88), UiCore::rgb(24, 36, 56))
+        cards[slot] <- card
+        UiHandles::set_text(card, "Album", 13.0, UiCore::rgb(235, 239, 246))
+    UiHandles::layout(320.0, 120.0)
+
+    strip_row: mutable UiFlat::Widget = UiFlat::widget(UiHandles::index(strip))
+    first_row: mutable UiFlat::Widget = UiFlat::widget(UiHandles::index(cards[0]))
+    second_row: UiFlat::Widget = UiFlat::widget(UiHandles::index(cards[1]))
+    check("horizontal constructor keeps the row axis", strip_row.axis == UiConst::Axis.Row)
+    check("horizontal list keeps a bounded retained pool", UiHandles::count() == 7 and UiHandles::virtual_item_index(cards[0]) == 0 and UiHandles::virtual_item_index(cards[4]) == 4)
+    check("horizontal rows advance along x", first_row.x == strip_row.x + strip_row.padding and second_row.x > first_row.x and second_row.y == first_row.y)
+    check("horizontal rows fill the cross axis", first_row.height == strip_row.height - strip_row.padding * 2.0)
+    check("horizontal viewport uses width for its anchor", UiHandles::virtual_scroll_anchor(strip).index == 0 and UiHandles::virtual_scroll_anchor(strip).offset == 0.0)
+    check("horizontal list exposes logical overflow", UiHandles::virtual_scroll_fraction(strip) == 0.0 and strip_row.scroll_content_width > strip_row.width)
+
+    UiCore::begin_frame()
+    UiHandles::paint()
+    list_semantic: mutable bool = false
+    for node_index in 0..<UiCore::accessibility_count():
+        node: UiCore::AccessibilityNode = UiCore::accessibility_at(node_index)
+        if node.role == UiCore::AccessibilityRole.List and node.label == "Albums":
+            list_semantic <- node.collection_count == 1000000 and node.first_child_id == UiHandles::index(cards[0])
+    check("horizontal list publishes full logical collection semantics", list_semantic)
+
+    clicked_item <- -2
+    click_at: mutable UiCore::Vec2 = UiCore::Vec2(first_row.x + first_row.width / 2.0, first_row.y + first_row.height / 2.0)
+    UiHandles::handle(UiCore::PointerEvent.Down(click_at, UiCore::PointerButton.Primary.i32()))
+    UiHandles::handle(UiCore::PointerEvent.Up(click_at, UiCore::PointerButton.Primary.i32()))
+    check("horizontal row hit testing resolves its logical item", clicked_item == 0)
+
+    _ = UiHandles::scroll_virtual_to(strip, 349526)
+    strip_row <- UiFlat::widget(UiHandles::index(strip))
+    first_row <- UiFlat::widget(UiHandles::index(cards[0]))
+    check("horizontal navigation reaches a deep logical item", UiHandles::virtual_scroll_anchor(strip).index == 349526)
+    check("horizontal recycling keeps the first slot bounded", UiHandles::virtual_item_index(cards[0]) == 349526 and UiHandles::virtual_item_index(cards[4]) == 349530)
+    check("horizontal recycled rows stay on the cross-axis band", first_row.x == strip_row.x + strip_row.padding and first_row.y == strip_row.y + strip_row.padding)
+    check("horizontal scrollbar progress stays normalized", UiHandles::virtual_scroll_fraction(strip) > 0.34 and UiHandles::virtual_scroll_fraction(strip) < 0.36)
+
+    UiHandles::layout(320.0, 120.0)
+    first_row <- UiFlat::widget(UiHandles::index(cards[0]))
+    click_at <- UiCore::Vec2(first_row.x + first_row.width / 2.0, first_row.y + first_row.height / 2.0)
+    clicked_item <- -2
+    UiHandles::handle(UiCore::PointerEvent.Down(click_at, UiCore::PointerButton.Primary.i32()))
+    _ = UiHandles::scroll_virtual_to(strip, 700000)
+    UiHandles::handle(UiCore::PointerEvent.Up(click_at, UiCore::PointerButton.Primary.i32()))
+    check("horizontal press cannot activate after row reuse", clicked_item == -2)
+
+    _ = UiHandles::scroll_virtual_to(strip, 999999)
+    check("horizontal tail remains addressable", UiHandles::virtual_item_index(cards[4]) == 999999 and UiHandles::virtual_scroll_fraction(strip) == 1.0)
+
+    if failures == 0:
+        _ = puts("horizontal virtual list: all checks passed")
+        return 0
+    _ = puts("horizontal virtual list: FAILURES above")
+    return 1
