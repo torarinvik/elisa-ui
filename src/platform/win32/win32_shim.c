@@ -250,7 +250,14 @@ void elisa_win32_set_colors(size_t handle, uint32_t ink, uint32_t fill) {
     if (control == NULL) return;
     const int has_ink = ((ink >> 24) & 0xFFu) != 0;
     const int has_fill = ((fill >> 24) & 0xFFu) != 0;
-    if (!has_ink && !has_fill) return;
+    if (!has_ink && !has_fill) {
+        // A transparent pair means "return to the system colours". Do not
+        // leave an old brush/record behind: reconciliation can reuse this
+        // HWND for another widget, and the GDI object would leak until then.
+        forget_color_slot(control);
+        InvalidateRect(control, NULL, TRUE);
+        return;
+    }
     int slot = color_slot_of(control);
     if (slot < 0) {
         if (colored_count == ELISA_WIN32_MAX_COLORED) return;
@@ -270,6 +277,12 @@ void elisa_win32_set_colors(size_t handle, uint32_t ink, uint32_t fill) {
             colored[slot].brush = CreateSolidBrush(wanted);
         }
         colored[slot].fill = wanted;
+    } else if (colored[slot].brush != NULL) {
+        // A later ink-only update must release the fill brush that is no
+        // longer reachable from color_reply.
+        DeleteObject(colored[slot].brush);
+        colored[slot].brush = NULL;
+        colored[slot].fill = 0;
     }
     // The colour is only read when Windows next asks for it, so the control
     // has to be told there is something to ask about.

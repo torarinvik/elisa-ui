@@ -99,6 +99,15 @@ for symbol in $(grep -o '^extern elisa_win32_[a-z_]*' "$ROOT/src/platform/win32/
     echo "win32: Elisa declares $symbol and the shim defines nothing" >&2; exit 1; }
 done
 
+# A transparent update clears the framework-owned colour record, and an
+# ink-only update releases any no-longer-reachable fill brush. Keep this guard
+# beside the cross-compiled seam so a future refactor cannot reintroduce a GDI
+# leak that only appears after reconciliation.
+grep -q 'forget_color_slot(control);' "$ROOT/src/platform/win32/win32_shim.c" || {
+  echo "win32: color clearing does not release stale records" >&2; exit 1; }
+grep -q 'colored\[slot\]\.brush = NULL;' "$ROOT/src/platform/win32/win32_shim.c" || {
+  echo "win32: ink-only color updates do not release stale brushes" >&2; exit 1; }
+
 # AND AN IMAGE. Objects that each resolve say nothing about whether the whole
 # thing links; this gate stopped at objects for months while the runtime's
 # Windows arena branch was declined by the backend and its thread entries had
