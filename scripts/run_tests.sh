@@ -108,6 +108,13 @@ if ! bash "$ROOT/scripts/check_rust.sh"; then
   status=1
 fi
 
+# The same C boundary has an optional Go/cgo face. It links a real Elisa
+# adapter and runs the tracked Go host example without opening a window.
+if ! bash "$ROOT/scripts/check_go.sh"; then
+  echo "FAIL go"
+  status=1
+fi
+
 # The AppKit backend builds REAL NSViews, so it needs Cocoa and its own link
 # line. Skips itself off macOS. It never shows a window.
 if ! bash "$ROOT/scripts/check_appkit.sh"; then

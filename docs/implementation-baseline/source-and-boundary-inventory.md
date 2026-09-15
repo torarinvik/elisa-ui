@@ -16,7 +16,9 @@ Externally imposed symbols are kept at the edges:
 
 - C ABI declarations and exports in `include/elisa_ui.h` and `src/capi/`. A
   safe Rust wrapper in `bindings/rust/elisa_ui.rs` and its example in
-  `examples/rust/rust_host.rs` consume the same ABI without widening it.
+  `examples/rust/rust_host.rs`, plus the optional cgo package in
+  `bindings/go/elisa_ui` and its example in `examples/go/main.go`, consume the
+  same ABI without widening it.
 - SDL3/SDL_ttf C functions in `src/platform/sdl3/ui_sdl3.elisa`; the
   `UiSdl3Draw` module in `src/platform/sdl3/ui_sdl3_draw.elisa` owns renderer,
   font, raster, and painter state behind that boundary.

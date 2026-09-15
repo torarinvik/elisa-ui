@@ -361,6 +361,15 @@ A third, optional consumer is a safe Rust wrapper
 ([bindings/rust/elisa_ui.rs](bindings/rust/elisa_ui.rs)) driven by
 [examples/rust/rust_host.rs](examples/rust/rust_host.rs); `scripts/check_rust.sh`
 links it against the same ABI and skips itself without `rustc`.
+The optional Go face ([bindings/go/elisa_ui](bindings/go/elisa_ui)) is a small
+cgo wrapper over the same header, with a tracked host example in
+[examples/go/main.go](examples/go/main.go). `scripts/check_go.sh` compiles the
+Elisa C adapter with the selected compiler, links the Go host, and runs it on
+one serialized UI-owner thread; it skips itself when Go is unavailable. The
+wrapper copies Go strings for the borrowed call boundary and treats callback
+widget tokens as opaque generation-scoped values.
+The boundary details and thread/lifetime rules are collected in
+[docs/ui-bindings.md](docs/ui-bindings.md).
 
 wxWidgets serves as an architectural reference (widget hierarchy, sizers, event
 routing) — studied, not ported.

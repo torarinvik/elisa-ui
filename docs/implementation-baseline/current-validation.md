@@ -43,6 +43,10 @@ bash scripts/check_capi.sh
   C header/Elisa symbol agreement and C example: PASS
 
 ELISA_UI_STAGE1=/private/tmp/elisa-compiler-ui-latest \
+bash scripts/check_go.sh
+  Go/cgo binding, real Elisa adapter, callback/text/viewport example: PASS
+
+ELISA_UI_STAGE1=/private/tmp/elisa-compiler-ui-latest \
 bash scripts/check_uikit.sh
   UIKit SDK syntax, ABI, off-screen frame and semantic boundary: PASS
 

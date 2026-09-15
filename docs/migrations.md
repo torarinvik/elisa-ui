@@ -38,8 +38,13 @@ constants instead.
 major difference is incompatible; minor and patch changes preserve the existing
 wire records. Hosts must call `elisa_ui_abi_version()` and compare before
 sending events. A safe Rust wrapper (`bindings/rust/elisa_ui.rs`) and a linked
-example (`examples/rust/rust_host.rs`) consume the same ABI; `check_capi.sh`
-also cross-checks that every function name agrees in both directions.
+example (`examples/rust/rust_host.rs`) consume the same ABI, as does the
+optional cgo package in `bindings/go/elisa_ui` and its linked example
+(`examples/go/main.go`). `check_capi.sh` and `check_go.sh` exercise the
+cross-language boundary against the same Elisa adapter. Go calls are
+synchronous and must stay on one UI-owner OS thread (lock the driving
+goroutine with `runtime.LockOSThread`); the package does not marshal callbacks
+or retain Go pointers.
 
 ## Layout semantics
 
