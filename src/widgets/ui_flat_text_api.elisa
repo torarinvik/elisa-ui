@@ -150,7 +150,7 @@ extend UiFlat:
             # translated child sits at an extreme edge. Native text protocol
             # callers receive this value directly, so bound the final result
             # after composing all three terms.
-            return UiCore::bounded_coordinate(widgets[index].x + inset + measure_text_range(index, visible_start, widgets[index].caret))
+            return UiCore::bounded_coordinate(field_run_x(index, inset, measure_text_range(index, visible_start, widgets[index].caret)))
 
         def text_character_x(index: usize, utf16_location: usize) -> f32:
             return 0.0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
@@ -162,18 +162,20 @@ extend UiFlat:
             position <- visible_start if position < visible_start else position
             width: mutable f32 = measure_text_range(index, visible_start, position)
             width <- available_width if width > available_width else width
-            return UiCore::bounded_coordinate(widgets[index].x + inset + width)
+            return UiCore::bounded_coordinate(field_run_x(index, inset, width))
 
         def text_caret_y(index: usize) -> f32:
             return 0.0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
-            inset: f32 = clamped_inset(current_theme.text_vertical_padding, widgets[index].height)
-            return UiCore::bounded_coordinate(widgets[index].y + inset)
+            line_height: mutable f32 = measure_text_line_height(index)
+            line_height <- widgets[index].height if line_height > widgets[index].height
+            line_height <- 0.0 if line_height < 0.0
+            return UiCore::bounded_coordinate(widgets[index].y + (widgets[index].height - line_height) / 2.0)
 
         def text_caret_height(index: usize) -> f32:
             return 0.0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
-            inset: f32 = clamped_inset(current_theme.text_vertical_padding, widgets[index].height)
-            inner: f32 = widgets[index].height - inset * 2.0
-            return UiCore::bounded_extent(inner) if inner > 0.0 else 0.0
+            line_height: mutable f32 = measure_text_line_height(index)
+            line_height <- widgets[index].height if line_height > widgets[index].height
+            return UiCore::bounded_extent(line_height) if line_height > 0.0 else 0.0
 
         def text_position_at(index: usize, x: f32) -> usize:
             return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField

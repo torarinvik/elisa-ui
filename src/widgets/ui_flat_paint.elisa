@@ -177,7 +177,7 @@ extend UiFlat:
                     field_ink <- muted_ink(index, field_ink) if not enabled
                     if field_value.len == 0:
                         field_ink <- UiCore::Color{r: field_ink.r / 2, g: field_ink.g / 2, b: field_ink.b / 2, a: field_ink.a}
-                    field_y: f32 = widgets[index].y + (widgets[index].height - measure_text_line_height(index)) / 2.0
+                    field_y: f32 = UiFlat::text_caret_y(index)
                     selected_start: mutable usize = selection_start(index)
                     selected_stop: mutable usize = selection_end(index)
                     selected_start <- visible_start if selected_start < visible_start else selected_start
@@ -187,8 +187,9 @@ extend UiFlat:
                         selection_x: f32 = field_span_origin(index, text_inset, measure_text_range(index, visible_start, selected_start), selection_width)
                         selection_inset: f32 = clamped_inset(current_theme.selection_vertical_inset, widgets[index].height)
                         UiCore::fill(UiCore::Rect(selection_x, widgets[index].y + selection_inset, selection_width, widgets[index].height - selection_inset * 2.0), current_theme.selection)
-                    run_origin: f32 = field_span_origin(index, text_inset, 0.0, UiTextMetrics::width(display_text, widgets[index].text_size, widgets[index].text_weighted))
-                    UiCore::draw(UiCore::TextRun(UiCore::Vec2(run_origin, field_y), widgets[index].text_size, display_text), field_ink)
+                    display_width: f32 = UiTextMetrics::width(display_text, widgets[index].text_size, widgets[index].text_weighted) + UiCore::tracking_width(display_text, widgets[index].text_tracking)
+                    run_origin: f32 = field_span_origin(index, text_inset, 0.0, display_width)
+                    UiCore::draw(UiCore::TextRun(UiCore::Vec2(run_origin, field_y), widgets[index].text_size, display_text, widgets[index].text_weighted, widgets[index].text_halo, widgets[index].text_tracking), field_ink)
                     marked_start: mutable usize = widgets[index].marked_start
                     marked_stop: mutable usize = widgets[index].marked_end
                     marked_start <- visible_start if marked_start < visible_start else marked_start
@@ -204,12 +205,13 @@ extend UiFlat:
                         UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(marked_x, marked_y), to_point: UiCore::Vec2(marked_x + marked_width, marked_y)}, widgets[index].text_color)
                     if widgets[index].focused and selection_start(index) == selection_end(index) and caret_is_visible():
                         caret_x: f32 = field_run_x(index, text_inset, measure_text_range(index, visible_start, widgets[index].caret))
-                        caret_inset: f32 = clamped_inset(current_theme.text_vertical_padding, widgets[index].height)
+                        caret_y: f32 = UiFlat::text_caret_y(index)
+                        caret_height: f32 = UiFlat::text_caret_height(index)
                         # A caret is one of the few things that is still a
                         # hairline on purpose: it marks a position BETWEEN two
                         # characters, and a wide one starts to look like a
                         # selection of the character beside it.
-                        UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(caret_x, widgets[index].y + caret_inset), to_point: UiCore::Vec2(caret_x, widgets[index].y + widgets[index].height - caret_inset)}, widgets[index].text_color)
+                        UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(caret_x, caret_y), to_point: UiCore::Vec2(caret_x, caret_y + caret_height)}, widgets[index].text_color)
                     continue
                 continue if widgets[index].text_size <= 0.0 or widgets[index].text.len == 0
                 # Button captions are centered in their hit target. Ordinary labels
