@@ -67,7 +67,7 @@ reports the device half separately when no device is attached: PASS (package
 half; device half skipped because no Android device was attached).
 
 ELISA_UI_STAGE1=/private/tmp/elisa-compiler-ui-latest \
-SKIA_ROOT=/tmp/elisa-skia-check-20260914 \
+SKIA_ROOT=/private/tmp/elisa-skia-check-20260914 \
 bash scripts/check_skia.sh
   CPU-raster painter, off-screen pixels, fresh-process replay, Showcase pages,
   deferred resource replacement and state variants: PASS
@@ -79,8 +79,8 @@ executes the pinned UAX #29 15.1.0 corpus (1,187 rows).
 
 The full real-Skia Showcase path reached its required exact-tuple benchmark
 with the clean latest 0f08a3ca product. Three fresh processes produced 21 tail
-pixel-stable samples, with a median of 29.330 ms and a maximum of 39.061 ms,
-inside the recorded 40/55 ms policy limits. The tuple is recorded in
+pixel-stable samples, with a recorded median of 32.053 ms and a maximum of
+43.254 ms, inside the recorded 40/55 ms policy limits. The tuple is recorded in
 `test/showcase_skia_performance_budgets.json`; a different compiler or host
 must add its own measured reference instead of inheriting this result.
 

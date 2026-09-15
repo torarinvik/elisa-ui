@@ -14,15 +14,14 @@ export SKIA_OUT="$SKIA_ROOT/out/elisa"
 bash scripts/build_skia.sh
 ```
 
-The required CPU-raster gate was run against both the latest fetched upstream
-`main` (`fd2cb3cff470319500db362e5fce2833cbe300de`) and the latest committed
-shared compiler branch (`c605b3faa516de7b2f4945a9ac4ccb21d78ae2e0`), with Skia
-revision `9c7b2dffb2433f5a0cc2b77f06025a09126807ed`. The archive SHA-256 is
+The required CPU-raster gate was run against the clean isolated latest compiler
+`0f08a3ca78986fae9297fa412809c1aea3adc80f` (13 commits ahead of fetched
+upstream `main` `fd2cb3cff470319500db362e5fce2833cbe300de`), with Skia revision
+`9c7b2dffb2433f5a0cc2b77f06025a09126807ed`. The archive SHA-256 is
 `39774ff993bd3b84943c27548738c8b8b8208396237d536c1a4ed1c6e147c775`.
-Each compiler revision was built from a clean isolated source tree because the
-shared checkout has unfinished edits. Stage1 hashes are `6cdcdf45fb396d319ce1d0d4e0c5d35e9b3161bd3e81f8d2e594ee60ac76c2a8`
-for upstream `main` and `111753afaa2b7dd159fc926cffb4aef5fc3caf51ce5ba21ca935a06c8091861f`
-for `c605b3fa`; both used runtime SHA-256
+The stage1 product SHA-256 is
+`478a3e45ee0c5d7ac066e883990514c16c034f2fb33383bf29be8ab7ca8b2029`; it uses
+runtime SHA-256
 `a58618f5358e30e8c19cf1344d47bddd3a7520ee61f83a471222bb0660e48a8f`.
 
 ```sh
@@ -52,8 +51,8 @@ dimensions, and source-bundle provenance are required to select its budget.
 
 Observed on the current host:
 
-- Off-screen Skia (`c605b3fa`): 16 iterations, average `580013 ns`, pixel digest
-  `26b1baa0682e064d`; a fresh process reproduced the digest.
+- Off-screen Skia (`0f08a3ca`): 16 iterations, average `1011208 ns`, pixel
+  digest `26b1baa0682e064d`; a fresh process reproduced the digest.
 - Public hello showcase workflow: 70 commands, 25 semantic nodes, 19 custom
   art commands, deferred commands on both sides of retained drawing, two
   generation-bound deferred images (`2 -> 3`), 16 render iterations averaging
@@ -64,23 +63,19 @@ Observed on the current host:
   are 1180x800; the retina frame is 2360x1600.
 - The AppKit/Skia compositor passed its off-screen CoreGraphics presentation
   check (`render_ns=13470291`, pixel digest `96591d2368f57d1a`).
-- Million-item Showcase workflow plus Skia tail frame: separate baselines cover
-  both compiler products. The newest (`c605b3fa`) baseline median is `11.288 ms`,
-  maximum `11.839 ms`; its latest required run passed at `25.582 ms` median /
-  `27.790 ms` maximum while a compiler build shared the host. Both use `30 ms`
-  median / `40 ms` maximum thresholds. The upstream-main latest verified run
-  passed at `10.942 / 11.575 ms`.
-  Both use thresholds `30 ms` median / `40 ms` maximum. Pixel digest
+- Million-item Showcase workflow plus Skia tail frame: the latest `0f08a3ca`
+  tuple has a recorded median of `32.053 ms` and maximum `43.254 ms`, within
+  its `40 ms` median / `55 ms` maximum limits. Pixel digest
   `1ac21e37972207bb` was stable across the benchmark and fresh processes. Raw
-  samples and exact reference tuples are in
+  samples and the exact reference tuple are in
   `test/showcase_skia_performance_budgets.json`.
 
 The strict Skia gate, semantic-enabled UI suite fixtures, Unicode corpus, and
-standalone exact M5 performance-budget gate all passed on both compiler
-products. The newest `c605b3fa` retained-tree run had three-process aggregate
-medians of 8.338 ms first-frame batches, 3.608 ms layout, 16.027 ms paint,
-43.033 ms text, 0.370 ms text-input, and 0.123 ms for 128 anchored
-virtual-list windows; maximum RSS was 3,620,864 bytes. A
+standalone exact M5 performance-budget gate passed with the clean latest
+`0f08a3ca` product. Its retained-tree run had three-process aggregate medians
+of 13.545 ms first-frame batches, 6.316 ms layout, 27.552 ms paint, 79.225 ms
+text, 0.726 ms text-input, and 0.301 ms for 128 anchored virtual-list windows;
+maximum RSS was 3,653,632 bytes. A
 separate full matrix attempt remains incomplete: its cross-target legs reported
 Win32 `kill`/`sigaction` link failures, Linux cross-target failures, and a
 WasmBrowser build missing `wasm-component-ld`. The SDL/Android checks skipped
