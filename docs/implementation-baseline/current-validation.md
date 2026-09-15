@@ -4,19 +4,41 @@ _Part of the [elisa-ui implementation baseline](../implementation-baseline.md)._
 
 ## Latest compiler and renderer evidence (2026-09-15)
 
-The latest fetched upstream `main` is
-`fd2cb3cff470319500db362e5fce2833cbe300de`. The shared compiler checkout is on
-`codex/shared-typed-edir-lowering`, whose latest committed revision is
-`c605b3faa516de7b2f4945a9ac4ccb21d78ae2e0` (two commits ahead of upstream,
-including narrow typed-scalar lowering); it also contains uncommitted compiler
-work. I left that checkout untouched and built the committed revision in a clean
-isolated clone at `/tmp/elisa-ui-compiler-c605-20260915`. Its stage1 SHA-256 is
-`111753afaa2b7dd159fc926cffb4aef5fc3caf51ce5ba21ca935a06c8091861f`; runtime
-SHA-256 is `a58618f5358e30e8c19cf1344d47bddd3a7520ee61f83a471222bb0660e48a8f`.
-The clean upstream-main build was also separately checked (stage1 SHA-256
-`6cdcdf45fb396d319ce1d0d4e0c5d35e9b3161bd3e81f8d2e594ee60ac76c2a8`). Both
-Elisa benchmark and Showcase fixtures compile with `-O2`. Exact toolchain and
+The fetched upstream `main` used for the pinned Skia and performance baselines is
+`fd2cb3cff470319500db362e5fce2833cbe300de`. Those runs used a clean isolated
+`c605b3faa516de7b2f4945a9ac4ccb21d78ae2e0` build (two commits ahead of
+upstream, including narrow typed-scalar lowering) and a separate clean
+upstream-main build. The c605 stage1 SHA-256 was
+`111753afaa2b7dd159fc926cffb4aef5fc3caf51ce5ba21ca935a06c8091861f`; upstream
+main was `6cdcdf45fb396d319ce1d0d4e0c5d35e9b3161bd3e81f8d2e594ee60ac76c2a8`.
+Both Elisa benchmark and Showcase fixtures compile with `-O2`. Exact historical
 Skia provenance is recorded in [`implementation-baseline.md`](../implementation-baseline.md).
+
+For the latest AppKit verification, I used the clean isolated stage1 at
+`/tmp/elisa-ui-compiler-c605-20260915`: revision
+`ce9e0292f40a6618b7803a4b9b07961d08033a5e`, three commits ahead of the fetched
+upstream `main`, with stage1 SHA-256
+`9c8e31c9902ba6d0106c9e2eb2cbcdb68992efd3faa264ed8c220e2ab5387682` and runtime
+SHA-256 `a58618f5358e30e8c19cf1344d47bddd3a7520ee61f83a471222bb0660e48a8f`.
+The strict `check_toolchain.sh` freshness check passed without dirty/stale
+warnings. The headless gate command was:
+
+```sh
+ELISA_UI_STAGE1=/tmp/elisa-ui-compiler-c605-20260915 \
+bash scripts/check_appkit_canvas.sh
+```
+
+It passed at `-O2`, including fresh-process PNG digest
+`07f328d5e73e0f2863b08135085ff85046d6b5ffb451622d965d914b4c9011d1` and the
+native accessibility bridge.
+
+One renderer limitation remains visible in the more detailed standalone
+`test/appkit_canvas_surface_test.elisa`: it passes with this compiler at `-O0`
+and `-O1`, but fails five lighting/ramp pixel assertions at `-O2` (raised-light
+contrast, inset-light direction, flat-vs-raised contrast, and ramp endpoints).
+That fixture is not yet part of the required AppKit gate; the stable product PNG
+alone is not evidence that those pixel properties pass. The optimized failure
+is under investigation.
 
 `scripts/check_skia.sh` passed with semantic checks enabled and no diagnostic
 bypass against both isolated compiler products. Each run verified the pinned

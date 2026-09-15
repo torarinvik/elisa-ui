@@ -44,9 +44,10 @@ row slot therefore changes semantic collection metadata even when its stable
 widget identity and label stay the same.
 
 This portable metadata is not yet full native screen-reader virtualization.
-AppKit needs list/row accessibility objects to publish row indexes and total
-row count; UIKit needs a custom list container that lazily vends logical rows.
-The current adapters use collection changes to invalidate the semantic layout,
-but do not yet expose off-screen virtual rows or implement focus-and-scroll
-navigation. Physical VoiceOver/Accessibility Inspector verification remains
-required before claiming native collection conformance.
+The AppKit canvas now publishes a list object with the full logical row count
+and accessibility proxies only for currently realized rows; those proxies carry
+one-based positions and stable `(list_id, position)` identities. It does not
+materialize off-screen rows or yet implement focus-and-scroll traversal. UIKit
+still needs a lazy list container that vends logical rows. Physical VoiceOver /
+Accessibility Inspector verification remains required before claiming native
+collection conformance.
