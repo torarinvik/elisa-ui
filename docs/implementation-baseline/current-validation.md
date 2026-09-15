@@ -4,10 +4,11 @@ Part of the [elisa-ui implementation baseline](../implementation-baseline.md).
 
 ## Latest compiler and renderer evidence (2026-09-15)
 
-The current framework revision is `aaf7e29`. Its variable-height list cache
+The current framework revision is `0882574`. Its variable-height list cache
 uses deterministic least-recently-updated eviction at the fixed 256-entry
-limit; `test/virtual_list_variable_test.elisa` covers hot-entry retention and
-bounded replacement.
+limit, and typed handles expose a versioned snapshot/restore path;
+`test/virtual_list_variable_test.elisa` and `test/widget_handles_test.elisa`
+cover hot-entry retention, bounded replacement, and persistence.
 
 The fetched upstream `main` is
 `45cb0ded70e7e8c8a41d21c63a09939706322ca4`. The shared compiler checkout is
