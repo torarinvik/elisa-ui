@@ -86,6 +86,14 @@ fixture therefore remains diagnostic and is intentionally not claimed as a
 green required `-O2` gate. Do not mask this by lowering production optimization
 to `-O1`; fix or validate the compiler/code-shape issue first.
 
+The compiler-side differential is reproducible from the same stage-emitted IR:
+re-emitting it with LLVM 23.1 `llc -O0` reproduces the five failures, while
+`llc -O1` and `llc -O2` pass. The current compiler source hard-codes target
+machine code generation at level `0` in `src/backend/codegen_target_machine.elisa`
+(the `LLVMCreateTargetMachine` call), even when the stage driver has already
+run an optimized IR pipeline. Propagating the requested level to that target
+machine, or using a stable indirect aggregate ABI, is the narrow external fix.
+
 ## Historical evidence
 
 Earlier compiler, Skia, mobile, Linux, Windows, hosted, and performance runs
