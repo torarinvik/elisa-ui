@@ -13,6 +13,13 @@ set -euo pipefail
 REPORT=0
 [[ "${1:-}" == "--report" ]] && REPORT=1
 
+# A test run must not silently use a compiler branch that has fallen behind
+# the fetched upstream baseline. Feature branches that are ahead are valid;
+# stale branches are not, because optimizer and lowering fixes may be absent.
+# Developers doing compiler archaeology can opt out explicitly while keeping
+# the ordinary strict gate honest.
+REQUIRE_CURRENT="${ELISA_UI_REQUIRE_CURRENT_STAGE1:-0}"
+
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 STAGE1_INPUT="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
 STAGE1="$(cd -- "$STAGE1_INPUT" && pwd)"
@@ -38,6 +45,11 @@ if git -C "$STAGE1" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     if git -C "$STAGE1" rev-parse --verify origin/main >/dev/null 2>&1; then
         read -r ahead behind <<<"$(git -C "$STAGE1" rev-list --left-right --count HEAD...origin/main)"
         echo "toolchain: stage1 branch=$branch revision=$revision (ahead=$ahead behind=$behind vs origin/main)"
+        if [[ "$REQUIRE_CURRENT" == 1 && "$behind" != 0 ]]; then
+            echo "toolchain: selected compiler is behind origin/main ($behind commit(s))" >&2
+            echo "set ELISA_UI_REQUIRE_CURRENT_STAGE1=0 only for intentional compiler archaeology" >&2
+            exit 2
+        fi
     else
         echo "toolchain: stage1 branch=$branch revision=$revision"
     fi

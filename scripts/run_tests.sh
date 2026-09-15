@@ -7,6 +7,10 @@ set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
 export ELISA_UI_STAGE1="$STAGE1"
+# Keep the required suite on a compiler that contains at least the fetched
+# upstream baseline. An ahead feature branch is accepted; a stale branch must
+# be selected deliberately for archaeology instead of by accident.
+export ELISA_UI_REQUIRE_CURRENT_STAGE1="${ELISA_UI_REQUIRE_CURRENT_STAGE1:-1}"
 RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
 SDL_LIB="${ELISA_UI_SDL_LIB:-/opt/homebrew/lib}"
 require_real_skia="${ELISA_UI_REQUIRE_REAL_SKIA:-1}"

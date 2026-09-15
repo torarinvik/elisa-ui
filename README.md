@@ -372,6 +372,10 @@ The scripts use the current `../Elisa-compiler` checkout by default
 compiler branch/revision and product/runtime SHA-256 it used, and warns without
 failing on a dirty or stale compiler checkout (`scripts/check_toolchain.sh
 --report`); the test suite runs the same check in strict mode.
+The required test suite also rejects a compiler branch behind its fetched
+`origin/main`; an ahead feature branch is accepted so optimizer fixes can be
+validated before upstream integration. Set `ELISA_UI_REQUIRE_CURRENT_STAGE1=0`
+only for deliberate compiler archaeology.
 
 ```sh
 scripts/build_native.sh   # -> build/hello_native (needs brew's sdl3 and sdl3_ttf)
