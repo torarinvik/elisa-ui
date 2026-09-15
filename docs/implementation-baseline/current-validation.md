@@ -10,8 +10,9 @@ limit, typed handles expose a versioned snapshot/restore path, and the direct
 Skia text ABI rejects malformed or oversized UTF-8 before measurement or draw;
 the retained text-field caret keeps its public rectangle-origin contract while
 painting a centered hairline; `test/virtual_list_variable_test.elisa`,
-`test/widget_handles_test.elisa`, `test/widget_layout_text_test.elisa`, and the
-real Skia off-screen host cover these boundaries.
+`test/widget_handles_test.elisa`, `test/widget_layout_text_test.elisa`,
+`test/widget_caret_alignment_test.elisa`, and the real Skia off-screen host
+cover these boundaries.
 
 The fetched upstream `main` is
 `45cb0ded70e7e8c8a41d21c63a09939706322ca4`. The shared compiler checkout is
