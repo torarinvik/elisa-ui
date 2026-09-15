@@ -22,6 +22,11 @@ extend UiVirtualList:
             valid: bool
             top: f32
 
+        # Optional application-owned intrinsic measurement. The callback is
+        # synchronous and read-only: it returns a logical row extent or a
+        # non-positive value to let the retained row's measured extent win.
+        type MeasureProvider = fn(usize, i32) -> f32
+
         # Register one logical list. `owner` is an application-owned opaque
         # identity; the bounded table makes disposal explicit and prevents a
         # dead list from retaining measured heights forever.
@@ -91,6 +96,24 @@ extend UiVirtualList:
             slot: i32 = variable_slot(owner)
             return 0 if slot == NONE_INDEX
             return variable_measurement_counts[slot.usize()]
+
+        # Enumerate the bounded sparse cache so an application can persist
+        # measurements by logical identity without exposing the backing table.
+        def variable_measurement_index(owner: u32, ordinal: usize) -> i32:
+            slot: i32 = variable_slot(owner)
+            return NONE_INDEX if slot == NONE_INDEX
+            count: usize = variable_measurement_counts[slot.usize()]
+            return NONE_INDEX if ordinal >= count
+            base: usize = slot.usize() * MAX_VARIABLE_MEASUREMENTS
+            return variable_measurement_indexes[base + ordinal]
+
+        def variable_measurement_height(owner: u32, ordinal: usize) -> f32:
+            slot: i32 = variable_slot(owner)
+            return 0.0 if slot == NONE_INDEX
+            count: usize = variable_measurement_counts[slot.usize()]
+            return 0.0 if ordinal >= count
+            base: usize = slot.usize() * MAX_VARIABLE_MEASUREMENTS
+            return variable_measurement_heights[base + ordinal]
 
         def variable_measurement_known(owner: u32, index: i32) -> bool:
             slot: i32 = variable_slot(owner)

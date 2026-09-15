@@ -87,6 +87,13 @@ tuple is recorded in
 bundle, or host must add its own measured reference instead of inheriting this
 result.
 
+Variable-height retained lists also accept a synchronous application
+measurement provider. The provider can supply logical row extents before
+intrinsic fallback, while the typed handle surface exposes bounded measured
+identities and heights so applications can persist and restore their own cache
+without reaching into `UiFlat` storage. `test/widget_handles_test.elisa` covers
+provider replacement, cache invalidation, intrinsic fallback, and enumeration.
+
 The hosted open-vertical-slice gate reaches component-runtime compilation but
 still fails on compiler-generated invalid LLVM IR:
 

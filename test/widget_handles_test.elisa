@@ -47,6 +47,10 @@ def app_frame() -> void:
 def app_widget_event(widget: usize, event: i32) -> void:
     pass
 
+def variable_measure_provider(list_index: usize, item_index: i32) -> f32:
+    return 96.0 if item_index == 2
+    return 0.0
+
 def check(name: cstr, ok: bool) -> void:
     return if ok
     failures <- failures + 1
@@ -289,6 +293,16 @@ def main() -> i64:
     UiHandles::set_min_size(variable_row_c, 120.0, 80.0)
     UiHandles::layout(420.0, 260.0)
     check("cleared variable row is measured again", UiHandles::virtual_item_height(variable, 2) == 80.0 and UiFlat::widget(UiHandles::index(variable_row_c)).height == 80.0)
+    check("variable measurements expose sparse logical identity", UiHandles::virtual_item_height_measurement_count(variable) == 3 and UiHandles::virtual_item_height_measurement_index(variable, 2) == 2 and UiHandles::virtual_item_height_measurement(variable, 2) == 80.0)
+    check("variable measurement provider attaches to the typed list", UiHandles::set_variable_virtual_measure_provider(variable, variable_measure_provider) and UiHandles::variable_virtual_measure_provider_is_set(variable))
+    check("variable measurement provider overrides intrinsic extent", UiHandles::clear_virtual_item_height(variable, 2))
+    UiHandles::layout(420.0, 260.0)
+    check("variable measurement provider supplies logical extent", UiHandles::virtual_item_height(variable, 2) == 96.0 and UiFlat::widget(UiHandles::index(variable_row_c)).height == 96.0)
+    check("variable measurement provider can be removed", UiHandles::set_variable_virtual_measure_provider(variable, null) and not UiHandles::variable_virtual_measure_provider_is_set(variable))
+    check("variable measurement cache can be invalidated after provider removal", UiHandles::clear_virtual_item_height(variable, 2))
+    UiHandles::set_min_size(variable_row_c, 120.0, 84.0)
+    UiHandles::layout(420.0, 260.0)
+    check("intrinsic extent resumes after provider removal", UiHandles::virtual_item_height(variable, 2) == 84.0 and UiFlat::widget(UiHandles::index(variable_row_c)).height == 84.0)
     check("variable scroll reaches logical tail", UiHandles::scroll_virtual_to(variable, 999999) and UiHandles::virtual_scroll_fraction(variable) > 0.99)
 
     horizontal_variable: UiHandles::Handle = UiHandles::horizontal_variable_virtual_list(fresh, "Horizontal variable", 1000000, 28.0, 5.0, 180.0, 120.0, UiCore::rgb(24, 28, 36))

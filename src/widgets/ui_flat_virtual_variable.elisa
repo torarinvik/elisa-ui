@@ -9,6 +9,7 @@ extend UiFlat:
     private:
         global mutable variable_virtual_enabled: bool[MAX_WIDGETS] = zeroed
         global mutable variable_virtual_owner: u32[MAX_WIDGETS] = zeroed
+        global mutable variable_virtual_measure_providers: UiVirtualList::MeasureProvider?[MAX_WIDGETS] = zeroed
 
         def variable_virtual_owner_for(index: usize) -> u32:
             return 0 if index >= MAX_WIDGETS
@@ -93,6 +94,7 @@ extend UiFlat:
                     _ = UiVirtualList::variable_release(variable_virtual_owner[index])
                 variable_virtual_enabled[index] <- false
                 variable_virtual_owner[index] <- 0
+                variable_virtual_measure_providers[index] <- null
 
     public:
         def variable_virtual_capacity_available() -> bool:
@@ -133,6 +135,18 @@ extend UiFlat:
         def variable_virtual_list_is_enabled(index: usize) -> bool:
             return variable_virtual_is_enabled(index)
 
+        # Install an application-owned intrinsic extent provider. Returning a
+        # non-positive or non-finite value falls back to the realized row's
+        # measured minimum. The callback must not mutate or rebuild the tree.
+        def set_variable_virtual_measure_provider(index: usize, provider: UiVirtualList::MeasureProvider?) -> bool:
+            return false if not variable_virtual_is_enabled(index)
+            variable_virtual_measure_providers[index] <- provider
+            mark_layout_dirty()
+            return true
+
+        def variable_virtual_measure_provider_is_set(index: usize) -> bool:
+            return variable_virtual_is_enabled(index) and variable_virtual_measure_providers[index] != null
+
         def set_virtual_item_height(index: usize, item_index: i32, height: f32) -> bool:
             owner: u32 = variable_virtual_owner_at(index)
             return false if owner == 0
@@ -157,11 +171,27 @@ extend UiFlat:
             return 0 if owner == 0
             return UiVirtualList::variable_measurement_count(owner)
 
+        def virtual_item_height_measurement_index(index: usize, ordinal: usize) -> i32:
+            owner: u32 = variable_virtual_owner_at(index)
+            return UiVirtualList::variable_measurement_index(owner, ordinal) if owner != 0 else -1
+
+        def virtual_item_height_measurement(index: usize, ordinal: usize) -> f32:
+            owner: u32 = variable_virtual_owner_at(index)
+            return UiVirtualList::variable_measurement_height(owner, ordinal) if owner != 0 else 0.0
+
         def measure_variable_virtual_row(index: usize, child: usize) -> void:
             owner: u32 = variable_virtual_owner_at(index)
             return if owner == 0 or child >= widget_count
             logical: i32 = widgets[child].virtual_row_index
             return if logical < 0 or UiVirtualList::variable_measurement_known(owner, logical)
+            provider: UiVirtualList::MeasureProvider? = variable_virtual_measure_providers[index]
+            if provider != null:
+                callback_epoch: usize = widget_epoch
+                provided: f32 = provider(index, logical)
+                return if widget_epoch != callback_epoch
+                if UiCore::is_finite(provided) and provided > 0.0:
+                    _ = UiVirtualList::variable_set_height(owner, logical, provided)
+                    return
             measured: f32 = widgets[child].min_width if widgets[index].axis == UiConst::Axis.Row else widgets[child].min_height
             return if not UiCore::is_finite(measured) or measured <= 0.0
             _ = UiVirtualList::variable_set_height(owner, logical, measured)
