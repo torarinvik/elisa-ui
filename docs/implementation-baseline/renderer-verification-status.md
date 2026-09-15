@@ -78,10 +78,10 @@ paint, 44.392 ms text, 0.437 ms text-input, and 0.135 ms for 128 anchored
 virtual-list windows; maximum RSS was 3,653,632 bytes. The exact tuple keeps
 source/compiler hashes strict and adds only a bounded scheduling-variance
 margin around timings. The full matrix now links the Win32 image through the
-Elisa debug-referee adapter; Linux and Android device/Skia legs remain
-environment-dependent, and the hosted leg is blocked by the compiler intrinsic
-issue described in current validation. The exact current outcomes are
-summarized in [`current-validation.md`](current-validation.md).
+Elisa debug-referee adapter, and the Linux cross-target plus GTK legs pass.
+Android Skia/device legs remain environment-dependent, while the hosted leg is
+blocked by the compiler intrinsic issue described in current validation. The
+exact current outcomes are summarized in [`current-validation.md`](current-validation.md).
 
 The complete strict command remains `bash scripts/run_tests.sh` with the
 pinned `SKIA_ROOT`; do not set `ELISA_UI_REQUIRE_REAL_SKIA=0` for an acceptance
