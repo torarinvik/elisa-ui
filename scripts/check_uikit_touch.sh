@@ -40,7 +40,15 @@ if [[ -z "$UDID" ]]; then
   UDID="$(xcrun simctl create "$DEVICE_NAME" "$DEVICE_TYPE" "$RUNTIME_ID")"
 fi
 xcrun simctl boot "$UDID" >/dev/null 2>&1 || true
-until xcrun simctl list devices 2>/dev/null | grep "$UDID" | grep -q Booted; do sleep 1; done
+booted=0
+for _ in $(seq 60); do
+  if xcrun simctl list devices 2>/dev/null | grep "$UDID" | grep -q Booted; then
+    booted=1
+    break
+  fi
+  sleep 1
+done
+[[ "$booted" == 1 ]] || { echo "uikit touch: simulator did not boot within 60s" >&2; exit 1; }
 
 SDK="$(xcrun --sdk iphonesimulator --show-sdk-path)"
 OUT="$ROOT/build/ios/uitest"
