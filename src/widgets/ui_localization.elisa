@@ -117,15 +117,20 @@ module UiLocalization:
         def text_direction(text: sview, fallback: Direction) -> Direction:
             safe_text: sview = UiCore::bounded_text(text)
             limit: usize = safe_text.len.usize() if safe_text.len > 0 else 0
-            cursor: mutable usize = 0
-            while cursor < limit:
-                width: mutable usize = UiText::utf8_scalar_bytes(safe_text, cursor)
-                width <- 1 if width == 0 or width > limit - cursor
-                scalar: u32 = decode_scalar(safe_text, cursor, width)
-                return Direction.RightToLeft if strong_rtl(scalar)
-                return Direction.LeftToRight if strong_ltr(scalar)
-                cursor <- cursor + width
-            return fallback
+            resolved: Direction =
+                for _ in 0..<limit |cursor: usize = 0, resolved: Direction = fallback| -> resolved:
+                    break if cursor >= limit
+                    width: mutable usize = UiText::utf8_scalar_bytes(safe_text, cursor)
+                    width <- 1 if width == 0 or width > limit - cursor
+                    scalar: u32 = decode_scalar(safe_text, cursor, width)
+                    if strong_rtl(scalar):
+                        resolved <- Direction.RightToLeft
+                        break
+                    if strong_ltr(scalar):
+                        resolved <- Direction.LeftToRight
+                        break
+                    cursor <- cursor + width
+            return resolved
 
         # Logical start/end map to the existing cross-axis alignment enum. A
         # caller can therefore keep one layout tree and switch only this fact
