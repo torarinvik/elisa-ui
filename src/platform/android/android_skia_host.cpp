@@ -390,6 +390,10 @@ void on_command(android_app* app, std::int32_t command) {
         case APP_CMD_DESTROY:
             elisa_android_stop();
             host.started = false;
+            // Clipboard calls can arrive after the final lifecycle callback
+            // while Java tears the activity down. Clear the borrowed native
+            // pointer before returning control to the looper.
+            elisa_android_clipboard_attach(nullptr);
             break;
         default:
             break;
@@ -486,4 +490,9 @@ void android_main(android_app* app) {
         if (app->destroyRequested != 0) break;
         if (host.needs_frame || elisa_android_frame_delay() > 0.0f) draw(host);
     }
+    // A destroy command normally clears the attachment above, but the looper
+    // can also exit on an error or an already-set destroyRequested flag. Keep
+    // the lifetime boundary unconditional so no late JNI clipboard call can
+    // dereference the dead activity.
+    elisa_android_clipboard_attach(nullptr);
 }

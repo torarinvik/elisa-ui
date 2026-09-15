@@ -90,6 +90,14 @@ BUILD_TOOLS="$(ls -d "$SDK"/build-tools/* 2>/dev/null | sort -V | tail -1)"
   echo "android: the APK is not 16 KB page aligned" >&2; exit 1; }
 echo "android: $(basename "$APK") is stored and 16 KB aligned"
 
+# The clipboard bridge borrows the NativeActivity only while its lifecycle is
+# alive. Keep the detach at both native exit paths: a raw activity pointer that
+# survives teardown turns a late paste into a use-after-free.
+grep -Fq 'elisa_android_clipboard_attach(nullptr)' "$ROOT/src/platform/android/android_skia_host.cpp" || {
+  echo "android: clipboard activity is not detached during host teardown" >&2
+  exit 1
+}
+
 # --- 2. A device, if one is attached ------------------------------------
 ADB="${ADB:-$SDK/platform-tools/adb}"
 if [[ ! -x "$ADB" ]] || ! "$ADB" devices | grep -q "	device$"; then
@@ -127,7 +135,7 @@ launch_and_watch() {
     grep -q "colors=" <<<"$log" && break
   done
   "$ADB" shell am force-stop "$PACKAGE" || true
-  grep -q "start .* -> 1\$" <<<"$log"
+grep -q "start .* -> 1\$" <<<"$log"
 }
 
 if ! launch_and_watch; then
