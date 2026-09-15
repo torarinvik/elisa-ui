@@ -15,12 +15,12 @@ bash scripts/build_skia.sh
 ```
 
 The required CPU-raster gate was run against the clean isolated latest compiler
-`0f08a3ca78986fae9297fa412809c1aea3adc80f` (13 commits ahead of fetched
+`8d7db0561d0f72c1f548fa6a73d071c86b2fe57f` (14 commits ahead of fetched
 upstream `main` `fd2cb3cff470319500db362e5fce2833cbe300de`), with Skia revision
 `9c7b2dffb2433f5a0cc2b77f06025a09126807ed`. The archive SHA-256 is
 `39774ff993bd3b84943c27548738c8b8b8208396237d536c1a4ed1c6e147c775`.
 The stage1 product SHA-256 is
-`478a3e45ee0c5d7ac066e883990514c16c034f2fb33383bf29be8ab7ca8b2029`; it uses
+`ee985c68ab22bc9bb59787bace15708f8946db7e47c2f53240a93831c89a8e2a`; it uses
 runtime SHA-256
 `a58618f5358e30e8c19cf1344d47bddd3a7520ee61f83a471222bb0660e48a8f`.
 
@@ -51,7 +51,7 @@ dimensions, and source-bundle provenance are required to select its budget.
 
 Observed on the current host:
 
-- Off-screen Skia (`0f08a3ca`): 16 iterations, average `386539 ns`, pixel
+- Off-screen Skia (`8d7db056`): 16 iterations, average `820242 ns`, pixel
   digest `26b1baa0682e064d`; a fresh process reproduced the digest.
 - Public hello showcase workflow: 70 commands, 25 semantic nodes, 19 custom
   art commands, deferred commands on both sides of retained drawing, two
@@ -62,9 +62,9 @@ Observed on the current host:
   pressed. The 1x pages
   are 1180x800; the retina frame is 2360x1600.
 - The AppKit/Skia compositor passed its off-screen CoreGraphics presentation
-  check (`render_ns=13470291`, pixel digest `96591d2368f57d1a`).
-- Million-item Showcase workflow plus Skia tail frame: the latest `0f08a3ca`
-  tuple has a recorded median of `34.737 ms` and maximum `45.643 ms`, within
+  check (`render_ns=11272500`, pixel digest `96591d2368f57d1a`).
+- Million-item Showcase workflow plus Skia tail frame: the latest `8d7db056`
+  tuple has a recorded median of `31.211 ms` and maximum `37.325 ms`, within
   its `40 ms` median / `55 ms` maximum limits. Pixel digest
   `1ac21e37972207bb` was stable across the benchmark and fresh processes. Raw
   samples and the exact reference tuple are in
@@ -72,7 +72,7 @@ Observed on the current host:
 
 The strict Skia gate, semantic-enabled UI suite fixtures, Unicode corpus, and
 standalone exact M5 performance-budget gate passed with the clean latest
-`0f08a3ca` product. Its retained-tree run had three-process aggregate medians
+`8d7db056` product. Its retained-tree run had three-process aggregate medians
 of 13.545 ms first-frame batches, 6.316 ms layout, 27.552 ms paint, 79.225 ms
 text, 0.726 ms text-input, and 0.301 ms for 128 anchored virtual-list windows;
 maximum RSS was 3,653,632 bytes. A
