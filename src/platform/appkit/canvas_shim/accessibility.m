@@ -8,6 +8,7 @@
 // of those objects is the behaviour under test. Build scripts compile the umbrella only.
 
 #import <Cocoa/Cocoa.h>
+#include <math.h>
 
 // Elisa owns semantic identity and stages typed metadata around the child-list
 // commit. Return a retained native object for a new element so the
@@ -19,6 +20,20 @@ static ElisaAccessibilityElement *elisa_appkit_canvas_element(size_t handle) {
     id object = (__bridge id)(void *)handle;
     return [object isKindOfClass:[ElisaAccessibilityElement class]] ? object : nil;
 }
+
+static ElisaAccessibilityRowElement *elisa_appkit_canvas_row(size_t handle) {
+    if (handle == 0) return nil;
+    id object = (__bridge id)(void *)handle;
+    return [object isKindOfClass:[ElisaAccessibilityRowElement class]] ? object : nil;
+}
+
+static NSArray *elisa_appkit_canvas_array(size_t handle) {
+    if (handle == 0) return nil;
+    id object = (__bridge id)(void *)handle;
+    return [object isKindOfClass:[NSArray class]] ? object : nil;
+}
+
+static const size_t ELISA_APPKIT_CANVAS_ACCESSIBILITY_GRAPH_CAPACITY = 256;
 
 static NSNumber *elisa_appkit_canvas_number(size_t handle) {
     if (handle == 0) return nil;
@@ -118,6 +133,25 @@ size_t elisa_appkit_canvas_accessibility_add(size_t windowHandle, size_t previou
     return isNew != 0 ? (size_t)(__bridge_retained void *)element : (size_t)(__bridge void *)element;
 }
 
+// Rows use the same retained-handle lifecycle as semantic elements. Elisa
+// decides identity and whether a slot is new; a reused row is borrowed and
+// may only be retargeted within the native window that owns its parent chain.
+size_t elisa_appkit_canvas_accessibility_add_row(size_t windowHandle,
+                                                size_t previousHandle,
+                                                int isNew) {
+    ElisaCanvasView *view = elisa_appkit_canvas_view(windowHandle);
+    if (view == nil || elisa_appkit_canvas_window(windowHandle) == nil) return 0;
+    if (isNew != 0) {
+        ElisaAccessibilityRowElement *row = [ElisaAccessibilityRowElement new];
+        if (row == nil) return 0;
+        row.accessibilityParent = view;
+        return (size_t)(__bridge_retained void *)row;
+    }
+    ElisaAccessibilityRowElement *row = elisa_appkit_canvas_row(previousHandle);
+    if (row == nil || elisa_appkit_canvas_element_window_handle(row) != windowHandle) return 0;
+    return (size_t)(__bridge void *)row;
+}
+
 // Commit-time metadata update for an element that was already present in the
 // previous semantic tree. This is deliberately separate from `add`: the
 // replacement child list is installed first, so a validation failure here can
@@ -140,7 +174,8 @@ int elisa_appkit_canvas_accessibility_update(size_t windowHandle, size_t handle,
 void elisa_appkit_canvas_accessibility_release(size_t handle) {
     if (handle == 0) return;
     id object = (__bridge id)(void *)handle;
-    if (![object isKindOfClass:[ElisaAccessibilityElement class]]) return;
+    if (![object isKindOfClass:[ElisaAccessibilityElement class]] &&
+        ![object isKindOfClass:[ElisaAccessibilityRowElement class]]) return;
     (void)CFBridgingRelease((CFTypeRef)(void *)handle);
 }
 
@@ -211,6 +246,109 @@ int elisa_appkit_canvas_accessibility_commit(size_t windowHandle, size_t childre
     if (view == nil || !elisa_appkit_canvas_accessibility_children_valid(children, windowHandle)) return 0;
     [view setAccessibilityChildren:children];
     [view setAccessibilityChildrenInNavigationOrder:children];
+    return 1;
+}
+
+// Elisa owns the retained list/row hierarchy. This adapter checks only the
+// values it must safely pass to Cocoa, then applies the complete batch after
+// validation so an invalid handle, API value, index, or frame cannot partially
+// replace the currently exposed tree.
+int elisa_appkit_canvas_accessibility_commit_graph(
+    size_t windowHandle, size_t rootsArray,
+    size_t listCount, const size_t *listHandles,
+    const size_t *listRowsArrays, const size_t *listLogicalCounts,
+    size_t rowCount, const size_t *rowHandles,
+    const size_t *rowListHandles, const size_t *rowChildrenArrays,
+    const size_t *rowIndices, const float *rowFrames) {
+    if (listCount > ELISA_APPKIT_CANVAS_ACCESSIBILITY_GRAPH_CAPACITY ||
+        rowCount > ELISA_APPKIT_CANVAS_ACCESSIBILITY_GRAPH_CAPACITY) return 0;
+    if ((listCount != 0 && (listHandles == NULL || listRowsArrays == NULL ||
+                            listLogicalCounts == NULL)) ||
+        (rowCount != 0 && (rowHandles == NULL || rowListHandles == NULL ||
+                           rowChildrenArrays == NULL || rowIndices == NULL ||
+                           rowFrames == NULL))) return 0;
+
+    ElisaCanvasView *view = elisa_appkit_canvas_view(windowHandle);
+    NSWindow *window = elisa_appkit_canvas_window(windowHandle);
+    NSArray *rootsInput = elisa_appkit_canvas_array(rootsArray);
+    if (view == nil || window == nil || rootsInput == nil ||
+        rootsInput.count > ELISA_APPKIT_CANVAS_ACCESSIBILITY_GRAPH_CAPACITY) return 0;
+
+    for (id object in rootsInput) {
+        if (![object isKindOfClass:[ElisaAccessibilityElement class]] ||
+            elisa_appkit_canvas_element_window_handle(object) != windowHandle) return 0;
+    }
+
+    for (size_t index = 0; index < listCount; index += 1) {
+        ElisaAccessibilityElement *list = elisa_appkit_canvas_element(listHandles[index]);
+        NSArray *visibleRows = elisa_appkit_canvas_array(listRowsArrays[index]);
+        if (list == nil || visibleRows == nil ||
+            elisa_appkit_canvas_element_window_handle(list) != windowHandle ||
+            ![list.accessibilityRole isEqualToString:NSAccessibilityListRole] ||
+            listLogicalCounts[index] > (size_t)NSIntegerMax) return 0;
+        for (id rowObject in visibleRows) {
+            if (![rowObject isKindOfClass:[ElisaAccessibilityRowElement class]] ||
+                elisa_appkit_canvas_element_window_handle(rowObject) != windowHandle) return 0;
+        }
+    }
+
+    for (size_t index = 0; index < rowCount; index += 1) {
+        ElisaAccessibilityRowElement *row = elisa_appkit_canvas_row(rowHandles[index]);
+        NSArray *children = elisa_appkit_canvas_array(rowChildrenArrays[index]);
+        ElisaAccessibilityElement *list = elisa_appkit_canvas_element(rowListHandles[index]);
+        size_t listIndex = listCount;
+        for (size_t candidate = 0; candidate < listCount; candidate += 1) {
+            if (listHandles[candidate] == rowListHandles[index]) {
+                listIndex = candidate;
+                break;
+            }
+        }
+        if (row == nil || children == nil ||
+            elisa_appkit_canvas_element_window_handle(row) != windowHandle ||
+            list == nil || elisa_appkit_canvas_element_window_handle(list) != windowHandle ||
+            ![list.accessibilityRole isEqualToString:NSAccessibilityListRole] ||
+            listIndex == listCount || rowIndices[index] >= listLogicalCounts[listIndex] ||
+            rowIndices[index] > (size_t)NSIntegerMax) return 0;
+        for (size_t coordinate = 0; coordinate < 4; coordinate += 1) {
+            if (!isfinite((double)rowFrames[index * 4 + coordinate])) return 0;
+        }
+        if (rowFrames[index * 4 + 2] < 0.0f || rowFrames[index * 4 + 3] < 0.0f) return 0;
+        for (id child in children) {
+            if (![child isKindOfClass:[ElisaAccessibilityElement class]] ||
+                elisa_appkit_canvas_element_window_handle(child) != windowHandle) return 0;
+        }
+    }
+
+    // All bridge safety checks have passed. Apply Elisa's prepared ordering and
+    // parent relationships without reconstructing or second-guessing them.
+    for (size_t index = 0; index < rowCount; index += 1) {
+        ElisaAccessibilityRowElement *row = elisa_appkit_canvas_row(rowHandles[index]);
+        NSArray *children = elisa_appkit_canvas_array(rowChildrenArrays[index]);
+        ElisaAccessibilityElement *list = elisa_appkit_canvas_element(rowListHandles[index]);
+        NSRect local = NSMakeRect(rowFrames[index * 4], rowFrames[index * 4 + 1],
+                                  rowFrames[index * 4 + 2], rowFrames[index * 4 + 3]);
+        NSRect inWindow = [view convertRect:local toView:nil];
+        row.accessibilityRole = NSAccessibilityRowRole;
+        row.accessibilityIndex = (NSInteger)rowIndices[index];
+        row.accessibilityFrame = [window convertRectToScreen:inWindow];
+        row.accessibilityParent = list;
+        row.accessibilityChildren = children;
+        row.accessibilityChildrenInNavigationOrder = children;
+        for (id child in children) {
+            ((ElisaAccessibilityElement *)child).accessibilityParent = row;
+        }
+    }
+    for (size_t index = 0; index < listCount; index += 1) {
+        ElisaAccessibilityElement *list = elisa_appkit_canvas_element(listHandles[index]);
+        NSArray *visibleRows = elisa_appkit_canvas_array(listRowsArrays[index]);
+        [list elisaSetAccessibilityRows:visibleRows
+                               rowCount:(NSInteger)listLogicalCounts[index]];
+    }
+    for (id root in rootsInput) {
+        ((ElisaAccessibilityElement *)root).accessibilityParent = view;
+    }
+    [view setAccessibilityChildren:rootsInput];
+    [view setAccessibilityChildrenInNavigationOrder:rootsInput];
     return 1;
 }
 

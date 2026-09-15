@@ -11,13 +11,44 @@
 #import <Cocoa/Cocoa.h>
 
 @interface ElisaAccessibilityElement : NSAccessibilityElement
+{
+    NSArray *_elisaAccessibilityRows;
+    NSInteger _elisaAccessibilityRowCount;
+}
+- (NSArray *)accessibilityRows;
+- (NSArray *)accessibilityVisibleRows;
+- (NSInteger)accessibilityRowCount;
 - (void)elisaSetAccessibilityValue:(id)value;
 - (void)elisaSetAccessibilitySelectedTextRange:(NSRange)value;
+- (void)elisaSetAccessibilityRows:(NSArray *)rows rowCount:(NSInteger)rowCount;
 @end
 
-static size_t elisa_appkit_canvas_element_window_handle(ElisaAccessibilityElement *element);
+@interface ElisaAccessibilityRowElement : NSAccessibilityElement
+{
+    NSInteger elisaAccessibilityIndex;
+}
+- (NSInteger)accessibilityIndex;
+- (void)setAccessibilityIndex:(NSInteger)value;
+@end
+
+static size_t elisa_appkit_canvas_element_window_handle(id element);
 
 @implementation ElisaAccessibilityElement
+- (NSArray *)accessibilityRows {
+    return _elisaAccessibilityRows;
+}
+- (NSArray *)accessibilityVisibleRows {
+    return _elisaAccessibilityRows;
+}
+- (NSInteger)accessibilityRowCount {
+    return _elisaAccessibilityRowCount;
+}
+- (void)elisaSetAccessibilityRows:(NSArray *)rows rowCount:(NSInteger)rowCount {
+    _elisaAccessibilityRows = [rows copy];
+    _elisaAccessibilityRowCount = rowCount;
+    self.accessibilityChildren = _elisaAccessibilityRows;
+    self.accessibilityChildrenInNavigationOrder = _elisaAccessibilityRows;
+}
 // Accessibility callbacks pass the opaque element handle directly to Elisa;
 // semantic-slot lookup and widget authorization stay outside the Cocoa shim.
 - (BOOL)accessibilityPerformPress {
@@ -97,5 +128,14 @@ static size_t elisa_appkit_canvas_element_window_handle(ElisaAccessibilityElemen
         return @"";
     }
     return CFBridgingRelease((CFTypeRef)(void *)native);
+}
+@end
+
+@implementation ElisaAccessibilityRowElement
+- (NSInteger)accessibilityIndex {
+    return elisaAccessibilityIndex;
+}
+- (void)setAccessibilityIndex:(NSInteger)value {
+    elisaAccessibilityIndex = value;
 }
 @end

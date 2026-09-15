@@ -62,6 +62,7 @@ extend UiAppKitCanvas:
 
         def reset_accessibility_history() -> void:
             release_accessibility_handles()
+            release_accessibility_rows()
             # This storage spans every semantic slot, so keep the clear
             # iterative rather than lowering a 256*text-capacity closure
             # reduction on every window start.
@@ -85,36 +86,6 @@ extend UiAppKitCanvas:
             for byte_index in 0..<take:
                 storage[offset + byte_index] <- safe.data[byte_index]
             return sview(&storage[offset], 0, take.i64())
-
-        # Compact the valid retained element handles and construct the ordered
-        # Cocoa child collection through CoreFoundation. The native bridge only
-        # validates and assigns this immutable array; it owns no semantic-list
-        # filtering or mutable collection state.
-        def commit_accessibility_children(requested_count: usize) -> bool can Unsafe.PointerCast:
-            return false if requested_count > UiCore::MAX_ACCESSIBILITY_NODES
-            count: mutable usize = 0
-            for index in 0..<requested_count:
-                handle: usize = accessibility_next_handles[index]
-                # A semantic frame is all-or-nothing. Silently compacting a
-                # missing native handle would let Cocoa accept a shorter child
-                # list while Elisa published the full semantic table, leaving
-                # assistive clients with nodes that can never be queried or
-                # activated. Treat any allocation/validation failure as a
-                # failed transaction and preserve the previous committed list.
-                return false if handle == 0
-                accessibility_commit_handles[count] <- handle
-                count <- count + 1
-            # The semantic arena is bounded, but keep the boundary invariant
-            # explicit at the construction site too. Objective-C receives only
-            # an already-bounded immutable child list and therefore does not
-            # need to know the framework's capacity policy.
-            return false if count > UiCore::MAX_ACCESSIBILITY_NODES
-            values_pointer: usize& = (&accessibility_commit_handles[0]).cast[usize&] can Unsafe.PointerCast
-            children: usize = CFArrayCreate(0, values_pointer, count.i64(), 0)
-            return false if children == 0
-            committed: bool = elisa_appkit_canvas_accessibility_commit(canvas_window, children) != 0
-            CFRelease(children)
-            return committed
 
         def color_component(value: u8) -> f32:
             return value.f32() / 255.0

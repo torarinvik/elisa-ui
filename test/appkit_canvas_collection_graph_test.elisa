@@ -1,0 +1,60 @@
+# The AppKit list graph must be a rooted forest before any Cocoa objects are
+# changed. Exercise the bounded Elisa-side validator without opening a window.
+
+include "../src/platform/appkit/ui_appkit_canvas.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def app_init() -> void:
+    pass
+
+def app_frame() -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    pass
+
+extend UiAppKitCanvas:
+    public:
+        def check_accessibility_list_graphs() -> void:
+            appkit_next_accessibility_list_count <- 2
+            appkit_next_accessibility_list_ids[0] <- 11
+            appkit_next_accessibility_list_ids[1] <- 22
+            accessibility_next_ids[0] <- 11
+            accessibility_next_ids[1] <- 22
+            appkit_next_accessibility_slot_by_id[11] <- 0
+            appkit_next_accessibility_slot_by_id[22] <- 1
+            accessibility_next[0].role <- UiCore::AccessibilityRole.List.i32()
+            accessibility_next[1].role <- UiCore::AccessibilityRole.List.i32()
+
+            # A nested list reached through a realized row is valid.
+            appkit_next_accessibility_node_rows[0] <- UiCore::MAX_ACCESSIBILITY_NODES
+            appkit_next_accessibility_node_rows[1] <- 0
+            appkit_next_accessibility_rows[0].list_id <- 11
+            check("rooted nested lists are accepted",
+                  appkit_accessibility_lists_reach_roots(2))
+
+            # Every list points to another list, so the cycle has no root.
+            appkit_next_accessibility_node_rows[0] <- 0
+            appkit_next_accessibility_node_rows[1] <- 1
+            appkit_next_accessibility_rows[0].list_id <- 22
+            appkit_next_accessibility_rows[1].list_id <- 11
+            check("disconnected list cycles are rejected",
+                  not appkit_accessibility_lists_reach_roots(2))
+
+            # A list can be malformed even when it is the only list.
+            appkit_next_accessibility_list_count <- 1
+            appkit_next_accessibility_node_rows[0] <- 0
+            appkit_next_accessibility_rows[0].list_id <- 11
+            check("self-parented lists are rejected",
+                  not appkit_accessibility_lists_reach_roots(1))
+
+def main() -> i64:
+    UiAppKitCanvas::check_accessibility_list_graphs()
+    return failures.i64()

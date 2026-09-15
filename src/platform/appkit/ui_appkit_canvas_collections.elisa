@@ -1,0 +1,311 @@
+# Elisa's visible-row accessibility projection for AppKit lists.
+#
+# Only realized rows receive native row proxies. Logical counts and stable
+# `(list ID, one-based position)` identities remain in the retained semantic
+# state; Cocoa receives bounded arrays that describe the current visible tree.
+
+extend UiAppKitCanvas:
+    private:
+        struct AccessibilityRowState:
+            list_id: mutable usize
+            position: mutable usize
+            handle: mutable usize
+            frame: mutable UiCore::Rect
+
+        global mutable appkit_previous_accessibility_rows: AccessibilityRowState[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable appkit_previous_accessibility_row_retained: bool[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable appkit_previous_accessibility_row_count: usize = 0
+        global mutable appkit_next_accessibility_rows: AccessibilityRowState[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable appkit_next_accessibility_row_count: usize = 0
+        global mutable appkit_next_accessibility_node_rows: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable appkit_next_accessibility_slot_by_id: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable appkit_next_accessibility_list_ids: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable appkit_next_accessibility_list_handles: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable appkit_next_accessibility_list_counts: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable appkit_next_accessibility_list_count: usize = 0
+        global mutable appkit_accessibility_row_children: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable appkit_accessibility_list_rows_arrays: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable appkit_accessibility_root_handles: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable appkit_accessibility_row_order: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable appkit_accessibility_row_handles: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable appkit_accessibility_row_parent_handles: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable appkit_accessibility_row_indices: usize[UiCore::MAX_ACCESSIBILITY_NODES] = zeroed
+        global mutable appkit_accessibility_row_frames: f32[UiCore::MAX_ACCESSIBILITY_NODES * 4] = zeroed
+        global mutable appkit_accessibility_graph_root: usize = 0
+
+        def appkit_accessibility_next_slot(id: usize, count: usize) -> usize:
+            return UiCore::MAX_ACCESSIBILITY_NODES if id >= UiCore::MAX_ACCESSIBILITY_NODES
+            slot: usize = appkit_next_accessibility_slot_by_id[id]
+            return slot if slot < count and accessibility_next_ids[slot] == id
+            return UiCore::MAX_ACCESSIBILITY_NODES
+
+        def appkit_accessibility_collection_list_id(index: usize, count: usize) -> usize:
+            return UiCore::MAX_ACCESSIBILITY_NODES if index >= count
+            member: AccessibilityState = accessibility_next[index]
+            return UiCore::MAX_ACCESSIBILITY_NODES if not member.has_collection_position
+            return UiCore::MAX_ACCESSIBILITY_NODES if member.collection_position == 0 or member.collection_position > member.collection_size
+            list_id: usize =
+                for _ in 0..<UiCore::MAX_ACCESSIBILITY_NODES |list_id: usize = UiCore::MAX_ACCESSIBILITY_NODES, parent_id: usize = member.parent_id| -> list_id:
+                    break if parent_id >= UiCore::MAX_ACCESSIBILITY_NODES
+                    parent_index: usize = appkit_accessibility_next_slot(parent_id, count)
+                    break if parent_index >= count
+                    parent: AccessibilityState = accessibility_next[parent_index]
+                    if parent.role == UiCore::AccessibilityRole.List.i32():
+                        list_id <- parent_id
+                        break
+                    parent_id <- parent.parent_id
+            return list_id
+
+        def appkit_accessibility_row_slot(list_id: usize, position: usize) -> usize:
+            slot: usize =
+                for index in 0..<appkit_next_accessibility_row_count |slot: usize = UiCore::MAX_ACCESSIBILITY_NODES| -> slot:
+                    state: AccessibilityRowState = appkit_next_accessibility_rows[index]
+                    break index if state.list_id == list_id and state.position == position
+            return slot
+
+        def appkit_accessibility_previous_row_slot(list_id: usize, position: usize) -> usize:
+            slot: usize =
+                for index in 0..<appkit_previous_accessibility_row_count |slot: usize = UiCore::MAX_ACCESSIBILITY_NODES| -> slot:
+                    state: AccessibilityRowState = appkit_previous_accessibility_rows[index]
+                    break index if state.list_id == list_id and state.position == position
+            return slot
+
+        def appkit_accessibility_union_row_frame(before: UiCore::Rect, next: UiCore::Rect) -> UiCore::Rect:
+            left: f32 = before.origin.x if before.origin.x < next.origin.x else next.origin.x
+            top: f32 = before.origin.y if before.origin.y < next.origin.y else next.origin.y
+            before_right: f32 = before.origin.x + before.size.width
+            next_right: f32 = next.origin.x + next.size.width
+            before_bottom: f32 = before.origin.y + before.size.height
+            next_bottom: f32 = next.origin.y + next.size.height
+            right: f32 = before_right if before_right > next_right else next_right
+            bottom: f32 = before_bottom if before_bottom > next_bottom else next_bottom
+            return UiCore::Rect(left, top, right - left, bottom - top)
+
+        def appkit_accessibility_prepare_rows(requested_count: usize) -> bool can Unsafe.PointerCast:
+            appkit_next_accessibility_row_count <- 0
+            appkit_next_accessibility_list_count <- 0
+            return false if requested_count > UiCore::MAX_ACCESSIBILITY_NODES
+            for id in 0..<UiCore::MAX_ACCESSIBILITY_NODES:
+                appkit_next_accessibility_slot_by_id[id] <- UiCore::MAX_ACCESSIBILITY_NODES
+            for index in 0..<requested_count:
+                appkit_next_accessibility_node_rows[index] <- UiCore::MAX_ACCESSIBILITY_NODES
+                id: usize = accessibility_next_ids[index]
+                return false if id >= UiCore::MAX_ACCESSIBILITY_NODES or appkit_next_accessibility_slot_by_id[id] < UiCore::MAX_ACCESSIBILITY_NODES
+                appkit_next_accessibility_slot_by_id[id] <- index
+            for index in 0..<appkit_previous_accessibility_row_count:
+                appkit_previous_accessibility_row_retained[index] <- false
+            for index in 0..<requested_count:
+                node: AccessibilityState = accessibility_next[index]
+                if node.role == UiCore::AccessibilityRole.List.i32():
+                    return false if appkit_next_accessibility_list_count >= UiCore::MAX_ACCESSIBILITY_NODES
+                    appkit_next_accessibility_list_ids[appkit_next_accessibility_list_count] <- accessibility_next_ids[index]
+                    appkit_next_accessibility_list_handles[appkit_next_accessibility_list_count] <- accessibility_next_handles[index]
+                    appkit_next_accessibility_list_counts[appkit_next_accessibility_list_count] <- node.collection_count
+                    appkit_next_accessibility_list_count <- appkit_next_accessibility_list_count + 1
+                list_id: usize = appkit_accessibility_collection_list_id(index, requested_count)
+                if node.has_collection_position:
+                    return false if list_id >= UiCore::MAX_ACCESSIBILITY_NODES
+                    list_slot: usize = appkit_accessibility_next_slot(list_id, requested_count)
+                    return false if list_slot >= requested_count
+                    list_node: AccessibilityState = accessibility_next[list_slot]
+                    return false if list_node.role != UiCore::AccessibilityRole.List.i32()
+                    return false if node.collection_size != list_node.collection_count or node.collection_position > list_node.collection_count
+                continue if list_id >= UiCore::MAX_ACCESSIBILITY_NODES
+                row_index: mutable usize = appkit_accessibility_row_slot(list_id, node.collection_position)
+                if row_index >= appkit_next_accessibility_row_count:
+                    return false if appkit_next_accessibility_row_count >= UiCore::MAX_ACCESSIBILITY_NODES
+                    previous_index: usize = appkit_accessibility_previous_row_slot(list_id, node.collection_position)
+                    previous_handle: usize = appkit_previous_accessibility_rows[previous_index].handle if previous_index < appkit_previous_accessibility_row_count else 0
+                    is_new: i32 = 1 if previous_index >= appkit_previous_accessibility_row_count or previous_handle == 0 else 0
+                    handle: usize = elisa_appkit_canvas_accessibility_add_row(canvas_window, previous_handle, is_new)
+                    return false if handle == 0
+                    state: AccessibilityRowState = AccessibilityRowState{
+                        list_id: list_id, position: node.collection_position, handle: handle,
+                        frame: UiCore::Rect(node.x, node.y, node.width, node.height),
+                    }
+                    row_index <- appkit_next_accessibility_row_count
+                    appkit_next_accessibility_rows[row_index] <- state
+                    appkit_next_accessibility_row_count <- appkit_next_accessibility_row_count + 1
+                    appkit_previous_accessibility_row_retained[previous_index] <- true if previous_index < appkit_previous_accessibility_row_count and handle == previous_handle
+                else:
+                    row_state: mutable AccessibilityRowState = appkit_next_accessibility_rows[row_index]
+                    row_state.frame <- appkit_accessibility_union_row_frame(row_state.frame, UiCore::Rect(node.x, node.y, node.width, node.height))
+                    appkit_next_accessibility_rows[row_index] <- row_state
+                appkit_next_accessibility_node_rows[index] <- row_index
+            for index in 0..<appkit_next_accessibility_list_count:
+                return false if appkit_next_accessibility_list_handles[index] == 0
+            return true
+
+        # Every nested list must lead through its containing realized row to a
+        # list that is itself a root. A malformed parent cycle (including a
+        # list that names itself as a row) would otherwise publish an
+        # unreachable accessibility island and hide the previously committed
+        # tree. Each list has at most one containing list, so a bounded parent
+        # walk detects both cycles and missing ancestors without a native graph
+        # traversal or a recursive Elisa call.
+        def appkit_accessibility_lists_reach_roots(requested_count: usize) -> bool:
+            for start in 0..<appkit_next_accessibility_list_count:
+                start_id: usize = appkit_next_accessibility_list_ids[start]
+                reaches_root: bool =
+                    for _ in 0..<appkit_next_accessibility_list_count |reaches_root: bool = false, current_id: usize = start_id| -> reaches_root:
+                        current_slot: usize = appkit_accessibility_next_slot(current_id, requested_count)
+                        break if current_slot >= requested_count
+                        current: AccessibilityState = accessibility_next[current_slot]
+                        break if current.role != UiCore::AccessibilityRole.List.i32()
+                        row_index: usize = appkit_next_accessibility_node_rows[current_slot]
+                        if row_index >= UiCore::MAX_ACCESSIBILITY_NODES:
+                            reaches_root <- true
+                            break
+                        row: AccessibilityRowState = appkit_next_accessibility_rows[row_index]
+                        break if row.list_id >= UiCore::MAX_ACCESSIBILITY_NODES
+                        current_id <- row.list_id
+                return false if not reaches_root
+            return true
+
+        def appkit_accessibility_release_graph_arrays() -> void:
+            for index in 0..<appkit_next_accessibility_row_count:
+                array: usize = appkit_accessibility_row_children[index]
+                CFRelease(array) if array != 0
+                appkit_accessibility_row_children[index] <- 0
+            for index in 0..<appkit_next_accessibility_list_count:
+                array: usize = appkit_accessibility_list_rows_arrays[index]
+                CFRelease(array) if array != 0
+                appkit_accessibility_list_rows_arrays[index] <- 0
+            CFRelease(appkit_accessibility_graph_root) if appkit_accessibility_graph_root != 0
+            appkit_accessibility_graph_root <- 0
+
+        def appkit_accessibility_discard_rows() -> void:
+            for index in 0..<appkit_next_accessibility_row_count:
+                candidate: usize = appkit_next_accessibility_rows[index].handle
+                known: bool =
+                    for previous_index in 0..<appkit_previous_accessibility_row_count |known: bool = false| -> known:
+                        known <- true if candidate != 0 and candidate == appkit_previous_accessibility_rows[previous_index].handle
+                        break if known
+                elisa_appkit_canvas_accessibility_release(candidate) if candidate != 0 and not known
+                appkit_next_accessibility_rows[index].handle <- 0
+            appkit_accessibility_release_graph_arrays()
+            appkit_next_accessibility_row_count <- 0
+            appkit_next_accessibility_list_count <- 0
+
+        def appkit_accessibility_publish_rows() -> void:
+            for index in 0..<appkit_previous_accessibility_row_count:
+                handle: usize = appkit_previous_accessibility_rows[index].handle
+                elisa_appkit_canvas_accessibility_release(handle) if handle != 0 and not appkit_previous_accessibility_row_retained[index]
+            appkit_previous_accessibility_row_count <- appkit_next_accessibility_row_count
+            for index in 0..<appkit_previous_accessibility_row_count:
+                appkit_previous_accessibility_rows[index] <- appkit_next_accessibility_rows[index]
+                appkit_previous_accessibility_row_retained[index] <- false
+            appkit_next_accessibility_row_count <- 0
+            appkit_next_accessibility_list_count <- 0
+
+        def appkit_accessibility_build_and_commit_graph(requested_count: usize) -> bool can Unsafe.PointerCast:
+            if not appkit_accessibility_prepare_rows(requested_count):
+                appkit_accessibility_discard_rows()
+                return false
+            if not appkit_accessibility_lists_reach_roots(requested_count):
+                appkit_accessibility_discard_rows()
+                return false
+            valid: mutable bool = true
+            root_count: mutable usize = 0
+            for index in 0..<requested_count:
+                if appkit_next_accessibility_node_rows[index] >= UiCore::MAX_ACCESSIBILITY_NODES:
+                    if accessibility_next_handles[index] == 0:
+                        valid <- false
+                    else:
+                        appkit_accessibility_root_handles[root_count] <- accessibility_next_handles[index]
+                        root_count <- root_count + 1
+            root_pointer: usize& = (&appkit_accessibility_root_handles[0]).cast[usize&] can Unsafe.PointerCast
+            if valid:
+                appkit_accessibility_graph_root <- CFArrayCreate(0, root_pointer, root_count.i64(), 0)
+                valid <- false if appkit_accessibility_graph_root == 0
+            for row_index in 0..<appkit_next_accessibility_row_count:
+                break if not valid
+                child_count: mutable usize = 0
+                for index in 0..<requested_count:
+                    if appkit_next_accessibility_node_rows[index] == row_index:
+                        if accessibility_next_handles[index] == 0:
+                            valid <- false
+                            break
+                        accessibility_commit_handles[child_count] <- accessibility_next_handles[index]
+                        child_count <- child_count + 1
+                valid <- false if child_count == 0
+                if valid:
+                    children_pointer: usize& = (&accessibility_commit_handles[0]).cast[usize&] can Unsafe.PointerCast
+                    appkit_accessibility_row_children[row_index] <- CFArrayCreate(0, children_pointer, child_count.i64(), 0)
+                    valid <- false if appkit_accessibility_row_children[row_index] == 0
+            for list_index in 0..<appkit_next_accessibility_list_count:
+                break if not valid
+                row_count: mutable usize = 0
+                list_id: usize = appkit_next_accessibility_list_ids[list_index]
+                for row_index in 0..<appkit_next_accessibility_row_count:
+                    row: AccessibilityRowState = appkit_next_accessibility_rows[row_index]
+                    if row.list_id == list_id:
+                        appkit_accessibility_row_order[row_count] <- row_index
+                        row_count <- row_count + 1
+                # AppKit's accessibilityRows order is logical row order, not
+                # whichever semantic child happened to be traversed first.
+                for order_index in 1..<row_count:
+                    inserted_index: usize = appkit_accessibility_row_order[order_index]
+                    inserted: AccessibilityRowState = appkit_next_accessibility_rows[inserted_index]
+                    cursor: mutable usize = order_index
+                    for _ in 0..<order_index:
+                        break if cursor == 0
+                        prior_index: usize = appkit_accessibility_row_order[cursor - 1]
+                        prior: AccessibilityRowState = appkit_next_accessibility_rows[prior_index]
+                        break if prior.position < inserted.position
+                        valid <- false if prior.position == inserted.position
+                        appkit_accessibility_row_order[cursor] <- prior_index
+                        cursor <- cursor - 1
+                    appkit_accessibility_row_order[cursor] <- inserted_index
+                for order_index in 0..<row_count:
+                    row_index: usize = appkit_accessibility_row_order[order_index]
+                    accessibility_commit_handles[order_index] <- appkit_next_accessibility_rows[row_index].handle
+                rows_pointer: usize& = (&accessibility_commit_handles[0]).cast[usize&] can Unsafe.PointerCast
+                if valid:
+                    appkit_accessibility_list_rows_arrays[list_index] <- CFArrayCreate(0, rows_pointer, row_count.i64(), 0)
+                    valid <- false if appkit_accessibility_list_rows_arrays[list_index] == 0
+            for row_index in 0..<appkit_next_accessibility_row_count:
+                break if not valid
+                row: AccessibilityRowState = appkit_next_accessibility_rows[row_index]
+                list_index: usize =
+                    for candidate in 0..<appkit_next_accessibility_list_count |list_index: usize = UiCore::MAX_ACCESSIBILITY_NODES, found: bool = false| -> list_index:
+                        if appkit_next_accessibility_list_ids[candidate] == row.list_id:
+                            list_index <- candidate
+                            found <- true
+                            break
+                found: bool = list_index < UiCore::MAX_ACCESSIBILITY_NODES
+                valid <- false if not found
+                continue if not valid
+                appkit_accessibility_row_handles[row_index] <- row.handle
+                appkit_accessibility_row_parent_handles[row_index] <- appkit_next_accessibility_list_handles[list_index]
+                appkit_accessibility_row_indices[row_index] <- row.position - 1
+                appkit_accessibility_row_frames[row_index * 4] <- row.frame.origin.x
+                appkit_accessibility_row_frames[row_index * 4 + 1] <- row.frame.origin.y
+                appkit_accessibility_row_frames[row_index * 4 + 2] <- row.frame.size.width
+                appkit_accessibility_row_frames[row_index * 4 + 3] <- row.frame.size.height
+            list_handles_pointer: usize& = (&appkit_next_accessibility_list_handles[0]).cast[usize&] can Unsafe.PointerCast
+            list_rows_pointer: usize& = (&appkit_accessibility_list_rows_arrays[0]).cast[usize&] can Unsafe.PointerCast
+            list_counts_pointer: usize& = (&appkit_next_accessibility_list_counts[0]).cast[usize&] can Unsafe.PointerCast
+            row_handles_pointer: usize& = (&appkit_accessibility_row_handles[0]).cast[usize&] can Unsafe.PointerCast
+            row_parents_pointer: usize& = (&appkit_accessibility_row_parent_handles[0]).cast[usize&] can Unsafe.PointerCast
+            row_children_pointer: usize& = (&appkit_accessibility_row_children[0]).cast[usize&] can Unsafe.PointerCast
+            row_indices_pointer: usize& = (&appkit_accessibility_row_indices[0]).cast[usize&] can Unsafe.PointerCast
+            row_frames_pointer: f32& = (&appkit_accessibility_row_frames[0]).cast[f32&] can Unsafe.PointerCast
+            committed: mutable bool = false
+            if valid:
+                committed <- elisa_appkit_canvas_accessibility_commit_graph(
+                    canvas_window, appkit_accessibility_graph_root,
+                    appkit_next_accessibility_list_count, list_handles_pointer, list_rows_pointer, list_counts_pointer,
+                    appkit_next_accessibility_row_count, row_handles_pointer, row_parents_pointer,
+                    row_children_pointer, row_indices_pointer, row_frames_pointer) != 0
+            appkit_accessibility_release_graph_arrays()
+            appkit_accessibility_publish_rows() if committed else appkit_accessibility_discard_rows()
+            return committed
+
+        def release_accessibility_rows() -> void:
+            appkit_accessibility_discard_rows()
+            for index in 0..<appkit_previous_accessibility_row_count:
+                handle: usize = appkit_previous_accessibility_rows[index].handle
+                elisa_appkit_canvas_accessibility_release(handle) if handle != 0
+                appkit_previous_accessibility_rows[index].handle <- 0
+            appkit_previous_accessibility_row_count <- 0

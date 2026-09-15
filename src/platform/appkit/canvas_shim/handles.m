@@ -67,12 +67,27 @@ static NSArray *elisa_appkit_canvas_event_array(size_t handle) {
 // owner. Resolve the current native identity at callback time so an element
 // from a retired window cannot authorize an action against a replacement
 // session merely because its allocator address was reused.
-static size_t elisa_appkit_canvas_element_window_handle(ElisaAccessibilityElement *element) {
-    if (element == nil) return 0;
-    id parent = [element accessibilityParent];
-    if (![parent isKindOfClass:[NSView class]]) return 0;
-    NSWindow *window = [(NSView *)parent window];
-    return window == nil ? 0 : (size_t)(__bridge void *)window;
+static size_t elisa_appkit_canvas_element_window_handle(id element) {
+    if (![element isKindOfClass:[NSAccessibilityElement class]]) return 0;
+    // Retained list and row proxies add levels between a semantic element and
+    // its content view. Follow the accessibility parent chain instead of
+    // assuming every element is directly parented by the view. The bounded
+    // walk also fails closed if a malformed parent cycle crosses the bridge.
+    id current = element;
+    for (NSUInteger depth = 0; depth < 256; depth += 1) {
+        if ([current isKindOfClass:[NSWindow class]]) {
+            return (size_t)(__bridge void *)current;
+        }
+        if ([current isKindOfClass:[NSView class]]) {
+            NSWindow *window = [(NSView *)current window];
+            return window == nil ? 0 : (size_t)(__bridge void *)window;
+        }
+        if (![current isKindOfClass:[NSAccessibilityElement class]]) return 0;
+        id parent = [current accessibilityParent];
+        if (parent == nil || parent == current) return 0;
+        current = parent;
+    }
+    return 0;
 }
 
 static BOOL elisa_appkit_canvas_accessibility_children_valid(NSArray *children,

@@ -3,6 +3,9 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
+RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
+OPT_LEVEL="${ELISA_UI_OPT_LEVEL:-2}"
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "appkit canvas: skipped (not macOS)"
   exit 0
@@ -400,7 +403,8 @@ nm -g "$BIN" | grep -q ' [BSD] _elisa_appkit_canvas_backing_store_buffered$'
 nm -g "$BIN" | grep -q ' U _NSPasteboardTypeString$'
 nm -g "$BIN" | grep -q ' [BSD] _elisa_appkit_canvas_activation_policy_regular$'
 nm -g "$BIN" | grep -q ' [BSD] _elisa_appkit_canvas_activation_policy_prohibited$'
-nm -g "$BIN" | grep -q ' [BSD] _elisa_appkit_canvas_tabbing_mode_preferred$'
+# The showcase opts out of tabbing, so -O2 can fold the unused "preferred"
+# constant out of this executable. An app that opts in retains the FFI symbol.
 nm -g "$BIN" | grep -q ' [BSD] _elisa_appkit_canvas_tabbing_mode_disallowed$'
 nm -g "$BIN" | grep -q ' [BSD] _elisa_appkit_canvas_tracking_mouse_moved$'
 nm -g "$BIN" | grep -q ' [BSD] _elisa_appkit_canvas_tracking_mouse_entered_exited$'
@@ -431,7 +435,9 @@ nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_set_boolean_value$
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_set_range_values$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_add_tooltip$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_release$'
-nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_commit$'
+# The graph transaction supersedes the former flat-child commit entry point.
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_add_row$'
+nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_commit_graph$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_invalidate_cursor_rects$'
 nm -g "$BIN" | grep -q ' U _NSAccessibilityLayoutChangedNotification$'
 nm -g "$BIN" | grep -q ' T _elisa_appkit_canvas_accessibility_root$'
@@ -496,6 +502,17 @@ nm -g "$BIN" | grep ' U _CGImageDestinationFinalize$' >/dev/null
 set -o pipefail
 plutil -lint "$APP/Contents/Info.plist" >/dev/null
 codesign --verify --deep --strict "$APP"
+# Check the Elisa-owned list graph policy independently of native object
+# creation. This regression fixture covers nested reachability, disconnected
+# cycles, and a list that names itself as its containing row.
+COLLECTION_TEST_OBJ="$ROOT/build/appkit_canvas_collection_graph_test.o"
+COLLECTION_TEST="$ROOT/build/appkit_canvas_collection_graph_test"
+"$STAGE1/scripts/elisac_stage1.sh" "-O$OPT_LEVEL" -o "$COLLECTION_TEST_OBJ" \
+  "$ROOT/test/appkit_canvas_collection_graph_test.elisa"
+clang -Wl,-dead_strip -o "$COLLECTION_TEST" \
+  "$COLLECTION_TEST_OBJ" "$RUNTIME" \
+  -framework Cocoa -framework CoreText -framework CoreGraphics -framework ImageIO
+"$COLLECTION_TEST"
 ELISA_UI_SMOKE_FRAMES=1 ELISA_UI_SNAPSHOT="$SNAPSHOT" "$BIN"
 [[ -s "$SNAPSHOT" ]]
 file "$SNAPSHOT" | grep -q 'PNG image data, 800 x 680'

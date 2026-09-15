@@ -368,7 +368,106 @@ int main(void) {
         if (require([second accessibilityPerformIncrement] && test_input_window == opened,
                     @"increment action did not carry its window identity")) return 1;
         if (require(fabs(test_slider_value - 0.80f) < 0.001f, @"increment action did not reach the app")) return 1;
+
+        size_t listHandle = elisa_appkit_canvas_accessibility_add(
+            opened, 0, 1, 0, (size_t)(__bridge void *)NSAccessibilityListRole, 0,
+            (size_t)(__bridge void *)@"Virtual results", 0, 0, 0, 160, 80, 1, 0);
+        size_t rowChildHandles[2] = {
+            elisa_appkit_canvas_accessibility_add(
+                opened, 0, 1, 0, (size_t)(__bridge void *)NSAccessibilityButtonRole, 0,
+                (size_t)(__bridge void *)@"Third result", 0, 4, 5, 40, 16, 1, 0),
+            elisa_appkit_canvas_accessibility_add(
+                opened, 0, 1, 0, (size_t)(__bridge void *)NSAccessibilityButtonRole, 0,
+                (size_t)(__bridge void *)@"Millionth result", 0, 4, 45, 60, 16, 1, 0)
+        };
+        size_t rowHandles[2] = {
+            elisa_appkit_canvas_accessibility_add_row(opened, 0, 1),
+            elisa_appkit_canvas_accessibility_add_row(opened, 0, 1)
+        };
+        if (require(listHandle != 0 && rowChildHandles[0] != 0 && rowChildHandles[1] != 0 &&
+                        rowHandles[0] != 0 && rowHandles[1] != 0,
+                    @"list, visible child, or row proxy allocation failed")) return 1;
+        ElisaAccessibilityElement *listElement =
+            (__bridge ElisaAccessibilityElement *)(void *)listHandle;
+        ElisaAccessibilityElement *rowChildElements[2] = {
+            (__bridge ElisaAccessibilityElement *)(void *)rowChildHandles[0],
+            (__bridge ElisaAccessibilityElement *)(void *)rowChildHandles[1]
+        };
+        ElisaAccessibilityRowElement *rowElements[2] = {
+            (__bridge ElisaAccessibilityRowElement *)(void *)rowHandles[0],
+            (__bridge ElisaAccessibilityRowElement *)(void *)rowHandles[1]
+        };
+        NSArray *rowChildrenArrays[2] = {
+            @[ rowChildElements[0] ], @[ rowChildElements[1] ]
+        };
+        NSArray *visibleRows = @[ rowElements[0], rowElements[1] ];
+        NSArray *graphRoots = @[ listElement ];
+        size_t rowChildrenArrayHandles[2] = {
+            (size_t)(__bridge void *)rowChildrenArrays[0],
+            (size_t)(__bridge void *)rowChildrenArrays[1]
+        };
+        size_t listHandles[1] = { listHandle };
+        size_t listRowsArrayHandles[1] = { (size_t)(__bridge void *)visibleRows };
+        size_t listLogicalCounts[1] = { 1000000 };
+        size_t rowListHandles[2] = { listHandle, listHandle };
+        size_t rowIndices[2] = { 2, 999999 };
+        float rowFrames[8] = { 4, 5, 40, 16, 4, 45, 60, 16 };
+        if (require(elisa_appkit_canvas_accessibility_commit_graph(
+                        opened, (size_t)(__bridge void *)graphRoots,
+                        1, listHandles, listRowsArrayHandles, listLogicalCounts,
+                        2, rowHandles, rowListHandles, rowChildrenArrayHandles,
+                        rowIndices, rowFrames),
+                    @"valid virtual-list accessibility graph was rejected")) return 1;
+        if (require([listElement.accessibilityRole isEqualToString:NSAccessibilityListRole] &&
+                        listElement.accessibilityRowCount == 1000000 &&
+                        [listElement.accessibilityRows isEqualToArray:visibleRows] &&
+                        [listElement.accessibilityVisibleRows isEqualToArray:visibleRows] &&
+                        [listElement.accessibilityChildren isEqualToArray:visibleRows],
+                    @"list logical count or realized row arrays were not published")) return 1;
+        if (require(rowElements[0].accessibilityIndex == 2 &&
+                        rowElements[1].accessibilityIndex == 999999 &&
+                        [rowElements[0].accessibilityRole isEqualToString:NSAccessibilityRowRole] &&
+                        rowElements[0].accessibilityParent == listElement &&
+                        rowElements[1].accessibilityParent == listElement &&
+                        [rowElements[0].accessibilityChildren isEqualToArray:rowChildrenArrays[0]] &&
+                        [rowElements[1].accessibilityChildren isEqualToArray:rowChildrenArrays[1]] &&
+                        rowChildElements[0].accessibilityParent == rowElements[0] &&
+                        rowChildElements[1].accessibilityParent == rowElements[1],
+                    @"row positions or row/child parent relations were not published")) return 1;
+        NSRect expectedFirstFrame = [elisa_appkit_canvas_window(opened)
+            convertRectToScreen:[elisa_appkit_canvas_view(opened)
+                convertRect:NSMakeRect(4, 5, 40, 16) toView:nil]];
+        if (require(NSEqualRects(rowElements[0].accessibilityFrame, expectedFirstFrame),
+                    @"row proxy frame was not converted to AppKit screen coordinates")) return 1;
+        if (require(elisa_appkit_canvas_accessibility_add_row(opened, rowHandles[0], 0) == rowHandles[0],
+                    @"same-window row proxy was not reused as a borrowed handle")) return 1;
+
+        // A malformed replacement must not mutate any part of the committed
+        // list/row tree, even though all its handles and arrays are otherwise
+        // valid. The second row's zero-based index is just outside the logical
+        // million-item range.
+        size_t invalidRowIndices[2] = { 2, 1000000 };
+        if (require(!elisa_appkit_canvas_accessibility_commit_graph(
+                        opened, (size_t)(__bridge void *)graphRoots,
+                        1, listHandles, listRowsArrayHandles, listLogicalCounts,
+                        2, rowHandles, rowListHandles, rowChildrenArrayHandles,
+                        invalidRowIndices, rowFrames),
+                    @"out-of-range row index was accepted")) return 1;
+        NSArray *committedRoots = [elisa_appkit_canvas_view(opened) accessibilityChildren];
+        if (require(committedRoots.count == 1 && committedRoots[0] == listElement &&
+                        listElement.accessibilityRowCount == 1000000 &&
+                        [listElement.accessibilityRows isEqualToArray:visibleRows] &&
+                        rowElements[1].accessibilityIndex == 999999 &&
+                        rowElements[1].accessibilityParent == listElement &&
+                        rowChildElements[1].accessibilityParent == rowElements[1],
+                    @"rejected graph partially mutated the committed accessibility tree")) return 1;
+
         [elisa_appkit_canvas_window(opened) close];
+        elisa_appkit_canvas_accessibility_release(listHandle);
+        elisa_appkit_canvas_accessibility_release(rowChildHandles[0]);
+        elisa_appkit_canvas_accessibility_release(rowChildHandles[1]);
+        elisa_appkit_canvas_accessibility_release(rowHandles[0]);
+        elisa_appkit_canvas_accessibility_release(rowHandles[1]);
         for (ElisaAccessibilityElement *element in secondChildren) {
             elisa_appkit_canvas_accessibility_release((size_t)(__bridge void *)element);
         }

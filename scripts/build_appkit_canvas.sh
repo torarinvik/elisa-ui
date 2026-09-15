@@ -6,17 +6,20 @@ STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
 RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
 EXAMPLE="${1:-hello}"
 ENTRY="$ROOT/examples/$EXAMPLE/appkit_canvas_main.elisa"
+OPT_LEVEL="${ELISA_UI_OPT_LEVEL:-2}"
 
 [[ "$(uname -s)" == "Darwin" ]] || { echo "the AppKit canvas backend is macOS only" >&2; exit 2; }
 [[ -x "$STAGE1/bin/elisac-stage1" ]] || { echo "no stage1 product at $STAGE1/bin/elisac-stage1 (run scripts/elisac_stage1.sh --seed there)" >&2; exit 2; }
 [[ -f "$RUNTIME" ]] || { echo "no runtime object at $RUNTIME (run scripts/build_runtime_object.sh there)" >&2; exit 2; }
 [[ -f "$ENTRY" ]] || { echo "no AppKit canvas entry: examples/$EXAMPLE/appkit_canvas_main.elisa" >&2; exit 2; }
+[[ "$OPT_LEVEL" =~ ^[0-2]$ ]] || { echo "ELISA_UI_OPT_LEVEL must be 0, 1, or 2" >&2; exit 2; }
 # Show the resolved compiler/runtime revision and hashes this build actually
 # used, and warn (without failing) on a dirty or stale compiler checkout.
 bash "$ROOT/scripts/check_toolchain.sh" --report >&2
+echo "appkit canvas: Elisa compiler optimization -O$OPT_LEVEL" >&2
 mkdir -p "$ROOT/build"
 clang -c -fobjc-arc -Wall -Wextra -Werror -o "$ROOT/build/appkit_canvas_shim.o" "$ROOT/src/platform/appkit/appkit_canvas_shim.m"
-bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ROOT/build/${EXAMPLE}_appkit_canvas.o" "$ENTRY"
+bash "$STAGE1/scripts/elisac_stage1.sh" "-O$OPT_LEVEL" -o "$ROOT/build/${EXAMPLE}_appkit_canvas.o" "$ENTRY"
 clang -Wl,-dead_strip -o "$ROOT/build/${EXAMPLE}_appkit_canvas" \
   "$ROOT/build/${EXAMPLE}_appkit_canvas.o" "$ROOT/build/appkit_canvas_shim.o" "$RUNTIME" -framework Cocoa -framework CoreText -framework CoreGraphics -framework ImageIO
 
