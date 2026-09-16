@@ -197,3 +197,35 @@ extend UiWidgets:
                     return true
                 Button.Radio(label, group, selected, rest, hover, press):
                     return true
+
+        # Promote a direct child of the painted root into the overlay group.
+        # The flag lives on the sealed common rather than in a native-side
+        # registry, so every backend observes the same ordering fact. The
+        # painter and hit tester only group the root's direct children; nested
+        # flags remain ordinary local state until a caller paints that node as
+        # its own root.
+        def set_overlay(w: Widget, overlay: bool) -> Widget:
+            return w if w.overlay == overlay
+            w.overlay <- overlay
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+            UiCore::invalidate(UiCore::Invalidation.Semantics)
+            return w
+
+        def is_overlay(w: Widget) -> bool:
+            return w.overlay
+
+    private:
+        # Whether a root has a visible overlay child. Hierarchy nodes have no
+        # parent pointer, so the root boundary is supplied by paint()/hit().
+        # A bounded sibling walk keeps malformed links from hanging either
+        # pass while preserving the full ordering for valid trees.
+        def overlay_child_present(w: Widget) -> bool:
+            return false if not can_nest(w)
+            steps: mutable i32 = 0
+            cursor: mutable Widget? = w.first_child
+            while cursor is node |steps|:
+                break if steps >= MAX_HIERARCHY_SIBLINGS
+                steps <- steps + 1
+                return true if node.overlay
+                cursor <- node.next_sibling
+            return false

@@ -61,9 +61,15 @@ disables its shell while a modal is open, and disabled surfaces mute, so the
 gate fires if the page stops receding for either reason. It is a regression
 guard, not proof that a wash was laid.
 
-## Not yet
+## The sealed hierarchy
 
-The sealed hierarchy (`UiWidgets`) has no overlay flag. Its paint pass has the
-same shape, so the same query would fit, but nothing in the shipped surface
-uses it for a modal today and a flag with no caller is the shape every defect
-in this work has had.
+The retained hierarchy now carries the same ordering fact in its common block.
+`UiWidgets::set_overlay(child, true)` marks a direct child of the root passed to
+`UiWidgets::paint` (and `UiWidgets::hit`) as part of the overlay group. Ordinary
+children are painted first, the default black 43% scrim is emitted across the
+root box, and marked children are painted last. A hit in the covered shell is
+therefore rejected even when the sheet has no interactive descendant at that
+point. `set_overlay(child, false)` removes the group and invalidates paint and
+semantics. Nested flags are local state; they become an overlay group when that
+subtree is painted as its own root, which keeps the hierarchy free of a parent
+registry and preserves bounded, deterministic walks.

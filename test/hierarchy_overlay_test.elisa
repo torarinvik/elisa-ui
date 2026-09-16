@@ -1,0 +1,96 @@
+# Sealed hierarchy overlay ordering and modal hit testing.
+
+include "../src/widgets/ui_ops.elisa"
+
+using UiWidgets
+
+extern puts(text: cstr) -> i64
+
+global mutable failures: i32 = 0
+
+def grey(value: u8) -> UiCore::Color:
+    return UiCore::Color{r: value, g: value, b: value, a: 255}
+
+def command_rect_color(index: usize) -> UiCore::Color:
+    match UiCore::command_at(index):
+        UiCore::Command.FillRect(rect, color):
+            return color
+        _:
+            return UiCore::rgba(0, 0, 0, 0)
+
+def command_rect_width(index: usize) -> f32:
+    match UiCore::command_at(index):
+        UiCore::Command.FillRect(rect, color):
+            return rect.size.width
+        _:
+            return -1.0
+
+def command_rect_origin_x(index: usize) -> f32:
+    match UiCore::command_at(index):
+        UiCore::Command.FillRect(rect, color):
+            return rect.origin.x
+        _:
+            return -1.0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size
+
+def ui_font_ascent(size: f32) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def app_widget_event(widget: UiWidgets::Widget, event: i32) -> void:
+    pass
+
+def main() -> i64:
+    can Memory.Allocate, Abort.Panic:
+        shell: Widget = Button.Push(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 200.0, height: 100.0, hovered: false, pressed: false, overlay: false, first_child: null, next_sibling: null, label: "shell", rest: grey(35), hover: grey(45), press: grey(25))
+        sheet: Widget = Button.Push(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 40.0, y: 30.0, width: 120.0, height: 40.0, hovered: false, pressed: false, overlay: false, first_child: null, next_sibling: null, label: "sheet", rest: grey(100), hover: grey(110), press: grey(90))
+        # This ordinary child follows the overlay in storage order. It must
+        # still remain beneath the scrim, proving the grouping is not merely a
+        # lucky list ordering.
+        tail_button: Widget = Button.Push(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 20.0, height: 20.0, hovered: false, pressed: false, overlay: false, first_child: null, next_sibling: null, label: "tail", rest: grey(55), hover: grey(65), press: grey(45))
+        shell.next_sibling <- sheet
+        sheet.next_sibling <- tail_button
+        root: Widget = Window.Top(min_width: 0.0, min_height: 0.0, grow: 0.0, x: 0.0, y: 0.0, width: 200.0, height: 100.0, hovered: false, pressed: false, overlay: false, first_child: shell, next_sibling: null, title: "overlay", resizable: true)
+
+        _ = UiWidgets::set_overlay(sheet, true)
+        check("overlay setter marks the sheet", UiWidgets::is_overlay(sheet))
+        UiCore::begin_frame()
+        paint(root)
+        # shell fill/text, tail fill/text, scrim, sheet fill/text
+        check("hierarchy shell paints first", command_rect_color(0).r == 35)
+        check("ordinary tail stays under the scrim", command_rect_color(2).r == 55)
+        check("hierarchy scrim covers the root", command_rect_origin_x(4) == 0.0 and command_rect_width(4) == 200.0)
+        check("hierarchy scrim is modal black", command_rect_color(4).r == 0 and command_rect_color(4).a == 110)
+        check("hierarchy hit stops at the scrim", UiWidgets::hit(root, 10.0, 10.0) == null)
+        if UiWidgets::hit(root, 60.0, 40.0) is overlay_hit:
+            match overlay_hit:
+                UiWidgets::Button.Push(label, rest, hover, press):
+                    check("hierarchy sheet remains hittable", label == "sheet")
+                _:
+                    check("hierarchy overlay hit has button kind", false)
+        else:
+            check("hierarchy sheet remains hittable", false)
+
+        _ = UiWidgets::set_overlay(sheet, false)
+        check("overlay setter clears the sheet", not UiWidgets::is_overlay(sheet))
+        if UiWidgets::hit(root, 100.0, 90.0) is shell_hit:
+            match shell_hit:
+                UiWidgets::Button.Push(label, rest, hover, press):
+                    check("shell recovers after overlay removal", label == "shell")
+                _:
+                    check("shell recovers as a button", false)
+        else:
+            check("shell recovers after overlay removal", false)
+        return failures.i64()

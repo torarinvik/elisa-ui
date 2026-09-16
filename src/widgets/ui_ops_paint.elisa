@@ -172,6 +172,20 @@ extend UiWidgets:
             height: f32 = bottom - top if bottom > top else 0.0
             return UiCore::Rect(left, top, width, height)
 
+        # Paint one sibling pass. When `filter_overlays` is true this emits
+        # either the ordinary shell (`paint_overlays` false) or the promoted
+        # overlay group (`paint_overlays` true). Keeping the filter here makes
+        # the two passes share the exact same clip and depth logic.
+        def paint_children(parent: Widget, depth: i32, clip_active: bool, clip: UiCore::Rect, filter_overlays: bool, paint_overlays: bool) -> void:
+            paint_steps: mutable i32 = 0
+            cursor: mutable Widget? = parent.first_child if can_nest(parent) else null
+            while cursor is node |paint_steps, depth, clip_active, clip, filter_overlays, paint_overlays|:
+                break if paint_steps >= MAX_HIERARCHY_SIBLINGS
+                paint_steps <- paint_steps + 1
+                should_paint: bool = not filter_overlays or node.overlay == paint_overlays
+                paint_depth(node, depth + 1, clip_active, clip) if should_paint
+                cursor <- node.next_sibling
+
         # Emit one widget's own drawing, then recurse into its children.
         # Pre-order gives painter-algorithm ordering for free: a parent's
         # background is laid down before anything it contains. The accumulated
@@ -201,13 +215,17 @@ extend UiWidgets:
                 viewport: UiCore::Rect = box_of(w)
                 child_clip <- clip_intersection(clip, viewport) if clip_active else viewport
                 child_clip_active <- true
-            paint_steps: mutable i32 = 0
-            cursor: mutable Widget? = w.first_child if can_nest(w) else null
-            while cursor is node |cursor, paint_steps, child_clip_active, child_clip|:
-                break if paint_steps >= MAX_HIERARCHY_SIBLINGS
-                paint_steps <- paint_steps + 1
-                paint_depth(node, depth + 1, child_clip_active, child_clip)
-                cursor <- node.next_sibling
+            # A modal sheet is a sibling-order concern, not a special widget
+            # kind. Group direct overlay children after the shell and lay the
+            # wash between those groups. Deeper nodes are still painted in
+            # their ordinary pre-order, so a caller can paint any subtree as
+            # its own root without hidden global state.
+            if depth == 0 and overlay_child_present(w):
+                paint_children(w, depth, child_clip_active, child_clip, true, false)
+                UiCore::fill(box_of(w), UiCore::rgba(0, 0, 0, 110))
+                paint_children(w, depth, child_clip_active, child_clip, true, true)
+            else:
+                paint_children(w, depth, child_clip_active, child_clip, false, false)
 
         def paint(w: Widget) -> void:
             UiTextMetrics::reset()
