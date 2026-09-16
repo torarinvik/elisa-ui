@@ -204,14 +204,16 @@ extend UiFlat:
                         marked_y: f32 = widgets[index].y + widgets[index].height - marked_inset
                         UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(marked_x, marked_y), to_point: UiCore::Vec2(marked_x + marked_width, marked_y)}, widgets[index].text_color)
                     if widgets[index].focused and selection_start(index) == selection_end(index) and caret_is_visible():
-                        caret_x: f32 = caret_paint_x(index, text_inset, measure_text_range(index, visible_start, widgets[index].caret))
+                        caret_x: f32 = field_run_x(index, text_inset, measure_text_range(index, visible_start, widgets[index].caret))
                         caret_y: f32 = UiFlat::text_caret_y(index)
                         caret_height: f32 = UiFlat::text_caret_height(index)
-                        # A caret is one of the few things that is still a
-                        # hairline on purpose: it marks a position BETWEEN two
-                        # characters, and a wide one starts to look like a
-                        # selection of the character beside it.
-                        UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(caret_x, caret_y), to_point: UiCore::Vec2(caret_x, caret_y + caret_height)}, widgets[index].text_color)
+                        # The public/native text protocol describes the caret
+                        # as a one-point rectangle. Paint that same rectangle
+                        # instead of a stroked hairline: stroke centering makes
+                        # the visible bar drift by half a device pixel when a
+                        # Skia surface is scaled for Retina output.
+                        caret_width: f32 = UiCore::DEFAULT_STROKE_WIDTH
+                        UiCore::fill_shaped(UiCore::Rect(caret_x, caret_y, caret_width, caret_height), widgets[index].text_color, UiCore::SurfaceDepth.Flat, UiCore::CornerStyle.Square)
                     continue
                 continue if widgets[index].text_size <= 0.0 or widgets[index].text.len == 0
                 # Button captions are centered in their hit target. Ordinary labels
