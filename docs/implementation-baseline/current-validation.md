@@ -4,13 +4,13 @@ Part of the [elisa-ui implementation baseline](../implementation-baseline.md).
 
 ## Latest compiler and renderer evidence (2026-09-16)
 
-The current framework revision is `3fe05b8` (with the preceding Android JNI
-hardening commits `89f1e24`, `7505ea9`, and `9f48f51`). Its variable-height list cache
+The current framework revision is `03d6479` (with the preceding caret,
+WasmBrowser, and renderer-budget commits `8342287`, `ff65837`, and `b68a10c`). Its variable-height list cache
 uses deterministic least-recently-updated eviction at the fixed 256-entry
 limit, typed handles expose a versioned snapshot/restore path, and the direct
 Skia text ABI rejects malformed or oversized UTF-8 before measurement or draw;
 the retained text-field caret keeps its public rectangle-origin contract while
-painting a centered hairline; `test/virtual_list_variable_test.elisa`,
+painting the exact one-point rectangle; `test/virtual_list_variable_test.elisa`,
 `test/widget_handles_test.elisa`, `test/widget_layout_text_test.elisa`,
 `test/widget_caret_alignment_test.elisa`, and the real Skia off-screen host
 cover these boundaries.
@@ -18,13 +18,13 @@ cover these boundaries.
 The fetched upstream `main` is
 `45cb0ded70e7e8c8a41d21c63a09939706322ca4`. The shared compiler checkout is
 clean on `main` at
-`d6a693c0f724c05f7b71418658dd8bda95ba73b3` (ahead=7, behind=0 versus the
+`8617216995bc0801785928e2bc0cf8c73200df3d` (ahead=10, behind=0 versus the
 fetched `origin/main`). Framework gates use this latest local build.
 
 The latest clean stage1 used for the current gates is
 `../Elisa-compiler/bin/elisac-stage1`, revision
-`d6a693c0f724c05f7b71418658dd8bda95ba73b3`. Its stage1 SHA-256 is
-`82543b75bb15bafd4e7a12aab824446b565f661a89a9870b34513c5722f34fc7` and its
+`8617216995bc0801785928e2bc0cf8c73200df3d`. Its stage1 SHA-256 is
+`eda6d29a7c9217c22b3b8210c134e776f5b0d3232fd902b8e4bd0927d7be2441` and its
 runtime SHA-256 is
 `85f1107eef00a7dd903e511df366b8b6cade4d8573cf0478f1de91604ea5beb9`.
 The product and runtime were freshly self-hosted from the current stage0 and
@@ -33,7 +33,7 @@ the strict `ELISA_UI_REQUIRE_CURRENT_STAGE1=1` toolchain check passes.
 The pinned Skia checkout is revision
 `9c7b2dffb2433f5a0cc2b77f06025a09126807ed`; `out/elisa/libskia.a` has SHA-256
 `39774ff993bd3b84943c27548738c8b8b8208396237d536c1a4ed1c6e147c775`.
-The clean upstream-main, c605, ce9e, 4cf3, 0f08, 8d7, 45cb, and latest d6a
+The clean upstream-main, c605, ce9e, 4cf3, 0f08, 8d7, 45cb, d6a, and latest 8617
 compiler products have separate exact performance tuples recorded in
 `test/showcase_skia_performance_budgets.json`.
 
@@ -88,9 +88,9 @@ bash scripts/check_skia.sh
 executes the pinned UAX #29 15.1.0 corpus (1,187 rows).
 
 The full real-Skia Showcase path reached its required exact-tuple benchmark
-with the clean latest d6a693c0 product after the Android JNI boundary and
-clipboard-capacity fixes. Three fresh processes produced 21 tail-pixel-stable
-samples, with a recorded median of 20.504 ms and a maximum of 24.386 ms,
+with the clean latest 86172169 product after the exact-rectangle caret and
+WasmBrowser lifecycle fixes. Three fresh processes produced 21 tail-pixel-stable
+samples, with a recorded median of 10.498 ms and a maximum of 10.795 ms,
 inside the current 50/80 ms policy limits. The exact source-bundle tuple is
 recorded in
 `test/showcase_skia_performance_budgets.json`; a different compiler, source
@@ -99,9 +99,8 @@ result.
 
 The complete `SKIA_ROOT=/private/tmp/elisa-skia-check-20260914
 bash scripts/run_tests.sh` matrix now passes every local compiler, renderer,
-native, mobile-simulator, cross-target, Unicode, and portable fixture. Its only
-nonzero outcome is the separately reported hosted Wapp blocker below (malformed
-Wasm intrinsic IR); the custom Android canvas leg is skipped because this host
+native, mobile-simulator, cross-target, Unicode, portable, and hosted Wapp
+fixture. The custom Android canvas leg is skipped because this host
 has no built Android Skia archive or attached Android device. The Android
 native-controls package half is independently green through
 `scripts/check_android_controls.sh showcase`.
@@ -115,20 +114,24 @@ cache invalidation, intrinsic fallback, enumeration, and persistence.
 
 ## Hosted open vertical-slice gate (2026-09-16)
 
-The hosted open-vertical-slice gate reaches component-runtime compilation but
-still fails on compiler-generated invalid LLVM IR:
+The hosted open-vertical-slice gate now builds and inspects the component
+package successfully. The compiler-side fix corrected WebAssembly intrinsic
+overload selection (`llvm.wasm.memory.grow.i32`/`size.i32`), and the
+freestanding component runtime now provides the compiler-emitted
+`ctx_string_views_eq` helper. Resize and pointer lifecycle callbacks use the
+typed `UiCore::EventRecord` path so no unresolved `env::UiWasmBrowser.*`
+imports are emitted.
+
+The previous failure was:
 
 ```text
 declare i32 @llvm.wasm.memory.grow.i32.i32(i32, i32)
 ```
 
-The expected intrinsic is `llvm.wasm.memory.grow.i32`. This is a compiler
-backend blocker, not evidence of a framework or WasmBrowser API failure. A
-source-level `@link_name` workaround produces valid IR but is not a safe
-framework change: the next link then exposes a missing component-runtime
-`ctx_string_views_eq` definition. The fix belongs in the compiler's intrinsic
-overload handling and component runtime, so the framework gate keeps reporting
-the failure instead of masking it.
+The expected intrinsic is `llvm.wasm.memory.grow.i32`. The repaired compiler
+and runtime are committed in the sibling `Elisa-compiler` checkout at
+`d7aead96`, `56364e77`, and `86172169`; `scripts/check_wapp.sh` now reports a
+JS-free component package with the expected imports/exports.
 
 ## Known optimized AppKit pixel issue
 

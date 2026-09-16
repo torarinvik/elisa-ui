@@ -14,8 +14,8 @@ evidence and any external blocker. Statuses mean:
 
 | ID | Status | Evidence | Remaining blocker |
 | --- | --- | --- | --- |
-| UI-00 | implemented-tested (refreshed 2026-09-16) | `docs/implementation-baseline*`; clean latest compiler tuple at upstream `45cb0ded`; `check_toolchain.sh` with `ELISA_UI_REQUIRE_CURRENT_STAGE1=1`, `check_source_sizes.sh`, `check_global_names.sh`, `check_refinements.sh`; required optimized Showcase Skia gate; Win32 and Linux cross-target legs | complete cross-platform `run_tests.sh` matrix still has the hosted compiler intrinsic blocker and optional Android Skia/device skips |
-| UI-01 | implemented-tested (native; hosted build blocked by compiler) | `UiHandles` builders/stale checks, compatibility entrypoints, generated SDK host bindings; fresh `check_wapp.sh` resolves `wasm-component-ld` through the compiler without changing `PATH` | Component runtime compilation fails because stage1 emits malformed `llvm.wasm.memory.grow.i32.i32` LLVM IR. See [current validation](current-validation.md#hosted-open-vertical-slice-gate-2026-09-16). |
+| UI-00 | implemented-tested (refreshed 2026-09-16) | `docs/implementation-baseline*`; clean latest compiler tuple at upstream `45cb0ded`; `check_toolchain.sh` with `ELISA_UI_REQUIRE_CURRENT_STAGE1=1`, `check_source_sizes.sh`, `check_global_names.sh`, `check_refinements.sh`; required optimized Showcase Skia gate; Win32, Linux, and hosted Wapp cross-target legs | optional Android Skia/device skips |
+| UI-01 | implemented-tested (native + hosted) | `UiHandles` builders/stale checks, compatibility entrypoints, generated SDK host bindings; fresh `check_wapp.sh` builds and inspects a JS-free component with typed resize/pointer lifecycle exports | none; compiler intrinsic/runtime fixes are recorded in [current validation](current-validation.md#hosted-open-vertical-slice-gate-2026-09-16) |
 | UI-02 | implemented-tested | `UiLifecycle`, `UiState`, `UiTasks`, `UiEvents`, `UiHarness`; `lifecycle_test` covers both pause/surface-loss orderings and proves focus/resume stay non-renderable until surface restoration; idle wait in `sdl3_wait_event_test`/`sdl3_lifecycle_stop_test` | none |
 | UI-03 | implemented-tested (portable + real CPU-raster Skia) | `UiCore` commands, `UiRaster`, `UiPaint`, images/gradients/rounded/shadows, text pipeline, `UiTextMetrics` cache, strict direct-ABI UTF-8 validation, geometry validation, and rectangle-origin-safe retained text caret painting; pinned `check_skia.sh` semantic-enabled fresh-process pixel digests and all showcase page/state PNGs; off-screen AppKit/Skia compositor; SDL device-loss fixture | color space is sRGB-only; GPU surface/device-loss parity and other color-space behavior remain unverified |
 | UI-04 | implemented-tested (portable + iOS/Android backends) | `UiResponsive`, `UiMobileSurface`, `UiNavigation`, `UiServices`; shared counted UTF-8/UTF-16 codec gate; `check_uikit.sh`, `check_uikit_simulator.sh`, `check_uikit_touch.sh`, `check_android.sh`, and the separate `check_android_controls.sh` package/device gate; latest Android clipboard/IME JNI lifetime and `usize`→`i32` capacity boundaries are warning-clean | native permission/picker adapters; Android custom-canvas/device IME gate remains skipped here because no Android Skia archive/device is attached |
@@ -31,7 +31,7 @@ evidence and any external blocker. Statuses mean:
 
 The first implementation batch (plan §21) is partially evidenced: the public
 backend/API map consumes pinned SDK bindings, and the hello reference screen
-covers persistence, text, and resource errors on native backends. A fresh
-hosted build now reaches the component runtime compiler, but is blocked by the
-malformed LLVM intrinsic recorded in current validation. Mobile execution
-proceeds through the iOS/Android gates above.
+covers persistence, text, and resource errors on native backends. The fresh
+hosted build now produces a JS-free component package through the repaired
+intrinsic/runtime path. Mobile execution proceeds through the iOS/Android
+gates above.
