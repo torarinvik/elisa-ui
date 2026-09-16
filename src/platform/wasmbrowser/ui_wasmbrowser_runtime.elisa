@@ -206,7 +206,7 @@ module UiWasmBrowser:
         def resize(width: u32, height: u32) -> void:
             return if not UiLifecycle::is_started()
             UiCore::set_viewport(width.f32(), height.f32())
-            dispatch((UiCore::Event.Resize(size: UiCore::Size(width.f32(), height.f32()))))
+            dispatch_record(UiCore::WireKind.Resize.i32(), width.f32(), height.f32(), 0.0, 0.0, 0)
 
         def frame(dt: f64) -> void:
             return if not UiLifecycle::can_render()
@@ -239,11 +239,10 @@ module UiWasmBrowser:
         # into a variant here and an unmodeled kind simply produces no event.
         def pointer(x: f32, y: f32, kind: i32) -> void:
             return if not UiWasmInput::pointer_values_are_finite(x, y, 0.0, 0.0)
-            at: UiCore::Vec2 = UiCore::Vec2(x, y)
-            dispatch_input((UiCore::PointerEvent.Down(at: at, button: UiCore::PointerButton.Primary.i32()))) if kind == HOST_POINTER_DOWN
-            dispatch_input((UiCore::PointerEvent.Up(at: at, button: UiCore::PointerButton.Primary.i32()))) if kind == HOST_POINTER_UP
-            dispatch_input((UiCore::PointerEvent.Move(at: at))) if kind == HOST_POINTER_MOVE
-            dispatch_input((UiCore::PointerEvent.Leave)) if kind == HOST_POINTER_LEAVE
+            dispatch_record(UiCore::WireKind.PointerDown.i32(), x, y, 0.0, 0.0, UiCore::PointerButton.Primary.i32()) if kind == HOST_POINTER_DOWN
+            dispatch_record(UiCore::WireKind.PointerUp.i32(), x, y, 0.0, 0.0, UiCore::PointerButton.Primary.i32()) if kind == HOST_POINTER_UP
+            dispatch_record(UiCore::WireKind.PointerMove.i32(), x, y, 0.0, 0.0, 0) if kind == HOST_POINTER_MOVE
+            dispatch_record(UiCore::WireKind.PointerLeave.i32(), 0.0, 0.0, 0.0, 0.0, 0) if kind == HOST_POINTER_LEAVE
 
         def key(code: i32, pressed: bool) -> void:
             mapped: i32 = UiWasmInput::key_from_host(code)
