@@ -7,11 +7,11 @@ Part of the [elisa-ui implementation baseline](../implementation-baseline.md).
 The shared `Elisa-compiler` checkout advanced with intentional local compiler
 fixes after the clean `5329edfd` baseline below. A fresh stage1 self-host from
 that source produced product SHA-256
-`94f05e3234035f9bad5a63da7a275710442dcaac3eb7482da25c6902abf26a2b` with the
+`5c77c7d86f26f19a43edb21502bbf3146d901c6453e172f5d0d99df423a4aba4` with the
 same runtime and Skia pin. The required headless Skia painter, Showcase
 workflow, exact-tuple renderer budget, generic performance budget, and focused
 AppKit-Skia gate all passed; the current Showcase run retained the stable tail
-digest `1ac21e37972207bb` and measured 15.271 ms median/19.402 ms maximum,
+digest `1ac21e37972207bb` and measured 14.512 ms median/17.024 ms maximum,
 within the 50/80 ms policy limits. The deferred-text cleanup now scrubs the
 complete fixed arena, independent of queue metadata. The generic retained
 benchmark remains covered by the exact current tuple. Because the
