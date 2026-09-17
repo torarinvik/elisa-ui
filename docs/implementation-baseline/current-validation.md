@@ -2,9 +2,24 @@
 
 Part of the [elisa-ui implementation baseline](../implementation-baseline.md).
 
-## Latest compiler and renderer evidence (2026-09-16)
+## Latest compiler and renderer evidence (2026-09-17)
 
-The current framework source revision is `d880c20` (with the preceding caret,
+The 2026-09-17 follow-up fixes Elisa-owned RTL horizontal scrollbar paging: the
+painted thumb, hit-test geometry, and page delta now share the same direction
+transform. `test/widget_layout_scroll_test.elisa` covers a physical track click
+away from the mirrored thumb as well as drag behavior. The fix is committed as
+`0bba021`; its required real-Skia source bundle is
+`85c9f05ff5532e0bd43273aec8e2f0dfce6f21d3db6301ddf2251cd7a586957f`.
+The gates were rebuilt with the latest local compiler product at revision
+`bfedb0d707a00797ddd16341f21a8b6e0a9677af` (product SHA
+`f4150439f658c40214c406eb42b283374c2516eae3a3c1bd2a6d6c1f78a5fe14`, runtime
+SHA `dbed0552a85df51da0c050e4f009bb7c565f792a0676df0f465e9e986e8845a4`).
+The sibling checkout contains intentional local compiler edits, so this
+follow-up used `ELISA_ALLOW_DIRTY_STAGE1=1`; the exact tuple is recorded in the
+performance manifest and passed the required gate with a 10.027 ms median,
+10.614 ms maximum, and stable tail digest `1ac21e37972207bb`.
+
+The preceding framework source revision was `d880c20` (with the preceding caret,
 WasmBrowser, renderer-budget, and validation-document commits `8342287`,
 `ff65837`, `b68a10c`, `b5ec623`, and `5d6c3e8`). Its variable-height list cache
 uses deterministic least-recently-updated eviction at the fixed 256-entry
