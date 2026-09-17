@@ -70,6 +70,16 @@ def main() -> i64:
         _ = puts(SDL_GetError())
         return 2
 
+    # A host may have SDL_ttf but no usable face. The backend must expose that
+    # fact consistently instead of fabricating vertical metrics while width
+    # has already failed closed. Override with a deliberately absent path,
+    # verify the neutral result, then return to the platform candidates.
+    UiSdl3::set_font_override("/elisa-ui/font-that-does-not-exist.ttf")
+    check("missing SDL font reports zero width", ui_measure_text_width("text", 20.0, false) == 0.0)
+    check("missing SDL font reports zero ascent", ui_font_ascent(20.0) == 0.0)
+    check("missing SDL font reports zero line height", ui_text_line_height(20.0) == 0.0)
+    UiSdl3::fonts_close()
+
     narrow: f32 = ui_measure_text_width("i", 20.0, false)
     wide: f32 = ui_measure_text_width("MMMMMMMMMM", 20.0, false)
     check("a font opened and measured a non-zero width", narrow > 0.0)

@@ -118,6 +118,11 @@ _Part of the [elisa-ui implementation baseline](../implementation-baseline.md)._
   matching the library's `SDL_Color` parameter instead of depending on a
   packed-integer calling convention; the native hello build and dummy-video
   smoke path pass with that ABI declaration.
+- SDL text metrics now fail closed together when no candidate or override font
+  opens: width, ascent, and line height all report zero until a real face is
+  available. The focused text fixture forces an absent override, verifies the
+  neutral metrics, then returns to the platform candidates, so layout cannot
+  combine a zero width with fabricated vertical measurements.
 - The Skia attachment entry point now enforces the same capability gate as the
   profile selector: hosted WasmBrowser and native-control profiles detach and
   reject a borrowed canvas instead of silently claiming local Skia. The Skia
