@@ -181,6 +181,10 @@ _Part of the [elisa-ui implementation baseline](../implementation-baseline.md)._
   anchors, and replay interleaves the two streams in application order. Queue
   overflow reports `CommandOverflow`, while surface loss cancels copied work;
   the hosted six-command ABI and native object ownership remain unchanged.
+- Deferred Skia text storage is scrubbed on normal frame end, surface-loss
+  cancellation, and an accidental frame restart. `UiSkia::Snapshot` exposes the
+  clean-state invariant, and the painter regression proves queued text becomes
+  clean after replay, so copied secure values cannot survive the frame boundary.
 - The real showcase now has an application-level headless workflow in
   `test/showcase_workflow_test.elisa`: it builds the shared `examples/hello`
   tree, verifies retained custom vector commands and semantics, drives pointer
