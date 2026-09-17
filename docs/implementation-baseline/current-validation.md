@@ -12,12 +12,14 @@ away from the mirrored thumb as well as drag behavior. The fix is committed as
 `85c9f05ff5532e0bd43273aec8e2f0dfce6f21d3db6301ddf2251cd7a586957f`.
 The gates were rebuilt with the latest local compiler product at revision
 `bfedb0d707a00797ddd16341f21a8b6e0a9677af` (product SHA
-`f4150439f658c40214c406eb42b283374c2516eae3a3c1bd2a6d6c1f78a5fe14`, runtime
+`a73be5e165b9a53b4b69495d006f24b719a9749182d6e57b5e92958e8ce28f36`, runtime
 SHA `dbed0552a85df51da0c050e4f009bb7c565f792a0676df0f465e9e986e8845a4`).
 The sibling checkout contains intentional local compiler edits, so this
-follow-up used `ELISA_ALLOW_DIRTY_STAGE1=1`; the exact tuple is recorded in the
-performance manifest and passed the required gate with a 10.027 ms median,
-10.614 ms maximum, and stable tail digest `1ac21e37972207bb`.
+follow-up used `ELISA_ALLOW_DIRTY_STAGE1=1`; the exact tuples are recorded in
+the performance manifests and passed the required gates. The current retained
+benchmark measured a 1.824 ms median batch (3.898 ms maximum), while the
+current real-Skia Showcase workflow measured an 11.512 ms median (12.186 ms
+maximum); both retained stable tail digest `1ac21e37972207bb`.
 
 The preceding framework source revision was `d880c20` (with the preceding caret,
 WasmBrowser, renderer-budget, and validation-document commits `8342287`,

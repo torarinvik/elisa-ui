@@ -9,7 +9,7 @@ The 2026-09-17 RTL scrollbar paging follow-up is covered by the exact current
 tuple in `test/showcase_skia_performance_budgets.json`: compiler revision
 `bfedb0d707a00797ddd16341f21a8b6e0a9677af`, source bundle
 `85c9f05ff5532e0bd43273aec8e2f0dfce6f21d3db6301ddf2251cd7a586957f`, median
-`10.027 ms`, maximum `10.614 ms`, and tail digest
+`11.512 ms`, maximum `12.186 ms`, and tail digest
 `1ac21e37972207bb`. The focused Elisa regression and Unicode corpus also pass;
 the compiler checkout is intentionally dirty and was explicitly allowed for
 this current-product verification.
