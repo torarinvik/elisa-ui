@@ -47,12 +47,17 @@ extend UiSkia:
         # backend-neutral frame without silently accumulating work when no
         # Skia host is active. Hosts must bracket the application callback.
         def begin_deferred_frame() -> void:
+            # A caller that starts a new frame without closing the previous
+            # scope must not strand copied text in the fixed arena. Scrub the
+            # bytes before replacing the queue metadata.
+            UiSkia::clear_deferred_text_storage()
             deferred_count_state <- 0
             deferred_overflow_state <- false
             deferred_frame_active <- true
             deferred_scope_depth_state <- 0
 
         def end_deferred_frame() -> void:
+            UiSkia::clear_deferred_text_storage()
             deferred_frame_active <- false
             deferred_count_state <- 0
             deferred_overflow_state <- false
@@ -228,6 +233,7 @@ extend UiSkia:
             command.text_origin <- UiCore::Vec2(UiCore::bounded_coordinate(run.origin.x), UiCore::bounded_coordinate(run.origin.y))
             command.text_size <- UiSkia::safe_font_size(run.size)
             command.color <- color
+            deferred_text_clean_state <- false
             for index in 0..<length:
                 deferred_text_storage[command.text_offset + index] <- safe_text.data[index]
             return UiSkia::enqueue_deferred(command)
@@ -266,6 +272,16 @@ extend UiSkia:
         global mutable deferred_count_state: usize = 0
         global mutable deferred_overflow_state: bool = false
         global mutable deferred_frame_active: bool = false
+        global mutable deferred_text_clean_state: bool = true
+
+        def clear_deferred_text_storage() -> void:
+            return if deferred_text_clean_state
+            used_commands: usize = MAX_DEFERRED_COMMANDS if deferred_count_state > MAX_DEFERRED_COMMANDS else deferred_count_state
+            used_bytes: usize = used_commands * MAX_DEFERRED_TEXT_BYTES
+            for index in 0..<used_bytes:
+                deferred_text_storage[index] <- 0
+            deferred_text_clean_state <- true
+
         def empty_deferred(kind: UiSkia::DeferredKind) -> DeferredCommand:
             return DeferredCommand{
                 kind: kind, retained_anchor: 0, box: UiCore::Rect(0.0, 0.0, 0.0, 0.0),
