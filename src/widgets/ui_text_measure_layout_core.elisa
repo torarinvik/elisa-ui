@@ -78,6 +78,18 @@ module UiTextMeasureLayout:
 
                         if proposed > measured_max_width and cursor > start:
                             if has_break and last_break >= start:
+                                # Do not expose a leading whitespace run as a
+                                # real empty line when it alone reached the
+                                # wrap boundary. Punctuation remains on the
+                                # ordinary soft-break path because it belongs
+                                # to the preceding line.
+                                if last_break == start and is_discardable_break(safe_text.data[start]):
+                                    cursor <- start
+                                    cursor <- skip_breaks(safe_text, cursor, measured_source_length)
+                                    emit_line(cursor, 0, 0) if cursor == measured_source_length
+                                    start <- cursor
+                                    finished <- true
+                                    break
                                 emit_line(start, last_break - start, last_break_width)
                                 cursor <- last_break
                                 cursor <- cursor + 1 if cursor < measured_source_length and is_discardable_break(safe_text.data[cursor])

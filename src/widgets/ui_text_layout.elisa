@@ -73,6 +73,22 @@ module UiTextLayout:
                             has_break <- true
                         if columns >= max_columns_state:
                             if has_break and last_break >= start:
+                                # A line that starts with a discardable run
+                                # should not become a visible empty line when
+                                # the run consumes the budget. Drop the run
+                                # before emitting the next logical line; keep
+                                # punctuation breaks (which are retained) on
+                                # the normal soft-break path below.
+                                if last_break == start and is_discardable_break(safe_text.data[start]):
+                                    cursor <- start
+                                    cursor <-
+                                        for _ in 0..<source_length_state |skip: usize = cursor| -> skip:
+                                            break if skip >= source_length_state or not is_discardable_break(safe_text.data[skip])
+                                            skip <- skip + scalar_bytes(safe_text, skip, source_length_state)
+                                    emit_line(cursor, 0, 0) if cursor == source_length_state
+                                    start <- cursor
+                                    finished <- true
+                                    break
                                 emit_line(start, last_break - start, last_break_columns)
                                 cursor <- last_break
                                 cursor <- cursor + scalar_bytes(safe_text, cursor, source_length_state) if cursor < source_length_state and is_discardable_break(safe_text.data[cursor])
