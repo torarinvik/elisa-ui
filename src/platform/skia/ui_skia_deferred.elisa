@@ -276,9 +276,11 @@ extend UiSkia:
 
         def clear_deferred_text_storage() -> void:
             return if deferred_text_clean_state
-            used_commands: usize = MAX_DEFERRED_COMMANDS if deferred_count_state > MAX_DEFERRED_COMMANDS else deferred_count_state
-            used_bytes: usize = used_commands * MAX_DEFERRED_TEXT_BYTES
-            for index in 0..<used_bytes:
+            # Scrub the complete fixed arena rather than trusting the queue
+            # count. Cleanup is also the recovery path for an interrupted or
+            # malformed frame, so stale text must not survive merely because
+            # its command metadata was reset before the scrub ran.
+            for index in 0..<(MAX_DEFERRED_COMMANDS * MAX_DEFERRED_TEXT_BYTES):
                 deferred_text_storage[index] <- 0
             deferred_text_clean_state <- true
 
