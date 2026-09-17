@@ -506,8 +506,10 @@ _Part of the [elisa-ui implementation baseline](../implementation-baseline.md)._
   `test/ui_state_test.elisa`.
 - `UiCapabilities` owns conservative, typed backend profiles. Adapters select a
   profile at startup; applications and `UiInspector` consume capability facts
-  without OS-name branches or native-object queries. Coverage lives in
-  `test/capabilities_test.elisa`.
+  without OS-name branches or native-object queries. Every current profile
+  explicitly declares the renderer's sRGB color-space contract; wide-gamut and
+  HDR remain unsupported until a backend can expose them end to end. Coverage
+  lives in `test/capabilities_test.elisa`.
 - `UiEvents` owns bounded FIFO ingress after each adapter has translated native
   facts into `UiCore::Event`. Synchronous adapters drain immediately; SDL drains
   poll bursts. Full queues reject ordinary physical input, while authoritative
