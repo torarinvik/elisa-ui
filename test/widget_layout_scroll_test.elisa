@@ -208,6 +208,13 @@ def main() -> i64:
     UiFlat::paint()
     rtl_thumb: f32 = horizontal_thumb_x(row_view)
     check("an unscrolled mirrored row parks its thumb at the reader's edge", rtl_thumb > ltr_thumb)
+    # The visible thumb is at the far edge in RTL. A click on the opposite
+    # side must therefore page forward; the old paging path compared against
+    # the unmirrored thumb position and swallowed this click as if it were on
+    # the thumb.
+    UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(8.0, 52.0), button: 0)))
+    check("RTL track paging follows the painted thumb", UiFlat::scroll_offset(row_view) > 0.0 and not UiFlat::scroll_dragging())
+    _ = UiFlat::set_scroll_offset(row_view, 0.0)
     # Dragging the thumb toward the reader's end must scroll forward, not back.
     UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(rtl_thumb + 4.0, 52.0), button: 0)))
     dragging: bool = UiFlat::scroll_dragging()

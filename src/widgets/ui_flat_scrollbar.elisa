@@ -175,17 +175,28 @@ extend UiFlat:
             thumb: f32 = scrollbar_thumb_length(index)
             travel: f32 = scrollbar_track_length(index) - thumb
             thumb_position: f32 = scrollbar_thumb_position(index, travel)
-            thumb_start: f32 = start + thumb_position
+            # Horizontal RTL scrollbars paint the thumb from the far end of
+            # the track.  Use the same direction transform as paint and hit
+            # testing here; otherwise the logical thumb remains at the left
+            # edge for paging, so a click on the visible thumb is treated as
+            # track paging while the actual track near the reader's end is
+            # incorrectly swallowed as a thumb hit.
+            thumb_start: f32 = start + scroll_thumb_travel(widgets[index].axis == UiConst::Axis.Row, travel, thumb_position)
             # Keep the thumb's far edge half-open, matching `scrollbar_part`.
             # A pointer exactly on that edge is on the track and should page;
             # treating it as part of the thumb made the same pixel both a
             # paging target and a drag target depending on the entry path.
             return if coordinate >= thumb_start and coordinate < thumb_start + thumb
             viewport: f32 = widgets[index].width if widgets[index].axis == UiConst::Axis.Row else widgets[index].height
+            page_delta: mutable f32 = -viewport if coordinate < thumb_start else viewport
+            # In a mirrored horizontal viewport, the reader's leading edge is
+            # the physical right edge.  Paging on the physical left therefore
+            # advances the logical offset instead of clamping at zero.
+            page_delta <- 0.0 - page_delta if widgets[index].axis == UiConst::Axis.Row and painting_right_to_left()
             if widgets[index].virtual_list:
-                _ = scroll_virtual_by(index, -viewport if coordinate < thumb_start else viewport)
+                _ = scroll_virtual_by(index, page_delta)
             else:
-                _ = set_scroll_offset(index, widgets[index].scroll_offset - viewport if coordinate < thumb_start else widgets[index].scroll_offset + viewport)
+                _ = set_scroll_offset(index, widgets[index].scroll_offset + page_delta)
 
         # Build a bounded pre-order snapshot from the retained links. The flat
         # layer normally receives well-formed links from its constructors, but
