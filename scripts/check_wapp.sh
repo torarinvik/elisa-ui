@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Build the hosted package through the Elisa compiler and component linker,
-# then inspect the artifact without launching WasmBrowser or a windowing
-# runtime. Inspection proves the package carries the public profile and the
-# guest/host contract; it does not by itself prove successful execution.
+# inspect the artifact, and run the typed Elisa runtime smoke from the
+# WasmBrowser workspace. Inspection proves the package carries the public
+# profile and guest/host contract; the smoke proves the hosted runtime can
+# instantiate and drive the current Elisa SDK component.
 #
 # IT BUILDS FIRST, AND IT IS IN THE SUITE. Neither was true before. run_tests.sh
 # never called this gate, so the WasmBrowser target sat outside every green run
@@ -96,4 +97,36 @@ if rg -i -q '(^|[^[:alnum:]_])(javascript|typescript|\.js|\.ts|esm)([^[:alnum:]_
   exit 1
 fi
 
-echo "wapp: built from this tree; profile, imports and exports inspected and JS-free"
+if [[ -z "$GIVEN_PACKAGE" ]]; then
+  SDK_RUNTIME_SCRIPT="$WASM_SDK/sdk/elisa/wasmbrowser/build.sh"
+  if [[ ! -f "$SDK_RUNTIME_SCRIPT" ]]; then
+    echo "wapp: package inspection passed; runtime smoke skipped (no WasmBrowser SDK build script)"
+    exit 0
+  fi
+  if ! command -v cargo >/dev/null 2>&1 || [[ ! -f "$WASMBROWSER/Cargo.toml" ]]; then
+    echo "wapp: package inspection passed; runtime smoke skipped (WasmBrowser Rust workspace unavailable)"
+    exit 0
+  fi
+
+  RUNTIME_COMPONENT="$WORK/typed.wasm"
+  ELISA_COMPILER_ROOT="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}" \
+    ELISA_COMPILER_DIR="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}" \
+    ELISA_STAGE1_BIN="${ELISA_STAGE1_BIN:-${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}/bin/elisac-stage1}" \
+    "$SDK_RUNTIME_SCRIPT" "$RUNTIME_COMPONENT" >"$WORK/runtime-build.log" 2>&1 || {
+      cat "$WORK/runtime-build.log" >&2
+      echo "wapp: hosted runtime smoke component build failed" >&2
+      exit 1
+    }
+  (
+    cd "$WASMBROWSER"
+    WASMBROWSER_ELISA_COMPONENT="$RUNTIME_COMPONENT" \
+      cargo test -p wb-runtime --test elisa_sdk -- --nocapture
+  ) >"$WORK/runtime.log" 2>&1 || {
+    cat "$WORK/runtime.log" >&2
+    echo "wapp: hosted runtime smoke failed" >&2
+    exit 1
+  }
+  echo "wapp: built from this tree; profile, imports and exports inspected, JS-free, and hosted runtime smoke passed"
+else
+  echo "wapp: package inspected; profile, imports and exports verified and JS-free"
+fi
