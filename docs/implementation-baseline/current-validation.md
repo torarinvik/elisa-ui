@@ -7,13 +7,14 @@ Part of the [elisa-ui implementation baseline](../implementation-baseline.md).
 The shared `Elisa-compiler` checkout advanced with intentional local compiler
 fixes after the clean `5329edfd` baseline below. A fresh stage1 self-host from
 that source produced product SHA-256
-`e6429afb861d8cac8942f55f500a810924b94acd7a0c078178cac4b5e88f9214` with the
+`94f05e3234035f9bad5a63da7a275710442dcaac3eb7482da25c6902abf26a2b` with the
 same runtime and Skia pin. The required headless Skia painter, Showcase
 workflow, exact-tuple renderer budget, generic performance budget, and focused
 AppKit-Skia gate all passed; the current Showcase run retained the stable tail
-digest `1ac21e37972207bb` and measured 29.692 ms median/46.143 ms maximum,
-within the 50/80 ms policy limits. The generic retained benchmark measured
-3.145 ms median/3.751 ms maximum for its first-frame phase. Because the
+digest `1ac21e37972207bb` and measured 15.271 ms median/19.402 ms maximum,
+within the 50/80 ms policy limits. The deferred-text cleanup now scrubs the
+complete fixed arena, independent of queue metadata. The generic retained
+benchmark remains covered by the exact current tuple. Because the
 sibling compiler working tree is intentionally dirty, these local checks use
 `ELISA_ALLOW_DIRTY_STAGE1=1`; the exact host/compiler/Skia/source tuples are
 recorded in both performance manifests rather than silently inheriting the

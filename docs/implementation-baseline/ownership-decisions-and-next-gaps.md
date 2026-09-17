@@ -127,6 +127,11 @@ _Part of the [elisa-ui implementation baseline](../implementation-baseline.md)._
   profile selector: hosted WasmBrowser and native-control profiles detach and
   reject a borrowed canvas instead of silently claiming local Skia. The Skia
   painter regression covers the rejected hosted attach.
+- Deferred Skia text storage now scrubs the complete fixed arena whenever a
+  frame ends, is cancelled, or is restarted after copied text was queued. The
+  cleanup invariant no longer depends on deferred command metadata surviving an
+  interrupted frame; `test/skia_painter/deferred_scopes.elisa` covers both
+  normal completion and restart cleanup.
 - AppKit's bounded native-string copy now preserves `CFStringGetBytes`' UTF-16
   conversion count. When a fixed buffer ends before a multibyte scalar, the
   canvas text adapters return their capacity sentinel so `UiFlat` retains its
