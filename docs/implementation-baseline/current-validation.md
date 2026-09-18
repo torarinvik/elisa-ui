@@ -2,6 +2,28 @@
 
 Part of the [elisa-ui implementation baseline](../implementation-baseline.md).
 
+## Compiler semantic-scope validation (2026-09-18)
+
+The sibling compiler is clean on `main` at `debbf68b`. Its fresh stage1
+product has SHA-256
+`1cbd19f6352bd0339e31ba61c2c9c900c3318309d1e079452bcbb9a4f15ab259` and its
+runtime object has SHA-256
+`1dbb59736ed498f8e602003e9504953e6f2a8bef916340882d3d4ce6df3e9e48`.
+The field-access-on-primitive checker now scopes local type facts across
+branches, blocks, loops, lambdas, comprehensions, and match binders. Its
+regression fixtures cover both `mutable u8&.count` rejection and a same-named
+inner `i64` shadow that must not make an outer `Point.x` access fail.
+
+The current stage0 semantic probe reports the two intended positive findings
+and no negative finding. The stage1 parse-report probe reports `P 0`, two
+positive findings, and `D 0` for the negative fixture. The required driver
+acceptance smoke also passes in both configurations:
+
+```text
+driver acceptance [bare] OK: 6 disagreements (ratchet 6) — 0 accept-gap, 6 reject-gap
+driver acceptance [withstd] OK: 0 disagreements (ratchet 0) — 0 accept-gap, 0 reject-gap
+```
+
 ## Latest local follow-up (2026-09-17)
 
 The shared `Elisa-compiler` checkout advanced with intentional local compiler
