@@ -220,6 +220,16 @@ JS-free component package with the expected imports/exports. The current
 runtime smoke reaches the guest successfully after the SDK/runtime WIT
 alignment; it does not restore the old intrinsic/import failure.
 
+The aligned SDK contract and adjacent regression validation was also rerun from
+the sibling `wasm-sdk` checkout. `test.wasmbrowser_contract_test`,
+`test.wasmbrowser_sdk_regression_test`, and `test.wasmbrowser_sdk_cli_test`
+completed with 313 passing tests and 3 skips. The skips are deliberate: the
+installed Homebrew Rust toolchain is `rustc 1.98.1`/Cargo `1.98.1`, while the
+Preview 2 command profile is locked to Rust/Cargo `1.98.0`. The preview2 JSON
+report test now uses the same exact-profile predicate as the build test, so an
+unavailable locked profile is reported as skipped rather than as a misleading
+validation failure. No SDK lock was relaxed.
+
 ## Optimized AppKit validation
 
 `test/appkit_canvas_surface_test.elisa` now passes at `-O2` with the clean
