@@ -176,12 +176,13 @@ has no built Android Skia archive or attached Android device. The Android
 native-controls package half is independently green through
 `scripts/check_android_controls.sh showcase`.
 
-The hosted Wapp package still builds, inspects, and passes its JS-free
-contract checks, but its WasmBrowser Rust smoke is currently blocked in the
-sibling SDK/runtime tuple before guest `start`: Wasmtime reports
-`failed to convert function to given type`. The other three hosted runtime
-fixtures pass; this is recorded as an external SDK/WIT binding mismatch, not
-as a passing UI gate.
+The hosted Wapp package builds, inspects, and passes its JS-free contract
+checks, and its WasmBrowser Rust smoke now passes through guest `start`, frame,
+keyboard, pointer, and lifecycle driving. The fix aligned the SDK's primary
+WIT contract with the runtime's current `pointer-kind` enum, including the
+appended `cancel` case, and lets component-mode export scanning carry named
+scalar enum parameters as their canonical `i32` representation. The focused
+compiler regression fixture and the hosted runtime gate both pass.
 
 On macOS 27, CoreSimulator can remain responsive at the process level while
 `simctl` discovery never returns after an Xcode/SDK upgrade. The iOS simulator
@@ -216,9 +217,8 @@ The expected intrinsic is `llvm.wasm.memory.grow.i32`. The repaired compiler
 and runtime are committed in the sibling `Elisa-compiler` checkout at
 `d7aead96`, `56364e77`, `86172169`, and `5329edfd`; `scripts/check_wapp.sh` reports a
 JS-free component package with the expected imports/exports. The current
-runtime smoke failure is later, during Wasmtime's typed export conversion of
-the SDK-generated component, and does not restore the old intrinsic/import
-failure.
+runtime smoke reaches the guest successfully after the SDK/runtime WIT
+alignment; it does not restore the old intrinsic/import failure.
 
 ## Optimized AppKit validation
 

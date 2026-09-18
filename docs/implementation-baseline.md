@@ -11,13 +11,13 @@ parity on untested platforms.
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui code revision | `618629ec7ae7` on main (CoreSimulator timeout handling and hosted-runtime evidence qualification; working tree clean at refresh) |
+| elisa-ui code revision | `02a0d80` on main (hosted backend matrix qualification; working tree has current validation and performance-budget updates) |
 | Host and C compiler | macOS 27.0 (Darwin 27.0.0), arm64; Homebrew clang 23.1.1 |
-| Elisa stage1 | latest local build `../Elisa-compiler/bin/elisac-stage1`, revision `debbf68b80b5` (main, ahead of fetched origin/main); SHA-256 `1cbd19f6352bd0339e31ba61c2c9c900c3318309d1e079452bcbb9a4f15ab259` |
+| Elisa stage1 | latest local build `../Elisa-compiler/bin/elisac-stage1`, revision `debbf68b80b5` (main, ahead of fetched origin/main; intentionally dirty compiler checkout); SHA-256 `a055a8b0b39159571ed8c50e236f4775e59dacab1f93e65e0074f00e56af1a40` |
 | Elisa runtime | `../Elisa-compiler/build/runtime/elisacore_runtime.o`; SHA-256 `1dbb59736ed498f8e602003e9504953e6f2a8bef916340882d3d4ce6df3e9e48` |
 | Elisa stage1 driver | `../Elisa-compiler/scripts/elisac_stage1.sh` from the latest local compiler; SHA-256 `f5c3c03081247f6b57a11b94d8b98243f26a32883a76a8add295ff8c3e49688b` |
 | Upstream-main compiler reference | fetched `origin/main` at `76230afa9e5f`; the local main build above is two commits ahead and zero behind |
-| Shared compiler checkout | `../Elisa-compiler` is on clean branch `main` at `debbf68b80b5` (ahead=2, behind=0 versus fetched `origin/main`); current gates use this latest local build. |
+| Shared compiler checkout | `../Elisa-compiler` is on branch `main` at `debbf68b80b5` (ahead=2, behind=0 versus fetched `origin/main`) with the component-export regression fix uncommitted; current gates use this intentionally dirty local build. |
 | Clang binary | `/opt/homebrew/opt/llvm/bin/clang++`, Homebrew clang 23.1.1; SHA-256 570c488e53383b198796e706e91b5ce5ec45bb730683a5af5e822d56a2eb1888 |
 | Skia source/archive | chrome/m150 at 9c7b2dffb2433f5a0cc2b77f06025a09126807ed; `out/elisa/libskia.a` SHA-256 39774ff993bd3b84943c27548738c8b8b8208396237d536c1a4ed1c6e147c775; optional `libpng.a` SHA-256 13fda447a526c821e1bff29f66b3a582857d702e9f8fd8e5f29b5628dfe2690f |
 | WasmBrowser | ../WasmBrowser at `3ac9b25b0ea7`; checkout has pre-existing local changes (404 files), including an uncommitted `pointer-kind.cancel` WIT extension; current WIT SHA-256 `3e9f8c202a4feca3b10edfda8d82a831e06f5da63b0b829de4666e6dc55cfb32` |
@@ -38,7 +38,7 @@ The renderer status and exact verification outcomes are in
 | Skia source pin | `chrome/m150` at `9c7b2dffb2433f5a0cc2b77f06025a09126807ed`; build contract in `third_party/skia.lock` | unchanged: `chrome/m150` at `9c7b2dffb2433f5a0cc2b77f06025a09126807ed` |
 | Elisa runtime | `../wasm-sdk-compiler/build/runtime/elisacore_runtime.o`; SHA-256 `cb06532f0c37540284de4ceaa622d0da9193f113877ac391fb00bad4bf9ff1e9` | `../wasm-sdk-compiler/build/runtime/elisacore_runtime.o`; SHA-256 `98aee21d1a0b535b62693d706c4884cf7ea0273dbe49488f2b84dba5c79268cb` |
 | WasmBrowser checkout | revision `b40bb17a3141` (host worktree has unrelated local runtime edits) | revision `2f8bc5be1160` (worktree has local `wb_protocol`/CLI/commerce/loader edits) |
-| WasmBrowser WIT | `../WasmBrowser/wit/wasmbrowser.wit`; SHA-256 `9032a1c59a5495d4868bc7cdf494153096708ff6f2321b4ea2ffeff752c627d6` | unchanged SHA-256 `9032a1c59a5495d4868bc7cdf494153096708ff6f2321b4ea2ffeff752c627d6` |
+| WasmBrowser WIT | `../WasmBrowser/wit/wasmbrowser.wit`; SHA-256 `3e9f8c202a4feca3b10edfda8d82a831e06f5da63b0b829de4666e6dc55cfb32` | aligned with the SDK contract and runtime binding |
 | wasm-sdk checkout | revision `15024adfe066` (standalone SDK contract provenance and package validation) | revision `fa832f0e8122` |
 | Rust component linker | rustc 1.98.0; `wasm-component-ld` from the stable aarch64 toolchain | rustc 1.98.1 (Homebrew); `wasm-component-ld` not on PATH |
 | Native libraries | Homebrew SDL3 3.4.14 and SDL_ttf 3.2.2 under `/opt/homebrew/lib` | Homebrew SDL3 3.4.16 and SDL_ttf 3.2.2 under `/opt/homebrew/lib` |
