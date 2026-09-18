@@ -16,38 +16,7 @@ set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 DEVICE_NAME="${ELISA_UI_SIMULATOR_NAME:-elisa-ui-check}"
-
-# xcrun simctl can block indefinitely when CoreSimulator is starting, its
-# service database is unavailable after an Xcode/macOS upgrade, or no runtime
-# service is reachable. Discovery is optional for this gate, so bound only the
-# discovery queries and report a skip instead of holding the complete suite.
-simctl_query() {
-  local query_timeout="${ELISA_UI_SIMCTL_QUERY_TIMEOUT:-10}"
-  local query_file query_pid query_status
-  query_file="$(mktemp "${TMPDIR:-/tmp}/elisa-ui-simctl.XXXXXX")"
-  xcrun simctl "$@" >"$query_file" 2>/dev/null &
-  query_pid=$!
-  for _ in $(seq "$query_timeout"); do
-    if ! kill -0 "$query_pid" 2>/dev/null; then
-      if wait "$query_pid"; then
-        cat "$query_file"
-        rm -f "$query_file"
-        return 0
-      else
-        query_status=$?
-        cat "$query_file"
-        rm -f "$query_file"
-        return "$query_status"
-      fi
-    fi
-    sleep 1
-  done
-  kill -TERM "$query_pid" 2>/dev/null || true
-  wait "$query_pid" 2>/dev/null || true
-  rm -f "$query_file"
-  echo "uikit simulator: simctl $* timed out after ${query_timeout}s" >&2
-  return 124
-}
+source "$ROOT/scripts/simctl_query.sh"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "uikit simulator: skipped (not macOS)"
@@ -81,7 +50,8 @@ fi
 xcrun simctl boot "$UDID" >/dev/null 2>&1 || true
 booted=0
 for _ in $(seq 60); do
-  if xcrun simctl list devices 2>/dev/null | grep "$UDID" | grep -q Booted; then
+  DEVICE_STATE="$(simctl_query list devices 2>/dev/null || true)"
+  if grep "$UDID" <<<"$DEVICE_STATE" | grep -q Booted; then
     booted=1
     break
   fi

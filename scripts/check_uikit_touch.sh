@@ -17,6 +17,7 @@ set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 DEVICE_NAME="${ELISA_UI_SIMULATOR_NAME:-elisa-ui-check}"
+source "$ROOT/scripts/simctl_query.sh"
 PLATFORM=/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer
 RUNNER_TEMPLATE="$PLATFORM/Library/Xcode/Agents/XCTRunner.app"
 
@@ -24,7 +25,11 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "uikit touch: skipped (not macOS)"
   exit 0
 fi
-if ! xcrun simctl list runtimes 2>/dev/null | grep -q "^iOS "; then
+RUNTIME_LIST="$(simctl_query list runtimes)" || {
+  echo "uikit touch: skipped (CoreSimulator runtime discovery unavailable)"
+  exit 0
+}
+if ! grep -q "^iOS " <<<"$RUNTIME_LIST"; then
   echo "uikit touch: skipped (no iOS runtime; install with 'xcodebuild -downloadPlatform iOS')"
   exit 0
 fi
@@ -33,16 +38,25 @@ if [[ ! -d "$RUNNER_TEMPLATE" ]]; then
   exit 0
 fi
 
-RUNTIME_ID="$(xcrun simctl list runtimes 2>/dev/null | awk '/^iOS /{print $NF}' | tail -1)"
-DEVICE_TYPE="$(xcrun simctl list devicetypes 2>/dev/null | awk -F'[()]' '/iPhone 1[5-9]/{print $2}' | tail -1)"
-UDID="$(xcrun simctl list devices 2>/dev/null | awk -v name="$DEVICE_NAME" -F'[()]' '$0 ~ name {print $2; exit}')"
+RUNTIME_ID="$(awk '/^iOS /{print $NF}' <<<"$RUNTIME_LIST" | tail -1)"
+DEVICE_TYPES="$(simctl_query list devicetypes)" || {
+  echo "uikit touch: skipped (CoreSimulator device discovery unavailable)"
+  exit 0
+}
+DEVICE_TYPE="$(awk -F'[()]' '/iPhone 1[5-9]/{print $2}' <<<"$DEVICE_TYPES" | tail -1)"
+DEVICE_LIST="$(simctl_query list devices)" || {
+  echo "uikit touch: skipped (CoreSimulator device list unavailable)"
+  exit 0
+}
+UDID="$(awk -v name="$DEVICE_NAME" -F'[()]' '$0 ~ name {print $2; exit}' <<<"$DEVICE_LIST")"
 if [[ -z "$UDID" ]]; then
   UDID="$(xcrun simctl create "$DEVICE_NAME" "$DEVICE_TYPE" "$RUNTIME_ID")"
 fi
 xcrun simctl boot "$UDID" >/dev/null 2>&1 || true
 booted=0
 for _ in $(seq 60); do
-  if xcrun simctl list devices 2>/dev/null | grep "$UDID" | grep -q Booted; then
+  DEVICE_STATE="$(simctl_query list devices 2>/dev/null || true)"
+  if grep "$UDID" <<<"$DEVICE_STATE" | grep -q Booted; then
     booted=1
     break
   fi

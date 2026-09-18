@@ -176,6 +176,12 @@ has no built Android Skia archive or attached Android device. The Android
 native-controls package half is independently green through
 `scripts/check_android_controls.sh showcase`.
 
+On macOS 27, CoreSimulator can remain responsive at the process level while
+`simctl` discovery never returns after an Xcode/SDK upgrade. The iOS simulator
+and touch gates now bound every runtime, device-type, and device-list query
+through `scripts/simctl_query.sh`; an unavailable CoreSimulator installation
+is reported as a skip instead of hanging the suite.
+
 Variable-height retained lists also accept a synchronous application
 measurement provider. The provider can supply logical row extents before
 intrinsic fallback. Typed handles expose a bounded, versioned measurement
