@@ -23,6 +23,15 @@ extend UiRemote:
             count: usize = UiCore::accessibility_count()
             return submit_semantics_for_generation(remote_generation, sequence, count.u32(), complete)
 
+        # Transport adapters enumerate the admitted tree through this bounded
+        # view instead of reaching into UiCore storage directly. The returned
+        # text views remain valid only for the current frame, so the host must
+        # copy them before it acknowledges the sequence.
+        def semantic_node_at(index: usize) -> UiCore::AccessibilityNode?:
+            return null if remote_state != ConnectionState.Connected or not remote_semantics_available
+            return null if UiCore::accessibility_overflowed() or index >= UiCore::accessibility_count()
+            return UiCore::accessibility_if_valid(index)
+
         def submit_semantics_for_generation(generation: u32, sequence: u64, node_count: u32, complete: bool) -> SemanticResult:
             rejected: SemanticResult = SemanticResult{accepted: false, stale: true}
             return rejected if remote_state != ConnectionState.Connected or not remote_semantics_available
