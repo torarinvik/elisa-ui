@@ -24,6 +24,13 @@ driver acceptance [bare] OK: 6 disagreements (ratchet 6) — 0 accept-gap, 6 rej
 driver acceptance [withstd] OK: 0 disagreements (ratchet 0) — 0 accept-gap, 0 reject-gap
 ```
 
+The macOS 27 retained-tree performance run is now pinned in
+`test/performance_budgets.json` under the exact compiler/runtime/host tuple;
+`scripts/check_performance.sh` passes with the recorded 21-sample budget. The
+AppKit headless gate also passes on macOS 27. Its tree assertion deliberately
+counts framework-owned container children only, because current `NSButton`
+instances may expose private AppKit subviews that are not elisa-ui children.
+
 ## Latest local follow-up (2026-09-17)
 
 The shared `Elisa-compiler` checkout advanced with intentional local compiler
