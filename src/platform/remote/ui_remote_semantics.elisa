@@ -13,6 +13,16 @@ extend UiRemote:
         def submit_semantics(sequence: u64, node_count: u32, complete: bool) -> SemanticResult:
             return submit_semantics_for_generation(remote_generation, sequence, node_count, complete)
 
+        # The transport-facing convenience path is tied to the same retained
+        # semantic tree that layout and native adapters consume. A caller may
+        # still submit an explicitly counted packet when a host owns a copied
+        # snapshot, but the normal path must not be able to acknowledge a
+        # fabricated count or an overflowed partial tree.
+        def submit_current_semantics(sequence: u64, complete: bool) -> SemanticResult:
+            return reject_semantic_packet() if UiCore::accessibility_overflowed()
+            count: usize = UiCore::accessibility_count()
+            return submit_semantics_for_generation(remote_generation, sequence, count.u32(), complete)
+
         def submit_semantics_for_generation(generation: u32, sequence: u64, node_count: u32, complete: bool) -> SemanticResult:
             rejected: SemanticResult = SemanticResult{accepted: false, stale: true}
             return rejected if remote_state != ConnectionState.Connected or not remote_semantics_available
