@@ -17,21 +17,64 @@ set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 DEVICE_NAME="${ELISA_UI_SIMULATOR_NAME:-elisa-ui-check}"
 
+# xcrun simctl can block indefinitely when CoreSimulator is starting, its
+# service database is unavailable after an Xcode/macOS upgrade, or no runtime
+# service is reachable. Discovery is optional for this gate, so bound only the
+# discovery queries and report a skip instead of holding the complete suite.
+simctl_query() {
+  local query_timeout="${ELISA_UI_SIMCTL_QUERY_TIMEOUT:-10}"
+  local query_file query_pid query_status
+  query_file="$(mktemp "${TMPDIR:-/tmp}/elisa-ui-simctl.XXXXXX")"
+  xcrun simctl "$@" >"$query_file" 2>/dev/null &
+  query_pid=$!
+  for _ in $(seq "$query_timeout"); do
+    if ! kill -0 "$query_pid" 2>/dev/null; then
+      if wait "$query_pid"; then
+        cat "$query_file"
+        rm -f "$query_file"
+        return 0
+      else
+        query_status=$?
+        cat "$query_file"
+        rm -f "$query_file"
+        return "$query_status"
+      fi
+    fi
+    sleep 1
+  done
+  kill -TERM "$query_pid" 2>/dev/null || true
+  wait "$query_pid" 2>/dev/null || true
+  rm -f "$query_file"
+  echo "uikit simulator: simctl $* timed out after ${query_timeout}s" >&2
+  return 124
+}
+
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "uikit simulator: skipped (not macOS)"
   exit 0
 fi
-if ! xcrun simctl list runtimes 2>/dev/null | grep -q "^iOS "; then
+RUNTIME_LIST="$(simctl_query list runtimes)" || {
+  echo "uikit simulator: skipped (CoreSimulator runtime discovery unavailable)"
+  exit 0
+}
+if ! grep -q "^iOS " <<<"$RUNTIME_LIST"; then
   echo "uikit simulator: skipped (no iOS runtime; install with 'xcodebuild -downloadPlatform iOS')"
   exit 0
 fi
-
-RUNTIME_ID="$(xcrun simctl list runtimes 2>/dev/null | awk '/^iOS /{print $NF}' | tail -1)"
-DEVICE_TYPE="$(xcrun simctl list devicetypes 2>/dev/null | awk -F'[()]' '/iPhone 1[5-9]/{print $2}' | tail -1)"
+RUNTIME_ID="$(awk '/^iOS /{print $NF}' <<<"$RUNTIME_LIST" | tail -1)"
+DEVICE_TYPES="$(simctl_query list devicetypes)" || {
+  echo "uikit simulator: skipped (CoreSimulator device discovery unavailable)"
+  exit 0
+}
+DEVICE_TYPE="$(awk -F'[()]' '/iPhone 1[5-9]/{print $2}' <<<"$DEVICE_TYPES" | tail -1)"
 [[ -n "$RUNTIME_ID" && -n "$DEVICE_TYPE" ]] || { echo "uikit simulator: no usable runtime/device type" >&2; exit 1; }
 
 # Reuse the check's own device so a developer's simulators are left alone.
-UDID="$(xcrun simctl list devices 2>/dev/null | awk -v name="$DEVICE_NAME" -F'[()]' '$0 ~ name {print $2; exit}')"
+DEVICE_LIST="$(simctl_query list devices)" || {
+  echo "uikit simulator: skipped (CoreSimulator device list unavailable)"
+  exit 0
+}
+UDID="$(awk -v name="$DEVICE_NAME" -F'[()]' '$0 ~ name {print $2; exit}' <<<"$DEVICE_LIST")"
 if [[ -z "$UDID" ]]; then
   UDID="$(xcrun simctl create "$DEVICE_NAME" "$DEVICE_TYPE" "$RUNTIME_ID")"
 fi

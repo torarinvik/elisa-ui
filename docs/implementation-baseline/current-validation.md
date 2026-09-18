@@ -30,6 +30,9 @@ The macOS 27 retained-tree performance run is now pinned in
 AppKit headless gate also passes on macOS 27. Its tree assertion deliberately
 counts framework-owned container children only, because current `NSButton`
 instances may expose private AppKit subviews that are not elisa-ui children.
+The iOS simulator gate now bounds CoreSimulator discovery queries and reports a
+skip when `simctl` is unavailable or hangs during service startup; it does not
+turn a missing simulator runtime into a passing device execution result.
 
 ## Latest local follow-up (2026-09-17)
 
