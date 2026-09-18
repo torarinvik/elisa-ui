@@ -168,13 +168,20 @@ recorded in
 bundle, or host must add its own measured reference instead of inheriting this
 result.
 
-The complete `SKIA_ROOT=/private/tmp/elisa-skia-check-20260914
-bash scripts/run_tests.sh` matrix now passes every local compiler, renderer,
-native, mobile-simulator, cross-target, Unicode, portable, and hosted Wapp
-fixture. The custom Android canvas leg is skipped because this host
+The complete `ELISA_UI_REQUIRE_REAL_SKIA=0
+ELISA_UI_SIMCTL_QUERY_TIMEOUT=1 bash scripts/run_tests.sh` run passes every
+local compiler, renderer, native, mobile-simulator, cross-target, Unicode, and
+portable fixture. The custom Android canvas leg is skipped because this host
 has no built Android Skia archive or attached Android device. The Android
 native-controls package half is independently green through
 `scripts/check_android_controls.sh showcase`.
+
+The hosted Wapp package still builds, inspects, and passes its JS-free
+contract checks, but its WasmBrowser Rust smoke is currently blocked in the
+sibling SDK/runtime tuple before guest `start`: Wasmtime reports
+`failed to convert function to given type`. The other three hosted runtime
+fixtures pass; this is recorded as an external SDK/WIT binding mismatch, not
+as a passing UI gate.
 
 On macOS 27, CoreSimulator can remain responsive at the process level while
 `simctl` discovery never returns after an Xcode/SDK upgrade. The iOS simulator
@@ -189,7 +196,7 @@ snapshot/restore path owned by Elisa, with full validation before cache
 replacement; `test/widget_handles_test.elisa` covers provider replacement,
 cache invalidation, intrinsic fallback, enumeration, and persistence.
 
-## Hosted open vertical-slice gate (2026-09-16)
+## Hosted open vertical-slice gate (2026-09-18)
 
 The hosted open-vertical-slice gate now builds and inspects the component
 package successfully. The compiler-side fix corrected WebAssembly intrinsic
@@ -207,8 +214,11 @@ declare i32 @llvm.wasm.memory.grow.i32.i32(i32, i32)
 
 The expected intrinsic is `llvm.wasm.memory.grow.i32`. The repaired compiler
 and runtime are committed in the sibling `Elisa-compiler` checkout at
-`d7aead96`, `56364e77`, `86172169`, and `5329edfd`; `scripts/check_wapp.sh` now reports a
-JS-free component package with the expected imports/exports.
+`d7aead96`, `56364e77`, `86172169`, and `5329edfd`; `scripts/check_wapp.sh` reports a
+JS-free component package with the expected imports/exports. The current
+runtime smoke failure is later, during Wasmtime's typed export conversion of
+the SDK-generated component, and does not restore the old intrinsic/import
+failure.
 
 ## Optimized AppKit validation
 
