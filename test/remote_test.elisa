@@ -52,7 +52,7 @@ def main() -> i64:
     check("remote connects with negotiated presentation", UiRemote::connect(offer, UiRemote::Presentation.TypedCommands))
     check("remote connection invalidates overlay presentation", UiCore::is_invalidated(UiCore::Invalidation.Paint) and UiCore::is_invalidated(UiCore::Invalidation.Semantics))
     connected: UiRemote::Snapshot = UiRemote::snapshot()
-    check("remote connection owns a generation", connected.state == UiRemote::ConnectionState.Connected and connected.generation > 0 and connected.selection.presentation == UiRemote::Presentation.TypedCommands and not connected.overlay_visible)
+    check("remote connection owns a generation", connected.state == UiRemote::ConnectionState.Connected and connected.generation > 0 and connected.selection.presentation == UiRemote::Presentation.TypedCommands and connected.semantics_available and not connected.overlay_visible)
     resized: UiCore::Size = UiRemote::logical_size(connected.selection, 1280, 720)
     check("remote converts physical resize through negotiated scale", resized.width == 640.0 and resized.height == 360.0)
 
@@ -67,6 +67,12 @@ def main() -> i64:
     check("generation-aware input accepts the current session", UiRemote::submit_input_for_generation(first_generation, 9).accepted)
     _ = UiRemote::acknowledge_input_for_generation(first_generation, 9)
 
+    semantic_packet: UiRemote::SemanticResult = UiRemote::submit_semantics_for_generation(first_generation, 1, 2, true)
+    check("remote accepts a complete semantic snapshot", semantic_packet.accepted and not semantic_packet.stale and UiRemote::snapshot().semantic_pending)
+    check("remote acknowledges a semantic snapshot", UiRemote::acknowledge_semantics_for_generation(first_generation, 1) and not UiRemote::snapshot().semantic_pending)
+    partial_semantics: UiRemote::SemanticResult = UiRemote::submit_semantics_for_generation(first_generation, 2, 1, false)
+    check("remote rejects partial semantic snapshots", not partial_semantics.accepted and partial_semantics.stale and UiRemote::snapshot().stale_semantics)
+
     UiCore::clear_all_invalidations()
     check("remote suspension blocks input", UiRemote::suspend() and not UiRemote::accepts_input() and UiRemote::snapshot().overlay_visible and UiCore::is_invalidated(UiCore::Invalidation.Paint) and UiCore::is_invalidated(UiCore::Invalidation.Semantics))
     UiCore::clear_all_invalidations()
@@ -75,11 +81,13 @@ def main() -> i64:
     UiRemote::disconnect()
     disconnected: UiRemote::Snapshot = UiRemote::snapshot()
     check("remote disconnect clears selection and advances generation", disconnected.state == UiRemote::ConnectionState.Disconnected and disconnected.generation != generation_before_disconnect and disconnected.overlay_visible and not disconnected.selection.accepted and not disconnected.input_pending)
+    check("remote disconnect clears semantic acknowledgements", not disconnected.semantics_available and not disconnected.semantic_pending)
     check("remote reconnects before a failed offer", UiRemote::connect(offer, UiRemote::Presentation.TypedCommands) and UiRemote::snapshot().selection.accepted)
     second_generation: u32 = UiRemote::snapshot().generation
     check("reconnect rotates the remote generation", second_generation != first_generation)
     check("old-generation input is rejected after reconnect", not UiRemote::submit_input_for_generation(first_generation, 100).accepted and UiRemote::snapshot().stale_input)
     check("current-generation input remains usable", UiRemote::submit_input_for_generation(second_generation, 1).accepted)
+    check("old-generation semantics are rejected after reconnect", not UiRemote::submit_semantics_for_generation(first_generation, 10, 1, true).accepted)
     check("old-generation acknowledgement is rejected", not UiRemote::acknowledge_input_for_generation(first_generation, 1))
     _ = UiRemote::submit_input(9)
     generation_before_failed_reconnect: u32 = UiRemote::snapshot().generation

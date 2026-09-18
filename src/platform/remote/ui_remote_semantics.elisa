@@ -1,0 +1,43 @@
+# Bounded remote semantic-snapshot admission and acknowledgement policy.
+#
+# The transport remains host-owned. Elisa only admits a complete, bounded
+# snapshot for the currently negotiated session and rejects stale or partial
+# updates before they can be presented as an accessibility tree.
+
+include "../../core/ui_core.elisa"
+
+extend UiRemote:
+    public:
+        const MAX_SEMANTIC_NODES: u32 = UiCore::MAX_ACCESSIBILITY_NODES.u32()
+
+        def submit_semantics(sequence: u64, node_count: u32, complete: bool) -> SemanticResult:
+            return submit_semantics_for_generation(remote_generation, sequence, node_count, complete)
+
+        def submit_semantics_for_generation(generation: u32, sequence: u64, node_count: u32, complete: bool) -> SemanticResult:
+            rejected: SemanticResult = SemanticResult{accepted: false, stale: true}
+            return rejected if remote_state != ConnectionState.Connected or not remote_semantics_available
+            return rejected if generation != remote_generation
+            return rejected if sequence == 0 or sequence <= remote_semantic_sent
+            # A partial or over-capacity tree is never acknowledged. The host
+            # must not expose a stale mixture of old and new semantic nodes.
+            return reject_semantic_packet() if not complete or node_count > MAX_SEMANTIC_NODES
+            remote_semantic_sent <- sequence
+            return SemanticResult{accepted: true, stale: false}
+
+        def acknowledge_semantics(sequence: u64) -> bool:
+            return acknowledge_semantics_for_generation(remote_generation, sequence)
+
+        def acknowledge_semantics_for_generation(generation: u32, sequence: u64) -> bool:
+            return reject_semantic_ack() if remote_state != ConnectionState.Connected or not remote_semantics_available or generation != remote_generation
+            return reject_semantic_ack() if sequence == 0 or sequence > remote_semantic_sent or sequence < remote_semantic_acked
+            remote_semantic_acked <- sequence
+            return true
+
+    private:
+        def reject_semantic_packet() -> SemanticResult:
+            remote_stale_semantics <- true
+            return SemanticResult{accepted: false, stale: true}
+
+        def reject_semantic_ack() -> bool:
+            remote_stale_semantics <- true
+            return false
