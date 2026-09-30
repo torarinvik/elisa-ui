@@ -1,29 +1,36 @@
 # elisa-ui implementation baseline
 
-Recorded 2026-09-08 on macOS arm64; refreshed 2026-09-18 on main.
+Recorded 2026-09-08 on macOS arm64; refreshed 2026-09-30 from the live
+checkouts on main.
 This is the durable UI-00 audit for the
 local implementation plan; it records observed behavior, not an assumption of
 parity on untested platforms.
 
 ## Reproducibility tuple
 
-### Active toolchain snapshot (2026-09-18)
+### Active toolchain snapshot (2026-09-30)
 
 | Item | Observed value |
 | --- | --- |
-| elisa-ui code revision | `02a0d80` on main (hosted backend matrix qualification; working tree has current validation and performance-budget updates) |
-| Host and C compiler | macOS 27.0 (Darwin 27.0.0), arm64; Homebrew clang 23.1.1 |
-| Elisa stage1 | latest local build `../Elisa-compiler/bin/elisac-stage1`, revision `debbf68b80b5` (main, ahead of fetched origin/main; intentionally dirty compiler checkout); SHA-256 `a055a8b0b39159571ed8c50e236f4775e59dacab1f93e65e0074f00e56af1a40` |
-| Elisa runtime | `../Elisa-compiler/build/runtime/elisacore_runtime.o`; SHA-256 `1dbb59736ed498f8e602003e9504953e6f2a8bef916340882d3d4ce6df3e9e48` |
-| Elisa stage1 driver | `../Elisa-compiler/scripts/elisac_stage1.sh` from the latest local compiler; SHA-256 `f5c3c03081247f6b57a11b94d8b98243f26a32883a76a8add295ff8c3e49688b` |
-| Upstream-main compiler reference | fetched `origin/main` at `76230afa9e5f`; the local main build above is two commits ahead and zero behind |
-| Shared compiler checkout | `../Elisa-compiler` is on branch `main` at `debbf68b80b5` (ahead=2, behind=0 versus fetched `origin/main`) with the component-export regression fix uncommitted; current gates use this intentionally dirty local build. |
-| Clang binary | `/opt/homebrew/opt/llvm/bin/clang++`, Homebrew clang 23.1.1; SHA-256 570c488e53383b198796e706e91b5ce5ec45bb730683a5af5e822d56a2eb1888 |
-| Skia source/archive | chrome/m150 at 9c7b2dffb2433f5a0cc2b77f06025a09126807ed; `out/elisa/libskia.a` SHA-256 39774ff993bd3b84943c27548738c8b8b8208396237d536c1a4ed1c6e147c775; optional `libpng.a` SHA-256 13fda447a526c821e1bff29f66b3a582857d702e9f8fd8e5f29b5628dfe2690f |
-| WasmBrowser | ../WasmBrowser at `3ac9b25b0ea7`; checkout has pre-existing local changes (404 files), including an uncommitted `pointer-kind.cancel` WIT extension; current WIT SHA-256 `3e9f8c202a4feca3b10edfda8d82a831e06f5da63b0b829de4666e6dc55cfb32` |
-| wasm-sdk | ../wasm-sdk at `fa832f0e8122`; checkout has pre-existing local changes (76 files) |
-| Rust/Wasm linker | rustc 1.98.1 (Homebrew); wasm-component-ld is not on PATH |
-| Native libraries | Homebrew SDL3 3.4.16 and SDL_ttf 3.2.2 under /opt/homebrew/lib |
+| elisa-ui Git state | `9487a79` (`remote: expose bounded semantic nodes`) on `main`, 0 ahead/behind `origin/main`; working tree dirty (223 status entries at sampling, before this refresh). |
+| Host and Apple toolchain | macOS 27.0 (Darwin 27.0.0), arm64; Xcode 27.0 build `27A266a`, selected developer directory `/Applications/Xcode.app/Contents/Developer`. License acceptance and Homebrew upgrade are complete; default and explicit-Xcode C/C++ link checks pass. |
+| Stage1 selection | `bash scripts/resolve_stage1_root.sh .` selects `../Elisa-compiler`; product revision `3fa4a7e590c3ae5919b759a85dc8f1e105246c8b` on `main`, two commits ahead and zero behind `origin/main` (`ce52ba2c5261ebced8f5dae9ca1e21f25db8f460`); compiler checkout is dirty (49 status entries). Product SHA-256 `4b36ce5a7dcf4c448ee037dce4ec393b603ed90d15aa534a90ee3888be8e83fe`. |
+| Elisa runtime | `../Elisa-compiler/build/runtime/elisacore_runtime.o`; SHA-256 `4a25cda85e118d59355bc437cb4e6ca15cbd96212d861198dc003bb3a3d733cb` |
+| Elisa stage1 driver | `../Elisa-compiler/scripts/elisac_stage1.sh`; SHA-256 `f242c03380cb4e1e75f1116bef57a48961319d81bbd2cf7de47c9865cfcbfb7e` |
+| Installed compiler snapshot | Installer snapshot `b841e64b`, captured 2026-09-27; separately passes the strict freshness check and builds/runs the C API example. The shell resolver prefers explicit selection, then adjacent development checkout, then this installed snapshot; see [current validation](implementation-baseline/current-validation.md). |
+| C compiler | `/opt/homebrew/opt/llvm/bin/clang++`, Homebrew clang 23.1.1; SHA-256 `b0a040ee4ff1ed0da511d816be6539a8ee1827c2574135cfd31ad2e6354caa21` |
+| WasmBrowser host/WIT | `../WasmBrowser` at `f2964aea83b0377c55220efa4aaa4ea55a0dee5f` on `main`, ten commits ahead of `origin/main`, with three local status entries. `wasmbrowser:window@0.1.0`; WIT SHA-256 `fca6734b226558ccaf2ff590bcf05819c654b738da8d701aabd39bd143665d1a`. |
+| wasm-sdk | `../wasm-sdk` at `fa832f0e812254b0edb0447a17078397911c3d01` on `main`, 0 ahead/behind `origin/main`, with 98 local status entries; the selected input package declares `wasmbrowser:input@0.1.0`. |
+| Rust/Wasm linker | rustc 1.98.1 (Homebrew); `wasm-component-ld` is not on `PATH` |
+| Native libraries | Homebrew LLVM 23.1.1_1, SDL3 3.4.16, SDL_ttf 3.2.2, and pkgconf 3.0.7 under `/opt/homebrew`; SDL link checks pass. |
+| Skia | `third_party/skia.lock` pins `chrome/m150` at `9c7b2dffb2433f5a0cc2b77f06025a09126807ed`; renderer verification last records a 2026-09-17 tuple, which plan status marks stale for the current host/source. Do not treat it as current renderer acceptance. |
+
+Example behavior on this tuple is recorded separately from package presence:
+the C and Go linked examples, Wapp profile/runtime gates, Hello resource and
+validation workflows, and Showcase retained-tree workflow have passing focused
+evidence. The 2026-09-30 broad suite remains partial, with backend codegen
+declines and skipped platform legs; see [current validation](implementation-baseline/current-validation.md)
+and the [backend matrix](implementation-baseline/backend-and-feature-matrix.md).
 
 The renderer status and exact verification outcomes are in
 [current validation](implementation-baseline/current-validation.md) and
