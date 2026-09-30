@@ -22,7 +22,7 @@ clang -c -fobjc-arc -Wall -Wextra -Wconversion -Wsign-conversion -Werror \
   -o "$ROOT/build/appkit_canvas_shim.o" "$ROOT/src/platform/appkit/appkit_canvas_shim.m"
 bash "$STAGE1/scripts/elisac_stage1.sh" "-O$OPT_LEVEL" -o "$ROOT/build/${EXAMPLE}_appkit_canvas.o" "$ENTRY"
 clang -Wl,-dead_strip -o "$ROOT/build/${EXAMPLE}_appkit_canvas" \
-  "$ROOT/build/${EXAMPLE}_appkit_canvas.o" "$ROOT/build/appkit_canvas_shim.o" "$RUNTIME" -framework Cocoa -framework CoreText -framework CoreGraphics -framework ImageIO
+  "$ROOT/build/${EXAMPLE}_appkit_canvas.o" "$ROOT/build/appkit_canvas_shim.o" "$RUNTIME" -framework Cocoa -framework CoreText -framework CoreGraphics -framework ImageIO -framework QuartzCore -framework IOSurface
 
 # Package the same binary as a real macOS application. Keeping the raw binary
 # above is useful to tests and debuggers; the bundle supplies Finder/Dock identity,

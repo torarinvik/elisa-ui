@@ -109,3 +109,4 @@ size_t elisa_appkit_canvas_ibeam_cursor(void) {
 #import "canvas_shim/view.m"
 #import "canvas_shim/window.m"
 #import "canvas_shim/accessibility.m"
+#import "canvas_shim/hosted_surface.m"

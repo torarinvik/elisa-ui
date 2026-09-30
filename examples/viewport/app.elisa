@@ -1,0 +1,168 @@
+# viewport: an Elisa engine 3D viewport hosted in an elisa-ui panel.
+#
+# The engine renders into its IOSurface ring (Viewport::tick); the canvas shows
+# the published surface as a layer over the panel (UiAppKitCanvas::
+# present_hosted) and the frame is acknowledged back to the engine once it is
+# on screen. Drag = orbit, right/middle drag = pan, scroll = zoom, F = frame,
+# 1/2/3 = perspective/front/side. Everything else is ordinary elisa-ui.
+#
+# The engine sources come in through build/elisa_engine_src, a link that
+# scripts/build_appkit_canvas_viewport.sh points at $ELISA_ENGINE_ROOT/src.
+include "../../build/elisa_engine_src/viewport/viewport.elisa"
+
+extern puts(text: cstr) -> i64
+
+module ViewportExample:
+    public:
+        global mutable panel: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
+        global mutable status_label: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
+        global mutable view: Viewport::Viewport? = null
+        global mutable shown: UiHostedSurface::Shown = UiHostedSurface::Shown{surface: 0, generation: 0, frame: -1, rect: UiHostedSurface::Rect{x: 0.0, y: 0.0, width: 0.0, height: 0.0}}
+        global mutable drag_button: i32 = -1
+        global mutable last_x: f32 = 0.0
+        global mutable last_y: f32 = 0.0
+        global mutable applied: i64 = 0
+
+        def color(r: u8, g: u8, b: u8) -> UiCore::Color:
+            UiCore::rgb(r, g, b)
+
+        def init() -> void:
+            UiHandles::reset()
+            root: UiHandles::Handle = UiHandles::row(UiHandles::root_parent(), 12.0, 12.0, color(17, 20, 27))
+            side: UiHandles::Handle = UiHandles::column(root, 16.0, 10.0, color(31, 36, 48))
+            UiHandles::set_grow(side, 0.0)
+            _ = UiHandles::label(side, "Mocap viewport", 20.0, color(238, 241, 248))
+            _ = UiHandles::label(side, "Drag: orbit", 13.0, color(166, 175, 196))
+            _ = UiHandles::label(side, "Right drag: pan", 13.0, color(166, 175, 196))
+            _ = UiHandles::label(side, "Scroll: zoom   F: frame", 13.0, color(166, 175, 196))
+            _ = UiHandles::label(side, "1/2/3: persp/front/side", 13.0, color(166, 175, 196))
+            status_label <- UiHandles::label(side, "engine viewport", 13.0, color(120, 200, 140))
+            # The panel is an empty, growing box; the engine surface covers it.
+            panel <- UiHandles::column(root, 0.0, 0.0, color(38, 40, 46))
+            UiHandles::set_grow(panel, 1.0)
+            view <- catch Viewport::create(640, 480):
+                value: value
+                error failure: null
+            if view == null:
+                UiHandles::set_text(status_label, "no Metal device", 13.0, color(230, 90, 90))
+
+        def joints() -> darray[Geometry::Vec3]:
+            [v(0.0, 1.0, 0.0), v(0.0, 1.5, 0.0), v(0.0, 1.8, 0.0), v(-0.15, 0.5, 0.05), v(-0.15, 0.05, 0.1), v(0.15, 0.5, -0.05), v(0.15, 0.05, -0.1)]
+
+        def v(x: f32, y: f32, z: f32) -> Geometry::Vec3:
+            Geometry::Vec3{x: x, y: y, z: z}
+
+        def scene(cam: ViewportCamera::Camera&) -> ViewportDraw::List:
+            mutable list: ViewportDraw::List = ViewportDraw::create()
+            _ = catch ViewportDraw::grid(&list, 0.25, 12, ViewportDraw::rgba(90, 92, 100, 255)):
+                value: 0
+                error failure: 1
+            points: darray[Geometry::Vec3] = joints()
+            parents: darray[i64] = [-1, 0, 1, 0, 3, 0, 5]
+            for k in 0..<points.count:
+                if parents[k] >= 0:
+                    _ = catch ViewportDraw::bone(&list, points[parents[k].usize()], points[k], ViewportDraw::rgba(240, 200, 60, 255), ViewportDraw::TOP):
+                        value: 0
+                        error failure: 1
+                _ = catch ViewportDraw::marker(&list, cam, points[k], 5.0, ViewportDraw::rgba(250, 250, 250, 255), ViewportDraw::TOP):
+                    value: 0
+                    error failure: 1
+            return move list
+
+        def panel_rect() -> UiHostedSurface::Rect:
+            if UiHandles::widget(panel) is box:
+                return UiHostedSurface::Rect{x: box.x, y: box.y, width: box.width, height: box.height}
+            UiHostedSurface::Rect{x: 0.0, y: 0.0, width: 0.0, height: 0.0}
+
+        def frame() -> void:
+            UiCore::clear(color(17, 20, 27))
+            UiHandles::paint()
+            if view is current:
+                mutable vp: Viewport::Viewport = current
+                rect: UiHostedSurface::Rect = panel_rect()
+                scale: f32 = UiAppKitCanvas::backing_scale()
+                _ = catch Viewport::resize(&vp, UiHostedSurface::pixel_extent(rect.width, scale), UiHostedSurface::pixel_extent(rect.height, scale)):
+                    value: value
+                    error failure: false
+                list: ViewportDraw::List = scene(&vp.camera)
+                _ = catch Viewport::tick(&vp, &list):
+                    value: value
+                    error failure: false
+                action: i32 = UiAppKitCanvas::present_hosted(&shown, 0, Viewport::published_surface(&vp), vp.generation, vp.published_frame, rect, UiCore::viewport_width(), UiCore::viewport_height())
+                if action == UiHostedSurface::APPLY:
+                    _ = Viewport::acknowledge(&vp, vp.published_frame)
+                    applied <- applied + 1
+                    if applied == 1:
+                        _ = puts("viewport: engine frame applied to the hosted layer")
+                # Work left (dirty but the ring was full, or playing): come back.
+                if vp.dirty != 0 or vp.playing:
+                    UiCore::request_frame_after(0.016)
+                view <- vp
+
+        def touch(vp: mutable Viewport::Viewport&) -> void:
+            Viewport::invalidate(&vp, ViewportPolicy::DIRTY_CAMERA)
+            UiCore::request_frame_after(0.001)
+
+        def event(incoming: UiCore::Event) -> void:
+            UiHandles::handle(incoming)
+            if view is current:
+                mutable vp: Viewport::Viewport = current
+                rect: UiHostedSurface::Rect = panel_rect()
+                scale: f32 = UiAppKitCanvas::backing_scale()
+                match incoming:
+                    UiCore::PointerEvent.Down(at, button):
+                        if UiHostedSurface::contains(rect, at.x, at.y):
+                            drag_button <- button
+                            last_x <- at.x
+                            last_y <- at.y
+                    UiCore::PointerEvent.Up(at, button):
+                        drag_button <- -1
+                    UiCore::PointerEvent.Move(at):
+                        if drag_button >= 0:
+                            dx: f32 = (at.x - last_x) * scale
+                            dy: f32 = (at.y - last_y) * scale
+                            last_x <- at.x
+                            last_y <- at.y
+                            if drag_button == 0:
+                                _ = ViewportCamera::orbit(&vp.camera, dx.i64(), dy.i64())
+                            else:
+                                _ = ViewportCamera::pan(&vp.camera, dx, dy)
+                            touch(&vp)
+                    UiCore::PointerEvent.Scroll(at, delta):
+                        if UiHostedSurface::contains(rect, at.x, at.y):
+                            notches: i64 = 1 if delta.y > 0.0 else (-1 if delta.y < 0.0 else 0)
+                            _ = ViewportCamera::zoom(&vp.camera, notches)
+                            touch(&vp)
+                    UiCore::KeyEvent.Down(code):
+                        if code == UiCore::Key.F:
+                            points: darray[Geometry::Vec3] = joints()
+                            _ = ViewportCamera::frame_points(&vp.camera, &points, 24.0)
+                            touch(&vp)
+                        projection: i32 = 0 if code == UiCore::Key.Digit1 else (1 if code == UiCore::Key.Digit2 else (2 if code == UiCore::Key.Digit3 else -1))
+                        if projection >= 0:
+                            vp.camera.projection <- projection
+                            touch(&vp)
+                    _:
+                        pass
+                view <- vp
+
+def app_init() -> void:
+    ViewportExample::init()
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    ViewportExample::event(event)
+
+def app_text_input(text: sview) -> void:
+    UiHandles::insert_text(text)
+
+def app_validate() -> void:
+    pass
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    UiHandles::update_marked_text_utf8_characters(text, selected_start, selected_length)
+
+def app_frame() -> void:
+    ViewportExample::frame()
