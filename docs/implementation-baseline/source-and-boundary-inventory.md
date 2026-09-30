@@ -25,7 +25,7 @@ platform still translates its own window, input, and lifecycle ABI into shared
 Elisa policy. In particular, WasmBrowser's WIT declarations stay at the
 component boundary while `WasmPainter` implements only `UiPaint::Painter`;
 canonical command/semantic wire encoding remains a separate hosted-boundary
-concern and is still tracked under UI-01's SDK migration gate.
+concern and is still tracked under UI-01's [SDK migration gate](hosted-binding-gate.md).
 
 - C ABI declarations and exports in `include/elisa_ui.h` and `src/capi/`. A
   safe Rust wrapper in `bindings/rust/elisa_ui.rs` and its example in
