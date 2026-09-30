@@ -7,6 +7,9 @@ extern puts(text: cstr) -> i64
 
 global mutable failures: i32 = 0
 global mutable reset_on_change: bool = false
+global mutable rebuild_on_change: bool = false
+global mutable replacement_index: usize = UiFlat::NONE
+global mutable secure_on_change: bool = false
 
 def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
     return text.len.f32() * size * 0.5
@@ -30,7 +33,13 @@ def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
     return 0
 
 def app_widget_event(widget: usize, event: i32) -> void:
-    UiFlat::reset() if reset_on_change and (event == UiConst::WidgetEvent.Change.i32() or event == UiConst::WidgetEvent.Click.i32())
+    if reset_on_change and (event == UiConst::WidgetEvent.Change.i32() or event == UiConst::WidgetEvent.Click.i32()):
+        UiFlat::reset()
+        if rebuild_on_change:
+            rebuild_on_change <- false
+            replacement_index <- UiFlat::text_field(UiFlat::NONE, "Replacement", "", "survivor", 180.0, 32.0, 14.0, UiCore::rgb(240, 240, 240), UiCore::rgb(30, 30, 30))
+            UiFlat::request_focus(replacement_index)
+    UiFlat::set_secure(widget, true) if secure_on_change and event == UiConst::WidgetEvent.Change.i32()
 
 def check(name: cstr, ok: bool) -> void:
     return if ok
@@ -50,6 +59,15 @@ def main() -> i64:
     index: mutable usize = field()
     UiFlat::insert_text("x")
     check("insert callback can reset tree", UiFlat::count() == 0 and not UiFlat::can_undo_text())
+
+    # Reuse the old slot inside the callback. The edit that triggered the
+    # callback must not finish its history transaction against the new tree.
+    UiFlat::reset()
+    reset_on_change <- true
+    rebuild_on_change <- true
+    index <- field()
+    UiFlat::insert_text("old tree")
+    check("reset callback may rebuild without stale edit touching replacement", UiFlat::count() == 1 and replacement_index == 0 and UiFlat::text_value(replacement_index) == "survivor" and UiFlat::focused() == replacement_index and not UiFlat::can_undo_text())
 
     # Replacement and marked composition both continue work after insert_text
     # returns, so their post-callback reads need the same lifetime guard.
@@ -83,6 +101,17 @@ def main() -> i64:
     reset_on_change <- true
     redone: bool = UiFlat::redo_text()
     check("redo callback reports disposal", not redone and UiFlat::count() == 0)
+
+    # A change callback may make the edited field secure while its history
+    # transaction is still open. Closing that old transaction must not refill
+    # a slot after set_secure has scrubbed the ring.
+    UiFlat::reset()
+    reset_on_change <- false
+    secure_on_change <- true
+    index <- field()
+    UiFlat::insert_text("secret")
+    check("secure transition in callback scrubs active edit history", UiFlat::widget(index).secure and UiFlat::text_value(index) == "secret" and not UiFlat::can_undo_text() and not UiFlat::can_redo_text())
+    secure_on_change <- false
 
     # The same callback contract applies to activation and assistive value
     # changes, which are public entry points used by native adapters.

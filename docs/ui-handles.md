@@ -74,6 +74,38 @@ ranges are exposed in UTF-16 units, with `selected_text` applying the secure
 field privacy rule. `overflowed` reports fixed-arena exhaustion so an app can
 render an explicit recovery state instead of silently losing a subtree.
 
+## Mutation and callback ordering
+
+Handle construction and mutation are synchronous against the current retained
+tree; widget callbacks run inline before the operation that raised them
+returns. The widget event router dispatches each accepted event before the next
+one, and the deterministic [`UiHarness`](ui-test-harness.md) begins a frame by
+clearing frame-local batches before it calls `app_frame`.
+
+There is no deferred widget-mutation transaction: constructors and setters
+called by an event handler take effect inline. Only translated host events wait
+in `UiEvents` before dispatch. Work that outlives the callback must retain a
+typed handle and its owner/generation identity, then use `callback_matches`
+before dispatch; task, resource, and validation completions reject stale
+generations.
+
+A callback may create replacement widgets or call `UiHandles::reset()` to
+retire the current tree. Reset advances the tree lifetime before a slot can be
+reused, so every old handle immediately becomes stale. Edit and activation
+paths that continue after a callback compare the captured tree lifetime and
+stop if it changed; they must not finish an old history transaction or mutate
+the new widget occupying the same slot. `test/widget_reentrancy_test.elisa`
+covers a change callback that resets the tree, rebuilds a text field in slot
+zero, and verifies the old edit cannot alter the replacement's text, focus, or
+history. Other callback-driven reset cases cover replacement, marked text,
+undo/redo, activation, adjustment, and radio navigation.
+
+The current widget API exposes whole-tree `reset()` rather than a separate
+per-widget destroy operation. `UiHandles::index` is only for synchronous
+legacy adapter calls; application state should retain typed handles across
+callbacks and revalidate them before later work, never cache an arena index as
+identity.
+
 Applications that persist control state can opt into
 `src/widgets/ui_handles_persistence.elisa`. It includes the base handle facade
 and adds `UiHandlesPersistence::put_text`, `put_value`, and `put_selected`, plus
