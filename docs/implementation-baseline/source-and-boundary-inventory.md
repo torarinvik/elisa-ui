@@ -14,6 +14,19 @@ the top-level `app_init`, `app_event`, `app_text_input`, `app_text_editing`,
 
 Externally imposed symbols are kept at the edges:
 
+Portable backend contracts are defined separately from host ABI declarations.
+`UiPaint::Painter` in `src/core/ui_paint.elisa` consumes the backend-neutral
+`UiCore::Command` vocabulary; SDL3, AppKit canvas, Skia, UIKit, and WasmBrowser
+provide specialized implementations. `UiControls::Controls` in
+`src/widgets/ui_controls.elisa` is the corresponding native-control contract,
+implemented by AppKit, UIKit, Android, GTK, and Win32 adapters. These are
+domain-specific protocols, not a universal lifecycle super-protocol: each
+platform still translates its own window, input, and lifecycle ABI into shared
+Elisa policy. In particular, WasmBrowser's WIT declarations stay at the
+component boundary while `WasmPainter` implements only `UiPaint::Painter`;
+canonical command/semantic wire encoding remains a separate hosted-boundary
+concern and is still tracked under UI-01's [SDK migration gate](hosted-binding-gate.md).
+
 - C ABI declarations and exports in `include/elisa_ui.h` and `src/capi/`. A
   safe Rust wrapper in `bindings/rust/elisa_ui.rs` and its example in
   `examples/rust/rust_host.rs`, plus the optional cgo package in
