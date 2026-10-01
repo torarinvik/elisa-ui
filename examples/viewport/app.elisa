@@ -26,6 +26,15 @@ module ViewportExample:
         def color(r: u8, g: u8, b: u8) -> UiCore::Color:
             UiCore::rgb(r, g, b)
 
+        # A missing Metal device leaves the panel empty rather than failing
+        # startup. The catch binds the non-null value first; the backend does
+        # not lower a catch whose arms mix a value with `null`.
+        def open_viewport() -> Viewport::Viewport?:
+            created: Viewport::Viewport = catch Viewport::create(640, 480):
+                value: value
+                error failure: return null
+            return move created
+
         def init() -> void:
             UiHandles::reset()
             root: UiHandles::Handle = UiHandles::row(UiHandles::root_parent(), 12.0, 12.0, color(17, 20, 27))
@@ -40,9 +49,7 @@ module ViewportExample:
             # The panel is an empty, growing box; the engine surface covers it.
             panel <- UiHandles::column(root, 0.0, 0.0, color(38, 40, 46))
             UiHandles::set_grow(panel, 1.0)
-            view <- catch Viewport::create(640, 480):
-                value: value
-                error failure: null
+            view <- open_viewport()
             if view == null:
                 UiHandles::set_text(status_label, "no Metal device", 13.0, color(230, 90, 90))
 
