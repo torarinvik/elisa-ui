@@ -4,6 +4,8 @@
 # ELISA_ENGINE_ROOT (default ../elisa-engine-mocap) supplies src/viewport and
 # native/viewport_metal.m. Smoke-test without showing a window:
 #   ELISA_UI_SMOKE_FRAMES=1 build/viewport_appkit_canvas
+# ELISA_VIEWPORT_APP=three_views builds the perspective/front/side layout as
+# build/viewport_three_views instead.
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -11,6 +13,7 @@ STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
 RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
 ENGINE="$(cd -- "${ELISA_ENGINE_ROOT:-$ROOT/../elisa-engine-mocap}" && pwd)"
 OPT_LEVEL="${ELISA_UI_OPT_LEVEL:-2}"
+APP="${ELISA_VIEWPORT_APP:-appkit_canvas}"
 
 [[ "$(uname -s)" == "Darwin" ]] || { echo "the AppKit canvas backend is macOS only" >&2; exit 2; }
 [[ -f "$RUNTIME" ]] || { echo "no runtime object at $RUNTIME (set ELISA_UI_STAGE1)" >&2; exit 2; }
@@ -22,10 +25,10 @@ clang -c -fobjc-arc -Wall -Wextra -Wconversion -Wsign-conversion -Werror \
 clang -c -fobjc-arc -O2 -o "$ROOT/build/engine_viewport_metal.o" "$ENGINE/native/viewport_metal.m"
 # The engine's weak fallbacks for runtime hooks a plain host does not define.
 clang++ -c -std=c++17 -O2 -o "$ROOT/build/engine_native_fallbacks.o" "$ENGINE/native/elisa_native_fallbacks.cpp"
-bash "$STAGE1/scripts/elisac_stage1.sh" "-O$OPT_LEVEL" -o "$ROOT/build/viewport_appkit_canvas.o" "$ROOT/examples/viewport/appkit_canvas_main.elisa"
-clang -o "$ROOT/build/viewport_appkit_canvas" \
-  "$ROOT/build/viewport_appkit_canvas.o" "$ROOT/build/appkit_canvas_shim.o" "$ROOT/build/engine_viewport_metal.o" \
+bash "$STAGE1/scripts/elisac_stage1.sh" "-O$OPT_LEVEL" -o "$ROOT/build/viewport_$APP.o" "$ROOT/examples/viewport/${APP}_main.elisa"
+clang -o "$ROOT/build/viewport_$APP" \
+  "$ROOT/build/viewport_$APP.o" "$ROOT/build/appkit_canvas_shim.o" "$ROOT/build/engine_viewport_metal.o" \
   "$ROOT/build/engine_native_fallbacks.o" "$RUNTIME" \
   -framework Cocoa -framework CoreText -framework CoreGraphics -framework ImageIO \
   -framework QuartzCore -framework IOSurface -framework Metal
-echo "built $ROOT/build/viewport_appkit_canvas"
+echo "built $ROOT/build/viewport_$APP"

@@ -57,3 +57,30 @@ fails in `ui_flat_layout.elisa` and `ui_appkit_canvas_private.elisa`, and
 rebuilding the compiler needs `--seed`. Once a current stage1 exists, run
 `scripts/build_appkit_canvas_viewport.sh` and then
 `ELISA_UI_SMOKE_FRAMES=1 build/viewport_appkit_canvas`.
+
+## Three views in one layout
+
+`examples/viewport/three_views_layout.elisa` hosts three engine viewports at once:
+a perspective view above orthographic front and side views. Each view sits in its
+own growing panel and uses its own `present_hosted` slot (0, 1 and 2). On every
+sync each view is resized to its panel in pixels and redraws only when its scene
+revision, camera or size changed. Changing one panel's grow factor resizes the
+views next to it and leaves the perspective view untouched.
+`scripts/check_viewport_three_views.sh` runs the test headlessly against a real
+Metal device. It covers:
+
+- two window sizes and a grow change;
+- idle frames, which must not render;
+- frame-selection centring in all three views;
+- pointer routing.
+
+Mutants that size every view from panel 0, or that redraw on every sync, fail the
+test with codes 11 and 20. Build the window with
+`ELISA_VIEWPORT_APP=three_views scripts/build_appkit_canvas_viewport.sh`.
+Smoke frames run without showing the window, so no hosted layer is applied
+there; the "applied" line only appears in an on-screen run.
+
+The views live in one module global each and the scene is passed in by
+reference. With stage1, a struct holding a viewport array and forwarded by
+reference segfaults, a global array of structs is declined, and a scene read out
+of a global optional traps inside `ViewportScene::tick`.

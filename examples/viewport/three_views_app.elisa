@@ -1,0 +1,120 @@
+# viewport three views: one skeleton in a perspective view above front and
+# side orthographic views (engine plan M01), each an engine viewport hosted in
+# its own elisa-ui panel through its own present_hosted slot. Drag the divider
+# by resizing the window: every view follows its panel and redraws alone.
+# Click a joint in any view to select it; F frames the selection everywhere.
+include "three_views_layout.elisa"
+
+extern puts(text: cstr) -> i64
+
+module ThreeViewsApp:
+    public:
+        global mutable shown0: UiHostedSurface::Shown = UiHostedSurface::Shown{surface: 0, generation: 0, frame: -1, rect: UiHostedSurface::Rect{x: 0.0, y: 0.0, width: 0.0, height: 0.0}}
+        global mutable shown1: UiHostedSurface::Shown = UiHostedSurface::Shown{surface: 0, generation: 0, frame: -1, rect: UiHostedSurface::Rect{x: 0.0, y: 0.0, width: 0.0, height: 0.0}}
+        global mutable shown2: UiHostedSurface::Shown = UiHostedSurface::Shown{surface: 0, generation: 0, frame: -1, rect: UiHostedSurface::Rect{x: 0.0, y: 0.0, width: 0.0, height: 0.0}}
+        global mutable status_label: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
+        global mutable opened: bool = false
+        global mutable selected: i64 = -1
+        global mutable announced: bool = false
+
+        def v(x: f32, y: f32, z: f32) -> Geometry::Vec3:
+            Geometry::Vec3{x: x, y: y, z: z}
+
+        # The scene is rebuilt from the same skeleton each frame (stage1
+        # traps on a scene held in a module global), so its revision only
+        # depends on the selection; selection changes invalidate every view.
+        def scene() -> ViewportScene::Scene:
+            mutable sc: ViewportScene::Scene = ViewportScene::create()
+            joints: darray[Geometry::Vec3] = [v(0.0, 1.0, 0.0), v(0.0, 1.5, 0.0), v(0.0, 1.8, 0.0), v(-0.15, 0.5, 0.05), v(-0.15, 0.05, 0.1), v(0.15, 0.5, -0.05), v(0.15, 0.05, -0.1)]
+            parents: darray[i64] = [-1, 0, 1, 0, 3, 0, 5]
+            _ = catch ViewportScene::set_skeleton(&sc, &joints, &parents):
+                value: 0
+                error failure: 1
+            ViewportScene::select(&sc, selected)
+            return move sc
+
+        def init() -> void:
+            UiHandles::reset()
+            root: UiHandles::Handle = UiHandles::row(UiHandles::root_parent(), 12.0, 12.0, ThreeViews::color(17, 20, 27))
+            side: UiHandles::Handle = UiHandles::column(root, 16.0, 10.0, ThreeViews::color(31, 36, 48))
+            UiHandles::set_grow(side, 0.0)
+            _ = UiHandles::label(side, "Mocap views", 20.0, ThreeViews::color(238, 241, 248))
+            _ = UiHandles::label(side, "Click: select joint", 13.0, ThreeViews::color(166, 175, 196))
+            _ = UiHandles::label(side, "F: frame all views", 13.0, ThreeViews::color(166, 175, 196))
+            status_label <- UiHandles::label(side, "three engine views", 13.0, ThreeViews::color(120, 200, 140))
+            views_column: UiHandles::Handle = UiHandles::column(root, 0.0, 8.0, ThreeViews::color(17, 20, 27))
+            UiHandles::set_grow(views_column, 1.0)
+            opened <- ThreeViews::create(views_column)
+            if not opened:
+                UiHandles::set_text(status_label, "no Metal device", 13.0, ThreeViews::color(230, 90, 90))
+
+        def present(shown: mutable UiHostedSurface::Shown&, index: usize) -> void:
+            mutable vp: Viewport::Viewport = ThreeViews::snapshot(index)
+            return if vp.handle == 0
+            action: i32 = UiAppKitCanvas::present_hosted(shown, index.i32(), Viewport::published_surface(&vp), vp.generation, vp.published_frame, ThreeViews::panel_rect(index), UiCore::viewport_width(), UiCore::viewport_height())
+            if action == UiHostedSurface::APPLY:
+                ThreeViews::acknowledge(index)
+            if vp.dirty != 0:
+                UiCore::request_frame_after(0.016)
+
+        def frame() -> void:
+            UiCore::clear(ThreeViews::color(17, 20, 27))
+            UiHandles::paint()
+            return if not opened
+            sc: ViewportScene::Scene = scene()
+            _ = ThreeViews::sync(&sc, UiAppKitCanvas::backing_scale())
+            present(&shown0, ThreeViews::PERSPECTIVE_VIEW)
+            present(&shown1, ThreeViews::FRONT_VIEW)
+            present(&shown2, ThreeViews::SIDE_VIEW)
+            if not announced and shown0.frame >= 0 and shown1.frame >= 0 and shown2.frame >= 0:
+                announced <- true
+                _ = puts("viewport: three engine views applied to hosted layers")
+
+        def click(x: f32, y: f32) -> void:
+            index: usize = ThreeViews::view_at(x, y)
+            return if index >= ThreeViews::COUNT
+            rect: UiHostedSurface::Rect = ThreeViews::panel_rect(index)
+            scale: f32 = UiAppKitCanvas::backing_scale()
+            cam: ViewportCamera::Camera = ThreeViews::snapshot(index).camera
+            sc: ViewportScene::Scene = scene()
+            hit: SkeletonPick::Hit = ViewportScene::pick(&sc, &cam, (x - rect.x) * scale, (y - rect.y) * scale)
+            picked: i64 = hit.index if hit.kind == SkeletonPickIndex::JOINT else -1
+            return if picked == selected
+            selected <- picked
+            ThreeViews::invalidate_all(ViewportPolicy::DIRTY_SCENE)
+            UiCore::request_frame_after(0.001)
+
+        def event(incoming: UiCore::Event) -> void:
+            UiHandles::handle(incoming)
+            return if not opened
+            match incoming:
+                UiCore::PointerEvent.Down(at, button):
+                    click(at.x, at.y) if button == 0
+                UiCore::KeyEvent.Down(code):
+                    if code == UiCore::Key.F:
+                        sc: ViewportScene::Scene = scene()
+                        ThreeViews::frame_selection(&sc)
+                        UiCore::request_frame_after(0.001)
+                _:
+                    pass
+
+def app_init() -> void:
+    ThreeViewsApp::init()
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    ThreeViewsApp::event(event)
+
+def app_text_input(text: sview) -> void:
+    UiHandles::insert_text(text)
+
+def app_validate() -> void:
+    pass
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    UiHandles::update_marked_text_utf8_characters(text, selected_start, selected_length)
+
+def app_frame() -> void:
+    ThreeViewsApp::frame()

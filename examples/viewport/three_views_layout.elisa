@@ -1,0 +1,179 @@
+# Three engine viewports in one elisa-ui layout (engine plan M01): a large
+# perspective view above orthographic front and side views, all showing one
+# ViewportScene. Each panel is an ordinary growing box; each view resizes its
+# own engine viewport to its own panel and redraws only when its scene
+# revision, camera or size moved, so idle views cost nothing.
+#
+# Nothing here touches AppKit, so test/viewport_three_views_test.elisa drives
+# the same layout and sync headlessly at several window sizes. The state is
+# one module global per view, like the single-view app: stage1 crashes when
+# a struct holding a viewport array is forwarded by reference, and declines
+# global arrays of structs.
+include "../../build/elisa_engine_src/viewport/viewport_scene.elisa"
+
+module ThreeViews:
+    public:
+        const COUNT: usize = 3
+        const PERSPECTIVE_VIEW: usize = 0
+        const FRONT_VIEW: usize = 1
+        const SIDE_VIEW: usize = 2
+
+        global mutable view0: Viewport::Viewport? = null
+        global mutable view1: Viewport::Viewport? = null
+        global mutable view2: Viewport::Viewport? = null
+        # Scene revision each view last drew (-1 before the first).
+        global mutable seen0: i64 = -1
+        global mutable seen1: i64 = -1
+        global mutable seen2: i64 = -1
+        global mutable panel0: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
+        global mutable panel1: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
+        global mutable panel2: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
+
+        def panel(index: usize) -> UiHandles::Handle:
+            return panel0 if index == PERSPECTIVE_VIEW
+            return panel1 if index == FRONT_VIEW
+            panel2
+
+        def view(index: usize) -> Viewport::Viewport?:
+            return view0 if index == PERSPECTIVE_VIEW
+            return view1 if index == FRONT_VIEW
+            view2
+
+        def put_view(index: usize, vp: Viewport::Viewport) -> void:
+            if index == PERSPECTIVE_VIEW:
+                view0 <- vp
+            elif index == FRONT_VIEW:
+                view1 <- vp
+            else:
+                view2 <- vp
+
+        def seen(index: usize) -> i64:
+            return seen0 if index == PERSPECTIVE_VIEW
+            return seen1 if index == FRONT_VIEW
+            seen2
+
+        def put_seen(index: usize, drawn: i64) -> void:
+            if index == PERSPECTIVE_VIEW:
+                seen0 <- drawn
+            elif index == FRONT_VIEW:
+                seen1 <- drawn
+            else:
+                seen2 <- drawn
+
+        def color(r: u8, g: u8, b: u8) -> UiCore::Color:
+            UiCore::rgb(r, g, b)
+
+        def panel_box(parent: UiHandles::Handle, grow: f32) -> UiHandles::Handle:
+            box: UiHandles::Handle = UiHandles::column(parent, 0.0, 0.0, color(38, 40, 46))
+            UiHandles::set_grow(box, grow)
+            box
+
+        # Build the panels under `parent` (a growing column): the perspective
+        # view takes two thirds of the height, front and side split the rest.
+        def build_panels(parent: UiHandles::Handle) -> void:
+            top: UiHandles::Handle = panel_box(parent, 2.0)
+            lower: UiHandles::Handle = UiHandles::row(parent, 0.0, 8.0, color(17, 20, 27))
+            UiHandles::set_grow(lower, 1.0)
+            front: UiHandles::Handle = panel_box(lower, 1.0)
+            side: UiHandles::Handle = panel_box(lower, 1.0)
+            panel0 <- top
+            panel1 <- front
+            panel2 <- side
+
+        def open_view(index: usize) -> Viewport::Viewport error[Viewport::ViewportError]:
+            mutable vp: Viewport::Viewport = Viewport::create(320, 240)
+            if index == FRONT_VIEW:
+                vp.camera <- ViewportCamera::create_ortho(320, 240, ViewportCamera::FRONT)
+            if index == SIDE_VIEW:
+                vp.camera <- ViewportCamera::create_ortho(320, 240, ViewportCamera::SIDE)
+            return move vp
+
+        def open_slot(index: usize) -> bool:
+            created: Viewport::Viewport = catch open_view(index):
+                value: value
+                error failure: return false
+            put_view(index, created)
+            put_seen(index, -1)
+            true
+
+        # Build the panels under `parent` and open one engine viewport per
+        # panel. False when a view cannot open (no Metal device); the panels
+        # then stay empty.
+        def create(parent: UiHandles::Handle) -> bool:
+            build_panels(parent)
+            return false if not open_slot(PERSPECTIVE_VIEW)
+            return false if not open_slot(FRONT_VIEW)
+            open_slot(SIDE_VIEW)
+
+        def panel_rect(index: usize) -> UiHostedSurface::Rect:
+            if index < COUNT:
+                if UiHandles::widget(panel(index)) is box:
+                    return UiHostedSurface::Rect{x: box.x, y: box.y, width: box.width, height: box.height}
+            UiHostedSurface::Rect{x: 0.0, y: 0.0, width: 0.0, height: 0.0}
+
+        # Size view `index` to its panel in pixels (`scale` pixels per point)
+        # and render it if anything changed. True when it rendered.
+        def sync_view(scene: ViewportScene::Scene&, index: usize, scale: f32) -> bool:
+            rect: UiHostedSurface::Rect = panel_rect(index)
+            return false if index >= COUNT
+            mutable vp: Viewport::Viewport = snapshot(index)
+            return false if vp.handle == 0
+            _ = catch Viewport::resize(&vp, UiHostedSurface::pixel_extent(rect.width, scale), UiHostedSurface::pixel_extent(rect.height, scale)):
+                value: value
+                error failure: false
+            before: i64 = vp.rendered
+            put_seen(index, ViewportScene::tick(scene, &vp, seen(index)))
+            put_view(index, vp)
+            vp.rendered != before
+
+        # Sync every view; returns how many rendered.
+        def sync(scene: ViewportScene::Scene&, scale: f32) -> i64:
+            perspective: i64 = 1 if sync_view(scene, PERSPECTIVE_VIEW, scale) else 0
+            front: i64 = 1 if sync_view(scene, FRONT_VIEW, scale) else 0
+            side: i64 = 1 if sync_view(scene, SIDE_VIEW, scale) else 0
+            perspective + front + side
+
+        # Index of the view whose panel holds point (x, y), or COUNT.
+        def view_at(x: f32, y: f32) -> usize:
+            return PERSPECTIVE_VIEW if UiHostedSurface::contains(panel_rect(PERSPECTIVE_VIEW), x, y)
+            return FRONT_VIEW if UiHostedSurface::contains(panel_rect(FRONT_VIEW), x, y)
+            return SIDE_VIEW if UiHostedSurface::contains(panel_rect(SIDE_VIEW), x, y)
+            COUNT
+
+        def frame_view(scene: ViewportScene::Scene&, index: usize) -> void:
+            if view(index) is opened:
+                mutable vp: Viewport::Viewport = opened
+                _ = ViewportScene::frame_selection(scene, &vp)
+                put_view(index, vp)
+
+        # Fit the selection (or the whole skeleton) in every view.
+        def frame_selection(scene: ViewportScene::Scene&) -> void:
+            frame_view(scene, PERSPECTIVE_VIEW)
+            frame_view(scene, FRONT_VIEW)
+            frame_view(scene, SIDE_VIEW)
+
+        # The host shows view `index`'s frame on screen.
+        def acknowledge(index: usize) -> void:
+            if view(index) is opened:
+                mutable vp: Viewport::Viewport = opened
+                _ = Viewport::acknowledge(&vp, vp.published_frame)
+                put_view(index, vp)
+
+        # Snapshot of view `index` (a 1x1 placeholder when it is not open).
+        def snapshot(index: usize) -> Viewport::Viewport:
+            if view(index) is opened:
+                return opened
+            Viewport::Viewport{handle: 0, camera: ViewportCamera::create(1, 1), dirty: 0, playing: false, frame: 0, published_frame: -1, published_slot: -1, acked: -1, generation: 0, clear_color: 0, rendered: 0, idle_ticks: 0}
+
+        # Mark every view dirty, e.g. after a selection change that left the
+        # scene revision where a rebuilt scene would put it anyway.
+        def invalidate_all(reason: i64) -> void:
+            mark(PERSPECTIVE_VIEW, reason)
+            mark(FRONT_VIEW, reason)
+            mark(SIDE_VIEW, reason)
+
+        def mark(index: usize, reason: i64) -> void:
+            if view(index) is opened:
+                mutable vp: Viewport::Viewport = opened
+                Viewport::invalidate(&vp, reason)
+                put_view(index, vp)
