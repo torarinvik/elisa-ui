@@ -48,15 +48,10 @@ ticks, presents, and acknowledges on APPLY. Controls:
 
   It passes and runs from `scripts/check_appkit_canvas.sh`.
 
-## Open
+## Building the example
 
-The example app type-checks, but the full canvas app does not compile with any
-available toolchain. Both `../Elisa-compiler/bin/elisac-stage1` and
-`~/.elisac/stage1` are older than the elisa-ui sources: stock `examples/hello`
-fails in `ui_flat_layout.elisa` and `ui_appkit_canvas_private.elisa`, and
-rebuilding the compiler needs `--seed`. Once a current stage1 exists, run
-`scripts/build_appkit_canvas_viewport.sh` and then
-`ELISA_UI_SMOKE_FRAMES=1 build/viewport_appkit_canvas`.
+With a current stage1, `scripts/build_appkit_canvas_viewport.sh` builds the app.
+The smoke run `ELISA_UI_SMOKE_FRAMES=1 build/viewport_appkit_canvas` exits 0.
 
 ## Three views in one layout
 
