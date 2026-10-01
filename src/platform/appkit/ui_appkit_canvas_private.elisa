@@ -158,7 +158,8 @@ extend UiAppKitCanvas:
         # view into that stable storage. The source can be a transient app
         # buffer; the returned view remains valid until the next semantic
         # synchronization/reset, which is the lifetime the cache requires.
-        def copy_accessibility_text(value: sview, storage: mutable u8&, slot: usize) -> sview:
+        def copy_accessibility_text(value: sview, storage: mutable u8[ACCESSIBILITY_TEXT_STORAGE_SIZE]&, slot: usize) -> sview:
+            return "" if slot >= UiCore::MAX_ACCESSIBILITY_NODES
             safe: sview = UiCore::bounded_text(value)
             offset: usize = slot * ACCESSIBILITY_TEXT_CAPACITY
             for byte_index in 0..<ACCESSIBILITY_TEXT_CAPACITY:
@@ -166,7 +167,7 @@ extend UiAppKitCanvas:
             take: usize = safe.len.usize()
             for byte_index in 0..<take:
                 storage[offset + byte_index] <- safe.data[byte_index]
-            return sview(&storage[offset], 0, take.i64())
+            return UiText::fixed_bytes_view_range[262144](storage, offset, take)
 
         def color_component(value: u8) -> f32:
             return value.f32() / 255.0
@@ -297,4 +298,4 @@ extend UiAppKitCanvas:
                 position: usize = prefix.len.usize() + digits - 1 - index
                 accessibility_identifier_storage[position] <- (value % 10 + 48).u8()
                 value <- value / 10
-            return sview(&accessibility_identifier_storage[0], 0, (prefix.len.usize() + digits).i64())
+            return UiText::fixed_bytes_view_range[32](accessibility_identifier_storage, 0, prefix.len.usize() + digits)
