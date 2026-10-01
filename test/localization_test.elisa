@@ -19,7 +19,10 @@ def main() -> i64:
     first_mask: i32 = UiCore::invalidations()
     check("locale change invalidates layout paint and semantics", first_mask == UiCore::Invalidation.Layout.i32() | UiCore::Invalidation.Paint.i32() | UiCore::Invalidation.Semantics.i32() and first_sequence > 0)
     check("same canonical locale is idempotent", not UiLocalization::set_locale("en-US") and UiLocalization::revision() == 1 and UiCore::invalidation_sequence() == first_sequence)
-    null_locale: sview = sview(null, 0, 2)
+    null_locale_words: mutable u64[2] = zeroed
+    null_locale_words[1] <- 2
+    null_locale_ref: mutable sview& = (&null_locale_words[0]).cast[mutable sview&] can Unsafe.PointerCast
+    null_locale: sview = null_locale_ref[0]
     check("null-backed locale fails closed", UiLocalization::set_locale(null_locale) and UiLocalization::current_locale().len == 0)
     check("region changes are observable", UiLocalization::set_locale("en-GB") and UiLocalization::revision() == 3 and UiLocalization::current_locale() == "en-gb")
     malformed_locale_words: mutable u64[2] = zeroed
@@ -38,7 +41,11 @@ def main() -> i64:
     check("text direction finds Latin", UiLocalization::text_direction("Hello", UiLocalization::Direction.RightToLeft) == UiLocalization::Direction.LeftToRight)
     check("text direction skips neutrals", UiLocalization::text_direction("👋 123", UiLocalization::Direction.RightToLeft) == UiLocalization::Direction.RightToLeft)
     check("text direction uses first strong scalar", UiLocalization::text_direction("(אבג) Hello", UiLocalization::Direction.LeftToRight) == UiLocalization::Direction.RightToLeft)
-    check("text direction is bounded for malformed input", UiLocalization::text_direction(sview(null, 4, 0), UiLocalization::Direction.RightToLeft) == UiLocalization::Direction.RightToLeft)
+    null_direction_text_words: mutable u64[2] = zeroed
+    null_direction_text_words[1] <- 0
+    null_direction_text_ref: mutable sview& = (&null_direction_text_words[0]).cast[mutable sview&] can Unsafe.PointerCast
+    null_direction_text: sview = null_direction_text_ref[0]
+    check("text direction is bounded for malformed input", UiLocalization::text_direction(null_direction_text, UiLocalization::Direction.RightToLeft) == UiLocalization::Direction.RightToLeft)
     check("Hebrew start maps to end", UiLocalization::start_alignment("he") == UiConst::CrossAlignment.End and UiLocalization::end_alignment("he") == UiConst::CrossAlignment.Start)
     check("LTR start maps to start", UiLocalization::start_alignment("en") == UiConst::CrossAlignment.Start and UiLocalization::end_alignment("en") == UiConst::CrossAlignment.End)
 

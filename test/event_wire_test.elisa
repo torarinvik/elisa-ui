@@ -116,7 +116,10 @@ def main() -> i64:
     malformed_view: sview = UiText::fixed_bytes_view_range[3](malformed_bytes, 0, 3)
     malformed_run: UiCore::TextRun = UiCore::TextRun(UiCore::Vec2(0.0, 0.0), 12.0, malformed_view)
     check("TextRun stops before malformed UTF-8", malformed_run.text.len == 1)
-    null_text: sview = sview(null, 0, 3)
+    null_text_words: mutable u64[2] = zeroed
+    null_text_words[1] <- 3
+    null_text_ref: mutable sview& = (&null_text_words[0]).cast[mutable sview&] can Unsafe.PointerCast
+    null_text: sview = null_text_ref[0]
     check("counted text rejects null storage", UiCore::bounded_text(null_text).len == 0 and UiText::valid_utf8_prefix(null_text, 3) == 0 and UiText::utf8_scalar_count(null_text) == 0 and UiText::utf16_unit_count(null_text) == 0)
     UiCore::begin_frame()
     UiCore::accessibility(UiCore::AccessibilityRole.Label, oversized_text, oversized_text, UiCore::Rect(0.0, 0.0, 1.0, 1.0), 3, 0, true, false, false, 0.0, oversized_text, oversized_text, 0, 0, 0)
@@ -248,32 +251,32 @@ def main() -> i64:
     # An ordinal this library does not model is None, not a crash: the host is
     # free to grow its event set first.
     unknown: UiCore::EventRecord = UiCore::EventRecord{kind: 99.WireKind(), x: 0.0, y: 0.0, dx: 0.0, dy: 0.0, code: 0}
-    check("an unknown ordinal decodes to None", UiCore::wire_kind(UiCore::from_record(unknown)) == 0)
+    check("an unknown ordinal decodes to None", UiCore::wire_kind(UiCore::from_record(unknown)) == UiCore::WireKind.None)
 
     # Host records carry closed enum payloads as raw integers. Unknown values
     # must be rejected at the Elisa boundary instead of being cast into an
     # invalid typed event and reaching application code.
-    invalid_key: UiCore::EventRecord = UiCore::EventRecord{kind: UiCore::WireKind.KeyDown.i32(), x: 0.0, y: 0.0, dx: 0.0, dy: 0.0, code: 31}
-    check("unknown key payload decodes to None", UiCore::wire_kind(UiCore::from_record(invalid_key)) == 0)
-    invalid_pad: UiCore::EventRecord = UiCore::EventRecord{kind: UiCore::WireKind.GamepadButton.i32(), x: 0.0, y: 0.0, dx: 1.0, dy: 0.0, code: 99}
-    check("unknown gamepad payload decodes to None", UiCore::wire_kind(UiCore::from_record(invalid_pad)) == 0)
-    invalid_axis: UiCore::EventRecord = UiCore::EventRecord{kind: UiCore::WireKind.GamepadAxis.i32(), x: 0.0, y: 0.0, dx: 1.0, dy: 0.0, code: -1}
-    check("unknown gamepad axis payload decodes to None", UiCore::wire_kind(UiCore::from_record(invalid_axis)) == 0)
-    invalid_pointer_down: UiCore::EventRecord = UiCore::EventRecord{kind: UiCore::WireKind.PointerDown.i32(), x: 0.0, y: 0.0, dx: 0.0, dy: 0.0, code: 99}
-    check("unknown pointer button decodes to None", UiCore::wire_kind(UiCore::from_record(invalid_pointer_down)) == 0)
-    invalid_pointer_up: UiCore::EventRecord = UiCore::EventRecord{kind: UiCore::WireKind.PointerUp.i32(), x: 0.0, y: 0.0, dx: 0.0, dy: 0.0, code: UiCore::NO_POINTER_BUTTON}
-    check("missing pointer button decodes to None", UiCore::wire_kind(UiCore::from_record(invalid_pointer_up)) == 0)
+    invalid_key: UiCore::EventRecord = UiCore::EventRecord{kind: UiCore::WireKind.KeyDown, x: 0.0, y: 0.0, dx: 0.0, dy: 0.0, code: 31}
+    check("unknown key payload decodes to None", UiCore::wire_kind(UiCore::from_record(invalid_key)) == UiCore::WireKind.None)
+    invalid_pad: UiCore::EventRecord = UiCore::EventRecord{kind: UiCore::WireKind.GamepadButton, x: 0.0, y: 0.0, dx: 1.0, dy: 0.0, code: 99}
+    check("unknown gamepad payload decodes to None", UiCore::wire_kind(UiCore::from_record(invalid_pad)) == UiCore::WireKind.None)
+    invalid_axis: UiCore::EventRecord = UiCore::EventRecord{kind: UiCore::WireKind.GamepadAxis, x: 0.0, y: 0.0, dx: 1.0, dy: 0.0, code: -1}
+    check("unknown gamepad axis payload decodes to None", UiCore::wire_kind(UiCore::from_record(invalid_axis)) == UiCore::WireKind.None)
+    invalid_pointer_down: UiCore::EventRecord = UiCore::EventRecord{kind: UiCore::WireKind.PointerDown, x: 0.0, y: 0.0, dx: 0.0, dy: 0.0, code: 99}
+    check("unknown pointer button decodes to None", UiCore::wire_kind(UiCore::from_record(invalid_pointer_down)) == UiCore::WireKind.None)
+    invalid_pointer_up: UiCore::EventRecord = UiCore::EventRecord{kind: UiCore::WireKind.PointerUp, x: 0.0, y: 0.0, dx: 0.0, dy: 0.0, code: UiCore::NO_POINTER_BUTTON}
+    check("missing pointer button decodes to None", UiCore::wire_kind(UiCore::from_record(invalid_pointer_up)) == UiCore::WireKind.None)
     check("extra pointer buttons stay in the closed enum", UiCore::pointer_button_is_valid(UiCore::PointerButton.Forward.i32()))
 
     # Named enum casts can still be constructed deliberately from raw integers.
     # Flattening must reject those values too, so a C/WIT consumer never sees an
     # invalid key, button, or axis ordinal emitted by the Elisa side.
     invalid_key_out: UiCore::EventRecord = UiCore::to_record((UiCore::KeyEvent.Down(code: UiCore::Key(999))))
-    check("invalid key flattening uses a rejected sentinel", invalid_key_out.code == -1 and UiCore::wire_kind(UiCore::from_record(invalid_key_out)) == 0)
+    check("invalid key flattening uses a rejected sentinel", invalid_key_out.code == -1 and UiCore::wire_kind(UiCore::from_record(invalid_key_out)) == UiCore::WireKind.None)
     invalid_pad_out: UiCore::EventRecord = UiCore::to_record((UiCore::GamepadEvent.Button(button: UiCore::Pad(99), value: 1.0)))
-    check("invalid gamepad button flattening uses a rejected sentinel", invalid_pad_out.code == -1 and UiCore::wire_kind(UiCore::from_record(invalid_pad_out)) == 0)
+    check("invalid gamepad button flattening uses a rejected sentinel", invalid_pad_out.code == -1 and UiCore::wire_kind(UiCore::from_record(invalid_pad_out)) == UiCore::WireKind.None)
     invalid_axis_out: UiCore::EventRecord = UiCore::to_record((UiCore::GamepadEvent.Axis(axis: UiCore::PadAxis(-1), value: 1.0)))
-    check("invalid gamepad axis flattening uses a rejected sentinel", invalid_axis_out.code == -1 and UiCore::wire_kind(UiCore::from_record(invalid_axis_out)) == 0)
+    check("invalid gamepad axis flattening uses a rejected sentinel", invalid_axis_out.code == -1 and UiCore::wire_kind(UiCore::from_record(invalid_axis_out)) == UiCore::WireKind.None)
     hostile_button_value: UiCore::EventRecord = UiCore::EventRecord{kind: UiCore::WireKind.GamepadButton, x: 0.0, y: 0.0, dx: 4.0, dy: 0.0, code: UiCore::Pad.South.i32()}
     hostile_axis_value: UiCore::EventRecord = UiCore::EventRecord{kind: UiCore::WireKind.GamepadAxis, x: 0.0, y: 0.0, dx: -4.0, dy: 0.0, code: UiCore::PadAxis.LeftX.i32()}
     match UiCore::from_record(hostile_button_value):
