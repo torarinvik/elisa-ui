@@ -80,7 +80,7 @@ for index, (codepoints, breaks) in enumerate(rows):
     ])
     out.extend(f"    bytes[{position}] <- {value}" for position, value in enumerate(encoded_text))
     out.extend([
-        f"    text: sview = sview(&bytes[0], 0, {len(encoded_text)})",
+        f"    text: sview = UiText::fixed_bytes_view_range[{max(1, len(encoded_text))}](bytes, 0, {len(encoded_text)})",
         "    position: mutable usize = 0",
         "    next: mutable usize = 0",
     ])
