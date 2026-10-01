@@ -98,11 +98,11 @@ def main() -> i64:
     for index in 0..<900:
         payload[index] <- 65
     UiState::begin()
-    check("state accepts a bounded payload", UiState::put_text(1, sview(&payload[0], 0, 900.i64())))
-    check("state accepts a second bounded payload", UiState::put_text(2, sview(&payload[0], 0, 900.i64())))
-    check("state accepts a third bounded payload", UiState::put_text(3, sview(&payload[0], 0, 900.i64())))
-    check("state accepts a fourth bounded payload", UiState::put_text(4, sview(&payload[0], 0, 900.i64())))
-    check("state exposes capacity overflow", not UiState::put_text(5, sview(&payload[0], 0, 900.i64())) and UiState::saved().overflowed and UiState::saved().failed)
+    check("state accepts a bounded payload", UiState::put_text(1, UiText::fixed_bytes_view_range[900](payload, 0, 900)))
+    check("state accepts a second bounded payload", UiState::put_text(2, UiText::fixed_bytes_view_range[900](payload, 0, 900)))
+    check("state accepts a third bounded payload", UiState::put_text(3, UiText::fixed_bytes_view_range[900](payload, 0, 900)))
+    check("state accepts a fourth bounded payload", UiState::put_text(4, UiText::fixed_bytes_view_range[900](payload, 0, 900)))
+    check("state exposes capacity overflow", not UiState::put_text(5, UiText::fixed_bytes_view_range[900](payload, 0, 900)) and UiState::saved().overflowed and UiState::saved().failed)
 
     UiState::begin()
     oversized_text: sview = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
@@ -113,7 +113,7 @@ def main() -> i64:
     malformed_text[0] <- 65
     malformed_text[1] <- 255
     malformed_text[2] <- 66
-    malformed_view: sview = sview(&malformed_text[0], 0, 3)
+    malformed_view: sview = UiText::fixed_bytes_view_range[3](malformed_text, 0, 3)
     check("state rejects malformed text before saving", not UiState::put_text(7, malformed_view) and UiState::saved().failed)
     UiState::begin()
     _ = UiState::put_text(8, "ABC")
