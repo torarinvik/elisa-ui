@@ -1,0 +1,165 @@
+# Engine plan M01: three engine viewports inside an elisa-ui layout resize
+# independently, stay idle when nothing changed, and frame the selection.
+# Headless: the layout and engine viewports run without a window; frames are
+# acknowledged by hand where the AppKit host would after APPLY.
+# Build and run: scripts/check_viewport_three_views.sh
+include "../src/widgets/ui_handles.elisa"
+include "../src/core/ui_hosted_surface.elisa"
+include "../examples/viewport/three_views_layout.elisa"
+
+extern puts(text: cstr) -> i64
+
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size
+
+def ui_font_ascent(size: f32) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return 0
+
+def app_init() -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    pass
+
+def app_text_input(text: sview) -> void:
+    pass
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    pass
+
+def app_frame() -> void:
+    pass
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+module ThreeViewsTest:
+    public:
+        def v(x: f32, y: f32, z: f32) -> Geometry::Vec3:
+            Geometry::Vec3{x: x, y: y, z: z}
+
+        def layout(width: f32, height: f32) -> void:
+            UiCore::set_viewport(width, height)
+            UiHandles::layout(width, height)
+
+        def acknowledge_all() -> void:
+            ThreeViews::acknowledge(0)
+            ThreeViews::acknowledge(1)
+            ThreeViews::acknowledge(2)
+
+        def size_matches(index: usize, scale: f32) -> bool:
+            rect: UiHostedSurface::Rect = ThreeViews::panel_rect(index)
+            cam: ViewportCamera::Camera = ThreeViews::snapshot(index).camera
+            cam.width == UiHostedSurface::pixel_extent(rect.width, scale) and cam.height == UiHostedSurface::pixel_extent(rect.height, scale)
+
+        def all_sizes_match(scale: f32) -> bool:
+            size_matches(0, scale) and size_matches(1, scale) and size_matches(2, scale)
+
+        def overlaps(a: UiHostedSurface::Rect, b: UiHostedSurface::Rect) -> bool:
+            a.x < b.x + b.width and b.x < a.x + a.width and a.y < b.y + b.height and b.y < a.y + a.height
+
+        # Selected joint within 2 px of the centre of view `index`.
+        def centred(scene: ViewportScene::Scene&, index: usize) -> bool:
+            cam: ViewportCamera::Camera = ThreeViews::snapshot(index).camera
+            p: ViewportCamera::ScreenPoint = ViewportCamera::project(&cam, scene.joints[scene.selected.usize()])
+            dx: f32 = p.x - cam.width.f32() * 0.5
+            dy: f32 = p.y - cam.height.f32() * 0.5
+            dx * dx + dy * dy <= 4.0
+
+        def run() -> i64:
+            UiHandles::reset()
+            root: UiHandles::Handle = UiHandles::row(UiHandles::root_parent(), 12.0, 12.0, ThreeViews::color(17, 20, 27))
+            sidebar: UiHandles::Handle = UiHandles::column(root, 16.0, 10.0, ThreeViews::color(31, 36, 48))
+            UiHandles::set_grow(sidebar, 0.0)
+            _ = UiHandles::label(sidebar, "Mocap views", 20.0, ThreeViews::color(238, 241, 248))
+            views_column: UiHandles::Handle = UiHandles::column(root, 0.0, 8.0, ThreeViews::color(17, 20, 27))
+            UiHandles::set_grow(views_column, 1.0)
+            return 2 if not ThreeViews::create(views_column)
+            joints: darray[Geometry::Vec3] = [v(0.0, 1.0, 0.0), v(0.0, 1.5, 0.0), v(0.0, 1.8, 0.0), v(-0.15, 0.5, 0.05), v(-0.15, 0.05, 0.1), v(0.15, 0.5, -0.05), v(0.15, 0.05, -0.1)]
+            parents: darray[i64] = [-1, 0, 1, 0, 3, 0, 5]
+            mutable scene: ViewportScene::Scene = ViewportScene::create()
+            shaped: bool = catch ViewportScene::set_skeleton(&scene, &joints, &parents):
+                value: true
+                error failure: false
+            return 3 if not shaped
+            scale: f32 = 2.0
+
+            # Each view follows its own panel; the panels tile without overlap.
+            layout(1200.0, 800.0)
+            return 10 if ThreeViews::sync(&scene, scale) != 3
+            return 11 if not all_sizes_match(scale)
+            top: UiHostedSurface::Rect = ThreeViews::panel_rect(0)
+            front: UiHostedSurface::Rect = ThreeViews::panel_rect(1)
+            side: UiHostedSurface::Rect = ThreeViews::panel_rect(2)
+            return 12 if top.width <= 0.0 or front.width <= 0.0 or side.width <= 0.0
+            return 13 if overlaps(top, front) or overlaps(top, side) or overlaps(front, side)
+            return 14 if top.height <= front.height
+            acknowledge_all()
+
+            # Idle: nothing changed, nothing renders.
+            rendered_before: i64 = ThreeViews::snapshot(0).rendered + ThreeViews::snapshot(1).rendered + ThreeViews::snapshot(2).rendered
+            for _ in 0..<5:
+                layout(1200.0, 800.0)
+                return 20 if ThreeViews::sync(&scene, scale) != 0
+            return 21 if ThreeViews::snapshot(0).rendered + ThreeViews::snapshot(1).rendered + ThreeViews::snapshot(2).rendered != rendered_before
+
+            # Window resize: every view follows its own panel.
+            gen_before: i64 = ThreeViews::snapshot(1).generation
+            layout(900.0, 700.0)
+            return 30 if ThreeViews::sync(&scene, scale) != 3
+            return 31 if not all_sizes_match(scale)
+            return 32 if ThreeViews::snapshot(1).generation == gen_before
+            acknowledge_all()
+
+            # Re-split only the lower row: front and side resize, perspective
+            # keeps its size and does not render.
+            persp_rendered: i64 = ThreeViews::snapshot(0).rendered
+            persp_w: i64 = ThreeViews::snapshot(0).camera.width
+            persp_h: i64 = ThreeViews::snapshot(0).camera.height
+            front_w: i64 = ThreeViews::snapshot(1).camera.width
+            UiHandles::set_grow(ThreeViews::panel(1), 3.0)
+            layout(900.0, 700.0)
+            return 40 if ThreeViews::sync(&scene, scale) != 2
+            return 41 if not all_sizes_match(scale)
+            return 42 if ThreeViews::snapshot(0).rendered != persp_rendered
+            return 43 if ThreeViews::snapshot(0).camera.width != persp_w or ThreeViews::snapshot(0).camera.height != persp_h
+            return 44 if ThreeViews::snapshot(1).camera.width <= front_w
+            acknowledge_all()
+
+            # Select a joint: all three redraw once, then frame it everywhere.
+            ViewportScene::select(&scene, 4)
+            layout(900.0, 700.0)
+            return 50 if ThreeViews::sync(&scene, scale) != 3
+            acknowledge_all()
+            ThreeViews::frame_selection(&scene)
+            return 51 if ThreeViews::sync(&scene, scale) != 3
+            return 52 if not centred(&scene, 0) or not centred(&scene, 1) or not centred(&scene, 2)
+            acknowledge_all()
+
+            # Pointer routing: a point inside each panel finds that view.
+            for index in 0..<ThreeViews::COUNT:
+                rect: UiHostedSurface::Rect = ThreeViews::panel_rect(index)
+                return 60 if ThreeViews::view_at(rect.x + rect.width * 0.5, rect.y + rect.height * 0.5) != index
+            return 61 if ThreeViews::view_at(1.0, 1.0) != ThreeViews::COUNT
+            0
+
+def main() -> i64:
+    code: i64 = ThreeViewsTest::run()
+    if code == 0:
+        _ = puts("viewport three views passed")
+    code

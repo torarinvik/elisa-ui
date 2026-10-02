@@ -21,7 +21,7 @@ def app_frame() -> void:
 
 def app_event(event: UiCore::Event) -> void:
     dispatch_event_count <- dispatch_event_count + 1
-    if not dispatch_nested_sent and UiCore::wire_kind(event) == 3:
+    if not dispatch_nested_sent and UiCore::wire_kind(event) == UiCore::WireKind.PointerDown:
         dispatch_nested_sent <- true
         appkit_canvas_dispatch_event(UiCore::KeyEvent.Down(code: UiCore::Key.A))
     if dispatch_stop_on_first and not dispatch_stopped:
@@ -30,7 +30,7 @@ def app_event(event: UiCore::Event) -> void:
         # discard it without entering app_event for the dead session.
         appkit_canvas_dispatch_event(UiCore::KeyEvent.Down(code: UiCore::Key.B))
         _ = UiLifecycle::stop()
-    dispatch_nested_seen <- true if UiCore::wire_kind(event) == 6
+    dispatch_nested_seen <- true if UiCore::wire_kind(event) == UiCore::WireKind.KeyDown
 
 def app_widget_event(widget: usize, event: i32) -> void:
     pass
@@ -94,7 +94,8 @@ def main() -> i64 can[Unsafe.PointerCast]:
         native_bytes[index] <- 97
     native_bytes[UiCore::MAX_TEXT_BYTES - 1] <- 195
     native_bytes[UiCore::MAX_TEXT_BYTES] <- 169
-    native_pointer: cstr = (&native_bytes[0]).cast[cstr] can Unsafe.PointerCast
+    native_bytes_view: sview = UiText::fixed_bytes_view_range[1025](native_bytes, 0, 1025)
+    native_pointer: cstr = native_bytes_view.data.cast[cstr] can Unsafe.PointerCast
     native_value: usize = CFStringCreateWithBytes(0, native_pointer, (UiCore::MAX_TEXT_BYTES + 1).i64(), UiAppKitCanvas::UTF8_ENCODING, false)
     native_copy: mutable u8[UiCore::MAX_TEXT_BYTES] = zeroed
     native_copy_length: usize = UiAppKitCanvas::copy_native_string(native_value, &native_copy[0], UiCore::MAX_TEXT_BYTES)
@@ -105,13 +106,15 @@ def main() -> i64 can[Unsafe.PointerCast]:
     oversized_path: mutable u8[UiCore::MAX_TEXT_BYTES + 2] = zeroed
     for index in 0..<UiCore::MAX_TEXT_BYTES + 1:
         oversized_path[index] <- 120
-    oversized_path_pointer: cstr = (&oversized_path[0]).cast[cstr] can Unsafe.PointerCast
+    oversized_path_view: sview = UiText::fixed_bytes_view_range[1026](oversized_path, 0, 1026)
+    oversized_path_pointer: cstr = oversized_path_view.data.cast[cstr] can Unsafe.PointerCast
     check("oversized snapshot paths are measured without truncation", snapshot_path_length(oversized_path_pointer).i32(), (UiCore::MAX_TEXT_BYTES + 1).i32())
     check("oversized snapshot paths are rejected before native conversion", 1 if not snapshot_path_within_budget(UiCore::MAX_TEXT_BYTES + 1) else 0, 1)
     boundary_path: mutable u8[SNAPSHOT_PATH_SCAN_CAPACITY + 1] = zeroed
     for index in 0..<SNAPSHOT_PATH_SCAN_CAPACITY - 1:
         boundary_path[index] <- 120
-    boundary_path_pointer: cstr = (&boundary_path[0]).cast[cstr] can Unsafe.PointerCast
+    boundary_path_view: sview = UiText::fixed_bytes_view_range[4097](boundary_path, 0, 4097)
+    boundary_path_pointer: cstr = boundary_path_view.data.cast[cstr] can Unsafe.PointerCast
     check("a terminator at the final scan byte remains a valid length", snapshot_path_length(boundary_path_pointer).i32(), (SNAPSHOT_PATH_SCAN_CAPACITY - 1).i32())
     null_cstr: cstr = 0.uintptr().cast[cstr] can Unsafe.PointerCast
     check("Elisa C-string equality matches", 1 if appkit_cstr_equals("0", "0") else 0, 1)

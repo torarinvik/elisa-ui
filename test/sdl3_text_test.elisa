@@ -158,7 +158,8 @@ def main() -> i64 can[Unsafe.PointerCast]:
     for index in 0..<4096:
         oversized_text[index] <- 120
     oversized_text[4096] <- 0
-    oversized_pointer: cstr = (&oversized_text[0]).cast[cstr] can Unsafe.PointerCast
+    oversized_text_view: sview = UiText::fixed_bytes_view_range[4097](oversized_text, 0, 4097)
+    oversized_pointer: cstr = oversized_text_view.data.cast[cstr] can Unsafe.PointerCast
     UiSdl3::text_input(oversized_pointer)
     UiSdl3::text_editing(oversized_pointer, 2147483647, 2147483647)
     check("SDL committed text bounds hostile NUL strings", bounded_committed_text_seen)
@@ -166,7 +167,8 @@ def main() -> i64 can[Unsafe.PointerCast]:
     check("SDL marked selection stays inside bounded text", bounded_editing_selection_seen)
     for index in 0..<UiCore::MAX_TEXT_BYTES:
         unterminated_text[index] <- 121
-    unterminated_pointer: cstr = (&unterminated_text[0]).cast[cstr] can Unsafe.PointerCast
+    unterminated_text_view: sview = UiText::fixed_bytes_view_range[1024](unterminated_text, 0, 1024)
+    unterminated_pointer: cstr = unterminated_text_view.data.cast[cstr] can Unsafe.PointerCast
     unterminated_view: sview = UiSdl3Text::bounded_view(unterminated_pointer)
     check("SDL bounded view handles an unterminated text span", unterminated_view.len == UiCore::MAX_TEXT_BYTES.i64())
     UiSdl3::text_input(unterminated_pointer)

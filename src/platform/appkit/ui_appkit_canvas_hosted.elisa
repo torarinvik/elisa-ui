@@ -1,0 +1,45 @@
+# Hosted surfaces on the AppKit canvas: show an externally rendered IOSurface
+# (for example an Elisa engine viewport) over a panel of the canvas window.
+#
+# `present_hosted` is the one call an app makes per UI frame and slot: it clips
+# the panel rect, decides with UiHostedSurface whether a layer write is needed,
+# performs it, and returns the action so the app can acknowledge the frame to
+# its renderer after APPLY. The native side (canvas_shim/hosted_surface.m) only
+# sets a CALayer's contents and frame; the layer retains the surface.
+include "../../core/ui_hosted_surface.elisa"
+
+extern elisa_appkit_canvas_hosted_root(window_handle: usize) -> usize
+extern elisa_appkit_canvas_hosted_layer_apply(root: usize, slot: i32, surface: usize, x: f32, y: f32, width: f32, height: f32) -> i32
+extern elisa_appkit_canvas_hosted_layer_remove(root: usize, slot: i32) -> i32
+extern elisa_appkit_canvas_backing_scale(window_handle: usize) -> f32
+
+extend UiAppKitCanvas:
+    public:
+        # Device pixels per point of the canvas window (1 before it opens).
+        def backing_scale() -> f32:
+            elisa_appkit_canvas_backing_scale(canvas_window)
+
+        # Show `surface` (an IOSurfaceRef, borrowed; 0 = nothing published)
+        # from `frame` of `generation` in `slot` over `rect` (view points),
+        # clipped to a view of `view_width` x `view_height`. `shown` is the
+        # app's record for the slot. Returns UiHostedSurface::NONE, APPLY or
+        # REMOVE; APPLY means the frame is now on screen.
+        def present_hosted(shown: mutable UiHostedSurface::Shown&, slot: i32, surface: usize, generation: i64, frame: i64, rect: UiHostedSurface::Rect, view_width: f32, view_height: f32) -> i32:
+            return UiHostedSurface::NONE if slot < 0 or slot >= UiHostedSurface::MAX_SLOTS
+            root: usize = elisa_appkit_canvas_hosted_root(canvas_window)
+            return UiHostedSurface::NONE if root == 0
+            clipped: UiHostedSurface::Rect = UiHostedSurface::sanitize(rect, view_width, view_height)
+            action: i32 = UiHostedSurface::decide(shown, surface, generation, frame, clipped)
+            if action == UiHostedSurface::APPLY:
+                return UiHostedSurface::NONE if elisa_appkit_canvas_hosted_layer_apply(root, slot, surface, clipped.x, clipped.y, clipped.width, clipped.height) == 0
+            elif action == UiHostedSurface::REMOVE:
+                _ = elisa_appkit_canvas_hosted_layer_remove(root, slot)
+            UiHostedSurface::record(shown, action, surface, generation, frame, clipped)
+            action
+
+        # Drop the slot's layer (for example when the panel closes).
+        def remove_hosted(shown: mutable UiHostedSurface::Shown&, slot: i32) -> void:
+            root: usize = elisa_appkit_canvas_hosted_root(canvas_window)
+            if root != 0:
+                _ = elisa_appkit_canvas_hosted_layer_remove(root, slot)
+            UiHostedSurface::record(shown, UiHostedSurface::REMOVE, 0, 0, 0, UiHostedSurface::empty().rect)

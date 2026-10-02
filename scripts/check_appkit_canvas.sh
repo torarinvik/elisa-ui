@@ -511,7 +511,7 @@ COLLECTION_TEST="$ROOT/build/appkit_canvas_collection_graph_test"
   "$ROOT/test/appkit_canvas_collection_graph_test.elisa"
 clang -Wl,-dead_strip -o "$COLLECTION_TEST" \
   "$COLLECTION_TEST_OBJ" "$RUNTIME" \
-  -framework Cocoa -framework CoreText -framework CoreGraphics -framework ImageIO
+  -framework Cocoa -framework CoreText -framework CoreGraphics -framework ImageIO -framework QuartzCore -framework IOSurface
 "$COLLECTION_TEST"
 ELISA_UI_SMOKE_FRAMES=1 ELISA_UI_SNAPSHOT="$SNAPSHOT" "$BIN"
 [[ -s "$SNAPSHOT" ]]
@@ -527,6 +527,10 @@ second_digest="$(shasum -a 256 "$SNAPSHOT_SECOND" | awk '{print $1}')"
 }
 echo "appkit canvas: fresh-process PNG digest verified sha256=$second_digest"
 clang -fobjc-arc -Wall -Wextra -Werror -o "$BRIDGE_TEST" \
-  "$ROOT/test/appkit_canvas_bridge_test.m" -framework Cocoa
+  "$ROOT/test/appkit_canvas_bridge_test.m" -framework Cocoa -framework QuartzCore -framework IOSurface
 "$BRIDGE_TEST"
+# Hosted surfaces: IOSurface layers composited headlessly through CARenderer.
+clang -fobjc-arc -Wall -Wextra -Werror -o "$ROOT/build/appkit_canvas_hosted_surface_test" \
+  "$ROOT/test/appkit_canvas_hosted_surface_test.m" -framework Cocoa -framework QuartzCore -framework IOSurface -framework Metal
+"$ROOT/build/appkit_canvas_hosted_surface_test"
 echo "appkit canvas: build, off-screen PNG frame, semantic bridge, callbacks, bundle and signature passed"

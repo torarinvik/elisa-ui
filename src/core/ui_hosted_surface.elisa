@@ -1,0 +1,109 @@
+# Hosted surfaces: policy for showing an externally rendered GPU surface (an
+# engine viewport's IOSurface) inside a panel of an elisa-ui window.
+#
+# The external renderer owns the surface and draws it; the backend shows it as a
+# compositor layer over the panel's rect (AppKit: UiAppKitCanvas::host_surface).
+# This module is pure, platform-free policy:
+#   - `sanitize` clips a panel rect to the view and rejects non-finite values;
+#   - `pixel_extent` turns a point size into the renderer's pixel size;
+#   - `decide` says whether a frame needs a layer write (apply, remove, none);
+#   - `to_local` maps a window pointer position into panel pixels, so input over
+#     the panel can drive the renderer's camera.
+#
+# Protocol with the renderer (see the engine's docs/validation/
+# viewport-shared-texture.md): each UI frame, resize the renderer to
+# `pixel_extent` of the panel, let it render, then `decide` with the surface it
+# published; APPLY means call the backend, after which the frame is on screen
+# and may be acknowledged to the renderer.
+module UiHostedSurface:
+    public:
+        const MAX_EXTENT: i64 = 16384
+        const MAX_SLOTS: i32 = 16
+
+        const NONE: i32 = 0
+        const APPLY: i32 = 1
+        const REMOVE: i32 = 2
+
+        struct Rect:
+            x: f32
+            y: f32
+            width: f32
+            height: f32
+
+        # What a slot currently shows.
+        struct Shown:
+            surface: usize
+            generation: i64
+            frame: i64
+            rect: Rect
+
+        def empty() -> Shown:
+            Shown{surface: 0, generation: 0, frame: -1, rect: Rect{x: 0.0, y: 0.0, width: 0.0, height: 0.0}}
+
+        def finite(v: f32) -> bool:
+            v == v and v < 1.0e30 and v > -1.0e30
+
+        # The part of `rect` inside a view of the given size; a non-finite or
+        # inverted rect becomes empty (zero size at the origin).
+        def sanitize(rect: Rect, view_width: f32, view_height: f32) -> Rect:
+            zero: Rect = Rect{x: 0.0, y: 0.0, width: 0.0, height: 0.0}
+            return zero if not finite(rect.x) or not finite(rect.y) or not finite(rect.width) or not finite(rect.height)
+            return zero if not finite(view_width) or not finite(view_height) or view_width <= 0.0 or view_height <= 0.0
+            return zero if rect.width <= 0.0 or rect.height <= 0.0
+            x0: f32 = clamp(rect.x, 0.0, view_width)
+            y0: f32 = clamp(rect.y, 0.0, view_height)
+            x1: f32 = clamp(rect.x + rect.width, 0.0, view_width)
+            y1: f32 = clamp(rect.y + rect.height, 0.0, view_height)
+            return zero if x1 <= x0 or y1 <= y0
+            Rect{x: x0, y: y0, width: x1 - x0, height: y1 - y0}
+
+        def is_empty(rect: Rect) -> bool:
+            rect.width <= 0.0 or rect.height <= 0.0
+
+        # Renderer pixels for `points` at `scale` pixels per point: rounded,
+        # at least 1 (a collapsed panel keeps a 1-pixel target), at most
+        # MAX_EXTENT. Non-finite or non-positive scales count as 1.
+        def pixel_extent(points: f32, scale: f32) -> i64:
+            s: f32 = scale if finite(scale) and scale > 0.0 and scale <= 16.0 else 1.0
+            return 1 if not finite(points) or points <= 0.0
+            px: f32 = points * s + 0.5
+            return MAX_EXTENT if px >= MAX_EXTENT.f32()
+            n: i64 = px.i64()
+            n if n >= 1 else 1
+
+        # Layer write needed to show `surface` (0 = nothing published) from
+        # frame `frame` of `generation` at `rect`, given what the slot shows.
+        def decide(shown: Shown&, surface: usize, generation: i64, frame: i64, rect: Rect) -> i32:
+            if surface == 0 or is_empty(rect):
+                return REMOVE if shown.surface != 0 else NONE
+            return APPLY if surface != shown.surface or generation != shown.generation or frame != shown.frame
+            return APPLY if rect.x != shown.rect.x or rect.y != shown.rect.y or rect.width != shown.rect.width or rect.height != shown.rect.height
+            NONE
+
+        # Record the result of a decision the backend carried out.
+        def record(shown: mutable Shown&, action: i32, surface: usize, generation: i64, frame: i64, rect: Rect):
+            if action == APPLY:
+                shown <- Shown{surface: surface, generation: generation, frame: frame, rect: rect}
+            elif action == REMOVE:
+                shown <- empty()
+
+        def contains(rect: Rect, x: f32, y: f32) -> bool:
+            not is_empty(rect) and x >= rect.x and y >= rect.y and x < rect.x + rect.width and y < rect.y + rect.height
+
+        # Window point -> panel pixel (top-left origin), for driving the
+        # renderer's camera. Points outside the panel are clamped to its edge.
+        def to_local_x(rect: Rect, x: f32, scale: f32) -> f32:
+            s: f32 = scale if finite(scale) and scale > 0.0 and scale <= 16.0 else 1.0
+            return 0.0 if not finite(x) or is_empty(rect)
+            clamp(x - rect.x, 0.0, rect.width) * s
+
+        def to_local_y(rect: Rect, y: f32, scale: f32) -> f32:
+            s: f32 = scale if finite(scale) and scale > 0.0 and scale <= 16.0 else 1.0
+            return 0.0 if not finite(y) or is_empty(rect)
+            clamp(y - rect.y, 0.0, rect.height) * s
+
+    private:
+        def clamp(v: f32, lo: f32, hi: f32) -> f32:
+            return lo if v < lo
+            return hi if v > hi
+            v

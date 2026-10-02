@@ -100,7 +100,8 @@ def main() -> i64 can[Unsafe.PointerCast]:
     oversized_title: mutable u8[UiCore::MAX_TEXT_BYTES + 32] = zeroed
     for index in 0..<UiCore::MAX_TEXT_BYTES + 32:
         oversized_title[index] <- 65
-    oversized_title_pointer: cstr = (&oversized_title[0]).cast[cstr] can Unsafe.PointerCast
+    oversized_title_view: sview = UiText::fixed_bytes_view_range[1056](oversized_title, 0, 1056)
+    oversized_title_pointer: cstr = oversized_title_view.data.cast[cstr] can Unsafe.PointerCast
     bounded_title: cstr = UiSdl3Text::bounded_title(oversized_title_pointer)
     check("SDL titles are copied into a bounded buffer", UiSdl3Text::length(bounded_title).i32(), UiCore::MAX_TEXT_BYTES.i32())
     check("bounded SDL titles are terminated", 1 if UiSdl3Text::byte(bounded_title, UiCore::MAX_TEXT_BYTES) == 0 else 0, 1)
@@ -108,7 +109,8 @@ def main() -> i64 can[Unsafe.PointerCast]:
     invalid_title[0] <- 65
     invalid_title[1] <- 255
     invalid_title[2] <- 66
-    invalid_title_pointer: cstr = (&invalid_title[0]).cast[cstr] can Unsafe.PointerCast
+    invalid_title_view: sview = UiText::fixed_bytes_view_range[4](invalid_title, 0, 4)
+    invalid_title_pointer: cstr = invalid_title_view.data.cast[cstr] can Unsafe.PointerCast
     bounded_invalid_title: cstr = UiSdl3Text::bounded_title(invalid_title_pointer)
     check("SDL titles reject malformed UTF-8", UiSdl3Text::length(bounded_invalid_title).i32(), 1)
     check("SDL malformed title suffix is terminated", UiSdl3Text::byte(bounded_invalid_title, 1).i32(), 0)

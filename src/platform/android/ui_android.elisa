@@ -60,9 +60,7 @@ def android_ime_stage(text: cstr, length: i32) -> sview:
     room: usize = length.usize() if length.usize() < UiFlat::TEXT_CAPACITY else UiFlat::TEXT_CAPACITY
     for index in 0..<room:
         android_ime_staging[index] <- android_controls_ime_byte(text, index)
-    can Unsafe.PointerCast:
-        # room is bounded by the fixed IME staging capacity above.
-        return UiText::unsafe_sview_bounded_bytes(&android_ime_staging[0], room)
+    return UiText::fixed_bytes_view_range[1024](android_ime_staging, 0, room)
 
 def android_ime_clear_staging() -> void:
     # Composition and committed input can contain secure user text. The edit
@@ -329,9 +327,7 @@ module UiAndroid:
                 android_text_bytes[1] <- (128 | ((scalar >> 12) & 63)).u8()
                 android_text_bytes[2] <- (128 | ((scalar >> 6) & 63)).u8()
                 android_text_bytes[3] <- (128 | (scalar & 63)).u8()
-            can Unsafe.PointerCast:
-                # length is 1..4 and every byte above came from one validated scalar.
-                UiFlat::insert_text(UiText::unsafe_sview_bounded_bytes(&android_text_bytes[0], length))
+            UiFlat::insert_text(UiText::fixed_bytes_view_range[4](android_text_bytes, 0, length))
 
         # Whether the focused widget wants a keyboard. The host raises and
         # lowers the on-screen one from this and from nothing else: the

@@ -56,8 +56,9 @@ module UiWin32:
             for index in 0..<take:
                 target[index] <- safe.data[index]
             target[take] <- 0
-            can Unsafe.PointerCast:
-                return (&target[0]).cast[cstr]
+            trusted [Unsafe.PointerCast]:
+                staged: cstr = target.cast[cstr]
+                return staged
 
         # EVERY CONTROL IS A CHILD HWND, so unlike the other backends the parent
         # is needed at construction rather than after it. The window is the one
@@ -178,7 +179,7 @@ module UiWin32:
                     break if win32_cstr_byte(text, index) == 0
             for index in 0..<length:
                 win32_text_bytes[index] <- win32_cstr_byte(text, index)
-            return UiControls::dispatch_native_text(handle, UiText::fixed_bytes_view_range[UiCore::MAX_TEXT_BYTES](win32_text_bytes, 0, length))
+            return UiControls::dispatch_native_text(handle, UiText::fixed_bytes_view_range[1024](win32_text_bytes, 0, length))
 
     private:
         def win32_cstr_byte(text: cstr, index: usize) -> u8:

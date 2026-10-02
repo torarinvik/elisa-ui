@@ -100,8 +100,9 @@ module UiGtk:
             for index in 0..<take:
                 target[index] <- safe.data[index]
             target[take] <- 0
-            can Unsafe.PointerCast:
-                return (&target[0]).cast[cstr]
+            trusted [Unsafe.PointerCast]:
+                staged: cstr = target.cast[cstr]
+                return staged
 
         def gtk_cstr_byte(text: cstr, index: usize) -> u8:
             pointer: mutable uintptr = 0
@@ -228,7 +229,7 @@ module UiGtk:
             length: usize = gtk_cstr_length(text)
             for index in 0..<length:
                 gtk_text_bytes[index] <- gtk_cstr_byte(text, index)
-            return UiControls::dispatch_native_text(handle, UiText::fixed_bytes_view_range[UiCore::MAX_TEXT_BYTES](gtk_text_bytes, 0, length))
+            return UiControls::dispatch_native_text(handle, UiText::fixed_bytes_view_range[1024](gtk_text_bytes, 0, length))
 
         def controls_action(handle: usize, value: f32, selected: bool) -> i32:
             index: i32 = UiControls::index_for_native_handle(handle)
