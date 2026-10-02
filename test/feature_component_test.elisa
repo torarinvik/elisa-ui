@@ -1,0 +1,87 @@
+# Retained feature screen: recovery, owner leases, and host deactivation.
+
+include "../src/widgets/ui_feature_component.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return 0
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def caption(handle: UiHandles::Handle) -> sview:
+    if UiHandles::widget(handle) is widget:
+        return widget.text
+    return ""
+
+def main() -> i64:
+    UiFeatureView::reset()
+    UiHandles::reset()
+    host_root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 8.0, 6.0, UiCore::rgb(20, 24, 32))
+    options: UiFeaturePresentation::Options = UiFeaturePresentation::default_options()
+
+    shared: UiFeatureView::FeatureHandle = UiFeatureView::request(1, 1, "1.0.0", 101)
+    peer: UiFeatureView::FeatureHandle = UiFeatureView::request(1, 1, "1.0.0", 102)
+    shared_view: UiFeatureComponent::View = UiFeatureComponent::build(host_root, shared, 101, options)
+    shared_cancel: UiFeatureComponent::ActionResult = UiFeatureComponent::perform_action(shared_view)
+    check("cancel detaches one screen without cancelling a co-owned request", shared_cancel.changed and UiFeatureView::state(peer) == UiFeatureView::FeatureState.Requested and UiFeatureView::owns(peer, 102) and UiFeatureView::owner_count(peer) == 1 and not UiHandles::is_visible(shared_cancel.view.root) and not UiFeatureComponent::publish_accessibility(shared_cancel.view, UiCore::Rect(0.0, 0.0, 200.0, 60.0)))
+    _ = UiFeatureView::cancel_for_owner(peer, 102)
+
+    offline: UiFeatureView::FeatureHandle = UiFeatureView::request(2, 1, "2.0.0", 201)
+    _ = UiFeatureView::activate(offline, 720)
+    _ = UiFeatureView::resolve(offline, 720, UiFeatureView::FeatureState.UnavailableOffline, UiFeatureView::FeatureFailureKind.Offline)
+    offline_view: UiFeatureComponent::View = UiFeatureComponent::build(host_root, offline, 201, options)
+    check("offline feature presents a recovery alert and explicit retry", offline_view.record.role == UiCore::AccessibilityRole.Alert and caption(offline_view.status) == "Feature unavailable offline" and caption(offline_view.recovery_action) == "Retry" and UiHandles::is_visible(offline_view.recovery_action))
+    retried: UiFeatureComponent::ActionResult = UiFeatureComponent::perform_action(offline_view)
+    check("retry rotates the identity and updates the retained component", retried.changed and retried.action == UiFeaturePresentation::Action.Retry and retried.view.record.handle.generation != offline.generation and UiFeatureView::state(retried.view.record.handle) == UiFeatureView::FeatureState.Requested and caption(retried.view.status) == "Loading optional feature" and caption(retried.view.recovery_action) == "Cancel loading")
+    stale_retry: UiFeatureComponent::ActionResult = UiFeatureComponent::perform_action(offline_view)
+    check("stale feature component cannot retry over the replacement generation", not stale_retry.changed and caption(retried.view.status) == "Loading optional feature")
+
+    preflight: UiFeatureView::FeatureHandle = UiFeatureView::request(5, 1, "1.0.0", 501)
+    preflight_view: mutable UiFeatureComponent::View = UiFeatureComponent::build(host_root, preflight, 501, options)
+    check("tokenless host rejection refreshes the existing retained screen", UiFeatureView::reject_activation(preflight, UiFeatureView::FeatureState.Failed, UiFeatureView::FeatureFailureKind.Unavailable))
+    preflight_view <- UiFeatureComponent::refresh(preflight_view)
+    check("unavailable host package is explained without offering a retry", caption(preflight_view.status) == "Feature unavailable" and caption(preflight_view.detail) == "The current host package does not provide this feature." and caption(preflight_view.recovery_action) == "Choose package" and preflight_view.record.action == UiFeaturePresentation::Action.ChooseVersion and UiFeatureView::activation_id(preflight) == 0)
+    _ = UiFeatureComponent::dismiss(preflight_view)
+
+    loading: UiFeatureView::FeatureHandle = UiFeatureView::request(3, 1, "1.0.0", 301)
+    _ = UiFeatureView::activate(loading, 730)
+    loading_view: UiFeatureComponent::View = UiFeatureComponent::build(host_root, loading, 301, options)
+    cancelled: UiFeatureComponent::ActionResult = UiFeatureComponent::perform_action(loading_view)
+    check("active cancellation retains a visible tombstone until host acknowledgement", cancelled.changed and UiFeatureView::state(loading) == UiFeatureView::FeatureState.Cancelled and UiFeatureView::activation_id(loading) == 730 and caption(cancelled.view.status) == "Feature loading cancelled" and not UiHandles::is_visible(cancelled.view.recovery_action) and UiFeatureView::deactivation_count() == 1)
+    check("host acknowledgement retires the matching cancellation token", UiFeatureView::acknowledge_deactivation(loading, 730) and not UiFeatureView::is_valid(loading))
+
+    ready: UiFeatureView::FeatureHandle = UiFeatureView::request(4, 1, "3.0.0", 401)
+    _ = UiFeatureView::activate(ready, 740)
+    _ = UiFeatureView::resolve(ready, 740, UiFeatureView::FeatureState.Ready, UiFeatureView::FeatureFailureKind.Unknown)
+    ready_view: UiFeatureComponent::View = UiFeatureComponent::build(host_root, ready, 401, options)
+    check("ready feature has no recovery control", ready_view.record.state == UiFeatureView::FeatureState.Ready and not UiHandles::is_visible(ready_view.recovery_action))
+    check("dismissing a ready screen releases its observer but preserves host teardown authority", UiFeatureComponent::dismiss(ready_view) and not UiHandles::is_visible(ready_view.root) and UiFeatureView::state(ready) == UiFeatureView::FeatureState.Cancelled and UiFeatureView::activation_id(ready) == 740 and UiFeatureView::owner_count(ready) == 0)
+    check("ready dismissal waits for matching host deactivation acknowledgement", UiFeatureView::acknowledge_deactivation(ready, 740) and not UiFeatureView::is_valid(ready))
+
+    UiHandles::reset()
+    check("tree teardown invalidates old feature semantics handles", not UiFeatureComponent::publish_accessibility(ready_view, UiCore::Rect(0.0, 0.0, 200.0, 60.0)))
+    if failures == 0:
+        _ = puts("feature component: all checks passed")
+        return 0
+    _ = puts("feature component: FAILURES above")
+    return 1

@@ -1,0 +1,14 @@
+# A separately included extension keeps the Android backend under the source
+# size limit while translating platform IME occlusion into shared mobile facts.
+extend UiAndroid:
+    public:
+        def keyboard_insets(bottom: f32, visible: bool) -> bool:
+            return false if not live()
+            return false if not UiMobileSurface::set_keyboard(bottom, visible)
+            return publish_content_insets()
+
+def android_keyboard_insets(bottom: f32, visible: i32) -> i32:
+    return 0 if visible != 0 and visible != 1
+    return 1 if UiAndroid::keyboard_insets(bottom, visible != 0) else 0
+
+export fn elisa_android_keyboard_insets(bottom: f32, visible: i32) -> i32 = android_keyboard_insets

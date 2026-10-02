@@ -8,12 +8,13 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # that a suite runs in sequence and a person runs one at a time.
 GATE_OBJ_DIR="$ROOT/build/appkit"
 mkdir -p "$GATE_OBJ_DIR"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
+STAGE1="$(bash "$ROOT/scripts/resolve_stage1_root.sh" "$ROOT")"
 RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
 EXAMPLE="${1:-hello}"
 
 [[ "$(uname -s)" == "Darwin" ]] || { echo "the AppKit backend is macOS only" >&2; exit 2; }
 [[ -x "$STAGE1/bin/elisac-stage1" ]] || { echo "no stage1 product at $STAGE1/bin/elisac-stage1" >&2; exit 2; }
+ELISA_UI_STAGE1="$STAGE1" bash "$ROOT/scripts/check_toolchain.sh" --report >&2
 
 mkdir -p "$ROOT/build"
 clang -c -fobjc-arc -o "$GATE_OBJ_DIR/appkit_shim.o" "$ROOT/src/platform/appkit/appkit_shim.m"

@@ -1,0 +1,137 @@
+# Parent-owned retained surface for an optional feature view.
+#
+# The feature contributes bounded copied content and an action key. The app
+# owns every widget and maps that key to app behavior; no foreign widget handle
+# or component-memory pointer enters the retained tree.
+
+include "./ui_feature_presentation.elisa"
+
+module UiFeatureComponent:
+    public:
+        struct View:
+            record: UiFeaturePresentation::Record
+            owner: u32
+            options: UiFeaturePresentation::Options
+            rendered_content_sequence: u64
+            rendered_action_key: u32
+            root: UiHandles::Handle
+            status: UiHandles::Handle
+            detail: UiHandles::Handle
+            content_title: UiHandles::Handle
+            content_body: UiHandles::Handle
+            content_action: UiHandles::Handle
+            recovery_action: UiHandles::Handle
+
+        struct ActionResult:
+            view: View
+            action: UiFeaturePresentation::Action
+            changed: bool
+
+        def build(parent: UiHandles::Handle, feature: UiFeatureView::FeatureHandle, owner: u32, options: UiFeaturePresentation::Options) -> View:
+            neutral: View = empty_view(owner, options)
+            return neutral if not UiHandles::parent_is_valid(parent) or not UiFeatureView::is_valid(feature) or not UiFeatureView::owns(feature, owner)
+            record: UiFeaturePresentation::Record = UiFeaturePresentation::record(feature)
+            root: UiHandles::Handle = UiHandles::column(parent, 8.0, 4.0, background(record.tone, options))
+            status: UiHandles::Handle = UiHandles::label(root, record.title, 15.0, UiCore::rgb(240, 242, 248))
+            detail: UiHandles::Handle = UiHandles::label(root, record.detail, 13.0, UiCore::rgb(210, 216, 228))
+            content_title: UiHandles::Handle = UiHandles::label(root, "", 20.0, UiCore::rgb(248, 248, 252))
+            content_body: UiHandles::Handle = UiHandles::label(root, "", 14.0, UiCore::rgb(214, 220, 232))
+            content_action: UiHandles::Handle = UiHandles::button(root, 160.0, 44.0, UiCore::rgb(48, 58, 76), UiCore::rgb(60, 72, 94), UiCore::rgb(32, 40, 54))
+            recovery_action: UiHandles::Handle = UiHandles::button(root, 140.0, 40.0, UiCore::rgb(48, 54, 68), UiCore::rgb(62, 70, 88), UiCore::rgb(35, 40, 52))
+            content: UiFeatureView::Content = UiFeatureView::content(feature)
+            view: View = View{record: record, owner: owner, options: options, rendered_content_sequence: content.sequence, rendered_action_key: content.action_key, root: root, status: status, detail: detail, content_title: content_title, content_body: content_body, content_action: content_action, recovery_action: recovery_action}
+            return view if not view_is_valid(view)
+            apply(view, record, content)
+            return view
+
+        # Call after SDK activation/content facts change. All text is copied
+        # into parent-owned retained controls through UiHandles setters.
+        def refresh(view: View) -> View:
+            return view if not view_is_valid(view) or not UiHandles::is_visible(view.root) or not UiFeatureView::is_valid(view.record.handle)
+            return view if not observer_is_live(view.record.handle, view.owner)
+            record: UiFeaturePresentation::Record = UiFeaturePresentation::record(view.record.handle)
+            content: UiFeatureView::Content = UiFeatureView::content(record.handle)
+            apply(view, record, content)
+            return with_record(view, record, content)
+
+        # Recovery controls are app-mediated: Retry replaces the retained
+        # generation, Cancel releases only this owner's lease, and version
+        # selection remains a caller decision.
+        def perform_action(view: View) -> ActionResult:
+            unchanged: ActionResult = ActionResult{view: view, action: view.record.action, changed: false}
+            return unchanged if not view_is_valid(view) or not UiFeatureView::is_valid(view.record.handle) or not observer_is_live(view.record.handle, view.owner)
+            result: UiFeaturePresentation::ActionResult = UiFeaturePresentation::perform_action(view.record.handle, view.owner)
+            return unchanged if not result.changed
+            if result.action == UiFeaturePresentation::Action.Cancel:
+                # A live host token remains as an ownerless deactivation
+                # tombstone and gets a visible Cancelled status. Otherwise
+                # dismiss this screen; a co-owner's activation keeps running.
+                if not UiFeatureView::is_valid(result.handle) or UiFeatureView::owner_count(result.handle) > 0 or UiFeatureView::activation_id(result.handle) == 0:
+                    UiHandles::set_visible(view.root, false)
+                    return ActionResult{view: view, action: result.action, changed: true}
+            next_record: UiFeaturePresentation::Record = UiFeaturePresentation::record(result.handle)
+            content: UiFeatureView::Content = UiFeatureView::content(result.handle)
+            next_view: View = with_record(view, next_record, content)
+            apply(next_view, next_record, content)
+            return ActionResult{view: next_view, action: result.action, changed: true}
+
+        # Content actions are keys interpreted by the parent application, not
+        # callbacks or child-component widget identities.
+        def content_action_key(view: View) -> u32:
+            return 0 if not view_is_valid(view) or not UiHandles::is_visible(view.root)
+            return 0 if not UiFeatureView::owns(view.record.handle, view.owner)
+            content: UiFeatureView::Content = UiFeatureView::content(view.record.handle)
+            return 0 if not content.available or content.sequence != view.rendered_content_sequence
+            return 0 if content.action_key == 0 or content.action_key != view.rendered_action_key
+            return view.rendered_action_key
+
+        # Dismissal is distinct from the loading Cancel button: a Ready
+        # feature still owns a live activation token that must be released and
+        # acknowledged by its SDK/host before its slot can be retired.
+        def dismiss(view: View) -> bool:
+            return false if not view_is_valid(view) or not UiFeatureView::is_valid(view.record.handle)
+            released: bool = UiFeatureView::cancel_for_owner(view.record.handle, view.owner)
+            UiHandles::set_visible(view.root, false) if released
+            return released
+
+        def publish_accessibility(view: View, frame: UiCore::Rect) -> bool:
+            return false if not view_is_valid(view) or not UiHandles::is_visible(view.root)
+            return UiFeaturePresentation::publish_accessibility(frame, view.record.handle, view.status, view.recovery_action)
+
+    private:
+        def empty_view(owner: u32, options: UiFeaturePresentation::Options) -> View:
+            invalid: UiHandles::Handle = UiHandles::invalid()
+            return View{record: UiFeaturePresentation::record(UiFeatureView::invalid()), owner: owner, options: options, rendered_content_sequence: 0, rendered_action_key: 0, root: invalid, status: invalid, detail: invalid, content_title: invalid, content_body: invalid, content_action: invalid, recovery_action: invalid}
+
+        def view_is_valid(view: View) -> bool:
+            return UiHandles::is_valid(view.root) and UiHandles::is_valid(view.status) and UiHandles::is_valid(view.detail) and UiHandles::is_valid(view.content_title) and UiHandles::is_valid(view.content_body) and UiHandles::is_valid(view.content_action) and UiHandles::is_valid(view.recovery_action)
+
+        def observer_is_live(feature: UiFeatureView::FeatureHandle, owner: u32) -> bool:
+            return false if not UiFeatureView::is_valid(feature)
+            return UiFeatureView::owns(feature, owner) or (UiFeatureView::state(feature) == UiFeatureView::FeatureState.Cancelled and UiFeatureView::activation_id(feature) != 0 and UiFeatureView::owner_count(feature) == 0)
+
+        def with_record(view: View, record: UiFeaturePresentation::Record, content: UiFeatureView::Content) -> View:
+            return View{record: record, owner: view.owner, options: view.options, rendered_content_sequence: content.sequence, rendered_action_key: content.action_key, root: view.root, status: view.status, detail: view.detail, content_title: view.content_title, content_body: view.content_body, content_action: view.content_action, recovery_action: view.recovery_action}
+
+        def apply(view: View, record: UiFeaturePresentation::Record, content: UiFeatureView::Content) -> void:
+            UiHandles::set_color(view.root, background(record.tone, view.options))
+            UiHandles::set_text(view.status, record.title, 15.0, UiCore::rgb(240, 242, 248))
+            UiHandles::set_text(view.detail, record.detail, 13.0, UiCore::rgb(210, 216, 228))
+            UiHandles::set_text(view.recovery_action, record.action_label, 13.0, UiCore::rgb(238, 242, 250))
+            UiHandles::set_help(view.recovery_action, record.help)
+            UiHandles::set_visible(view.recovery_action, record.action != UiFeaturePresentation::Action.None)
+            UiHandles::set_enabled(view.recovery_action, record.action != UiFeaturePresentation::Action.None)
+            UiHandles::set_visible(view.content_title, content.available)
+            UiHandles::set_visible(view.content_body, content.available)
+            UiHandles::set_visible(view.content_action, content.available and content.action_key != 0)
+            UiHandles::set_text(view.content_title, UiFeatureView::content_title(record.handle), 20.0, UiCore::rgb(248, 248, 252))
+            UiHandles::set_text(view.content_body, UiFeatureView::content_body(record.handle), 14.0, UiCore::rgb(214, 220, 232))
+            UiHandles::set_text(view.content_action, UiFeatureView::content_action_label(record.handle), 14.0, UiCore::rgb(248, 248, 252))
+            UiHandles::set_help(view.content_action, "Activate to continue in the parent app.")
+            UiHandles::set_enabled(view.content_action, content.available and content.action_key != 0)
+
+        def background(tone: UiFeaturePresentation::Tone, options: UiFeaturePresentation::Options) -> UiCore::Color:
+            return options.positive_background if tone == UiFeaturePresentation::Tone.Positive
+            return options.warning_background if tone == UiFeaturePresentation::Tone.Warning
+            return options.error_background if tone == UiFeaturePresentation::Tone.Error
+            return options.neutral_background

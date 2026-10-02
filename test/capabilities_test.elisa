@@ -31,6 +31,14 @@ def main() -> i64:
     check("AppKit canvas exposes semantics and snapshots", canvas.backend == UiCapabilities::Backend.AppKitCanvas and canvas.renderer == UiCapabilities::Renderer.CoreGraphics and canvas.custom_paint and canvas.offscreen and canvas.semantics)
     check("custom profile can select Skia", UiCapabilities::select_skia_renderer() and canvas.renderer != UiCapabilities::Renderer.Skia and UiCapabilities::renderer() == UiCapabilities::Renderer.Skia and UiCapabilities::supports_skia() and UiCapabilities::supports_scale_changes())
 
+    UiCapabilities::use_uikit()
+    uikit: UiCapabilities::Snapshot = UiCapabilities::snapshot()
+    check("UIKit reports a single primary window", uikit.backend == UiCapabilities::Backend.UiKit and uikit.surface and not uikit.multiple_windows)
+
+    UiCapabilities::use_uikit_controls()
+    uikit_controls: UiCapabilities::Snapshot = UiCapabilities::snapshot()
+    check("UIKit controls report a single primary window", uikit_controls.backend == UiCapabilities::Backend.UiKitControls and uikit_controls.surface and not uikit_controls.multiple_windows)
+
     # THE PAINTED ANDROID BACKEND IS NOT THE MAC ONE. It answered use_appkit_canvas
     # until this profile existed, so an application asking what it ran on was told
     # macOS -- and was told it had semantics and off-screen snapshots it does not
@@ -39,6 +47,11 @@ def main() -> i64:
     android: UiCapabilities::Snapshot = UiCapabilities::snapshot()
     check("the painted Android backend says which platform it is", android.backend == UiCapabilities::Backend.Android and android.renderer == UiCapabilities::Renderer.Skia and android.custom_paint and not android.native_controls)
     check("it claims no semantics and no snapshot, and does change scale", not android.semantics and not android.offscreen and android.scale_changes and android.composition and android.clipboard)
+    check("Android canvas reports a single primary window", android.native_window and android.surface and not android.multiple_windows)
+
+    UiCapabilities::use_android_controls()
+    android_controls: UiCapabilities::Snapshot = UiCapabilities::snapshot()
+    check("Android controls report a single primary window", android_controls.backend == UiCapabilities::Backend.AndroidControls and android_controls.native_window and android_controls.surface and not android_controls.multiple_windows)
 
     UiCapabilities::use_wasm_browser()
     hosted: UiCapabilities::Snapshot = UiCapabilities::snapshot()

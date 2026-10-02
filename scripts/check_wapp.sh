@@ -32,6 +32,12 @@
 #
 #      Fixed in the compiler repo by giving the component runtime the helper,
 #      written without memcmp so it imports nothing.
+#   3. The 2026-09-30 build separately failed on `env::unsafe_sview_bounded_bytes`,
+#      which `UiText` imports from the native runtime. The compiler/runtime boundary
+#      now supplies a freestanding implementation and Stage0/Stage1 smoke coverage;
+#      the current UI component builds and passes package inspection. A fresh
+#      isolated Cargo target with the selected Rustup compiler also passes the
+#      WasmBrowser host-runtime smoke; the shared target stalled twice in `wb-runtime`.
 #
 # It SKIPS, rather than failing, when a prerequisite is absent: the sibling
 # WasmBrowser checkout, its CLI, or the wasm SDK. A missing toolchain is
@@ -40,6 +46,7 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+STAGE1="$(bash "$ROOT/scripts/resolve_stage1_root.sh" "$ROOT")"
 GIVEN_PACKAGE="${1:-}"
 PACKAGE="${GIVEN_PACKAGE:-$ROOT/build/hello.wapp}"
 WASMBROWSER="${ELISA_UI_WASMBROWSER:-$ROOT/../WasmBrowser}"
@@ -103,15 +110,21 @@ if [[ -z "$GIVEN_PACKAGE" ]]; then
     echo "wapp: package inspection passed; runtime smoke skipped (no WasmBrowser SDK build script)"
     exit 0
   fi
-  if ! command -v cargo >/dev/null 2>&1 || [[ ! -f "$WASMBROWSER/Cargo.toml" ]]; then
+  if [[ ! -f "$WASMBROWSER/Cargo.toml" ]]; then
     echo "wapp: package inspection passed; runtime smoke skipped (WasmBrowser Rust workspace unavailable)"
+    exit 0
+  fi
+  if [[ -n "${WASM_BROWSER_RUSTUP_TOOLCHAIN:-}" ]]; then
+    command -v rustup >/dev/null 2>&1 || { echo "wapp: selected Rustup toolchain but rustup is unavailable" >&2; exit 2; }
+  elif ! command -v cargo >/dev/null 2>&1; then
+    echo "wapp: package inspection passed; runtime smoke skipped (Cargo unavailable)"
     exit 0
   fi
 
   RUNTIME_COMPONENT="$WORK/typed.wasm"
-  ELISA_COMPILER_ROOT="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}" \
-    ELISA_COMPILER_DIR="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}" \
-    ELISA_STAGE1_BIN="${ELISA_STAGE1_BIN:-${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}/bin/elisac-stage1}" \
+  ELISA_COMPILER_ROOT="$STAGE1" \
+    ELISA_COMPILER_DIR="$STAGE1" \
+    ELISA_STAGE1_BIN="${ELISA_STAGE1_BIN:-$STAGE1/bin/elisac-stage1}" \
     "$SDK_RUNTIME_SCRIPT" "$RUNTIME_COMPONENT" >"$WORK/runtime-build.log" 2>&1 || {
       cat "$WORK/runtime-build.log" >&2
       echo "wapp: hosted runtime smoke component build failed" >&2
@@ -119,8 +132,15 @@ if [[ -z "$GIVEN_PACKAGE" ]]; then
     }
   (
     cd "$WASMBROWSER"
-    WASMBROWSER_ELISA_COMPONENT="$RUNTIME_COMPONENT" \
-      cargo test -p wb-runtime --test elisa_sdk -- --nocapture
+    if [[ -n "${WASM_BROWSER_RUSTUP_TOOLCHAIN:-}" ]]; then
+      selected_rustc="${RUSTC:-$(rustup which rustc --toolchain "$WASM_BROWSER_RUSTUP_TOOLCHAIN")}"
+      WASMBROWSER_ELISA_COMPONENT="$RUNTIME_COMPONENT" \
+        RUSTC="$selected_rustc" \
+        rustup run "$WASM_BROWSER_RUSTUP_TOOLCHAIN" cargo test -p wb-runtime --test elisa_sdk -- --nocapture
+    else
+      WASMBROWSER_ELISA_COMPONENT="$RUNTIME_COMPONENT" \
+        cargo test -p wb-runtime --test elisa_sdk -- --nocapture
+    fi
   ) >"$WORK/runtime.log" 2>&1 || {
     cat "$WORK/runtime.log" >&2
     echo "wapp: hosted runtime smoke failed" >&2

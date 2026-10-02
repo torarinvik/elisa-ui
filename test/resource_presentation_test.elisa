@@ -37,11 +37,15 @@ def main() -> i64:
     check("invalid resource presents a placeholder", missing_record.state == UiResourcePresentation::DisplayState.Placeholder and missing_record.placeholder_visible and not missing_record.fallback_visible)
 
     requested_record: UiResourcePresentation::Record = UiResourcePresentation::request_image("images/request-helper", 3)
-    check("image request helper returns a loading record", UiResources::resource_is_valid(requested_record.handle) and requested_record.kind == UiResourcePresentation::Kind.Image and requested_record.state == UiResourcePresentation::DisplayState.Loading and requested_record.reserved_size.width == 64.0)
+    check("image request helper returns accessible loading copy and a typed cancel action", UiResources::resource_is_valid(requested_record.handle) and requested_record.kind == UiResourcePresentation::Kind.Image and requested_record.state == UiResourcePresentation::DisplayState.Loading and requested_record.reserved_size.width == 64.0 and requested_record.role == UiCore::AccessibilityRole.Status and requested_record.title == "Loading resource" and requested_record.action == UiResourcePresentation::Action.Cancel and requested_record.action_label == "Cancel loading")
     repeated_record: UiResourcePresentation::Record = UiResourcePresentation::request_image("images/request-helper", 8)
     check("image request helper coalesces without replacing its first owner", repeated_record.handle.slot == requested_record.handle.slot and repeated_record.handle.generation == requested_record.handle.generation and requested_record.owner == 3 and repeated_record.owner == 8 and UiResources::owner_count(repeated_record.handle) == 2)
     refreshed_repeated: UiResourcePresentation::Record = UiResourcePresentation::record_for_owner(repeated_record.handle, repeated_record.owner, options)
     check("presentation refresh preserves the caller owner", refreshed_repeated.owner == 8 and refreshed_repeated.handle.slot == repeated_record.handle.slot)
+    stopped_peer: UiResourcePresentation::ActionResult = UiResourcePresentation::perform_action(refreshed_repeated)
+    check("cancel action releases only the activating owner lease", stopped_peer.changed and stopped_peer.action == UiResourcePresentation::Action.Cancel and UiResources::state(requested_record.handle) == UiResources::State.Requested and UiResources::owner_count(requested_record.handle) == 1 and not UiResources::owns(requested_record.handle, 8))
+    unauthorized_loading: UiResourcePresentation::Record = UiResourcePresentation::record_for_owner(requested_record.handle, 99, options)
+    check("unowned observer receives no resource action", unauthorized_loading.action == UiResourcePresentation::Action.None and not unauthorized_loading.retry_available)
     cancel_record_a: UiResourcePresentation::Record = UiResourcePresentation::request_image("images/presentation-cancel", 21)
     cancel_record_b: UiResourcePresentation::Record = UiResourcePresentation::request_image("images/presentation-cancel", 22)
     check("presentation cancellation releases only its own lease", UiResourcePresentation::cancel_record(cancel_record_a) and UiResources::state(cancel_record_b.handle) == UiResources::State.Requested and UiResources::owner_count(cancel_record_b.handle) == 1)
@@ -70,6 +74,7 @@ def main() -> i64:
     _ = UiResources::set_intrinsic_size(image, 128.0, 72.0)
     loading: mutable UiResourcePresentation::Record = UiResourcePresentation::record(image, options)
     check("requested resource presents loading", loading.state == UiResourcePresentation::DisplayState.Loading and loading.placeholder_visible and loading.progress_visible)
+    check("presentation progress value follows decode while decode is active", UiResourcePresentation::displayed_progress(loading) == 0.0)
     intrinsic_options: mutable UiResourcePresentation::Options = options
     intrinsic_options.reserved_width <- 0.0
     intrinsic_options.reserved_height <- 0.0
@@ -78,7 +83,7 @@ def main() -> i64:
     check("explicit reservation overrides intrinsic size", loading.reserved_size.width == 64.0 and loading.reserved_size.height == 64.0)
     UiResources::set_progress(image, 0.8, 0.25)
     loading <- UiResourcePresentation::record(image, options)
-    check("presentation preserves independent progress", loading.network_progress == 0.8 and loading.decode_progress == 0.25 and loading.state == UiResourcePresentation::DisplayState.Loading)
+    check("presentation preserves independent network and decode progress", loading.network_progress == 0.8 and loading.decode_progress == 0.25 and loading.upload_progress == 0.0 and loading.state == UiResourcePresentation::DisplayState.Loading)
     UiCore::begin_frame()
     UiResourcePresentation::paint(UiCore::Rect(10.0, 20.0, 100.0, 40.0), loading, options)
     check("loading presentation emits placeholder and progress", UiCore::command_count() == 2)
@@ -86,6 +91,18 @@ def main() -> i64:
         check("progress command follows decoded fraction", progress_box.size.width == 25.0 and progress_box.size.height == 3.0)
     else:
         check("progress command is a rectangle", false)
+
+    UiResources::set_progress(image, 1.0, 1.0)
+    UiResources::set_upload_progress(image, 0.25)
+    uploading: UiResourcePresentation::Record = UiResourcePresentation::record(image, options)
+    check("upload remains separate after decode completes", uploading.network_progress == 1.0 and uploading.decode_progress == 1.0 and uploading.upload_progress == 0.25 and uploading.state == UiResourcePresentation::DisplayState.Loading)
+    check("presentation progress value follows upload after decode", UiResourcePresentation::displayed_progress(uploading) == 0.25)
+    UiCore::begin_frame()
+    UiResourcePresentation::paint(UiCore::Rect(10.0, 20.0, 100.0, 40.0), uploading, options)
+    if UiCore::command_at(1) is UiCore::Command.FillRect(upload_progress_box, upload_progress_color):
+        check("loading bar shows upload rather than completed decode", upload_progress_box.size.width == 25.0)
+    else:
+        check("upload progress command is a rectangle", false)
 
     UiResources::set_state(image, UiResources::State.Ready)
     ready: UiResourcePresentation::Record = UiResourcePresentation::record(image, options)
@@ -102,19 +119,36 @@ def main() -> i64:
     failed_image <- retried_image
     UiResources::fail(failed_image, UiResources::FailureKind.Corrupt)
     corrupt: UiResourcePresentation::Record = UiResourcePresentation::record(failed_image, options)
-    check("corrupt resource has no retry action", corrupt.failure == UiResources::FailureKind.Corrupt and not corrupt.retry_available and not UiResourcePresentation::can_retry(failed_image))
+    check("corrupt resource has no retry action", corrupt.failure == UiResources::FailureKind.Corrupt and not corrupt.retry_available and corrupt.action == UiResourcePresentation::Action.None and corrupt.title == "Resource could not be verified" and not UiResourcePresentation::can_retry(failed_image))
     denied_image: UiResources::ResourceHandle = UiResources::request("images/preview-denied", 3)
     _ = UiResources::set_state(denied_image, UiResources::State.Denied)
     denied: UiResourcePresentation::Record = UiResourcePresentation::record(denied_image, options)
-    check("denied resource uses fallback without prompting by itself", denied.fallback_visible and denied.retry_available)
+    check("denied resource exposes an explicit accessible retry without prompting by itself", denied.fallback_visible and denied.retry_available and denied.role == UiCore::AccessibilityRole.Alert and denied.action == UiResourcePresentation::Action.Retry and denied.action_label == "Retry")
     UiCore::begin_frame()
     UiResourcePresentation::paint(UiCore::Rect(10.0, 20.0, 100.0, 40.0), denied, options)
     check("fallback presentation emits a filled card and marks", UiCore::command_count() == 3)
+
+    offline_image: UiResources::ResourceHandle = UiResources::request("images/preview-offline", 3)
+    _ = UiResources::set_progress(offline_image, 0.4, 0.1)
+    _ = UiResources::set_state(offline_image, UiResources::State.UnavailableOffline)
+    offline: UiResourcePresentation::Record = UiResourcePresentation::record(offline_image, options)
+    check("offline resource exposes an actionable fallback without progress", offline.state == UiResourcePresentation::DisplayState.Offline and offline.fallback_visible and offline.retry_available and offline.interaction_enabled and not offline.progress_visible and offline.network_progress == 0.4 and offline.decode_progress == 0.1)
+    _ = UiResourcePresentation::record(offline_image, options)
+    check("reading offline presentation does not retry automatically", UiResources::state(offline_image) == UiResources::State.UnavailableOffline and UiResources::resource_is_valid(offline_image))
+    UiCore::begin_frame()
+    UiResourcePresentation::paint(UiCore::Rect(10.0, 20.0, 100.0, 40.0), offline, options)
+    check("offline presentation emits its fallback card", UiCore::command_count() == 3)
+    offline_action: UiResourcePresentation::ActionResult = UiResourcePresentation::perform_action(offline)
+    retried_offline: UiResources::ResourceHandle = offline_action.handle
+    check("explicit offline action starts a fresh requested generation", offline_action.changed and offline_action.action == UiResourcePresentation::Action.Retry and UiResources::resource_is_valid(retried_offline) and retried_offline.slot == offline_image.slot and retried_offline.generation != offline_image.generation and not UiResources::resource_is_valid(offline_image) and UiResources::state(retried_offline) == UiResources::State.Requested and UiResources::downloaded_progress(retried_offline) == 0.0 and UiResources::decoded_progress(retried_offline) == 0.0 and UiResources::uploaded_progress(retried_offline) == 0.0)
+    stale_retry: UiResourcePresentation::ActionResult = UiResourcePresentation::perform_action(offline)
+    check("stale resource snapshot cannot retry twice", not stale_retry.changed and stale_retry.action == UiResourcePresentation::Action.Retry and UiResources::state(retried_offline) == UiResources::State.Requested)
     UiResourcePresentation::cancel(denied_image)
     cancelled: UiResourcePresentation::Record = UiResourcePresentation::record(denied_image, options)
     check("cancelled resource stops loading presentation", cancelled.state == UiResourcePresentation::DisplayState.Cancelled and cancelled.fallback_visible and not cancelled.progress_visible)
     _ = UiResources::dispose(image)
     _ = UiResources::dispose(failed_image)
+    _ = UiResources::dispose(retried_offline)
     _ = UiResources::dispose(denied_image)
 
     font_options: UiResourcePresentation::Options = UiResourcePresentation::default_options(UiResourcePresentation::Kind.Font)

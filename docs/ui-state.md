@@ -35,3 +35,8 @@ restore clears the previously queryable snapshot; non-finite IEEE-754 `F32`
 payloads are rejected rather than silently coerced to zero, both when saving and
 restoring. This is application data, not a framework heap checkpoint; widget
 handles must be rebuilt and reacquired after restoration.
+
+Secure text fields are rejected by the typed widget-persistence adapter and
+must not be copied into application-owned state by the caller. Text undo/redo is
+process-local only and is not part of a `UiState` blob; secure fields never
+enter that history, and enabling secure mode scrubs the current history ring.

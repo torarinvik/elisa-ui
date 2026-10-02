@@ -10,7 +10,7 @@ def check(name: cstr, ok: bool) -> void:
     failures <- failures + 1
     _ = puts(name)
 
-def main() -> i64:
+def main() -> i64 can[Unsafe.PointerCast]:
     UiCore::begin_frame()
     UiCore::accessibility_with_metadata(
         UiCore::AccessibilityRole.Slider, "Volume", "", UiCore::Rect(4.0, 8.0, 100.0, 24.0),
@@ -140,9 +140,10 @@ def main() -> i64:
     UiCore::accessibility(UiCore::AccessibilityRole.List, "Rows", "", UiCore::Rect(0.0, 0.0, 10.0, 10.0), 34, 0, true, false, false, 0.0, "", "", 0, 0, 0)
     check("custom-group and virtualized-list roles are retained", UiCore::accessibility_at(10).role == UiCore::AccessibilityRole.Group and UiCore::accessibility_at(11).role == UiCore::AccessibilityRole.List)
 
-    malformed_label_bytes: mutable u8[1] = zeroed
+    malformed_label_bytes: mutable u8[2] = zeroed
     malformed_label_bytes[0] <- 255
-    malformed_label: sview = sview(&malformed_label_bytes[0], 0, 1)
+    malformed_label_cstr: cstr = (&malformed_label_bytes[0]).cast[cstr] can Unsafe.PointerCast
+    malformed_label: sview = sview(malformed_label_cstr, 0, 1)
     UiCore::begin_frame()
     UiCore::accessibility_with_metadata(
         UiCore::AccessibilityRole.Button, malformed_label, "", UiCore::Rect(0.0, 0.0, 10.0, 10.0),

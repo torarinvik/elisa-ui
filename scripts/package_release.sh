@@ -10,7 +10,7 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
+STAGE1="$(bash "$ROOT/scripts/resolve_stage1_root.sh" "$ROOT")"
 
 VERSION_MAJOR="$(grep -oE 'VERSION_MAJOR: u32 = [0-9]+' "$ROOT/src/core/ui_build.elisa" | grep -oE '[0-9]+$')"
 VERSION_MINOR="$(grep -oE 'VERSION_MINOR: u32 = [0-9]+' "$ROOT/src/core/ui_build.elisa" | grep -oE '[0-9]+$')"

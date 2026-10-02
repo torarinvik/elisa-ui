@@ -74,6 +74,11 @@ def main() -> i64:
     check("truncated measurement snapshot is rejected atomically", not truncated.valid and UiVirtualList::variable_measurement_count(eviction_owner) == snapshot.records)
     restored: UiVirtualList::MeasurementSnapshot = UiVirtualList::variable_restore_measurements(eviction_owner, &snapshot_bytes[0], snapshot.length)
     check("measurement snapshot restores through the public policy", restored.valid and restored.records == snapshot.records and UiVirtualList::variable_height(eviction_owner, 0) == 99.0 and UiVirtualList::variable_height(eviction_owner, 1500) == 55.0)
+    cleared_measurements: usize = UiVirtualList::variable_clear_measurements(eviction_owner)
+    check("metric-generation invalidation clears the bounded sparse cache", cleared_measurements == UiVirtualList::MAX_VARIABLE_MEASUREMENTS and UiVirtualList::variable_measurement_count(eviction_owner) == 0)
+    check("cleared rows return to the current estimate", UiVirtualList::variable_height(eviction_owner, 0) == 20.0 and not UiVirtualList::variable_measurement_known(eviction_owner, 0))
+    check("metric-generation update changes unknown row estimates", UiVirtualList::variable_set_estimate(eviction_owner, 24.0) and UiVirtualList::variable_estimate(eviction_owner) == 24.0 and UiVirtualList::variable_height(eviction_owner, 0) == 24.0)
+    check("setting the same variable-list estimate is idempotent", not UiVirtualList::variable_set_estimate(eviction_owner, 24.0))
 
     if failures == 0:
         _ = puts("variable virtual list: all checks passed")

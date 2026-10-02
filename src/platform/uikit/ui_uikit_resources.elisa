@@ -1,0 +1,37 @@
+# UIKit CoreGraphics uploads settle the same staged resource operation as
+# SDL3 and Skia. Native CGImage ownership remains with the host.
+
+include "../../widgets/ui_resources.elisa"
+
+module UiUIKitResources:
+    public:
+        # Call after verified bytes are decoded and the CGImage is ready for
+        # drawing. Ready is published only after its generation binding and
+        # renderer-upload stage both succeed.
+        def complete_uploaded_image(resource: UiResources::ResourceHandle, image: usize) -> bool:
+            return false if not UiResources::resource_is_valid(resource) or image == 0
+            return false if UiResources::state(resource) != UiResources::State.Requested
+            return false if UiResources::downloaded_progress(resource) < 1.0 or UiResources::decoded_progress(resource) < 1.0
+            return false if not UiUIKitImageBindings::bind_picture(resource.slot, resource.generation, image)
+
+            operation_id: u64 = UiResources::operation_for(resource)
+            if operation_id != 0:
+                if not UiResources::poll_upload_operation(resource, operation_id, 1.0):
+                    _ = UiUIKitImageBindings::unbind_picture(resource.slot, resource.generation)
+                    return false
+                if not UiResources::complete_operation(resource, operation_id, UiResources::State.Ready, UiResources::FailureKind.Unknown):
+                    _ = UiUIKitImageBindings::unbind_picture(resource.slot, resource.generation)
+                    return false
+            else:
+                if UiResources::uploaded_progress(resource) < 1.0 and not UiResources::set_upload_progress(resource, 1.0):
+                    _ = UiUIKitImageBindings::unbind_picture(resource.slot, resource.generation)
+                    return false
+                if not UiResources::set_state(resource, UiResources::State.Ready):
+                    _ = UiUIKitImageBindings::unbind_picture(resource.slot, resource.generation)
+                    return false
+            return true
+
+        # The host releases its CGImage after this exact generation is
+        # forgotten. A stale release cannot remove a replacement generation.
+        def forget_uploaded_image(resource: UiResources::ResourceHandle) -> bool:
+            return UiUIKitImageBindings::unbind_picture(resource.slot, resource.generation)

@@ -7,6 +7,8 @@
 include "../src/platform/skia/ui_skia.elisa"
 include "../examples/hello/app.elisa"
 
+extern puts(text: cstr) -> i64
+
 global mutable showcase_ready: bool = false
 global mutable workflow_failures: i32 = 0
 global mutable deferred_probe_count: i32 = 0
@@ -58,7 +60,9 @@ def ensure_showcase() -> void:
     app_init()
     showcase_ready <- true
 
-def check_workflow(ok: bool) -> void:
+def check_workflow(ok: bool, label: cstr) -> void:
+    if not ok:
+        _ = puts(label)
     workflow_failures <- workflow_failures + 1 if not ok
 
 def widget_with_kind(kind: UiConst::WidgetKind) -> UiHandles::Handle:
@@ -174,45 +178,45 @@ def prepare_public_workflow() -> i32:
     ensure_showcase()
     workflow_failures <- 0
     build_headless_frame()
-    check_workflow(UiHandles::count() > 20 and UiCore::command_count() > 20)
-    check_workflow(custom_art_command_count() >= 6)
-    check_workflow(UiCore::accessibility_count() > 10)
+    check_workflow(UiHandles::count() > 20 and UiCore::command_count() > 20, "initial tree and command counts")
+    check_workflow(custom_art_command_count() >= 6, "initial custom art count")
+    check_workflow(UiCore::accessibility_count() > 10, "initial accessibility count")
 
     # Exercise the reference app's public list/detail and value-change paths
     # before the frame is handed to Skia. These callbacks mutate retained
     # labels and progress state; a later layout/paint must preserve them.
     HelloCatalog::select(1)
-    check_workflow(has_widget_text("Mint study — balanced spacing for calm dashboards."))
+    check_workflow(has_widget_text("Mint study — balanced spacing for calm dashboards."), "catalog selection updates summary")
     slider: UiHandles::Handle = widget_with_kind(UiConst::WidgetKind.Slider)
     progress: UiHandles::Handle = widget_with_kind_and_text(UiConst::WidgetKind.ProgressBar, "Preview level")
     previous_value: f32 = UiHandles::value(slider)
-    check_workflow(UiHandles::is_valid(slider) and UiHandles::is_valid(progress))
+    check_workflow(UiHandles::is_valid(slider) and UiHandles::is_valid(progress), "slider and progress handles valid")
     adjusted_slider: bool = UiHandles::adjust_step(slider, 1)
-    check_workflow(adjusted_slider)
-    check_workflow(UiHandles::value(slider) > previous_value)
-    check_workflow(UiHandles::value(progress) == UiHandles::value(slider))
+    check_workflow(adjusted_slider, "slider step accepted")
+    check_workflow(UiHandles::value(slider) > previous_value, "slider value advanced")
+    check_workflow(UiHandles::value(progress) == UiHandles::value(slider), "progress follows slider")
 
     field: UiHandles::Handle = widget_with_kind(UiConst::WidgetKind.TextField)
-    check_workflow(UiHandles::is_valid(field))
+    check_workflow(UiHandles::is_valid(field), "text field handle valid")
     if UiHandles::widget(field) is field_row:
         centre: UiCore::Vec2 = UiCore::Vec2(field_row.x + field_row.width / 2.0, field_row.y + field_row.height / 2.0)
         app_event(UiCore::PointerEvent.Down(centre, UiCore::PointerButton.Primary.i32()))
         app_event(UiCore::PointerEvent.Up(centre, UiCore::PointerButton.Primary.i32()))
-        check_workflow(UiHandles::is_focused(field))
+        check_workflow(UiHandles::is_focused(field), "field receives pointer focus")
         app_text_input(" • café 👋")
-        check_workflow(UiHandles::text_value(field) == "Canvas study • café 👋")
+        check_workflow(UiHandles::text_value(field) == "Canvas study • café 👋", "text input appended")
         app_text_editing("候補", 0, 1)
-        check_workflow(UiHandles::marked_length(field) > 0)
+        check_workflow(UiHandles::marked_length(field) > 0, "IME marked text recorded")
         app_text_input("候")
-        check_workflow(UiHandles::text_value(field) == "Canvas study • café 👋候補")
+        check_workflow(UiHandles::text_value(field) == "Canvas study • café 👋候補", "IME commit appended")
         UiHandles::set_selection_utf16(field, 0, 5)
-        check_workflow(UiHandles::selected_text(field) == "Canva" and UiHandles::selection_length(field) == 5)
+        check_workflow(UiHandles::selected_text(field) == "Canva" and UiHandles::selection_length(field) == 5, "UTF-16 selection")
         UiHandles::replace_text(field, "x")
         app_validate()
-        check_workflow(has_widget_text("Project name needs at least 3 characters."))
+        check_workflow(has_widget_text("Project name needs at least 3 characters."), "short-name validation message")
         UiHandles::replace_text(field, "Canvas study • café 👋候補")
         app_validate()
-        check_workflow(has_widget_text("Project name looks good."))
+        check_workflow(has_widget_text("Project name looks good."), "valid-name validation message")
         UiHandles::set_selection_utf16(field, 0, 5)
 
     # Exercise application state transitions before the frame that is replayed
@@ -225,13 +229,13 @@ def prepare_public_workflow() -> i32:
     app_event(UiCore::KeyEvent.Down(UiCore::Key.T))
     app_event(UiCore::KeyEvent.Down(UiCore::Key.P))
     app_event(UiCore::KeyEvent.Down(UiCore::Key.R))
-    check_workflow(has_widget_text("Mint study — balanced spacing for calm dashboards."))
+    check_workflow(has_widget_text("Mint study — balanced spacing for calm dashboards."), "catalog shortcut keeps selection")
     app_event(UiCore::KeyEvent.Down(UiCore::Key.F))
-    check_workflow(has_widget_text("Preview failed — retry or keep working offline."))
+    check_workflow(has_widget_text("Resource failed to load"), "preview shortcut shows failure")
     app_event(UiCore::KeyEvent.Down(UiCore::Key.Y))
-    check_workflow(has_widget_text("Optional preview loading…"))
+    check_workflow(has_widget_text("Loading resource"), "retry shortcut starts preview")
     build_headless_frame()
-    check_workflow(UiCore::command_count() > 20 and UiCore::accessibility_count() > 10)
+    check_workflow(UiCore::command_count() > 20 and UiCore::accessibility_count() > 10, "final frame commands and accessibility")
     return workflow_failures
 
 def showcase_skia_render(canvas: usize, font: usize) -> i32 can[Ui.Draw, Ui.Text]:

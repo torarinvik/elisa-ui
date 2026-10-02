@@ -52,6 +52,7 @@ def check(name: cstr, ok: bool) -> void:
 
 def main() -> i64:
     UiTasks::reset()
+    UiDiagnostics::reset()
     UiRemote::reset()
     UiHandles::reset()
     root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 8.0, 4.0, UiCore::rgb(10, 10, 12))
@@ -60,6 +61,15 @@ def main() -> i64:
     secret: UiHandles::Handle = UiHandles::secure_text_field(root, "Password", "", "private", 140.0, 28.0, 14.0, UiCore::rgb(240, 240, 245), UiCore::rgb(24, 24, 30))
     UiCore::set_viewport(320.0, 180.0)
     UiHandles::layout(320.0, 180.0)
+
+    _ = UiDiagnostics::record(UiDiagnostics::Severity.Warning, 17, "app/main.elisa", 23, 9, "layout fallback", false)
+    _ = UiDiagnostics::record(UiDiagnostics::Severity.Error, 18, "app/password.elisa", 31, 4, "secret value", true)
+    check("diagnostic count is bounded", UiDiagnostics::snapshot().count == 2)
+    check("diagnostic sequence is monotonic", UiDiagnostics::snapshot().latest_sequence == 2)
+    check("diagnostic exposes source location", UiDiagnostics::at(1).line == 31 and UiDiagnostics::at(1).column == 4)
+    diagnostic: UiDiagnostics::Record = UiDiagnostics::at(1)
+    check("diagnostic redacts sensitive records", diagnostic.redacted and UiDiagnostics::message_length(diagnostic) == 10 and UiDiagnostics::message_data(diagnostic)[0] == 91)
+    check("diagnostic retains source bytes", UiDiagnostics::source_length(diagnostic) == 18 and UiDiagnostics::source_data(diagnostic)[0] == 97)
 
     check("inspector count follows retained tree", UiInspector::count() == 3)
     check("inspector root is typed", UiInspector::root().widget_id == root.widget_id)
@@ -101,6 +111,13 @@ def main() -> i64:
     high_snapshot: UiInspector::Frame = UiInspector::frame_with_system_contrast(true)
     check("inspector accepts host contrast facts", high_snapshot.theme_metrics.minimum_touch_target == 48.0 and high_snapshot.theme_metrics.focus_ring_width == 3.0)
     check("inspector exposes empty feature state", snapshot.features.total == 0 and snapshot.features.requested == 0 and snapshot.features.ready == 0 and not snapshot.features.overflowed)
+    check("inspector exposes diagnostics", snapshot.diagnostics.count == 2 and snapshot.diagnostics.latest_sequence == 2 and snapshot.diagnostics.dropped == 0)
+    retained_diagnostic: UiDiagnostics::Record = UiDiagnostics::at(0)
+    for _ in 0..<UiDiagnostics::MAX_RECORDS:
+        _ = UiDiagnostics::record(UiDiagnostics::Severity.Info, 19, "app/repeat.elisa", 1, 1, "rotation", false)
+    check("diagnostic record token expires after ring rotation", UiDiagnostics::source_length(retained_diagnostic) == 0 and UiDiagnostics::message_length(retained_diagnostic) == 0)
+    UiDiagnostics::reset()
+    check("diagnostic record token expires after reset", UiDiagnostics::message_length(retained_diagnostic) == 0)
     check("inspector reports durable invalidation reasons", not snapshot.layout_invalidated and snapshot.paint_invalidated and snapshot.semantics_invalidated and not snapshot.resources_invalidated and not snapshot.animation_invalidated)
     check("inspector exposes invalidation mask and sequence", snapshot.invalidation_mask == UiCore::Invalidation.Paint.i32() | UiCore::Invalidation.Semantics.i32() and snapshot.invalidation_sequence > 0)
     check("inspector records empty frame buffers", snapshot.command_count == 0 and snapshot.semantic_count == 0)

@@ -1,0 +1,52 @@
+# One explicit teardown entry point for state registered to an application view.
+# Native/SDK work remains host-owned; this module coordinates only the
+# framework-side owner records and reports which cleanup actions were taken.
+
+include "../core/ui_tasks.elisa"
+include "./ui_resources.elisa"
+include "./ui_feature_view.elisa"
+include "./ui_validation.elisa"
+include "./ui_services.elisa"
+include "./ui_dialog.elisa"
+include "./ui_navigation.elisa"
+
+module UiOwnerLifecycle:
+    public:
+        struct DisposalReport:
+            owner: u32
+            task_tokens_cancelled: usize
+            task_records_released: usize
+            resource_leases_released: usize
+            feature_leases_released: usize
+            validation_fields_released: usize
+            service_records_released: usize
+            dialogs_cancelled: usize
+            navigation_entries_released: usize
+
+        # Owner zero is the cross-module invalid/unowned sentinel. It must not
+        # accidentally clear records whose module-specific API accepts zero.
+        def dispose_owner(owner_id: u32) -> DisposalReport:
+            if owner_id == 0:
+                return DisposalReport{owner: 0, task_tokens_cancelled: 0,
+                    task_records_released: 0, resource_leases_released: 0,
+                    feature_leases_released: 0, validation_fields_released: 0,
+                    service_records_released: 0, dialogs_cancelled: 0,
+                    navigation_entries_released: 0}
+
+            task_tokens_cancelled: usize = UiTasks::cancel_owner(owner_id)
+            task_records_released: usize = UiTasks::dispose_owner(owner_id)
+            resource_leases_released: usize = UiResources::dispose_owner(owner_id)
+            feature_leases_released: usize = UiFeatureView::dispose_owner(owner_id)
+            validation_fields_released: usize = UiValidation::dispose_owner(owner_id)
+            service_records_released: usize = UiServices::dispose_owner(owner_id)
+            dialogs_cancelled: usize = UiDialog::dismiss_owner(owner_id)
+            navigation_entries_released: usize = UiNavigation::dismiss_owner(owner_id)
+            return DisposalReport{owner: owner_id,
+                task_tokens_cancelled: task_tokens_cancelled,
+                task_records_released: task_records_released,
+                resource_leases_released: resource_leases_released,
+                feature_leases_released: feature_leases_released,
+                validation_fields_released: validation_fields_released,
+                service_records_released: service_records_released,
+                dialogs_cancelled: dialogs_cancelled,
+                navigation_entries_released: navigation_entries_released}

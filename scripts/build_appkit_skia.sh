@@ -13,7 +13,7 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # result was a gate that failed in a suite and passed alone.
 SKIA_SHIM_DIR="$ROOT/build/appkit-skia"
 mkdir -p "$SKIA_SHIM_DIR"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
+STAGE1="$(bash "$ROOT/scripts/resolve_stage1_root.sh" "$ROOT")"
 SKIA_ROOT="${SKIA_ROOT:?set SKIA_ROOT to the pinned checkout from third_party/skia.lock}"
 SKIA_OUT="${SKIA_OUT:-$SKIA_ROOT/out/elisa}"
 SKIA_LOCK="$ROOT/third_party/skia.lock"
@@ -26,6 +26,7 @@ ENTRY="$ROOT/examples/$EXAMPLE/appkit_skia_canvas_main.elisa"
 [[ -f "$RUNTIME" ]] || { echo "no runtime object at $RUNTIME" >&2; exit 2; }
 [[ -f "$ENTRY" ]] || { echo "no AppKit Skia entry: $ENTRY" >&2; exit 2; }
 [[ -f "$SKIA_OUT/libskia.a" ]] || { echo "no Skia archive at $SKIA_OUT/libskia.a" >&2; exit 2; }
+[[ -f "$SKIA_OUT/libskshaper.a" ]] || { echo "no Skia shaper archive at $SKIA_OUT/libskshaper.a (run scripts/build_skia.sh)" >&2; exit 2; }
 [[ -f "$SKIA_ROOT/include/core/SkCanvas.h" ]] || { echo "no Skia headers at $SKIA_ROOT" >&2; exit 2; }
 expected_revision="$(awk -F= '$1 == "revision" { print $2; exit }' "$SKIA_LOCK")"
 actual_revision="$(git -C "$SKIA_ROOT" rev-parse HEAD 2>/dev/null || true)"
@@ -35,7 +36,7 @@ actual_revision="$(git -C "$SKIA_ROOT" rev-parse HEAD 2>/dev/null || true)"
 }
 SKIA_ROOT="$SKIA_ROOT" SKIA_OUT="$SKIA_OUT" SKIA_LIB="$SKIA_OUT/libskia.a" \
   bash "$ROOT/scripts/verify_skia_build.sh"
-bash "$ROOT/scripts/check_toolchain.sh"
+ELISA_UI_STAGE1="$STAGE1" bash "$ROOT/scripts/check_toolchain.sh" --report >&2
 
 mkdir -p "$ROOT/build"
 clang -c -fobjc-arc -Wall -Wextra -Werror -DELISA_UI_USE_SKIA -o "$ROOT/build/appkit_canvas_skia_shim.o" \
@@ -55,6 +56,7 @@ link_inputs=(
   "$SKIA_SHIM_DIR/skia_canvas_shim.o"
   "$SKIA_SHIM_DIR/skia_text_shim.o"
   "$RUNTIME"
+  "$SKIA_OUT/libskshaper.a"
   "$SKIA_OUT/libskia.a"
 )
 for extra in "$SKIA_OUT/libpng.a" "$SKIA_OUT/libzlib.a"; do

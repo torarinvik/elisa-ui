@@ -1,13 +1,25 @@
 package org.elisa_ui;
 
 import android.app.NativeActivity;
+import android.content.ActivityNotFoundException;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.provider.MediaStore;
 import android.text.Editable;
 import android.view.View;
+import android.view.WindowInsets;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
 import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 // IME COMPOSITION FOR THE PAINTED BACKEND.
 //
@@ -22,8 +34,9 @@ import android.view.inputmethod.InputConnection;
 // ANativeActivity_showSoftInput raises the keyboard, but no InputConnection
 // exists anywhere in that path.
 //
-// So the canvas APK gains exactly one class. That reverses the hasCode="false"
-// property the Skia build had, and it is worth it: the framework's own
+// So the canvas APK gains its small Java bridge and selection-store helper.
+// That reverses the hasCode="false" property the Skia build had, and it is
+// worth it: the framework's own
 // composition support was already written and already driven by the two Apple
 // canvases, so what was missing was this -- a View for the IME to talk to.
 //
@@ -40,6 +53,12 @@ public final class ElisaCanvasActivity extends NativeActivity {
     // Java. See startImeProbe below for why those queries exist.
     public static native int nativeImeReady();
     public static native void nativeImeReport(String tag);
+    public static native void nativeKeyboardInsets(float bottom, boolean visible);
+    public static native void nativeBack();
+    public static native void nativePermissionResult(int slot, int generation, int state, int failure);
+    public static native void nativePermissionSync(int kind, int state, int failure);
+    public static native void nativePickerResult(int slot, int generation, int state,
+                                                 int selectionKind, long selectionId);
 
     // THE CONNECTION COMES FROM A VIEW, NOT FROM THE ACTIVITY. This was the
     // first thing to get wrong here: onCreateInputConnection is View's, and a
@@ -48,6 +67,24 @@ public final class ElisaCanvasActivity extends NativeActivity {
     // square, focusable, drawing nothing, sitting under the native surface. It
     // exists only to answer the IME; every touch still goes to the surface.
     private ElisaInputView input;
+    private OnBackInvokedCallback backCallback;
+    private static volatile ElisaCanvasActivity currentActivity;
+    private static final int PERMISSION_REQUEST_CODE = 7314;
+    private static final String PERMISSION_PREFS = "elisa.permission.requests";
+    private static final int PICKER_REQUEST_CODE = 7315;
+    private static final ExecutorService PICKER_IO = Executors.newFixedThreadPool(2);
+    private int pendingPermissionKind = -1;
+    private int pendingPermissionSlot = -1;
+    private int pendingPermissionGeneration;
+    private static final String STATE_PERMISSION_KIND = "elisa.permission.kind";
+    private static final String STATE_PERMISSION_SLOT = "elisa.permission.slot";
+    private static final String STATE_PERMISSION_GENERATION = "elisa.permission.generation";
+    private int pendingPickerKind = -1;
+    private int pendingPickerSlot = -1;
+    private int pendingPickerGeneration;
+    private static final String STATE_PICKER_KIND = "elisa.picker.kind";
+    private static final String STATE_PICKER_SLOT = "elisa.picker.slot";
+    private static final String STATE_PICKER_GENERATION = "elisa.picker.generation";
 
     private static final String LIB_NAME_KEY = "android.app.lib_name";
 
@@ -69,12 +106,365 @@ public final class ElisaCanvasActivity extends NativeActivity {
             throw new RuntimeException("the activity has no meta-data to name its library", missing);
         }
         super.onCreate(state);
+        if (state != null) {
+            pendingPermissionKind = state.getInt(STATE_PERMISSION_KIND, -1);
+            pendingPermissionSlot = state.getInt(STATE_PERMISSION_SLOT, -1);
+            pendingPermissionGeneration = state.getInt(STATE_PERMISSION_GENERATION, 0);
+            pendingPickerKind = state.getInt(STATE_PICKER_KIND, -1);
+            pendingPickerSlot = state.getInt(STATE_PICKER_SLOT, -1);
+            pendingPickerGeneration = state.getInt(STATE_PICKER_GENERATION, 0);
+        }
         input = new ElisaInputView(this);
+        View decor = getWindow().getDecorView();
+        decor.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
+            @Override
+            public WindowInsets onApplyWindowInsets(View view, WindowInsets insets) {
+                boolean visible = insets.isVisible(WindowInsets.Type.ime());
+                android.graphics.Insets ime = insets.getInsets(WindowInsets.Type.ime());
+                float density = getResources().getDisplayMetrics().density;
+                float bottom = visible && density > 0.0f ? ime.bottom / density : 0.0f;
+                nativeKeyboardInsets(bottom, visible);
+                return insets;
+            }
+        });
         addContentView(input, new android.view.ViewGroup.LayoutParams(1, 1));
         input.setFocusable(true);
         input.setFocusableInTouchMode(true);
         input.requestFocus();
+        currentActivity = this;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            backCallback = new OnBackInvokedCallback() {
+                @Override
+                public void onBackInvoked() {
+                    // The retained tree is owned by android_main's thread.
+                    // JNI queues this fact there; the host performs Android's
+                    // default action only if Elisa leaves it unhandled.
+                    nativeBack();
+                }
+            };
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                OnBackInvokedDispatcher.PRIORITY_DEFAULT, backCallback);
+        }
+        decor.requestApplyInsets();
         if (getIntent() != null && getIntent().getBooleanExtra(PROBE_EXTRA, false)) startImeProbe();
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (backCallback != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(backCallback);
+            backCallback = null;
+        }
+        if (currentActivity == this) currentActivity = null;
+        super.onDestroy();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        reportPermissionSync(0);
+        reportPermissionSync(1);
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle state) {
+        state.putInt(STATE_PERMISSION_KIND, pendingPermissionKind);
+        state.putInt(STATE_PERMISSION_SLOT, pendingPermissionSlot);
+        state.putInt(STATE_PERMISSION_GENERATION, pendingPermissionGeneration);
+        state.putInt(STATE_PICKER_KIND, pendingPickerKind);
+        state.putInt(STATE_PICKER_SLOT, pendingPickerSlot);
+        state.putInt(STATE_PICKER_GENERATION, pendingPickerGeneration);
+        super.onSaveInstanceState(state);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != PICKER_REQUEST_CODE || pendingPickerSlot < 0) return;
+        final int kind = pendingPickerKind;
+        final int slot = pendingPickerSlot;
+        final int generation = pendingPickerGeneration;
+        pendingPickerKind = -1;
+        pendingPickerSlot = -1;
+        pendingPickerGeneration = 0;
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) {
+            nativePickerResult(slot, generation, 3, 0, 0);
+            return;
+        }
+        final Uri uri = data.getData();
+        final ElisaCanvasActivity activity = this;
+        PICKER_IO.execute(new Runnable() {
+            @Override
+            public void run() {
+                byte[] selected = readSelectedContent(activity, uri);
+                if (selected == null) {
+                    nativePickerResult(slot, generation, 4, 0, 0);
+                    return;
+                }
+                int selectionKind = selectionKindFor(activity, uri);
+                if (kind == 2 && selectionKind != 1) {
+                    nativePickerResult(slot, generation, 4, 0, 0);
+                    return;
+                }
+                long selectionId = ElisaSelectionStore.remember(selected);
+                if (selectionId == 0) {
+                    nativePickerResult(slot, generation, 4, 0, 0);
+                    return;
+                }
+                nativePickerResult(slot, generation, 2, selectionKind, selectionId);
+            }
+        });
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != PERMISSION_REQUEST_CODE || pendingPermissionSlot < 0) return;
+        final int kind = pendingPermissionKind;
+        final int slot = pendingPermissionSlot;
+        final int generation = pendingPermissionGeneration;
+        pendingPermissionKind = -1;
+        pendingPermissionSlot = -1;
+        pendingPermissionGeneration = 0;
+        final boolean granted = grantResults.length > 0
+            && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+        nativePermissionResult(slot, generation, granted ? 2 : 3, granted ? 0 : 1);
+    }
+
+    @Override
+    public void onBackPressed() {
+        nativeBack();
+    }
+
+    public static int requestPermission(final int kind, final int slot, final int generation) {
+        final ElisaCanvasActivity activity = currentActivity;
+        if (activity == null || slot < 0 || generation <= 0) return 0;
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                activity.requestPermissionOnUiThread(kind, slot, generation);
+            }
+        });
+        return 1;
+    }
+
+    private static String permissionForKind(int kind) {
+        if (kind == 0) return android.Manifest.permission.CAMERA;
+        if (kind == 1) return android.Manifest.permission.RECORD_AUDIO;
+        return null;
+    }
+
+    private static String featureForKind(int kind) {
+        if (kind == 0) return "android.hardware.camera.any";
+        if (kind == 1) return "android.hardware.microphone";
+        return null;
+    }
+
+    private String permissionRequestPreference(int kind) {
+        return "requested." + kind;
+    }
+
+    private void requestPermissionOnUiThread(int kind, int slot, int generation) {
+        final String permission = permissionForKind(kind);
+        final String feature = featureForKind(kind);
+        if (permission == null || feature == null) {
+            nativePermissionResult(slot, generation, 6, 4);
+            return;
+        }
+        if (!getPackageManager().hasSystemFeature(feature)) {
+            nativePermissionResult(slot, generation, 5, 3);
+            return;
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M
+                || checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED) {
+            nativePermissionResult(slot, generation, 2, 0);
+            return;
+        }
+        if (pendingPermissionSlot >= 0) {
+            nativePermissionResult(slot, generation, 6, 4);
+            return;
+        }
+        // UiServices intentionally does not re-prompt after a denial. Its
+        // records are in-memory, so preserve that policy across process
+        // recreation using the host's fact that this OS request was already
+        // made. A grant above still reflects an external Settings change.
+        android.content.SharedPreferences preferences =
+            getSharedPreferences(PERMISSION_PREFS, MODE_PRIVATE);
+        if (preferences.getBoolean(permissionRequestPreference(kind), false)) {
+            nativePermissionResult(slot, generation, 3, 1);
+            return;
+        }
+        pendingPermissionKind = kind;
+        pendingPermissionSlot = slot;
+        pendingPermissionGeneration = generation;
+        preferences.edit()
+            .putBoolean(permissionRequestPreference(kind), true).apply();
+        requestPermissions(new String[]{permission}, PERMISSION_REQUEST_CODE);
+    }
+
+    public static int presentPicker(final int kind, final int slot, final int generation) {
+        final ElisaCanvasActivity activity = currentActivity;
+        if (activity == null || (kind != 2 && kind != 5) || slot < 0 || generation <= 0) return 0;
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                activity.presentPickerOnUiThread(kind, slot, generation);
+            }
+        });
+        return 1;
+    }
+
+    private void presentPickerOnUiThread(int kind, int slot, int generation) {
+        if (pendingPickerSlot >= 0 || pendingPermissionSlot >= 0) {
+            nativePickerResult(slot, generation, 4, 0, 0);
+            return;
+        }
+        final boolean photos = kind == 2;
+        final Intent intent;
+        if (photos && Build.VERSION.SDK_INT >= 33) {
+            intent = new Intent(MediaStore.ACTION_PICK_IMAGES);
+            intent.setType("image/*");
+            intent.putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, 1);
+        } else {
+            intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType(photos ? "image/*" : "*/*");
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        }
+        pendingPickerKind = kind;
+        pendingPickerSlot = slot;
+        pendingPickerGeneration = generation;
+        try {
+            startActivityForResult(intent, PICKER_REQUEST_CODE);
+        } catch (ActivityNotFoundException unavailable) {
+            pendingPickerKind = -1;
+            pendingPickerSlot = -1;
+            pendingPickerGeneration = 0;
+            nativePickerResult(slot, generation, 5, 0, 0);
+        }
+    }
+
+    private static byte[] readSelectedContent(ElisaCanvasActivity activity, Uri uri) {
+        if (activity == null || uri == null) return null;
+        try (InputStream input = activity.getContentResolver().openInputStream(uri);
+             ByteArrayOutputStream output = new ByteArrayOutputStream(8192)) {
+            if (input == null) return null;
+            byte[] chunk = new byte[8192];
+            int total = 0;
+            int count;
+            while ((count = input.read(chunk)) != -1) {
+                if (count == 0) continue;
+                total += count;
+                if (total > ElisaSelectionStore.MAX_BYTES_PER_SELECTION) return null;
+                output.write(chunk, 0, count);
+            }
+            return output.toByteArray();
+        } catch (Exception unreadable) {
+            return null;
+        }
+    }
+
+    private static int selectionKindFor(ElisaCanvasActivity activity, Uri uri) {
+        String mime = activity.getContentResolver().getType(uri);
+        if (mime == null) return 6;
+        if (mime.startsWith("image/")) return 1;
+        if (mime.startsWith("audio/")) return 2;
+        if (mime.startsWith("video/")) return 3;
+        if (mime.startsWith("text/")) return 4;
+        if (mime.startsWith("application/")) return 5;
+        return 6;
+    }
+
+    public static int readSelectedBytes(long selectionId, long offset, byte[] target) {
+        return ElisaSelectionStore.read(selectionId, offset, target);
+    }
+
+    public static int releaseSelectedBytes(long selectionId) {
+        return ElisaSelectionStore.release(selectionId);
+    }
+
+    private void reportPermissionSync(int kind) {
+        final String permission = permissionForKind(kind);
+        final String feature = featureForKind(kind);
+        if (permission == null || feature == null) return;
+        if (!getPackageManager().hasSystemFeature(feature)) {
+            nativePermissionSync(kind, 5, 3);
+            return;
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M
+                || checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED) {
+            nativePermissionSync(kind, 2, 0);
+            return;
+        }
+        boolean requested = getSharedPreferences(PERMISSION_PREFS, MODE_PRIVATE)
+            .getBoolean(permissionRequestPreference(kind), false);
+        nativePermissionSync(kind, requested ? 3 : 0, requested ? 1 : 0);
+    }
+
+    // Called by the native owner thread only when UiBack reports Unhandled.
+    // Preserve Android's pre-33 Activity behavior and its Android 12+ root-task
+    // behavior instead of trapping the user in the NativeActivity.
+    public static void requestUnhandledBack() {
+        final ElisaCanvasActivity activity = currentActivity;
+        if (activity == null) return;
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (currentActivity != activity) return;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    if (activity.isTaskRoot()) activity.moveTaskToBack(true);
+                    else activity.finish();
+                } else {
+                    activity.performLegacyBack();
+                }
+            }
+        });
+    }
+
+    @SuppressWarnings("deprecation")
+    private void performLegacyBack() {
+        super.onBackPressed();
+    }
+
+    // NativeActivity's generic soft-input request does not target the small
+    // Java editor view that owns this InputConnection. Route visibility
+    // changes through that exact view on the UI thread.
+    public static void requestImeShow() {
+        final ElisaCanvasActivity activity = currentActivity;
+        if (activity == null) return;
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                ElisaInputView view = activity.input;
+                if (view == null) return;
+                view.requestFocus();
+                android.view.inputmethod.InputMethodManager manager =
+                    (android.view.inputmethod.InputMethodManager) activity.getSystemService(
+                        INPUT_METHOD_SERVICE);
+                if (manager != null) {
+                    manager.showSoftInput(view,
+                        android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+                }
+            }
+        });
+    }
+
+    public static void requestImeHide() {
+        final ElisaCanvasActivity activity = currentActivity;
+        if (activity == null) return;
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                ElisaInputView view = activity.input;
+                if (view == null || view.getWindowToken() == null) return;
+                android.view.inputmethod.InputMethodManager manager =
+                    (android.view.inputmethod.InputMethodManager) activity.getSystemService(
+                        INPUT_METHOD_SERVICE);
+                if (manager != null) {
+                    manager.hideSoftInputFromWindow(view.getWindowToken(), 0);
+                }
+            }
+        });
     }
 
     private static final String PROBE_EXTRA = "elisa.ime.probe";

@@ -93,17 +93,20 @@ module UiGtk:
         global mutable gtk_prompt_bytes: u8[UiCore::MAX_TEXT_BYTES] = zeroed
         global mutable gtk_help_bytes: u8[UiCore::MAX_TEXT_BYTES] = zeroed
 
-        def stage(target: mutable u8&, value: sview) -> cstr:
+        def stage(target: mutable u8[UiCore::MAX_TEXT_BYTES]&, value: sview) -> cstr:
             safe: sview = UiCore::bounded_text(value)
             room: usize = safe.len.usize() if safe.len.usize() < UiCore::MAX_TEXT_BYTES - 1 else UiCore::MAX_TEXT_BYTES - 1
             take: usize = UiText::valid_utf8_prefix(safe, room)
             for index in 0..<take:
                 target[index] <- safe.data[index]
             target[take] <- 0
-            return (&target[0]).cast[cstr] can Unsafe.PointerCast
+            can Unsafe.PointerCast:
+                return (&target[0]).cast[cstr]
 
         def gtk_cstr_byte(text: cstr, index: usize) -> u8:
-            pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
+            pointer: mutable uintptr = 0
+            can Unsafe.PointerCast:
+                pointer <- text.cast[uintptr]
             return 0 if pointer == 0.uintptr()
             trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic]:
                 byte: u8& = (pointer + index.uintptr()).cast[u8&]
@@ -119,7 +122,7 @@ module UiGtk:
             return found
 
         def gtk_cstr(value: sview) -> cstr:
-            return stage(&gtk_text_bytes[0], value)
+            return stage(gtk_text_bytes, value)
 
         def packed_argb(color: UiCore::Color) -> u32:
             return (color.a.u32() << 24) | (color.r.u32() << 16) | (color.g.u32() << 8) | color.b.u32()
@@ -193,14 +196,14 @@ module UiGtk:
                     _ = kind
                     handle: usize = native_handle(index)
                     return if handle == 0
-                    elisa_gtk_set_label_text(handle, stage(&gtk_text_bytes[0], text))
+                    elisa_gtk_set_label_text(handle, stage(gtk_text_bytes, text))
 
             def set_help(index: i32, kind: UiControls::ControlKind, placeholder: sview, help: sview) -> void:
                 can Ui.Controls:
                     _ = kind
                     handle: usize = native_handle(index)
                     return if handle == 0
-                    elisa_gtk_set_help(handle, stage(&gtk_prompt_bytes[0], placeholder), stage(&gtk_help_bytes[0], help))
+                    elisa_gtk_set_help(handle, stage(gtk_prompt_bytes, placeholder), stage(gtk_help_bytes, help))
 
             def set_state(index: i32, kind: UiControls::ControlKind, state: UiControls::ControlState) -> void:
                 can Ui.Controls:
@@ -225,7 +228,7 @@ module UiGtk:
             length: usize = gtk_cstr_length(text)
             for index in 0..<length:
                 gtk_text_bytes[index] <- gtk_cstr_byte(text, index)
-            return UiControls::dispatch_native_text(handle, sview(&gtk_text_bytes[0], 0, length.i64()))
+            return UiControls::dispatch_native_text(handle, UiText::fixed_bytes_view_range[UiCore::MAX_TEXT_BYTES](gtk_text_bytes, 0, length))
 
         def controls_action(handle: usize, value: f32, selected: bool) -> i32:
             index: i32 = UiControls::index_for_native_handle(handle)

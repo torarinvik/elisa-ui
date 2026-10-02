@@ -17,18 +17,42 @@ extend UiResources:
             # resource_clear_slot()
             # erases both its bytes and length, so treating an empty key as a
             # match would make a stale/cleared record look live to diagnostics.
-            safe_key: sview = UiCore::bounded_text(key)
             return false if slot >= MAX_RESOURCES or resource_states[slot] == State.Unrequested
-            # A diagnostic comparison must use the complete identity supplied
-            # by the caller. Comparing only a bounded/malformed prefix could
-            # report a false match for a different resource key.
-            return false if safe_key.len <= 0 or safe_key.len != key.len or safe_key.len >= IDENTIFIER_CAPACITY.i64()
+            return false if not resource_identifier_is_valid(key)
+            safe_key: sview = UiCore::bounded_text(key)
             return false if resource_identifier_lengths[slot] != safe_key.len.usize()
             for offset in 0..<safe_key.len:
                 return false if resource_identifier_storage[slot * IDENTIFIER_CAPACITY + offset] != safe_key.data[offset]
             return true
 
     private:
+        # Resource keys are the SDK's bounded relative virtual asset paths,
+        # never native filesystem paths or URLs. Keep the same path shape as
+        # the public WasmBrowser resources contract before a key enters the
+        # coalescing table; the host still performs authoritative validation.
+        def resource_identifier_is_valid(key: sview) -> bool:
+            safe_key: sview = UiCore::bounded_text(key)
+            return false if safe_key.len <= 0 or safe_key.len != key.len or safe_key.len >= IDENTIFIER_CAPACITY.i64()
+            return false if safe_key.data[0] == 47
+            component_start: mutable i64 = 0
+            component_length: mutable i64 = 0
+            for offset in 0..<safe_key.len:
+                byte: u8 = safe_key.data[offset]
+                if byte == 47:
+                    return false if component_length == 0
+                    return false if component_length == 1 and safe_key.data[component_start] == 46
+                    return false if component_length == 2 and safe_key.data[component_start] == 46 and safe_key.data[component_start + 1] == 46
+                    component_start <- offset + 1
+                    component_length <- 0
+                else:
+                    return false if byte < 32 or byte == 58 or byte == 92 or byte == 127
+                    return false if byte == 194 and offset + 1 < safe_key.len and safe_key.data[offset + 1] <= 159
+                    component_length <- component_length + 1
+            return false if component_length == 0
+            return false if component_length == 1 and safe_key.data[component_start] == 46
+            return false if component_length == 2 and safe_key.data[component_start] == 46 and safe_key.data[component_start + 1] == 46
+            return true
+
         def resource_make_handle(slot: usize) -> ResourceHandle:
             return ResourceHandle{slot: slot.u32(), generation: resource_generations[slot]}
 
@@ -44,6 +68,7 @@ extend UiResources:
             UiResources::clear_metadata(slot)
             resource_downloaded[slot] <- 0.0
             resource_decoded[slot] <- 0.0
+            resource_uploaded[slot] <- 0.0
             resource_demanded[slot] <- false
             resource_priorities[slot] <- 0
             resource_demand_owners[slot] <- 0

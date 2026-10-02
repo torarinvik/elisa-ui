@@ -20,12 +20,18 @@
 #include "include/encode/SkPngEncoder.h"
 #include "include/core/SkStream.h"
 #include "include/ports/SkFontMgr_mac_ct.h"
+#include "../src/platform/skia/skia_shim_common.h"
 
 extern "C" void elisa_skia_set_font_manager(std::size_t manager);
+extern "C" void elisa_skia_set_text_cache_context(std::uint32_t locale_revision,
+                                                     std::uint32_t scale_generation);
 extern "C" int elisa_skia_text_covers(std::size_t font, const char *text, std::size_t length);
+extern "C" float elisa_skia_measure_text_width_with_font(std::size_t font, const char *text,
+                                                          std::size_t length, float size);
 extern "C" void elisa_skia_set_bold_typeface(std::size_t font);
 extern "C" std::size_t elisa_skia_bold_typeface_handle(void);
 extern "C" std::int32_t elisa_skia_offscreen_render(std::size_t canvas, std::size_t font);
+extern "C" void elisa_skia_offscreen_surface_lost(void);
 
 namespace {
 
@@ -129,7 +135,7 @@ std::uint64_t pixel_digest(const SkPixmap& pixels) {
 int main(int argc, char** argv) {
     const char* output = argc > 1 ? argv[1] : "/tmp/elisa-ui-skia-offscreen.png";
     const SkImageInfo info = SkImageInfo::Make(
-        320, 200, kRGBA_8888_SkColorType, kPremul_SkAlphaType);
+        320, 264, kRGBA_8888_SkColorType, kPremul_SkAlphaType);
     sk_sp<SkSurface> surface = SkSurfaces::Raster(info);
     if (!surface) {
         std::fprintf(stderr, "skia offscreen: failed to create raster surface\n");
@@ -209,6 +215,69 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "skia text boundary: malformed or oversized UTF-8 was accepted\n");
         return 11;
     }
+    // REAL SCRIPT SHAPING. These go through the same width and draw exports as
+    // widgets, with CoreText shaping the whole UTF-8 span and supplying system
+    // fallback faces. The ink assertions below prove this is not just a
+    // compile-time symbol check; the Unicode corpus remains the separate test
+    // for grapheme-safe editing offsets.
+    constexpr char arabic[] = "\xD8\xB3\xD9\x84\xD8\xA7\xD9\x85"; // سلام
+    constexpr char devanagari[] = "\xE0\xA4\xA8\xE0\xA4\xAE\xE0\xA4\xB8\xE0\xA5\x8D\xE0\xA4\xA4\xE0\xA5\x87"; // नमस्ते
+    elisa_skia_set_font_manager(reinterpret_cast<std::size_t>(font_manager.get()));
+    const float arabic_width = elisa_skia_measure_text_width_with_font(
+        reinterpret_cast<std::size_t>(typeface.get()), arabic, sizeof(arabic) - 1, 22.0f);
+    const float devanagari_width = elisa_skia_measure_text_width_with_font(
+        reinterpret_cast<std::size_t>(typeface.get()), devanagari, sizeof(devanagari) - 1, 22.0f);
+    if (arabic_width <= 0.0f || arabic_width > 140.0f || devanagari_width <= 0.0f ||
+        devanagari_width > 140.0f ||
+        elisa_skia_text_covers(reinterpret_cast<std::size_t>(typeface.get()), arabic, sizeof(arabic) - 1) != 1 ||
+        elisa_skia_text_covers(reinterpret_cast<std::size_t>(typeface.get()), devanagari,
+                               sizeof(devanagari) - 1) != 1) {
+        std::fprintf(stderr, "skia text shaping: script coverage or measured advances failed\n");
+        return 12;
+    }
+    const std::uint64_t hits_before_repeat = elisa_skia_shim::elisa_skia_shaped_text_cache_hits;
+    const float repeated_arabic_width = elisa_skia_measure_text_width_with_font(
+        reinterpret_cast<std::size_t>(typeface.get()), arabic, sizeof(arabic) - 1, 22.0f);
+    if (repeated_arabic_width != arabic_width ||
+        elisa_skia_shim::elisa_skia_shaped_text_cache_hits != hits_before_repeat + 1) {
+        std::fprintf(stderr, "skia shaped-text cache: identical font/text query did not hit\n");
+        return 13;
+    }
+    elisa_skia_set_text_cache_context(1, 0);
+    if (!elisa_skia_shim::elisa_skia_shaped_text_cache.empty()) {
+        std::fprintf(stderr, "skia shaped-text cache: locale revision did not invalidate entries\n");
+        return 14;
+    }
+    std::uint64_t misses_before_context_query = elisa_skia_shim::elisa_skia_shaped_text_cache_misses;
+    (void)elisa_skia_measure_text_width_with_font(
+        reinterpret_cast<std::size_t>(typeface.get()), arabic, sizeof(arabic) - 1, 22.0f);
+    if (elisa_skia_shim::elisa_skia_shaped_text_cache_misses != misses_before_context_query + 1) {
+        std::fprintf(stderr, "skia shaped-text cache: locale revision reused stale shaping\n");
+        return 15;
+    }
+    elisa_skia_set_text_cache_context(1, 1);
+    if (!elisa_skia_shim::elisa_skia_shaped_text_cache.empty()) {
+        std::fprintf(stderr, "skia shaped-text cache: scale generation did not invalidate entries\n");
+        return 16;
+    }
+    elisa_skia_set_text_cache_context(0, 0);
+    for (std::size_t index = 0; index < 72; ++index) {
+        (void)elisa_skia_measure_text_width_with_font(
+            reinterpret_cast<std::size_t>(typeface.get()), arabic, sizeof(arabic) - 1,
+            8.0f + static_cast<float>(index));
+    }
+    if (elisa_skia_shim::elisa_skia_shaped_text_cache.size() !=
+            elisa_skia_shim::max_shaped_text_cache_entries ||
+        elisa_skia_shim::elisa_skia_shaped_text_cache_bytes >
+            elisa_skia_shim::max_shaped_text_cache_bytes) {
+        std::fprintf(stderr, "skia shaped-text cache: entry or byte bound was exceeded\n");
+        return 17;
+    }
+    elisa_skia_offscreen_surface_lost();
+    if (!elisa_skia_shim::elisa_skia_shaped_text_cache.empty()) {
+        std::fprintf(stderr, "skia shaped-text cache: surface loss did not invalidate entries\n");
+        return 18;
+    }
     const std::int32_t status = elisa_skia_offscreen_render(
         reinterpret_cast<std::size_t>(canvas), reinterpret_cast<std::size_t>(typeface.get()));
     if (status != 1) {
@@ -238,6 +307,9 @@ int main(int argc, char** argv) {
             const int bare = elisa_skia_text_covers(reinterpret_cast<std::size_t>(plain.get()), command, 5);
             elisa_skia_set_font_manager(reinterpret_cast<std::size_t>(manager.get()));
             const int helped = elisa_skia_text_covers(reinterpret_cast<std::size_t>(plain.get()), command, 5);
+            // The shim borrows this handle. Restore the main-scope manager
+            // before the local manager is released; later replay shapes text.
+            elisa_skia_set_font_manager(reinterpret_cast<std::size_t>(font_manager.get()));
             if (helped != 1) { std::fprintf(stderr, "glyph fallback: the command glyph still has no face\n"); ok = false; }
             if (bare != 0) { std::fprintf(stderr, "glyph fallback: the check cannot fail -- the lent face already had the glyph\n"); ok = false; }
         }
@@ -254,6 +326,8 @@ int main(int argc, char** argv) {
     ok = expect_color_near(pixels, 120, 130, SkColorSetARGB(255, 20, 40, 80), 2, "gradient start") && ok;
     ok = expect_color_near(pixels, 219, 130, SkColorSetARGB(255, 100, 180, 220), 2, "gradient end") && ok;
     ok = expect_ink(pixels, 15, 158, 110, 198, SkColorSetARGB(255, 18, 24, 32), "text") && ok;
+    ok = expect_ink(pixels, 10, 199, 145, 225, SkColorSetARGB(255, 18, 24, 32), "Arabic shaped text") && ok;
+    ok = expect_ink(pixels, 154, 227, 314, 260, SkColorSetARGB(255, 18, 24, 32), "Devanagari shaped text") && ok;
     // GLASS. The stripe field runs from y 108 to 194; the translucent raised
     // panel covers its lower half. Above the panel the stripes are hard steps
     // of better than two hundred levels; under it the framework asked Skia to

@@ -1,0 +1,20 @@
+# Host activation can fail before it returns a live operation token.
+
+extend UiFeatureView:
+    public:
+        # Record an authoritative activation rejection while still Requested.
+        # Unlike resolve(), this path never invents or retains a host token.
+        def reject_activation(handle: FeatureHandle, next: FeatureState, failure: FeatureFailureKind) -> bool:
+            return false if not is_valid(handle)
+            slot: usize = handle.slot.usize()
+            return false if feature_states[slot] != FeatureState.Requested or feature_activation_ids[slot] != 0
+            return false if next != FeatureState.UnavailableOffline and next != FeatureState.Denied and next != FeatureState.Incompatible and next != FeatureState.Failed
+            return false if next == FeatureState.UnavailableOffline and failure != FeatureFailureKind.Offline
+            return false if next == FeatureState.Denied and failure != FeatureFailureKind.Denied
+            return false if next == FeatureState.Incompatible and failure != FeatureFailureKind.Incompatible
+            return false if next == FeatureState.Failed and not failure_is_valid(failure)
+            feature_states[slot] <- next
+            feature_failures[slot] <- failure
+            clear_payload_slot(slot)
+            mark_changed()
+            return true

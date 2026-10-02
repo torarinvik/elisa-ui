@@ -14,8 +14,24 @@
 using namespace elisa_skia_shim;
 
 extern "C" void elisa_skia_set_text_quality(int subpixel, int hinting) {
-    elisa_skia_text_subpixel = subpixel != 0 ? 1 : 0;
+    const int safe_subpixel = subpixel != 0 ? 1 : 0;
+    if (elisa_skia_text_subpixel != safe_subpixel || elisa_skia_text_hinting != hinting) {
+        clear_shaped_text_cache();
+    }
+    elisa_skia_text_subpixel = safe_subpixel;
     elisa_skia_text_hinting = hinting;
+}
+
+// Internal renderer context. Locale and scale alter shaped/layout results;
+// the surface epoch is handled explicitly on surface loss, not on each
+// ordinary attach/detach used to replay a frame.
+extern "C" void elisa_skia_set_text_cache_context(std::uint32_t locale_revision,
+                                                   std::uint32_t scale_generation) {
+    set_shaped_text_cache_context(locale_revision, scale_generation);
+}
+
+extern "C" void elisa_skia_clear_shaped_text_cache(void) {
+    clear_shaped_text_cache();
 }
 
 
@@ -102,6 +118,7 @@ extern "C" void elisa_skia_set_text_tracking(float tracking) {
 }
 
 extern "C" void elisa_skia_set_font_manager(std::size_t manager) {
+    if (elisa_skia_font_manager != manager) clear_shaped_text_cache();
     elisa_skia_font_manager = manager;
     elisa_skia_fallback_cache.clear();
 }
@@ -132,11 +149,10 @@ extern "C" int elisa_skia_text_covers(std::size_t font_handle, const char *text,
 // semibold; anything lighter is refused and weight is synthesised as before.
 extern "C" void elisa_skia_set_bold_typeface(std::size_t font) {
     const SkTypeface *face = reinterpret_cast<const SkTypeface *>(font);
-    if (face != nullptr && face->fontStyle().weight() < SkFontStyle::kSemiBold_Weight) {
-        elisa_skia_bold_typeface = 0;
-        return;
-    }
-    elisa_skia_bold_typeface = font;
+    const std::size_t accepted = face != nullptr &&
+        face->fontStyle().weight() < SkFontStyle::kSemiBold_Weight ? 0 : font;
+    if (elisa_skia_bold_typeface != accepted) clear_shaped_text_cache();
+    elisa_skia_bold_typeface = accepted;
 }
 
 

@@ -7,10 +7,24 @@
 
 module UiText:
     public:
+        # The raw runtime bridge is intentionally unsafe: callers must prove
+        # the readable extent and storage lifetime. Ordinary fixed-array code
+        # should use `fixed_bytes_view_range` below instead.
+        extern unsafe_sview_bounded_bytes(data: u8&, count: usize) -> sview can[Unsafe.PointerCast]
+
         # Counted text views cross foreign ABIs, so every public walker shares
         # the framework's fixed work/storage budget before narrowing i64 lengths
         # to the target usize representation.
         const MAX_TEXT_BYTES: usize = 1024
+
+        # Borrow a counted range from a fixed byte array. The array reference
+        # proves the readable extent, and the returned view remains tied to
+        # that borrow; the only pointer cast is contained at the runtime seam.
+        def fixed_bytes_view_range[N: usize](bytes: u8[N]&, start: usize, count: usize) -> sview:
+            return "" if start > N or count == 0
+            return "" if count > N - start
+            can Unsafe.PointerCast:
+                return unsafe_sview_bounded_bytes(&bytes[start], count)
 
         # Advance over one UTF-8 encoded scalar-sized sequence. Host text is
         # expected to be valid UTF-8, but malformed input still consumes one

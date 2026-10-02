@@ -1,0 +1,145 @@
+# UI feature-view integration fixture for the versioned WasmBrowser feature
+# profile. The host owns activation and component memory; the UI keeps only a
+# generation-safe view, the opaque activation token, and bounded copied data.
+
+include "host_bindings.elisa"
+include "canonical_result.elisa"
+include "../../../../../elisa-ui/src/widgets/ui_feature_view.elisa"
+
+global mutable active_feature: u64 = 0
+global mutable feature_open: bool = false
+global mutable feature_content_seen: bool = false
+global mutable ui_feature: UiFeatureView::FeatureHandle = UiFeatureView::FeatureHandle{slot: 64, generation: 0}
+global mutable command_registration: u64 = 0
+global mutable surface_registration: u64 = 0
+global mutable callback_registration: u64 = 0
+global mutable resource_registration: u64 = 0
+
+def result_pointer(result: mutable u64[8]&) -> u32:
+    trusted Unsafe.PointerCast:
+        return (&result[0]).cast[uintptr].u32()
+
+def result_u32(result: mutable u64[8]&, offset: u32) -> u32:
+    pointer: u32 = result_pointer(result)
+    trusted Unsafe.PointerCast:
+        slot: u32& = (pointer + offset).cast[u32&]
+        return slot
+
+def result_u64(result: mutable u64[8]&, offset: u32) -> u64:
+    low: u64 = result_u32(result, offset).u64()
+    high: u64 = result_u32(result, offset + 4).u64()
+    return low + (high << 32)
+
+def resource_byte(pointer: u32, offset: u32) -> u8:
+    trusted Unsafe.PointerCast:
+        value: u8& = (pointer + offset).cast[u8&]
+        return value
+
+def register_feature_item(kind: u32, name: cstr, name_length: u32) -> u64:
+    result: mutable u64[8] = zeroed
+    host_feature_register(kind, name, name_length, (&result[0]).cast[mutable void&])
+    return 0 if not CanonicalResult::is_ok(result_u32(result, 0))
+    return result_u64(result, 8)
+
+def unregister_feature_item(handle: mutable u64&) -> bool:
+    return true if handle == 0
+    result: mutable u64[8] = zeroed
+    host_feature_unregister(handle, (&result[0]).cast[mutable void&])
+    handle <- 0
+    return CanonicalResult::is_ok(result_u32(result, 0))
+
+def probe_resource_roundtrip(handle: u64) -> bool:
+    written: mutable u64[8] = zeroed
+    host_feature_resource_set(handle, "theme", 5, "dark", 4, (&written[0]).cast[mutable void&])
+    return false if not CanonicalResult::is_ok(result_u32(written, 0))
+
+    lookup: mutable u64[8] = zeroed
+    host_feature_resource_get(handle, "theme", 5, (&lookup[0]).cast[mutable void&])
+    return false if not CanonicalResult::is_ok(result_u32(lookup, 0)) or result_u32(lookup, 4) != 1
+    pointer: u32 = result_u32(lookup, 8)
+    length: u32 = result_u32(lookup, 12)
+    mutable valid: bool = pointer != 0 and length == 4
+    if valid:
+        valid <- resource_byte(pointer, 0) == 100
+        valid <- valid and resource_byte(pointer, 1) == 97
+        valid <- valid and resource_byte(pointer, 2) == 114
+        valid <- valid and resource_byte(pointer, 3) == 107
+    if pointer != 0 and length > 0 and length <= 67108864:
+        host_component_realloc(pointer, length, 1, 0)
+    return valid
+
+def guest_init() -> void:
+    UiFeatureView::reset()
+    feature_content_seen <- false
+    ui_feature <- UiFeatureView::request(0, 1, "1.0.0", 700)
+    return if not UiFeatureView::is_valid(ui_feature)
+
+    activation: mutable u64[8] = zeroed
+    host_feature_activate(0, 1, "1.0.0", 5, (&activation[0]).cast[mutable void&])
+    activation_word: u32 = result_u32(activation, 0)
+    return if not CanonicalResult::is_ok(activation_word)
+    active_feature <- result_u64(activation, 8)
+    return if active_feature == 0
+    return if not UiFeatureView::activate(ui_feature, active_feature)
+    feature_open <- true
+
+    command_registration <- register_feature_item(0, "open-settings", 13)
+    surface_registration <- register_feature_item(1, "settings-panel", 14)
+    callback_registration <- register_feature_item(2, "host-event-3", 12)
+    resource_registration <- register_feature_item(3, "settings-state", 14)
+    return if command_registration == 0 or surface_registration == 0 or callback_registration == 0 or resource_registration == 0
+    return if not probe_resource_roundtrip(resource_registration)
+
+def guest_frame() -> void:
+    return if not feature_open or UiFeatureView::state(ui_feature) != UiFeatureView::FeatureState.Loading
+    result: mutable u64[8] = zeroed
+    host_feature_poll(active_feature, (&result[0]).cast[mutable void&])
+    poll_word: u32 = result_u32(result, 0)
+    return if not CanonicalResult::is_ok(poll_word)
+    return if CanonicalResult::enum_payload(poll_word) == 0
+    return if CanonicalResult::enum_payload(poll_word) != 1
+
+    return if not UiFeatureView::resolve(ui_feature, active_feature, UiFeatureView::FeatureState.Ready, UiFeatureView::FeatureFailureKind.Unknown)
+    _ = UiFeatureView::publish_payload(ui_feature, active_feature, 1, "feature:ready")
+    return if not UiFeatureView::publish_content(ui_feature, active_feature, 1, "Settings", "Manage optional app preferences.", 41, "Open settings")
+    panel: UiFeatureView::Content = UiFeatureView::content(ui_feature)
+    feature_content_seen <- panel.available and panel.sequence == 1 and panel.action_key == 41
+    feature_content_seen <- feature_content_seen and UiFeatureView::content_title(ui_feature) == "Settings"
+    feature_content_seen <- feature_content_seen and UiFeatureView::content_body(ui_feature) == "Manage optional app preferences."
+    feature_content_seen <- feature_content_seen and UiFeatureView::content_action_label(ui_feature) == "Open settings"
+
+def guest_dispatch(handle: u64, payload: cstr, payload_length: u32) -> void:
+    return if payload_length > 4096
+    return if handle != command_registration and handle != callback_registration
+
+def guest_shutdown() -> void:
+    _ = unregister_feature_item(command_registration)
+    _ = unregister_feature_item(surface_registration)
+    _ = unregister_feature_item(callback_registration)
+    _ = unregister_feature_item(resource_registration)
+    return if not feature_open
+    # The validator requires acknowledged teardown; withholding it makes a
+    # content-contract failure visible to the hosted smoke instead of silently
+    # accepting an empty feature surface.
+    return if not feature_content_seen
+
+    # Releasing the final UI owner retires its view but preserves the token
+    # until the SDK/host confirms component deactivation.
+    _ = UiFeatureView::dispose_owner(700)
+    result: mutable u64[8] = zeroed
+    host_feature_deactivate(active_feature, (&result[0]).cast[mutable void&])
+    return if not CanonicalResult::is_ok(result_u32(result, 0))
+    _ = UiFeatureView::acknowledge_deactivation(ui_feature, active_feature)
+    feature_open <- false
+
+@link_name("wasmbrowser:features/guest@0.1.0#init")
+export fn init() -> void = guest_init
+
+@link_name("wasmbrowser:features/guest@0.1.0#frame")
+export fn frame() -> void = guest_frame
+
+@link_name("wasmbrowser:features/guest@0.1.0#dispatch")
+export fn dispatch(handle: u64, payload: cstr, payload_length: u32) -> void = guest_dispatch
+
+@link_name("wasmbrowser:features/guest@0.1.0#shutdown")
+export fn shutdown() -> void = guest_shutdown

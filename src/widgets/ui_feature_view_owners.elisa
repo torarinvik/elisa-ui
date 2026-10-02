@@ -1,6 +1,11 @@
 # Independent owners of a coalesced optional-feature activation.
 
 extend UiFeatureView:
+    public:
+        struct Deactivation:
+            handle: FeatureHandle
+            activation_id: u64
+
     private:
         def feature_owner_index(slot: usize, owner_id: u32) -> usize:
             for index in 0..<MAX_FEATURE_OWNER_LEASES:
@@ -59,9 +64,27 @@ extend UiFeatureView:
             return false if not has_host_token and not pending
             feature_states[slot] <- FeatureState.Cancelled
             feature_failures[slot] <- FeatureFailureKind.Unknown
+            clear_payload_slot(slot)
             return true
 
     public:
+        # Enumerate outstanding host deactivations, including after reset has
+        # retired the UI session. The host token remains the cleanup authority.
+        def deactivation_count() -> usize:
+            total: mutable usize = 0
+            for slot in 0..<feature_count_state:
+                total <- total + 1 if feature_active[slot] and feature_states[slot] == FeatureState.Cancelled and feature_activation_ids[slot] != 0
+            return total
+
+        def deactivation_at(index: usize) -> Deactivation:
+            found: mutable usize = 0
+            for slot in 0..<feature_count_state:
+                continue if not feature_active[slot] or feature_states[slot] != FeatureState.Cancelled or feature_activation_ids[slot] == 0
+                if found == index:
+                    return Deactivation{handle: make_handle(slot), activation_id: feature_activation_ids[slot]}
+                found <- found + 1
+            return Deactivation{handle: invalid(), activation_id: 0}
+
         # Releasing one observer never changes the shared activation while
         # another owner remains attached to its slot and generation. The
         # result counts activations cancelled, not leases removed.
@@ -81,7 +104,11 @@ extend UiFeatureView:
             return false if not is_valid(handle)
             slot: usize = handle.slot.usize()
             return false if not feature_owner_remove(slot, owner_id)
+            has_host_token: bool = feature_activation_ids[slot] != 0
             _ = feature_cancel_if_final_owner(slot)
+            if feature_owner_count(slot) == 0 and not has_host_token:
+                clear_slot(slot)
+                trim_count()
             mark_changed()
             return true
 
@@ -101,6 +128,7 @@ extend UiFeatureView:
                         if activation != 0:
                             feature_states[slot] <- FeatureState.Cancelled
                             feature_failures[slot] <- FeatureFailureKind.Unknown
+                            clear_payload_slot(slot)
                             changed <- true
                         else:
                             clear_slot(slot)

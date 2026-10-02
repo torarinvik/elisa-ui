@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
+STAGE1="$(bash "$ROOT/scripts/resolve_stage1_root.sh" "$ROOT")"
 RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
 OPT_LEVEL="${ELISA_UI_OPT_LEVEL:-2}"
 if [[ "$(uname -s)" != "Darwin" ]]; then

@@ -80,6 +80,12 @@ announcement wording.
 while allowing sparse measured heights or widths. Unknown rows use the
 estimated extent; realized rows are measured automatically and can be adjusted
 with `set_virtual_item_height` or invalidated with `clear_virtual_item_height`.
+When a global metric generation changes, call
+`refresh_variable_virtual_metrics` with the new fallback extent. It updates the
+estimate and discards stale sparse measurements together. The next layout
+remeasures the realized window; the viewport retains its logical row plus local
+offset instead of carrying a stale absolute pixel position through the change.
+The return value is the number of cached row extents discarded.
 
 Applications that already know their data can install a synchronous
 `UiVirtualList::MeasureProvider` with

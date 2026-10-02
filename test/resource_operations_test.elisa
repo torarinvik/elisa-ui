@@ -1,0 +1,73 @@
+# Headless coverage for the generation-safe SDK/host resource association.
+
+include "../src/widgets/ui_resources.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiResources::reset()
+    image: mutable UiResources::ResourceHandle = UiResources::request("images/logo", 7)
+    check("resource operation starts unbound", UiResources::operation_for(image) == 0 and UiResources::operation_count() == 0)
+    check("bind accepts one host operation", UiResources::bind_operation(image, 41) and UiResources::operation_for(image) == 41 and UiResources::operation_count() == 1)
+    check("duplicate operation bind is rejected", not UiResources::bind_operation(image, 42) and not UiResources::bind_operation(image, 41))
+    check("poll accepts monotonic progress", UiResources::poll_operation(image, 41, 0.4, 0.2) and UiResources::downloaded_progress(image) == 0.4 and UiResources::decoded_progress(image) == 0.2)
+    check("upload polling is scoped to the bound host operation", UiResources::poll_upload_operation(image, 41, 0.35) and UiResources::uploaded_progress(image) == 0.35 and not UiResources::poll_upload_operation(image, 42, 0.8))
+    check("foreign operation cannot poll", not UiResources::poll_operation(image, 42, 0.8, 0.8))
+    check("completion requires the matching operation", not UiResources::complete_operation(image, 42, UiResources::State.Ready, UiResources::FailureKind.Unknown) and UiResources::state(image) == UiResources::State.Requested)
+    check("matching completion publishes ready after all stages", UiResources::complete_operation(image, 41, UiResources::State.Ready, UiResources::FailureKind.Unknown) and UiResources::state(image) == UiResources::State.Ready and UiResources::uploaded_progress(image) == 1.0 and UiResources::operation_count() == 0)
+    check("late completion after ready is rejected", not UiResources::complete_operation(image, 41, UiResources::State.Failed, UiResources::FailureKind.RetryableTransport))
+
+    failed: mutable UiResources::ResourceHandle = UiResources::request("images/retry", 7)
+    check("retry operation binds independently", UiResources::bind_operation(failed, 99) and UiResources::complete_operation(failed, 99, UiResources::State.Failed, UiResources::FailureKind.RetryableTransport))
+    retried: mutable UiResources::ResourceHandle = UiResources::retry(failed)
+    check("retry rotates the generation and resets upload progress", UiResources::resource_is_valid(retried) and not UiResources::resource_is_valid(failed) and UiResources::operation_for(retried) == 0 and UiResources::uploaded_progress(retried) == 0.0)
+    check("old generation cannot complete the retry", not UiResources::complete_operation(failed, 99, UiResources::State.Ready, UiResources::FailureKind.Unknown))
+
+    cancelled: mutable UiResources::ResourceHandle = UiResources::request("images/cancel", 8)
+    _ = UiResources::bind_operation(cancelled, 123)
+    check("cancel returns host token and marks cancellation", UiResources::cancel_operation(cancelled) == 123 and UiResources::state(cancelled) == UiResources::State.Cancelled)
+    check("cancelled operation rejects all progress polling", not UiResources::poll_operation(cancelled, 123, 1.0, 1.0) and not UiResources::poll_upload_operation(cancelled, 123, 1.0))
+    cancelled_operation: UiResources::Operation = UiResources::operation_at(0)
+    check("explicit cancellation stays visible until host acknowledgement", cancelled_operation.operation_id == 123 and cancelled_operation.cancellation_requested)
+    check("host can forget cancelled operation", UiResources::forget_operation(123) and UiResources::operation_count() == 0)
+
+    disposed: mutable UiResources::ResourceHandle = UiResources::request("images/disposed", 9)
+    _ = UiResources::bind_operation(disposed, 456)
+    check("disposed generation rejects late upload and host result", UiResources::dispose(disposed) and not UiResources::poll_upload_operation(disposed, 456, 0.9) and not UiResources::complete_operation(disposed, 456, UiResources::State.Ready, UiResources::FailureKind.Unknown))
+    disposed_operation: UiResources::Operation = UiResources::operation_at(0)
+    check("direct disposal signals host cancellation", disposed_operation.operation_id == 456 and disposed_operation.cancellation_requested and UiResources::forget_operation(456))
+
+    shared: mutable UiResources::ResourceHandle = UiResources::request("images/shared-cancel", 11)
+    _ = UiResources::request("images/shared-cancel", 12)
+    _ = UiResources::bind_operation(shared, 678)
+    check("one owner's cancellation preserves shared host work", UiResources::cancel_for_owner(shared, 11) and UiResources::state(shared) == UiResources::State.Requested and not UiResources::operation_at(0).cancellation_requested)
+    check("final owner cancellation signals host and retains token", UiResources::cancel_for_owner(shared, 12) and UiResources::state(shared) == UiResources::State.Cancelled and UiResources::operation_at(0).operation_id == 678 and UiResources::operation_at(0).cancellation_requested)
+    check("cancelled shared generation rejects late completion", not UiResources::complete_operation(shared, 678, UiResources::State.Ready, UiResources::FailureKind.Unknown) and UiResources::state(shared) == UiResources::State.Cancelled)
+    check("host acknowledges final-owner cancellation", UiResources::forget_operation(678) and UiResources::operation_count() == 0)
+
+    view_resource: mutable UiResources::ResourceHandle = UiResources::request("images/view-owned", 10)
+    _ = UiResources::bind_operation(view_resource, 789)
+    check("disposing the last view owner invalidates its resource", UiResources::dispose_owner(10) == 1 and not UiResources::resource_is_valid(view_resource))
+    pending_after_dispose: UiResources::Operation = UiResources::operation_at(0)
+    check("view disposal leaves a host-visible cancellation token", pending_after_dispose.operation_id == 789 and pending_after_dispose.cancellation_requested and UiResources::operation_count() == 1)
+    check("disposed generation cannot accept a late ready result", not UiResources::complete_operation(view_resource, 789, UiResources::State.Ready, UiResources::FailureKind.Unknown))
+    check("host can forget the disposed view operation after cancellation", UiResources::forget_operation(789) and UiResources::operation_count() == 0)
+
+    reset_resource: mutable UiResources::ResourceHandle = UiResources::request("images/reset", 13)
+    _ = UiResources::bind_operation(reset_resource, 999)
+    UiResources::reset()
+    reset_operation: UiResources::Operation = UiResources::operation_at(0)
+    check("resource reset invalidates handles but retains cancellation for the host", not UiResources::resource_is_valid(reset_resource) and UiResources::count() == 0 and reset_operation.operation_id == 999 and reset_operation.cancellation_requested and UiResources::operation_count() == 1)
+    UiResources::reset()
+    check("repeated reset preserves unacknowledged host cleanup", UiResources::operation_at(0).operation_id == 999 and UiResources::operation_at(0).cancellation_requested and UiResources::operation_count() == 1)
+    check("host can acknowledge an operation after resource reset", UiResources::forget_operation(999) and UiResources::operation_count() == 0)
+
+    if failures == 0:
+        _ = puts("resource operations: all checks passed")
+    return failures.i64()

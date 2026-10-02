@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# A real touch, on a real simulator.
+# Real touch and text input, on a real simulator.
 #
 # simctl cannot inject one, so this drives XCUIApplication, whose taps go
 # through the simulator's own HID pipeline -- the same path a finger takes.
@@ -8,6 +8,8 @@
 # its accessibility elements), UIKit delivers the touch to the view, the
 # framework routes it into the retained model, the application callback runs,
 # and the repainted frame republishes the semantics the assertion reads back.
+# The same host also taps a custom-canvas text input, presents UIKit's keyboard,
+# and verifies the committed text returns through the retained semantic tree.
 #
 # There is no Xcode project here, so the runner is assembled by hand from the
 # XCTRunner.app template Xcode ships, with the test frameworks embedded and an
@@ -165,9 +167,9 @@ if ! run_ui_test; then
     exit 1
   fi
 fi
-grep -q "Executed 1 test, with 0 failures" "$LOG" || {
+grep -q "Executed 2 tests, with 0 failures" "$LOG" || {
   echo "uikit touch: the UI test did not report a pass" >&2
   tail -20 "$LOG" >&2
   exit 1
 }
-echo "uikit touch: a real system-level touch reached the retained model and came back through the semantic tree"
+echo "uikit touch/text: a system HID tap and committed UIKit text both round-tripped through the retained model and semantic tree"

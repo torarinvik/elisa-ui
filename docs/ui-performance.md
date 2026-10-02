@@ -81,6 +81,23 @@ thermal behavior, or hosted transport cost. Those require a real Skia GPU
 surface, device hosts, or WasmBrowser/remote transport fixtures and remain
 separate validation work.
 
+## WasmBrowser presentation payload baseline
+
+`scripts/check_wasmbrowser_transfer.sh` runs the production `UiWasmBrowser`
+encoder against C host stubs and inspects the callback arguments. Three
+commands expose a 96-byte span (three 32-byte records). A semantic snapshot is
+137 bytes for one node with 9 text bytes, and 33,800 bytes for 256 nodes using
+the full 3-KiB aggregate text budget. The maximum case verifies the last
+record and last text range as well as the version/count header.
+
+The guest reuses its command and semantic arrays. Text commands carry borrowed
+guest-memory pointer/length pairs rather than copying their text into the
+32-byte record; semantic strings are copied into the reusable snapshot. The
+semantic array is now sized to its reachable maximum, 33,800 bytes, down from
+125,952 bytes (92,152 fewer statically reserved bytes). The fixture measures
+the logical spans presented to imports and validates the bound; it does not
+measure a host-side clone, network/remote transport, or elapsed transfer time.
+
 ## Required renderer evidence
 
 The portable benchmark is not a substitute for raster proof. The default

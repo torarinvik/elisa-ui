@@ -29,6 +29,37 @@ and presents a typed result without ever manufacturing authority.
 - Reporting facts: `resolve_consent` for a prompt result, `sync` for a
   settings change observed on resume, and `resolve_picker` for a picker result.
 
+## Native coverage
+
+The UIKit and Android adapters currently implement user-triggered Camera and
+Microphone consent. UIKit delegates to AVFoundation and resynchronizes both
+authorization facts when the app becomes active. Android requests the matching
+runtime permission, returns the result through a bounded owner-thread queue,
+and synchronizes current permission facts on resume. Android also preserves
+the prior-prompt fact across process recreation, so a fresh in-memory record
+does not bypass the shared no-repeat policy. Both paths enter the shared
+`UiServices` state machine; they do not grant access in Elisa code.
+`test/uikit_services_test.elisa` and `test/android_services_test.elisa` cover
+the adapter-to-state transitions, stale callbacks, failure handling, and
+unrelated-state preservation. Android also implements user-triggered Photos
+and Files pickers. It copies selected content into a bounded host-owned store
+(16 MiB per selection, 32 MiB total, 16 selections), reports only an opaque
+logical ID and MIME-derived kind, and exposes bounded reads of at most 64 KiB
+per call. Call `UiAndroidServices::release_selection` when finished; release
+frees the host bytes and clears the shared selected result. Re-presenting a
+selected Android picker also releases its previous content first. Release a
+selection before disposing its owner; generic owner disposal cannot call a
+platform-specific content store. The Photos picker accepts images only.
+`examples/android_services_smoke/android_main.elisa` provides a tap-driven
+runtime smoke for both picker paths. UIKit now has matching PhotosUI and Files
+adapters with the same bounded, opaque selection/read/release contract, plus a
+tap-driven `examples/uikit_services_smoke` app. Both UIKit apps and the picker
+shim cross-build. `scripts/check_uikit_services.sh` rebuilds the smoke app,
+creates a dedicated simulator, and drives PhotosUI and Files with XCUITest;
+the selected image and text content are read through the bounded API and
+explicitly released. The check is headless and does not require Simulator.app.
+Other service-kind picker adapters remain unimplemented.
+
 ## Anti-prompt policy
 
 Once a service is `Denied`, `Restricted`, or `Unavailable`, `can_prompt` stays
@@ -47,11 +78,13 @@ again" grant.
 `resolve_consent` and `sync` reject contradictory facts: `Granted` requires
 `Unknown` failure, `Denied` requires `Denied`, `Restricted` requires
 `Restricted`, `Unavailable` requires `Unavailable`, and `Failed` requires a
-retryable or unknown failure. `resolve_picker` rejects an empty
-(`selection_id == 0`) "selected" result, so a cancelled picker cannot be
-mistaken for a successful empty one. Consent and picker errors are recorded
-separately: a picker operation can no longer erase the retryable consent
-failure that controls `can_prompt`.
+retryable or unknown failure. A selected picker result requires a nonzero
+opaque ID and a supported `ServiceSelectionKind`: `Image`, `Audio`, `Video`,
+`Text`, `Application`, or `Other`. `Unknown` is reserved for non-selected
+results, and unrecognized enum values are rejected. This prevents an empty
+selection or malformed host fact from appearing as valid selected content.
+Consent and picker errors are recorded separately: a picker operation can no
+longer erase the retryable consent failure that controls `can_prompt`.
 
 ## Lifetime
 

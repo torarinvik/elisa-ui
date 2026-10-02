@@ -58,8 +58,22 @@ corners to cut.
 | SDL3 | yes — `UiSdl3Draw::bind_image_rgba32` binds copied pixels to the resource generation |
 | wasm wire | encodes it; the host canvas decides |
 
-SDL3 takes RGBA32 bytes from the application; it does not decode image files.
-The resource must be `Ready` before binding. The headless
+SDL3 takes decoded RGBA32 bytes from the application; it does not decode image
+files. Once download and decode progress reach 100%, the SDL3 binder accepts
+the resource while it is still `Requested`. It marks renderer-upload progress
+complete and transitions the resource to `Ready` only after SDL has created
+and updated the texture successfully; if a host operation is associated with
+the resource, that matching operation is completed at the same boundary. A
+failed first upload leaves the resource and host operation requested, and an
+already-ready image can be rebound after renderer recovery. Skia keeps the
+borrowed-handle contract: after decode and renderer upload, its host calls
+`UiSkia::complete_uploaded_image` while the logical resource is still
+`Requested`. Elisa installs the generation-bound handle before publishing
+`Ready`, settles the matching UI-side operation association at that boundary,
+and rejects incomplete download/decode, empty handles, and stale/cancelled
+generations. Host-side operation acknowledgement remains host-owned.
+`UiSkia::bind_image` remains available for an already-ready host resource. The
+headless
 `test/sdl3_image_binding_test.elisa` checks upload bounds, fitting, alpha,
 rounded clipping, replacement, generation reuse, disposal, and renderer
 teardown with SDL's dummy video driver. It also builds a nested image widget
@@ -70,7 +84,15 @@ SDL painter, and verifies the resulting pixels. The separate
 retained image command, binds and replaces the ready resource before replay,
 then checks that the existing command paints the replacement pixels in the
 brand tile. Both fixtures run with SDL's dummy video driver and are picked up
-by the required test suite.
+by the required test suite. `test/sdl3_image_upload_state_test.elisa` isolates
+the upload/`Ready` transition from the wider SDL host loop and verifies that
+pre-decode or invalid uploads preserve the pending operation, while successful
+uploads complete it; it also recreates the renderer, rebinds the same ready
+logical image into the new renderer, and reads back its rendered pixel.
+`test/skia_image_upload_state_test.elisa` isolates the real Skia resource
+binding extension from the broader painter module and checks async-operation
+completion, synchronous publication, pre-decode rejection, cancellation, and
+generation-bound handle lookup with a headless drawing stub.
 
 **A backend that cannot draw an image draws nothing** — no placeholder. A grey
 rectangle where a thumbnail should be is a worse frame than a gap, and it hides

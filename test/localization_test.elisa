@@ -1,16 +1,28 @@
 # Headless regression for direction, mirrored geometry, and plural policy.
 
 include "../src/widgets/ui_localization.elisa"
+include "../src/widgets/ui_text_metrics.elisa"
 
 extern puts(text: cstr) -> i64
 global mutable failures: i32 = 0
+global mutable locale_metric_calls: usize = 0
+
+def locale_sensitive_width(text: sview, size: f32, weighted: bool) -> f32:
+    locale_metric_calls <- locale_metric_calls + 1
+    return size * 2.0
+
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
 
 def check(name: cstr, ok: bool) -> void:
     return if ok
     failures <- failures + 1
     _ = puts(name)
 
-def main() -> i64:
+def main() -> i64 can Unsafe.PointerCast:
     UiLocalization::reset()
     UiCore::clear_all_invalidations()
     check("locale starts empty", UiLocalization::current_locale().len == 0 and UiLocalization::revision() == 0)
@@ -18,9 +30,18 @@ def main() -> i64:
     first_sequence: u32 = UiCore::invalidation_sequence()
     first_mask: i32 = UiCore::invalidations()
     check("locale change invalidates layout paint and semantics", first_mask == UiCore::Invalidation.Layout.i32() | UiCore::Invalidation.Paint.i32() | UiCore::Invalidation.Semantics.i32() and first_sequence > 0)
+    UiTextMetrics::set_width_provider(locale_sensitive_width)
+    _ = UiTextMetrics::width("locale-dependent", 12.0, false)
+    _ = UiTextMetrics::width("locale-dependent", 12.0, false)
+    check("text width is cached within a locale", locale_metric_calls == 1)
     check("same canonical locale is idempotent", not UiLocalization::set_locale("en-US") and UiLocalization::revision() == 1 and UiCore::invalidation_sequence() == first_sequence)
-    null_locale: sview = sview(null, 0, 2)
-    check("null-backed locale fails closed", UiLocalization::set_locale(null_locale) and UiLocalization::current_locale().len == 0)
+    _ = UiTextMetrics::width("locale-dependent", 12.0, false)
+    check("repeated locale does not invalidate text width", locale_metric_calls == 1)
+    empty_locale: sview = ""
+    check("empty locale clears the previous value", UiLocalization::set_locale(empty_locale) and UiLocalization::current_locale().len == 0)
+    _ = UiTextMetrics::width("locale-dependent", 12.0, false)
+    check("changed locale invalidates cached shaping advances", locale_metric_calls == 2)
+    UiTextMetrics::clear_width_provider()
     check("region changes are observable", UiLocalization::set_locale("en-GB") and UiLocalization::revision() == 3 and UiLocalization::current_locale() == "en-gb")
     malformed_locale_words: mutable u64[2] = zeroed
     malformed_locale_words[1] <- 2
@@ -38,7 +59,7 @@ def main() -> i64:
     check("text direction finds Latin", UiLocalization::text_direction("Hello", UiLocalization::Direction.RightToLeft) == UiLocalization::Direction.LeftToRight)
     check("text direction skips neutrals", UiLocalization::text_direction("👋 123", UiLocalization::Direction.RightToLeft) == UiLocalization::Direction.RightToLeft)
     check("text direction uses first strong scalar", UiLocalization::text_direction("(אבג) Hello", UiLocalization::Direction.LeftToRight) == UiLocalization::Direction.RightToLeft)
-    check("text direction is bounded for malformed input", UiLocalization::text_direction(sview(null, 4, 0), UiLocalization::Direction.RightToLeft) == UiLocalization::Direction.RightToLeft)
+    check("text direction is bounded for empty input", UiLocalization::text_direction("", UiLocalization::Direction.RightToLeft) == UiLocalization::Direction.RightToLeft)
     check("Hebrew start maps to end", UiLocalization::start_alignment("he") == UiConst::CrossAlignment.End and UiLocalization::end_alignment("he") == UiConst::CrossAlignment.Start)
     check("LTR start maps to start", UiLocalization::start_alignment("en") == UiConst::CrossAlignment.Start and UiLocalization::end_alignment("en") == UiConst::CrossAlignment.End)
 

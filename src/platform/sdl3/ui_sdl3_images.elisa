@@ -36,6 +36,13 @@ module UiSdl3Images:
             resource: UiResources::ResourceHandle = UiResources::ResourceHandle{slot: image.slot, generation: image.generation}
             return UiResources::state(resource) == UiResources::State.Ready
 
+        def image_resource_can_upload(image: UiCore::ImageRef) -> bool:
+            return false if not UiCore::image_ref_is_valid(image) or image.slot.usize() >= MAX_IMAGE_BINDINGS
+            resource: UiResources::ResourceHandle = UiResources::ResourceHandle{slot: image.slot, generation: image.generation}
+            current: UiResources::State = UiResources::state(resource)
+            return true if current == UiResources::State.Ready
+            return current == UiResources::State.Requested and UiResources::downloaded_progress(resource) == 1.0 and UiResources::decoded_progress(resource) == 1.0
+
         def prune_image_bindings() -> usize:
             removed: mutable usize = 0
             for index in 0..<MAX_IMAGE_BINDINGS:
@@ -249,7 +256,7 @@ module UiSdl3Images:
             _ = prune_image_bindings()
             return false if pixels == null
             return false if not UiCore::image_ref_is_valid(image) or image.slot.usize() >= MAX_IMAGE_BINDINGS
-            return false if not image_resource_is_ready(image)
+            return false if not image_resource_can_upload(image)
             return false if not rgba32_buffer_is_valid(width, height, row_stride, byte_length)
             if pixels is rgba_bytes:
                 format: u32 = rgba32_pixel_format()
@@ -269,6 +276,26 @@ module UiSdl3Images:
                     if not SDL_UpdateTexture(texture_handle, null, pointer, row_stride.i32()):
                         SDL_DestroyTexture(texture_handle)
                         return false
+                    resource: UiResources::ResourceHandle = UiResources::ResourceHandle{slot: image.slot, generation: image.generation}
+                    if UiResources::state(resource) == UiResources::State.Requested:
+                        # Renderer upload is the final resource stage. Complete
+                        # its matching host operation too, or it would remain
+                        # registered after the resource stops accepting polls.
+                        operation_id: u64 = UiResources::operation_for(resource)
+                        if operation_id != 0:
+                            if not UiResources::poll_upload_operation(resource, operation_id, 1.0):
+                                SDL_DestroyTexture(texture_handle)
+                                return false
+                            if not UiResources::complete_operation(resource, operation_id, UiResources::State.Ready, UiResources::FailureKind.Unknown):
+                                SDL_DestroyTexture(texture_handle)
+                                return false
+                        else:
+                            if UiResources::uploaded_progress(resource) < 1.0 and not UiResources::set_upload_progress(resource, 1.0):
+                                SDL_DestroyTexture(texture_handle)
+                                return false
+                            if not UiResources::set_state(resource, UiResources::State.Ready):
+                                SDL_DestroyTexture(texture_handle)
+                                return false
                     index: usize = image.slot.usize()
                     previous: void&? = image_textures[index]
                     image_textures[index] <- texture_handle

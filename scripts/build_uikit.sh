@@ -12,7 +12,7 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
+STAGE1="$(bash "$ROOT/scripts/resolve_stage1_root.sh" "$ROOT")"
 EXAMPLE="${1:-hello}"
 FLAVOR="${2:-simulator}"
 # The two iOS backends are separate products: the canvas paints every pixel,
@@ -39,6 +39,7 @@ DEPLOYMENT="${ELISA_UI_IOS_DEPLOYMENT:-17.0}"
 [[ "$(uname -s)" == "Darwin" ]] || { echo "the UIKit backend is macOS-hosted" >&2; exit 2; }
 [[ -f "$ENTRY" ]] || { echo "no UIKit $BACKEND entry: $ENTRY" >&2; exit 2; }
 [[ -x "$STAGE1/bin/elisac-stage1" ]] || { echo "no stage1 product at $STAGE1/bin/elisac-stage1" >&2; exit 2; }
+ELISA_UI_STAGE1="$STAGE1" bash "$ROOT/scripts/check_toolchain.sh" --report >&2
 
 case "$FLAVOR" in
   simulator)
@@ -94,7 +95,8 @@ set -euo pipefail
 exec xcrun --sdk "$SDK_NAME" clang -target "$TRIPLE" -isysroot "$SDK" "\$@" \\
   "$OUT/uikit_shim.o" $EXTRA_SHIM_OBJECT \\
   -framework UIKit -framework Foundation -framework CoreGraphics \\
-  -framework CoreText -framework ImageIO
+  -framework CoreText -framework ImageIO -framework AVFoundation \\
+  -framework PhotosUI -framework UniformTypeIdentifiers
 LINK
 chmod +x "$LINKER"
 
@@ -123,8 +125,17 @@ plutil -insert MinimumOSVersion -string "$DEPLOYMENT" "$PLIST"
 plutil -insert CFBundleSupportedPlatforms -json "[\"$PLATFORM_NAME\"]" "$PLIST"
 plutil -insert UILaunchScreen -json '{}' "$PLIST"
 plutil -insert UIRequiredDeviceCapabilities -json '["arm64"]' "$PLIST"
+plutil -insert NSCameraUsageDescription -string "Allow camera access when the app requests it." "$PLIST"
+plutil -insert NSMicrophoneUsageDescription -string "Allow microphone access when the app requests it." "$PLIST"
 plutil -insert UISupportedInterfaceOrientations -json \
   '["UIInterfaceOrientationPortrait","UIInterfaceOrientationLandscapeLeft","UIInterfaceOrientationLandscapeRight"]' "$PLIST"
+if [[ "$EXAMPLE" == "uikit_services_smoke" && "$BACKEND" == "canvas" ]]; then
+  # Let the simulator's Files picker expose this smoke app's Documents folder
+  # so its UI test can select a deterministic text fixture from On My iPhone.
+  plutil -insert UIFileSharingEnabled -bool true "$PLIST"
+  plutil -insert LSSupportsOpeningDocumentsInPlace -bool true "$PLIST"
+  plutil -replace CFBundleDisplayName -string "UIKit Picker Smoke" "$PLIST"
+fi
 codesign --force --sign - "$APP" >/dev/null
 
 echo "built $BINARY"

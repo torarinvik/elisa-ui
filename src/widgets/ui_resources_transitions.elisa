@@ -3,6 +3,7 @@
 extend UiResources:
     public:
         def reset() -> void:
+            _ = request_cancellation_for_all_operations()
             for slot in 0..<MAX_RESOURCES:
                 next_generation: u32 = resource_generations[slot] + 1
                 resource_generations[slot] <- 1 if next_generation == 0 else next_generation
@@ -14,6 +15,7 @@ extend UiResources:
                 UiResources::clear_metadata(slot)
                 resource_downloaded[slot] <- 0.0
                 resource_decoded[slot] <- 0.0
+                resource_uploaded[slot] <- 0.0
                 resource_demanded[slot] <- false
                 resource_priorities[slot] <- 0
                 resource_demand_owners[slot] <- 0
@@ -29,15 +31,11 @@ extend UiResources:
         # cancelled record can be requested again, but that starts a new host
         # operation and therefore rotates its generation.
         def request(key: sview, owner: u32) -> ResourceHandle:
+            return UiResources::resource_invalid() if owner == 0 or not resource_identifier_is_valid(key)
             safe_key: sview = UiCore::bounded_text(key)
             # Zero is reserved as the invalid/no-owner sentinel returned by
             # owner() and DemandHint. Accepting it here would make a live
             # lease indistinguishable from an invalid handle projection.
-            return UiResources::resource_invalid() if owner == 0
-            # Resource keys are identities, not display text. Do not let a
-            # malformed or overlong counted view collapse to a valid prefix
-            # and alias an existing package asset.
-            return UiResources::resource_invalid() if safe_key.len <= 0 or safe_key.len != key.len or safe_key.len >= IDENTIFIER_CAPACITY.i64()
             for slot in 0..<resource_count:
                 if resource_states[slot] != State.Unrequested and resource_key_matches(slot, safe_key):
                     return UiResources::resource_invalid() if not resource_owner_add(slot, owner)
@@ -48,6 +46,7 @@ extend UiResources:
                         resource_failure_kinds[slot] <- FailureKind.Unknown
                         resource_downloaded[slot] <- 0.0
                         resource_decoded[slot] <- 0.0
+                        resource_uploaded[slot] <- 0.0
                         # Demand hints belong to the cancelled host operation.
                         resource_clear_all_owner_demands(slot)
                         resource_mark_changed()
@@ -72,6 +71,7 @@ extend UiResources:
             resource_states[free_slot] <- State.Requested
             resource_downloaded[free_slot] <- 0.0
             resource_decoded[free_slot] <- 0.0
+            resource_uploaded[free_slot] <- 0.0
             resource_demanded[free_slot] <- false
             resource_priorities[free_slot] <- 0
             resource_demand_owners[free_slot] <- 0
@@ -106,6 +106,7 @@ extend UiResources:
             return false if next != State.Cancelled and resource_states[slot] != State.Requested
             resource_states[slot] <- next
             if next == State.Cancelled:
+                _ = request_operation_cancellation(handle)
                 resource_clear_all_owner_demands(slot)
                 # Cancellation ends the operation even when a caller releases
                 # an already-resolved or partially-progressed generation.
@@ -113,10 +114,12 @@ extend UiResources:
                 # cancelled presentation record.
                 resource_downloaded[slot] <- 0.0
                 resource_decoded[slot] <- 0.0
+                resource_uploaded[slot] <- 0.0
             resource_failure_kinds[slot] <- FailureKind.RetryableTransport if next == State.Failed else FailureKind.Unknown
             if next == State.Ready:
                 resource_downloaded[slot] <- 1.0
                 resource_decoded[slot] <- 1.0
+                resource_uploaded[slot] <- 1.0
             resource_mark_changed()
             return true
 
@@ -133,10 +136,12 @@ extend UiResources:
             return false if not resource_owner_remove(slot, owner)
             resource_refresh_demand(slot)
             if resource_owner_count(slot) == 0 and resource_states[slot] != State.Cancelled:
+                _ = request_operation_cancellation(handle)
                 resource_states[slot] <- State.Cancelled
                 resource_failure_kinds[slot] <- FailureKind.Unknown
                 resource_downloaded[slot] <- 0.0
                 resource_decoded[slot] <- 0.0
+                resource_uploaded[slot] <- 0.0
                 resource_clear_all_owner_demands(slot)
             resource_mark_changed()
             return true
@@ -152,6 +157,7 @@ extend UiResources:
             resource_failure_kinds[slot] <- FailureKind.Unknown
             resource_downloaded[slot] <- 0.0
             resource_decoded[slot] <- 0.0
+            resource_uploaded[slot] <- 0.0
             resource_clear_all_owner_demands(slot)
             resource_mark_changed()
             return resource_make_handle(slot)
@@ -160,6 +166,7 @@ extend UiResources:
         def dispose(handle: ResourceHandle) -> bool:
             return false if not UiResources::resource_is_valid(handle)
             slot: usize = handle.slot.usize()
+            _ = request_operation_cancellation(handle)
             resource_clear_slot(slot)
             for _ in 0..<MAX_RESOURCES:
                 break if resource_count == 0 or resource_states[resource_count - 1] != State.Unrequested
@@ -175,7 +182,13 @@ extend UiResources:
                 if resource_states[slot] != State.Unrequested and resource_owner_remove(slot, owner):
                     released <- released + 1
                     resource_refresh_demand(slot)
-                    resource_clear_slot(slot) if resource_owner_count(slot) == 0
+                    if resource_owner_count(slot) == 0:
+                        # The owner may disappear while the host still owns an
+                        # asynchronous operation. Preserve its operation token
+                        # for host acknowledgement, but mark cancellation
+                        # before invalidating the resource generation.
+                        _ = request_operation_cancellation(resource_make_handle(slot))
+                        resource_clear_slot(slot)
             for _ in 0..<MAX_RESOURCES:
                 break if resource_count == 0 or resource_states[resource_count - 1] != State.Unrequested
                 resource_count <- resource_count - 1

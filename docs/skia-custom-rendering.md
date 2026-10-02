@@ -96,6 +96,16 @@ grapheme layout, keyed by the active borrowed font handle and normalized size.
 Repeated wrapping, hit testing, selection, and caret queries therefore reuse
 the same metric without another FFI call; scale/binding resets explicitly clear
 the cache, and clusters larger than its copy budget bypass it.
+Apple's ordinary untracked-text shaper also keeps a bounded LRU of positioned
+`SkTextBlob` results, so measurement and drawing reuse the same shaped output.
+The key includes exact UTF-8 bytes, the complete `SkFont` value and typeface
+unique ID, fallback-manager identity, locale revision, and scale generation.
+It holds at most 64 entries and a 1 MiB estimated-cost budget (individual
+entries above 64 KiB bypass caching); locale, scale, text-quality, manager,
+bold-face, and surface-loss transitions invalidate entries. Font replacement
+cannot match an older typeface ID. The headless fixture checks reuse, locale,
+scale, and surface-loss invalidation plus the entry/byte limits. This remains Apple-only and is
+not an image cache or a measured end-to-end performance claim.
 
 Direct geometry calls and replayed commands share the private
 `ui_skia_geometry.elisa` policy. Coordinates and extents are finite and capped,
@@ -394,8 +404,11 @@ queries use that same borrowed typeface, avoiding a default-font metric mismatch
 `bind_font`/`draw_bound_text` provide the stricter generation-keyed form for
 hosts that keep decoded typefaces in a resource cache; bound metric queries use
 the same association. `*_with_fallback` forms keep primary/fallback selection
-in Elisa and apply the same choice to drawing and metrics; per-glyph shaping
-fallback remains the host's typeface/shaper responsibility. `ui_skia_text.elisa`
+in Elisa and apply the same choice to drawing and metrics. Apple ordinary,
+untracked text is shaped by Skia's CoreText `SkShaper` module; tracked and
+non-Apple text retain simple APIs and use the host-lent font manager for
+per-codepoint fallback. See the [backend shaping and font-source review](implementation-baseline/text-shaping-and-font-sources.md)
+for the measured scope and platform limits. `ui_skia_text.elisa`
 applies a bounded 1pt minimum font size to every framework draw and metric
 query; direct native calls with a non-positive size are rejected by the bridge
 instead of selecting an implicit fallback.

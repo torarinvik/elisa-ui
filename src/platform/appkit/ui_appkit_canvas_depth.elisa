@@ -258,37 +258,14 @@ extend UiAppKitCanvas:
         # RETAINED IMAGES. A command names a picture by slot and generation;
         # this table is where the host said which CGImage that is, at the
         # moment it became ready. Nothing above the painter sees the handle.
-        const MAX_IMAGE_BINDINGS: usize = 64
-        global mutable appkit_canvas_image_slots: u32[64] = zeroed
-        global mutable appkit_canvas_image_generations: u32[64] = zeroed
-        global mutable appkit_canvas_image_handles: usize[64] = zeroed
-        global mutable appkit_canvas_image_bound: bool[64] = zeroed
-
         # A slot and a generation, NOT a resource handle: the painter must
         # not depend on the resource subsystem -- the simulator smoke unit
         # does not carry it -- and those two numbers are all the command has.
         def bind_image(slot: u32, generation: u32, image: usize) -> bool:
-            return false if image == 0 or generation == 0
-            resource: UiCore::ImageRef = UiCore::image_ref(slot, generation)
-            for index in 0..<MAX_IMAGE_BINDINGS:
-                if appkit_canvas_image_bound[index] and appkit_canvas_image_slots[index] == resource.slot:
-                    appkit_canvas_image_generations[index] <- resource.generation
-                    appkit_canvas_image_handles[index] <- image
-                    return true
-            for index in 0..<MAX_IMAGE_BINDINGS:
-                if not appkit_canvas_image_bound[index]:
-                    appkit_canvas_image_bound[index] <- true
-                    appkit_canvas_image_slots[index] <- resource.slot
-                    appkit_canvas_image_generations[index] <- resource.generation
-                    appkit_canvas_image_handles[index] <- image
-                    return true
-            return false
+            return UiAppKitCanvasImages::bind_picture(slot, generation, image)
 
         def bound_image(image: UiCore::ImageRef) -> usize:
-            for index in 0..<MAX_IMAGE_BINDINGS:
-                if appkit_canvas_image_bound[index] and appkit_canvas_image_slots[index] == image.slot and appkit_canvas_image_generations[index] == image.generation:
-                    return appkit_canvas_image_handles[index]
-            return 0
+            return UiAppKitCanvasImages::picture_handle(image.slot, image.generation)
 
         # Named apart from UiSkia's draw_retained_image: the AppKit+Skia
         # compositor puts both painters in one unit and the shared name was
@@ -319,3 +296,14 @@ extend UiAppKitCanvas:
         # painter. Slot and generation are what the command will carry.
         def bind_picture(slot: u32, generation: u32, image: usize) -> bool:
             return bind_image(slot, generation, image)
+
+        # Releasing one exact generation cannot remove a newer image that has
+        # reused the same logical slot. The host owns the CGImage lifetime.
+        def unbind_picture(slot: u32, generation: u32) -> bool:
+            return UiAppKitCanvasImages::unbind_picture(slot, generation)
+
+        def picture_is_bound(slot: u32, generation: u32) -> bool:
+            return UiAppKitCanvasImages::picture_is_bound(slot, generation)
+
+        def clear_picture_bindings() -> void:
+            UiAppKitCanvasImages::clear_picture_bindings()

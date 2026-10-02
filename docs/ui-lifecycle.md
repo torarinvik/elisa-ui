@@ -36,3 +36,13 @@ predicates for inspectors and deterministic tests without exposing mutable
 backend state. The headless `UiHarness`, SDL3, AppKit canvas, and WasmBrowser
 adapters all use this policy; an adapter still performs the final native
 operation (for example, stopping Cocoa's run loop) through its FFI boundary.
+
+`UiOwnerLifecycle::dispose_owner(owner)` is the coordinated teardown path for
+owner-scoped framework records: tasks, resources, optional features, validation
+fields, services, dialogs, and navigation entries. Its report distinguishes
+cancelled task tokens, released records/leases, and dismissed dialogs. Owner
+zero is a no-op. This does not destroy retained widgets or synchronously stop
+host work: pending resource operations remain enumerable for cancellation
+acknowledgement, feature activations remain deactivation tombstones, dialogs
+retain their typed Cancelled result until explicitly disposed, and late service
+or task callbacks fail generation/token checks.

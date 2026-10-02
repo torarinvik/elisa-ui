@@ -23,6 +23,10 @@ extern void elisa_uikit_safe_area_changed(size_t viewHandle, float top, float ri
 extern void elisa_uikit_keyboard_changed(size_t viewHandle, float bottom, int visible);
 extern int elisa_uikit_lifecycle(size_t viewHandle, int signal);
 extern void elisa_uikit_timer_fired(size_t viewHandle, uint32_t generation, size_t timerHandle);
+extern int elisa_uikit_permission_result(uint32_t slot, uint32_t generation, int state, int failure);
+extern int elisa_uikit_permission_sync(int kind, int state, int failure);
+extern int elisa_uikit_picker_result(uint32_t slot, uint32_t generation, int state,
+                                    uint32_t selectionKind, uint64_t selectionId);
 
 // Input.
 extern void elisa_uikit_touch(size_t viewHandle, int phase, float x, float y, int tapCount);
@@ -97,4 +101,5 @@ static NSString *elisa_uikit_string(size_t handle);
 #import "shim/view.m"
 #import "shim/text_input.m"
 #import "shim/controller.m"
+#import "shim/picker.m"
 #import "shim/host.m"

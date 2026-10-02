@@ -1,0 +1,57 @@
+# Host-side tests for the Android-to-UiServices permission adapter.
+include "../src/platform/android/ui_android_services.elisa"
+
+extern puts(text: cstr) -> i64
+extern elisa_test_android_set_request_result(value: i32) -> void
+extern elisa_test_android_request_count() -> i32
+extern elisa_test_android_frame_count() -> i32
+extern elisa_test_android_last_kind() -> i32
+extern elisa_test_android_set_picker_result(value: i32) -> void
+extern elisa_test_android_picker_count() -> i32
+extern elisa_test_android_selection_release_count() -> i32
+
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiServices::reset()
+    elisa_test_android_set_request_result(1)
+    camera: UiServices::ServiceHandle = UiServices::request(UiServices::ServiceKind.Camera, 7)
+    check("Android camera request reaches JNI once", UiAndroidServices::request_permission(camera) and elisa_test_android_request_count() == 1 and elisa_test_android_last_kind() == UiServices::ServiceKind.Camera.i32())
+    check("Android request remains pending until its queued result drains", UiServices::consent(camera) == UiServices::ConsentState.Requested)
+    check("queued Android result resolves the matching service", elisa_android_permission_result(camera.slot, camera.generation, UiServices::ConsentState.Granted.i32(), UiServices::ServiceFailureKind.Unknown.i32()) == 1 and UiServices::is_granted(camera) and elisa_test_android_frame_count() == 1)
+
+    elisa_test_android_set_request_result(0)
+    microphone: UiServices::ServiceHandle = UiServices::request(UiServices::ServiceKind.Microphone, 7)
+    check("Android bridge failure becomes an explicit retryable state", not UiAndroidServices::request_permission(microphone) and UiServices::consent(microphone) == UiServices::ConsentState.Failed and UiServices::can_prompt(microphone) and elisa_test_android_frame_count() == 2)
+
+    _ = UiServices::dispose(camera)
+    check("late Android results cannot revive a disposed handle", elisa_android_permission_result(camera.slot, camera.generation, UiServices::ConsentState.Denied.i32(), UiServices::ServiceFailureKind.Denied.i32()) == 0)
+    synced: i32 = elisa_android_permission_sync(UiServices::ServiceKind.Microphone.i32(), UiServices::ConsentState.Granted.i32(), UiServices::ServiceFailureKind.Unknown.i32())
+    check("Android resume sync reaches idle service records", synced == 1 and UiServices::is_granted(microphone) and elisa_test_android_frame_count() == 3)
+
+    photos: UiServices::ServiceHandle = UiServices::request(UiServices::ServiceKind.Photos, 8)
+    elisa_test_android_set_picker_result(1)
+    check("Android photo picker is user-triggered", UiAndroidServices::present_picker(photos) and elisa_test_android_picker_count() == 1 and elisa_test_android_last_kind() == UiServices::ServiceKind.Photos.i32() and UiServices::picker(photos) == UiServices::PickerState.Presenting)
+    check("Android picker callback publishes typed selection", elisa_android_picker_result(photos.slot, photos.generation, UiServices::PickerState.Selected.i32(), UiServices::ServiceSelectionKind.Image.u32(), 77) == 1 and UiServices::selection_id(photos) == 77 and UiServices::selection_kind(photos) == UiServices::ServiceSelectionKind.Image)
+    selected_bytes: u8[4] = zeroed
+    read: i32 = UiAndroidServices::read_selection(photos, 1, &selected_bytes[0], 3)
+    check("Android selection reads verified bytes in bounded chunks", read == 3 and selected_bytes[0] == 'y' and selected_bytes[2] == 'e')
+    check("Android selection release clears host and portable state", UiAndroidServices::release_selection(photos) and elisa_test_android_selection_release_count() == 1 and UiServices::selection_id(photos) == 0 and UiServices::picker(photos) == UiServices::PickerState.Idle)
+    _ = UiAndroidServices::present_picker(photos)
+    _ = elisa_android_picker_result(photos.slot, photos.generation, UiServices::PickerState.Selected.i32(), UiServices::ServiceSelectionKind.Image.u32(), 77)
+    check("re-presenting a selected picker releases the previous host bytes", UiAndroidServices::present_picker(photos) and elisa_test_android_selection_release_count() == 2 and UiServices::picker(photos) == UiServices::PickerState.Presenting and UiServices::selection_id(photos) == 0)
+
+    files: UiServices::ServiceHandle = UiServices::request(UiServices::ServiceKind.Files, 8)
+    elisa_test_android_set_picker_result(0)
+    check("Android unavailable picker becomes retryable failure", not UiAndroidServices::present_picker(files) and UiServices::picker(files) == UiServices::PickerState.Failed and UiServices::can_present(files))
+
+    if failures == 0:
+        _ = puts("android services: all checks passed")
+        return 0
+    _ = puts("android services: FAILURES above")
+    return 1

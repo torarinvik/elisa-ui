@@ -1,0 +1,65 @@
+# Bounded typed data exchange for an active optional feature view.
+#
+# The host owns component memories and activation authority. The UI receives
+# only a copied, bounded payload associated with the live feature generation;
+# no widget pointer or foreign memory address crosses this boundary.
+
+extend UiFeatureView:
+    public:
+        const FEATURE_PAYLOAD_CAPACITY: usize = 1024
+
+        struct PayloadInfo:
+            sequence: u64
+            length: usize
+            available: bool
+
+        def publish_payload(handle: FeatureHandle, activation: u64, sequence: u64, value: sview) -> bool:
+            return false if not is_valid(handle) or activation == 0 or sequence == 0
+            slot: usize = handle.slot.usize()
+            return false if feature_states[slot] != FeatureState.Ready or feature_activation_ids[slot] != activation
+            return false if value.len < 0
+            payload_length: usize = value.len.usize()
+            return false if payload_length.i64() != value.len or payload_length > FEATURE_PAYLOAD_CAPACITY
+            return false if sequence <= feature_payload_sequences[slot]
+            offset: usize = slot * FEATURE_PAYLOAD_CAPACITY
+            for index in 0..<FEATURE_PAYLOAD_CAPACITY:
+                feature_payload_storage[offset + index] <- value.data[index] if index < payload_length else 0
+            feature_payload_lengths[slot] <- payload_length
+            feature_payload_sequences[slot] <- sequence
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+            UiCore::invalidate(UiCore::Invalidation.Semantics)
+            return true
+
+        def payload_info(handle: FeatureHandle) -> PayloadInfo:
+            return PayloadInfo{sequence: 0, length: 0, available: false} if not is_valid(handle)
+            slot: usize = handle.slot.usize()
+            return PayloadInfo{sequence: 0, length: 0, available: false} if feature_states[slot] != FeatureState.Ready or feature_activation_ids[slot] == 0
+            return PayloadInfo{sequence: feature_payload_sequences[slot], length: feature_payload_lengths[slot], available: feature_payload_sequences[slot] > 0}
+
+        def payload_byte_at(handle: FeatureHandle, sequence: u64, index: usize) -> u8:
+            return 0 if not is_valid(handle) or sequence == 0
+            slot: usize = handle.slot.usize()
+            return 0 if feature_states[slot] != FeatureState.Ready or feature_activation_ids[slot] == 0
+            return 0 if feature_payload_sequences[slot] != sequence or index >= feature_payload_lengths[slot]
+            return feature_payload_storage[slot * FEATURE_PAYLOAD_CAPACITY + index]
+
+        def clear_payload(handle: FeatureHandle) -> bool:
+            return false if not is_valid(handle)
+            clear_payload_slot(handle.slot.usize())
+            return true
+
+    private:
+        global mutable feature_payload_sequences: u64[MAX_FEATURES] = zeroed
+        global mutable feature_payload_lengths: usize[MAX_FEATURES] = zeroed
+        global mutable feature_payload_storage: u8[MAX_FEATURES * FEATURE_PAYLOAD_CAPACITY] = zeroed
+
+        def reset_payload_slot(slot: usize) -> void:
+            return if slot >= MAX_FEATURES
+            feature_payload_sequences[slot] <- 0
+            feature_payload_lengths[slot] <- 0
+            for index in 0..<FEATURE_PAYLOAD_CAPACITY:
+                feature_payload_storage[slot * FEATURE_PAYLOAD_CAPACITY + index] <- 0
+            clear_content_slot(slot)
+
+        def clear_payload_slot(slot: usize) -> void:
+            reset_payload_slot(slot)

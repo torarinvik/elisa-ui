@@ -23,7 +23,7 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # result was a gate that failed in a suite and passed alone.
 SKIA_SHIM_DIR="$ROOT/build/render-showcase"
 mkdir -p "$SKIA_SHIM_DIR"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
+STAGE1="$(bash "$ROOT/scripts/resolve_stage1_root.sh" "$ROOT")"
 SKIA_ROOT="${SKIA_ROOT:?set SKIA_ROOT to the pinned checkout from third_party/skia.lock}"
 SKIA_OUT="${SKIA_OUT:-$SKIA_ROOT/out/elisa}"
 SKIA_LIB="${SKIA_LIB:-$SKIA_OUT/libskia.a}"
@@ -35,6 +35,7 @@ HEIGHT="${3:-800}"
 bash "$ROOT/scripts/verify_skia_pin.sh" >/dev/null
 SKIA_ROOT="$SKIA_ROOT" SKIA_OUT="$SKIA_OUT" SKIA_LIB="$SKIA_LIB" bash "$ROOT/scripts/verify_skia_build.sh" >/dev/null
 [[ -f "$RUNTIME" ]] || { echo "showcase skia: no runtime object at $RUNTIME" >&2; exit 2; }
+ELISA_UI_STAGE1="$STAGE1" bash "$ROOT/scripts/check_toolchain.sh" --report >&2
 
 mkdir -p "$ROOT/build"
 bash "$STAGE1/scripts/elisac_stage1.sh" -O2 -o "$ROOT/build/showcase_app_skia_test.o" \
@@ -49,7 +50,8 @@ clang++ -std=c++17 -fPIC -I"$SKIA_ROOT" -c \
   "$ROOT/src/platform/skia/skia_text_shim.cpp" -o "$SKIA_SHIM_DIR/skia_text_shim.o"
 
 link_inputs=("$ROOT/build/showcase_app_skia_host.o" "$ROOT/build/showcase_skia_list_benchmark.o" "$ROOT/build/showcase_app_skia_test.o"
-             "$SKIA_SHIM_DIR/skia_canvas_shim.o" "$SKIA_SHIM_DIR/skia_text_shim.o" "$RUNTIME" "$SKIA_LIB")
+             "$SKIA_SHIM_DIR/skia_canvas_shim.o" "$SKIA_SHIM_DIR/skia_text_shim.o" "$RUNTIME"
+             "$SKIA_OUT/libskshaper.a" "$SKIA_LIB")
 for extra in "$SKIA_OUT/libpng.a" "$SKIA_OUT/libzlib.a"; do
   [[ -f "$extra" ]] && link_inputs+=("$extra")
 done

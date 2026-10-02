@@ -46,15 +46,17 @@ extend UiCore:
             index: usize = accessibility_slot_by_id[id]
             # Validate the indexed slot as a fail-closed guard against a stale
             # map entry after frame disposal or a future arena mutation.
-            return index if index < accessibility_total.usize() and accessibility_nodes[index].id == id
+            return index if index < accessibility_total.usize() and accessibility_node_at(index).id == id
             return MAX_ACCESSIBILITY_NODES
 
         def accessibility_set_relationships(id: usize, parent_id: usize, first_child_id: usize, next_sibling_id: usize) -> void:
             existing: usize = accessibility_index_for_id(id)
             return if existing >= accessibility_total.usize()
-            accessibility_nodes[existing].parent_id <- relationship_id(parent_id)
-            accessibility_nodes[existing].first_child_id <- relationship_id(first_child_id)
-            accessibility_nodes[existing].next_sibling_id <- relationship_id(next_sibling_id)
+            node: mutable AccessibilityNode = accessibility_node_at(existing)
+            node.parent_id <- relationship_id(parent_id)
+            node.first_child_id <- relationship_id(first_child_id)
+            node.next_sibling_id <- relationship_id(next_sibling_id)
+            store_accessibility_node(existing, node)
             invalidate(Invalidation.Semantics)
 
         def accessibility_set_range(id: usize, minimum: f32, maximum: f32) -> void:
@@ -66,14 +68,16 @@ extend UiCore:
             if safe_maximum < safe_minimum:
                 safe_maximum <- safe_minimum
                 conflict <- true
-            accessibility_nodes[existing].has_range <- true
-            accessibility_nodes[existing].range_min <- safe_minimum
-            accessibility_nodes[existing].range_max <- safe_maximum
-            accessibility_nodes[existing].range_conflict <- conflict
-            value: mutable f32 = finite_or_zero(accessibility_nodes[existing].value)
+            node: mutable AccessibilityNode = accessibility_node_at(existing)
+            node.has_range <- true
+            node.range_min <- safe_minimum
+            node.range_max <- safe_maximum
+            node.range_conflict <- conflict
+            value: mutable f32 = finite_or_zero(node.value)
             value <- safe_minimum if value < safe_minimum
             value <- safe_maximum if value > safe_maximum
-            accessibility_nodes[existing].value <- value
+            node.value <- value
+            store_accessibility_node(existing, node)
             invalidate(Invalidation.Semantics)
 
         # A collection container can expose its logical item count even while
@@ -81,8 +85,10 @@ extend UiCore:
         def accessibility_set_collection_count(id: usize, count: usize) -> void:
             existing: usize = accessibility_index_for_id(id)
             return if existing >= accessibility_total.usize()
-            return if accessibility_nodes[existing].collection_count == count
-            accessibility_nodes[existing].collection_count <- count
+            node: mutable AccessibilityNode = accessibility_node_at(existing)
+            return if node.collection_count == count
+            node.collection_count <- count
+            store_accessibility_node(existing, node)
             invalidate(Invalidation.Semantics)
 
         # Child position and set size are stored together to avoid publishing
@@ -96,10 +102,12 @@ extend UiCore:
             safe_position: usize = position if valid else 0
             safe_size: usize = size if size > 0 else 0
             has_position: bool = valid
-            return if accessibility_nodes[existing].has_collection_position == has_position and accessibility_nodes[existing].collection_position == safe_position and accessibility_nodes[existing].collection_size == safe_size
-            accessibility_nodes[existing].has_collection_position <- has_position
-            accessibility_nodes[existing].collection_position <- safe_position
-            accessibility_nodes[existing].collection_size <- safe_size
+            node: mutable AccessibilityNode = accessibility_node_at(existing)
+            return if node.has_collection_position == has_position and node.collection_position == safe_position and node.collection_size == safe_size
+            node.has_collection_position <- has_position
+            node.collection_position <- safe_position
+            node.collection_size <- safe_size
+            store_accessibility_node(existing, node)
             invalidate(Invalidation.Semantics)
 
         def accessibility_count() -> usize:
@@ -108,7 +116,7 @@ extend UiCore:
         # The indexed reader is the zero-overhead path used by bounded backend
         # loops. External callers should use the optional form when needed.
         def accessibility_at(index: usize) -> AccessibilityNode:
-            return accessibility_nodes[index]
+            return accessibility_node_at(index)
 
         def accessibility_if_valid(index: usize) -> AccessibilityNode?:
             return null if index >= accessibility_total.usize()

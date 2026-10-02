@@ -1,0 +1,36 @@
+# Android system-back bridge into the shared dialog/navigation policy.
+#
+# The Activity callback only queues a fact. This adapter runs on android_main's
+# owner thread, where retained widget/navigation state is safe to inspect.
+include "../../widgets/ui_back.elisa"
+
+global mutable android_escape_consumed: bool = false
+
+extend UiAndroid:
+    public:
+        def back() -> i32 can[Ui.Input]:
+            return 0 if not live() or not UiLifecycle::accepts_input()
+            action: UiBack::Action = UiBack::request()
+            return 1 if action == UiBack::Action.Consumed
+            key(UiCore::Key.Escape.i32(), true)
+            return 0 if action == UiBack::Action.Unhandled else 1
+
+        def key_with_back(code: i32, down: bool) -> void can[Ui.Input]:
+            return if not UiCore::key_is_valid(code)
+            return if not live() or not UiLifecycle::accepts_input()
+            if code == UiCore::Key.Escape.i32():
+                if down:
+                    action: UiBack::Action = UiBack::request()
+                    android_escape_consumed <- action == UiBack::Action.Consumed
+                    return if action == UiBack::Action.Consumed
+                else:
+                    if android_escape_consumed:
+                        android_escape_consumed <- false
+                        return
+            UiAndroid::key(code, down)
+
+def android_back() -> i32:
+    can Ui.Input:
+        return UiAndroid::back()
+
+export fn elisa_android_back() -> i32 = android_back

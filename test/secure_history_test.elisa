@@ -1,0 +1,19 @@
+# Secure values stay live in their controls but never enter undo/redo history.
+
+include "./widget_layout_support.elisa"
+
+def main() -> i64:
+    UiFlat::reset()
+    secret: usize = UiFlat::secure_text_field(UiFlat::NONE, "Password", "", "initial", 220.0, 36.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
+    UiFlat::replace_text(secret, "changed")
+    check("secure edits retain their app-facing value", UiFlat::text_value(secret) == "changed")
+    check("secure edits never enter undo or redo", not UiFlat::can_undo_text() and not UiFlat::can_redo_text())
+
+    ordinary: usize = UiFlat::text_field(UiFlat::NONE, "Will become secure", "", "ordinary", 220.0, 36.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
+    UiFlat::replace_text(ordinary, "edited")
+    check("ordinary edits are initially undoable", UiFlat::can_undo_text())
+    UiFlat::set_secure(ordinary, true)
+    check("enabling secure entry scrubs retained undo and redo", not UiFlat::can_undo_text() and not UiFlat::can_redo_text())
+    UiFlat::replace_text(ordinary, "new-secret")
+    check("secure transition preserves app value but leaves no history", UiFlat::text_value(ordinary) == "new-secret" and not UiFlat::can_undo_text() and not UiFlat::can_redo_text())
+    return test_failures.i64()

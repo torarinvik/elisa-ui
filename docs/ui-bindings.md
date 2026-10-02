@@ -17,10 +17,12 @@ The repository keeps three optional consumers of that same boundary:
   [`examples/go/main.go`](../examples/go/main.go), checked by
   [`scripts/check_go.sh`](../scripts/check_go.sh).
 
-The Go package owns no retained framework state. Its dispatch functions copy Go
-strings into a temporary byte slice before crossing the borrowed C boundary;
-the linked Elisa adapter bounds and validates the payload. A Go host that drives
-callbacks should lock its UI goroutine to the owner thread with
+The Go package owns no retained framework state. Its dispatch functions scan at
+most `MaxTextBytes`, borrow a valid UTF-8 prefix directly from immutable string
+storage, and make no temporary text-buffer allocation; the linked Elisa adapter
+copies it into its fixed staging slot before returning. The byte limit is
+`ELISA_UI_MAX_TEXT_BYTES` in the header and is tested against the live adapter.
+A Go host that drives callbacks should lock its UI goroutine to the owner thread with
 `runtime.LockOSThread`, and must not retain callback text or event pointers
 after the callback returns. `WidgetHandle` is only a nonzero/zero token check;
 its representation must not be decoded or persisted across a retained-tree

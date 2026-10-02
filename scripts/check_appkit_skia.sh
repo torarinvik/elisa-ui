@@ -11,7 +11,7 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # result was a gate that failed in a suite and passed alone.
 SKIA_SHIM_DIR="$ROOT/build/appkit-skia"
 mkdir -p "$SKIA_SHIM_DIR"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
+STAGE1="$(bash "$ROOT/scripts/resolve_stage1_root.sh" "$ROOT")"
 SKIA_ROOT="${SKIA_ROOT:?set SKIA_ROOT to the pinned checkout from third_party/skia.lock}"
 SKIA_OUT="${SKIA_OUT:-$SKIA_ROOT/out/elisa}"
 RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
@@ -31,6 +31,7 @@ link_inputs=(
   "$SKIA_SHIM_DIR/skia_canvas_shim.o"
   "$SKIA_SHIM_DIR/skia_text_shim.o"
   "$RUNTIME"
+  "$SKIA_OUT/libskshaper.a"
   "$SKIA_OUT/libskia.a"
 )
 for extra in "$SKIA_OUT/libpng.a" "$SKIA_OUT/libzlib.a"; do

@@ -1,0 +1,133 @@
+# Copied, typed presentation data for parent-owned optional feature screens.
+#
+# A feature can describe one bounded panel and an application action key. The
+# host copies these values into UI-owned storage; widget handles and callback
+# pointers never cross component memories. The parent app maps the action key
+# to its own retained control and command policy.
+
+extend UiFeatureView:
+    public:
+        const FEATURE_TITLE_CAPACITY: usize = 96
+        const FEATURE_BODY_CAPACITY: usize = 384
+        const FEATURE_ACTION_LABEL_CAPACITY: usize = 80
+
+        struct Content:
+            sequence: u64
+            title_length: usize
+            body_length: usize
+            action_key: u32
+            action_label_length: usize
+            available: bool
+
+        # Publish a complete immutable snapshot. Empty action keys have no
+        # label; nonzero keys require one. A later sequence replaces it.
+        def publish_content(handle: FeatureHandle, activation: u64, sequence: u64, title: sview, body: sview, action_key: u32, action_label: sview) -> bool:
+            return false if not is_valid(handle) or activation == 0 or sequence == 0
+            slot: usize = handle.slot.usize()
+            return false if feature_states[slot] != FeatureState.Ready or feature_activation_ids[slot] != activation
+            safe_title: sview = UiCore::bounded_text(title)
+            safe_body: sview = UiCore::bounded_text(body)
+            safe_action: sview = UiCore::bounded_text(action_label)
+            return false if safe_title.len <= 0 or safe_title.len != title.len
+            return false if safe_title.len.usize() >= FEATURE_TITLE_CAPACITY
+            return false if safe_body.len != body.len or safe_body.len.usize() >= FEATURE_BODY_CAPACITY
+            return false if safe_action.len != action_label.len or safe_action.len.usize() >= FEATURE_ACTION_LABEL_CAPACITY
+            return false if UiText::valid_utf8_prefix(safe_title, safe_title.len.usize()) != safe_title.len.usize()
+            return false if UiText::valid_utf8_prefix(safe_body, safe_body.len.usize()) != safe_body.len.usize()
+            return false if UiText::valid_utf8_prefix(safe_action, safe_action.len.usize()) != safe_action.len.usize()
+            return false if (action_key == 0 and safe_action.len != 0) or (action_key != 0 and safe_action.len == 0)
+            return false if sequence <= feature_content_sequences[slot]
+
+            title_offset: usize = slot * FEATURE_TITLE_CAPACITY
+            body_offset: usize = slot * FEATURE_BODY_CAPACITY
+            action_offset: usize = slot * FEATURE_ACTION_LABEL_CAPACITY
+            for index in 0..<FEATURE_TITLE_CAPACITY:
+                feature_content_title_storage[title_offset + index] <- safe_title.data[index] if index < safe_title.len.usize() else 0
+            for index in 0..<FEATURE_BODY_CAPACITY:
+                feature_content_body_storage[body_offset + index] <- safe_body.data[index] if index < safe_body.len.usize() else 0
+            for index in 0..<FEATURE_ACTION_LABEL_CAPACITY:
+                feature_content_action_storage[action_offset + index] <- safe_action.data[index] if index < safe_action.len.usize() else 0
+            feature_content_title_lengths[slot] <- safe_title.len.usize()
+            feature_content_body_lengths[slot] <- safe_body.len.usize()
+            feature_content_action_lengths[slot] <- safe_action.len.usize()
+            feature_content_action_keys[slot] <- action_key
+            feature_content_sequences[slot] <- sequence
+            feature_content_available[slot] <- true
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+            UiCore::invalidate(UiCore::Invalidation.Semantics)
+            return true
+
+        # Metadata stays scalar; bounded text is fetched separately through
+        # the view getters below so callers never receive a multi-view ABI
+        # aggregate.
+        def content(handle: FeatureHandle) -> Content:
+            return empty_content() if not content_is_available(handle)
+            slot: usize = handle.slot.usize()
+            return Content{
+                sequence: feature_content_sequences[slot],
+                title_length: feature_content_title_lengths[slot],
+                body_length: feature_content_body_lengths[slot],
+                action_key: feature_content_action_keys[slot],
+                action_label_length: feature_content_action_lengths[slot],
+                available: true,
+            }
+
+        def content_title(handle: FeatureHandle) -> sview:
+            return "" if not content_is_available(handle)
+            slot: usize = handle.slot.usize()
+            return UiText::fixed_bytes_view_range[6144](feature_content_title_storage, slot * FEATURE_TITLE_CAPACITY, feature_content_title_lengths[slot])
+
+        def content_body(handle: FeatureHandle) -> sview:
+            return "" if not content_is_available(handle)
+            slot: usize = handle.slot.usize()
+            return UiText::fixed_bytes_view_range[24576](feature_content_body_storage, slot * FEATURE_BODY_CAPACITY, feature_content_body_lengths[slot])
+
+        def content_action_label(handle: FeatureHandle) -> sview:
+            return "" if not content_is_available(handle)
+            slot: usize = handle.slot.usize()
+            return UiText::fixed_bytes_view_range[5120](feature_content_action_storage, slot * FEATURE_ACTION_LABEL_CAPACITY, feature_content_action_lengths[slot])
+
+        def content_is_available(handle: FeatureHandle) -> bool:
+            return false if not is_valid(handle)
+            slot: usize = handle.slot.usize()
+            return feature_states[slot] == FeatureState.Ready and feature_activation_ids[slot] != 0 and feature_content_available[slot]
+
+        def clear_content(handle: FeatureHandle) -> bool:
+            return false if not is_valid(handle)
+            last_sequence: u64 = feature_content_sequences[handle.slot.usize()]
+            clear_content_slot(handle.slot.usize())
+            # Keep the replay watermark for this activation. Full teardown
+            # uses clear_content_slot directly and retires the generation.
+            feature_content_sequences[handle.slot.usize()] <- last_sequence
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+            UiCore::invalidate(UiCore::Invalidation.Semantics)
+            return true
+
+    private:
+        global mutable feature_content_sequences: u64[MAX_FEATURES] = zeroed
+        global mutable feature_content_title_lengths: usize[MAX_FEATURES] = zeroed
+        global mutable feature_content_body_lengths: usize[MAX_FEATURES] = zeroed
+        global mutable feature_content_action_lengths: usize[MAX_FEATURES] = zeroed
+        global mutable feature_content_action_keys: u32[MAX_FEATURES] = zeroed
+        global mutable feature_content_available: bool[MAX_FEATURES] = zeroed
+        global mutable feature_content_title_storage: u8[MAX_FEATURES * FEATURE_TITLE_CAPACITY] = zeroed
+        global mutable feature_content_body_storage: u8[MAX_FEATURES * FEATURE_BODY_CAPACITY] = zeroed
+        global mutable feature_content_action_storage: u8[MAX_FEATURES * FEATURE_ACTION_LABEL_CAPACITY] = zeroed
+
+        def empty_content() -> Content:
+            return Content{sequence: 0, title_length: 0, body_length: 0, action_key: 0, action_label_length: 0, available: false}
+
+        def clear_content_slot(slot: usize) -> void:
+            return if slot >= MAX_FEATURES
+            feature_content_sequences[slot] <- 0
+            feature_content_title_lengths[slot] <- 0
+            feature_content_body_lengths[slot] <- 0
+            feature_content_action_lengths[slot] <- 0
+            feature_content_action_keys[slot] <- 0
+            feature_content_available[slot] <- false
+            for index in 0..<FEATURE_TITLE_CAPACITY:
+                feature_content_title_storage[slot * FEATURE_TITLE_CAPACITY + index] <- 0
+            for index in 0..<FEATURE_BODY_CAPACITY:
+                feature_content_body_storage[slot * FEATURE_BODY_CAPACITY + index] <- 0
+            for index in 0..<FEATURE_ACTION_LABEL_CAPACITY:
+                feature_content_action_storage[slot * FEATURE_ACTION_LABEL_CAPACITY + index] <- 0

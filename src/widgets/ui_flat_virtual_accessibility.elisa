@@ -20,12 +20,13 @@ extend UiFlat:
                 virtual_accessibility_label_storage[index] <- 0
                 virtual_accessibility_help_storage[index] <- 0
 
-        def copy_virtual_accessibility_text(storage: mutable u8&, value: sview) -> sview:
+        def copy_virtual_accessibility_text(storage: mutable u8[UiCore::MAX_TEXT_BYTES]&, value: sview) -> sview:
             return "" if value.len <= 0
             length: usize = value.len.usize()
+            return "" if length > UiCore::MAX_TEXT_BYTES
             for index in 0..<length:
                 storage[index] <- value.data[index]
-            return sview(&storage[0], 0, value.len)
+            return UiText::fixed_bytes_view_range[1024](storage, 0, length)
 
     public:
         # Attach or replace the provider for one virtual-list widget. Passing
@@ -83,7 +84,7 @@ extend UiFlat:
             for byte_index in 0..<UiCore::MAX_TEXT_BYTES:
                 virtual_accessibility_label_storage[byte_index] <- 0
                 virtual_accessibility_help_storage[byte_index] <- 0
-            candidate.label <- copy_virtual_accessibility_text(&virtual_accessibility_label_storage[0], candidate.label)
-            candidate.help <- copy_virtual_accessibility_text(&virtual_accessibility_help_storage[0], candidate.help)
+            candidate.label <- copy_virtual_accessibility_text(virtual_accessibility_label_storage, candidate.label)
+            candidate.help <- copy_virtual_accessibility_text(virtual_accessibility_help_storage, candidate.help)
             item <- candidate
             return true

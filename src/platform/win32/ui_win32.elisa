@@ -49,14 +49,15 @@ module UiWin32:
 
         # Win32 takes NUL-terminated UTF-8 here and widens it at the boundary;
         # the framework carries counted views, so one staging step per string.
-        def stage(target: mutable u8&, value: sview) -> cstr:
+        def stage(target: mutable u8[UiCore::MAX_TEXT_BYTES]&, value: sview) -> cstr:
             safe: sview = UiCore::bounded_text(value)
             room: usize = safe.len.usize() if safe.len.usize() < UiCore::MAX_TEXT_BYTES - 1 else UiCore::MAX_TEXT_BYTES - 1
             take: usize = UiText::valid_utf8_prefix(safe, room)
             for index in 0..<take:
                 target[index] <- safe.data[index]
             target[take] <- 0
-            return (&target[0]).cast[cstr] can Unsafe.PointerCast
+            can Unsafe.PointerCast:
+                return (&target[0]).cast[cstr]
 
         # EVERY CONTROL IS A CHILD HWND, so unlike the other backends the parent
         # is needed at construction rather than after it. The window is the one
@@ -140,14 +141,14 @@ module UiWin32:
                     _ = kind
                     handle: usize = native_handle(index)
                     return if handle == 0
-                    elisa_win32_set_text(handle, stage(&win32_text_bytes[0], text))
+                    elisa_win32_set_text(handle, stage(win32_text_bytes, text))
 
             def set_help(index: i32, kind: UiControls::ControlKind, placeholder: sview, help: sview) -> void:
                 can Ui.Controls:
                     _ = kind
                     handle: usize = native_handle(index)
                     return if handle == 0
-                    elisa_win32_set_help(handle, stage(&win32_prompt_bytes[0], placeholder), stage(&win32_text_bytes[0], help))
+                    elisa_win32_set_help(handle, stage(win32_prompt_bytes, placeholder), stage(win32_text_bytes, help))
 
             def set_state(index: i32, kind: UiControls::ControlKind, state: UiControls::ControlState) -> void:
                 can Ui.Controls:
@@ -177,11 +178,13 @@ module UiWin32:
                     break if win32_cstr_byte(text, index) == 0
             for index in 0..<length:
                 win32_text_bytes[index] <- win32_cstr_byte(text, index)
-            return UiControls::dispatch_native_text(handle, sview(&win32_text_bytes[0], 0, length.i64()))
+            return UiControls::dispatch_native_text(handle, UiText::fixed_bytes_view_range[UiCore::MAX_TEXT_BYTES](win32_text_bytes, 0, length))
 
     private:
         def win32_cstr_byte(text: cstr, index: usize) -> u8:
-            pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
+            pointer: mutable uintptr = 0
+            can Unsafe.PointerCast:
+                pointer <- text.cast[uintptr]
             return 0 if pointer == 0.uintptr()
             trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic]:
                 byte: u8& = (pointer + index.uintptr()).cast[u8&]

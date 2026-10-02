@@ -58,15 +58,91 @@ def has_widget_text(expected: sview) -> bool:
             return true if row.text == expected
     return false
 
+def has_resource_status_action(title: sview, role: UiCore::AccessibilityRole, action: UiHandles::Handle) -> bool:
+    for index in 0..<UiCore::accessibility_count():
+        record: UiCore::AccessibilityNode = UiCore::accessibility_at(index)
+        return record.role == role and record.action == UiHandles::index(action) if record.label == title
+    return false
+
+def frame_has_resource_image(resource: UiResources::ResourceHandle) -> bool:
+    for index in 0..<UiCore::command_count():
+        match UiCore::command_at(index):
+            UiCore::Command.DrawImage(draw):
+                return true if draw.image.slot == resource.slot and draw.image.generation == resource.generation
+            _:
+                pass
+    return false
+
+def preview_well_width() -> f32:
+    handle: UiHandles::Handle = HelloResourceDemo::renderer_content()
+    if UiHandles::widget(handle) is row:
+        return row.width
+    return 0.0
+
+def preview_well_height() -> f32:
+    handle: UiHandles::Handle = HelloResourceDemo::renderer_content()
+    if UiHandles::widget(handle) is row:
+        return row.height
+    return 0.0
+
+def frame_has_resource_surface(r: u8, g: u8, b: u8) -> bool:
+    handle: UiHandles::Handle = HelloResourceDemo::renderer_content()
+    if UiHandles::widget(handle) is well:
+        for command_index in 0..<UiCore::command_count():
+            match UiCore::command_at(command_index):
+                UiCore::Command.FillRect(surface, color):
+                    return true if surface.size.width == well.width and surface.size.height == well.height and color.r == r and color.g == g and color.b == b and color.a == 255
+                _:
+                    pass
+    return false
+
 def main() -> i64:
+    UiResources::reset()
+    other_owner_resource: UiResources::ResourceHandle = UiResources::request("images/other-owner", 901)
+    check("resource isolation fixture starts valid", UiResources::resource_is_valid(other_owner_resource))
     UiCore::set_viewport(800.0, 680.0)
     app_init()
+    check("hello resource demo restart preserves other owners", UiResources::resource_is_valid(other_owner_resource) and UiResources::owns(other_owner_resource, 901))
     UiCore::begin_frame()
     app_frame()
 
     check("showcase builds a retained application tree", UiHandles::count() > 20 and UiCore::command_count() > 20)
+    if UiHandles::widget(HelloApp::content_handle()) is content_viewport:
+        check("long Hello content scrolls instead of shrinking reserved components", content_viewport.kind == UiConst::WidgetKind.Scroll)
+    else:
+        check("long Hello content uses a scroll viewport", false)
     check("showcase emits custom vector art inside the retained frame", custom_art_command_count() >= 6)
     check("showcase publishes semantic controls", UiCore::accessibility_count() > 10)
+    initial_resource: UiResources::ResourceHandle = HelloResourceDemo::renderer_resource()
+    resource_progress: UiHandles::Handle = HelloResourceDemo::renderer_progress()
+    check("resource demo reserves a stable preview well with a loading placeholder", frame_has_resource_surface(42, 46, 56))
+    check("resource preview reserves stable 180px width", preview_well_width() == 180.0)
+    check("resource preview reserves stable 48px height", preview_well_height() == 48.0)
+    check("unfinished resource generation is not painted as an image", not frame_has_resource_image(initial_resource))
+    check("resource progress control is visible while loading", UiHandles::is_visible(resource_progress))
+    check("visible resource component publishes a bounded owner hint", UiResources::is_demanded_for_owner(initial_resource, 77) and UiResources::demand_priority_for_owner(initial_resource, 77) == 60)
+
+    check("host can finish decode while upload remains pending", UiResources::set_progress(initial_resource, 1.0, 1.0) and HelloResourceDemo::renderer_refresh())
+    check("retained progress does not imply Ready after decode", UiResources::state(initial_resource) == UiResources::State.Requested and UiHandles::value(resource_progress) == 0.0)
+    check("partial renderer upload updates the retained progress bar", UiResources::set_upload_progress(initial_resource, 0.4) and HelloResourceDemo::renderer_refresh() and UiHandles::value(resource_progress) == 0.4)
+
+    # Async host results pass through the same presentation refresh as local
+    # controls, including offline/denied recovery and a fresh generation.
+    check("host offline transition is accepted", UiResources::set_state(initial_resource, UiResources::State.UnavailableOffline) and HelloResourceDemo::renderer_refresh())
+    check("offline host state updates retained status and retry", has_widget_text("Resource unavailable offline") and UiHandles::is_enabled(widget_with_kind_and_text(UiConst::WidgetKind.Button, "Retry")))
+    check("offline host state hides the loading progress control", not UiHandles::is_visible(resource_progress))
+    check("offline state retains demand for explicit recovery", UiResources::is_demanded_for_owner(initial_resource, 77))
+    UiCore::begin_frame()
+    app_frame()
+    check("offline host state paints its recoverable fallback", frame_has_resource_surface(92, 48, 54))
+    check("resource alert semantics target the retained retry button", has_resource_status_action("Resource unavailable offline", UiCore::AccessibilityRole.Alert, widget_with_kind_and_text(UiConst::WidgetKind.Button, "Retry")))
+    app_event(UiCore::KeyEvent.Down(UiCore::Key.Y))
+    check("offline retry rotates generation and retains viewport demand", HelloResourceDemo::renderer_resource().generation != initial_resource.generation and UiHandles::is_visible(resource_progress) and UiResources::demand_priority_for_owner(HelloResourceDemo::renderer_resource(), 77) == 60)
+    denied_resource: UiResources::ResourceHandle = HelloResourceDemo::renderer_resource()
+    check("host denial transition is accepted", UiResources::set_state(denied_resource, UiResources::State.Denied) and HelloResourceDemo::renderer_refresh())
+    check("denied host state exposes recovery copy and retry", has_widget_text("Resource access denied") and UiHandles::is_enabled(widget_with_kind_and_text(UiConst::WidgetKind.Button, "Retry")))
+    app_event(UiCore::KeyEvent.Down(UiCore::Key.Y))
+    check("denied retry starts another clean loading generation", HelloResourceDemo::renderer_resource().generation != denied_resource.generation and UiHandles::is_visible(resource_progress))
 
     # The shipped catalog and slider are public application callbacks over the
     # retained tree. Keep their state changes in this workflow fixture rather
@@ -90,7 +166,7 @@ def main() -> i64:
         app_event(UiCore::PointerEvent.Up(centre, UiCore::PointerButton.Primary.i32()))
         check("showcase pointer flow focuses the text field", UiHandles::is_focused(field))
         app_event(UiCore::KeyEvent.Down(UiCore::Key.F))
-        check("typing a shortcut letter does not fail the preview", not has_widget_text("Preview failed — retry or keep working offline."))
+        check("typing a shortcut letter does not fail the preview", not has_widget_text("Resource failed to load"))
         app_text_input(" • café 👋")
         check("showcase commits UTF-8 text through its public callback", UiHandles::text_value(field) == "Canvas study • café 👋")
         app_text_editing("候補", 0, 1)
@@ -133,17 +209,48 @@ def main() -> i64:
     # the replacement frame immediately catches stale presentation state that
     # a helper-only resource test cannot see.
     app_event(UiCore::KeyEvent.Down(UiCore::Key.F))
-    check("showcase exposes a retryable resource failure", has_widget_text("Preview failed — retry or keep working offline."))
+    check("showcase exposes a retryable resource failure", has_widget_text("Resource failed to load"))
+    check("resource progress control hides for a terminal failure", not UiHandles::is_visible(resource_progress))
+    UiCore::begin_frame()
+    app_frame()
+    check("failed resource paints the generic fallback in the reserved well", frame_has_resource_surface(92, 48, 54))
+    check("failed generation removes any retained image", not frame_has_resource_image(HelloResourceDemo::renderer_resource()))
     app_event(UiCore::KeyEvent.Down(UiCore::Key.Y))
-    check("showcase replaces failed resources before replay", has_widget_text("Optional preview loading…"))
+    check("showcase replaces failed resources before replay", has_widget_text("Loading resource"))
+    check("retry restores the loading progress control", UiHandles::is_visible(resource_progress))
     UiCore::begin_frame()
     app_frame()
     check("replacement resource frame remains semantically complete", UiCore::command_count() > 20 and UiCore::accessibility_count() > 10)
+    replacement_resource: UiResources::ResourceHandle = HelloResourceDemo::renderer_resource()
+    check("retry keeps the reserved preview visible while the new generation loads", frame_has_resource_surface(42, 46, 56) and replacement_resource.generation != initial_resource.generation)
+    check("retry does not replay the prior generation's image", not frame_has_resource_image(initial_resource) and not frame_has_resource_image(replacement_resource))
+    app_event(UiCore::KeyEvent.Down(UiCore::Key.C))
+    check("resource progress control hides when the image is ready", not UiHandles::is_visible(resource_progress))
+    check("host refresh accepts the completed generation", HelloResourceDemo::renderer_refresh())
+    check("ready resource releases its visibility demand", not UiResources::is_demanded_for_owner(replacement_resource, 77))
+    UiCore::begin_frame()
+    app_frame()
+    check("ready resource uses its exact logical identity in the retained image command", frame_has_resource_image(replacement_resource))
+    check("ready resource removes the loading placeholder", not frame_has_resource_surface(42, 46, 56))
+
+    # Cancellation can arrive after a generation was displayed. The retained
+    # image must be removed before an explicit reload creates a fresh identity.
+    check("host cancellation of a ready image is accepted", UiResources::cancel(replacement_resource) and HelloResourceDemo::renderer_refresh())
+    check("cancelled image publishes its recoverable status", has_widget_text("Resource loading cancelled") and not UiHandles::is_visible(resource_progress))
+    UiCore::begin_frame()
+    app_frame()
+    check("cancelled generation paints fallback instead of stale image", frame_has_resource_surface(92, 48, 54) and not frame_has_resource_image(replacement_resource))
+    app_event(UiCore::KeyEvent.Down(UiCore::Key.L))
+    reloaded_resource: UiResources::ResourceHandle = HelloResourceDemo::renderer_resource()
+    check("explicit reload replaces the cancelled generation", reloaded_resource.generation != replacement_resource.generation and UiResources::state(reloaded_resource) == UiResources::State.Requested)
+    check("explicit reload restores loading presentation", has_widget_text("Loading resource") and UiHandles::is_visible(resource_progress))
+    check("explicit reload republishes the visible resource hint", UiResources::demand_priority_for_owner(reloaded_resource, 77) == 60)
 
     # Reinitialization is a real lifecycle boundary. The old typed field and
     # its validation owner must be stale before the replacement tree is used.
     old_field: UiHandles::Handle = field
     app_init()
+    check("repeated hello initialization still preserves other owners", UiResources::resource_is_valid(other_owner_resource) and UiResources::owns(other_owner_resource, 901))
     replacement_field: UiHandles::Handle = widget_with_kind(UiConst::WidgetKind.TextField)
     check("showcase restart retires old field identity", not UiHandles::is_valid(old_field) and UiHandles::is_valid(replacement_field))
     check("showcase restart revalidates replacement field", has_widget_text("Project name looks good."))
@@ -153,6 +260,17 @@ def main() -> i64:
     else:
         check("showcase restart retains the theme control", false)
 
+    # The narrow layout uses two compact action rows while preserving the same
+    # image reservation and placeholder contract as the desktop reference.
+    UiCore::set_viewport(390.0, 844.0)
+    app_init()
+    UiCore::begin_frame()
+    app_frame()
+    check("phone-width showcase keeps the preview reservation", preview_well_width() == 180.0 and preview_well_height() == 48.0)
+    check("phone-width loading state paints inside its retained preview well", frame_has_resource_surface(42, 46, 56))
+    check("phone-width showcase retains its action and status semantics", UiCore::accessibility_count() > 10)
+
+    _ = UiOwnerLifecycle::dispose_owner(901)
     return failures.i64()
 
 def custom_art_command_count() -> i32:

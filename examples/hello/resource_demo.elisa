@@ -3,47 +3,55 @@
 # This is a deterministic demo of the same resource states a real host would
 # report asynchronously. The host still owns verified bytes and decoding; the
 # example only exercises Elisa's visible state and recovery policy. The
-# generic resource-presentation mapper is covered independently by its tests;
-# this app keeps its include graph small enough for every shared entry point.
+# retained UiResourceComponent owns the preview, status, progress, and retry UI.
 
-include "../../src/widgets/ui_resources.elisa"
+include "../../src/widgets/ui_resource_presentation.elisa"
+include "../../src/widgets/ui_resource_component.elisa"
+include "../../src/widgets/ui_owner_lifecycle.elisa"
 include "../../src/widgets/ui_handles.elisa"
 
 module HelloResourceDemo:
     private:
-        global mutable hello_resource_asset: UiResources::ResourceHandle = UiResources::resource_invalid()
-        global mutable hello_resource_heading: UiHandles::Handle = UiHandles::invalid()
-        global mutable hello_resource_status: UiHandles::Handle = UiHandles::invalid()
-        global mutable hello_resource_progress: UiHandles::Handle = UiHandles::invalid()
-        global mutable hello_resource_load_button: UiHandles::Handle = UiHandles::invalid()
-        global mutable hello_resource_complete_button: UiHandles::Handle = UiHandles::invalid()
-        global mutable hello_resource_fail_button: UiHandles::Handle = UiHandles::invalid()
-        global mutable hello_resource_retry_button: UiHandles::Handle = UiHandles::invalid()
+        const HELLO_RESOURCE_PREVIEW_WIDTH: f32 = 180.0
+        const HELLO_RESOURCE_PREVIEW_HEIGHT: f32 = 48.0
+        const HELLO_RESOURCE_DEMAND_PRIORITY: u32 = 60
+        global mutable hello_resource_asset: UiResources::ResourceHandle = UI_RESOURCE_INVALID_HANDLE
+        global mutable hello_resource_root: UiHandles::Handle = UI_HANDLES_INVALID_HANDLE
+        global mutable hello_resource_content: UiHandles::Handle = UI_HANDLES_INVALID_HANDLE
+        global mutable hello_resource_title: UiHandles::Handle = UI_HANDLES_INVALID_HANDLE
+        global mutable hello_resource_detail: UiHandles::Handle = UI_HANDLES_INVALID_HANDLE
+        global mutable hello_resource_progress: UiHandles::Handle = UI_HANDLES_INVALID_HANDLE
+        global mutable hello_resource_action: UiHandles::Handle = UI_HANDLES_INVALID_HANDLE
+        global mutable hello_resource_load_button: UiHandles::Handle = UI_HANDLES_INVALID_HANDLE
+        global mutable hello_resource_complete_button: UiHandles::Handle = UI_HANDLES_INVALID_HANDLE
+        global mutable hello_resource_fail_button: UiHandles::Handle = UI_HANDLES_INVALID_HANDLE
 
         def hello_resource_color(r: u8, g: u8, b: u8) -> UiCore::Color:
             return UiCore::rgb(r, g, b)
 
+        def hello_resource_options() -> UiResourcePresentation::Options:
+            options: mutable UiResourcePresentation::Options = UiResourcePresentation::default_options(UiResourcePresentation::Kind.Image)
+            options.reserved_width <- HELLO_RESOURCE_PREVIEW_WIDTH
+            options.reserved_height <- HELLO_RESOURCE_PREVIEW_HEIGHT
+            return options
+
+        def hello_resource_component_view() -> UiResourceComponent::View:
+            options: UiResourcePresentation::Options = hello_resource_options()
+            record: UiResourcePresentation::Record = UiResourcePresentation::record_for_owner(hello_resource_asset, 77, options)
+            return UiResourceComponent::View{record: record, options: options, root: hello_resource_root, content: hello_resource_content, title: hello_resource_title, detail: hello_resource_detail, progress: hello_resource_progress, action: hello_resource_action}
+
         def hello_resource_update_view() -> void:
-            display: UiResources::State = UiResources::state(hello_resource_asset)
-            if display == UiResources::State.Requested:
-                UiHandles::set_text(hello_resource_status, "Optional preview loading…", 13.0, hello_resource_color(182, 190, 208))
-            elif display == UiResources::State.Ready:
-                UiHandles::set_text(hello_resource_status, "Optional preview ready.", 13.0, hello_resource_color(125, 206, 158))
-            elif display == UiResources::State.Failed:
-                UiHandles::set_text(hello_resource_status, "Preview failed — retry or keep working offline.", 13.0, hello_resource_color(232, 152, 132))
-            elif display == UiResources::State.UnavailableOffline:
-                UiHandles::set_text(hello_resource_status, "Preview unavailable offline.", 13.0, hello_resource_color(232, 188, 132))
-            elif display == UiResources::State.Cancelled:
-                UiHandles::set_text(hello_resource_status, "Preview request cancelled.", 13.0, hello_resource_color(182, 190, 208))
-            else:
-                UiHandles::set_text(hello_resource_status, "Preview has not been requested.", 13.0, hello_resource_color(182, 190, 208))
-            UiHandles::set_value(hello_resource_progress, UiResources::decoded_progress(hello_resource_asset))
-            UiHandles::set_enabled(hello_resource_retry_button, UiResources::can_retry(hello_resource_asset))
+            return if not UiResources::resource_is_valid(hello_resource_asset)
+            _ = UiResourceComponent::refresh(hello_resource_component_view())
 
         def hello_resource_load() -> void:
             return if not UiResources::resource_is_valid(hello_resource_asset)
             if UiResources::state(hello_resource_asset) == UiResources::State.Cancelled:
                 hello_resource_asset <- UiResources::request("images/reference-preview", 77)
+                return if not UiResources::resource_is_valid(hello_resource_asset)
+                _ = UiResources::set_intrinsic_size(hello_resource_asset, HELLO_RESOURCE_PREVIEW_WIDTH, HELLO_RESOURCE_PREVIEW_HEIGHT)
+                rebound: UiResourceComponent::View = UiResourceComponent::rebind(hello_resource_component_view(), hello_resource_asset)
+                _ = UiResourceComponent::set_visibility_demand(rebound, true, HELLO_RESOURCE_DEMAND_PRIORITY)
             _ = UiResources::set_progress(hello_resource_asset, 0.35, 0.20)
             hello_resource_update_view()
 
@@ -59,17 +67,42 @@ module HelloResourceDemo:
             hello_resource_update_view()
 
         def hello_resource_retry() -> void:
-            replacement: UiResources::ResourceHandle = UiResources::retry(hello_resource_asset)
-            return if not UiResources::resource_is_valid(replacement)
-            hello_resource_asset <- replacement
-            hello_resource_update_view()
+            result: UiResourceComponent::ActionResult = UiResourceComponent::perform_action(hello_resource_component_view())
+            return if not result.changed
+            updated_view: UiResourceComponent::View = result.view
+            updated_record: UiResourcePresentation::Record = updated_view.record
+            hello_resource_asset <- updated_record.handle
 
     public:
+        # Called after retained widgets paint so loading/fallback decorations
+        # occupy the preview's reserved box in the ordinary backend command
+        # stream. Ready pixels remain a normal retained image draw.
+        def paint() -> void:
+            view: UiResourceComponent::View = hello_resource_component_view()
+            _ = UiResourceComponent::paint_content(view)
+            if UiHandles::widget(view.title) is status:
+                frame: UiCore::Rect = UiCore::Rect(status.x, status.y, status.width, status.height)
+                _ = UiResourceComponent::publish_accessibility(view, frame)
+
+        # A host calls this after an asynchronous resource update so retained
+        # status, progress, retry availability, and image identity stay in step
+        # with the shared resource record.
+        def renderer_refresh() -> bool:
+            return false if not UiResources::resource_is_valid(hello_resource_asset)
+            hello_resource_update_view()
+            return true
+
         # Renderer adapters may inspect the logical asset identity without
         # reaching into this demo's private state. The returned handle is
         # generation checked by UiResources at every use.
         def renderer_resource() -> UiResources::ResourceHandle:
             return hello_resource_asset
+
+        def renderer_content() -> UiHandles::Handle:
+            return hello_resource_content
+
+        def renderer_progress() -> UiHandles::Handle:
+            return hello_resource_progress
 
         # A host fixture can provide a decoded image after the app has
         # requested it. Keep the state transition in Elisa so the renderer
@@ -77,10 +110,9 @@ module HelloResourceDemo:
         # resource is ready.
         def renderer_mark_ready() -> bool:
             return false if not UiResources::resource_is_valid(hello_resource_asset)
-            return true if UiResources::state(hello_resource_asset) == UiResources::State.Ready
-            return false if not UiResources::set_state(hello_resource_asset, UiResources::State.Ready)
-            hello_resource_update_view()
-            return true
+            if UiResources::state(hello_resource_asset) != UiResources::State.Ready:
+                return false if not UiResources::set_state(hello_resource_asset, UiResources::State.Ready)
+            return renderer_refresh()
 
         # Replace a loaded image before the renderer replays its deferred
         # draws. Ready content is stable for its generation, so replacement is
@@ -98,32 +130,39 @@ module HelloResourceDemo:
             _ = UiResources::set_intrinsic_size(replacement, 180.0, 48.0)
             return UiResources::resource_invalid() if not UiResources::set_state(replacement, UiResources::State.Ready)
             hello_resource_asset <- replacement
-            hello_resource_update_view()
+            _ = UiResourceComponent::rebind(hello_resource_component_view(), replacement)
             return replacement
 
         def init(parent: UiHandles::Handle) -> void:
-            UiResources::reset()
-            panel: UiHandles::Handle = UiHandles::column(parent, 0.0, 6.0, UiCore::Color{r: 0, g: 0, b: 0, a: 0})
+            _ = UiOwnerLifecycle::dispose_owner(77)
+            panel: UiHandles::Handle = UiHandles::column(parent, 0.0, 4.0, UiCore::Color{r: 0, g: 0, b: 0, a: 0})
             UiHandles::set_grow(panel, 0.0)
-            hello_resource_heading <- UiHandles::label(panel, "Optional preview", 14.0, hello_resource_color(148, 158, 180))
-            UiHandles::set_help(hello_resource_heading, "A host-owned asset with explicit loading and failure states")
-            hello_resource_status <- UiHandles::label(panel, "", 13.0, hello_resource_color(182, 190, 208))
-            hello_resource_progress <- UiHandles::progress_bar_labeled(panel, "Preview progress", 180.0, 8.0, 0.0, hello_resource_color(54, 61, 78), hello_resource_color(84, 148, 210))
-            hello_resource_load_button <- UiHandles::button(panel, 92.0, 30.0, hello_resource_color(48, 54, 68), hello_resource_color(62, 70, 88), hello_resource_color(35, 40, 52))
-            hello_resource_complete_button <- UiHandles::button(panel, 92.0, 30.0, hello_resource_color(48, 54, 68), hello_resource_color(62, 70, 88), hello_resource_color(35, 40, 52))
-            hello_resource_fail_button <- UiHandles::button(panel, 92.0, 30.0, hello_resource_color(92, 56, 58), hello_resource_color(116, 68, 70), hello_resource_color(70, 42, 44))
-            hello_resource_retry_button <- UiHandles::button(panel, 92.0, 30.0, hello_resource_color(48, 54, 68), hello_resource_color(62, 70, 88), hello_resource_color(35, 40, 52))
+            hello_resource_asset <- UiResources::request("images/reference-preview", 77)
+            _ = UiResources::set_intrinsic_size(hello_resource_asset, HELLO_RESOURCE_PREVIEW_WIDTH, HELLO_RESOURCE_PREVIEW_HEIGHT)
+            component: mutable UiResourceComponent::View = UiResourceComponent::build(panel, hello_resource_asset, 77, hello_resource_options())
+            component <- UiResourceComponent::set_visibility_demand(component, true, HELLO_RESOURCE_DEMAND_PRIORITY)
+            hello_resource_root <- component.root
+            hello_resource_content <- component.content
+            hello_resource_title <- component.title
+            hello_resource_detail <- component.detail
+            hello_resource_progress <- component.progress
+            hello_resource_action <- component.action
+            first_actions: UiHandles::Handle = UiHandles::row(panel, 0.0, 6.0, UiCore::Color{r: 0, g: 0, b: 0, a: 0})
+            UiHandles::set_grow(first_actions, 0.0)
+            hello_resource_load_button <- UiHandles::button(first_actions, 92.0, 30.0, hello_resource_color(48, 54, 68), hello_resource_color(62, 70, 88), hello_resource_color(35, 40, 52))
+            hello_resource_complete_button <- UiHandles::button(first_actions, 92.0, 30.0, hello_resource_color(48, 54, 68), hello_resource_color(62, 70, 88), hello_resource_color(35, 40, 52))
+            if UiCore::viewport_width() >= 600.0:
+                hello_resource_fail_button <- UiHandles::button(first_actions, 92.0, 30.0, hello_resource_color(92, 56, 58), hello_resource_color(116, 68, 70), hello_resource_color(70, 42, 44))
+            else:
+                second_actions: UiHandles::Handle = UiHandles::row(panel, 0.0, 6.0, UiCore::Color{r: 0, g: 0, b: 0, a: 0})
+                UiHandles::set_grow(second_actions, 0.0)
+                hello_resource_fail_button <- UiHandles::button(second_actions, 92.0, 30.0, hello_resource_color(92, 56, 58), hello_resource_color(116, 68, 70), hello_resource_color(70, 42, 44))
             UiHandles::set_text(hello_resource_load_button, "Load", 12.0, hello_resource_color(238, 242, 250))
             UiHandles::set_text(hello_resource_complete_button, "Complete", 12.0, hello_resource_color(238, 242, 250))
             UiHandles::set_text(hello_resource_fail_button, "Fail", 12.0, hello_resource_color(255, 230, 230))
-            UiHandles::set_text(hello_resource_retry_button, "Retry", 12.0, hello_resource_color(238, 242, 250))
             UiHandles::set_help(hello_resource_load_button, "Simulate a host progress update (keyboard: L)")
             UiHandles::set_help(hello_resource_complete_button, "Simulate verified decode completion (keyboard: C)")
             UiHandles::set_help(hello_resource_fail_button, "Simulate a retryable transport error (keyboard: F)")
-            UiHandles::set_help(hello_resource_retry_button, "Start a fresh generation after failure (keyboard: Y)")
-            hello_resource_asset <- UiResources::request("images/reference-preview", 77)
-            _ = UiResources::set_intrinsic_size(hello_resource_asset, 180.0, 48.0)
-            hello_resource_update_view()
 
         def widget_event(widget: usize, event: i32) -> bool:
             return false if not UiHandles::event_is(event, UiConst::WidgetEvent.Click)
@@ -136,7 +175,7 @@ module HelloResourceDemo:
             if UiHandles::callback_matches(widget, hello_resource_fail_button):
                 hello_resource_fail()
                 return true
-            if UiHandles::callback_matches(widget, hello_resource_retry_button):
+            if UiHandles::callback_matches(widget, hello_resource_action):
                 hello_resource_retry()
                 return true
             return false

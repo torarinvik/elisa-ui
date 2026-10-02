@@ -2,7 +2,7 @@
 
 include "./widget_layout_support.elisa"
 
-def main() -> i64:
+def main() -> i64 can[Unsafe.PointerCast]:
     UiFlat::reset()
     base_theme: UiFlat::Theme = UiFlat::theme()
     field: usize = UiFlat::text_field(UiFlat::NONE, "Project name", "Type a name", "Hi", 220.0, 36.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
@@ -80,28 +80,28 @@ def main() -> i64:
     invalid_utf8[0] <- 65
     invalid_utf8[1] <- 255
     invalid_utf8[2] <- 66
-    UiFlat::replace_text(field, sview(&invalid_utf8[0], 0, 3))
+    UiFlat::replace_text(field, UiText::fixed_bytes_view_range[8](invalid_utf8, 0, 3))
     check("malformed UTF-8 is rejected at the first invalid sequence", UiFlat::text_value(field) == "A")
     check("malformed input reports truncation", UiFlat::text_was_truncated(field))
     invalid_utf8[0] <- 224
     invalid_utf8[1] <- 128
     invalid_utf8[2] <- 128
-    UiFlat::replace_text(field, sview(&invalid_utf8[0], 0, 3))
+    UiFlat::replace_text(field, UiText::fixed_bytes_view_range[8](invalid_utf8, 0, 3))
     check("overlong UTF-8 is rejected", UiFlat::text_value(field).len == 0)
     invalid_utf8[0] <- 237
     invalid_utf8[1] <- 160
     invalid_utf8[2] <- 128
-    UiFlat::replace_text(field, sview(&invalid_utf8[0], 0, 3))
+    UiFlat::replace_text(field, UiText::fixed_bytes_view_range[8](invalid_utf8, 0, 3))
     check("UTF-8 surrogate encodings are rejected", UiFlat::text_value(field).len == 0)
     invalid_utf8[0] <- 244
     invalid_utf8[1] <- 144
     invalid_utf8[2] <- 128
     invalid_utf8[3] <- 128
-    UiFlat::replace_text(field, sview(&invalid_utf8[0], 0, 4))
+    UiFlat::replace_text(field, UiText::fixed_bytes_view_range[8](invalid_utf8, 0, 4))
     check("UTF-8 beyond Unicode's maximum is rejected", UiFlat::text_value(field).len == 0)
     invalid_utf8[0] <- 240
     invalid_utf8[1] <- 159
-    UiFlat::replace_text(field, sview(&invalid_utf8[0], 0, 2))
+    UiFlat::replace_text(field, UiText::fixed_bytes_view_range[8](invalid_utf8, 0, 2))
     check("truncated UTF-8 is rejected", UiFlat::text_value(field).len == 0)
     UiFlat::replace_text(field, "Hi!")
     check("valid replacement clears truncation status", not UiFlat::text_was_truncated(field))
@@ -168,13 +168,13 @@ def main() -> i64:
     UiFlat::commit_text("å", 0, 0, false)
     check("committed input replaces and clears marked text", UiFlat::text_value(field) == "Cafeå" and UiFlat::widget(field).marked_start == 0 and UiFlat::widget(field).marked_end == 0)
     invalid_utf8[0] <- 255
-    UiFlat::commit_text(sview(&invalid_utf8[0], 0, 1), 0, 0, false)
+    UiFlat::commit_text(UiText::fixed_bytes_view_range[8](invalid_utf8, 0, 1), 0, 0, false)
     check("malformed committed text reports truncation", UiFlat::text_was_truncated(field))
     UiFlat::replace_text(field, "Cafeå")
-    UiFlat::update_marked_text(sview(&invalid_utf8[0], 0, 1), 0, 0, 0, 0, false)
+    UiFlat::update_marked_text(UiText::fixed_bytes_view_range[8](invalid_utf8, 0, 1), 0, 0, 0, 0, false)
     check("malformed marked text reports truncation", UiFlat::text_was_truncated(field))
     UiFlat::replace_text(field, "Cafeå")
-    UiFlat::update_marked_text_utf8_characters(sview(&invalid_utf8[0], 0, 1), 0, 0)
+    UiFlat::update_marked_text_utf8_characters(UiText::fixed_bytes_view_range[8](invalid_utf8, 0, 1), 0, 0)
     check("malformed SDL composition reports truncation", UiFlat::text_was_truncated(field))
     UiFlat::replace_text(field, "Cafeå")
     check("text history becomes undoable", UiFlat::can_undo_text())
@@ -253,17 +253,17 @@ def main() -> i64:
         long_text[index] <- 97
     long_text[1022] <- 195
     long_text[1023] <- 169
-    long_field: usize = UiFlat::text_field(UiFlat::NONE, "Bounded", "", sview(&long_text[0], 0, 1024), 220.0, 36.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
+    long_field: usize = UiFlat::text_field(UiFlat::NONE, "Bounded", "", UiText::fixed_bytes_view_range[1100](long_text, 0, 1024), 220.0, 36.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
     check("bounded initial text ends at a UTF-8 boundary", UiFlat::widget(long_field).input_length == 1022)
     check("bounded initial text reports truncation", UiFlat::text_was_truncated(long_field))
     long_text[1021] <- 101
     long_text[1022] <- 204
     long_text[1023] <- 129
-    cluster_bound_field: usize = UiFlat::text_field(UiFlat::NONE, "Cluster bounded", "", sview(&long_text[0], 0, 1024), 220.0, 36.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
+    cluster_bound_field: usize = UiFlat::text_field(UiFlat::NONE, "Cluster bounded", "", UiText::fixed_bytes_view_range[1100](long_text, 0, 1024), 220.0, 36.0, 15.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 34, 44))
     check("bounded initial text never truncates inside a grapheme", UiFlat::widget(cluster_bound_field).input_length == 1021)
-    oversized_label: usize = UiFlat::label(UiFlat::NONE, sview(&long_text[0], 0, 1100), 15.0, UiCore::rgb(240, 240, 245))
+    oversized_label: usize = UiFlat::label(UiFlat::NONE, UiText::fixed_bytes_view_range[1100](long_text, 0, 1100), 15.0, UiCore::rgb(240, 240, 245))
     check("flat labels bound borrowed text views", UiFlat::widget(oversized_label).text.len == UiCore::MAX_TEXT_BYTES.i64())
-    UiFlat::replace_text(long_field, sview(&long_text[0], 0, 2147483647))
+    UiFlat::replace_text(long_field, UiText::unsafe_sview_bounded_bytes(&long_text[0], 2147483647.usize()))
     check("text replacement keeps a UTF-8 boundary", UiFlat::widget(long_field).input_length == UiFlat::TEXT_CAPACITY - 3)
     check("text replacement reports hostile truncation", UiFlat::text_was_truncated(long_field))
 
@@ -306,7 +306,6 @@ def main() -> i64:
     UiCore::begin_frame()
     UiFlat::paint()
     check("same-length secure edits advance semantic revision", UiCore::accessibility_at(0).revision > before_revision)
-
     # Each secure field needs a stable mask for retained semantics and paint
     # commands.  A shared scratch view would make an earlier field change when
     # a later field is painted.
@@ -513,6 +512,9 @@ def main() -> i64:
     UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.C)))
     UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.RightSuper)))
     check("releasing one Command preserves shortcuts from the other", test_clipboard_value() == "copy")
+    test_clipboard_set("first\nsecond")
+    test_paste_control()
+    check("Control-V normalizes multiline clipboard text in the single-line field", UiFlat::text_value(shortcut_field) == "first second me")
 
     # A MIRRORED FIELD, DRAWN AND CLICKED THE SAME WAY. Everything a text
     # field draws or hits is a distance from the start of the visible run, and

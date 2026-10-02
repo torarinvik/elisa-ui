@@ -1,0 +1,160 @@
+# Retained accessible controls for one owner-scoped logical resource.
+#
+# The component owns only its status/control widgets. Resource identity,
+# loading, decoding, and renderer binding remain with their existing owners.
+
+include "./ui_resource_presentation.elisa"
+include "./ui_handles.elisa"
+
+module UiResourceComponent:
+    public:
+        struct View:
+            record: UiResourcePresentation::Record
+            options: UiResourcePresentation::Options
+            root: UiHandles::Handle
+            content: UiHandles::Handle
+            title: UiHandles::Handle
+            detail: UiHandles::Handle
+            progress: UiHandles::Handle
+            action: UiHandles::Handle
+
+        struct ActionResult:
+            view: View
+            action: UiResourcePresentation::Action
+            changed: bool
+
+        def build(parent: UiHandles::Handle, resource: UiResources::ResourceHandle, owner: u32, options: UiResourcePresentation::Options) -> View:
+            neutral: View = empty_view(options)
+            return neutral if not UiHandles::parent_is_valid(parent)
+            return neutral if not UiResources::resource_is_valid(resource) or not UiResources::owns(resource, owner)
+            record: UiResourcePresentation::Record = UiResourcePresentation::record_for_owner(resource, owner, options)
+            root: UiHandles::Handle = UiHandles::column(parent, 8.0, 4.0, UiCore::Color{r: 0, g: 0, b: 0, a: 0})
+            content: UiHandles::Handle = UiHandles::panel(root, UiConst::Axis.Column, 0.0, 0.0, UiCore::Color{r: 0, g: 0, b: 0, a: 0})
+            UiHandles::set_grow(content, 0.0)
+            title: UiHandles::Handle = UiHandles::label(root, record.title, 14.0, UiCore::rgb(238, 242, 250))
+            detail: UiHandles::Handle = UiHandles::label(root, record.detail, 12.0, UiCore::rgb(190, 198, 214))
+            progress: UiHandles::Handle = UiHandles::progress_bar_labeled(root, "Resource loading", 180.0, 8.0, UiResourcePresentation::displayed_progress(record), UiCore::rgb(54, 61, 78), UiCore::rgb(84, 148, 210))
+            action: UiHandles::Handle = UiHandles::button(root, 120.0, 36.0, UiCore::rgb(48, 54, 68), UiCore::rgb(62, 70, 88), UiCore::rgb(35, 40, 52))
+            view: View = View{record: record, options: options, root: root, content: content, title: title, detail: detail, progress: progress, action: action}
+            return view if not view_is_valid(view)
+            apply_record(view, record)
+            return view
+
+        # Call after the host reports a resource transition or progress
+        # change. Repeated frame reads do not start new resource operations.
+        def refresh(view: View) -> View:
+            return view if not view_is_valid(view) or not UiResources::resource_is_valid(view.record.handle)
+            if UiResources::state(view.record.handle) != UiResources::State.Requested and not UiResources::can_retry(view.record.handle):
+                _ = UiResources::clear_demand_for_owner(view.record.handle, view.record.owner)
+            record: UiResourcePresentation::Record = UiResourcePresentation::record_for_owner(view.record.handle, view.record.owner, view.options)
+            apply_record(view, record)
+            return View{record: record, options: view.options, root: view.root, content: view.content, title: view.title, detail: view.detail, progress: view.progress, action: view.action}
+
+        # Explicitly retarget a retained resource screen to a fresh generation
+        # owned by the same observer, such as after replacing a Ready image.
+        def rebind(view: View, resource: UiResources::ResourceHandle) -> View:
+            return view if not view_is_valid(view) or not UiResources::resource_is_valid(resource) or not UiResources::owns(resource, view.record.owner)
+            carries_demand: bool = UiResources::is_demanded_for_owner(view.record.handle, view.record.owner)
+            priority: u32 = UiResources::demand_priority_for_owner(view.record.handle, view.record.owner)
+            _ = UiResources::clear_demand_for_owner(view.record.handle, view.record.owner)
+            if carries_demand and (UiResources::state(resource) == UiResources::State.Requested or UiResources::can_retry(resource)):
+                _ = UiResources::set_demand_for_owner(resource, view.record.owner, priority)
+            record: UiResourcePresentation::Record = UiResourcePresentation::record_for_owner(resource, view.record.owner, view.options)
+            apply_record(view, record)
+            return View{record: record, options: view.options, root: view.root, content: view.content, title: view.title, detail: view.detail, progress: view.progress, action: view.action}
+
+        # A viewport/list owner reports visibility transitions here. Demand is
+        # owner-scoped and idempotent; it only hints which requested or
+        # retryable resource the host should prioritize, never starts a fetch.
+        def set_visibility_demand(view: View, visible: bool, priority: u32) -> View:
+            return view if not view_is_valid(view) or not UiResources::resource_is_valid(view.record.handle) or not UiResources::owns(view.record.handle, view.record.owner)
+            state: UiResources::State = UiResources::state(view.record.handle)
+            if visible and (state == UiResources::State.Requested or UiResources::can_retry(view.record.handle)):
+                _ = UiResources::set_demand_for_owner(view.record.handle, view.record.owner, priority)
+            else:
+                _ = UiResources::clear_demand_for_owner(view.record.handle, view.record.owner)
+            return refresh(view)
+
+        # Call after retained-widget painting to overlay the reserved content
+        # well with the framework-owned placeholder or recovery fallback.
+        # Ready images are ordinary generation-keyed retained image draws.
+        def paint_content(view: View) -> bool:
+            return false if not view_is_valid(view) or not UiHandles::is_visible(view.root) or not UiResources::resource_is_valid(view.record.handle)
+            return false if not UiHandles::is_visible(view.content)
+            if UiHandles::widget(view.content) is surface:
+                box: UiCore::Rect = UiCore::Rect(surface.x, surface.y, surface.width, surface.height)
+                content_record: mutable UiResourcePresentation::Record = view.record
+                content_record.progress_visible <- false
+                UiResourcePresentation::paint(box, content_record, view.options)
+                return true
+            return false
+
+        # Resolve from a fresh owner-scoped snapshot, then retain the new
+        # generation after Retry. A second activation of an old view is stale.
+        def perform_action(view: View) -> ActionResult:
+            unchanged: ActionResult = ActionResult{view: view, action: view.record.action, changed: false}
+            return unchanged if not view_is_valid(view) or not UiResources::resource_is_valid(view.record.handle)
+            current: UiResourcePresentation::Record = UiResourcePresentation::record_for_owner(view.record.handle, view.record.owner, view.options)
+            result: UiResourcePresentation::ActionResult = UiResourcePresentation::perform_action(current)
+            if result.changed and result.action == UiResourcePresentation::Action.Retry and current.demanded:
+                _ = UiResources::set_demand_for_owner(result.handle, current.owner, current.demand_priority)
+            next_record: UiResourcePresentation::Record = UiResourcePresentation::record_for_owner(result.handle, current.owner, view.options)
+            next_view: View = View{record: next_record, options: view.options, root: view.root, content: view.content, title: view.title, detail: view.detail, progress: view.progress, action: view.action}
+            apply_record(next_view, next_record)
+            if result.changed and result.action == UiResourcePresentation::Action.Cancel and UiResources::state(result.handle) == UiResources::State.Requested:
+                UiHandles::set_visible(view.root, false)
+            return ActionResult{view: next_view, action: result.action, changed: result.changed}
+
+        def publish_accessibility(view: View, frame: UiCore::Rect) -> bool:
+            return false if not view_is_valid(view) or not UiHandles::is_visible(view.root) or not UiResources::resource_is_valid(view.record.handle)
+            semantic_id: usize = UiHandles::index(view.title)
+            return false if semantic_id >= UiCore::MAX_ACCESSIBILITY_NODES
+            semantic_action: mutable usize = UiCore::MAX_ACCESSIBILITY_NODES
+            if view.record.action == UiResourcePresentation::Action.None:
+                pass
+            else:
+                return false if not action_button(view.action)
+                semantic_action <- UiHandles::index(view.action)
+            safe_frame: UiCore::Rect = UiCore::Rect(
+                UiCore::bounded_coordinate(frame.origin.x),
+                UiCore::bounded_coordinate(frame.origin.y),
+                UiCore::bounded_extent(frame.size.width),
+                UiCore::bounded_extent(frame.size.height))
+            UiCore::accessibility(view.record.role, view.record.title, view.record.help, safe_frame,
+                semantic_id, semantic_action, true, false, false, 0.0,
+                view.record.detail, "", view.record.handle.generation.usize(), 0, 0)
+            return true
+
+    private:
+        def empty_view(options: UiResourcePresentation::Options) -> View:
+            record: UiResourcePresentation::Record = UiResourcePresentation::record_for_owner(UiResources::resource_invalid(), 0, options)
+            invalid: UiHandles::Handle = UiHandles::invalid()
+            return View{record: record, options: options, root: invalid, content: invalid, title: invalid, detail: invalid, progress: invalid, action: invalid}
+
+        def view_is_valid(view: View) -> bool:
+            return UiHandles::is_valid(view.root) and UiHandles::is_valid(view.content) and UiHandles::is_valid(view.title) and UiHandles::is_valid(view.detail) and UiHandles::is_valid(view.progress) and UiHandles::is_valid(view.action)
+
+        def apply_record(view: View, record: UiResourcePresentation::Record) -> void:
+            UiHandles::set_min_size(view.content, record.reserved_size.width, record.reserved_size.height)
+            UiHandles::set_max_size(view.content, record.reserved_size.width, record.reserved_size.height)
+            UiHandles::set_visible(view.content, record.reserved_size.width > 0.0 or record.reserved_size.height > 0.0)
+            UiHandles::set_image_fit(view.content, UiCore::PictureFit.Cover)
+            UiHandles::set_help(view.content, record.title)
+            if record.kind == UiResourcePresentation::Kind.Image and record.state == UiResourcePresentation::DisplayState.Ready:
+                UiHandles::set_image(view.content, UiCore::image_ref(record.handle.slot, record.handle.generation))
+            else:
+                UiHandles::set_image(view.content, UiCore::image_ref_none())
+            UiHandles::set_text(view.title, record.title, 14.0, UiCore::rgb(238, 242, 250))
+            UiHandles::set_text(view.detail, record.detail, 12.0, UiCore::rgb(190, 198, 214))
+            UiHandles::set_value(view.progress, UiResourcePresentation::displayed_progress(record))
+            UiHandles::set_visible(view.progress, record.progress_visible)
+            UiHandles::set_text(view.action, record.action_label, 12.0, UiCore::rgb(238, 242, 250))
+            UiHandles::set_help(view.action, record.help)
+            UiHandles::set_visible(view.action, record.action != UiResourcePresentation::Action.None)
+            UiHandles::set_enabled(view.action, record.action != UiResourcePresentation::Action.None)
+
+        def action_button(handle: UiHandles::Handle) -> bool:
+            return false if not UiHandles::is_valid(handle)
+            if UiHandles::widget(handle) is widget:
+                return widget.kind == UiConst::WidgetKind.Button
+            return false

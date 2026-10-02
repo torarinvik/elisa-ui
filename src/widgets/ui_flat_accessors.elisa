@@ -280,6 +280,8 @@ extend UiFlat:
 
         def set_secure(index: usize, secure: bool) -> void:
             return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            return if widgets[index].secure == secure
+            clear_text_history() if secure
             widgets[index].secure <- secure
             mark_state_dirty()
 
@@ -309,10 +311,7 @@ extend UiFlat:
         def text_value(index: usize) -> sview:
             return "" if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
             offset: usize = index * TEXT_CAPACITY
-            # Build the borrowed view from the retained byte address directly;
-            # an intermediate slice can become a temporary when this value is
-            # stored in a semantic node or draw command.
-            return sview(&text_storage[offset], 0, widgets[index].input_length.i64())
+            return UiText::fixed_bytes_view_range[262144](text_storage, offset, widgets[index].input_length)
 
         # Whether the most recent input operation retained only a prefix due
         # to malformed UTF-8 or fixed-capacity exhaustion.

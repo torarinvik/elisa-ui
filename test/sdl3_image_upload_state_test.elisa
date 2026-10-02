@@ -1,0 +1,130 @@
+# The SDL image module is compiled without the wider host loop so its upload
+# completion contract can be exercised independently of unrelated text paths.
+
+include "../src/widgets/ui_resources.elisa"
+include "../src/core/ui_paint.elisa"
+
+extern SDL_setenv_unsafe(name: cstr, value: cstr, overwrite: i32) -> i32
+extern SDL_Init(flags: u32) -> bool
+extern SDL_CreateWindow(title: cstr, w: i32, h: i32, flags: u64) -> void&?
+extern SDL_CreateRenderer(window: void&, name: void&?) -> void&?
+extern SDL_DestroyRenderer(renderer: void&) -> void
+extern SDL_DestroyWindow(window: void&) -> void
+extern SDL_Quit() -> void
+extern puts(text: cstr) -> i64
+extern SDL_DestroyTexture(texture: void&) -> void
+extern SDL_GetPixelFormatForMasks(bits_per_pixel: i32, red_mask: u32, green_mask: u32, blue_mask: u32, alpha_mask: u32) -> u32
+extern SDL_CreateTexture(renderer: void&, format: u32, access: i32, width: i32, height: i32) -> void&?
+extern SDL_SetTextureBlendMode(texture: void&, blend_mode: u32) -> bool
+extern SDL_SetTextureScaleMode(texture: void&, scale_mode: i32) -> bool
+extern SDL_UpdateTexture(texture: void&, rect: void&?, pixels: void&, pitch: i32) -> bool
+extern SDL_GetRenderTextureAddressMode(renderer: void&, u_mode: mutable i32&, v_mode: mutable i32&) -> bool
+extern SDL_SetRenderTextureAddressMode(renderer: void&, u_mode: i32, v_mode: i32) -> bool
+extern SDL_RenderGeometryRaw(renderer: void&, texture: void&, xy: f32&, xy_stride: i32, color: f32&, color_stride: i32, uv: f32&, uv_stride: i32, num_vertices: i32, indices: void&?, num_indices: i32, size_indices: i32) -> bool
+extern SDL_SetTextureAlphaMod(texture: void&, alpha: u8) -> bool
+extern SDL_RenderTextureTiled(renderer: void&, texture: void&, source: void&?, scale: f32, destination: void&) -> bool
+extern SDL_RenderTexture(renderer: void&, texture: void&, source: void&?, destination: void&) -> bool
+extern SDL_SetRenderDrawColor(renderer: void&, r: u8, g: u8, b: u8, a: u8) -> bool
+extern SDL_RenderClear(renderer: void&) -> bool
+extern SDL_RenderPresent(renderer: void&) -> bool
+extern SDL_RenderReadPixels(renderer: void&, rect: void&?) -> void&?
+extern SDL_ReadSurfacePixel(surface: void&, x: i32, y: i32, r: mutable u8&, g: mutable u8&, b: mutable u8&, a: mutable u8&) -> bool
+extern SDL_DestroySurface(surface: void&) -> void
+
+include "../src/platform/sdl3/ui_sdl3_images.elisa"
+
+global mutable failures: i32 = 0
+
+def check(label: cstr, passed: bool) -> void:
+    if not passed:
+        failures <- failures + 1
+        _ = puts(label)
+
+def run_upload_state_checks(renderer: void&) -> UiCore::ImageRef:
+    UiResources::reset()
+    resource: UiResources::ResourceHandle = UiResources::request("sdl3-upload-state-test", 41)
+    operation_id: u64 = 4101
+    check("binds upload to its host operation", UiResources::bind_operation(resource, operation_id))
+    image: UiCore::ImageRef = UiCore::image_ref(resource.slot, resource.generation)
+    pixels: mutable u8[16] = [
+        255, 0, 0, 255, 0, 255, 0, 255,
+        0, 0, 255, 255, 255, 255, 255, 255,
+    ]
+    pixel_pointer: u8& = (&pixels[0]).cast[u8&] can Unsafe.PointerCast
+
+    check("rejects an upload before decode completes", not UiSdl3Images::bind_image_rgba32(renderer, image, pixel_pointer, 16, 2, 2, 8))
+    check("pre-decode rejection preserves the requested host operation", UiResources::state(resource) == UiResources::State.Requested and UiResources::uploaded_progress(resource) == 0.0 and UiResources::operation_for(resource) == operation_id and UiResources::operation_count() == 1)
+    check("accepts completed download and decode progress", UiResources::set_progress(resource, 1.0, 1.0))
+    check("decoded resource remains requested before renderer upload", UiResources::state(resource) == UiResources::State.Requested and UiResources::uploaded_progress(resource) == 0.0)
+    check("rejects malformed payload without completing resource", not UiSdl3Images::bind_image_rgba32(renderer, image, pixel_pointer, 15, 2, 2, 8))
+    check("failed validation leaves resource and host operation requested", UiResources::state(resource) == UiResources::State.Requested and UiResources::uploaded_progress(resource) == 0.0 and UiResources::operation_for(resource) == operation_id and UiResources::operation_count() == 1)
+    check("uploads decoded pixels", UiSdl3Images::bind_image_rgba32(renderer, image, pixel_pointer, 16, 2, 2, 8))
+    check("successful renderer upload marks resource ready", UiResources::state(resource) == UiResources::State.Ready and UiResources::uploaded_progress(resource) == 1.0)
+    check("successful renderer upload completes the bound host operation", UiResources::operation_for(resource) == 0 and UiResources::operation_count() == 0)
+    check("successful upload installs its matching retained binding", UiSdl3Images::is_image_bound(image) and UiSdl3Images::image_binding_count() == 1)
+    check("ready resources can be rebound after renderer recovery", UiSdl3Images::bind_image_rgba32(renderer, image, pixel_pointer, 16, 2, 2, 8))
+    check("rebind preserves ready state and full upload progress", UiResources::state(resource) == UiResources::State.Ready and UiResources::uploaded_progress(resource) == 1.0)
+
+    synchronous: UiResources::ResourceHandle = UiResources::request("sdl3-upload-state-no-operation", 42)
+    synchronous_image: UiCore::ImageRef = UiCore::image_ref(synchronous.slot, synchronous.generation)
+    check("synchronous resource decodes without a host operation", UiResources::set_progress(synchronous, 1.0, 1.0) and UiResources::operation_for(synchronous) == 0)
+    check("synchronous SDL upload still succeeds", UiSdl3Images::bind_image_rgba32(renderer, synchronous_image, pixel_pointer, 16, 2, 2, 8))
+    check("synchronous upload publishes ready without creating an operation", UiResources::state(synchronous) == UiResources::State.Ready and UiResources::uploaded_progress(synchronous) == 1.0 and UiResources::operation_count() == 0)
+    UiSdl3Images::clear_image_bindings()
+    return image
+
+def run_recreated_renderer_check(renderer: void&, image: UiCore::ImageRef) -> void:
+    pixels: mutable u8[16] = [
+        255, 0, 0, 255, 0, 255, 0, 255,
+        0, 0, 255, 255, 255, 255, 255, 255,
+    ]
+    pixel_pointer: u8& = (&pixels[0]).cast[u8&] can Unsafe.PointerCast
+    resource: UiResources::ResourceHandle = UiResources::ResourceHandle{slot: image.slot, generation: image.generation}
+    check("renderer recovery preserves the logical ready resource", UiResources::state(resource) == UiResources::State.Ready and UiResources::uploaded_progress(resource) == 1.0)
+    check("ready resource rebinds into the recreated SDL renderer", UiSdl3Images::bind_image_rgba32(renderer, image, pixel_pointer, 16, 2, 2, 8))
+    check("renderer recovery restores only the retained texture binding", UiSdl3Images::is_image_bound(image) and UiSdl3Images::image_binding_count() == 1 and UiResources::operation_count() == 0)
+    _ = SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255)
+    _ = SDL_RenderClear(renderer)
+    draw: UiCore::ImageDraw = UiCore::ImageDraw{
+        box: UiCore::Rect(0.0, 0.0, 2.0, 2.0), image: image, alpha: 255,
+        corner: UiCore::CornerStyle.Square, fit: UiCore::PictureFit.Stretch,
+    }
+    UiSdl3Images::draw_image(renderer, draw)
+    _ = SDL_RenderPresent(renderer)
+    red: mutable u8 = 0
+    green: mutable u8 = 0
+    blue: mutable u8 = 0
+    alpha: mutable u8 = 0
+    check("recreated renderer paints the rebound image pixels", UiSdl3Images::read_pixel_rgba(renderer, 0, 0, &red, &green, &blue, &alpha) and red == 255 and green == 0 and blue == 0 and alpha == 255)
+    UiSdl3Images::clear_image_bindings()
+
+def main() -> i32:
+    _ = SDL_setenv_unsafe("SDL_VIDEODRIVER", "dummy", 1)
+    if not SDL_Init(0x20):
+        _ = puts("FAIL SDL initialization for image upload state test")
+        return 1
+    window_opt: void&? = SDL_CreateWindow("SDL3 image upload state", 4, 4, 0)
+    if window_opt == null:
+        _ = puts("FAIL SDL dummy window for image upload state test")
+        SDL_Quit()
+        return 1
+    if window_opt is window:
+        renderer_opt: void&? = SDL_CreateRenderer(window, null)
+        if renderer_opt == null:
+            _ = puts("FAIL SDL renderer for image upload state test")
+            failures <- failures + 1
+        if renderer_opt is renderer:
+            image: UiCore::ImageRef = run_upload_state_checks(renderer)
+            SDL_DestroyRenderer(renderer)
+            recovered_renderer_opt: void&? = SDL_CreateRenderer(window, null)
+            if recovered_renderer_opt == null:
+                _ = puts("FAIL SDL renderer recreation for image upload state test")
+                failures <- failures + 1
+            if recovered_renderer_opt is recovered_renderer:
+                run_recreated_renderer_check(recovered_renderer, image)
+                SDL_DestroyRenderer(recovered_renderer)
+        SDL_DestroyWindow(window)
+    SDL_Quit()
+    if failures == 0:
+        _ = puts("SDL3 image upload state: passed")
+    return failures

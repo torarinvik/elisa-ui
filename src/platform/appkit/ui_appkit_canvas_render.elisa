@@ -159,11 +159,9 @@ extend UiAppKitCanvas:
                     accessibility_previous_ids[history_index] <- accessibility_next_ids[history_index]
                     accessibility_previous_slot_by_id[accessibility_next_ids[history_index]] <- history_index
                     accessibility_previous_handles[history_index] <- accessibility_next_handles[history_index]
-                    _ = copy_accessibility_text(accessibility_next[history_index].label, &accessibility_previous_label_storage[0], history_index)
-                    _ = copy_accessibility_text(accessibility_next[history_index].help, &accessibility_previous_help_storage[0], history_index)
                     previous_state: mutable AccessibilityState = accessibility_next[history_index]
-                    previous_state.label <- sview(&accessibility_previous_label_storage[history_index * ACCESSIBILITY_TEXT_CAPACITY], 0, previous_state.label.len)
-                    previous_state.help <- sview(&accessibility_previous_help_storage[history_index * ACCESSIBILITY_TEXT_CAPACITY], 0, previous_state.help.len)
+                    previous_state.label <- copy_accessibility_text(accessibility_next[history_index].label, accessibility_previous_label_storage, history_index)
+                    previous_state.help <- copy_accessibility_text(accessibility_next[history_index].help, accessibility_previous_help_storage, history_index)
                     accessibility_previous[history_index] <- previous_state
                 # Now that the view references the new list, release old or
                 # superseded handles that are no longer reachable from it.
@@ -199,6 +197,83 @@ extend UiAppKitCanvas:
 
         def painter() -> AppKitPainter:
             return AppKitPainter{context: current_context()}
+
+        # Keep the native callback's replay concrete. The shared generic
+        # painter interface remains available to other hosts, while AppKit's
+        # callback uses this direct path for Stage1's current trait-dispatch
+        # limits.
+        def replay_range(start: usize, end: usize) -> void can[Ui.Draw, Ui.Text, Unsafe.PointerCast]:
+            total: usize = UiCore::command_count()
+            first: usize = start if start < total else total
+            last: usize = end if end < total else total
+            return if first >= last
+            context: usize = current_context()
+            return if context == 0
+            for index in first..<last:
+                clipped: bool = UiCore::command_has_clip(index)
+                if clipped:
+                    box: UiCore::Rect = UiCore::command_clip_at(index)
+                    CGContextSaveGState(context)
+                    CGContextBeginPath(context)
+                    CGContextMoveToPoint(context, box.origin.x.f64(), box.origin.y.f64())
+                    CGContextAddLineToPoint(context, (box.origin.x + box.size.width).f64(), box.origin.y.f64())
+                    CGContextAddLineToPoint(context, (box.origin.x + box.size.width).f64(), (box.origin.y + box.size.height).f64())
+                    CGContextAddLineToPoint(context, box.origin.x.f64(), (box.origin.y + box.size.height).f64())
+                    CGContextClosePath(context)
+                    CGContextClip(context)
+                match UiCore::command_at(index):
+                    UiCore::Command.Clear(color):
+                        set_fill_color(context, color)
+                        CGContextBeginPath(context)
+                        CGContextMoveToPoint(context, 0.0, 0.0)
+                        CGContextAddLineToPoint(context, UiCore::viewport_width().f64(), 0.0)
+                        CGContextAddLineToPoint(context, UiCore::viewport_width().f64(), UiCore::viewport_height().f64())
+                        CGContextAddLineToPoint(context, 0.0, UiCore::viewport_height().f64())
+                        CGContextClosePath(context)
+                        CGContextFillPath(context)
+                    UiCore::Command.FillRect(box, color):
+                        if color.a != 0 and box.size.width > 0.0 and box.size.height > 0.0:
+                            style: UiCore::SurfaceStyle = UiCore::command_style_at(index)
+                            treatment: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for_shaped(box, style.depth, style.corner, color)
+                            draw_styled_depth_surface(context, box, treatment, color, style)
+                    UiCore::Command.FillCircle(disc, color):
+                        if color.a != 0 and disc.radius > 0.0:
+                            depth: UiCore::SurfaceDepth = UiCore::command_depth_at(index)
+                            if depth != UiCore::SurfaceDepth.Flat:
+                                draw_depth_disc(context, disc, color, depth)
+                            else:
+                                set_fill_color(context, color)
+                                CGContextBeginPath(context)
+                                CGContextAddArc(context, disc.center.x.f64(), disc.center.y.f64(), disc.radius.f64(), 0.0, 6.283185307179586, 0)
+                                CGContextFillPath(context)
+                    UiCore::Command.FillTriangle(triangle, color):
+                        set_fill_color(context, color)
+                        CGContextBeginPath(context)
+                        CGContextMoveToPoint(context, triangle.a.x.f64(), triangle.a.y.f64())
+                        CGContextAddLineToPoint(context, triangle.b.x.f64(), triangle.b.y.f64())
+                        CGContextAddLineToPoint(context, triangle.c.x.f64(), triangle.c.y.f64())
+                        CGContextClosePath(context)
+                        CGContextFillPath(context)
+                    UiCore::Command.FillLine(line, color):
+                        width: f32 = UiCore::command_stroke_width_at(index)
+                        if color.a != 0 and width > 0.0:
+                            set_stroke_color(context, color)
+                            CGContextSetLineWidth(context, width.f64())
+                            CGContextSetLineCap(context, CG_LINE_CAP_ROUND if UiPaint::stroke_cap_is_round(width) else CG_LINE_CAP_BUTT)
+                            CGContextBeginPath(context)
+                            CGContextMoveToPoint(context, line.from_point.x.f64(), line.from_point.y.f64())
+                            CGContextAddLineToPoint(context, line.to_point.x.f64(), line.to_point.y.f64())
+                            CGContextStrokePath(context)
+                    UiCore::Command.DrawImage(draw):
+                        draw_bound_picture(context, draw)
+                    UiCore::Command.DrawText(run, color):
+                        if run.text.len != 0:
+                            safe_text: sview = UiCore::bounded_text(run.text)
+                            pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
+                            semibold: i32 = 1 if run.weighted else 0
+                            draw_text_line_styled(context, pointer, safe_text.len, run.size, semibold, run.origin.x, run.origin.y, color, run.halo, run.tracking)
+                if clipped:
+                    CGContextRestoreGState(context)
 
         impl Painter for AppKitPainter:
             def push_clip(self: Self, box: UiCore::Rect) -> void can[Ui.Draw]:

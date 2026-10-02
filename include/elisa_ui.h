@@ -36,6 +36,9 @@ extern "C" {
     ((ELISA_UI_ABI_VERSION_MAJOR << 16) | \
      (ELISA_UI_ABI_VERSION_MINOR << 8) | ELISA_UI_ABI_VERSION_PATCH)
 
+/* Maximum bytes staged for one committed-text or IME dispatch. */
+#define ELISA_UI_MAX_TEXT_BYTES 1024u
+
 uint32_t elisa_ui_abi_version(void);
 
 /* THREADING AND CALLBACKS: except for the pure ABI-version query above, this
@@ -96,11 +99,12 @@ typedef struct {
 void elisa_ui_dispatch_event(int32_t kind, float x, float y,
                              float dx, float dy, int32_t code);
 /* Deliver committed UTF-8 text. The pointer is borrowed for the duration of
- * the call; a null pointer paired with a non-zero length is ignored. Lengths
- * above Elisa's bounded text budget are clipped to that prefix, while a length
- * that cannot fit the signed view extent is ignored. A nested dispatch from
- * the callback is ignored while the single Elisa-owned staging buffer is
- * borrowed by the outer call. */
+ * the call; a null pointer paired with a non-zero length is ignored. The
+ * counted payload may contain U+0000; use `length`, not `strlen`, when reading
+ * it. Lengths above ELISA_UI_MAX_TEXT_BYTES are clipped to that byte budget,
+ * while a length that cannot fit the signed view extent is ignored. A nested
+ * dispatch from the callback is ignored while the single Elisa-owned staging
+ * buffer is borrowed by the outer call. */
 void elisa_ui_dispatch_text_input(const char *text, size_t length);
 /* Deliver live IME composition text. The pointer is borrowed for the duration
  * of the call; selection offsets are UTF-8 scalar positions inside the

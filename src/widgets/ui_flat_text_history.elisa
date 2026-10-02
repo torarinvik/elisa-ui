@@ -42,6 +42,19 @@ extend UiFlat:
             history_after_marked_start[slot] <- 0
             history_after_marked_end[slot] <- 0
 
+        # History is a global chronological ring, so enabling secure entry
+        # scrubs every retained edit. This deliberately trades unrelated undo
+        # availability for a simple guarantee that no prior value survives in
+        # a slot that could later be associated with a secure field.
+        def clear_text_history() -> void:
+            for slot in 0..<TEXT_HISTORY_CAPACITY:
+                clear_history_slot(slot)
+                history_widget[slot] <- NONE
+            history_count <- 0
+            history_cursor <- 0
+            history_active <- false
+            composition_history_slot <- TEXT_HISTORY_CAPACITY
+
         def copy_history_slot(source: usize, target: usize) -> void:
             history_widget[target] <- history_widget[source]
             history_before_length[target] <- history_before_length[source]
@@ -61,6 +74,11 @@ extend UiFlat:
                 history_after_text[target_offset + byte_index] <- history_after_text[source_offset + byte_index]
 
         def store_history_state(slot: usize, index: usize, after: bool) -> void:
+            return if slot >= TEXT_HISTORY_CAPACITY or history_widget[slot] != index
+            if widgets[index].secure:
+                clear_history_slot(slot)
+                history_widget[slot] <- NONE
+                return
             source_offset: usize = index * TEXT_CAPACITY
             target_offset: usize = slot * TEXT_CAPACITY
             for byte_index in 0..<TEXT_CAPACITY:
@@ -94,7 +112,7 @@ extend UiFlat:
             return false
 
         def begin_text_history(index: usize) -> usize:
-            return TEXT_HISTORY_CAPACITY if history_suppressed or history_active
+            return TEXT_HISTORY_CAPACITY if widgets[index].secure or history_suppressed or history_active
             discarded_count: usize = history_count
             history_count <- history_cursor
             for discarded in history_count..<discarded_count:
@@ -113,7 +131,12 @@ extend UiFlat:
             return slot
 
         def finish_text_history(slot: usize, index: usize) -> void:
-            return if slot >= TEXT_HISTORY_CAPACITY
+            return if slot >= TEXT_HISTORY_CAPACITY or not history_active or history_widget[slot] != index
+            if widgets[index].secure:
+                clear_history_slot(slot)
+                history_widget[slot] <- NONE
+                history_active <- false
+                return
             store_history_state(slot, index, true)
             if history_text_changed(slot):
                 history_count <- slot + 1

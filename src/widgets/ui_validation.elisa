@@ -150,7 +150,7 @@ module UiValidation:
             return "" if not is_valid(handle)
             slot: usize = handle.slot.usize()
             offset: usize = slot * MESSAGE_CAPACITY
-            return sview(&message_storage[offset], 0, message_lengths[slot].i64())
+            return UiText::fixed_bytes_view_range[32768](message_storage, offset, message_lengths[slot])
 
         def message_truncated(handle: Handle) -> bool:
             return is_valid(handle) and message_truncated_state[handle.slot.usize()]
@@ -250,3 +250,7 @@ module UiValidation:
             # Exactly MESSAGE_CAPACITY - 1 bytes fit beside the sentinel;
             # only a longer or malformed message has actually been truncated.
             message_truncated_state[slot] <- value.len > (MESSAGE_CAPACITY - 1).i64() or value.len != safe_value.len or take < safe_value.len
+
+const UI_VALIDATION_INVALID_HANDLE: UiValidation::Handle = UiValidation::Handle{
+    slot: UiValidation::NONE.u32(), generation: 0,
+}

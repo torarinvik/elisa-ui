@@ -11,13 +11,13 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # result was a gate that failed in a suite and passed alone.
 SKIA_SHIM_DIR="$ROOT/build/showcase-skia"
 mkdir -p "$SKIA_SHIM_DIR"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
+STAGE1="$(bash "$ROOT/scripts/resolve_stage1_root.sh" "$ROOT")"
 SKIA_ROOT="${SKIA_ROOT:?set SKIA_ROOT to the pinned checkout from third_party/skia.lock}"
 SKIA_OUT="${SKIA_OUT:-$SKIA_ROOT/out/elisa}"
 RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
 SKIA_LIB="${SKIA_LIB:-$SKIA_OUT/libskia.a}"
 
-bash "$ROOT/scripts/check_toolchain.sh"
+ELISA_UI_STAGE1="$STAGE1" bash "$ROOT/scripts/check_toolchain.sh"
 bash "$ROOT/scripts/verify_skia_pin.sh"
 SKIA_ROOT="$SKIA_ROOT" SKIA_OUT="$SKIA_OUT" SKIA_LIB="$SKIA_LIB" bash "$ROOT/scripts/verify_skia_build.sh"
 [[ -f "$SKIA_LIB" ]] || { echo "skia showcase: no Skia library at $SKIA_LIB" >&2; exit 2; }
@@ -37,7 +37,8 @@ clang++ -std=c++17 -fPIC -I"$SKIA_ROOT" -c \
 clang++ -std=c++17 -fPIC -I"$SKIA_ROOT" -c \
   "$ROOT/src/platform/skia/skia_text_shim.cpp" -o "$TEXT_SHIM_OBJECT"
 
-link_inputs=("$HOST_OBJECT" "$ELISA_OBJECT" "$SHIM_OBJECT" "$TEXT_SHIM_OBJECT" "$RUNTIME" "$SKIA_LIB")
+link_inputs=("$HOST_OBJECT" "$ELISA_OBJECT" "$SHIM_OBJECT" "$TEXT_SHIM_OBJECT" "$RUNTIME"
+             "$SKIA_OUT/libskshaper.a" "$SKIA_LIB")
 for extra in "$SKIA_OUT/libpng.a" "$SKIA_OUT/libzlib.a"; do
   [[ -f "$extra" ]] && link_inputs+=("$extra")
 done
@@ -59,9 +60,20 @@ if [[ -z "$first_snapshot" ]]; then
   first_snapshot="$run_dir/showcase-first.png"
 fi
 second_snapshot="$run_dir/showcase-second.png"
-first_output="$(ELISA_UI_SKIA_RENDER_ITERATIONS="$render_iterations" "$HOST_BINARY" "$first_snapshot")"
-printf '%s\n' "$first_output"
-second_output="$(ELISA_UI_SKIA_RENDER_ITERATIONS="$render_iterations" "$HOST_BINARY" "$second_snapshot")"
+if first_output="$(ELISA_UI_SKIA_RENDER_ITERATIONS="$render_iterations" "$HOST_BINARY" "$first_snapshot")"; then
+  printf '%s\n' "$first_output"
+else
+  first_status=$?
+  printf '%s\n' "$first_output"
+  exit "$first_status"
+fi
+if second_output="$(ELISA_UI_SKIA_RENDER_ITERATIONS="$render_iterations" "$HOST_BINARY" "$second_snapshot")"; then
+  :
+else
+  second_status=$?
+  printf '%s\n' "$second_output"
+  exit "$second_status"
+fi
 second_digest="$(sed -n 's/.*pixel_digest=\([[:xdigit:]]*\).*/\1/p' <<<"$second_output" | tail -n 1)"
 first_digest="$(sed -n 's/.*pixel_digest=\([[:xdigit:]]*\).*/\1/p' <<<"$first_output" | tail -n 1)"
 [[ -n "$first_digest" && "$first_digest" == "$second_digest" ]] || {

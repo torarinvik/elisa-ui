@@ -15,7 +15,7 @@ extend UiControls:
         global mutable control_help_storage: u8[CONTROL_HINT_STORAGE_SIZE] = zeroed
 
         # The two short strings share one shape; a caller names which arena.
-        def copy_control_hint(storage: mutable u8&, index: usize, value: sview) -> sview:
+        def copy_control_hint(storage: mutable u8[CONTROL_HINT_STORAGE_SIZE]&, index: usize, value: sview) -> sview:
             return "" if index >= MAX_CONTROLS
             safe: sview = UiCore::bounded_text(value)
             offset: usize = index * CONTROL_HINT_CAPACITY
@@ -27,13 +27,13 @@ extend UiControls:
             take: usize = UiText::valid_utf8_prefix(safe, room)
             for byte_index in 0..<take:
                 storage[offset + byte_index] <- safe.data[byte_index]
-            return sview(&storage[offset], 0, take.i64())
+            return UiText::fixed_bytes_view_range[49152](storage, offset, take)
 
         def copy_control_placeholder(index: usize, value: sview) -> sview:
-            return copy_control_hint(&control_placeholder_storage[0], index, value)
+            return copy_control_hint(control_placeholder_storage, index, value)
 
         def copy_control_help(index: usize, value: sview) -> sview:
-            return copy_control_hint(&control_help_storage[0], index, value)
+            return copy_control_hint(control_help_storage, index, value)
 
     public:
         def placeholder_at(index: usize) -> sview:

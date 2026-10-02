@@ -13,7 +13,7 @@ extend UiCore:
             for index in 0..<command_total.usize():
                 clear_command_slot(index)
             for index in 0..<accessibility_total.usize():
-                old_id: usize = accessibility_nodes[index].id
+                old_id: usize = accessibility_node_at(index).id
                 accessibility_slot_by_id[old_id] <- MAX_ACCESSIBILITY_NODES if old_id < MAX_ACCESSIBILITY_NODES
                 clear_accessibility_slot(index)
             command_total <- 0
@@ -202,10 +202,10 @@ extend UiCore:
             limit: usize = MAX_TEXT_BYTES if value.len > MAX_TEXT_BYTES.i64() else value.len.usize()
             prefix: usize = UiText::valid_utf8_prefix(value, limit)
             return "" if prefix == 0
-            # Keep the caller's retained address explicit. Returning a slice
-            # expression here can materialize a temporary view when the result
-            # is stored in a semantic node or backend-owned record.
-            return sview(&value.data[0], 0, prefix.i64())
+            # Preserve the caller's storage and borrow lifetime while clipping
+            # only the counted length; rebuilding through the C-string view
+            # constructor would require an unbounded pointer scan.
+            return value[0:prefix.i64()]
 
         # Normalize values that represent a fraction or progress amount. The
         # Sanitize malformed host values before applying the ordinary lower and
@@ -333,20 +333,7 @@ extend UiCore:
             command_stroke_width[index] <- DEFAULT_STROKE_WIDTH
 
         def clear_accessibility_slot(index: usize) -> void:
-            accessibility_nodes[index] <- AccessibilityNode{
-                role: AccessibilityRole.Label, label: "", help: "",
-                frame: Rect(0.0, 0.0, 0.0, 0.0), id: MAX_ACCESSIBILITY_NODES,
-                action: 0, enabled: false, focused: false, selected: false,
-                value: 0.0, text_value: "", selected_text: "", revision: 0,
-                selection_location: 0, selection_length: 0,
-                parent_id: MAX_ACCESSIBILITY_NODES,
-                first_child_id: MAX_ACCESSIBILITY_NODES,
-                next_sibling_id: MAX_ACCESSIBILITY_NODES,
-                has_range: false, range_min: 0.0, range_max: 0.0,
-                range_conflict: false,
-                has_collection_position: false, collection_position: 0,
-                collection_size: 0, collection_count: 0,
-            }
+            accessibility_nodes[index] <- null
 
         def next_sequence(value: u32) -> u32:
             next: u32 = value + 1

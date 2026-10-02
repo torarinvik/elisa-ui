@@ -117,7 +117,7 @@ def main() -> i64:
     borrowed_caption[5] <- 110
     borrowed_caption[6] <- 97
     borrowed_caption[7] <- 108
-    borrowed_view: sview = sview(&borrowed_caption[0], 0, 8)
+    borrowed_view: sview = UiText::fixed_bytes_view_range[8](borrowed_caption, 0, 8)
     owned_label: UiHandles::Handle = UiHandles::label(root, borrowed_view, 12.0, UiCore::rgb(230, 230, 230))
     owned_field: UiHandles::Handle = UiHandles::text_field(root, borrowed_view, borrowed_view, "", 120.0, 24.0, 12.0, UiCore::rgb(230, 230, 230), UiCore::rgb(30, 30, 36))
     UiHandles::set_help(owned_field, borrowed_view)
@@ -170,14 +170,24 @@ def main() -> i64:
     UiHandles::replace_text(secret, "changed")
     check("handle text replacement stays in Elisa", UiHandles::text_value(secret) == "changed")
     UiHandles::set_secure(secret, false)
+    UiHandles::replace_text(secret, "A🙂B")
+    UiHandles::set_selection(secret, 1, 5)
+    check("byte selection of a supplementary grapheme reports UTF-16 units", UiHandles::selected_text(secret) == "🙂" and UiHandles::selection_location(secret) == 1 and UiHandles::selection_length(secret) == 2)
+    UiHandles::set_selection(secret, 2, 4)
+    check("byte selection endpoints inside a grapheme normalize safely", UiHandles::selected_text(secret) == "" and UiHandles::selection_location(secret) == 1 and UiHandles::selection_length(secret) == 0)
+    UiHandles::replace_text(secret, "AשלוםB")
+    UiHandles::set_selection(secret, 1, 9)
+    check("mixed bidi selection preserves UTF-8 bytes and UTF-16 units", UiHandles::selected_text(secret) == "שלום" and UiHandles::selection_location(secret) == 1 and UiHandles::selection_length(secret) == 4)
+    UiHandles::replace_text(secret, "changed")
     UiHandles::set_selection(secret, 0, 2)
     check("byte selection is exposed in UTF-16 units", UiHandles::selection_location(secret) == 0 and UiHandles::selection_length(secret) == 2 and UiHandles::selected_text(secret) == "ch")
     UiHandles::set_selection_utf16(secret, 2, 3)
     check("UTF-16 selection stays in Elisa", UiHandles::selected_text(secret) == "ang")
     UiHandles::set_secure(secret, true)
-    check("handle text replacement records undo", UiHandles::can_undo_text())
-    check("handle undo restores text", UiHandles::undo_text() and UiHandles::text_value(secret) == "initial")
-    check("handle redo restores text", UiHandles::redo_text() and UiHandles::text_value(secret) == "changed")
+    check("enabling secure mode removes prior handle undo", not UiHandles::can_undo_text() and not UiHandles::can_redo_text())
+    UiHandles::replace_text(secret, "new-secret")
+    check("secure handle replacement remains live", UiHandles::text_value(secret) == "new-secret")
+    check("secure handle replacement is not undoable", not UiHandles::can_undo_text() and not UiHandles::can_redo_text())
 
     # The typed persistence adapter binds application-owned IDs to live
     # controls while excluding secure fields from the serialized snapshot.
@@ -221,7 +231,7 @@ def main() -> i64:
     check("typed persistence restores ordinary text", UiHandlesPersistence::restore_text(owned_field, 101) and UiHandles::text_value(owned_field) == "persisted")
     check("typed persistence restores numeric value", UiHandlesPersistence::restore_value(slider, 103) and UiHandles::value(slider) == 0.35)
     check("typed persistence restores selection", UiHandlesPersistence::restore_selected(radio, 104) and UiHandles::selected(radio))
-    check("typed persistence never restores secure text", not UiHandlesPersistence::restore_text(secret, 102) and UiHandles::text_value(secret) == "changed")
+    check("typed persistence never restores secure text", not UiHandlesPersistence::restore_text(secret, 102) and UiHandles::text_value(secret) == "new-secret")
     UiState::begin()
     _ = UiState::put_f32(105, 4.0)
     out_of_range_length: usize = UiHandlesPersistence::copy_to(&state_blob[0], UiState::MAX_BYTES)

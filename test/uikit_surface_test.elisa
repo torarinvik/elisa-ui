@@ -144,6 +144,28 @@ def check_semantic_mapping() -> void:
     check("a text field speaks text", UiUIKit::accessibility_value_kind(UiCore::AccessibilityRole.TextField) == 3)
     check("a label speaks no value", UiUIKit::accessibility_value_kind(UiCore::AccessibilityRole.Label) == 0)
 
+def spoken_percentage_matches(item: UiVirtualAccessibility::Item, expected: sview) -> bool can Unsafe.PointerCast:
+    native: usize = UiUIKit::accessibility_value_string_for_item(item)
+    return false if native == 0
+    bytes: mutable u8[8] = zeroed
+    length: usize = UiUIKit::copy_native_string(native, &bytes[0], 8)
+    CFRelease(native)
+    return false if length.i64() != expected.len
+    for index in 0..<length:
+        return false if bytes[index] != expected.data[index]
+    return true
+
+def check_spoken_percentages() -> void can Unsafe.PointerCast:
+    item: mutable UiVirtualAccessibility::Item = UiVirtualAccessibility::empty()
+    item.role <- UiCore::AccessibilityRole.Slider
+    item.has_range <- true
+    item.value <- 0.5
+    check("a half-range slider speaks 50 percent", spoken_percentage_matches(item, "50%"))
+    item.value <- 0.0
+    check("a zero-range slider speaks 0 percent", spoken_percentage_matches(item, "0%"))
+    item.value <- 1.0
+    check("a full-range slider speaks 100 percent", spoken_percentage_matches(item, "100%"))
+
 def check_system_appearance() -> void:
     check("a fresh session assumes light, normal contrast", not UiUIKit::system_dark() and not UiUIKit::system_high_contrast() and not UiUIKit::system_reduced_motion())
     check("reduce motion is reported", UiUIKit::set_system_appearance(false, false, true, 17.0) and UiUIKit::system_reduced_motion() and UiUIKit::system_preferences().reduced_motion)
@@ -262,6 +284,7 @@ def main() -> i64 can[Ui.Draw, Ui.Text, Ui.Input, Ui.Window, Unsafe.PointerCast]
     check_capability_profile()
     check_surface_facts()
     check_semantic_mapping()
+    check_spoken_percentages()
     check_system_appearance()
     check_edit_menu()
     check_offscreen_frame()

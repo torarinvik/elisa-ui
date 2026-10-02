@@ -6,6 +6,83 @@
 // translates UIKit's notification names into the portable lifecycle signals
 // Elisa's mobile surface policy already understands.
 
+#import <AVFoundation/AVFoundation.h>
+
+enum {
+    ElisaUiKitServiceCamera = 0,
+    ElisaUiKitServiceMicrophone = 1,
+    ElisaUiKitConsentUnrequested = 0,
+    ElisaUiKitConsentGranted = 2,
+    ElisaUiKitConsentDenied = 3,
+    ElisaUiKitConsentRestricted = 4,
+    ElisaUiKitConsentFailed = 6,
+    ElisaUiKitFailureUnknown = 0,
+    ElisaUiKitFailureDenied = 1,
+    ElisaUiKitFailureRestricted = 2,
+    ElisaUiKitFailureRetryable = 4,
+};
+
+static AVMediaType elisa_uikit_media_type(int kind) {
+    if (kind == ElisaUiKitServiceCamera) return AVMediaTypeVideo;
+    if (kind == ElisaUiKitServiceMicrophone) return AVMediaTypeAudio;
+    return nil;
+}
+
+static int elisa_uikit_authorization_fact(int kind, int *state, int *failure) {
+    AVMediaType mediaType = elisa_uikit_media_type(kind);
+    if (mediaType == nil) return 0;
+    switch ([AVCaptureDevice authorizationStatusForMediaType:mediaType]) {
+        case AVAuthorizationStatusNotDetermined:
+            *state = ElisaUiKitConsentUnrequested;
+            *failure = ElisaUiKitFailureUnknown;
+            return 1;
+        case AVAuthorizationStatusAuthorized:
+            *state = ElisaUiKitConsentGranted;
+            *failure = ElisaUiKitFailureUnknown;
+            return 1;
+        case AVAuthorizationStatusDenied:
+            *state = ElisaUiKitConsentDenied;
+            *failure = ElisaUiKitFailureDenied;
+            return 1;
+        case AVAuthorizationStatusRestricted:
+            *state = ElisaUiKitConsentRestricted;
+            *failure = ElisaUiKitFailureRestricted;
+            return 1;
+        default:
+            *state = ElisaUiKitConsentFailed;
+            *failure = ElisaUiKitFailureRetryable;
+            return 1;
+    }
+}
+
+int elisa_uikit_request_permission(int kind, uint32_t slot, uint32_t generation) {
+    AVMediaType mediaType = elisa_uikit_media_type(kind);
+    if (mediaType == nil) return 0;
+    int state = ElisaUiKitConsentFailed;
+    int failure = ElisaUiKitFailureRetryable;
+    if (!elisa_uikit_authorization_fact(kind, &state, &failure)) return 0;
+    if (state != ElisaUiKitConsentUnrequested) {
+        elisa_uikit_permission_result(slot, generation, state, failure);
+        return 1;
+    }
+    [AVCaptureDevice requestAccessForMediaType:mediaType completionHandler:^(BOOL granted) {
+        const int resultState = granted ? ElisaUiKitConsentGranted : ElisaUiKitConsentDenied;
+        const int resultFailure = granted ? ElisaUiKitFailureUnknown : ElisaUiKitFailureDenied;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            elisa_uikit_permission_result(slot, generation, resultState, resultFailure);
+        });
+    }];
+    return 1;
+}
+
+static void elisa_uikit_sync_permission(int kind) {
+    int state = ElisaUiKitConsentFailed;
+    int failure = ElisaUiKitFailureRetryable;
+    if (elisa_uikit_authorization_fact(kind, &state, &failure)) {
+        elisa_uikit_permission_sync(kind, state, failure);
+    }
+}
+
 // Lifecycle signal tokens, matching uikit_lifecycle in the Elisa adapter.
 enum {
     ElisaUiKitSignalFocusGained = 0,
@@ -171,6 +248,8 @@ static int elisa_uikit_status_bar_hidden = 0;
 - (void)applicationDidBecomeActive:(UIApplication *)application {
     (void)application;
     (void)elisa_uikit_lifecycle([self elisaViewHandle], ElisaUiKitSignalFocusGained);
+    elisa_uikit_sync_permission(ElisaUiKitServiceCamera);
+    elisa_uikit_sync_permission(ElisaUiKitServiceMicrophone);
 }
 
 - (void)applicationWillResignActive:(UIApplication *)application {

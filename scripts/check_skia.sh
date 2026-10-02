@@ -11,7 +11,7 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # result was a gate that failed in a suite and passed alone.
 SKIA_SHIM_DIR="$ROOT/build/skia"
 mkdir -p "$SKIA_SHIM_DIR"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
+STAGE1="$(bash "$ROOT/scripts/resolve_stage1_root.sh" "$ROOT")"
 require_real="${ELISA_UI_REQUIRE_REAL_SKIA:-1}"
 case "$require_real" in
   0|1) ;;
@@ -25,7 +25,7 @@ esac
   echo "no stage1 product at $STAGE1/bin/elisac-stage1" >&2
   exit 2
 }
-bash "$ROOT/scripts/check_toolchain.sh"
+ELISA_UI_STAGE1="$STAGE1" bash "$ROOT/scripts/check_toolchain.sh"
 
 mkdir -p "$ROOT/build"
 bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ROOT/build/ui_skia.o" "$ROOT/src/platform/skia/ui_skia.elisa"

@@ -34,14 +34,18 @@ through `request_resource`, `set_resource_progress`, `set_resource_demand`, and
 `set_resource_state`,
 with owner-scoped `cancel_resources_for_owner` and
 `dispose_resources_for_owner` helpers for view teardown.
-`stop()` resets resource generations before making late callbacks no-ops, so an
-async completion cannot update a disposed slot.
+`stop()` resets resource generations before making late callbacks no-ops, while
+pending host operations remain visible through `resource_operation_count()` /
+`resource_operation_at()` with cancellation requested. The host can acknowledge
+them with `forget_resource_operation()` after the harness has stopped.
 
 Optional feature activation can be exercised through
 `request_feature`, `activate_feature`, `resolve_feature`, `cancel_feature`,
-and `acknowledge_feature_deactivation`. The acknowledgement requires the
-original activation token, matching the production host contract, and makes
-cancel/release tests possible without opening a window.
+and `acknowledge_feature_deactivation`. Outstanding feature deactivations are
+enumerable after stop with `feature_deactivation_count()` /
+`feature_deactivation_at()`; acknowledgement requires the original activation
+token, matching the production host contract, and makes cancel/release tests
+possible without opening a window.
 
 Remote policy can likewise be injected with `connect_remote`,
 `suspend_remote`, `resume_remote`, `submit_remote_input`, and

@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
+STAGE1="$(bash "$ROOT/scripts/resolve_stage1_root.sh" "$ROOT")"
 RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
 LOCK="$ROOT/third_party/unicode.lock"
 DATA="${ELISA_UI_UNICODE_DATA:-$ROOT/third_party/unicode/GraphemeBreakTest-15.1.0.txt}"
@@ -80,7 +80,7 @@ for index, (codepoints, breaks) in enumerate(rows):
     ])
     out.extend(f"    bytes[{position}] <- {value}" for position, value in enumerate(encoded_text))
     out.extend([
-        f"    text: sview = sview(&bytes[0], 0, {len(encoded_text)})",
+        f"    text: sview = UiText::fixed_bytes_view_range[{max(1, len(encoded_text))}](bytes, 0, {len(encoded_text)})",
         "    position: mutable usize = 0",
         "    next: mutable usize = 0",
     ])

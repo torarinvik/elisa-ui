@@ -69,6 +69,7 @@ gn_args=(
   'is_official_build=true'
   'is_component_build=false'
   'skia_enable_tools=false'
+  'skia_enable_skshaper=true'
   'skia_use_gl=false'
   'skia_use_metal=false'
   'skia_use_icu=false'
@@ -91,7 +92,7 @@ SKIA_ROOT="$SKIA_ROOT" bash "$ROOT/scripts/verify_skia_pin.sh" >/dev/null
 # gn locates the source tree by walking up for a .gn file, and this script
 # does not run from inside the checkout.
 "$GN" gen "$SKIA_OUT" --root="$SKIA_ROOT" --args="$joined_args"
-"$NINJA" -C "$SKIA_OUT" skia
+"$NINJA" -C "$SKIA_OUT" skia modules/skshaper:skshaper
 
 actual_revision="$(git -C "$SKIA_ROOT" rev-parse HEAD)"
 [[ "$actual_revision" == "$revision" ]] || {
@@ -102,11 +103,16 @@ actual_revision="$(git -C "$SKIA_ROOT" rev-parse HEAD)"
   echo "skia build: build completed without $SKIA_OUT/libskia.a" >&2
   exit 2
 }
+[[ -f "$SKIA_OUT/libskshaper.a" ]] || {
+  echo "skia build: build completed without $SKIA_OUT/libskshaper.a" >&2
+  exit 2
+}
 manifest="$SKIA_OUT/elisa-ui-skia-build.lock"
 {
   printf 'revision=%s\n' "$actual_revision"
   printf 'lock_sha256=%s\n' "$(shasum -a 256 "$LOCK" | awk '{print $1}')"
   printf 'libskia_sha256=%s\n' "$(shasum -a 256 "$SKIA_OUT/libskia.a" | awk '{print $1}')"
+  printf 'libskshaper_sha256=%s\n' "$(shasum -a 256 "$SKIA_OUT/libskshaper.a" | awk '{print $1}')"
 } > "$manifest"
 SKIA_ROOT="$SKIA_ROOT" SKIA_OUT="$SKIA_OUT" bash "$ROOT/scripts/verify_skia_build.sh"
-echo "skia build: $actual_revision -> $SKIA_OUT/libskia.a (provenance=$manifest)"
+echo "skia build: $actual_revision -> $SKIA_OUT/libskia.a + libskshaper.a (provenance=$manifest)"

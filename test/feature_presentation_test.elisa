@@ -1,0 +1,138 @@
+# Accessible status, recovery action, and paint policy for optional features.
+
+include "../src/widgets/ui_feature_presentation.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return 0
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64 can[Unsafe.PointerCast]:
+    UiFeatureView::reset()
+    UiHandles::reset()
+    UiCore::begin_frame()
+    invalid: UiFeaturePresentation::Record = UiFeaturePresentation::record(UiFeatureView::invalid())
+    check("stale feature has a neutral non-actionable record", not invalid.visible and invalid.action == UiFeaturePresentation::Action.None)
+    check("stale feature cannot publish accessibility", not UiFeaturePresentation::publish_accessibility(UiCore::Rect(0.0, 0.0, 100.0, 40.0), invalid.handle, UiHandles::invalid(), UiHandles::invalid()) and UiCore::accessibility_count() == 0)
+
+    requested: UiFeatureView::FeatureHandle = UiFeatureView::request(1, 1, "1.0.0", 10)
+    loading: UiFeaturePresentation::Record = UiFeaturePresentation::record(requested)
+    check("requested feature presents an accessible cancel action", loading.visible and loading.state == UiFeatureView::FeatureState.Requested and loading.role == UiCore::AccessibilityRole.Status and loading.action == UiFeaturePresentation::Action.Cancel and loading.action_label == "Cancel loading" and loading.title == "Loading optional feature")
+    root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 8.0, 6.0, UiCore::rgb(20, 24, 32))
+    card: UiHandles::Handle = UiHandles::column(root, 8.0, 4.0, UiCore::rgb(42, 48, 60))
+    status_label: UiHandles::Handle = UiHandles::label(card, loading.title, 14.0, UiCore::rgb(240, 240, 248))
+    detail_label: UiHandles::Handle = UiHandles::label(card, loading.detail, 12.0, UiCore::rgb(210, 216, 228))
+    cancel_button: UiHandles::Handle = UiHandles::button(card, 140.0, 36.0, UiCore::rgb(48, 58, 76), UiCore::rgb(60, 72, 94), UiCore::rgb(32, 40, 54))
+    UiHandles::set_text(cancel_button, loading.action_label, 13.0, UiCore::rgb(248, 248, 252))
+    UiHandles::set_help(cancel_button, loading.help)
+    UiHandles::layout(320.0, 160.0)
+    UiCore::begin_frame()
+    UiHandles::paint()
+    check("feature loading surface builds as an ordinary retained widget tree", UiHandles::is_valid(root) and UiHandles::is_valid(status_label) and UiHandles::is_valid(detail_label) and UiHandles::is_valid(cancel_button) and UiCore::accessibility_count() == 3)
+    check("loading semantics require a live retained action handle", not UiFeaturePresentation::publish_accessibility(UiCore::Rect(1.0, 2.0, 100.0, 40.0), requested, status_label, UiHandles::invalid()) and UiCore::accessibility_count() == 3)
+    check("loading semantics reject a retained non-action label", not UiFeaturePresentation::publish_accessibility(UiCore::Rect(1.0, 2.0, 100.0, 40.0), requested, status_label, detail_label) and UiCore::accessibility_count() == 3)
+    check("loading semantics preserve status, detail, help, and typed action", UiFeaturePresentation::publish_accessibility(UiCore::Rect(1.0, 2.0, 100.0, 40.0), requested, status_label, cancel_button) and UiCore::accessibility_count() == 3 and UiCore::accessibility_at(0).id == UiHandles::index(status_label) and UiCore::accessibility_at(0).role == UiCore::AccessibilityRole.Status and UiCore::accessibility_at(0).label == loading.title and UiCore::accessibility_at(0).text_value == loading.detail and UiCore::accessibility_at(0).help == loading.help and UiCore::accessibility_at(0).action == UiHandles::index(cancel_button))
+    check("retained cancel button is activatable through its typed handle", UiHandles::activate(cancel_button))
+    requested_peer: UiFeatureView::FeatureHandle = UiFeatureView::request(1, 1, "1.0.0", 11)
+    unauthorized: UiFeaturePresentation::ActionResult = UiFeaturePresentation::perform_action(requested, 99)
+    check("action rejects an owner without a feature lease", not unauthorized.changed and UiFeatureView::owner_count(requested) == 2 and UiFeatureView::state(requested) == UiFeatureView::FeatureState.Requested)
+    action: UiFeaturePresentation::ActionResult = UiFeaturePresentation::perform_action(requested, 10)
+    check("cancel action releases only this screen's shared activation lease", action.changed and action.action == UiFeaturePresentation::Action.Cancel and UiFeatureView::is_valid(requested_peer) and UiFeatureView::state(requested_peer) == UiFeatureView::FeatureState.Requested and UiFeatureView::owner_count(requested_peer) == 1 and UiFeatureView::owns(requested_peer, 11) and not UiFeatureView::owns(requested_peer, 10))
+    peer_action: UiFeaturePresentation::ActionResult = UiFeaturePresentation::perform_action(requested_peer, 11)
+    check("final unstarted owner cancellation releases the feature slot", peer_action.changed and peer_action.action == UiFeaturePresentation::Action.Cancel and not UiFeatureView::is_valid(requested_peer))
+
+    loading_started: UiFeatureView::FeatureHandle = UiFeatureView::request(8, 1, "1.0.0", 10)
+    _ = UiFeatureView::activate(loading_started, 2500)
+    loading_status: UiFeaturePresentation::Record = UiFeaturePresentation::record(loading_started)
+    check("active feature remains an accessible loading status", loading_status.state == UiFeatureView::FeatureState.Loading and loading_status.role == UiCore::AccessibilityRole.Status and loading_status.action == UiFeaturePresentation::Action.Cancel)
+    stopped: UiFeaturePresentation::ActionResult = UiFeaturePresentation::perform_action(loading_started, 10)
+    cancelled_status: UiFeaturePresentation::Record = UiFeaturePresentation::record(loading_started)
+    check("cancelled live feature stays visible without an action and retains deactivation key", stopped.changed and cancelled_status.visible and cancelled_status.state == UiFeatureView::FeatureState.Cancelled and cancelled_status.action == UiFeaturePresentation::Action.None and UiFeatureView::deactivation_count() == 1 and UiFeatureView::deactivation_at(0).activation_id == 2500)
+    _ = UiFeatureView::acknowledge_deactivation(loading_started, 2500)
+
+    loading_again: UiFeatureView::FeatureHandle = UiFeatureView::request(2, 1, "1.0.0", 10)
+    _ = UiFeatureView::activate(loading_again, 200)
+    _ = UiFeatureView::resolve(loading_again, 200, UiFeatureView::FeatureState.Ready, UiFeatureView::FeatureFailureKind.Unknown)
+    ready: UiFeaturePresentation::Record = UiFeaturePresentation::record(loading_again)
+    check("ready feature is a positive status without a retry loop", ready.role == UiCore::AccessibilityRole.Status and ready.tone == UiFeaturePresentation::Tone.Positive and ready.action == UiFeaturePresentation::Action.None and ready.title == "Optional feature ready")
+    UiHandles::set_text(status_label, ready.title, 14.0, UiCore::rgb(240, 240, 248))
+    UiHandles::set_text(detail_label, ready.detail, 12.0, UiCore::rgb(210, 216, 228))
+    UiHandles::set_visible(cancel_button, false)
+    UiHandles::layout(320.0, 160.0)
+    UiCore::begin_frame()
+    UiHandles::paint()
+    check("ready surface updates retained copy and removes its cancel control", UiCore::accessibility_count() == 2 and not UiHandles::is_visible(cancel_button))
+    check("ready semantic record publishes no action", UiFeaturePresentation::publish_accessibility(UiCore::Rect(0.0, 0.0, 80.0, 32.0), loading_again, status_label, UiHandles::invalid()) and UiCore::accessibility_count() == 2 and UiCore::accessibility_at(0).label == ready.title and UiCore::accessibility_at(0).action == UiCore::MAX_ACCESSIBILITY_NODES)
+    options: UiFeaturePresentation::Options = UiFeaturePresentation::default_options()
+    UiCore::begin_frame()
+    check("ready feature paints its normalized status surface", UiFeaturePresentation::paint(UiCore::Rect{origin: UiCore::Vec2{x: -3.0e38, y: 5.0}, size: UiCore::Size{width: 80.0, height: 32.0}}, loading_again, options) and UiCore::command_count() == 2)
+    if UiCore::command_at(0) is UiCore::Command.FillRect(surface, color):
+        check("paint bounds invalid origin without changing reserved size", surface.origin.x == -UiCore::MAX_GEOMETRY_EXTENT and surface.size.width == 80.0)
+    else:
+        check("feature status emits its background", false)
+
+    offline: UiFeatureView::FeatureHandle = UiFeatureView::request(3, 1, "1.0.0", 10)
+    _ = UiFeatureView::activate(offline, 300)
+    _ = UiFeatureView::resolve(offline, 300, UiFeatureView::FeatureState.UnavailableOffline, UiFeatureView::FeatureFailureKind.Offline)
+    offline_record: UiFeaturePresentation::Record = UiFeaturePresentation::record(offline)
+    check("offline feature is an alert with explicit retry", offline_record.role == UiCore::AccessibilityRole.Alert and offline_record.action == UiFeaturePresentation::Action.Retry and offline_record.action_label == "Retry" and offline_record.failure == UiFeatureView::FeatureFailureKind.Offline)
+    retried: UiFeaturePresentation::ActionResult = UiFeaturePresentation::perform_action(offline, 10)
+    check("retry rotates generation and resets to requested", retried.changed and retried.action == UiFeaturePresentation::Action.Retry and UiFeatureView::is_valid(retried.handle) and retried.handle.generation != offline.generation and UiFeatureView::state(retried.handle) == UiFeatureView::FeatureState.Requested and not UiFeatureView::is_valid(offline))
+
+    rejected: UiFeatureView::FeatureHandle = UiFeatureView::request(31, 1, "1.0.0", 10)
+    check("host refusal before token creation is representable", UiFeatureView::reject_activation(rejected, UiFeatureView::FeatureState.Failed, UiFeatureView::FeatureFailureKind.Unavailable))
+    rejected_record: UiFeaturePresentation::Record = UiFeaturePresentation::record(rejected)
+    check("unavailable feature explains host package limits without a fake retry", rejected_record.title == "Feature unavailable" and rejected_record.detail == "The current host package does not provide this feature." and rejected_record.action == UiFeaturePresentation::Action.ChooseVersion and rejected_record.action_label == "Choose package" and UiFeatureView::activation_id(rejected) == 0)
+
+    denied: UiFeatureView::FeatureHandle = UiFeatureView::request(4, 1, "1.0.0", 10)
+    _ = UiFeatureView::activate(denied, 400)
+    _ = UiFeatureView::resolve(denied, 400, UiFeatureView::FeatureState.Denied, UiFeatureView::FeatureFailureKind.Denied)
+    denied_record: UiFeaturePresentation::Record = UiFeaturePresentation::record(denied)
+    check("denied feature offers explicit recovery without requesting permission itself", denied_record.action == UiFeaturePresentation::Action.Retry and denied_record.role == UiCore::AccessibilityRole.Alert and denied_record.title == "Feature activation denied")
+
+    incompatible: UiFeatureView::FeatureHandle = UiFeatureView::request(5, 1, "1.0.0", 10)
+    _ = UiFeatureView::activate(incompatible, 500)
+    _ = UiFeatureView::resolve(incompatible, 500, UiFeatureView::FeatureState.Incompatible, UiFeatureView::FeatureFailureKind.Incompatible)
+    incompatible_record: UiFeaturePresentation::Record = UiFeaturePresentation::record(incompatible)
+    version_action: UiFeaturePresentation::ActionResult = UiFeaturePresentation::perform_action(incompatible, 10)
+    check("incompatible feature asks for version selection instead of retrying the same package", incompatible_record.action == UiFeaturePresentation::Action.ChooseVersion and incompatible_record.action_label == "Choose version" and version_action.action == UiFeaturePresentation::Action.ChooseVersion and not version_action.changed and UiFeatureView::state(incompatible) == UiFeatureView::FeatureState.Incompatible)
+    compatible: UiFeatureView::FeatureHandle = UiFeatureView::request(5, 1, "2.0.0", 10)
+    check("app can select a new package version while the old generation stays incompatible", UiFeatureView::is_valid(compatible) and UiFeatureView::package_version(compatible) == "2.0.0" and UiFeatureView::state(incompatible) == UiFeatureView::FeatureState.Incompatible)
+
+    retryable: UiFeatureView::FeatureHandle = UiFeatureView::request(6, 1, "1.0.0", 10)
+    _ = UiFeatureView::activate(retryable, 600)
+    _ = UiFeatureView::resolve(retryable, 600, UiFeatureView::FeatureState.Failed, UiFeatureView::FeatureFailureKind.Retryable)
+    check("retryable failure has an alert and retry action", UiFeaturePresentation::record(retryable).action == UiFeaturePresentation::Action.Retry and UiFeaturePresentation::record(retryable).role == UiCore::AccessibilityRole.Alert)
+
+    corrupt: UiFeatureView::FeatureHandle = UiFeatureView::request(7, 1, "1.0.0", 10)
+    _ = UiFeatureView::activate(corrupt, 700)
+    _ = UiFeatureView::resolve(corrupt, 700, UiFeatureView::FeatureState.Failed, UiFeatureView::FeatureFailureKind.Corrupt)
+    corrupt_record: UiFeaturePresentation::Record = UiFeaturePresentation::record(corrupt)
+    check("corrupt package does not offer a futile retry", corrupt_record.action == UiFeaturePresentation::Action.ChooseVersion and corrupt_record.failure == UiFeatureView::FeatureFailureKind.Corrupt and corrupt_record.role == UiCore::AccessibilityRole.Alert)
+
+    if failures == 0:
+        _ = puts("feature presentation: all checks passed")
+        return 0
+    _ = puts("feature presentation: FAILURES above")
+    return 1

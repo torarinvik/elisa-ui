@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
+STAGE1="$(bash "$ROOT/scripts/resolve_stage1_root.sh" "$ROOT")"
 RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
 EXAMPLE="${1:-hello}"
 ENTRY="$ROOT/examples/$EXAMPLE/appkit_canvas_main.elisa"
@@ -15,7 +15,7 @@ OPT_LEVEL="${ELISA_UI_OPT_LEVEL:-2}"
 [[ "$OPT_LEVEL" =~ ^[0-2]$ ]] || { echo "ELISA_UI_OPT_LEVEL must be 0, 1, or 2" >&2; exit 2; }
 # Show the resolved compiler/runtime revision and hashes this build actually
 # used, and warn (without failing) on a dirty or stale compiler checkout.
-bash "$ROOT/scripts/check_toolchain.sh" --report >&2
+ELISA_UI_STAGE1="$STAGE1" bash "$ROOT/scripts/check_toolchain.sh" --report >&2
 echo "appkit canvas: Elisa compiler optimization -O$OPT_LEVEL" >&2
 mkdir -p "$ROOT/build"
 clang -c -fobjc-arc -Wall -Wextra -Wconversion -Wsign-conversion -Werror \

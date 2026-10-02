@@ -1,0 +1,38 @@
+# Resource-operation integration for the AppKit CoreGraphics image binding.
+
+include "../src/platform/appkit/ui_appkit_canvas_image_bindings.elisa"
+include "../src/platform/appkit/ui_appkit_canvas_resources.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiAppKitCanvasImages::clear_picture_bindings()
+    UiResources::reset()
+
+    image: mutable UiResources::ResourceHandle = UiResources::request("images/appkit-cover", 10)
+    check("AppKit upload refuses a decoded image before network/decode completion", not UiAppKitCanvasResources::complete_uploaded_image(image, 77) and not UiAppKitCanvasImages::picture_is_bound(image.slot, image.generation) and UiResources::state(image) == UiResources::State.Requested)
+    check("host operation binds to the AppKit image resource", UiResources::bind_operation(image, 501) and UiResources::poll_operation(image, 501, 1.0, 1.0))
+    check("AppKit publishes Ready only after binding and upload completion", UiAppKitCanvasResources::complete_uploaded_image(image, 77) and UiResources::state(image) == UiResources::State.Ready and UiResources::uploaded_progress(image) == 1.0 and UiResources::operation_count() == 0 and UiAppKitCanvasImages::picture_is_bound(image.slot, image.generation))
+    replacement_generation: u32 = image.generation + 1
+    check("rebinding the identical AppKit object is idempotent", UiAppKitCanvasImages::bind_picture(image.slot, image.generation, 77))
+    check("a live AppKit generation cannot swap its native object", not UiAppKitCanvasImages::bind_picture(image.slot, image.generation, 78) and UiAppKitCanvasImages::picture_handle(image.slot, image.generation) == 77)
+    check("a live AppKit image cannot be overwritten before exact-generation teardown", not UiAppKitCanvasImages::bind_picture(image.slot, replacement_generation, 88) and UiAppKitCanvasImages::picture_handle(image.slot, image.generation) == 77)
+    check("resource disposal releases exactly its uploaded image binding", UiResources::dispose(image) and UiAppKitCanvasResources::forget_uploaded_image(image) and not UiAppKitCanvasImages::picture_is_bound(image.slot, image.generation))
+    check("replacement binds only after old AppKit generation is forgotten", UiAppKitCanvasImages::bind_picture(image.slot, replacement_generation, 88) and UiAppKitCanvasImages::picture_handle(image.slot, replacement_generation) == 88)
+    check("stale AppKit teardown cannot remove its replacement", not UiAppKitCanvasImages::unbind_picture(image.slot, image.generation) and UiAppKitCanvasImages::picture_handle(image.slot, replacement_generation) == 88)
+    check("replacement AppKit generation is releasable", UiAppKitCanvasImages::unbind_picture(image.slot, replacement_generation))
+
+    untracked: mutable UiResources::ResourceHandle = UiResources::request("images/appkit-untracked", 11)
+    check("unbound host work completes through the same AppKit upload contract", UiResources::set_progress(untracked, 1.0, 1.0) and UiAppKitCanvasResources::complete_uploaded_image(untracked, 88) and UiResources::state(untracked) == UiResources::State.Ready and UiResources::uploaded_progress(untracked) == 1.0)
+
+    if failures == 0:
+        _ = puts("AppKit image upload: all checks passed")
+        return 0
+    _ = puts("AppKit image upload: FAILURES above")
+    return 1

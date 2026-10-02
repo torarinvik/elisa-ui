@@ -317,7 +317,7 @@ extend UiSkia:
         def replay_deferred() -> void can[Ui.Draw, Ui.Text]:
             return if canvas_state == 0
             if not deferred_frame_active:
-                UiPaint::replay_range(painter(), 0, UiCore::command_count())
+                UiSkia::replay_retained_range(0, UiCore::command_count())
                 return
             cursor: mutable usize = 0
             total: usize = UiCore::command_count()
@@ -325,10 +325,10 @@ extend UiSkia:
                 command: DeferredCommand = deferred_commands[index]
                 anchor: mutable usize = command.retained_anchor if command.retained_anchor < total else total
                 anchor <- cursor if anchor < cursor else anchor
-                UiPaint::replay_range(painter(), cursor, anchor)
+                UiSkia::replay_retained_range(cursor, anchor)
                 cursor <- anchor
                 UiSkia::replay_deferred_command(command)
-            UiPaint::replay_range(painter(), cursor, total)
+            UiSkia::replay_retained_range(cursor, total)
 
         private:
             # Replay one deferred record. Keeping the discriminant match in the
@@ -376,7 +376,7 @@ extend UiSkia:
                         _ = UiSkia::replay_deferred_bound_image(command, false)
                     UiSkia::DeferredKind.DrawText:
                         UiSkia::draw_text_run(UiCore::TextRun(command.text_origin, command.text_size,
-                            sview(&deferred_text_storage[command.text_offset], 0, command.text_length.i64())), command.color)
+                            UiText::unsafe_sview_bounded_bytes(&deferred_text_storage[command.text_offset], command.text_length)), command.color)
                     UiSkia::DeferredKind.PushClip:
                         _ = UiSkia::push_clip(command.box)
                     UiSkia::DeferredKind.PushRoundedClip:

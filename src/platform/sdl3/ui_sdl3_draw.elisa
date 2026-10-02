@@ -12,76 +12,8 @@ module UiSdl3Draw:
         global mutable saved_clip_enabled: bool = false
         global mutable sdl3_clip_depth: usize = 0
 
-        def ren() -> void&:
-            if renderer is active_renderer:
-                return active_renderer
-            return zeroed
-
-        # Text comes from SDL_ttf. A TTF_Font is tied to one point size, so
-        # fonts are opened on demand and kept in a small table keyed by size;
-        # fonts_close releases them at shutdown.
-        const MAX_FONTS: usize = 8
-
-        # THERE IS NO PORTABLE FONT PATH, and this was one macOS path -- in the
-        # backend Linux and Windows use for painting. Neither opened a font at
-        # all, and nothing said so: a width fell to zero, while the ascent and
-        # the line height fell back to the requested point size. That is the
-        # failure this project keeps finding in a different costume -- metrics
-        # invented rather than asked of the platform -- and here it was silent
-        # enough that three of the SDL text fixture's own assertions passed on
-        # a machine with no font.
-        #
-        # SDL_ttf enumerates nothing, so the honest answer is to try the places
-        # each platform actually keeps a UI face and let TTF_OpenFont decide.
-        # ELISA_UI_SDL_FONT still overrides the lot.
-        const FONT_CANDIDATES: usize = 7
-
-        def font_candidate(index: usize) -> cstr:
-            return "/System/Library/Fonts/Supplemental/Arial.ttf" if index == 0
-            return "/System/Library/Fonts/Helvetica.ttc" if index == 1
-            return "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf" if index == 2
-            return "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf" if index == 3
-            return "/usr/share/fonts/TTF/DejaVuSans.ttf" if index == 4
-            return "C:\\Windows\\Fonts\\segoeui.ttf" if index == 5
-            return "C:\\Windows\\Fonts\\arial.ttf"
-
-        global mutable font_handles: (void&?)[MAX_FONTS] = zeroed
-        global mutable font_sizes: f32[MAX_FONTS] = zeroed
-        global mutable font_total: usize = 0
-        global mutable font_override: cstr? = null
-        # Which candidate answered last time. The first open walks the list;
-        # every later size goes straight to the face already proven to exist,
-        # so a size change costs one TTF_OpenFont and not seven.
-        global mutable font_resolved: usize = FONT_CANDIDATES
-
-        def font_path() -> cstr:
-            if font_override is override:
-                return override
-            return font_candidate(font_resolved if font_resolved < FONT_CANDIDATES else 0)
-
-        def open_font(size: f32) -> void&?:
-            if font_override is override:
-                return TTF_OpenFont(override, size)
-            if font_resolved < FONT_CANDIDATES:
-                return TTF_OpenFont(font_candidate(font_resolved), size)
-            for index in 0..<FONT_CANDIDATES:
-                attempt: void&? = TTF_OpenFont(font_candidate(index), size)
-                if attempt is opened:
-                    font_resolved <- index
-                    return opened
-            return null
-
-        def font_for(size: f32) -> void&?:
-            safe_size: f32 = UiCore::bounded_extent(size)
-            for index in 0..<font_total:
-                return font_handles[index] if font_sizes[index] == safe_size
-            return null if font_total >= MAX_FONTS
-            opened: void&? = open_font(safe_size)
-            return null if opened == null
-            font_handles[font_total] <- opened
-            font_sizes[font_total] <- safe_size
-            font_total <- font_total + 1
-            return opened
+        def ren() -> void&?:
+            return renderer
 
         # A rendered glyph surface and its texture are released by destructors
         # rather than by hand. This keeps every early-return path safe.
@@ -104,12 +36,15 @@ module UiSdl3Draw:
             return SdlColor{r: color.r, g: color.g, b: color.b, a: color.a}
 
         def blit_text(run: UiCore::TextRun, color: UiCore::Color) -> void:
+            return if renderer == null
             return if run.text.len <= 0 or run.text.data == null
             safe_text: sview = UiCore::bounded_text(run.text)
             return if safe_text.len <= 0 or safe_text.data == null
-            if font_for(run.size) is font:
+            if UiSdl3Fonts::font_for(run.size) is font:
+                return if not UiSdl3Fonts::begin_text_run(font, safe_text)
                 pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
                 surface_opt: void&? = TTF_RenderText_Blended(font, pointer, safe_text.len.usize(), sdl_color(color))
+                UiSdl3Fonts::end_text_run(font, safe_text)
                 if surface_opt is surface_handle:
                     surface: Surface = Surface{handle: surface_handle}
                     texture_opt: void&? = SDL_CreateTextureFromSurface(ren(), surface.handle)
@@ -122,13 +57,14 @@ module UiSdl3Draw:
                         _ = SDL_RenderTexture(ren(), texture.handle, null, destination_pointer)
 
         def paint_rect(box_rect: UiCore::Rect, color: UiCore::Color) -> void:
+            return if renderer == null
             box: mutable array[f32, 4] = [box_rect.origin.x, box_rect.origin.y, box_rect.size.width, box_rect.size.height]
             _ = SDL_SetRenderDrawColor(ren(), color.r, color.g, color.b, color.a)
             rect_pointer: void& = (&box[0]).cast[void&] can Unsafe.PointerCast
             _ = SDL_RenderFillRect(ren(), rect_pointer)
 
         def fill_span(x0: f32, x1: f32, y: f32) -> void:
-            return if x1 <= x0
+            return if x1 <= x0 or renderer == null
             span: mutable array[f32, 4] = [x0, y, x1 - x0, 1.0]
             span_pointer: void& = (&span[0]).cast[void&] can Unsafe.PointerCast
             _ = SDL_RenderFillRect(ren(), span_pointer)
@@ -140,7 +76,7 @@ module UiSdl3Draw:
             return UiCore::viewport_width() > 0.0 and UiCore::viewport_height() > 0.0
 
         def paint_circle(disc: UiCore::Circle, color: UiCore::Color) -> void:
-            return if not viewport_is_drawable()
+            return if renderer == null or not viewport_is_drawable()
             return if disc.radius <= 0.0
             _ = SDL_SetRenderDrawColor(ren(), color.r, color.g, color.b, color.a)
             top: mutable f32 = disc.center.y - disc.radius
@@ -149,9 +85,7 @@ module UiSdl3Draw:
             return if bottom < 0.0 or top > viewport_height
             top <- 0.0 if top < 0.0
             bottom <- viewport_height if bottom > viewport_height
-            # Iterate with an integer row index. At the f32 geometry cap
-            # (2^24), adding 1.0 no longer changes a float, so a f32 loop
-            # would never make progress on a perfectly finite circle.
+            # Use an integer row index: f32 stops advancing at the geometry cap.
             first: i64 = UiRaster::first_scanline(top).i64()
             last: i64 = UiRaster::last_scanline(bottom).i64()
             for y in first..<(last + 1):
@@ -161,7 +95,7 @@ module UiSdl3Draw:
                 fill_span(disc.center.x - half, disc.center.x + half, row) if half > 0.0
 
         def paint_triangle(tri: UiCore::Triangle, color: UiCore::Color) -> void:
-            return if not viewport_is_drawable()
+            return if renderer == null or not viewport_is_drawable()
             _ = SDL_SetRenderDrawColor(ren(), color.r, color.g, color.b, color.a)
             xs: array[f32, 3] = [tri.a.x, tri.b.x, tri.c.x]
             ys: array[f32, 3] = [tri.a.y, tri.b.y, tri.c.y]
@@ -197,20 +131,18 @@ module UiSdl3Draw:
                 fill_span(span_lo, span_hi, y) if crossings > 0
 
         def paint_clear(color: UiCore::Color) -> void:
+            return if renderer == null
             _ = SDL_SetRenderDrawColor(ren(), color.r, color.g, color.b, color.a)
             _ = SDL_RenderClear(ren())
 
         def paint_line(segment: UiCore::Line, color: UiCore::Color) -> void:
+            return if renderer == null
             _ = SDL_SetRenderDrawColor(ren(), color.r, color.g, color.b, color.a)
             _ = SDL_RenderLine(ren(), segment.from_point.x, segment.from_point.y, segment.to_point.x, segment.to_point.y)
 
-        # A WEIGHTED LINE, from the only line SDL3 draws.
-        #
-        # Its renderer has one-pixel lines and nothing wider, so a weight is
-        # honoured by drawing the line once per pass, offset along its normal.
-        # UiPaint owns how many passes and how far apart; this owns the normal,
-        # which is the one part that needs the segment's own length.
+        # SDL lines are one pixel; UiPaint owns pass spacing, this owns normal.
         def paint_stroke(segment: UiCore::Line, color: UiCore::Color, width: f32) -> void:
+            return if renderer == null
             passes: usize = UiPaint::stroke_pass_count(width)
             return paint_line(segment, color) if passes <= 1
             dx: f32 = segment.to_point.x - segment.from_point.x
@@ -286,53 +218,29 @@ module UiSdl3Draw:
             return create_renderer(window)
 
         def present() -> void:
+            return if renderer == null
             _ = SDL_RenderPresent(ren())
 
         def set_font_override(path: cstr) -> void:
-            font_override <- path
+            UiSdl3Fonts::set_font_override(path)
+
+        def font_generation() -> u32:
+            return UiSdl3Fonts::font_generation()
 
         def font_count() -> usize:
-            return font_total
+            return UiSdl3Fonts::font_count()
 
         def fonts_close() -> void:
-            for index in 0..<font_total:
-                if font_handles[index] is handle:
-                    TTF_CloseFont(handle)
-                font_handles[index] <- null
-            font_total <- 0
-            # The override is borrowed from getenv(). Do not retain that
-            # process-owned pointer across a later backend run after the
-            # previous font table has been torn down.
-            font_override <- null
-            # ...and the resolved candidate goes with it: a later run may be on
-            # a machine where a different one of them exists.
-            font_resolved <- FONT_CANDIDATES
+            UiSdl3Fonts::fonts_close()
 
         def measure_text_width(text: sview, size: f32) -> f32:
-            return 0.0 if text.len <= 0 or text.data == null
-            safe_text: sview = UiCore::bounded_text(text)
-            return 0.0 if safe_text.len <= 0 or safe_text.data == null
-            if font_for(size) is font:
-                measured_width: mutable i32 = 0
-                measured_height: mutable i32 = 0
-                pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
-                if TTF_GetStringSize(font, pointer, safe_text.len.usize(), &measured_width, &measured_height):
-                    return UiCore::bounded_extent(measured_width.f32())
-            return 0.0
+            return UiSdl3Fonts::measure_text_width(text, size)
 
         def font_ascent(size: f32) -> f32:
-            if font_for(size) is font:
-                return UiCore::bounded_extent(TTF_GetFontAscent(font).f32())
-            # A missing face is an unavailable text capability, not a reason
-            # to invent metrics from the requested point size. Returning zero
-            # keeps layout, hit testing, and rasterization in agreement until
-            # the host supplies a usable font.
-            return 0.0
+            return UiSdl3Fonts::font_ascent(size)
 
         def text_line_height(size: f32) -> f32:
-            if font_for(size) is font:
-                return UiCore::bounded_extent(TTF_GetFontHeight(font).f32())
-            return 0.0
+            return UiSdl3Fonts::text_line_height(size)
 
         struct Sdl3Painter:
             unused: i32
@@ -342,6 +250,7 @@ module UiSdl3Draw:
 
         impl Painter for Sdl3Painter:
             def push_clip(self: Self, box: UiCore::Rect) -> void can[Ui.Draw]:
+                return if renderer == null
                 if sdl3_clip_depth == 0:
                     saved_clip_enabled <- SDL_RenderClipEnabled(ren())
                     _ = SDL_GetRenderClipRect(ren(), (&saved_clip_rect[0]).cast[void&] can Unsafe.PointerCast)
@@ -354,7 +263,7 @@ module UiSdl3Draw:
                 _ = SDL_SetRenderClipRect(ren(), (&clip[0]).cast[void&] can Unsafe.PointerCast)
 
             def pop_clip(self: Self) -> void can[Ui.Draw]:
-                return if sdl3_clip_depth == 0
+                return if sdl3_clip_depth == 0 or renderer == null
                 sdl3_clip_depth <- sdl3_clip_depth - 1
                 return if sdl3_clip_depth != 0
                 if saved_clip_enabled:

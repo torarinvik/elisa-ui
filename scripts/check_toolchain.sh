@@ -14,10 +14,10 @@ REPORT=0
 [[ "${1:-}" == "--report" ]] && REPORT=1
 
 # A test run must not silently use a compiler branch that has fallen behind
-# the fetched upstream baseline. Feature branches that are ahead are valid;
-# stale branches are not, because optimizer and lowering fixes may be absent.
+# the fetched upstream baseline. Installed snapshots have no Git ancestry, so
+# their install revision is reported and source freshness is checked below.
 # Developers doing compiler archaeology can opt out explicitly while keeping
-# the ordinary strict gate honest.
+# the ordinary strict gate honest for Git checkouts.
 REQUIRE_CURRENT="${ELISA_UI_REQUIRE_CURRENT_STAGE1:-0}"
 case "$REQUIRE_CURRENT" in
     0|1) ;;
@@ -28,7 +28,7 @@ case "$REQUIRE_CURRENT" in
 esac
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-STAGE1_INPUT="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
+STAGE1_INPUT="$(bash "$ROOT/scripts/resolve_stage1_root.sh" "$ROOT")"
 STAGE1="$(cd -- "$STAGE1_INPUT" && pwd)"
 PRODUCT="$STAGE1/bin/elisac-stage1"
 RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
@@ -64,6 +64,24 @@ if git -C "$STAGE1" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
             echo "fetch origin/main or set ELISA_UI_REQUIRE_CURRENT_STAGE1=0 only for intentional compiler archaeology" >&2
             exit 2
         fi
+    fi
+elif [[ -f "$STAGE1/SNAPSHOT" ]]; then
+    snapshot_revision="$(sed -n 's/^revision:[[:space:]]*//p' "$STAGE1/SNAPSHOT" | head -n 1)"
+    snapshot_taken="$(sed -n 's/^taken:[[:space:]]*//p' "$STAGE1/SNAPSHOT" | head -n 1)"
+    snapshot_from="$(sed -n 's/^from:[[:space:]]*//p' "$STAGE1/SNAPSHOT" | head -n 1)"
+    if [[ -z "$snapshot_revision" ]]; then
+        if [[ "$REPORT" == 1 ]]; then
+            echo "toolchain: WARNING installed snapshot has no revision in $STAGE1/SNAPSHOT" >&2
+        else
+            echo "toolchain: installed snapshot has no revision in $STAGE1/SNAPSHOT" >&2
+            exit 2
+        fi
+    fi
+    echo "toolchain: stage1 snapshot revision=${snapshot_revision:-unknown}"
+    [[ -z "$snapshot_taken" ]] || echo "toolchain: snapshot_taken=$snapshot_taken"
+    [[ -z "$snapshot_from" ]] || echo "toolchain: snapshot_source=$snapshot_from"
+    if [[ "$REQUIRE_CURRENT" == 1 ]]; then
+        echo "toolchain: snapshot has no Git ancestry; installed revision and bundled-source freshness are reported instead"
     fi
 else
     echo "toolchain: stage1 checkout has no git provenance: $STAGE1" >&2

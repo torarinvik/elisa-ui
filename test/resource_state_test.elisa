@@ -31,7 +31,7 @@ def check(name: cstr, ok: bool) -> void:
     failures <- failures + 1
     _ = puts(name)
 
-def main() -> i64:
+def main() -> i64 can[Unsafe.PointerCast]:
     UiResources::reset()
     UiCore::clear_all_invalidations()
     missing: UiResources::ResourceHandle = UiResources::resource_invalid()
@@ -51,13 +51,29 @@ def main() -> i64:
     requested_snapshot: UiResources::Snapshot = UiResources::snapshot()
     check("snapshot counts requested resources", requested_snapshot.total == 1 and requested_snapshot.requested == 1 and requested_snapshot.ready == 0 and requested_snapshot.failed == 0 and not requested_snapshot.overflowed)
     check("resource key is retained in Elisa", UiResources::identifier(image) == "images/logo")
-    null_key: sview = sview(null, 0, 4)
+    null_key_words: mutable u64[2] = zeroed
+    null_key_words[1] <- 4
+    null_key_storage: mutable sview& = (&null_key_words[0]).cast[mutable sview&] can Unsafe.PointerCast
+    null_key: sview = null_key_storage[0]
     check("null-backed resource key is rejected", not UiResources::resource_is_valid(UiResources::request(null_key, 11)) and not UiResources::resource_key_matches(image.slot.usize(), null_key))
     malformed_key_bytes: mutable u8[2] = zeroed
     malformed_key_bytes[0] <- 105
     malformed_key_bytes[1] <- 255
-    malformed_key: sview = sview(&malformed_key_bytes[0], 0, 2)
+    malformed_key: sview = UiText::fixed_bytes_view_range[2](malformed_key_bytes, 0, 2)
     check("malformed resource key cannot alias its valid prefix", not UiResources::resource_is_valid(UiResources::request(malformed_key, 11)) and not UiResources::resource_key_matches(image.slot.usize(), malformed_key))
+    unicode_path: UiResources::ResourceHandle = UiResources::request("images/café/logo..png", 11)
+    check("nested UTF-8 asset paths and embedded dots remain valid", UiResources::resource_is_valid(unicode_path) and UiResources::identifier(unicode_path) == "images/café/logo..png")
+    _ = UiResources::dispose(unicode_path)
+    check("absolute package asset paths are rejected", not UiResources::resource_is_valid(UiResources::request("/images/logo", 11)))
+    check("parent traversal package asset paths are rejected", not UiResources::resource_is_valid(UiResources::request("images/../private", 11)))
+    check("dot and empty package path components are rejected", not UiResources::resource_is_valid(UiResources::request("images/./logo", 11)) and not UiResources::resource_is_valid(UiResources::request("images//logo", 11)) and not UiResources::resource_is_valid(UiResources::request("images/", 11)))
+    check("URLs and drive-prefixed paths are rejected", not UiResources::resource_is_valid(UiResources::request("https://cdn.example/logo", 11)) and not UiResources::resource_is_valid(UiResources::request("C:/private/logo", 11)) and not UiResources::resource_is_valid(UiResources::request("C:\\private\\logo", 11)))
+    control_path_bytes: mutable u8[2] = zeroed
+    control_path_bytes[0] <- 194
+    control_path_bytes[1] <- 128
+    control_path: sview = UiText::fixed_bytes_view_range[2](control_path_bytes, 0, 2)
+    check("UTF-8 control characters are rejected in package paths", not UiResources::resource_is_valid(UiResources::request(control_path, 11)))
+    check("invalid package paths allocate no resource records", UiResources::count() == 1 and UiResources::resource_key_matches(image.slot.usize(), "images/logo"))
     check("request raises resource invalidation", UiCore::is_invalidated(UiCore::Invalidation.Resources))
     check("resource demand hint is accepted", UiResources::set_demand(image, 10) and UiResources::is_demanded(image) and UiResources::demand_priority(image) == 10)
     check("resource demand enumeration reports one hint", UiResources::demand_count() == 1)
@@ -91,9 +107,11 @@ def main() -> i64:
     infinite_progress: f32 = 1.0 / zero_progress
     check("progress rejects non-finite network values", not UiResources::set_progress(image, invalid_progress, 0.0) and UiResources::downloaded_progress(image) == 1.0)
     check("progress rejects non-finite decode values", not UiResources::set_progress(image, 1.0, infinite_progress) and UiResources::decoded_progress(image) == 0.0)
+    check("upload progress is independent and clamps to a fraction", UiResources::set_upload_progress(image, 0.6) and UiResources::uploaded_progress(image) == 0.6 and UiResources::set_upload_progress(image, 1.5) and UiResources::uploaded_progress(image) == 1.0)
+    check("upload progress rejects regressions and non-finite values", not UiResources::set_upload_progress(image, 0.4) and not UiResources::set_upload_progress(image, infinite_progress) and UiResources::uploaded_progress(image) == 1.0)
     check("ready is separate from network completion", UiResources::state(image) == UiResources::State.Requested)
     check("ready transition is accepted", UiResources::set_state(image, UiResources::State.Ready) and UiResources::state(image) == UiResources::State.Ready)
-    check("ready state completes both progress channels", UiResources::downloaded_progress(image) == 1.0 and UiResources::decoded_progress(image) == 1.0)
+    check("ready state completes every progress channel", UiResources::downloaded_progress(image) == 1.0 and UiResources::decoded_progress(image) == 1.0 and UiResources::uploaded_progress(image) == 1.0)
     ready_snapshot: UiResources::Snapshot = UiResources::snapshot()
     check("snapshot counts ready resources", ready_snapshot.total == 1 and ready_snapshot.ready == 1 and ready_snapshot.requested == 0)
     ready_generation: u32 = image.generation
@@ -101,11 +119,11 @@ def main() -> i64:
     not_retried: UiResources::ResourceHandle = UiResources::retry(image)
     check("ready is not retried", not UiResources::resource_is_valid(not_retried))
     ready_image: UiResources::ResourceHandle = image
-    check("late failure cannot discard a ready resource", not UiResources::set_state(ready_image, UiResources::State.Failed) and not UiResources::fail(ready_image, UiResources::FailureKind.RetryableTransport) and not UiResources::set_progress(ready_image, 0.0, 0.0) and UiResources::state(ready_image) == UiResources::State.Ready and UiResources::downloaded_progress(ready_image) == 1.0 and UiResources::decoded_progress(ready_image) == 1.0)
+    check("late failure cannot discard a ready resource", not UiResources::set_state(ready_image, UiResources::State.Failed) and not UiResources::fail(ready_image, UiResources::FailureKind.RetryableTransport) and not UiResources::set_progress(ready_image, 0.0, 0.0) and not UiResources::set_upload_progress(ready_image, 0.0) and UiResources::state(ready_image) == UiResources::State.Ready and UiResources::downloaded_progress(ready_image) == 1.0 and UiResources::decoded_progress(ready_image) == 1.0 and UiResources::uploaded_progress(ready_image) == 1.0)
     check("late offline result cannot discard a ready resource", not UiResources::set_state(ready_image, UiResources::State.UnavailableOffline) and UiResources::state(ready_image) == UiResources::State.Ready)
     check("late denial cannot discard a ready resource", not UiResources::set_state(ready_image, UiResources::State.Denied) and UiResources::state(ready_image) == UiResources::State.Ready)
     check("late intrinsic metadata cannot resize a ready resource", not UiResources::set_intrinsic_size(ready_image, 640.0, 480.0) and UiResources::intrinsic_size(ready_image).width == 128.0 and UiResources::intrinsic_size(ready_image).height == 72.0)
-    check("cancelling a ready resource clears stale progress", UiResources::cancel(ready_image) and UiResources::state(ready_image) == UiResources::State.Cancelled and UiResources::downloaded_progress(ready_image) == 0.0 and UiResources::decoded_progress(ready_image) == 0.0)
+    check("cancelling a ready resource clears stale progress", UiResources::cancel(ready_image) and UiResources::state(ready_image) == UiResources::State.Cancelled and UiResources::downloaded_progress(ready_image) == 0.0 and UiResources::decoded_progress(ready_image) == 0.0 and UiResources::uploaded_progress(ready_image) == 0.0)
 
     _ = UiResources::dispose(ready_image)
     image <- UiResources::request("images/logo", 11)
@@ -213,7 +231,7 @@ def main() -> i64:
     oversized_bytes[2] <- 114
     oversized_bytes[3] <- 115
     oversized_bytes[4] <- 116
-    oversized_key: sview = sview(&oversized_bytes[0], 0, (UiResources::IDENTIFIER_CAPACITY + 1).i64())
+    oversized_key: sview = UiText::fixed_bytes_view_range[257](oversized_bytes, 0, UiResources::IDENTIFIER_CAPACITY + 1)
     check("oversized key keeps counted length", oversized_key.len == (UiResources::IDENTIFIER_CAPACITY + 1).i64())
     check("oversized key comparison fails closed", not UiResources::resource_key_matches(hole.slot.usize(), oversized_key))
     _ = UiResources::dispose(hole)

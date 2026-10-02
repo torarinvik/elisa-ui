@@ -106,7 +106,7 @@ extend UiUIKit:
         # Accessibility identifiers are stable framework metadata. Generate
         # their UTF-8 bytes here so the Objective-C bridge never invents a
         # naming scheme or formats framework state on its own.
-        def accessibility_identifier(id: usize) -> sview:
+        def accessibility_identifier(id: usize) -> sview can Unsafe.PointerCast:
             prefix: sview = "elisa-ui-"
             for index in 0..<prefix.len.usize():
                 uikit_accessibility_identifier_storage[index] <- prefix.data[index]
@@ -122,7 +122,11 @@ extend UiUIKit:
                 position: usize = prefix.len.usize() + digits - 1 - index
                 uikit_accessibility_identifier_storage[position] <- (value % 10 + 48).u8()
                 value <- value / 10
-            return sview(&uikit_accessibility_identifier_storage[0], 0, (prefix.len.usize() + digits).i64())
+            # A usize has at most 20 decimal digits; the 9-byte prefix plus
+            # those digits fit the 32-byte static buffer. Construct the exact
+            # counted view directly from this statically bounded buffer.
+            length: usize = prefix.len.usize() + digits
+            return UiText::unsafe_sview_bounded_bytes(&uikit_accessibility_identifier_storage[0], length)
 
     public:
         def virtual_accessibility_proxy_count() -> usize:

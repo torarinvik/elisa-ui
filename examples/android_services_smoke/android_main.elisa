@@ -1,0 +1,100 @@
+# Tap-driven Android picker smoke. The OS picker is never opened on launch;
+# the user must activate one of the two buttons, then the app reads and releases
+# the returned content through the public service adapter.
+include "../../src/platform/android/ui_android.elisa"
+
+module AndroidPickerSmoke:
+    private:
+        global mutable root: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
+        global mutable status: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
+        global mutable photos_button: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
+        global mutable files_button: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
+        global mutable photos: UiServices::ServiceHandle = UiServices::ServiceHandle{slot: UiServices::NONE_SLOT.u32(), generation: 0}
+        global mutable files: UiServices::ServiceHandle = UiServices::ServiceHandle{slot: UiServices::NONE_SLOT.u32(), generation: 0}
+        global mutable photos_reported: UiServices::PickerState = UiServices::PickerState.Idle
+        global mutable files_reported: UiServices::PickerState = UiServices::PickerState.Idle
+
+        def color_ok() -> UiCore::Color:
+            return UiCore::rgb(140, 230, 170)
+
+        def color_error() -> UiCore::Color:
+            return UiCore::rgb(245, 135, 125)
+
+        def report_selection(handle: UiServices::ServiceHandle, photo: bool) -> void:
+            bytes: u8[8] = zeroed
+            count: i32 = UiAndroidServices::read_selection(handle, 0, &bytes[0], 8)
+            image: bool = UiServices::selection_kind(handle) == UiServices::ServiceSelectionKind.Image
+            released: bool = UiAndroidServices::release_selection(handle)
+            if photo:
+                UiHandles::set_text(status, "PHOTO PASS: image bytes read and released", 16.0, color_ok()) if count > 0 and image and released
+                UiHandles::set_text(status, "PHOTO FAIL: wrong type, unreadable, or unreleased", 16.0, color_error()) if count <= 0 or not image or not released
+            else:
+                UiHandles::set_text(status, "FILES PASS: content bytes read and released", 16.0, color_ok()) if count > 0 and released
+                UiHandles::set_text(status, "FILES FAIL: unreadable or unreleased", 16.0, color_error()) if count <= 0 or not released
+
+        def observe_picker(handle: UiServices::ServiceHandle, photo: bool) -> void:
+            current: UiServices::PickerState = UiServices::picker(handle)
+            previous: UiServices::PickerState = photos_reported if photo else files_reported
+            return if current == previous
+            photos_reported <- current if photo
+            files_reported <- current if not photo
+            if current == UiServices::PickerState.Presenting:
+                UiHandles::set_text(status, "Opening system photo picker...", 16.0, UiCore::rgb(180, 190, 210)) if photo
+                UiHandles::set_text(status, "Opening system file picker...", 16.0, UiCore::rgb(180, 190, 210)) if not photo
+            elif current == UiServices::PickerState.Selected:
+                report_selection(handle, photo)
+            elif current == UiServices::PickerState.Cancelled:
+                UiHandles::set_text(status, "Picker cancelled", 16.0, UiCore::rgb(180, 190, 210))
+            elif current == UiServices::PickerState.Failed or current == UiServices::PickerState.Unavailable:
+                UiHandles::set_text(status, "Picker failed; tap to retry", 16.0, color_error())
+
+    public:
+        def init() -> void:
+            UiHandles::reset()
+            UiServices::reset()
+            photos <- UiServices::request(UiServices::ServiceKind.Photos, 1)
+            files <- UiServices::request(UiServices::ServiceKind.Files, 1)
+            root <- UiHandles::column(UiHandles::root_parent(), 20.0, 16.0, UiCore::rgb(16, 18, 24))
+            _ = UiHandles::label(root, "Android picker smoke", 24.0, UiCore::rgb(240, 242, 248))
+            status <- UiHandles::label(root, "Choose a native picker", 16.0, UiCore::rgb(180, 190, 210))
+            photos_button <- UiHandles::button(root, 240.0, 52.0, UiCore::rgb(60, 110, 220), UiCore::rgb(90, 140, 245), UiCore::rgb(40, 80, 180))
+            UiHandles::set_text(photos_button, "Choose photo", 18.0, UiCore::rgb(255, 255, 255))
+            files_button <- UiHandles::button(root, 240.0, 52.0, UiCore::rgb(60, 110, 220), UiCore::rgb(90, 140, 245), UiCore::rgb(40, 80, 180))
+            UiHandles::set_text(files_button, "Choose file", 18.0, UiCore::rgb(255, 255, 255))
+
+        def widget_event(widget: usize) -> void:
+            if widget == UiHandles::index(photos_button):
+                UiHandles::set_text(status, "Could not present photo picker", 16.0, color_error()) if not UiAndroidServices::present_picker(photos)
+            elif widget == UiHandles::index(files_button):
+                UiHandles::set_text(status, "Could not present file picker", 16.0, color_error()) if not UiAndroidServices::present_picker(files)
+
+        def frame() -> void can Unsafe.PointerCast:
+            observe_picker(photos, true)
+            observe_picker(files, false)
+            UiHandles::layout(UiCore::viewport_width(), UiCore::viewport_height())
+            UiHandles::paint()
+
+def app_init() -> void:
+    AndroidPickerSmoke::init()
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    AndroidPickerSmoke::widget_event(widget)
+
+def app_event(event: UiCore::Event) -> void:
+    UiHandles::handle(event)
+
+def app_text_input(text: sview) -> void:
+    UiHandles::insert_text(text)
+
+def app_validate() -> void:
+    pass
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    UiHandles::update_marked_text_utf8_characters(text, selected_start, selected_length)
+
+def app_frame() -> void:
+    can Unsafe.PointerCast:
+        AndroidPickerSmoke::frame()
+
+def main() -> i64:
+    return 0

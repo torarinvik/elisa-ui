@@ -72,6 +72,22 @@ extend UiVirtualList:
             prune_variable_measurements(slot, next)
             return true
 
+        # Update the fallback estimate after a global metric generation such
+        # as a font or scale change. Callers can then invalidate sparse row
+        # measurements and remeasure the realized window around its anchor.
+        def variable_set_estimate(owner: u32, estimated_height: f32) -> bool:
+            slot: i32 = variable_slot(owner)
+            return false if slot == NONE_INDEX
+            next: f32 = safe_variable_height(estimated_height)
+            return false if variable_estimates[slot.usize()] == next
+            variable_estimates[slot.usize()] <- next
+            return true
+
+        def variable_estimate(owner: u32) -> f32:
+            slot: i32 = variable_slot(owner)
+            return 0.0 if slot == NONE_INDEX
+            return variable_estimates[slot.usize()]
+
         # Record a realized row's measured height. Re-measurement updates the
         # same logical identity; once the bounded table is full, the least
         # recently updated entry is replaced rather than growing without
@@ -145,6 +161,24 @@ extend UiVirtualList:
             variable_measurement_last_used[last] <- 0
             variable_measurement_counts[slot.usize()] <- count - 1
             return true
+
+        # Invalidate every cached extent after a font, scale, or content
+        # generation changes. The retained viewport stores its anchor as a
+        # logical item plus local offset, so callers can remeasure without
+        # converting that identity into a stale absolute pixel position.
+        def variable_clear_measurements(owner: u32) -> usize:
+            slot: i32 = variable_slot(owner)
+            return 0 if slot == NONE_INDEX
+            count: usize = variable_measurement_counts[slot.usize()]
+            base: usize = slot.usize() * MAX_VARIABLE_MEASUREMENTS
+            for offset in 0..<MAX_VARIABLE_MEASUREMENTS:
+                break if offset >= count
+                variable_measurement_indexes[base + offset] <- NONE_INDEX
+                variable_measurement_heights[base + offset] <- 0.0
+                variable_measurement_last_used[base + offset] <- 0
+            variable_measurement_counts[slot.usize()] <- 0
+            variable_measurement_clock[slot.usize()] <- 0
+            return count
 
         def variable_height(owner: u32, index: i32) -> f32:
             slot: i32 = variable_slot(owner)

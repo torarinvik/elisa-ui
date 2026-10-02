@@ -69,7 +69,8 @@ def run_showcase_workflow() -> void:
 
     resource: UiResources::ResourceHandle = UiResources::request("showcase/sdl3-brand-workflow", 11)
     check("showcase image resource receives a live identity", UiResources::resource_is_valid(resource))
-    check("showcase image resource transitions to Ready", UiResources::set_state(resource, UiResources::State.Ready))
+    check("showcase image remains requested before decode and upload", UiResources::state(resource) == UiResources::State.Requested)
+    check("showcase host supplies decoded image progress", UiResources::set_progress(resource, 1.0, 1.0) and UiResources::state(resource) == UiResources::State.Requested)
     image: UiCore::ImageRef = UiCore::image_ref(resource.slot, resource.generation)
     pixels: mutable u8[64] = [
         238, 32, 180, 255, 238, 32, 180, 255, 238, 32, 180, 255, 238, 32, 180, 255,
@@ -87,6 +88,7 @@ def run_showcase_workflow() -> void:
     app_frame()
     check("showcase records its image command before upload", frame_contains_image(image))
     check("SDL uploads pixels after the showcase command was recorded", UiSdl3Draw::bind_image_rgba32(image, pixel_pointer, 64, 4, 4, 16))
+    check("showcase image becomes Ready after renderer upload", UiResources::state(resource) == UiResources::State.Ready and UiResources::uploaded_progress(resource) == 1.0)
     replacement: mutable u8[64] = [
         24, 190, 226, 255, 24, 190, 226, 255, 24, 190, 226, 255, 24, 190, 226, 255,
         24, 190, 226, 255, 24, 190, 226, 255, 24, 190, 226, 255, 24, 190, 226, 255,

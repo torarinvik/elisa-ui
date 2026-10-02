@@ -42,18 +42,18 @@ def main() -> i64:
     for index in 0..<400:
         long_message[index] <- 65
     fourth_token: u32 = UiValidation::begin(field)
-    check("long messages are bounded", UiValidation::reject(field, fourth_token, sview(&long_message[0], 0, 400)) and UiValidation::message(field).len.usize() == UiValidation::MESSAGE_CAPACITY - 1 and UiValidation::message_truncated(field))
+    check("long messages are bounded", UiValidation::reject(field, fourth_token, UiText::fixed_bytes_view_range[400](long_message, 0, 400)) and UiValidation::message(field).len.usize() == UiValidation::MESSAGE_CAPACITY - 1 and UiValidation::message_truncated(field))
     malformed_message: mutable u8[3] = zeroed
     malformed_message[0] <- 65
     malformed_message[1] <- 255
     malformed_message[2] <- 66
     malformed_token: u32 = UiValidation::begin(field)
-    check("malformed validation messages are rejected", UiValidation::reject(field, malformed_token, sview(&malformed_message[0], 0, 3)) and UiValidation::message(field) == "A" and UiValidation::message_truncated(field))
+    check("malformed validation messages are rejected", UiValidation::reject(field, malformed_token, UiText::fixed_bytes_view_range[3](malformed_message, 0, 3)) and UiValidation::message(field) == "A" and UiValidation::message_truncated(field))
     boundary_message: mutable u8[UiValidation::MESSAGE_CAPACITY - 1] = zeroed
     for index in 0..<UiValidation::MESSAGE_CAPACITY - 1:
         boundary_message[index] <- 66
     boundary_token: u32 = UiValidation::begin(field)
-    check("maximum fitting message is not marked truncated", UiValidation::reject(field, boundary_token, sview(&boundary_message[0], 0, (UiValidation::MESSAGE_CAPACITY - 1).i64())) and UiValidation::message(field).len.usize() == UiValidation::MESSAGE_CAPACITY - 1 and not UiValidation::message_truncated(field))
+    check("maximum fitting message is not marked truncated", UiValidation::reject(field, boundary_token, UiText::fixed_bytes_view_range[255](boundary_message, 0, 255)) and UiValidation::message(field).len.usize() == UiValidation::MESSAGE_CAPACITY - 1 and not UiValidation::message_truncated(field))
 
     malformed_message_words: mutable u64[2] = zeroed
     malformed_message_words[1] <- 4

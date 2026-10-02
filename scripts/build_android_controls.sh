@@ -12,7 +12,7 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
+STAGE1="$(bash "$ROOT/scripts/resolve_stage1_root.sh" "$ROOT")"
 EXAMPLE="${1:-showcase}"
 [[ "$EXAMPLE" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "invalid Android controls example name: $EXAMPLE" >&2; exit 2; }
 ENTRY="$ROOT/examples/$EXAMPLE/android_controls_main.elisa"
@@ -43,14 +43,16 @@ done
 [[ -x "$CLANG" ]] || { echo "no NDK clang at $CLANG" >&2; exit 2; }
 [[ -n "$BUILD_TOOLS" && -n "$PLATFORM_JAR" ]] || { echo "no build-tools or platform under $SDK" >&2; exit 2; }
 command -v javac >/dev/null || { echo "no javac on PATH" >&2; exit 2; }
+ELISA_UI_STAGE1="$STAGE1" bash "$ROOT/scripts/check_toolchain.sh" --report >&2
 
-OUT="$ROOT/build/android-controls/$EXAMPLE"
+ANDROID_CONTROLS_OUT_ROOT="${ELISA_UI_ANDROID_CONTROLS_OUT_ROOT:-$ROOT/build/android-controls}"
+OUT="$ANDROID_CONTROLS_OUT_ROOT/$EXAMPLE"
 rm -rf "$OUT"
 mkdir -p "$OUT/classes" "$OUT/apk/lib/arm64-v8a"
 LIB="lib$EXAMPLE"
 
 # --- the native library ------------------------------------------------
-"$STAGE1/bin/elisac-stage1" -emit obj -O0 -target-triple "$TRIPLE" \
+ELISA_STAGE1_PIC=1 "$STAGE1/bin/elisac-stage1" -emit obj -O0 -target-triple "$TRIPLE" \
   -o "$OUT/runtime_core.o" "$STAGE1/elisacore_std/native_runtime_support.elisa"
 bash "$STAGE1/scripts/write_profiler_hook_fallbacks.sh" > "$OUT/profiler_hooks.c"
 "$CLANG" -c -fPIC -o "$OUT/profiler_hooks.o" "$OUT/profiler_hooks.c"
@@ -77,7 +79,7 @@ exec "$CLANG" -shared -fPIC -Wl,-z,max-page-size=16384 -Wl,--no-undefined \\
   "\${args[@]}" "$OUT/android_controls_jni.o" -llog -lm -ldl
 LINK
 chmod +x "$LINKER"
-ELISA_CLANG="$LINKER" ELISA_RUNTIME_OBJ="$OUT/elisacore_runtime.o" \
+ELISA_STAGE1_PIC=1 ELISA_CLANG="$LINKER" ELISA_RUNTIME_OBJ="$OUT/elisacore_runtime.o" \
   "$STAGE1/bin/elisac-stage1" -emit exe -O0 -target-triple "$TRIPLE" \
   -o "$OUT/apk/lib/arm64-v8a/$LIB.so" "$ENTRY"
 

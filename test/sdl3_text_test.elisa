@@ -53,7 +53,7 @@ def null_clipboard_read_is_ignored() -> bool can Unsafe.PointerCast:
     buffer: mutable u8& = 0.uintptr().cast[mutable u8&] can Unsafe.PointerCast
     return ui_clipboard_read(buffer, 1) == 0
 
-def main() -> i64:
+def main() -> i64 can[Unsafe.PointerCast]:
     check("SDL rejects a null clipboard write buffer", null_clipboard_write_is_rejected())
     check("SDL ignores a null clipboard read buffer", null_clipboard_read_is_ignored())
     # A cached native snapshot belongs to the lifecycle generation that read
@@ -70,20 +70,65 @@ def main() -> i64:
         _ = puts(SDL_GetError())
         return 2
 
+    # Runtime face replacement must invalidate the native font table, the
+    # frame-local metric cache, and retained label geometry together.
+    UiSdl3::fonts_close()
+    cached_face_width: f32 = UiTextMetrics::width("font reload", 20.0, false)
+    check("SDL resolves a font before the live replacement check", cached_face_width > 0.0 and UiSdl3::font_count() > 0)
+    UiFlat::reset()
+    font_label: usize = UiFlat::label(UiFlat::NONE, "font reload", 20.0, UiCore::rgb(240, 240, 245))
+    UiFlat::layout(240.0, 48.0)
+    check("label initially uses the active face metrics", UiFlat::widget(font_label).min_width > 0.0)
+    UiCore::clear_all_invalidations()
+    previous_font_generation: u32 = UiSdl3::font_generation()
+
     # A host may have SDL_ttf but no usable face. The backend must expose that
     # fact consistently instead of fabricating vertical metrics while width
-    # has already failed closed. Override with a deliberately absent path,
-    # verify the neutral result, then return to the platform candidates.
+    # has already failed closed. Switching to an absent override also proves
+    # that a warm native handle and a cached measurement are not reused.
     UiSdl3::set_font_override("/elisa-ui/font-that-does-not-exist.ttf")
+    check("changing the SDL font override releases cached native handles", UiSdl3::font_count() == 0)
+    check("changing the SDL font override publishes a new metrics generation", UiSdl3::font_generation() != previous_font_generation and UiTextMetrics::snapshot().font_generation == UiSdl3::font_generation())
+    check("changing the SDL font override invalidates retained layout", UiCore::is_invalidated(UiCore::Invalidation.Layout))
+    check("font replacement clears cached metric queries", UiTextMetrics::snapshot().width_queries == 0 and UiTextMetrics::snapshot().line_height_queries == 0)
     check("missing SDL font reports zero width", ui_measure_text_width("text", 20.0, false) == 0.0)
     check("missing SDL font reports zero ascent", ui_font_ascent(20.0) == 0.0)
     check("missing SDL font reports zero line height", ui_text_line_height(20.0) == 0.0)
+    check("cached metric lookup observes the missing replacement", UiTextMetrics::width("font reload", 20.0, false) == 0.0)
+    UiFlat::ensure_layout()
+    check("fontless replacement reflows the retained label", UiFlat::widget(font_label).min_width == 0.0)
     UiSdl3::fonts_close()
+
+    restored_face_width: f32 = UiTextMetrics::width("font reload", 20.0, false)
+    UiFlat::ensure_layout()
+    check("restoring platform candidates updates retained label geometry", restored_face_width > 0.0 and UiFlat::widget(font_label).min_width > 0.0)
 
     narrow: f32 = ui_measure_text_width("i", 20.0, false)
     wide: f32 = ui_measure_text_width("MMMMMMMMMM", 20.0, false)
     check("a font opened and measured a non-zero width", narrow > 0.0)
     check("wider text measures wider", wide > narrow)
+
+    # Direction belongs to each shaped run, not the cached font for all later
+    # users. An RTL measurement must request RTL shaping and restore the font
+    # before an unrelated LTR label reuses the same size entry.
+    if UiSdl3Fonts::font_for(20.0) is direction_font:
+        rtl_text: sview = "سلام"
+        _ = UiLocalization::set_locale("sr-Latn")
+        latin_run: sview = "Zdravo"
+        check("SDL_ttf begins an explicit-script run", UiSdl3Fonts::begin_text_run(direction_font, latin_run))
+        check("SDL_ttf receives the locale script subtag", TTF_GetFontScript(direction_font) == TTF_StringToTag("Latn"))
+        UiSdl3Fonts::end_text_run(direction_font, latin_run)
+        check("SDL_ttf clears the script subtag after the run", TTF_GetFontScript(direction_font) == 0)
+        _ = UiLocalization::set_locale("ar")
+        check("SDL_ttf accepts a BCP47 shaping language", TTF_SetFontLanguage(direction_font, "ar"))
+        _ = TTF_SetFontLanguage(direction_font, null)
+        check("SDL_ttf accepts RTL shaping for an Arabic run", UiSdl3Fonts::begin_text_run(direction_font, rtl_text))
+        check("SDL_ttf applies RTL direction to the borrowed font", TTF_GetFontDirection(direction_font) == 1)
+        UiSdl3Fonts::end_text_run(direction_font, rtl_text)
+        check("SDL_ttf restores LTR direction after a run", TTF_GetFontDirection(direction_font) == 0)
+        check("SDL_ttf measures the Arabic run with RTL direction", UiSdl3Fonts::measure_text_width(rtl_text, 20.0) > 0.0)
+        check("RTL measurement leaves the cached font at LTR", TTF_GetFontDirection(direction_font) == 0)
+        UiLocalization::reset()
 
     # A proportional font is the point of using SDL_ttf: ten Ms must be much
     # more than ten times an i would be under a monospace approximation.

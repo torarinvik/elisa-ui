@@ -1,0 +1,103 @@
+# Focused composition fixture for the SDK's typed feature activation model and
+# elisa-ui's owner-scoped feature presentation state.
+
+include "../../wasm-sdk/sdk/elisa/wasmbrowser/features/host_bindings.elisa"
+include "../../wasm-sdk/sdk/elisa/wasmbrowser/canonical_result.elisa"
+include "../../wasm-sdk/sdk/elisa/wasmbrowser/features.elisa"
+include "../src/widgets/ui_feature_component.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return 0
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def retained_caption(handle: UiHandles::Handle) -> sview:
+    if UiHandles::widget(handle) is widget:
+        return widget.text
+    return ""
+
+def result_pointer(result: mutable u64[8]&) -> u32:
+    trusted Unsafe.PointerCast:
+        return (&result[0]).cast[uintptr].u32()
+
+def result_u32(result: mutable u64[8]&, offset: u32) -> u32:
+    pointer: u32 = result_pointer(result)
+    trusted Unsafe.PointerCast:
+        slot: u32& = (pointer + offset).cast[u32&]
+        return slot
+
+def main() -> i64:
+    UiFeatureView::reset()
+    UiHandles::reset()
+    sdk_handle: FeatureHandle = try WasmBrowser::FeatureActivation::feature_handle(41) else return 1
+    sdk_loading: FeatureStatus = WasmBrowser::FeatureActivation::initial(sdk_handle)
+    ui_handle: UiFeatureView::FeatureHandle = UiFeatureView::request(3, 1, "2.0.0", 700)
+    check("SDK's refined activation handle enters the UI loading generation", UiFeatureView::activate(ui_handle, sdk_loading.handle) and UiFeatureView::state(ui_handle) == UiFeatureView::FeatureState.Loading)
+    options: UiFeaturePresentation::Options = UiFeaturePresentation::default_options()
+    host_root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 12.0, 8.0, UiCore::rgb(20, 24, 32))
+    view: mutable UiFeatureComponent::View = UiFeatureComponent::build(host_root, ui_handle, 700, options)
+    check("loading component exposes accessible cancellation in a parent-owned tree", UiHandles::is_valid(view.root) and retained_caption(view.status) == "Loading optional feature" and retained_caption(view.recovery_action) == "Cancel loading" and UiHandles::is_visible(view.recovery_action))
+    UiHandles::layout(480.0, 320.0)
+    UiCore::begin_frame()
+    UiHandles::paint()
+    check("loading status semantics point to the retained cancellation control", UiFeatureComponent::publish_accessibility(view, UiCore::Rect(0.0, 0.0, 420.0, 80.0)) and UiCore::accessibility_at(0).role == UiCore::AccessibilityRole.Status and UiCore::accessibility_at(0).action == UiHandles::index(view.recovery_action))
+
+    sdk_ready: FeatureStatus = try WasmBrowser::FeatureActivation::advance(sdk_loading, FeatureEvent.Ready) else return 1
+    check("typed SDK ready status resolves the UI generation", WasmBrowser::FeatureActivation::is_ready(sdk_ready) and UiFeatureView::resolve(ui_handle, sdk_ready.handle, UiFeatureView::FeatureState.Ready, UiFeatureView::FeatureFailureKind.Unknown))
+    check("feature data crosses into UI-owned storage as a typed panel", UiFeatureView::publish_content(ui_handle, sdk_ready.handle, 1, "Diagnostics", "Recent events and runtime health.", 41, "Open events"))
+    panel: UiFeatureView::Content = UiFeatureView::content(ui_handle)
+    check("typed panel contains copied feature data and an app action key", panel.available and panel.sequence == 1 and panel.title_length == 11 and panel.body_length == 33 and UiFeatureView::content_title(ui_handle) == "Diagnostics" and UiFeatureView::content_body(ui_handle) == "Recent events and runtime health." and panel.action_key == 41 and panel.action_label_length == 11 and UiFeatureView::content_action_label(ui_handle) == "Open events")
+    presented: UiFeaturePresentation::Record = UiFeaturePresentation::record(ui_handle)
+    check("composed SDK and UI status share the ready identity", presented.visible and presented.state == UiFeatureView::FeatureState.Ready and presented.package_version == "2.0.0" and presented.action == UiFeaturePresentation::Action.None)
+
+    # The activated feature returns copied data, not widget identities. The
+    # production wrapper updates its parent-owned tree and leaves dispatch of
+    # the action key to the app.
+    view <- UiFeatureComponent::refresh(view)
+    check("ready SDK content updates the existing parent-owned screen", retained_caption(view.status) == "Optional feature ready" and retained_caption(view.content_title) == "Diagnostics" and retained_caption(view.content_body) == "Recent events and runtime health.")
+    check("retained feature action label maps back to the copied action key", retained_caption(view.content_action) == "Open events" and UiFeatureComponent::content_action_key(view) == 41 and UiHandles::is_visible(view.content_action))
+    UiHandles::layout(480.0, 320.0)
+    UiCore::begin_frame()
+    UiHandles::paint()
+    check("ready feature screen preserves status accessibility", UiFeatureComponent::publish_accessibility(view, UiCore::Rect(0.0, 0.0, 420.0, 80.0)) and UiCore::accessibility_at(0).label == "Optional feature ready" and UiCore::accessibility_at(0).action == UiCore::MAX_ACCESSIBILITY_NODES)
+    check("the parent-owned action remains an ordinary activatable widget", UiHandles::activate(view.content_action))
+    check("a newer panel snapshot publishes with a new action identity", UiFeatureView::publish_content(ui_handle, sdk_ready.handle, 2, "Diagnostics updated", "New events are available.", 42, "Open incidents"))
+    check("a stale visible label exposes no action key", retained_caption(view.content_action) == "Open events" and UiFeatureComponent::content_action_key(view) == 0)
+    check("replayed panel content cannot roll back the current action", not UiFeatureView::publish_content(ui_handle, sdk_ready.handle, 1, "Diagnostics", "Recent events and runtime health.", 41, "Open events"))
+    view <- UiFeatureComponent::refresh(view)
+    check("refresh updates retained copy and action key as one snapshot", retained_caption(view.content_title) == "Diagnostics updated" and retained_caption(view.content_action) == "Open incidents" and UiFeatureComponent::content_action_key(view) == 42)
+    check("action identities remain app-scoped data across snapshot refresh", panel.sequence == 1 and panel.action_key == 41 and view.rendered_content_sequence == 2 and view.rendered_action_key == 42)
+    check("clearing content revokes its key before the retained tree refreshes", UiFeatureView::clear_content(ui_handle) and retained_caption(view.content_action) == "Open incidents" and UiFeatureComponent::content_action_key(view) == 0)
+    view <- UiFeatureComponent::refresh(view)
+    check("refresh hides cleared content and preserves the safe empty action", not UiHandles::is_visible(view.content_title) and not UiHandles::is_visible(view.content_action) and UiFeatureComponent::content_action_key(view) == 0)
+    check("clearing retains the sequence watermark", not UiFeatureView::publish_content(ui_handle, sdk_ready.handle, 2, "Diagnostics updated", "New events are available.", 42, "Open incidents"))
+    check("a higher-sequence panel can repopulate the retained screen", UiFeatureView::publish_content(ui_handle, sdk_ready.handle, 3, "Diagnostics restored", "Diagnostics content was refreshed.", 43, "Open runtime"))
+    view <- UiFeatureComponent::refresh(view)
+    check("repopulated content renders only its own action identity", retained_caption(view.content_title) == "Diagnostics restored" and retained_caption(view.content_action) == "Open runtime" and UiFeatureComponent::content_action_key(view) == 43)
+
+    if failures == 0:
+        _ = puts("feature SDK composition: all checks passed")
+        return 0
+    _ = puts("feature SDK composition: FAILURES above")
+    return 1

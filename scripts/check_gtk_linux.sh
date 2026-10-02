@@ -29,7 +29,7 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
+STAGE1="$(bash "$ROOT/scripts/resolve_stage1_root.sh" "$ROOT")"
 OUT="$ROOT/build/gtk-linux"
 
 command -v orb >/dev/null || { echo "gtk linux: skipped (no orb; OrbStack provides the Linux machine)"; exit 0; }

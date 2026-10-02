@@ -1,0 +1,136 @@
+# Generation-safe adapter between UiResources and an asynchronous SDK/host
+# operation. The host owns the operation; this table owns only the association
+# needed to reject late results after retry, cancellation, or disposal.
+
+extend UiResources:
+    public:
+        const MAX_RESOURCE_OPERATIONS: usize = UiResources::MAX_RESOURCES
+
+        struct Operation:
+            resource: ResourceHandle
+            operation_id: u64
+            cancellation_requested: bool
+
+        def operation_invalid() -> Operation:
+            return Operation{resource: resource_invalid(), operation_id: 0, cancellation_requested: false}
+
+        # Bind exactly one nonzero host operation to one live Requested
+        # generation. A second bind is rejected instead of replacing a token.
+        def bind_operation(handle: ResourceHandle, operation_id: u64) -> bool:
+            return false if not resource_is_valid(handle) or operation_id == 0 or state(handle) != State.Requested
+            return false if operation_slot_for_resource(handle) < MAX_RESOURCE_OPERATIONS
+            return false if operation_slot_for_id(operation_id) < MAX_RESOURCE_OPERATIONS
+            free: usize = operation_free_slot()
+            return false if free >= MAX_RESOURCE_OPERATIONS
+            operation_active[free] <- true
+            operation_resources[free] <- handle
+            operation_ids[free] <- operation_id
+            operation_cancelled[free] <- false
+            return true
+
+        def operation_for(handle: ResourceHandle) -> u64:
+            slot: usize = operation_slot_for_resource(handle)
+            return 0 if slot >= MAX_RESOURCE_OPERATIONS
+            return operation_ids[slot]
+
+        def operation_at(index: usize) -> Operation:
+            return operation_invalid() if index >= MAX_RESOURCE_OPERATIONS or not operation_active[index]
+            return Operation{resource: operation_resources[index], operation_id: operation_ids[index], cancellation_requested: operation_cancelled[index]}
+
+        def operation_count() -> usize:
+            total: mutable usize = 0
+            for index in 0..<MAX_RESOURCE_OPERATIONS:
+                total <- total + 1 if operation_active[index]
+            return total
+
+        # Poll accepts monotonic progress only through the existing resource
+        # policy. It returns false for stale handles or foreign operation IDs.
+        def poll_operation(handle: ResourceHandle, operation_id: u64, downloaded: f32, decoded: f32) -> bool:
+            slot: usize = operation_slot_for_pair(handle, operation_id)
+            return false if slot >= MAX_RESOURCE_OPERATIONS or operation_cancelled[slot]
+            return set_progress(handle, downloaded, decoded)
+
+        def poll_upload_operation(handle: ResourceHandle, operation_id: u64, uploaded: f32) -> bool:
+            slot: usize = operation_slot_for_pair(handle, operation_id)
+            return false if slot >= MAX_RESOURCE_OPERATIONS or operation_cancelled[slot]
+            return set_upload_progress(handle, uploaded)
+
+        def complete_operation(handle: ResourceHandle, operation_id: u64, next: State, failure: FailureKind) -> bool:
+            slot: usize = operation_slot_for_pair(handle, operation_id)
+            return false if slot >= MAX_RESOURCE_OPERATIONS or operation_cancelled[slot]
+            changed: bool = fail(handle, failure) if next == State.Failed else set_state(handle, next)
+            return false if not changed
+            clear_operation(slot)
+            return true
+
+        # Cancellation is split into the UI transition and a host acknowledgement.
+        # The returned operation remains discoverable so the caller can send the
+        # SDK cancel request and later forget the terminal host operation.
+        def cancel_operation(handle: ResourceHandle) -> u64:
+            slot: usize = operation_slot_for_resource(handle)
+            return 0 if slot >= MAX_RESOURCE_OPERATIONS
+            return 0 if operation_cancelled[slot]
+            return 0 if not cancel(handle)
+            return operation_ids[slot]
+
+        def forget_operation(operation_id: u64) -> bool:
+            slot: usize = operation_slot_for_id(operation_id)
+            return false if slot >= MAX_RESOURCE_OPERATIONS
+            clear_operation(slot)
+            return true
+
+    private:
+        global mutable operation_active: bool[MAX_RESOURCE_OPERATIONS] = zeroed
+        global mutable operation_resources: ResourceHandle[MAX_RESOURCE_OPERATIONS] = zeroed
+        global mutable operation_ids: u64[MAX_RESOURCE_OPERATIONS] = zeroed
+        global mutable operation_cancelled: bool[MAX_RESOURCE_OPERATIONS] = zeroed
+
+        # A resource-table reset ends every current generation, but operation
+        # records outlive it until the host acknowledges cancellation. This is
+        # important for app stop/restart: forgetting the IDs here would leave
+        # real host work running with no cancellation path.
+        def request_cancellation_for_all_operations() -> usize:
+            requested: mutable usize = 0
+            for index in 0..<MAX_RESOURCE_OPERATIONS:
+                if operation_active[index] and not operation_cancelled[index]:
+                    operation_cancelled[index] <- true
+                    requested <- requested + 1
+            return requested
+
+        def operation_slot_for_resource(handle: ResourceHandle) -> usize:
+            return MAX_RESOURCE_OPERATIONS if not resource_is_valid(handle)
+            for index in 0..<MAX_RESOURCE_OPERATIONS:
+                return index if operation_active[index] and same_resource(operation_resources[index], handle)
+            return MAX_RESOURCE_OPERATIONS
+
+        def request_operation_cancellation(handle: ResourceHandle) -> bool:
+            slot: usize = operation_slot_for_resource(handle)
+            return false if slot >= MAX_RESOURCE_OPERATIONS or operation_cancelled[slot]
+            operation_cancelled[slot] <- true
+            return true
+
+        def operation_slot_for_pair(handle: ResourceHandle, operation_id: u64) -> usize:
+            return MAX_RESOURCE_OPERATIONS if operation_id == 0
+            for index in 0..<MAX_RESOURCE_OPERATIONS:
+                return index if operation_active[index] and operation_ids[index] == operation_id and same_resource(operation_resources[index], handle)
+            return MAX_RESOURCE_OPERATIONS
+
+        def operation_slot_for_id(operation_id: u64) -> usize:
+            return MAX_RESOURCE_OPERATIONS if operation_id == 0
+            for index in 0..<MAX_RESOURCE_OPERATIONS:
+                return index if operation_active[index] and operation_ids[index] == operation_id
+            return MAX_RESOURCE_OPERATIONS
+
+        def operation_free_slot() -> usize:
+            for index in 0..<MAX_RESOURCE_OPERATIONS:
+                return index if not operation_active[index]
+            return MAX_RESOURCE_OPERATIONS
+
+        def clear_operation(slot: usize) -> void:
+            operation_active[slot] <- false
+            operation_resources[slot] <- resource_invalid()
+            operation_ids[slot] <- 0
+            operation_cancelled[slot] <- false
+
+        def same_resource(left: ResourceHandle, right: ResourceHandle) -> bool:
+            return left.slot == right.slot and left.generation == right.generation

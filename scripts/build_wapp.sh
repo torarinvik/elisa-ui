@@ -8,7 +8,7 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
+STAGE1="$(bash "$ROOT/scripts/resolve_stage1_root.sh" "$ROOT")"
 WASMBROWSER="${ELISA_UI_WASMBROWSER:-$ROOT/../WasmBrowser}"
 WASM_SDK="${ELISA_UI_WASM_SDK:-$ROOT/../wasm-sdk}"
 WIT="${ELISA_UI_WIT:-$WASMBROWSER/wit/wasmbrowser.wit}"
@@ -30,7 +30,7 @@ WASM_MAX_PAGES="${ELISA_UI_WASM_MAX_PAGES:-32768}"
 [[ -f "$ROOT/examples/$EXAMPLE/wapp_main.elisa" ]] || { echo "no component entry: examples/$EXAMPLE/wapp_main.elisa" >&2; exit 2; }
 # Show the resolved compiler/runtime revision and hashes this build actually
 # used, and warn (without failing) on a dirty or stale compiler checkout.
-bash "$ROOT/scripts/check_toolchain.sh" --report >&2
+ELISA_UI_STAGE1="$STAGE1" bash "$ROOT/scripts/check_toolchain.sh" --report >&2
 
 mkdir -p "$ROOT/build"
 

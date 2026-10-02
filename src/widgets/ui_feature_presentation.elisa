@@ -1,0 +1,199 @@
+# Application-facing presentation policy for optional feature views.
+#
+# UiFeatureView owns activation-visible state; this module maps that state into
+# stable copy, accessible semantics, a simple status surface, and explicit
+# cancel/retry/version-selection actions. It never activates code or changes
+# package authority.
+
+include "./ui_feature_view.elisa"
+include "./ui_handles.elisa"
+
+module UiFeaturePresentation:
+    public:
+        const enum Action of i32:
+            None = 0
+            Cancel = 1
+            Retry = 2
+            ChooseVersion = 3
+
+        const enum Tone of i32:
+            Neutral = 0
+            Positive = 1
+            Warning = 2
+            Error = 3
+
+        struct Options:
+            neutral_background: UiCore::Color
+            positive_background: UiCore::Color
+            warning_background: UiCore::Color
+            error_background: UiCore::Color
+            neutral_accent: UiCore::Color
+            positive_accent: UiCore::Color
+            warning_accent: UiCore::Color
+            error_accent: UiCore::Color
+
+        struct Record:
+            handle: UiFeatureView::FeatureHandle
+            state: UiFeatureView::FeatureState
+            failure: UiFeatureView::FeatureFailureKind
+            tone: Tone
+            role: UiCore::AccessibilityRole
+            title: sview
+            detail: sview
+            help: sview
+            action: Action
+            action_label: sview
+            package_version: sview
+            visible: bool
+
+        struct ActionResult:
+            handle: UiFeatureView::FeatureHandle
+            action: Action
+            changed: bool
+
+        def default_options() -> Options:
+            return Options{
+                neutral_background: UiCore::rgb(42, 48, 60),
+                positive_background: UiCore::rgb(34, 58, 46),
+                warning_background: UiCore::rgb(68, 54, 30),
+                error_background: UiCore::rgb(66, 40, 46),
+                neutral_accent: UiCore::rgb(116, 154, 222),
+                positive_accent: UiCore::rgb(105, 202, 145),
+                warning_accent: UiCore::rgb(239, 190, 88),
+                error_accent: UiCore::rgb(236, 124, 130),
+            }
+
+        def record(handle: UiFeatureView::FeatureHandle) -> Record:
+            if not UiFeatureView::is_valid(handle):
+                return Record{
+                    handle: UiFeatureView::invalid(),
+                    state: UiFeatureView::FeatureState.Unrequested,
+                    failure: UiFeatureView::FeatureFailureKind.Unknown,
+                    tone: Tone.Neutral, role: UiCore::AccessibilityRole.Status,
+                    title: "Feature view unavailable",
+                    detail: "This view is no longer active.", help: "",
+                    action: Action.None, action_label: "", package_version: "",
+                    visible: false,
+                }
+            if UiFeatureView::state(handle) == UiFeatureView::FeatureState.Requested or UiFeatureView::state(handle) == UiFeatureView::FeatureState.Loading:
+                return make_record(handle, UiFeatureView::state(handle), UiFeatureView::failure(handle), Tone.Neutral, UiCore::AccessibilityRole.Status,
+                    "Loading optional feature", "The feature is being prepared.",
+                    "Activate to cancel loading.", Action.Cancel, "Cancel loading", UiFeatureView::package_version(handle))
+            if UiFeatureView::state(handle) == UiFeatureView::FeatureState.Ready:
+                return make_record(handle, UiFeatureView::state(handle), UiFeatureView::failure(handle), Tone.Positive, UiCore::AccessibilityRole.Status,
+                    "Optional feature ready", "The feature is ready to use.",
+                    "", Action.None, "", UiFeatureView::package_version(handle))
+            if UiFeatureView::state(handle) == UiFeatureView::FeatureState.UnavailableOffline:
+                return make_record(handle, UiFeatureView::state(handle), UiFeatureView::failure(handle), Tone.Warning, UiCore::AccessibilityRole.Alert,
+                    "Feature unavailable offline", "The feature could not be loaded without a connection.",
+                    "Activate to retry when you are ready.", Action.Retry, "Retry", UiFeatureView::package_version(handle))
+            if UiFeatureView::state(handle) == UiFeatureView::FeatureState.Denied:
+                return make_record(handle, UiFeatureView::state(handle), UiFeatureView::failure(handle), Tone.Warning, UiCore::AccessibilityRole.Alert,
+                    "Feature activation denied", "The host did not grant this activation.",
+                    "Activate to try again after access changes.", Action.Retry, "Retry activation", UiFeatureView::package_version(handle))
+            if UiFeatureView::state(handle) == UiFeatureView::FeatureState.Incompatible:
+                return make_record(handle, UiFeatureView::state(handle), UiFeatureView::failure(handle), Tone.Error, UiCore::AccessibilityRole.Alert,
+                    "Incompatible feature version", "Choose a package version compatible with this application.",
+                    "Activate to choose another version.", Action.ChooseVersion, "Choose version", UiFeatureView::package_version(handle))
+            if UiFeatureView::state(handle) == UiFeatureView::FeatureState.Failed:
+                if UiFeatureView::failure(handle) == UiFeatureView::FeatureFailureKind.Unavailable:
+                    return make_record(handle, UiFeatureView::state(handle), UiFeatureView::failure(handle), Tone.Warning, UiCore::AccessibilityRole.Alert,
+                        "Feature unavailable", "The current host package does not provide this feature.",
+                        "Choose another package version or return to the app.", Action.ChooseVersion, "Choose package", UiFeatureView::package_version(handle))
+                if UiFeatureView::failure(handle) == UiFeatureView::FeatureFailureKind.Retryable or UiFeatureView::failure(handle) == UiFeatureView::FeatureFailureKind.Offline:
+                    return make_record(handle, UiFeatureView::state(handle), UiFeatureView::failure(handle), Tone.Error, UiCore::AccessibilityRole.Alert,
+                        "Feature failed to load", "The feature could not be prepared.",
+                        "Activate to retry.", Action.Retry, "Retry", UiFeatureView::package_version(handle))
+                if UiFeatureView::failure(handle) == UiFeatureView::FeatureFailureKind.Incompatible:
+                    return make_record(handle, UiFeatureView::state(handle), UiFeatureView::failure(handle), Tone.Error, UiCore::AccessibilityRole.Alert,
+                        "Incompatible feature version", "Choose a package version compatible with this application.",
+                        "Activate to choose another version.", Action.ChooseVersion, "Choose version", UiFeatureView::package_version(handle))
+                if UiFeatureView::failure(handle) == UiFeatureView::FeatureFailureKind.Denied:
+                    return make_record(handle, UiFeatureView::state(handle), UiFeatureView::failure(handle), Tone.Warning, UiCore::AccessibilityRole.Alert,
+                        "Feature activation denied", "The host did not grant this activation.",
+                        "Activate to try again after access changes.", Action.Retry, "Retry activation", UiFeatureView::package_version(handle))
+                return make_record(handle, UiFeatureView::state(handle), UiFeatureView::failure(handle), Tone.Error, UiCore::AccessibilityRole.Alert,
+                    "Feature package rejected", "The package is invalid or could not be verified.",
+                    "Choose a valid package version to continue.", Action.ChooseVersion, "Choose version", UiFeatureView::package_version(handle))
+            return make_record(handle, UiFeatureView::state(handle), UiFeatureView::failure(handle), Tone.Neutral, UiCore::AccessibilityRole.Status,
+                "Feature loading cancelled", "The feature was not opened.",
+                "", Action.None, "", UiFeatureView::package_version(handle))
+
+        # Call after the retained status and action controls are built. Keep
+        # identities typed at the application boundary; UiFlat's bounded
+        # indexes are resolved only after both tree-lifetime checks succeed.
+        def publish_accessibility(frame: UiCore::Rect, handle: UiFeatureView::FeatureHandle, semantic_target: UiHandles::Handle, action_target: UiHandles::Handle) -> bool:
+            return false if not UiFeatureView::is_valid(handle) or not UiHandles::is_valid(semantic_target)
+            semantic_id: usize = UiHandles::index(semantic_target)
+            return false if semantic_id >= UiCore::MAX_ACCESSIBILITY_NODES
+            value: Record = record(handle)
+            semantic_action: mutable usize = UiCore::MAX_ACCESSIBILITY_NODES
+            if value.action == Action.None:
+                pass
+            else:
+                return false if not action_button(action_target)
+                semantic_action <- UiHandles::index(action_target)
+            safe_frame: UiCore::Rect = UiCore::Rect(
+                UiCore::bounded_coordinate(frame.origin.x),
+                UiCore::bounded_coordinate(frame.origin.y),
+                UiCore::bounded_extent(frame.size.width),
+                UiCore::bounded_extent(frame.size.height))
+            UiCore::accessibility(value.role, value.title, value.help, safe_frame,
+                semantic_id, semantic_action, true, false, false, 0.0,
+                value.detail, "", handle.generation.usize(), 0, 0)
+            return true
+
+        # A status surface stays behind ordinary retained labels and action
+        # controls. Text shaping and keyboard/focus behavior remain those of
+        # the app's normal widget tree.
+        def paint(box: UiCore::Rect, handle: UiFeatureView::FeatureHandle, options: Options) -> bool:
+            return false if not UiFeatureView::is_valid(handle)
+            value: Record = record(handle)
+            safe_box: UiCore::Rect = UiCore::Rect(
+                UiCore::bounded_coordinate(box.origin.x),
+                UiCore::bounded_coordinate(box.origin.y),
+                UiCore::bounded_extent(box.size.width),
+                UiCore::bounded_extent(box.size.height))
+            background: UiCore::Color = background_color(value.tone, options)
+            accent: UiCore::Color = accent_color(value.tone, options)
+            UiCore::fill(safe_box, background)
+            if safe_box.size.width > 0.0 and safe_box.size.height > 0.0:
+                accent_width: f32 = 3.0 if safe_box.size.width >= 3.0 else safe_box.size.width
+                UiCore::fill(UiCore::Rect(safe_box.origin.x, safe_box.origin.y, accent_width, safe_box.size.height), accent)
+            return true
+
+        def perform_action(handle: UiFeatureView::FeatureHandle, owner_id: u32) -> ActionResult:
+            value: Record = record(handle)
+            return ActionResult{handle: handle, action: value.action, changed: false} if not UiFeatureView::owns(handle, owner_id)
+            if value.action == Action.Cancel:
+                return ActionResult{handle: handle, action: value.action, changed: UiFeatureView::cancel_for_owner(handle, owner_id)}
+            if value.action == Action.Retry:
+                replacement: UiFeatureView::FeatureHandle = UiFeatureView::retry(handle)
+                return ActionResult{handle: replacement, action: value.action, changed: UiFeatureView::is_valid(replacement)}
+            return ActionResult{handle: handle, action: value.action, changed: false}
+
+    private:
+        def action_button(handle: UiHandles::Handle) -> bool:
+            return false if not UiHandles::is_valid(handle)
+            if UiHandles::widget(handle) is widget:
+                return widget.kind == UiConst::WidgetKind.Button
+            return false
+
+        def make_record(handle: UiFeatureView::FeatureHandle, state: UiFeatureView::FeatureState, failure: UiFeatureView::FeatureFailureKind, tone: Tone, role: UiCore::AccessibilityRole, title: sview, detail: sview, help: sview, action: Action, action_label: sview, package_version: sview) -> Record:
+            return Record{
+                handle: handle, state: state, failure: failure, tone: tone, role: role,
+                title: title, detail: detail, help: help, action: action,
+                action_label: action_label, package_version: package_version, visible: true,
+            }
+
+        def background_color(tone: Tone, options: Options) -> UiCore::Color:
+            return options.positive_background if tone == Tone.Positive
+            return options.warning_background if tone == Tone.Warning
+            return options.error_background if tone == Tone.Error
+            return options.neutral_background
+
+        def accent_color(tone: Tone, options: Options) -> UiCore::Color:
+            return options.positive_accent if tone == Tone.Positive
+            return options.warning_accent if tone == Tone.Warning
+            return options.error_accent if tone == Tone.Error
+            return options.neutral_accent

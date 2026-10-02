@@ -1,0 +1,13 @@
+# Clear a consumed selection only after its host-owned bytes were released.
+extend UiServices:
+    public:
+        def forget_selection(handle: ServiceHandle) -> bool:
+            return false if not is_valid(handle)
+            slot: usize = handle.slot.usize()
+            return false if service_pickers[slot] != PickerState.Selected
+            service_pickers[slot] <- PickerState.Idle
+            service_selection_ids[slot] <- 0
+            service_selection_kinds[slot] <- ServiceSelectionKind.Unknown
+            record_picker_failure(slot, ServiceFailureKind.Unknown)
+            mark_changed()
+            return true

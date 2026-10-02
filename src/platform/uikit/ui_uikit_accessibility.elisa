@@ -71,7 +71,7 @@ extend UiUIKit:
             return 100 if ratio >= 1.0
             return (ratio * 100.0 + 0.5).i32()
 
-        def percent_text(percent: i32) -> sview:
+        def percent_text(percent: i32) -> sview can Unsafe.PointerCast:
             bounded: i32 = 0 if percent < 0 else (100 if percent > 100 else percent)
             digits: mutable usize = 1
             digits <- 2 if bounded >= 10
@@ -82,7 +82,9 @@ extend UiUIKit:
                 uikit_value_storage[position] <- (value % 10 + 48).i32().u8()
                 value <- value / 10
             uikit_value_storage[digits] <- 37
-            return sview(&uikit_value_storage[0], 0, (digits + 1).i64())
+            # `bounded` is in 0..100, so at most three digits and `%` fit the
+            # eight-byte buffer; borrow exactly the bytes written here.
+            return UiText::unsafe_sview_bounded_bytes(&uikit_value_storage[0], digits + 1)
 
     public:
         # Returns a retained CFString, or 0 when the role has no spoken value.

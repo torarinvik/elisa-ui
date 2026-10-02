@@ -160,3 +160,17 @@ extend UiResources:
             resource_decoded[slot] <- next_decode
             resource_mark_changed()
             return true
+
+        # Renderer upload is independent from byte transfer and CPU decode;
+        # hosts may report pipelined progress for either stage independently.
+        # The resource remains Requested until explicit operation completion.
+        def set_upload_progress(handle: ResourceHandle, upload: f32) -> bool:
+            return false if not UiResources::resource_is_valid(handle)
+            return false if not UiCore::is_finite(upload)
+            slot: usize = handle.slot.usize()
+            return false if resource_states[slot] != State.Requested
+            next_upload: f32 = UiCore::normalized_unit(upload)
+            return false if next_upload < resource_uploaded[slot] or next_upload == resource_uploaded[slot]
+            resource_uploaded[slot] <- next_upload
+            resource_mark_changed()
+            return true

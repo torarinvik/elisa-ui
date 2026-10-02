@@ -17,11 +17,13 @@ def main() -> i64:
     check("os-reserved binding is accepted", UiShortcuts::reserve_os(83, UiShortcuts::MOD_SUPER))
     check("application binding is accepted", UiShortcuts::bind_application(78, UiShortcuts::MOD_CONTROL, 5, false))
     check("menu binding is accepted", UiShortcuts::bind_menu(80, UiShortcuts::MOD_CONTROL, 9, false))
+    check("an app binding may collide with an OS-reserved chord", UiShortcuts::bind_application(83, UiShortcuts::MOD_SUPER, 7, false))
+    check("a menu binding may collide with an app chord", UiShortcuts::bind_menu(78, UiShortcuts::MOD_CONTROL, 10, false))
     check("command zero is rejected", not UiShortcuts::bind_application(65, UiShortcuts::MOD_CONTROL, 0, false))
     check("out-of-range modifiers are rejected", not UiShortcuts::bind_application(65, 16, 1, false))
 
     reserved: UiShortcuts::Decision = UiShortcuts::resolve(83, UiShortcuts::MOD_SUPER, false, false)
-    check("os-reserved wins and is not consumed", reserved.layer == UiShortcuts::Layer.Reserved and not reserved.consumed)
+    check("OS-reserved wins over an app binding on the same chord", reserved.layer == UiShortcuts::Layer.Reserved and not reserved.consumed)
     reserved_focused: UiShortcuts::Decision = UiShortcuts::resolve(83, UiShortcuts::MOD_SUPER, true, false)
     check("os-reserved wins over a focused editable control", reserved_focused.layer == UiShortcuts::Layer.Reserved and not reserved_focused.consumed)
 
@@ -29,7 +31,7 @@ def main() -> i64:
     check("a focused editable control takes the key before app commands", focused.layer == UiShortcuts::Layer.FocusedControl and focused.consumed)
 
     application: UiShortcuts::Decision = UiShortcuts::resolve(78, UiShortcuts::MOD_CONTROL, false, false)
-    check("an application command resolves with its command id", application.layer == UiShortcuts::Layer.ApplicationCommand and application.command == 5 and application.consumed)
+    check("application command wins over a menu on the same chord", application.layer == UiShortcuts::Layer.ApplicationCommand and application.command == 5 and application.consumed)
 
     menu: UiShortcuts::Decision = UiShortcuts::resolve(80, UiShortcuts::MOD_CONTROL, false, false)
     check("a menu accelerator resolves when no app command matches", menu.layer == UiShortcuts::Layer.Menu and menu.command == 9 and menu.consumed)
@@ -44,9 +46,9 @@ def main() -> i64:
     check("a non-repeat binding ignores key repeat", UiShortcuts::resolve(78, UiShortcuts::MOD_CONTROL, false, true).layer == UiShortcuts::Layer.Unhandled)
     check("a repeat-eligible binding fires on repeat", UiShortcuts::resolve(65, UiShortcuts::MOD_CONTROL, false, true).layer == UiShortcuts::Layer.ApplicationCommand)
 
-    check("duplicate registration is idempotent", UiShortcuts::bind_application(78, UiShortcuts::MOD_CONTROL, 5, false) and UiShortcuts::binding_count() == 4)
+    check("duplicate registration is idempotent", UiShortcuts::bind_application(78, UiShortcuts::MOD_CONTROL, 5, false) and UiShortcuts::binding_count() == 6)
     counts: UiShortcuts::Snapshot = UiShortcuts::snapshot()
-    check("snapshot reports each layer", counts.total == 4 and counts.reserved == 1 and counts.application == 2 and counts.menu == 1 and not counts.overflowed)
+    check("snapshot reports each layer", counts.total == 6 and counts.reserved == 1 and counts.application == 3 and counts.menu == 2 and not counts.overflowed)
 
     UiShortcuts::reset()
     check("reset clears the registry", UiShortcuts::binding_count() == 0 and UiShortcuts::resolve(78, UiShortcuts::MOD_CONTROL, false, false).layer == UiShortcuts::Layer.Unhandled)

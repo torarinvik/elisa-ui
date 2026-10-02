@@ -11,7 +11,8 @@
 //   * the application callback runs,
 //   * the frame is repainted and the new semantics are published.
 //
-// The app under test is examples/uikit_smoke: one button and one status label.
+// The app under test is examples/uikit_smoke: a button, status label and
+// custom-canvas text field.
 
 #import <XCTest/XCTest.h>
 
@@ -53,6 +54,36 @@
     [button tap];
     XCTAssertTrue([app.staticTexts[@"tapped twice"] waitForExistenceWithTimeout:5.0],
                   @"a second touch did not reach the retained model");
+    [app terminate];
+}
+
+- (void)testCommittedTextReachesTheRetainedModel {
+    XCUIApplication *app = [[XCUIApplication alloc] init];
+    app.launchEnvironment = @{@"ELISA_UI_UITEST": @"1"};
+    [app launch];
+
+    NSPredicate *namedField = [NSPredicate predicateWithFormat:@"label == %@", @"Name"];
+    XCUIElementQuery *allElements = [app descendantsMatchingType:XCUIElementTypeAny];
+    XCUIElementQuery *namedFields = [allElements matchingPredicate:namedField];
+    XCUIElement *field = namedFields.firstMatch;
+    XCTAssertTrue([field waitForExistenceWithTimeout:5.0],
+                  @"the framework never published its text input to iOS: %@", app.debugDescription);
+    [field tap];
+    XCUIElement *keyboard = app.keyboards.firstMatch;
+    XCTAssertTrue([keyboard waitForExistenceWithTimeout:5.0],
+                  @"tapping the retained text input did not present UIKit's keyboard");
+    // The custom-canvas node is a virtual accessibility element, while its
+    // containing UIKit view implements UITextInput and owns keyboard focus.
+    // Type at the app boundary so XCTest follows that real first responder.
+    [app typeText:@"Elisa"];
+
+    NSPredicate *hasCommittedText = [NSPredicate predicateWithFormat:@"value == %@", @"Elisa"];
+    XCTNSPredicateExpectation *published =
+        [[XCTNSPredicateExpectation alloc] initWithPredicate:hasCommittedText object:field];
+    XCTAssertEqual([XCTWaiter waitForExpectations:@[published] timeout:5.0],
+                   XCTWaiterResultCompleted,
+                   @"committed UIKit text did not return through the retained model and semantic tree");
+    [app terminate];
 }
 
 @end

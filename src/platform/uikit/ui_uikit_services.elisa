@@ -1,0 +1,82 @@
+# UIKit permission adapter for the portable service state machine.
+include "../../widgets/ui_services.elisa"
+
+extern elisa_uikit_request_permission(kind: i32, slot: u32, generation: u32) -> i32
+extern elisa_uikit_present_picker(kind: i32, slot: u32, generation: u32) -> i32
+extern elisa_uikit_read_selection(selection_id: u64, offset: u64, buffer: mutable u8&, capacity: i32) -> i32
+extern elisa_uikit_release_selection(selection_id: u64) -> i32
+
+module UiUIKitServices:
+    public:
+        # Camera and microphone are the first native consent services. File
+        # and photo selection use separate picker APIs and do not request OS
+        # permission through this entry point.
+        def request_permission(handle: UiServices::ServiceHandle) -> bool:
+            return false if not UiServices::is_valid(handle)
+            kind: UiServices::ServiceKind = UiServices::kind(handle)
+            return false if kind != UiServices::ServiceKind.Camera and kind != UiServices::ServiceKind.Microphone
+            return false if not UiServices::begin_prompt(handle)
+            accepted: i32 = elisa_uikit_request_permission(kind.i32(), handle.slot, handle.generation)
+            if accepted != 1:
+                _ = UiServices::resolve_consent(handle, UiServices::ConsentState.Failed, UiServices::ServiceFailureKind.Retryable)
+                UiUIKit::redraw()
+                return false
+            return true
+
+        def present_picker(handle: UiServices::ServiceHandle) -> bool:
+            return false if not UiServices::is_valid(handle)
+            kind: UiServices::ServiceKind = UiServices::kind(handle)
+            return false if kind != UiServices::ServiceKind.Photos and kind != UiServices::ServiceKind.Files
+            if UiServices::picker(handle) == UiServices::PickerState.Selected:
+                previous_id: u64 = UiServices::selection_id(handle)
+                return false if previous_id == 0 or elisa_uikit_release_selection(previous_id) != 1
+                return false if not UiServices::forget_selection(handle)
+            return false if not UiServices::present_picker(handle)
+            accepted: i32 = elisa_uikit_present_picker(kind.i32(), handle.slot, handle.generation)
+            if accepted != 1:
+                _ = UiServices::resolve_picker(handle, UiServices::PickerState.Failed, UiServices::ServiceSelectionKind.Unknown, 0)
+                UiUIKit::redraw()
+                return false
+            return true
+
+        def read_selection(handle: UiServices::ServiceHandle, offset: u64, buffer: mutable u8&, capacity: i32) -> i32:
+            return -1 if not UiServices::is_valid(handle) or UiServices::picker(handle) != UiServices::PickerState.Selected
+            selection_id: u64 = UiServices::selection_id(handle)
+            return -1 if selection_id == 0 or capacity < 0 or capacity > 65536 or (capacity > 0 and buffer == null)
+            return elisa_uikit_read_selection(selection_id, offset, buffer, capacity)
+
+        def release_selection(handle: UiServices::ServiceHandle) -> bool:
+            return false if not UiServices::is_valid(handle) or UiServices::picker(handle) != UiServices::PickerState.Selected
+            released: i32 = elisa_uikit_release_selection(UiServices::selection_id(handle))
+            return false if released != 1
+            result: bool = UiServices::forget_selection(handle)
+            UiUIKit::redraw() if result
+            return result
+
+def uikit_service_permission_result(slot: u32, generation: u32, state: i32, failure: i32) -> i32:
+    handle: UiServices::ServiceHandle = UiServices::ServiceHandle{slot: slot, generation: generation}
+    next: UiServices::ConsentState = state.ConsentState()
+    reason: UiServices::ServiceFailureKind = failure.ServiceFailureKind()
+    return 0 if not UiServices::resolve_consent(handle, next, reason)
+    UiUIKit::redraw()
+    return 1
+
+def uikit_service_permission_sync(kind: i32, state: i32, failure: i32) -> i32:
+    service_kind: UiServices::ServiceKind = kind.ServiceKind()
+    next: UiServices::ConsentState = state.ConsentState()
+    reason: UiServices::ServiceFailureKind = failure.ServiceFailureKind()
+    updated: usize = UiServices::sync_kind(service_kind, next, reason)
+    UiUIKit::redraw() if updated > 0
+    return updated.i32()
+
+def uikit_service_picker_result(slot: u32, generation: u32, state: i32, selection_kind: u32, selection_id: u64) -> i32:
+    handle: UiServices::ServiceHandle = UiServices::ServiceHandle{slot: slot, generation: generation}
+    next: UiServices::PickerState = state.PickerState()
+    kind: UiServices::ServiceSelectionKind = selection_kind.ServiceSelectionKind()
+    return 0 if not UiServices::resolve_picker(handle, next, kind, selection_id)
+    UiUIKit::redraw()
+    return 1
+
+export fn elisa_uikit_permission_result(slot: u32, generation: u32, state: i32, failure: i32) -> i32 = uikit_service_permission_result
+export fn elisa_uikit_permission_sync(kind: i32, state: i32, failure: i32) -> i32 = uikit_service_permission_sync
+export fn elisa_uikit_picker_result(slot: u32, generation: u32, state: i32, selection_kind: u32, selection_id: u64) -> i32 = uikit_service_picker_result

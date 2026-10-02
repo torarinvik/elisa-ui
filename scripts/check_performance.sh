@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
+STAGE1="$(bash "$ROOT/scripts/resolve_stage1_root.sh" "$ROOT")"
 RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
 PROCESS_REPETITIONS="${ELISA_UI_PERF_PROCESS_REPETITIONS:-3}"
 REQUIRE_BUDGET="${ELISA_UI_REQUIRE_PERF_BUDGET:-0}"

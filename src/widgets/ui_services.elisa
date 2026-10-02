@@ -19,7 +19,6 @@
 #
 # Handles are generation-checked like every other retained handle, so a late
 # host callback cannot mutate a recycled service slot.
-
 include "../core/ui_core.elisa"
 
 module UiServices:
@@ -56,6 +55,14 @@ module UiServices:
             Cancelled = 3
             Failed = 4
             Unavailable = 5
+        const enum ServiceSelectionKind of u32:
+            Unknown = 0
+            Image = 1
+            Audio = 2
+            Video = 3
+            Text = 4
+            Application = 5
+            Other = 6
 
         const enum ServiceFailureKind of i32:
             Unknown = 0
@@ -76,7 +83,7 @@ module UiServices:
             picker: PickerState
             failure: ServiceFailureKind
             selection_id: u64
-            selection_kind: u32
+            selection_kind: ServiceSelectionKind
             can_prompt: bool
             can_present: bool
 
@@ -132,7 +139,7 @@ module UiServices:
             service_pickers[free_slot] <- PickerState.Idle
             clear_workflow_failures(free_slot)
             service_selection_ids[free_slot] <- 0
-            service_selection_kinds[free_slot] <- 0
+            service_selection_kinds[free_slot] <- ServiceSelectionKind.Unknown
             service_count_state <- free_slot + 1 if free_slot >= service_count_state else service_count_state
             mark_changed()
             return make_handle(free_slot)
@@ -188,30 +195,28 @@ module UiServices:
             current: ConsentState = service_consents[handle.slot.usize()]
             return current == ConsentState.Unrequested or current == ConsentState.Cancelled or (current == ConsentState.Failed and consent_failure(handle) == ServiceFailureKind.Retryable)
 
-        # ── Picker flow ────────────────────────────────────────────────────
-        # Pickers are user-initiated every time, so any terminal picker state
-        # may present again; this is not the consent "don't ask again" rule.
+        # User-triggered pickers may be presented again after terminal results.
         def present_picker(handle: ServiceHandle) -> bool:
             return false if not is_valid(handle) or not can_present(handle)
             slot: usize = handle.slot.usize()
             service_pickers[slot] <- PickerState.Presenting
             record_picker_failure(slot, ServiceFailureKind.Unknown)
             service_selection_ids[slot] <- 0
-            service_selection_kinds[slot] <- 0
+            service_selection_kinds[slot] <- ServiceSelectionKind.Unknown
             mark_changed()
             return true
 
-        def resolve_picker(handle: ServiceHandle, next: PickerState, selection_kind: u32, selection_id: u64) -> bool:
+        def resolve_picker(handle: ServiceHandle, next: PickerState, selection_kind: ServiceSelectionKind, selection_id: u64) -> bool:
             return false if not is_valid(handle)
             slot: usize = handle.slot.usize()
             return false if service_pickers[slot] != PickerState.Presenting
             return false if next != PickerState.Selected and next != PickerState.Cancelled and next != PickerState.Failed and next != PickerState.Unavailable
-            # A selected result is a logical identity, never a path or URL; an
-            # empty selection is a cancelled picker, not a successful empty one.
+            # Selected facts use opaque IDs, never native paths or URLs.
             return false if next == PickerState.Selected and selection_id == 0
+            return false if next == PickerState.Selected and (selection_kind < ServiceSelectionKind.Image or selection_kind > ServiceSelectionKind.Other)
             service_pickers[slot] <- next
             service_selection_ids[slot] <- selection_id if next == PickerState.Selected else 0
-            service_selection_kinds[slot] <- selection_kind if next == PickerState.Selected else 0
+            service_selection_kinds[slot] <- selection_kind if next == PickerState.Selected else ServiceSelectionKind.Unknown
             record_picker_failure(slot, picker_failure_for(next))
             mark_changed()
             return true
@@ -222,7 +227,7 @@ module UiServices:
             service_pickers[slot] <- PickerState.Cancelled
             record_picker_failure(slot, ServiceFailureKind.Cancelled)
             service_selection_ids[slot] <- 0
-            service_selection_kinds[slot] <- 0
+            service_selection_kinds[slot] <- ServiceSelectionKind.Unknown
             mark_changed()
             return true
 
@@ -278,8 +283,8 @@ module UiServices:
             return 0 if not is_valid(handle)
             return service_selection_ids[handle.slot.usize()]
 
-        def selection_kind(handle: ServiceHandle) -> u32:
-            return 0 if not is_valid(handle)
+        def selection_kind(handle: ServiceHandle) -> ServiceSelectionKind:
+            return ServiceSelectionKind.Unknown if not is_valid(handle)
             return service_selection_kinds[handle.slot.usize()]
 
         def is_granted(handle: ServiceHandle) -> bool:
@@ -340,7 +345,7 @@ module UiServices:
         global mutable service_pickers: PickerState[MAX_SERVICES] = zeroed
         global mutable service_failures: ServiceFailureKind[MAX_SERVICES] = zeroed
         global mutable service_selection_ids: u64[MAX_SERVICES] = zeroed
-        global mutable service_selection_kinds: u32[MAX_SERVICES] = zeroed
+        global mutable service_selection_kinds: ServiceSelectionKind[MAX_SERVICES] = zeroed
 
         def next_generation(value: u32) -> u32:
             next: u32 = value + 1
@@ -379,7 +384,7 @@ module UiServices:
             service_pickers[slot] <- PickerState.Idle
             clear_workflow_failures(slot)
             service_selection_ids[slot] <- 0
-            service_selection_kinds[slot] <- 0
+            service_selection_kinds[slot] <- ServiceSelectionKind.Unknown
 
         def trim_count() -> void:
             for _ in 0..<MAX_SERVICES:
@@ -391,3 +396,5 @@ module UiServices:
             UiCore::invalidate(UiCore::Invalidation.Semantics)
 
 include "./ui_services_failures.elisa"
+include "./ui_services_selection.elisa"
+include "./ui_services_sync.elisa"

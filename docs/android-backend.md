@@ -31,6 +31,12 @@ SKIA_ROOT=~/skia scripts/build_android.sh storefront
 SKIA_ROOT=~/skia scripts/check_android.sh
 ```
 
+Set `ELISA_UI_ANDROID_OUT_ROOT` to place canvas APKs and intermediates outside
+`build/android`; `ELISA_UI_ANDROID_CONTROLS_OUT_ROOT` does the same for the
+native-controls gate. The Android IME gate follows the canvas output root.
+These overrides let parallel or isolated validation preserve existing build
+artifacts; their defaults keep the paths above unchanged.
+
 ## What the host owns, and what it does not
 
 The host forwards facts and nothing else. It reports the window's size in
@@ -143,15 +149,41 @@ side. `framework_key` maps navigation/editing keys into Elisa's vocabulary — a
 printable key is its uppercase ASCII code and everything else is 256 and up, so
 nothing above the host has ever heard of `AKEYCODE`.
 
-Committed text comes from the IME, including the user's keyboard layout and
-composition, and crosses as a Unicode scalar before Elisa encodes it to UTF-8.
-No host buffer has to be trusted and no pointer has to be cast for a keystroke.
+Committed text and composing runs come from the Java input connection, including
+the user's keyboard layout and composition. JNI converts its UTF-16 string to
+bounded UTF-8 while preserving cursor offsets in UTF-16 units; Android key
+events remain a separate path for physical keys.
 
-The soft keyboard follows the retained focus and nothing else: the host asks
-`elisa_android_wants_keyboard` once a frame and calls
-`ANativeActivity_showSoftInput` / `hideSoftInput` only when the answer changes,
-because those calls are posted to the UI thread and repeating them would fight
-whatever the user is doing with the keyboard themselves.
+The soft keyboard follows retained focus. The native host asks
+`elisa_android_wants_keyboard` once a frame and, only when that answer changes,
+asks `ElisaCanvasActivity` to show or hide the IME for the exact Java view that
+owns the input connection. Those operations run on Android's UI thread.
+`ElisaCanvasActivity` observes `WindowInsets.Type.ime()` at the decor root,
+converts the reported pixel height to logical points using display density, and
+passes the visible/hidden fact through JNI to `UiMobileSurface`. The shared
+content area reserves the larger of the keyboard and system-bar bottom edges,
+so a keyboard that already covers the navigation area is not double-counted.
+The decor listener returns the insets unchanged, and the native looper is woken
+after an inset or text callback so the next frame uses the updated retained
+layout. The canvas Activity requests `adjustResize`; its NativeActivity surface
+remains full-size while the retained content inset changes.
+
+`check_android_ime.sh` verifies a real shown keyboard, a nonzero accepted inset,
+composition replacement/commit, and a zero accepted inset after Back dismisses
+the keyboard. The Pixel_9 AVD includes a hardware keyboard; when validating on
+that AVD, enable its “show on-screen keyboard with physical keyboard” setting
+for the test run. Physical-device settings are not changed by the gate.
+
+In the canvas Activity, system Back reaches the shared `UiBack`
+dialog/navigation policy. Android 13+ uses an `OnBackInvokedCallback`; older
+supported versions use the Activity's legacy callback. Both callbacks queue onto the NativeActivity owner thread
+before reading retained state. A consumed dialog/navigation request stays in
+the app; other requests reach `app_event` as Escape. If there is no Elisa
+handler, the Java Activity performs Android's normal finish/task-background
+action. Because a default-priority callback is needed to conditionally consume
+Back, Android's predictive system animation is not currently preserved for
+this Activity. `check_android_ime.sh` verifies both keyboard dismissal and a
+second, unhandled Back returning the app to Android.
 
 # The Android native-controls backend
 

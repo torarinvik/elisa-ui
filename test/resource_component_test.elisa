@@ -1,0 +1,156 @@
+# Retained composition, recovery actions, and accessibility for resources.
+
+include "../src/widgets/ui_resource_component.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return 0
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def retained_text(handle: UiHandles::Handle) -> sview:
+    if UiHandles::widget(handle) is widget:
+        return widget.text
+    return ""
+
+def image_matches(handle: UiHandles::Handle, resource: UiResources::ResourceHandle) -> bool:
+    if UiHandles::widget(handle) is widget:
+        return widget.image.slot == resource.slot and widget.image.generation == resource.generation
+    return false
+
+def size_matches(handle: UiHandles::Handle, width: f32, height: f32) -> bool:
+    if UiHandles::widget(handle) is widget:
+        return widget.width == width and widget.height == height
+    return false
+
+def main() -> i64:
+    UiResources::reset()
+    UiHandles::reset()
+    root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 0.0, 0.0, UiCore::Color{r: 0, g: 0, b: 0, a: 0})
+    options: UiResourcePresentation::Options = UiResourcePresentation::default_options(UiResourcePresentation::Kind.Image)
+    resource: UiResources::ResourceHandle = UiResources::request("images/component-preview", 31)
+    view: mutable UiResourceComponent::View = UiResourceComponent::build(root, resource, 31, options)
+    check("resource component creates a reserved content well and typed retained controls", UiHandles::is_valid(view.root) and UiHandles::is_valid(view.content) and UiHandles::is_valid(view.title) and UiHandles::is_valid(view.detail) and UiHandles::is_valid(view.progress) and UiHandles::is_valid(view.action))
+    check("loading resource renders status copy and cancel control", retained_text(view.title) == "Loading resource" and retained_text(view.action) == "Cancel loading" and UiHandles::is_visible(view.progress) and UiHandles::is_visible(view.action))
+    view <- UiResourceComponent::set_visibility_demand(view, true, 60)
+    check("visible component publishes its owner-scoped prefetch priority", view.record.demanded and view.record.demand_priority == 60 and UiResources::demand_count() == 1)
+    ready_image: UiResources::ResourceHandle = UiResources::request("images/component-ready", 35)
+    _ = UiResources::set_intrinsic_size(ready_image, 144.0, 72.0)
+    _ = UiResources::set_state(ready_image, UiResources::State.Ready)
+    intrinsic_options: mutable UiResourcePresentation::Options = options
+    intrinsic_options.reserved_width <- 0.0
+    intrinsic_options.reserved_height <- 0.0
+    ready_view: mutable UiResourceComponent::View = UiResourceComponent::build(root, ready_image, 35, intrinsic_options)
+    check("resource snapshot adopts intrinsic dimensions when no size is declared", ready_view.record.reserved_size.width == 144.0 and ready_view.record.reserved_size.height == 72.0)
+    check("ready image binds the exact logical slot and generation", image_matches(ready_view.content, ready_image))
+    UiHandles::layout(360.0, 400.0)
+    check("image well reserves validated intrinsic geometry", size_matches(ready_view.content, 144.0, 72.0))
+    UiCore::begin_frame()
+    UiHandles::paint()
+    command_count_before_ready_overlay: usize = UiCore::command_count()
+    check("loading well paints its placeholder without duplicating progress", UiResourceComponent::paint_content(view) and UiCore::command_count() > command_count_before_ready_overlay)
+    command_count_before_image_overlay: usize = UiCore::command_count()
+    check("ready image leaves drawing to the retained generation-bound image", UiResourceComponent::paint_content(ready_view) and UiCore::command_count() == command_count_before_image_overlay)
+    _ = UiResources::cancel(ready_image)
+    ready_view <- UiResourceComponent::refresh(ready_view)
+    check("cancelled generation clears the retained image identity", not image_matches(ready_view.content, ready_image) and ready_view.record.state == UiResourcePresentation::DisplayState.Cancelled)
+    check("resource status links its accessible announcement to the retained cancel button", UiResourceComponent::publish_accessibility(view, UiCore::Rect(0.0, 0.0, 280.0, 80.0)) and UiCore::accessibility_at(0).role == UiCore::AccessibilityRole.Status and UiCore::accessibility_at(0).label == view.record.title and UiCore::accessibility_at(0).text_value == view.record.detail and UiCore::accessibility_at(0).action == UiHandles::index(view.action))
+
+    _ = UiResources::set_progress(resource, 0.8, 0.45)
+    view <- UiResourceComponent::refresh(view)
+    check("refresh applies current decode progress without another request", view.record.decode_progress == 0.45 and UiHandles::value(view.progress) == 0.45 and UiResources::owner_count(resource) == 1)
+    _ = UiResources::set_state(resource, UiResources::State.UnavailableOffline)
+    view <- UiResourceComponent::refresh(view)
+    check("offline state becomes an alert with an explicit retry", view.record.role == UiCore::AccessibilityRole.Alert and view.record.action == UiResourcePresentation::Action.Retry and retained_text(view.title) == "Resource unavailable offline" and retained_text(view.action) == "Retry" and not UiHandles::is_visible(view.progress))
+    UiCore::begin_frame()
+    check("offline content well paints its explicit fallback", UiResourceComponent::paint_content(view) and UiCore::command_count() == 3)
+    UiCore::begin_frame()
+    check("offline accessibility exposes its retry control", UiResourceComponent::publish_accessibility(view, UiCore::Rect(0.0, 0.0, 280.0, 80.0)) and UiCore::accessibility_at(0).role == UiCore::AccessibilityRole.Alert and UiCore::accessibility_at(0).action == UiHandles::index(view.action))
+    retried: UiResourceComponent::ActionResult = UiResourceComponent::perform_action(view)
+    check("retry stores a fresh generation and carries visible demand", retried.changed and retried.action == UiResourcePresentation::Action.Retry and retried.view.record.handle.generation != resource.generation and UiResources::state(retried.view.record.handle) == UiResources::State.Requested and retried.view.record.demanded and retried.view.record.demand_priority == 60 and retained_text(retried.view.title) == "Loading resource")
+    stale_action: UiResourceComponent::ActionResult = UiResourceComponent::perform_action(view)
+    check("stale component snapshot cannot act on or repaint over its replacement", not stale_action.changed and UiResources::state(retried.view.record.handle) == UiResources::State.Requested and retained_text(retried.view.title) == "Loading resource")
+
+    _ = UiResources::fail(retried.view.record.handle, UiResources::FailureKind.Corrupt)
+    rejected: UiResourceComponent::View = UiResourceComponent::refresh(retried.view)
+    check("corrupt resource presents a terminal fallback and clears futile demand", rejected.record.role == UiCore::AccessibilityRole.Alert and rejected.record.action == UiResourcePresentation::Action.None and retained_text(rejected.title) == "Resource could not be verified" and not rejected.record.demanded and not UiHandles::is_visible(rejected.action))
+    UiCore::begin_frame()
+    check("terminal fallback publishes no recovery action", UiResourceComponent::publish_accessibility(rejected, UiCore::Rect(0.0, 0.0, 280.0, 80.0)) and UiCore::accessibility_at(0).action == UiCore::MAX_ACCESSIBILITY_NODES)
+
+    rebind_source: UiResources::ResourceHandle = UiResources::request("images/component-rebind-source", 36)
+    rebind_options: mutable UiResourcePresentation::Options = options
+    rebind_options.reserved_width <- 0.0
+    rebind_options.reserved_height <- 0.0
+    rebind_view: mutable UiResourceComponent::View = UiResourceComponent::build(root, rebind_source, 36, rebind_options)
+    rebind_view <- UiResourceComponent::set_visibility_demand(rebind_view, true, 72)
+    rebind_target: UiResources::ResourceHandle = UiResources::request("images/component-rebind-target", 36)
+    _ = UiResources::set_intrinsic_size(rebind_target, 96.0, 40.0)
+    _ = UiResources::set_state(rebind_target, UiResources::State.Ready)
+    old_content_handle: UiHandles::Handle = rebind_view.content
+    rebind_view <- UiResourceComponent::rebind(rebind_view, rebind_target)
+    check("explicit rebind preserves controls and adopts the ready generation", rebind_view.record.handle.generation == rebind_target.generation and rebind_view.content.widget_id == old_content_handle.widget_id and rebind_view.record.reserved_size.width == 96.0 and rebind_view.record.reserved_size.height == 40.0 and image_matches(rebind_view.content, rebind_target) and not UiResources::is_demanded_for_owner(rebind_source, 36) and not rebind_view.record.demanded)
+    pending_source: UiResources::ResourceHandle = UiResources::request("images/component-pending-source", 38)
+    pending_view: mutable UiResourceComponent::View = UiResourceComponent::build(root, pending_source, 38, options)
+    pending_view <- UiResourceComponent::set_visibility_demand(pending_view, true, 88)
+    pending_target: UiResources::ResourceHandle = UiResources::request("images/component-pending-target", 38)
+    pending_view <- UiResourceComponent::rebind(pending_view, pending_target)
+    check("rebind transfers visible demand to the replacement generation", pending_view.record.demanded and pending_view.record.demand_priority == 88 and not UiResources::is_demanded_for_owner(pending_source, 38))
+    host_resource: UiResources::ResourceHandle = UiResources::request("images/component-host-operation", 39)
+    host_view: mutable UiResourceComponent::View = UiResourceComponent::build(root, host_resource, 39, options)
+    host_view <- UiResourceComponent::set_visibility_demand(host_view, true, 55)
+    check("retained resource component binds the host operation token", UiResources::bind_operation(host_resource, 3901) and UiResources::operation_for(host_resource) == 3901)
+    transport_progress_updated: bool = UiResources::poll_operation(host_resource, 3901, 0.7, 0.5)
+    host_view <- UiResourceComponent::refresh(host_view)
+    check("host transport/decode progress refreshes the same retained component", transport_progress_updated and host_view.record.decode_progress == 0.5 and UiHandles::value(host_view.progress) == 0.5)
+    upload_progress_updated: bool = UiResources::poll_operation(host_resource, 3901, 1.0, 1.0) and UiResources::poll_upload_operation(host_resource, 3901, 0.25)
+    host_view <- UiResourceComponent::refresh(host_view)
+    check("host upload progress remains distinct after decode completion", upload_progress_updated and host_view.record.upload_progress == 0.25 and UiHandles::value(host_view.progress) == 0.25)
+    host_completed: bool = UiResources::complete_operation(host_resource, 3901, UiResources::State.Ready, UiResources::FailureKind.Unknown)
+    host_view <- UiResourceComponent::refresh(host_view)
+    check("host completion binds the ready generation and releases demand", host_completed and host_view.record.state == UiResourcePresentation::DisplayState.Ready and image_matches(host_view.content, host_resource) and not host_view.record.demanded and UiResources::operation_count() == 0)
+    unowned_target: UiResources::ResourceHandle = UiResources::request("images/component-rebind-unowned", 37)
+    unchanged_rebind: UiResourceComponent::View = UiResourceComponent::rebind(rebind_view, unowned_target)
+    check("rebind rejects a resource not leased by this component owner", unchanged_rebind.record.handle.generation == rebind_target.generation and image_matches(unchanged_rebind.content, rebind_target))
+
+    cancellable: UiResources::ResourceHandle = UiResources::request("images/component-cancel", 32)
+    cancel_view: UiResourceComponent::View = UiResourceComponent::build(root, cancellable, 32, options)
+    cancelled: UiResourceComponent::ActionResult = UiResourceComponent::perform_action(cancel_view)
+    check("cancel action ends the last observer and retains a visible cancelled status", cancelled.changed and UiResources::state(cancellable) == UiResources::State.Cancelled and cancelled.view.record.state == UiResourcePresentation::DisplayState.Cancelled and retained_text(cancelled.view.title) == "Resource loading cancelled" and not UiHandles::is_visible(cancelled.view.action))
+    shared: UiResources::ResourceHandle = UiResources::request("images/component-shared", 33)
+    peer: UiResources::ResourceHandle = UiResources::request("images/component-shared", 34)
+    shared_view: mutable UiResourceComponent::View = UiResourceComponent::build(root, shared, 33, options)
+    shared_view <- UiResourceComponent::set_visibility_demand(shared_view, true, 40)
+    _ = UiResources::set_demand_for_owner(peer, 34, 80)
+    shared_view <- UiResourceComponent::set_visibility_demand(shared_view, false, 0)
+    check("hiding one view clears only its demand and preserves a co-owner hint", not shared_view.record.demanded and not UiResources::is_demanded_for_owner(peer, 33) and UiResources::is_demanded_for_owner(peer, 34) and UiResources::demand_priority(peer) == 80)
+    detached: UiResourceComponent::ActionResult = UiResourceComponent::perform_action(shared_view)
+    check("cancel detaches one view without cancelling a peer's shared request", detached.changed and UiResources::state(peer) == UiResources::State.Requested and UiResources::owns(peer, 34) and UiResources::owner_count(peer) == 1 and not UiHandles::is_visible(detached.view.root) and not UiResourceComponent::publish_accessibility(detached.view, UiCore::Rect(0.0, 0.0, 100.0, 40.0)))
+    _ = UiResources::cancel_for_owner(peer, 34)
+
+    UiHandles::reset()
+    check("tree teardown makes prior component controls stale", not UiResourceComponent::publish_accessibility(cancelled.view, UiCore::Rect(0.0, 0.0, 100.0, 40.0)))
+    if failures == 0:
+        _ = puts("resource component: all checks passed")
+        return 0
+    _ = puts("resource component: FAILURES above")
+    return 1

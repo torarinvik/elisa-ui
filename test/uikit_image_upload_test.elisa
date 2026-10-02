@@ -1,0 +1,39 @@
+# Resource-operation integration for UIKit's CoreGraphics image binding.
+
+include "../src/platform/uikit/ui_uikit_image_bindings.elisa"
+include "../src/platform/uikit/ui_uikit_resources.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiUIKitImageBindings::clear_picture_bindings()
+    UiResources::reset()
+
+    image: mutable UiResources::ResourceHandle = UiResources::request("images/uikit-cover", 10)
+    check("UIKit upload refuses an incomplete image", not UiUIKitResources::complete_uploaded_image(image, 77) and not UiUIKitImageBindings::picture_is_bound(image.slot, image.generation) and UiResources::state(image) == UiResources::State.Requested)
+    check("host operation binds to the UIKit resource", UiResources::bind_operation(image, 601) and UiResources::poll_operation(image, 601, 1.0, 1.0))
+    check("UIKit publishes Ready only after binding and upload", UiUIKitResources::complete_uploaded_image(image, 77) and UiResources::state(image) == UiResources::State.Ready and UiResources::uploaded_progress(image) == 1.0 and UiResources::operation_count() == 0 and UiUIKitImageBindings::picture_is_bound(image.slot, image.generation))
+    replacement_generation: u32 = image.generation + 1
+    check("rebinding the identical UIKit object is idempotent", UiUIKitImageBindings::bind_picture(image.slot, image.generation, 77))
+    check("a live UIKit generation cannot swap its native object", not UiUIKitImageBindings::bind_picture(image.slot, image.generation, 78) and UiUIKitImageBindings::picture_handle(image.slot, image.generation) == 77)
+    check("a live UIKit image cannot be overwritten before exact-generation teardown", not UiUIKitImageBindings::bind_picture(image.slot, replacement_generation, 88) and UiUIKitImageBindings::picture_handle(image.slot, image.generation) == 77)
+    check("resource disposal forgets its exact image generation", UiResources::dispose(image) and UiUIKitResources::forget_uploaded_image(image) and not UiUIKitImageBindings::picture_is_bound(image.slot, image.generation))
+
+    check("replacement image binds into the reused slot", UiUIKitImageBindings::bind_picture(image.slot, replacement_generation, 88))
+    check("stale teardown cannot remove the replacement", not UiUIKitResources::forget_uploaded_image(image) and UiUIKitImageBindings::picture_handle(image.slot, replacement_generation) == 88)
+    check("replacement generation can be released exactly", UiUIKitImageBindings::unbind_picture(image.slot, replacement_generation))
+
+    untracked: mutable UiResources::ResourceHandle = UiResources::request("images/uikit-untracked", 11)
+    check("host work without an operation completes through the same adapter", UiResources::set_progress(untracked, 1.0, 1.0) and UiUIKitResources::complete_uploaded_image(untracked, 99) and UiResources::state(untracked) == UiResources::State.Ready and UiResources::uploaded_progress(untracked) == 1.0)
+
+    if failures == 0:
+        _ = puts("UIKit image upload: all checks passed")
+        return 0
+    _ = puts("UIKit image upload: FAILURES above")
+    return 1

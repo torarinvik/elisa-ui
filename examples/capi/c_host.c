@@ -18,6 +18,7 @@ static elisa_ui_event last_event;
 static size_t last_text_length;
 static int event_count;
 static int text_count;
+static int embedded_nul_text_count;
 static int editing_count;
 static int32_t editing_start;
 static int32_t editing_length;
@@ -38,6 +39,9 @@ void elisa_ui_on_text_input(const char *text, size_t length) {
     last_text_length = length;
     if (length == strlen("Hé 👋") && memcmp(text, "Hé 👋", length) == 0) {
         text_count++;
+    }
+    if (length == 3 && text[0] == 'A' && text[1] == '\0' && text[2] == 'B') {
+        embedded_nul_text_count++;
     }
 }
 
@@ -79,6 +83,14 @@ int main(void) {
         failures++;
     }
 
+    /* Counted UTF-8 permits U+0000; it is not a C-string terminator here. */
+    const char embedded_nul_text[] = {'A', '\0', 'B'};
+    elisa_ui_dispatch_text_input(embedded_nul_text, sizeof(embedded_nul_text));
+    if (embedded_nul_text_count != 1) {
+        puts("embedded NUL in counted UTF-8 text did not survive");
+        failures++;
+    }
+
     elisa_ui_dispatch_text_editing("é 👋", strlen("é 👋"), 99, 99);
     if (editing_count != 1 || editing_start != 3 || editing_length != 0) {
         puts("UTF-8 IME composition did not survive");
@@ -92,10 +104,10 @@ int main(void) {
         failures++;
     }
     elisa_ui_dispatch_text_input(NULL, 4);
-    char oversized_text[1032];
+    char oversized_text[ELISA_UI_MAX_TEXT_BYTES + 8];
     memset(oversized_text, 'x', sizeof(oversized_text));
     elisa_ui_dispatch_text_input(oversized_text, sizeof(oversized_text));
-    if (last_text_length != 1024) {
+    if (last_text_length != ELISA_UI_MAX_TEXT_BYTES) {
         puts("oversized text was not bounded");
         failures++;
     }

@@ -33,6 +33,7 @@ module UiFeatureView:
             Incompatible = 3
             Denied = 4
             Offline = 5
+            Unavailable = 6
 
         const enum ViewAction of i32:
             None = 0
@@ -69,19 +70,28 @@ module UiFeatureView:
             return handle.slot.usize() < feature_count_state and feature_active[handle.slot.usize()] and feature_generations[handle.slot.usize()] == handle.generation
 
         def reset() -> void:
-            for slot in 0..<MAX_FEATURES:
-                feature_active[slot] <- false
-                feature_generations[slot] <- next_generation(feature_generations[slot])
-                feature_ids[slot] <- 0
-                feature_interfaces[slot] <- 0
-                feature_activation_ids[slot] <- 0
-                feature_states[slot] <- FeatureState.Unrequested
-                feature_failures[slot] <- FeatureFailureKind.Unknown
-                feature_package_lengths[slot] <- 0
-                for index in 0..<PACKAGE_VERSION_CAPACITY:
-                    feature_package_storage[slot * PACKAGE_VERSION_CAPACITY + index] <- 0
-            feature_owner_reset()
             feature_count_state <- 0
+            for slot in 0..<MAX_FEATURES:
+                if feature_active[slot] and feature_activation_ids[slot] != 0:
+                    # Preserve the host's deactivation key across reset. The
+                    # UI generation is ownerless and Cancelled until ack.
+                    feature_states[slot] <- FeatureState.Cancelled
+                    feature_failures[slot] <- FeatureFailureKind.Unknown
+                    clear_payload_slot(slot)
+                    feature_count_state <- slot + 1
+                else:
+                    reset_payload_slot(slot)
+                    feature_active[slot] <- false
+                    feature_generations[slot] <- next_generation(feature_generations[slot])
+                    feature_ids[slot] <- 0
+                    feature_interfaces[slot] <- 0
+                    feature_activation_ids[slot] <- 0
+                    feature_states[slot] <- FeatureState.Unrequested
+                    feature_failures[slot] <- FeatureFailureKind.Unknown
+                    feature_package_lengths[slot] <- 0
+                    for index in 0..<PACKAGE_VERSION_CAPACITY:
+                        feature_package_storage[slot * PACKAGE_VERSION_CAPACITY + index] <- 0
+            feature_owner_reset()
             feature_overflowed_state <- false
             mark_changed()
 
@@ -101,6 +111,7 @@ module UiFeatureView:
                         feature_states[slot] <- FeatureState.Requested
                         feature_failures[slot] <- FeatureFailureKind.Unknown
                         feature_activation_ids[slot] <- 0
+                        clear_payload_slot(slot)
                         mark_changed()
                     return make_handle(slot)
 
@@ -158,6 +169,7 @@ module UiFeatureView:
             return false if next == FeatureState.Ready and failure != FeatureFailureKind.Unknown
             feature_states[slot] <- next
             feature_failures[slot] <- failure if next != FeatureState.Ready else FeatureFailureKind.Unknown
+            clear_payload_slot(slot) if next != FeatureState.Ready
             # Ready retains an activation token because the component remains
             # live. Every other terminal result completes the host operation;
             # retries and owner disposal must not treat its token as active.
@@ -172,17 +184,20 @@ module UiFeatureView:
             feature_activation_ids[slot] <- 0
             feature_states[slot] <- FeatureState.Requested
             feature_failures[slot] <- FeatureFailureKind.Unknown
+            clear_payload_slot(slot)
             mark_changed()
             return make_handle(slot)
 
         def cancel(handle: FeatureHandle) -> bool:
             return false if not is_valid(handle) or (feature_states[handle.slot.usize()] != FeatureState.Requested and feature_states[handle.slot.usize()] != FeatureState.Loading)
-            feature_states[handle.slot.usize()] <- FeatureState.Cancelled
+            slot: usize = handle.slot.usize()
+            feature_states[slot] <- FeatureState.Cancelled
             # Keep the host token readable until the host acknowledges
             # deactivation. Matching requests remain rejected while this
             # token is outstanding; acknowledgement releases the ownerless
             # slot or permits a shared cancelled record to restart safely.
-            feature_failures[handle.slot.usize()] <- FeatureFailureKind.Unknown
+            feature_failures[slot] <- FeatureFailureKind.Unknown
+            clear_payload_slot(slot)
             mark_changed()
             return true
 
@@ -195,6 +210,7 @@ module UiFeatureView:
             slot: usize = handle.slot.usize()
             return false if feature_states[slot] != FeatureState.Cancelled or feature_activation_ids[slot] != activation_id
             feature_activation_ids[slot] <- 0
+            clear_payload_slot(slot)
             if feature_owner_count(slot) == 0:
                 clear_slot(slot)
                 trim_count()
@@ -210,6 +226,7 @@ module UiFeatureView:
                 feature_owner_clear_slot(slot)
                 feature_states[slot] <- FeatureState.Cancelled
                 feature_failures[slot] <- FeatureFailureKind.Unknown
+                clear_payload_slot(slot)
             else:
                 clear_slot(slot)
             trim_count()
@@ -260,7 +277,7 @@ module UiFeatureView:
         def package_version(handle: FeatureHandle) -> sview:
             return "" if not is_valid(handle)
             slot: usize = handle.slot.usize()
-            return sview(&feature_package_storage[slot * PACKAGE_VERSION_CAPACITY], 0, feature_package_lengths[slot].i64())
+            return UiText::fixed_bytes_view_range[6144](feature_package_storage, slot * PACKAGE_VERSION_CAPACITY, feature_package_lengths[slot])
 
         def owner(handle: FeatureHandle) -> u32:
             return 0 if not is_valid(handle)
@@ -286,7 +303,8 @@ module UiFeatureView:
             return current == FeatureState.UnavailableOffline or current == FeatureState.Denied or current == FeatureState.Incompatible or (current == FeatureState.Failed and feature_failures[handle.slot.usize()] == FeatureFailureKind.Retryable)
 
         def is_ready(handle: FeatureHandle) -> bool:
-            return is_valid(handle) and feature_states[handle.slot.usize()] == FeatureState.Ready
+            return false if not is_valid(handle)
+            return feature_states[handle.slot.usize()] == FeatureState.Ready
 
         def overflowed() -> bool:
             return feature_overflowed_state
@@ -351,7 +369,7 @@ module UiFeatureView:
             feature_package_lengths[slot] <- value.len.usize()
 
         def failure_is_valid(value: FeatureFailureKind) -> bool:
-            return value == FeatureFailureKind.Retryable or value == FeatureFailureKind.Corrupt or value == FeatureFailureKind.Incompatible or value == FeatureFailureKind.Denied or value == FeatureFailureKind.Offline
+            return value == FeatureFailureKind.Retryable or value == FeatureFailureKind.Corrupt or value == FeatureFailureKind.Incompatible or value == FeatureFailureKind.Denied or value == FeatureFailureKind.Offline or value == FeatureFailureKind.Unavailable
 
         def clear_slot(slot: usize) -> void:
             feature_active[slot] <- false
@@ -365,6 +383,7 @@ module UiFeatureView:
             feature_package_lengths[slot] <- 0
             for index in 0..<PACKAGE_VERSION_CAPACITY:
                 feature_package_storage[slot * PACKAGE_VERSION_CAPACITY + index] <- 0
+            clear_payload_slot(slot)
 
         def trim_count() -> void:
             for _ in 0..<MAX_FEATURES:
@@ -376,3 +395,6 @@ module UiFeatureView:
             UiCore::invalidate(UiCore::Invalidation.Semantics)
 
 include "./ui_feature_view_owners.elisa"
+include "./ui_feature_view_payload.elisa"
+include "./ui_feature_view_content.elisa"
+include "./ui_feature_view_activation.elisa"

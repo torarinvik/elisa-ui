@@ -17,12 +17,15 @@
 // host has one and cleared when it goes, so a late call cannot reach a dead
 // object.
 extern "C" void elisa_android_clipboard_attach(ANativeActivity *activity);
+extern "C" void elisa_android_ime_show_keyboard(ANativeActivity *activity);
+extern "C" void elisa_android_ime_hide_keyboard(ANativeActivity *activity);
 #include <android/log.h>
 #include <sys/system_properties.h>
 #include <android/native_window.h>
 #include <android_native_app_glue.h>
 
 #include <chrono>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <cstddef>
@@ -51,6 +54,8 @@ extern "C" std::int32_t elisa_android_resize(float width, float height, float sc
 extern "C" void elisa_android_stop(void);
 extern "C" std::int32_t elisa_android_lifecycle(std::int32_t signal);
 extern "C" void elisa_android_key(std::int32_t code, std::int32_t down);
+extern "C" void elisa_android_process_back_requests(ANativeActivity *activity);
+extern "C" void elisa_android_services_attach(ANativeActivity *activity);
 extern "C" void elisa_android_text(std::uint32_t scalar);
 extern "C" std::int32_t elisa_android_wants_keyboard(void);
 extern "C" std::int32_t elisa_android_render(std::size_t canvas, std::size_t font, float width,
@@ -147,6 +152,9 @@ struct Host {
     float down_x = 0.0f, down_y = 0.0f;
     float last_x = 0.0f, last_y = 0.0f;
 };
+
+std::atomic<android_app *> active_android_app{nullptr};
+std::atomic_bool external_frame_requested{false};
 
 const int kTouchDown = 0, kTouchMove = 1, kTouchUp = 2, kTouchCancel = 3;
 const int kFocusGained = 0, kFocusLost = 1, kBackground = 2, kForeground = 3,
@@ -362,9 +370,9 @@ void draw(Host& host) {
     if (wants_keyboard != host.keyboard) {
         host.keyboard = wants_keyboard;
         if (wants_keyboard) {
-            ANativeActivity_showSoftInput(host.app->activity, ANATIVEACTIVITY_SHOW_SOFT_INPUT_IMPLICIT);
+            elisa_android_ime_show_keyboard(host.app->activity);
         } else {
-            ANativeActivity_hideSoftInput(host.app->activity, ANATIVEACTIVITY_HIDE_SOFT_INPUT_NOT_ALWAYS);
+            elisa_android_ime_hide_keyboard(host.app->activity);
         }
     }
     host.needs_frame = elisa_android_frame_delay() > 0.0f;
@@ -383,7 +391,7 @@ void on_command(android_app* app, std::int32_t command) {
             // lost refuses one.
             if (host.surface_gone) {
                 host.surface_gone = false;
-                elisa_android_lifecycle(kSurfaceRestored);
+                ELISA_TRACE("lifecycle surface-restored accepted=%d", elisa_android_lifecycle(kSurfaceRestored));
             }
             start_or_resize(host);
             break;
@@ -394,7 +402,7 @@ void on_command(android_app* app, std::int32_t command) {
             break;
         case APP_CMD_TERM_WINDOW:
             cancel_touch(host);
-            elisa_android_lifecycle(kSurfaceLost);
+            ELISA_TRACE("lifecycle surface-lost accepted=%d", elisa_android_lifecycle(kSurfaceLost));
             host.surface_gone = true;
             host.frame.reset();
             break;
@@ -410,10 +418,10 @@ void on_command(android_app* app, std::int32_t command) {
             break;
         case APP_CMD_PAUSE:
             cancel_touch(host);
-            elisa_android_lifecycle(kBackground);
+            ELISA_TRACE("lifecycle background accepted=%d", elisa_android_lifecycle(kBackground));
             break;
         case APP_CMD_RESUME:
-            elisa_android_lifecycle(kForeground);
+            ELISA_TRACE("lifecycle foreground accepted=%d", elisa_android_lifecycle(kForeground));
             break;
         case APP_CMD_WINDOW_REDRAW_NEEDED:
             host.needs_frame = true;
@@ -438,8 +446,9 @@ std::int32_t on_input(android_app* app, AInputEvent* event) {
         const std::int32_t action = AKeyEvent_getAction(event);
         if (action != AKEY_EVENT_ACTION_DOWN && action != AKEY_EVENT_ACTION_UP) return 0;
         const std::int32_t code = AKeyEvent_getKeyCode(event);
-        // Back belongs to the system: swallowing it would leave the user in
-        // an application they cannot leave.
+        // System Back is handled by the Java Activity callbacks. Leave the
+        // legacy NDK key unconsumed here so it cannot dispatch the same press
+        // twice or bypass the Activity's default task behavior.
         if (code == AKEYCODE_BACK) return 0;
         const std::int32_t key = framework_key(code);
         if (key != 0) elisa_android_key(key, action == AKEY_EVENT_ACTION_DOWN ? 1 : 0);
@@ -544,15 +553,23 @@ std::int32_t on_input(android_app* app, AInputEvent* event) {
 
 }  // namespace
 
+extern "C" void elisa_android_request_frame(void) {
+    external_frame_requested.store(true, std::memory_order_release);
+    android_app *app = active_android_app.load(std::memory_order_acquire);
+    if (app != nullptr && app->looper != nullptr) ALooper_wake(app->looper);
+}
+
 void android_main(android_app* app) {
     Host host;
     host.app = app;
+    active_android_app.store(app, std::memory_order_release);
     app->userData = &host;
     app->onAppCmd = on_command;
     app->onInputEvent = on_input;
     // Published before the first frame, because a paste can arrive as soon as
     // there is a window to press a key into.
     elisa_android_clipboard_attach(app->activity);
+    elisa_android_services_attach(app->activity);
     while (true) {
         int events = 0;
         android_poll_source* source = nullptr;
@@ -567,13 +584,17 @@ void android_main(android_app* app) {
         }
         const int result = ALooper_pollOnce(timeout, nullptr, &events, reinterpret_cast<void**>(&source));
         if (result == ALOOPER_POLL_ERROR) break;
+        if (external_frame_requested.exchange(false, std::memory_order_acquire)) host.needs_frame = true;
         if (source != nullptr) source->process(app, source);
         if (app->destroyRequested != 0) break;
+        elisa_android_process_back_requests(app->activity);
         if (host.needs_frame || elisa_android_frame_delay() > 0.0f) draw(host);
     }
     // A destroy command normally clears the attachment above, but the looper
     // can also exit on an error or an already-set destroyRequested flag. Keep
     // the lifetime boundary unconditional so no late JNI clipboard call can
     // dereference the dead activity.
+    active_android_app.store(nullptr, std::memory_order_release);
     elisa_android_clipboard_attach(nullptr);
+    elisa_android_services_attach(nullptr);
 }

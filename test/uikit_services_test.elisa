@@ -1,0 +1,75 @@
+# Host-side tests for the UIKit-to-UiServices permission adapter.
+include "../src/platform/uikit/ui_uikit_flat.elisa"
+
+extern puts(text: cstr) -> i64
+extern elisa_test_uikit_set_request_result(value: i32) -> void
+extern elisa_test_uikit_request_count() -> i32
+extern elisa_test_uikit_last_kind() -> i32
+extern elisa_test_uikit_set_picker_result(value: i32) -> void
+extern elisa_test_uikit_picker_count() -> i32
+extern elisa_test_uikit_selection_release_count() -> i32
+
+global mutable failures: i32 = 0
+
+def app_init() -> void:
+    pass
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    pass
+
+def app_text_input(text: sview) -> void:
+    pass
+
+def app_validate() -> void:
+    pass
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    pass
+
+def app_frame() -> void:
+    pass
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiServices::reset()
+    elisa_test_uikit_set_request_result(1)
+    camera: UiServices::ServiceHandle = UiServices::request(UiServices::ServiceKind.Camera, 4)
+    check("UIKit camera request reaches the native adapter once", UiUIKitServices::request_permission(camera) and elisa_test_uikit_request_count() == 1 and elisa_test_uikit_last_kind() == UiServices::ServiceKind.Camera.i32())
+    check("UIKit request remains pending until a host fact arrives", UiServices::consent(camera) == UiServices::ConsentState.Requested)
+    check("UIKit native grant resolves the matching service generation", elisa_uikit_permission_result(camera.slot, camera.generation, UiServices::ConsentState.Granted.i32(), UiServices::ServiceFailureKind.Unknown.i32()) == 1 and UiServices::is_granted(camera))
+
+    files: UiServices::ServiceHandle = UiServices::request(UiServices::ServiceKind.Files, 4)
+    check("UIKit permission adapter does not treat a picker as consent", not UiUIKitServices::request_permission(files) and elisa_test_uikit_request_count() == 1 and UiServices::consent(files) == UiServices::ConsentState.Unrequested)
+
+    elisa_test_uikit_set_request_result(0)
+    microphone: UiServices::ServiceHandle = UiServices::request(UiServices::ServiceKind.Microphone, 4)
+    check("UIKit bridge failure becomes an explicit retryable state", not UiUIKitServices::request_permission(microphone) and UiServices::consent(microphone) == UiServices::ConsentState.Failed and UiServices::can_prompt(microphone))
+
+    _ = UiServices::dispose(camera)
+    check("late UIKit permission callbacks cannot revive a disposed handle", elisa_uikit_permission_result(camera.slot, camera.generation, UiServices::ConsentState.Denied.i32(), UiServices::ServiceFailureKind.Denied.i32()) == 0)
+    _ = UiServices::sync_kind(UiServices::ServiceKind.Camera, UiServices::ConsentState.Granted, UiServices::ServiceFailureKind.Unknown)
+    check("UIKit permission sync does not disturb unrelated services", UiServices::consent(files) == UiServices::ConsentState.Unrequested and UiServices::consent(microphone) == UiServices::ConsentState.Failed)
+
+    elisa_test_uikit_set_picker_result(1)
+    check("UIKit Files picker remains separate from permission request", UiUIKitServices::present_picker(files) and elisa_test_uikit_picker_count() == 1 and elisa_test_uikit_last_kind() == UiServices::ServiceKind.Files.i32() and UiServices::picker(files) == UiServices::PickerState.Presenting)
+    check("UIKit picker callback publishes typed selection", elisa_uikit_picker_result(files.slot, files.generation, UiServices::PickerState.Selected.i32(), UiServices::ServiceSelectionKind.Text.u32(), 77) == 1 and UiServices::selection_id(files) == 77 and UiServices::selection_kind(files) == UiServices::ServiceSelectionKind.Text)
+    selected_bytes: u8[4] = zeroed
+    read: i32 = UiUIKitServices::read_selection(files, 1, &selected_bytes[0], 3)
+    check("UIKit selection reads bounded content bytes", read == 3 and selected_bytes[0] == 'y' and selected_bytes[2] == 'e')
+    check("UIKit selection release clears host and portable state", UiUIKitServices::release_selection(files) and elisa_test_uikit_selection_release_count() == 1 and UiServices::selection_id(files) == 0 and UiServices::picker(files) == UiServices::PickerState.Idle)
+    _ = UiUIKitServices::present_picker(files)
+    _ = elisa_uikit_picker_result(files.slot, files.generation, UiServices::PickerState.Selected.i32(), UiServices::ServiceSelectionKind.Text.u32(), 77)
+    check("UIKit re-presentation frees the previous selection", UiUIKitServices::present_picker(files) and elisa_test_uikit_selection_release_count() == 2 and UiServices::picker(files) == UiServices::PickerState.Presenting and UiServices::selection_id(files) == 0)
+
+    if failures == 0:
+        _ = puts("uikit services: all checks passed")
+        return 0
+    _ = puts("uikit services: FAILURES above")
+    return 1

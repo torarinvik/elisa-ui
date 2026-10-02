@@ -54,7 +54,7 @@ def tint(r: u8, g: u8, b: u8) -> UiCore::Color:
 
 # "Clicks: N", written into an owned buffer because the control list copies
 # what it is given and the digits have to exist while it does.
-def status_line() -> sview:
+def status_line() -> sview can Unsafe.PointerCast:
     prefix: sview = "Clicks: "
     for index in 0..<prefix.len.usize():
         status_digits[index] <- prefix.data[index]
@@ -76,7 +76,7 @@ def status_line() -> sview:
             swap: u8 = status_digits[start + offset]
             status_digits[start + offset] <- status_digits[written - 1 - offset]
             status_digits[written - 1 - offset] <- swap
-    return sview(&status_digits[0], 0, written.i64())
+    return UiText::unsafe_sview_bounded_bytes(&status_digits[0], written)
 
 def push(label: sview) -> Widget:
     can Memory.Allocate, Abort.Panic:
@@ -95,7 +95,7 @@ def row(first: Widget?) -> Widget:
         return Container.Box(min_width: 0.0, min_height: 48.0, grow: 0.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, overlay: false, first_child: first, next_sibling: null, axis: UiConst::Axis.Row, padding: 0.0, spacing: 8.0, fill: UiCore::Color{r: 0, g: 0, b: 0, a: 0})
 
 def build() -> Widget:
-    can Memory.Allocate, Abort.Panic:
+    can Memory.Allocate, Abort.Panic, Unsafe.PointerCast:
         open_button: Widget = push("Open")
         save_button: Widget = push("Save")
         wrap_box: Widget = Button.Check(min_width: 120.0, min_height: 44.0, grow: 1.0, x: 0.0, y: 0.0, width: 0.0, height: 0.0, hovered: false, pressed: false, overlay: false, first_child: null, next_sibling: null, label: "Wrap lines", checked: true, rest: grey(60), hover: grey(90), press: grey(30))

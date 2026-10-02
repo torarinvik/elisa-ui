@@ -1,0 +1,109 @@
+# One-frame host-boundary fixture for the WasmBrowser transfer-size gate.
+
+include "../../src/core/ui_core.elisa"
+include "../../src/core/ui_capabilities.elisa"
+include "../../src/core/ui_lifecycle.elisa"
+include "../../src/core/ui_metrics.elisa"
+include "../../src/core/ui_paint.elisa"
+include "../../src/widgets/ui_diagnostics.elisa"
+include "../../src/platform/wasmbrowser/ui_wasm_input.elisa"
+include "../../src/platform/wasmbrowser/ui_wasm_dispatch.elisa"
+
+permission Host:
+    Present
+    Layout
+    Clock
+    Log
+    Notify
+    Storage
+    Files
+    Navigation
+    Network
+    Clipboard
+    Commerce
+    Audio
+
+include "../../../sdk/elisa/wasmbrowser/host_bindings.elisa"
+
+using UiPaint
+
+module UiWasmHostState:
+    public:
+        def reset_clipboard() -> void:
+            pass
+
+include "../../src/platform/wasmbrowser/ui_wasmbrowser_runtime.elisa"
+
+extern puts(text: cstr) -> i64
+extern wasmbrowser_transfer_assertions() -> i32
+
+global mutable emit_max_semantics: bool = false
+
+def app_init() -> void:
+    pass
+
+def app_frame() -> void:
+    UiCore::clear(UiCore::Color{r: 1, g: 2, b: 3, a: 255})
+    UiCore::fill(
+        UiCore::Rect{origin: UiCore::Vec2{x: 4.0, y: 5.0}, size: UiCore::Size{width: 60.0, height: 20.0}},
+        UiCore::Color{r: 8, g: 9, b: 10, a: 255},
+    )
+    UiCore::draw(UiCore::TextRun(UiCore::Vec2{x: 6.0, y: 7.0}, 16.0, "Hi"), UiCore::Color{r: 11, g: 12, b: 13, a: 255})
+    if emit_max_semantics:
+        for index in 0..<UiCore::MAX_ACCESSIBILITY_NODES:
+            UiCore::accessibility(
+                UiCore::AccessibilityRole.Button,
+                "Node",
+                "Help",
+                UiCore::Rect{origin: UiCore::Vec2{x: 4.0, y: 5.0}, size: UiCore::Size{width: 60.0, height: 20.0}},
+                index,
+                index,
+                true,
+                false,
+                false,
+                0.0,
+                "Text",
+                "",
+                0,
+                0,
+                0,
+            )
+    else:
+        UiCore::accessibility(
+            UiCore::AccessibilityRole.Button,
+            "OK",
+            "Tip",
+            UiCore::Rect{origin: UiCore::Vec2{x: 4.0, y: 5.0}, size: UiCore::Size{width: 60.0, height: 20.0}},
+            7,
+            9,
+            true,
+            false,
+            false,
+            0.0,
+            "Done",
+            "",
+            0,
+            0,
+            0,
+        )
+
+def app_event(event: UiCore::Event) -> void:
+    pass
+
+def app_text_input(text: sview) -> void:
+    pass
+
+def app_text_editing(text: sview, start: i32, length: i32) -> void:
+    pass
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def main() -> i64:
+    UiWasmBrowser::start(640, 480)
+    UiWasmBrowser::frame(0.016)
+    emit_max_semantics <- true
+    UiWasmBrowser::frame(0.016)
+    return 0 if wasmbrowser_transfer_assertions() == 0
+    _ = puts("WasmBrowser transfer fixture: FAIL")
+    return 1

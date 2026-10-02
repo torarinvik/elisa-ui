@@ -6,6 +6,12 @@ occlusion, and surface recreation through this module while `UiLifecycle` owns
 focus, background, and rendering eligibility. `snapshot()` derives the current
 content area and orientation through `UiResponsive`.
 
+This state represents one current primary surface for the application process;
+it is not a multiwindow manager. The selected `UiCapabilities::Snapshot`
+reports `multiple_windows == false` for UIKit canvas, UIKit controls, Android
+canvas, and Android controls. Applications must query that capability rather
+than infer multiwindow support from a desktop backend or OS name.
+
 `start()` creates a session, `resize()`, `set_safe_area()`, and
 `set_keyboard()` update facts without rebuilding application state, and
 `surface_lost()`/`surface_restored()` preserve the session generation across a

@@ -47,7 +47,8 @@ fi
 
 # --- 1. Build and read the package back --------------------------------
 bash "$ROOT/scripts/build_android.sh" "$EXAMPLE" >/dev/null
-OUT="$ROOT/build/android/$EXAMPLE"
+ANDROID_OUT_ROOT="${ELISA_UI_ANDROID_OUT_ROOT:-$ROOT/build/android}"
+OUT="$ANDROID_OUT_ROOT/$EXAMPLE"
 APK="$OUT/$EXAMPLE.apk"
 SO="$OUT/lib$EXAMPLE.so"
 [[ -f "$APK" && -f "$SO" ]] || { echo "android: the build produced no package" >&2; exit 1; }
@@ -68,8 +69,10 @@ symbols="$("$READELF" --dyn-symbols "$SO")"
 # host calls back through, and a missing one is a blank window at runtime.
 for entry in android_main elisa_android_start elisa_android_resize elisa_android_render \
              elisa_android_touch elisa_android_scroll elisa_android_frame_delay \
-             elisa_android_lifecycle elisa_android_key elisa_android_text \
-             elisa_android_wants_keyboard; do
+             elisa_android_lifecycle elisa_android_key elisa_android_text elisa_android_keyboard_insets \
+             elisa_android_wants_keyboard elisa_android_back \
+             elisa_android_permission_result elisa_android_permission_sync \
+             elisa_android_picker_result; do
   grep -q " $entry\$" <<<"$symbols" || { echo "android: $entry is not exported from lib$EXAMPLE.so" >&2; exit 1; }
 done
 # C++ was linked statically on purpose: Android ships no libc++_shared, and
@@ -143,6 +146,24 @@ grep -Fq 'pointer_index_for_id' "$HOST" || {
   echo "android: motion coordinates still assume pointer slot zero" >&2
   exit 1
 }
+BACK_QUEUE="$ROOT/src/platform/android/android_back_queue.cpp"
+grep -Fq 'pending_back_requests.exchange(0' "$BACK_QUEUE" || {
+  echo "android: Activity back callbacks do not return to the native owner thread" >&2
+  exit 1
+}
+grep -Fq 'OnBackInvokedCallback' "$ROOT/src/platform/android/java/org/elisa_ui/ElisaCanvasActivity.java" || {
+  echo "android: predictive/system back callback is not registered" >&2
+  exit 1
+}
+JAVA_ACTIVITY="$ROOT/src/platform/android/java/org/elisa_ui/ElisaCanvasActivity.java"
+grep -Fq 'preferences.getBoolean(permissionRequestPreference(kind), false)' "$JAVA_ACTIVITY" || {
+  echo "android: a fresh service record can bypass the persisted permission anti-prompt gate" >&2
+  exit 1
+}
+grep -Fq 'nativePermissionResult(slot, generation, 3, 1)' "$JAVA_ACTIVITY" || {
+  echo "android: a previously requested, still-denied permission is not returned as Denied" >&2
+  exit 1
+}
 
 # --- 2. A device, if one is attached ------------------------------------
 ADB="${ADB:-$SDK/platform-tools/adb}"
@@ -153,6 +174,30 @@ fi
 
 PACKAGE="org.elisa_ui.$EXAMPLE"
 "$ADB" install -r "$APK" >/dev/null
+ANDROID_TEST_AVD=0
+ROTATION_AUTO=""
+ROTATION_USER=""
+TRACE_PROPERTY=""
+restore_android_test_state() {
+  if [[ "$ANDROID_TEST_AVD" == 1 && -n "$ROTATION_AUTO" && -n "$ROTATION_USER" ]]; then
+    "$ADB" shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+    "$ADB" shell settings put system user_rotation "$ROTATION_USER" >/dev/null 2>&1 || true
+    "$ADB" shell settings put system accelerometer_rotation "$ROTATION_AUTO" >/dev/null 2>&1 || true
+  fi
+  if [[ -n "$TRACE_PROPERTY" ]]; then
+    "$ADB" shell setprop debug.elisa.trace "$TRACE_PROPERTY" >/dev/null 2>&1 || true
+  else
+    "$ADB" shell setprop debug.elisa.trace 0 >/dev/null 2>&1 || true
+  fi
+  "$ADB" shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+}
+trap restore_android_test_state EXIT
+if [[ "$("$ADB" shell getprop ro.kernel.qemu 2>/dev/null | tr -d '\r')" == 1 ]]; then
+  ANDROID_TEST_AVD=1
+  ROTATION_AUTO="$("$ADB" shell settings get system accelerometer_rotation 2>/dev/null | tr -d '\r')"
+  ROTATION_USER="$("$ADB" shell settings get system user_rotation 2>/dev/null | tr -d '\r')"
+  TRACE_PROPERTY="$("$ADB" shell getprop debug.elisa.trace 2>/dev/null | tr -d '\r')"
+fi
 # LAUNCH AND WATCH, WITH ONE RETRY. This gate failed once inside a loaded suite
 # with a log full of rendered frames and no "start -> 1" line -- the host had
 # plainly run, and the check that says it did not had been green twice that
@@ -180,7 +225,6 @@ launch_and_watch() {
     log="$("$ADB" logcat -d -s elisa-ui)"
     grep -q "colors=" <<<"$log" && break
   done
-  "$ADB" shell am force-stop "$PACKAGE" || true
 grep -q "start .* -> 1\$" <<<"$log"
 }
 
@@ -194,3 +238,65 @@ frame="$(grep "colors=" <<<"$log" | tail -1)"
 colors="$(sed -n 's/.*colors=\([0-9]*\).*/\1/p' <<<"$frame")"
 [[ "$colors" -gt 64 ]] || { echo "android: the frame is $colors colour(s) -- a blank window" >&2; exit 1; }
 echo "android: ${frame#*elisa-ui: }"
+
+if [[ "$ANDROID_TEST_AVD" == 1 && "$ROTATION_AUTO" =~ ^[01]$ && "$ROTATION_USER" =~ ^[0-3]$ ]]; then
+  wait_for_lifecycle_log() {
+    local pattern="$1" description="$2" lifecycle_log=""
+    for _ in $(seq 1 20); do
+      lifecycle_log="$("$ADB" logcat -d -s elisa-ui)"
+      if grep -qE "$pattern" <<<"$lifecycle_log"; then
+        log="$lifecycle_log"
+        return 0
+      fi
+      sleep 0.5
+    done
+    echo "android: AVD lifecycle check did not observe $description" >&2
+    echo "$lifecycle_log" >&2
+    return 1
+  }
+
+  assert_latest_frame_orientation() {
+    local orientation="$1" frame_line size width height
+    frame_line="$(grep 'frame .* status=1' <<<"$log" | tail -1)"
+    size="$(sed -n 's/.*frame \([0-9]*x[0-9]*\).*/\1/p' <<<"$frame_line")"
+    width="${size%x*}"
+    height="${size#*x}"
+    if [[ "$orientation" == landscape ]]; then
+      (( width > height && height == initial_width )) || {
+        echo "android: expected landscape frame constrained by ${initial_width}px, got ${size}" >&2
+        echo "$log" >&2
+        return 1
+      }
+    else
+      (( width < height && width == initial_width )) || {
+        echo "android: expected portrait frame constrained by ${initial_width}px, got ${size}" >&2
+        echo "$log" >&2
+        return 1
+      }
+    fi
+  }
+
+  initial_size="$(sed -n 's/.*frame \([0-9]*x[0-9]*\).*/\1/p' <<<"$frame")"
+  initial_width="${initial_size%x*}"
+  "$ADB" logcat -c
+  "$ADB" shell settings put system accelerometer_rotation 0 >/dev/null
+  "$ADB" shell settings put system user_rotation 1 >/dev/null
+  wait_for_lifecycle_log "frame [0-9]+x${initial_width} status=1" "landscape resize and repaint"
+  assert_latest_frame_orientation landscape
+  "$ADB" logcat -c
+  "$ADB" shell settings put system user_rotation 0 >/dev/null
+  wait_for_lifecycle_log "frame ${initial_width}x[0-9]+ status=1" "portrait resize and repaint"
+  assert_latest_frame_orientation portrait
+
+  "$ADB" logcat -c
+  "$ADB" shell input keyevent 3 >/dev/null
+  wait_for_lifecycle_log 'lifecycle background accepted=1' "accepted background transition"
+  "$ADB" logcat -c
+  "$ADB" shell am start -n "$PACKAGE/org.elisa_ui.ElisaCanvasActivity" >/dev/null
+  wait_for_lifecycle_log 'lifecycle foreground accepted=1' "accepted foreground transition"
+  wait_for_lifecycle_log "frame ${initial_width}x[0-9]+ status=1" "frame after foreground resume"
+  assert_latest_frame_orientation portrait
+  echo "android: AVD rotation and background/resume lifecycle passed"
+else
+  echo "android: AVD rotation/background lifecycle half skipped (requires an emulator)"
+fi

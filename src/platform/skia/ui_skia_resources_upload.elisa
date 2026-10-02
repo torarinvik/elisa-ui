@@ -1,0 +1,42 @@
+# Publish Skia resources only after host-owned decode and renderer upload.
+
+extend UiSkia:
+    public:
+        # A host calls this only after decode and renderer upload have both
+        # succeeded. Install the borrowed handle first, then publish Ready at
+        # the same boundary so a failed/stale operation cannot expose an
+        # unbound resource as paintable.
+        def complete_uploaded_image(resource: UiResources::ResourceHandle, image: usize) -> bool:
+            _ = UiSkia::prune_bindings()
+            return false if UiResources::state(resource) != UiResources::State.Requested or image == 0
+            return false if UiResources::downloaded_progress(resource) < 1.0 or UiResources::decoded_progress(resource) < 1.0
+            return false if not retain_image_binding(resource, image)
+            operation_id: u64 = UiResources::operation_for(resource)
+            completed: mutable bool = false
+            if operation_id != 0:
+                completed <- UiResources::complete_operation(resource, operation_id, UiResources::State.Ready, UiResources::FailureKind.Unknown)
+            else:
+                completed <- UiResources::set_state(resource, UiResources::State.Ready)
+            if not completed:
+                _ = UiSkia::unbind_image(resource)
+                return false
+            return true
+
+    private:
+        def retain_image_binding(resource: UiResources::ResourceHandle, image: usize) -> bool:
+            return false if image == 0 or resource.slot.usize() >= UiResources::MAX_RESOURCES
+            existing: usize = UiSkia::image_binding_index(resource)
+            if existing < UiSkia::MAX_IMAGE_BINDINGS:
+                skia_image_binding_images[existing] <- image
+                return true
+            free_index: mutable usize = UiSkia::MAX_IMAGE_BINDINGS
+            for index in 0..<UiSkia::MAX_IMAGE_BINDINGS:
+                if not skia_image_binding_active[index]:
+                    free_index <- index
+                    break
+            return false if free_index == UiSkia::MAX_IMAGE_BINDINGS
+            skia_image_binding_resources[free_index] <- resource
+            skia_image_binding_images[free_index] <- image
+            skia_image_binding_active[free_index] <- true
+            skia_image_binding_slot_by_resource[resource.slot.usize()] <- free_index
+            return true

@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
+STAGE1="$(bash "$ROOT/scripts/resolve_stage1_root.sh" "$ROOT")"
 RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
 SDL_LIB="${ELISA_UI_SDL_LIB:-/opt/homebrew/lib}"
 
@@ -12,7 +12,7 @@ SDL_LIB="${ELISA_UI_SDL_LIB:-/opt/homebrew/lib}"
 
 # Show the resolved compiler/runtime revision and hashes this build actually
 # used, and warn (without failing) on a dirty or stale compiler checkout.
-bash "$ROOT/scripts/check_toolchain.sh" --report >&2
+ELISA_UI_STAGE1="$STAGE1" bash "$ROOT/scripts/check_toolchain.sh" --report >&2
 
 mkdir -p "$ROOT/build"
 bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ROOT/build/hello_native.o" "$ROOT/examples/hello/native_main.elisa"

@@ -41,3 +41,13 @@ actual_lib_sha256="$(shasum -a 256 "$LIB" | awk '{print $1}')"
   exit 2
 }
 echo "skia build: provenance verified revision=$actual_revision libskia_sha256=$actual_lib_sha256"
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  shaper_lib="$SKIA_OUT/libskshaper.a"
+  [[ -f "$shaper_lib" ]] || { echo "skia build: no shaping archive at $shaper_lib" >&2; exit 2; }
+  actual_shaper_sha256="$(shasum -a 256 "$shaper_lib" | awk '{print $1}')"
+  [[ "$(manifest_value libskshaper_sha256)" == "$actual_shaper_sha256" ]] || {
+    echo "skia build: shaping archive hash does not match provenance manifest" >&2
+    exit 2
+  }
+  echo "skia build: CoreText shaper provenance verified libskshaper_sha256=$actual_shaper_sha256"
+fi

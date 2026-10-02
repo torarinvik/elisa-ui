@@ -1,0 +1,85 @@
+# Android permission adapter for the portable consent state machine.
+include "../../widgets/ui_services.elisa"
+
+extern elisa_android_request_permission(kind: i32, slot: u32, generation: u32) -> i32
+extern elisa_android_present_picker(kind: i32, slot: u32, generation: u32) -> i32
+extern elisa_android_read_selection(selection_id: u64, offset: u64, buffer: mutable u8&, capacity: i32) -> i32
+extern elisa_android_release_selection(selection_id: u64) -> i32
+extern elisa_android_request_frame() -> void
+
+module UiAndroidServices:
+    public:
+        # Camera and microphone use Android runtime permissions.
+        def request_permission(handle: UiServices::ServiceHandle) -> bool:
+            return false if not UiServices::is_valid(handle)
+            kind: UiServices::ServiceKind = UiServices::kind(handle)
+            return false if kind != UiServices::ServiceKind.Camera and kind != UiServices::ServiceKind.Microphone
+            return false if not UiServices::begin_prompt(handle)
+            accepted: i32 = elisa_android_request_permission(kind.i32(), handle.slot, handle.generation)
+            if accepted != 1:
+                _ = UiServices::resolve_consent(handle, UiServices::ConsentState.Failed, UiServices::ServiceFailureKind.Retryable)
+                elisa_android_request_frame()
+                return false
+            return true
+
+        # Photos uses Android's system photo picker; Files uses the document picker.
+        def present_picker(handle: UiServices::ServiceHandle) -> bool:
+            return false if not UiServices::is_valid(handle)
+            kind: UiServices::ServiceKind = UiServices::kind(handle)
+            return false if kind != UiServices::ServiceKind.Photos and kind != UiServices::ServiceKind.Files
+            if UiServices::picker(handle) == UiServices::PickerState.Selected:
+                previous_id: u64 = UiServices::selection_id(handle)
+                return false if previous_id == 0 or elisa_android_release_selection(previous_id) != 1
+                return false if not UiServices::forget_selection(handle)
+            return false if not UiServices::present_picker(handle)
+            accepted: i32 = elisa_android_present_picker(kind.i32(), handle.slot, handle.generation)
+            if accepted != 1:
+                _ = UiServices::resolve_picker(handle, UiServices::PickerState.Failed, UiServices::ServiceSelectionKind.Unknown, 0)
+                elisa_android_request_frame()
+                return false
+            return true
+
+        # Reads are bounded chunks; 0 means EOF and -1 means an invalid/released selection.
+        def read_selection(handle: UiServices::ServiceHandle, offset: u64, buffer: mutable u8&, capacity: i32) -> i32:
+            return -1 if not UiServices::is_valid(handle) or UiServices::picker(handle) != UiServices::PickerState.Selected
+            selection_id: u64 = UiServices::selection_id(handle)
+            return -1 if selection_id == 0 or capacity < 0 or capacity > 65536 or (capacity > 0 and buffer == null)
+            return elisa_android_read_selection(selection_id, offset, buffer, capacity)
+
+        # Release host bytes before clearing the portable result.
+        def release_selection(handle: UiServices::ServiceHandle) -> bool:
+            return false if not UiServices::is_valid(handle) or UiServices::picker(handle) != UiServices::PickerState.Selected
+            released: i32 = elisa_android_release_selection(UiServices::selection_id(handle))
+            return false if released != 1
+            result: bool = UiServices::forget_selection(handle)
+            elisa_android_request_frame() if result
+            return result
+
+def android_service_permission_result(slot: u32, generation: u32, state: i32, failure: i32) -> i32:
+    handle: UiServices::ServiceHandle = UiServices::ServiceHandle{slot: slot, generation: generation}
+    next: UiServices::ConsentState = state.ConsentState()
+    reason: UiServices::ServiceFailureKind = failure.ServiceFailureKind()
+    return 0 if not UiServices::resolve_consent(handle, next, reason)
+    elisa_android_request_frame()
+    return 1
+
+def android_service_permission_sync(kind: i32, state: i32, failure: i32) -> i32:
+    service_kind: UiServices::ServiceKind = kind.ServiceKind()
+    next: UiServices::ConsentState = state.ConsentState()
+    reason: UiServices::ServiceFailureKind = failure.ServiceFailureKind()
+    updated: usize = UiServices::sync_kind(service_kind, next, reason)
+    elisa_android_request_frame() if updated > 0
+    return updated.i32()
+
+export fn elisa_android_permission_result(slot: u32, generation: u32, state: i32, failure: i32) -> i32 = android_service_permission_result
+export fn elisa_android_permission_sync(kind: i32, state: i32, failure: i32) -> i32 = android_service_permission_sync
+
+def android_service_picker_result(slot: u32, generation: u32, state: i32, selection_kind: u32, selection_id: u64) -> i32:
+    handle: UiServices::ServiceHandle = UiServices::ServiceHandle{slot: slot, generation: generation}
+    next: UiServices::PickerState = state.PickerState()
+    kind: UiServices::ServiceSelectionKind = selection_kind.ServiceSelectionKind()
+    return 0 if not UiServices::resolve_picker(handle, next, kind, selection_id)
+    elisa_android_request_frame()
+    return 1
+
+export fn elisa_android_picker_result(slot: u32, generation: u32, state: i32, selection_kind: u32, selection_id: u64) -> i32 = android_service_picker_result

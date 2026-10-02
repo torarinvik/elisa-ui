@@ -1,0 +1,95 @@
+# Headless Skia resource publication: a host-owned uploaded image becomes
+# paintable only when its UI generation and associated operation complete.
+
+include "../src/core/ui_core.elisa"
+include "../src/core/ui_paint.elisa"
+
+extern puts(text: cstr) -> i64
+extern elisa_skia_canvas_draw_image_tiled(canvas: usize, image: usize, x: f32, y: f32, width: f32, height: f32, radius: f32, alpha: u8) -> void
+extern elisa_skia_canvas_draw_text_with_font(canvas: usize, font: usize, text: cstr, length: usize, x: f32, y: f32, size: f32, red: u8, green: u8, blue: u8, alpha: u8) -> void
+extern elisa_skia_measure_text_width_with_font(font: usize, text: cstr, length: usize, size: f32) -> f32
+extern elisa_skia_font_ascent_with_font(font: usize, size: f32) -> f32
+extern elisa_skia_text_line_height_with_font(font: usize, size: f32) -> f32
+
+module UiSkia:
+    public:
+        const enum ImageSampling of i32:
+            Nearest = 0
+            Linear = 1
+
+        global mutable canvas_state: usize = 1
+        global mutable last_image_handle: usize = 0
+        global mutable image_draw_count: i32 = 0
+
+        def skia_safe_rect(rect: UiCore::Rect) -> UiCore::Rect:
+            return rect
+
+        def skia_safe_source_rect_for_size(rect: UiCore::Rect, size: UiCore::Size) -> UiCore::Rect:
+            return rect
+
+        def skia_safe_radius(rect: UiCore::Rect, radius: f32) -> f32:
+            return radius
+
+        def safe_font_size(size: f32) -> f32:
+            return size
+
+        def push_rounded_clip(rect: UiCore::Rect, radius: f32) -> bool can[Ui.Draw]:
+            return true
+
+        def pop_clip() -> bool can[Ui.Draw]:
+            return true
+
+        def draw_image_with_sampling(image: usize, rect: UiCore::Rect, alpha: u8, sampling: ImageSampling) -> void can[Ui.Draw]:
+            last_image_handle <- image
+            image_draw_count <- image_draw_count + 1
+
+        def draw_image_source_with_sampling(image: usize, source: UiCore::Rect, destination: UiCore::Rect, alpha: u8, sampling: ImageSampling) -> void can[Ui.Draw]:
+            last_image_handle <- image
+
+        def draw_image_rounded_with_sampling(image: usize, rect: UiCore::Rect, alpha: u8, radius: f32, sampling: ImageSampling) -> bool can[Ui.Draw]:
+            last_image_handle <- image
+            return true
+
+include "../src/platform/skia/ui_skia_resources.elisa"
+
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiResources::reset()
+    _ = UiSkia::prune_bindings()
+    resource_operation_baseline: usize = UiResources::operation_count()
+    image_binding_baseline: usize = UiSkia::image_binding_count()
+
+    pending: UiResources::ResourceHandle = UiResources::request("images/skia-upload", 7)
+    check("Skia image request binds the host operation", UiResources::bind_operation(pending, 7801) and UiResources::set_progress(pending, 1.0, 1.0))
+    check("empty Skia image leaves the operation pending", not UiSkia::complete_uploaded_image(pending, 0) and UiResources::state(pending) == UiResources::State.Requested and UiResources::operation_for(pending) == 7801)
+    check("uploaded Skia image completes only its matching operation", UiSkia::complete_uploaded_image(pending, 0xBEE1) and UiResources::state(pending) == UiResources::State.Ready and UiResources::uploaded_progress(pending) == 1.0 and UiResources::operation_for(pending) == 0 and UiResources::operation_count() == resource_operation_baseline and UiSkia::image_binding_count() == image_binding_baseline + 1)
+
+    check("completed Skia image resolves its retained handle for drawing", UiSkia::draw_bound_image(pending, UiCore::Rect(10.0, 20.0, 64.0, 48.0), 255) and UiSkia::image_draw_count == 1 and UiSkia::last_image_handle == 0xBEE1)
+    _ = UiResources::dispose(pending)
+    check("disposing a Skia image prunes the native binding", UiSkia::prune_bindings() == 1 and UiSkia::image_binding_count() == image_binding_baseline)
+
+    synchronous: UiResources::ResourceHandle = UiResources::request("images/skia-upload-sync", 7)
+    check("Skia rejects upload before download and decode are complete", not UiSkia::complete_uploaded_image(synchronous, 0xBEE2) and UiResources::state(synchronous) == UiResources::State.Requested and UiSkia::image_binding_count() == image_binding_baseline)
+    _ = UiResources::set_progress(synchronous, 1.0, 1.0)
+    check("synchronous Skia upload can complete without an operation", UiSkia::complete_uploaded_image(synchronous, 0xBEE2) and UiResources::state(synchronous) == UiResources::State.Ready and UiResources::uploaded_progress(synchronous) == 1.0 and UiResources::operation_count() == resource_operation_baseline)
+    _ = UiSkia::unbind_image(synchronous)
+    _ = UiResources::dispose(synchronous)
+
+    cancelled: UiResources::ResourceHandle = UiResources::request("images/skia-upload-cancelled", 7)
+    _ = UiResources::bind_operation(cancelled, 7802)
+    cancelled_operation: u64 = UiResources::cancel_operation(cancelled)
+    check("late Skia upload cannot revive a cancelled generation", cancelled_operation == 7802 and not UiSkia::complete_uploaded_image(cancelled, 0xBEE3) and UiResources::state(cancelled) == UiResources::State.Cancelled and UiSkia::image_binding_count() == image_binding_baseline)
+    check("cancelled Skia upload retains explicit host acknowledgement", UiResources::forget_operation(cancelled_operation) and UiResources::operation_count() == resource_operation_baseline)
+    _ = UiResources::dispose(cancelled)
+
+    if failures == 0:
+        _ = puts("Skia image upload state: passed")
+        return 0
+    _ = puts("Skia image upload state: FAILURES above")
+    return 1

@@ -175,6 +175,43 @@ module UiHarness:
             return false if not UiLifecycle::is_started()
             return UiResources::set_progress(handle, network, decode)
 
+        def set_resource_upload_progress(handle: UiResources::ResourceHandle, upload: f32) -> bool:
+            return false if not UiLifecycle::is_started()
+            return UiResources::set_upload_progress(handle, upload)
+
+        # The deterministic harness exposes the same opaque operation seam as
+        # a real SDK/host adapter. Tests therefore cannot accidentally bypass
+        # generation matching when injecting a late result.
+        def bind_resource_operation(handle: UiResources::ResourceHandle, operation_id: u64) -> bool:
+            return UiLifecycle::is_started() and UiResources::bind_operation(handle, operation_id)
+
+        def poll_resource_operation(handle: UiResources::ResourceHandle, operation_id: u64, network: f32, decode: f32) -> bool:
+            return false if not UiLifecycle::is_started()
+            return UiResources::poll_operation(handle, operation_id, network, decode)
+
+        def poll_resource_upload_operation(handle: UiResources::ResourceHandle, operation_id: u64, upload: f32) -> bool:
+            return false if not UiLifecycle::is_started()
+            return UiResources::poll_upload_operation(handle, operation_id, upload)
+
+        def complete_resource_operation(handle: UiResources::ResourceHandle, operation_id: u64, state: UiResources::State, failure: UiResources::FailureKind) -> bool:
+            return false if not UiLifecycle::is_started()
+            return UiResources::complete_operation(handle, operation_id, state, failure)
+
+        # Cancellation tombstones may outlive the app session that created
+        # them, so hosts can enumerate and acknowledge cleanup after stop.
+        def resource_operation_count() -> usize:
+            return UiResources::operation_count()
+
+        def resource_operation_at(index: usize) -> UiResources::Operation:
+            return UiResources::operation_at(index)
+
+        def cancel_resource_operation(handle: UiResources::ResourceHandle) -> u64:
+            return 0 if not UiLifecycle::is_started()
+            return UiResources::cancel_operation(handle)
+
+        def forget_resource_operation(operation_id: u64) -> bool:
+            return UiResources::forget_operation(operation_id)
+
         def set_resource_demand(handle: UiResources::ResourceHandle, priority: u32) -> bool:
             return false if not UiLifecycle::is_started()
             return UiResources::set_demand(handle, priority)
@@ -217,6 +254,12 @@ module UiHarness:
             return false if not UiLifecycle::is_started()
             return UiFeatureView::resolve(handle, activation_id, state, failure)
 
+        # Optional-feature data is injected only for a live activation and is
+        # copied by UiFeatureView into its bounded Elisa-owned payload slot.
+        def publish_feature_payload(handle: UiFeatureView::FeatureHandle, activation_id: u64, sequence: u64, payload: sview) -> bool:
+            return false if not UiLifecycle::is_started()
+            return UiFeatureView::publish_payload(handle, activation_id, sequence, payload)
+
         def retry_feature(handle: UiFeatureView::FeatureHandle) -> UiFeatureView::FeatureHandle:
             return UiFeatureView::invalid() if not UiLifecycle::is_started()
             return UiFeatureView::retry(handle)
@@ -225,8 +268,13 @@ module UiHarness:
             return UiLifecycle::is_started() and UiFeatureView::cancel(handle)
 
         def acknowledge_feature_deactivation(handle: UiFeatureView::FeatureHandle, activation_id: u64) -> bool:
-            return false if not UiLifecycle::is_started()
             return UiFeatureView::acknowledge_deactivation(handle, activation_id)
+
+        def feature_deactivation_count() -> usize:
+            return UiFeatureView::deactivation_count()
+
+        def feature_deactivation_at(index: usize) -> UiFeatureView::Deactivation:
+            return UiFeatureView::deactivation_at(index)
 
         def dispose_features_for_owner(owner: u32) -> usize:
             return 0 if not UiLifecycle::is_started()

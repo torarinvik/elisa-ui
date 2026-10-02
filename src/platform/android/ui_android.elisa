@@ -15,6 +15,7 @@
 
 include "../skia/ui_skia.elisa"
 include "../mobile/ui_mobile_surface.elisa"
+include "./ui_android_services.elisa"
 # The same include the UIKit flat adapter takes, and for the same reason: the
 # keyboard follows the retained focus, and only the widget layer knows where
 # that is.
@@ -59,7 +60,9 @@ def android_ime_stage(text: cstr, length: i32) -> sview:
     room: usize = length.usize() if length.usize() < UiFlat::TEXT_CAPACITY else UiFlat::TEXT_CAPACITY
     for index in 0..<room:
         android_ime_staging[index] <- android_controls_ime_byte(text, index)
-    return sview(&android_ime_staging[0], 0, room.i64())
+    can Unsafe.PointerCast:
+        # room is bounded by the fixed IME staging capacity above.
+        return UiText::unsafe_sview_bounded_bytes(&android_ime_staging[0], room)
 
 def android_ime_clear_staging() -> void:
     # Composition and committed input can contain secure user text. The edit
@@ -151,13 +154,14 @@ def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
     # Never hand the platform half a UTF-8 sequence; a clipboard is read by
     # other applications and a broken one is their problem, not ours.
     valid: usize = UiText::valid_utf8_prefix(copied, take)
-    pointer: cstr = (&android_clipboard_staging[0]).cast[cstr] can Unsafe.PointerCast
-    wrote: bool = elisa_android_clipboard_write(pointer, valid.i32()) != 0
-    # The staging copy held the user's text -- scrub rather than leave it live
-    # until the next copy, which is what the other backends do.
-    for index in 0..<UiFlat::TEXT_CAPACITY:
-        android_clipboard_staging[index] <- 0
-    return wrote
+    can Unsafe.PointerCast:
+        pointer: cstr = (&android_clipboard_staging[0]).cast[cstr]
+        wrote: bool = elisa_android_clipboard_write(pointer, valid.i32()) != 0
+        # The staging copy held the user's text -- scrub rather than leave it live
+        # until the next copy, which is what the other backends do.
+        for index in 0..<UiFlat::TEXT_CAPACITY:
+            android_clipboard_staging[index] <- 0
+        return wrote
 
 def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
     return 0 if capacity > 0 and buffer == null
@@ -325,7 +329,9 @@ module UiAndroid:
                 android_text_bytes[1] <- (128 | ((scalar >> 12) & 63)).u8()
                 android_text_bytes[2] <- (128 | ((scalar >> 6) & 63)).u8()
                 android_text_bytes[3] <- (128 | (scalar & 63)).u8()
-            UiFlat::insert_text(sview(&android_text_bytes[0], 0, length.i64()))
+            can Unsafe.PointerCast:
+                # length is 1..4 and every byte above came from one validated scalar.
+                UiFlat::insert_text(UiText::unsafe_sview_bounded_bytes(&android_text_bytes[0], length))
 
         # Whether the focused widget wants a keyboard. The host raises and
         # lowers the on-screen one from this and from nothing else: the
@@ -336,6 +342,9 @@ module UiAndroid:
         def scroll(x: f32, y: f32, dx: f32, dy: f32) -> void can[Ui.Input]:
             return if not UiCore::is_finite(x) or not UiCore::is_finite(y) or not UiCore::is_finite(dx) or not UiCore::is_finite(dy)
             dispatch(UiCore::PointerEvent.Scroll(at: UiCore::Vec2(x, y), delta: UiCore::Vec2(dx, dy)))
+
+include "./ui_android_keyboard.elisa"
+include "./ui_android_back.elisa"
 
 def android_start(width: f32, height: f32, scale: f32, top: f32, right: f32, bottom: f32, left: f32) -> i32:
     can Ui.Window, Ui.Draw, Ui.Text, Ui.Input, Unsafe.PointerCast:
@@ -368,7 +377,7 @@ def android_scroll(x: f32, y: f32, dx: f32, dy: f32) -> void:
 
 def android_key(code: i32, down: i32) -> void:
     can Ui.Input:
-        UiAndroid::key(code, down != 0)
+        UiAndroid::key_with_back(code, down != 0)
 
 def android_text(scalar: u32) -> void:
     can Ui.Input:

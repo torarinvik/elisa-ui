@@ -5,13 +5,13 @@
 # through the compiler's own `-emit exe` path, driven by a wrapper that makes
 # the NDK's clang produce a shared library and add the host, the Skia shims,
 # Skia itself and the platform libraries. The result is a NativeActivity APK
-# with one small Java IME bridge, signed with a debug key.
+# with a small Java IME/service bridge and bounded selected-content store.
 #
 # Usage: SKIA_ROOT=~/skia scripts/build_android.sh [example]
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
+STAGE1="$(bash "$ROOT/scripts/resolve_stage1_root.sh" "$ROOT")"
 EXAMPLE="${1:-storefront}"
 [[ "$EXAMPLE" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "invalid Android example name: $EXAMPLE" >&2; exit 2; }
 ENTRY="$ROOT/examples/$EXAMPLE/android_main.elisa"
@@ -20,6 +20,10 @@ SKIA_OUT="${SKIA_ANDROID_OUT:-$SKIA_ROOT/out/elisa-android-arm64}"
 SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
 NDK="${ANDROID_NDK_ROOT:-$(ls -d "$SDK"/ndk/* 2>/dev/null | sort -V | tail -1)}"
 API="${ELISA_UI_ANDROID_API:-30}"
+if [[ ! "$API" =~ ^[0-9]+$ ]] || (( API < 30 )); then
+  echo "Android canvas IME insets require API 30 or newer (ELISA_UI_ANDROID_API=$API)" >&2
+  exit 2
+fi
 BUILD_TOOLS="$(ls -d "$SDK"/build-tools/* 2>/dev/null | sort -V | tail -1)"
 PLATFORM_JAR="$(ls "$SDK"/platforms/*/android.jar 2>/dev/null | sort -V | tail -1)"
 TRIPLE="aarch64-linux-android$API"
@@ -46,13 +50,15 @@ CLANGXX="$TOOLCHAIN/bin/$TRIPLE-clang++"
 [[ -x "$CLANG" ]] || { echo "no NDK clang at $CLANG" >&2; exit 2; }
 [[ -f "$SKIA_OUT/libskia.a" ]] || { echo "no Android Skia at $SKIA_OUT/libskia.a (run scripts/build_skia_android.sh)" >&2; exit 2; }
 [[ -n "$BUILD_TOOLS" && -n "$PLATFORM_JAR" ]] || { echo "no build-tools or platform under $SDK" >&2; exit 2; }
+ELISA_UI_STAGE1="$STAGE1" bash "$ROOT/scripts/check_toolchain.sh" --report >&2
 
-OUT="$ROOT/build/android/$EXAMPLE"
+ANDROID_OUT_ROOT="${ELISA_UI_ANDROID_OUT_ROOT:-$ROOT/build/android}"
+OUT="$ANDROID_OUT_ROOT/$EXAMPLE"
 mkdir -p "$OUT"
 LIB="lib$EXAMPLE"
 
 # The runtime object for this triple, with the profiler hook fallbacks.
-"$STAGE1/bin/elisac-stage1" -emit obj -O0 -target-triple "$TRIPLE" \
+ELISA_STAGE1_PIC=1 "$STAGE1/bin/elisac-stage1" -emit obj -O0 -target-triple "$TRIPLE" \
   -o "$OUT/runtime_core.o" "$STAGE1/elisacore_std/native_runtime_support.elisa"
 bash "$STAGE1/scripts/write_profiler_hook_fallbacks.sh" > "$OUT/profiler_hooks.c"
 "$CLANG" -c -fPIC -o "$OUT/profiler_hooks.o" "$OUT/profiler_hooks.c"
@@ -72,6 +78,10 @@ grep -q "pthread_attr_setstacksize" "$OUT/android_native_app_glue.c" || { echo "
   -o "$OUT/native_app_glue.o" "$OUT/android_native_app_glue.c"
 "$CLANGXX" -c "${CXXFLAGS[@]}" -I"$NDK/sources/android/native_app_glue" \
   -o "$OUT/android_skia_host.o" "$ROOT/src/platform/android/android_skia_host.cpp"
+"$CLANGXX" -c "${CXXFLAGS[@]}" \
+  -o "$OUT/android_back_queue.o" "$ROOT/src/platform/android/android_back_queue.cpp"
+"$CLANGXX" -c "${CXXFLAGS[@]}" \
+  -o "$OUT/android_services_queue.o" "$ROOT/src/platform/android/android_services_queue.cpp"
 "$CLANGXX" -c "${CXXFLAGS[@]}" -o "$OUT/android_clipboard.o" "$ROOT/src/platform/android/android_clipboard.cpp"
 "$CLANG" -c -fPIC -o "$OUT/android_ime_jni.o" "$ROOT/src/platform/android/android_ime_jni.c"
 "$CLANGXX" -c "${CXXFLAGS[@]}" -o "$OUT/skia_canvas_shim.o" "$ROOT/src/platform/skia/skia_canvas_shim.cpp"
@@ -97,7 +107,7 @@ done
 printf '%s\\n' "\${args[@]}" > "$OUT/link_args.log"
 exec "$CLANG" -shared -fPIC -Wl,-z,max-page-size=16384 -Wl,--no-undefined \\
   "\${args[@]}" \\
-  "$OUT/android_skia_host.o" "$OUT/native_app_glue.o" \\
+  "$OUT/android_skia_host.o" "$OUT/android_back_queue.o" "$OUT/android_services_queue.o" "$OUT/native_app_glue.o" \\
   "$OUT/skia_canvas_shim.o" "$OUT/skia_text_shim.o" "$OUT/android_clipboard.o" \
   "$OUT/android_ime_jni.o" \\
   "$SKIA_OUT/libskia.a" -lc++_static -lc++abi -landroid -llog -lm -ldl -lz
@@ -105,7 +115,7 @@ LINK
 chmod +x "$LINKER"
 
 SO="$OUT/$LIB.so"
-ELISA_CLANG="$LINKER" ELISA_RUNTIME_OBJ="$OUT/elisacore_runtime.o" \
+ELISA_STAGE1_PIC=1 ELISA_CLANG="$LINKER" ELISA_RUNTIME_OBJ="$OUT/elisacore_runtime.o" \
   "$STAGE1/bin/elisac-stage1" -emit exe -O0 -target-triple "$TRIPLE" \
   -o "$SO" "$ENTRY"
 
@@ -123,6 +133,10 @@ cat > "$OUT/AndroidManifest.xml" <<MANIFEST
        system bars and the content rect no longer says where they are. At 34
        the window sits between them, which is the safe area this host wants. -->
   <uses-sdk android:minSdkVersion="$API" android:targetSdkVersion="34"/>
+  <uses-permission android:name="android.permission.CAMERA"/>
+  <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+  <uses-feature android:name="android.hardware.camera" android:required="false"/>
+  <uses-feature android:name="android.hardware.microphone" android:required="false"/>
   <!-- memtagMode off: the heap tagging Android turns on for this device makes
        every allocation in the renderer an order of magnitude dearer, and the
        first frame took thirty seconds with it on. debuggable: this APK is
@@ -132,7 +146,8 @@ cat > "$OUT/AndroidManifest.xml" <<MANIFEST
       android:extractNativeLibs="false" android:memtagMode="off" android:debuggable="true"
       android:theme="@android:style/Theme.Material.NoActionBar">
     <activity android:name="org.elisa_ui.ElisaCanvasActivity" android:exported="true"
-        android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|density">
+        android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|density"
+        android:windowSoftInputMode="adjustResize" android:enableOnBackInvokedCallback="true">
       <meta-data android:name="android.app.lib_name" android:value="$EXAMPLE"/>
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>
@@ -144,17 +159,19 @@ cat > "$OUT/AndroidManifest.xml" <<MANIFEST
 MANIFEST
 UNALIGNED="$OUT/$EXAMPLE-unaligned.apk"
 # --- the Java half ------------------------------------------------------
-# ONE CLASS, AND IT BUYS IME COMPOSITION. hasCode was false here for as long as
-# the canvas needed nothing from Java, which was true until the day a Chinese
+# THE SMALL JAVA BRIDGE BUYS IME COMPOSITION AND SYSTEM SERVICE FLOWS. hasCode
+# was false here for as long as the canvas needed nothing from Java, which
+# was true until the day a Chinese
 # or Japanese keyboard had to reach a field this backend paints itself:
 # composition arrives through onCreateInputConnection on a View, and a plain
-# NativeActivity has none. The dex is the price of that, and it is the whole
-# price -- the class decides nothing and holds no editing state.
+# NativeActivity has none. The extra selection-store class keeps bounded
+# verified bytes behind opaque IDs; platform decisions remain in Elisa.
 rm -rf "$OUT/classes"
 mkdir -p "$OUT/classes"
 javac_log="$OUT/javac.log"
 javac -source 8 -target 8 -nowarn -bootclasspath "$PLATFORM_JAR" -classpath "$PLATFORM_JAR" \
-  -d "$OUT/classes" "$ROOT/src/platform/android/java/org/elisa_ui/ElisaCanvasActivity.java" >"$javac_log" 2>&1 || {
+  -d "$OUT/classes" "$ROOT/src/platform/android/java/org/elisa_ui/ElisaCanvasActivity.java" \
+  "$ROOT/src/platform/android/java/org/elisa_ui/ElisaSelectionStore.java" >"$javac_log" 2>&1 || {
     javac_status=$?
     cat "$javac_log" >&2
     echo "android: javac failed" >&2

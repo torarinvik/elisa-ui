@@ -29,17 +29,24 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 	"unsafe"
 
 	ui "github.com/torarinvik/elisa-ui/bindings/go/elisa_ui"
 )
 
 var (
-	eventCount   int
-	textCount    int
-	editingCount int
-	lastStart    int32
-	lastLength   int32
+	eventCount          int
+	textCount           int
+	editingCount        int
+	lastStart           int32
+	lastLength          int32
+	boundedTextCount    int
+	invalidPrefixCount  int
+	embeddedNulCount    int
+	boundedEditingCount int
+	validWidgetCount    int
+	invalidWidgetCount  int
 )
 
 //export elisa_ui_on_init
@@ -51,7 +58,11 @@ func elisa_ui_on_frame() {}
 //export elisa_ui_on_widget_event
 func elisa_ui_on_widget_event(widget C.uint64_t, event C.int32_t) {
 	// The token remains opaque to the binding; only its validity is observable.
-	_ = ui.WidgetHandle(widget).Valid()
+	if ui.WidgetHandle(widget).Valid() {
+		validWidgetCount++
+	} else {
+		invalidWidgetCount++
+	}
 	_ = event
 }
 
@@ -72,18 +83,40 @@ func elisa_ui_on_text_input(text *C.char, length C.size_t) {
 	if string(value) == "Hé 👋" {
 		textCount++
 	}
+	if len(value) == ui.MaxTextBytes-1 && allX(value) {
+		boundedTextCount++
+	}
+	if string(value) == "ok" {
+		invalidPrefixCount++
+	}
+	if string(value) == "A\x00B" {
+		embeddedNulCount++
+	}
 }
 
 //export elisa_ui_on_text_editing
 func elisa_ui_on_text_editing(text *C.char, length C.size_t, start C.int32_t, selected C.int32_t) {
+	var value []byte
 	if text != nil && length != 0 {
-		value := C.GoBytes(unsafe.Pointer(text), C.int(length))
+		value = C.GoBytes(unsafe.Pointer(text), C.int(length))
 		if string(value) == "é 👋" {
 			editingCount++
 		}
 	}
 	lastStart = int32(start)
 	lastLength = int32(selected)
+	if len(value) == ui.MaxTextBytes-1 && allX(value) && int32(start) == 1000 && int32(selected) == 23 {
+		boundedEditingCount++
+	}
+}
+
+func allX(value []byte) bool {
+	for _, item := range value {
+		if item != 'x' {
+			return false
+		}
+	}
+	return len(value) == ui.MaxTextBytes-1
 }
 
 func main() {
@@ -93,6 +126,16 @@ func main() {
 	failures := 0
 	if ui.ABIVersion() != ui.ExpectedABIVersion() || ui.ABIVersion() == 0 {
 		fmt.Fprintln(os.Stderr, "Go host: ABI version mismatch")
+		failures++
+	}
+	if ui.InvalidWidgetHandle.Valid() || !ui.WidgetHandle(1).Valid() {
+		fmt.Fprintln(os.Stderr, "Go host: widget handle validity sentinel was incorrect")
+		failures++
+	}
+	elisa_ui_on_widget_event(0, 0)
+	elisa_ui_on_widget_event(1, 0)
+	if invalidWidgetCount != 1 || validWidgetCount != 1 {
+		fmt.Fprintln(os.Stderr, "Go host: widget callback did not preserve opaque-handle validity")
 		failures++
 	}
 
@@ -105,6 +148,31 @@ func main() {
 	ui.DispatchTextInput("Hé 👋")
 	if textCount != 1 {
 		fmt.Fprintln(os.Stderr, "Go host: UTF-8 text did not survive")
+		failures++
+	}
+
+	// The cap bisects the following two-byte rune. Only the valid, bounded
+	// prefix may cross cgo; the megabyte tail is borrowed from the source string
+	// and is never copied into a temporary Go byte slice.
+	largeText := strings.Repeat("x", ui.MaxTextBytes-1) + "é" + strings.Repeat("y", 1<<20)
+	ui.DispatchTextInput(largeText)
+	if boundedTextCount != 1 {
+		fmt.Fprintln(os.Stderr, "Go host: oversized UTF-8 input was not bounded at a rune boundary")
+		failures++
+	}
+	ui.DispatchTextEditing(largeText, 1000, 1000)
+	if boundedEditingCount != 1 {
+		fmt.Fprintln(os.Stderr, "Go host: oversized IME input or selection was not bounded")
+		failures++
+	}
+	ui.DispatchTextInput("ok" + string([]byte{0xff}) + "discard")
+	if invalidPrefixCount != 1 {
+		fmt.Fprintln(os.Stderr, "Go host: malformed UTF-8 was not truncated to its valid prefix")
+		failures++
+	}
+	ui.DispatchTextInput("A\x00B")
+	if embeddedNulCount != 1 {
+		fmt.Fprintln(os.Stderr, "Go host: counted UTF-8 text lost its embedded NUL")
 		failures++
 	}
 

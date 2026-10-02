@@ -5,7 +5,7 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
+STAGE1="$(bash "$ROOT/scripts/resolve_stage1_root.sh" "$ROOT")"
 export ELISA_UI_STAGE1="$STAGE1"
 # Keep the required suite on a compiler that contains at least the fetched
 # upstream baseline. An ahead feature branch is accepted; a stale branch must
@@ -30,6 +30,11 @@ bash "$ROOT/scripts/check_toolchain.sh"
 mkdir -p "$ROOT/build"
 status=0
 
+if ! bash "$ROOT/scripts/check_toolchain_resolution.sh"; then
+  echo "FAIL toolchain resolution"
+  status=1
+fi
+
 # Platform APIs use UTF-16 while the retained framework owns standard UTF-8.
 # Keep their shared, host-runnable conversion contract under the ordinary
 # suite so Unicode regressions do not wait for a device or Windows machine.
@@ -44,6 +49,10 @@ clang -c -Wall -Wextra -Werror -o "$SKIA_TEST_SHIM" "$ROOT/test/skia_painter_shi
 # they link C stand-ins for the entry points that shim would provide.
 UIKIT_TEST_STUBS="$ROOT/build/uikit_host_stubs.o"
 clang -c -Wall -Wextra -Werror -o "$UIKIT_TEST_STUBS" "$ROOT/test/uikit_host_stubs.c"
+# The mobile permission adapter tests replace only the OS request/result
+# transport while exercising the real common-state integration.
+MOBILE_SERVICES_TEST_STUBS="$ROOT/build/mobile_services_host_stubs.o"
+clang -c -Wall -Wextra -Werror -o "$MOBILE_SERVICES_TEST_STUBS" "$ROOT/test/mobile_services_host_stubs.c"
 # The native-controls backend has its own, disjoint shim boundary.
 UIKIT_CONTROLS_TEST_STUBS="$ROOT/build/uikit_controls_host_stubs.o"
 clang -c -Wall -Wextra -Werror -o "$UIKIT_CONTROLS_TEST_STUBS" "$ROOT/test/uikit_controls_host_stubs.c"
@@ -66,6 +75,18 @@ fi
 
 if ! bash "$ROOT/scripts/check_global_names.sh"; then
   echo "FAIL global names"
+  status=1
+fi
+
+# UIKit image-resource policy is isolated from the full UIKit app build so it
+# still runs when an unrelated backend codegen decline stops the later matrix.
+if ! bash "$ROOT/scripts/check_uikit_image_upload.sh"; then
+  echo "FAIL UIKit image upload"
+  status=1
+fi
+
+if ! bash "$ROOT/scripts/check_appkit_canvas_image_upload.sh"; then
+  echo "FAIL AppKit image upload"
   status=1
 fi
 
@@ -213,8 +234,36 @@ fi
 # existed, was documented as the WasmBrowser gate, and nothing invoked it -- the
 # same way check_android.sh sat unrun. It skips when the sibling checkout or its
 # CLI is missing, and it builds the package before inspecting it.
-if ! bash "$ROOT/scripts/check_wapp.sh"; then
+#
+# Keep Cargo's WasmBrowser artifacts in a UI-owned cache by default. The shared
+# WasmBrowser target stalled during wb-runtime compilation on this host, while a
+# clean isolated target passed; callers may still provide CARGO_TARGET_DIR.
+wasmbrowser_cargo_target_dir="${CARGO_TARGET_DIR:-$ROOT/build/wasmbrowser-cargo-target}"
+if [[ "$wasmbrowser_cargo_target_dir" != /* ]]; then
+  wasmbrowser_cargo_target_dir="$ROOT/$wasmbrowser_cargo_target_dir"
+fi
+if ! CARGO_TARGET_DIR="$wasmbrowser_cargo_target_dir" bash "$ROOT/scripts/check_wapp.sh"; then
   echo "FAIL wapp"
+  status=1
+fi
+
+# Measure the actual guest-owned spans observed by the WasmBrowser presentation
+# imports, including the framework's maximum semantic tree. This is a native
+# host-stub fixture; it proves byte bounds, not remote transport time or copies.
+if ! bash "$ROOT/scripts/check_wasmbrowser_transfer.sh"; then
+  echo "FAIL WasmBrowser transfer bounds"
+  status=1
+fi
+
+# Assets and optional code are distinct hosted profiles from the ordinary
+# window package. Keep their current-source guest/runtime smokes in the main
+# suite so a passing hello package cannot stand in for either contract.
+if ! CARGO_TARGET_DIR="$wasmbrowser_cargo_target_dir" bash "$ROOT/scripts/check_wapp_resources_ui.sh"; then
+  echo "FAIL wapp resources UI profile"
+  status=1
+fi
+if ! CARGO_TARGET_DIR="$wasmbrowser_cargo_target_dir" bash "$ROOT/scripts/check_wapp_features_ui.sh"; then
+  echo "FAIL wapp features UI profile"
   status=1
 fi
 
@@ -241,8 +290,23 @@ elif [[ -n "${SKIA_ROOT:-}" ]]; then
   fi
 fi
 
-for source in "$ROOT"/test/*_test.elisa; do
+test_sources=("$ROOT"/test/*_test.elisa)
+feature_sdk_root="$ROOT/../wasm-sdk/sdk/elisa/wasmbrowser"
+if [[ -f "$feature_sdk_root/features/host_bindings.elisa" && -f "$feature_sdk_root/canonical_result.elisa" && -f "$feature_sdk_root/features.elisa" ]]; then
+  # Exercise the pure typed SDK/UI composition fixture in the ordinary host
+  # suite when its adjacent WasmBrowser SDK source checkout is available.
+  test_sources+=("$ROOT/test/feature_sdk_composition.elisa")
+else
+  echo "SKIP feature SDK composition (adjacent WasmBrowser SDK sources unavailable)"
+fi
+
+for source in "${test_sources[@]}"; do
   name="$(basename "$source" .elisa)"
+  # The dedicated gate above also cross-compiles this fixture for the iOS
+  # simulator, so the generic per-file loop does not need to build it twice.
+  if [[ "$name" == "uikit_image_upload_test" || "$name" == "appkit_canvas_image_upload_test" ]]; then
+    continue
+  fi
   # The real Skia fixtures are library entry points driven by their C++ hosts;
   # the dedicated renderer gate owns their compile/link/run lifecycle.
   if [[ "$name" == "skia_offscreen_test" || "$name" == "showcase_skia_test" || "$name" == "showcase_app_skia_test" || "$name" == "storefront_skia_test" || "$name" == "appkit_skia_host_test" ]]; then
@@ -252,13 +316,19 @@ for source in "$ROOT"/test/*_test.elisa; do
   # Link SDL for tests that exercise the native backend; the others simply
   # do not reference these symbols.
   link_inputs=("$RUNTIME")
-  if [[ "$name" == "skia_painter_test" ]]; then
+  if [[ "$name" == "android_services_test" ]]; then
+    link_inputs=("$MOBILE_SERVICES_TEST_STUBS" "$RUNTIME")
+  fi
+  if [[ "$name" == "skia_painter_test" || "$name" == "skia_image_upload_state_test" ]]; then
     link_inputs=("$SKIA_TEST_SHIM" "$RUNTIME")
   fi
   if [[ "$name" == "uikit_controls_test" ]]; then
     link_inputs=("$UIKIT_CONTROLS_TEST_STUBS" "$RUNTIME")
   elif [[ "$name" == uikit_* ]]; then
     link_inputs=("$UIKIT_TEST_STUBS" "$RUNTIME")
+    if [[ "$name" == "uikit_services_test" ]]; then
+      link_inputs=("$UIKIT_TEST_STUBS" "$MOBILE_SERVICES_TEST_STUBS" "$RUNTIME")
+    fi
   fi
   if [[ "$name" == uikit_* && "$(uname -s)" == "Darwin" ]]; then
     clang -Wl,-dead_strip -o "$ROOT/build/$name" "$ROOT/build/$name.o" "${link_inputs[@]}" -framework CoreFoundation -framework CoreGraphics -framework CoreText -framework ImageIO

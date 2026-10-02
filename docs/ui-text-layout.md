@@ -63,6 +63,13 @@ state or geometry policy.
 also call `UiTextMetrics::set_context(font_generation, scale_generation)` when
 the active font set or display scale changes; a new generation invalidates both
 line-height and width caches.
+SDL3 publishes a new font generation when its override changes, its cached font
+handles are released, or fallback discovery resolves the first usable face. The
+backend also invalidates retained layout, paint, and semantics so text geometry
+cannot keep measurements from the previous face. An override is copied into a
+bounded SDL-owned path buffer; callers may release or reuse their input string
+after `set_font_override` returns. Paths at or above the 1 KiB byte budget are
+rejected instead of being truncated into a different file name.
 `UiTextMetrics::snapshot()` exposes the active generations and bounded query/miss
 counters for inspector and performance diagnostics.
 

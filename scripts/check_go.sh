@@ -8,7 +8,7 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
+STAGE1="$(bash "$ROOT/scripts/resolve_stage1_root.sh" "$ROOT")"
 RUNTIME="$STAGE1/build/runtime/elisacore_runtime.o"
 
 command -v go >/dev/null 2>&1 || { echo "go: skipped (no Go toolchain)"; exit 0; }
@@ -37,6 +37,16 @@ cp "$RUNTIME" "$WORK/runtime.o"
 # objects would therefore produce duplicate Elisa symbols.
 ar rcs "$WORK/libelisa_bridge.a" "$WORK/bridge.o"
 ar rcs "$WORK/libelisa_runtime.a" "$WORK/runtime.o"
+
+# The package's pure text-prefix tests still compile its C ABI call wrappers.
+# Link this no-op callback table for that unit-test binary; the real integration
+# host below exports the actual callbacks from Go instead.
+clang -std=c11 -Wall -Wextra -Werror -I"$ROOT/include" \
+  -c -o "$WORK/test_callbacks.o" "$ROOT/test/go_capi_test_stubs.c"
+ar rcs "$WORK/libelisa_test_callbacks.a" "$WORK/test_callbacks.o"
+
+CGO_ENABLED=1 CGO_LDFLAGS="$WORK/libelisa_bridge.a $WORK/libelisa_runtime.a $WORK/libelisa_test_callbacks.a -Wl,-dead_strip -Wl,-no_warn_duplicate_libraries" \
+  go test ./bindings/go/elisa_ui
 
 # cgo passes these objects to the external linker. They are absolute paths so
 # the package remains usable from any working directory while the check still

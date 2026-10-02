@@ -161,6 +161,18 @@ extend UiFlat:
             mark_layout_dirty() if changed
             return changed
 
+        # Atomically update the fallback and invalidate every sparse row extent
+        # after font/scale/content changes. The logical anchor fields remain
+        # untouched so the next layout remeasures around the same item.
+        def refresh_variable_virtual_metrics(index: usize, estimated_extent: f32) -> usize:
+            owner: u32 = variable_virtual_owner_at(index)
+            return 0 if owner == 0
+            _ = UiVirtualList::variable_set_estimate(owner, estimated_extent)
+            cleared: usize = UiVirtualList::variable_clear_measurements(owner)
+            widgets[index].virtual_item_extent <- UiVirtualList::variable_estimate(owner)
+            mark_layout_dirty()
+            return cleared
+
         def virtual_item_height(index: usize, item_index: i32) -> f32:
             owner: u32 = variable_virtual_owner_at(index)
             return 0.0 if owner == 0

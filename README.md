@@ -376,15 +376,21 @@ routing) — studied, not ported.
 
 ## Build
 
-The scripts use the current `../Elisa-compiler` checkout by default
-(override with `ELISA_UI_STAGE1`). Every build script prints the resolved
-compiler branch/revision and product/runtime SHA-256 it used, and warns without
-failing on a dirty or stale compiler checkout (`scripts/check_toolchain.sh
---report`); the test suite runs the same check in strict mode.
-The required test suite also rejects a compiler branch behind its fetched
-`origin/main`; an ahead feature branch is accepted so optimizer fixes can be
-validated before upstream integration. Set `ELISA_UI_REQUIRE_CURRENT_STAGE1=0`
-only for deliberate compiler archaeology.
+Shell scripts resolve the compiler in this order: explicit `ELISA_UI_STAGE1`,
+the adjacent `../Elisa-compiler` development checkout, then Elisa's installed
+snapshot at `${ELISAC_PREFIX:-~/.elisac}/stage1`. A clean install therefore
+does not need a sibling compiler worktree. Every build reports the resolved
+compiler branch/revision or snapshot revision plus product/runtime SHA-256.
+The toolchain check verifies product/runtime freshness against the selected
+compiler sources. Git checkouts are also checked against fetched `origin/main`
+in the required test suite; installed snapshots report that Git ancestry is
+unavailable while retaining the exact revision and content hashes.
+
+Build scripts use `scripts/check_toolchain.sh --report`, which warns without
+failing on dirty/stale development checkouts. `scripts/run_tests.sh` runs the
+same check strictly. An ahead feature branch is accepted so compiler fixes can
+be validated before upstream integration; set
+`ELISA_UI_REQUIRE_CURRENT_STAGE1=0` only for deliberate compiler archaeology.
 
 ```sh
 scripts/build_native.sh   # -> build/hello_native (needs brew's sdl3 and sdl3_ttf)

@@ -1,0 +1,55 @@
+# UIKit's generation-keyed CGImage binding table. The host owns each native
+# object; painting resolves only a logical slot/generation reference.
+
+include "../../core/ui_core.elisa"
+
+module UiUIKitImageBindings:
+    public:
+        const MAX_IMAGE_BINDINGS: usize = 64
+
+        def bind_picture(slot: u32, generation: u32, image: usize) -> bool:
+            return false if image == 0 or generation == 0
+            for index in 0..<MAX_IMAGE_BINDINGS:
+                if uikit_image_binding_active[index] and uikit_image_binding_slots[index] == slot:
+                    return uikit_image_binding_generations[index] == generation and uikit_image_binding_handles[index] == image
+            for index in 0..<MAX_IMAGE_BINDINGS:
+                if not uikit_image_binding_active[index]:
+                    uikit_image_binding_active[index] <- true
+                    uikit_image_binding_slots[index] <- slot
+                    uikit_image_binding_generations[index] <- generation
+                    uikit_image_binding_handles[index] <- image
+                    return true
+            return false
+
+        def picture_handle(slot: u32, generation: u32) -> usize:
+            for index in 0..<MAX_IMAGE_BINDINGS:
+                if uikit_image_binding_active[index] and uikit_image_binding_slots[index] == slot and uikit_image_binding_generations[index] == generation:
+                    return uikit_image_binding_handles[index]
+            return 0
+
+        def picture_is_bound(slot: u32, generation: u32) -> bool:
+            return picture_handle(slot, generation) != 0
+
+        def unbind_picture(slot: u32, generation: u32) -> bool:
+            for index in 0..<MAX_IMAGE_BINDINGS:
+                if uikit_image_binding_active[index] and uikit_image_binding_slots[index] == slot and uikit_image_binding_generations[index] == generation:
+                    clear_binding(index)
+                    return true
+            return false
+
+        def clear_picture_bindings() -> void:
+            for index in 0..<MAX_IMAGE_BINDINGS:
+                clear_binding(index)
+
+    private:
+        global mutable uikit_image_binding_active: bool[MAX_IMAGE_BINDINGS] = zeroed
+        global mutable uikit_image_binding_slots: u32[MAX_IMAGE_BINDINGS] = zeroed
+        global mutable uikit_image_binding_generations: u32[MAX_IMAGE_BINDINGS] = zeroed
+        global mutable uikit_image_binding_handles: usize[MAX_IMAGE_BINDINGS] = zeroed
+
+        def clear_binding(index: usize) -> void:
+            return if index >= MAX_IMAGE_BINDINGS
+            uikit_image_binding_active[index] <- false
+            uikit_image_binding_slots[index] <- 0
+            uikit_image_binding_generations[index] <- 0
+            uikit_image_binding_handles[index] <- 0

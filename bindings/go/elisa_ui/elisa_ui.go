@@ -2,8 +2,8 @@
 //
 // It is deliberately small: the linked Elisa component owns retained widgets,
 // callbacks, and all framework state. Go owns only scalar event values and
-// copies text into the borrowed call boundary. Stateful calls must be made on
-// one UI-owner OS thread (typically a goroutine locked with
+// borrows a bounded prefix of immutable string storage for each synchronous
+// text call. Stateful calls must be made on one UI-owner OS thread (typically a goroutine locked with
 // runtime.LockOSThread); this package does not add a scheduler or mutex.
 package elisa_ui
 
@@ -19,6 +19,7 @@ enum {
 	elisa_go_abi_version_major = ELISA_UI_ABI_VERSION_MAJOR,
 	elisa_go_abi_version_minor = ELISA_UI_ABI_VERSION_MINOR,
 	elisa_go_abi_version_patch = ELISA_UI_ABI_VERSION_PATCH,
+	elisa_go_max_text_bytes = ELISA_UI_MAX_TEXT_BYTES,
 	elisa_go_event_none = ELISA_UI_EVENT_NONE,
 	elisa_go_event_quit = ELISA_UI_EVENT_QUIT,
 	elisa_go_event_pointer_move = ELISA_UI_EVENT_POINTER_MOVE,
@@ -39,6 +40,7 @@ import "C"
 
 import (
 	"runtime"
+	"unicode/utf8"
 	"unsafe"
 )
 
@@ -79,6 +81,9 @@ const (
 	ABIVersionPatch uint32 = C.elisa_go_abi_version_patch
 )
 
+// MaxTextBytes is the shared C/Elisa cap for one committed-text or IME call.
+const MaxTextBytes int = C.elisa_go_max_text_bytes
+
 // WidgetHandle is an opaque generation-scoped retained-widget token received
 // by an application callback. Do not persist it across a tree reset/rebuild.
 type WidgetHandle uint64
@@ -116,37 +121,55 @@ func DispatchEvent(event Event) {
 	)
 }
 
-// DispatchTextInput copies committed UTF-8 text through the borrowed C
-// boundary. The framework applies its bounded length and malformed-input
-// policy before invoking the application callback.
+// DispatchTextInput borrows at most MaxTextBytes of a valid UTF-8 prefix from
+// text for the duration of the synchronous C call. The Elisa boundary copies
+// that prefix into its fixed staging slot before invoking the app callback.
 func DispatchTextInput(text string) {
-	bytes := []byte(text)
-	if len(bytes) == 0 {
+	bounded := validTextPrefix(text)
+	if len(bounded) == 0 {
 		C.elisa_ui_dispatch_text_input(nil, 0)
 		return
 	}
 	C.elisa_ui_dispatch_text_input(
-		(*C.char)(unsafe.Pointer(&bytes[0])),
-		C.size_t(len(bytes)),
+		(*C.char)(unsafe.Pointer(unsafe.StringData(bounded))),
+		C.size_t(len(bounded)),
 	)
-	runtime.KeepAlive(bytes)
+	runtime.KeepAlive(bounded)
 }
 
 // DispatchTextEditing delivers live UTF-8 IME composition text. Selection
 // offsets are Unicode-scalar positions and are clamped by Elisa.
 func DispatchTextEditing(text string, selectedStart, selectedLength int32) {
-	bytes := []byte(text)
-	if len(bytes) == 0 {
+	bounded := validTextPrefix(text)
+	if len(bounded) == 0 {
 		C.elisa_ui_dispatch_text_editing(nil, 0, C.int32_t(selectedStart), C.int32_t(selectedLength))
 		return
 	}
 	C.elisa_ui_dispatch_text_editing(
-		(*C.char)(unsafe.Pointer(&bytes[0])),
-		C.size_t(len(bytes)),
+		(*C.char)(unsafe.Pointer(unsafe.StringData(bounded))),
+		C.size_t(len(bounded)),
 		C.int32_t(selectedStart),
 		C.int32_t(selectedLength),
 	)
-	runtime.KeepAlive(bytes)
+	runtime.KeepAlive(bounded)
+}
+
+// validTextPrefix bounds the scan and borrowed extent before crossing cgo. It
+// stops at malformed UTF-8 or a rune that would cross the byte cap; slicing a
+// string does not allocate or copy its backing bytes.
+func validTextPrefix(text string) string {
+	limit := len(text)
+	if limit > MaxTextBytes {
+		limit = MaxTextBytes
+	}
+	for offset := 0; offset < limit; {
+		r, size := utf8.DecodeRuneInString(text[offset:limit])
+		if r == utf8.RuneError && size == 1 && text[offset] >= utf8.RuneSelf {
+			return text[:offset]
+		}
+		offset += size
+	}
+	return text[:limit]
 }
 
 // SetViewport sets the logical viewport. Negative or non-finite extents are

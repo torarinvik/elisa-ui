@@ -29,14 +29,25 @@ whose experiment still needs an external fixture say so and stay open.
   profile shape locally?
 - **Owner** — elisa-ui.
 - **Prototype** — `UiTextMetrics` frame cache keyed by font/scale generation;
-  `UiTextMeasureLayout` with a backend width provider; SDL_ttf, CoreText, and
-  the hosted `measure-text-width` host call.
+  `UiTextMeasureLayout` with a backend width provider; SDL_ttf, CoreText,
+  Apple's Skia `SkShaper` CoreText module, and the hosted `measure-text-width`
+  host call. The per-engine capability and font-source review is in
+  [`text-shaping-and-font-sources.md`](text-shaping-and-font-sources.md).
 - **Compiler** — pinned stage1.
 - **Acceptance fixture** — `test/sdl3_text_test.elisa`,
   `test/text_metrics_cache_test.elisa`, `test/text_layout_test.elisa`,
-  `scripts/check_unicode_conformance.sh` (1187 UAX #29 rows).
+  `scripts/check_unicode_conformance.sh` (1187 UAX #29 rows),
+  `scripts/check_skia_offscreen.sh`, `scripts/check_showcase_skia.sh`.
 - **Result** — metrics differ by backend exactly as the plan predicted; layout
-  and grapheme policy are shared and backend-neutral.
+  and grapheme policy are shared and backend-neutral. The source audit finds
+  Apple Skia now shapes ordinary untracked runs through the pinned CoreText
+  shaper and shares advances with drawing; the off-screen fixtures render
+  Arabic and Devanagari. Skia's CoreText adapter ignores its explicit
+  bidi/script/language iterators, while Android and tracked text retain simple
+  APIs. SDL_ttf receives the scoped first-strong RTL direction, active BCP47
+  language, and explicit locale script subtag for draw and measure; locale
+  revision invalidates cached widths. Script segmentation/fallback and
+  broader complex-script visual acceptance remain open.
 - **Selected approach** — per-profile text authority. Shape/layout locally with
   known fonts; host measure-text-width when hosted. Never assume SDL_ttf,
   CoreText, and the host agree.

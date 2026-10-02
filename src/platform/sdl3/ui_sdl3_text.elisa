@@ -16,15 +16,23 @@ module UiSdl3Text:
                 title_storage[index] <- 0
             for index in 0..<safe_length:
                 title_storage[index] <- byte(title, index)
-            copied: sview = sview(&title_storage[0], 0, safe_length.i64())
+            # A counted view may borrow this storage because the bound above
+            # is no larger than the fixed array. Build it through the narrow
+            # unsafe bridge directly: the stage1 product cannot currently
+            # monomorphize this fixed-array helper when its size is passed as
+            # a named const-generic argument.
+            copied: mutable sview = ""
+            if safe_length > 0:
+                can Unsafe.PointerCast:
+                    copied <- UiText::unsafe_sview_bounded_bytes(&title_storage[0], safe_length)
             valid_length: usize = UiText::valid_utf8_prefix(copied, safe_length)
             title_storage[valid_length] <- 0
-            pointer: cstr = (&title_storage[0]).cast[cstr] can Unsafe.PointerCast
-            return pointer
+            can Unsafe.PointerCast:
+                return (&title_storage[0]).cast[cstr]
 
         # SDL text callbacks expose a borrowed NUL-terminated pointer, but a
         # malformed host event may omit that terminator. Copy the bounded
-        # prefix into framework-owned storage and return a counted slice; this
+        # prefix into framework-owned storage and return a counted fixed-array view; this
         # keeps the callback path from rebuilding a view through the scanning
         # `sview(cstr, ...)` constructor.
         def bounded_view(text: cstr) -> sview:
@@ -34,9 +42,16 @@ module UiSdl3Text:
                 event_text_storage[index] <- 0
             for index in 0..<safe_length:
                 event_text_storage[index] <- byte(text, index)
-            copied: sview = sview(&event_text_storage[0], 0, safe_length.i64())
+            # `safe_length` is bounded by the capacity and the array is owned
+            # by this module, so the view cannot escape its valid storage.
+            copied: mutable sview = ""
+            if safe_length > 0:
+                can Unsafe.PointerCast:
+                    copied <- UiText::unsafe_sview_bounded_bytes(&event_text_storage[0], safe_length)
             valid_length: usize = UiText::valid_utf8_prefix(copied, safe_length)
-            return sview(&event_text_storage[0], 0, valid_length.i64())
+            return "" if valid_length == 0
+            can Unsafe.PointerCast:
+                return UiText::unsafe_sview_bounded_bytes(&event_text_storage[0], valid_length)
 
         def byte(text: cstr, index: usize) -> u8:
             pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast

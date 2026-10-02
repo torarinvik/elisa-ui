@@ -1,0 +1,139 @@
+# UI resource-state integration fixture for the versioned WasmBrowser resource
+# profile. The host still owns bytes and operation IDs; UiResources owns the
+# generation and visible lifecycle associated with that operation.
+
+include "host_bindings.elisa"
+include "canonical_result.elisa"
+include "operation_model.elisa"
+include "payload.elisa"
+include "resource_model.elisa"
+include "../../../../../elisa-ui/src/widgets/ui_resources.elisa"
+
+global mutable active_operation: u64 = 0
+global mutable operation_open: bool = false
+global mutable resource_read_valid: bool = false
+global mutable resource_status: AssetReadStatus = AssetReadStatus{state: AssetReadState.Pending, path_length: 9}
+global mutable resource_outcome: AssetReadOutcome = AssetReadOutcome.TimedOut
+global mutable ui_resource: UiResources::ResourceHandle = UiResources::ResourceHandle{slot: 128, generation: 0}
+
+def result_pointer(result: mutable u64[8]&) -> u32:
+    trusted Unsafe.PointerCast:
+        return (&result[0]).cast[uintptr].u32()
+
+def result_u32(result: mutable u64[8]&, offset: u32) -> u32:
+    pointer: u32 = result_pointer(result)
+    trusted Unsafe.PointerCast:
+        slot: u32& = (pointer + offset).cast[u32&]
+        return slot
+
+def result_u64(result: mutable u64[8]&, offset: u32) -> u64:
+    low: u64 = result_u32(result, offset).u64()
+    high: u64 = result_u32(result, offset + 4).u64()
+    return low + (high << 32)
+
+def resource_error_from_wire(raw: u8) -> AssetReadError error[ResourceWireError]:
+    return AssetReadError.InvalidId if raw == 0
+    return AssetReadError.NotReady if raw == 1
+    return AssetReadError.Missing if raw == 2
+    return AssetReadError.Denied if raw == 3
+    return AssetReadError.Cancelled if raw == 4
+    return AssetReadError.TimedOut if raw == 5
+    return AssetReadError.InvalidInput if raw == 6
+    return AssetReadError.Failed if raw == 7
+    raise ResourceWireError.InvalidPayload
+
+def resource_cancellation_from_wire(raw: u8) -> ResourceCancellationEffect error[ResourceWireError]:
+    return ResourceCancellationEffect.Prevented if raw == 0
+    return ResourceCancellationEffect.StopWaitingOnly if raw == 1
+    raise ResourceWireError.InvalidPayload
+
+def resource_outcome_from_wire(result: mutable u64[8]&) -> AssetReadOutcome error[ResourceWireError]:
+    raise ResourceWireError.InvalidPayload if not CanonicalResult::is_ok(result_u32(result, 0))
+    tag: u8 = result_u32(result, 4).u8()
+    return AssetReadOutcome.Succeeded if tag == 0
+    if tag == 1:
+        failure: AssetReadError = try resource_error_from_wire(result_u32(result, 8).u8())
+        return AssetReadOutcome.Failed(failure)
+    if tag == 2:
+        effect: ResourceCancellationEffect = try resource_cancellation_from_wire(result_u32(result, 8).u8())
+        return AssetReadOutcome.Cancelled(effect)
+    return AssetReadOutcome.TimedOut if tag == 3
+    raise ResourceWireError.InvalidPayload
+
+def resource_read_state_from_wire(word: u32) -> AssetReadState error[ResourceWireError]:
+    raise ResourceWireError.InvalidPayload if not CanonicalResult::is_ok(word)
+    state: u32 = CanonicalResult::enum_payload(word).u32()
+    return AssetReadState.Pending if state == 0
+    return AssetReadState.Ready if state == 1
+    raise ResourceWireError.InvalidPayload
+
+def guest_start() -> void:
+    UiResources::reset()
+    ui_resource <- UiResources::request("asset.txt", 901)
+    return if not UiResources::resource_is_valid(ui_resource)
+    initial: AssetReadStatus = try WasmBrowser::ResourceOperations::initial(9) else return
+    timeout: ResourceTimeout = try WasmBrowser::ResourceOperations::timeout(100) else return
+    resource_status <- initial
+    result: mutable u64[8] = zeroed
+    host_resource_begin("asset.txt", 9, timeout, (&result[0]).cast[mutable void&])
+    return if not CanonicalResult::is_ok(result_u32(result, 0))
+    raw_id: u64 = result_u64(result, 8)
+    return if raw_id == 0
+    typed_id: OperationId = try WasmBrowser::Operations::operation_id(raw_id) else return
+    active_operation <- typed_id
+    operation_open <- UiResources::bind_operation(ui_resource, active_operation)
+
+def guest_frame() -> void:
+    return if not operation_open
+    poll: mutable u64[8] = zeroed
+    host_resource_poll(active_operation, (&poll[0]).cast[mutable void&])
+    poll_word: u32 = result_u32(poll, 0)
+    return if CanonicalResult::tag(poll_word) > 1 or CanonicalResult::is_err(poll_word)
+    return if CanonicalResult::enum_payload(poll_word) > 1
+    state: AssetReadState = try resource_read_state_from_wire(poll_word) else return
+    return if state == AssetReadState.Pending
+
+    ready: AssetReadStatus = try WasmBrowser::ResourceOperations::ready(resource_status) else return
+    resource_status <- ready
+    _ = UiResources::poll_operation(ui_resource, active_operation, 1.0, 0.0)
+
+    first_chunk: mutable ResourceResultWire = ResourceResultWire{words: zeroed}
+    host_resource_read_chunk(active_operation, 0, 2, (&first_chunk.words[0]).cast[mutable void&])
+    return if resource_wire_tag(first_chunk) != 0
+    first_bytes: mutable ResourceBytes[Live] = try resource_list(first_chunk) else return
+    first_count: u32 = first_bytes.count
+    first: u8 = try resource_byte_at(first_bytes, 0) else 0
+    second: u8 = try resource_byte_at(first_bytes, 1) else 0
+    release_resource_bytes(first_bytes)
+
+    second_chunk: mutable ResourceResultWire = ResourceResultWire{words: zeroed}
+    host_resource_read_chunk(active_operation, 2, 8, (&second_chunk.words[0]).cast[mutable void&])
+    return if resource_wire_tag(second_chunk) != 0
+    second_bytes: mutable ResourceBytes[Live] = try resource_list(second_chunk) else return
+    second_count: u32 = second_bytes.count
+    third: u8 = try resource_byte_at(second_bytes, 0) else 0
+    fourth: u8 = try resource_byte_at(second_bytes, 1) else 0
+    fifth: u8 = try resource_byte_at(second_bytes, 2) else 0
+    release_resource_bytes(second_bytes)
+    resource_read_valid <- first_count == 2 and second_count == 3 and first == 104 and second == 101 and third == 108 and fourth == 108 and fifth == 111
+
+    forgotten: mutable u64[8] = zeroed
+    host_resource_forget(active_operation, (&forgotten[0]).cast[mutable void&])
+    return if not CanonicalResult::is_ok(result_u32(forgotten, 0))
+    operation_open <- false
+    completed: AssetReadOutcome = try resource_outcome_from_wire(forgotten) else return
+    resource_outcome <- completed
+    if completed == AssetReadOutcome.Succeeded and resource_read_valid:
+        progressed: bool = UiResources::poll_operation(ui_resource, active_operation, 1.0, 1.0)
+        if progressed:
+            _ = UiResources::complete_operation(ui_resource, active_operation, UiResources::State.Ready, UiResources::FailureKind.Unknown)
+        else:
+            _ = UiResources::complete_operation(ui_resource, active_operation, UiResources::State.Failed, UiResources::FailureKind.RetryableTransport)
+    else:
+        _ = UiResources::complete_operation(ui_resource, active_operation, UiResources::State.Failed, UiResources::FailureKind.RetryableTransport)
+
+@link_name("wasmbrowser:resources/guest@0.1.0#start")
+export fn start() -> void = guest_start
+
+@link_name("wasmbrowser:resources/guest@0.1.0#frame")
+export fn frame() -> void = guest_frame

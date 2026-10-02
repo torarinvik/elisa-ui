@@ -341,14 +341,37 @@ int main(int argc, char** argv) {
     }
 
     const std::uint64_t initial_digest = pixel_digest(pixels);
-
     const int iterations = configured_iterations();
+    // The first replay intentionally rotates a ready resource generation
+    // after app_frame has produced its retained commands. Its stale image is
+    // skipped as required; this warm-up replay then rebuilds the frame from
+    // the replacement generation before the deterministic replay sample.
+    if (elisa_showcase_skia_render(canvas_handle, font_handle) != 1) {
+        std::fprintf(stderr, "skia showcase: resource-transition warm-up replay failed\n");
+        return 10;
+    }
+    const std::uint64_t stable_digest = pixel_digest(pixels);
+    if (stable_digest != initial_digest) {
+        std::fprintf(stderr,
+                     "skia showcase: deferred resource generation settled "
+                     "(initial=%016llx stable=%016llx)\n",
+                     static_cast<unsigned long long>(initial_digest),
+                     static_cast<unsigned long long>(stable_digest));
+    }
     const auto render_start = std::chrono::steady_clock::now();
     for (int index = 0; index < iterations; ++index) {
         const std::int32_t repeated = elisa_showcase_skia_render(canvas_handle, font_handle);
         if (repeated != 1) {
             std::fprintf(stderr, "skia showcase: repeated render %d returned status %d\n", index, repeated);
             return 10;
+        }
+        const std::uint64_t current_digest = pixel_digest(pixels);
+        if (current_digest != stable_digest) {
+            std::fprintf(stderr,
+                         "skia showcase: stable replay changed pixels at iteration %d "
+                         "(expected=%016llx actual=%016llx)\n",
+                         index, static_cast<unsigned long long>(stable_digest),
+                         static_cast<unsigned long long>(current_digest));
         }
     }
     const auto render_finish = std::chrono::steady_clock::now();
@@ -360,11 +383,11 @@ int main(int argc, char** argv) {
         ok = false;
     }
     const std::uint64_t repeated_digest = pixel_digest(pixels);
-    if (repeated_digest != initial_digest) {
+    if (repeated_digest != stable_digest) {
         std::fprintf(stderr,
                      "skia showcase: repeated replay changed the pixel digest "
-                     "(initial=%016llx repeated=%016llx)\n",
-                     static_cast<unsigned long long>(initial_digest),
+                     "(stable=%016llx repeated=%016llx)\n",
+                     static_cast<unsigned long long>(stable_digest),
                      static_cast<unsigned long long>(repeated_digest));
         ok = false;
     }

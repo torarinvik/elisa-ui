@@ -5,6 +5,7 @@
 # bindings build on the same FFI declarations from the resource extension.
 
 include "../../core/ui_core.elisa"
+include "../../widgets/ui_localization.elisa"
 
 extern elisa_skia_measure_text_width(text: cstr, length: usize, size: f32) -> f32
 extern elisa_skia_font_ascent(size: f32) -> f32
@@ -32,6 +33,7 @@ extend UiSkia:
         # match a glyph drawn with it.
         def apply_text_quality() -> void:
             elisa_skia_set_text_quality(1, TEXT_HINTING_SLIGHT)
+            UiSkia::sync_shaped_text_cache_context()
 
         def measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
             # Metrics are pure font queries and do not require a live canvas.
@@ -96,6 +98,9 @@ extend UiSkia:
         global mutable skia_metric_cache_text: u8[MAX_METRIC_CACHE_ENTRIES * METRIC_CACHE_TEXT_CAPACITY] = zeroed
         global mutable skia_metric_cache_next: usize = 0
 
+        def sync_shaped_text_cache_context() -> void:
+            elisa_skia_set_text_cache_context(UiLocalization::revision(), UiSkia::scale_generation())
+
         def clear_metric_cache() -> void:
             for index in 0..<MAX_METRIC_CACHE_ENTRIES:
                 skia_metric_cache_valid[index] <- false
@@ -107,6 +112,7 @@ extend UiSkia:
             return 0.0 if text.len <= 0 or text.data == null or not UiCore::is_finite(size)
             safe_text: sview = UiCore::bounded_text(text)
             return 0.0 if safe_text.len <= 0 or safe_text.data == null
+            UiSkia::sync_shaped_text_cache_context()
             safe_size: f32 = UiSkia::safe_font_size(size)
             length: usize = safe_text.len.usize()
             return UiSkia::metric_width_uncached(font, safe_text, safe_size, weighted) if length > METRIC_CACHE_TEXT_CAPACITY

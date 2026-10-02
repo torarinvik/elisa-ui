@@ -249,17 +249,10 @@ module UiControls:
             # side can remain a stateless object bridge. Zero means no handle.
             native_handle: mutable usize
 
-        global mutable ops: ControlOp[MAX_CONTROLS] = zeroed
-        # How far each control sat from its container's leading edge before any
-        # mirroring. Captured in a sweep of its own; see mirror_control_boxes.
-        global mutable control_leading_offsets: f32[MAX_CONTROLS] = zeroed
-        global mutable control_text_storage: u8[CONTROL_TEXT_STORAGE_SIZE] = zeroed
-        global mutable total: usize = 0
-        global mutable control_dropped: bool = false
-        # True while apply is writing state into controls, so the reports that
-        # writing provokes are not mistaken for the user acting.
-        global mutable applying: bool = false
+include "./ui_controls_state.elisa"
 
+extend UiControls:
+    private:
         # Alpha zero: the hierarchy named no colour here and the platform's
         # own stands. Both application layers say it the same way.
         def transparent_ink() -> UiCore::Color:
@@ -274,7 +267,7 @@ module UiControls:
             take: usize = safe.len.usize()
             for byte_index in 0..<take:
                 control_text_storage[offset + byte_index] <- safe.data[byte_index]
-            return sview(&control_text_storage[offset], 0, take.i64())
+            return UiText::fixed_bytes_view_range[262144](control_text_storage, offset, take)
 
     public:
         def reset() -> void:

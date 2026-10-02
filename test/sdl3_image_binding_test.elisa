@@ -79,7 +79,7 @@ def run_image_checks() -> void:
     ]
     byte_pointer: u8& = (&bytes[0]).cast[u8&] can Unsafe.PointerCast
 
-    check("rejects non-Ready logical resources", not UiSdl3Draw::bind_image_rgba32(image, byte_pointer, 20, 2, 2, 12))
+    check("rejects logical resources before decode completes", not UiSdl3Draw::bind_image_rgba32(image, byte_pointer, 20, 2, 2, 12))
     check("rejects a null pixel pointer", not UiSdl3Draw::bind_image_rgba32(image, null, 0, 2, 2, 8))
     check("rejects the zero-generation sentinel", not UiSdl3Draw::bind_image_rgba32(UiCore::image_ref(0, 0), byte_pointer, 16, 2, 2, 8))
     check("rejects an out-of-range slot", not UiSdl3Draw::bind_image_rgba32(UiCore::image_ref(128, 1), byte_pointer, 16, 2, 2, 8))
@@ -87,9 +87,9 @@ def run_image_checks() -> void:
     check("rejects a row stride shorter than RGBA pixels", not UiSdl3Draw::bind_image_rgba32(image, byte_pointer, 20, 2, 2, 7))
     check("rejects a byte length shorter than the final pixel", not UiSdl3Draw::bind_image_rgba32(image, byte_pointer, 19, 2, 2, 12))
     check("rejects an image whose addressed bytes exceed four MiB", not UiSdl3Draw::bind_image_rgba32(image, byte_pointer, 4194304, 1024, 1025, 4096))
-    check("logical resource can become Ready", UiResources::set_state(initial, UiResources::State.Ready))
+    check("decoded resource remains Requested until renderer upload", UiResources::set_progress(initial, 1.0, 1.0) and UiResources::state(initial) == UiResources::State.Requested)
     check("accepts padded RGBA32 rows and uploads them", UiSdl3Draw::bind_image_rgba32(image, byte_pointer, 20, 2, 2, 12))
-    check("reports exact live binding", UiSdl3Draw::is_image_bound(image) and UiSdl3Draw::image_binding_count() == 1)
+    check("successful upload completes the resource and binding", UiResources::state(initial) == UiResources::State.Ready and UiResources::uploaded_progress(initial) == 1.0 and UiSdl3Draw::is_image_bound(image) and UiSdl3Draw::image_binding_count() == 1)
 
     replay_image(image, UiCore::Rect(0.0, 0.0, 2.0, 2.0), 255, UiCore::PictureFit.Stretch, UiCore::CornerStyle.Square)
     red: mutable u8 = 0
@@ -136,8 +136,9 @@ def run_image_checks() -> void:
         255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
     ]
     cover_pointer: u8& = (&cover_pixels[0]).cast[u8&] can Unsafe.PointerCast
-    _ = UiResources::set_state(cover_handle, UiResources::State.Ready)
+    _ = UiResources::set_progress(cover_handle, 1.0, 1.0)
     check("four-row test image uploads", UiSdl3Draw::bind_image_rgba32(cover_image, cover_pointer, 64, 4, 4, 16))
+    check("cover image becomes Ready only after upload", UiResources::state(cover_handle) == UiResources::State.Ready)
     replay_image(cover_image, UiCore::Rect(0.0, 0.0, 4.0, 2.0), 255, UiCore::PictureFit.Cover, UiCore::CornerStyle.Square)
     check("Cover samples the centered green source row at the top", read_frame_pixel(0, 0, &red, &green, &blue, &alpha) and red == 0 and green == 255 and blue == 0)
     check("Cover samples the centered blue source row at the bottom", read_frame_pixel(0, 1, &red, &green, &blue, &alpha) and red == 0 and green == 0 and blue == 255)
@@ -157,8 +158,8 @@ def run_image_checks() -> void:
     next_handle: UiResources::ResourceHandle = UiResources::request("sdl3-image-binding-test-next", 17)
     next_image: UiCore::ImageRef = UiCore::image_ref(next_handle.slot, next_handle.generation)
     check("reused slot advances its generation", next_handle.slot == initial.slot and next_handle.generation != initial.generation)
-    check("recycled non-Ready generation cannot bind", not UiSdl3Draw::bind_image_rgba32(next_image, replacement_pointer, 16, 2, 2, 8))
-    _ = UiResources::set_state(next_handle, UiResources::State.Ready)
+    check("recycled generation cannot bind before decoded pixels exist", not UiSdl3Draw::bind_image_rgba32(next_image, replacement_pointer, 16, 2, 2, 8))
+    _ = UiResources::set_progress(next_handle, 1.0, 1.0)
     check("new generation binds into the reused slot", UiSdl3Draw::bind_image_rgba32(next_image, replacement_pointer, 16, 2, 2, 8))
     check("stale generation cannot evict or resolve as the new binding", not UiSdl3Draw::is_image_bound(image) and UiSdl3Draw::is_image_bound(next_image) and UiSdl3Draw::image_binding_count() == 1)
     check("unbinding an old generation cannot destroy the current one", not UiSdl3Draw::unbind_image(image) and UiSdl3Draw::is_image_bound(next_image))

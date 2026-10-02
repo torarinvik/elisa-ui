@@ -1,0 +1,83 @@
+# Skia's retained command and Painter replay adapter.
+#
+# Keep the portable command loop beside the backend's Painter implementation;
+# the core Skia module owns surface lifecycle and shared renderer state.
+
+include "../../core/ui_core.elisa"
+include "../../core/ui_paint.elisa"
+
+using UiPaint
+
+extend UiSkia:
+    public:
+        struct SkiaPainter:
+            unused: i32
+
+        def painter() -> SkiaPainter:
+            return SkiaPainter{unused: 0}
+
+        def replay_retained_range(start: usize, end: usize) -> void can[Ui.Draw, Ui.Text]:
+            total: usize = UiCore::command_count()
+            first: usize = start if start < total else total
+            last: usize = end if end < total else total
+            return if first >= last
+            return if canvas_state == 0
+            for index in first..<last:
+                clipped: bool = UiCore::command_has_clip(index)
+                if clipped:
+                    UiSkia::push_replay_clip(UiCore::command_clip_at(index))
+                match UiCore::command_at(index):
+                    UiCore::Command.Clear(color):
+                        elisa_skia_canvas_clear(canvas_state, color.r, color.g, color.b, color.a)
+                    UiCore::Command.FillRect(box, color):
+                        if color.a != 0:
+                            safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+                            if safe_box.size.width > 0.0 and safe_box.size.height > 0.0:
+                                style: UiCore::SurfaceStyle = UiCore::command_style_at(index)
+                                treatment: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for_shaped(safe_box, style.depth, style.corner, color)
+                                UiSkia::draw_styled_surface(safe_box, treatment, color, style)
+                    UiCore::Command.FillCircle(disc, color):
+                        UiSkia::fill_disc(disc, color, UiCore::command_depth_at(index))
+                    UiCore::Command.FillTriangle(triangle, color):
+                        UiSkia::fill_triangle(triangle, color)
+                    UiCore::Command.FillLine(line, color):
+                        UiSkia::stroke_line(line, UiCore::command_stroke_width_at(index), color)
+                    UiCore::Command.DrawImage(draw):
+                        _ = UiSkia::draw_retained_image(draw)
+                    UiCore::Command.DrawText(run, color):
+                        UiSkia::draw_text_run(run, color)
+                if clipped:
+                    _ = UiSkia::pop_clip()
+
+        impl Painter for SkiaPainter:
+            def push_clip(self: Self, box: UiCore::Rect) -> void can[Ui.Draw]:
+                UiSkia::push_replay_clip(box)
+
+            def pop_clip(self: Self) -> void can[Ui.Draw]:
+                _ = UiSkia::pop_clip()
+
+            def clear(self: Self, color: UiCore::Color) -> void can[Ui.Draw]:
+                return if canvas_state == 0
+                elisa_skia_canvas_clear(canvas_state, color.r, color.g, color.b, color.a)
+
+            def fill_rect(self: Self, box: UiCore::Rect, color: UiCore::Color, style: UiCore::SurfaceStyle) -> void can[Ui.Draw]:
+                return if canvas_state == 0 or color.a == 0
+                safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
+                return if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
+                treatment: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for_shaped(safe_box, style.depth, style.corner, color)
+                UiSkia::draw_styled_surface(safe_box, treatment, color, style)
+
+            def draw_image(self: Self, draw: UiCore::ImageDraw) -> void can[Ui.Draw]:
+                _ = UiSkia::draw_retained_image(draw)
+
+            def fill_circle(self: Self, disc: UiCore::Circle, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void can[Ui.Draw]:
+                UiSkia::fill_disc(disc, color, depth)
+
+            def fill_triangle(self: Self, tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]:
+                UiSkia::fill_triangle(tri, color)
+
+            def fill_line(self: Self, segment: UiCore::Line, color: UiCore::Color, width: f32) -> void can[Ui.Draw]:
+                UiSkia::stroke_line(segment, width, color)
+
+            def draw_text(self: Self, run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
+                UiSkia::draw_text_run(run, color)

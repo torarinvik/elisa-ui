@@ -10,7 +10,7 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-STAGE1="${ELISA_UI_STAGE1:-$ROOT/../Elisa-compiler}"
+STAGE1="$(bash "$ROOT/scripts/resolve_stage1_root.sh" "$ROOT")"
 EXAMPLE="${1:-showcase}"
 SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
 NDK="${ANDROID_NDK_ROOT:-$(ls -d "$SDK"/ndk/* 2>/dev/null | sort -V | tail -1)}"
@@ -31,7 +31,8 @@ fi
 
 # --- 1. Build the controls APK with the selected compiler -----------------
 bash "$ROOT/scripts/build_android_controls.sh" "$EXAMPLE" >/dev/null
-OUT="$ROOT/build/android-controls/$EXAMPLE"
+ANDROID_CONTROLS_OUT_ROOT="${ELISA_UI_ANDROID_CONTROLS_OUT_ROOT:-$ROOT/build/android-controls}"
+OUT="$ANDROID_CONTROLS_OUT_ROOT/$EXAMPLE"
 APK="$OUT/$EXAMPLE-controls.apk"
 SO="$OUT/apk/lib/arm64-v8a/lib$EXAMPLE.so"
 [[ -f "$APK" && -f "$SO" ]] || {

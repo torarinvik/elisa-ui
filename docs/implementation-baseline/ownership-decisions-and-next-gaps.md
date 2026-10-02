@@ -173,7 +173,9 @@ _Part of the [elisa-ui implementation baseline](../implementation-baseline.md)._
 - Generation-bound Skia text now has Elisa-owned primary/fallback selection for
   drawing, width, ascent, and line-height queries. A fallback is used only
   when the primary resource is not ready or has no live typeface binding;
-  per-glyph shaping fallback remains the host typeface/shaper's authority.
+  Apple ordinary text uses the borrowed font manager through Skia's CoreText
+  shaper; tracked/non-Apple text keeps host per-codepoint fallback. See
+  `text-shaping-and-font-sources.md` for scope and limits.
 - Skia custom controls now have explicit Elisa-owned translation/scale scopes in
   `ui_skia_transform.elisa`. A shared save-depth ledger restores frame, clip,
   and transform state on detach/surface loss; the headless recorder verifies the
@@ -400,14 +402,15 @@ _Part of the [elisa-ui implementation baseline](../implementation-baseline.md)._
   logical resource. Repeated helpers coalesce by identifier and update the
   owner/priority in place; invalid keys remain neutral. Coverage lives in
   `test/resource_presentation_test.elisa`.
-- `UiFeatureView` is the optional-code counterpart to resource presentation:
-  it records a bounded `(feature, interface, package)` identity, requires a
-  nonzero host activation token, accepts only generation-matching poll facts,
-  preserves that token through cancellation for explicit host deactivation,
-  and rotates generations on retry. `UiHarness` and `UiInspector` expose the
-  same state without introducing a downloader, linker, or native pointer;
-  coverage lives in `test/feature_view_test.elisa` and
-  `test/ui_harness_test.elisa`.
+- `UiFeatureView` records bounded feature/interface/package identity, requires
+  a nonzero host token, accepts generation-matched facts, preserves the token
+  through cancellation, and rotates on retry. Ready features can publish
+  bounded monotonic UTF-8 content snapshots (title/body/action key) under the
+  live token; UI copies them into fixed storage without exposing component
+  addresses. Parent apps render ordinary controls and map action keys to local
+  logic; `UiHarness`/`UiInspector` add no downloader, linker, or native pointer.
+  Coverage: `test/feature_view_test.elisa`,
+  `test/feature_sdk_composition.elisa`, and `test/ui_harness_test.elisa`.
 - `UiServices` maps host permission and picker results into one portable
   service record. It owns the consent state machine, the anti-prompt gate that
   keeps a denied/restricted/unavailable service from re-raising an OS dialog,
@@ -594,6 +597,4 @@ _Part of the [elisa-ui implementation baseline](../implementation-baseline.md)._
   failure, and recovery through the lower-level `UiResources` state API; the
   host still owns verified bytes and decoding.
 
-The authoritative generated WasmBrowser Elisa bindings are staged in
-`../wasm-sdk/sdk/elisa/wasmbrowser/`; the hosted adapter includes those bindings
-directly and keeps its UI-specific lowering local to the adapter.
+The authoritative generated WasmBrowser Elisa bindings are staged in `../wasm-sdk/sdk/elisa/wasmbrowser/`; the hosted adapter includes them directly and keeps its UI-specific lowering local to the adapter.

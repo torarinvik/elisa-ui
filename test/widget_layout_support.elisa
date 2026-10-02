@@ -34,7 +34,18 @@ def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
     return take
 
 def test_clipboard_value() -> sview:
-    return sview(&test_clipboard[0], 0, test_clipboard_length.i64())
+    return UiText::fixed_bytes_view_range[1024](test_clipboard, 0, test_clipboard_length)
+
+def test_clipboard_set(text: sview) -> void:
+    test_clipboard_length <- text.len.usize()
+    for index in 0..<test_clipboard_length:
+        test_clipboard[index] <- text.data[index]
+
+def test_paste_control() -> void:
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.LeftControl)))
+    UiFlat::keyboard((UiCore::KeyEvent.Down(code: UiCore::Key.V)))
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.V)))
+    UiFlat::keyboard((UiCore::KeyEvent.Up(code: UiCore::Key.LeftControl)))
 
 # Text measurement is part of the platform contract, so a test with no backend
 # supplies it. Deterministic ratios keep the label assertions exact instead of

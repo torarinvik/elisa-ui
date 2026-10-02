@@ -1,0 +1,75 @@
+# Cross-module owner teardown must invalidate local callbacks without hiding
+# resource/feature acknowledgements still owed by the host.
+
+include "../src/widgets/ui_owner_lifecycle.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    owner: u32 = 77
+    UiTasks::reset()
+    UiResources::reset()
+    UiFeatureView::reset()
+    UiValidation::reset()
+    UiServices::reset()
+    UiDialog::reset()
+    UiNavigation::reset()
+
+    pending_task: UiTasks::Handle = UiTasks::start(owner)
+    pending_task_token: u32 = UiTasks::token(pending_task)
+    completed_task: UiTasks::Handle = UiTasks::start(owner)
+    completed_task_token: u32 = UiTasks::token(completed_task)
+    _ = UiTasks::complete(completed_task, completed_task_token, true)
+
+    shared_resource: UiResources::ResourceHandle = UiResources::request("images/shared", owner)
+    _ = UiResources::request("images/shared", 78)
+    _ = UiResources::bind_operation(shared_resource, 1101)
+    exclusive_resource: UiResources::ResourceHandle = UiResources::request("images/exclusive", owner)
+    _ = UiResources::bind_operation(exclusive_resource, 1102)
+
+    shared_feature: UiFeatureView::FeatureHandle = UiFeatureView::request(7, 1, "2.0.0", owner)
+    _ = UiFeatureView::request(7, 1, "2.0.0", 78)
+    _ = UiFeatureView::activate(shared_feature, 1103)
+    _ = UiFeatureView::resolve(shared_feature, 1103, UiFeatureView::FeatureState.Ready, UiFeatureView::FeatureFailureKind.Unknown)
+    exclusive_feature: UiFeatureView::FeatureHandle = UiFeatureView::request(8, 1, "2.0.0", owner)
+    _ = UiFeatureView::activate(exclusive_feature, 1104)
+    _ = UiFeatureView::resolve(exclusive_feature, 1104, UiFeatureView::FeatureState.Ready, UiFeatureView::FeatureFailureKind.Unknown)
+
+    validation: UiValidation::Handle = UiValidation::bind_owned(7001, owner)
+    validation_token: u32 = UiValidation::begin(validation)
+    service: UiServices::ServiceHandle = UiServices::request(UiServices::ServiceKind.Files, owner)
+    _ = UiServices::begin_prompt(service)
+    dialog: UiDialog::DialogHandle = UiDialog::open(UiDialog::Kind.Confirm, "Leave?", "Unsaved work", "Leave", "Stay", owner)
+    navigation: UiNavigation::NavigationHandle = UiNavigation::push(owner, UiNavigation::BackPolicy.Allow, false)
+
+    report: UiOwnerLifecycle::DisposalReport = UiOwnerLifecycle::dispose_owner(owner)
+    check("teardown report covers each owner-scoped subsystem", report.owner == owner and report.task_tokens_cancelled == 1 and report.task_records_released == 2 and report.resource_leases_released == 2 and report.feature_leases_released == 2 and report.validation_fields_released == 1 and report.service_records_released == 1 and report.dialogs_cancelled == 1 and report.navigation_entries_released == 1)
+    check("task handles and late completions fail after teardown", not UiTasks::is_valid(pending_task) and not UiTasks::complete(pending_task, pending_task_token, true) and not UiTasks::is_valid(completed_task))
+    check("shared resource and feature keep their other owner's lease", UiResources::resource_is_valid(shared_resource) and UiResources::owner_count(shared_resource) == 1 and UiResources::owns(shared_resource, 78) and not UiResources::operation_at(0).cancellation_requested and UiFeatureView::is_valid(shared_feature) and UiFeatureView::is_ready(shared_feature) and UiFeatureView::owner_count(shared_feature) == 1 and UiFeatureView::owns(shared_feature, 78))
+    check("exclusive resource cancellation remains available to host", not UiResources::resource_is_valid(exclusive_resource) and UiResources::operation_at(1).operation_id == 1102 and UiResources::operation_at(1).cancellation_requested)
+    check("exclusive feature deactivation remains available to host", UiFeatureView::is_valid(exclusive_feature) and UiFeatureView::state(exclusive_feature) == UiFeatureView::FeatureState.Cancelled and UiFeatureView::owner_count(exclusive_feature) == 0 and UiFeatureView::deactivation_count() == 1 and UiFeatureView::deactivation_at(0).activation_id == 1104)
+    check("validation and service callbacks fail closed", not UiValidation::is_valid(validation) and not UiValidation::accept(validation, validation_token) and not UiServices::is_valid(service) and not UiServices::resolve_consent(service, UiServices::ConsentState.Granted, UiServices::ServiceFailureKind.Unknown))
+    check("dialog cancellation result and navigation teardown are explicit", UiDialog::dialog_is_valid(dialog) and not UiDialog::is_open(dialog) and UiDialog::result(dialog) == UiDialog::Result.Cancelled and not UiNavigation::navigation_is_valid(navigation))
+
+    zero_report: UiOwnerLifecycle::DisposalReport = UiOwnerLifecycle::dispose_owner(0)
+    check("owner zero is a safe no-op", zero_report.owner == 0 and zero_report.task_records_released == 0 and UiResources::resource_is_valid(shared_resource) and UiFeatureView::is_ready(shared_feature))
+
+    _ = UiResources::forget_operation(1101)
+    _ = UiResources::forget_operation(1102)
+    deactivation: UiFeatureView::Deactivation = UiFeatureView::deactivation_at(0)
+    _ = UiFeatureView::acknowledge_deactivation(deactivation.handle, deactivation.activation_id)
+    _ = UiDialog::dispose(dialog)
+    second_report: UiOwnerLifecycle::DisposalReport = UiOwnerLifecycle::dispose_owner(owner)
+    check("owner teardown is idempotent", second_report.task_records_released == 0 and second_report.resource_leases_released == 0 and second_report.feature_leases_released == 0 and second_report.validation_fields_released == 0 and second_report.service_records_released == 0 and second_report.dialogs_cancelled == 0 and second_report.navigation_entries_released == 0)
+
+    if failures == 0:
+        _ = puts("owner lifecycle: all checks passed")
+        return 0
+    _ = puts("owner lifecycle: FAILURES above")
+    return 1

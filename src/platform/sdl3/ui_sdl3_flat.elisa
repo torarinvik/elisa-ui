@@ -58,13 +58,14 @@ def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
     copied: sview = sdl_flat_clipboard_write[0:take]
     valid_length: usize = UiText::valid_utf8_prefix(copied, take)
     sdl_flat_clipboard_write[valid_length] <- 0
-    pointer: cstr = (&sdl_flat_clipboard_write[0]).cast[cstr] can Unsafe.PointerCast
-    written: bool = SDL_SetClipboardText(pointer)
-    sdl_flat_scrub_buffer(&sdl_flat_clipboard_write[0], UiFlat::TEXT_CAPACITY + 1)
-    sdl_flat_clipboard_cache_valid <- false
-    sdl_flat_clipboard_length <- 0
-    sdl_flat_clipboard_generation <- UiLifecycle::generation()
-    return written
+    can Unsafe.PointerCast:
+        pointer: cstr = (&sdl_flat_clipboard_write[0]).cast[cstr]
+        written: bool = SDL_SetClipboardText(pointer)
+        sdl_flat_scrub_buffer(&sdl_flat_clipboard_write[0], UiFlat::TEXT_CAPACITY + 1)
+        sdl_flat_clipboard_cache_valid <- false
+        sdl_flat_clipboard_length <- 0
+        sdl_flat_clipboard_generation <- UiLifecycle::generation()
+        return written
 
 def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
     return 0 if capacity > 0 and buffer == null

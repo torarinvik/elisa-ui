@@ -16,6 +16,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <cmath>
+#include <algorithm>
+#include <cstring>
+#include <list>
+#include <memory>
+#include <string>
 
 #include "../../../include/elisa_skia.h"
 #include "include/core/SkCanvas.h"
@@ -32,6 +37,9 @@
 #include "include/core/SkShader.h"
 #include "include/core/SkTypeface.h"
 #include "include/core/SkFontMgr.h"
+#if defined(__APPLE__)
+#include "modules/skshaper/include/SkShaper.h"
+#endif
 #include <unordered_map>
 #include <vector>
 #include "include/effects/SkImageFilters.h"
@@ -174,9 +182,9 @@ inline int elisa_skia_text_hinting = 0;
 // The bold face a host has lent the renderer, or zero. Borrowed for as long as
 // the host says so, exactly like the regular face handed to each draw call.
 inline std::size_t elisa_skia_bold_typeface = 0;
-// A font manager the host has lent, or zero. It is the ONLY way a glyph the
-// lent face lacks gets drawn as anything but a box: the shim asks it for a
-// face that has the code point, per code point, and remembers the answer.
+// A font manager the host has lent, or zero. Non-Apple and tracked text use it
+// to choose fallback faces per code point; the ordinary Apple path delegates
+// fallback to CoreText while shaping the complete string.
 inline std::size_t elisa_skia_font_manager = 0;
 // Extra advance after every scalar but the last, set per run by the painter
 // and put back to zero after. Zero draws exactly as before.
@@ -211,9 +219,7 @@ struct FallbackKeyHash {
 
 inline std::unordered_map<FallbackKey, sk_sp<SkTypeface>, FallbackKeyHash> elisa_skia_fallback_cache;
 
-// One run of text drawn with one face. A string is split into these at every
-// point where the lent face has no glyph and a fallback does -- and drawn
-// and measured through the SAME split, so a run measures as it draws.
+// One fallback run for the simple-text path used on non-Apple and tracked text.
 struct TextRun {
     std::size_t begin;
     std::size_t end;
@@ -268,11 +274,32 @@ inline std::vector<TextRun> split_runs(SkTypeface *lent, const char *text, std::
     return runs;
 }
 
-// Draw a string as its runs, advancing by each run's measured width.
+#if defined(__APPLE__)
+#include "skia_shaped_text_cache.inc"
+#else
+// The shaped-blob cache belongs to Apple's CoreText shaping path. Other
+// platforms currently use Skia's simple-text fallback, but share the Elisa
+// cache-control ABI; keep those calls explicitly inert until they gain a
+// shaped-text cache of their own.
+inline void clear_shaped_text_cache() {}
+inline void set_shaped_text_cache_context(std::uint32_t, std::uint32_t) {}
+#endif
+
+// Shape the complete string where the platform shaper is available; otherwise
+// draw the simple fallback runs, advancing each by its measured width.
 inline void draw_runs(SkCanvas *target, const SkFont &base, const SkPaint &paint, SkTypeface *lent,
                       const char *text, std::size_t length, float x, float y) {
     float pen = x;
     const float tracking = elisa_skia_text_tracking;
+#if defined(__APPLE__)
+    if (tracking <= 0.0f) {
+        const ElisaShapedText shaped = shape_text(base, text, length);
+        if (shaped.blob) {
+            target->drawTextBlob(shaped.blob.get(), x, y, paint);
+            return;
+        }
+    }
+#endif
     for (const TextRun &run : split_runs(lent, text, length)) {
         SkFont font = base;
         if (run.face) font.setTypeface(run.face);
@@ -295,6 +322,12 @@ inline void draw_runs(SkCanvas *target, const SkFont &base, const SkPaint &paint
 }
 
 inline float measure_runs(const SkFont &base, SkTypeface *lent, const char *text, std::size_t length) {
+#if defined(__APPLE__)
+    if (elisa_skia_text_tracking <= 0.0f) {
+        const ElisaShapedText shaped = shape_text(base, text, length);
+        if (shaped.blob) return shaped.advance;
+    }
+#endif
     float total = 0.0f;
     for (const TextRun &run : split_runs(lent, text, length)) {
         SkFont font = base;

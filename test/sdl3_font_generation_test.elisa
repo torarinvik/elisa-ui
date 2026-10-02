@@ -1,0 +1,105 @@
+# SDL_ttf cache replacement must also refresh the framework's metric context.
+
+include "../src/core/ui_core.elisa"
+include "../src/widgets/ui_text_metrics.elisa"
+include "../src/platform/sdl3/ui_sdl3_ttf.elisa"
+include "../src/platform/sdl3/ui_sdl3_fonts.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable font_failures: i32 = 0
+
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    return UiSdl3Fonts::measure_text_width(text, size)
+
+def ui_text_line_height(size: f32) -> f32:
+    return UiSdl3Fonts::text_line_height(size)
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    font_failures <- font_failures + 1
+    _ = puts(name)
+
+def font_candidate(index: usize) -> cstr:
+    return "/System/Library/Fonts/Supplemental/Arial.ttf" if index == 0
+    return "/System/Library/Fonts/Helvetica.ttc" if index == 1
+    return "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf" if index == 2
+    return "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf" if index == 3
+    return "/usr/share/fonts/TTF/DejaVuSans.ttf" if index == 4
+    return "C:\\Windows\\Fonts\\segoeui.ttf" if index == 5
+    return "C:\\Windows\\Fonts\\arial.ttf"
+
+def available_test_font() -> cstr:
+    for index in 0..<7:
+        candidate: cstr = font_candidate(index)
+        if TTF_OpenFont(candidate, 20.0) is opened:
+            TTF_CloseFont(opened)
+            return candidate
+    return ""
+
+def copy_test_path(source: cstr, destination: mutable u8&, capacity: usize) -> usize:
+    pointer: uintptr = source.cast[uintptr] can Unsafe.PointerCast
+    return 0 if pointer == 0.uintptr()
+    for index in 0..<capacity:
+        trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic]:
+            value: u8& = (pointer + index.uintptr()).cast[u8&]
+            return index if value == 0
+            destination[index] <- value
+    return capacity
+
+def main() -> i64:
+    if not TTF_Init():
+        _ = puts("SDL_ttf initialization failed")
+        return 2
+
+    UiSdl3Fonts::fonts_close()
+    initial_width: mutable f32 = UiTextMetrics::width("font replacement", 20.0, false)
+    check("fallback face resolves and is cached", initial_width > 0.0 and UiSdl3Fonts::font_count() > 0)
+
+    # The override may be opened lazily, so the manager must not retain this
+    # caller-owned path storage after the setter returns.
+    test_font_path: cstr = available_test_font()
+    mutable_path: mutable u8[UiCore::MAX_TEXT_BYTES + 1] = zeroed
+    copied_path_length: usize = copy_test_path(test_font_path, &mutable_path[0], UiCore::MAX_TEXT_BYTES)
+    check("fixture finds an installed fallback face", copied_path_length > 0 and copied_path_length < UiCore::MAX_TEXT_BYTES)
+    if copied_path_length > 0 and copied_path_length < UiCore::MAX_TEXT_BYTES:
+        can Unsafe.PointerCast:
+            UiSdl3Fonts::set_font_override((&mutable_path[0]).cast[cstr])
+        mutable_path[0] <- 0
+        copied_width: f32 = UiTextMetrics::width("font replacement", 20.0, false)
+        check("font override owns the path after caller storage changes", copied_width > 0.0 and UiSdl3Fonts::font_count() > 0)
+
+    oversized_path: mutable u8[UiCore::MAX_TEXT_BYTES + 1] = zeroed
+    for index in 0..<UiCore::MAX_TEXT_BYTES:
+        oversized_path[index] <- 120
+    can Unsafe.PointerCast:
+        UiSdl3Fonts::set_font_override((&oversized_path[0]).cast[cstr])
+    check("over-budget override is rejected rather than truncated", UiTextMetrics::width("font replacement", 20.0, false) > 0.0)
+
+    UiSdl3Fonts::fonts_close()
+    initial_width <- UiTextMetrics::width("font replacement", 20.0, false)
+    check("fallback face restores after the owned override closes", initial_width > 0.0)
+
+    previous_generation: u32 = UiSdl3Fonts::font_generation()
+    UiCore::clear_all_invalidations()
+
+    UiSdl3Fonts::set_font_override("/elisa-ui/font-that-does-not-exist.ttf")
+    check("override replacement closes old font handles", UiSdl3Fonts::font_count() == 0)
+    check("override replacement publishes the metric generation", UiSdl3Fonts::font_generation() != previous_generation and UiTextMetrics::snapshot().font_generation == UiSdl3Fonts::font_generation())
+    check("override replacement invalidates layout", UiCore::is_invalidated(UiCore::Invalidation.Layout))
+    check("override replacement clears metric caches", UiTextMetrics::snapshot().width_queries == 0 and UiTextMetrics::snapshot().line_height_queries == 0)
+    check("missing override reports zero width", UiTextMetrics::width("font replacement", 20.0, false) == 0.0)
+    check("missing override reports zero ascent", UiSdl3Fonts::font_ascent(20.0) == 0.0)
+    check("missing override reports zero line height", UiTextMetrics::line_height(20.0) == 0.0)
+
+    UiSdl3Fonts::fonts_close()
+    restored_width: f32 = UiTextMetrics::width("font replacement", 20.0, false)
+    check("fallback restoration reopens and measures a face", restored_width > 0.0 and UiSdl3Fonts::font_count() > 0)
+    UiSdl3Fonts::fonts_close()
+    TTF_Quit()
+
+    if font_failures == 0:
+        _ = puts("sdl3 font generation: all checks passed")
+        return 0
+    _ = puts("sdl3 font generation: FAILURES above")
+    return 1

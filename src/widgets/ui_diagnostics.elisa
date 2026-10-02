@@ -1,0 +1,168 @@
+# Bounded framework diagnostics for inspector and host log integration.
+#
+# Diagnostics are deliberately separate from widget state: they retain a small
+# recent window of source-linked facts, redact sensitive messages at insertion,
+# and expose token-checked bounded byte ranges. Applications can forward these
+# records to an SDK log sink without exposing retained-tree pointers or secure
+# values.
+
+include "../core/ui_core.elisa"
+
+module UiDiagnostics:
+    public:
+        const MAX_RECORDS: usize = 64
+        const SOURCE_CAPACITY: usize = 192
+        const MESSAGE_CAPACITY: usize = 512
+
+        const enum Severity of i32:
+            Info = 0
+            Warning = 1
+            Error = 2
+
+        struct Record:
+            sequence: u32
+            severity: Severity
+            code: u32
+            line: u32
+            column: u32
+            redacted: bool
+            slot: usize
+            token: u32
+
+        struct Snapshot:
+            count: usize
+            dropped: usize
+            latest_sequence: u32
+
+        def reset() -> void:
+            diagnostics_record_count <- 0
+            diagnostics_dropped_count <- 0
+            diagnostics_next_sequence <- 0
+            for slot in 0..<MAX_RECORDS:
+                source_lengths[slot] <- 0
+                diagnostics_message_lengths[slot] <- 0
+                redacted_records[slot] <- false
+
+        def snapshot() -> Snapshot:
+            return Snapshot{count: diagnostics_record_count, dropped: diagnostics_dropped_count, latest_sequence: diagnostics_next_sequence}
+
+        # A source location is optional; line and column are zero when the
+        # caller has no compiler/source-map location for a framework event.
+        def record(severity: Severity, code: u32, source: sview, line: u32, column: u32, message: sview, sensitive: bool) -> bool:
+            return false if severity != Severity.Info and severity != Severity.Warning and severity != Severity.Error
+            return false if source.len < 0 or message.len < 0
+            return false if (source.len > 0 and source.data == null) or (message.len > 0 and message.data == null)
+            safe_source: sview = UiCore::bounded_text(source)
+            safe_message: sview = "[redacted]" if sensitive else UiCore::bounded_text(message)
+            return false if safe_source.len >= SOURCE_CAPACITY.i64() or safe_message.len >= MESSAGE_CAPACITY.i64()
+            slot: mutable usize = diagnostics_record_count
+            if diagnostics_record_count >= MAX_RECORDS:
+                for index in 1..<MAX_RECORDS:
+                    copy_field(index, index - 1)
+                slot <- MAX_RECORDS - 1
+                diagnostics_dropped_count <- diagnostics_dropped_count + 1
+            else:
+                diagnostics_record_count <- diagnostics_record_count + 1
+            diagnostics_next_sequence <- diagnostics_next_sequence + 1 if diagnostics_next_sequence < 0xffffffff
+            source_lengths[slot] <- safe_source.len.usize()
+            diagnostics_message_lengths[slot] <- safe_message.len.usize()
+            record_sequences[slot] <- diagnostics_next_sequence
+            record_severities[slot] <- severity
+            record_codes[slot] <- code
+            record_lines[slot] <- line
+            record_columns[slot] <- column
+            redacted_records[slot] <- sensitive
+            source_offset: usize = slot * SOURCE_CAPACITY
+            message_offset: usize = slot * MESSAGE_CAPACITY
+            for index in 0..<SOURCE_CAPACITY:
+                source_storage[source_offset + index] <- safe_source.data[index] if index < safe_source.len
+            for index in 0..<MESSAGE_CAPACITY:
+                diagnostics_message_storage[message_offset + index] <- safe_message.data[index] if index < safe_message.len
+            diagnostics_next_token <- 1 if diagnostics_next_token == 0xffffffff else diagnostics_next_token + 1
+            record_tokens[slot] <- diagnostics_next_token
+            return true
+
+        def count() -> usize:
+            return diagnostics_record_count
+
+        def at(index: usize) -> Record:
+            return invalid_record() if index >= diagnostics_record_count
+            return make_record(index)
+
+        def latest() -> Record:
+            return invalid_record() if diagnostics_record_count == 0
+            return make_record(diagnostics_record_count - 1)
+
+        # Text remains in the bounded ring rather than being copied into each
+        # returned record. These borrowed byte ranges are valid until the next
+        # record write/reset; stale records return the harmless empty prefix.
+        def source_data(record: Record) -> u8&:
+            return &source_storage[0] if record.slot >= diagnostics_record_count or record.slot >= MAX_RECORDS or record.token == 0
+            return &source_storage[0] if record_tokens[record.slot] != record.token or record_sequences[record.slot] != record.sequence
+            offset: usize = record.slot * SOURCE_CAPACITY
+            return &source_storage[offset]
+
+        def source_length(record: Record) -> usize:
+            return 0 if record.slot >= diagnostics_record_count or record.slot >= MAX_RECORDS or record.token == 0
+            return 0 if record_tokens[record.slot] != record.token or record_sequences[record.slot] != record.sequence
+            return source_lengths[record.slot]
+
+        def message_data(record: Record) -> u8&:
+            return &diagnostics_message_storage[0] if record.slot >= diagnostics_record_count or record.slot >= MAX_RECORDS or record.token == 0
+            return &diagnostics_message_storage[0] if record_tokens[record.slot] != record.token or record_sequences[record.slot] != record.sequence
+            offset: usize = record.slot * MESSAGE_CAPACITY
+            return &diagnostics_message_storage[offset]
+
+        def message_length(record: Record) -> usize:
+            return 0 if record.slot >= diagnostics_record_count or record.slot >= MAX_RECORDS or record.token == 0
+            return 0 if record_tokens[record.slot] != record.token or record_sequences[record.slot] != record.sequence
+            return diagnostics_message_lengths[record.slot]
+
+    private:
+        const SOURCE_STORAGE_SIZE: usize = MAX_RECORDS * SOURCE_CAPACITY
+        const MESSAGE_STORAGE_SIZE: usize = MAX_RECORDS * MESSAGE_CAPACITY
+        global mutable diagnostics_record_count: usize = 0
+        global mutable diagnostics_dropped_count: usize = 0
+        global mutable diagnostics_next_sequence: u32 = 0
+        global mutable diagnostics_next_token: u32 = 0
+        global mutable record_tokens: u32[MAX_RECORDS] = zeroed
+        global mutable record_sequences: u32[MAX_RECORDS] = zeroed
+        global mutable record_severities: Severity[MAX_RECORDS] = zeroed
+        global mutable record_codes: u32[MAX_RECORDS] = zeroed
+        global mutable record_lines: u32[MAX_RECORDS] = zeroed
+        global mutable record_columns: u32[MAX_RECORDS] = zeroed
+        global mutable redacted_records: bool[MAX_RECORDS] = zeroed
+        global mutable source_lengths: usize[MAX_RECORDS] = zeroed
+        global mutable diagnostics_message_lengths: usize[MAX_RECORDS] = zeroed
+        global mutable source_storage: u8[SOURCE_STORAGE_SIZE] = zeroed
+        global mutable diagnostics_message_storage: u8[MESSAGE_STORAGE_SIZE] = zeroed
+
+        def copy_field(source: usize, target: usize) -> void:
+            record_sequences[target] <- record_sequences[source]
+            record_severities[target] <- record_severities[source]
+            record_codes[target] <- record_codes[source]
+            record_lines[target] <- record_lines[source]
+            record_columns[target] <- record_columns[source]
+            redacted_records[target] <- redacted_records[source]
+            source_lengths[target] <- source_lengths[source]
+            diagnostics_message_lengths[target] <- diagnostics_message_lengths[source]
+            source_offset: usize = source * SOURCE_CAPACITY
+            target_offset: usize = target * SOURCE_CAPACITY
+            message_source_offset: usize = source * MESSAGE_CAPACITY
+            message_target_offset: usize = target * MESSAGE_CAPACITY
+            for index in 0..<SOURCE_CAPACITY:
+                source_storage[target_offset + index] <- source_storage[source_offset + index]
+            for index in 0..<MESSAGE_CAPACITY:
+                diagnostics_message_storage[message_target_offset + index] <- diagnostics_message_storage[message_source_offset + index]
+            diagnostics_next_token <- 1 if diagnostics_next_token == 0xffffffff else diagnostics_next_token + 1
+            record_tokens[target] <- diagnostics_next_token
+
+        def make_record(index: usize) -> Record:
+            return Record{
+                sequence: record_sequences[index], severity: record_severities[index], code: record_codes[index],
+                line: record_lines[index], column: record_columns[index], redacted: redacted_records[index],
+                slot: index, token: record_tokens[index],
+            }
+
+        def invalid_record() -> Record:
+            return Record{sequence: 0, severity: Severity.Info, code: 0, line: 0, column: 0, redacted: false, slot: MAX_RECORDS, token: 0}

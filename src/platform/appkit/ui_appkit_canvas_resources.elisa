@@ -1,0 +1,38 @@
+# AppKit's CoreGraphics image binding completes the same staged resource
+# operation as SDL and Skia. The host keeps ownership of the CGImage and calls
+# forget_uploaded_image when its resource generation is released.
+
+include "../../widgets/ui_resources.elisa"
+
+module UiAppKitCanvasResources:
+    public:
+        # Call after verified bytes are decoded and the CGImage is ready for
+        # renderer use. Network and decode progress must already be complete;
+        # Ready is published only after the binding and upload stage succeed.
+        def complete_uploaded_image(resource: UiResources::ResourceHandle, image: usize) -> bool:
+            return false if not UiResources::resource_is_valid(resource) or image == 0
+            return false if UiResources::state(resource) != UiResources::State.Requested
+            return false if UiResources::downloaded_progress(resource) < 1.0 or UiResources::decoded_progress(resource) < 1.0
+            return false if not UiAppKitCanvasImages::bind_picture(resource.slot, resource.generation, image)
+
+            operation_id: u64 = UiResources::operation_for(resource)
+            if operation_id != 0:
+                if not UiResources::poll_upload_operation(resource, operation_id, 1.0):
+                    _ = UiAppKitCanvasImages::unbind_picture(resource.slot, resource.generation)
+                    return false
+                if not UiResources::complete_operation(resource, operation_id, UiResources::State.Ready, UiResources::FailureKind.Unknown):
+                    _ = UiAppKitCanvasImages::unbind_picture(resource.slot, resource.generation)
+                    return false
+            else:
+                if UiResources::uploaded_progress(resource) < 1.0 and not UiResources::set_upload_progress(resource, 1.0):
+                    _ = UiAppKitCanvasImages::unbind_picture(resource.slot, resource.generation)
+                    return false
+                if not UiResources::set_state(resource, UiResources::State.Ready):
+                    _ = UiAppKitCanvasImages::unbind_picture(resource.slot, resource.generation)
+                    return false
+            return true
+
+        # Resource teardown is explicit so the host can release only the
+        # image binding associated with the retired generation.
+        def forget_uploaded_image(resource: UiResources::ResourceHandle) -> bool:
+            return UiAppKitCanvasImages::unbind_picture(resource.slot, resource.generation)

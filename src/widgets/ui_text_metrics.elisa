@@ -6,6 +6,7 @@
 # active font or scale between frames cannot observe stale values.
 
 include "./ui_constraints.elisa"
+include "./ui_localization.elisa"
 
 module UiTextMetrics:
     public:
@@ -80,6 +81,7 @@ module UiTextMetrics:
                 width_misses: width_misses}
 
         def line_height(size: f32) -> f32:
+            ensure_locale_context()
             safe_size: f32 = UiConstraints::bounded(size)
             line_height_queries <- line_height_queries + 1
             for index in 0..<MAX_LINE_HEIGHT_ENTRIES:
@@ -107,6 +109,7 @@ module UiTextMetrics:
         # forgot which one it stored would hand a weighted run the regular
         # width and centre it a pixel off.
         def width(text: sview, size: f32, weighted: bool) -> f32:
+            ensure_locale_context()
             safe_text: sview = UiCore::bounded_text(text)
             safe_size: f32 = UiConstraints::bounded(size)
             length: usize = safe_text.len.usize() if safe_text.len > 0 else 0
@@ -164,8 +167,15 @@ module UiTextMetrics:
         global mutable width_misses: usize = 0
         global mutable text_metrics_font_generation: u32 = 0
         global mutable text_metrics_scale_generation: u32 = 0
+        global mutable text_metrics_locale_revision: u32 = 0
         global mutable text_metrics_width_provider: WidthProvider? = zeroed
         global mutable text_metrics_line_height_provider: LineHeightProvider? = zeroed
+
+        def ensure_locale_context() -> void:
+            revision: u32 = UiLocalization::revision()
+            return if revision == text_metrics_locale_revision
+            text_metrics_locale_revision <- revision
+            reset()
 
         def measure_width(text: sview, size: f32, weighted: bool) -> f32:
             provider: WidthProvider? = text_metrics_width_provider

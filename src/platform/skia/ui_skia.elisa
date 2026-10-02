@@ -13,6 +13,8 @@ include "../../core/ui_capabilities.elisa"
 using UiPaint
 
 extern elisa_skia_set_text_quality(subpixel: i32, hinting: i32) -> void
+extern elisa_skia_set_text_cache_context(locale_revision: u32, scale_generation: u32) -> void
+extern elisa_skia_clear_shaped_text_cache() -> void
 extern elisa_skia_canvas_save(canvas: usize) -> void
 extern elisa_skia_canvas_restore(canvas: usize) -> void
 extern elisa_skia_canvas_scale(canvas: usize, x: f32, y: f32) -> void
@@ -137,6 +139,7 @@ module UiSkia:
             UiSkia::cancel_deferred_frame()
             UiSkia::clear_bindings()
             UiSkia::clear_metric_cache()
+            elisa_skia_clear_shaped_text_cache()
             skia_surface_scale <- 1.0
             skia_surface_generation <- skia_surface_generation + 1
             skia_surface_generation <- 1 if skia_surface_generation == 0
@@ -237,48 +240,12 @@ module UiSkia:
             return if safe_text.len <= 0 or safe_text.data == null
             pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
             stroke: f32 = UiPaint::synthetic_weight_stroke(safe_run.size, safe_run.weighted)
+            UiSkia::apply_text_quality()
             elisa_skia_set_text_tracking(safe_run.tracking)
             # The halo goes UNDER the run, or it fogs the letters it lifts.
             elisa_skia_canvas_draw_text_halo(canvas_state, skia_frame_font, pointer, safe_text.len.usize(), safe_run.origin.x, safe_run.origin.y, safe_run.size, stroke, run.halo.r, run.halo.g, run.halo.b, run.halo.a) if run.halo.a != 0
             elisa_skia_canvas_draw_text_weighted(canvas_state, skia_frame_font, pointer, safe_text.len.usize(), safe_run.origin.x, safe_run.origin.y, safe_run.size, stroke, color.r, color.g, color.b, color.a)
             elisa_skia_set_text_tracking(0.0)
-
-        struct SkiaPainter:
-            unused: i32
-        def painter() -> SkiaPainter:
-            return SkiaPainter{unused: 0}
-        impl Painter for SkiaPainter:
-            def push_clip(self: Self, box: UiCore::Rect) -> void can[Ui.Draw]:
-                UiSkia::push_replay_clip(box)
-
-            def pop_clip(self: Self) -> void can[Ui.Draw]:
-                _ = UiSkia::pop_clip()
-
-            def clear(self: Self, color: UiCore::Color) -> void can[Ui.Draw]:
-                return if canvas_state == 0
-                elisa_skia_canvas_clear(canvas_state, color.r, color.g, color.b, color.a)
-
-            def fill_rect(self: Self, box: UiCore::Rect, color: UiCore::Color, style: UiCore::SurfaceStyle) -> void can[Ui.Draw]:
-                return if canvas_state == 0 or color.a == 0
-                safe_box: UiCore::Rect = UiSkia::skia_safe_rect(box)
-                return if safe_box.size.width <= 0.0 or safe_box.size.height <= 0.0
-                treatment: UiPaint::RoundedRectStyle = UiPaint::rounded_rect_style_for_shaped(safe_box, style.depth, style.corner, color)
-                UiSkia::draw_styled_surface(safe_box, treatment, color, style)
-
-            def draw_image(self: Self, draw: UiCore::ImageDraw) -> void can[Ui.Draw]:
-                _ = UiSkia::draw_retained_image(draw)
-
-            def fill_circle(self: Self, disc: UiCore::Circle, color: UiCore::Color, depth: UiCore::SurfaceDepth) -> void can[Ui.Draw]:
-                UiSkia::fill_disc(disc, color, depth)
-
-            def fill_triangle(self: Self, tri: UiCore::Triangle, color: UiCore::Color) -> void can[Ui.Draw]:
-                UiSkia::fill_triangle(tri, color)
-
-            def fill_line(self: Self, segment: UiCore::Line, color: UiCore::Color, width: f32) -> void can[Ui.Draw]:
-                UiSkia::stroke_line(segment, width, color)
-
-            def draw_text(self: Self, run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]:
-                UiSkia::draw_text_run(run, color)
 
     private:
         global mutable canvas_state: usize = 0
@@ -325,6 +292,8 @@ include "./ui_skia_resources.elisa"
 include "./ui_skia_image.elisa"
 
 include "./ui_skia_text_layout.elisa"
+
+include "./ui_skia_replay.elisa"
 
 include "./ui_skia_deferred.elisa"
 

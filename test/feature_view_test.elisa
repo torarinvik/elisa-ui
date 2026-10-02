@@ -10,7 +10,7 @@ def check(name: cstr, ok: bool) -> void:
     failures <- failures + 1
     _ = puts(name)
 
-def main() -> i64:
+def main() -> i64 can Unsafe.PointerCast:
     UiFeatureView::reset()
     UiCore::clear_all_invalidations()
     check("feature reset is empty", UiFeatureView::snapshot().total == 0 and not UiFeatureView::overflowed())
@@ -26,12 +26,60 @@ def main() -> i64:
     check("same feature request shares activation and independently leases its owner", duplicate.slot == requested.slot and duplicate.generation == requested.generation and UiFeatureView::owner(duplicate) == 42 and UiFeatureView::owner_count(duplicate) == 2 and UiFeatureView::owns(duplicate, 42) and UiFeatureView::owns(duplicate, 99))
     check("invalid package is rejected", not UiFeatureView::is_valid(UiFeatureView::request(7, 1, "", 42)))
 
+    rejected: UiFeatureView::FeatureHandle = UiFeatureView::request(16, 1, "1.0.0", 42)
+    check("host can reject before issuing a token", UiFeatureView::reject_activation(rejected, UiFeatureView::FeatureState.Failed, UiFeatureView::FeatureFailureKind.Unavailable) and UiFeatureView::state(rejected) == UiFeatureView::FeatureState.Failed and UiFeatureView::failure(rejected) == UiFeatureView::FeatureFailureKind.Unavailable and UiFeatureView::activation_id(rejected) == 0)
+    check("tokenless rejection cannot be revived by activation or a stale poll", not UiFeatureView::activate(rejected, 777) and not UiFeatureView::resolve(rejected, 777, UiFeatureView::FeatureState.Ready, UiFeatureView::FeatureFailureKind.Unknown) and not UiFeatureView::can_retry(rejected))
+    _ = UiFeatureView::dispose(rejected)
+    denied_preflight: UiFeatureView::FeatureHandle = UiFeatureView::request(17, 1, "1.0.0", 42)
+    check("pre-activation denial requires matching failure metadata", not UiFeatureView::reject_activation(denied_preflight, UiFeatureView::FeatureState.Denied, UiFeatureView::FeatureFailureKind.Offline) and UiFeatureView::state(denied_preflight) == UiFeatureView::FeatureState.Requested and UiFeatureView::reject_activation(denied_preflight, UiFeatureView::FeatureState.Denied, UiFeatureView::FeatureFailureKind.Denied) and UiFeatureView::activation_id(denied_preflight) == 0)
+    _ = UiFeatureView::dispose(denied_preflight)
+    incompatible_preflight: UiFeatureView::FeatureHandle = UiFeatureView::request(18, 1, "1.0.0", 42)
+    check("pre-activation incompatibility remains typed without a host token", UiFeatureView::reject_activation(incompatible_preflight, UiFeatureView::FeatureState.Incompatible, UiFeatureView::FeatureFailureKind.Incompatible) and UiFeatureView::state(incompatible_preflight) == UiFeatureView::FeatureState.Incompatible and UiFeatureView::activation_id(incompatible_preflight) == 0)
+    _ = UiFeatureView::dispose(incompatible_preflight)
+    offline_preflight: UiFeatureView::FeatureHandle = UiFeatureView::request(19, 1, "1.0.0", 42)
+    check("pre-activation offline status is explicit and retryable", UiFeatureView::reject_activation(offline_preflight, UiFeatureView::FeatureState.UnavailableOffline, UiFeatureView::FeatureFailureKind.Offline) and UiFeatureView::can_retry(offline_preflight) and UiFeatureView::activation_id(offline_preflight) == 0)
+    _ = UiFeatureView::dispose(offline_preflight)
+
     check("activation requires a token", not UiFeatureView::activate(requested, 0) and UiFeatureView::activate(requested, 123))
     check("activation enters loading", UiFeatureView::state(requested) == UiFeatureView::FeatureState.Loading and UiFeatureView::activation_id(requested) == 123)
+    check("rejection cannot overwrite a host operation after activation", not UiFeatureView::reject_activation(requested, UiFeatureView::FeatureState.Failed, UiFeatureView::FeatureFailureKind.Unavailable) and UiFeatureView::state(requested) == UiFeatureView::FeatureState.Loading and UiFeatureView::activation_id(requested) == 123)
+    check("loading feature cannot publish its view data yet", not UiFeatureView::publish_payload(requested, 123, 1, "too early"))
+    check("feature content rejects publish before readiness", not UiFeatureView::publish_content(requested, 123, 1, "Settings", "Choose a theme.", 71, "Apply theme"))
     check("stale activation result is rejected", not UiFeatureView::resolve(requested, 122, UiFeatureView::FeatureState.Ready, UiFeatureView::FeatureFailureKind.Unknown))
     check("repeated loading result is rejected", not UiFeatureView::resolve(requested, 123, UiFeatureView::FeatureState.Loading, UiFeatureView::FeatureFailureKind.Unknown) and UiFeatureView::state(requested) == UiFeatureView::FeatureState.Loading)
     check("ready result rejects contradictory failure", not UiFeatureView::resolve(requested, 123, UiFeatureView::FeatureState.Ready, UiFeatureView::FeatureFailureKind.Retryable) and UiFeatureView::state(requested) == UiFeatureView::FeatureState.Loading)
     check("ready result retains its live activation token", UiFeatureView::resolve(requested, 123, UiFeatureView::FeatureState.Ready, UiFeatureView::FeatureFailureKind.Unknown) and UiFeatureView::is_ready(requested) and UiFeatureView::activation_id(requested) == 123)
+    check("ready feature accepts a bounded typed payload", UiFeatureView::publish_payload(requested, 123, 1, sview("xoverlay:ready!", 1, 14)) and UiFeatureView::payload_info(requested).available and UiFeatureView::payload_info(requested).sequence == 1 and UiFeatureView::payload_byte_at(requested, 1, 0) == 111)
+    check("payload sequence must advance", not UiFeatureView::publish_payload(requested, 123, 1, "stale") and not UiFeatureView::publish_payload(requested, 123, 0, "invalid"))
+    null_view_words: mutable u64[2] = zeroed
+    null_view_words[1] <- 1
+    null_view_ref: mutable sview& = (&null_view_words[0]).cast[mutable sview&] can Unsafe.PointerCast
+    null_view: sview = null_view_ref[0]
+    check("null string source normalizes to an empty payload view", UiCore::bounded_text(null_view).len == 0)
+    check("stale activation cannot publish feature data", not UiFeatureView::publish_payload(requested, 122, 2, "stale"))
+    check("empty payload is still an available sequenced message", UiFeatureView::publish_payload(requested, 123, 2, "") and UiFeatureView::payload_info(requested).available and UiFeatureView::payload_info(requested).length == 0 and UiFeatureView::payload_info(requested).sequence == 2)
+    check("payload readers reject an older message sequence", UiFeatureView::payload_byte_at(requested, 1, 0) == 0 and not UiFeatureView::publish_payload(requested, 123, 1, "replay"))
+    content_title_bytes: mutable u8[8] = zeroed
+    content_title_bytes[0] <- 83
+    content_title_bytes[1] <- 101
+    content_title_bytes[2] <- 116
+    content_title_bytes[3] <- 116
+    content_title_bytes[4] <- 105
+    content_title_bytes[5] <- 110
+    content_title_bytes[6] <- 103
+    content_title_bytes[7] <- 115
+    content_title_source: sview = UiText::fixed_bytes_view_range[8](content_title_bytes, 0, 8)
+    check("feature content copies a bounded typed panel snapshot", UiFeatureView::publish_content(requested, 123, 1, content_title_source, "Choose a theme.", 71, "Apply theme"))
+    content_title_bytes[0] <- 88
+    content: UiFeatureView::Content = UiFeatureView::content(requested)
+    check("parent receives copied title, body, and action key without widget handles", content.available and content.sequence == 1 and content.title_length == 8 and content.body_length == 15 and content.action_key == 71 and content.action_label_length == 11 and UiFeatureView::content_title(requested) == "Settings" and UiFeatureView::content_body(requested) == "Choose a theme." and UiFeatureView::content_action_label(requested) == "Apply theme")
+    check("feature content rejects stale activation, replay, empty title, and mismatched action", not UiFeatureView::publish_content(requested, 122, 2, "Stale", "", 0, "") and not UiFeatureView::publish_content(requested, 123, 1, "Replay", "", 0, "") and not UiFeatureView::publish_content(requested, 123, 2, "", "", 0, "") and not UiFeatureView::publish_content(requested, 123, 2, "Settings", "", 71, ""))
+    check("content updates can intentionally remove an action", UiFeatureView::publish_content(requested, 123, 2, "Settings", "Theme saved.", 0, "") and UiFeatureView::content(requested).sequence == 2 and UiFeatureView::content(requested).action_key == 0 and UiFeatureView::content_action_label(requested) == "")
+    bad_content_bytes: mutable u8[1] = zeroed
+    bad_content_bytes[0] <- 192
+    bad_content_title: sview = UiText::fixed_bytes_view_range[1](bad_content_bytes, 0, 1)
+    check("malformed UTF-8 content is rejected without replacing the current snapshot", not UiFeatureView::publish_content(requested, 123, 3, bad_content_title, "", 0, "") and UiFeatureView::content(requested).sequence == 2)
+    check("clearing typed content leaves the byte payload and replay watermark intact", UiFeatureView::clear_content(requested) and not UiFeatureView::content_is_available(requested) and UiFeatureView::payload_info(requested).available and not UiFeatureView::publish_content(requested, 123, 2, "Replay", "", 0, ""))
     check("ready feature cannot be retried", not UiFeatureView::is_valid(UiFeatureView::retry(requested)))
     check("cancelling one ready observer preserves the other token", UiFeatureView::cancel_owner(99) == 0 and UiFeatureView::is_valid(requested) and UiFeatureView::is_ready(requested) and UiFeatureView::activation_id(requested) == 123 and UiFeatureView::owner_count(requested) == 1 and UiFeatureView::owns(requested, 42) and not UiFeatureView::owns(requested, 99))
 
@@ -59,7 +107,8 @@ def main() -> i64:
     check("failed and denied views release immediately after terminal completion", not UiFeatureView::is_valid(retried) and not UiFeatureView::is_valid(denied))
     counts: UiFeatureView::FeatureSnapshot = UiFeatureView::snapshot()
     check("owner disposal preserves a ready activation leased by another owner", counts.total == 1 and counts.ready == 1 and UiFeatureView::is_valid(requested) and UiFeatureView::owner(requested) == 42 and UiFeatureView::activation_id(requested) == 123)
-    check("final ready-owner disposal waits for host deactivation", UiFeatureView::dispose_owner(42) == 1 and UiFeatureView::is_valid(requested) and UiFeatureView::state(requested) == UiFeatureView::FeatureState.Cancelled and UiFeatureView::owner_count(requested) == 0 and UiFeatureView::activation_id(requested) == 123)
+    _ = UiFeatureView::publish_content(requested, 123, 3, "Settings", "Theme saved.", 0, "")
+    check("final ready-owner disposal waits for host deactivation and clears copied content", UiFeatureView::dispose_owner(42) == 1 and UiFeatureView::is_valid(requested) and UiFeatureView::state(requested) == UiFeatureView::FeatureState.Cancelled and UiFeatureView::owner_count(requested) == 0 and UiFeatureView::activation_id(requested) == 123 and not UiFeatureView::payload_info(requested).available and not UiFeatureView::content_is_available(requested))
     check("final deactivation acknowledgement invalidates the released generation", UiFeatureView::acknowledge_deactivation(requested, 123) and not UiFeatureView::is_valid(requested))
 
     shared_pending: UiFeatureView::FeatureHandle = UiFeatureView::request(12, 1, "3.1.0", 101)
@@ -82,6 +131,17 @@ def main() -> i64:
     _ = UiFeatureView::resolve(direct_dispose_ready, 4321, UiFeatureView::FeatureState.Ready, UiFeatureView::FeatureFailureKind.Unknown)
     check("direct disposal of Ready releases owners but retains token tombstone", UiFeatureView::dispose(direct_dispose_ready) and UiFeatureView::is_valid(direct_dispose_ready) and UiFeatureView::state(direct_dispose_ready) == UiFeatureView::FeatureState.Cancelled and UiFeatureView::owner_count(direct_dispose_ready) == 0 and UiFeatureView::activation_id(direct_dispose_ready) == 4321)
     check("directly disposed Ready slot is freed after matching acknowledgement", UiFeatureView::acknowledge_deactivation(direct_dispose_ready, 4321) and not UiFeatureView::is_valid(direct_dispose_ready))
+
+    reset_ready: UiFeatureView::FeatureHandle = UiFeatureView::request(15, 1, "4.0.0", 700)
+    _ = UiFeatureView::activate(reset_ready, 4322)
+    _ = UiFeatureView::resolve(reset_ready, 4322, UiFeatureView::FeatureState.Ready, UiFeatureView::FeatureFailureKind.Unknown)
+    _ = UiFeatureView::publish_payload(reset_ready, 4322, 1, "private-view-data")
+    UiFeatureView::reset()
+    reset_deactivation: UiFeatureView::Deactivation = UiFeatureView::deactivation_at(0)
+    check("reset retires feature owners and payload without losing host cleanup", UiFeatureView::is_valid(reset_ready) and UiFeatureView::state(reset_ready) == UiFeatureView::FeatureState.Cancelled and UiFeatureView::owner_count(reset_ready) == 0 and UiFeatureView::activation_id(reset_ready) == 4322 and not UiFeatureView::payload_info(reset_ready).available)
+    check("reset exposes its pending deactivation token", UiFeatureView::deactivation_count() == 1 and reset_deactivation.handle.generation == reset_ready.generation and reset_deactivation.activation_id == 4322)
+    check("matching re-request waits for reset deactivation", not UiFeatureView::is_valid(UiFeatureView::request(15, 1, "4.0.0", 701)) and UiFeatureView::deactivation_count() == 1)
+    check("host acknowledgement releases reset tombstone", UiFeatureView::acknowledge_deactivation(reset_deactivation.handle, reset_deactivation.activation_id) and not UiFeatureView::is_valid(reset_ready) and UiFeatureView::deactivation_count() == 0)
     check("feature changes invalidate presentation", UiCore::is_invalidated(UiCore::Invalidation.Paint) and UiCore::is_invalidated(UiCore::Invalidation.Semantics))
 
     if failures == 0:

@@ -1,25 +1,19 @@
-# WasmBrowser component runtime: retained frame state, event translation, and
-# the fixed-stride render-command encoder. Host imports and WIT export glue stay
-# in ui_wasmbrowser.elisa; this module owns the implementation behind them.
-#
-# The module is private by default. Only lifecycle methods and the painter type
-# are public because the top-level WIT boundary forwards to those names.
 module UiWasmBrowser:
     private:
         const WIRE_STRIDE: usize = 32
         const WIRE_CAPACITY: usize = UiCore::MAX_COMMANDS * WIRE_STRIDE
+        const SEMANTIC_HEADER_BYTES: usize = 8
+        const SEMANTIC_RECORD_BYTES: usize = 120
+        const SEMANTIC_TEXT_CAPACITY: usize = UiCore::MAX_TEXT_BYTES * 3
+        const SEMANTIC_CAPACITY: usize = SEMANTIC_HEADER_BYTES + UiCore::MAX_ACCESSIBILITY_NODES * SEMANTIC_RECORD_BYTES + SEMANTIC_TEXT_CAPACITY
+        global mutable semantic_buffer: u8[SEMANTIC_CAPACITY] = zeroed
+        global mutable semantic_sequence: u64 = 0
+        global mutable diagnostics_published_sequence: u32 = 0
 
         global mutable wire_buffer: u8[WIRE_CAPACITY] = zeroed
-        # Where the next command is written. Advanced by wire_take_slot, reset by
-        # present(): a protocol painter method receives no index, so the position
-        # has to be backend state.
         global mutable wire_cursor: usize = 0
-        # WasmBrowser supplies a frame delta rather than an absolute clock.
-        # Accumulate it here so shared animation policy (caret blinking and
-        # future controls) sees the same monotonic seconds as native backends.
         global mutable elapsed_time: f64 = 0.0
 
-        # Host pointer-kind ordinals (wit enum pointer-kind { down, up, move, leave }).
         const HOST_POINTER_DOWN: i32 = 0
         const HOST_POINTER_UP: i32 = 1
         const HOST_POINTER_MOVE: i32 = 2
@@ -48,18 +42,6 @@ module UiWasmBrowser:
             wire_buffer[base + 3] <- 0
 
     private:
-        # One operation per drawing command, each writing the next wire slot. The
-        # MATCH that used to live here is now ui_paint.elisa's single
-        # UiPaint::replay, shared with SDL3 -- the two backends read the command
-        # list through the same code, so they cannot disagree about it again.
-        #
-        # Private, because the only callers are present() and the impl below, and
-        # the impl now lives inside this module. The public surface of a component
-        # backend is the guest lifecycle further down, nothing else.
-        #
-        # `base` used to come from the loop index. A protocol method is not handed
-        # one, so the cursor is backend state now, reset by present() before the
-        # replay -- the same shape as SDL3's renderer handle.
         def wire_reset() -> void:
             wire_cursor <- 0
 
@@ -68,13 +50,6 @@ module UiWasmBrowser:
             wire_cursor <- wire_cursor + WIRE_STRIDE
             return base
 
-        # One encoder per command, each writing one fixed-stride wire record.
-        #
-        # These used to be the arms of a single match over the command enum. Through
-        # the protocol that cost a round trip -- UiPaint::replay destructured the
-        # command, the painter rebuilt it, and the encoder destructured it again --
-        # so the arms became functions and the match went away entirely. The BYTE
-        # LAYOUT is unchanged; the host reads the same records at the same offsets.
         def encode_clear(base: usize, color: UiCore::Color) -> void:
             wire_discriminant(base, 0)
             wire_color(base, 4, color)
@@ -159,48 +134,119 @@ module UiWasmBrowser:
             can Host.Present:
                 host_present_commands(UiCore::viewport_width().u32(), UiCore::viewport_height().u32(), commands, total.u32())
 
-        # Each host callback below knows its own kind, so it builds the variant
-        # directly and no ordinal round-trip happens on this path. The flat
-        # UiCore::from_record is there for a host that can only hand over an
-        # ordinal plus scalars; see dispatch_record.
+        def semantic_u32(offset: usize, value: uintptr) -> void:
+            trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic, Unsafe.UncheckedIndex]:
+                slot: mutable u32& = (&semantic_buffer[offset]).cast[mutable u32&]
+                slot[0] <- value.u32()
+
+        def semantic_f32(offset: usize, value: f32) -> void:
+            trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic, Unsafe.UncheckedIndex]:
+                slot: mutable f32& = (&semantic_buffer[offset]).cast[mutable f32&]
+                slot[0] <- value
+
+        def present_semantics() -> void:
+            total: mutable usize = UiCore::accessibility_count()
+            total <- UiCore::MAX_ACCESSIBILITY_NODES if total > UiCore::MAX_ACCESSIBILITY_NODES
+            sequence: u64 = semantic_sequence + 1
+            semantic_sequence <- sequence
+            semantic_u32(0, 1.uintptr())
+            semantic_u32(4, total.u32().uintptr())
+            text_cursor: mutable usize = SEMANTIC_HEADER_BYTES + total * SEMANTIC_RECORD_BYTES
+            for index in 0..<total:
+                node: UiCore::AccessibilityNode = UiCore::accessibility_at(index)
+                base: usize = SEMANTIC_HEADER_BYTES + index * SEMANTIC_RECORD_BYTES
+                semantic_u32(base + 0, node.id.uintptr())
+                semantic_u32(base + 4, node.role.i32().u32().uintptr())
+                semantic_f32(base + 8, node.frame.origin.x)
+                semantic_f32(base + 12, node.frame.origin.y)
+                semantic_f32(base + 16, node.frame.size.width)
+                semantic_f32(base + 20, node.frame.size.height)
+                semantic_u32(base + 24, node.action.uintptr())
+                semantic_f32(base + 28, node.value)
+                semantic_u32(base + 32, node.parent_id.uintptr())
+                semantic_u32(base + 36, node.first_child_id.uintptr())
+                semantic_u32(base + 40, node.next_sibling_id.uintptr())
+                semantic_u32(base + 44, node.enabled.i32().u32().uintptr())
+                semantic_u32(base + 48, node.focused.i32().u32().uintptr())
+                semantic_u32(base + 52, node.selected.i32().u32().uintptr())
+                safe_label: sview = UiCore::bounded_text(node.label)
+                label_length: usize = safe_label.len if text_cursor + safe_label.len <= SEMANTIC_CAPACITY else 0
+                semantic_u32(base + 56, node.revision.uintptr())
+                semantic_u32(base + 60, node.selection_location.uintptr())
+                semantic_u32(base + 64, node.selection_length.uintptr())
+                semantic_u32(base + 68, node.has_range.i32().u32().uintptr())
+                semantic_f32(base + 72, node.range_min)
+                semantic_f32(base + 76, node.range_max)
+                semantic_u32(base + 80, node.has_collection_position.i32().u32().uintptr())
+                semantic_u32(base + 84, node.collection_position.uintptr())
+                semantic_u32(base + 88, node.collection_size.uintptr())
+                semantic_u32(base + 92, node.collection_count.uintptr())
+                semantic_u32(base + 96, text_cursor.u32().uintptr())
+                semantic_u32(base + 100, label_length.u32().uintptr())
+                for byte_index in 0..<label_length:
+                    semantic_buffer[text_cursor + byte_index] <- safe_label.data[byte_index]
+                text_cursor <- text_cursor + label_length
+                safe_help: sview = UiCore::bounded_text(node.help)
+                help_length: usize = safe_help.len if text_cursor + safe_help.len <= SEMANTIC_CAPACITY else 0
+                semantic_u32(base + 104, text_cursor.u32().uintptr())
+                semantic_u32(base + 108, help_length.u32().uintptr())
+                for byte_index in 0..<help_length:
+                    semantic_buffer[text_cursor + byte_index] <- safe_help.data[byte_index]
+                text_cursor <- text_cursor + help_length
+                safe_value_text: sview = UiCore::bounded_text(node.text_value)
+                value_text_length: usize = safe_value_text.len if text_cursor + safe_value_text.len <= SEMANTIC_CAPACITY else 0
+                semantic_u32(base + 112, text_cursor.u32().uintptr())
+                semantic_u32(base + 116, value_text_length.u32().uintptr())
+                for byte_index in 0..<value_text_length:
+                    semantic_buffer[text_cursor + byte_index] <- safe_value_text.data[byte_index]
+                text_cursor <- text_cursor + value_text_length
+            snapshot: mutable cstr = ""
+            can Unsafe.PointerCast:
+                snapshot <- (&semantic_buffer[0]).cast[cstr]
+            can Host.Present:
+                host_present_semantics(sequence, true, snapshot, text_cursor.u32())
+
+        def publish_diagnostics() -> void:
+            for index in 0..<UiDiagnostics::count():
+                entry: UiDiagnostics::Record = UiDiagnostics::at(index)
+                return if entry.sequence <= diagnostics_published_sequence
+                source: mutable cstr = ""
+                message: mutable cstr = ""
+                can Unsafe.PointerCast:
+                    source <- UiDiagnostics::source_data(entry).cast[cstr]
+                    message <- UiDiagnostics::message_data(entry).cast[cstr]
+                can Host.Log:
+                    host_log_diagnostic(entry.severity.i32().u32(), entry.code, source, UiDiagnostics::source_length(entry).u32(), entry.line, entry.column, message, UiDiagnostics::message_length(entry).u32(), entry.redacted)
+                diagnostics_published_sequence <- entry.sequence
+
         def dispatch(event: UiCore::Event) -> void:
             UiWasmDispatch::dispatch(event)
 
         def dispatch_input(event: UiCore::Event) -> void:
             UiWasmDispatch::dispatch_input(event)
 
-        # The generic WIT path: ordinal in, event out. Unused by the callbacks
-        # below, and kept because the wire encoding is the host's to change --
-        # a host that grows a kind can route it through here without this
-        # backend growing a callback for it.
         def dispatch_record(kind: i32, x: f32, y: f32, dx: f32, dy: f32, code: i32) -> void:
             record: UiCore::EventRecord = UiCore::EventRecord{kind: kind.WireKind(), x: x, y: y, dx: dx, dy: dy, code: code}
             dispatch(UiCore::from_record(record))
 
     public:
-        # The guest lifecycle, one function per WIT export.
         def start(width: u32, height: u32) -> void:
             UiLifecycle::reset()
             UiCapabilities::use_wasm_browser()
             UiEvents::reset()
             UiMetrics::reset()
-            # A guest can be started more than once by a host that reuses the
-            # component instance. Clear the old retained batch before the new
-            # app_init callback runs, so no retired commands or semantic nodes
-            # are observable during startup.
+            UiDiagnostics::reset()
             UiCore::discard_frame()
             UiCore::clear_all_invalidations()
             return if not UiLifecycle::begin()
             UiWasmHostState::reset_clipboard()
             elapsed_time <- 0.0
+            semantic_sequence <- 0
+            diagnostics_published_sequence <- 0
             UiCore::set_frame_time(0.0)
             UiCore::set_viewport(width.f32(), height.f32())
             app_init()
             _ = UiLifecycle::ready()
-            # The browser guest has no separate focus callback in the WIT
-            # surface. A started guest owns its presentation surface, so mark
-            # it focused here; otherwise dispatch_input would reject every
-            # key and pointer event until a focus signal that can never arrive.
             _ = UiLifecycle::focus_gained()
 
         def resize(width: u32, height: u32) -> void:
@@ -212,10 +258,6 @@ module UiWasmBrowser:
             return if not UiLifecycle::can_render()
             safe_dt: f64 = UiCore::finite_or_zero_f64(dt)
             if safe_dt > 0.0:
-                # Keep the accumulated clock finite. A very large but finite
-                # host delta can overflow the sum to +Inf; accepting that
-                # value would make UiCore::set_frame_time sanitize it to zero
-                # and silently rewind all animation state on the next frame.
                 candidate: f64 = elapsed_time + safe_dt
                 elapsed_time <- candidate if UiCore::finite_or_zero_f64(candidate) == candidate
             UiCore::set_frame_time(elapsed_time)
@@ -223,20 +265,17 @@ module UiWasmBrowser:
             UiCore::begin_frame()
             frame_generation: u32 = UiLifecycle::generation()
             app_frame()
-            # `app_frame` is application-owned and may stop the guest during
-            # its callback. Keep the frame sample complete, but never publish
-            # a command batch after the presentation lifecycle is gone.
             same_session: bool = UiLifecycle::generation() == frame_generation
             if same_session and UiLifecycle::can_render():
                 UiMetrics::mark_application(elapsed_time)
                 UiMetrics::mark_semantics(elapsed_time)
+                publish_diagnostics()
+                present_semantics()
                 present()
                 UiMetrics::mark_paint(elapsed_time)
             if same_session:
                 UiMetrics::finish_frame(elapsed_time)
 
-        # The host's pointer-kind ordinal is ITS encoding, not ours; translate it
-        # into a variant here and an unmodeled kind simply produces no event.
         def pointer(x: f32, y: f32, kind: i32) -> void:
             return if not UiWasmInput::pointer_values_are_finite(x, y, 0.0, 0.0)
             dispatch_record(UiCore::WireKind.PointerDown.i32(), x, y, 0.0, 0.0, UiCore::PointerButton.Primary.i32()) if kind == HOST_POINTER_DOWN

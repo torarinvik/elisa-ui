@@ -1,0 +1,220 @@
+# SDL_ttf face selection, metrics, and native font lifetime.
+#
+# This module is renderer-independent so font changes can invalidate retained
+# metrics even when the first usable face is discovered during text layout.
+
+include "../../core/ui_core.elisa"
+include "../../widgets/ui_text_metrics.elisa"
+include "../../widgets/ui_localization.elisa"
+
+module UiSdl3Fonts:
+    private:
+        const FONT_DIRECTION_LTR: i32 = 0
+        const FONT_DIRECTION_RTL: i32 = 1
+        const MAX_FONTS: usize = 8
+        const FONT_CANDIDATES: usize = 7
+        const FONT_PATH_CAPACITY: usize = UiCore::MAX_TEXT_BYTES
+        const FONT_PATH_STORAGE_CAPACITY: usize = FONT_PATH_CAPACITY + 1
+        global mutable font_handles: void&?[MAX_FONTS] = zeroed
+        global mutable font_sizes: f32[MAX_FONTS] = zeroed
+        global mutable font_total: usize = 0
+        # The public setter accepts a borrowed C string, but SDL_ttf may not
+        # open a face until a later size is requested. Keep an owned bounded
+        # copy instead of retaining the caller's pointer.
+        global mutable font_override_bytes: u8[FONT_PATH_STORAGE_CAPACITY] = zeroed
+        global mutable font_override_active: bool = false
+        global mutable active_font_generation: u32 = 0
+        global mutable font_resolved: usize = FONT_CANDIDATES
+        global mutable font_script_storage: u8[5] = zeroed
+
+        def font_candidate(index: usize) -> cstr:
+            return "/System/Library/Fonts/Supplemental/Arial.ttf" if index == 0
+            return "/System/Library/Fonts/Helvetica.ttc" if index == 1
+            return "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf" if index == 2
+            return "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf" if index == 3
+            return "/usr/share/fonts/TTF/DejaVuSans.ttf" if index == 4
+            return "C:\\Windows\\Fonts\\segoeui.ttf" if index == 5
+            return "C:\\Windows\\Fonts\\arial.ttf"
+
+        def close_font_table() -> void:
+            for index in 0..<font_total:
+                if font_handles[index] is handle:
+                    TTF_CloseFont(handle)
+                font_handles[index] <- null
+            font_total <- 0
+            font_resolved <- FONT_CANDIDATES
+
+        def font_path_byte(path: cstr, index: usize) -> u8:
+            pointer: uintptr = path.cast[uintptr] can Unsafe.PointerCast
+            return 0 if pointer == 0.uintptr()
+            trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic]:
+                value: u8& = (pointer + index.uintptr()).cast[u8&]
+                return value
+
+        def font_path_length(path: cstr) -> usize:
+            pointer: uintptr = path.cast[uintptr] can Unsafe.PointerCast
+            return 0 if pointer == 0.uintptr()
+            for index in 0..<FONT_PATH_CAPACITY:
+                return index if font_path_byte(path, index) == 0
+            # A string without its terminator inside the path budget is
+            # rejected instead of being truncated into a different path.
+            return FONT_PATH_CAPACITY
+
+        def clear_font_override() -> void:
+            for index in 0..<FONT_PATH_STORAGE_CAPACITY:
+                font_override_bytes[index] <- 0
+            font_override_active <- false
+
+        def advance_font_generation() -> void:
+            active_font_generation <- active_font_generation + 1
+            active_font_generation <- 1 if active_font_generation == 0
+            _ = UiTextMetrics::set_context(active_font_generation, 0)
+            UiTextMetrics::reset()
+            UiCore::invalidate(UiCore::Invalidation.Layout)
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+            UiCore::invalidate(UiCore::Invalidation.Semantics)
+
+        def open_font(size: f32) -> void&?:
+            if font_override_active:
+                can Unsafe.PointerCast:
+                    path: cstr = (&font_override_bytes[0]).cast[cstr]
+                    return TTF_OpenFont(path, size)
+            if font_resolved < FONT_CANDIDATES:
+                return TTF_OpenFont(font_candidate(font_resolved), size)
+            for index in 0..<FONT_CANDIDATES:
+                attempt: void&? = TTF_OpenFont(font_candidate(index), size)
+                if attempt is opened:
+                    font_resolved <- index
+                    advance_font_generation()
+                    return opened
+            return null
+
+        def set_text_language(font: void&, locale: sview) -> void:
+            # Locale storage is bounded and NUL-terminated by UiLocalization.
+            # Never pass a truncated tag to HarfBuzz as if it were complete.
+            if locale.len > 0 and locale.data != null and not UiLocalization::is_truncated():
+                language: cstr = locale.data.cast[cstr] can Unsafe.PointerCast
+                _ = TTF_SetFontLanguage(font, language)
+                return
+            _ = TTF_SetFontLanguage(font, null)
+
+        def script_for_locale(locale: sview) -> u32:
+            return 0 if locale.len <= 0 or locale.data == null or UiLocalization::is_truncated()
+            length: usize = locale.len.usize()
+            segment_start: mutable usize = 0
+            segment_index: mutable usize = 0
+            for cursor in 0..<length + 1:
+                boundary: mutable bool = cursor == length
+                boundary <- true if cursor < length and locale.data[cursor] == 45
+                continue if not boundary
+                segment_length: usize = cursor - segment_start
+                candidate: mutable bool = segment_index > 0 and segment_length == 4
+                for offset in 0..<4:
+                    value: u8 = locale.data[segment_start + offset] if candidate else 0
+                    candidate <- false if candidate and not ((value >= 65 and value <= 90) or (value >= 97 and value <= 122))
+                if candidate:
+                    for offset in 0..<4:
+                        value: mutable u8 = locale.data[segment_start + offset]
+                        value <- value - 32 if offset == 0 and value >= 97 and value <= 122
+                        value <- value + 32 if offset != 0 and value >= 65 and value <= 90
+                        font_script_storage[offset] <- value
+                    font_script_storage[4] <- 0
+                    can Unsafe.PointerCast:
+                        script: cstr = (&font_script_storage[0]).cast[cstr]
+                        return TTF_StringToTag(script)
+                segment_index <- segment_index + 1
+                segment_start <- cursor + 1
+            return 0
+
+        def set_text_script(font: void&, locale: sview) -> void:
+            _ = TTF_SetFontScript(font, script_for_locale(locale))
+
+    public:
+        # SDL_ttf stores direction on the cached font. Shape each operation
+        # with the paragraph's first-strong direction, then restore SDL's LTR
+        # default before another run can borrow this face. LTR needs no setter
+        # call, so a build without HarfBuzz still keeps its ordinary path.
+        def begin_text_run(font: void&, text: sview) -> bool:
+            locale: sview = UiLocalization::current_locale()
+            set_text_language(font, locale)
+            set_text_script(font, locale)
+            safe_text: sview = UiCore::bounded_text(text)
+            direction: UiLocalization::Direction = UiLocalization::text_direction(safe_text, UiLocalization::current_direction())
+            if direction == UiLocalization::Direction.RightToLeft:
+                if TTF_SetFontDirection(font, FONT_DIRECTION_RTL):
+                    return true
+                _ = TTF_SetFontLanguage(font, null)
+                _ = TTF_SetFontScript(font, 0)
+                return false
+            # Also clear a previous RTL setting, should a reset ever fail.
+            # Older SDL_ttf builds may reject this setter, but their default
+            # is already LTR and the ordinary text path remains usable.
+            _ = TTF_SetFontDirection(font, FONT_DIRECTION_LTR)
+            return true
+
+        def end_text_run(font: void&, text: sview) -> void:
+            safe_text: sview = UiCore::bounded_text(text)
+            direction: UiLocalization::Direction = UiLocalization::text_direction(safe_text, UiLocalization::current_direction())
+            if direction == UiLocalization::Direction.RightToLeft:
+                _ = TTF_SetFontDirection(font, FONT_DIRECTION_LTR)
+            _ = TTF_SetFontLanguage(font, null)
+            _ = TTF_SetFontScript(font, 0)
+
+        def font_for(size: f32) -> void&?:
+            safe_size: f32 = UiCore::bounded_extent(size)
+            for index in 0..<font_total:
+                return font_handles[index] if font_sizes[index] == safe_size
+            return null if font_total >= MAX_FONTS
+            opened: void&? = open_font(safe_size)
+            return null if opened == null
+            font_handles[font_total] <- opened
+            font_sizes[font_total] <- safe_size
+            font_total <- font_total + 1
+            return opened
+
+        def set_font_override(path: cstr) -> void:
+            close_font_table()
+            clear_font_override()
+            path_length: usize = font_path_length(path)
+            if path_length > 0 and path_length < FONT_PATH_CAPACITY:
+                for index in 0..<path_length:
+                    font_override_bytes[index] <- font_path_byte(path, index)
+                # The whole buffer was cleared above, so the byte at
+                # path_length is the owned C terminator.
+                font_override_active <- true
+            advance_font_generation()
+
+        def font_generation() -> u32:
+            return active_font_generation
+
+        def font_count() -> usize:
+            return font_total
+
+        def fonts_close() -> void:
+            close_font_table()
+            clear_font_override()
+            advance_font_generation()
+
+        def measure_text_width(text: sview, size: f32) -> f32:
+            return 0.0 if text.len <= 0 or text.data == null
+            safe_text: sview = UiCore::bounded_text(text)
+            return 0.0 if safe_text.len <= 0 or safe_text.data == null
+            if font_for(size) is font:
+                return 0.0 if not begin_text_run(font, safe_text)
+                measured_width: mutable i32 = 0
+                measured_height: mutable i32 = 0
+                pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
+                measured: bool = TTF_GetStringSize(font, pointer, safe_text.len.usize(), &measured_width, &measured_height)
+                end_text_run(font, safe_text)
+                return UiCore::bounded_extent(measured_width.f32()) if measured
+            return 0.0
+
+        def font_ascent(size: f32) -> f32:
+            if font_for(size) is font:
+                return UiCore::bounded_extent(TTF_GetFontAscent(font).f32())
+            return 0.0
+
+        def text_line_height(size: f32) -> f32:
+            if font_for(size) is font:
+                return UiCore::bounded_extent(TTF_GetFontHeight(font).f32())
+            return 0.0
