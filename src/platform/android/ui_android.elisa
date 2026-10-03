@@ -16,9 +16,8 @@
 include "../skia/ui_skia.elisa"
 include "../mobile/ui_mobile_surface.elisa"
 include "./ui_android_services.elisa"
-# The same include the UIKit flat adapter takes, and for the same reason: the
-# keyboard follows the retained focus, and only the widget layer knows where
-# that is.
+include "./ui_android_dispatch.elisa"
+# Keyboard visibility follows retained focus, owned by the widget layer.
 include "../../widgets/ui_handles.elisa"
 
 # The text metric hooks a retained layout asks its painter for.
@@ -49,53 +48,7 @@ extern elisa_android_clipboard_write(text: cstr, length: i32) -> i32
 extern elisa_android_clipboard_read(buffer: mutable u8&, capacity: i32) -> i32
 
 global mutable android_clipboard_staging: u8[UiFlat::TEXT_CAPACITY] = zeroed
-# The IME's own staging. A composing run is replaced on every keystroke of a
-# pinyin or kana entry, so this is written far more often than the clipboard is
-# -- and, like the clipboard, it is copied because JNI owns its bytes only for
-# the length of the call.
-global mutable android_ime_staging: u8[UiFlat::TEXT_CAPACITY] = zeroed
-
-def android_ime_stage(text: cstr, length: i32) -> sview:
-    return "" if length <= 0
-    room: usize = length.usize() if length.usize() < UiFlat::TEXT_CAPACITY else UiFlat::TEXT_CAPACITY
-    for index in 0..<room:
-        android_ime_staging[index] <- android_controls_ime_byte(text, index)
-    return UiText::fixed_bytes_view_range[1024](android_ime_staging, 0, room)
-
-def android_ime_clear_staging() -> void:
-    # Composition and committed input can contain secure user text. The edit
-    # layer copies synchronously, so do not leave an extra static copy behind.
-    for index in 0..<UiFlat::TEXT_CAPACITY:
-        android_ime_staging[index] <- 0
-
-# A PROVISIONAL RUN, not an edit. Pinyin, kana, Hangul and handwriting all
-# arrive as a composing stretch the user is still choosing, replaced again and
-# again until it is committed -- and an empty one means the composition was
-# abandoned, which is not the same as committing nothing.
-def android_composing_text(text: cstr, length: i32, new_cursor_position: i32) -> void:
-    can Memory.Allocate, Abort.Panic, Ui.Input, Unsafe.PointerCast, Ui.Text:
-        staged: sview = android_ime_stage(text, length)
-        # Android positions its cursor from the new composing run's end for
-        # positive values (1 means exactly at the end), and from its start for
-        # zero/negative values. The editing layer resolves this against the
-        # actual UTF-16 length that survived bounded insertion.
-        if new_cursor_position > 0:
-            UiFlat::update_marked_text_at_utf16_cursor(staged, true, new_cursor_position - 1)
-        else:
-            UiFlat::update_marked_text_at_utf16_cursor(staged, false, new_cursor_position)
-        android_ime_clear_staging()
-
-def android_commit_text(text: cstr, length: i32, new_cursor_position: i32) -> void:
-    can Memory.Allocate, Abort.Panic, Ui.Input, Unsafe.PointerCast, Ui.Text:
-        staged: sview = android_ime_stage(text, length)
-        if new_cursor_position > 0:
-            UiFlat::commit_text_at_utf16_cursor(staged, 0, 0, false, true, new_cursor_position - 1)
-        else:
-            UiFlat::commit_text_at_utf16_cursor(staged, 0, 0, false, false, new_cursor_position)
-        android_ime_clear_staging()
-
-export fn elisa_android_composing_text(text: cstr, length: i32, new_cursor_position: i32) -> void = android_composing_text
-export fn elisa_android_commit_text(text: cstr, length: i32, new_cursor_position: i32) -> void = android_commit_text
+include "./ui_android_ime.elisa"
 
 # WHAT THE FRAMEWORK HOLDS ONCE THE IME HAS SPOKEN.
 #
@@ -105,16 +58,8 @@ export fn elisa_android_commit_text(text: cstr, length: i32, new_cursor_position
 # of claim this project has been wrong about before. These two answers are what
 # let the gate stop inferring: the host drives the real input connection with
 # the calls an IME makes, and then reads back what actually landed.
-global mutable android_ime_report: u8[UiFlat::TEXT_CAPACITY] = zeroed
-
 def android_ime_text() -> cstr:
-    can Memory.Allocate, Abort.Panic, Ui.Input, Unsafe.PointerCast, Ui.Text:
-        value: sview = UiFlat::text_value(UiFlat::focused())
-        room: usize = value.len.usize() if value.len.usize() < UiFlat::TEXT_CAPACITY - 1 else UiFlat::TEXT_CAPACITY - 1
-        for index in 0..<room:
-            android_ime_report[index] <- value.data[index]
-        android_ime_report[room] <- 0
-        return (&android_ime_report[0]).cast[cstr] can Unsafe.PointerCast
+    return android_ime_readback_text()
 
 # UTF-16 units, because that is what the IME counts in and what a wrong answer
 # here would be wrong in.
@@ -209,8 +154,9 @@ module UiAndroid:
             return UiCore::set_content_insets(top, UiCore::nonnegative_extent(right), UiCore::nonnegative_extent(bottom), left)
 
         def dispatch(event: UiCore::Event) -> void can[Ui.Input]:
-            return if not android_started or not UiLifecycle::accepts_input()
-            app_event(event)
+            return if not android_started
+            return if UiCore::is_input_event(event) and not UiLifecycle::accepts_input()
+            _ = UiAndroidDispatch::deliver(event)
 
     public:
         def live() -> bool:
@@ -240,10 +186,13 @@ module UiAndroid:
         def lifecycle(signal: i32) -> bool:
             return false if not android_started
             return UiMobileSurface::focus_gained() if signal == FOCUS_GAINED
-            return UiMobileSurface::focus_lost() if signal == FOCUS_LOST
-            return UiMobileSurface::background() if signal == BACKGROUND
+            if signal == FOCUS_LOST or signal == BACKGROUND or signal == SURFACE_LOST:
+                accepted: bool = UiMobileSurface::focus_lost() if signal == FOCUS_LOST else (UiMobileSurface::background() if signal == BACKGROUND else UiMobileSurface::surface_lost())
+                return false if not accepted
+                can Ui.Input:
+                    dispatch(UiCore::PointerEvent.Cancel)
+                return true
             return UiMobileSurface::foreground() if signal == FOREGROUND
-            return UiMobileSurface::surface_lost() if signal == SURFACE_LOST
             return UiMobileSurface::surface_restored() if signal == SURFACE_RESTORED
             return false
 
@@ -258,6 +207,9 @@ module UiAndroid:
             return if not android_started
             android_started <- false
             UiMobileSurface::reset()
+            # Retire before application code can stop or restart this session.
+            can Ui.Input:
+                app_event(UiCore::PointerEvent.Cancel)
 
         # One frame onto a Skia canvas the host wrapped around the window's
         # buffer. The shape is the headless fixture's: a deferred frame, the
@@ -295,7 +247,7 @@ module UiAndroid:
             if phase == TOUCH_UP:
                 dispatch(UiCore::PointerEvent.Up(at: at, button: UiCore::PointerButton.Primary.i32()))
                 return
-            dispatch(UiCore::PointerEvent.Leave) if phase == TOUCH_CANCEL
+            dispatch(UiCore::PointerEvent.Cancel) if phase == TOUCH_CANCEL
 
         # A key in the framework's own vocabulary. The host maps Android's
         # numbering, so nothing about Android's keycodes crosses this line.
@@ -341,55 +293,5 @@ module UiAndroid:
 
 include "./ui_android_keyboard.elisa"
 include "./ui_android_back.elisa"
-
-def android_start(width: f32, height: f32, scale: f32, top: f32, right: f32, bottom: f32, left: f32) -> i32:
-    can Ui.Window, Ui.Draw, Ui.Text, Ui.Input, Unsafe.PointerCast:
-        return 1 if UiAndroid::start(width, height, scale, UiResponsive::insets(top, right, bottom, left)) else 0
-
-def android_resize(width: f32, height: f32, scale: f32, top: f32, right: f32, bottom: f32, left: f32) -> i32:
-    return 1 if UiAndroid::resize(width, height, scale, UiResponsive::insets(top, right, bottom, left)) else 0
-
-def android_stop() -> void:
-    UiAndroid::stop()
-
-def android_lifecycle(signal: i32) -> i32:
-    return 1 if UiAndroid::lifecycle(signal) else 0
-
-def android_render(canvas: usize, font: usize, width: f32, height: f32, scale: f32) -> i32:
-    can Ui.Draw, Ui.Text, Ui.Input, Unsafe.PointerCast:
-        return UiAndroid::render(canvas, font, width, height, scale)
-
-# Seconds until the frame just drawn wants the next one; zero is idle.
-def android_frame_delay() -> f32:
-    return UiCore::frame_delay()
-
-def android_touch(phase: i32, x: f32, y: f32) -> void:
-    can Ui.Input:
-        UiAndroid::touch(phase, x, y)
-
-def android_scroll(x: f32, y: f32, dx: f32, dy: f32) -> void:
-    can Ui.Input:
-        UiAndroid::scroll(x, y, dx, dy)
-
-def android_key(code: i32, down: i32) -> void:
-    can Ui.Input:
-        UiAndroid::key_with_back(code, down != 0)
-
-def android_text(scalar: u32) -> void:
-    can Ui.Input:
-        UiAndroid::text(scalar)
-
-def android_wants_keyboard() -> i32:
-    return 1 if UiAndroid::wants_keyboard() else 0
-
-export fn elisa_android_start(width: f32, height: f32, scale: f32, top: f32, right: f32, bottom: f32, left: f32) -> i32 = android_start
-export fn elisa_android_resize(width: f32, height: f32, scale: f32, top: f32, right: f32, bottom: f32, left: f32) -> i32 = android_resize
-export fn elisa_android_stop() -> void = android_stop
-export fn elisa_android_lifecycle(signal: i32) -> i32 = android_lifecycle
-export fn elisa_android_render(canvas: usize, font: usize, width: f32, height: f32, scale: f32) -> i32 = android_render
-export fn elisa_android_frame_delay() -> f32 = android_frame_delay
-export fn elisa_android_touch(phase: i32, x: f32, y: f32) -> void = android_touch
-export fn elisa_android_scroll(x: f32, y: f32, dx: f32, dy: f32) -> void = android_scroll
-export fn elisa_android_key(code: i32, down: i32) -> void = android_key
-export fn elisa_android_text(scalar: u32) -> void = android_text
-export fn elisa_android_wants_keyboard() -> i32 = android_wants_keyboard
+include "./ui_android_contacts.elisa"
+include "./ui_android_callbacks.elisa"

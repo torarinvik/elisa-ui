@@ -79,6 +79,10 @@ module SmokeApp:
         global mutable root: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
         global mutable status: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
         global mutable button: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
+        global mutable password: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
+        global mutable unicode_field: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
+        global mutable unicode_smoke: bool = false
+        global mutable unicode_selection_report: i32 = -1
         global mutable taps: i32 = 0
         global mutable reported_width: f32 = -1.0
         global mutable reported_inset_top: f32 = -1.0
@@ -103,14 +107,34 @@ module SmokeApp:
     public:
         def init() -> void:
             UiHandles::reset()
+            initial_name: mutable sview = ""
+            rtl_opt: cstr? = getenv("ELISA_UI_UITEST_RTL")
+            if rtl_opt is rtl:
+                _ = rtl
+                _ = UiLocalization::set_locale("he-IL")
+                initial_name <- "אבגדהוזחטי"
+            unicode_opt: cstr? = getenv("ELISA_UI_UITEST_UNICODE")
+            if unicode_opt is unicode:
+                _ = unicode
+                unicode_smoke <- true
+                initial_name <- "á👩‍👩‍👧‍👦bcdefghij"
             root <- UiHandles::column(UiHandles::root_parent(), 20.0, 16.0, UiCore::rgb(16, 18, 24))
             _ = UiHandles::label(root, "elisa-ui UIKit smoke", 24.0, UiCore::rgb(240, 242, 248))
             status <- UiHandles::label(root, "waiting for a tap", 16.0, UiCore::rgb(180, 190, 210))
-            _ = UiHandles::text_field(root, "Name", "Type a name", "", 260.0, 44.0, 16.0, UiCore::rgb(240, 242, 248), UiCore::rgb(30, 32, 40))
+            unicode_field <- UiHandles::text_field(root, "Name", "Type a name", initial_name, 260.0, 44.0, 16.0, UiCore::rgb(240, 242, 248), UiCore::rgb(30, 32, 40))
+            email: UiHandles::Handle = UiHandles::text_field(root, "Email", "name@example.com", "", 260.0, 44.0, 16.0, UiCore::rgb(240, 242, 248), UiCore::rgb(30, 32, 40))
+            _ = UiHandles::set_text_purpose(email, UiTextInput::Purpose.Email)
+            password <- UiHandles::text_field(root, "Password", "Enter a password", "", 260.0, 44.0, 16.0, UiCore::rgb(240, 242, 248), UiCore::rgb(30, 32, 40))
+            _ = UiHandles::set_text_purpose(password, UiTextInput::Purpose.Password)
             button <- UiHandles::button(root, 200.0, 48.0, UiCore::rgb(60, 110, 220), UiCore::rgb(90, 140, 245), UiCore::rgb(40, 80, 180))
             UiHandles::set_text(button, "Tap me", 18.0, UiCore::rgb(255, 255, 255))
 
         def widget_event(widget: usize) -> void:
+            if UiHandles::callback_matches(widget, password):
+                # Report receipt, never the password or its length. Native
+                # secure semantics deliberately publish no spoken value.
+                UiHandles::set_text(status, "secure input received", 16.0, UiCore::rgb(140, 230, 170)) if UiHandles::text_value(password).len > 0
+                return
             return if widget != UiHandles::index(button)
             taps <- taps + 1
             # Distinct text per count, so a UI test can tell one touch from two
@@ -120,8 +144,20 @@ module SmokeApp:
             UiHandles::set_text(status, "tapped twice", 16.0, UiCore::rgb(140, 230, 170)) if taps == 2
             UiHandles::set_text(status, "tapped again", 16.0, UiCore::rgb(140, 230, 170)) if taps > 2
 
+        def capture_cancelled() -> void:
+            # The HID cancellation must have traversed identified contact
+            # ingress and the shared recognizer, not only legacy pointer code.
+            released: bool = UiFlat::active() == UiFlat::NONE and not UiHandles::scroll_dragging() and UiGestures::active_count() == 0 and UiGestures::snapshot().kind == UiGestures::Kind.Cancelled
+            UiHandles::set_text(status, "touch cancelled" if released else "capture stuck", 16.0, UiCore::rgb(180, 190, 210))
+
         def frame() -> void can Unsafe.PointerCast:
             frames <- frames + 1
+            if unicode_smoke:
+                index: usize = UiHandles::index(unicode_field)
+                selected: i32 = 1 if UiFlat::focused() == index and UiFlat::selection_utf16_location(index) == 0 and UiFlat::selection_utf16_length(index) == 2 else 0
+                if selected != unicode_selection_report:
+                    unicode_selection_report <- selected
+                    UiHandles::set_text(status, "unicode prefix selected" if selected == 1 else "unicode selection pending", 16.0, UiCore::rgb(180, 190, 210))
             UiHandles::layout(UiCore::viewport_width(), UiCore::viewport_height())
             UiHandles::paint()
             return if not facts_changed()
@@ -155,7 +191,13 @@ def app_widget_event(widget: usize, event: i32) -> void:
     SmokeApp::widget_event(widget)
 
 def app_event(event: UiCore::Event) -> void:
+    had_capture: bool = UiFlat::active() != UiFlat::NONE or UiHandles::scroll_dragging()
     UiHandles::handle(event)
+    match event:
+        UiCore::PointerEvent.Cancel:
+            SmokeApp::capture_cancelled() if had_capture
+        _:
+            pass
 
 def app_text_input(text: sview) -> void:
     UiHandles::insert_text(text)

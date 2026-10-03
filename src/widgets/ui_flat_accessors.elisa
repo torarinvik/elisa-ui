@@ -36,6 +36,9 @@ extend UiFlat:
         def focused() -> usize:
             return focused_widget
 
+        def focus_epoch() -> u32:
+            return flat_focus_epoch_state
+
         # Which modifier keys are currently held. The framework tracks left/right
         # independently and routes them to editing, focus traversal, and shortcuts,
         # but an application-level shortcut or gesture occasionally needs to ask
@@ -278,13 +281,6 @@ extend UiFlat:
 
 
 
-        def set_secure(index: usize, secure: bool) -> void:
-            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
-            return if widgets[index].secure == secure
-            clear_text_history() if secure
-            widgets[index].secure <- secure
-            mark_state_dirty()
-
         # Selection is independent from focus and press state. Applications own
         # group policy, so a radio group can span containers without hidden state.
         def set_selected(index: usize, selected: bool) -> void:
@@ -377,6 +373,7 @@ extend UiFlat:
             active_scroll_offset <- 0.0
             active_pointer_button <- UiCore::NO_POINTER_BUTTON
             active_key <- -1
+            advance_focus_epoch() if focused_widget != NONE
             focused_widget <- NONE
             left_shift_down <- false
             right_shift_down <- false

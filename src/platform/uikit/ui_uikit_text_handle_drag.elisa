@@ -1,0 +1,47 @@
+# UIKit supplies a pan's raw position and which native handle it belongs to.
+# Document ownership, endpoint anchoring, grapheme snapping and cancellation
+# remain in the retained adapter, rather than native view state.
+module UiUIKitHandleDrag:
+    private:
+        global mutable uikit_handle_drag_active: bool = false
+        global mutable uikit_handle_drag_tree: usize = 0
+        global mutable uikit_handle_drag_field: usize = 0
+        global mutable uikit_handle_drag_revision: u32 = 0
+        global mutable uikit_handle_drag_epoch: u32 = 0
+        global mutable uikit_handle_drag_focus_epoch: u32 = 0
+        global mutable uikit_handle_drag_start: usize = 0
+        global mutable uikit_handle_drag_length: usize = 0
+        global mutable uikit_handle_drag_anchor: usize = 0
+    public:
+        def update(view_handle: usize, tree: usize, field: usize, moving_end: i32, phase: i32, x: f32) -> i32:
+            if uikit_text_owner_matches(view_handle, tree, field) == 0:
+                uikit_handle_drag_active <- false
+                return 0
+            return 0 if not uikit_boolean_flag_is_valid(moving_end) or not UiCore::is_finite(x)
+            return 0 if phase < 1 or phase > 5
+            if phase == 1:
+                uikit_handle_drag_tree <- tree
+                uikit_handle_drag_field <- field
+                uikit_handle_drag_revision <- UiFlat::widget(field).text_revision
+                uikit_handle_drag_epoch <- UiMobileSurface::input_epoch()
+                uikit_handle_drag_focus_epoch <- UiFlat::focus_epoch()
+                uikit_handle_drag_start <- uikit_text_selection_location(view_handle)
+                uikit_handle_drag_length <- uikit_text_selection_length(view_handle)
+                uikit_handle_drag_anchor <- uikit_handle_drag_start if moving_end == 1 else uikit_handle_drag_start + uikit_handle_drag_length
+                uikit_handle_drag_active <- uikit_handle_drag_length > 0
+            return 0 if not uikit_handle_drag_active or tree != uikit_handle_drag_tree or field != uikit_handle_drag_field
+            if UiFlat::widget(field).text_revision != uikit_handle_drag_revision or UiMobileSurface::input_epoch() != uikit_handle_drag_epoch or UiFlat::focus_epoch() != uikit_handle_drag_focus_epoch:
+                uikit_handle_drag_active <- false
+                return 0
+            if phase == 4 or phase == 5:
+                uikit_handle_drag_active <- false
+                return uikit_text_set_selection(view_handle, uikit_handle_drag_start, uikit_handle_drag_length)
+            cursor: usize = uikit_text_offset_at_x(view_handle, x)
+            return 0 if cursor == UiUIKit::not_found()
+            start: usize = cursor if cursor < uikit_handle_drag_anchor else uikit_handle_drag_anchor
+            length: usize = uikit_handle_drag_anchor - cursor if cursor < uikit_handle_drag_anchor else cursor - uikit_handle_drag_anchor
+            result: i32 = uikit_text_set_selection(view_handle, start, length)
+            uikit_handle_drag_active <- false if phase == 3
+            return result
+
+export fn elisa_uikit_text_handle_drag(view_handle: usize, tree: usize, field: usize, moving_end: i32, phase: i32, x: f32) -> i32 = UiUIKitHandleDrag::update

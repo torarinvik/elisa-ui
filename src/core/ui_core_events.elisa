@@ -69,6 +69,10 @@ extend UiCore:
                     return WireKind.PointerUp
                 PointerEvent.Leave:
                     return WireKind.PointerLeave
+                PointerEvent.Cancel:
+                    return WireKind.PointerCancel
+                ContactEvent.Update(contact):
+                    return contact_wire_kind(contact)
                 PointerEvent.Scroll(at, delta):
                     return WireKind.Scroll
                 KeyEvent.Down(code):
@@ -86,6 +90,12 @@ extend UiCore:
         # and gamepad events must never cross that boundary from a stale queue.
         def is_input_event(event: Event) -> bool:
             match event:
+                PointerEvent.Cancel:
+                    # Losing capture releases state; it must reach an inactive
+                    # surface even though new physical input cannot.
+                    return false
+                ContactEvent.Update(contact):
+                    return contact.phase != ContactPhase.Cancelled
                 PointerEvent.Move(at):
                     return true
                 PointerEvent.Down(at, button):
@@ -114,6 +124,8 @@ extend UiCore:
         # turn malformed input into a real hit at the origin.
         def input_payload_is_finite(event: Event) -> bool:
             match event:
+                ContactEvent.Update(contact):
+                    return contact_is_valid(contact)
                 PointerEvent.Move(at):
                     return is_finite(at.x) and is_finite(at.y)
                 PointerEvent.Down(at, button):
@@ -134,6 +146,8 @@ extend UiCore:
         def to_record(event: Event) -> EventRecord:
             record: mutable EventRecord = EventRecord{kind: wire_kind(event), x: 0.0, y: 0.0, dx: 0.0, dy: 0.0, code: 0}
             match event:
+                ContactEvent.Update(contact):
+                    return contact_to_record(contact)
                 Event.Resize(size):
                     # Resize extents are part of the same geometry contract as
                     # viewport and retained boxes. A caller can construct the
@@ -167,11 +181,15 @@ extend UiCore:
                     pass
                 PointerEvent.Leave:
                     pass
+                PointerEvent.Cancel:
+                    pass
             return record
 
         # Rebuild. An unknown ordinal is `None` rather than a panic: the host is
         # free to grow its event set faster than this library does.
         def from_record(record: EventRecord) -> Event:
+            if record.kind.i32() >= WireKind.ContactBegan.i32() and record.kind.i32() <= WireKind.ContactCancelled.i32():
+                return contact_from_record(record)
             # EventRecord is the raw C/WIT boundary. Normalize every numeric
             # payload here before rebuilding a typed event so hosts cannot
             # inject NaN/infinity into hit testing, layout, or scroll policy.
@@ -201,6 +219,8 @@ extend UiCore:
                     PointerEvent.Up(at: at, button: record.code.PointerButton())
                 WireKind.PointerLeave:
                     PointerEvent.Leave
+                WireKind.PointerCancel:
+                    PointerEvent.Cancel
                 WireKind.Scroll:
                     PointerEvent.Scroll(at: at, delta: Vec2(bounded_coordinate(record.dx), bounded_coordinate(record.dy)))
                 WireKind.KeyDown:

@@ -1,9 +1,7 @@
 // The IME crossing for the painted backend.
 //
-// One JNI entry per thing the input connection reports, and neither decides
-// anything: Elisa already knows how to place a composing run, how to replace
-// the previous one and where the caret goes, because the two Apple canvases
-// have driven exactly that API for as long as they have existed.
+// JNI converts and queues connection-owned edits. Only the native looper
+// invokes retained editing; Elisa resolves composition and cursor semantics.
 
 #include <android/log.h>
 #include <android/native_activity.h>
@@ -11,13 +9,18 @@
 #include <stdint.h>
 #include <string.h>
 #include "../common/utf8_utf16.h"
+#include "android_ime_transport.inc"
 
 #define ELISA_IME_TEXT_MAX 1024
+extern void elisa_android_request_frame(void);
 
-extern void elisa_android_composing_text(const char *text, int32_t length,
-                                         int32_t new_cursor_position);
-extern void elisa_android_commit_text(const char *text, int32_t length,
-                                      int32_t new_cursor_position);
+JNIEXPORT jboolean JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeImeAction(
+        JNIEnv *env, jclass self, jlong owner, jint action) {
+    (void)env; (void)self;
+    int accepted = elisa_ime_queue_push(&elisa_ime_commands, (uint64_t)owner, 10, action, NULL, 0);
+    if (accepted) elisa_android_request_frame();
+    return accepted ? JNI_TRUE : JNI_FALSE;
+}
 
 // READING BACK, for the gate. Composition is the one thing on this backend
 // that no display could show and no frame count could catch: a composing run
@@ -27,13 +30,60 @@ extern void elisa_android_commit_text(const char *text, int32_t length,
 extern const char *elisa_android_ime_text(void);
 extern int32_t elisa_android_ime_marked_units(void);
 extern int32_t elisa_android_ime_cursor_from_mark(void);
-extern int32_t elisa_android_wants_keyboard(void);
+extern int32_t elisa_android_text_purpose(void);
 extern int32_t elisa_android_keyboard_insets(float bottom, int32_t visible);
 extern void elisa_android_request_frame(void);
 extern void elisa_android_request_back(void);
 
 static float elisa_ime_last_inset_bottom = -1.0f;
+JNIEXPORT jlongArray JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeImeConnection(JNIEnv *env, jclass self) {
+    (void)self;
+    elisa_ime_snapshot snapshot = elisa_ime_connection_snapshot();
+    jlong values[7] = {(jlong)snapshot.owner, (jlong)snapshot.purpose, snapshot.start, snapshot.end, snapshot.mark_start, snapshot.mark_end, (jlong)snapshot.menu_serial};
+    jlongArray result = (*env)->NewLongArray(env, 7);
+    if (result != NULL) (*env)->SetLongArrayRegion(env, result, 0, 7, values);
+    return result;
+}
+JNIEXPORT jstring JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeImeReadback(
+        JNIEnv *env, jclass self, jlong owner, jint mode, jint count) {
+    (void)self;
+    uint16_t units[ELISA_IME_QUEUE_BYTES];
+    int32_t length = elisa_ime_readback((uint64_t)owner, mode, count, units);
+    jstring result = length < 0 ? NULL : (*env)->NewString(env, (const jchar *)units, length);
+    elisa_secure_clear(units, sizeof(units));
+    return result;
+}
 static int32_t elisa_ime_last_inset_visible = -1;
+JNIEXPORT jobjectArray JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeImeDocument(
+        JNIEnv *env, jclass self, jlong owner) {
+    (void)self;
+    uint16_t units[ELISA_IME_QUEUE_BYTES];
+    int32_t positions[2];
+    int32_t length = elisa_ime_document((uint64_t)owner, units, positions);
+    if (length < 0) { elisa_secure_clear(units, sizeof(units)); return NULL; }
+    jstring text = (*env)->NewString(env, (const jchar *)units, length);
+    elisa_secure_clear(units, sizeof(units));
+    if (text == NULL) return NULL;
+    jintArray selection = (*env)->NewIntArray(env, 2);
+    if (selection == NULL) { (*env)->DeleteLocalRef(env, text); return NULL; }
+    jint endpoints[2] = {positions[0], positions[1]};
+    (*env)->SetIntArrayRegion(env, selection, 0, 2, endpoints);
+    if ((*env)->ExceptionCheck(env)) {
+        (*env)->DeleteLocalRef(env, text);
+        (*env)->DeleteLocalRef(env, selection);
+        return NULL;
+    }
+    jclass object_class = (*env)->FindClass(env, "java/lang/Object");
+    jobjectArray result = object_class == NULL ? NULL : (*env)->NewObjectArray(env, 2, object_class, NULL);
+    if (result != NULL) {
+        (*env)->SetObjectArrayElement(env, result, 0, text);
+        (*env)->SetObjectArrayElement(env, result, 1, selection);
+    }
+    if (object_class != NULL) (*env)->DeleteLocalRef(env, object_class);
+    (*env)->DeleteLocalRef(env, text);
+    (*env)->DeleteLocalRef(env, selection);
+    return result;
+}
 static int elisa_ime_failed(JNIEnv *env);
 
 static int elisa_ime_call_activity(ANativeActivity *activity, const char *method_name) {
@@ -83,6 +133,10 @@ void elisa_android_ime_hide_keyboard(ANativeActivity *activity) {
     }
 }
 
+void elisa_android_ime_update_selection(ANativeActivity *activity) {
+    (void)elisa_ime_call_activity(activity, "requestImeSelection");
+}
+
 void elisa_android_activity_unhandled_back(ANativeActivity *activity) {
     if (!elisa_ime_call_activity(activity, "requestUnhandledBack")) {
         __android_log_print(ANDROID_LOG_WARN, "elisa-ui", "unhandled back request failed");
@@ -97,48 +151,83 @@ JNIEXPORT void JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeBack(
 
 // Java strings are UTF-16; the retained text API takes standard UTF-8. Convert
 // here, while preserving the IME's selection offsets in their native UTF-16 unit.
-static void elisa_ime_forward(JNIEnv *env, jstring text, int32_t new_cursor_position,
+static jboolean elisa_ime_forward(JNIEnv *env, uint64_t owner, jstring text, int32_t new_cursor_position,
                               int composing) {
-    if (env == NULL) return;
+    if (env == NULL || owner == 0) return JNI_FALSE;
     if (text == NULL) {
-        if (composing) elisa_android_composing_text("", 0, new_cursor_position);
-        else elisa_android_commit_text("", 0, new_cursor_position);
-        elisa_android_request_frame();
-        return;
+        int accepted = elisa_ime_queue_push(&elisa_ime_commands, owner,
+                composing ? 0 : 1, new_cursor_position, NULL, 0);
+        if (accepted) elisa_android_request_frame();
+        return accepted ? JNI_TRUE : JNI_FALSE;
     }
     jsize units_length = (*env)->GetStringLength(env, text);
-    if (elisa_ime_failed(env)) return;
+    if (elisa_ime_failed(env) || units_length > ELISA_IME_TEXT_MAX) return JNI_FALSE;
     const jchar *units = (*env)->GetStringChars(env, text, NULL);
     if (units == NULL) {
         (void)elisa_ime_failed(env);
-        return;
+        return JNI_FALSE;
     }
     if (elisa_ime_failed(env)) {
         (*env)->ReleaseStringChars(env, text, units);
-        return;
+        return JNI_FALSE;
     }
-    uint8_t utf8[ELISA_IME_TEXT_MAX];
-    size_t length = elisa_utf16_to_utf8((const uint16_t *)units,
-                                        (size_t)units_length, utf8, sizeof(utf8));
-    if (composing) elisa_android_composing_text((const char *)utf8, (int32_t)length,
-                                                 new_cursor_position);
-    else elisa_android_commit_text((const char *)utf8, (int32_t)length,
-                                   new_cursor_position);
-    elisa_secure_clear(utf8, sizeof(utf8));
+    int accepted = elisa_ime_enqueue_utf16(owner, composing ? 0 : 1,
+            new_cursor_position, (const uint16_t *)units, (size_t)units_length);
     (*env)->ReleaseStringChars(env, text, units);
-    elisa_android_request_frame();
+    if (accepted) elisa_android_request_frame();
+    return accepted ? JNI_TRUE : JNI_FALSE;
 }
 
-JNIEXPORT void JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeComposingText(
-        JNIEnv *env, jclass self, jstring text, jint new_cursor_position) {
+JNIEXPORT jboolean JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeComposingText(
+        JNIEnv *env, jclass self, jlong owner, jstring text, jint new_cursor_position) {
     (void)self;
-    elisa_ime_forward(env, text, (int32_t)new_cursor_position, 1);
+    return elisa_ime_forward(env, (uint64_t)owner, text, (int32_t)new_cursor_position, 1);
 }
 
-JNIEXPORT void JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeCommitText(
-        JNIEnv *env, jclass self, jstring text, jint new_cursor_position) {
+JNIEXPORT jboolean JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeFinishComposing(
+        JNIEnv *env, jclass self, jlong owner) {
+    (void)env; (void)self;
+    int accepted = elisa_ime_queue_push(&elisa_ime_commands, (uint64_t)owner, 3, 0, NULL, 0);
+    if (accepted) elisa_android_request_frame();
+    return accepted ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeImeBatch(
+        JNIEnv *env, jclass self, jlong owner, jint phase) {
+    (void)env; (void)self;
+    if (phase < 0 || phase > 2) return JNI_FALSE;
+    int accepted = elisa_ime_queue_push(&elisa_ime_commands, (uint64_t)owner,
+            phase == 0 ? 8 : 9, phase == 2 ? 1 : 0, NULL, 0);
+    if (accepted) elisa_android_request_frame();
+    return accepted ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeSelection(
+        JNIEnv *env, jclass self, jlong owner, jint start, jint stop, jboolean composing) {
+    (void)env; (void)self;
+    if (composing != JNI_TRUE && (start < 0 || stop < 0)) return JNI_FALSE;
+    int32_t end = (int32_t)stop;
+    int accepted = elisa_ime_queue_push(&elisa_ime_commands, (uint64_t)owner,
+            composing == JNI_TRUE ? 7 : 4, (int32_t)start, &end, sizeof(end));
+    if (accepted) elisa_android_request_frame();
+    return accepted ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeDeleteSurrounding(
+        JNIEnv *env, jclass self, jlong owner, jint before, jint after, jboolean codepoints) {
+    (void)env; (void)self;
+    if (before < 0 || after < 0) return JNI_FALSE;
+    int32_t following = (int32_t)after;
+    int accepted = elisa_ime_queue_push(&elisa_ime_commands, (uint64_t)owner,
+            codepoints == JNI_TRUE ? 6 : 5, (int32_t)before, &following, sizeof(following));
+    if (accepted) elisa_android_request_frame();
+    return accepted ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeCommitText(
+        JNIEnv *env, jclass self, jlong owner, jstring text, jint new_cursor_position) {
     (void)self;
-    elisa_ime_forward(env, text, (int32_t)new_cursor_position, 0);
+    return elisa_ime_forward(env, (uint64_t)owner, text, (int32_t)new_cursor_position, 0);
 }
 
 // The probe's three questions. None of them is a test double: the text and the
@@ -147,7 +236,8 @@ JNIEXPORT void JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeCommitText(
 JNIEXPORT jint JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeImeReady(
         JNIEnv *env, jclass self) {
     (void)env; (void)self;
-    return (jint)elisa_android_wants_keyboard();
+    elisa_ime_snapshot snapshot = elisa_ime_connection_snapshot();
+    return snapshot.owner != 0 && snapshot.purpose >= 0 ? 1 : 0;
 }
 
 JNIEXPORT void JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeImeReport(
@@ -174,19 +264,29 @@ JNIEXPORT void JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeImeReport(
         label_length = 1;
     }
     label[label_length] = 0;
+    int accepted = elisa_ime_queue_push(&elisa_ime_commands,
+            elisa_ime_connection_owner(), 2, 0, label, label_length);
+    if (tag_units != NULL) (*env)->ReleaseStringChars(env, tag, tag_units);
+    if (accepted) elisa_android_request_frame();
+    else __android_log_print(ANDROID_LOG_WARN, "elisa-ui", "ime report rejected tag=%s", (const char *)label);
+    elisa_secure_clear(label, sizeof(label));
+}
+
+// Ordered with edits and evaluated exclusively on the retained owner thread.
+static void elisa_ime_deliver_report(const char *label) {
+    int32_t purpose = elisa_android_text_purpose();
+    if (purpose == 1 || purpose < 0 || purpose > 5) {
+        __android_log_print(ANDROID_LOG_INFO, "elisa-ui", "ime %s secure=redacted", label);
+        return;
+    }
     const char *value = elisa_android_ime_text();
     __android_log_print(ANDROID_LOG_INFO, "elisa-ui", "ime %s text=[%s] marked=%d cursor=%d",
                         (const char *)label,
                         value == NULL ? "" : value, (int)elisa_android_ime_marked_units(),
                         (int)elisa_android_ime_cursor_from_mark());
-    if (tag_units != NULL) (*env)->ReleaseStringChars(env, tag, tag_units);
 }
 
-JNIEXPORT void JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeKeyboardInsets(
-        JNIEnv *env, jclass self, jfloat bottom, jboolean visible) {
-    (void)env; (void)self;
-    const int32_t shown = visible == JNI_TRUE ? 1 : 0;
-    const float logical_bottom = shown ? bottom : 0.0f;
+static void elisa_ime_deliver_insets(float logical_bottom, int32_t shown) {
     const int32_t accepted = elisa_android_keyboard_insets(logical_bottom, shown);
     if (shown != elisa_ime_last_inset_visible || logical_bottom != elisa_ime_last_inset_bottom || !accepted) {
         __android_log_print(ANDROID_LOG_INFO, "elisa-ui",
@@ -195,5 +295,11 @@ JNIEXPORT void JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeKeyboardInse
         elisa_ime_last_inset_bottom = logical_bottom;
         elisa_ime_last_inset_visible = shown;
     }
-    elisa_android_request_frame();
+}
+
+JNIEXPORT void JNICALL Java_org_elisa_1ui_ElisaCanvasActivity_nativeKeyboardInsets(
+        JNIEnv *env, jclass self, jfloat bottom, jboolean visible) {
+    (void)env; (void)self;
+    if (elisa_ime_enqueue_insets(bottom, visible == JNI_TRUE ? 1 : 0))
+        elisa_android_request_frame();
 }

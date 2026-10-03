@@ -1,10 +1,8 @@
 // The Android host: a NativeActivity that owns a window, an input queue and
 // two fonts, and hands each frame to Elisa as a Skia canvas.
 //
-// Everything visible is Elisa's. This file locks the window's buffer, wraps
-// it in a raster surface, and calls the backend's entry points; it decides
-// nothing about appearance. What it does decide is what UIKit decides for
-// iOS: when a touch has become a drag. A finger that moves past the slop
+// This file wraps the window buffer in a raster surface and calls Elisa.
+// Like UIKit, it decides when a touch becomes a drag. Moving past the slop
 // cancels the press it began and scrolls whatever is under it from then on,
 // so a tap stays a tap and a drag scrolls.
 
@@ -62,6 +60,7 @@ extern "C" std::int32_t elisa_android_render(std::size_t canvas, std::size_t fon
                                              float height, float scale);
 extern "C" float elisa_android_frame_delay(void);
 extern "C" void elisa_android_touch(std::int32_t phase, float x, float y);
+#include "android_contact_ingress.inc"
 extern "C" void elisa_android_scroll(float x, float y, float dx, float dy);
 // An application that takes pictures defines this; one that does not, does
 // not, and the weak reference is null.
@@ -142,6 +141,8 @@ struct Host {
     bool focused = false;
     bool surface_gone = false;
     bool keyboard = false;
+    int keyboard_purpose = 1;
+    std::uint64_t keyboard_owner = 0;
     // The touch that may become a drag.
     bool touching = false;
     bool panning = false;
@@ -293,6 +294,8 @@ void start_or_resize(Host& host) {
     host.needs_frame = true;
 }
 
+#include "android_keyboard_sync.inc"
+
 void draw(Host& host) {
     ANativeWindow* window = host.app->window;
     if (window == nullptr || !host.started) return;
@@ -366,15 +369,7 @@ void draw(Host& host) {
     // know. Asked once a frame, acted on only when the answer changes: the
     // soft-input calls are posted to the UI thread and repeating them would
     // fight whatever the user is doing with the keyboard themselves.
-    const bool wants_keyboard = elisa_android_wants_keyboard() != 0;
-    if (wants_keyboard != host.keyboard) {
-        host.keyboard = wants_keyboard;
-        if (wants_keyboard) {
-            elisa_android_ime_show_keyboard(host.app->activity);
-        } else {
-            elisa_android_ime_hide_keyboard(host.app->activity);
-        }
-    }
+    sync_android_keyboard(host);
     host.needs_frame = elisa_android_frame_delay() > 0.0f;
     // Pictures after the first frame, the way the Skia fixture binds them.
     if (!host.banner) {
@@ -384,6 +379,7 @@ void draw(Host& host) {
 }
 
 void on_command(android_app* app, std::int32_t command) {
+    if (command == APP_CMD_TERM_WINDOW || command == APP_CMD_LOST_FOCUS || command == APP_CMD_PAUSE || command == APP_CMD_DESTROY) retire_android_keyboard(*static_cast<Host*>(app->userData));
     Host& host = *static_cast<Host*>(app->userData);
     switch (command) {
         case APP_CMD_INIT_WINDOW:
@@ -465,6 +461,7 @@ std::int32_t on_input(android_app* app, AInputEvent* event) {
     if (pointer_count == 0) return 0;
     const std::int32_t action_index =
         (raw_action & AMOTION_EVENT_ACTION_POINTER_INDEX_MASK) >> AMOTION_EVENT_ACTION_POINTER_INDEX_SHIFT;
+    forward_android_contacts(event, host.scale);
     std::int32_t pointer_index = pointer_index_for_id(event, host.active_pointer_id);
     if (pointer_index < 0 || static_cast<std::size_t>(pointer_index) >= pointer_count) {
         pointer_index = action_index >= 0 && static_cast<std::size_t>(action_index) < pointer_count ? action_index : 0;
@@ -484,7 +481,7 @@ std::int32_t on_input(android_app* app, AInputEvent* event) {
             elisa_android_touch(kTouchDown, x, y);
             break;
         case AMOTION_EVENT_ACTION_POINTER_DOWN:
-            // The single-pointer API cannot represent a pinch identity. Once
+            // The legacy pointer path cannot represent a pinch identity. Once
             // another finger arrives, cancel the pending press and keep the
             // interaction in scroll mode instead of feeding slot-zero events
             // into the old tap target.
@@ -587,6 +584,7 @@ void android_main(android_app* app) {
         if (external_frame_requested.exchange(false, std::memory_order_acquire)) host.needs_frame = true;
         if (source != nullptr) source->process(app, source);
         if (app->destroyRequested != 0) break;
+        elisa_android_ime_drain();
         elisa_android_process_back_requests(app->activity);
         if (host.needs_frame || elisa_android_frame_delay() > 0.0f) draw(host);
     }
@@ -595,6 +593,7 @@ void android_main(android_app* app) {
     // the lifetime boundary unconditional so no late JNI clipboard call can
     // dereference the dead activity.
     active_android_app.store(nullptr, std::memory_order_release);
+    retire_android_keyboard(host);
     elisa_android_clipboard_attach(nullptr);
     elisa_android_services_attach(nullptr);
 }

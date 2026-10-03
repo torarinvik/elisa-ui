@@ -5,7 +5,10 @@
 // framework event a phase produces, what a HID usage means, and whether the
 // software keyboard should be up.
 
-@interface ElisaUiKitView : UIView <UIKeyInput, UIPointerInteractionDelegate>
+@interface ElisaUiKitView : UIView <UIKeyInput, UIPointerInteractionDelegate> {
+    elisa_contact_clock _elisaContactClock;
+    NSUInteger _elisaContactCount;
+}
 // The elements published by the last committed semantic frame. UIKit reads
 // this through accessibilityElements; Elisa owns its contents and ordering.
 @property(nonatomic, strong) NSArray *elisaElements;
@@ -14,7 +17,20 @@
 // user's language are the text system's job, not the framework's.
 @property(nonatomic, weak) id<UITextInputDelegate> inputDelegate;
 @property(nonatomic, strong) id<UITextInputTokenizer> elisaTokenizer;
+@property(nonatomic, strong) UITextSelectionDisplayInteraction *elisaSelectionDisplay;
+@property(nonatomic, assign) size_t elisaSelectionTree;
+@property(nonatomic, assign) size_t elisaSelectionField;
+@property(nonatomic, strong) UIPanGestureRecognizer *elisaHandlePan;
+@property(nonatomic, strong) UIPanGestureRecognizer *elisaFingerScroll;
+@property(nonatomic, assign) size_t elisaHandleTree;
+@property(nonatomic, assign) size_t elisaHandleField;
+@property(nonatomic, assign) BOOL elisaHandleMovingEnd;
+@property(nonatomic, strong) UIEditMenuInteraction *elisaEditMenu;
+@property(nonatomic, assign) size_t elisaEditTree;
+@property(nonatomic, assign) size_t elisaEditField;
 - (size_t)elisaHandle;
+- (BOOL)elisaPointHitsSelectionHandle:(CGPoint)point;
+- (UIView<UITextSelectionHandleView> *)elisaSelectionHandleAtPoint:(CGPoint)point;
 @end
 
 @implementation ElisaUiKitView
@@ -23,21 +39,88 @@
     return (size_t)(__bridge void *)self;
 }
 
+- (BOOL)elisaPointHitsSelectionHandle:(CGPoint)point {
+    return [self elisaSelectionHandleAtPoint:point] != nil;
+}
+
+- (UIView<UITextSelectionHandleView> *)elisaSelectionHandleAtPoint:(CGPoint)point {
+    if (!self.elisaSelectionDisplay.isActivated ||
+        !elisa_uikit_text_owner_matches([self elisaHandle], self.elisaSelectionTree, self.elisaSelectionField)) return nil;
+    for (UIView<UITextSelectionHandleView> *handle in self.elisaSelectionDisplay.handleViews) {
+        CGPoint local = [self convertPoint:point toView:handle];
+        if (!handle.hidden && handle.alpha > 0.0 && CGRectContainsPoint(handle.bounds, local)) return handle;
+    }
+    return nil;
+}
+
+// Secure fields must not participate in keyboard correction or smart edits.
+- (BOOL)isSecureTextEntry {
+    return elisa_uikit_text_is_secure([self elisaHandle]) != 0;
+}
+- (UITextAutocorrectionType)autocorrectionType {
+    const int purpose = elisa_uikit_text_purpose([self elisaHandle]);
+    return purpose == 0 || purpose == 5 ? UITextAutocorrectionTypeDefault : UITextAutocorrectionTypeNo;
+}
+- (UIKeyboardType)keyboardType {
+    switch (elisa_uikit_text_purpose([self elisaHandle])) {
+        case 2: return UIKeyboardTypeEmailAddress;
+        case 3: return UIKeyboardTypeURL;
+        case 4: return UIKeyboardTypeDecimalPad;
+        default: return UIKeyboardTypeDefault;
+    }
+}
+- (UIReturnKeyType)returnKeyType {
+    return elisa_uikit_text_purpose([self elisaHandle]) == 5 ? UIReturnKeySearch : UIReturnKeyDefault;
+}
+- (UITextSpellCheckingType)spellCheckingType {
+    return self.secureTextEntry ? UITextSpellCheckingTypeNo : UITextSpellCheckingTypeDefault;
+}
+- (UITextSmartQuotesType)smartQuotesType {
+    return self.secureTextEntry ? UITextSmartQuotesTypeNo : UITextSmartQuotesTypeDefault;
+}
+- (UITextSmartDashesType)smartDashesType {
+    return self.secureTextEntry ? UITextSmartDashesTypeNo : UITextSmartDashesTypeDefault;
+}
+
 - (void)drawRect:(CGRect)dirtyRect {
     (void)dirtyRect;
     elisa_uikit_frame([self elisaHandle], (size_t)UIGraphicsGetCurrentContext());
+    self.elisaSelectionTree = elisa_uikit_text_owner_tree([self elisaHandle]);
+    self.elisaSelectionField = elisa_uikit_text_owner_field([self elisaHandle]);
+    self.elisaSelectionDisplay.activated = self.isFirstResponder && self.elisaSelectionTree != 0;
+    [self.elisaSelectionDisplay setNeedsSelectionUpdate];
+    [self.elisaSelectionDisplay layoutManagedSubviews];
+    // Elisa paints themed caret/highlight; UIKit supplies adjustment handles.
+    self.elisaSelectionDisplay.cursorView.blinking = NO;
+    self.elisaSelectionDisplay.cursorView.alpha = 0.0;
+    self.elisaSelectionDisplay.highlightView.alpha = 0.0;
 }
 
 // --- Touch -------------------------------------------------------------
 
 - (void)forwardTouches:(NSSet<UITouch *> *)touches phase:(int)phase {
-    // Elisa's retained model is single-pointer, so the first touch of a set is
-    // the pointer. Which touch that is, and what a phase means, are decided
-    // there; this only reports the location UIKit measured.
-    UITouch *touch = [touches anyObject];
-    if (touch == nil) return;
-    CGPoint p = [touch locationInView:self];
-    elisa_uikit_touch([self elisaHandle], phase, (float)p.x, (float)p.y, (int)touch.tapCount);
+    if (phase == 0 && _elisaContactCount == 0 && touches.count > 0) {
+        double first = INFINITY;
+        for (UITouch *touch in touches) first = fmin(first, touch.timestamp);
+        (void)elisa_contact_seconds(&_elisaContactClock, first, true);
+    }
+    for (UITouch *touch in touches) {
+        const float timestamp = elisa_contact_seconds(&_elisaContactClock,
+            touch.timestamp, false);
+        if (phase == 0) ++_elisaContactCount;
+        if ((phase == 3 || phase == 4) && _elisaContactCount > 0) --_elisaContactCount;
+        CGPoint p = [touch locationInView:self];
+        if (phase == 0 && [self elisaPointHitsSelectionHandle:p]) {
+            [self.elisaEditMenu dismissMenu];
+            elisa_uikit_text_handle_contact([self elisaHandle], (size_t)(__bridge void *)touch,
+                phase, (float)p.x, (float)p.y, timestamp, (int)touch.type, (int)touch.tapCount,
+                self.elisaSelectionTree, self.elisaSelectionField);
+            continue;
+        }
+        elisa_uikit_contact([self elisaHandle], (size_t)(__bridge void *)touch,
+                            phase, (float)p.x, (float)p.y, timestamp,
+                            (int)touch.type, (int)touch.tapCount);
+    }
 }
 
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
@@ -81,6 +164,7 @@
         [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(elisaScroll:)];
     finger.allowedTouchTypes = @[@(UITouchTypeDirect)];
     finger.maximumNumberOfTouches = 1;
+    self.elisaFingerScroll = finger;
     [self addGestureRecognizer:finger];
 }
 
@@ -185,10 +269,12 @@
 }
 
 - (void)insertText:(NSString *)text {
+    [self.elisaEditMenu dismissMenu];
     elisa_uikit_insert_text([self elisaHandle], (size_t)(__bridge void *)text);
 }
 
 - (void)deleteBackward {
+    [self.elisaEditMenu dismissMenu];
     elisa_uikit_delete_backward([self elisaHandle]);
 }
 
@@ -233,7 +319,13 @@
 }
 
 - (NSArray *)accessibilityElements {
-    return self.elisaElements;
+    NSMutableArray *elements = [self.elisaElements mutableCopy] ?: [NSMutableArray array];
+    if (self.elisaSelectionDisplay.isActivated) {
+        for (UIView *handle in self.elisaSelectionDisplay.handleViews) {
+            if (!handle.hidden && handle.alpha > 0.0) [elements addObject:handle];
+        }
+    }
+    return elements;
 }
 
 @end

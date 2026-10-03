@@ -75,6 +75,8 @@ if [[ ! -x "$ADB" ]] || ! "$ADB" devices | grep -q "	device$"; then
   exit 0
 fi
 
+bash "$ROOT/scripts/build_android_menu_automation.sh" >/dev/null
+"$ADB" install -r "$ROOT/build/android-menu-automation/menu-automation.apk" >/dev/null
 bash "$ROOT/scripts/build_android.sh" showcase >/dev/null
 APK="$ANDROID_OUT_ROOT/showcase/showcase.apk"
 [[ -f "$APK" ]] || { echo "android ime: the build produced no package" >&2; exit 1; }
@@ -134,13 +136,13 @@ tap 499 413   # the first field on the forms page
 # prompt rather than sitting out the timeout.
 for _ in $(seq 1 30); do
   log="$("$ADB" logcat -d -s elisa-ui)"
-  grep -qE "ime (committed|no-field|no-connection)" <<<"$log" && break
+  grep -qE "ime (committed|no-field|no-connection)|ime report rejected tag=(no-field|no-connection)" <<<"$log" && break
   sleep 1
 done
 
 log="$("$ADB" logcat -d -s elisa-ui)"
 
-if grep -q "ime no-field" <<<"$log"; then
+if grep -qE "ime no-field|ime report rejected tag=no-field" <<<"$log"; then
   echo "android ime: the navigation taps did not reach a text field, so the IME path was NOT exercised" >&2
   echo "$frame" >&2
   "$ADB" shell am force-stop "$PACKAGE" || true
@@ -173,8 +175,6 @@ if ! grep -qE 'ime-insets bottom=0(\.0+)? visible=0 accepted=1' <<<"$log"; then
   "$ADB" shell am force-stop "$PACKAGE" || true
   exit 1
 fi
-"$ADB" shell am force-stop "$PACKAGE" || true
-
 # FIVE FACTS, and each one catches a different way IME editing can be wrong.
 #   Android's start-relative cursor is honored for a supplementary scalar;
 #   a provisional run arrives and is marked;
@@ -190,10 +190,67 @@ expect "ime cursor-at-start text=[A😀B] marked=4 cursor=0"
 expect "ime composing-1 text=[ni] marked=2"
 expect "ime composing-2 text=[nihao] marked=5"
 expect "ime committed text=[你好👋] marked=0 cursor=0"
+for _ in $(seq 1 10); do
+  log="$("$ADB" logcat -d -s elisa-ui)"
+  grep -q 'ime-batch \(passed\|failed\)' <<<"$log" && break
+  sleep 1
+done
+expect "ime-batch passed nested publication utf16 close"
+expect "ime-clipboard passed copy cut unicode-paste close"
+expect "ime-menu created owner-bound floating"
+expect "ime batch-inside text=[batch😀] marked=0 cursor=7"
+
+# Real MotionEvent hold/release, not the Java connection probe. A nonzero
+# menu request serial can only originate in retained long-press policy.
+press_x="$(( display_width * 499 / 1000 ))"
+press_y="$(( display_height * 413 / 1000 ))"
+"$ADB" shell input swipe "$press_x" "$press_y" "$press_x" "$press_y" 1200
+for _ in $(seq 1 15); do
+  log="$("$ADB" logcat -d -s elisa-ui)"
+  grep -qE 'ime-menu created owner-bound floating request=[1-9][0-9]*' <<<"$log" && break
+  sleep 1
+done
+grep -qE 'ime-menu created owner-bound floating request=[1-9][0-9]*' <<<"$log" || {
+  echo "android ime: canvas long press did not create an explicit menu" >&2
+  exit 1
+}
+"$ADB" shell input keyevent 4 >/dev/null
+for _ in $(seq 1 10); do
+  log="$("$ADB" logcat -d -s elisa-ui)"
+  grep -qE 'ime-menu destroyed request=[1-9][0-9]*' <<<"$log" && break
+  sleep 1
+done
+grep -qE 'ime-menu destroyed request=[1-9][0-9]*' <<<"$log" || {
+  echo "android ime: Back did not dismiss the long-press menu" >&2
+  exit 1
+}
+
+# Reopen and hit Copy using observed Android accessibility bounds. The opt-in
+# probe cleared the task emulator's clipboard after its earlier round trip.
+"$ADB" shell input swipe "$press_x" "$press_y" "$press_x" "$press_y" 1200
+sleep 1
+menu_result="$("$ADB" shell am instrument -w org.elisa_ui.menucheck/org.elisa_ui.menucheck.ElisaMenuAutomation)"
+grep -qF 'elisa menu click passed Copy at' <<<"$menu_result" || {
+  echo "$menu_result" >&2
+  exit 1
+}
+for _ in $(seq 1 15); do
+  log="$("$ADB" logcat -d -s elisa-ui)"
+  grep -q 'ime-menu-copy passed Unicode clipboard' <<<"$log" && break
+  sleep 1
+done
+expect "ime-menu-copy passed Unicode clipboard"
 
 # THE NEXT BACK is for the Activity, not the keyboard. With no Elisa dialog or
 # navigation entry, Android's default root-task behavior must still run after
 # the native owner thread reports UiBack::Unhandled.
+foreground="$("$ADB" shell dumpsys window 2>/dev/null | sed -n 's/.*mCurrentFocus=//p' | head -1 | tr -d '\r')"
+if [[ "$foreground" != *"$PACKAGE"* ]]; then
+  echo "android ime: Activity was not foreground before root Back; fallback was NOT exercised" >&2
+  echo "focused window: $foreground" >&2
+  "$ADB" shell am force-stop "$PACKAGE" || true
+  exit 1
+fi
 "$ADB" shell input keyevent 4 >/dev/null
 focus=""
 background_samples=0
@@ -215,4 +272,4 @@ if [[ "$background_samples" -lt 2 ]]; then
 fi
 "$ADB" shell am force-stop "$PACKAGE" || true
 
-echo "android ime: composition committed as 你好👋; visible/hidden insets reached UiMobileSurface; unhandled Back returned to Android"
+echo "android ime: composition, batch and Unicode clipboard passed; canvas long press opened a menu and Back dismissed it; visible/hidden insets passed; root Back returned to Android"

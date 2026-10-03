@@ -17,6 +17,34 @@ def uikit_text_ready(view_handle: usize) -> bool:
 def uikit_text_editable(view_handle: usize) -> bool:
     return uikit_text_ready(view_handle) and UiLifecycle::accepts_input()
 
+# Native editing gestures must start on the current document, not another
+# control sharing the canvas. Retained hit testing includes clipping/occlusion.
+def uikit_text_interaction_at(view_handle: usize, x: f32, y: f32) -> i32:
+    return 0 if not uikit_text_editable(view_handle)
+    return 0 if not UiCore::is_finite(x) or not UiCore::is_finite(y)
+    return 1 if UiFlat::hit(x, y) == UiFlat::focused() else 0
+
+# A menu is asynchronous. Its action must still belong to the document whose
+# menu was published, not a recycled widget or a subsequently focused field.
+def uikit_text_owner_tree(view_handle: usize) -> usize:
+    return UiFlat::lifetime() if uikit_text_editable(view_handle) else 0
+
+def uikit_text_owner_field(view_handle: usize) -> usize:
+    return UiFlat::focused() if uikit_text_editable(view_handle) else UiFlat::NONE
+
+def uikit_text_owner_matches(view_handle: usize, tree: usize, field: usize) -> i32:
+    return 0 if not uikit_text_editable(view_handle)
+    return 1 if tree == UiFlat::lifetime() and field == UiFlat::focused() else 0
+
+# Native keyboard privacy must follow the retained field, not UIView defaults.
+def uikit_text_is_secure(view_handle: usize) -> i32:
+    return 0 if not uikit_text_ready(view_handle)
+    return 1 if UiFlat::widget(UiFlat::focused()).secure else 0
+
+def uikit_text_purpose(view_handle: usize) -> i32:
+    return 0 if not uikit_text_ready(view_handle)
+    return UiFlat::text_input_traits(UiFlat::focused()).purpose.i32()
+
 # --- Document extent and offsets ---------------------------------------
 
 def uikit_text_length(view_handle: usize) -> usize:
@@ -38,10 +66,11 @@ def uikit_text_offset_position(view_handle: usize, offset: usize, delta: i64) ->
     base: usize = uikit_text_clamp_offset(view_handle, offset)
     return UiUIKit::not_found() if base == UiUIKit::not_found()
     if delta < 0:
-        step: usize = (0 - delta).usize()
+        step: usize = (0 - (delta + 1)).usize() + 1
         return UiUIKit::not_found() if step > base
         return base - step
-    return uikit_text_clamp_offset(view_handle, base + delta.usize())
+    return UiUIKit::not_found() if delta.usize() > uikit_text_length(view_handle) - base
+    return base + delta.usize()
 
 def uikit_text_range_location(view_handle: usize, location: usize) -> usize:
     return 0 if not uikit_text_ready(view_handle)
@@ -141,6 +170,7 @@ def uikit_text_rect(view_handle: usize, location: usize, length: usize,
     width <- 0.0
     height <- 0.0
     return 0 if not uikit_text_ready(view_handle)
+    return 0 if location == UiUIKit::not_found() or location > uikit_text_length(view_handle)
     index: usize = UiFlat::focused()
     start: usize = uikit_text_range_location(view_handle, location)
     span: usize = uikit_text_range_length(view_handle, location, length)
@@ -149,7 +179,12 @@ def uikit_text_rect(view_handle: usize, location: usize, length: usize,
     y <- UiFlat::text_caret_y(index)
     height <- UiFlat::text_caret_height(index)
     # A zero-length range is a caret, which has a nominal width of its own.
-    width <- UiUIKit::caret_width() if span == 0 else UiFlat::text_character_x(index, start + span) - left
+    right: f32 = UiFlat::text_character_x(index, start + span)
+    if span == 0:
+        width <- UiUIKit::caret_width()
+    else:
+        x <- right if right < left
+        width <- UiCore::nonnegative_extent(left - right if right < left else right - left)
     return 1
 
 def uikit_text_offset_at_x(view_handle: usize, x: f32) -> usize:
@@ -157,5 +192,38 @@ def uikit_text_offset_at_x(view_handle: usize, x: f32) -> usize:
     return UiUIKit::not_found() if not UiCore::is_finite(x)
     index: usize = UiFlat::focused()
     return UiFlat::text_utf16_offset(index, UiFlat::text_position_at(index, x))
+
+# Match the retained renderer's locale-resolved single-line direction.
+# This does not claim mixed-bidi visual-run navigation.
+def uikit_text_is_rtl(view_handle: usize) -> i32:
+    return 0 if not uikit_text_ready(view_handle)
+    return 1 if UiLocalization::is_rtl(UiLocalization::current_locale()) else 0
+
+# Physical horizontal direction uses the same mirrored run as hit testing.
+# Negative results reject a foreign/retired document or invalid direction.
+def uikit_text_layout_towards_start(view_handle: usize, left: i32) -> i32:
+    return -1 if not uikit_text_ready(view_handle) or not uikit_boolean_flag_is_valid(left)
+    return 1 if (left == 1) != (uikit_text_is_rtl(view_handle) == 1) else 0
+
+def uikit_text_layout_position(view_handle: usize, offset: usize, left: i32, steps: i64) -> usize:
+    start: i32 = uikit_text_layout_towards_start(view_handle, left)
+    return UiUIKit::not_found() if start < 0
+    limit: i64 = uikit_text_length(view_handle).i64()
+    # Bound before negating, including the minimum signed integer.
+    return UiUIKit::not_found() if steps > limit or steps < 0 - limit
+    return uikit_text_offset_position(view_handle, offset, 0 - steps if start == 1 else steps)
+
+def uikit_text_character_position(view_handle: usize, offset: usize, step: i32) -> usize:
+    return UiUIKit::not_found() if uikit_text_clamp_offset(view_handle, offset) == UiUIKit::not_found() or step < -1 or step > 1
+    return UiFlat::text_character_offset(UiFlat::focused(), offset, step)
+
+def uikit_text_layout_character(view_handle: usize, offset: usize, left: i32) -> usize:
+    start: i32 = uikit_text_layout_towards_start(view_handle, left)
+    return UiUIKit::not_found() if start < 0
+    base: usize = uikit_text_character_position(view_handle, offset, 0)
+    next: usize = uikit_text_character_position(view_handle, offset, -1 if start == 1 else 1)
+    # UITextInput extension has no character beyond the document edge.
+    return UiUIKit::not_found() if next == base
+    return next
 
 include "./ui_uikit_flat_text_exports.elisa"

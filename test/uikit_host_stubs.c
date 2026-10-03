@@ -67,7 +67,16 @@ void elisa_uikit_set_idle_timer_disabled(int disabled) { (void)disabled; }
 
 int elisa_uikit_begin_text_input(size_t viewHandle) { (void)viewHandle; return 1; }
 int elisa_uikit_end_text_input(size_t viewHandle) { (void)viewHandle; return 1; }
-void elisa_uikit_reload_input_views(size_t viewHandle) { (void)viewHandle; }
+static int elisa_uikit_stub_text_suspensions = 0;
+void elisa_uikit_suspend_text_ui(size_t viewHandle) {
+    if (viewHandle != 0) ++elisa_uikit_stub_text_suspensions;
+}
+int elisa_uikit_stub_text_suspension_count(void) { return elisa_uikit_stub_text_suspensions; }
+static int elisa_uikit_stub_keyboard_reloads = 0;
+void elisa_uikit_reload_input_views(size_t viewHandle) {
+    if (viewHandle != 0) ++elisa_uikit_stub_keyboard_reloads;
+}
+int elisa_uikit_stub_keyboard_reload_count(void) { return elisa_uikit_stub_keyboard_reloads; }
 
 int elisa_uikit_clipboard_write(size_t text) { (void)text; return 0; }
 size_t elisa_uikit_clipboard_read(void) { return 0; }

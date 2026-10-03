@@ -10,6 +10,7 @@ include "./ui_uikit_clipboard.elisa"
 include "../../widgets/ui_handles.elisa"
 include "./ui_uikit_virtual_accessibility.elisa"
 include "./ui_uikit_accessibility_hierarchy.elisa"
+include "./ui_uikit_contacts.elisa"
 
 # A touch is both a pointer transition and a text-selection click. Keeping that
 # ordering here means every native host reports the same interaction; the shim
@@ -39,7 +40,24 @@ def uikit_flat_touch(view_handle: usize, phase: i32, x: f32, y: f32, tap_count: 
 # resigns -- first responder as the retained focus changes.
 def uikit_flat_sync_keyboard() -> void:
     return if not UiUIKit::live()
-    UiUIKit::set_text_input(UiFlat::accepts_text())
+    wanted: bool = UiFlat::accepts_text()
+    active: bool = UiUIKit::text_input_is_active()
+    secure: bool = wanted and UiFlat::widget(UiFlat::focused()).secure
+    purpose: i32 = UiFlat::text_input_traits(UiFlat::focused()).purpose.i32() if wanted else 0
+    changed: bool = UiUIKitKeyboardPrivacy::update(secure, purpose)
+    _ = UiUIKit::set_text_input(wanted)
+    elisa_uikit_reload_input_views(UiUIKit::view_handle()) if wanted and active and changed
+
+module UiUIKitKeyboardPrivacy:
+    public:
+        def update(secure: bool, purpose: i32) -> bool:
+            changed: bool = uikit_keyboard_secure != secure or uikit_keyboard_purpose != purpose
+            uikit_keyboard_secure <- secure
+            uikit_keyboard_purpose <- purpose
+            return changed
+    private:
+        global mutable uikit_keyboard_secure: bool = false
+        global mutable uikit_keyboard_purpose: i32 = 0
 
 def uikit_flat_wants_keyboard(view_handle: usize) -> i32:
     return 0 if not UiUIKit::live() or view_handle != UiUIKit::view_handle()
@@ -215,4 +233,6 @@ def uikit_flat_pointer_region(view_handle: usize, x: f32, y: f32,
     return UiFlat::cursor_at(x, y)
 
 include "./ui_uikit_flat_text.elisa"
+include "./ui_uikit_text_handle_drag.elisa"
+include "./ui_uikit_flat_menu.elisa"
 include "./ui_uikit_flat_exports.elisa"

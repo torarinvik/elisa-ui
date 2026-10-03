@@ -30,6 +30,16 @@ bash "$ROOT/scripts/check_toolchain.sh"
 mkdir -p "$ROOT/build"
 status=0
 
+if ! bash "$ROOT/scripts/check_android_ime_traits.sh"; then
+  echo "FAIL Android IME trait mapping"
+  status=1
+fi
+
+if ! bash "$ROOT/scripts/check_android_contacts.sh"; then
+  echo "FAIL Android native contact translation"
+  status=1
+fi
+
 if ! bash "$ROOT/scripts/check_toolchain_resolution.sh"; then
   echo "FAIL toolchain resolution"
   status=1

@@ -1,0 +1,178 @@
+# Retained IME ingress. The native looper owns queued bytes during dispatch.
+include "../../widgets/ui_handles.elisa"
+include "../../core/ui_paint.elisa"
+include "../mobile/ui_mobile_surface.elisa"
+include "./ui_android_text_gesture.elisa"
+
+global mutable android_ime_staging: u8[UiFlat::TEXT_CAPACITY] = zeroed
+global mutable android_ime_owner_serial: u64 = 0
+global mutable android_ime_owner_tree: usize = 0
+global mutable android_ime_owner_field: usize = UiFlat::NONE
+global mutable android_ime_owner_focus: u32 = 0
+global mutable android_ime_owner_epoch: u32 = 0
+global mutable android_ime_owner_session: u32 = 0
+global mutable android_ime_owner_purpose: i32 = -1
+global mutable android_ime_owner_traits: u32 = 0
+global mutable android_ime_readback_store: u8[UiFlat::TEXT_CAPACITY] = zeroed
+
+def android_ime_readback_text() -> cstr:
+    can Memory.Allocate, Abort.Panic, Ui.Input, Unsafe.PointerCast, Ui.Text:
+        for index in 0..<UiFlat::TEXT_CAPACITY:
+            android_ime_readback_store[index] <- 0
+        return 0.uintptr().cast[cstr] if not UiLifecycle::accepts_input() or not UiFlat::allows_text_readback()
+        value: sview = UiFlat::text_value(UiFlat::focused())
+        for index in 0..<value.len.usize():
+            android_ime_readback_store[index] <- value.data[index]
+        return (&android_ime_readback_store[0]).cast[cstr]
+
+export fn elisa_android_ime_readback_text() -> cstr = android_ime_readback_text
+
+# Owner-thread identity for coherent JNI publication; not a JNI query.
+def android_ime_owner() -> u64:
+    return 0 if not UiLifecycle::accepts_input() or not UiFlat::accepts_text()
+    tree: usize = UiFlat::lifetime()
+    field: usize = UiFlat::focused()
+    focus: u32 = UiFlat::focus_epoch()
+    epoch: u32 = UiMobileSurface::input_epoch()
+    session: u32 = UiLifecycle::generation()
+    purpose: i32 = UiFlat::text_input_traits(field).purpose.i32()
+    traits: u32 = UiFlat::text_traits_epoch()
+    if tree != android_ime_owner_tree or field != android_ime_owner_field or focus != android_ime_owner_focus or epoch != android_ime_owner_epoch or session != android_ime_owner_session or purpose != android_ime_owner_purpose or traits != android_ime_owner_traits:
+        android_ime_owner_serial <- android_ime_owner_serial + 1
+        android_ime_owner_serial <- 1 if android_ime_owner_serial == 0
+        android_ime_owner_tree <- tree
+        android_ime_owner_field <- field
+        android_ime_owner_focus <- focus
+        android_ime_owner_epoch <- epoch
+        android_ime_owner_session <- session
+        android_ime_owner_purpose <- purpose
+        android_ime_owner_traits <- traits
+    return android_ime_owner_serial
+
+export fn elisa_android_ime_owner() -> u64 = android_ime_owner
+
+# Owner-thread query used only while publishing connection metadata.
+def android_ime_selection_position(endpoint: i32) -> i32:
+    return (-1 if endpoint >= 2 else 0) if not UiLifecycle::accepts_input() or not UiFlat::accepts_text()
+    field: usize = UiFlat::focused()
+    if endpoint >= 2:
+        return -1 if UiFlat::marked_utf16_length(field) == 0
+        start: usize = UiFlat::marked_utf16_location(field)
+        return start.i32() if endpoint == 2 else (start + UiFlat::marked_utf16_length(field)).i32()
+    byte: usize = UiFlat::widget(field).selection_anchor if endpoint == 0 else UiFlat::widget(field).caret
+    return UiFlat::text_utf16_offset(field, byte).i32()
+
+export fn elisa_android_ime_selection_position(endpoint: i32) -> i32 = android_ime_selection_position
+
+def android_ime_native_byte(text: cstr, index: usize) -> u8:
+    pointer: uintptr = text.cast[uintptr] can Unsafe.PointerCast
+    return 0 if pointer == 0.uintptr()
+    trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic]:
+        byte: u8& = (pointer + index.uintptr()).cast[u8&]
+        return byte
+
+def android_ime_stage(text: cstr, length: i32) -> sview:
+    return "" if length <= 0
+    room: usize = length.usize() if length.usize() < UiFlat::TEXT_CAPACITY else UiFlat::TEXT_CAPACITY
+    for index in 0..<room:
+        android_ime_staging[index] <- android_ime_native_byte(text, index)
+    return UiText::fixed_bytes_view_range[1024](android_ime_staging, 0, room)
+
+def android_ime_clear_staging() -> void:
+    # The retained editor copies synchronously; do not keep a second secret.
+    for index in 0..<UiFlat::TEXT_CAPACITY:
+        android_ime_staging[index] <- 0
+
+def android_composing_text(text: cstr, length: i32, new_cursor_position: i32) -> void:
+    can Memory.Allocate, Abort.Panic, Ui.Input, Unsafe.PointerCast, Ui.Text:
+        return if not UiLifecycle::accepts_input() or not UiFlat::accepts_text() or length < 0
+        return if length > 0 and text.cast[uintptr] == 0.uintptr()
+        staged: sview = android_ime_stage(text, length)
+        # Positive cursor positions are relative to the inserted run's end;
+        # zero/negative positions are relative to its start, in UTF-16 units.
+        if new_cursor_position > 0:
+            UiFlat::update_marked_text_at_utf16_cursor(staged, true, new_cursor_position - 1)
+        else:
+            UiFlat::update_marked_text_at_utf16_cursor(staged, false, new_cursor_position)
+        android_ime_clear_staging()
+
+def android_commit_text(text: cstr, length: i32, new_cursor_position: i32) -> void:
+    can Memory.Allocate, Abort.Panic, Ui.Input, Unsafe.PointerCast, Ui.Text:
+        return if not UiLifecycle::accepts_input() or not UiFlat::accepts_text() or length < 0
+        return if length > 0 and text.cast[uintptr] == 0.uintptr()
+        staged: sview = android_ime_stage(text, length)
+        if new_cursor_position > 0:
+            UiFlat::commit_text_at_utf16_cursor(staged, 0, 0, false, true, new_cursor_position - 1)
+        else:
+            UiFlat::commit_text_at_utf16_cursor(staged, 0, 0, false, false, new_cursor_position)
+        android_ime_clear_staging()
+
+export fn elisa_android_composing_text(text: cstr, length: i32, new_cursor_position: i32) -> void = android_composing_text
+export fn elisa_android_commit_text(text: cstr, length: i32, new_cursor_position: i32) -> void = android_commit_text
+
+# Called by the native looper consumer, never directly by the Java thread.
+def android_ime_dispatch(owner: u64, kind: i32, text: cstr, length: i32, cursor: i32) -> i32:
+    can Memory.Allocate, Abort.Panic, Ui.Input, Unsafe.PointerCast, Ui.Text:
+        return 0 if owner == 0 or owner != android_ime_owner()
+        return 0 if kind != 0 and kind != 1 and kind != 3
+        return 0 if length < 0 or length.usize() > UiFlat::TEXT_CAPACITY
+        return 0 if length > 0 and text.cast[uintptr] == 0.uintptr()
+        if kind == 3:
+            return 0 if length != 0
+            UiFlat::unmark_text()
+        elif kind == 0:
+            android_composing_text(text, length, cursor)
+        else:
+            android_commit_text(text, length, cursor)
+        return 1
+
+export fn elisa_android_ime_dispatch(owner: u64, kind: i32, text: cstr, length: i32, cursor: i32) -> i32 = android_ime_dispatch
+
+def android_ime_selection(owner: u64, start: i32, stop: i32) -> i32:
+    can Memory.Allocate, Abort.Panic, Ui.Input, Unsafe.PointerCast, Ui.Text:
+        return 0 if owner == 0 or owner != android_ime_owner() or start < 0 or stop < 0
+        field: usize = UiFlat::focused()
+        anchor: usize = UiFlat::text_range_byte_length(field, 0, start.usize())
+        caret: usize = UiFlat::text_range_byte_length(field, 0, stop.usize())
+        UiFlat::set_selection(field, anchor, caret)
+        return 1
+
+export fn elisa_android_ime_selection(owner: u64, start: i32, stop: i32) -> i32 = android_ime_selection
+
+def android_ime_action(owner: u64, action: i32) -> i32:
+    can Memory.Allocate, Abort.Panic, Ui.Input, Unsafe.PointerCast, Ui.Text:
+        return 0 if owner == 0 or owner != android_ime_owner() or action < 1 or action > 4
+        return 1 if UiFlat::perform_text_action(action) else 0
+
+export fn elisa_android_ime_action(owner: u64, action: i32) -> i32 = android_ime_action
+
+def android_ime_composing_region(owner: u64, start: i32, stop: i32) -> i32:
+    can Memory.Allocate, Abort.Panic, Ui.Input, Unsafe.PointerCast, Ui.Text:
+        return 0 if owner == 0 or owner != android_ime_owner()
+        field: usize = UiFlat::focused()
+        first: usize = UiFlat::text_range_byte_length(field, 0, (start if start > 0 else 0).usize())
+        last: usize = UiFlat::text_range_byte_length(field, 0, (stop if stop > 0 else 0).usize())
+        if first == last:
+            UiFlat::unmark_text()
+        else:
+            UiFlat::set_marked(field, first, last)
+            UiFlat::unmark_text() if UiFlat::marked_utf16_length(field) == 0
+        return 1
+
+export fn elisa_android_ime_composing_region(owner: u64, start: i32, stop: i32) -> i32 = android_ime_composing_region
+
+def android_ime_delete_surrounding(owner: u64, before: i32, after: i32) -> i32:
+    can Memory.Allocate, Abort.Panic, Ui.Input, Unsafe.PointerCast, Ui.Text:
+        return 0 if owner == 0 or owner != android_ime_owner() or before < 0 or after < 0
+        UiFlat::delete_surrounding_utf16(before.usize(), after.usize())
+        return 1
+
+export fn elisa_android_ime_delete_surrounding(owner: u64, before: i32, after: i32) -> i32 = android_ime_delete_surrounding
+
+def android_ime_delete_codepoints(owner: u64, before: i32, after: i32) -> i32:
+    can Memory.Allocate, Abort.Panic, Ui.Input, Unsafe.PointerCast, Ui.Text:
+        return 0 if owner == 0 or owner != android_ime_owner() or before < 0 or after < 0
+        UiFlat::delete_surrounding_codepoints(before.usize(), after.usize())
+        return 1
+
+export fn elisa_android_ime_delete_codepoints(owner: u64, before: i32, after: i32) -> i32 = android_ime_delete_codepoints

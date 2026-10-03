@@ -151,14 +151,30 @@ PLIST
 plutil -lint "$OUT/elisa.xctestrun" >/dev/null
 
 LOG="$OUT/xcodebuild.log"
+TEST_ARGS=()
+EXPECTED_TESTS=9
+if [[ -n "${ELISA_UI_UITEST_ONLY:-}" ]]; then
+  TEST_ARGS=(-only-testing:"ElisaUiKitTouchTests/ElisaUiKitTouchTests/$ELISA_UI_UITEST_ONLY")
+  EXPECTED_TESTS=1
+fi
 # A gate that ran just before this one can still be tearing its own launch
 # down, and xcodebuild reports that as a failure even when the test itself
 # passed. One retry distinguishes a busy device from a real failure.
 run_ui_test() {
-  xcodebuild test-without-building -xctestrun "$OUT/elisa.xctestrun" \
-    -destination "platform=iOS Simulator,id=$UDID" >"$LOG" 2>&1
+  if [[ ${#TEST_ARGS[@]} -gt 0 ]]; then
+    xcodebuild test-without-building -xctestrun "$OUT/elisa.xctestrun" \
+      -destination "platform=iOS Simulator,id=$UDID" "${TEST_ARGS[@]}" >"$LOG" 2>&1
+  else
+    xcodebuild test-without-building -xctestrun "$OUT/elisa.xctestrun" \
+      -destination "platform=iOS Simulator,id=$UDID" >"$LOG" 2>&1
+  fi
 }
 if ! run_ui_test; then
+  if grep -Eq "Test Case .* failed|: error: -\\[" "$LOG"; then
+    echo "uikit touch: assertion failure; refusing to hide it with a retry" >&2
+    grep -E "error:|Failing tests" "$LOG" >&2 | head -10 || true
+    exit 1
+  fi
   echo "uikit touch: first attempt failed; retrying once in case the device was busy" >&2
   sleep 5
   if ! run_ui_test; then
@@ -167,9 +183,13 @@ if ! run_ui_test; then
     exit 1
   fi
 fi
-grep -q "Executed 2 tests, with 0 failures" "$LOG" || {
+grep -Eq "Executed $EXPECTED_TESTS tests?, with 0 failures" "$LOG" || {
   echo "uikit touch: the UI test did not report a pass" >&2
   tail -20 "$LOG" >&2
   exit 1
 }
-echo "uikit touch/text: a system HID tap and committed UIKit text both round-tripped through the retained model and semantic tree"
+if [[ -n "${ELISA_UI_UITEST_ONLY:-}" ]]; then
+  echo "uikit touch/text: selected test $ELISA_UI_UITEST_ONLY passed (not the full gate)"
+else
+  echo "uikit touch/text: HID cancellation, taps, text, menu/clipboard, secure export denial, LTR/RTL/Unicode handles, background/resume, and email-keyboard switching passed"
+fi

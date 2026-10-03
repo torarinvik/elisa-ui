@@ -21,3 +21,24 @@ No native branch currently owns retained widget state, layout traversal, paint
 commands, event translation, text editing, semantic identity, menu schema,
 clipboard policy, lifecycle interpretation, capability selection, or event
 queue/backpressure. Those decisions are implemented and tested in Elisa.
+
+UIKit semantic output uses `elisaPublishValue:` to update the native
+accessibility object's value without invoking its assistive-edit override.
+Only genuine `setAccessibilityValue:` requests enter retained editing. This
+directional separation prevents semantic frame publication from collapsing
+selection or cancelling composition. The UIKit edit-menu fragment constructs
+native menu objects from Elisa's schema, validates document ownership/action
+eligibility through Elisa, and forwards selectors to the retained editor.
+
+UIKit's `UITextSelectionDisplayInteraction` supplies native selection handles;
+Elisa continues painting the themed caret and range highlight. A canvas pan
+recognizer forwards the handle endpoint and raw position. Elisa owns the fixed
+opposite endpoint, UTF-16/grapheme normalization, cancellation restoration and
+tree/field/revision validation. Handle contacts suppress the compatibility
+pointer stream so a canvas press cannot collapse the range being adjusted.
+Elisa's mobile interruption stamp retires captured drags across focus,
+background and surface-loss round trips even without an intervening callback.
+The lifecycle adapter also requests immediate native presentation suspension:
+the shim dismisses menu objects, deactivates the selection display and toggles
+the native handle pan off/on to cancel it. It does not decide lifecycle policy,
+clear retained selection or resign the editor.

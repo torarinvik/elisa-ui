@@ -9,6 +9,7 @@ include "../src/platform/uikit/ui_uikit_flat.elisa"
 
 extern puts(text: cstr) -> i64
 extern elisa_uikit_stub_set_view(handle: usize) -> void
+extern elisa_uikit_stub_text_suspension_count() -> i32
 
 global mutable failures: i32 = 0
 
@@ -128,6 +129,10 @@ def check_readback(view: usize) -> void can[Unsafe.PointerCast]:
     check("a range from nowhere reads nothing", uikit_text_in_range(view, UiUIKit::not_found(), 1) == 0)
 
 def check_geometry(view: usize) -> void:
+    field: UiFlat::Widget = UiFlat::widget(TextTestApp::field_index())
+    check("native editing starts on the focused field", uikit_text_interaction_at(view, field.x + 4.0, field.y + 4.0) == 1)
+    check("native editing rejects another view", uikit_text_interaction_at(view + 1, field.x + 4.0, field.y + 4.0) == 0)
+    check("native editing rejects the background", uikit_text_interaction_at(view, -1000.0, -1000.0) == 0)
     x: mutable f32 = 0.0
     y: mutable f32 = 0.0
     width: mutable f32 = 0.0
@@ -139,7 +144,31 @@ def check_geometry(view: usize) -> void:
     check("a touch on the left lands at the start", uikit_text_offset_at_x(view, -1000.0) == 0)
     check("a touch on the right lands at the end", uikit_text_offset_at_x(view, 100000.0) == uikit_text_length(view))
     zero: f32 = 0.0
+    check("native editing rejects invalid coordinates", uikit_text_interaction_at(view, 1.0 / zero, field.y) == 0)
     check("a non-finite touch yields no offset", uikit_text_offset_at_x(view, 1.0 / zero) == UiUIKit::not_found())
+    check("an invalid geometry location fails closed", uikit_text_rect(view, UiUIKit::not_found(), 1, &x, &y, &width, &height) == 0 and x == 0.0 and y == 0.0 and width == 0.0 and height == 0.0)
+    check("geometry past the document is rejected", uikit_text_rect(view, uikit_text_length(view) + 1, 0, &x, &y, &width, &height) == 0)
+    _ = UiLocalization::set_locale("he-IL")
+    check("UIKit reports the retained RTL direction", uikit_text_is_rtl(view) == 1)
+    check("RTL physical left advances storage", uikit_text_layout_position(view, 1, 1, 1) == 2)
+    check("RTL physical right retreats storage", uikit_text_layout_position(view, 1, 0, 1) == 0)
+    check("RTL farthest left is the storage end", uikit_text_layout_towards_start(view, 1) == 0)
+    check("RTL selection rectangle has positive extent", uikit_text_rect(view, 0, uikit_text_length(view), &x, &y, &width, &height) == 1 and width > UiUIKit::caret_width() and height > 0.0)
+    _ = UiLocalization::set_locale("en-US")
+    check("UIKit direction resets with the retained locale", uikit_text_is_rtl(view) == 0)
+    check("LTR physical left retreats storage", uikit_text_layout_position(view, 1, 1, 1) == 0)
+    check("LTR physical right advances storage", uikit_text_layout_position(view, 1, 0, 1) == 2)
+    check("negative physical steps reverse movement", uikit_text_layout_position(view, 1, 1, -1) == 2)
+    check("invalid physical directions fail closed", uikit_text_layout_position(view, 1, 2, 1) == UiUIKit::not_found())
+    check("oversize physical steps fail closed", uikit_text_layout_position(view, 1, 1, 9223372036854775807) == UiUIKit::not_found())
+    smallest: i64 = 0 - 9223372036854775807 - 1
+    check("minimum signed movement fails closed", uikit_text_layout_position(view, 1, 1, smallest) == UiUIKit::not_found() and uikit_text_offset_position(view, 1, smallest) == UiUIKit::not_found())
+    UiHandles::clear_focus()
+    check("retired documents reject physical movement", uikit_text_layout_towards_start(view, 1) == -1 and uikit_text_layout_position(view, 1, 0, 1) == UiUIKit::not_found())
+    check("native editing rejects retired focus", uikit_text_interaction_at(view, field.x + 4.0, field.y + 4.0) == 0)
+    check("selection geometry clears after focus retirement", uikit_text_rect(view, 0, 1, &x, &y, &width, &height) == 0 and x == 0.0 and y == 0.0 and width == 0.0 and height == 0.0)
+    _ = UiFlat::request_focus(TextTestApp::field_index())
+    check("foreign view cannot receive selection geometry", uikit_text_rect(view + 1, 0, 1, &x, &y, &width, &height) == 0 and width == 0.0 and height == 0.0)
 
 def check_secure_field_refuses_readback() -> void can[Ui.Draw, Ui.Text, Ui.Input, Ui.Window, Unsafe.PointerCast]:
     check("a secure session starts", start_session(true))
@@ -149,6 +178,138 @@ def check_secure_field_refuses_readback() -> void can[Ui.Draw, Ui.Text, Ui.Input
     check("a secure field still has a document", uikit_text_length(view) == 3)
     check("a secure field refuses readback", uikit_text_in_range(view, 0, 3) == 0)
     UiUIKit::release_canvas()
+
+def check_menu_owner(view: usize) -> void:
+    tree: usize = uikit_text_owner_tree(view)
+    field: usize = uikit_text_owner_field(view)
+    check("a menu owner matches its live document", uikit_text_owner_matches(view, tree, field) == 1)
+    check("a menu owner rejects another view", uikit_text_owner_matches(view + 1, tree, field) == 0)
+    UiHandles::clear_focus()
+    check("a menu cannot edit after focus retirement", uikit_text_owner_matches(view, tree, field) == 0)
+    _ = UiFlat::request_focus(TextTestApp::field_index())
+    TextTestApp::build(false)
+    check("a menu cannot edit a recycled field", uikit_text_owner_matches(view, tree, field) == 0)
+    next_tree: usize = uikit_text_owner_tree(view)
+    next_field: usize = uikit_text_owner_field(view)
+    UiFlat::set_enabled(next_field, false)
+    check("a menu cannot edit a disabled document", uikit_text_owner_matches(view, next_tree, next_field) == 0)
+
+def check_menu_schema() -> void:
+    check("the native menu has four retained actions", uikit_text_menu_count() == 4)
+    for index in 0..<uikit_text_menu_count():
+        check("each native menu selector routes to an edit action", uikit_flat_text_action_for_selector(uikit_text_menu_selector(index)) > 0)
+        title: usize = uikit_text_menu_title(index)
+        check("each native menu title has native backing", title != 0)
+        CFRelease(title) if title != 0
+    check("only Select All retains the menu", uikit_text_menu_keeps_open(0) == 1 and uikit_text_menu_keeps_open(1) == 0)
+    check("an out-of-range native menu entry is inert", uikit_text_menu_title(4) == 0 and uikit_flat_text_action_for_selector(uikit_text_menu_selector(4)) == 0 and uikit_text_menu_keeps_open(4) == 0)
+
+def check_handle_contact(view: usize) -> void:
+    TextTestApp::build(false)
+    field: usize = TextTestApp::field_index()
+    tree: usize = UiFlat::lifetime()
+    box: UiFlat::Widget = UiFlat::widget(field)
+    UiFlat::set_selection(field, 0, 3)
+    uikit_flat_text_handle_contact(view, 444, 0, box.x + 25.0, box.y + 10.0, 0.0, 0, 1, tree + 1, field)
+    check("a stale handle cannot start a contact", UiMobileContacts::active_count() == 0)
+    uikit_flat_text_handle_contact(view, 444, 0, box.x + 25.0, box.y + 10.0, 0.0, 0, 1, tree, field)
+    check("a handle start preserves identified contact delivery", UiMobileContacts::active_count() == 1)
+    check("a handle start does not collapse the selection", uikit_text_selection_length(view) == 3 and UiFlat::active() == UiFlat::NONE)
+    uikit_flat_contact(view, 444, 1, box.x + 15.0, box.y + 10.0, 0.1, 0, 1)
+    check("a handle move does not become a compatibility drag", uikit_text_selection_length(view) == 3)
+    _ = uikit_text_set_selection(view, 0, 1)
+    uikit_flat_contact(view, 444, 3, box.x + 15.0, box.y + 10.0, 0.2, 0, 1)
+    check("a handle release preserves native selection adjustment", UiMobileContacts::active_count() == 0 and uikit_text_selection_length(view) == 1)
+
+def check_handle_adjustment(view: usize) -> void:
+    TextTestApp::build(false)
+    field: usize = TextTestApp::field_index()
+    tree: usize = UiFlat::lifetime()
+    one: f32 = UiFlat::text_character_x(field, 1)
+    two: f32 = UiFlat::text_character_x(field, 2)
+    UiFlat::set_selection(field, 0, 3)
+    check("a trailing handle anchors the selection start", UiUIKitHandleDrag::update(view, tree, field, 1, 1, two) == 1 and uikit_text_selection_location(view) == 0 and uikit_text_selection_length(view) == 2)
+    check("a handle move adjusts the selected endpoint", UiUIKitHandleDrag::update(view, tree, field, 1, 2, one) == 1 and uikit_text_selection_length(view) == 1)
+    check("a cancelled handle restores its original range", UiUIKitHandleDrag::update(view, tree, field, 1, 4, one) == 1 and uikit_text_selection_length(view) == 3)
+    check("a leading handle anchors the selection end", UiUIKitHandleDrag::update(view, tree, field, 0, 1, one) == 1 and uikit_text_selection_location(view) == 1 and uikit_text_selection_length(view) == 2)
+    check("a handle release commits its adjusted range", UiUIKitHandleDrag::update(view, tree, field, 0, 3, two) == 1 and uikit_text_selection_location(view) == 2 and uikit_text_selection_length(view) == 1)
+    check("a retired drag ignores later updates", UiUIKitHandleDrag::update(view, tree, field, 0, 2, one) == 0)
+    UiFlat::set_selection(field, 0, 3)
+    _ = UiUIKitHandleDrag::update(view, tree, field, 1, 1, two)
+    UiFlat::replace_text(field, "New")
+    check("a handle cannot overwrite a programmatic text update", UiUIKitHandleDrag::update(view, tree, field, 1, 2, one) == 0 and uikit_text_selection_length(view) == 0)
+    UiFlat::set_selection(field, 0, 3)
+    _ = UiUIKitHandleDrag::update(view, tree, field, 1, 1, two)
+    TextTestApp::build(false)
+    check("a handle cannot edit a replacement document", UiUIKitHandleDrag::update(view, tree, field, 1, 2, one) == 0 and uikit_text_selection_length(view) == 0)
+    next_field: usize = TextTestApp::field_index()
+    next_tree: usize = UiFlat::lifetime()
+    UiFlat::replace_text(next_field, "ábc")
+    _ = uikit_text_set_selection(view, 0, 4)
+    cluster_edge: f32 = UiFlat::text_character_x(next_field, 1)
+    _ = UiUIKitHandleDrag::update(view, next_tree, next_field, 1, 1, cluster_edge)
+    check("a handle does not split a combining cluster", uikit_text_selection_length(view) == 2)
+    _ = UiUIKitHandleDrag::update(view, next_tree, next_field, 1, 4, cluster_edge)
+    check("Unicode handle cancellation restores the complete range", uikit_text_selection_length(view) == 4)
+    _ = UiUIKitHandleDrag::update(view, next_tree, next_field, 1, 1, cluster_edge)
+    _ = UiMobileSurface::focus_lost()
+    check("an inactive owner rejects handle updates", UiUIKitHandleDrag::update(view, next_tree, next_field, 1, 2, cluster_edge) == 0 and uikit_text_selection_length(view) == 2)
+    _ = UiMobileSurface::focus_gained()
+    check("a retired handle does not resume after activation", UiUIKitHandleDrag::update(view, next_tree, next_field, 1, 2, cluster_edge) == 0)
+    _ = uikit_text_set_selection(view, 0, 4)
+    _ = UiUIKitHandleDrag::update(view, next_tree, next_field, 1, 1, cluster_edge)
+    _ = UiMobileSurface::focus_lost()
+    _ = UiMobileSurface::focus_gained()
+    check("an interruption retires a drag without an inactive callback", UiUIKitHandleDrag::update(view, next_tree, next_field, 1, 2, cluster_edge) == 0 and uikit_text_selection_length(view) == 2)
+    _ = uikit_text_set_selection(view, 0, 4)
+    _ = UiUIKitHandleDrag::update(view, next_tree, next_field, 1, 1, cluster_edge)
+    _ = UiMobileSurface::background()
+    _ = UiMobileSurface::foreground()
+    check("a background round-trip retires a drag", UiUIKitHandleDrag::update(view, next_tree, next_field, 1, 2, cluster_edge) == 0)
+    _ = uikit_text_set_selection(view, 0, 4)
+    _ = UiUIKitHandleDrag::update(view, next_tree, next_field, 1, 1, cluster_edge)
+    _ = UiMobileSurface::surface_lost()
+    _ = UiMobileSurface::surface_restored()
+    check("surface recreation retires a drag", UiUIKitHandleDrag::update(view, next_tree, next_field, 1, 2, cluster_edge) == 0)
+    _ = uikit_text_set_selection(view, 0, 4)
+    _ = UiUIKitHandleDrag::update(view, next_tree, next_field, 1, 1, cluster_edge)
+    UiFlat::clear_focus()
+    _ = UiFlat::request_focus(next_field)
+    check("clear/refocus cannot revive a native handle drag", UiUIKitHandleDrag::update(view, next_tree, next_field, 1, 2, cluster_edge) == 0)
+
+def check_character_ranges(view: usize) -> void:
+    TextTestApp::build(false)
+    field: usize = TextTestApp::field_index()
+    UiFlat::replace_text(field, "á👩‍👩‍👧‍👦b")
+    check("native character movement spans a combining cluster", uikit_text_character_position(view, 0, 1) == 2)
+    check("native character movement spans a ZWJ family", uikit_text_character_position(view, 2, 1) == 13)
+    check("backward character movement spans a ZWJ family", uikit_text_character_position(view, 13, -1) == 2)
+    check("interior UTF-16 positions normalize to a grapheme", uikit_text_character_position(view, 3, 0) == 2)
+    check("end-of-document character movement is bounded", uikit_text_character_position(view, 14, 1) == 14)
+    check("document edges have no character to extend", uikit_text_layout_character(view, 0, 1) == UiUIKit::not_found() and uikit_text_layout_character(view, 14, 0) == UiUIKit::not_found())
+    check("invalid character requests fail closed", uikit_text_character_position(view, 15, 1) == UiUIKit::not_found() and uikit_text_character_position(view, 2, 2) == UiUIKit::not_found())
+    _ = UiLocalization::set_locale("he-IL")
+    check("RTL left extends a whole grapheme", uikit_text_layout_character(view, 2, 1) == 13)
+    check("RTL right retreats a whole grapheme", uikit_text_layout_character(view, 13, 0) == 2)
+    _ = UiLocalization::set_locale("en-US")
+
+def check_native_text_interruption() -> void can[Ui.Draw, Ui.Text, Ui.Input, Ui.Window, Unsafe.PointerCast]:
+    headless_count: i32 = elisa_uikit_stub_text_suspension_count()
+    _ = uikit_lifecycle(0, 1)
+    check("headless interruption has no native presentation", elisa_uikit_stub_text_suspension_count() == headless_count)
+    UiUIKit::release_canvas()
+    UiMobileSurface::reset()
+    view: usize = 444
+    check("an attached text surface starts", UiUIKit::attach_surface(view, 400.0, 200.0, 2.0, 0.0, 0.0, 0.0, 0.0))
+    _ = uikit_lifecycle(view, 0)
+    before: i32 = elisa_uikit_stub_text_suspension_count()
+    check("foreign lifecycle cannot suspend text UI", uikit_lifecycle(view + 1, 1) == 0 and elisa_uikit_stub_text_suspension_count() == before)
+    check("focus loss immediately suspends native text UI", uikit_lifecycle(view, 1) == 1 and elisa_uikit_stub_text_suspension_count() == before + 1)
+    _ = uikit_lifecycle(view, 0)
+    check("background immediately suspends native text UI", uikit_lifecycle(view, 2) == 1 and elisa_uikit_stub_text_suspension_count() == before + 2)
+    _ = uikit_lifecycle(view, 3)
+    check("surface loss immediately suspends native text UI", uikit_lifecycle(view, 4) == 1 and elisa_uikit_stub_text_suspension_count() == before + 3)
+    _ = uikit_lifecycle(view, 5)
 
 def main() -> i64 can[Ui.Draw, Ui.Text, Ui.Input, Ui.Window, Unsafe.PointerCast]:
     elisa_uikit_stub_set_view(0)
@@ -163,6 +324,12 @@ def main() -> i64 can[Ui.Draw, Ui.Text, Ui.Input, Ui.Window, Unsafe.PointerCast]
     # Composition changes the document, so it runs after the checks that
     # depend on the field's initial text.
     check_composition(view)
+    check_menu_owner(view)
+    check_menu_schema()
+    check_handle_contact(view)
+    check_handle_adjustment(view)
+    check_character_ranges(view)
+    check_native_text_interruption()
     UiUIKit::release_canvas()
     check_secure_field_refuses_readback()
     if failures == 0:

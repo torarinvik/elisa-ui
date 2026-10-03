@@ -1,0 +1,40 @@
+# Retained field purpose and privacy use the common text-input policy.
+global mutable flat_text_traits_epoch_state: u32 = 1
+
+extend UiFlat:
+    private:
+        def retire_text_traits(index: usize, previous: UiTextInput::Purpose) -> void:
+            return if index != focused_widget or previous == text_input_traits(index).purpose
+            flat_text_traits_epoch_state <- flat_text_traits_epoch_state + 1
+            flat_text_traits_epoch_state <- 1 if flat_text_traits_epoch_state == 0
+
+    public:
+        def text_traits_epoch() -> u32:
+            return flat_text_traits_epoch_state
+
+        def set_secure(index: usize, secure: bool) -> void:
+            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            return if widgets[index].secure == secure
+            previous: UiTextInput::Purpose = text_input_traits(index).purpose
+            clear_text_history() if secure
+            widgets[index].secure <- secure
+            widgets[index].text_purpose <- UiTextInput::Purpose.Text if not secure and widgets[index].text_purpose == UiTextInput::Purpose.Password
+            retire_text_traits(index, previous)
+            mark_state_dirty()
+
+        def set_text_purpose(index: usize, purpose: UiTextInput::Purpose) -> bool:
+            return false if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            safe: UiTextInput::Purpose = UiTextInput::normalize_purpose(purpose)
+            previous: UiTextInput::Purpose = text_input_traits(index).purpose
+            widgets[index].text_purpose <- safe
+            set_secure(index, true) if safe == UiTextInput::Purpose.Password
+            retire_text_traits(index, previous)
+            mark_state_dirty()
+            return true
+
+        def text_input_traits(index: usize) -> UiTextInput::Traits:
+            purpose: mutable UiTextInput::Purpose = UiTextInput::Purpose.Text
+            if index < widget_count and widgets[index].kind == UiConst::WidgetKind.TextField:
+                purpose <- widgets[index].text_purpose
+                purpose <- UiTextInput::Purpose.Password if widgets[index].secure
+            return UiTextInput::resolve(UiTextInput::defaults(purpose))

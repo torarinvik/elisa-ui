@@ -33,7 +33,12 @@ enum {
 	elisa_go_event_gamepad_button = ELISA_UI_EVENT_GAMEPAD_BUTTON,
 	elisa_go_event_gamepad_axis = ELISA_UI_EVENT_GAMEPAD_AXIS,
 	elisa_go_event_focus_gained = ELISA_UI_EVENT_FOCUS_GAINED,
-	elisa_go_event_focus_lost = ELISA_UI_EVENT_FOCUS_LOST
+	elisa_go_event_focus_lost = ELISA_UI_EVENT_FOCUS_LOST,
+	elisa_go_event_pointer_cancel = ELISA_UI_EVENT_POINTER_CANCEL,
+	elisa_go_event_contact_began = ELISA_UI_EVENT_CONTACT_BEGAN,
+	elisa_go_event_contact_moved = ELISA_UI_EVENT_CONTACT_MOVED,
+	elisa_go_event_contact_ended = ELISA_UI_EVENT_CONTACT_ENDED,
+	elisa_go_event_contact_cancelled = ELISA_UI_EVENT_CONTACT_CANCELLED
 };
 */
 import "C"
@@ -57,20 +62,32 @@ type Event struct {
 
 // Stable event wire ordinals.
 const (
-	EventNone          int32 = C.elisa_go_event_none
-	EventQuit          int32 = C.elisa_go_event_quit
-	EventPointerMove   int32 = C.elisa_go_event_pointer_move
-	EventPointerDown   int32 = C.elisa_go_event_pointer_down
-	EventPointerUp     int32 = C.elisa_go_event_pointer_up
-	EventPointerLeave  int32 = C.elisa_go_event_pointer_leave
-	EventKeyDown       int32 = C.elisa_go_event_key_down
-	EventKeyUp         int32 = C.elisa_go_event_key_up
-	EventResize        int32 = C.elisa_go_event_resize
-	EventScroll        int32 = C.elisa_go_event_scroll
-	EventGamepadButton int32 = C.elisa_go_event_gamepad_button
-	EventGamepadAxis   int32 = C.elisa_go_event_gamepad_axis
-	EventFocusGained   int32 = C.elisa_go_event_focus_gained
-	EventFocusLost     int32 = C.elisa_go_event_focus_lost
+	EventNone             int32 = C.elisa_go_event_none
+	EventQuit             int32 = C.elisa_go_event_quit
+	EventPointerMove      int32 = C.elisa_go_event_pointer_move
+	EventPointerDown      int32 = C.elisa_go_event_pointer_down
+	EventPointerUp        int32 = C.elisa_go_event_pointer_up
+	EventPointerLeave     int32 = C.elisa_go_event_pointer_leave
+	EventKeyDown          int32 = C.elisa_go_event_key_down
+	EventKeyUp            int32 = C.elisa_go_event_key_up
+	EventResize           int32 = C.elisa_go_event_resize
+	EventScroll           int32 = C.elisa_go_event_scroll
+	EventGamepadButton    int32 = C.elisa_go_event_gamepad_button
+	EventGamepadAxis      int32 = C.elisa_go_event_gamepad_axis
+	EventFocusGained      int32 = C.elisa_go_event_focus_gained
+	EventFocusLost        int32 = C.elisa_go_event_focus_lost
+	EventPointerCancel    int32 = C.elisa_go_event_pointer_cancel
+	EventContactBegan     int32 = C.elisa_go_event_contact_began
+	EventContactMoved     int32 = C.elisa_go_event_contact_moved
+	EventContactEnded     int32 = C.elisa_go_event_contact_ended
+	EventContactCancelled int32 = C.elisa_go_event_contact_cancelled
+)
+
+const (
+	ContactFinger   int32 = 0
+	ContactStylus   int32 = 1
+	ContactIndirect int32 = 2
+	ContactUnknown  int32 = 3
 )
 
 // ABI version components are kept as Go constants for callers that want to

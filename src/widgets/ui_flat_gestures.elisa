@@ -1,0 +1,124 @@
+# Retained opt-in gesture capture. Recognition remains in UiGestures; native
+# delivery updates that recognizer before calling the application event router.
+include "./ui_gestures.elisa"
+
+extend UiFlat:
+    public:
+        const GESTURE_TARGET_CAPACITY: usize = 32
+
+        def set_gesture_target(index: usize, enabled: bool) -> bool:
+            sync_widget_gestures()
+            return false if index >= widget_count
+            free: mutable usize = GESTURE_TARGET_CAPACITY
+            for slot in 0..<GESTURE_TARGET_CAPACITY:
+                if gesture_targets[slot] == index:
+                    gesture_targets[slot] <- NONE if not enabled
+                    if not enabled:
+                        for capture in 0..<UiGestures::MAX_TOUCHES:
+                            gesture_capture_targets[capture] <- NONE if gesture_capture_targets[capture] == index
+                    return true
+                free <- slot if gesture_targets[slot] == NONE
+            return true if not enabled
+            return false if free == GESTURE_TARGET_CAPACITY
+            gesture_targets[free] <- index
+            return true
+
+        def gesture_snapshot() -> UiGestures::Snapshot:
+            sync_widget_gestures()
+            return widget_gesture_snapshot
+
+    private:
+        global mutable gesture_tree_epoch: usize = 0
+        global mutable gesture_targets: usize[GESTURE_TARGET_CAPACITY] = zeroed
+        global mutable gesture_capture_ids: u32[UiGestures::MAX_TOUCHES] = zeroed
+        global mutable gesture_capture_targets: usize[UiGestures::MAX_TOUCHES] = zeroed
+        global mutable gesture_capture_positions: UiCore::Vec2[UiGestures::MAX_TOUCHES] = zeroed
+        global mutable gesture_capture_start_times: f32[UiGestures::MAX_TOUCHES] = zeroed
+        global mutable gesture_capture_last_times: f32[UiGestures::MAX_TOUCHES] = zeroed
+        global mutable widget_gesture_snapshot: UiGestures::Snapshot = zeroed
+
+        def sync_widget_gestures() -> void:
+            return if gesture_tree_epoch == widget_epoch
+            gesture_tree_epoch <- widget_epoch
+            widget_gesture_snapshot <- zeroed
+            for slot in 0..<GESTURE_TARGET_CAPACITY:
+                gesture_targets[slot] <- NONE
+            for slot in 0..<UiGestures::MAX_TOUCHES:
+                gesture_capture_targets[slot] <- NONE
+
+        def gesture_target_enabled(index: usize) -> bool:
+            return false if index >= widget_count or not effectively_enabled(index) or not effectively_visible(index)
+            for slot in 0..<GESTURE_TARGET_CAPACITY:
+                return true if gesture_targets[slot] == index
+            return false
+
+        def captured_gesture_slot(id: u32) -> usize:
+            for slot in 0..<UiGestures::MAX_TOUCHES:
+                return slot if gesture_capture_targets[slot] != NONE and gesture_capture_ids[slot] == id
+            return UiGestures::MAX_TOUCHES
+
+        def gesture_target_at(at: UiCore::Vec2) -> usize:
+            cursor: mutable usize = hit(at.x, at.y)
+            for _ in 0..<widget_count:
+                return NONE if cursor >= widget_count
+                return cursor if gesture_target_enabled(cursor)
+                cursor <- widgets[cursor].parent
+            return NONE
+
+        def cancel_widget_gestures() -> void:
+            sync_widget_gestures()
+            epoch: usize = widget_epoch
+            for slot in 0..<UiGestures::MAX_TOUCHES:
+                return if widget_epoch != epoch
+                target: usize = gesture_capture_targets[slot]
+                gesture_capture_targets[slot] <- NONE
+                if gesture_target_enabled(target):
+                    elapsed: mutable f64 = gesture_capture_last_times[slot].f64() - gesture_capture_start_times[slot].f64()
+                    elapsed <- 0.0 if elapsed < 0.0
+                    elapsed <- UiGestures::MAX_GESTURE_DURATION_F64 if elapsed > UiGestures::MAX_GESTURE_DURATION_F64
+                    widget_gesture_snapshot <- UiGestures::Snapshot{kind: UiGestures::Kind.Cancelled, active: 0, primary_id: gesture_capture_ids[slot], secondary_id: UiGestures::NO_CONTACT_ID, position: gesture_capture_positions[slot], delta: UiCore::Vec2(0.0, 0.0), scale: 1.0, duration: elapsed.f32()}
+                    emit_widget_event(target, UiConst::WidgetEvent.GestureCancelled)
+
+        def route_widget_contact(contact: UiCore::Contact) -> void:
+            sync_widget_gestures()
+            return if not UiCore::contact_is_valid(contact)
+            if contact.phase != UiCore::ContactPhase.Cancelled:
+                return if UiLifecycle::phase() != UiLifecycle::Phase.New and not UiLifecycle::accepts_input()
+            return if not UiGestures::prepare_for_routing(contact)
+            slot: usize = captured_gesture_slot(contact.id)
+            if contact.phase == UiCore::ContactPhase.Began:
+                return if slot != UiGestures::MAX_TOUCHES
+                target: usize = gesture_target_at(contact.at)
+                return if target == NONE
+                for free in 0..<UiGestures::MAX_TOUCHES:
+                    if gesture_capture_targets[free] == NONE:
+                        gesture_capture_targets[free] <- target
+                        gesture_capture_ids[free] <- contact.id
+                        gesture_capture_positions[free] <- UiCore::Vec2(UiCore::bounded_coordinate(contact.at.x), UiCore::bounded_coordinate(contact.at.y))
+                        gesture_capture_start_times[free] <- contact.timestamp
+                        gesture_capture_last_times[free] <- contact.timestamp
+                        return
+                return
+            return if slot == UiGestures::MAX_TOUCHES
+            gesture_capture_positions[slot] <- UiCore::Vec2(UiCore::bounded_coordinate(contact.at.x), UiCore::bounded_coordinate(contact.at.y))
+            gesture_capture_last_times[slot] <- contact.timestamp if contact.timestamp > gesture_capture_last_times[slot]
+            target: usize = gesture_capture_targets[slot]
+            ended: bool = contact.phase == UiCore::ContactPhase.Ended or contact.phase == UiCore::ContactPhase.Cancelled
+            if not gesture_target_enabled(target):
+                gesture_capture_targets[slot] <- NONE
+                return
+            snapshot: UiGestures::Snapshot = UiGestures::snapshot()
+            event: mutable UiConst::WidgetEvent = UiConst::WidgetEvent.GestureCancelled
+            notify: mutable bool = contact.phase == UiCore::ContactPhase.Cancelled
+            if snapshot.kind == UiGestures::Kind.Pinch:
+                other: usize = captured_gesture_slot(snapshot.secondary_id if snapshot.primary_id == contact.id else snapshot.primary_id)
+                notify <- other < UiGestures::MAX_TOUCHES and gesture_capture_targets[other] == target
+                event <- UiConst::WidgetEvent.GesturePinch
+            elif snapshot.primary_id == contact.id and (snapshot.kind == UiGestures::Kind.Drag or snapshot.kind == UiGestures::Kind.LongPress):
+                notify <- true
+                event <- UiConst::WidgetEvent.GestureDrag if snapshot.kind == UiGestures::Kind.Drag else UiConst::WidgetEvent.GestureLongPress
+            gesture_capture_targets[slot] <- NONE if ended
+            return if not notify
+            UiFlat::pointer(UiCore::PointerEvent.Cancel) if active_pointer_button >= 0
+            widget_gesture_snapshot <- snapshot
+            emit_widget_event(target, event)

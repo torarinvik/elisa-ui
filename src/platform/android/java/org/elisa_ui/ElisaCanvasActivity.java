@@ -46,8 +46,16 @@ import java.util.concurrent.Executors;
 // editing state at all: BaseInputConnection wants an Editable to scribble in,
 // so it gets one nobody reads.
 public final class ElisaCanvasActivity extends NativeActivity {
-    public static native void nativeComposingText(String text, int newCursorPosition);
-    public static native void nativeCommitText(String text, int newCursorPosition);
+    public static native boolean nativeComposingText(long owner, String text, int newCursorPosition);
+    public static native boolean nativeCommitText(long owner, String text, int newCursorPosition);
+    public static native boolean nativeFinishComposing(long owner);
+    public static native boolean nativeImeBatch(long owner, int phase);
+    public static native boolean nativeImeAction(long owner, int action);
+    public static native boolean nativeSelection(long owner, int start, int stop, boolean composing);
+    public static native boolean nativeDeleteSurrounding(long owner, int before, int after, boolean codepoints);
+    public static native long[] nativeImeConnection();
+    public static native String nativeImeReadback(long owner, int mode, int count);
+    public static native Object[] nativeImeDocument(long owner);
 
     // Probe state is answered by the framework rather than by anything in
     // Java. See startImeProbe below for why those queries exist.
@@ -136,6 +144,7 @@ public final class ElisaCanvasActivity extends NativeActivity {
             backCallback = new OnBackInvokedCallback() {
                 @Override
                 public void onBackInvoked() {
+                    if (input != null && input.dismissMenuForBack()) return;
                     // The retained tree is owned by android_main's thread.
                     // JNI queues this fact there; the host performs Android's
                     // default action only if Elisa leaves it unhandled.
@@ -151,6 +160,7 @@ public final class ElisaCanvasActivity extends NativeActivity {
 
     @Override
     protected void onDestroy() {
+        if (input != null) input.setPresentationActive(false);
         if (backCallback != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(backCallback);
             backCallback = null;
@@ -162,8 +172,15 @@ public final class ElisaCanvasActivity extends NativeActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (input != null) input.setPresentationActive(true);
         reportPermissionSync(0);
         reportPermissionSync(1);
+    }
+
+    @Override
+    protected void onPause() {
+        if (input != null) input.setPresentationActive(false);
+        super.onPause();
     }
 
     @Override
@@ -233,6 +250,7 @@ public final class ElisaCanvasActivity extends NativeActivity {
 
     @Override
     public void onBackPressed() {
+        if (input != null && input.dismissMenuForBack()) return;
         nativeBack();
     }
 
@@ -437,11 +455,13 @@ public final class ElisaCanvasActivity extends NativeActivity {
             public void run() {
                 ElisaInputView view = activity.input;
                 if (view == null) return;
+                view.hideMenu();
                 view.requestFocus();
                 android.view.inputmethod.InputMethodManager manager =
                     (android.view.inputmethod.InputMethodManager) activity.getSystemService(
                         INPUT_METHOD_SERVICE);
                 if (manager != null) {
+                    manager.restartInput(view);
                     manager.showSoftInput(view,
                         android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
                 }
@@ -456,13 +476,41 @@ public final class ElisaCanvasActivity extends NativeActivity {
             @Override
             public void run() {
                 ElisaInputView view = activity.input;
-                if (view == null || view.getWindowToken() == null) return;
+                if (view == null) return;
+                if (view.connection != null) view.connection.clearMonitor();
+                view.hideMenu();
+                if (view.getWindowToken() == null) return;
                 android.view.inputmethod.InputMethodManager manager =
                     (android.view.inputmethod.InputMethodManager) activity.getSystemService(
                         INPUT_METHOD_SERVICE);
                 if (manager != null) {
                     manager.hideSoftInputFromWindow(view.getWindowToken(), 0);
                 }
+            }
+        });
+    }
+
+    public static void requestImeSelection() {
+        final ElisaCanvasActivity activity = currentActivity;
+        if (activity == null) return;
+        activity.runOnUiThread(new Runnable() {
+            @Override public void run() {
+            if (currentActivity != activity || activity.input == null) return;
+            if (activity.input.connection != null && activity.input.connection.deferNotifications()) return;
+            long[] state = nativeImeConnection();
+            activity.input.updateMenu(state);
+            if (state == null || state[0] == 0 || state[1] < 0) {
+                if (activity.input.connection != null) activity.input.connection.clearMonitor();
+                return;
+            }
+            android.view.inputmethod.InputMethodManager manager =
+                (android.view.inputmethod.InputMethodManager) activity.getSystemService(INPUT_METHOD_SERVICE);
+            if (manager != null) {
+                manager.updateSelection(activity.input,
+                    (int)state[2], (int)state[3], (int)state[4], (int)state[5]);
+                if (activity.input.connection != null)
+                    activity.input.connection.notifyExtracted(manager, activity.input, state[0]);
+            }
             }
         });
     }
@@ -522,77 +570,9 @@ public final class ElisaCanvasActivity extends NativeActivity {
                 connection.commitText("\u4f60\u597d\ud83d\udc4b", 0);
                 connection.finishComposingText();
                 nativeImeReport("committed");
+                ElisaImeBatchProbe.start(view, connection);
             }
         }, 200);
     }
 
-    private static final class ElisaInputView extends View {
-        ElisaInputView(android.content.Context context) {
-            super(context);
-        }
-
-        // ANSWERED BY THE FRAMEWORK, NOT BY THIS CLASS.
-        //
-        // This used to return a flat true, and the cost was visible the first
-        // time the canvas was watched on a device rather than read about: the
-        // platform decided the app was editing text from the moment it
-        // launched, and put its handwriting affordance over an Overview page
-        // with no field on it at all. A view that says it is a text editor is
-        // making a claim about the application's state, and the application's
-        // state is in Elisa -- which already answers exactly this question for
-        // the host, to decide whether the soft keyboard belongs on screen.
-        @Override
-        public boolean onCheckIsTextEditor() {
-            return nativeImeReady() != 0;
-        }
-
-        @Override
-        public InputConnection onCreateInputConnection(EditorInfo out) {
-            // TYPE_CLASS_TEXT with no variation, and no extract UI: this view
-            // paints nothing, so a full-screen IME editor would be editing a
-            // copy nobody can see.
-            out.inputType = android.text.InputType.TYPE_CLASS_TEXT;
-            out.imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI | EditorInfo.IME_ACTION_DONE;
-            out.initialSelStart = 0;
-            out.initialSelEnd = 0;
-            return new ElisaInputConnection(this);
-        }
-    }
-
-    private static final class ElisaInputConnection extends BaseInputConnection {
-        ElisaInputConnection(View target) {
-            // false: this connection is not "full editor" -- the editor is in
-            // Elisa, and the Editable below exists only because the base class
-            // insists on one.
-            super(target, false);
-        }
-
-        @Override
-        public boolean setComposingText(CharSequence text, int newCursorPosition) {
-            String value = text == null ? "" : text.toString();
-            // The composing run is the whole provisional string. Forward the
-            // platform's relative cursor rule; Elisa resolves it against the
-            // final bounded UTF-16 run rather than assuming every IME means end.
-            nativeComposingText(value, newCursorPosition);
-            return super.setComposingText(text, newCursorPosition);
-        }
-
-        @Override
-        public boolean finishComposingText() {
-            // An empty composing run is how the framework is told the
-            // provisional text is gone, which is not the same as committing it.
-            nativeComposingText("", 0);
-            return super.finishComposingText();
-        }
-
-        @Override
-        public boolean commitText(CharSequence text, int newCursorPosition) {
-            nativeCommitText(text == null ? "" : text.toString(), newCursorPosition);
-            // The base class keeps its own Editable in step; nothing reads it,
-            // but an IME may ask this connection about its own state.
-            Editable editable = getEditable();
-            if (editable != null) editable.clear();
-            return super.commitText(text, newCursorPosition);
-        }
-    }
 }

@@ -1,0 +1,39 @@
+include "../src/platform/mobile/ui_mobile_surface.elisa"
+extern puts(text: cstr) -> i64
+global mutable mobile_contact_test_failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    mobile_contact_test_failures <- mobile_contact_test_failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiMobileSurface::reset()
+    _ = UiMobileSurface::start(400.0, 800.0, 2.0, UiResponsive::insets(0.0, 0.0, 0.0, 0.0))
+    _ = UiMobileSurface::focus_gained()
+    fact: mutable UiCore::Contact = UiCore::Contact{id: 0, phase: UiCore::ContactPhase.Began, tool: UiCore::ContactTool.Finger, at: UiCore::Vec2(0.0, 0.0), timestamp: 0.0}
+    route: mutable UiMobileContacts::PointerRoute = UiMobileContacts::PointerRoute.None
+    check("first native contact begins compatibility pointer", UiMobileContacts::translate(1, UiCore::ContactPhase.Began, UiCore::ContactTool.Finger, UiCore::Vec2(0.0, 0.0), 1.0, fact, route) and route == UiMobileContacts::PointerRoute.Began)
+    first_id: u32 = fact.id
+    check("contact delivery updates gesture snapshot", UiMobileSurface::observe_event(UiCore::ContactEvent.Update(fact)) and UiGestures::active_count() == 1)
+    check("duplicate native identity cannot steal capture", not UiMobileContacts::translate(1, UiCore::ContactPhase.Began, UiCore::ContactTool.Finger, UiCore::Vec2(0.0, 0.0), 1.0, fact, route))
+    check("native addresses with equal low bits remain distinct", UiMobileContacts::translate(4294967297, UiCore::ContactPhase.Began, UiCore::ContactTool.Stylus, UiCore::Vec2(10.0, 0.0), 1.0, fact, route) and fact.id != first_id and route == UiMobileContacts::PointerRoute.Cancelled)
+    second_id: u32 = fact.id
+    _ = UiMobileSurface::observe_event(UiCore::ContactEvent.Update(fact))
+    check("slot reorder preserves contact identity", UiMobileContacts::translate(4294967297, UiCore::ContactPhase.Moved, UiCore::ContactTool.Stylus, UiCore::Vec2(20.0, 0.0), 1.1, fact, route) and fact.id == second_id and route == UiMobileContacts::PointerRoute.None)
+    _ = UiMobileSurface::observe_event(UiCore::ContactEvent.Update(fact))
+    check("native contact sequence produces shared pinch scale", UiGestures::snapshot().kind == UiGestures::Kind.Pinch and UiGestures::snapshot().scale > 1.99 and UiGestures::snapshot().scale < 2.01)
+    _ = UiMobileContacts::translate(4294967297, UiCore::ContactPhase.Ended, UiCore::ContactTool.Stylus, UiCore::Vec2(20.0, 0.0), 1.2, fact, route)
+    _ = UiMobileSurface::observe_event(UiCore::ContactEvent.Update(fact))
+    check("remaining contact never resumes a cancelled press", UiMobileContacts::translate(1, UiCore::ContactPhase.Moved, UiCore::ContactTool.Finger, UiCore::Vec2(1.0, 0.0), 1.3, fact, route) and route == UiMobileContacts::PointerRoute.None)
+    _ = UiMobileSurface::observe_event(UiCore::ContactEvent.Update(fact))
+    check("lifecycle loss retires native IDs and gesture capture", UiMobileSurface::focus_lost() and UiMobileContacts::active_count() == 0 and UiGestures::active_count() == 0)
+    check("late native release cannot recreate a contact", not UiMobileContacts::translate(1, UiCore::ContactPhase.Ended, UiCore::ContactTool.Finger, UiCore::Vec2(1.0, 0.0), 1.4, fact, route))
+    UiMobileContacts::reset()
+    for index in 0..<UiMobileContacts::CAPACITY:
+        check("native contact table accepts bounded capacity", UiMobileContacts::translate(index, UiCore::ContactPhase.Began, UiCore::ContactTool.Finger, UiCore::Vec2(0.0, 0.0), 2.0, fact, route))
+    check("overflow is explicit without identity replacement", not UiMobileContacts::translate(99, UiCore::ContactPhase.Began, UiCore::ContactTool.Finger, UiCore::Vec2(0.0, 0.0), 2.0, fact, route) and UiMobileContacts::overflowed() and UiMobileContacts::active_count() == UiMobileContacts::CAPACITY)
+    if mobile_contact_test_failures == 0:
+        _ = puts("mobile contacts: all checks passed")
+        return 0
+    return 1

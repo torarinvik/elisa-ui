@@ -1,0 +1,39 @@
+# Android's release-time long press uses the shared recognizer. No platform
+# timer or Java view owns retained selection. Reentrant/unobserved facts fail
+# closed rather than applying an earlier contact's gesture to a new document.
+global mutable android_text_press_owner: u64 = 0
+global mutable android_text_press_id: u32 = 0
+global mutable android_text_press_revision: usize = 0
+global mutable android_text_menu_request_owner: u64 = 0
+
+def android_ime_take_menu_request() -> u64:
+    requested: u64 = android_text_menu_request_owner
+    android_text_menu_request_owner <- 0
+    return requested if requested != 0 and requested == android_ime_owner() else 0
+
+export fn elisa_android_ime_take_menu_request() -> u64 = android_ime_take_menu_request
+
+def android_ime_contact(contact: UiCore::Contact) -> void:
+    can Memory.Allocate, Abort.Panic, Ui.Input, Unsafe.PointerCast, Ui.Text:
+        snapshot: UiGestures::Snapshot = UiGestures::snapshot()
+        if contact.phase == UiCore::ContactPhase.Began:
+            android_text_press_owner <- 0
+            return if snapshot.primary_id != contact.id or snapshot.active != 1
+            owner: u64 = android_ime_owner()
+            return if owner == 0 or UiFlat::hit(contact.at.x, contact.at.y) != UiFlat::focused()
+            android_text_press_owner <- owner
+            android_text_press_id <- contact.id
+            android_text_press_revision <- UiFlat::widget(UiFlat::focused()).text_revision
+            return
+        return if android_text_press_owner == 0
+        if snapshot.active > 1 or contact.phase == UiCore::ContactPhase.Cancelled:
+            android_text_press_owner <- 0
+            return
+        return if contact.id != android_text_press_id or contact.phase != UiCore::ContactPhase.Ended
+        captured: u64 = android_text_press_owner
+        android_text_press_owner <- 0
+        return if captured != android_ime_owner() or snapshot.primary_id != contact.id or snapshot.active != 0
+        return if snapshot.kind != UiGestures::Kind.LongPress
+        return if android_text_press_revision != UiFlat::widget(UiFlat::focused()).text_revision
+        _ = android_ime_action(captured, 1)
+        android_text_menu_request_owner <- captured

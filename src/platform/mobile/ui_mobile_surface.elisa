@@ -6,6 +6,8 @@
 
 include "../../core/ui_lifecycle.elisa"
 include "../../widgets/ui_responsive.elisa"
+include "../../widgets/ui_gestures.elisa"
+include "./ui_mobile_contacts.elisa"
 
 module UiMobileSurface:
     public:
@@ -19,7 +21,10 @@ module UiMobileSurface:
             orientation: UiResponsive::Orientation
 
         def reset() -> void:
+            advance_input_epoch()
             UiLifecycle::reset()
+            UiGestures::reset()
+            UiMobileContacts::reset()
             viewport_state <- UiResponsive::viewport(0.0, 0.0, 1.0)
             safe_area_state <- UiResponsive::insets(0.0, 0.0, 0.0, 0.0)
             keyboard_state <- UiResponsive::keyboard_insets(0.0, false)
@@ -29,6 +34,9 @@ module UiMobileSurface:
         def start(width: f32, height: f32, scale: f32, safe: UiResponsive::Insets) -> bool:
             return false if not UiCore::is_finite(width) or not UiCore::is_finite(height) or not UiCore::is_finite(scale) or not insets_are_valid(safe)
             return false if not UiLifecycle::begin()
+            advance_input_epoch()
+            UiGestures::reset()
+            UiMobileContacts::reset()
             viewport_state <- UiResponsive::viewport(width, height, scale)
             safe_area_state <- UiResponsive::insets(safe.top, safe.right, safe.bottom, safe.left)
             keyboard_state <- UiResponsive::keyboard_insets(0.0, false)
@@ -54,22 +62,38 @@ module UiMobileSurface:
             return UiLifecycle::focus_gained()
 
         def focus_lost() -> bool:
-            return UiLifecycle::focus_lost()
+            return false if not UiLifecycle::focus_lost()
+            advance_input_epoch()
+            _ = UiGestures::cancel_all()
+            UiMobileContacts::clear()
+            return true
 
         def background() -> bool:
-            return UiLifecycle::suspend()
+            return false if not UiLifecycle::suspend()
+            advance_input_epoch()
+            _ = UiGestures::cancel_all()
+            UiMobileContacts::clear()
+            return true
 
         def foreground() -> bool:
             return UiLifecycle::resume()
 
         def surface_lost() -> bool:
-            return UiLifecycle::surface_lost()
+            return false if not UiLifecycle::surface_lost()
+            advance_input_epoch()
+            _ = UiGestures::cancel_all()
+            UiMobileContacts::clear()
+            return true
 
         def surface_restored() -> bool:
             return UiLifecycle::surface_restored()
 
         def stop() -> bool:
-            return UiLifecycle::stop()
+            return false if not UiLifecycle::stop()
+            advance_input_epoch()
+            _ = UiGestures::cancel_all()
+            UiMobileContacts::clear()
+            return true
 
         def snapshot() -> Snapshot:
             return Snapshot{
@@ -82,7 +106,25 @@ module UiMobileSurface:
                 orientation: UiResponsive::orientation(viewport_state),
             }
 
+        # Captured input must not resume across an interruption, even when
+        # no callback was delivered while the surface was inactive.
+        def input_epoch() -> u32:
+            return mobile_input_epoch_state
+
+        def observe_event(event: UiCore::Event) -> bool:
+            match event:
+                UiCore::ContactEvent.Update(contact):
+                    return UiGestures::observe(contact)
+                _:
+                    return true
+
     private:
+        global mutable mobile_input_epoch_state: u32 = 0
+
+        def advance_input_epoch() -> void:
+            mobile_input_epoch_state <- mobile_input_epoch_state + 1
+            mobile_input_epoch_state <- 1 if mobile_input_epoch_state == 0
+
         def insets_are_valid(value: UiResponsive::Insets) -> bool:
             return UiCore::is_finite(value.top) and UiCore::is_finite(value.right) and UiCore::is_finite(value.bottom) and UiCore::is_finite(value.left) and value.top >= 0.0 and value.right >= 0.0 and value.bottom >= 0.0 and value.left >= 0.0
 

@@ -1,0 +1,47 @@
+include "../src/platform/android/ui_android_dispatch.elisa"
+extern puts(text: cstr) -> i64
+global mutable android_dispatch_failures: i32 = 0
+global mutable android_dispatch_callbacks: i32 = 0
+global mutable android_dispatch_depth: i32 = 0
+global mutable android_dispatch_max_depth: i32 = 0
+global mutable android_dispatch_pinch: bool = false
+global mutable android_dispatch_restart: bool = false
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    android_dispatch_failures <- android_dispatch_failures + 1
+    _ = puts(name)
+
+def contact(id: u32, phase: UiCore::ContactPhase, x: f32) -> UiCore::Event:
+    return UiCore::ContactEvent.Update(UiCore::Contact{id: id, phase: phase, tool: UiCore::ContactTool.Finger, at: UiCore::Vec2(x, 0.0), timestamp: 1.0})
+
+def app_event(event: UiCore::Event) -> void can[Ui.Input]:
+    android_dispatch_callbacks <- android_dispatch_callbacks + 1
+    android_dispatch_depth <- android_dispatch_depth + 1
+    android_dispatch_max_depth <- android_dispatch_depth if android_dispatch_depth > android_dispatch_max_depth
+    if android_dispatch_restart:
+        android_dispatch_restart <- false
+        _ = UiAndroidDispatch::deliver(contact(9, UiCore::ContactPhase.Began, 0.0))
+        UiMobileSurface::reset()
+        _ = UiMobileSurface::start(400.0, 800.0, 2.0, UiResponsive::insets(0.0, 0.0, 0.0, 0.0))
+        _ = UiMobileSurface::focus_gained()
+    elif android_dispatch_callbacks == 1:
+        _ = UiAndroidDispatch::deliver(contact(2, UiCore::ContactPhase.Began, 10.0))
+        _ = UiAndroidDispatch::deliver(contact(2, UiCore::ContactPhase.Moved, 20.0))
+    android_dispatch_pinch <- true if UiGestures::snapshot().kind == UiGestures::Kind.Pinch and UiGestures::snapshot().scale > 1.99
+    android_dispatch_depth <- android_dispatch_depth - 1
+
+def main() -> i64 can[Ui.Input]:
+    UiMobileSurface::reset()
+    _ = UiMobileSurface::start(400.0, 800.0, 2.0, UiResponsive::insets(0.0, 0.0, 0.0, 0.0))
+    _ = UiMobileSurface::focus_gained()
+    check("Android bounded drain accepts initial contact", UiAndroidDispatch::deliver(contact(1, UiCore::ContactPhase.Began, 0.0)))
+    check("Android callbacks do not recursively enter application", android_dispatch_callbacks == 3 and android_dispatch_max_depth == 1)
+    check("Android callback sees exact queued gesture snapshot", android_dispatch_pinch and UiGestures::active_count() == 2)
+    android_dispatch_restart <- true
+    _ = UiAndroidDispatch::deliver(UiCore::PointerEvent.Cancel)
+    check("Android queued contact cannot cross replacement session", android_dispatch_callbacks == 4 and UiGestures::active_count() == 0 and UiEvents::pending() == 0)
+    if android_dispatch_failures == 0:
+        _ = puts("android dispatch: all checks passed")
+        return 0
+    return 1

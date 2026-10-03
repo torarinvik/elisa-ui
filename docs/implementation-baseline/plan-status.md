@@ -29,6 +29,118 @@ evidence and any external blocker. Statuses mean:
 | UI-12 | implemented-tested (native C/C++/Rust/Go; component interop separate) | `elisa_ui.h` publishes `ELISA_UI_MAX_TEXT_BYTES`; the C host verifies the live fixed staging cap and embedded U+0000; C++17 header and header↔symbol checks pass; `capi_lifecycle_test` rejects callbacks after stop and `capi_widget_handle_test` covers the invalid sentinel and generation change; Go exposes the same cap, borrows a zero-allocation valid UTF-8 prefix from immutable strings, and `check_go.sh` runs prefix/rune-boundary/allocation unit tests plus a real linked host covering oversize text/IME, malformed suffix, embedded NUL, selection clamping, opaque widget validity, and UI-thread locking; Rust wrapper + example pass `check_rust.sh` | Cross-thread misuse remains caller-enforced by the single-UI-owner-thread contract; Go runtime OOM is not recoverably injectable (text dispatch itself does not allocate); no C/Go WIT component binding is claimed; duplicate release is not applicable because these bindings expose no owned releasable resource handle |
 | UI-13 | implemented-tested (partial) | `UiBuild` version + compatibility; backend matrix; `run_tests.sh` requires `check_performance.sh`'s exact-tuple policy budget; required optimized real-Skia gate measures the public million-item Showcase workflow plus tail rendering over 21 samples, checks stable pixels, and enforces an exact host/compiler/Skia/source tuple in `test/showcase_skia_performance_budgets.json`; `test/performance_budgets.json` retains portable workload raw samples; `test/stress_test.elisa`; release packaging and guides; shell toolchain resolution now prefers explicit selection, then a development checkout, then an installed Elisa snapshot, with a no-sibling resolver smoke and real installed-snapshot C API build | clean-machine test against a released SDK-managed selection still needs a supported distribution/version policy; budgets on other reference devices, GPU upload, idle CPU, energy, and broader mobile-device performance remain |
 
+UI-05 follow-up: native UIKit/Android cancellation now uses the additive
+`PointerEvent.Cancel` contract, and mobile lifecycle loss clears gesture
+contacts. Focused checks pass on the explicitly permitted stale Stage1 product;
+[input evidence](../ui-events.md) records the scope and compiler hash. Native
+identified-contact delivery is now implemented for UIKit and Android, with
+bounded identity mapping and source preservation. Wire, mapper and UIKit host
+callback tests and both native builds pass on the existing stale compiler.
+The simulator HID gate also passes with the contact recognizer included in its
+cancellation assertion. Android now queues reentrant callbacks with session
+generation checks; host queue and production MotionEvent-transport tests pass.
+Android package/export acceptance passes, but device execution is skipped with
+no device attached.
+Retained opt-in targets now receive captured drag/pinch/long-press/cancellation
+callbacks; host tests cover bounds exit, hidden targets, legacy isolation and
+direct contact ingress. Physical stylus/multitouch acceptance, kinetic touch
+scroll and production zoom workflow verification remain open,
+so the corresponding implementation-plan items remain unchecked.
+
+Timing/capture follow-up: UIKit/Android now subtract the native stream origin
+before narrowing timestamps, preserving gesture thresholds at long uptimes.
+Production transport/clock host tests pass at 100-million-second uptime.
+Deregistering and re-registering a retained target retires its old captures;
+the UIKit host fixture verifies no stale long-press callback is delivered.
+The simulator HID cancellation/tap/committed-text gate was rerun after the
+native clock change and passes both tests. C/Go/Rust gates and source-size,
+global-name and whitespace checks also pass on the existing stale compiler.
+Lifecycle cancellation now reports the identity/position/duration of each
+retained capture rather than reusing the recognizer's final global snapshot.
+The UIKit host test captures a button and a text field separately, then proves
+both cancellation callbacks report the contact belonging to their own target.
+UIKit canvas secure-entry now queries the focused retained field and disables
+native autocorrection, spell checking, smart quotes and smart dashes for secure
+entry. Keyboard synchronization reloads native input views when privacy changes.
+UIKit host regressions verify secure, nonsecure and no-focus traits; the
+simulator app compiles. Device password-keyboard inspection and mobile purpose,
+selection/context-action and scroll-to-focus acceptance remain open.
+The UIKit host gate now verifies the active-keyboard native boundary too:
+secure and normal transitions request one reload each, unchanged traits avoid
+reload loops, and blur retires the keyboard without an extra reload. All checks
+pass on the existing stale compiler; physical secure-keyboard inspection is
+still separate and unverified.
+Retained text fields now store normalized purpose behind a typed handle setter;
+password purpose activates secure storage. UIKit canvas maps email/URL/number
+and search to native keyboard/return hints and reloads on active purpose changes.
+Host tests verify email/number query values, password hardening, native refresh
+and rejection of nontext/invalid targets. Other mobile acceptance remains open.
+Android canvas now applies retained purpose to EditorInfo via an atomic owner-
+thread-published JNI snapshot, with secure suggestions/learning suppression and
+input-connection restart on active purpose changes. The production Java trait
+mapper host test passes against Android SDK constants, including unknown
+purposes. Android package builds; actual device keyboard/restart verification
+remains open.
+
+UIKit selection geometry now returns a native single-line selection rectangle,
+rejects invalid locations and normalizes RTL endpoint order. The text-protocol
+fixture is included in the focused input gate; all 17 Elisa tests and Android
+host gates pass together on the existing stale compiler. The simulator app
+builds. Native-menu and trailing-handle simulator acceptance are recorded below;
+native gesture interruption and physical-device acceptance remain open.
+
+UIKit native menu follow-up: simulator HID long-press now presents the edit
+menu and verifies Select All/replacement plus Copy/Cut/Paste. A native semantic
+publication feedback loop was fixed: publishing accessibility values no longer
+enters the assistive-edit setter and collapses retained selection/composition.
+The menu schema and eligibility stay in Elisa; native actions capture the
+original tree/field and reject retired, disabled or recycled documents. Native
+gesture interruption, physical-device acceptance and non-Latin IME
+workflows remain open. These results still use the stale compiler opt-in.
+The native gate now requires nine passing XCUITests. Its secure-field test
+confirms input receipt without publishing password contents/length and checks
+Copy/Cut are absent even after Select All. The expanded clipboard test covers
+native Copy, Cut-to-empty and Paste restoration. The fourth test drags a native
+trailing handle and proves replacement affects only the selected prefix; all
+nine tests pass together, including retained-selection-confirmed combining
+cluster replacement preserving a complete ZWJ-family emoji, plus Hebrew RTL trailing-handle replacement
+and leading-handle replacement in both LTR and Hebrew RTL. These preserve the
+opposite suffix/prefix rather than merely moving a caret. Elisa owns endpoint anchoring and cancellation,
+rejects changed text revisions or retired documents, and suppresses ordinary
+pointer presses on handle contacts. Host tests cover leading/trailing adjustment,
+cancel restoration, combining marks, text changes and focus/tree retirement.
+The ninth native test verifies Unicode selection survives Home/reactivation in
+the same process, handles and keyboard recover, and replacement preserves the
+family emoji. This covers completed-drag background/resume, not interruption
+during a drag, lock/unlock, process restoration or physical-device acceptance.
+
+Android ingress follow-up: the actual composing/commit entry points now gate
+editing on active lifecycle and a focused editor, and reject malformed counted
+buffers before staging. `android_ime_ingress_test` covers provisional/Chinese
+commit, focus/background/surface/stop rejection and staging scrubbing. The
+18-test focused matrix and Android host gates pass; the production Showcase
+entry compiles with unchanged IME exports. APK/device selection acceptance,
+stale connection ownership and JNI-thread serialization remain open.
+
+Native email-keyboard simulator acceptance passes: the smoke app selects Email
+purpose and the XCUITest asserts the native @ key after switching from Name.
+Both HID cancellation/tap and committed-text/purpose tests pass with zero
+failures (28.568 seconds of assertions). Startup was delayed in CoreSimulator's
+launch bridge; the same live run eventually completed without a restart.
+This uses the existing stale compiler and does not prove physical-device
+password, selection-handle or broader IME acceptance.
+
+Mobile focus-reveal follow-up: viewport/inset relayout now reveals the focused
+retained text field through scroll ancestors, and inner offset updates are
+reflowed before outer comparisons. A typed explicit reveal API is available.
+`mobile_focus_reveal_test` covers keyboard occlusion, user-scroll preservation
+and minimal nested offsets; geometry/text-layout regressions pass. Device
+caret/selection workflows and oversized multiline caret reveal remain open.
+The full UIKit host surface/input/accessibility fixture also passes after the
+focus-reveal changes. The previously observed compiler seed process has exited,
+but the compiler toolchain check still rejects the installed product as older
+than compiler sources; this does not establish fresh-compiler acceptance.
+
 The first implementation batch (plan §21) is partially evidenced: the public
 backend/API map consumes pinned SDK bindings, and the hello reference screen
 covers persistence, text, and resource errors on native backends. The fresh

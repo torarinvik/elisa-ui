@@ -81,6 +81,16 @@ extend UiFlat:
             total: usize = text_utf16_length(index)
             return requested_location if requested_location < total else total
 
+        # Native character ranges use extended graphemes, not UTF-16 units.
+        def text_character_offset(index: usize, location: usize, step: i32) -> usize:
+            return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            value: sview = text_value(index)
+            byte: usize = byte_offset_for_utf16(value, text_range_location(index, location))
+            boundary: mutable usize = text_boundary_at_or_before(index, byte)
+            boundary <- previous_character(index, boundary) if step < 0
+            boundary <- next_character(index, boundary) if step > 0
+            return text_utf16_offset(index, boundary)
+
         def text_range_length(index: usize, requested_location: usize, requested_length: usize) -> usize:
             location: usize = text_range_location(index, requested_location)
             remaining: usize = text_utf16_length(index) - location

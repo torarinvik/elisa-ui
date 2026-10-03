@@ -66,8 +66,20 @@ typedef enum {
     ELISA_UI_EVENT_GAMEPAD_BUTTON = 10,
     ELISA_UI_EVENT_GAMEPAD_AXIS   = 11,
     ELISA_UI_EVENT_FOCUS_GAINED   = 12,
-    ELISA_UI_EVENT_FOCUS_LOST     = 13
+    ELISA_UI_EVENT_FOCUS_LOST     = 13,
+    ELISA_UI_EVENT_POINTER_CANCEL = 14,
+    ELISA_UI_EVENT_CONTACT_BEGAN = 15,
+    ELISA_UI_EVENT_CONTACT_MOVED = 16,
+    ELISA_UI_EVENT_CONTACT_ENDED = 17,
+    ELISA_UI_EVENT_CONTACT_CANCELLED = 18
 } elisa_ui_event_kind;
+
+typedef enum {
+    ELISA_UI_CONTACT_FINGER = 0,
+    ELISA_UI_CONTACT_STYLUS = 1,
+    ELISA_UI_CONTACT_INDIRECT = 2,
+    ELISA_UI_CONTACT_UNKNOWN = 3
+} elisa_ui_contact_tool;
 
 /* Mirrors UiCore::EventRecord field for field.
  *
@@ -80,6 +92,9 @@ typedef enum {
  *   RESIZE              x, y  = width, height
  *   GAMEPAD_BUTTON/AXIS dx    = value, code = button or axis
  *   FOCUS_GAINED/LOST   no payload
+ *   POINTER_CANCEL     no payload; release capture without activation
+ *   CONTACT_*          x, y = position; dx = monotonic seconds, dy = tool;
+ *                      code = uint32_t contact identity bits
  * Everything else is zero. */
 typedef struct {
     int32_t kind;

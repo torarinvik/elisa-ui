@@ -54,6 +54,7 @@ module UiGestures:
             duration: f32
 
         def reset() -> void:
+            gesture_observation_pending <- false
             for slot in 0..<MAX_TOUCHES:
                 gesture_active[slot] <- false
                 identifiers[slot] <- 0
@@ -80,6 +81,37 @@ module UiGestures:
 
         def overflowed() -> bool:
             return gesture_overflowed_state
+
+        # Called at application delivery, after queue normalization, so the
+        # snapshot visible inside app_event describes that exact contact fact.
+        def observe(contact: UiCore::Contact) -> bool:
+            return false if not UiCore::contact_is_valid(contact)
+            phase: mutable UiGestures::Phase = UiGestures::Phase.Began
+            phase <- UiGestures::Phase.Moved if contact.phase == UiCore::ContactPhase.Moved
+            phase <- UiGestures::Phase.Ended if contact.phase == UiCore::ContactPhase.Ended
+            fact: UiGestures::Contact = UiGestures::Contact{id: contact.id, phase: phase, position: contact.at, timestamp: contact.timestamp}
+            accepted: mutable bool = false
+            if contact.phase == UiCore::ContactPhase.Cancelled:
+                accepted <- UiGestures::cancel(contact.id)
+            else:
+                accepted <- UiGestures::begin(fact) if phase == UiGestures::Phase.Began else (UiGestures::move(fact) if phase == UiGestures::Phase.Moved else UiGestures::end(fact))
+            if accepted:
+                gesture_observed_contact <- contact
+                gesture_observation_pending <- true
+            return accepted
+
+        # Mobile delivery prepares recognition before app_event. A retained
+        # router consumes that exact handoff once; C/harness callers which
+        # deliver contact facts directly are recognized here instead.
+        def prepare_for_routing(contact: UiCore::Contact) -> bool:
+            previous: UiCore::Contact = gesture_observed_contact
+            same: bool = previous.id == contact.id and previous.phase == contact.phase and previous.tool == contact.tool and previous.at.x == contact.at.x and previous.at.y == contact.at.y and previous.timestamp == contact.timestamp
+            if gesture_observation_pending and same:
+                gesture_observation_pending <- false
+                return true
+            accepted: bool = UiGestures::observe(contact)
+            gesture_observation_pending <- false
+            return accepted
 
         # A duplicate contact identity is rejected rather than stealing another
         # contact's capture. Capacity exhaustion is sticky and observable.
@@ -185,6 +217,7 @@ module UiGestures:
 
         # Lifecycle interruption cancels every captured contact atomically.
         def cancel_all() -> usize:
+            gesture_observation_pending <- false
             cancelled: mutable usize = 0
             for slot in 0..<MAX_TOUCHES:
                 if gesture_active[slot]:
@@ -210,6 +243,8 @@ module UiGestures:
 
     private:
         global mutable gesture_active: bool[MAX_TOUCHES] = zeroed
+        global mutable gesture_observation_pending: bool = false
+        global mutable gesture_observed_contact: UiCore::Contact = zeroed
         global mutable identifiers: u32[MAX_TOUCHES] = zeroed
         global mutable starts: UiCore::Vec2[MAX_TOUCHES] = zeroed
         global mutable lasts: UiCore::Vec2[MAX_TOUCHES] = zeroed
@@ -221,7 +256,7 @@ module UiGestures:
         global mutable pinch_active: bool = false
         global mutable pinch_start_distance: f32 = 0.0
         global mutable pinch_last_distance: f32 = 0.0
-        global mutable last_result: Kind = Kind.None
+        global mutable last_result: Kind = UiGestures::Kind.None
         global mutable last_primary: u32 = 0
         global mutable last_secondary: u32 = NO_CONTACT_ID
         global mutable last_position: UiCore::Vec2 = UiCore::Vec2{x: 0.0, y: 0.0}

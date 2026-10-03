@@ -43,6 +43,18 @@ pub mod event_kind {
     pub const GAMEPAD_AXIS: i32 = 11;
     pub const FOCUS_GAINED: i32 = 12;
     pub const FOCUS_LOST: i32 = 13;
+    pub const POINTER_CANCEL: i32 = 14;
+    pub const CONTACT_BEGAN: i32 = 15;
+    pub const CONTACT_MOVED: i32 = 16;
+    pub const CONTACT_ENDED: i32 = 17;
+    pub const CONTACT_CANCELLED: i32 = 18;
+}
+
+pub mod contact_tool {
+    pub const FINGER: i32 = 0;
+    pub const STYLUS: i32 = 1;
+    pub const INDIRECT: i32 = 2;
+    pub const UNKNOWN: i32 = 3;
 }
 
 /// Opaque retained-widget identity. The token is valid only for the current

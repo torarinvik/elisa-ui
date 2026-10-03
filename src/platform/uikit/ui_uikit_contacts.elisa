@@ -1,0 +1,55 @@
+# Every native contact is delivered independently. The compatibility pointer
+# follows one stable identity and is cancelled when the stream becomes multi-
+# contact; contact events and gesture snapshots remain available to the app.
+def uikit_flat_contact(view_handle: usize, native_id: usize, phase: i32,
+                       x: f32, y: f32, timestamp: f32, native_tool: i32,
+                       tap_count: i32) -> void:
+    uikit_flat_contact_route(view_handle, native_id, phase, x, y, timestamp, native_tool, tap_count, false)
+
+# Native handle gestures own selection adjustment. Preserve identified contact
+# delivery, but retire the compatibility pointer before it can collapse the
+# selection on press. The mapper suppresses subsequent moves/releases until
+# the complete stream has ended, just as it does for multi-contact gestures.
+def uikit_flat_text_handle_contact(view_handle: usize, native_id: usize, phase: i32,
+                                   x: f32, y: f32, timestamp: f32, native_tool: i32,
+                                   tap_count: i32, tree: usize, field: usize) -> void:
+    return if phase != 0 or uikit_text_owner_matches(view_handle, tree, field) == 0
+    uikit_flat_contact_route(view_handle, native_id, phase, x, y, timestamp, native_tool, tap_count, true)
+
+def uikit_flat_contact_route(view_handle: usize, native_id: usize, phase: i32,
+                             x: f32, y: f32, timestamp: f32, native_tool: i32,
+                             tap_count: i32, native_handle: bool) -> void:
+    return if not UiUIKit::live() or not UiLifecycle::accepts_input() or view_handle != UiUIKit::view_handle()
+    return if not UiUIKit::touch_phase_is_valid(phase) or native_tool < 0 or native_tool > 3
+    contact_phase: mutable UiCore::ContactPhase = UiCore::ContactPhase.Began
+    contact_phase <- UiCore::ContactPhase.Moved if phase == 1 or phase == 2
+    contact_phase <- UiCore::ContactPhase.Ended if phase == 3
+    contact_phase <- UiCore::ContactPhase.Cancelled if phase == 4
+    tool: mutable UiCore::ContactTool = UiCore::ContactTool.Finger
+    tool <- UiCore::ContactTool.Stylus if native_tool == 2
+    tool <- UiCore::ContactTool.Indirect if native_tool == 1 or native_tool == 3
+    fact: mutable UiCore::Contact = UiCore::Contact{id: 0, phase: contact_phase, tool: tool, at: UiCore::Vec2(0.0, 0.0), timestamp: 0.0}
+    route: mutable UiMobileContacts::PointerRoute = UiMobileContacts::PointerRoute.None
+    # Raw coordinates must reach validation before Vec2's convenience
+    # constructor could sanitize NaN into a hit at the origin.
+    at: UiCore::Vec2 = UiCore::Vec2{x: x, y: y}
+    return if not UiMobileContacts::translate(native_id, contact_phase, tool, at, timestamp, fact, route)
+    if native_handle:
+        UiMobileContacts::cancel_pointer()
+        route <- UiMobileContacts::PointerRoute.Cancelled
+    generation: u32 = UiLifecycle::generation()
+    tree_lifetime: usize = UiFlat::lifetime()
+    if not uikit_dispatch_input_event(UiCore::ContactEvent.Update(fact)):
+        UiMobileContacts::clear()
+        _ = UiGestures::cancel_all()
+        _ = uikit_dispatch_event(UiCore::PointerEvent.Cancel)
+        return
+    return if UiLifecycle::generation() != generation or not UiUIKit::live() or not UiLifecycle::accepts_input()
+    if UiFlat::lifetime() != tree_lifetime:
+        UiMobileContacts::cancel_pointer()
+        _ = uikit_dispatch_event(UiCore::PointerEvent.Cancel)
+        return
+    uikit_flat_touch(view_handle, 0, x, y, tap_count) if route == UiMobileContacts::PointerRoute.Began
+    uikit_flat_touch(view_handle, 1, x, y, tap_count) if route == UiMobileContacts::PointerRoute.Moved
+    uikit_flat_touch(view_handle, 3, x, y, tap_count) if route == UiMobileContacts::PointerRoute.Ended
+    uikit_flat_touch(view_handle, 4, x, y, tap_count) if route == UiMobileContacts::PointerRoute.Cancelled

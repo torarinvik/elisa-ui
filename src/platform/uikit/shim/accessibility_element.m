@@ -5,6 +5,7 @@
 // it back to the retained widget through the framework's own history table.
 
 @interface ElisaUiKitAccessibilityElement : UIAccessibilityElement
+- (void)elisaPublishValue:(NSString *)value;
 @property(nonatomic, assign) size_t viewHandle;
 @end
 
@@ -75,6 +76,13 @@
                                            (size_t)(__bridge void *)value) == 0) {
         return;
     }
+    [super setAccessibilityValue:value];
+}
+
+// Semantic publication is an output, not an assistive edit. Going through
+// our override would feed the mirrored value back into the retained editor
+// and collapse selection/cancel composition on every published frame.
+- (void)elisaPublishValue:(NSString *)value {
     [super setAccessibilityValue:value];
 }
 

@@ -1,0 +1,77 @@
+# Atomic surrounding deletion for native input connections. The selected and
+# composing span is protected; both sides change before the single callback.
+extend UiFlat:
+    public:
+        def delete_surrounding_codepoints(before: usize, after: usize) -> void:
+            return if not accepts_text()
+            index: usize = focused_widget
+            first: mutable usize = selection_start(index)
+            last: mutable usize = selection_end(index)
+            if widgets[index].marked_end > widgets[index].marked_start:
+                first <- widgets[index].marked_start if widgets[index].marked_start < first
+                last <- widgets[index].marked_end if widgets[index].marked_end > last
+            value: sview = text_value(index)
+            left: mutable usize = first
+            before_limit: usize = before if before < first else first
+            for _ in 0..<before_limit:
+                break if left == 0
+                left <- left - 1
+                for _ in 0..<3:
+                    break if left == 0 or value.data[left] < 128 or value.data[left] >= 192
+                    left <- left - 1
+            right: mutable usize = last
+            remaining: usize = value.len.usize() - last
+            after_limit: usize = after if after < remaining else remaining
+            for _ in 0..<after_limit:
+                break if right >= value.len.usize()
+                right <- right + utf8_scalar_bytes(value, right)
+            before_units: usize = text_utf16_offset(index, first) - text_utf16_offset(index, left)
+            after_units: usize = text_utf16_offset(index, right) - text_utf16_offset(index, last)
+            delete_surrounding_utf16(before_units, after_units)
+
+        def delete_surrounding_utf16(before: usize, after: usize) -> void:
+            return if not accepts_text()
+            index: usize = focused_widget
+            first: mutable usize = selection_start(index)
+            last: mutable usize = selection_end(index)
+            marked: bool = widgets[index].marked_end > widgets[index].marked_start
+            if marked:
+                first <- widgets[index].marked_start if widgets[index].marked_start < first
+                last <- widgets[index].marked_end if widgets[index].marked_end > last
+            value: sview = text_value(index)
+            first_units: usize = text_utf16_offset(index, first)
+            last_units: usize = text_utf16_offset(index, last)
+            total_units: usize = text_utf16_length(index)
+            left_units: usize = first_units - before if before < first_units else 0
+            remaining: usize = total_units - last_units
+            right_units: usize = last_units + (after if after < remaining else remaining)
+            left: usize = text_boundary_at_or_before(index, byte_offset_for_utf16(value, left_units))
+            right_boundary: usize = text_boundary_at_or_before(index, byte_offset_for_utf16(value, right_units))
+            right: usize = next_character(index, right_boundary) if text_utf16_offset(index, right_boundary) < right_units else right_boundary
+            removed_left: usize = first - left
+            removed: usize = removed_left + right - last
+            return if removed == 0
+            continuing: usize = composition_history_slot
+            history_slot: usize = continuing if continuing < TEXT_HISTORY_CAPACITY and history_widget[continuing] == index else begin_text_history(index)
+            offset: usize = index * TEXT_CAPACITY
+            old_length: usize = widgets[index].input_length
+            output: mutable usize = 0
+            for source in 0..<old_length:
+                if (source < left or source >= first) and (source < last or source >= right):
+                    text_storage[offset + output] <- text_storage[offset + source]
+                    output <- output + 1
+            for byte_index in output..<old_length:
+                text_storage[offset + byte_index] <- 0
+            widgets[index].input_length <- output
+            widgets[index].caret <- widgets[index].caret - removed_left
+            widgets[index].selection_anchor <- widgets[index].selection_anchor - removed_left
+            if marked:
+                widgets[index].marked_start <- widgets[index].marked_start - removed_left
+                widgets[index].marked_end <- widgets[index].marked_end - removed_left
+            widgets[index].text_revision <- widgets[index].text_revision + 1
+            widgets[index].text_truncated <- false
+            restart_caret_blink()
+            mark_state_dirty()
+            callback_epoch: usize = widget_epoch
+            emit_widget_event(index, UiConst::WidgetEvent.Change)
+            finish_text_history(history_slot, index) if widget_epoch == callback_epoch

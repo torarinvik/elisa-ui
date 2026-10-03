@@ -1,0 +1,95 @@
+# Bounded native-identity translation and single-pointer compatibility policy.
+# UIKit supplies an opaque UITouch address; Android supplies a pointer ID.
+# Neither identity is truncated into the public u32 contact vocabulary.
+include "../../core/ui_core.elisa"
+
+module UiMobileContacts:
+    public:
+        const CAPACITY: usize = 8
+        const enum PointerRoute of i32:
+            None = 0
+            Began = 1
+            Moved = 2
+            Ended = 3
+            Cancelled = 4
+
+        def clear() -> void:
+            for slot in 0..<CAPACITY:
+                mobile_contact_active[slot] <- false
+            mobile_contact_count <- 0
+            mobile_pointer_live <- false
+
+        def reset() -> void:
+            clear()
+            mobile_contact_overflow <- false
+
+        def active_count() -> usize:
+            return mobile_contact_count
+
+        def overflowed() -> bool:
+            return mobile_contact_overflow
+
+        def cancel_pointer() -> void:
+            mobile_pointer_live <- false
+
+        # Rejected facts never mutate identity/capture state or output values.
+        # A second contact cancels the compatibility pointer. It cannot resume
+        # as a press when a finger lifts; a new stream starts after all lift.
+        def translate(native_id: usize, phase: UiCore::ContactPhase, tool: UiCore::ContactTool,
+                      at: UiCore::Vec2, timestamp: f32, out_contact: mutable UiCore::Contact&,
+                      out_route: mutable PointerRoute&) -> bool:
+            fact: mutable UiCore::Contact = UiCore::Contact{id: 0, phase: phase, tool: tool, at: at, timestamp: timestamp}
+            return false if not UiCore::contact_is_valid(fact)
+            slot: mutable usize = find(native_id)
+            route: mutable PointerRoute = PointerRoute.None
+            if phase == UiCore::ContactPhase.Began:
+                return false if slot != CAPACITY
+                slot <- free_slot()
+                if slot == CAPACITY:
+                    mobile_contact_overflow <- true
+                    return false
+                mobile_native_ids[slot] <- native_id
+                mobile_public_ids[slot] <- mobile_next_id
+                mobile_next_id <- mobile_next_id + 1
+                mobile_next_id <- 1 if mobile_next_id == 0 or mobile_next_id == 4294967295
+                mobile_contact_active[slot] <- true
+                if mobile_contact_count == 0:
+                    mobile_pointer_id <- native_id
+                    mobile_pointer_live <- true
+                    route <- PointerRoute.Began
+                elif mobile_pointer_live:
+                    mobile_pointer_live <- false
+                    route <- PointerRoute.Cancelled
+                mobile_contact_count <- mobile_contact_count + 1
+            else:
+                return false if slot == CAPACITY
+                if mobile_pointer_live and mobile_pointer_id == native_id:
+                    route <- PointerRoute.Moved if phase == UiCore::ContactPhase.Moved else (PointerRoute.Ended if phase == UiCore::ContactPhase.Ended else PointerRoute.Cancelled)
+                if phase == UiCore::ContactPhase.Ended or phase == UiCore::ContactPhase.Cancelled:
+                    mobile_contact_active[slot] <- false
+                    mobile_contact_count <- mobile_contact_count - 1
+                    mobile_pointer_live <- false if mobile_contact_count == 0
+            fact.id <- mobile_public_ids[slot]
+            out_contact <- fact
+            out_route <- route
+            return true
+
+    private:
+        global mutable mobile_native_ids: usize[CAPACITY] = zeroed
+        global mutable mobile_public_ids: u32[CAPACITY] = zeroed
+        global mutable mobile_contact_active: bool[CAPACITY] = zeroed
+        global mutable mobile_contact_count: usize = 0
+        global mutable mobile_contact_overflow: bool = false
+        global mutable mobile_next_id: u32 = 1
+        global mutable mobile_pointer_live: bool = false
+        global mutable mobile_pointer_id: usize = 0
+
+        def find(native_id: usize) -> usize:
+            for slot in 0..<CAPACITY:
+                return slot if mobile_contact_active[slot] and mobile_native_ids[slot] == native_id
+            return CAPACITY
+
+        def free_slot() -> usize:
+            for slot in 0..<CAPACITY:
+                return slot if not mobile_contact_active[slot]
+            return CAPACITY

@@ -1,0 +1,21 @@
+# One bounded drain on the UI-owner thread, including reentrant app callbacks.
+include "../mobile/ui_mobile_surface.elisa"
+include "../../core/ui_paint.elisa"
+
+module UiAndroidDispatch:
+    public:
+        def deliver(event: UiCore::Event) -> bool can[Ui.Input]:
+            return false if not UiEvents::enqueue(event)
+            return true if android_event_drain_active
+            android_event_drain_active <- true
+            generation: u32 = UiLifecycle::generation()
+            queued: mutable UiCore::Event = UiCore::Event.None
+            while UiEvents::dequeue(queued):
+                continue if generation != UiLifecycle::generation() or not UiLifecycle::is_started()
+                continue if UiCore::is_input_event(queued) and not UiLifecycle::accepts_input()
+                app_event(queued) if UiMobileSurface::observe_event(queued)
+            android_event_drain_active <- false
+            return true
+
+    private:
+        global mutable android_event_drain_active: bool = false

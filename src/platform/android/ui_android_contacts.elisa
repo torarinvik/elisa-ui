@@ -1,0 +1,35 @@
+# MotionEvent pointer slots can reorder; its native pointer ID cannot. The
+# common ingress owns portable identities and the shared gesture interpreter.
+extend UiAndroid:
+    public:
+        def contact(native_id: usize, phase: i32, x: f32, y: f32, timestamp: f32, native_tool: i32) -> void can[Ui.Input]:
+            return if not live() or not UiLifecycle::accepts_input() or phase < 0 or phase > 3
+            return if native_tool < 0 or native_tool > 4
+            tool: mutable UiCore::ContactTool = UiCore::ContactTool.Unknown
+            tool <- UiCore::ContactTool.Finger if native_tool == 1
+            tool <- UiCore::ContactTool.Stylus if native_tool == 2 or native_tool == 4
+            tool <- UiCore::ContactTool.Indirect if native_tool == 3
+            fact: mutable UiCore::Contact = UiCore::Contact{id: 0, phase: phase.ContactPhase(), tool: tool, at: UiCore::Vec2(0.0, 0.0), timestamp: 0.0}
+            route: mutable UiMobileContacts::PointerRoute = UiMobileContacts::PointerRoute.None
+            return if not UiMobileContacts::translate(native_id, phase.ContactPhase(), tool, UiCore::Vec2{x: x, y: y}, timestamp, fact, route)
+            normalized: UiCore::Event = UiCore::normalize_event(UiCore::ContactEvent.Update(fact))
+            if not UiAndroidDispatch::deliver(normalized):
+                # A dropped begin/end cannot leave a native ID mapped to a
+                # recognizer contact which application delivery never saw.
+                UiMobileContacts::clear()
+                _ = UiGestures::cancel_all()
+                _ = UiAndroidDispatch::deliver(UiCore::PointerEvent.Cancel)
+            else:
+                android_ime_contact(fact)
+
+def android_contact(native_id: usize, phase: i32, x: f32, y: f32, timestamp: f32, native_tool: i32) -> void:
+    can Ui.Input:
+        UiAndroid::contact(native_id, phase, x, y, timestamp, native_tool)
+
+export fn elisa_android_contact(native_id: usize, phase: i32, x: f32, y: f32, timestamp: f32, native_tool: i32) -> void = android_contact
+
+def android_text_purpose() -> i32:
+    return 1 if not UiAndroid::wants_keyboard()
+    return UiFlat::text_input_traits(UiFlat::focused()).purpose.i32()
+
+export fn elisa_android_text_purpose() -> i32 = android_text_purpose

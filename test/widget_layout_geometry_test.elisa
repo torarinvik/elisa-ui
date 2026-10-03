@@ -139,6 +139,18 @@ def main() -> i64:
     UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(400.0, 20.0), button: 0)))
     check("captured button clicks after re-entry", test_last_click == 1)
 
+    test_last_click <- UiFlat::NONE
+    UiFlat::handle(UiCore::PointerEvent.Down(UiCore::Vec2(400.0, 20.0), 0))
+    UiFlat::handle(UiCore::PointerEvent.Cancel)
+    UiFlat::handle(UiCore::PointerEvent.Up(UiCore::Vec2(400.0, 20.0), 0))
+    check("native capture cancellation prevents a late release click", UiFlat::active() == UiFlat::NONE and not UiFlat::widget(1).pressed and test_last_click == UiFlat::NONE)
+
+    UiFlat::keyboard(UiCore::KeyEvent.Down(UiCore::Key.Space))
+    UiFlat::handle(UiCore::PointerEvent.Cancel)
+    check("pointer cancellation preserves keyboard capture", UiFlat::active() == 1 and UiFlat::widget(1).pressed)
+    UiFlat::keyboard(UiCore::KeyEvent.Up(UiCore::Key.Space))
+    check("keyboard release still activates after pointer cancellation", test_last_click == 1)
+
     UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(400.0, 20.0), button: 0)))
     UiFlat::lifecycle((UiCore::Event.FocusLost))
     check("window focus loss cancels pointer capture", UiFlat::active() == UiFlat::NONE and not UiFlat::widget(1).pressed)

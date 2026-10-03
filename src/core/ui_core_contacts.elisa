@@ -1,0 +1,30 @@
+# Identified contact facts and their fixed-record boundary. Native identities
+# are mapped by the mobile ingress adapter; this public identity is portable.
+extend UiCore:
+    public:
+        def contact_is_valid(contact: Contact) -> bool:
+            return false if contact.phase.i32() < 0 or contact.phase.i32() > 3
+            return false if contact.tool.i32() < 0 or contact.tool.i32() > 3
+            return is_finite(contact.at.x) and is_finite(contact.at.y) and is_finite(contact.timestamp) and contact.timestamp >= 0.0
+
+        def contact_wire_kind(contact: Contact) -> WireKind:
+            return WireKind.ContactBegan if contact.phase == ContactPhase.Began
+            return WireKind.ContactMoved if contact.phase == ContactPhase.Moved
+            return WireKind.ContactEnded if contact.phase == ContactPhase.Ended
+            return WireKind.ContactCancelled if contact.phase == ContactPhase.Cancelled
+            return WireKind.None
+
+        def contact_to_record(contact: Contact) -> EventRecord:
+            return EventRecord{kind: contact_wire_kind(contact), x: bounded_coordinate(contact.at.x), y: bounded_coordinate(contact.at.y), dx: contact.timestamp, dy: contact.tool.i32().f32(), code: contact.id.i32()}
+
+        def contact_from_record(record: EventRecord) -> Event:
+            return Event.None if record.kind.i32() < 15 or record.kind.i32() > 18
+            return Event.None if not is_finite(record.x) or not is_finite(record.y) or not is_finite(record.dx) or not is_finite(record.dy)
+            return Event.None if record.dx < 0.0 or record.dy < 0.0 or record.dy > 3.0
+            tool: i32 = record.dy.i32()
+            return Event.None if tool.f32() != record.dy
+            phase: mutable ContactPhase = ContactPhase.Began
+            phase <- ContactPhase.Moved if record.kind == WireKind.ContactMoved
+            phase <- ContactPhase.Ended if record.kind == WireKind.ContactEnded
+            phase <- ContactPhase.Cancelled if record.kind == WireKind.ContactCancelled
+            return ContactEvent.Update(Contact{id: record.code.u32(), phase: phase, tool: tool.ContactTool(), at: Vec2(record.x, record.y), timestamp: record.dx})

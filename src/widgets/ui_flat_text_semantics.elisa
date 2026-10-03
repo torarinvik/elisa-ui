@@ -97,6 +97,8 @@ extend UiFlat:
         # child frame already contains the current offset, so recover its
         # unscrolled edge and request the smallest offset that reveals it.
         def ensure_visible(index: usize) -> void:
+            return if index >= widget_count
+            ensure_layout()
             cursor: mutable usize = widgets[index].parent
             for _ in 0..<MAX_TRAVERSAL_DEPTH:
                 break if cursor >= widget_count
@@ -124,6 +126,9 @@ extend UiFlat:
                             requested <- unscrolled_start - viewport_start if child_start < viewport_start
                             requested <- unscrolled_end - viewport_end if child_end > viewport_end and child_start >= viewport_start
                         _ = set_scroll_offset(cursor, requested)
+                    # An inner scroll moves the descendant. The next outer
+                    # viewport must compare against its newly arranged frame.
+                    ensure_layout()
                 cursor <- widgets[cursor].parent
 
         def emit_accessibility(index: usize) -> void:

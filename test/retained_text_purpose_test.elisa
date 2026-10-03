@@ -1,0 +1,34 @@
+include "./widget_layout_support.elisa"
+include "../src/widgets/ui_handles.elisa"
+
+def main() -> i64:
+    UiHandles::reset()
+    root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 0.0, 0.0, UiCore::rgb(0, 0, 0))
+    field: UiHandles::Handle = UiHandles::text_field(root, "Value", "", "secret", 160.0, 40.0, 14.0, UiCore::rgb(255, 255, 255), UiCore::rgb(0, 0, 0))
+    index: usize = UiHandles::index(field)
+    _ = UiHandles::request_focus(field)
+    UiHandles::set_selection(field, 6, 6)
+    UiHandles::insert_text("!")
+    check("plain edit establishes undo history before purpose change", UiFlat::can_undo_text() and UiFlat::text_value(index) == "secret!")
+    invalid_purpose: UiTextInput::Purpose = (-1).i32().Purpose()
+    check("unknown retained purpose is accepted with safe normalization", UiHandles::set_text_purpose(field, invalid_purpose))
+    check("unknown purpose enables secure storage and denies readback", UiFlat::widget(index).secure and not UiFlat::allows_text_readback() and UiFlat::text_input_traits(index).purpose == UiTextInput::Purpose.Password)
+    check("password normalization scrubs prior undo and redo", not UiFlat::can_undo_text() and not UiFlat::can_redo_text())
+    UiHandles::insert_text("*")
+    check("password-purpose edit remains undo-ineligible", UiFlat::text_value(index) == "secret!*" and not UiFlat::can_undo_text())
+    _ = UiHandles::set_text_purpose(field, UiTextInput::Purpose.Email)
+    check("purpose change cannot silently remove explicit privacy", UiFlat::widget(index).secure and UiFlat::text_input_traits(index).secure)
+    UiHandles::set_secure(field, false)
+    check("explicit privacy release restores saved email purpose", UiFlat::text_input_traits(index).purpose == UiTextInput::Purpose.Email and not UiFlat::text_input_traits(index).secure)
+    check("privacy release cannot resurrect retired secret history", not UiFlat::can_undo_text() and not UiFlat::can_redo_text())
+    _ = UiHandles::set_text_purpose(field, UiTextInput::Purpose.Password)
+    UiHandles::set_secure(field, false)
+    check("disabling password privacy resets purpose to plain", UiFlat::text_input_traits(index).purpose == UiTextInput::Purpose.Text and not UiFlat::widget(index).secure)
+    UiHandles::reset()
+    replacement_root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 0.0, 0.0, UiCore::rgb(0, 0, 0))
+    replacement: UiHandles::Handle = UiHandles::text_field(replacement_root, "New", "", "", 160.0, 40.0, 14.0, UiCore::rgb(255, 255, 255), UiCore::rgb(0, 0, 0))
+    check("stale purpose update cannot mutate recycled field", replacement.widget_id == field.widget_id and not UiHandles::set_text_purpose(field, UiTextInput::Purpose.Password) and not UiFlat::widget(UiHandles::index(replacement)).secure)
+    if test_failures == 0:
+        _ = puts("retained text purpose: all checks passed")
+        return 0
+    return 1

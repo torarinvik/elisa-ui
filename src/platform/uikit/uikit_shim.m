@@ -12,6 +12,7 @@
 // file; never add a fragment to a build line.
 
 #import <UIKit/UIKit.h>
+#include "../mobile/native_contact_clock.h"
 #include <stdint.h>
 
 // Surface and frame.
@@ -30,6 +31,8 @@ extern int elisa_uikit_picker_result(uint32_t slot, uint32_t generation, int sta
 
 // Input.
 extern void elisa_uikit_touch(size_t viewHandle, int phase, float x, float y, int tapCount);
+extern void elisa_uikit_contact(size_t viewHandle, size_t nativeId, int phase,
+                                float x, float y, float timestamp, int tool, int tapCount);
 extern void elisa_uikit_scroll(size_t viewHandle, float x, float y, float dx, float dy);
 extern void elisa_uikit_press(size_t viewHandle, int usage, int64_t flags, int down);
 extern void elisa_uikit_hover(size_t viewHandle, float x, float y);
@@ -54,8 +57,15 @@ extern int elisa_uikit_text_action_valid_selector(size_t viewHandle, size_t sele
 // UITextInput. Positions and ranges are UTF-16 offsets into the focused field;
 // elisa_uikit_not_found is "no such position".
 extern size_t elisa_uikit_text_length(size_t viewHandle);
+extern int elisa_uikit_text_is_secure(size_t viewHandle);
+extern int elisa_uikit_text_purpose(size_t viewHandle);
 extern size_t elisa_uikit_text_clamp_offset(size_t viewHandle, size_t offset);
 extern size_t elisa_uikit_text_offset_position(size_t viewHandle, size_t offset, int64_t delta);
+extern int32_t elisa_uikit_text_is_rtl(size_t viewHandle);
+extern int32_t elisa_uikit_text_layout_towards_start(size_t viewHandle, int32_t left);
+extern size_t elisa_uikit_text_layout_position(size_t viewHandle, size_t offset, int32_t left, int64_t steps);
+extern size_t elisa_uikit_text_character_position(size_t viewHandle, size_t offset, int32_t step);
+extern size_t elisa_uikit_text_layout_character(size_t viewHandle, size_t offset, int32_t left);
 extern size_t elisa_uikit_text_in_range(size_t viewHandle, size_t location, size_t length);
 extern void elisa_uikit_text_replace_range(size_t viewHandle, size_t location, size_t length, size_t text);
 extern size_t elisa_uikit_text_selection_location(size_t viewHandle);
@@ -70,6 +80,18 @@ extern void elisa_uikit_text_unmark(size_t viewHandle);
 extern int elisa_uikit_text_rect(size_t viewHandle, size_t location, size_t length,
                                  float *x, float *y, float *width, float *height);
 extern size_t elisa_uikit_text_offset_at_x(size_t viewHandle, float x);
+extern int elisa_uikit_text_interaction_at(size_t viewHandle, float x, float y);
+extern size_t elisa_uikit_text_owner_tree(size_t viewHandle);
+extern size_t elisa_uikit_text_owner_field(size_t viewHandle);
+extern int elisa_uikit_text_owner_matches(size_t viewHandle, size_t tree, size_t field);
+extern void elisa_uikit_text_handle_contact(size_t viewHandle, size_t nativeId, int phase,
+    float x, float y, float timestamp, int nativeTool, int tapCount, size_t tree, size_t field);
+extern int elisa_uikit_text_handle_drag(size_t viewHandle, size_t tree, size_t field,
+    int movingEnd, int phase, float x);
+extern size_t elisa_uikit_text_menu_count(void);
+extern const char *elisa_uikit_text_menu_selector(size_t index);
+extern size_t elisa_uikit_text_menu_title(size_t index);
+extern int elisa_uikit_text_menu_keeps_open(size_t index);
 
 // Semantics.
 extern int elisa_uikit_accessibility_activate(size_t viewHandle, size_t handle);
@@ -100,6 +122,7 @@ static NSString *elisa_uikit_string(size_t handle);
 #import "shim/accessibility_element.m"
 #import "shim/view.m"
 #import "shim/text_input.m"
+#import "shim/edit_menu.m"
 #import "shim/controller.m"
 #import "shim/picker.m"
 #import "shim/host.m"

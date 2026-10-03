@@ -40,6 +40,7 @@ extend UiFlat:
             target: mutable usize = index
             target <- NONE if target < widget_count and (not widgets[target].interactive or not effectively_enabled(target) or not effectively_visible(target))
             changed: bool = target != focused_widget
+            advance_focus_epoch() if changed
             release_active_press() if target != focused_widget
             finish_marked_text_on_blur(focused_widget) if changed and focused_widget < widget_count
             if focused_widget < widget_count:
@@ -50,6 +51,10 @@ extend UiFlat:
                 restart_caret_blink() if widgets[focused_widget].kind == UiConst::WidgetKind.TextField
                 ensure_visible(focused_widget)
             mark_state_dirty() if changed
+
+        def advance_focus_epoch() -> void:
+            flat_focus_epoch_state <- flat_focus_epoch_state + 1
+            flat_focus_epoch_state <- 1 if flat_focus_epoch_state == 0
 
         def focus_next() -> void:
             return if widget_count == 0

@@ -171,7 +171,15 @@ mkdir -p "$OUT/classes"
 javac_log="$OUT/javac.log"
 javac -source 8 -target 8 -nowarn -bootclasspath "$PLATFORM_JAR" -classpath "$PLATFORM_JAR" \
   -d "$OUT/classes" "$ROOT/src/platform/android/java/org/elisa_ui/ElisaCanvasActivity.java" \
-  "$ROOT/src/platform/android/java/org/elisa_ui/ElisaSelectionStore.java" >"$javac_log" 2>&1 || {
+  "$ROOT/src/platform/android/java/org/elisa_ui/ElisaSelectionStore.java" \
+  "$ROOT/src/platform/android/java/org/elisa_ui/ElisaInputConnection.java" \
+  "$ROOT/src/platform/android/java/org/elisa_ui/ElisaInputView.java" \
+  "$ROOT/src/platform/android/java/org/elisa_ui/ElisaTextMenuState.java" \
+  "$ROOT/src/platform/android/java/org/elisa_ui/ElisaImeWindow.java" \
+  "$ROOT/src/platform/android/java/org/elisa_ui/ElisaImeSession.java" \
+  "$ROOT/src/platform/android/java/org/elisa_ui/ElisaImeBatchProbe.java" \
+  "$ROOT/src/platform/android/java/org/elisa_ui/ElisaMenuCopyProbe.java" \
+  "$ROOT/src/platform/android/java/org/elisa_ui/ElisaImeTraits.java" >"$javac_log" 2>&1 || {
     javac_status=$?
     cat "$javac_log" >&2
     echo "android: javac failed" >&2

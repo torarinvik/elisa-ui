@@ -109,13 +109,27 @@ int elisa_uikit_begin_text_input(size_t viewHandle) {
     return view != nil && [view becomeFirstResponder] ? 1 : 0;
 }
 
+void elisa_uikit_suspend_text_ui(size_t viewHandle) {
+    ElisaUiKitView *view = elisa_uikit_view(viewHandle);
+    if (view == nil) return;
+    [view.elisaEditMenu dismissMenu];
+    view.elisaSelectionDisplay.activated = NO;
+    // Cancels a captured native pan; Elisa has already retired its epoch.
+    view.elisaHandlePan.enabled = NO;
+    view.elisaHandlePan.enabled = YES;
+}
+
 int elisa_uikit_end_text_input(size_t viewHandle) {
     ElisaUiKitView *view = elisa_uikit_view(viewHandle);
+    [view.elisaEditMenu dismissMenu];
+    view.elisaSelectionDisplay.activated = NO;
     return view != nil && [view resignFirstResponder] ? 1 : 0;
 }
 
 void elisa_uikit_reload_input_views(size_t viewHandle) {
-    [elisa_uikit_view(viewHandle) reloadInputViews];
+    ElisaUiKitView *view = elisa_uikit_view(viewHandle);
+    [view.elisaEditMenu dismissMenu];
+    [view reloadInputViews];
 }
 
 // --- Pasteboard --------------------------------------------------------
@@ -144,7 +158,7 @@ static void elisa_uikit_apply_element(ElisaUiKitAccessibilityElement *element,
     element.accessibilityIdentifier = elisa_uikit_string(identifier);
     element.accessibilityLabel = elisa_uikit_string(label);
     element.accessibilityHint = elisa_uikit_string(hint);
-    element.accessibilityValue = elisa_uikit_string(value);
+    [element elisaPublishValue:elisa_uikit_string(value)];
     // The disabled bit is already part of the traits Elisa computed, so the
     // enabled argument is only the framework's own record of it.
     element.accessibilityTraits = (UIAccessibilityTraits)traits;

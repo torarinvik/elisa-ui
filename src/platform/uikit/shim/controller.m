@@ -105,9 +105,11 @@ static int elisa_uikit_status_bar_hidden = 0;
 
 - (void)loadView {
     self.view = [[ElisaUiKitView alloc] initWithFrame:CGRectZero];
-    self.view.multipleTouchEnabled = NO;
+    self.view.multipleTouchEnabled = YES;
     self.view.opaque = YES;
     [(ElisaUiKitView *)self.view elisaInstallScrollRecognizer];
+    [(ElisaUiKitView *)self.view elisaInstallTextInteraction];
+    [(ElisaUiKitView *)self.view elisaInstallEditMenu];
     [(ElisaUiKitView *)self.view elisaInstallPointer];
 }
 

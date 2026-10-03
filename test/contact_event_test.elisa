@@ -1,0 +1,36 @@
+# Contact identity/source/time survive the public C/WIT-sized event record.
+include "../src/core/ui_core.elisa"
+extern puts(text: cstr) -> i64
+global mutable contact_test_failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    contact_test_failures <- contact_test_failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    for phase in 0..<4:
+        fact: UiCore::Contact = UiCore::Contact{id: 4294967294, phase: phase.i32().ContactPhase(), tool: UiCore::ContactTool.Stylus, at: UiCore::Vec2(12.0, 34.0), timestamp: 45.5}
+        record: UiCore::EventRecord = UiCore::to_record(UiCore::ContactEvent.Update(fact))
+        check("contact has stable additive wire ordinal", record.kind.i32() == 15 + phase.i32())
+        check("contact uses fixed record slots", record.x == 12.0 and record.y == 34.0 and record.dx == 45.5 and record.dy == 1.0 and record.code == -2)
+        match UiCore::from_record(record):
+            UiCore::ContactEvent.Update(decoded):
+                check("contact preserves full unsigned identity and source", decoded.id == fact.id and decoded.phase == fact.phase and decoded.tool == fact.tool and decoded.timestamp == fact.timestamp)
+            _:
+                check("contact keeps its typed variant", false)
+    malformed: mutable UiCore::EventRecord = UiCore::EventRecord{kind: UiCore::WireKind.ContactBegan, x: 0.0, y: 0.0, dx: 1.0, dy: 0.5, code: 0}
+    check("fractional source cannot masquerade as finger", UiCore::from_record(malformed) == UiCore::Event.None)
+    malformed.dy <- 0.0
+    malformed.dx <- -1.0
+    check("negative contact time is rejected", UiCore::from_record(malformed) == UiCore::Event.None)
+    zero: f32 = 0.0
+    malformed.dx <- 1.0 / zero
+    check("infinite contact time is rejected", UiCore::from_record(malformed) == UiCore::Event.None)
+    UiEvents::reset()
+    invalid: UiCore::Contact = UiCore::Contact{id: 1, phase: 99.ContactPhase(), tool: UiCore::ContactTool.Finger, at: UiCore::Vec2(0.0, 0.0), timestamp: 1.0}
+    check("queue rejects invalid contact phase", not UiEvents::enqueue(UiCore::ContactEvent.Update(invalid)) and UiEvents::pending() == 0)
+    if contact_test_failures == 0:
+        _ = puts("contact events: all checks passed")
+        return 0
+    return 1

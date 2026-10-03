@@ -24,6 +24,18 @@ behavior without putting a second event model in C or Objective-C.
 `UiCore::Event` is the portable queued vocabulary for lifecycle changes
 (`Quit`, `Resize`, `FocusGained`, `FocusLost`), physical keys (`KeyEvent.Down`
 and `Up`), pointer transitions and scroll (`PointerEvent`), and gamepad input.
+`PointerEvent.Cancel` releases pointer capture without activation. Its wire
+ordinal is 14; the existing 24-byte record and earlier ordinals are unchanged.
+Cancellation is an authoritative control signal: it survives input gating and
+can replace queued physical input when the queue is full.
+`ContactEvent.Update` adds identified contact phases at wire ordinals 15–18
+(began, moved, ended, cancelled). The record remains 24 bytes: `code` carries
+the unsigned identity bits, `x/y` logical position, `dx` monotonic seconds,
+and `dy` the integer tool tag (finger 0, stylus 1, indirect 2, unknown 3).
+Invalid phases, tools, nonfinite coordinates/time and negative time are rejected.
+UIKit and Android map native identities without truncation, then update the
+shared recognizer at queued application delivery. Android's reentrant callbacks
+now use the same bounded FIFO; generation checks discard old-session traffic.
 `InputEvent` is the common supertype for physical input; lifecycle events are
 not input. Key identities and pointer-button values are normalized into
 `UiCore` enums at the adapter boundary.
@@ -50,21 +62,49 @@ SDL explicitly drains earlier queued events before forwarding borrowed text.
 
 `PointerEvent` is a single anonymous pointer. Its `Move`, `Down`, `Up`,
 `Leave`, and `Scroll` variants carry no source kind, contact identity, pressure,
-or tilt. UIKit and Android currently normalize touch to the primary pointer;
-UIKit forwards one touch from each native set. Stylus and multi-contact
-identity therefore cannot be recovered from this event stream.
+or tilt. UIKit and Android retain this compatibility path, but also deliver
+identified `ContactEvent.Update` facts with source and time. UIKit forwards all
+contacts in each native set; Android uses stable pointer IDs rather than slots.
+Identity/source are available through contact events, not anonymous pointers.
 
 The separate `UiGestures` state machine accepts identified contacts and
-timestamps and recognizes tap, long-press, drag, and two-contact pinch, but no
-production adapter currently feeds it or maps its snapshots to widget actions.
-Its contact cancellation is also separate from pointer capture. Until that
-bridge exists, the gesture policy is tested as a backend-neutral component,
-not as native touch/stylus support.
+timestamps and recognizes tap, long-press, drag, and two-contact pinch. Native
+contact delivery feeds it before application callbacks, and opted-in retained
+targets route its snapshots into gesture widget callbacks. `UiMobileSurface` clears the
+gesture table on accepted focus loss, backgrounding, surface loss, and stop,
+and resets it for a new session. Pressure/tilt and physical-device stylus
+acceptance remain unimplemented/unverified respectively.
+
+Native timestamp adapters subtract a shared contact-stream origin in double
+precision before narrowing to the portable float record. Time is monotonic
+within a stream and restarts for a new stream; absolute system uptime is not
+part of the contact contract. The shared C clock rejects backward/nonfinite
+native times. `check_android_contacts.sh` covers 100-million-second uptime
+without losing the 340 ms tap or 610 ms long-press timing distinction.
 
 For the existing single-pointer widget path, `PointerEvent.Leave` clears hover
 but intentionally retains a pressed control or scrollbar capture until the
 matching release. `UiFlat::handle()` routes `FocusLost` through
 `UiFlat::lifecycle()` to `cancel_interaction()`, which releases active
 presses/scroll capture and clears transient modifier state.
-`UiGestures::cancel_all()` is the corresponding contact-table operation, but
-is not yet wired to that lifecycle path.
+UIKit and Android native touch cancellation now produce `PointerEvent.Cancel`,
+which releases button, slider, text-selection, and scrollbar capture while
+preserving keyboard capture and modifiers. Their lifecycle callbacks also
+deliver it after input becomes inactive. `UiGestures::cancel_all()` is wired
+to the mobile lifecycle transitions above.
+
+Focused evidence (2026-10-03): `event_wire_test`, `event_queue_test`,
+`widget_layout_geometry_test`, `mobile_surface_test`, `uikit_input_test`, and
+`uikit_surface_test` pass, covering a late release after cancellation, keyboard
+capture preservation, a full ingress queue, real UIKit callback routing below
+the shim, and contact cancellation at each mobile interruption. These runs
+explicitly use stale Stage1 product `5c926548…8428e324c` while a separate
+compiler seed is running; they do not establish fresh-compiler acceptance.
+The UIKit Hello simulator app and Android Showcase ARM64 APK build, and the
+C, Go, and Rust embedding gates pass on the same product.
+`check_uikit_touch.sh` also passes two XCUITests on the dedicated iOS 26.5
+simulator: a system HID drag triggers UIKit cancellation, the app publishes
+confirmation that retained capture is released, two following taps activate
+exactly once each, and committed software-keyboard text reaches semantics.
+The host UIKit fixture additionally verifies that a cancellation callback can
+start a replacement session without the old stop request retiring it.

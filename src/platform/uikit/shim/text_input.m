@@ -10,6 +10,18 @@
 // keyboard, from dictation or from autocorrect reaches the retained model
 // through setMarkedText:/unmarkText.
 
+@interface ElisaUiKitSelectionRect : UITextSelectionRect
+@property(nonatomic) NSWritingDirection elisaDirection;
+@property(nonatomic, assign) CGRect elisaRect;
+@end
+@implementation ElisaUiKitSelectionRect
+- (CGRect)rect { return self.elisaRect; }
+- (NSWritingDirection)writingDirection { return self.elisaDirection; }
+- (BOOL)containsStart { return YES; }
+- (BOOL)containsEnd { return YES; }
+- (BOOL)isVertical { return NO; }
+@end
+
 @interface ElisaUiKitTextPosition : UITextPosition
 @property(nonatomic, assign) size_t offset;
 + (instancetype)withOffset:(size_t)offset;
@@ -58,11 +70,51 @@ static ElisaUiKitTextRange *elisa_uikit_range_of(UITextRange *range) {
 
 // Conformance is declared on the category rather than the class: the protocol
 // is implemented here, and the compiler checks the implementation it can see.
-@interface ElisaUiKitView (TextInput) <UITextInput>
+@interface ElisaUiKitView (TextInput) <UITextInput, UITextInteractionDelegate, UITextSelectionDisplayInteractionDelegate>
 - (CGRect)elisaRectForLocation:(size_t)location length:(size_t)length;
+- (void)elisaInstallTextInteraction;
 @end
 
 @implementation ElisaUiKitView (TextInput)
+
+- (void)elisaInstallTextInteraction {
+    self.elisaSelectionDisplay = [[UITextSelectionDisplayInteraction alloc] initWithTextInput:self delegate:self];
+    [self addInteraction:self.elisaSelectionDisplay];
+    UITextInteraction *interaction =
+        [UITextInteraction textInteractionForMode:UITextInteractionModeEditable];
+    interaction.textInput = self;
+    interaction.delegate = self;
+    [self addInteraction:interaction];
+    // Let native selection win before the canvas interprets a finger drag
+    // as scrolling. Indirect scrolling retains its independent recognizer.
+    for (UIGestureRecognizer *textGesture in interaction.gesturesForFailureRequirements) {
+        [self.elisaFingerScroll requireGestureRecognizerToFail:textGesture];
+    }
+    self.elisaHandlePan = [[UIPanGestureRecognizer alloc]
+        initWithTarget:self action:@selector(elisaAdjustTextHandle:)];
+    self.elisaHandlePan.maximumNumberOfTouches = 1;
+    self.elisaHandlePan.delegate = (id<UIGestureRecognizerDelegate>)self;
+    [self addGestureRecognizer:self.elisaHandlePan];
+    [self.elisaFingerScroll requireGestureRecognizerToFail:self.elisaHandlePan];
+}
+
+- (BOOL)interactionShouldBegin:(UITextInteraction *)interaction atPoint:(CGPoint)point {
+    (void)interaction;
+    // A handle's dot can extend outside the field. Its UIKit bounds, not an
+    // expanded widget hit box, identify this native affordance. Revalidate
+    // the document that supplied the last display layout before accepting it.
+    if ([self elisaPointHitsSelectionHandle:point]) return NO;
+    return elisa_uikit_text_interaction_at([self elisaHandle],
+                                          (float)point.x, (float)point.y) != 0;
+}
+
+- (void)elisaAdjustTextHandle:(UIPanGestureRecognizer *)pan {
+    CGPoint point = [pan locationInView:self];
+    (void)elisa_uikit_text_handle_drag([self elisaHandle], self.elisaHandleTree,
+        self.elisaHandleField, self.elisaHandleMovingEnd,
+        (int)pan.state, (float)point.x);
+    [self.elisaSelectionDisplay setNeedsSelectionUpdate];
+}
 
 // The stock tokenizer. Word and sentence boundaries in the user's language are
 // the text system's job, not this framework's, so it is not reimplemented.
@@ -92,6 +144,7 @@ static ElisaUiKitTextRange *elisa_uikit_range_of(UITextRange *range) {
 }
 
 - (void)replaceRange:(UITextRange *)range withText:(NSString *)text {
+    [self.elisaEditMenu dismissMenu];
     ElisaUiKitTextRange *bounded = elisa_uikit_range_of(range);
     if (bounded == nil) return;
     elisa_uikit_text_replace_range([self elisaHandle], bounded.location, bounded.length,
@@ -132,6 +185,7 @@ static ElisaUiKitTextRange *elisa_uikit_range_of(UITextRange *range) {
 }
 
 - (void)setMarkedText:(NSString *)markedText selectedRange:(NSRange)selectedRange {
+    [self.elisaEditMenu dismissMenu];
     elisa_uikit_text_set_marked([self elisaHandle], (size_t)(__bridge void *)markedText,
                                 selectedRange.location, selectedRange.length);
 }
@@ -161,12 +215,11 @@ static ElisaUiKitTextRange *elisa_uikit_range_of(UITextRange *range) {
 - (UITextPosition *)positionFromPosition:(UITextPosition *)position
                              inDirection:(UITextLayoutDirection)direction
                                   offset:(NSInteger)offset {
-    // The field is one line, so up/down have no vertical target and left/right
-    // are the storage order. A layout direction the framework cannot honour
-    // yields no position rather than a silently wrong one.
-    if (direction == UITextLayoutDirectionUp || direction == UITextLayoutDirectionDown) return nil;
-    NSInteger signedOffset = direction == UITextLayoutDirectionLeft ? -offset : offset;
-    return [self positionFromPosition:position offset:signedOffset];
+    // Elisa resolves physical horizontal movement against retained geometry.
+    if (direction != UITextLayoutDirectionLeft && direction != UITextLayoutDirectionRight) return nil;
+    return [ElisaUiKitTextPosition withOffset:elisa_uikit_text_layout_position(
+        [self elisaHandle], elisa_uikit_offset_of([self elisaHandle], position),
+        direction == UITextLayoutDirectionLeft, (int64_t)offset)];
 }
 
 - (NSComparisonResult)comparePosition:(UITextPosition *)from toPosition:(UITextPosition *)to {
@@ -187,17 +240,21 @@ static ElisaUiKitTextRange *elisa_uikit_range_of(UITextRange *range) {
                     farthestInDirection:(UITextLayoutDirection)direction {
     ElisaUiKitTextRange *bounded = elisa_uikit_range_of(range);
     if (bounded == nil) return nil;
-    BOOL towardsStart = direction == UITextLayoutDirectionLeft || direction == UITextLayoutDirectionUp;
+    if (direction != UITextLayoutDirectionLeft && direction != UITextLayoutDirectionRight) return nil;
+    int32_t towardsStart = elisa_uikit_text_layout_towards_start([self elisaHandle], direction == UITextLayoutDirectionLeft);
+    if (towardsStart < 0) return nil;
     return [ElisaUiKitTextPosition withOffset:towardsStart ? bounded.location
                                                           : bounded.location + bounded.length];
 }
 
 - (UITextRange *)characterRangeByExtendingPosition:(UITextPosition *)position
                                        inDirection:(UITextLayoutDirection)direction {
-    size_t offset = elisa_uikit_offset_of([self elisaHandle], position);
+    size_t offset = elisa_uikit_text_character_position([self elisaHandle],
+        elisa_uikit_offset_of([self elisaHandle], position), 0);
     if (offset == elisa_uikit_not_found) return nil;
-    BOOL towardsStart = direction == UITextLayoutDirectionLeft || direction == UITextLayoutDirectionUp;
-    size_t other = elisa_uikit_text_offset_position([self elisaHandle], offset, towardsStart ? -1 : 1);
+    if (direction != UITextLayoutDirectionLeft && direction != UITextLayoutDirectionRight) return nil;
+    size_t other = elisa_uikit_text_layout_character([self elisaHandle], offset,
+        direction == UITextLayoutDirectionLeft);
     if (other == elisa_uikit_not_found) return nil;
     size_t low = other < offset ? other : offset;
     size_t high = other < offset ? offset : other;
@@ -210,12 +267,13 @@ static ElisaUiKitTextRange *elisa_uikit_range_of(UITextRange *range) {
                                           inDirection:(UITextStorageDirection)direction {
     (void)position;
     (void)direction;
-    return NSWritingDirectionNatural;
+    return elisa_uikit_text_is_rtl([self elisaHandle])
+        ? NSWritingDirectionRightToLeft : NSWritingDirectionLeftToRight;
 }
 
 - (void)setBaseWritingDirection:(NSWritingDirection)direction forRange:(UITextRange *)range {
-    // The retained model has one paragraph direction, resolved from the text
-    // itself; UIKit cannot override it per range.
+    // The retained model has one locale-resolved paragraph direction;
+    // UIKit cannot override it per range.
     (void)direction;
     (void)range;
 }
@@ -246,10 +304,15 @@ static ElisaUiKitTextRange *elisa_uikit_range_of(UITextRange *range) {
 }
 
 - (NSArray<UITextSelectionRect *> *)selectionRectsForRange:(UITextRange *)range {
-    // The field is a single line, so its selection is the one rectangle
-    // firstRectForRange: already reports; UIKit uses that for the callout.
-    (void)range;
-    return [NSArray array];
+    ElisaUiKitTextRange *bounded = elisa_uikit_range_of(range);
+    if (bounded == nil || bounded.length == 0) return @[];
+    CGRect rect = [self firstRectForRange:range];
+    if (CGRectIsEmpty(rect)) return @[];
+    ElisaUiKitSelectionRect *selection = [[ElisaUiKitSelectionRect alloc] init];
+    selection.elisaRect = rect;
+    selection.elisaDirection = elisa_uikit_text_is_rtl([self elisaHandle])
+        ? NSWritingDirectionRightToLeft : NSWritingDirectionLeftToRight;
+    return @[selection];
 }
 
 - (UITextPosition *)closestPositionToPoint:(CGPoint)point {
@@ -271,7 +334,7 @@ static ElisaUiKitTextRange *elisa_uikit_range_of(UITextRange *range) {
 - (UITextRange *)characterRangeAtPoint:(CGPoint)point {
     size_t offset = elisa_uikit_text_offset_at_x([self elisaHandle], (float)point.x);
     if (offset == elisa_uikit_not_found) return nil;
-    size_t next = elisa_uikit_text_offset_position([self elisaHandle], offset, 1);
+    size_t next = elisa_uikit_text_character_position([self elisaHandle], offset, 1);
     if (next == elisa_uikit_not_found) return [ElisaUiKitTextRange withLocation:offset length:0];
     return [ElisaUiKitTextRange withLocation:offset length:next - offset];
 }

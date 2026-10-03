@@ -41,6 +41,11 @@ extend UiFlat:
 
         def layout(width: f32, height: f32) -> void:
             normalize_widget_enums()
+            reveal_focus: bool = not layout_initialized or last_layout_width != UiConstraints::bounded(width) or last_layout_height != UiConstraints::bounded(height) or focus_layout_top != UiCore::content_inset_top() or focus_layout_bottom != UiCore::content_inset_bottom() or focus_layout_left != UiCore::content_inset_left() or focus_layout_right != UiCore::content_inset_right()
+            focus_layout_top <- UiCore::content_inset_top()
+            focus_layout_bottom <- UiCore::content_inset_bottom()
+            focus_layout_left <- UiCore::content_inset_left()
+            focus_layout_right <- UiCore::content_inset_right()
             last_layout_width <- UiConstraints::bounded(width)
             last_layout_height <- UiConstraints::bounded(height)
             layout_initialized <- true
@@ -68,6 +73,25 @@ extend UiFlat:
             for index in 0..<widget_count:
                 parent: usize = widgets[index].parent
                 arrange(index, UiCore::content_inset_left(), UiCore::content_inset_top(), content_extent(last_layout_width, UiCore::content_inset_left(), UiCore::content_inset_right()), content_extent(last_layout_height, UiCore::content_inset_top(), UiCore::content_inset_bottom()), 0) if parent == NONE or parent >= widget_count
+            if reveal_focus and not focus_layout_revealing and focused_widget < widget_count and widgets[focused_widget].kind == UiConst::WidgetKind.TextField and effectively_visible(focused_widget) and effectively_enabled(focused_widget):
+                focus_layout_revealing <- true
+                ensure_visible(focused_widget)
+                focus_layout_revealing <- false
+
+        def reveal(index: usize) -> bool:
+            return false if index >= widget_count or not effectively_visible(index) or not effectively_enabled(index)
+            ensure_visible(index)
+            ensure_layout()
+            return true
+
+    private:
+        global mutable focus_layout_top: f32 = 0.0
+        global mutable focus_layout_bottom: f32 = 0.0
+        global mutable focus_layout_left: f32 = 0.0
+        global mutable focus_layout_right: f32 = 0.0
+        global mutable focus_layout_revealing: bool = false
+
+    public:
 
         # Geometry consumers share paint's deferred retained reflow. Keeping
         # this in Elisa means a mutation followed immediately by hit testing
