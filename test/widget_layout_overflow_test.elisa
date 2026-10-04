@@ -1,0 +1,52 @@
+# Underflow policies keep minimums, and clipping is shared by paint, pointer,
+# and semantic geometry while the default stays source-compatible.
+
+include "./widget_layout_support.elisa"
+
+def main() -> i64:
+    UiFlat::reset()
+    compressed: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Row, 0.0, 0.0, UiCore::rgb(8, 12, 18))
+    compressed_first: usize = UiFlat::button(compressed, 0.0, 20.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
+    compressed_second: usize = UiFlat::button(compressed, 0.0, 20.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
+    UiFlat::set_preferred_size(compressed_first, 80.0, 20.0)
+    UiFlat::set_preferred_size(compressed_second, 80.0, 20.0)
+    UiFlat::layout(100.0, 40.0)
+    check("default compress policy remains proportional", near(UiFlat::widget(compressed_first).width, 50.0) and near(UiFlat::widget(compressed_second).width, 50.0))
+
+    UiFlat::reset()
+    clipped: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Row, 5.0, 0.0, UiCore::rgb(8, 12, 18))
+    clipped_first: usize = UiFlat::button(clipped, 80.0, 20.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
+    clipped_second: usize = UiFlat::button(clipped, 80.0, 20.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
+    _ = UiFlat::set_text(clipped_second, "Second", 12.0, UiCore::rgb(255, 255, 255))
+    UiFlat::set_overflow_behavior(clipped, UiConst::OverflowBehavior.Clip)
+    UiFlat::layout(100.0, 15.0)
+    check("clip policy preserves main and cross minimums", near(UiFlat::widget(clipped_second).x, 85.0) and near(UiFlat::widget(clipped_second).width, 80.0) and near(UiFlat::widget(clipped_second).height, 20.0))
+    check("clip policy still hits visible overflow", UiFlat::hit(90.0, 7.0) == clipped_second)
+    check("clip policy rejects pointer beyond padded content", UiFlat::hit(96.0, 7.0) == UiFlat::NONE)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("paint clips descendants to padded content", frame_contains_clip(5.0, 5.0, 90.0, 5.0))
+    semantic_index: usize = UiCore::accessibility_index_for_id(clipped_second)
+    check("partially clipped child remains semantic", semantic_index < UiCore::accessibility_count())
+    if semantic_index < UiCore::accessibility_count():
+        semantic: UiCore::AccessibilityNode = UiCore::accessibility_at(semantic_index)
+        check("semantic bounds match visible padded clip", near(semantic.frame.origin.x, 85.0) and near(semantic.frame.origin.y, 5.0) and near(semantic.frame.size.width, 10.0) and near(semantic.frame.size.height, 5.0))
+    else:
+        check("semantic bounds match the visible clipped frame", false)
+
+    UiFlat::reset()
+    visible: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Row, 0.0, 0.0, UiCore::rgb(8, 12, 18))
+    visible_first: usize = UiFlat::button(visible, 80.0, 20.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
+    visible_second: usize = UiFlat::button(visible, 80.0, 20.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
+    UiFlat::set_overflow_behavior(visible, UiConst::OverflowBehavior.Visible)
+    UiFlat::layout(100.0, 40.0)
+    check("visible policy permits hit testing outside parent", UiFlat::hit(110.0, 20.0) == visible_second)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("visible policy does not attach a parent clip", UiCore::command_count() > 0 and not UiCore::command_has_clip(0))
+
+    if test_failures == 0:
+        _ = puts("widget_layout_overflow_test: all checks passed")
+        return 0
+    _ = puts("widget_layout_overflow_test: failures")
+    return test_failures.i64()

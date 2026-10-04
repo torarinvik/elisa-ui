@@ -40,8 +40,10 @@ extend UiResources:
                 if resource_states[slot] != State.Unrequested and resource_key_matches(slot, safe_key):
                     return UiResources::resource_invalid() if not resource_owner_add(slot, owner)
                     if resource_states[slot] == State.Cancelled:
-                        next_generation: u32 = resource_generations[slot] + 1
-                        resource_generations[slot] <- 1 if next_generation == 0 else next_generation
+                        next_generation: mutable u32 = resource_generations[slot] + 1
+                        next_generation <- 1 if next_generation == 0
+                        UiResources::preserve_metadata_for_generation(slot, next_generation)
+                        resource_generations[slot] <- next_generation
                         resource_states[slot] <- State.Requested
                         resource_failure_kinds[slot] <- FailureKind.Unknown
                         resource_downloaded[slot] <- 0.0
@@ -151,8 +153,10 @@ extend UiResources:
         def retry(handle: ResourceHandle) -> ResourceHandle:
             return UiResources::resource_invalid() if not UiResources::resource_is_valid(handle) or not can_retry(handle)
             slot: usize = handle.slot.usize()
-            next_generation: u32 = resource_generations[slot] + 1
-            resource_generations[slot] <- 1 if next_generation == 0 else next_generation
+            next_generation: mutable u32 = resource_generations[slot] + 1
+            next_generation <- 1 if next_generation == 0
+            UiResources::preserve_metadata_for_generation(slot, next_generation)
+            resource_generations[slot] <- next_generation
             resource_states[slot] <- State.Requested
             resource_failure_kinds[slot] <- FailureKind.Unknown
             resource_downloaded[slot] <- 0.0

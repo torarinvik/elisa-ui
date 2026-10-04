@@ -53,6 +53,44 @@ application-owned and unchanged.
 `radio_button_accessible` and `check_box_accessible` apply the same minimum
 target policy to choice controls.
 
+`set_preferred_size(handle, width, height)` supplies an optional layout
+preference independently of the required minimum and maximum. A zero on either
+axis restores automatic sizing: leaf widgets use their measured intrinsic
+minimum, while ordinary containers derive their preference from their children
+and arrangement. Preferences seed main-axis allocation and non-stretch
+cross-axis sizing; `grow` distributes additional room up to the maximum. A
+contradictory maximum remains diagnosable but does not override required
+content.
+
+`set_overflow_behavior(handle, behavior)` selects how an ordinary panel handles
+children whose minimum sizes do not fit. `UiConst::OverflowBehavior.Compress`
+is the default and preserves proportional compression below minimums;
+`Clip` shrinks preferences only down to minimums, then clips overflow to the
+panel's padded content box; `Visible` uses the same minimum-preserving sizing
+but lets overflow paint, receive pointer hits, and retain its visible semantic
+bounds. Scroll viewports keep their existing viewport clipping and scrolling
+behavior.
+
+Retained frames use fractional logical coordinates. Layout does not round each
+child independently: paint commands, pointer hit regions, and semantic bounds
+all consume the same `f32` frame. Conversion happens only at a backend boundary
+that requires integer pixels; surface extents may round to the nearest pixel,
+while bitmap allocations may ceil to include the final partial pixel. This
+avoids cumulative layout drift without imposing a device scale on the retained
+tree. Physical-pixel parity still needs cross-backend visual acceptance.
+
+When a widget carries a logical image reference with
+`UiResources::set_intrinsic_size` metadata, those generation-matched dimensions
+provide its automatic preferred size. Publishing new metadata invalidates
+layout so the retained tree remeasures without rebuilding; stale image
+generations cannot lend their dimensions to a replacement.
+
+`set_panel_axis(handle, axis)` changes an ordinary retained panel between row
+and column arrangements after a responsive breakpoint change. The setter
+invalidates layout, paint, and semantics while preserving the panel's child
+handles and their focus/edit state; scroll and virtual-list axes are not
+changed through this API. See [responsive layout policy](ui-responsive.md).
+
 Use `handle(event)` to forward the portable event stream, `hit`/`cursor_at` for
 pointer policy, and `activate`/`adjust`/`radio_move` for accessibility actions.
 Text composition and editing (`insert_text`, `replace_text`, marked text,

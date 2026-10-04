@@ -141,6 +141,51 @@ extend UiFlat:
                 widgets[index].marked_end <- swap
             mark_state_dirty()
 
+        # Paint an editor-owned UTF-16 range underline without changing the
+        # field's independent IME marked-text range. A zero-width range draws a
+        # small caret-like marker; transparent ink clears that slot.
+        def set_text_underline(index: usize, slot: usize, start_utf16: usize, stop_utf16: usize, color: UiCore::Color) -> void:
+            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField or slot >= MAX_TEXT_UNDERLINES_PER_WIDGET
+            next_start: mutable usize = text_range_location(index, start_utf16)
+            next_stop: mutable usize = text_range_location(index, stop_utf16)
+            if next_stop < next_start:
+                swap: usize = next_start
+                next_start <- next_stop
+                next_stop <- swap
+            next_color: UiCore::Color = color if color.a > 0 else UiCore::rgba(0, 0, 0, 0)
+            next_start <- 0 if next_color.a == 0
+            next_stop <- 0 if next_color.a == 0
+            storage_index: usize = index * MAX_TEXT_UNDERLINES_PER_WIDGET + slot
+            return if text_underline_starts[storage_index] == next_start and text_underline_stops[storage_index] == next_stop and colors_equal(text_underline_colors[storage_index], next_color)
+            text_underline_starts[storage_index] <- next_start
+            text_underline_stops[storage_index] <- next_stop
+            text_underline_colors[storage_index] <- next_color
+            UiCore::invalidate(UiCore::Invalidation.Paint)
+
+        def clear_text_underlines(index: usize) -> void:
+            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
+            changed: mutable bool = false
+            for slot in 0..<MAX_TEXT_UNDERLINES_PER_WIDGET:
+                storage_index: usize = index * MAX_TEXT_UNDERLINES_PER_WIDGET + slot
+                if text_underline_starts[storage_index] != 0 or text_underline_stops[storage_index] != 0 or text_underline_colors[storage_index].a != 0:
+                    text_underline_starts[storage_index] <- 0
+                    text_underline_stops[storage_index] <- 0
+                    text_underline_colors[storage_index] <- UiCore::rgba(0, 0, 0, 0)
+                    changed <- true
+            UiCore::invalidate(UiCore::Invalidation.Paint) if changed
+
+        def text_underline_start_utf16(index: usize, slot: usize) -> usize:
+            return 0 if index >= widget_count or slot >= MAX_TEXT_UNDERLINES_PER_WIDGET
+            return text_underline_starts[index * MAX_TEXT_UNDERLINES_PER_WIDGET + slot]
+
+        def text_underline_stop_utf16(index: usize, slot: usize) -> usize:
+            return 0 if index >= widget_count or slot >= MAX_TEXT_UNDERLINES_PER_WIDGET
+            return text_underline_stops[index * MAX_TEXT_UNDERLINES_PER_WIDGET + slot]
+
+        def text_underline_color(index: usize, slot: usize) -> UiCore::Color:
+            return UiCore::rgba(0, 0, 0, 0) if index >= widget_count or slot >= MAX_TEXT_UNDERLINES_PER_WIDGET
+            return text_underline_colors[index * MAX_TEXT_UNDERLINES_PER_WIDGET + slot]
+
         def marked_utf16_location(index: usize) -> usize:
             return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.TextField
             return utf16_units_for_prefix(text_value(index), widgets[index].marked_start)

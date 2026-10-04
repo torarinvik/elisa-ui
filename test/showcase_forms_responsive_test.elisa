@@ -1,0 +1,129 @@
+# The example form keeps its retained actions and editing fields usable as
+# logical width and the shared text-scale preference change.
+
+include "../examples/showcase/page_forms.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size
+
+def ui_font_ascent(size: f32) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return 0
+
+def app_init() -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    pass
+
+def app_text_input(text: sview) -> void:
+    pass
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    pass
+
+def app_frame() -> void:
+    pass
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiHandles::reset()
+    UiTheme::reset()
+    host: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 0.0, 0.0, UiCore::rgb(20, 20, 24))
+    ShowcaseForms::init(host)
+
+    submit: mutable UiHandles::Handle = UiHandles::invalid()
+    reset: mutable UiHandles::Handle = UiHandles::invalid()
+    name: mutable UiHandles::Handle = UiHandles::invalid()
+    blurb: mutable UiHandles::Handle = UiHandles::invalid()
+    for index in 0..<UiHandles::count():
+        row: UiFlat::Widget = UiFlat::widget(index)
+        if row.kind == UiConst::WidgetKind.Button and row.text == "Submit":
+            submit <- UiHandles::from_index(index)
+        elif row.kind == UiConst::WidgetKind.Button and row.text == "Reset":
+            reset <- UiHandles::from_index(index)
+        elif row.kind == UiConst::WidgetKind.TextField and row.text == "Full name":
+            name <- UiHandles::from_index(index)
+        elif row.kind == UiConst::WidgetKind.Label and row.text == "Custom-drawn fields with native IME, selection, undo, clipboard and validation.":
+            blurb <- UiHandles::from_index(index)
+
+    check("form exposes the retained primary and secondary actions", UiHandles::is_valid(submit) and UiHandles::is_valid(reset))
+    check("form exposes its retained name field", UiHandles::is_valid(name))
+    check("form description is retained for responsive visibility", UiHandles::is_valid(blurb))
+    UiHandles::replace_text(name, "Grace Hopper")
+    UiHandles::set_selection(name, 0, 5)
+    check("form field accepts retained keyboard focus", UiHandles::request_focus(name))
+
+    ShowcaseForms::adapt_to_width(280.0)
+    UiHandles::layout(280.0, 140.0)
+    action_parent: UiHandles::Handle = UiHandles::parent(submit)
+    check("narrow form stacks primary and secondary actions", UiFlat::widget(UiHandles::index(action_parent)).axis == UiConst::Axis.Column)
+    check("narrow form shrinks its text field minimum to the content width", UiFlat::widget(UiHandles::index(name)).min_width <= 244.0)
+    check("narrow form hides its single-line descriptive blurb", not UiHandles::is_visible(blurb))
+    check("narrow reflow preserves edited text, selection, and focus", UiHandles::text_value(name) == "Grace Hopper" and UiHandles::selected_text(name) == "Grace" and UiHandles::is_focused(name))
+    narrow_submit: UiFlat::Widget = UiFlat::widget(UiHandles::index(submit))
+    narrow_reset: UiFlat::Widget = UiFlat::widget(UiHandles::index(reset))
+    check("stacked form actions keep their original order and separate hit areas", narrow_reset.y >= narrow_submit.y + narrow_submit.height)
+
+    ShowcaseForms::adapt_to_width(340.0)
+    UiHandles::layout(340.0, 180.0)
+    check("short captions fit side-by-side at the translation test width", UiFlat::widget(UiHandles::index(action_parent)).axis == UiConst::Axis.Row)
+    _ = UiLocalization::set_locale("de-DE")
+    ShowcaseForms::adapt_to_width(340.0)
+    UiHandles::layout(340.0, 180.0)
+    translated_submit: UiFlat::Widget = UiFlat::widget(UiHandles::index(submit))
+    translated_reset: UiFlat::Widget = UiFlat::widget(UiHandles::index(reset))
+    check("same-width locale change applies and measures app catalog captions", translated_submit.min_width > 130.0 and translated_submit.text == "Registrierung abschicken" and translated_reset.text == "Zurücksetzen")
+    check("translated labels trigger stacking and still fit", UiFlat::widget(UiHandles::index(action_parent)).axis == UiConst::Axis.Column and translated_submit.width >= translated_submit.min_width and translated_submit.width <= 304.0)
+    check("translated reflow preserves form identity and editing state", UiHandles::is_valid(submit) and UiHandles::is_valid(reset) and UiHandles::text_value(name) == "Grace Hopper" and UiHandles::selected_text(name) == "Grace" and UiHandles::is_focused(name))
+
+    _ = UiLocalization::set_locale("en-US")
+    ShowcaseForms::adapt_to_width(700.0)
+    UiHandles::layout(700.0, 240.0)
+    check("wide form restores side-by-side actions", UiFlat::widget(UiHandles::index(action_parent)).axis == UiConst::Axis.Row)
+    check("returning to English reapplies its catalog captions", UiFlat::widget(UiHandles::index(submit)).text == "Submit" and UiFlat::widget(UiHandles::index(reset)).text == "Reset")
+    check("wide form restores its description", UiHandles::is_visible(blurb))
+
+    _ = UiLocalization::set_locale("de-DE")
+    large_text: UiTheme::Preferences = UiTheme::Preferences{
+        mode: UiTheme::ColorMode.System, contrast: UiTheme::Contrast.Normal,
+        text_scale: 2.0, reduced_motion: false,
+    }
+    _ = UiTheme::set_preferences(large_text)
+    ShowcaseForms::adapt_to_width(320.0)
+    UiHandles::layout(320.0, 180.0)
+    scaled_submit: UiFlat::Widget = UiFlat::widget(UiHandles::index(submit))
+    scaled_reset: UiFlat::Widget = UiFlat::widget(UiHandles::index(reset))
+    check("large text stacks actions before their measured labels can collide", UiFlat::widget(UiHandles::index(action_parent)).axis == UiConst::Axis.Column)
+    check("large text expands primary action width", scaled_submit.min_width > 130.0)
+    check("large text expands primary action height", scaled_submit.min_height > 36.0 and scaled_reset.min_height == scaled_submit.min_height)
+    check("responsive changes preserve action identities", UiHandles::is_valid(submit) and UiHandles::is_valid(reset))
+    check("large-text reflow preserves the form edit", UiHandles::text_value(name) == "Grace Hopper" and UiHandles::selected_text(name) == "Grace" and UiHandles::is_focused(name))
+
+    if failures == 0:
+        _ = puts("showcase forms responsive: all checks passed")
+    return failures.i64()

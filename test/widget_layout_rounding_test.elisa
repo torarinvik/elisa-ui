@@ -1,0 +1,36 @@
+# Retained geometry remains fractional logical space; layout, paint, pointer,
+# and semantic frames must agree before a backend converts to physical pixels.
+
+include "./widget_layout_support.elisa"
+
+def main() -> i64:
+    UiFlat::reset()
+    row: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Row, 0.2, 0.1, UiCore::rgb(8, 12, 18))
+    first: usize = UiFlat::button(row, 1.0, 1.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
+    second: usize = UiFlat::button(row, 1.0, 1.0, UiCore::rgb(60, 60, 60), UiCore::rgb(70, 70, 70), UiCore::rgb(80, 80, 80))
+    _ = UiFlat::set_text(first, "First", 12.0, UiCore::rgb(255, 255, 255))
+    _ = UiFlat::set_text(second, "Second", 12.0, UiCore::rgb(255, 255, 255))
+    UiFlat::set_grow(first, 1.0)
+    UiFlat::set_grow(second, 1.0)
+    UiFlat::layout(11.0, 20.0)
+
+    check("layout retains fractional first frame", near(UiFlat::widget(first).x, 0.2) and near(UiFlat::widget(first).width, 5.25) and near(UiFlat::widget(first).height, 19.6))
+    check("layout retains fractional adjacent edge", near(UiFlat::widget(second).x, 5.55) and near(UiFlat::widget(second).width, 5.25))
+    check("hit testing follows fractional half-open edges", UiFlat::hit(5.44, 1.0) == first and UiFlat::hit(5.5, 1.0) == UiFlat::NONE and UiFlat::hit(5.55, 1.0) == second)
+
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("paint keeps the same fractional first frame", frame_contains_rect_color(0.2, 0.2, 5.25, 19.6, UiCore::rgb(30, 30, 30)))
+    semantic_index: usize = UiCore::accessibility_index_for_id(second)
+    check("fractional control remains semantic", semantic_index < UiCore::accessibility_count())
+    if semantic_index < UiCore::accessibility_count():
+        semantic: UiCore::AccessibilityNode = UiCore::accessibility_at(semantic_index)
+        check("semantic frame retains fractional layout bounds", near(semantic.frame.origin.x, 5.55) and near(semantic.frame.origin.y, 0.2) and near(semantic.frame.size.width, 5.25) and near(semantic.frame.size.height, 19.6))
+    else:
+        check("semantic frame retains fractional layout bounds", false)
+
+    if test_failures == 0:
+        _ = puts("widget_layout_rounding_test: all checks passed")
+        return 0
+    _ = puts("widget_layout_rounding_test: failures")
+    return test_failures.i64()

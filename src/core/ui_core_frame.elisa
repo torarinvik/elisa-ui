@@ -17,7 +17,9 @@ extend UiCore:
                 accessibility_slot_by_id[old_id] <- MAX_ACCESSIBILITY_NODES if old_id < MAX_ACCESSIBILITY_NODES
                 clear_accessibility_slot(index)
             command_total <- 0
+            diagnostic_command_total <- 0
             command_dropped <- false
+            current_diagnostic_sensitive <- false
             current_clip_active <- false
             accessibility_total <- 0
             accessibility_dropped <- false
@@ -322,6 +324,15 @@ extend UiCore:
             command_style[slot] <- style
             command_stroke_width[slot] <- width
             command_buffer[slot] <- normalized_command(command)
+            command_diagnostic_sensitive[slot] <- current_diagnostic_sensitive
+            command_diagnostic_owner[slot] <- current_diagnostic_owner
+            command_diagnostic_box[slot] <- current_diagnostic_box
+            previous_is_same_sensitive_widget: mutable bool = false
+            if slot > 0:
+                previous_is_same_sensitive_widget <- command_diagnostic_sensitive[slot - 1] and command_diagnostic_owner[slot - 1] == current_diagnostic_owner
+            if not current_diagnostic_sensitive or not previous_is_same_sensitive_widget:
+                diagnostic_command_source[diagnostic_command_total.usize()] <- slot
+                diagnostic_command_total <- diagnostic_command_total + 1
             command_total <- command_total + 1
             invalidate(Invalidation.Paint)
 
@@ -331,6 +342,9 @@ extend UiCore:
             command_has_clip_flag[index] <- false
             command_style[index] <- surface_style(SurfaceDepth.Flat)
             command_stroke_width[index] <- DEFAULT_STROKE_WIDTH
+            command_diagnostic_sensitive[index] <- false
+            command_diagnostic_owner[index] <- 0
+            command_diagnostic_box[index] <- Rect(0.0, 0.0, 0.0, 0.0)
 
         def clear_accessibility_slot(index: usize) -> void:
             accessibility_nodes[index] <- null

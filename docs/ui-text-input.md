@@ -493,18 +493,28 @@ activation and Back precedence, not hold-time activation, visible menu-action
 taps, empty-field Paste, selection-relative anchoring, native handles or pause
 during an open menu.
 
-Visible Copy acceptance attempt: a new opt-in app probe clears its test
-clipboard after the connection round trip and waits for exact `batch😀` from
-a visible menu action. The device gate reopens the long-press menu and locates
-Copy through an observed XML hierarchy rather than fixed coordinates. This
-new strict assertion currently fails: Android's shell `uiautomator dump`
-omits the nonfocusable floating-popup window. A captured screenshot confirms
-the toolbar is visible after moving ActionMode presentation from the 1-pixel
-IME bridge to the full root view; the earlier bridge-origin menu did not have
-usable presentation bounds. The parser's host checks and APK compilation pass,
-but the expanded device gate does not yet pass. Multi-window UI automation is
-needed to complete visible Copy acceptance. Root-view presentation remains
-window-relative, not selection-relative; no menu tap completion is claimed.
+Android long-press, clipboard and secure-field acceptance: the opt-in probe
+checks visible Copy, empties the retained field while preserving exact
+`batch😀`, then requires the empty-field menu to show Paste but not Copy/Cut;
+the observed Paste tap restores the exact Unicode value. A self-targeted
+instrumentation APK correlates floating-toolbar item IDs with the active
+Showcase window and taps only observed bounds. The secure phase focuses the
+real Password field, checks password/no-suggestions/no-personalized-learning
+EditorInfo traits, writes and selects only the synthetic `probe-secret`, then
+queues an owner-bound Copy attempt. An ordered native report is `secure=redacted`,
+the preexisting `batch😀` clipboard sentinel remains unchanged, and the
+accessibility audit sees Paste but no Copy/Cut or synthetic value. No secret
+value appears in the app log. The strict `check_android_ime.sh` gate passes on
+the read-only Pixel_9 Android 37.1 AVD, including composition, batch, long press,
+visible Copy, empty-field Paste, secure clipboard denial/menu policy, keyboard
+inset show/hide, menu dismissal and root Back fallback. It used current Stage1
+HEAD `98abcee1214b8d720915f3cd60361e78056bad58` (`origin/main`, clean), product
+SHA-256 `734fad7984b0c6de3b50e6d57585e3c8573f975c33e4560f647a1209f9ed828d` and
+runtime `0db509f791ec1b075049dadc51a44f6e51e93e7c8fa9e6db4acbc336b7de022e`,
+with the strict current-toolchain check and no stale/dirty override. This is
+emulator-only evidence. Root-view presentation remains window-relative, not
+selection-relative; native handles, mid-drag interruption and physical-device
+acceptance remain open.
 
 Interruption presentation follow-up: accepted focus loss, background and
 surface loss now immediately ask the native view to dismiss its menu, deactivate
@@ -555,6 +565,17 @@ pair resolve to the scalar's leading boundary, then selection setters apply the
 grapheme boundary rule. `UiFlat::text_range_location` and `text_range_length`
 use UTF-16 units; `text_range_pointer` and `text_range_byte_length` address the
 corresponding UTF-8 storage. These units must not be interchanged.
+
+Editor diagnostic underlines are independent of the IME marked-text range.
+`UiHandles::set_text_underline` stores bounded underline slots in UTF-16 units;
+ranges clamp to the current field text, transparent ink clears a slot, and a
+zero-width range paints a short marker. The retained painter maps those
+boundaries through the same text advances used for caret placement, so a
+diagnostic underline does not replace or move the active composition
+decoration. `widget_layout_diagnostic_underline_test` covers supplementary-
+plane offsets, clamping, zero-width markers, and clearing diagnostics while
+composition remains active. This is retained/painted-field behavior; native-
+control editor integrations remain backend-specific.
 
 The retained `TextField` is single-line. Committed, programmatic, and clipboard
 insertions normalize control and Unicode line-separator bytes to spaces;

@@ -28,6 +28,38 @@ extend UiCore:
             accessibility_nodes[index] <- node
 
     public:
+        # Return a privacy-safe copy without content, selection, range, or
+        # collection metadata. Identity, role, geometry, and action routing
+        # remain so adapters can keep the element usable.
+        def redacted_accessibility_node(node: AccessibilityNode) -> AccessibilityNode:
+            return AccessibilityNode{
+                role: node.role, label: "Sensitive content", help: "",
+                frame: node.frame, id: node.id, action: node.action,
+                enabled: node.enabled, focused: node.focused, selected: false,
+                value: 0.0, text_value: "", selected_text: "", revision: 0,
+                selection_location: 0, selection_length: 0,
+                parent_id: node.parent_id,
+                first_child_id: node.first_child_id,
+                next_sibling_id: node.next_sibling_id,
+                has_range: false, range_min: 0.0, range_max: 0.0,
+                range_conflict: false, has_collection_position: false,
+                collection_position: 0, collection_size: 0, collection_count: 0,
+            }
+
+        # Scrub an already-published row immediately when an application
+        # changes its retained widget's sensitivity policy.
+        def redact_accessibility(id: usize) -> void:
+            index: usize = accessibility_index_for_id(id)
+            return if index >= accessibility_total.usize()
+            store_accessibility_node(index, redacted_accessibility_node(accessibility_node_at(index)))
+            invalidate(Invalidation.Semantics)
+
+        # Builder for a sensitive retained widget. It accepts no app-owned
+        # strings or values, so private content never enters the core arena.
+        def accessibility_redacted(role: AccessibilityRole, frame: Rect, id: usize, action: usize, enabled: bool, focused: bool) -> void:
+            accessibility(role, "Sensitive content", "", frame, id, action,
+                enabled, focused, false, 0.0, "", "", 0, 0, 0)
+
         # Compatibility builder for ordinary controls. Metadata-aware callers
         # can use `accessibility_with_metadata`; keeping this signature stable
         # avoids forcing every existing widget to learn relationship/range
@@ -74,6 +106,10 @@ extend UiCore:
                 size: Size{ width: bounded_extent(frame.size.width), height: bounded_extent(frame.size.height) },
             }
             safe_value: mutable f32 = finite_or_zero(value)
+            # Action targets share the bounded widget-identity space. Keep
+            # malformed pointer-sized inputs from truncating into a live
+            # target in native adapters; the sentinel means no action route.
+            safe_action: usize = relationship_id(action)
             safe_parent: usize = relationship_id(parent_id)
             safe_first_child: usize = relationship_id(first_child_id)
             safe_next_sibling: usize = relationship_id(next_sibling_id)
@@ -107,7 +143,7 @@ extend UiCore:
             safe_selection_length <- remaining_selection if safe_selection_length > remaining_selection
             node: AccessibilityNode = AccessibilityNode{
                 role: normalize_role(role), label: safe_label, help: safe_help, frame: safe_frame, id: id,
-                action: action, enabled: enabled, focused: focused,
+                action: safe_action, enabled: enabled, focused: focused,
                 selected: selected, value: safe_value, text_value: safe_text_value,
                 selected_text: safe_selected_text, revision: revision,
                 selection_location: safe_selection_location,

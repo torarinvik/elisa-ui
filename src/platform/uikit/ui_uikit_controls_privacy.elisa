@@ -1,0 +1,23 @@
+# UIKit's native widgets own their accessibility objects, but the redaction
+# policy and generic text remain in Elisa alongside the retained control state.
+
+extend UiUIKitControls:
+    private:
+        def apply_accessibility_sensitivity(handle: usize, sensitive: bool) -> void:
+            generic_label: usize = native_string("Sensitive content") if sensitive else 0
+            elisa_uikit_controls_set_accessibility_sensitive(handle, 1 if sensitive else 0, generic_label)
+
+        def apply_control_help(handle: usize, index: i32, kind: UiControls::ControlKind, placeholder: sview, help: sview) -> void:
+            if UiControls::state_at(index.usize()).accessibility_sensitive:
+                elisa_uikit_controls_set_placeholder(handle, 0) if kind == UiControls::ControlKind.TextField
+                elisa_uikit_controls_set_accessibility_hint(handle, 0)
+                return
+            if kind == UiControls::ControlKind.TextField:
+                prompt: usize = native_string(placeholder)
+                if prompt != 0:
+                    elisa_uikit_controls_set_placeholder(handle, prompt)
+                    CFRelease(prompt)
+            hint: usize = native_string(help)
+            return if hint == 0
+            elisa_uikit_controls_set_accessibility_hint(handle, hint)
+            CFRelease(hint)

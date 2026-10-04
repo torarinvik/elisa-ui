@@ -285,6 +285,10 @@ if ! SKIA_ROOT="${SKIA_ROOT:-}" bash "$ROOT/scripts/check_android_ime.sh"; then
   echo "FAIL android ime"
   status=1
 fi
+if ! bash "$ROOT/scripts/check_android_accessibility_wire.sh"; then
+  echo "FAIL android accessibility wire"
+  status=1
+fi
 
 # The AppKit/Skia compositor extends the required CPU-raster gate when it is
 # available on macOS; its fixture remains headless and never foregrounds a UI.
@@ -315,6 +319,10 @@ for source in "${test_sources[@]}"; do
   # The dedicated gate above also cross-compiles this fixture for the iOS
   # simulator, so the generic per-file loop does not need to build it twice.
   if [[ "$name" == "uikit_image_upload_test" || "$name" == "appkit_canvas_image_upload_test" ]]; then
+    continue
+  fi
+  # This fixture links the native Metal viewport and has its own macOS gate.
+  if [[ "$name" == "viewport_three_views_test" ]]; then
     continue
   fi
   # The real Skia fixtures are library entry points driven by their C++ hosts;

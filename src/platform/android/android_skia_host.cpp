@@ -21,6 +21,7 @@ extern "C" void elisa_android_ime_hide_keyboard(ANativeActivity *activity);
 #include <sys/system_properties.h>
 #include <android/native_window.h>
 #include <android_native_app_glue.h>
+#include "android_accessibility_host.h"
 
 #include <chrono>
 #include <atomic>
@@ -429,7 +430,7 @@ void on_command(android_app* app, std::int32_t command) {
             // Clipboard calls can arrive after the final lifecycle callback
             // while Java tears the activity down. Clear the borrowed native
             // pointer before returning control to the looper.
-            elisa_android_clipboard_attach(nullptr);
+            elisa_android_clipboard_attach(nullptr); elisa_android_accessibility_attach(nullptr); elisa_android_services_attach(nullptr);
             break;
         default:
             break;
@@ -566,7 +567,7 @@ void android_main(android_app* app) {
     // Published before the first frame, because a paste can arrive as soon as
     // there is a window to press a key into.
     elisa_android_clipboard_attach(app->activity);
-    elisa_android_services_attach(app->activity);
+    elisa_android_accessibility_attach(app->activity); elisa_android_services_attach(app->activity);
     while (true) {
         int events = 0;
         android_poll_source* source = nullptr;
@@ -585,7 +586,7 @@ void android_main(android_app* app) {
         if (source != nullptr) source->process(app, source);
         if (app->destroyRequested != 0) break;
         elisa_android_ime_drain();
-        elisa_android_process_back_requests(app->activity);
+        elisa_android_process_back_requests(app->activity); if (elisa_android_process_accessibility_actions() > 0) host.needs_frame = true;
         if (host.needs_frame || elisa_android_frame_delay() > 0.0f) draw(host);
     }
     // A destroy command normally clears the attachment above, but the looper
@@ -595,5 +596,5 @@ void android_main(android_app* app) {
     active_android_app.store(nullptr, std::memory_order_release);
     retire_android_keyboard(host);
     elisa_android_clipboard_attach(nullptr);
-    elisa_android_services_attach(nullptr);
+    elisa_android_accessibility_attach(nullptr); elisa_android_services_attach(nullptr);
 }

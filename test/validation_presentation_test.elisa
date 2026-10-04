@@ -1,0 +1,91 @@
+# Typed async validation presentation keeps edit state and semantic status.
+
+include "../src/widgets/ui_validation_presentation.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return 0
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64 can Unsafe.PointerCast:
+    UiValidation::reset()
+    UiHandles::reset()
+    options: mutable UiValidationPresentation::Options = UiValidationPresentation::default_options()
+    host: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 0.0, 8.0, UiCore::rgb(24, 26, 32))
+    field: UiHandles::Handle = UiHandles::text_field(host, "Email", "Email address", "", 240.0, 36.0, 14.0, UiCore::rgb(240, 240, 248), UiCore::rgb(42, 46, 56))
+    status_label: UiHandles::Handle = UiHandles::label(host, "", 12.0, options.neutral_color)
+    validation: UiValidation::Handle = UiValidation::bind(7001)
+    UiHandles::replace_text(field, "alice@example.org")
+    UiHandles::set_selection(field, 0, 5)
+    check("validation fixture focuses the editable field", UiHandles::request_focus(field))
+
+    first_token: u32 = UiValidation::begin(validation)
+    stale_pending: UiValidationPresentation::Record = UiValidationPresentation::record(validation, options)
+    check("pending presentation exposes state and current revision", stale_pending.pending and stale_pending.status == UiValidation::Status.Validating and stale_pending.revision == first_token and stale_pending.role == UiCore::AccessibilityRole.Status and stale_pending.visible)
+    check("pending presentation updates its separate status label", UiValidationPresentation::apply_label(status_label, stale_pending, options) and UiHandles::is_visible(status_label) and UiFlat::widget(UiHandles::index(status_label)).text == "Checking…")
+
+    current_token: u32 = UiValidation::begin(validation)
+    check("new validation revision rejects an old presentation snapshot", current_token != first_token and not UiValidationPresentation::apply_label(status_label, stale_pending, options) and not UiValidation::reject(validation, first_token, "Old result"))
+    pending: UiValidationPresentation::Record = UiValidationPresentation::record(validation, options)
+    check("new pending revision remains visible while async work runs", pending.pending and pending.revision == current_token and UiValidationPresentation::apply_label(status_label, pending, options))
+
+    check("current async failure resolves", UiValidation::reject(validation, current_token, "This address is already registered."))
+    invalid: UiValidationPresentation::Record = UiValidationPresentation::record(validation, options)
+    check("invalid state is a typed accessible alert", invalid.has_error and not invalid.pending and invalid.tone == UiValidationPresentation::Tone.Error and invalid.role == UiCore::AccessibilityRole.Alert and invalid.detail == "This address is already registered.")
+    check("alert is published only for the current revision", UiValidationPresentation::publish_accessibility(UiCore::Rect(0.0, 44.0, 240.0, 20.0), status_label, invalid))
+    check("presentation preserves user text, selection, and focus", UiHandles::text_value(field) == "alice@example.org" and UiHandles::selected_text(field) == "alice" and UiHandles::is_focused(field))
+    check("visible error label shows the validator message", UiValidationPresentation::apply_label(status_label, invalid, options) and UiFlat::widget(UiHandles::index(status_label)).text == invalid.detail)
+
+    UiHandles::layout(280.0, 120.0)
+    UiCore::begin_frame()
+    UiHandles::paint()
+    _ = UiValidationPresentation::publish_accessibility(UiCore::Rect(0.0, 44.0, 240.0, 20.0), status_label, invalid)
+    alert_found: bool =
+        for index in 0..<UiCore::accessibility_count() |found: bool = false| -> found:
+            node: UiCore::AccessibilityNode = UiCore::accessibility_at(index)
+            found <- true if node.id == UiHandles::index(status_label) and node.role == UiCore::AccessibilityRole.Alert and node.text_value == invalid.detail
+    check("retained semantics expose the validation alert detail", alert_found)
+
+    unavailable_token: u32 = UiValidation::begin(validation)
+    _ = UiValidation::unavailable(validation, unavailable_token, "The checker is offline.")
+    unavailable: UiValidationPresentation::Record = UiValidationPresentation::record(validation, options)
+    check("unavailable async state remains distinct from invalid input", unavailable.status == UiValidation::Status.Unavailable and unavailable.has_error and unavailable.tone == UiValidationPresentation::Tone.Warning and unavailable.role == UiCore::AccessibilityRole.Alert)
+    _ = UiValidationPresentation::apply_label(status_label, unavailable, options)
+
+    valid_token: u32 = UiValidation::begin(validation)
+    _ = UiValidation::accept(validation, valid_token)
+    valid: UiValidationPresentation::Record = UiValidationPresentation::record(validation, options)
+    check("valid state clears the error tone and retains positive status", valid.status == UiValidation::Status.Valid and not valid.has_error and valid.tone == UiValidationPresentation::Tone.Positive and valid.role == UiCore::AccessibilityRole.Status)
+    _ = UiValidationPresentation::apply_label(status_label, valid, options)
+    check("positive presentation still preserves the edit", UiHandles::text_value(field) == "alice@example.org" and UiHandles::selected_text(field) == "alice" and UiHandles::is_focused(field))
+
+    _ = UiValidation::clear(validation)
+    idle: UiValidationPresentation::Record = UiValidationPresentation::record(validation, options)
+    check("idle validation hides its dedicated message label", not idle.visible and not idle.pending and UiValidationPresentation::apply_label(status_label, idle, options) and not UiHandles::is_visible(status_label))
+
+    if failures == 0:
+        _ = puts("validation presentation: all checks passed")
+        return 0
+    _ = puts("validation presentation: FAILURES above")
+    return 1

@@ -1,0 +1,30 @@
+# Retained preferred sizes participate in measure, weighted growth and alignment.
+
+include "./widget_layout_support.elisa"
+
+def main() -> i64 can[Unsafe.PointerCast]:
+    UiFlat::reset()
+    root: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Row, 0.0, 0.0, UiCore::rgb(20, 20, 24))
+    capped: usize = UiFlat::button(root, 40.0, 20.0, UiCore::rgb(20, 20, 24), UiCore::rgb(30, 30, 36), UiCore::rgb(12, 12, 16))
+    flexible: usize = UiFlat::button(root, 30.0, 20.0, UiCore::rgb(20, 20, 24), UiCore::rgb(30, 30, 36), UiCore::rgb(12, 12, 16))
+    UiFlat::set_preferred_size(capped, 80.0, 30.0)
+    UiFlat::set_max_size(capped, 90.0, 40.0)
+    UiFlat::set_grow(capped, 1.0)
+    UiFlat::set_grow(flexible, 1.0)
+    UiFlat::set_cross_alignment(capped, UiConst::CrossAlignment.Center)
+    UiFlat::layout(200.0, 60.0)
+
+    check("preferred size propagates through parent measurement", UiFlat::widget(root).preferred_width == 110.0)
+    check("preferred size is the child's main-axis starting extent", UiFlat::widget(capped).width == 90.0)
+    check("maximum cap redistributes remaining growth", UiFlat::widget(flexible).width == 110.0)
+    check("cross-axis alignment uses preferred height", UiFlat::widget(capped).height == 30.0 and UiFlat::widget(capped).y == 15.0)
+    check("minimum and maximum remain independently retained", UiFlat::widget(capped).min_width == 40.0 and UiFlat::widget(capped).max_width == 90.0)
+
+    UiFlat::set_preferred_size(capped, 0.0, 0.0)
+    UiFlat::layout(200.0, 60.0)
+    check("zero restores intrinsic minimum fallback", UiFlat::widget(capped).preferred_width == 40.0 and UiFlat::widget(capped).preferred_height == 20.0)
+
+    UiFlat::set_preferred_size(capped, 120.0, 50.0)
+    UiFlat::layout(200.0, 60.0)
+    check("preferred values normalize to maximum and retain conflict", UiFlat::widget(capped).preferred_width == 90.0 and UiFlat::widget(capped).width_constraints_conflict)
+    return 0 if test_failures == 0 else 1

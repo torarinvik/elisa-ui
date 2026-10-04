@@ -40,10 +40,10 @@ Current profiles:
   mirroring, Dynamic Type and VoiceOver, so no custom paint and no off-screen
   frame are claimed; renderer `Native`.
 - `Android`: the Skia-painted canvas on Android — custom painting, native
-  text/IME through a real `InputConnection`, and the system clipboard. It
-  claims **no** semantics (TalkBack is served by `AndroidControls`, not by the
-  painted canvas) and **no** off-screen snapshot, and it does change scale,
-  because the device rotates. Renderer `Skia`.
+  text/IME through a real `InputConnection`, the system clipboard, and
+  semantics through a virtual-node provider backed by the retained tree. It
+  claims **no** off-screen snapshot, and it does change scale, because the
+  device rotates. Renderer `Skia`.
 - `AndroidControls`: real `android.widget` views; the toolkit draws, runs its
   own IME and speaks to TalkBack. Renderer `Native`.
 - `Gtk`: real GTK controls, which is how Linux gets a native backend at all.

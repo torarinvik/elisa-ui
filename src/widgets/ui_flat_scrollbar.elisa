@@ -76,14 +76,20 @@ extend UiFlat:
             # the point, not a smaller control.
             thumb_bar: f32 = bar * SCROLL_THUMB_FILL
             thumb_offset: f32 = (bar - thumb_bar) * 0.5
+            # This pass runs after every widget body. Give a sensitive
+            # scrollbar its own diagnostic group and mask only its channel,
+            # rather than accidentally reusing the widget's earlier bounds.
+            diagnostic_owner: usize = MAX_WIDGETS + index
             if is_row:
                 track: UiCore::Rect = UiCore::Rect(widgets[index].x + inset, widgets[index].y + widgets[index].height - bar - inset, track_extent, bar)
                 thumb: UiCore::Rect = UiCore::Rect(track.origin.x + scroll_thumb_travel(true, travel, thumb_position), track.origin.y + thumb_offset, thumb_extent, thumb_bar)
+                UiCore::set_diagnostic_context(diagnostic_owner, widgets[index].accessibility_sensitive, track)
                 UiCore::fill_inset(track, track_color)
                 UiCore::fill_elevated(thumb, thumb_color)
             else:
                 track: UiCore::Rect = UiCore::Rect(vertical_bar_x(index, bar, inset), widgets[index].y + inset, bar, track_extent)
                 thumb: UiCore::Rect = UiCore::Rect(track.origin.x + thumb_offset, track.origin.y + thumb_position, thumb_bar, thumb_extent)
+                UiCore::set_diagnostic_context(diagnostic_owner, widgets[index].accessibility_sensitive, track)
                 UiCore::fill_inset(track, track_color)
                 UiCore::fill_elevated(thumb, thumb_color)
 
@@ -104,7 +110,7 @@ extend UiFlat:
         # viewport before invoking this geometry helper.
         def scrollbar_part(index: usize, x: f32, y: f32) -> i32:
             return 0 if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Scroll
-            return 0 if not effectively_enabled(index) or not effectively_visible(index) or not inside_scroll_viewports(index, x, y)
+            return 0 if not effectively_enabled(index) or not effectively_visible(index) or not inside_clip_ancestors(index, x, y)
             is_row: bool = widgets[index].axis == UiConst::Axis.Row
             viewport: f32 = widgets[index].width if is_row else widgets[index].height
             return 0 if not scrollbar_has_overflow(index) or viewport <= 0.0

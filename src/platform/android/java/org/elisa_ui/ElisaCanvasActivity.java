@@ -63,6 +63,8 @@ public final class ElisaCanvasActivity extends NativeActivity {
     public static native void nativeImeReport(String tag);
     public static native void nativeKeyboardInsets(float bottom, boolean visible);
     public static native void nativeBack();
+    public static native byte[] nativeAccessibilitySnapshot();
+    public static native boolean nativeAccessibilityAction(int id, int kind, float value);
     public static native void nativePermissionResult(int slot, int generation, int state, int failure);
     public static native void nativePermissionSync(int kind, int state, int failure);
     public static native void nativePickerResult(int slot, int generation, int state,
@@ -75,6 +77,7 @@ public final class ElisaCanvasActivity extends NativeActivity {
     // square, focusable, drawing nothing, sitting under the native surface. It
     // exists only to answer the IME; every touch still goes to the surface.
     private ElisaInputView input;
+    private ElisaAccessibilityView accessibility;
     private OnBackInvokedCallback backCallback;
     private static volatile ElisaCanvasActivity currentActivity;
     private static final int PERMISSION_REQUEST_CODE = 7314;
@@ -139,6 +142,10 @@ public final class ElisaCanvasActivity extends NativeActivity {
         input.setFocusable(true);
         input.setFocusableInTouchMode(true);
         input.requestFocus();
+        accessibility = new ElisaAccessibilityView(this);
+        addContentView(accessibility, new android.view.ViewGroup.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT));
         currentActivity = this;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             backCallback = new OnBackInvokedCallback() {
@@ -161,6 +168,7 @@ public final class ElisaCanvasActivity extends NativeActivity {
     @Override
     protected void onDestroy() {
         if (input != null) input.setPresentationActive(false);
+        accessibility = null;
         if (backCallback != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(backCallback);
             backCallback = null;
@@ -173,6 +181,7 @@ public final class ElisaCanvasActivity extends NativeActivity {
     protected void onResume() {
         super.onResume();
         if (input != null) input.setPresentationActive(true);
+        if (accessibility != null) accessibility.refreshSnapshot(false);
         reportPermissionSync(0);
         reportPermissionSync(1);
     }
@@ -434,6 +443,18 @@ public final class ElisaCanvasActivity extends NativeActivity {
                     else activity.finish();
                 } else {
                     activity.performLegacyBack();
+                }
+            }
+        });
+    }
+
+    public static void requestAccessibilityRefresh() {
+        final ElisaCanvasActivity activity = currentActivity;
+        if (activity == null) return;
+        activity.runOnUiThread(new Runnable() {
+            @Override public void run() {
+                if (currentActivity == activity && activity.accessibility != null) {
+                    activity.accessibility.refreshSnapshot(true);
                 }
             }
         });

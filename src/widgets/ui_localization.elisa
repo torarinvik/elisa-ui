@@ -28,6 +28,27 @@ module UiLocalization:
             Many = 4
             Other = 5
 
+        # Application-owned message variants. Empty non-Other entries mean
+        # that the catalog does not define that category; `plural_message`
+        # falls back to `other` without copying the borrowed strings.
+        struct PluralForms:
+            zero: sview
+            one: sview
+            two: sview
+            few: sview
+            many: sview
+            other: sview
+
+        const MAX_FORMAT_BYTES: usize = UiText::MAX_TEXT_BYTES
+
+        # Caller-owned scratch storage for message formatting. Returned views
+        # borrow this buffer and remain valid until the next formatting call
+        # that reuses it.
+        struct FormatBuffer:
+            bytes: mutable u8[MAX_FORMAT_BYTES]
+            length: mutable usize
+            capacity: mutable usize
+
         struct Snapshot:
             locale: sview
             revision: u32
@@ -181,6 +202,83 @@ module UiLocalization:
             if language_is(safe_locale, 0x70, 0x6c): # Polish
                 return polish_plural(quantity)
             return PluralCategory.One if quantity == 1 else PluralCategory.Other
+
+        # Select an application-owned message using the locale's plural rule.
+        # Optional categories fall back to `other`; the result remains a
+        # bounded borrowed view, and number/placeholder formatting stays with
+        # the application that owns the catalog storage.
+        def plural_message(locale: sview, quantity: i64, forms: PluralForms) -> sview:
+            category: PluralCategory = plural(locale, quantity)
+            selected: mutable sview = forms.other
+            if category == PluralCategory.Zero and forms.zero.len > 0:
+                selected <- forms.zero
+            elif category == PluralCategory.One and forms.one.len > 0:
+                selected <- forms.one
+            elif category == PluralCategory.Two and forms.two.len > 0:
+                selected <- forms.two
+            elif category == PluralCategory.Few and forms.few.len > 0:
+                selected <- forms.few
+            elif category == PluralCategory.Many and forms.many.len > 0:
+                selected <- forms.many
+            return UiCore::bounded_text(selected)
+
+        # Expand the one documented message token with a signed decimal count.
+        # Output is caller-owned, capped to the shared text budget, and always
+        # ends at a UTF-8 boundary; an incomplete replacement is not written.
+        def format_count(template: sview, quantity: i64, output: mutable FormatBuffer&) -> sview can Unsafe.PointerCast:
+            safe_template: sview = UiCore::bounded_text(template)
+            template_length: usize = safe_template.len.usize()
+            capacity: mutable usize = output.capacity
+            capacity <- MAX_FORMAT_BYTES if capacity == 0 or capacity > MAX_FORMAT_BYTES
+            negative: bool = quantity < 0
+            remaining: mutable i64 = quantity
+            digits: mutable u8[19] = zeroed
+            digit_count: mutable usize = 0
+            if remaining == 0:
+                digits[0] <- 48
+                digit_count <- 1
+            else:
+                for _ in 0..<19:
+                    digit: mutable i64 = remaining % 10
+                    digit <- -digit if digit < 0
+                    digits[digit_count] <- (digit + 48).u8()
+                    digit_count <- digit_count + 1
+                    remaining <- remaining / 10
+                    break if remaining == 0
+
+            output_length: mutable usize = 0
+            cursor: mutable usize = 0
+            for _ in 0..<template_length:
+                break if cursor >= template_length
+                placeholder: mutable bool = false
+                if cursor + 7 <= template_length:
+                    placeholder <- safe_template.data[cursor] == 123 and safe_template.data[cursor + 1] == 99 and safe_template.data[cursor + 2] == 111 and safe_template.data[cursor + 3] == 117 and safe_template.data[cursor + 4] == 110 and safe_template.data[cursor + 5] == 116 and safe_template.data[cursor + 6] == 125
+                if placeholder:
+                    needed: usize = digit_count + (1 if negative else 0)
+                    break if needed > capacity - output_length
+                    if negative:
+                        output.bytes[output_length] <- 45
+                        output_length <- output_length + 1
+                    for offset in 0..<digit_count:
+                        output.bytes[output_length] <- digits[digit_count - 1 - offset]
+                        output_length <- output_length + 1
+                    cursor <- cursor + 7
+                else:
+                    width: mutable usize = UiText::utf8_scalar_bytes(safe_template, cursor)
+                    width <- 1 if width == 0
+                    break if width > capacity - output_length
+                    for offset in 0..<width:
+                        output.bytes[output_length] <- safe_template.data[cursor + offset]
+                        output_length <- output_length + 1
+                    cursor <- cursor + width
+            output.length <- output_length
+            output.capacity <- capacity
+            return UiText::unsafe_sview_bounded_bytes(&output.bytes[0], output_length) can Unsafe.PointerCast
+
+        # Select a localized plural variant and expand every `{count}` token
+        # into caller-owned output in one bounded operation.
+        def format_plural(locale: sview, quantity: i64, forms: PluralForms, output: mutable FormatBuffer&) -> sview can Unsafe.PointerCast:
+            return format_count(plural_message(locale, quantity, forms), quantity, output)
 
     private:
         global mutable locale_storage: u8[MAX_LOCALE_BYTES] = zeroed

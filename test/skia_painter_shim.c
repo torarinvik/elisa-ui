@@ -84,6 +84,11 @@ static void record_event(int kind) {
    which commands reach the bridge, and text quality changes how a real
    rasterizer places glyphs rather than which calls are made. */
 void elisa_skia_set_text_quality(int subpixel, int hinting) { (void)subpixel; (void)hinting; }
+/* Shaped-blob caching belongs to the real Skia host, not the call-recorder. */
+void elisa_skia_set_text_cache_context(uint32_t locale_revision, uint32_t scale_generation) {
+    (void)locale_revision; (void)scale_generation;
+}
+void elisa_skia_clear_shaped_text_cache(void) { }
 void elisa_skia_canvas_save(size_t canvas) { if (canvas != 0) save_count += 1; }
 void elisa_skia_canvas_restore(size_t canvas) { if (canvas != 0) restore_count += 1; }
 void elisa_skia_canvas_scale(size_t canvas, float x, float y) {

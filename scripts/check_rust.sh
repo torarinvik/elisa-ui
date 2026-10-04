@@ -55,6 +55,7 @@ echo "rust: widget handle opacity passed"
 cat > "$WORK/bridge.elisa" <<'EOF'
 include "../../src/capi/ui_capi.elisa"
 include "../../src/capi/ui_capi_app.elisa"
+include "../../test/capi_backend_stubs.elisa"
 EOF
 bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$WORK/bridge.o" "$WORK/bridge.elisa"
 

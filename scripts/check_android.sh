@@ -71,6 +71,7 @@ for entry in android_main elisa_android_start elisa_android_resize elisa_android
              elisa_android_touch elisa_android_contact elisa_android_text_purpose elisa_android_scroll elisa_android_frame_delay \
              elisa_android_lifecycle elisa_android_key elisa_android_text elisa_android_keyboard_insets \
              elisa_android_wants_keyboard elisa_android_back \
+             elisa_android_accessibility_action \
              elisa_android_permission_result elisa_android_permission_sync \
              elisa_android_picker_result; do
   grep -q " $entry\$" <<<"$symbols" || { echo "android: $entry is not exported from lib$EXAMPLE.so" >&2; exit 1; }
@@ -153,6 +154,14 @@ grep -Fq 'pending_back_requests.exchange(0' "$BACK_QUEUE" || {
 }
 grep -Fq 'OnBackInvokedCallback' "$ROOT/src/platform/android/java/org/elisa_ui/ElisaCanvasActivity.java" || {
   echo "android: predictive/system back callback is not registered" >&2
+  exit 1
+}
+grep -Fq 'getAccessibilityNodeProvider' "$ROOT/src/platform/android/java/org/elisa_ui/ElisaAccessibilityView.java" || {
+  echo "android: the painted canvas does not expose its retained tree to accessibility services" >&2
+  exit 1
+}
+grep -Fq 'elisa_android_process_accessibility_actions' "$HOST" || {
+  echo "android: accessibility actions are not returned to the retained-tree owner thread" >&2
   exit 1
 }
 JAVA_ACTIVITY="$ROOT/src/platform/android/java/org/elisa_ui/ElisaCanvasActivity.java"
@@ -238,6 +247,19 @@ frame="$(grep "colors=" <<<"$log" | tail -1)"
 colors="$(sed -n 's/.*colors=\([0-9]*\).*/\1/p' <<<"$frame")"
 [[ "$colors" -gt 64 ]] || { echo "android: the frame is $colors colour(s) -- a blank window" >&2; exit 1; }
 echo "android: ${frame#*elisa-ui: }"
+
+# A rendered frame proves only that pixels crossed the host boundary. Ask
+# Android's own automation service for the accessibility hierarchy too; the
+# painted backend is useful to TalkBack only if its virtual nodes are present.
+ACCESSIBILITY_XML="/sdcard/elisa-ui-accessibility.xml"
+"$ADB" shell uiautomator dump "$ACCESSIBILITY_XML" >/dev/null
+accessibility_tree="$("$ADB" shell cat "$ACCESSIBILITY_XML" | tr -d '\r')"
+grep -q 'class="android.widget.Button"' <<<"$accessibility_tree" || {
+  echo "android: the accessibility hierarchy contains no retained button nodes" >&2
+  echo "$accessibility_tree" >&2
+  exit 1
+}
+echo "android: retained button nodes are visible to Android accessibility automation"
 
 if [[ "$ANDROID_TEST_AVD" == 1 && "$ROTATION_AUTO" =~ ^[01]$ && "$ROTATION_USER" =~ ^[0-3]$ ]]; then
   wait_for_lifecycle_log() {

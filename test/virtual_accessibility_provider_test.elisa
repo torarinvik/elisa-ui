@@ -58,12 +58,13 @@ def row_provider(list_index: usize, item_index: i32, item: mutable UiVirtualAcce
     return false if list_index != 1 or item_index == 8
     item.stable_id <- 900000 + item_index.usize()
     item.role <- UiCore::AccessibilityRole.RadioButton if item_index % 2 == 0 else UiCore::AccessibilityRole.Button
-    item.label <- "Sensor Café" if item_index == 7 else "Application-owned row"
-    item.help <- "Temperature in °C" if item_index == 7 else "Owned by the row model"
+    item.label <- "Account: alice@example.com" if item_index == 10 else ("Sensor Café" if item_index == 7 else "Application-owned row")
+    item.help <- "Private billing profile" if item_index == 10 else ("Temperature in °C" if item_index == 7 else "Owned by the row model")
     item.enabled <- item_index != 9
-    item.selected <- item_index == 7
-    item.value <- 0.75 if item_index == 7 else 0.0
-    item.has_range <- false
+    item.selected <- item_index == 7 or item_index == 10
+    item.value <- 0.75 if item_index == 7 or item_index == 10 else 0.0
+    item.has_range <- item_index == 10
+    item.sensitive <- item_index == 10
     return true
 
 def malformed_provider(list_index: usize, item_index: i32, item: mutable UiVirtualAccessibility::Item&) -> bool:
@@ -75,6 +76,7 @@ def malformed_provider(list_index: usize, item_index: i32, item: mutable UiVirtu
     item.selected <- false
     item.value <- 0.0
     item.has_range <- false
+    item.sensitive <- false
     return true
 
 def activate_provider(list_index: usize, item_index: i32) -> bool:
@@ -106,14 +108,34 @@ def main() -> i64:
 
     item <- UiVirtualAccessibility::empty()
     check("provider preserves non-ASCII app content", UiHandles::virtual_accessibility_item(list, 7, item) and item.label == "Sensor Café" and item.help == "Temperature in °C" and item.selected and item.value == 0.75)
-    check("provider callback is called only for valid queries", provider_calls == 2)
+    item <- UiVirtualAccessibility::empty()
+    check("sensitive model row is redacted before return", UiHandles::virtual_accessibility_item(list, 10, item) and item.sensitive and item.label == "Sensitive content" and item.help == "" and not item.selected and item.value == 0.0 and not item.has_range)
+    check("provider callback is called only for valid queries", provider_calls == 3)
 
     item <- UiVirtualAccessibility::empty()
     check("provider can omit one logical row", not UiHandles::virtual_accessibility_item(list, 8, item))
-    check("omitted row still invokes only its provider query", provider_calls == 3)
-    check("out-of-range query is rejected before provider invocation", not UiHandles::virtual_accessibility_item(list, 1000000, item) and provider_calls == 3)
+    check("omitted row still invokes only its provider query", provider_calls == 4)
+    check("out-of-range query is rejected before provider invocation", not UiHandles::virtual_accessibility_item(list, 1000000, item) and provider_calls == 4)
 
     check("malformed text provider is rejected", UiHandles::set_virtual_accessibility_provider(list, malformed_provider) and not UiHandles::virtual_accessibility_item(list, 3, item))
+    check("ordinary provider can be restored", UiHandles::set_virtual_accessibility_provider(list, row_provider))
+    item <- UiVirtualAccessibility::empty()
+    check("ordinary provider view is borrowed before policy change", UiHandles::virtual_accessibility_item(list, 7, item) and item.label == "Sensor Café")
+    UiHandles::set_accessibility_sensitive(list, true)
+    check("enabling sensitivity clears the previous borrowed text snapshot", item.label.data[0] == 0 and item.help.data[0] == 0)
+    item <- UiVirtualAccessibility::empty()
+    check("list sensitivity redacts every provider row and its app identity", UiHandles::virtual_accessibility_item(list, 7, item) and item.sensitive and item.stable_id == 7 and item.label == "Sensitive content" and item.help == "" and not item.selected and item.value == 0.0)
+    check("provider callback is called for the list-wide redaction query", provider_calls == 6)
+    item <- UiVirtualAccessibility::empty()
+    check("sensitive list discards even malformed provider strings", UiHandles::set_virtual_accessibility_provider(list, malformed_provider) and UiHandles::virtual_accessibility_item(list, 3, item) and item.sensitive and item.label == "Sensitive content" and item.help == "")
+    check("ordinary provider can be restored after redaction", UiHandles::set_virtual_accessibility_provider(list, row_provider))
+    UiCore::set_viewport(320.0, 180.0)
+    UiHandles::layout(320.0, 180.0)
+    UiCore::begin_frame()
+    UiHandles::paint()
+    list_semantic_index: usize = UiCore::accessibility_index_for_id(UiHandles::index(list))
+    list_semantic: UiCore::AccessibilityNode = UiCore::accessibility_at(list_semantic_index)
+    check("sensitive list omits semantic collection counts", list_semantic.role == UiCore::AccessibilityRole.List and list_semantic.label == "Sensitive content" and list_semantic.help == "" and list_semantic.collection_count == 0 and list_semantic.collection_size == 0 and not list_semantic.has_collection_position)
     check("off-screen activation uses a logical callback", UiHandles::set_virtual_accessibility_activate_provider(list, activate_provider) and UiHandles::virtual_accessibility_activate_provider_is_set(list) and UiHandles::activate_virtual_accessibility_item(list, 999999) and activated_item == 999999)
     check("off-screen activation rejects stale index", not UiHandles::activate_virtual_accessibility_item(list, 1000000))
     check("provider can be cleared without changing list identity", UiHandles::set_virtual_accessibility_provider(list, null) and not UiHandles::virtual_accessibility_provider_is_set(list) and UiHandles::virtual_item_count(list) == 1000000)

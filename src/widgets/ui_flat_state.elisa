@@ -37,6 +37,12 @@ extend UiFlat:
         global mutable paint_order_seen: bool[MAX_WIDGETS] = zeroed
         global mutable paint_order_count: usize = 0
         global mutable text_storage: u8[TEXT_STORAGE_SIZE] = zeroed
+        # UTF-16 ranges match native text positions. Keep diagnostic underlines
+        # separate from marked text so IME composition can coexist with editor
+        # diagnostics on the same source line.
+        global mutable text_underline_starts: usize[MAX_WIDGETS * MAX_TEXT_UNDERLINES_PER_WIDGET] = zeroed
+        global mutable text_underline_stops: usize[MAX_WIDGETS * MAX_TEXT_UNDERLINES_PER_WIDGET] = zeroed
+        global mutable text_underline_colors: UiCore::Color[MAX_WIDGETS * MAX_TEXT_UNDERLINES_PER_WIDGET] = zeroed
         global mutable retained_text_storage: u8[RETAINED_TEXT_STORAGE_SIZE] = zeroed
         global mutable secure_text_storage: u8[SECURE_TEXT_STORAGE_SIZE] = zeroed
         global mutable widget_count: usize = 0
@@ -149,7 +155,6 @@ extend UiFlat:
             for byte_index in 0..<take:
                 retained_text_storage[offset + byte_index] <- safe.data[byte_index]
             return UiText::fixed_bytes_view_range[786432](retained_text_storage, offset, take)
-
         # Widget rows are public value types for compatibility, so callers can
         # construct or mutate one without going through a builder. Canonicalize
         # the closed layout enums before any retained pass consumes them.
@@ -158,6 +163,7 @@ extend UiFlat:
                 widgets[index].axis <- UiConst::normalize_axis(widgets[index].axis)
                 widgets[index].cross_alignment <- UiConst::normalize_cross_alignment(widgets[index].cross_alignment)
                 widgets[index].main_alignment <- UiConst::normalize_main_alignment(widgets[index].main_alignment)
+                widgets[index].overflow_behavior <- UiConst::normalize_overflow_behavior(widgets[index].overflow_behavior)
                 # Public widget rows are value-shaped, and a retained arrange
                 # pass may have produced a coordinate after a large content
                 # translation. Keep the stored projection bounded as well as
@@ -176,8 +182,12 @@ extend UiFlat:
                 widgets[index].margin <- UiConstraints::bounded(widgets[index].margin)
                 widgets[index].declared_min_width <- UiConstraints::bounded(widgets[index].declared_min_width)
                 widgets[index].declared_min_height <- UiConstraints::bounded(widgets[index].declared_min_height)
+                widgets[index].declared_preferred_width <- UiConstraints::bounded(widgets[index].declared_preferred_width)
+                widgets[index].declared_preferred_height <- UiConstraints::bounded(widgets[index].declared_preferred_height)
                 widgets[index].min_width <- UiConstraints::bounded(widgets[index].min_width)
                 widgets[index].min_height <- UiConstraints::bounded(widgets[index].min_height)
+                widgets[index].preferred_width <- UiConstraints::bounded(widgets[index].preferred_width)
+                widgets[index].preferred_height <- UiConstraints::bounded(widgets[index].preferred_height)
                 widgets[index].max_width <- UiConstraints::bounded(widgets[index].max_width)
                 widgets[index].max_height <- UiConstraints::bounded(widgets[index].max_height)
                 widgets[index].grow <- UiConstraints::bounded(widgets[index].grow)
@@ -360,13 +370,16 @@ extend UiFlat:
                 first_child: NONE, next_sibling: NONE,
                 axis: UiConst::Axis.Column, padding: 0.0, spacing: 0.0, margin: 0.0,
                 cross_alignment: UiConst::CrossAlignment.Stretch,
-                main_alignment: UiConst::MainAlignment.Start,
+                main_alignment: UiConst::MainAlignment.Start, overflow_behavior: UiConst::OverflowBehavior.Compress,
                 declared_min_width: 0.0, declared_min_height: 0.0,
+                declared_preferred_width: 0.0, declared_preferred_height: 0.0,
                 min_width: 0.0, min_height: 0.0,
+                preferred_width: 0.0, preferred_height: 0.0,
+                width_constraints_conflict: false, height_constraints_conflict: false,
                 max_width: 0.0, max_height: 0.0, grow: 0.0,
                 x: 0.0, y: 0.0, width: 0.0, height: 0.0,
                 color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, hover_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, press_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0},
-                text: "", placeholder: "", help: "", text_size: 0.0, text_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, text_weighted: false, text_halo: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, text_tracking: 0.0, ring_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, secure: false, overlay: false, floating: false, corner: UiCore::CornerStyle.Automatic, ramped: false, gradient: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, gradient_horizontal: false, gradient_mid: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, gradient_mid_at: 0.0, glow: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, image: UiCore::ImageRef{slot: 0, generation: 0}, image_alpha: 255, image_fit: UiCore::PictureFit.Stretch,
+                text: "", placeholder: "", help: "", text_size: 0.0, text_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, text_weighted: false, text_halo: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, text_tracking: 0.0, ring_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, secure: false, accessibility_sensitive: false, overlay: false, floating: false, corner: UiCore::CornerStyle.Automatic, ramped: false, gradient: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, gradient_horizontal: false, gradient_mid: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, gradient_mid_at: 0.0, glow: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, image: UiCore::ImageRef{slot: 0, generation: 0}, image_alpha: 255, image_fit: UiCore::PictureFit.Stretch,
                 interactive: false, focus_order: index, selection_group: parent, visible: true, enabled: true, hovered: false, pressed: false, focused: false, selected: false, value: 0.0, step: 0.05,
                 input_length: 0, caret: 0, selection_anchor: 0, marked_start: 0, marked_end: 0, text_revision: 0, text_truncated: false,
                 scroll_offset: 0.0, scroll_content_width: 0.0, scroll_content_height: 0.0,
@@ -376,5 +389,12 @@ extend UiFlat:
                 shown_color: UiCore::Color{r: 0, g: 0, b: 0, a: 0}, shown_settled: false,
                 shown_value: 0.0, shown_value_settled: false, shown_lift: 0.0, shown_lift_settled: false,
             }
+            underline_slot: mutable usize = 0
+            while underline_slot < MAX_TEXT_UNDERLINES_PER_WIDGET:
+                underline_index: usize = index * MAX_TEXT_UNDERLINES_PER_WIDGET + underline_slot
+                text_underline_starts[underline_index] <- 0
+                text_underline_stops[underline_index] <- 0
+                text_underline_colors[underline_index] <- UiCore::rgba(0, 0, 0, 0)
+                underline_slot <- underline_slot + 1
             link(safe_parent, index)
             return index

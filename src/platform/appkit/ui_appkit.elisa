@@ -305,6 +305,7 @@ module UiAppKit:
                     # control is unavailable. None of that is reachable by
                     # being drawn greyer.
                     UiAppKitNative::native_set_enabled(handle, state.enabled)
+                    UiAppKitControlsPrivacy::apply_accessibility_sensitivity(handle, state.accessibility_sensitive)
                     if kind == UiControls::ControlKind.ToggleButton or kind == UiControls::ControlKind.CheckBox or kind == UiControls::ControlKind.RadioButton:
                         UiAppKitNative::native_set_button_state(handle, elisa_appkit_control_state_on if state.selected else elisa_appkit_control_state_off)
                         return
@@ -325,15 +326,7 @@ module UiAppKit:
                 can Ui.Controls:
                     handle: usize = native_handle(index)
                     return if handle == 0
-                    if kind == UiControls::ControlKind.TextField:
-                        prompt: usize = UiAppKitNative::native_string(placeholder)
-                        if prompt != 0:
-                            UiAppKitNative::native_set_placeholder(handle, prompt)
-                            CFRelease(prompt)
-                    hint: usize = UiAppKitNative::native_string(help)
-                    return if hint == 0
-                    UiAppKitNative::native_set_accessibility_help(handle, hint)
-                    CFRelease(hint)
+                    UiAppKitControlsPrivacy::apply_control_help(handle, index, kind, placeholder, help)
 
         # Release the retained handles before the next realization. Child views
         # may still be retained by their old parent, but releasing every Elisa
@@ -388,3 +381,5 @@ def appkit_controls_action(handle: usize, value: f32, state: i64) -> i32:
     return UiAppKit::controls_action(handle, value, state == elisa_appkit_control_state_on.i64())
 
 export fn elisa_appkit_controls_action(handle: usize, value: f32, state: i64) -> i32 = appkit_controls_action
+
+include "./ui_appkit_controls_privacy.elisa"

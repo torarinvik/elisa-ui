@@ -4,7 +4,7 @@
 # is not a public C ABI. Elisa combines it with the current tree lifetime into
 # an opaque scalar before the callback crosses the language boundary. C callers
 # may retain and compare the token while the tree is live; they must not decode
-# or persist its representation.
+# or persist its representation. Only this module validates and decodes tokens.
 
 include "../widgets/ui_flat_identity.elisa"
 
@@ -27,3 +27,17 @@ module UiCapiWidget:
             # lifetime policy cannot turn a valid slot into the sentinel.
             return INVALID if token == INVALID
             return token
+
+        # Decode only inside the adapter, and only while both the tree epoch
+        # and slot are still live. Foreign callers never receive the arena
+        # index or an operation that can recover it from an old token.
+        def index_for_token(token: u64) -> usize:
+            return UiFlat::NONE if token == INVALID
+            lifetime: u64 = token / SLOT_RADIX
+            return UiFlat::NONE if lifetime != UiFlat::identity_lifetime().u64()
+            index: usize = (token % SLOT_RADIX).usize()
+            return UiFlat::NONE if not UiFlat::identity_is_valid(index)
+            return index
+
+        def token_is_valid(token: u64) -> bool:
+            return index_for_token(token) != UiFlat::NONE

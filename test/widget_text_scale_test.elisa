@@ -1,0 +1,68 @@
+# Runtime text scaling reaches existing retained text through both layout and paint.
+
+include "./widget_layout_support.elisa"
+
+def text_run_size(expected: sview) -> f32:
+    for index in 0..<UiCore::command_count():
+        match UiCore::command_at(index):
+            UiCore::Command.DrawText(run, color):
+                return run.size if run.text == expected
+            _:
+                pass
+    return 0.0
+
+def main() -> i64:
+    UiTheme::reset()
+    UiFlat::reset()
+    root: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 0.0, 0.0, UiCore::rgb(20, 24, 30))
+    label: usize = UiFlat::label(root, "Scale", 10.0, UiCore::rgb(240, 240, 240))
+    field: usize = UiFlat::text_field(root, "Value", "", "abc", 120.0, 20.0, 12.0, UiCore::rgb(240, 240, 240), UiCore::rgb(30, 34, 44))
+
+    UiFlat::layout(240.0, 100.0)
+    base_label: UiFlat::Widget = UiFlat::widget(label)
+    base_field: UiFlat::Widget = UiFlat::widget(field)
+    check("base text sizes remain application-owned", base_label.text_size == 10.0 and base_field.text_size == 12.0)
+    check("base label minimum uses its declared font size", near(base_label.min_width, 25.0) and near(base_label.min_height, 10.0))
+    check("base text field preserves its declared minimum", near(base_field.min_height, 20.0))
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("base label paints at its declared size", text_run_size("Scale") == 10.0)
+    check("base field paints at its declared size", text_run_size("abc") == 12.0)
+
+    high_text: UiTheme::Preferences = UiTheme::Preferences{
+        mode: UiTheme::ColorMode.System,
+        contrast: UiTheme::Contrast.Normal,
+        text_scale: 2.0,
+        reduced_motion: false,
+    }
+    check("runtime preference changes", UiFlat::apply_system_theme(high_text, false, false))
+    UiFlat::layout(240.0, 100.0)
+    scaled_label: UiFlat::Widget = UiFlat::widget(label)
+    scaled_field: UiFlat::Widget = UiFlat::widget(field)
+    check("existing label remeasures at the scaled size", near(scaled_label.min_width, 50.0) and near(scaled_label.min_height, 20.0))
+    check("text field minimum grows to contain scaled text and padding", near(scaled_field.min_height, 40.0))
+    check("scaling does not overwrite per-widget base sizes", scaled_label.text_size == 10.0 and scaled_field.text_size == 12.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("existing label paints at double size", text_run_size("Scale") == 20.0)
+    check("existing field paints at double size", text_run_size("abc") == 24.0)
+    check("caret geometry follows the scaled line height", near(UiFlat::text_caret_height(field), 24.0))
+
+    normal_text: UiTheme::Preferences = UiTheme::Preferences{
+        mode: UiTheme::ColorMode.System,
+        contrast: UiTheme::Contrast.Normal,
+        text_scale: 1.0,
+        reduced_motion: false,
+    }
+    check("scale can be restored without rebuilding widgets", UiFlat::apply_system_theme(normal_text, false, false))
+    UiFlat::layout(240.0, 100.0)
+    restored_label: UiFlat::Widget = UiFlat::widget(label)
+    restored_field: UiFlat::Widget = UiFlat::widget(field)
+    check("restored scale returns intrinsic size and field minimum", near(restored_label.min_width, 25.0) and near(restored_field.min_height, 20.0))
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("restored scale returns both text runs", text_run_size("Scale") == 10.0 and text_run_size("abc") == 12.0)
+
+    if test_failures == 0:
+        _ = puts("widget text scale: all checks passed")
+    return test_failures.i64()

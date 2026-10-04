@@ -249,7 +249,13 @@ static int elisa_uikit_status_bar_hidden = 0;
 
 - (void)applicationDidBecomeActive:(UIApplication *)application {
     (void)application;
-    (void)elisa_uikit_lifecycle([self elisaViewHandle], ElisaUiKitSignalFocusGained);
+    if (elisa_uikit_lifecycle([self elisaViewHandle], ElisaUiKitSignalFocusGained)) {
+        // Lifecycle restoration re-enables the retained session, but UIKit
+        // does not guarantee a draw after returning from the app switcher.
+        // drawRect reactivates the native selection display for the still-
+        // focused editor, so explicitly schedule that restoration frame.
+        [self.controller.viewIfLoaded setNeedsDisplay];
+    }
     elisa_uikit_sync_permission(ElisaUiKitServiceCamera);
     elisa_uikit_sync_permission(ElisaUiKitServiceMicrophone);
 }

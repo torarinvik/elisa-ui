@@ -17,6 +17,7 @@
 // isFlipped, so a child's frame is used verbatim.
 
 #import <Cocoa/Cocoa.h>
+#import "appkit_controls_privacy.h"
 
 // Coordinate policy belongs to the widget framework. Objective-C only adapts
 // the Cocoa protocol method to the value Elisa selected.
@@ -143,12 +144,13 @@ const int elisa_appkit_backing_store_buffered = NSBackingStoreBuffered;
 size_t elisa_appkit_create_window_with_style(int style, int backing,
                                              float width, float height) {
     NSRect content = NSMakeRect(0, 0, width, height);
-    NSWindow *window = [[NSWindow alloc]
+    NSWindow *window = [[ElisaAppKitPrivacyWindow alloc]
         initWithContentRect:content
                   styleMask:(NSWindowStyleMask)style
                     backing:(NSBackingStoreType)backing
                       defer:NO];
     if (window == nil) return 0;
+    [window setDelegate:(id<NSWindowDelegate>)window];
     ElisaFlippedView *view = [[ElisaFlippedView alloc] initWithFrame:content];
     if (view == nil) return 0;
     [window setContentView:view];
@@ -159,12 +161,13 @@ size_t elisa_appkit_create_panel_window(int style, int backing,
                                         int floating, int becomes_key_only,
                                         float width, float height) {
     NSRect content = NSMakeRect(0, 0, width, height);
-    NSPanel *panel = [[NSPanel alloc]
+    NSPanel *panel = [[ElisaAppKitPrivacyPanel alloc]
         initWithContentRect:content
                   styleMask:(NSWindowStyleMask)style
                     backing:(NSBackingStoreType)backing
                       defer:NO];
     if (panel == nil) return 0;
+    [panel setDelegate:(id<NSWindowDelegate>)panel];
     [panel setFloatingPanel:floating != 0];
     [panel setBecomesKeyOnlyIfNeeded:becomes_key_only != 0];
     ElisaFlippedView *view = [[ElisaFlippedView alloc] initWithFrame:content];
@@ -193,13 +196,13 @@ size_t elisa_appkit_create_scroll_view(int vertical, int horizontal) {
 size_t elisa_appkit_create_label(size_t text) {
     NSString *value = elisa_appkit_string(text);
     if (value == nil) return 0;
-    return elisa_appkit_retain([NSTextField labelWithString:value]);
+    return elisa_appkit_retain([ElisaAppKitSensitiveTextField labelWithString:value]);
 }
 
 size_t elisa_appkit_create_push_button(int bezel_style, size_t text) {
     NSString *value = elisa_appkit_string(text);
     if (value == nil) return 0;
-    NSButton *button = [NSButton buttonWithTitle:value target:nil action:nil];
+    NSButton *button = [ElisaAppKitSensitiveButton buttonWithTitle:value target:nil action:nil];
     [button setBezelStyle:(NSBezelStyle)bezel_style];
     return elisa_appkit_retain(button);
 }
@@ -207,7 +210,7 @@ size_t elisa_appkit_create_push_button(int bezel_style, size_t text) {
 size_t elisa_appkit_create_toggle_button(int button_type, size_t text) {
     NSString *value = elisa_appkit_string(text);
     if (value == nil) return 0;
-    NSButton *button = [NSButton buttonWithTitle:value target:nil action:nil];
+    NSButton *button = [ElisaAppKitSensitiveButton buttonWithTitle:value target:nil action:nil];
     [button setButtonType:(NSButtonType)button_type];
     return elisa_appkit_retain(button);
 }
@@ -215,13 +218,13 @@ size_t elisa_appkit_create_toggle_button(int button_type, size_t text) {
 size_t elisa_appkit_create_checkbox(size_t text) {
     NSString *value = elisa_appkit_string(text);
     if (value == nil) return 0;
-    return elisa_appkit_retain([NSButton checkboxWithTitle:value target:nil action:nil]);
+    return elisa_appkit_retain([ElisaAppKitSensitiveButton checkboxWithTitle:value target:nil action:nil]);
 }
 
 size_t elisa_appkit_create_radio_button(size_t text) {
     NSString *value = elisa_appkit_string(text);
     if (value == nil) return 0;
-    return elisa_appkit_retain([NSButton radioButtonWithTitle:value target:nil action:nil]);
+    return elisa_appkit_retain([ElisaAppKitSensitiveButton radioButtonWithTitle:value target:nil action:nil]);
 }
 
 // A SECURE FIELD IS A DIFFERENT CLASS HERE, not a property -- which is exactly
@@ -231,7 +234,7 @@ size_t elisa_appkit_create_secure_text_field(size_t text) {
     // gate greps this file for an empty literal to keep it that way.
     NSString *value = elisa_appkit_string(text);
     if (value == nil) return 0;
-    NSSecureTextField *field = [[NSSecureTextField alloc] initWithFrame:NSZeroRect];
+    NSSecureTextField *field = [[ElisaAppKitSensitiveSecureTextField alloc] initWithFrame:NSZeroRect];
     field.stringValue = value;
     return elisa_appkit_retain(field);
 }
@@ -242,7 +245,7 @@ size_t elisa_appkit_create_secure_text_field(size_t text) {
 void elisa_appkit_set_placeholder(size_t handle, size_t text) {
     NSString *value = elisa_appkit_string(text);
     NSTextField *field = (NSTextField *)elisa_appkit_object(handle);
-    if (value != nil && [field isKindOfClass:[NSTextField class]]) {
+    if ([field isKindOfClass:[NSTextField class]]) {
         field.placeholderString = value;
     }
 }
@@ -250,7 +253,7 @@ void elisa_appkit_set_placeholder(size_t handle, size_t text) {
 void elisa_appkit_set_accessibility_help(size_t handle, size_t text) {
     NSString *value = elisa_appkit_string(text);
     NSView *view = (NSView *)elisa_appkit_object(handle);
-    if (value != nil && [view isKindOfClass:[NSView class]]) {
+    if ([view isKindOfClass:[NSView class]]) {
         view.accessibilityHelp = value.length > 0 ? value : nil;
     }
 }
@@ -279,15 +282,15 @@ int elisa_appkit_field_has_placeholder(size_t handle) {
 size_t elisa_appkit_create_text_field(size_t text) {
     NSString *value = elisa_appkit_string(text);
     if (value == nil) return 0;
-    return elisa_appkit_retain([NSTextField textFieldWithString:value]);
+    return elisa_appkit_retain([ElisaAppKitSensitiveTextField textFieldWithString:value]);
 }
 
 size_t elisa_appkit_create_slider(float low, float high, float value) {
-    return elisa_appkit_retain([NSSlider sliderWithValue:value minValue:low maxValue:high target:nil action:nil]);
+    return elisa_appkit_retain([ElisaAppKitSensitiveSlider sliderWithValue:value minValue:low maxValue:high target:nil action:nil]);
 }
 
 size_t elisa_appkit_create_progress_bar(int progress_style, int indeterminate) {
-    NSProgressIndicator *bar = [[NSProgressIndicator alloc] initWithFrame:NSZeroRect];
+    NSProgressIndicator *bar = [[ElisaAppKitSensitiveProgressIndicator alloc] initWithFrame:NSZeroRect];
     [bar setStyle:(NSProgressIndicatorStyle)progress_style];
     [bar setIndeterminate:indeterminate != 0];
     return elisa_appkit_retain(bar);

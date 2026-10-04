@@ -20,6 +20,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "gtk_accessible_entry.h"
+
 // The handle Elisa holds is the GtkWidget pointer. GTK owns the lifetime once
 // a widget is parented, which is why nothing here retains: the seam's arena
 // carries the identity and this file never keeps a second table.
@@ -76,11 +78,10 @@ size_t elisa_gtk_create_radio(void) {
 }
 
 size_t elisa_gtk_create_entry(int32_t secure) {
-    GtkWidget *entry = gtk_entry_new();
+    GtkWidget *entry = elisa_gtk_accessible_entry_new(secure);
     // SECURE IS A PROPERTY HERE, as on iOS and Android -- AppKit is the one
     // platform that needs a different class, which is why the fact travels in
     // ControlState and every backend sees it at create.
-    gtk_entry_set_visibility(GTK_ENTRY(entry), secure == 0);
     return (size_t)(void *)entry;
 }
 
@@ -135,14 +136,24 @@ void elisa_gtk_set_label_text(size_t handle, const char *text) {
 void elisa_gtk_set_help(size_t handle, const char *placeholder, const char *help) {
     GtkWidget *widget = widget_of(handle);
     if (widget == NULL) return;
+    const gboolean sensitive = GPOINTER_TO_INT(g_object_get_data(
+        G_OBJECT(widget), "elisa-accessibility-sensitive")) != 0;
     if (GTK_IS_ENTRY(widget)) {
         // NULL is GTK's explicit "no placeholder" value. Always write it so
         // a retained field cannot keep a hint from an earlier realization.
-        gtk_entry_set_placeholder_text(GTK_ENTRY(widget), placeholder);
+        gtk_entry_set_placeholder_text(GTK_ENTRY(widget), sensitive ? NULL : placeholder);
+        if (sensitive || placeholder == NULL || placeholder[0] == '\0') {
+            gtk_accessible_reset_property(GTK_ACCESSIBLE(widget),
+                                          GTK_ACCESSIBLE_PROPERTY_PLACEHOLDER);
+        } else {
+            gtk_accessible_update_property(GTK_ACCESSIBLE(widget),
+                                           GTK_ACCESSIBLE_PROPERTY_PLACEHOLDER,
+                                           placeholder, -1);
+        }
     }
     // GTK's accessibility is a property on the widget itself, which is the
     // same shape as UIKit's accessibilityHint and Android's contentDescription.
-    if (help != NULL && help[0] != '\0') {
+    if (!sensitive && help != NULL && help[0] != '\0') {
         gtk_accessible_update_property(GTK_ACCESSIBLE(widget),
                                        GTK_ACCESSIBLE_PROPERTY_DESCRIPTION, help, -1);
     } else {
@@ -277,8 +288,63 @@ void elisa_gtk_set_colors(size_t handle, uint32_t ink, uint32_t fill) {
     reload_styles();
 }
 
+static gboolean accessibility_sensitive(GtkWidget *widget) {
+    return GPOINTER_TO_INT(g_object_get_data(
+        G_OBJECT(widget), "elisa-accessibility-sensitive")) != 0;
+}
+
+static void apply_accessibility_privacy(GtkWidget *widget) {
+    const gboolean sensitive = accessibility_sensitive(widget);
+    if (sensitive) {
+        gtk_accessible_update_property(GTK_ACCESSIBLE(widget),
+                                       GTK_ACCESSIBLE_PROPERTY_LABEL,
+                                       "Sensitive content", -1);
+    } else {
+        gtk_accessible_reset_property(GTK_ACCESSIBLE(widget),
+                                      GTK_ACCESSIBLE_PROPERTY_LABEL);
+    }
+    if (GTK_IS_RANGE(widget) || GTK_IS_PROGRESS_BAR(widget)) {
+        double low = 0.0;
+        double high = 1.0;
+        double value = 0.0;
+        if (GTK_IS_RANGE(widget)) {
+            GtkAdjustment *adjustment = gtk_range_get_adjustment(GTK_RANGE(widget));
+            low = gtk_adjustment_get_lower(adjustment);
+            high = gtk_adjustment_get_upper(adjustment);
+            value = gtk_range_get_value(GTK_RANGE(widget));
+        } else {
+            value = gtk_progress_bar_get_fraction(GTK_PROGRESS_BAR(widget));
+        }
+        gtk_accessible_update_property(GTK_ACCESSIBLE(widget),
+                                       GTK_ACCESSIBLE_PROPERTY_VALUE_MIN,
+                                       sensitive ? 0.0 : low,
+                                       GTK_ACCESSIBLE_PROPERTY_VALUE_MAX,
+                                       sensitive ? 0.0 : high,
+                                       GTK_ACCESSIBLE_PROPERTY_VALUE_NOW,
+                                       sensitive ? 0.0 : value, -1);
+        if (sensitive) {
+            gtk_accessible_update_property(GTK_ACCESSIBLE(widget),
+                                           GTK_ACCESSIBLE_PROPERTY_VALUE_TEXT,
+                                           "", -1);
+        } else {
+            gtk_accessible_reset_property(GTK_ACCESSIBLE(widget),
+                                          GTK_ACCESSIBLE_PROPERTY_VALUE_TEXT);
+        }
+    }
+    if (GTK_IS_CHECK_BUTTON(widget)) {
+        gtk_accessible_update_state(GTK_ACCESSIBLE(widget),
+                                    GTK_ACCESSIBLE_STATE_CHECKED,
+                                    !sensitive && gtk_check_button_get_active(
+                                        GTK_CHECK_BUTTON(widget))
+                                        ? GTK_ACCESSIBLE_TRISTATE_TRUE
+                                        : GTK_ACCESSIBLE_TRISTATE_FALSE,
+                                    -1);
+    }
+}
+
 void elisa_gtk_set_state(size_t handle, float value, int32_t selected,
-                         int32_t enabled, int32_t secure) {
+                         int32_t enabled, int32_t secure,
+                         int32_t accessibility_sensitive) {
     GtkWidget *widget = widget_of(handle);
     if (widget == NULL) return;
     gtk_widget_set_sensitive(widget, enabled != 0);
@@ -286,6 +352,13 @@ void elisa_gtk_set_state(size_t handle, float value, int32_t selected,
     else if (GTK_IS_RANGE(widget)) gtk_range_set_value(GTK_RANGE(widget), value);
     else if (GTK_IS_PROGRESS_BAR(widget)) gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(widget), value);
     else if (GTK_IS_ENTRY(widget)) gtk_entry_set_visibility(GTK_ENTRY(widget), secure == 0);
+    g_object_set_data(G_OBJECT(widget), "elisa-accessibility-sensitive",
+                      GINT_TO_POINTER(accessibility_sensitive != 0));
+    if (GTK_IS_ENTRY(widget)) {
+        elisa_gtk_accessible_entry_set_sensitive(widget,
+                                                 accessibility_sensitive);
+    }
+    apply_accessibility_privacy(widget);
 }
 
 // Elisa resolves the widget back to a control index and decides what the
@@ -301,11 +374,13 @@ static void on_toggled(GtkCheckButton *check, gpointer data) {
     (void)data;
     (void)elisa_gtk_action((size_t)(void *)check, 0.0f,
                            gtk_check_button_get_active(check) ? 1 : 0);
+    apply_accessibility_privacy(GTK_WIDGET(check));
 }
 
 static void on_value_changed(GtkRange *range, gpointer data) {
     (void)data;
     (void)elisa_gtk_action((size_t)(void *)range, (float)gtk_range_get_value(range), 0);
+    apply_accessibility_privacy(GTK_WIDGET(range));
 }
 
 static void on_entry_changed(GtkEditable *editable, gpointer data) {
@@ -327,7 +402,11 @@ void elisa_gtk_set_action(size_t handle) {
 int32_t elisa_gtk_is_type(size_t handle, const char *name) {
     GtkWidget *widget = widget_of(handle);
     if (widget == NULL || name == NULL) return 0;
-    return strcmp(G_OBJECT_TYPE_NAME(widget), name) == 0 ? 1 : 0;
+    GType expected = g_type_from_name(name);
+    return expected != G_TYPE_INVALID &&
+                   g_type_is_a(G_OBJECT_TYPE(widget), expected)
+               ? 1
+               : 0;
 }
 
 int32_t elisa_gtk_is_sensitive(size_t handle) {

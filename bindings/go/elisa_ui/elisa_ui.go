@@ -1,10 +1,11 @@
 // Package elisa_ui is the optional Go host face of elisa-ui's stable C ABI.
 //
 // It is deliberately small: the linked Elisa component owns retained widgets,
-// callbacks, and all framework state. Go owns only scalar event values and
-// borrows a bounded prefix of immutable string storage for each synchronous
-// text call. Stateful calls must be made on one UI-owner OS thread (typically a goroutine locked with
-// runtime.LockOSThread); this package does not add a scheduler or mutex.
+// callbacks, and all framework state. Go owns scalar values and opaque widget
+// identities, and borrows bounded immutable string prefixes for synchronous
+// calls. Stateful calls must be made on one UI-owner OS thread (typically a
+// goroutine locked with runtime.LockOSThread); this package adds no scheduler
+// or mutex.
 package elisa_ui
 
 /*
@@ -113,6 +114,31 @@ func (handle WidgetHandle) Valid() bool {
 	return handle != InvalidWidgetHandle
 }
 
+// WidgetParent distinguishes a valid root insertion point from an invalid
+// widget token. Construct values with RootWidgetParent or ParentWidget.
+type WidgetParent struct {
+	token uint64
+	valid bool
+}
+
+// RootWidgetParent selects the root of the retained tree.
+func RootWidgetParent() WidgetParent {
+	return WidgetParent{valid: true}
+}
+
+// ParentWidget selects a live-or-stale token as a parent. Elisa validates its
+// generation and container kind when the builder is called.
+func ParentWidget(handle WidgetHandle) WidgetParent {
+	return WidgetParent{token: uint64(handle), valid: handle.Valid()}
+}
+
+// ColorRgba packs channels as 0xRRGGBBAA, the representation used by the C ABI.
+type ColorRgba uint32
+
+func RGBA(red, green, blue, alpha uint8) ColorRgba {
+	return ColorRgba(uint32(red)<<24 | uint32(green)<<16 | uint32(blue)<<8 | uint32(alpha))
+}
+
 // ABIVersion returns the packed version reported by the linked Elisa
 // implementation. The result is 0 only when the linked boundary is absent or
 // otherwise invalid.
@@ -123,6 +149,281 @@ func ABIVersion() uint32 {
 // ExpectedABIVersion returns the version this binding was compiled against.
 func ExpectedABIVersion() uint32 {
 	return uint32(C.elisa_go_abi_version)
+}
+
+// ResetWidgetTree destroys the current retained tree and invalidates all of
+// its widget tokens.
+func ResetWidgetTree() {
+	C.elisa_ui_widget_tree_reset()
+}
+
+func widgetResult(token C.elisa_ui_widget_handle) (WidgetHandle, bool) {
+	if token == 0 {
+		return InvalidWidgetHandle, false
+	}
+	return WidgetHandle(token), true
+}
+
+// NewColumn creates a retained vertical container beneath the root or a live
+// container. Colors use packed RGBA bytes.
+func NewColumn(parent WidgetParent, padding, spacing float32, color ColorRgba) (WidgetHandle, bool) {
+	if !parent.valid {
+		return InvalidWidgetHandle, false
+	}
+	token := C.elisa_ui_widget_column(
+		C.elisa_ui_widget_handle(parent.token), C.float(padding), C.float(spacing), C.uint32_t(color),
+	)
+	return widgetResult(token)
+}
+
+func NewRow(parent WidgetParent, padding, spacing float32, color ColorRgba) (WidgetHandle, bool) {
+	if !parent.valid {
+		return InvalidWidgetHandle, false
+	}
+	token := C.elisa_ui_widget_row(
+		C.elisa_ui_widget_handle(parent.token), C.float(padding), C.float(spacing), C.uint32_t(color),
+	)
+	return widgetResult(token)
+}
+
+// NewLabel copies a bounded valid UTF-8 prefix into retained Elisa storage.
+func NewLabel(parent WidgetParent, text string, size float32, color ColorRgba) (WidgetHandle, bool) {
+	if !parent.valid {
+		return InvalidWidgetHandle, false
+	}
+	bounded := validTextPrefix(text)
+	var pointer *C.char
+	if len(bounded) != 0 {
+		pointer = (*C.char)(unsafe.Pointer(unsafe.StringData(bounded)))
+	}
+	token := C.elisa_ui_widget_label(
+		C.elisa_ui_widget_handle(parent.token), pointer, C.size_t(len(bounded)), C.float(size), C.uint32_t(color),
+	)
+	runtime.KeepAlive(bounded)
+	return widgetResult(token)
+}
+
+// NewTextField creates an editable field with a counted UTF-8 initial value.
+// Compose a separate label when a visible field caption is needed.
+func NewTextField(parent WidgetParent, initial string, minWidth, minHeight, size float32, ink, fill ColorRgba) (WidgetHandle, bool) {
+	if !parent.valid {
+		return InvalidWidgetHandle, false
+	}
+	bounded := validTextPrefix(initial)
+	var pointer *C.char
+	if len(bounded) != 0 {
+		pointer = (*C.char)(unsafe.Pointer(unsafe.StringData(bounded)))
+	}
+	token := C.elisa_ui_widget_text_field(
+		C.elisa_ui_widget_handle(parent.token), pointer, C.size_t(len(bounded)),
+		C.float(minWidth), C.float(minHeight), C.float(size), C.uint32_t(ink), C.uint32_t(fill),
+	)
+	runtime.KeepAlive(bounded)
+	return widgetResult(token)
+}
+
+func NewButton(parent WidgetParent, minWidth, minHeight float32, color, hover, press ColorRgba) (WidgetHandle, bool) {
+	if !parent.valid {
+		return InvalidWidgetHandle, false
+	}
+	token := C.elisa_ui_widget_button(
+		C.elisa_ui_widget_handle(parent.token), C.float(minWidth), C.float(minHeight),
+		C.uint32_t(color), C.uint32_t(hover), C.uint32_t(press),
+	)
+	return widgetResult(token)
+}
+
+// NewRadioButton creates a radio control. Radio grouping policy belongs to the caller.
+func NewRadioButton(parent WidgetParent, minWidth, minHeight float32, color, hover, press ColorRgba) (WidgetHandle, bool) {
+	if !parent.valid {
+		return InvalidWidgetHandle, false
+	}
+	token := C.elisa_ui_widget_radio_button(
+		C.elisa_ui_widget_handle(parent.token), C.float(minWidth), C.float(minHeight),
+		C.uint32_t(color), C.uint32_t(hover), C.uint32_t(press),
+	)
+	return widgetResult(token)
+}
+
+// NewCheckBox creates a check box beneath a live container.
+func NewCheckBox(parent WidgetParent, minWidth, minHeight float32, color, hover, press ColorRgba) (WidgetHandle, bool) {
+	if !parent.valid {
+		return InvalidWidgetHandle, false
+	}
+	token := C.elisa_ui_widget_check_box(
+		C.elisa_ui_widget_handle(parent.token), C.float(minWidth), C.float(minHeight),
+		C.uint32_t(color), C.uint32_t(hover), C.uint32_t(press),
+	)
+	return widgetResult(token)
+}
+
+// NewSlider creates an interactive slider whose value is normalized to [0, 1].
+func NewSlider(parent WidgetParent, minWidth, minHeight, value float32, track, fill, thumb ColorRgba) (WidgetHandle, bool) {
+	if !parent.valid {
+		return InvalidWidgetHandle, false
+	}
+	token := C.elisa_ui_widget_slider(
+		C.elisa_ui_widget_handle(parent.token), C.float(minWidth), C.float(minHeight), C.float(value),
+		C.uint32_t(track), C.uint32_t(fill), C.uint32_t(thumb),
+	)
+	return widgetResult(token)
+}
+
+// NewProgressBar creates a non-interactive normalized progress indicator.
+func NewProgressBar(parent WidgetParent, minWidth, minHeight, value float32, track, fill ColorRgba) (WidgetHandle, bool) {
+	if !parent.valid {
+		return InvalidWidgetHandle, false
+	}
+	token := C.elisa_ui_widget_progress_bar(
+		C.elisa_ui_widget_handle(parent.token), C.float(minWidth), C.float(minHeight), C.float(value),
+		C.uint32_t(track), C.uint32_t(fill),
+	)
+	return widgetResult(token)
+}
+
+// SetWidgetText copies a bounded valid UTF-8 prefix into Elisa-owned retained
+// storage before returning. Embedded NUL remains ordinary counted text.
+func SetWidgetText(widget WidgetHandle, text string, size float32, color ColorRgba) bool {
+	if !widget.Valid() {
+		return false
+	}
+	bounded := validTextPrefix(text)
+	var pointer *C.char
+	if len(bounded) != 0 {
+		pointer = (*C.char)(unsafe.Pointer(unsafe.StringData(bounded)))
+	}
+	accepted := C.elisa_ui_widget_set_text(
+		C.elisa_ui_widget_handle(widget), pointer, C.size_t(len(bounded)), C.float(size), C.uint32_t(color),
+	) == 1
+	runtime.KeepAlive(bounded)
+	return accepted
+}
+
+func SetWidgetEnabled(widget WidgetHandle, enabled bool) bool {
+	if !widget.Valid() {
+		return false
+	}
+	var value C.int32_t
+	if enabled {
+		value = 1
+	}
+	return C.elisa_ui_widget_set_enabled(C.elisa_ui_widget_handle(widget), value) == 1
+}
+
+func SetWidgetVisible(widget WidgetHandle, visible bool) bool {
+	if !widget.Valid() {
+		return false
+	}
+	var value C.int32_t
+	if visible {
+		value = 1
+	}
+	return C.elisa_ui_widget_set_visible(C.elisa_ui_widget_handle(widget), value) == 1
+}
+
+// SetWidgetSelected applies to radio buttons and check boxes only.
+func SetWidgetSelected(widget WidgetHandle, selected bool) bool {
+	if !widget.Valid() {
+		return false
+	}
+	var value C.int32_t
+	if selected {
+		value = 1
+	}
+	return C.elisa_ui_widget_set_selected(C.elisa_ui_widget_handle(widget), value) == 1
+}
+
+// WidgetSelected returns false for stale or non-selection controls.
+func WidgetSelected(widget WidgetHandle) bool {
+	if !widget.Valid() {
+		return false
+	}
+	return C.elisa_ui_widget_selected(C.elisa_ui_widget_handle(widget)) == 1
+}
+
+// SetWidgetValue applies to sliders and progress bars; Elisa normalizes to [0, 1].
+func SetWidgetValue(widget WidgetHandle, value float32) bool {
+	if !widget.Valid() {
+		return false
+	}
+	return C.elisa_ui_widget_set_value(C.elisa_ui_widget_handle(widget), C.float(value)) == 1
+}
+
+// WidgetValue returns zero for stale or unsupported handles.
+func WidgetValue(widget WidgetHandle) float32 {
+	if !widget.Valid() {
+		return 0
+	}
+	return float32(C.elisa_ui_widget_value(C.elisa_ui_widget_handle(widget)))
+}
+
+// RequestTextFocus requests focus for a live text field.
+func RequestTextFocus(widget WidgetHandle) bool {
+	if !widget.Valid() {
+		return false
+	}
+	return C.elisa_ui_widget_request_text_focus(C.elisa_ui_widget_handle(widget)) == 1
+}
+
+// WidgetTextLength returns the UTF-8 byte length, or false for stale/non-text handles.
+func WidgetTextLength(widget WidgetHandle) (int, bool) {
+	if !widget.Valid() {
+		return 0, false
+	}
+	length := int32(C.elisa_ui_widget_text_length(C.elisa_ui_widget_handle(widget)))
+	if length < 0 {
+		return 0, false
+	}
+	return int(length), true
+}
+
+// CopyWidgetText copies a UTF-8-safe prefix into caller-owned storage. The C
+// boundary does not retain the byte-slice pointer.
+func CopyWidgetText(widget WidgetHandle, destination []byte) (int, bool) {
+	if !widget.Valid() {
+		return 0, false
+	}
+	if _, ok := WidgetTextLength(widget); !ok {
+		return 0, false
+	}
+	var pointer *C.char
+	if len(destination) != 0 {
+		pointer = (*C.char)(unsafe.Pointer(&destination[0]))
+	}
+	copied := int(C.elisa_ui_widget_copy_text(
+		C.elisa_ui_widget_handle(widget), pointer, C.size_t(len(destination)),
+	))
+	runtime.KeepAlive(destination)
+	return copied, true
+}
+
+// WidgetText reads the complete bounded field value as a Go string.
+func WidgetText(widget WidgetHandle) (string, bool) {
+	length, ok := WidgetTextLength(widget)
+	if !ok {
+		return "", false
+	}
+	bytes := make([]byte, length)
+	copied, ok := CopyWidgetText(widget, bytes)
+	if !ok || copied != length || !utf8.Valid(bytes) {
+		return "", false
+	}
+	return string(bytes), true
+}
+
+// ActivateWidget runs the retained control's callback synchronously.
+func ActivateWidget(widget WidgetHandle) bool {
+	if !widget.Valid() {
+		return false
+	}
+	return C.elisa_ui_widget_activate(C.elisa_ui_widget_handle(widget)) == 1
+}
+
+func WidgetIsLive(widget WidgetHandle) bool {
+	if !widget.Valid() {
+		return false
+	}
+	return C.elisa_ui_widget_is_valid(C.elisa_ui_widget_handle(widget)) == 1
 }
 
 // DispatchEvent delivers one scalar event to the linked Elisa application.

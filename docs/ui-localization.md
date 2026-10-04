@@ -21,6 +21,24 @@ leaving bidi reordering and glyph shaping to the renderer.
 Russian/Ukrainian, and Polish rules, with a deterministic one/other fallback
 for unknown languages. Message catalogs remain application-owned; they consume
 the category instead of making each backend parse locale strings independently.
+`PluralForms` and `plural_message` connect that policy to borrowed application
+copy: the selected locale category is used when present, and a missing category
+falls back to `other`. An empty `other` yields an empty view. The selector does
+not copy or retain catalog storage, and it does not replace numeric or
+locale-specific number formatting. `format_count` replaces every `{count}`
+token with a signed decimal value in caller-owned storage, and `format_plural`
+combines that step with variant selection. Output is bounded, does not split
+UTF-8 scalars, and stops before a replacement that cannot fit. Applications
+remain responsible for catalog storage and locale-specific digit/grouping
+rules. A zeroed `FormatBuffer` defaults to the shared 1,024-byte text limit;
+callers can set a smaller capacity, which is clamped to that limit. The returned
+view borrows the buffer and is invalidated when that buffer is formatted again.
+
+```elisa
+scratch: mutable UiLocalization::FormatBuffer = zeroed
+label: sview = UiLocalization::format_plural(locale, file_count, file_forms, scratch)
+UiHandles::set_text(counter, label, 13.0, color)
+```
 
 Claim dynamic item identity through `UiIdentity` before rebuilding a localized
 list so RTL/retranslation does not transfer focus or edit state by position.

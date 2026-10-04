@@ -14,24 +14,24 @@ extend UiResources:
             return false if not UiCore::is_finite(width) or not UiCore::is_finite(height)
             return false if width < 0.0 or height < 0.0
             return false if width > UiCore::MAX_GEOMETRY_EXTENT or height > UiCore::MAX_GEOMETRY_EXTENT
-            slot: usize = handle.slot.usize()
-            return false if resource_intrinsic_width[slot] == width and resource_intrinsic_height[slot] == height
-            resource_intrinsic_width[slot] <- width
-            resource_intrinsic_height[slot] <- height
-            UiCore::invalidate(UiCore::Invalidation.Layout)
-            UiCore::invalidate(UiCore::Invalidation.Paint)
-            return true
+            image: UiCore::ImageRef = UiCore::image_ref(handle.slot, handle.generation)
+            current: UiCore::Size = UiCore::image_intrinsic_size(image)
+            return false if current.width == width and current.height == height
+            return UiCore::set_image_intrinsic_size(image, width, height)
 
         def intrinsic_size(handle: ResourceHandle) -> UiCore::Size:
             return UiCore::Size(0.0, 0.0) if not UiResources::resource_is_valid(handle)
-            slot: usize = handle.slot.usize()
-            return UiCore::Size(resource_intrinsic_width[slot], resource_intrinsic_height[slot])
+            return UiCore::image_intrinsic_size(UiCore::image_ref(handle.slot, handle.generation))
 
     private:
-        global mutable resource_intrinsic_width: f32[MAX_RESOURCES] = zeroed
-        global mutable resource_intrinsic_height: f32[MAX_RESOURCES] = zeroed
+        # A retry or re-request rotates identity while retaining package
+        # geometry for the same logical asset. Copy it only to the new image
+        # generation; old ImageRefs remain unable to observe that metadata.
+        def preserve_metadata_for_generation(slot: usize, generation: u32) -> void:
+            return if slot >= MAX_RESOURCES or generation == 0
+            previous: UiCore::Size = UiCore::image_intrinsic_size(UiCore::image_ref(slot.u32(), resource_generations[slot]))
+            return if previous.width <= 0.0 and previous.height <= 0.0
+            _ = UiCore::set_image_intrinsic_size(UiCore::image_ref(slot.u32(), generation), previous.width, previous.height)
 
         def clear_metadata(slot: usize) -> void:
-            return if slot >= MAX_RESOURCES
-            resource_intrinsic_width[slot] <- 0.0
-            resource_intrinsic_height[slot] <- 0.0
+            UiCore::clear_image_intrinsic_size(slot)

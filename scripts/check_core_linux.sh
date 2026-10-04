@@ -9,8 +9,8 @@
 # anywhere else.
 #
 # It runs the same tests scripts/run_tests.sh runs, minus the ones that link
-# Apple frameworks (appkit_canvas_*, uikit_*) and the Skia host fixtures the
-# renderer gate owns. On this machine that is 66 of the 73.
+# Apple frameworks (appkit_canvas_*, uikit_*), the Metal-only viewport fixture,
+# and the Skia host fixtures the renderer gate owns.
 #
 # IT FOUND SOMETHING IMMEDIATELY, which is the argument for having it: the SDL3
 # backend -- the one Linux and Windows paint through -- had a single macOS font
@@ -56,7 +56,8 @@ rm -rf "$OUT"
 mkdir -p "$OUT"
 bash "$STAGE1/scripts/write_profiler_hook_fallbacks.sh" >"$OUT/profiler_fallbacks.c"
 cp "$STAGE1/scripts/pymodule_runtime_fallback.c" "$OUT/host_fallbacks.c"
-cp "$ROOT/test/skia_painter_shim.c" "$ROOT/include/elisa_skia.h" "$OUT/"
+cp "$ROOT/test/skia_painter_shim.c" "$ROOT/test/mobile_services_host_stubs.c" \
+  "$ROOT/include/elisa_skia.h" "$OUT/"
 
 compile() {
   env ELISA_HOST_LINUX=1 ${HOST_ARCH_FLAG:+"$HOST_ARCH_FLAG"} \
@@ -72,6 +73,8 @@ for source in "$ROOT"/test/*_test.elisa; do
     # run_tests.sh; the Apple ones link frameworks that do not exist here.
     skia_offscreen_test|showcase_skia_test|showcase_app_skia_test|storefront_skia_test|appkit_skia_host_test) continue ;;
     appkit_canvas_*|uikit_*) continue ;;
+    # This fixture's native Metal path is exercised by its dedicated macOS gate.
+    viewport_three_views_test) continue ;;
   esac
   compile "$source" "$OUT/$name.o"
   expected=$((expected + 1))
@@ -90,10 +93,16 @@ clang -c -o profiler_fallbacks.o profiler_fallbacks.c
 # what a current clang treats as builtins.
 clang -fno-builtin -c -o host_fallbacks.o host_fallbacks.c
 clang -c -o skia_painter_shim.o skia_painter_shim.c
+cp '$GUEST'/mobile_services_host_stubs.c .
+clang -c -o mobile_services_host_stubs.o mobile_services_host_stubs.c
 pass=0
 for obj in *_test.o; do
   name=\${obj%.o}
   shim=''
+  case "\$name" in
+    skia_painter_test|skia_image_upload_state_test) shim=skia_painter_shim.o ;;
+    android_services_test) shim=mobile_services_host_stubs.o ;;
+  esac
   [ \"\$name\" = skia_painter_test ] && shim=skia_painter_shim.o
   if ! clang -o \"\$name\" \"\$obj\" \$shim runtime.o profiler_fallbacks.o host_fallbacks.o \\
        \$(pkg-config --libs sdl3 sdl3-ttf) -lpthread -lm >/tmp/elisa-link.err 2>&1; then

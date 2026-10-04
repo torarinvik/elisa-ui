@@ -58,6 +58,15 @@ def main() -> i64:
     root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 8.0, 4.0, UiCore::rgb(10, 10, 12))
     button: UiHandles::Handle = UiHandles::button(root, 80.0, 24.0, UiCore::rgb(20, 20, 24), UiCore::rgb(30, 30, 36), UiCore::rgb(12, 12, 16))
     UiHandles::set_text(button, "Inspect me", 14.0, UiCore::rgb(240, 240, 245))
+    UiHandles::set_preferred_size(button, 90.0, 28.0)
+    UiHandles::set_overflow_behavior(root, UiConst::OverflowBehavior.Clip)
+    private_slider: UiHandles::Handle = UiHandles::slider(root, 100.0, 24.0, 0.75, UiCore::rgb(20, 20, 24), UiCore::rgb(30, 30, 36), UiCore::rgb(12, 12, 16))
+    UiHandles::set_text(private_slider, "Private balance", 14.0, UiCore::rgb(240, 240, 245))
+    UiHandles::set_accessibility_sensitive(private_slider, true)
+    private_radio: UiHandles::Handle = UiHandles::radio_button(root, 80.0, 24.0, UiCore::rgb(20, 20, 24), UiCore::rgb(30, 30, 36), UiCore::rgb(12, 12, 16))
+    UiHandles::set_text(private_radio, "Private choice", 14.0, UiCore::rgb(240, 240, 245))
+    UiHandles::set_selected(private_radio, true)
+    UiHandles::set_accessibility_sensitive(private_radio, true)
     secret: UiHandles::Handle = UiHandles::secure_text_field(root, "Password", "", "private", 140.0, 28.0, 14.0, UiCore::rgb(240, 240, 245), UiCore::rgb(24, 24, 30))
     UiCore::set_viewport(320.0, 180.0)
     UiHandles::layout(320.0, 180.0)
@@ -71,8 +80,13 @@ def main() -> i64:
     check("diagnostic redacts sensitive records", diagnostic.redacted and UiDiagnostics::message_length(diagnostic) == 10 and UiDiagnostics::message_data(diagnostic)[0] == 91)
     check("diagnostic retains source bytes", UiDiagnostics::source_length(diagnostic) == 18 and UiDiagnostics::source_data(diagnostic)[0] == 97)
 
-    check("inspector count follows retained tree", UiInspector::count() == 3)
+    check("inspector count follows retained tree", UiInspector::count() == 5)
     check("inspector root is typed", UiInspector::root().widget_id == root.widget_id)
+    if UiInspector::inspect(root) is root_node:
+        check("inspector exposes panel overflow behavior", root_node.constraints.overflow_behavior == UiConst::OverflowBehavior.Clip)
+    else:
+        check("inspector exposes panel overflow behavior", false)
+    UiHandles::set_overflow_behavior(root, UiConst::OverflowBehavior.Compress)
     if UiInspector::node_at(1) is ordinal_node:
         check("inspector enumerates typed nodes", ordinal_node.handle.widget_id == button.widget_id)
     else:
@@ -82,7 +96,8 @@ def main() -> i64:
         check("inspector preserves widget identity", button_node.handle.tree_id == button.tree_id)
         check("inspector preserves parent relationship", button_node.parent.widget_id == root.widget_id)
         check("inspector exposes laid-out bounds", button_node.frame.size.width >= 80.0 and button_node.frame.size.height >= 24.0)
-        check("inspector exposes constraints", button_node.constraints.min_width == 80.0 and button_node.constraints.min_height == 24.0)
+        check("inspector exposes min and preferred constraints", button_node.constraints.min_width == 80.0 and button_node.constraints.min_height == 24.0 and button_node.constraints.preferred_width == 90.0 and button_node.constraints.preferred_height == 28.0)
+        check("inspector retains the declared preferred dimensions", button_node.constraints.declared_preferred_width == 90.0 and button_node.constraints.declared_preferred_height == 28.0)
         check("inspector reads framework text", button_node.text == "Inspect me")
     else:
         check("inspector returns a live node", false)
@@ -92,6 +107,34 @@ def main() -> i64:
         check("inspector redacts secure text", secret_node.text == "[secure]")
     else:
         check("inspector returns secure node", false)
+    if UiInspector::inspect(private_slider) is private_slider_node:
+        check("inspector redacts sensitive numeric values", private_slider_node.accessibility_sensitive and private_slider_node.value == 0.0 and not private_slider_node.selected)
+    else:
+        check("inspector returns sensitive slider", false)
+    if UiInspector::inspect(private_radio) is private_radio_node:
+        check("inspector redacts sensitive selection state", private_radio_node.accessibility_sensitive and not private_radio_node.selected and private_radio_node.value == 0.0)
+    else:
+        check("inspector returns sensitive radio", false)
+
+    conflicted: UiHandles::Handle = UiHandles::button(root, 60.0, 30.0, UiCore::rgb(20, 20, 24), UiCore::rgb(30, 30, 36), UiCore::rgb(12, 12, 16))
+    UiHandles::set_min_size(conflicted, 60.0, 30.0)
+    UiHandles::set_max_size(conflicted, 20.0, 10.0)
+    UiHandles::layout(320.0, 180.0)
+    if UiInspector::inspect(button) is unconstrained_node:
+        check("inspector distinguishes a normal range", not unconstrained_node.constraints.width_conflict and not unconstrained_node.constraints.height_conflict)
+    else:
+        check("inspector returns unconstrained widget", false)
+    if UiInspector::inspect(conflicted) is conflicted_node:
+        check("inspector reports max below minimum on both axes", conflicted_node.constraints.width_conflict and conflicted_node.constraints.height_conflict)
+        check("inspector preserves the contradictory declared maxima", conflicted_node.constraints.max_width == 20.0 and conflicted_node.constraints.max_height == 10.0)
+    else:
+        check("inspector returns conflicted widget", false)
+    UiHandles::layout(30.0, 20.0)
+    if UiInspector::inspect(button) is compressed_node:
+        check("inspector reports layout compression below minimum", compressed_node.constraints.width_conflict and compressed_node.constraints.width_clamped_low)
+    else:
+        check("inspector returns compressed widget", false)
+    UiHandles::layout(320.0, 180.0)
 
     snapshot: UiInspector::Frame = UiInspector::frame()
     task_state: UiTasks::Snapshot = snapshot.task_snapshot
@@ -135,6 +178,35 @@ def main() -> i64:
         check("inspector redacts semantic value", semantic.text_value == "[secure]" and semantic.selected_text == "")
     else:
         check("inspector returns matching semantics", false)
+
+    UiHandles::set_text(button, "Account: alice@example.com", 14.0, UiCore::rgb(240, 240, 245))
+    UiHandles::set_help(button, "Private billing profile")
+    UiCore::begin_frame()
+    UiCore::accessibility(UiCore::AccessibilityRole.Button, "Account: alice@example.com", "Private billing profile", UiCore::Rect(0.0, 0.0, 80.0, 24.0), UiHandles::index(button), UiHandles::index(button), true, false, true, 0.75, "alice@example.com", "alice", 7, 0, 5)
+    UiHandles::set_accessibility_sensitive(button, true)
+    scrubbed: UiCore::AccessibilityNode = UiCore::accessibility_at(0)
+    check("sensitivity setter scrubs an already-published node", scrubbed.label == "Sensitive content" and scrubbed.help == "" and scrubbed.text_value == "" and scrubbed.selected_text == "")
+    check("sensitivity setter scrubs state and text ranges", not scrubbed.selected and scrubbed.value == 0.0 and scrubbed.revision == 0 and scrubbed.selection_location == 0 and scrubbed.selection_length == 0 and not scrubbed.has_range and scrubbed.collection_count == 0)
+    if UiInspector::inspect(button) is sensitive_node:
+        check("inspector reports the opt-in policy without content", sensitive_node.accessibility_sensitive and sensitive_node.text == "[sensitive]" and sensitive_node.help == "")
+    else:
+        check("inspector returns a sensitive node", false)
+    if UiInspector::semantic_for(button) is sensitive_semantic:
+        check("inspector redacts sensitive semantic content", sensitive_semantic.label == "Sensitive content" and sensitive_semantic.text_value == "" and sensitive_semantic.selected_text == "" and not sensitive_semantic.selected and sensitive_semantic.value == 0.0)
+    else:
+        check("inspector returns sensitive semantics", false)
+
+    UiCore::begin_frame()
+    UiFlat::paint()
+    sensitive_index: usize = UiCore::accessibility_index_for_id(UiHandles::index(button))
+    generated_sensitive: UiCore::AccessibilityNode = UiCore::accessibility_at(sensitive_index)
+    check("retained paint never republishes marked model content", generated_sensitive.label == "Sensitive content" and generated_sensitive.help == "" and generated_sensitive.text_value == "" and generated_sensitive.selected_text == "" and not generated_sensitive.selected and generated_sensitive.value == 0.0)
+    slider_index: usize = UiCore::accessibility_index_for_id(UiHandles::index(private_slider))
+    generated_slider: UiCore::AccessibilityNode = UiCore::accessibility_at(slider_index)
+    check("sensitive slider omits range and numeric value", generated_slider.role == UiCore::AccessibilityRole.Slider and generated_slider.label == "Sensitive content" and generated_slider.value == 0.0 and not generated_slider.has_range)
+    radio_index: usize = UiCore::accessibility_index_for_id(UiHandles::index(private_radio))
+    generated_radio: UiCore::AccessibilityNode = UiCore::accessibility_at(radio_index)
+    check("sensitive radio omits selection", generated_radio.role == UiCore::AccessibilityRole.RadioButton and generated_radio.label == "Sensitive content" and not generated_radio.selected)
 
     UiHandles::reset()
     check("inspector rejects stale identity", UiInspector::inspect(button) == null and UiInspector::semantic_for(button) == null)

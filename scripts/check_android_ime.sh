@@ -241,6 +241,70 @@ for _ in $(seq 1 15); do
 done
 expect "ime-menu-copy passed Unicode clipboard"
 
+# The app-side probe clears the selected document while retaining the copied
+# Unicode clipboard item. A fresh real long press must offer Paste without
+# exposing Copy/Cut, and the observed Paste action must restore the exact text.
+for _ in $(seq 1 15); do
+  log="$("$ADB" logcat -d -s elisa-ui)"
+  grep -q 'ime-menu-empty passed cleared field' <<<"$log" && break
+  sleep 1
+done
+expect "ime-menu-empty passed cleared field"
+"$ADB" shell input swipe "$press_x" "$press_y" "$press_x" "$press_y" 1200
+sleep 1
+menu_result="$("$ADB" shell am instrument -w -e action Paste org.elisa_ui.menucheck/org.elisa_ui.menucheck.ElisaMenuAutomation)"
+grep -qF 'elisa menu click passed Paste at' <<<"$menu_result" || {
+  echo "$menu_result" >&2
+  exit 1
+}
+for _ in $(seq 1 15); do
+  log="$("$ADB" logcat -d -s elisa-ui)"
+  grep -q 'ime-menu-paste passed Unicode clipboard' <<<"$log" && break
+  sleep 1
+done
+expect "ime-menu-paste passed Unicode clipboard"
+
+# The opt-in secure probe waits for a real password-purpose owner. Focusing
+# the rendered Password field makes it insert a synthetic value, select it on
+# the native owner thread and request the production floating menu. The value
+# is never included in diagnostics or logs.
+"$ADB" logcat -c
+tap 500 545
+for _ in $(seq 1 20); do
+  log="$("$ADB" logcat -d -s elisa-ui)"
+  grep -q 'ime-menu-secure ready' <<<"$log" && break
+  sleep 1
+done
+expect "ime-menu-secure ready"
+expect "ime-menu-secure traits passed"
+expect "ime-menu-secure copy denied sentinel preserved"
+expect "ime secure-copy-drained secure=redacted"
+if grep -qF 'probe-secret' <<<"$log"; then
+  echo "android ime: secure probe value leaked into diagnostics" >&2
+  exit 1
+fi
+grep -qE 'ime-insets bottom=[1-9][0-9]*(\.[0-9]+)? visible=1 accepted=1' <<<"$log" || {
+  echo "android ime: secure field did not show the software keyboard" >&2
+  grep 'ime-insets' <<<"$log" >&2 || true
+  exit 1
+}
+menu_result="$("$ADB" shell am instrument -w -e action secure-audit org.elisa_ui.menucheck/org.elisa_ui.menucheck.ElisaMenuAutomation)"
+grep -qF 'elisa menu secure audit passed Paste only' <<<"$menu_result" || {
+  echo "$menu_result" >&2
+  exit 1
+}
+# The audit deliberately does not touch Paste; dismiss the menu and keyboard
+# separately before measuring Android's unhandled root-Back fallback.
+"$ADB" shell input keyevent 4 >/dev/null
+sleep 0.5
+"$ADB" shell input keyevent 4 >/dev/null
+for _ in $(seq 1 15); do
+  log="$("$ADB" logcat -d -s elisa-ui)"
+  grep -qE 'ime-insets bottom=0(\.0+)? visible=0 accepted=1' <<<"$log" && break
+  sleep 1
+done
+expect "ime-insets bottom=0.00 visible=0 accepted=1"
+
 # THE NEXT BACK is for the Activity, not the keyboard. With no Elisa dialog or
 # navigation entry, Android's default root-task behavior must still run after
 # the native owner thread reports UiBack::Unhandled.
@@ -272,4 +336,4 @@ if [[ "$background_samples" -lt 2 ]]; then
 fi
 "$ADB" shell am force-stop "$PACKAGE" || true
 
-echo "android ime: composition, batch and Unicode clipboard passed; canvas long press opened a menu and Back dismissed it; visible/hidden insets passed; root Back returned to Android"
+echo "android ime: composition, batch, visible Copy, empty-field Paste and secure Paste-only menu passed; keyboard insets and menu dismissal passed; root Back returned to Android"

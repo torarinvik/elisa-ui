@@ -12,13 +12,16 @@ extend UiFlat:
         global mutable virtual_accessibility_label_storage: u8[UiCore::MAX_TEXT_BYTES] = zeroed
         global mutable virtual_accessibility_help_storage: u8[UiCore::MAX_TEXT_BYTES] = zeroed
 
+        def clear_virtual_accessibility_text() -> void:
+            for index in 0..<UiCore::MAX_TEXT_BYTES:
+                virtual_accessibility_label_storage[index] <- 0
+                virtual_accessibility_help_storage[index] <- 0
+
         def clear_virtual_accessibility_providers() -> void:
             for index in 0..<MAX_WIDGETS:
                 virtual_accessibility_providers[index] <- null
                 virtual_accessibility_activate_providers[index] <- null
-            for index in 0..<UiCore::MAX_TEXT_BYTES:
-                virtual_accessibility_label_storage[index] <- 0
-                virtual_accessibility_help_storage[index] <- 0
+            clear_virtual_accessibility_text()
 
         def copy_virtual_accessibility_text(storage: mutable u8[UiCore::MAX_TEXT_BYTES]&, value: sview) -> sview:
             return "" if value.len <= 0
@@ -69,8 +72,8 @@ extend UiFlat:
 
         # Resolve one logical item into caller-owned output. The returned text
         # views point at fixed UiFlat scratch and remain valid until the next
-        # query; native adapters should copy them immediately into their own
-        # object, just as they do for ordinary semantic nodes.
+        # query or sensitivity-policy change; native adapters should copy them
+        # immediately into their own object, just as for ordinary semantic nodes.
         def virtual_accessibility_item(index: usize, item_index: i32, item: mutable UiVirtualAccessibility::Item&) -> bool:
             return false if index >= widget_count or not widgets[index].virtual_list
             return false if not UiVirtualAccessibility::index_is_valid(item_index, widgets[index].virtual_total)
@@ -78,13 +81,22 @@ extend UiFlat:
             return false if provider == null
             candidate: mutable UiVirtualAccessibility::Item = UiVirtualAccessibility::empty()
             return false if not provider(index, item_index, candidate)
+            candidate.sensitive <- true if widgets[index].accessibility_sensitive
             return false if not UiVirtualAccessibility::is_valid(candidate, item_index, widgets[index].virtual_total)
             # Clear the previous contents before copying so an empty help view
             # cannot leave a stale string observable through the output item.
             for byte_index in 0..<UiCore::MAX_TEXT_BYTES:
                 virtual_accessibility_label_storage[byte_index] <- 0
                 virtual_accessibility_help_storage[byte_index] <- 0
-            candidate.label <- copy_virtual_accessibility_text(virtual_accessibility_label_storage, candidate.label)
-            candidate.help <- copy_virtual_accessibility_text(virtual_accessibility_help_storage, candidate.help)
+            if candidate.sensitive:
+                candidate.stable_id <- item_index.usize()
+                candidate.label <- "Sensitive content"
+                candidate.help <- ""
+                candidate.selected <- false
+                candidate.value <- 0.0
+                candidate.has_range <- false
+            else:
+                candidate.label <- copy_virtual_accessibility_text(virtual_accessibility_label_storage, candidate.label)
+                candidate.help <- copy_virtual_accessibility_text(virtual_accessibility_help_storage, candidate.help)
             item <- candidate
             return true

@@ -66,6 +66,7 @@ def main() -> i64:
     first_token: u64 = last_widget
     check("first widget callback reaches C app", callback_count == 1)
     check("first widget callback is opaque and nonzero", first_token != UiCapiWidget::INVALID)
+    check("live opaque token resolves only inside adapter", UiCapiWidget::token_is_valid(first_token) and UiCapiWidget::index_for_token(first_token) == UiHandles::index(first_button))
     check("first widget callback keeps its event", last_event == UiConst::WidgetEvent.Click.i32())
 
     UiHandles::reset()
@@ -76,7 +77,87 @@ def main() -> i64:
     check("tree reset changes opaque widget identity", last_widget != first_token)
     check("new widget callback remains nonzero", last_widget != UiCapiWidget::INVALID)
     check("old typed handle is stale after reset", not UiHandles::is_valid(first_button))
+    check("opaque token is rejected after tree reset", not UiCapiWidget::token_is_valid(first_token) and UiCapiWidget::index_for_token(first_token) == UiFlat::NONE)
     check("widget token reserves its invalid sentinel", UiCapiWidget::token_for_index(UiFlat::NONE) == UiCapiWidget::INVALID)
+
+    # Exercise the actual versioned C functions from Elisa too, so text staging
+    # and opaque-token validation are checked without relying only on the C host.
+    elisa_ui_widget_tree_reset()
+    api_root: u64 = elisa_ui_widget_column(0, 4.0, 2.0, 0x202028FF)
+    api_row: u64 = elisa_ui_widget_row(api_root, 0.0, 4.0, 0x202028FF)
+    api_label: u64 = elisa_ui_widget_label(api_row, "Caption", 7, 16.0, 0xFFFFFFFF)
+    api_button: u64 = elisa_ui_widget_button(api_row, 100.0, 32.0, 0x303038FF, 0x404048FF, 0x505058FF)
+    api_checkbox: u64 = elisa_ui_widget_check_box(api_row, 24.0, 24.0, 0x303038FF, 0x404048FF, 0x505058FF)
+    api_radio: u64 = elisa_ui_widget_radio_button(api_row, 24.0, 24.0, 0x303038FF, 0x404048FF, 0x505058FF)
+    api_slider: u64 = elisa_ui_widget_slider(api_row, 160.0, 24.0, 0.25, 0x303038FF, 0x404048FF, 0x505058FF)
+    api_progress: u64 = elisa_ui_widget_progress_bar(api_row, 160.0, 12.0, 0.5, 0x303038FF, 0x404048FF)
+    field_initial: mutable u8[5] = zeroed
+    field_initial[0] <- 72
+    field_initial[1] <- 105
+    field_initial[2] <- 32
+    field_initial[3] <- 195
+    field_initial[4] <- 169
+    field_initial_view: sview = UiText::fixed_bytes_view_range[5](field_initial, 0, 5)
+    api_field: u64 = elisa_ui_widget_text_field(api_row, field_initial_view.data.cast[cstr] can Unsafe.PointerCast, 5, 180.0, 32.0, 16.0, 0xFFFFFFFF, 0x202028FF)
+    api_index: usize = UiCapiWidget::index_for_token(api_button)
+    api_label_index: usize = UiCapiWidget::index_for_token(api_label)
+    api_checkbox_index: usize = UiCapiWidget::index_for_token(api_checkbox)
+    api_slider_index: usize = UiCapiWidget::index_for_token(api_slider)
+    api_progress_index: usize = UiCapiWidget::index_for_token(api_progress)
+    embedded_text: mutable u8[3] = zeroed
+    embedded_text[0] <- 65
+    embedded_text[1] <- 0
+    embedded_text[2] <- 66
+    embedded_view: sview = UiText::fixed_bytes_view_range[3](embedded_text, 0, 3)
+    embedded_pointer: cstr = embedded_view.data.cast[cstr] can Unsafe.PointerCast
+    check("C widget API creates layout, text, action, selection, range, and input controls", api_root != 0 and api_row != 0 and api_label != 0 and api_button != 0 and api_checkbox != 0 and api_radio != 0 and api_slider != 0 and api_progress != 0 and api_field != 0 and UiCapiControls::is_valid(api_button) == 1)
+    check("C widget API reads and writes check-box and radio selection", elisa_ui_widget_set_selected(api_checkbox, 1) == 1 and elisa_ui_widget_selected(api_checkbox) == 1 and elisa_ui_widget_set_selected(api_radio, 1) == 1 and elisa_ui_widget_selected(api_radio) == 1)
+    check("C widget API rejects selection on another widget kind", elisa_ui_widget_set_selected(api_button, 1) == 0 and elisa_ui_widget_selected(api_button) == 0)
+    check("C widget API normalizes slider and progress values", elisa_ui_widget_value(api_slider) == 0.25 and elisa_ui_widget_set_value(api_slider, 1.5) == 1 and elisa_ui_widget_value(api_slider) == 1.0 and elisa_ui_widget_set_value(api_progress, 0.75) == 1 and elisa_ui_widget_value(api_progress) == 0.75 and UiFlat::widget(api_slider_index).value == 1.0 and UiFlat::widget(api_progress_index).value == 0.75)
+    check("C widget API rejects values for non-range widgets", elisa_ui_widget_set_value(api_button, 0.5) == 0 and elisa_ui_widget_value(api_button) == 0.0)
+    field_prefix: mutable u8[4] = zeroed
+    field_prefix_pointer: cstr = (&field_prefix[0]).cast[cstr] can Unsafe.PointerCast
+    check("C widget API focuses fields and copies only complete UTF-8", elisa_ui_widget_request_text_focus(api_field) == 1 and elisa_ui_widget_text_length(api_field) == 5 and elisa_ui_widget_copy_text(api_field, field_prefix_pointer, 4) == 3 and field_prefix[0] == 72 and field_prefix[1] == 105 and field_prefix[2] == 32 and elisa_ui_widget_text_length(api_button) == -1 and elisa_ui_widget_request_text_focus(api_button) == 0)
+    check("C widget API retains standalone label text", UiFlat::widget(api_label_index).text.len == 7 and UiFlat::widget(api_label_index).text.data[0] == 67)
+    nul_text_set: i32 = elisa_ui_widget_set_text(api_button, embedded_pointer, 3, 16.0, 0xFFFFFFFF)
+    retained_nul_text: sview = UiFlat::widget(api_index).text
+    check("C widget API retains counted text including embedded NUL", nul_text_set == 1 and retained_nul_text.len == 3 and retained_nul_text.data[1] == 0)
+
+    malformed_text: mutable u8[3] = zeroed
+    malformed_text[0] <- 65
+    malformed_text[1] <- 255
+    malformed_text[2] <- 66
+    malformed_view: sview = UiText::fixed_bytes_view_range[3](malformed_text, 0, 3)
+    malformed_pointer: cstr = malformed_view.data.cast[cstr] can Unsafe.PointerCast
+    malformed_set: i32 = elisa_ui_widget_set_text(api_button, malformed_pointer, 3, 16.0, 0xFFFFFFFF)
+    retained_malformed_text: sview = UiFlat::widget(api_index).text
+    check("C widget API clips malformed UTF-8 to its valid prefix", malformed_set == 1 and retained_malformed_text.len == 1 and retained_malformed_text.data[0] == 65)
+
+    oversized_text: mutable u8[1027] = zeroed
+    for index in 0..<1027:
+        oversized_text[index] <- 113
+    oversized_view: sview = UiText::fixed_bytes_view_range[1027](oversized_text, 0, 1027)
+    oversized_pointer: cstr = oversized_view.data.cast[cstr] can Unsafe.PointerCast
+    oversized_set: i32 = elisa_ui_widget_set_text(api_button, oversized_pointer, 1027, 16.0, 0xFFFFFFFF)
+    retained_oversized_text: sview = UiFlat::widget(api_index).text
+    check("C widget API bounds retained text bytes", oversized_set == 1 and retained_oversized_text.len == UiCore::MAX_TEXT_BYTES.i64())
+    prior_text_length: i64 = UiFlat::widget(api_index).text.len
+    null_set: i32 = elisa_ui_widget_set_text(api_button, null, 3, 16.0, 0xFFFFFFFF)
+    check("C widget API rejects null counted text without erasing", null_set == 0 and UiFlat::widget(api_index).text.len == prior_text_length)
+    elisa_ui_widget_tree_reset()
+    check("C widget API reset invalidates handles and rejects mutation", UiCapiControls::is_valid(api_button) == 0 and elisa_ui_widget_set_enabled(api_button, 1) == 0 and elisa_ui_widget_set_selected(api_checkbox, 1) == 0 and elisa_ui_widget_set_value(api_slider, 0.5) == 0 and elisa_ui_widget_text_length(api_field) == -1 and elisa_ui_widget_request_text_focus(api_field) == 0)
+    elisa_ui_widget_tree_reset()
+    check("repeated whole-tree teardown is safe", UiHandles::count() == 0 and UiCapiControls::is_valid(api_button) == 0)
+
+    elisa_ui_widget_tree_reset()
+    capacity_root: u64 = elisa_ui_widget_column(0, 0.0, 0.0, 0x202028FF)
+    built: mutable usize = 1
+    while built < UiFlat::MAX_WIDGETS:
+        next_button: u64 = elisa_ui_widget_button(capacity_root, 20.0, 20.0, 0x303038FF, 0x404048FF, 0x505058FF)
+        break if next_button == 0
+        built <- built + 1
+    overflow_button: u64 = elisa_ui_widget_button(capacity_root, 20.0, 20.0, 0x303038FF, 0x404048FF, 0x505058FF)
+    check("C widget API reports fixed-arena exhaustion as invalid handle", built == UiFlat::MAX_WIDGETS and overflow_button == 0 and UiHandles::overflowed())
 
     if failures == 0:
         _ = puts("capi widget handle: all checks passed")

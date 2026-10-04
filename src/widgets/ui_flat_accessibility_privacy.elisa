@@ -1,0 +1,15 @@
+# Opt-in redaction for application-owned content in retained semantic and
+# inspector snapshots. This policy is separate from secure text-entry mode.
+
+extend UiFlat:
+    public:
+        # Redact this widget's semantic label/help/value/selection and inspector
+        # content. The visible UI is unchanged; a separately hosted native
+        # control's own accessibility value needs backend-specific handling.
+        def set_accessibility_sensitive(index: usize, sensitive: bool) -> void:
+            return if index >= widget_count
+            return if widgets[index].accessibility_sensitive == sensitive
+            widgets[index].accessibility_sensitive <- sensitive
+            clear_virtual_accessibility_text() if sensitive
+            UiCore::redact_accessibility(index) if sensitive
+            mark_semantics_dirty()

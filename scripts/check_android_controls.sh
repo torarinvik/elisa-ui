@@ -137,6 +137,27 @@ grep -q 'classes.dex' <<<"$apk_listing" || {
   echo "android controls: APK contains no classes.dex" >&2
   exit 1
 }
+
+# Retained-widget sensitivity crosses ControlState -> JNI -> the Java view
+# delegate. Verify the compiled method descriptor and the accessibility APIs
+# the delegate actually calls, not only that the Java source made it into DEX.
+state_abi="$(javap -classpath "$OUT/classes" -s org.elisa_ui.ElisaControls)"
+grep -Fq 'descriptor: (IFZZZZ)V' <<<"$state_abi" || {
+  echo "android controls: compiled setState ABI omits accessibility sensitivity" >&2
+  exit 1
+}
+delegate_abi="$(javap -classpath "$OUT/classes" -c 'org.elisa_ui.ElisaControls$SensitiveAccessibilityDelegate')"
+for contract in \
+  'AccessibilityNodeInfo.setText:' \
+  'AccessibilityNodeInfo.setContentDescription:' \
+  'AccessibilityNodeInfo.setHintText:' \
+  'AccessibilityNodeInfo.setRangeInfo:' \
+  'AccessibilityEvent.setBeforeText:'; do
+  grep -Fq "$contract" <<<"$delegate_abi" || {
+    echo "android controls: compiled sensitivity delegate omits $contract" >&2
+    exit 1
+  }
+done
 echo "android controls: $(basename "$APK") is stored, aligned, and carries Java code"
 
 # --- 2. Optional device half ----------------------------------------------

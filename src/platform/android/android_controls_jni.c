@@ -80,7 +80,7 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
     m_set_background_color = (*env)->GetStaticMethodID(env, c, "setBackgroundColor", "(II)V");
     m_set_tint_color = (*env)->GetStaticMethodID(env, c, "setTintColor", "(II)V");
     m_set_track_color = (*env)->GetStaticMethodID(env, c, "setTrackColor", "(II)V");
-    m_set_state = (*env)->GetStaticMethodID(env, c, "setState", "(IFZZZ)V");
+    m_set_state = (*env)->GetStaticMethodID(env, c, "setState", "(IFZZZZ)V");
     m_set_help = (*env)->GetStaticMethodID(env, c, "setHelp", "(ILjava/lang/String;Ljava/lang/String;)V");
     m_set_action = (*env)->GetStaticMethodID(env, c, "setAction", "(I)V");
     m_release_all = (*env)->GetStaticMethodID(env, c, "releaseAll", "()V");
@@ -245,13 +245,15 @@ void elisa_android_controls_set_track_color(int32_t handle, uint32_t argb) {
 }
 
 void elisa_android_controls_set_state(int32_t handle, float value, int32_t selected,
-                                      int32_t enabled, int32_t secure) {
+                                      int32_t enabled, int32_t secure,
+                                      int32_t accessibility_sensitive) {
     JNIEnv *env = elisa_env();
     if (!elisa_controls_ready(env)) return;
     (*env)->CallStaticVoidMethod(env, elisa_controls_class, m_set_state, handle, value,
                                  selected != 0 ? JNI_TRUE : JNI_FALSE,
                                  enabled != 0 ? JNI_TRUE : JNI_FALSE,
-                                 secure != 0 ? JNI_TRUE : JNI_FALSE);
+                                 secure != 0 ? JNI_TRUE : JNI_FALSE,
+                                 accessibility_sensitive != 0 ? JNI_TRUE : JNI_FALSE);
     (void)elisa_controls_clear_exception(env);
 }
 

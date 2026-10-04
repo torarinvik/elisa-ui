@@ -34,6 +34,11 @@ static uint32_t created_background_color[ELISA_UIKIT_CONTROLS_MAX];
 static uint32_t created_tint_color[ELISA_UIKIT_CONTROLS_MAX];
 static uint32_t created_track_color[ELISA_UIKIT_CONTROLS_MAX];
 static int created_action[ELISA_UIKIT_CONTROLS_MAX];
+static int created_secure[ELISA_UIKIT_CONTROLS_MAX];
+static int created_enabled[ELISA_UIKIT_CONTROLS_MAX];
+static int created_accessibility_sensitive[ELISA_UIKIT_CONTROLS_MAX];
+static size_t created_placeholder[ELISA_UIKIT_CONTROLS_MAX];
+static size_t created_hint[ELISA_UIKIT_CONTROLS_MAX];
 static int created_count = 0;
 
 static size_t released_order[ELISA_UIKIT_CONTROLS_MAX];
@@ -154,6 +159,9 @@ static size_t create(int kind, int selectable) {
     created_tint_color[slot] = 0;
     created_track_color[slot] = 0;
     created_action[slot] = -1;
+    created_accessibility_sensitive[slot] = 0;
+    created_placeholder[slot] = 0;
+    created_hint[slot] = 0;
     return created_handle[slot];
 }
 
@@ -268,11 +276,6 @@ void elisa_uikit_controls_set_progress(size_t handle, float fraction) {
 // The facts a control carries beyond its words and its value. Recorded rather
 // than ignored, so the host-side test can assert that a secure field crosses
 // as secure without an iOS runtime in sight.
-static int created_secure[ELISA_UIKIT_CONTROLS_MAX];
-static int created_enabled[ELISA_UIKIT_CONTROLS_MAX];
-static size_t created_placeholder[ELISA_UIKIT_CONTROLS_MAX];
-static size_t created_hint[ELISA_UIKIT_CONTROLS_MAX];
-
 void elisa_uikit_controls_set_secure(size_t handle, int secure) {
     int slot = slot_of(handle);
     if (slot >= 0) created_secure[slot] = secure;
@@ -289,11 +292,20 @@ void elisa_uikit_controls_set_accessibility_hint(size_t handle, size_t text) {
     int slot = slot_of(handle);
     if (slot >= 0) created_hint[slot] = text;
 }
+void elisa_uikit_controls_set_accessibility_sensitive(size_t handle, int sensitive,
+                                                       size_t generic_label) {
+    int slot = slot_of(handle);
+    (void)generic_label;
+    if (slot >= 0) created_accessibility_sensitive[slot] = sensitive;
+}
 int elisa_uikit_controls_stub_secure(int slot) {
     return slot < 0 || slot >= created_count ? -1 : created_secure[slot];
 }
 int elisa_uikit_controls_stub_enabled(int slot) {
     return slot < 0 || slot >= created_count ? -1 : created_enabled[slot];
+}
+int elisa_uikit_controls_stub_accessibility_sensitive(int slot) {
+    return slot < 0 || slot >= created_count ? -1 : created_accessibility_sensitive[slot];
 }
 int elisa_uikit_controls_stub_has_placeholder(int slot) {
     return slot < 0 || slot >= created_count ? -1 : (created_placeholder[slot] != 0);

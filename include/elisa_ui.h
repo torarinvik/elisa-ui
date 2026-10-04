@@ -30,7 +30,7 @@ extern "C" {
  * boundary implementation before any host events are sent. A major mismatch
  * is incompatible; minor/patch changes preserve the existing wire records. */
 #define ELISA_UI_ABI_VERSION_MAJOR 1u
-#define ELISA_UI_ABI_VERSION_MINOR 0u
+#define ELISA_UI_ABI_VERSION_MINOR 1u
 #define ELISA_UI_ABI_VERSION_PATCH 0u
 #define ELISA_UI_ABI_VERSION \
     ((ELISA_UI_ABI_VERSION_MAJOR << 16) | \
@@ -153,6 +153,80 @@ void elisa_ui_on_frame(void);
 typedef uint64_t elisa_ui_widget_handle;
 #define ELISA_UI_WIDGET_HANDLE_INVALID UINT64_C(0)
 void elisa_ui_on_widget_event(elisa_ui_widget_handle widget, int32_t event);
+
+/* ---- A C app constructing retained controls through opaque handles ---- */
+
+/* Rebuild the complete retained tree. All widget handles issued before this
+ * call become invalid. Parent handle zero is the root-parent sentinel. */
+#define ELISA_UI_WIDGET_ROOT_PARENT UINT64_C(0)
+void elisa_ui_widget_tree_reset(void);
+/* Colors are packed as 0xRRGGBBAA. Builders return zero on failure. */
+elisa_ui_widget_handle elisa_ui_widget_column(elisa_ui_widget_handle parent,
+                                              float padding, float spacing,
+                                              uint32_t color_rgba);
+elisa_ui_widget_handle elisa_ui_widget_row(elisa_ui_widget_handle parent,
+                                           float padding, float spacing,
+                                           uint32_t color_rgba);
+elisa_ui_widget_handle elisa_ui_widget_label(elisa_ui_widget_handle parent,
+                                              const char *text, size_t length,
+                                              float size, uint32_t color_rgba);
+/* Create an editable field with an initial counted UTF-8 value. Label and
+ * placeholder decoration can be composed from sibling labels. */
+elisa_ui_widget_handle elisa_ui_widget_text_field(elisa_ui_widget_handle parent,
+                                                  const char *initial, size_t length,
+                                                  float min_width, float min_height,
+                                                  float size, uint32_t ink_rgba,
+                                                  uint32_t fill_rgba);
+elisa_ui_widget_handle elisa_ui_widget_button(elisa_ui_widget_handle parent,
+                                              float min_width, float min_height,
+                                              uint32_t color_rgba,
+                                              uint32_t hover_rgba,
+                                              uint32_t press_rgba);
+elisa_ui_widget_handle elisa_ui_widget_radio_button(elisa_ui_widget_handle parent,
+                                                    float min_width, float min_height,
+                                                    uint32_t color_rgba,
+                                                    uint32_t hover_rgba,
+                                                    uint32_t press_rgba);
+elisa_ui_widget_handle elisa_ui_widget_check_box(elisa_ui_widget_handle parent,
+                                                 float min_width, float min_height,
+                                                 uint32_t color_rgba,
+                                                 uint32_t hover_rgba,
+                                                 uint32_t press_rgba);
+elisa_ui_widget_handle elisa_ui_widget_slider(elisa_ui_widget_handle parent,
+                                              float min_width, float min_height,
+                                              float value, uint32_t track_rgba,
+                                              uint32_t fill_rgba, uint32_t thumb_rgba);
+elisa_ui_widget_handle elisa_ui_widget_progress_bar(elisa_ui_widget_handle parent,
+                                                     float min_width, float min_height,
+                                                     float value, uint32_t track_rgba,
+                                                     uint32_t fill_rgba);
+/* Counted UTF-8 is clipped to ELISA_UI_MAX_TEXT_BYTES and to a valid prefix.
+ * Setters return 1 for a live handle and accepted operation, 0 otherwise. */
+int32_t elisa_ui_widget_set_text(elisa_ui_widget_handle widget,
+                                 const char *text, size_t length,
+                                 float size, uint32_t color_rgba);
+int32_t elisa_ui_widget_set_enabled(elisa_ui_widget_handle widget,
+                                    int32_t enabled);
+int32_t elisa_ui_widget_set_visible(elisa_ui_widget_handle widget,
+                                    int32_t visible);
+/* Selection applies to radio buttons and check boxes; radio-group policy is
+ * owned by the application. Values apply to sliders and progress bars and
+ * are finite, normalized to [0, 1]. A query returns 0 for false/unsupported
+ * or stale selection; value returns 0 for unsupported/stale handles. */
+int32_t elisa_ui_widget_set_selected(elisa_ui_widget_handle widget,
+                                     int32_t selected);
+int32_t elisa_ui_widget_selected(elisa_ui_widget_handle widget);
+int32_t elisa_ui_widget_set_value(elisa_ui_widget_handle widget, float value);
+float elisa_ui_widget_value(elisa_ui_widget_handle widget);
+/* Text-field length is -1 for stale/non-text handles. Copy writes at most
+ * capacity bytes without a terminator and never splits a UTF-8 sequence;
+ * pass NULL only with zero capacity. Request-focus is text-field-only. */
+int32_t elisa_ui_widget_request_text_focus(elisa_ui_widget_handle widget);
+int32_t elisa_ui_widget_text_length(elisa_ui_widget_handle widget);
+size_t elisa_ui_widget_copy_text(elisa_ui_widget_handle widget,
+                                 char *destination, size_t capacity);
+int32_t elisa_ui_widget_activate(elisa_ui_widget_handle widget);
+int32_t elisa_ui_widget_is_valid(elisa_ui_widget_handle widget);
 
 #ifdef __cplusplus
 }

@@ -18,6 +18,21 @@ Messages are allocation-free and bounded to 255 bytes; truncation is exposed
 through `message_truncated`. Disposal advances the generation before slot reuse
 to make callbacks targeting a recycled view harmless.
 
+`UiValidationPresentation` maps these records to a typed tone, accessible
+`Status`/`Alert` role, current revision, and visible/pending/error flags. It can
+apply the message to a dedicated retained Label and publish its semantic node;
+stale snapshots are rejected after a new revision starts. The editable field
+is not accepted by either presentation call, so applying status cannot replace
+its text, selection, or focus. Applications can replace the default status
+copy and colors through `Options`.
+
+```text
+options = UiValidationPresentation::default_options()
+value = UiValidationPresentation::record(field, options)
+UiValidationPresentation::apply_label(status_label, value, options)
+UiValidationPresentation::publish_accessibility(frame, status_label, value)
+```
+
 Use `bind_owned(field_id, owner_id)` when a field belongs to a view or task;
 `dispose_owner(owner_id)` invalidates all of that owner's bindings in one bounded
 pass. This makes surface teardown independent of application handle bookkeeping

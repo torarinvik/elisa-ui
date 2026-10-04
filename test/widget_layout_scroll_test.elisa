@@ -11,6 +11,9 @@ def main() -> i64:
     scroll_first: usize = UiFlat::button(scroll_view, 120.0, 60.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
     scroll_second: usize = UiFlat::button(scroll_view, 120.0, 60.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
     scroll_third: usize = UiFlat::button(scroll_view, 120.0, 60.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
+    _ = UiFlat::set_text(scroll_first, "First", 12.0, UiCore::rgb(255, 255, 255))
+    _ = UiFlat::set_text(scroll_second, "Second", 12.0, UiCore::rgb(255, 255, 255))
+    _ = UiFlat::set_text(scroll_third, "Third", 12.0, UiCore::rgb(255, 255, 255))
     UiFlat::layout(120.0, 100.0)
     check("scroll viewport keeps its declared height", rect_is(scroll_view, 0.0, 0.0, 120.0, 100.0))
     check("scroll content reports its measured extent", near(UiFlat::scroll_limit(scroll_view), 80.0))
@@ -42,6 +45,15 @@ def main() -> i64:
     UiCore::begin_frame()
     UiFlat::paint()
     check("scroll paint records the viewport clip", frame_contains_clip(0.0, 0.0, 120.0, 100.0))
+    third_semantic_index: usize = UiCore::accessibility_index_for_id(scroll_third)
+    first_semantic_index: usize = UiCore::accessibility_index_for_id(scroll_first)
+    check("partly visible trailing control remains a semantic node", third_semantic_index < UiCore::accessibility_count())
+    check("partly visible leading control remains a semantic node", first_semantic_index < UiCore::accessibility_count())
+    if third_semantic_index < UiCore::accessibility_count() and first_semantic_index < UiCore::accessibility_count():
+        third_semantic: UiCore::AccessibilityNode = UiCore::accessibility_at(third_semantic_index)
+        first_semantic: UiCore::AccessibilityNode = UiCore::accessibility_at(first_semantic_index)
+        check("trailing semantic bounds stop at the scroll viewport", third_semantic.frame.origin.y == 70.0 and third_semantic.frame.size.height == 30.0)
+        check("leading semantic bounds start at the scroll viewport", first_semantic.frame.origin.y == 0.0 and first_semantic.frame.size.height == 10.0)
     _ = UiFlat::set_scroll_offset(scroll_view, 0.0)
     UiFlat::pointer((UiCore::PointerEvent.Down(at: UiCore::Vec2(110.0, 80.0), button: 0)))
     check("scrollbar track paging advances one viewport", near(UiFlat::scroll_offset(scroll_view), 80.0) and not UiFlat::scroll_dragging())
@@ -222,6 +234,23 @@ def main() -> i64:
     check("a mirrored drag toward the far edge scrolls forward", dragging and UiFlat::scroll_offset(row_view) > 0.0)
     UiFlat::pointer((UiCore::PointerEvent.Up(at: UiCore::Vec2(rtl_thumb - 20.0, 52.0), button: 0)))
     _ = UiLocalization::set_locale("en-US")
+
+    # Two ancestor viewports can each overlap a child while their common
+    # intersection is empty. Assistive navigation must follow the shared clip,
+    # not publish an unreachable zero-area element.
+    UiFlat::reset()
+    edge_outer: usize = UiFlat::scroll(UiFlat::NONE, UiConst::Axis.Column, 100.0, 50.0, UiCore::rgb(12, 16, 24))
+    _ = UiFlat::button(edge_outer, 100.0, 50.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
+    edge_inner: usize = UiFlat::scroll(edge_outer, UiConst::Axis.Column, 100.0, 50.0, UiCore::rgb(12, 16, 24))
+    edge_child: usize = UiFlat::button(edge_inner, 100.0, 60.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
+    _ = UiFlat::set_text(edge_child, "Edge child", 12.0, UiCore::rgb(255, 255, 255))
+    UiFlat::layout(100.0, 50.0)
+    _ = UiFlat::set_scroll_offset(edge_inner, 10.0)
+    check("nested test viewports only touch at their boundary", UiFlat::widget(edge_outer).y == 0.0 and UiFlat::widget(edge_outer).height == 50.0 and UiFlat::widget(edge_inner).y == 50.0 and UiFlat::widget(edge_inner).height == 50.0 and UiFlat::widget(edge_child).y == 40.0 and UiFlat::widget(edge_child).height == 60.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("a zero-area nested clip is omitted from assistive navigation", UiCore::accessibility_index_for_id(edge_child) == UiCore::MAX_ACCESSIBILITY_NODES)
+    check("a zero-area nested clip cannot hit its child", UiFlat::hit(50.0, 49.0) != edge_child and UiFlat::hit(50.0, 51.0) != edge_child)
 
     if test_failures == 0:
         _ = puts("widget layout: all checks passed")

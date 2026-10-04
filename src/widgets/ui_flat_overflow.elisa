@@ -1,0 +1,89 @@
+# Explicit panel overflow policies and shared ancestor clipping geometry.
+
+extend UiFlat:
+    public:
+        # Scroll viewports keep their established scrolling/clip contract.
+        # Ordinary panels may instead compress children, preserve minimums and
+        # clip overflow, or preserve minimums while allowing visible overflow.
+        def set_overflow_behavior(index: usize, behavior: UiConst::OverflowBehavior) -> void:
+            return if index >= widget_count or widgets[index].kind != UiConst::WidgetKind.Panel
+            widgets[index].overflow_behavior <- UiConst::normalize_overflow_behavior(behavior)
+            mark_layout_dirty()
+
+    private:
+        def preserves_child_minimums(index: usize) -> bool:
+            return index < widget_count and widgets[index].kind == UiConst::WidgetKind.Panel and widgets[index].overflow_behavior != UiConst::OverflowBehavior.Compress
+
+        def clips_children(index: usize) -> bool:
+            return false if index >= widget_count
+            return true if widgets[index].kind == UiConst::WidgetKind.Scroll
+            return widgets[index].kind == UiConst::WidgetKind.Panel and widgets[index].overflow_behavior == UiConst::OverflowBehavior.Clip
+
+        # A Scroll clips to its viewport. A Clip panel clips to its padded
+        # content box, so padding remains an actual protected inset.
+        def child_clip_rect(index: usize) -> UiCore::Rect:
+            row: Widget = widgets[index]
+            if row.kind == UiConst::WidgetKind.Scroll:
+                return UiCore::Rect(row.x, row.y, row.width, row.height)
+            pad: f32 = row.padding
+            left: f32 = UiCore::bounded_coordinate(row.x + pad)
+            top: f32 = UiCore::bounded_coordinate(row.y + pad)
+            width: mutable f32 = row.width - pad * 2.0
+            height: mutable f32 = row.height - pad * 2.0
+            width <- 0.0 if width < 0.0 else width
+            height <- 0.0 if height < 0.0 else height
+            return UiCore::Rect(left, top, width, height)
+
+        def intersect_clip_rect(first: UiCore::Rect, second: UiCore::Rect) -> UiCore::Rect:
+            left: f32 = first.origin.x if first.origin.x > second.origin.x else second.origin.x
+            top: f32 = first.origin.y if first.origin.y > second.origin.y else second.origin.y
+            right_a: f32 = UiCore::right_edge(first)
+            right_b: f32 = UiCore::right_edge(second)
+            bottom_a: f32 = UiCore::bottom_edge(first)
+            bottom_b: f32 = UiCore::bottom_edge(second)
+            right: f32 = right_a if right_a < right_b else right_b
+            bottom: f32 = bottom_a if bottom_a < bottom_b else bottom_b
+            width: f32 = right - left if right > left else 0.0
+            height: f32 = bottom - top if bottom > top else 0.0
+            return UiCore::Rect(left, top, width, height)
+
+        # null means there is no clipping ancestor. Traversal failure instead
+        # produces a zero-area clip, deliberately failing closed.
+        def ancestor_clip_rect(index: usize) -> UiCore::Rect?:
+            return UiCore::Rect(0.0, 0.0, 0.0, 0.0) if index >= widget_count
+            cursor: mutable usize = widgets[index].parent
+            result: mutable UiCore::Rect = UiCore::Rect(0.0, 0.0, 0.0, 0.0)
+            found: mutable bool = false
+            steps: mutable usize = 0
+            while cursor < widget_count |cursor, result, found, steps|:
+                return UiCore::Rect(0.0, 0.0, 0.0, 0.0) if steps >= MAX_TRAVERSAL_DEPTH
+                steps <- steps + 1
+                if clips_children(cursor):
+                    current: UiCore::Rect = child_clip_rect(cursor)
+                    result <- current if not found else intersect_clip_rect(result, current)
+                    found <- true
+                cursor <- widgets[cursor].parent
+            return result if found else null
+
+        def clip_frame_to_ancestors(index: usize, frame: UiCore::Rect) -> UiCore::Rect:
+            if ancestor_clip_rect(index) is clip:
+                return intersect_clip_rect(frame, clip)
+            return frame
+
+        def inside_clip_ancestors(index: usize, x: f32, y: f32) -> bool:
+            if ancestor_clip_rect(index) is clip:
+                return UiCore::contains(clip, UiCore::Vec2(x, y))
+            return index < widget_count
+
+        def intersects_clip_ancestors(index: usize) -> bool:
+            return false if index >= widget_count
+            frame: UiCore::Rect = UiCore::Rect(widgets[index].x, widgets[index].y, widgets[index].width, widgets[index].height)
+            visible: UiCore::Rect = clip_frame_to_ancestors(index, frame)
+            return visible.size.width > 0.0 and visible.size.height > 0.0
+
+        # Called before emitting commands for one widget. Its own overflow
+        # policy affects descendants, never clips the panel's own background.
+        def set_ancestor_clip(index: usize) -> void:
+            UiCore::clear_clip()
+            if ancestor_clip_rect(index) is clip:
+                UiCore::set_clip(clip)

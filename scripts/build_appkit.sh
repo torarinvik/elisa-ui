@@ -18,7 +18,9 @@ ELISA_UI_STAGE1="$STAGE1" bash "$ROOT/scripts/check_toolchain.sh" --report >&2
 
 mkdir -p "$ROOT/build"
 clang -c -fobjc-arc -o "$GATE_OBJ_DIR/appkit_shim.o" "$ROOT/src/platform/appkit/appkit_shim.m"
+clang -c -fobjc-arc -o "$GATE_OBJ_DIR/appkit_controls_privacy.o" "$ROOT/src/platform/appkit/appkit_controls_privacy.m"
 bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ROOT/build/${EXAMPLE}_appkit.o" "$ROOT/examples/$EXAMPLE/appkit_main.elisa"
 clang -Wl,-dead_strip -o "$ROOT/build/${EXAMPLE}_appkit" \
-  "$ROOT/build/${EXAMPLE}_appkit.o" "$GATE_OBJ_DIR/appkit_shim.o" "$RUNTIME" -framework Cocoa
+  "$ROOT/build/${EXAMPLE}_appkit.o" "$GATE_OBJ_DIR/appkit_shim.o" \
+  "$GATE_OBJ_DIR/appkit_controls_privacy.o" "$RUNTIME" -framework Cocoa
 echo "built $ROOT/build/${EXAMPLE}_appkit"

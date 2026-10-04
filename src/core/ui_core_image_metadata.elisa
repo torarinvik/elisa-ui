@@ -1,0 +1,42 @@
+# Generation-keyed intrinsic dimensions for logical image references.
+# Resource loading owns validation; core keeps the small geometry fact beside
+# the image identity so retained layout can consume it without a dependency on
+# the full resource subsystem.
+
+extend UiCore:
+    public:
+        const MAX_INTRINSIC_IMAGE_SLOTS: usize = 128
+
+        def set_image_intrinsic_size(image: ImageRef, width: f32, height: f32) -> bool:
+            return false if not image_ref_is_valid(image) or image.slot.usize() >= MAX_INTRINSIC_IMAGE_SLOTS
+            return false if not is_finite(width) or not is_finite(height)
+            return false if width < 0.0 or height < 0.0 or width > MAX_GEOMETRY_EXTENT or height > MAX_GEOMETRY_EXTENT
+            slot: usize = image.slot.usize()
+            return false if image_intrinsic_generations[slot] == image.generation and image_intrinsic_widths[slot] == width and image_intrinsic_heights[slot] == height
+            image_intrinsic_generations[slot] <- image.generation
+            image_intrinsic_widths[slot] <- width
+            image_intrinsic_heights[slot] <- height
+            invalidate(Invalidation.Layout)
+            invalidate(Invalidation.Paint)
+            invalidate(Invalidation.Semantics)
+            return true
+
+        def image_intrinsic_size(image: ImageRef) -> Size:
+            return Size(0.0, 0.0) if not image_ref_is_valid(image) or image.slot.usize() >= MAX_INTRINSIC_IMAGE_SLOTS
+            slot: usize = image.slot.usize()
+            return Size(0.0, 0.0) if image_intrinsic_generations[slot] != image.generation
+            return Size(image_intrinsic_widths[slot], image_intrinsic_heights[slot])
+
+        def clear_image_intrinsic_size(slot: usize) -> void:
+            return if slot >= MAX_INTRINSIC_IMAGE_SLOTS or image_intrinsic_generations[slot] == 0
+            image_intrinsic_generations[slot] <- 0
+            image_intrinsic_widths[slot] <- 0.0
+            image_intrinsic_heights[slot] <- 0.0
+            invalidate(Invalidation.Layout)
+            invalidate(Invalidation.Paint)
+            invalidate(Invalidation.Semantics)
+
+    private:
+        global mutable image_intrinsic_generations: u32[MAX_INTRINSIC_IMAGE_SLOTS] = zeroed
+        global mutable image_intrinsic_widths: f32[MAX_INTRINSIC_IMAGE_SLOTS] = zeroed
+        global mutable image_intrinsic_heights: f32[MAX_INTRINSIC_IMAGE_SLOTS] = zeroed

@@ -42,12 +42,12 @@ MACHINE="${ELISA_UI_ORB_MACHINE:-$(awk '$2 == "running" {print $1; exit}' <<<"$o
 # empty answer distinguishes "the machine did not respond" from "the machine is
 # missing a tool" -- a skip line that names the wrong reason is worse than no
 # skip line, because someone acts on it.
-probe="$(orb_run orb -m "$MACHINE" bash -c 'uname -m; command -v clang >/dev/null && echo clang; command -v xvfb-run >/dev/null && echo xvfb; pkg-config --exists gtk4 && echo gtk4' 2>/dev/null || true)"
+probe="$(orb_run orb -m "$MACHINE" bash -c 'uname -m; command -v clang >/dev/null && echo clang; command -v xvfb-run >/dev/null && echo xvfb; pkg-config --exists gtk4 && echo gtk4; pkg-config --atleast-version=4.14 gtk4 && echo gtk4-accessible-text' 2>/dev/null || true)"
 ARCH="$(head -1 <<<"$probe")"
 [[ -n "$ARCH" ]] || { echo "gtk linux: skipped (machine '$MACHINE' did not answer; orb list)"; exit 0; }
-for tool in clang xvfb gtk4; do
+for tool in clang xvfb gtk4 gtk4-accessible-text; do
   grep -qx "$tool" <<<"$probe" || {
-    echo "gtk linux: skipped ($MACHINE has no $tool; apt install libgtk-4-dev clang pkg-config xvfb)"
+    echo "gtk linux: skipped ($MACHINE has no $tool; GTK 4.14+ plus clang and xvfb are required)"
     exit 0; }
 done
 
@@ -61,6 +61,9 @@ mkdir -p "$OUT"
 bash "$STAGE1/scripts/write_profiler_hook_fallbacks.sh" >"$OUT/profiler_fallbacks.c"
 cp "$STAGE1/scripts/pymodule_runtime_fallback.c" "$OUT/host_fallbacks.c"
 cp "$ROOT/src/platform/gtk/gtk_shim.c" "$OUT/gtk_shim.c"
+cp "$ROOT/src/platform/gtk/gtk_accessible_entry.h" "$OUT/gtk_accessible_entry.h"
+cp "$ROOT/src/platform/gtk/gtk_accessible_entry.c" "$OUT/gtk_accessible_entry.c"
+cp "$ROOT/test/gtk_controls_privacy_test.c" "$OUT/gtk_controls_privacy_test.c"
 
 for unit in "$ROOT/src/platform/gtk/gtk_check.elisa:gtk_check" \
             "$ROOT/src/platform/gtk/gtk_style_lifecycle_check.elisa:gtk_style_lifecycle_check" \
@@ -78,15 +81,18 @@ set -e
 work=\$(mktemp -d)
 trap 'rm -rf \"\$work\"' EXIT
 cd \"\$work\"
-cp '$GUEST'/gtk_check.o '$GUEST'/gtk_style_lifecycle_check.o '$GUEST'/runtime.o '$GUEST'/gtk_shim.c '$GUEST'/profiler_fallbacks.c '$GUEST'/host_fallbacks.c .
+cp '$GUEST'/gtk_check.o '$GUEST'/gtk_style_lifecycle_check.o '$GUEST'/runtime.o '$GUEST'/gtk_shim.c '$GUEST'/gtk_accessible_entry.h '$GUEST'/gtk_accessible_entry.c '$GUEST'/gtk_controls_privacy_test.c '$GUEST'/profiler_fallbacks.c '$GUEST'/host_fallbacks.c .
 clang -c -Wall -Wextra -Werror \$(pkg-config --cflags gtk4) -o gtk_shim.o gtk_shim.c
+clang -c -Wall -Wextra -Werror \$(pkg-config --cflags gtk4) -o gtk_accessible_entry.o gtk_accessible_entry.c
 clang -c -o profiler_fallbacks.o profiler_fallbacks.c
 # -fno-builtin: this file defines va_copy and va_end, which a current clang
 # refuses to let a program redeclare over its builtins.
 clang -fno-builtin -c -o host_fallbacks.o host_fallbacks.c
-clang -o gtk_check gtk_check.o gtk_shim.o runtime.o profiler_fallbacks.o host_fallbacks.o \$(pkg-config --libs gtk4) -lpthread -lm
-clang -o gtk_style_lifecycle_check gtk_style_lifecycle_check.o gtk_shim.o runtime.o profiler_fallbacks.o host_fallbacks.o \$(pkg-config --libs gtk4) -lpthread -lm
+clang -o gtk_check gtk_check.o gtk_shim.o gtk_accessible_entry.o runtime.o profiler_fallbacks.o host_fallbacks.o \$(pkg-config --libs gtk4) -lpthread -lm
+clang -o gtk_style_lifecycle_check gtk_style_lifecycle_check.o gtk_shim.o gtk_accessible_entry.o runtime.o profiler_fallbacks.o host_fallbacks.o \$(pkg-config --libs gtk4) -lpthread -lm
+clang -Wall -Wextra -Werror -o gtk_controls_privacy_test gtk_controls_privacy_test.c gtk_shim.o gtk_accessible_entry.o \$(pkg-config --cflags --libs gtk4)
 xvfb-run -a ./gtk_check
+xvfb-run -a ./gtk_controls_privacy_test
 xvfb-run -a ./gtk_style_lifecycle_check
 " >"$OUT/run.log" 2>"$OUT/run.err"; then
   :
@@ -107,7 +113,9 @@ if grep -q "skipped (no display)" "$OUT/run.log"; then
 fi
 grep -q "gtk: all checks passed" "$OUT/run.log" || {
   echo "gtk linux: the fixture did not pass" >&2; cat "$OUT/run.log" >&2; exit 1; }
+grep -q "gtk-controls-privacy: all checks passed" "$OUT/run.log" || {
+  echo "gtk linux: the controls privacy fixture did not pass" >&2; cat "$OUT/run.log" >&2; exit 1; }
 grep -q "gtk style lifetime: all checks passed (256 lifetimes, peak 128)" "$OUT/run.log" || {
   echo "gtk linux: the headless style-lifetime fixture did not pass" >&2; cat "$OUT/run.log" >&2; exit 1; }
 
-echo "gtk linux: same fixture, $ARCH Linux, real X server -- every type, state, shape and colour asserted"
+echo "gtk linux: fixtures pass on $ARCH Linux with a real X server -- native controls, privacy properties, and style lifetimes asserted"

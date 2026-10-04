@@ -1,0 +1,163 @@
+# Typed visual and semantic presentation for asynchronous field validation.
+#
+# Validation state remains separate from the editable widget value. This layer
+# snapshots the current revision, maps status to accessibility/tone, and can
+# update a dedicated status label without touching focus, selection, or text.
+
+include "./ui_validation.elisa"
+include "./ui_handles.elisa"
+
+module UiValidationPresentation:
+    public:
+        const enum Tone of i32:
+            Neutral = 0
+            Pending = 1
+            Positive = 2
+            Warning = 3
+            Error = 4
+
+        struct Options:
+            checking_title: sview
+            valid_title: sview
+            invalid_title: sview
+            unavailable_title: sview
+            checking_help: sview
+            invalid_help: sview
+            unavailable_help: sview
+            text_size: f32
+            neutral_color: UiCore::Color
+            pending_color: UiCore::Color
+            positive_color: UiCore::Color
+            warning_color: UiCore::Color
+            error_color: UiCore::Color
+
+        struct Record:
+            handle: UiValidation::Handle
+            status: UiValidation::Status
+            revision: u32
+            tone: Tone
+            role: UiCore::AccessibilityRole
+            title: sview
+            detail: sview
+            help: sview
+            visible: bool
+            pending: bool
+            has_error: bool
+            message_truncated: bool
+
+        def default_options() -> Options:
+            return Options{
+                checking_title: "Checking…", valid_title: "Looks good",
+                invalid_title: "Needs attention", unavailable_title: "Validation unavailable",
+                checking_help: "Validation is in progress.",
+                invalid_help: "Correct this value.",
+                unavailable_help: "Try again when validation is available.",
+                text_size: 12.0,
+                neutral_color: UiCore::rgb(164, 170, 184),
+                pending_color: UiCore::rgb(164, 190, 232),
+                positive_color: UiCore::rgb(104, 194, 136),
+                warning_color: UiCore::rgb(224, 174, 82),
+                error_color: UiCore::rgb(226, 104, 112),
+            }
+
+        # The snapshot carries the exact async revision so an adapter can
+        # reject stale presentation after another edit starts validation.
+        def record(handle: UiValidation::Handle, options: Options) -> Record:
+            invalid_record: Record = Record{
+                handle: UiValidation::invalid(), status: UiValidation::Status.Idle,
+                revision: 0, tone: Tone.Neutral,
+                role: UiCore::AccessibilityRole.Status, title: "", detail: "", help: "",
+                visible: false, pending: false, has_error: false, message_truncated: false,
+            }
+            return invalid_record if not UiValidation::is_valid(handle)
+            current: UiValidation::Status = UiValidation::status(handle)
+            revision: u32 = UiValidation::revision(handle)
+            if current == UiValidation::Status.Validating:
+                return Record{
+                    handle: handle, status: current, revision: revision,
+                    tone: Tone.Pending, role: UiCore::AccessibilityRole.Status,
+                    title: options.checking_title, detail: UiValidation::message(handle), help: options.checking_help,
+                    visible: true, pending: true, has_error: false,
+                    message_truncated: UiValidation::message_truncated(handle),
+                }
+            if current == UiValidation::Status.Valid:
+                return Record{
+                    handle: handle, status: current, revision: revision,
+                    tone: Tone.Positive, role: UiCore::AccessibilityRole.Status,
+                    title: options.valid_title, detail: "", help: "",
+                    visible: true, pending: false, has_error: false, message_truncated: false,
+                }
+            if current == UiValidation::Status.Invalid:
+                return Record{
+                    handle: handle, status: current, revision: revision,
+                    tone: Tone.Error, role: UiCore::AccessibilityRole.Alert,
+                    title: options.invalid_title, detail: UiValidation::message(handle), help: options.invalid_help,
+                    visible: true, pending: false, has_error: true,
+                    message_truncated: UiValidation::message_truncated(handle),
+                }
+            if current == UiValidation::Status.Unavailable:
+                return Record{
+                    handle: handle, status: current, revision: revision,
+                    tone: Tone.Warning, role: UiCore::AccessibilityRole.Alert,
+                    title: options.unavailable_title, detail: UiValidation::message(handle), help: options.unavailable_help,
+                    visible: true, pending: false, has_error: true,
+                    message_truncated: UiValidation::message_truncated(handle),
+                }
+            return Record{
+                handle: handle, status: current, revision: revision,
+                tone: Tone.Neutral, role: UiCore::AccessibilityRole.Status,
+                title: "", detail: "", help: "", visible: false,
+                pending: false, has_error: false, message_truncated: false,
+            }
+
+        # Apply only to a dedicated Label. The editable field is deliberately
+        # not an argument, making destructive edits impossible through this API.
+        def apply_label(target: UiHandles::Handle, value: Record, options: Options) -> bool:
+            return false if not current(value) or not label(target)
+            UiHandles::set_visible(target, value.visible)
+            return true if not value.visible
+            copy: sview = value.detail if value.detail.len > 0 else value.title
+            text_size: mutable f32 = UiCore::bounded_extent(options.text_size)
+            text_size <- 12.0 if text_size < 1.0
+            UiHandles::set_text(target, copy, text_size, color(value.tone, options))
+            UiHandles::set_help(target, value.help)
+            return true
+
+        # Publish a typed Status or Alert for screen readers, replacing the
+        # ordinary Label node with the same retained identity. Old snapshots
+        # cannot announce after a newer validation revision has started.
+        def publish_accessibility(frame: UiCore::Rect, target: UiHandles::Handle, value: Record) -> bool:
+            return false if not value.visible or not current(value) or not label(target)
+            semantic_id: usize = UiHandles::index(target)
+            return false if semantic_id >= UiCore::MAX_ACCESSIBILITY_NODES
+            safe_frame: UiCore::Rect = UiCore::Rect(
+                UiCore::bounded_coordinate(frame.origin.x),
+                UiCore::bounded_coordinate(frame.origin.y),
+                UiCore::bounded_extent(frame.size.width),
+                UiCore::bounded_extent(frame.size.height))
+            UiCore::accessibility(value.role, value.title, value.help, safe_frame,
+                semantic_id, 0, true, false, false, 0.0, value.detail, "",
+                value.revision.usize(), 0, 0)
+            return true
+
+    private:
+        def current(value: Record) -> bool:
+            return false if not UiValidation::is_valid(value.handle)
+            return UiValidation::revision(value.handle) == value.revision and UiValidation::status(value.handle) == value.status
+
+        def label(handle: UiHandles::Handle) -> bool:
+            return false if not UiHandles::is_valid(handle)
+            if UiHandles::widget(handle) is widget:
+                return widget.kind == UiConst::WidgetKind.Label
+            return false
+
+        def color(tone: Tone, options: Options) -> UiCore::Color:
+            if tone == Tone.Pending:
+                return options.pending_color
+            if tone == Tone.Positive:
+                return options.positive_color
+            if tone == Tone.Warning:
+                return options.warning_color
+            if tone == Tone.Error:
+                return options.error_color
+            return options.neutral_color

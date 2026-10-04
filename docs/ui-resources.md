@@ -125,8 +125,11 @@ The dimensions are bounded, retained with the live logical generation, preserved
 across `retry`, and cleared by `dispose`/`reset`. Presentation uses an intrinsic
 dimension only when the corresponding `Options.reserved_width` or
 `reserved_height` is exactly zero, so an explicit reservation always wins.
-This keeps loading placeholders stable without giving a backend ownership of
-layout metadata.
+Retained widgets carrying the same generation-bound image reference also use
+the dimensions as their automatic preferred size; metadata changes invalidate
+layout, and stale references cannot read dimensions from a replacement
+generation. This keeps loading placeholders and retained image geometry stable
+without giving a backend ownership of layout metadata.
 
 `snapshot()` returns bounded counts for the total live records and each
 loading/ready/offline/denied/failed/cancelled state, plus the sticky overflow

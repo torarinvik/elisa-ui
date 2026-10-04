@@ -33,10 +33,17 @@ if ! command -v pkg-config >/dev/null || ! pkg-config --exists gtk4; then
   echo "gtk: skipped (no gtk4; brew install gtk4, or apt install libgtk-4-dev)"
   exit 0
 fi
+if ! pkg-config --atleast-version=4.14 gtk4; then
+  echo "gtk: GTK 4.14 or newer is required for accessible-text redaction" >&2
+  exit 1
+fi
 
 mkdir -p "$OUT"
 clang -c -Wall -Wextra -Werror $(pkg-config --cflags gtk4) \
   -o "$OUT/gtk_shim.o" "$ROOT/src/platform/gtk/gtk_shim.c"
+clang -c -Wall -Wextra -Werror $(pkg-config --cflags gtk4) \
+  -o "$OUT/gtk_accessible_entry.o" \
+  "$ROOT/src/platform/gtk/gtk_accessible_entry.c"
 # Help and placeholder values are mutable retained state. Keep the clear path
 # visible in the source gate so a future refactor cannot leave stale assistive
 # text attached while still producing a linkable GTK backend.
@@ -44,24 +51,33 @@ grep -Fq 'gtk_accessible_reset_property(GTK_ACCESSIBLE(widget)' "$ROOT/src/platf
   echo "gtk: clearing help does not reset the accessibility property" >&2
   exit 1
 }
-grep -Fq 'gtk_entry_set_placeholder_text(GTK_ENTRY(widget), placeholder)' "$ROOT/src/platform/gtk/gtk_shim.c" || {
-  echo "gtk: clearing a placeholder does not reach GtkEntry" >&2
+grep -Fq 'gtk_entry_set_placeholder_text(GTK_ENTRY(widget), sensitive ? NULL : placeholder)' "$ROOT/src/platform/gtk/gtk_shim.c" || {
+  echo "gtk: sensitive-state placeholder suppression is missing" >&2
   exit 1
 }
 bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$OUT/gtk_check.o" \
   "$ROOT/src/platform/gtk/gtk_check.elisa"
 clang -Wl,-dead_strip -o "$OUT/gtk_check" \
-  "$OUT/gtk_check.o" "$OUT/gtk_shim.o" "$RUNTIME" $(pkg-config --libs gtk4)
+  "$OUT/gtk_check.o" "$OUT/gtk_shim.o" "$OUT/gtk_accessible_entry.o" \
+  "$RUNTIME" $(pkg-config --libs gtk4)
+clang -Wall -Wextra -Werror $(pkg-config --cflags gtk4) \
+  -Wl,-dead_strip -o "$OUT/gtk_controls_privacy_test" \
+  "$ROOT/test/gtk_controls_privacy_test.c" "$OUT/gtk_shim.o" \
+  "$OUT/gtk_accessible_entry.o" \
+  $(pkg-config --libs gtk4)
 
 # EVERY EXPORT THE SHIM CALLS MUST EXIST, in both directions -- the same
 # two-way check the UIKit gate makes, which is what caught a backend entry with
 # no host stand-in earlier today.
 for symbol in elisa_gtk_action elisa_gtk_text_action; do
-  nm "$OUT/gtk_check.o" | grep -q "T _$symbol" || {
+  # Read nm to EOF: with pipefail, grep -q can close early and turn nm's
+  # resulting SIGPIPE into a false missing-symbol report.
+  nm "$OUT/gtk_check.o" | grep -F "T _$symbol" >/dev/null || {
     echo "gtk: $symbol is called by the shim and exported by nothing" >&2
     exit 1
   }
 done
 
 "$OUT/gtk_check"
+"$OUT/gtk_controls_privacy_test"
 echo "gtk: real GtkWindows, GtkButtons and GtkEntries built, typed, shaped and coloured as asked"

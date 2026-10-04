@@ -30,3 +30,10 @@ targets, focus-ring width, and corner radius. High-contrast mode raises touch
 and focus affordances and adjusts spacing consistently across controls.
 `UiTheme::scaled_metrics` applies the normalized text scale to spacing and touch
 targets with the same finite extent cap used by text sizing.
+
+The retained `UiFlat` painter also applies the active scale to each widget's
+application-owned base text size at measurement and paint time. Existing label
+intrinsic sizes, text-field line metrics, selection/caret geometry, and painted
+runs therefore update on a runtime preference change without rewriting the
+widget's declared font size. Custom drawing outside `UiFlat` can use
+`UiTheme::scaled_text_size` with its own retained base size.

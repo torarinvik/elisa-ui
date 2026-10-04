@@ -1,0 +1,67 @@
+# Diagnostic frame replay must never expose commands from opted-in or secure widgets.
+
+include "./widget_layout_support.elisa"
+
+def raw_frame_has_text(text: sview) -> bool:
+    for index in 0..<UiCore::command_count():
+        match UiCore::command_at(index):
+            UiCore::Command.DrawText(run, color):
+                return true if run.text == text
+            _:
+                pass
+    return false
+
+def diagnostic_frame_has_text(text: sview) -> bool:
+    for index in 0..<UiCore::diagnostic_command_count():
+        match UiCore::diagnostic_command_at(index):
+            UiCore::Command.DrawText(run, color):
+                return true if run.text == text
+            _:
+                pass
+    return false
+
+def diagnostic_redaction_count() -> usize:
+    count: mutable usize = 0
+    for index in 0..<UiCore::diagnostic_command_count():
+        match UiCore::diagnostic_command_at(index):
+            UiCore::Command.FillRect(rect, color):
+                count <- count + 1 if color.r == 48 and color.g == 48 and color.b == 52 and color.a == 255
+            _:
+                pass
+    return count
+
+def main() -> i64 can[Unsafe.PointerCast]:
+    UiFlat::reset()
+    UiCore::set_viewport(300.0, 180.0)
+    root: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Column, 4.0, 4.0, UiCore::rgb(20, 20, 24))
+    UiFlat::label(root, "Visible label", 14.0, UiCore::rgb(240, 240, 245))
+    private_label: usize = UiFlat::label(root, "private account name", 14.0, UiCore::rgb(240, 240, 245))
+    UiFlat::set_accessibility_sensitive(private_label, true)
+    private_slider: usize = UiFlat::slider(root, "private balance", 120.0, 28.0, 0.73, UiCore::rgb(30, 30, 36), UiCore::rgb(70, 100, 160), UiCore::rgb(210, 210, 220))
+    UiFlat::set_accessibility_sensitive(private_slider, true)
+    secret: usize = UiFlat::secure_text_field(root, "Password", "", "sensitive-value", 180.0, 32.0, 14.0, UiCore::rgb(240, 240, 245), UiCore::rgb(30, 30, 36))
+    private_scroll: usize = UiFlat::scroll(root, UiConst::Axis.Column, 120.0, 40.0, UiCore::rgb(26, 26, 32))
+    UiFlat::set_accessibility_sensitive(private_scroll, true)
+    for _ in 0..<5:
+        UiFlat::label(private_scroll, "scroll child", 14.0, UiCore::rgb(240, 240, 245))
+    UiFlat::layout(300.0, 180.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+
+    check("trusted renderer retains ordinary visible text", raw_frame_has_text("Visible label"))
+    check("opted-in source text remains available only in trusted frame", raw_frame_has_text("private account name"))
+    check("secure field never records the raw password", not raw_frame_has_text("sensitive-value"))
+    check("diagnostic stream preserves ordinary text", diagnostic_frame_has_text("Visible label"))
+    check("diagnostic stream omits opted-in label text", not diagnostic_frame_has_text("private account name"))
+    check("diagnostic stream omits opted-in slider label", not diagnostic_frame_has_text("private balance"))
+    check("diagnostic stream omits secure-field label", not diagnostic_frame_has_text("Password"))
+    check("sensitivity remains widget-local for child content", diagnostic_frame_has_text("scroll child"))
+    check("sensitive scroll paint masks its late scrollbar track", diagnostic_redaction_count() == 5)
+    check("diagnostic command stream compacts sensitive widgets", UiCore::diagnostic_command_count() < UiCore::command_count())
+    # The sanitized stream and its metadata are discarded with the frame; a
+    # later ordinary frame must not inherit the previous widget's redaction.
+    UiCore::begin_frame()
+    UiCore::set_diagnostic_context(0, false, UiCore::Rect(0.0, 0.0, 0.0, 0.0))
+    UiCore::draw(UiCore::TextRun(UiCore::Vec2(0.0, 0.0), 12.0, "next frame", false), UiCore::rgb(255, 255, 255))
+    check("new frame rebuilds an unredacted diagnostic stream", UiCore::diagnostic_command_count() == 1 and diagnostic_frame_has_text("next frame"))
+    return 0 if test_failures == 0 else 1

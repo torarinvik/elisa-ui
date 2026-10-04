@@ -1,0 +1,23 @@
+# Native AppKit privacy policy for retained control fields.
+
+module UiAppKitControlsPrivacy:
+    public:
+        def apply_accessibility_sensitivity(handle: usize, sensitive: bool) -> void:
+            generic_label: usize = UiAppKitNative::native_string("Sensitive content") if sensitive else 0
+            UiAppKitNative::native_set_accessibility_sensitive(handle, sensitive, generic_label)
+            CFRelease(generic_label) if generic_label != 0
+
+        def apply_control_help(handle: usize, index: i32, kind: UiControls::ControlKind, placeholder: sview, help: sview) -> void:
+            if UiControls::state_at(index.usize()).accessibility_sensitive:
+                UiAppKitNative::native_set_placeholder(handle, 0) if kind == UiControls::ControlKind.TextField
+                UiAppKitNative::native_set_accessibility_help(handle, 0)
+                return
+            if kind == UiControls::ControlKind.TextField:
+                prompt: usize = UiAppKitNative::native_string(placeholder)
+                if prompt != 0:
+                    UiAppKitNative::native_set_placeholder(handle, prompt)
+                    CFRelease(prompt)
+            hint: usize = UiAppKitNative::native_string(help)
+            return if hint == 0
+            UiAppKitNative::native_set_accessibility_help(handle, hint)
+            CFRelease(hint)

@@ -1,0 +1,32 @@
+# LSP diagnostic underlines remain separate from IME composition ranges.
+
+include "./widget_layout_support.elisa"
+
+def main() -> i64:
+    UiFlat::reset()
+    field: usize = UiFlat::text_field(UiFlat::NONE, "Source", "", "a😀bc", 150.0, 24.0, 12.0, UiCore::rgb(235, 238, 246), UiCore::rgb(25, 29, 38))
+    diagnostic_ink: UiCore::Color = UiCore::rgb(232, 82, 91)
+    zero_width_ink: UiCore::Color = UiCore::rgb(235, 182, 70)
+    UiFlat::set_marked(field, 0, 1)
+    UiFlat::set_text_underline(field, 0, 1, 3, diagnostic_ink)
+    UiFlat::set_text_underline(field, 1, 3, 3, zero_width_ink)
+    UiFlat::layout(180.0, 30.0)
+    diagnostic_start_x: f32 = UiFlat::text_character_x(field, 1)
+    diagnostic_stop_x: f32 = UiFlat::text_character_x(field, 3)
+    zero_width_x: f32 = diagnostic_stop_x
+    composition_start_x: f32 = UiFlat::text_character_x(field, 0)
+    composition_stop_x: f32 = UiFlat::text_character_x(field, 1)
+    widget: UiFlat::Widget = UiFlat::widget(field)
+    diagnostic_y: f32 = widget.y + widget.height - 2.0
+    composition_y: f32 = widget.y + widget.height - UiFlat::theme().marked_underline_inset
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("diagnostic range stays in UTF-16 units", UiFlat::text_underline_start_utf16(field, 0) == 1 and UiFlat::text_underline_stop_utf16(field, 0) == 3)
+    check("diagnostic underline follows the shaped UTF-16 range", frame_contains_line_color(diagnostic_start_x, diagnostic_y, diagnostic_stop_x, diagnostic_y, diagnostic_ink))
+    check("zero-width diagnostic position gets a visible tick", frame_contains_line_color(zero_width_x - 1.5, diagnostic_y, zero_width_x + 1.5, diagnostic_y, zero_width_ink))
+    check("diagnostic range leaves IME composition untouched", UiFlat::widget(field).marked_start == 0 and UiFlat::widget(field).marked_end == 1 and frame_contains_line_color(composition_start_x, composition_y, composition_stop_x, composition_y, UiCore::rgb(235, 238, 246)))
+    UiFlat::set_text_underline(field, 2, 0, 999, UiCore::rgb(90, 160, 230))
+    check("diagnostic range clamps to the field's UTF-16 length", UiFlat::text_underline_stop_utf16(field, 2) == UiFlat::text_utf16_length(field))
+    UiFlat::clear_text_underlines(field)
+    check("clearing diagnostics preserves IME composition", UiFlat::text_underline_color(field, 0).a == 0 and UiFlat::widget(field).marked_start == 0 and UiFlat::widget(field).marked_end == 1)
+    return test_failures.i64()

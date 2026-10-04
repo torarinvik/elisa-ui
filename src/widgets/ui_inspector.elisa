@@ -23,10 +23,21 @@ module UiInspector:
         struct Constraints:
             min_width: f32
             min_height: f32
+            preferred_width: f32
+            preferred_height: f32
+            declared_preferred_width: f32
+            declared_preferred_height: f32
             max_width: f32
             max_height: f32
+            width_conflict: bool
+            height_conflict: bool
+            width_clamped_low: bool
+            width_clamped_high: bool
+            height_clamped_low: bool
+            height_clamped_high: bool
             grow: f32
             margin: f32
+            overflow_behavior: UiConst::OverflowBehavior
 
         struct Node:
             handle: UiHandles::Handle
@@ -42,6 +53,7 @@ module UiInspector:
             selected: bool
             value: f32
             secure: bool
+            accessibility_sensitive: bool
             text: sview
             help: sview
             semantic: UiCore::AccessibilityNode?
@@ -161,7 +173,16 @@ module UiInspector:
         def inspect(handle: UiHandles::Handle) -> Node?:
             return null if not UiHandles::is_valid(handle)
             row: UiFlat::Widget = UiFlat::widget(UiHandles::index(handle))
-            visible_text: sview = "[secure]" if row.secure else row.text
+            visible_text: sview = "[secure]" if row.secure else ("[sensitive]" if row.accessibility_sensitive else row.text)
+            visible_help: sview = "" if row.secure or row.accessibility_sensitive else row.help
+            visible_selected: bool = false if row.accessibility_sensitive else UiHandles::selected(handle)
+            visible_value: f32 = 0.0 if row.accessibility_sensitive else UiHandles::value(handle)
+            effective_max_width: f32 = 0.0 if row.max_width > 0.0 and row.max_width < row.min_width else row.max_width
+            effective_max_height: f32 = 0.0 if row.max_height > 0.0 and row.max_height < row.min_height else row.max_height
+            width_range: UiConstraints::Range = UiConstraints::Range{minimum: row.min_width, preferred: row.preferred_width, maximum: effective_max_width, conflict: row.width_constraints_conflict}
+            height_range: UiConstraints::Range = UiConstraints::Range{minimum: row.min_height, preferred: row.preferred_height, maximum: effective_max_height, conflict: row.height_constraints_conflict}
+            width_resolution: UiConstraints::Resolution = UiConstraints::resolve(width_range, row.width)
+            height_resolution: UiConstraints::Resolution = UiConstraints::resolve(height_range, row.height)
             return Node{
                 handle: handle,
                 parent: UiHandles::parent(handle),
@@ -171,17 +192,26 @@ module UiInspector:
                 frame: UiCore::Rect(row.x, row.y, row.width, row.height),
                 constraints: Constraints{
                     min_width: row.min_width, min_height: row.min_height,
+                    preferred_width: row.preferred_width, preferred_height: row.preferred_height,
+                    declared_preferred_width: row.declared_preferred_width, declared_preferred_height: row.declared_preferred_height,
                     max_width: row.max_width, max_height: row.max_height,
-                    grow: row.grow, margin: row.margin,
+                    width_conflict: width_resolution.conflict or width_resolution.clamped_low or width_resolution.clamped_high,
+                    height_conflict: height_resolution.conflict or height_resolution.clamped_low or height_resolution.clamped_high,
+                    width_clamped_low: width_resolution.clamped_low,
+                    width_clamped_high: width_resolution.clamped_high,
+                    height_clamped_low: height_resolution.clamped_low,
+                    height_clamped_high: height_resolution.clamped_high,
+                    grow: row.grow, margin: row.margin, overflow_behavior: row.overflow_behavior,
                 },
                 visible: UiHandles::is_visible(handle),
                 enabled: UiHandles::is_enabled(handle),
                 focused: UiHandles::is_focused(handle),
-                selected: UiHandles::selected(handle),
-                value: UiHandles::value(handle),
+                selected: visible_selected,
+                value: visible_value,
                 secure: row.secure,
+                accessibility_sensitive: row.accessibility_sensitive,
                 text: visible_text,
-                help: row.help,
+                help: visible_help,
                 semantic: semantic_for(handle),
             }
 
@@ -194,7 +224,9 @@ module UiInspector:
             index: usize = UiCore::accessibility_index_for_id(target)
             return null if index >= UiCore::accessibility_count()
             node: mutable UiCore::AccessibilityNode = UiCore::accessibility_at(index)
-            if node.role == UiCore::AccessibilityRole.PasswordField:
+            if UiFlat::widget(target).accessibility_sensitive:
+                node <- UiCore::redacted_accessibility_node(node)
+            elif node.role == UiCore::AccessibilityRole.PasswordField:
                 node.text_value <- "[secure]"
                 node.selected_text <- ""
             return node

@@ -83,7 +83,9 @@ global mutable log_color_writes: i32[LOG_CAP] = zeroed
 global mutable log_ink: u8[LOG_CAP] = zeroed
 global mutable log_prompt_len: i64[LOG_CAP] = zeroed
 global mutable log_help_len: i64[LOG_CAP] = zeroed
+global mutable log_help_writes: i32[LOG_CAP] = zeroed
 global mutable log_secure: bool[LOG_CAP] = zeroed
+global mutable log_accessibility_sensitive: bool[LOG_CAP] = zeroed
 global mutable log_enabled: bool[LOG_CAP] = zeroed
 global mutable log_text_writes: i32[LOG_CAP] = zeroed
 
@@ -120,12 +122,14 @@ impl Controls for RecordingControls:
         return if index < 0 or index.usize() >= LOG_CAP
         log_state_writes[index.usize()] <- log_state_writes[index.usize()] + 1
         log_secure[index.usize()] <- state.secure
+        log_accessibility_sensitive[index.usize()] <- state.accessibility_sensitive
         log_enabled[index.usize()] <- state.enabled
 
     def set_help(index: i32, kind: UiControls::ControlKind, placeholder: sview, help: sview) -> void can[Ui.Controls]:
         return if index < 0 or index.usize() >= LOG_CAP
         log_prompt_len[index.usize()] <- placeholder.len
         log_help_len[index.usize()] <- help.len
+        log_help_writes[index.usize()] <- log_help_writes[index.usize()] + 1
 
     def set_action(index: i32, kind: UiControls::ControlKind) -> void can[Ui.Controls]:
         pass
@@ -494,6 +498,8 @@ def main() -> i64:
         secret_slot: usize = slot_for_widget(UiHandles::index(secret))
         check("a secure field crosses as secure", log_secure[secret_slot])
         check("an ordinary field does not", not log_secure[plain_slot])
+        check("ordinary control starts without model redaction", not log_accessibility_sensitive[plain_slot])
+        check("secure entry and model sensitivity remain distinct", not log_accessibility_sensitive[secret_slot])
         check("a disabled widget crosses as disabled", not log_enabled[plain_slot])
         check("an ordinary widget stays enabled", log_enabled[secret_slot])
 
@@ -501,6 +507,16 @@ def main() -> i64:
         # dropped and every native field showed an empty hint.
         check("a field's placeholder crosses", log_prompt_len[secret_slot] == 10)
         check("and its help text crosses", log_help_len[secret_slot] >= 0)
+
+        log_state_writes[plain_slot] <- 0
+        log_help_writes[plain_slot] <- 0
+        log_text_writes[plain_slot] <- 0
+        UiHandles::set_accessibility_sensitive(plain, true)
+        UiFlat::layout(320.0, 480.0)
+        realize_reconciling()
+        check("sensitive model policy reaches native control state", log_state_writes[plain_slot] == 1 and log_accessibility_sensitive[plain_slot])
+        check("sensitivity reapplies native hint/help for redaction", log_help_writes[plain_slot] == 1)
+        check("sensitivity transition refreshes the native accessibility label", log_text_writes[plain_slot] == 1)
 
         # Turning secure OFF is what a "show password" toggle does, and it has
         # to reach the control like any other state change.
@@ -510,6 +526,16 @@ def main() -> i64:
         realize_reconciling()
         check("clearing secure reaches the control", log_state_writes[secret_slot] == 1)
         check("and the control is no longer secure", not log_secure[secret_slot])
+
+        log_state_writes[plain_slot] <- 0
+        log_help_writes[plain_slot] <- 0
+        log_text_writes[plain_slot] <- 0
+        UiHandles::set_accessibility_sensitive(plain, false)
+        UiFlat::layout(320.0, 480.0)
+        realize_reconciling()
+        check("clearing model sensitivity reaches the control", log_state_writes[plain_slot] == 1 and not log_accessibility_sensitive[plain_slot])
+        check("clearing sensitivity reapplies native hint/help", log_help_writes[plain_slot] == 1)
+        check("clearing sensitivity restores the native accessibility label", log_text_writes[plain_slot] == 1)
 
         # A hidden root is not a window. It must not consume the first-root
         # position, or the first visible root would be sent to a backend as an

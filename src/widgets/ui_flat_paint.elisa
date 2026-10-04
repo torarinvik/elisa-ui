@@ -3,6 +3,36 @@
 # compatibility namespace while its implementation is organized by concern.
 
 extend UiFlat:
+    private:
+        def paint_text_underline(index: usize, slot: usize, inset: f32, visible_start: usize, visible_stop: usize) -> void:
+            return if widgets[index].secure or slot >= MAX_TEXT_UNDERLINES_PER_WIDGET
+            storage_index: usize = index * MAX_TEXT_UNDERLINES_PER_WIDGET + slot
+            color: UiCore::Color = text_underline_colors[storage_index]
+            return if color.a == 0
+            text: sview = text_value(index)
+            range_start: usize = byte_offset_for_utf16(text, text_underline_starts[storage_index])
+            range_stop: usize = byte_offset_for_utf16(text, text_underline_stops[storage_index])
+            return if range_stop < visible_start or range_start > visible_stop
+            clipped_start: usize = visible_start if range_start < visible_start else range_start
+            clipped_stop: usize = visible_stop if range_stop > visible_stop else range_stop
+            line_y: mutable f32 = widgets[index].y + widgets[index].height - 2.0
+            line_y <- widgets[index].y + widgets[index].height / 2.0 if widgets[index].height <= 2.0
+            if clipped_stop > clipped_start:
+                distance: f32 = measure_text_range(index, visible_start, clipped_start)
+                span_width: f32 = measure_text_range(index, clipped_start, clipped_stop)
+                return if span_width <= 0.0
+                line_x: f32 = field_span_origin(index, inset, distance, span_width)
+                UiCore::fill_stroke(UiCore::Line{from_point: UiCore::Vec2(line_x, line_y), to_point: UiCore::Vec2(line_x + span_width, line_y)}, 1.25, color)
+            elif range_start >= visible_start and range_start <= visible_stop:
+                position_x: f32 = field_run_x(index, inset, measure_text_range(index, visible_start, range_start))
+                left: mutable f32 = position_x - 1.5
+                right: mutable f32 = position_x + 1.5
+                content_left: f32 = widgets[index].x + inset
+                content_right: f32 = widgets[index].x + widgets[index].width - inset
+                left <- content_left if left < content_left
+                right <- content_right if right > content_right
+                UiCore::fill_stroke(UiCore::Line{from_point: UiCore::Vec2(left, line_y), to_point: UiCore::Vec2(right, line_y)}, 1.25, color) if right > left
+
     public:
         def paint() -> void:
             UiTextMetrics::reset()
@@ -14,7 +44,7 @@ extend UiFlat:
             have_semantic_order: mutable bool = false
             previous_semantic_order: mutable usize = 0
             for semantic_index in 0..<widget_count:
-                visible_semantic: bool = semantic_kind(semantic_index) and effectively_visible(semantic_index) and intersects_scroll_viewports(semantic_index)
+                visible_semantic: bool = semantic_kind(semantic_index) and effectively_visible(semantic_index) and semantic_has_visible_frame(semantic_index)
                 semantic_emitted[semantic_index] <- not visible_semantic
                 if visible_semantic:
                     current_semantic_order: usize = widgets[semantic_index].focus_order
@@ -39,14 +69,15 @@ extend UiFlat:
             scrim_at: usize = overlay_paint_start()
             for order_index in 0..<paint_order_count:
                 index: usize = paint_order[order_index]
+                UiCore::set_diagnostic_context(index, false, UiCore::Rect(0.0, 0.0, 0.0, 0.0))
                 # The wash goes down between the shell and the overlay, in the
                 # paint order rather than before or after the whole frame, so
                 # it dims exactly what is under the sheet and nothing else.
                 if order_index == scrim_at:
                     UiCore::clear_clip()
                     UiCore::fill(UiCore::Rect(0.0, 0.0, last_layout_width, last_layout_height), current_theme.scrim) if current_theme.scrim.a != 0
-                continue if not effectively_visible(index) or not intersects_scroll_viewports(index)
-                set_scroll_clip(index)
+                continue if not effectively_visible(index) or not intersects_clip_ancestors(index)
+                set_ancestor_clip(index)
                 enabled: bool = effectively_enabled(index)
                 # The state's colour and the colour on screen are two different
                 # facts while a control is moving between them. DEPTH reads the
@@ -56,6 +87,7 @@ extend UiFlat:
                 target_color: UiCore::Color = color_of(index)
                 color: UiCore::Color = displayed_color(index, target_color)
                 frame: UiCore::Rect = UiCore::Rect(widgets[index].x, widgets[index].y, widgets[index].width, widgets[index].height)
+                UiCore::set_diagnostic_context(index, widgets[index].secure or widgets[index].accessibility_sensitive, frame)
                 paint_ring(index)
                 # A TRACK IS A GROOVE. Both the slider's and the progress
                 # bar's are cut into the surface, so they take the recessed
@@ -173,6 +205,7 @@ extend UiFlat:
                             scan <- after
                     visible_value: sview = display_range(index, visible_start, visible_stop)
                     display_text: sview = visible_value if field_value.len > 0 else widgets[index].placeholder
+                    field_text_size: f32 = effective_text_size(index)
                     field_ink: mutable UiCore::Color = widgets[index].text_color
                     field_ink <- muted_ink(index, field_ink) if not enabled
                     if field_value.len == 0:
@@ -187,9 +220,9 @@ extend UiFlat:
                         selection_x: f32 = field_span_origin(index, text_inset, measure_text_range(index, visible_start, selected_start), selection_width)
                         selection_inset: f32 = clamped_inset(current_theme.selection_vertical_inset, widgets[index].height)
                         UiCore::fill(UiCore::Rect(selection_x, widgets[index].y + selection_inset, selection_width, widgets[index].height - selection_inset * 2.0), current_theme.selection)
-                    display_width: f32 = UiTextMetrics::width(display_text, widgets[index].text_size, widgets[index].text_weighted) + UiCore::tracking_width(display_text, widgets[index].text_tracking)
+                    display_width: f32 = UiTextMetrics::width(display_text, field_text_size, widgets[index].text_weighted) + UiCore::tracking_width(display_text, widgets[index].text_tracking)
                     run_origin: f32 = field_span_origin(index, text_inset, 0.0, display_width)
-                    UiCore::draw(UiCore::TextRun(UiCore::Vec2(run_origin, field_y), widgets[index].text_size, display_text, widgets[index].text_weighted, widgets[index].text_halo, widgets[index].text_tracking), field_ink)
+                    UiCore::draw(UiCore::TextRun(UiCore::Vec2(run_origin, field_y), field_text_size, display_text, widgets[index].text_weighted, widgets[index].text_halo, widgets[index].text_tracking), field_ink)
                     marked_start: mutable usize = widgets[index].marked_start
                     marked_stop: mutable usize = widgets[index].marked_end
                     marked_start <- visible_start if marked_start < visible_start else marked_start
@@ -203,6 +236,8 @@ extend UiFlat:
                         marked_inset: f32 = clamped_inset(current_theme.marked_underline_inset, widgets[index].height)
                         marked_y: f32 = widgets[index].y + widgets[index].height - marked_inset
                         UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(marked_x, marked_y), to_point: UiCore::Vec2(marked_x + marked_width, marked_y)}, widgets[index].text_color)
+                    for underline_slot in 0..<MAX_TEXT_UNDERLINES_PER_WIDGET:
+                        paint_text_underline(index, underline_slot, text_inset, visible_start, visible_stop)
                     if widgets[index].focused and selection_start(index) == selection_end(index) and caret_is_visible():
                         caret_x: f32 = field_run_x(index, text_inset, measure_text_range(index, visible_start, widgets[index].caret))
                         caret_y: f32 = UiFlat::text_caret_y(index)
@@ -215,11 +250,12 @@ extend UiFlat:
                         caret_width: f32 = UiCore::DEFAULT_STROKE_WIDTH
                         UiCore::fill_shaped(UiCore::Rect(caret_x, caret_y, caret_width, caret_height), widgets[index].text_color, UiCore::SurfaceDepth.Flat, UiCore::CornerStyle.Square)
                     continue
-                continue if widgets[index].text_size <= 0.0 or widgets[index].text.len == 0
+                text_size: f32 = effective_text_size(index)
+                continue if text_size <= 0.0 or widgets[index].text.len == 0
                 # Button captions are centered in their hit target. Ordinary labels
                 # remain leading-aligned, which is the useful default for content.
-                text_y: f32 = widgets[index].y + (widgets[index].height - UiTextMetrics::line_height(widgets[index].text_size)) / 2.0
-                text_width: f32 = UiTextMetrics::width(widgets[index].text, widgets[index].text_size, widgets[index].text_weighted)
+                text_y: f32 = widgets[index].y + (widgets[index].height - UiTextMetrics::line_height(text_size)) / 2.0
+                text_width: f32 = UiTextMetrics::width(widgets[index].text, text_size, widgets[index].text_weighted)
                 text_x: mutable f32 = leading_text_origin(index, text_width)
                 if widgets[index].kind == UiConst::WidgetKind.Button:
                     text_x <- widgets[index].x + (widgets[index].width - text_width) / 2.0
@@ -244,7 +280,9 @@ extend UiFlat:
             # translated children and nested scroll areas.
             for order_index in 0..<paint_order_count:
                 index: usize = paint_order[order_index]
-                continue if not effectively_visible(index) or not intersects_scroll_viewports(index)
-                set_scroll_clip(index)
+                UiCore::set_diagnostic_context(index, false, UiCore::Rect(0.0, 0.0, 0.0, 0.0))
+                continue if not effectively_visible(index) or not intersects_clip_ancestors(index)
+                set_ancestor_clip(index)
                 paint_scrollbar(index)
             UiCore::clear_clip()
+            UiCore::set_diagnostic_context(0, false, UiCore::Rect(0.0, 0.0, 0.0, 0.0))

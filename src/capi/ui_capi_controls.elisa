@@ -1,0 +1,289 @@
+# Versioned foreign-language retained-control construction over UiHandles.
+#
+# C, Rust, and Go receive only opaque generation-scoped tokens. The retained
+# arena index is decoded here, validated before every operation, and never
+# crosses the language boundary.
+
+include "../widgets/ui_handles.elisa"
+include "./ui_capi_widget.elisa"
+
+module UiCapiControls:
+    public:
+        const ROOT_PARENT: u64 = 0
+
+        def reset_tree() -> void:
+            UiHandles::reset()
+
+        def column(parent_token: u64, padding: f32, spacing: f32, color: u32) -> u64:
+            parent: UiHandles::Handle = parent_handle(parent_token)
+            return UiCapiWidget::INVALID if not UiHandles::parent_is_valid(parent)
+            handle: UiHandles::Handle = UiHandles::column(parent, padding, spacing, unpack_color(color))
+            return token_for_handle(handle)
+
+        def row(parent_token: u64, padding: f32, spacing: f32, color: u32) -> u64:
+            parent: UiHandles::Handle = parent_handle(parent_token)
+            return UiCapiWidget::INVALID if not UiHandles::parent_is_valid(parent)
+            handle: UiHandles::Handle = UiHandles::row(parent, padding, spacing, unpack_color(color))
+            return token_for_handle(handle)
+
+        def label(parent_token: u64, text: cstr?, length: usize, size: f32, color: u32) -> u64 can Unsafe.PointerCast:
+            parent: UiHandles::Handle = parent_handle(parent_token)
+            return UiCapiWidget::INVALID if not UiHandles::parent_is_valid(parent) or not UiCore::is_finite(size)
+            staged: mutable sview = ""
+            return UiCapiWidget::INVALID if not begin_text(text, length, staged)
+            handle: UiHandles::Handle = UiHandles::label(parent, staged, size, unpack_color(color))
+            end_text()
+            return token_for_handle(handle)
+
+        def text_field(parent_token: u64, initial: cstr?, length: usize, min_width: f32, min_height: f32, size: f32, ink: u32, fill: u32) -> u64 can Unsafe.PointerCast:
+            parent: UiHandles::Handle = parent_handle(parent_token)
+            return UiCapiWidget::INVALID if not UiHandles::parent_is_valid(parent) or not UiCore::is_finite(size)
+            staged: mutable sview = ""
+            return UiCapiWidget::INVALID if not begin_text(initial, length, staged)
+            handle: UiHandles::Handle = UiHandles::text_field(parent, "", "", staged, min_width, min_height, size, unpack_color(ink), unpack_color(fill))
+            end_text()
+            return token_for_handle(handle)
+
+        def button(parent_token: u64, min_width: f32, min_height: f32, color: u32, hover: u32, press: u32) -> u64:
+            parent: UiHandles::Handle = parent_handle(parent_token)
+            return UiCapiWidget::INVALID if not UiHandles::parent_is_valid(parent)
+            handle: UiHandles::Handle = UiHandles::button(parent, min_width, min_height, unpack_color(color), unpack_color(hover), unpack_color(press))
+            return token_for_handle(handle)
+
+        def radio_button(parent_token: u64, min_width: f32, min_height: f32, color: u32, hover: u32, press: u32) -> u64:
+            parent: UiHandles::Handle = parent_handle(parent_token)
+            return UiCapiWidget::INVALID if not UiHandles::parent_is_valid(parent)
+            handle: UiHandles::Handle = UiHandles::radio_button(parent, min_width, min_height, unpack_color(color), unpack_color(hover), unpack_color(press))
+            return token_for_handle(handle)
+
+        def check_box(parent_token: u64, min_width: f32, min_height: f32, color: u32, hover: u32, press: u32) -> u64:
+            parent: UiHandles::Handle = parent_handle(parent_token)
+            return UiCapiWidget::INVALID if not UiHandles::parent_is_valid(parent)
+            handle: UiHandles::Handle = UiHandles::check_box(parent, min_width, min_height, unpack_color(color), unpack_color(hover), unpack_color(press))
+            return token_for_handle(handle)
+
+        def slider(parent_token: u64, min_width: f32, min_height: f32, value: f32, track: u32, fill: u32, thumb: u32) -> u64:
+            parent: UiHandles::Handle = parent_handle(parent_token)
+            return UiCapiWidget::INVALID if not UiHandles::parent_is_valid(parent) or not UiCore::is_finite(value)
+            handle: UiHandles::Handle = UiHandles::slider(parent, min_width, min_height, value, unpack_color(track), unpack_color(fill), unpack_color(thumb))
+            return token_for_handle(handle)
+
+        def progress_bar(parent_token: u64, min_width: f32, min_height: f32, value: f32, track: u32, fill: u32) -> u64:
+            parent: UiHandles::Handle = parent_handle(parent_token)
+            return UiCapiWidget::INVALID if not UiHandles::parent_is_valid(parent) or not UiCore::is_finite(value)
+            handle: UiHandles::Handle = UiHandles::progress_bar(parent, min_width, min_height, value, unpack_color(track), unpack_color(fill))
+            return token_for_handle(handle)
+
+        def set_text(token: u64, text: cstr?, length: usize, size: f32, color: u32) -> i32 can Unsafe.PointerCast:
+            handle: UiHandles::Handle = handle_for_token(token)
+            return 0 if not UiHandles::is_valid(handle) or not UiCore::is_finite(size)
+            staged: mutable sview = ""
+            return 0 if not begin_text(text, length, staged)
+            UiHandles::set_text(handle, staged, size, unpack_color(color))
+            end_text()
+            return 1
+
+        def set_enabled(token: u64, enabled: i32) -> i32:
+            handle: UiHandles::Handle = handle_for_token(token)
+            return 0 if not UiHandles::is_valid(handle)
+            UiHandles::set_enabled(handle, enabled != 0)
+            return 1
+
+        def set_visible(token: u64, visible: i32) -> i32:
+            handle: UiHandles::Handle = handle_for_token(token)
+            return 0 if not UiHandles::is_valid(handle)
+            UiHandles::set_visible(handle, visible != 0)
+            return 1
+
+        def set_selected(token: u64, selected: i32) -> i32:
+            handle: UiHandles::Handle = handle_for_token(token)
+            return 0 if not UiHandles::is_valid(handle)
+            row: UiFlat::Widget = UiFlat::widget(UiHandles::index(handle))
+            return 0 if row.kind != UiConst::WidgetKind.RadioButton and row.kind != UiConst::WidgetKind.CheckBox
+            UiHandles::set_selected(handle, selected != 0)
+            return 1
+
+        def selected(token: u64) -> i32:
+            handle: UiHandles::Handle = handle_for_token(token)
+            return 0 if not UiHandles::is_valid(handle)
+            row: UiFlat::Widget = UiFlat::widget(UiHandles::index(handle))
+            return 1 if (row.kind == UiConst::WidgetKind.RadioButton or row.kind == UiConst::WidgetKind.CheckBox) and row.selected else 0
+
+        def set_value(token: u64, value: f32) -> i32:
+            handle: UiHandles::Handle = handle_for_token(token)
+            return 0 if not UiHandles::is_valid(handle) or not UiCore::is_finite(value)
+            row: UiFlat::Widget = UiFlat::widget(UiHandles::index(handle))
+            return 0 if row.kind != UiConst::WidgetKind.Slider and row.kind != UiConst::WidgetKind.ProgressBar
+            UiHandles::set_value(handle, value)
+            return 1
+
+        def request_text_focus(token: u64) -> i32:
+            handle: UiHandles::Handle = handle_for_token(token)
+            return 0 if not UiHandles::is_valid(handle)
+            row: UiFlat::Widget = UiFlat::widget(UiHandles::index(handle))
+            return 0 if row.kind != UiConst::WidgetKind.TextField
+            return 1 if UiHandles::request_focus(handle) else 0
+
+        def text_length(token: u64) -> i32:
+            handle: UiHandles::Handle = handle_for_token(token)
+            return -1 if not UiHandles::is_valid(handle)
+            row: UiFlat::Widget = UiFlat::widget(UiHandles::index(handle))
+            return -1 if row.kind != UiConst::WidgetKind.TextField
+            return UiHandles::text_value(handle).len.i32()
+
+        def copy_text(token: u64, destination: cstr?, capacity: usize) -> usize can Unsafe.PointerCast:
+            handle: UiHandles::Handle = handle_for_token(token)
+            return 0 if not UiHandles::is_valid(handle)
+            row: UiFlat::Widget = UiFlat::widget(UiHandles::index(handle))
+            return 0 if row.kind != UiConst::WidgetKind.TextField
+            text: sview = UiHandles::text_value(handle)
+            limit: usize = text.len.usize() if capacity > text.len.usize() else capacity
+            copied: usize = UiText::valid_utf8_prefix(text, limit)
+            return 0 if copied == 0
+            if destination is value:
+                pointer: uintptr = value.cast[uintptr] can Unsafe.PointerCast
+                return 0 if pointer == 0.uintptr()
+                for index in 0..<copied:
+                    trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic]:
+                        byte: mutable u8& = (pointer + index.uintptr()).cast[mutable u8&]
+                        byte <- text.data[index]
+            else:
+                return 0
+            return copied
+
+        def value(token: u64) -> f32:
+            handle: UiHandles::Handle = handle_for_token(token)
+            return 0.0 if not UiHandles::is_valid(handle)
+            row: UiFlat::Widget = UiFlat::widget(UiHandles::index(handle))
+            return row.value if row.kind == UiConst::WidgetKind.Slider or row.kind == UiConst::WidgetKind.ProgressBar else 0.0
+
+        def activate(token: u64) -> i32:
+            handle: UiHandles::Handle = handle_for_token(token)
+            return 0 if not UiHandles::is_valid(handle)
+            return 1 if UiHandles::activate(handle) else 0
+
+        def is_valid(token: u64) -> i32:
+            return 1 if UiCapiWidget::token_is_valid(token) else 0
+
+    private:
+        const TEXT_CAPACITY: usize = UiCore::MAX_TEXT_BYTES
+        global mutable text_busy: bool = false
+        global mutable widget_text_buffer: mutable u8[1025] = zeroed
+
+        def parent_handle(token: u64) -> UiHandles::Handle:
+            return UiHandles::root_parent() if token == ROOT_PARENT
+            index: usize = UiCapiWidget::index_for_token(token)
+            return UiHandles::invalid() if index == UiFlat::NONE
+            return UiHandles::from_index(index)
+
+        def handle_for_token(token: u64) -> UiHandles::Handle:
+            return UiHandles::invalid() if token == UiCapiWidget::INVALID
+            index: usize = UiCapiWidget::index_for_token(token)
+            return UiHandles::invalid() if index == UiFlat::NONE
+            return UiHandles::from_index(index)
+
+        def token_for_handle(handle: UiHandles::Handle) -> u64:
+            return UiCapiWidget::INVALID if not UiHandles::is_valid(handle)
+            return UiCapiWidget::token_for_index(UiHandles::index(handle))
+
+        # Colors use the stable packed 0xRRGGBBAA representation.
+        def unpack_color(color_rgba: u32) -> UiCore::Color:
+            return UiCore::rgba((color_rgba >> 24).u8(), (color_rgba >> 16).u8(), (color_rgba >> 8).u8(), color_rgba.u8())
+
+        def begin_text(text: cstr?, length: usize, out_text: mutable sview&) -> bool can Unsafe.PointerCast:
+            return false if text_busy
+            text_busy <- true
+            scrub_text()
+            safe_length: usize = TEXT_CAPACITY if length > TEXT_CAPACITY else length
+            if safe_length > 0:
+                if text is value:
+                    pointer: uintptr = value.cast[uintptr] can Unsafe.PointerCast
+                    if pointer == 0.uintptr():
+                        text_busy <- false
+                        return false
+                    for index in 0..<safe_length:
+                        trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic]:
+                            byte: u8& = (pointer + index.uintptr()).cast[u8&]
+                            widget_text_buffer[index] <- byte
+                else:
+                    text_busy <- false
+                    return false
+            widget_text_buffer[safe_length] <- 0
+            raw: sview = UiText::fixed_bytes_view_range[1025](widget_text_buffer, 0, safe_length.i64())
+            valid_length: usize = UiText::valid_utf8_prefix(raw, safe_length)
+            out_text <- raw[0:valid_length.i64()]
+            return true
+
+        def end_text() -> void:
+            scrub_text()
+            text_busy <- false
+
+        def scrub_text() -> void:
+            for index in 0..<(TEXT_CAPACITY + 1):
+                widget_text_buffer[index] <- 0
+
+def elisa_ui_widget_tree_reset() -> void:
+    UiCapiControls::reset_tree()
+
+def elisa_ui_widget_column(parent: u64, padding: f32, spacing: f32, color: u32) -> u64:
+    UiCapiControls::column(parent, padding, spacing, color)
+
+def elisa_ui_widget_row(parent: u64, padding: f32, spacing: f32, color: u32) -> u64:
+    UiCapiControls::row(parent, padding, spacing, color)
+
+def elisa_ui_widget_label(parent: u64, text: cstr?, length: usize, size: f32, color: u32) -> u64 can Unsafe.PointerCast:
+    UiCapiControls::label(parent, text, length, size, color)
+
+def elisa_ui_widget_text_field(parent: u64, initial: cstr?, length: usize, min_width: f32, min_height: f32, size: f32, ink: u32, fill: u32) -> u64 can Unsafe.PointerCast:
+    UiCapiControls::text_field(parent, initial, length, min_width, min_height, size, ink, fill)
+
+def elisa_ui_widget_button(parent: u64, min_width: f32, min_height: f32, color: u32, hover: u32, press: u32) -> u64:
+    UiCapiControls::button(parent, min_width, min_height, color, hover, press)
+
+def elisa_ui_widget_radio_button(parent: u64, min_width: f32, min_height: f32, color: u32, hover: u32, press: u32) -> u64:
+    UiCapiControls::radio_button(parent, min_width, min_height, color, hover, press)
+
+def elisa_ui_widget_check_box(parent: u64, min_width: f32, min_height: f32, color: u32, hover: u32, press: u32) -> u64:
+    UiCapiControls::check_box(parent, min_width, min_height, color, hover, press)
+
+def elisa_ui_widget_slider(parent: u64, min_width: f32, min_height: f32, value: f32, track: u32, fill: u32, thumb: u32) -> u64:
+    UiCapiControls::slider(parent, min_width, min_height, value, track, fill, thumb)
+
+def elisa_ui_widget_progress_bar(parent: u64, min_width: f32, min_height: f32, value: f32, track: u32, fill: u32) -> u64:
+    UiCapiControls::progress_bar(parent, min_width, min_height, value, track, fill)
+
+def elisa_ui_widget_set_text(widget: u64, text: cstr?, length: usize, size: f32, color: u32) -> i32 can Unsafe.PointerCast:
+    UiCapiControls::set_text(widget, text, length, size, color)
+
+def elisa_ui_widget_set_enabled(widget: u64, enabled: i32) -> i32:
+    UiCapiControls::set_enabled(widget, enabled)
+
+def elisa_ui_widget_set_visible(widget: u64, visible: i32) -> i32:
+    UiCapiControls::set_visible(widget, visible)
+
+def elisa_ui_widget_set_selected(widget: u64, selected: i32) -> i32:
+    UiCapiControls::set_selected(widget, selected)
+
+def elisa_ui_widget_selected(widget: u64) -> i32:
+    UiCapiControls::selected(widget)
+
+def elisa_ui_widget_set_value(widget: u64, value: f32) -> i32:
+    UiCapiControls::set_value(widget, value)
+
+def elisa_ui_widget_request_text_focus(widget: u64) -> i32:
+    UiCapiControls::request_text_focus(widget)
+
+def elisa_ui_widget_text_length(widget: u64) -> i32:
+    UiCapiControls::text_length(widget)
+
+def elisa_ui_widget_copy_text(widget: u64, destination: cstr?, capacity: usize) -> usize can Unsafe.PointerCast:
+    UiCapiControls::copy_text(widget, destination, capacity)
+
+def elisa_ui_widget_value(widget: u64) -> f32:
+    UiCapiControls::value(widget)
+
+def elisa_ui_widget_activate(widget: u64) -> i32:
+    UiCapiControls::activate(widget)
+
+def elisa_ui_widget_is_valid(widget: u64) -> i32:
+    UiCapiControls::is_valid(widget)

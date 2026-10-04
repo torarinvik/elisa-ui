@@ -81,6 +81,47 @@ def main() -> i64 can Unsafe.PointerCast:
     check("Russian handles one/few/many", UiLocalization::plural("ru", 21) == UiLocalization::PluralCategory.One and UiLocalization::plural("ru", 24) == UiLocalization::PluralCategory.Few and UiLocalization::plural("ru", 25) == UiLocalization::PluralCategory.Many)
     check("Polish keeps zero in other", UiLocalization::plural("pl", 0) == UiLocalization::PluralCategory.Other and UiLocalization::plural("pl", 3) == UiLocalization::PluralCategory.Few)
     check("negative counts fail closed", UiLocalization::plural("en", -1) == UiLocalization::PluralCategory.Other)
+    file_forms: UiLocalization::PluralForms = UiLocalization::PluralForms{
+        zero: "No files", one: "One file", two: "Two files",
+        few: "A few files", many: "Many files", other: "Files",
+    }
+    check("message selection uses the requested locale category", UiLocalization::plural_message("en", 1, file_forms) == "One file" and UiLocalization::plural_message("en", 4, file_forms) == "Files" and UiLocalization::plural_message("ar", 2, file_forms) == "Two files")
+    check("Arabic category messages select zero/few/many", UiLocalization::plural_message("ar", 0, file_forms) == "No files" and UiLocalization::plural_message("ar", 7, file_forms) == "A few files" and UiLocalization::plural_message("ar", 20, file_forms) == "Many files")
+    incomplete_forms: UiLocalization::PluralForms = UiLocalization::PluralForms{
+        zero: "", one: "", two: "", few: "", many: "", other: "Items",
+    }
+    check("missing category falls back to other", UiLocalization::plural_message("ar", 2, incomplete_forms) == "Items" and UiLocalization::plural_message("en", -1, incomplete_forms) == "Items")
+    no_forms: UiLocalization::PluralForms = UiLocalization::PluralForms{
+        zero: "", one: "", two: "", few: "", many: "", other: "",
+    }
+    check("missing other message resolves to a safe empty view", UiLocalization::plural_message("en", 2, no_forms).len == 0)
+    count_forms: UiLocalization::PluralForms = UiLocalization::PluralForms{
+        zero: "No files", one: "{count} file", two: "{count} files",
+        few: "{count} files", many: "{count} files", other: "{count} files",
+    }
+    formatted_singular_buffer: mutable UiLocalization::FormatBuffer = zeroed
+    formatted_dual_buffer: mutable UiLocalization::FormatBuffer = zeroed
+    singular_message: sview = UiLocalization::plural_message("en", 1, count_forms)
+    singular_formatted: sview = UiLocalization::format_count(singular_message, 1, formatted_singular_buffer)
+    dual_message: sview = UiLocalization::plural_message("ar", 2, count_forms)
+    dual_formatted: sview = UiLocalization::format_count(dual_message, 2, formatted_dual_buffer)
+    check("plural formatting selects and substitutes its message", singular_formatted == "1 file" and dual_formatted == "2 files")
+    combined_plural_buffer: mutable UiLocalization::FormatBuffer = zeroed
+    combined_plural: sview = UiLocalization::format_plural("ar", 2, count_forms, combined_plural_buffer)
+    check("format_plural composes variant selection and count substitution", combined_plural == "2 files")
+    repeated_count_buffer: mutable UiLocalization::FormatBuffer = zeroed
+    repeated_count: sview = UiLocalization::format_count("{count} files; {count} total", 12, repeated_count_buffer)
+    check("count formatting replaces every token", repeated_count == "12 files; 12 total")
+    minimum_count_buffer: mutable UiLocalization::FormatBuffer = zeroed
+    minimum_count: sview = UiLocalization::format_count("{count}", -9223372036854775807 - 1, minimum_count_buffer)
+    check("count formatting handles the signed 64-bit minimum", minimum_count == "-9223372036854775808")
+    small_count_buffer: mutable UiLocalization::FormatBuffer = zeroed
+    small_count_buffer.capacity <- 4
+    check("count formatting truncates only between complete tokens", UiLocalization::format_count("A{count}Z", 123, small_count_buffer) == "A123")
+    short_utf8_buffer: mutable UiLocalization::FormatBuffer = zeroed
+    short_utf8_buffer.capacity <- 1
+    short_utf8_result: sview = UiLocalization::format_count("é", 1, short_utf8_buffer)
+    check("count formatting never splits a UTF-8 scalar", short_utf8_result.len == 0)
 
     check("three letter language is not a two letter prefix", not UiLocalization::is_rtl("arn") and not UiLocalization::is_rtl("fil"))
     before_reset: u32 = UiLocalization::revision()

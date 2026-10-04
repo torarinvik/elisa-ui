@@ -15,6 +15,8 @@ extern elisa_uikit_stub_live_element_count() -> i32
 extern elisa_uikit_stub_committed_children() -> usize
 
 global mutable failures: i32 = 0
+global mutable test_activation_count: usize = 0
+global mutable test_last_activated_widget: usize = UiFlat::NONE
 
 def check(name: cstr, ok: bool) -> void:
     return if ok
@@ -39,8 +41,9 @@ def app_frame() -> void:
     pass
 
 def app_widget_event(widget: usize, event: i32) -> void:
-    _ = widget
     _ = event
+    test_activation_count <- test_activation_count + 1
+    test_last_activated_widget <- widget
 
 def emit_tree() -> void:
     sentinel: usize = UiCore::MAX_ACCESSIBILITY_NODES
@@ -51,7 +54,7 @@ def emit_tree() -> void:
         sentinel, 20, sentinel, 0.0, 1.0, false)
     UiCore::accessibility_with_metadata(
         UiCore::AccessibilityRole.Button, "First", "", UiCore::Rect(4.0, 4.0, 100.0, 30.0),
-        20, 20, true, false, false, 0.0, "", "", 0, 0, 0,
+        20, 0, true, false, false, 0.0, "", "", 0, 0, 0,
         10, sentinel, 30, 0.0, 1.0, false)
     UiCore::accessibility_with_metadata(
         UiCore::AccessibilityRole.Label, "Second", "", UiCore::Rect(4.0, 40.0, 100.0, 30.0),
@@ -83,7 +86,12 @@ def emit_cycle() -> void:
 
 def main() -> i64 can[Ui.Draw, Ui.Text, Ui.Input, Ui.Window, Unsafe.PointerCast]:
     elisa_uikit_stub_set_view(0)
+    # Keep a real actionable widget at slot zero so a missing-action sentinel
+    # regression would be observable as an accidental activation.
+    first_widget: usize = UiFlat::button(UiFlat::NONE, 80.0, 24.0,
+        UiCore::rgb(0, 0, 0), UiCore::rgb(0, 0, 0), UiCore::rgb(0, 0, 0))
     check("a headless UIKit session starts", UiUIKit::begin_headless_session(320.0, 240.0, 2.0))
+    check("the headless session accepts accessibility actions", UiMobileSurface::focus_gained())
     emit_tree()
     parent: usize = find_parent_handle()
     check("the semantic group is published", parent != 0)
@@ -98,6 +106,8 @@ def main() -> i64 can[Ui.Draw, Ui.Text, Ui.Input, Ui.Window, Unsafe.PointerCast]
         check("negative child index fails closed", uikit_flat_accessibility_child_at(0, parent, -1) == 0)
         check("an out-of-range child fails closed", uikit_flat_accessibility_child_at(0, parent, 2) == 0)
         check("a foreign child is not indexed", uikit_flat_accessibility_child_index_of(0, parent, 1) == UiUIKit::not_found().i64())
+        check("activating a passive group has no widget target", uikit_flat_accessibility_activate(0, parent) == 0 and test_activation_count == 0)
+        check("activating a retained button reaches its explicit widget target", uikit_flat_accessibility_activate(0, first) == 1 and test_activation_count == 1 and test_last_activated_widget == first_widget)
     committed: usize = elisa_uikit_stub_committed_children()
     emit_cycle()
     check("a cyclic frame is rejected transactionally", elisa_uikit_stub_committed_children() == committed)

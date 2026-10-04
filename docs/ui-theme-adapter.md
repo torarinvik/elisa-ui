@@ -49,10 +49,12 @@ framework theme changes. The underlying `set_theme` operation compares every
 token after normalization, so repeated host appearance refreshes do not create
 spurious layout, paint, or semantic invalidations.
 
-Text scaling remains explicit through `UiTheme::scaled_text_size` and the
-shared geometry resolver; this keeps
-intentional per-control typography intact instead of silently rewriting every
-retained widget. Reduced-motion timing is likewise queried with
+The flat painter keeps each widget's declared font size as its base and applies
+the current normalized text scale whenever it measures or draws that run.
+Existing labels and text fields reflow on preference changes; the base style
+record stays intact, so an application's relative typography is preserved.
+Custom drawing outside `UiFlat` can apply the same policy explicitly through
+`UiTheme::scaled_text_size`. Reduced-motion timing is likewise queried with
 `UiTheme::animation_interval` so an application can preserve a custom cadence
 while disabling recurring animation when requested.
 

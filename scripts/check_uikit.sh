@@ -94,11 +94,12 @@ grep -Eq 'getenv\("ELISA_UI_(SMOKE_FRAMES|SNAPSHOT)"' "${SHIM_SOURCES[@]}" &&
   fail "environment policy leaked back into Objective-C"
 grep -Eq '@autoreleasepool' "${SHIM_SOURCES[@]}" &&
   fail "autorelease scope leaked back into Objective-C"
-# The semantic child list is built by Elisa as an immutable CFArray. The
-# gesture recognizer's allowedTouchTypes is an SDK configuration fact, not a
-# framework decision, so the guard names the collection types that would mean
-# the shim had started keeping a widget list of its own.
-grep -Eq '\bNSMutableArray\b|arrayWithCapacity:|accessibilityElements[[:space:]]*=[[:space:]]*@\[' "${SHIM_SOURCES[@]}" &&
+# Elisa owns the semantic child list. The native view may combine that immutable
+# list with its UIKit-owned text-selection handles, and the text-menu adapter
+# may build menu items from Elisa's bounded action list; neither is a second
+# widget model. Still reject pre-sized semantic storage or an inline child
+# list, which would move hierarchy policy back into Objective-C.
+grep -Eq 'arrayWithCapacity:|accessibilityElements[[:space:]]*=[[:space:]]*@\[' "${SHIM_SOURCES[@]}" &&
   fail "accessibility child-list construction leaked back into Objective-C"
 grep -Eq '\bUIFont\b|\bNSAttributedString\b|CTFontCreate|CTLineDraw' "${SHIM_SOURCES[@]}" &&
   fail "font construction or text rendering leaked back into Objective-C"

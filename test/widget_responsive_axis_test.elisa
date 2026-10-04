@@ -1,0 +1,88 @@
+# A responsive axis change must reflow a retained subtree without replacing
+# identities or disturbing keyboard focus.
+
+include "../src/widgets/ui_handles.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    return text.len.f32() * size * 0.5
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    return size
+
+def ui_font_ascent(size: f32) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    return 0
+
+def app_init() -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    pass
+
+def app_text_input(text: sview) -> void:
+    pass
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    pass
+
+def app_frame() -> void:
+    pass
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def main() -> i64:
+    UiHandles::reset()
+    root: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 0.0, 0.0, UiCore::rgb(20, 20, 24))
+    actions: UiHandles::Handle = UiHandles::row(root, 0.0, 8.0, UiCore::rgb(0, 0, 0))
+    primary: UiHandles::Handle = UiHandles::button(actions, 80.0, 32.0, UiCore::rgb(40, 80, 140), UiCore::rgb(60, 100, 160), UiCore::rgb(20, 50, 100))
+    secondary: UiHandles::Handle = UiHandles::button(actions, 80.0, 32.0, UiCore::rgb(40, 80, 140), UiCore::rgb(60, 100, 160), UiCore::rgb(20, 50, 100))
+    UiHandles::layout(240.0, 120.0)
+    first_row: mutable UiFlat::Widget = UiFlat::widget(UiHandles::index(primary))
+    second_row: mutable UiFlat::Widget = UiFlat::widget(UiHandles::index(secondary))
+    check("wide action layout is a row", UiFlat::widget(UiHandles::index(actions)).axis == UiConst::Axis.Row)
+    check("row actions share a baseline", first_row.y == second_row.y and second_row.x > first_row.x)
+    check("primary action accepts keyboard focus", UiFlat::request_focus(UiHandles::index(primary)))
+
+    UiHandles::set_panel_axis(actions, UiConst::Axis.Column)
+    UiHandles::layout(240.0, 120.0)
+    first_row <- UiFlat::widget(UiHandles::index(primary))
+    second_row <- UiFlat::widget(UiHandles::index(secondary))
+    check("narrow action layout becomes a column", UiFlat::widget(UiHandles::index(actions)).axis == UiConst::Axis.Column)
+    check("stacked actions do not overlap", second_row.y >= first_row.y + first_row.height and second_row.x == first_row.x)
+    check("axis change preserves retained widget identities", UiHandles::is_valid(primary) and UiHandles::is_valid(secondary))
+    check("axis change preserves keyboard focus", UiFlat::focused() == UiHandles::index(primary))
+
+    malformed: UiConst::Axis = (-1).i32().Axis()
+    UiHandles::set_panel_axis(actions, malformed)
+    UiHandles::layout(240.0, 120.0)
+    check("unknown adaptive axis normalizes to column", UiFlat::widget(UiHandles::index(actions)).axis == UiConst::Axis.Column)
+
+    stale: UiHandles::Handle = actions
+    UiHandles::reset()
+    fresh: UiHandles::Handle = UiHandles::column(UiHandles::root_parent(), 0.0, 0.0, UiCore::rgb(20, 20, 24))
+    UiHandles::set_panel_axis(stale, UiConst::Axis.Row)
+    check("stale axis mutation cannot reach a reused slot", UiFlat::widget(UiHandles::index(fresh)).axis == UiConst::Axis.Column)
+
+    if failures == 0:
+        _ = puts("widget responsive axis: all checks passed")
+    return failures.i64()

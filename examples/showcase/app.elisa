@@ -254,6 +254,10 @@ module ShowcaseApp:
         def current_page() -> i32:
             return page_index
 
+        def adapt_forms_to_main_width() -> void can Unsafe.PointerCast:
+            if UiHandles::widget(main) is main_widget:
+                ShowcaseForms::adapt_to_width(main_widget.width)
+
         def init() -> void can Unsafe.PointerCast:
             ShowcaseForms::dispose()
             UiHandles::reset()
@@ -373,11 +377,13 @@ module ShowcaseApp:
             # which is what the storefront's phone form does for the same
             # reason. Native controls are larger than painted ones, so this
             # page overflows there first -- but it overflowed on both.
-            page_host: mutable UiHandles::Handle = main
-            if compact_form:
-                viewport: UiHandles::Handle = UiHandles::scroll(main, UiConst::Axis.Column, 0.0, 0.0, ShowcaseTheme::transparent())
-                UiHandles::set_grow(viewport, 1.0)
-                page_host <- viewport
+            # Keep every page reachable when large text, a short window, or a
+            # keyboard inset reduces the available height. A viewport without
+            # overflow is inert; when content does overflow, primary actions
+            # remain reachable without rebuilding the retained page.
+            viewport: UiHandles::Handle = UiHandles::scroll(main, UiConst::Axis.Column, 0.0, 0.0, ShowcaseTheme::transparent())
+            UiHandles::set_grow(viewport, 1.0)
+            page_host: UiHandles::Handle = viewport
             host <- UiHandles::column(page_host, 18.0, 12.0, ShowcaseTheme::transparent())
             UiHandles::set_grow(host, 1.0)
             ShowcaseDialog::init(host)
@@ -399,6 +405,7 @@ module ShowcaseApp:
             show_page(0)
             refresh_counters()
             UiHandles::layout(UiCore::viewport_width(), UiCore::viewport_height())
+            adapt_forms_to_main_width()
 
         def widget_event(widget: usize, event: i32) -> void can Unsafe.PointerCast:
             event_count <- event_count + 1
@@ -460,6 +467,13 @@ module ShowcaseApp:
 
         def event(incoming: UiCore::Event) -> void can Unsafe.PointerCast:
             match incoming:
+                UiCore::Event.Resize(size):
+                    # Let the shared router update UiCore's viewport and do
+                    # its ordinary resize reflow before reading main's width.
+                    UiHandles::handle(incoming)
+                    adapt_forms_to_main_width()
+                    UiHandles::layout(size.width, size.height)
+                    return
                 UiCore::KeyEvent.Down(code):
                     event_count <- event_count + 1
                     if ShowcaseDialog::is_open():
@@ -508,6 +522,7 @@ module ShowcaseApp:
         def frame() -> void can Unsafe.PointerCast:
             UiCore::clear(ShowcaseTheme::canvas())
             ShowcaseLists::frame()
+            adapt_forms_to_main_width()
             UiHandles::paint()
             ShowcaseOverview::frame()
             ShowcaseControls::frame()

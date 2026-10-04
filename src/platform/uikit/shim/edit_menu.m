@@ -67,7 +67,7 @@
         if (titleHandle == 0) continue;
         NSString *title = CFBridgingRelease((CFTypeRef)(void *)titleHandle);
         const BOOL keepsOpen = elisa_uikit_text_menu_keeps_open(index) != 0;
-        UIAction *action = [UIAction actionWithTitle:NSLocalizedString(title, @"Text edit menu") image:nil identifier:nil
+        UIAction *action = [UIAction actionWithTitle:NSLocalizedString(title, nil) image:nil identifier:nil
             handler:^(__kindof UIAction *chosen) {
                 (void)chosen;
                 ElisaUiKitView *view = weakView;

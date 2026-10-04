@@ -6,6 +6,8 @@
 # one place a hostile or merely careless value has to be made safe, and the one
 # place an idempotent palette refresh has to be recognised as idempotent.
 
+include "./ui_theme.elisa"
+
 extend UiFlat:
     public:
         def theme() -> Theme:
@@ -37,6 +39,14 @@ extend UiFlat:
             mark_layout_dirty()
 
     private:
+        # Keep each widget's declared size as the application-owned base, but
+        # resolve the active accessibility multiplier whenever layout or paint
+        # consumes it. Existing widgets then respond to runtime preference
+        # changes without rewriting their individual style records.
+        def effective_text_size(index: usize) -> f32:
+            return 0.0 if index >= widget_count
+            return UiTheme::scaled_text_size(UiTheme::current_preferences(), widgets[index].text_size)
+
         def colors_equal(left: UiCore::Color, right: UiCore::Color) -> bool:
             return left.r == right.r and left.g == right.g and left.b == right.b and left.a == right.a
 

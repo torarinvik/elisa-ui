@@ -209,6 +209,7 @@ module UiUIKitControls:
                     # its own iOS look, its own contrast and its own answer for
                     # VoiceOver, and gets none of them by being drawn greyer.
                     elisa_uikit_controls_set_enabled(handle, 1 if state.enabled else 0)
+                    apply_accessibility_sensitivity(handle, state.accessibility_sensitive)
                     if kind == UiControls::ControlKind.TextField:
                         # secureTextEntry is a property here, so a "show
                         # password" toggle needs no new control.
@@ -230,15 +231,7 @@ module UiUIKitControls:
                 can Ui.Controls:
                     handle: usize = native_handle(index)
                     return if handle == 0
-                    if kind == UiControls::ControlKind.TextField:
-                        prompt: usize = native_string(placeholder)
-                        if prompt != 0:
-                            elisa_uikit_controls_set_placeholder(handle, prompt)
-                            CFRelease(prompt)
-                    hint: usize = native_string(help)
-                    return if hint == 0
-                    elisa_uikit_controls_set_accessibility_hint(handle, hint)
-                    CFRelease(hint)
+                    apply_control_help(handle, index, kind, placeholder, help)
 
         # UIKit reports which control acted and what it now holds. Turning
         # that into a control index, recording the value and choosing the event
@@ -393,3 +386,4 @@ def uikit_controls_text_action(handle: usize, text: cstr, length: i32) -> i32 ca
 export fn elisa_uikit_controls_text_action(handle: usize, text: cstr, length: i32) -> i32 = uikit_controls_text_action
 
 include "./ui_uikit_controls_metrics.elisa"
+include "./ui_uikit_controls_privacy.elisa"

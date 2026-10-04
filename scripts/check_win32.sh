@@ -78,6 +78,7 @@ fi
 
 mkdir -p "$OUT"
 "$CC" -c -Wall -Wextra -Werror -municode -o "$OUT/win32_shim.o" "$ROOT/src/platform/win32/win32_shim.c"
+"$CC" -c -Wall -Wextra -Werror -o "$OUT/win32_controls_privacy.o" "$ROOT/src/platform/win32/win32_controls_privacy.c"
 
 # The Elisa half for the Windows triple.
 # ELISA_HOST_WINDOWS is what makes -target-triple mean anything to the std's
@@ -113,6 +114,16 @@ grep -q 'forget_help_slot(window);' "$ROOT/src/platform/win32/win32_shim.c" || {
   echo "win32: tooltip state is not retired with its HWND" >&2; exit 1; }
 grep -q 'EM_SETCUEBANNER' "$ROOT/src/platform/win32/win32_shim.c" || {
   echo "win32: edit placeholders are not forwarded to the native control" >&2; exit 1; }
+grep -q 'IsPassword_Property_GUID' "$ROOT/src/platform/win32/win32_controls_privacy.c" || {
+  echo "win32: sensitive edit annotations do not advertise password privacy" >&2; exit 1; }
+grep -q 'RangeValue_Value_Property_GUID' "$ROOT/src/platform/win32/win32_controls_privacy.c" || {
+  echo "win32: sensitive range values are not redacted" >&2; exit 1; }
+grep -q 'message == WM_COPY || message == WM_CUT' "$ROOT/src/platform/win32/win32_controls_privacy.c" || {
+  echo "win32: sensitive edits do not block copy and cut messages" >&2; exit 1; }
+grep -q 'state.accessibility_sensitive' "$ROOT/src/platform/win32/ui_win32.elisa" || {
+  echo "win32: the retained sensitivity marker does not reach native controls" >&2; exit 1; }
+grep -q 'if (was_sensitive != sensitive) refresh_help(control);' "$ROOT/src/platform/win32/win32_shim.c" || {
+  echo "win32: help and placeholders are not restored on a privacy transition" >&2; exit 1; }
 
 # AND AN IMAGE. Objects that each resolve say nothing about whether the whole
 # thing links; this gate stopped at objects for months while the runtime's
@@ -151,7 +162,8 @@ bash "$STAGE1/scripts/write_profiler_hook_fallbacks.sh" > "$OUT/profiler_fallbac
   "$OUT/win32_check.o" "$OUT/win32_shim.o" "$OUT/elisacore_runtime_win.o" \
   "$OUT/win32_debug_referee.o" \
   "$OUT/win32_threads.o" "$OUT/profiler_fallbacks.o" "$OUT/pymodule_fallback.o" \
-  -lgdi32 -luser32 -lkernel32 -lcomctl32
+  "$OUT/win32_controls_privacy.o" \
+  -lgdi32 -luser32 -lkernel32 -lcomctl32 -loleacc -luiautomationcore -lole32
 
 file "$OUT/elisa_win32.exe" | grep -q "PE32+ executable" || {
   echo "win32: linked something, but it is not a PE32+ image" >&2; exit 1; }

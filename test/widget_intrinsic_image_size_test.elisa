@@ -1,0 +1,36 @@
+# Logical image metadata supplies a generation-safe preferred widget size.
+
+include "./widget_layout_support.elisa"
+include "../src/widgets/ui_resources.elisa"
+
+def main() -> i64:
+    UiResources::reset()
+    UiFlat::reset()
+    check("resource and core image metadata capacities agree", UiResources::MAX_RESOURCES == UiCore::MAX_INTRINSIC_IMAGE_SLOTS)
+    root: usize = UiFlat::panel(UiFlat::NONE, UiConst::Axis.Row, 0.0, 0.0, UiCore::rgb(20, 20, 24))
+    image_widget: usize = UiFlat::panel(root, UiConst::Axis.Column, 0.0, 0.0, UiCore::rgb(20, 20, 24))
+    UiFlat::set_cross_alignment(image_widget, UiConst::CrossAlignment.Center)
+    resource: UiResources::ResourceHandle = UiResources::request("images/intrinsic-layout", 71)
+    image: UiCore::ImageRef = UiCore::image_ref(resource.slot, resource.generation)
+    check("resource publishes generation-matched intrinsic dimensions", UiResources::set_intrinsic_size(resource, 120.0, 80.0) and UiCore::image_intrinsic_size(image).width == 120.0 and UiCore::image_intrinsic_size(image).height == 80.0)
+    UiFlat::set_image(image_widget, image)
+    UiFlat::layout(400.0, 200.0)
+    check("image intrinsic dimensions seed automatic preferred size", UiFlat::widget(image_widget).preferred_width == 120.0 and UiFlat::widget(image_widget).preferred_height == 80.0)
+    check("intrinsic image receives natural main and centered cross extents", UiFlat::widget(image_widget).width == 120.0 and UiFlat::widget(image_widget).height == 80.0 and UiFlat::widget(image_widget).y == 60.0)
+
+    check("updated metadata invalidates layout and semantic geometry", UiResources::set_intrinsic_size(resource, 160.0, 90.0) and UiCore::is_invalidated(UiCore::Invalidation.Layout) and UiCore::is_invalidated(UiCore::Invalidation.Semantics))
+    UiFlat::ensure_layout()
+    check("metadata refresh remeasures an unchanged image reference", UiFlat::widget(image_widget).preferred_width == 160.0 and UiFlat::widget(image_widget).preferred_height == 90.0 and UiFlat::widget(image_widget).width == 160.0 and UiFlat::widget(image_widget).height == 90.0)
+
+    UiFlat::set_preferred_size(image_widget, 70.0, 50.0)
+    UiFlat::layout(400.0, 200.0)
+    check("explicit preferred size overrides intrinsic image dimensions", UiFlat::widget(image_widget).preferred_width == 70.0 and UiFlat::widget(image_widget).preferred_height == 50.0)
+    UiFlat::set_preferred_size(image_widget, 0.0, 0.0)
+    UiFlat::set_max_size(image_widget, 100.0, 60.0)
+    UiFlat::layout(400.0, 200.0)
+    check("maximum constraints cap intrinsic image preference", UiFlat::widget(image_widget).preferred_width == 100.0 and UiFlat::widget(image_widget).preferred_height == 60.0 and UiFlat::widget(image_widget).width_constraints_conflict and UiFlat::widget(image_widget).height_constraints_conflict)
+
+    UiResources::reset()
+    UiFlat::ensure_layout()
+    check("resource reset clears generation-bound intrinsic geometry", UiCore::image_intrinsic_size(image).width == 0.0 and UiFlat::widget(image_widget).preferred_width == 0.0 and UiFlat::widget(image_widget).preferred_height == 0.0)
+    return 0 if test_failures == 0 else 1

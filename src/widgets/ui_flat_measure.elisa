@@ -1,0 +1,126 @@
+# Bottom-up retained measurement for UiFlat.
+# Containers derive their minimums from child minimums and their preferred
+# sizes from child preferences; text and virtual rows are remeasured per pass.
+
+extend UiFlat:
+    private:
+        def effectively_visible(index: usize) -> bool:
+            return false if index >= widget_count
+            cursor: mutable usize = index
+            steps: mutable usize = 0
+            for _ in 0..<MAX_TRAVERSAL_DEPTH:
+                break if cursor >= widget_count
+                return false if not widgets[cursor].visible
+                steps <- steps + 1
+                return false if steps >= MAX_TRAVERSAL_DEPTH and widgets[cursor].parent < widget_count
+                cursor <- widgets[cursor].parent
+            return true
+
+        # A label's minimum IS its text, so it has to be measured against the
+        # metrics in force now rather than the ones that happened to exist when
+        # the widget was built. Host typeface, device-scale and Dynamic Type
+        # changes can all move these numbers.
+        def remeasure_text_minimum(index: usize) -> void:
+            return if widgets[index].kind != UiConst::WidgetKind.Label
+            safe_size: f32 = effective_text_size(index)
+            widgets[index].declared_min_width <- UiTextMetrics::width(widgets[index].text, safe_size, widgets[index].text_weighted) + UiCore::tracking_width(widgets[index].text, widgets[index].text_tracking)
+            widgets[index].declared_min_height <- UiTextMetrics::line_height(safe_size)
+
+        def measure(index: usize, depth: usize) -> void:
+            return if index >= widget_count or depth >= MAX_TRAVERSAL_DEPTH
+            remeasure_text_minimum(index)
+            widgets[index].min_width <- widgets[index].declared_min_width
+            widgets[index].min_height <- widgets[index].declared_min_height
+            if widgets[index].kind == UiConst::WidgetKind.TextField and UiTheme::current_preferences().text_scale > 1.0:
+                scaled_line: f32 = UiTextMetrics::line_height(effective_text_size(index))
+                required_height: f32 = UiCore::bounded_extent(scaled_line + current_theme.text_vertical_padding * 2.0)
+                widgets[index].min_height <- required_height if required_height > widgets[index].min_height
+            image_intrinsic: UiCore::Size = UiCore::image_intrinsic_size(widgets[index].image)
+            preferred_width_input: mutable f32 = widgets[index].declared_preferred_width
+            preferred_height_input: mutable f32 = widgets[index].declared_preferred_height
+            preferred_width_input <- image_intrinsic.width if image_intrinsic.width > widgets[index].min_width and preferred_width_input <= 0.0
+            preferred_height_input <- image_intrinsic.height if image_intrinsic.height > widgets[index].min_height and preferred_height_input <= 0.0
+            preferred_width_input <- widgets[index].min_width if preferred_width_input <= 0.0
+            preferred_height_input <- widgets[index].min_height if preferred_height_input <= 0.0
+            width_constraints: mutable UiConstraints::Range = UiConstraints::normalize(widgets[index].min_width, preferred_width_input, widgets[index].max_width)
+            height_constraints: mutable UiConstraints::Range = UiConstraints::normalize(widgets[index].min_height, preferred_height_input, widgets[index].max_height)
+            widgets[index].preferred_width <- width_constraints.preferred
+            widgets[index].preferred_height <- height_constraints.preferred
+            widgets[index].width_constraints_conflict <- width_constraints.conflict
+            widgets[index].height_constraints_conflict <- height_constraints.conflict
+            widgets[index].scroll_content_width <- widgets[index].declared_min_width
+            widgets[index].scroll_content_height <- widgets[index].declared_min_height
+            return if not effectively_visible(index)
+            cursor: mutable usize = widgets[index].first_child
+            return if cursor == NONE
+            if widgets[index].virtual_list:
+                ordinal: mutable i32 = 0
+                total: i32 = UiVirtualList::bounded_count(widgets[index].virtual_total)
+                for _ in 0..<MAX_TRAVERSAL_SIBLINGS:
+                    break if cursor == NONE or cursor >= widget_count
+                    if widgets[cursor].visible:
+                        # Seed newly retained variable rows from the anchor;
+                        # later passes preserve their assigned identities.
+                        if variable_virtual_is_enabled(index) and widgets[cursor].virtual_row_index < 0:
+                            logical: mutable i32 = widgets[index].virtual_anchor_index + ordinal
+                            logical <- total - 1 if logical >= total and total > 0
+                            set_virtual_row_identity(cursor, logical) if logical >= 0 and logical < total
+                        measure(cursor, depth + 1)
+                        measure_variable_virtual_row(index, cursor) if variable_virtual_is_enabled(index)
+                        ordinal <- ordinal + 1
+                    cursor <- widgets[cursor].next_sibling
+                virtual_extent: f32 = virtual_variable_content_extent(index) if variable_virtual_is_enabled(index) else UiVirtualList::content_extent(widgets[index].virtual_total, widgets[index].virtual_item_extent, widgets[index].virtual_spacing)
+                if widgets[index].axis == UiConst::Axis.Row:
+                    widgets[index].scroll_content_width <- virtual_extent
+                    widgets[index].scroll_content_height <- widgets[index].declared_min_height
+                else:
+                    widgets[index].scroll_content_width <- widgets[index].declared_min_width
+                    widgets[index].scroll_content_height <- virtual_extent
+                return
+            is_row: bool = widgets[index].axis == UiConst::Axis.Row
+            along: mutable f32 = 0.0
+            across: mutable f32 = 0.0
+            preferred_along: mutable f32 = 0.0
+            preferred_across: mutable f32 = 0.0
+            children: mutable f32 = 0.0
+            steps: mutable usize = 0
+            while cursor != NONE |cursor, along, across, children, is_row, steps|:
+                return if steps >= MAX_TRAVERSAL_SIBLINGS or cursor >= widget_count
+                steps <- steps + 1
+                if widgets[cursor].visible:
+                    measure(cursor, depth + 1)
+                    child_margin: f32 = widgets[cursor].margin * 2.0
+                    child_along: f32 = (widgets[cursor].min_width if is_row else widgets[cursor].min_height) + child_margin
+                    child_across: f32 = (widgets[cursor].min_height if is_row else widgets[cursor].min_width) + child_margin
+                    child_preferred_along: f32 = (widgets[cursor].preferred_width if is_row else widgets[cursor].preferred_height) + child_margin
+                    child_preferred_across: f32 = (widgets[cursor].preferred_height if is_row else widgets[cursor].preferred_width) + child_margin
+                    along <- along + child_along
+                    across <- child_across if child_across > across else across
+                    preferred_along <- preferred_along + child_preferred_along
+                    preferred_across <- child_preferred_across if child_preferred_across > preferred_across else preferred_across
+                    children <- children + 1.0
+                cursor <- widgets[cursor].next_sibling
+            gaps: f32 = widgets[index].spacing * (children - 1.0) if children > 1.0 else 0.0
+            pad: f32 = widgets[index].padding * 2.0
+            content_width: f32 = along + gaps + pad if is_row else across + pad
+            content_height: f32 = across + pad if is_row else along + gaps + pad
+            preferred_content_width: f32 = preferred_along + gaps + pad if is_row else preferred_across + pad
+            preferred_content_height: f32 = preferred_across + pad if is_row else preferred_along + gaps + pad
+            if widgets[index].kind == UiConst::WidgetKind.Scroll:
+                widgets[index].scroll_content_width <- preferred_content_width if preferred_content_width > widgets[index].scroll_content_width else widgets[index].scroll_content_width
+                widgets[index].scroll_content_height <- preferred_content_height if preferred_content_height > widgets[index].scroll_content_height else widgets[index].scroll_content_height
+            else:
+                widgets[index].min_width <- content_width if content_width > widgets[index].min_width
+                widgets[index].min_height <- content_height if content_height > widgets[index].min_height
+                preferred_width_input <- preferred_content_width if widgets[index].declared_preferred_width <= 0.0 else widgets[index].declared_preferred_width
+                preferred_height_input <- preferred_content_height if widgets[index].declared_preferred_height <= 0.0 else widgets[index].declared_preferred_height
+                preferred_width_input <- image_intrinsic.width if image_intrinsic.width > preferred_width_input and widgets[index].declared_preferred_width <= 0.0
+                preferred_height_input <- image_intrinsic.height if image_intrinsic.height > preferred_height_input and widgets[index].declared_preferred_height <= 0.0
+                preferred_width_input <- widgets[index].min_width if preferred_width_input < widgets[index].min_width and widgets[index].declared_preferred_width <= 0.0
+                preferred_height_input <- widgets[index].min_height if preferred_height_input < widgets[index].min_height and widgets[index].declared_preferred_height <= 0.0
+                width_constraints <- UiConstraints::normalize(widgets[index].min_width, preferred_width_input, widgets[index].max_width)
+                height_constraints <- UiConstraints::normalize(widgets[index].min_height, preferred_height_input, widgets[index].max_height)
+                widgets[index].preferred_width <- width_constraints.preferred
+                widgets[index].preferred_height <- height_constraints.preferred
+                widgets[index].width_constraints_conflict <- width_constraints.conflict
+                widgets[index].height_constraints_conflict <- height_constraints.conflict

@@ -21,6 +21,8 @@ import android.graphics.Typeface;
 import android.text.TextPaint;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.Gravity;
 import android.view.View;
 import android.view.inputmethod.InputMethodManager;
@@ -51,6 +53,9 @@ public final class ElisaControls {
     private static final int MAX_CONTROLS = 512;
     private static final View[] views = new View[MAX_CONTROLS];
     private static final int[] kinds = new int[MAX_CONTROLS];
+    private static final boolean[] accessibilitySensitive = new boolean[MAX_CONTROLS];
+    private static final View.AccessibilityDelegate[] sensitiveDelegates = new View.AccessibilityDelegate[MAX_CONTROLS];
+    private static final String SENSITIVE_CONTENT = "Sensitive content";
     // A LIVE COUNT, NOT A BUMP POINTER. Reconciliation carries a control over
     // from one realization to the next, and a handle IS that control's
     // identity -- so a slot is taken and given back individually, and the next
@@ -59,6 +64,42 @@ public final class ElisaControls {
     // realization's handles were handed straight back out to the second one's
     // controls, which is the same view table describing two different trees.
     private static int count = 0;
+
+    // Keep the native widget and its visual text intact, but publish a generic
+    // accessibility node and suppress text-bearing accessibility events.
+    private static final class SensitiveAccessibilityDelegate extends View.AccessibilityDelegate {
+        @Override public void onInitializeAccessibilityNodeInfo(View host, AccessibilityNodeInfo info) {
+            super.onInitializeAccessibilityNodeInfo(host, info);
+            info.setText(null);
+            info.setContentDescription(SENSITIVE_CONTENT);
+            info.setHintText(null);
+            info.setTextSelection(-1, -1);
+            info.setSelected(false);
+            info.setChecked(false);
+            info.setRangeInfo(null);
+            info.removeAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_COPY);
+            info.removeAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_CUT);
+        }
+
+        @Override public boolean dispatchPopulateAccessibilityEvent(View host, AccessibilityEvent event) {
+            if (event != null) {
+                event.getText().clear();
+                event.setBeforeText(null);
+            }
+            return true;
+        }
+
+        @Override public void sendAccessibilityEventUnchecked(View host, AccessibilityEvent event) {
+            if (event != null) {
+                event.getText().clear();
+                event.setBeforeText(null);
+                event.setFromIndex(-1);
+                event.setAddedCount(0);
+                event.setRemovedCount(0);
+            }
+            super.sendAccessibilityEventUnchecked(host, event);
+        }
+    }
 
     static Activity activity;
     static ViewGroup root;
@@ -173,6 +214,8 @@ public final class ElisaControls {
         ViewGroup parent = view.getParent() instanceof ViewGroup ? (ViewGroup) view.getParent() : null;
         if (parent != null) parent.removeView(view);
         views[handle - 1] = null;
+        accessibilitySensitive[handle - 1] = false;
+        sensitiveDelegates[handle - 1] = null;
         count -= 1;
     }
 
@@ -362,12 +405,23 @@ public final class ElisaControls {
         }
     }
 
-    public static void setState(int handle, float value, boolean selected, boolean enabled, boolean secure) {
+    public static void setState(int handle, float value, boolean selected, boolean enabled, boolean secure,
+                                boolean sensitive) {
         View view = viewOf(handle);
         if (view == null) return;
+        int slot = handle - 1;
         // A disabled control is not a greyer one: Android changes its own
         // contrast, stops its touches and tells TalkBack it is unavailable.
         view.setEnabled(enabled);
+        if (accessibilitySensitive[slot] != sensitive) {
+            accessibilitySensitive[slot] = sensitive;
+            if (sensitive) {
+                if (sensitiveDelegates[slot] == null) sensitiveDelegates[slot] = new SensitiveAccessibilityDelegate();
+                view.setAccessibilityDelegate(sensitiveDelegates[slot]);
+            } else {
+                view.setAccessibilityDelegate(null);
+            }
+        }
         if (view instanceof EditText) {
             EditText field = (EditText) view;
             // SECURE IS AN INPUT TYPE HERE, and setting it also picks the
@@ -399,6 +453,11 @@ public final class ElisaControls {
     public static void setHelp(int handle, String placeholder, String help) {
         View view = viewOf(handle);
         if (view == null) return;
+        if (accessibilitySensitive[handle - 1]) {
+            if (view instanceof EditText) ((EditText) view).setHint("");
+            view.setContentDescription(SENSITIVE_CONTENT);
+            return;
+        }
         if (view instanceof EditText) ((EditText) view).setHint(placeholder == null ? "" : placeholder);
         // An empty description is not a description: leaving it null lets the
         // view's own text speak, which is what a Button or a TextView wants.
@@ -458,7 +517,13 @@ public final class ElisaControls {
         if (root != null) root.removeAllViews();
         // Every slot, not the first `count` of them: with individual release
         // the live views are no longer a prefix of the table.
-        for (int index = 0; index < MAX_CONTROLS; index += 1) views[index] = null;
+        for (int index = 0; index < MAX_CONTROLS; index += 1) {
+            View view = views[index];
+            if (view != null && accessibilitySensitive[index]) view.setAccessibilityDelegate(null);
+            views[index] = null;
+            accessibilitySensitive[index] = false;
+            sensitiveDelegates[index] = null;
+        }
         count = 0;
     }
 

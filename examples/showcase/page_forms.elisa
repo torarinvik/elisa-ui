@@ -1,6 +1,7 @@
 # Forms page: text entry, secure entry, validation, choices and submission.
 
 include "../../src/widgets/ui_validation.elisa"
+include "../../src/widgets/ui_validation_presentation.elisa"
 include "../../src/widgets/ui_owner_lifecycle.elisa"
 include "theme.elisa"
 include "format.elisa"
@@ -33,6 +34,9 @@ module ShowcaseForms:
         global mutable summary: UiHandles::Handle = UI_HANDLES_INVALID_HANDLE
         global mutable email_record: UiValidation::Handle = UI_VALIDATION_INVALID_HANDLE
         global mutable submitted: bool = false
+        global mutable adapted_width: f32 = -1.0
+        global mutable adapted_text_scale: f32 = 0.0
+        global mutable adapted_locale_revision: u32 = 0
 
         def at_least_graphemes(value: sview, needed: usize) -> bool:
             enough_graphemes: bool =
@@ -65,6 +69,18 @@ module ShowcaseForms:
             return "Pro" if index == 1
             return "Team"
 
+        def german_action_copy() -> bool:
+            return UiLocalization::current_locale() == "de-de"
+
+        def submit_caption() -> sview:
+            return "Erneut absenden" if submitted and german_action_copy()
+            return "Registrierung abschicken" if german_action_copy()
+            return "Submit again" if submitted else "Submit"
+
+        def apply_action_copy() -> void:
+            ShowcaseTheme::style_accent_button(submit_button, submit_caption(), 13.0)
+            ShowcaseTheme::style_button(reset_button, "Zurücksetzen" if german_action_copy() else "Reset", 13.0)
+
         def choose_plan(index: i32) -> void:
             UiHandles::set_selected(plan_free, index == 0)
             UiHandles::set_selected(plan_pro, index == 1)
@@ -81,13 +97,20 @@ module ShowcaseForms:
                 _ = UiValidation::accept(email_record, token)
             else:
                 _ = UiValidation::reject(email_record, token, "Enter an address like ada@example.org.")
-            current: UiValidation::Status = UiValidation::status(email_record)
-            if current == UiValidation::Status.Valid:
-                UiHandles::set_text(email_status, "Email looks good.", 12.0, ShowcaseTheme::success())
-            elif current == UiValidation::Status.Invalid:
-                UiHandles::set_text(email_status, UiValidation::message(email_record), 12.0, ShowcaseTheme::danger_hover())
-            else:
-                UiHandles::set_text(email_status, "Checking email…", 12.0, ShowcaseTheme::muted())
+            presentation_options: mutable UiValidationPresentation::Options = UiValidationPresentation::default_options()
+            presentation_options.checking_title <- "Checking email…"
+            presentation_options.valid_title <- "Email looks good."
+            presentation_options.invalid_title <- "Email needs attention"
+            presentation_options.unavailable_title <- "Email validation unavailable."
+            presentation_options.invalid_help <- "Correct the address and try again."
+            presentation_options.unavailable_help <- "Check again when email validation is available."
+            presentation_options.neutral_color <- ShowcaseTheme::muted()
+            presentation_options.pending_color <- ShowcaseTheme::muted()
+            presentation_options.positive_color <- ShowcaseTheme::success()
+            presentation_options.warning_color <- ShowcaseTheme::warning()
+            presentation_options.error_color <- ShowcaseTheme::danger_hover()
+            presentation: UiValidationPresentation::Record = UiValidationPresentation::record(email_record, presentation_options)
+            _ = UiValidationPresentation::apply_label(email_status, presentation, presentation_options)
 
         def update_summary() -> void can Unsafe.PointerCast:
             prefs: i32 = (1 if UiHandles::selected(pref_updates) else 0) + (1 if UiHandles::selected(pref_autosave) else 0) + (1 if UiHandles::selected(pref_telemetry) else 0)
@@ -101,7 +124,10 @@ module ShowcaseForms:
             UiHandles::set_text(summary, ShowcaseText::view(), 13.0, ShowcaseTheme::success() if submitted else ShowcaseTheme::muted())
             ready: bool = at_least_graphemes(UiHandles::text_value(name_field), 2) and UiValidation::status(email_record) == UiValidation::Status.Valid
             UiHandles::set_enabled(submit_button, ready)
-            ShowcaseTheme::style_accent_button(submit_button, "Submit again" if submitted else "Submit", 13.0)
+            apply_action_copy()
+            # The action caption can change with submission state or
+            # localization even when viewport and text scale stay fixed.
+            adapted_width <- -1.0
 
         def submit() -> void can Unsafe.PointerCast:
             return if not UiHandles::is_enabled(submit_button)
@@ -123,7 +149,73 @@ module ShowcaseForms:
             update_summary()
 
     public:
+        # Reflow the retained form as its available width, text preference, or
+        # locale changes. Measure the captions currently held by the retained
+        # buttons, not English source strings, so translated actions keep their
+        # full width and stack before they collide.
+        def adapt_to_width(width: f32) -> void can Unsafe.PointerCast:
+            return if not UiHandles::is_valid(action_row)
+            available: f32 = UiCore::bounded_extent(width)
+            preferences: UiTheme::Preferences = UiTheme::current_preferences()
+            text_scale: f32 = UiTheme::normalize(preferences).text_scale
+            locale_revision: u32 = UiLocalization::revision()
+            return if adapted_width == available and adapted_text_scale == text_scale and adapted_locale_revision == locale_revision
+            locale_changed: bool = adapted_locale_revision != locale_revision
+            adapted_width <- available
+            adapted_text_scale <- text_scale
+            adapted_locale_revision <- locale_revision
+            apply_action_copy() if locale_changed
+
+            action_size: f32 = UiTheme::scaled_text_size(preferences, 13.0)
+            submit_caption: sview = UiFlat::widget(UiHandles::index(submit_button)).text
+            reset_caption: sview = UiFlat::widget(UiHandles::index(reset_button)).text
+            submit_width: mutable f32 = UiTextMetrics::width(submit_caption, action_size, false) + 24.0
+            reset_width: mutable f32 = UiTextMetrics::width(reset_caption, action_size, false) + 24.0
+            submit_width <- 130.0 if submit_width < 130.0
+            reset_width <- 130.0 if reset_width < 130.0
+            action_height: mutable f32 = UiTextMetrics::line_height(action_size) + 12.0
+            action_height <- 36.0 if action_height < 36.0
+            UiHandles::set_min_size(submit_button, submit_width, action_height)
+            UiHandles::set_min_size(reset_button, reset_width, action_height)
+
+            field_width: mutable f32 = available - 36.0
+            field_width <- 0.0 if field_width < 0.0
+            field_height: mutable f32 = UiTextMetrics::line_height(UiTheme::scaled_text_size(preferences, 14.0)) + 12.0
+            field_height <- 38.0 if field_height < 38.0
+            UiHandles::set_min_size(name_field, field_width, field_height)
+            UiHandles::set_min_size(email_field, field_width, field_height)
+            UiHandles::set_min_size(password_field, field_width, field_height)
+
+            action_threshold: f32 = submit_width + reset_width + 46.0
+            action_points: UiResponsive::Breakpoints = UiResponsive::Breakpoints{
+                compact_max: action_threshold, medium_max: action_threshold,
+            }
+            action_axis: UiConst::Axis = UiResponsive::axis(
+                available, action_points, UiConst::Axis.Column,
+                UiConst::Axis.Row, UiConst::Axis.Row,
+            )
+            UiHandles::set_panel_axis(action_row, action_axis)
+
+            plan_threshold: f32 = 382.0
+            plan_points: UiResponsive::Breakpoints = UiResponsive::Breakpoints{
+                compact_max: plan_threshold, medium_max: plan_threshold,
+            }
+            plan_axis: UiConst::Axis = UiResponsive::axis(
+                available, plan_points, UiConst::Axis.Column,
+                UiConst::Axis.Row, UiConst::Axis.Row,
+            )
+            UiHandles::set_panel_axis(plan_row, plan_axis)
+
+            blurb_width: f32 = UiTextMetrics::width(
+                "Custom-drawn fields with native IME, selection, undo, clipboard and validation.",
+                UiTheme::scaled_text_size(preferences, 13.0), false,
+            )
+            UiHandles::set_visible(blurb, available >= blurb_width)
+
         def init(host: UiHandles::Handle) -> void can Unsafe.PointerCast:
+            adapted_width <- -1.0
+            adapted_text_scale <- 0.0
+            adapted_locale_revision <- 0
             page <- UiHandles::column(host, 0.0, 14.0, ShowcaseTheme::transparent())
             UiHandles::set_grow(page, 1.0)
             heading <- UiHandles::label(page, "Forms", 22.0, ShowcaseTheme::ink())
@@ -189,7 +281,7 @@ module ShowcaseForms:
             ShowcaseTheme::style_choice(pref_updates, "Email me about updates", 13.0)
             ShowcaseTheme::style_choice(pref_autosave, "Autosave drafts", 13.0)
             ShowcaseTheme::style_choice(pref_telemetry, "Share anonymous usage data", 13.0)
-            ShowcaseTheme::style_button(reset_button, "Reset", 13.0)
+            apply_action_copy()
             validate_email()
             update_summary()
 

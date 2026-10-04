@@ -22,12 +22,16 @@ static int embedded_nul_text_count;
 static int editing_count;
 static int32_t editing_start;
 static int32_t editing_length;
+static elisa_ui_widget_handle last_widget;
+static int32_t last_widget_event;
+static int widget_event_count;
 
 void elisa_ui_on_init(void) {}
 void elisa_ui_on_frame(void) {}
 void elisa_ui_on_widget_event(elisa_ui_widget_handle widget, int32_t event) {
-    (void)widget;
-    (void)event;
+    last_widget = widget;
+    last_widget_event = event;
+    widget_event_count++;
 }
 
 void elisa_ui_on_event(const elisa_ui_event *event) {
@@ -59,6 +63,86 @@ int main(void) {
 
     if (elisa_ui_abi_version() != ELISA_UI_ABI_VERSION) {
         puts("C ABI version did not match the header");
+        failures++;
+    }
+
+    elisa_ui_widget_tree_reset();
+    elisa_ui_widget_handle root = elisa_ui_widget_column(
+        ELISA_UI_WIDGET_ROOT_PARENT, 8.0f, 4.0f, UINT32_C(0x202028ff));
+    elisa_ui_widget_handle row = elisa_ui_widget_row(
+        root, 0.0f, 8.0f, UINT32_C(0x202028ff));
+    elisa_ui_widget_handle label = elisa_ui_widget_label(
+        row, "Status", strlen("Status"), 16.0f, UINT32_C(0xffffffff));
+    elisa_ui_widget_handle button = elisa_ui_widget_button(
+        row, 120.0f, 36.0f, UINT32_C(0x303038ff),
+        UINT32_C(0x404048ff), UINT32_C(0x505058ff));
+    elisa_ui_widget_handle checkbox = elisa_ui_widget_check_box(
+        row, 24.0f, 24.0f, UINT32_C(0x303038ff),
+        UINT32_C(0x404048ff), UINT32_C(0x505058ff));
+    elisa_ui_widget_handle radio = elisa_ui_widget_radio_button(
+        row, 24.0f, 24.0f, UINT32_C(0x303038ff),
+        UINT32_C(0x404048ff), UINT32_C(0x505058ff));
+    elisa_ui_widget_handle slider = elisa_ui_widget_slider(
+        row, 160.0f, 24.0f, 0.25f, UINT32_C(0x303038ff),
+        UINT32_C(0x404048ff), UINT32_C(0x505058ff));
+    elisa_ui_widget_handle progress = elisa_ui_widget_progress_bar(
+        row, 160.0f, 12.0f, 0.5f, UINT32_C(0x303038ff), UINT32_C(0x404048ff));
+    elisa_ui_widget_handle field = elisa_ui_widget_text_field(
+        row, "Hi é", strlen("Hi é"), 180.0f, 32.0f, 16.0f,
+        UINT32_C(0xffffffff), UINT32_C(0x202028ff));
+    if (!elisa_ui_widget_is_valid(root) || !elisa_ui_widget_is_valid(row) ||
+        !elisa_ui_widget_is_valid(label) || !elisa_ui_widget_is_valid(button) ||
+        !elisa_ui_widget_is_valid(checkbox) || !elisa_ui_widget_is_valid(radio) ||
+        !elisa_ui_widget_is_valid(slider) || !elisa_ui_widget_is_valid(progress) ||
+        !elisa_ui_widget_is_valid(field) ||
+        elisa_ui_widget_set_text(button, "Run", 3, 16.0f,
+                                 UINT32_C(0xffffffff)) != 1) {
+        puts("C app could not construct and label retained controls");
+        failures++;
+    }
+    if (elisa_ui_widget_set_selected(checkbox, 1) != 1 ||
+        elisa_ui_widget_selected(checkbox) != 1 ||
+        elisa_ui_widget_set_selected(radio, 1) != 1 ||
+        elisa_ui_widget_selected(radio) != 1 ||
+        elisa_ui_widget_set_selected(button, 1) != 0 ||
+        elisa_ui_widget_set_value(slider, 1.25f) != 1 ||
+        elisa_ui_widget_value(slider) != 1.0f ||
+        elisa_ui_widget_set_value(progress, -0.5f) != 1 ||
+        elisa_ui_widget_value(progress) != 0.0f ||
+        elisa_ui_widget_set_value(button, 0.5f) != 0) {
+        puts("C app selection/value controls did not enforce their types and ranges");
+        failures++;
+    }
+    char field_text[8] = {0};
+    if (elisa_ui_widget_request_text_focus(field) != 1 ||
+        elisa_ui_widget_text_length(field) != 5 ||
+        elisa_ui_widget_copy_text(field, field_text, 4) != 3 ||
+        memcmp(field_text, "Hi ", 3) != 0 ||
+        elisa_ui_widget_copy_text(field, field_text, sizeof(field_text)) != 5 ||
+        memcmp(field_text, "Hi é", 5) != 0 ||
+        elisa_ui_widget_text_length(button) != -1 ||
+        elisa_ui_widget_request_text_focus(button) != 0) {
+        puts("C app text-field focus/value copy did not preserve bounded UTF-8");
+        failures++;
+    }
+    if (elisa_ui_widget_activate(button) != 1 || widget_event_count != 1 ||
+        last_widget != button || last_widget_event != 0) {
+        puts("C app control activation did not return an opaque callback token");
+        failures++;
+    }
+    elisa_ui_widget_tree_reset();
+    if (elisa_ui_widget_is_valid(root) || elisa_ui_widget_is_valid(row) ||
+        elisa_ui_widget_is_valid(label) || elisa_ui_widget_is_valid(button) ||
+        elisa_ui_widget_is_valid(checkbox) || elisa_ui_widget_is_valid(radio) ||
+        elisa_ui_widget_is_valid(slider) || elisa_ui_widget_is_valid(progress) ||
+        elisa_ui_widget_is_valid(field) ||
+        elisa_ui_widget_set_enabled(button, 0) != 0 ||
+        elisa_ui_widget_set_selected(checkbox, 1) != 0 ||
+        elisa_ui_widget_set_value(slider, 0.5f) != 0 ||
+        elisa_ui_widget_text_length(field) != -1 ||
+        elisa_ui_widget_request_text_focus(field) != 0 ||
+        elisa_ui_widget_activate(button) != 0 || widget_event_count != 1) {
+        puts("C app tree reset did not invalidate prior handles");
         failures++;
     }
 

@@ -3,6 +3,7 @@ package org.elisa_ui;
 import android.util.Log;
 import android.view.View;
 import android.view.inputmethod.ExtractedText;
+import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 
 /** Opt-in runtime check using the production connection and native snapshot. */
@@ -120,7 +121,9 @@ final class ElisaImeBatchProbe implements Runnable {
                 require(connection.getExtractedText(null, 0) == null, "closed connection read document");
                 Log.i("elisa-ui", "ime-batch passed nested publication utf16 close");
                 Log.i("elisa-ui", "ime-clipboard passed copy cut unicode-paste close");
-                ElisaMenuCopyProbe.start(view);
+                InputConnection menuConnection = ((ElisaInputView)view).onCreateInputConnection(new EditorInfo());
+                require(menuConnection != null, "menu connection unavailable");
+                ElisaMenuCopyProbe.start(view, menuConnection);
             }
         } catch (RuntimeException failure) {
             connection.closeConnection();

@@ -115,9 +115,12 @@ if awk '/void elisa_appkit_present\(void\)/ { inside=1 } inside && /activateIgno
 fi
 clang -c -fobjc-arc -Wall -Wextra -Wconversion -Wsign-conversion -Werror \
   -o "$GATE_OBJ_DIR/appkit_shim.o" "$ROOT/src/platform/appkit/appkit_shim.m"
+clang -c -fobjc-arc -Wall -Wextra -Wconversion -Wsign-conversion -Werror \
+  -o "$GATE_OBJ_DIR/appkit_controls_privacy.o" "$ROOT/src/platform/appkit/appkit_controls_privacy.m"
 bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$ROOT/build/appkit_check.o" "$ROOT/src/platform/appkit/appkit_check.elisa"
 clang -Wl,-dead_strip -o "$ROOT/build/appkit_check" \
-  "$ROOT/build/appkit_check.o" "$GATE_OBJ_DIR/appkit_shim.o" "$RUNTIME" -framework Cocoa
+  "$ROOT/build/appkit_check.o" "$GATE_OBJ_DIR/appkit_shim.o" \
+  "$GATE_OBJ_DIR/appkit_controls_privacy.o" "$RUNTIME" -framework Cocoa
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_window_title$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_button_title$'
 nm -g "$ROOT/build/appkit_check" | grep -q ' T _elisa_appkit_set_field_text$'
@@ -167,3 +170,8 @@ if nm -g "$ROOT/build/appkit_check" | grep -Eq ' T _elisa_appkit_create_(fixed_w
   exit 1
 fi
 "$ROOT/build/appkit_check"
+clang -fobjc-arc -Wall -Wextra -Wconversion -Wsign-conversion -Werror \
+  -Wl,-dead_strip -o "$ROOT/build/appkit_controls_privacy_test" \
+  "$ROOT/test/appkit_controls_privacy_test.m" "$GATE_OBJ_DIR/appkit_shim.o" \
+  "$GATE_OBJ_DIR/appkit_controls_privacy.o" -framework Cocoa
+"$ROOT/build/appkit_controls_privacy_test"

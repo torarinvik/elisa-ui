@@ -51,11 +51,18 @@ extend UiControls:
                 # shows them in the platform's default for one frame.
                 palette: Palette = colors_at(index)
                 C.set_colors(slot, kind_at(index), palette.ink, palette.fill) if fresh or not colors_unchanged_at(index)
-                C.set_text(slot, kind_at(index), text_at(index)) if fresh or not text_unchanged_at(index)
+                sensitivity_changed: bool = ops[index].state_accessibility_sensitive != applied_accessibility_sensitive[index]
+                # A native adapter may replace an inferred accessibility label
+                # while redaction is active. Re-send the retained caption on a
+                # sensitivity transition so the adapter can preserve/restore
+                # that label without changing the visible text.
+                C.set_text(slot, kind_at(index), text_at(index)) if fresh or not text_unchanged_at(index) or sensitivity_changed
                 C.set_state(slot, kind_at(index), state) if fresh or not state_unchanged_at(index)
                 # A placeholder and a hint change about as often as a caption
-                # and never on their own, so they follow the same rule.
-                C.set_help(slot, kind_at(index), placeholder_at(index), help_at(index)) if fresh or not hints_unchanged_at(index)
+                # and never on their own, so they follow the same rule. A
+                # sensitivity transition also reapplies them because a native
+                # adapter may have suppressed them while redaction was active.
+                C.set_help(slot, kind_at(index), placeholder_at(index), help_at(index)) if fresh or not hints_unchanged_at(index) or sensitivity_changed
                 # Only for a control that was just built. An adopted one is
                 # still carrying the action it was given when it was created,
                 # and a toolkit that ADDS rather than replaces -- Android's

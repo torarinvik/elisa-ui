@@ -331,10 +331,8 @@ module UiPaint:
             # Text needs both: it rasterizes (Draw) through font metrics (Text).
             def draw_text(self: Self, run: UiCore::TextRun, color: UiCore::Color) -> void can[Ui.Draw, Ui.Text]
 
-        # Replay a bounded slice of this frame's commands through one painter.
-        # Custom backends use the slice form when they interleave Elisa-owned
-        # deferred work with retained commands; ordinary backends still call
-        # `replay`, which covers the complete batch.
+        # Replay a bounded slice of the trusted frame. Custom backends use the
+        # slice form when they interleave Elisa-owned deferred work.
         def replay_range[P: Painter](painter: mutable P, start: usize, end: usize) -> void can[Ui.Draw, Ui.Text]:
             total: usize = UiCore::command_count()
             first: usize = start if start < total else total
@@ -362,9 +360,41 @@ module UiPaint:
                 if clipped:
                     painter.pop_clip()
 
-        # Replay this frame's commands through one painter: the only place the
-        # command enum is matched for painting.
+        # Replay only the compact diagnostic view. Sensitive widgets become
+        # opaque masks, making this the required path for diagnostic captures
+        # and exported command traces that must honor redaction policy.
+        def replay_diagnostic_range[P: Painter](painter: mutable P, start: usize, end: usize) -> void can[Ui.Draw, Ui.Text]:
+            total: usize = UiCore::diagnostic_command_count()
+            first: usize = start if start < total else total
+            last: usize = end if end < total else total
+            return if first >= last
+            for index in first..<last:
+                clipped: bool = UiCore::diagnostic_command_has_clip(index)
+                if clipped:
+                    painter.push_clip(UiCore::diagnostic_command_clip_at(index))
+                match UiCore::diagnostic_command_at(index):
+                    UiCore::Command.Clear(color):
+                        painter.clear(color)
+                    UiCore::Command.FillRect(box, color):
+                        painter.fill_rect(box, color, UiCore::diagnostic_command_style_at(index))
+                    UiCore::Command.FillCircle(disc, color):
+                        painter.fill_circle(disc, color, UiCore::diagnostic_command_depth_at(index))
+                    UiCore::Command.FillTriangle(tri, color):
+                        painter.fill_triangle(tri, color)
+                    UiCore::Command.FillLine(segment, color):
+                        painter.fill_line(segment, color, UiCore::diagnostic_command_stroke_width_at(index))
+                    UiCore::Command.DrawImage(draw):
+                        painter.draw_image(draw)
+                    UiCore::Command.DrawText(run, color):
+                        painter.draw_text(run, color)
+                if clipped:
+                    painter.pop_clip()
+
+        # Replay the complete trusted command batch.
         def replay[P: Painter](painter: mutable P) -> void can[Ui.Draw, Ui.Text]:
             UiPaint::replay_range[P](painter, 0, UiCore::command_count())
+
+        def replay_diagnostic[P: Painter](painter: mutable P) -> void can[Ui.Draw, Ui.Text]:
+            UiPaint::replay_diagnostic_range[P](painter, 0, UiCore::diagnostic_command_count())
 
 include "./ui_paint_depth.elisa"

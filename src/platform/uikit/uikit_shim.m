@@ -30,7 +30,6 @@ extern int elisa_uikit_picker_result(uint32_t slot, uint32_t generation, int sta
                                     uint32_t selectionKind, uint64_t selectionId);
 
 // Input.
-extern void elisa_uikit_touch(size_t viewHandle, int phase, float x, float y, int tapCount);
 extern void elisa_uikit_contact(size_t viewHandle, size_t nativeId, int phase,
                                 float x, float y, float timestamp, int tool, int tapCount);
 extern void elisa_uikit_scroll(size_t viewHandle, float x, float y, float dx, float dy);

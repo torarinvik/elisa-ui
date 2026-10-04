@@ -19,6 +19,8 @@ def main() -> i64 can[Unsafe.PointerCast]:
     check("metadata creates one semantic node", UiCore::accessibility_count() == 1)
     node: mutable UiCore::AccessibilityNode = UiCore::accessibility_at(0)
     check("metadata preserves stable identity", node.id == 7 and node.action == 7)
+    check("bounded semantic action targets are present", UiCore::accessibility_action_is_present(node.action))
+    check("semantic no-action sentinel is not a widget target", not UiCore::accessibility_action_is_present(UiCore::MAX_ACCESSIBILITY_NODES))
     check("metadata preserves relationships", node.parent_id == 2 and node.first_child_id == 8 and node.next_sibling_id == 9)
     check("metadata preserves numeric range", node.has_range and node.range_min == -1.0 and node.range_max == 1.0 and not node.range_conflict)
     check("ordinary semantic nodes default to no collection position", not node.has_collection_position and node.collection_position == 0 and node.collection_size == 0 and node.collection_count == 0)
@@ -139,6 +141,13 @@ def main() -> i64 can[Unsafe.PointerCast]:
     UiCore::accessibility(UiCore::AccessibilityRole.Group, "Card", "", UiCore::Rect(0.0, 0.0, 10.0, 10.0), 33, 0, true, false, false, 0.0, "", "", 0, 0, 0)
     UiCore::accessibility(UiCore::AccessibilityRole.List, "Rows", "", UiCore::Rect(0.0, 0.0, 10.0, 10.0), 34, 0, true, false, false, 0.0, "", "", 0, 0, 0)
     check("custom-group and virtualized-list roles are retained", UiCore::accessibility_at(10).role == UiCore::AccessibilityRole.Group and UiCore::accessibility_at(11).role == UiCore::AccessibilityRole.List)
+
+    UiCore::accessibility_with_metadata(
+        UiCore::AccessibilityRole.Button, "Unroutable", "", UiCore::Rect(0.0, 0.0, 10.0, 10.0),
+        35, 4294967297, true, false, false, 0.0, "", "", 0, 0, 0,
+        0, 0, 0, 0.0, 1.0, false)
+    unroutable: UiCore::AccessibilityNode = UiCore::accessibility_at(12)
+    check("oversized semantic action targets normalize to no-action", unroutable.action == UiCore::MAX_ACCESSIBILITY_NODES and not UiCore::accessibility_action_is_present(unroutable.action))
 
     malformed_label_bytes: mutable u8[2] = zeroed
     malformed_label_bytes[0] <- 255

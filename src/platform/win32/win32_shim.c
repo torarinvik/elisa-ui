@@ -23,9 +23,11 @@
 #include <stdint.h>
 #include <string.h>
 #include "../common/utf8_utf16.h"
+#include "win32_controls_privacy.h"
 
 static const wchar_t *ELISA_PANEL_CLASS = L"ElisaUiPanel";
 enum { ELISA_WIN32_TEXT_UNITS = 1024, ELISA_WIN32_UTF8_BYTES = 3 * ELISA_WIN32_TEXT_UNITS + 1 };
+static const UINT_PTR ELISA_HELP_SUBCLASS_ID = 0x454c49534148454cu;
 
 // Win32 text is UTF-16. The framework carries UTF-8, so it converts here
 // rather than anywhere a wide string could leak into the seam -- and uses the
@@ -44,6 +46,9 @@ static int color_slot_of(HWND control);
 static LRESULT color_reply(HDC context, int slot);
 static void forget_color_slot(HWND control);
 static void forget_help_slot(HWND control);
+static void refresh_help(HWND control);
+static LRESULT CALLBACK help_lifetime_proc(HWND control, UINT message,
+    WPARAM w, LPARAM l, UINT_PTR subclass_id, DWORD_PTR reference);
 
 // Elisa resolves the control back to an index and decides what an action
 // means; this window procedure only reports that one happened.
@@ -222,7 +227,9 @@ static int colored_count;
 #define ELISA_WIN32_HELP_UNITS 1024
 static struct {
     HWND control;
+    wchar_t placeholder[ELISA_WIN32_HELP_UNITS];
     wchar_t text[ELISA_WIN32_HELP_UNITS];
+    int tooltip_installed;
 } help_entries[ELISA_WIN32_MAX_HELP];
 static int help_count;
 static HWND help_tooltip;
@@ -254,17 +261,34 @@ static TOOLINFOW help_tool(HWND control, wchar_t *text) {
     return info;
 }
 
+static void remove_help_tool(int slot) {
+    if (slot < 0 || !help_entries[slot].tooltip_installed) return;
+    if (help_tooltip != NULL && IsWindow(help_tooltip)) {
+        TOOLINFOW info = help_tool(help_entries[slot].control,
+                                   help_entries[slot].text);
+        SendMessageW(help_tooltip, TTM_DELTOOLW, 0, (LPARAM)&info);
+    }
+    help_entries[slot].tooltip_installed = 0;
+}
+
 static void forget_help_slot(HWND control) {
     const int slot = help_slot_of(control);
     if (slot < 0) return;
-    if (help_tooltip != NULL && IsWindow(help_tooltip)) {
-        TOOLINFOW info = help_tool(control, help_entries[slot].text);
-        SendMessageW(help_tooltip, TTM_DELTOOLW, 0, (LPARAM)&info);
-    }
+    remove_help_tool(slot);
     ZeroMemory(&help_entries[slot], sizeof(help_entries[slot]));
     help_entries[slot] = help_entries[help_count - 1];
     ZeroMemory(&help_entries[help_count - 1], sizeof(help_entries[0]));
     help_count -= 1;
+}
+
+static LRESULT CALLBACK help_lifetime_proc(HWND control, UINT message,
+    WPARAM w, LPARAM l, UINT_PTR subclass_id, DWORD_PTR reference) {
+    (void)reference;
+    if (message == WM_NCDESTROY) {
+        forget_help_slot(control);
+        RemoveWindowSubclass(control, help_lifetime_proc, subclass_id);
+    }
+    return DefSubclassProc(control, message, w, l);
 }
 
 static COLORREF colorref_of(uint32_t argb) {
@@ -370,7 +394,8 @@ void elisa_win32_set_text(size_t handle, const char *text) {
 }
 
 void elisa_win32_set_state(size_t handle, float value, int32_t selected,
-                           int32_t enabled, int32_t secure) {
+                           int32_t enabled, int32_t secure,
+                           int32_t accessibility_sensitive) {
     HWND control = hwnd_of(handle);
     if (control == NULL) return;
     EnableWindow(control, enabled != 0);
@@ -385,6 +410,10 @@ void elisa_win32_set_state(size_t handle, float value, int32_t selected,
     } else if (lstrcmpiW(cls, L"EDIT") == 0) {
         SendMessageW(control, EM_SETPASSWORDCHAR, secure ? (WPARAM)L'*' : 0, 0);
     }
+    const BOOL was_sensitive = elisa_win32_privacy_is_sensitive(control);
+    const BOOL sensitive = secure || accessibility_sensitive;
+    elisa_win32_privacy_apply(control, sensitive);
+    if (was_sensitive != sensitive) refresh_help(control);
 }
 
 // A placeholder is EM_SETCUEBANNER on an EDIT, which is the platform's own
@@ -393,33 +422,53 @@ void elisa_win32_set_state(size_t handle, float value, int32_t selected,
 void elisa_win32_set_help(size_t handle, const char *placeholder, const char *help) {
     HWND control = hwnd_of(handle);
     if (control == NULL) return;
-    wchar_t wide[1024];
-    wchar_t cls[64];
-    GetClassNameW(control, cls, 64);
-    if (lstrcmpiW(cls, L"EDIT") == 0) {
-        SendMessageW(control, EM_SETCUEBANNER, TRUE, (LPARAM)to_wide(placeholder, wide, 1024));
-    }
-    if (help == NULL || help[0] == '\0') {
-        forget_help_slot(control);
-        return;
-    }
     int slot = help_slot_of(control);
     if (slot < 0) {
+        if ((placeholder == NULL || placeholder[0] == '\0') &&
+            (help == NULL || help[0] == '\0')) {
+            refresh_help(control);
+            return;
+        }
         if (help_count == ELISA_WIN32_MAX_HELP) return;
         slot = help_count++;
         help_entries[slot].control = control;
-    } else if (help_tooltip != NULL && IsWindow(help_tooltip)) {
-        TOOLINFOW old = help_tool(control, help_entries[slot].text);
-        SendMessageW(help_tooltip, TTM_DELTOOLW, 0, (LPARAM)&old);
+        if (!SetWindowSubclass(control, help_lifetime_proc,
+                               ELISA_HELP_SUBCLASS_ID, 0)) {
+            forget_help_slot(control);
+            return;
+        }
     }
+    remove_help_tool(slot);
+    to_wide(placeholder, help_entries[slot].placeholder, ELISA_WIN32_HELP_UNITS);
     to_wide(help, help_entries[slot].text, ELISA_WIN32_HELP_UNITS);
-    HWND tooltip = ensure_help_tooltip();
-    if (tooltip == NULL) {
+    refresh_help(control);
+    if (help_entries[slot].placeholder[0] == 0 && help_entries[slot].text[0] == 0)
         forget_help_slot(control);
+}
+
+static void refresh_help(HWND control) {
+    int slot = help_slot_of(control);
+    const BOOL sensitive = elisa_win32_privacy_is_sensitive(control);
+    wchar_t cls[64];
+    GetClassNameW(control, cls, 64);
+    if (lstrcmpiW(cls, L"EDIT") == 0) {
+        const wchar_t *placeholder = L"";
+        if (!sensitive && slot >= 0) placeholder = help_entries[slot].placeholder;
+        SendMessageW(control, EM_SETCUEBANNER, TRUE, (LPARAM)placeholder);
+    }
+    const wchar_t *help = L"";
+    if (!sensitive && slot >= 0) help = help_entries[slot].text;
+    elisa_win32_privacy_set_help(control, help);
+    if (sensitive || help[0] == 0 || slot < 0) {
+        if (slot >= 0) remove_help_tool(slot);
         return;
     }
+    if (help_entries[slot].tooltip_installed) return;
+    HWND tooltip = ensure_help_tooltip();
+    if (tooltip == NULL) return;
     TOOLINFOW info = help_tool(control, help_entries[slot].text);
-    if (!SendMessageW(tooltip, TTM_ADDTOOLW, 0, (LPARAM)&info)) forget_help_slot(control);
+    if (SendMessageW(tooltip, TTM_ADDTOOLW, 0, (LPARAM)&info))
+        help_entries[slot].tooltip_installed = 1;
 }
 
 // Win32 delivers actions to the PARENT through WM_COMMAND, so nothing has to

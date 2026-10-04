@@ -1,0 +1,48 @@
+# Redacted command access for diagnostic captures and trace export.
+
+extend UiCore:
+    public:
+        # Sensitive widgets collapse to one opaque fill; raw commands remain
+        # available only through the ordinary trusted rendering API.
+        def diagnostic_command_count() -> usize:
+            return diagnostic_command_total.usize()
+
+        def diagnostic_command_at(index: usize) -> Command:
+            return Command.Clear(Color{r: 0, g: 0, b: 0, a: 0}) if index >= diagnostic_command_total.usize()
+            source: usize = diagnostic_command_source[index]
+            if command_diagnostic_sensitive[source]:
+                return Command.FillRect(command_diagnostic_box[source], Color{r: 48, g: 48, b: 52, a: 255})
+            return command_buffer[source]
+
+        def diagnostic_command_style_at(index: usize) -> SurfaceStyle:
+            return surface_style(SurfaceDepth.Flat) if index >= diagnostic_command_total.usize()
+            source: usize = diagnostic_command_source[index]
+            return surface_style(SurfaceDepth.Flat) if command_diagnostic_sensitive[source]
+            return command_style[source]
+
+        def diagnostic_command_depth_at(index: usize) -> SurfaceDepth:
+            return SurfaceDepth.Flat if index >= diagnostic_command_total.usize()
+            source: usize = diagnostic_command_source[index]
+            return SurfaceDepth.Flat if command_diagnostic_sensitive[source]
+            return command_style[source].depth
+
+        def diagnostic_command_stroke_width_at(index: usize) -> f32:
+            return DEFAULT_STROKE_WIDTH if index >= diagnostic_command_total.usize()
+            source: usize = diagnostic_command_source[index]
+            return DEFAULT_STROKE_WIDTH if command_diagnostic_sensitive[source]
+            return command_stroke_width[source]
+
+        def diagnostic_command_has_clip(index: usize) -> bool:
+            return false if index >= diagnostic_command_total.usize()
+            return command_has_clip_flag[diagnostic_command_source[index]]
+
+        def diagnostic_command_clip_at(index: usize) -> Rect:
+            return Rect(0.0, 0.0, 0.0, 0.0) if index >= diagnostic_command_total.usize()
+            return command_clip[diagnostic_command_source[index]]
+
+        # UiFlat sets this immediately before emitting a widget's commands.
+        # The widget index groups its commands without changing Command's ABI.
+        def set_diagnostic_context(owner: usize, sensitive: bool, bounds: Rect) -> void:
+            current_diagnostic_owner <- owner
+            current_diagnostic_sensitive <- sensitive
+            current_diagnostic_box <- Rect{origin: Vec2{x: bounded_coordinate(bounds.origin.x), y: bounded_coordinate(bounds.origin.y)}, size: Size{width: bounded_extent(bounds.size.width), height: bounded_extent(bounds.size.height)}}

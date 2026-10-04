@@ -1,0 +1,122 @@
+# Publish the retained semantic tree to Android's virtual-view adapter.
+#
+# The UI tree is owned by android_main. Serialize while that thread is in its
+# frame, then let the host copy this bounded snapshot before Java sees it.
+
+extern elisa_android_publish_accessibility(snapshot: cstr, length: i32) -> void
+
+module UiAndroidAccessibility:
+    private:
+        const HEADER_BYTES: usize = 8
+        const RECORD_BYTES: usize = 120
+        const TEXT_CAPACITY: usize = UiText::MAX_TEXT_BYTES * 3
+        const BUFFER_CAPACITY: usize = HEADER_BYTES + UiCore::MAX_ACCESSIBILITY_NODES * RECORD_BYTES + TEXT_CAPACITY
+        global mutable buffer: u8[BUFFER_CAPACITY] = zeroed
+
+        def put_u32(offset: usize, value: uintptr) -> void:
+            trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic, Unsafe.UncheckedIndex]:
+                slot: mutable u32& = (&buffer[offset]).cast[mutable u32&]
+                slot[0] <- value.u32()
+
+        def put_f32(offset: usize, value: f32) -> void:
+            trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic, Unsafe.UncheckedIndex]:
+                slot: mutable f32& = (&buffer[offset]).cast[mutable f32&]
+                slot[0] <- value
+
+        def put_text(base: usize, offset_field: usize, length_field: usize, text: sview, cursor: mutable usize&) -> void:
+            safe: sview = UiCore::bounded_text(text)
+            remaining: usize = BUFFER_CAPACITY - cursor
+            length: usize = safe.len if safe.len <= remaining else 0
+            put_u32(base + offset_field, cursor.u32().uintptr())
+            put_u32(base + length_field, length.u32().uintptr())
+            for byte_index in 0..<length:
+                buffer[cursor + byte_index] <- safe.data[byte_index]
+            cursor <- cursor + length
+
+    public:
+        def publish() -> void can Unsafe.PointerCast:
+            count: mutable usize = UiCore::accessibility_count()
+            count <- UiCore::MAX_ACCESSIBILITY_NODES if count > UiCore::MAX_ACCESSIBILITY_NODES
+            put_u32(0, 1.uintptr())
+            put_u32(4, count.u32().uintptr())
+            cursor: mutable usize = HEADER_BYTES + count * RECORD_BYTES
+            for index in 0..<count:
+                node: UiCore::AccessibilityNode = UiCore::accessibility_at(index)
+                base: usize = HEADER_BYTES + index * RECORD_BYTES
+                put_u32(base + 0, node.id.uintptr())
+                put_u32(base + 4, node.role.i32().u32().uintptr())
+                put_f32(base + 8, node.frame.origin.x)
+                put_f32(base + 12, node.frame.origin.y)
+                put_f32(base + 16, node.frame.size.width)
+                put_f32(base + 20, node.frame.size.height)
+                put_u32(base + 24, node.action.uintptr())
+                put_f32(base + 28, node.value)
+                put_u32(base + 32, node.parent_id.uintptr())
+                put_u32(base + 36, node.first_child_id.uintptr())
+                put_u32(base + 40, node.next_sibling_id.uintptr())
+                put_u32(base + 44, node.enabled.i32().u32().uintptr())
+                put_u32(base + 48, node.focused.i32().u32().uintptr())
+                put_u32(base + 52, node.selected.i32().u32().uintptr())
+                put_u32(base + 56, node.revision.uintptr())
+                if node.role == UiCore::AccessibilityRole.PasswordField:
+                    put_u32(base + 60, 0.uintptr())
+                    put_u32(base + 64, 0.uintptr())
+                else:
+                    put_u32(base + 60, node.selection_location.uintptr())
+                    put_u32(base + 64, node.selection_length.uintptr())
+                put_u32(base + 68, node.has_range.i32().u32().uintptr())
+                put_f32(base + 72, node.range_min)
+                put_f32(base + 76, node.range_max)
+                put_u32(base + 80, node.has_collection_position.i32().u32().uintptr())
+                put_u32(base + 84, node.collection_position.uintptr())
+                put_u32(base + 88, node.collection_size.uintptr())
+                put_u32(base + 92, node.collection_count.uintptr())
+                put_text(base, 96, 100, node.label, cursor)
+                put_text(base, 104, 108, node.help, cursor)
+                # Password values remain available to the native text editor,
+                # but are not copied into the screen-reader snapshot.
+                if node.role == UiCore::AccessibilityRole.PasswordField:
+                    put_u32(base + 112, cursor.u32().uintptr())
+                    put_u32(base + 116, 0.uintptr())
+                else:
+                    put_text(base, 112, 116, node.text_value, cursor)
+            snapshot: mutable cstr = ""
+            can Unsafe.PointerCast:
+                snapshot <- (&buffer[0]).cast[cstr]
+            elisa_android_publish_accessibility(snapshot, cursor.i32())
+
+        # Native accessibility actions name stable semantic IDs, while the
+        # retained flat layer uses bounded widget indices as action targets.
+        # Resolve that mapping from the current frame and reject stale nodes.
+        def perform(id: usize, kind: i32, value: f32) -> i32 can[Ui.Input]:
+            return 0 if id >= UiCore::MAX_ACCESSIBILITY_NODES or not UiAndroid::live() or not UiLifecycle::accepts_input()
+            for index in 0..<UiCore::accessibility_count():
+                node: UiCore::AccessibilityNode = UiCore::accessibility_at(index)
+                continue if node.id != id
+                accepted: mutable bool = false
+                if kind == 6 or kind == 7:
+                    return 0 if node.role != UiCore::AccessibilityRole.List or not node.enabled
+                    widget: UiFlat::Widget = UiFlat::widget(node.id)
+                    extent: f32 = node.frame.size.height if widget.axis == UiConst::Axis.Column else node.frame.size.width
+                    delta: f32 = extent if kind == 6 else -extent
+                    accepted <- UiFlat::scroll_virtual_by(node.id, delta)
+                elif not UiCore::accessibility_action_is_present(node.action):
+                    return 0
+                elif kind == 1:
+                    accepted <- UiFlat::activate(node.action)
+                elif kind == 2:
+                    accepted <- UiFlat::request_focus(node.action)
+                elif kind == 3:
+                    accepted <- UiFlat::adjust_step(node.action, 1)
+                elif kind == 4:
+                    accepted <- UiFlat::adjust_step(node.action, -1)
+                elif kind == 5:
+                    accepted <- UiFlat::set_accessibility_value(node.action, value)
+                return 1 if accepted else 0
+            return 0
+
+def android_accessibility_action(id: u32, kind: i32, value: f32) -> i32:
+    can Ui.Input:
+        return UiAndroidAccessibility::perform(id.usize(), kind, value)
+
+export fn elisa_android_accessibility_action(id: u32, kind: i32, value: f32) -> i32 = android_accessibility_action

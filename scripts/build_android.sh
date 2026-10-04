@@ -82,6 +82,8 @@ grep -q "pthread_attr_setstacksize" "$OUT/android_native_app_glue.c" || { echo "
   -o "$OUT/android_back_queue.o" "$ROOT/src/platform/android/android_back_queue.cpp"
 "$CLANGXX" -c "${CXXFLAGS[@]}" \
   -o "$OUT/android_services_queue.o" "$ROOT/src/platform/android/android_services_queue.cpp"
+"$CLANGXX" -c "${CXXFLAGS[@]}" \
+  -o "$OUT/android_accessibility.o" "$ROOT/src/platform/android/android_accessibility.cpp"
 "$CLANGXX" -c "${CXXFLAGS[@]}" -o "$OUT/android_clipboard.o" "$ROOT/src/platform/android/android_clipboard.cpp"
 "$CLANG" -c -fPIC -o "$OUT/android_ime_jni.o" "$ROOT/src/platform/android/android_ime_jni.c"
 "$CLANGXX" -c "${CXXFLAGS[@]}" -o "$OUT/skia_canvas_shim.o" "$ROOT/src/platform/skia/skia_canvas_shim.cpp"
@@ -107,7 +109,7 @@ done
 printf '%s\\n' "\${args[@]}" > "$OUT/link_args.log"
 exec "$CLANG" -shared -fPIC -Wl,-z,max-page-size=16384 -Wl,--no-undefined \\
   "\${args[@]}" \\
-  "$OUT/android_skia_host.o" "$OUT/android_back_queue.o" "$OUT/android_services_queue.o" "$OUT/native_app_glue.o" \\
+  "$OUT/android_skia_host.o" "$OUT/android_back_queue.o" "$OUT/android_services_queue.o" "$OUT/android_accessibility.o" "$OUT/native_app_glue.o" \\
   "$OUT/skia_canvas_shim.o" "$OUT/skia_text_shim.o" "$OUT/android_clipboard.o" \
   "$OUT/android_ime_jni.o" \\
   "$SKIA_OUT/libskia.a" -lc++_static -lc++abi -landroid -llog -lm -ldl -lz
@@ -171,6 +173,8 @@ mkdir -p "$OUT/classes"
 javac_log="$OUT/javac.log"
 javac -source 8 -target 8 -nowarn -bootclasspath "$PLATFORM_JAR" -classpath "$PLATFORM_JAR" \
   -d "$OUT/classes" "$ROOT/src/platform/android/java/org/elisa_ui/ElisaCanvasActivity.java" \
+  "$ROOT/src/platform/android/java/org/elisa_ui/ElisaAccessibilityView.java" \
+  "$ROOT/src/platform/android/java/org/elisa_ui/ElisaAccessibilitySnapshot.java" \
   "$ROOT/src/platform/android/java/org/elisa_ui/ElisaSelectionStore.java" \
   "$ROOT/src/platform/android/java/org/elisa_ui/ElisaInputConnection.java" \
   "$ROOT/src/platform/android/java/org/elisa_ui/ElisaInputView.java" \
@@ -179,6 +183,7 @@ javac -source 8 -target 8 -nowarn -bootclasspath "$PLATFORM_JAR" -classpath "$PL
   "$ROOT/src/platform/android/java/org/elisa_ui/ElisaImeSession.java" \
   "$ROOT/src/platform/android/java/org/elisa_ui/ElisaImeBatchProbe.java" \
   "$ROOT/src/platform/android/java/org/elisa_ui/ElisaMenuCopyProbe.java" \
+  "$ROOT/src/platform/android/java/org/elisa_ui/ElisaMenuSecureProbe.java" \
   "$ROOT/src/platform/android/java/org/elisa_ui/ElisaImeTraits.java" >"$javac_log" 2>&1 || {
     javac_status=$?
     cat "$javac_log" >&2

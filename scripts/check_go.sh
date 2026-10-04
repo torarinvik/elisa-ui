@@ -29,6 +29,7 @@ trap 'rm -rf "$WORK" "$SOURCE_DIR"' EXIT INT TERM HUP
 cat > "$SOURCE_DIR/bridge.elisa" <<'EOF'
 include "../../src/capi/ui_capi.elisa"
 include "../../src/capi/ui_capi_app.elisa"
+include "../../test/capi_backend_stubs.elisa"
 EOF
 bash "$STAGE1/scripts/elisac_stage1.sh" -O0 -o "$WORK/bridge.o" "$SOURCE_DIR/bridge.elisa"
 cp "$RUNTIME" "$WORK/runtime.o"

@@ -47,6 +47,8 @@ var (
 	boundedEditingCount int
 	validWidgetCount    int
 	invalidWidgetCount  int
+	lastWidget          ui.WidgetHandle
+	lastWidgetEvent     int32
 )
 
 //export elisa_ui_on_init
@@ -58,7 +60,9 @@ func elisa_ui_on_frame() {}
 //export elisa_ui_on_widget_event
 func elisa_ui_on_widget_event(widget C.uint64_t, event C.int32_t) {
 	// The token remains opaque to the binding; only its validity is observable.
-	if ui.WidgetHandle(widget).Valid() {
+	lastWidget = ui.WidgetHandle(widget)
+	lastWidgetEvent = int32(event)
+	if lastWidget.Valid() {
 		validWidgetCount++
 	} else {
 		invalidWidgetCount++
@@ -136,6 +140,56 @@ func main() {
 	elisa_ui_on_widget_event(1, 0)
 	if invalidWidgetCount != 1 || validWidgetCount != 1 {
 		fmt.Fprintln(os.Stderr, "Go host: widget callback did not preserve opaque-handle validity")
+		failures++
+	}
+	validWidgetCount = 0
+	invalidWidgetCount = 0
+	ui.ResetWidgetTree()
+	root, rootOK := ui.NewColumn(ui.RootWidgetParent(), 8, 4, ui.RGBA(32, 32, 40, 255))
+	row, rowOK := ui.NewRow(ui.ParentWidget(root), 0, 8, ui.RGBA(32, 32, 40, 255))
+	label, labelOK := ui.NewLabel(ui.ParentWidget(row), "Status", 16, ui.RGBA(255, 255, 255, 255))
+	button, buttonOK := ui.NewButton(ui.ParentWidget(row), 120, 36,
+		ui.RGBA(48, 48, 56, 255), ui.RGBA(64, 64, 72, 255), ui.RGBA(80, 80, 88, 255))
+	checkbox, checkboxOK := ui.NewCheckBox(ui.ParentWidget(row), 24, 24,
+		ui.RGBA(48, 48, 56, 255), ui.RGBA(64, 64, 72, 255), ui.RGBA(80, 80, 88, 255))
+	radio, radioOK := ui.NewRadioButton(ui.ParentWidget(row), 24, 24,
+		ui.RGBA(48, 48, 56, 255), ui.RGBA(64, 64, 72, 255), ui.RGBA(80, 80, 88, 255))
+	slider, sliderOK := ui.NewSlider(ui.ParentWidget(row), 160, 24, 0.25,
+		ui.RGBA(48, 48, 56, 255), ui.RGBA(64, 64, 72, 255), ui.RGBA(80, 80, 88, 255))
+	progress, progressOK := ui.NewProgressBar(ui.ParentWidget(row), 160, 12, 0.5,
+		ui.RGBA(48, 48, 56, 255), ui.RGBA(64, 64, 72, 255))
+	field, fieldOK := ui.NewTextField(ui.ParentWidget(row), "Hi é", 180, 32, 16,
+		ui.RGBA(255, 255, 255, 255), ui.RGBA(32, 32, 40, 255))
+	fieldPrefix := make([]byte, 4)
+	fieldCopied, fieldCopyOK := ui.CopyWidgetText(field, fieldPrefix)
+	fieldText, fieldTextOK := ui.WidgetText(field)
+	fieldLength, fieldLengthOK := ui.WidgetTextLength(field)
+	if !rootOK || !rowOK || !labelOK || !buttonOK || !ui.WidgetIsLive(label) ||
+		!checkboxOK || !radioOK || !sliderOK || !progressOK || !fieldOK ||
+		!ui.SetWidgetText(button, "Run", 16, ui.RGBA(255, 255, 255, 255)) ||
+		!ui.SetWidgetEnabled(button, false) || ui.ActivateWidget(button) ||
+		!ui.SetWidgetEnabled(button, true) || !ui.SetWidgetVisible(button, true) ||
+		!ui.SetWidgetSelected(checkbox, true) || !ui.WidgetSelected(checkbox) ||
+		!ui.SetWidgetSelected(radio, true) || !ui.WidgetSelected(radio) ||
+		ui.SetWidgetSelected(button, true) ||
+		!ui.SetWidgetValue(slider, 1.25) || ui.WidgetValue(slider) != 1 ||
+		!ui.SetWidgetValue(progress, 0.75) || ui.WidgetValue(progress) != 0.75 ||
+		ui.SetWidgetValue(button, 0.5) ||
+		!ui.RequestTextFocus(field) || !fieldLengthOK || fieldLength != 5 ||
+		!fieldCopyOK || fieldCopied != 3 || string(fieldPrefix[:3]) != "Hi " ||
+		!fieldTextOK || fieldText != "Hi é" ||
+		ui.RequestTextFocus(button) ||
+		!ui.ActivateWidget(button) || validWidgetCount != 1 || lastWidget != button || lastWidgetEvent != 0 {
+		fmt.Fprintln(os.Stderr, "Go host: retained-control create/use/callback path failed")
+		failures++
+	}
+	ui.ResetWidgetTree()
+	if ui.WidgetIsLive(button) || ui.SetWidgetEnabled(button, true) ||
+		ui.SetWidgetSelected(checkbox, false) || ui.SetWidgetValue(slider, 0.5) ||
+		ui.RequestTextFocus(field) ||
+		func() bool { _, ok := ui.WidgetTextLength(field); return ok }() ||
+		ui.ActivateWidget(button) {
+		fmt.Fprintln(os.Stderr, "Go host: tree reset did not reject a stale handle")
 		failures++
 	}
 

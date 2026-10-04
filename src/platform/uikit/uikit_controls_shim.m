@@ -18,6 +18,8 @@
 #include <string.h>
 #include <stdint.h>
 
+#define ELISA_SWITCH_ROW_TAG 0x45535720
+
 // Elisa realizes the control tree once the scene has a surface.
 void elisa_uikit_controls_forget_minimums(void);
 extern int elisa_uikit_controls_realize(size_t rootView, float width, float height,
@@ -132,6 +134,8 @@ static NSString *elisa_uikit_controls_string(size_t handle) {
     return [object isKindOfClass:[NSString class]] ? (NSString *)object : nil;
 }
 
+#import "shim/controls_privacy.m"
+
 size_t elisa_uikit_controls_create_view(void) {
     return (size_t)CFBridgingRetain([[UIView alloc] initWithFrame:CGRectZero]);
 }
@@ -172,8 +176,6 @@ size_t elisa_uikit_controls_create_label(void) {
 // The container is tagged so the rest of this file recognises one without a
 // second table, and the action target reports the CONTAINER, which is the
 // handle Elisa knows.
-#define ELISA_SWITCH_ROW_TAG 0x45535720
-
 static UILabel *elisa_switch_row_label(UIView *row) {
     for (UIView *child in row.subviews) {
         if ([child isKindOfClass:[UILabel class]]) return (UILabel *)child;
@@ -293,7 +295,7 @@ size_t elisa_uikit_controls_create_button(int selectable) {
 }
 
 size_t elisa_uikit_controls_create_text_field(void) {
-    UITextField *field = [[UITextField alloc] initWithFrame:CGRectZero];
+    UITextField *field = [[ElisaUiKitControlsTextField alloc] initWithFrame:CGRectZero];
     field.borderStyle = UITextBorderStyleRoundedRect;
     field.adjustsFontForContentSizeCategory = YES;
     field.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
@@ -512,10 +514,6 @@ void elisa_uikit_controls_set_secure(size_t handle, int secure) {
     UITextField *field = (UITextField *)view;
     if (field.secureTextEntry == (secure != 0)) return;
     field.secureTextEntry = secure != 0;
-}
-
-void elisa_uikit_controls_set_accessibility_label(size_t handle, size_t text) {
-    elisa_uikit_controls_view(handle).accessibilityLabel = elisa_uikit_controls_string(text);
 }
 
 // --- Actions -----------------------------------------------------------

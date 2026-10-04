@@ -1,0 +1,21 @@
+# Retained min/preferred/max constraints and their normalized layout helpers.
+
+extend UiFlat:
+    public:
+        # A zero preferred extent restores the measured/intrinsic fallback.
+        # Preferred size is a hint; required minimum content still wins over
+        # an incompatible preferred or maximum declaration.
+        def set_preferred_size(index: usize, width: f32, height: f32) -> void:
+            return if index >= widget_count or not UiCore::is_finite(width) or not UiCore::is_finite(height)
+            widgets[index].declared_preferred_width <- UiConstraints::bounded(width)
+            widgets[index].declared_preferred_height <- UiConstraints::bounded(height)
+            mark_layout_dirty()
+
+    private:
+        def normalized_max_width(index: usize) -> f32:
+            constraints: UiConstraints::Range = UiConstraints::normalize(widgets[index].min_width, widgets[index].preferred_width, widgets[index].max_width)
+            return 0.0 if widgets[index].max_width > 0.0 and widgets[index].max_width < widgets[index].min_width else constraints.maximum
+
+        def normalized_max_height(index: usize) -> f32:
+            constraints: UiConstraints::Range = UiConstraints::normalize(widgets[index].min_height, widgets[index].preferred_height, widgets[index].max_height)
+            return 0.0 if widgets[index].max_height > 0.0 and widgets[index].max_height < widgets[index].min_height else constraints.maximum
