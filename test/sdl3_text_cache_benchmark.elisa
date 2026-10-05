@@ -1,0 +1,86 @@
+# SDL3 renderer workload used by the focused cold-miss/warm-hit benchmark.
+
+include "../src/platform/sdl3/ui_sdl3.elisa"
+
+extern SDL_setenv_unsafe(name: cstr, value: cstr, overwrite: i32) -> i32
+
+global mutable benchmark_window: void&? = null
+
+def app_init() -> void:
+    pass
+
+def app_event(event: mutable UiCore::Event&) -> void:
+    pass
+
+def app_text_input(text: sview) -> void:
+    pass
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    pass
+
+def app_frame() -> void:
+    pass
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def benchmark_setup() -> i32:
+    _ = SDL_setenv_unsafe("SDL_VIDEODRIVER", "dummy", 1)
+    if not SDL_Init(0x20):
+        return 1
+    if not TTF_Init():
+        SDL_Quit()
+        return 2
+    window_opt: void&? = SDL_CreateWindow("SDL3 text cache benchmark", 480, 80, 0)
+    if window_opt == null:
+        TTF_Quit()
+        SDL_Quit()
+        return 3
+    if window_opt is window:
+        benchmark_window <- window
+        if not UiSdl3Draw::create_renderer(window):
+            SDL_DestroyWindow(window)
+            benchmark_window <- null
+            TTF_Quit()
+            SDL_Quit()
+            return 4
+        UiCore::set_viewport(480.0, 80.0)
+        return 0
+    return 5
+
+def benchmark_paint(color_variant: u32) -> void:
+    channel: u8 = (color_variant % 255).u8()
+    color: UiCore::Color = UiCore::rgb(channel, channel, channel)
+    UiCore::begin_frame()
+    UiCore::draw(UiCore::TextRun(UiCore::Vec2(4.0, 28.0), 18.0, "A repeated SDL text-cache benchmark label"), color)
+    UiPaint::replay(UiSdl3Draw::painter())
+    UiSdl3Draw::present()
+
+def benchmark_clear_cache() -> void:
+    UiSdl3TextCache::clear()
+
+def benchmark_teardown() -> void:
+    UiSdl3Draw::fonts_close()
+    UiSdl3Draw::destroy_renderer()
+    if benchmark_window is window:
+        SDL_DestroyWindow(window)
+    benchmark_window <- null
+    TTF_Quit()
+    SDL_Quit()
+
+def benchmark_cache_count() -> usize:
+    return UiSdl3Draw::text_cache_count()
+
+def benchmark_cache_hits() -> u64:
+    return UiSdl3Draw::text_cache_hits()
+
+def benchmark_cache_misses() -> u64:
+    return UiSdl3Draw::text_cache_misses()
+
+export fn elisa_sdl3_text_cache_benchmark_setup() -> i32 = benchmark_setup
+export fn elisa_sdl3_text_cache_benchmark_paint(color_variant: u32) -> void = benchmark_paint
+export fn elisa_sdl3_text_cache_benchmark_clear() -> void = benchmark_clear_cache
+export fn elisa_sdl3_text_cache_benchmark_teardown() -> void = benchmark_teardown
+export fn elisa_sdl3_text_cache_benchmark_count() -> usize = benchmark_cache_count
+export fn elisa_sdl3_text_cache_benchmark_hits() -> u64 = benchmark_cache_hits
+export fn elisa_sdl3_text_cache_benchmark_misses() -> u64 = benchmark_cache_misses

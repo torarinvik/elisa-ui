@@ -105,6 +105,13 @@ reading one slot of whatever was there last frame. The wire is additive —
 discriminant 6, every other record byte-identical at the same offsets — so a
 host built before images existed skips it by its unknown tag.
 
+The current image record keeps its 32-byte stride: box floats at offsets 4–19,
+slot and generation at 20 and 24, then alpha, corner, and `PictureFit` bytes at
+28, 29, and 30; byte 31 is reserved zero. The focused Wasm transfer fixture
+checks these fields along with every other current command tag. This private
+adapter record does not imply that the SDK's typed encoder already supports
+images; see the [binding migration gate](implementation-baseline/hosted-binding-gate.md).
+
 ## On a widget
 
 `UiFlat::set_image` / `set_image_alpha` and their `UiHandles` forwarders. The

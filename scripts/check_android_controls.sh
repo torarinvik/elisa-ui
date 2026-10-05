@@ -12,6 +12,11 @@ set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 STAGE1="$(bash "$ROOT/scripts/resolve_stage1_root.sh" "$ROOT")"
 EXAMPLE="${1:-showcase}"
+PACKAGE="${ELISA_UI_ANDROID_PACKAGE_ID:-org.elisa_ui.${EXAMPLE}_controls}"
+[[ "$PACKAGE" =~ ^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$ ]] || {
+  echo "android controls: invalid package ID: $PACKAGE" >&2
+  exit 2
+}
 SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
 NDK="${ANDROID_NDK_ROOT:-$(ls -d "$SDK"/ndk/* 2>/dev/null | sort -V | tail -1)}"
 
@@ -167,14 +172,13 @@ if [[ ! -x "$ADB" ]] || ! "$ADB" devices | grep -q "	device$"; then
   exit 0
 fi
 
-PACKAGE="org.elisa_ui.${EXAMPLE}_controls"
 ACTIVITY="org.elisa_ui.ElisaControlsActivity"
 "$ADB" install -r "$APK" >/dev/null
 "$ADB" shell am force-stop "$PACKAGE" || true
 "$ADB" shell am start -n "$PACKAGE/$ACTIVITY" >/dev/null
 pid=""
 for _ in $(seq 1 20); do
-  pid="$("$ADB" shell pidof "$PACKAGE" 2>/dev/null | tr -d '\r')"
+  pid="$("$ADB" shell pidof "$PACKAGE" 2>/dev/null | tr -d '\r' || true)"
   [[ -n "$pid" ]] && break
   sleep 1
 done

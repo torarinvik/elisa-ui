@@ -18,6 +18,12 @@ in that helper would silently omit a live command. The generated foreign Rust
 `HostRenderCommandWire` API is not a generated Elisa binding and cannot be
 called from the UI guest.
 
+The focused `check_wasmbrowser_transfer.sh` fixture now verifies every current
+UI command tag 0–6 and non-zero payloads, including the private image record's
+fit byte changing across reused frames. It runs the production guest encoder against native C host stubs;
+it does not satisfy the real component-host conformance or typed SDK-binding
+requirements below, and does not change the SDK helper's tag coverage.
+
 The versioned accessibility profile has a typed WIT `semantic-node` record,
 but its current Elisa import is likewise a raw node pointer/count plus a
 canonical result area. Its node shape does not yet carry every field in the UI

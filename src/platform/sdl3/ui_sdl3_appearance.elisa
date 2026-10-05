@@ -1,0 +1,39 @@
+# SDL3 system appearance facts.
+#
+# SDL reports only light/dark here; it does not provide contrast, motion, or
+# text-scale preferences. Keep unknown distinct from light so callers can pass
+# the result to UiTheme::resolve without inventing an OS preference.
+
+include "../../widgets/ui_theme.elisa"
+
+extend UiSdl3:
+    public:
+        const SDL_SYSTEM_THEME_UNKNOWN: i32 = 0
+        const SDL_SYSTEM_THEME_LIGHT: i32 = 1
+        const SDL_SYSTEM_THEME_DARK: i32 = 2
+
+        def system_dark() -> bool:
+            return sdl_system_theme == SDL_SYSTEM_THEME_DARK
+
+        def system_preferences() -> UiTheme::Preferences:
+            mode: mutable UiTheme::ColorMode = UiTheme::ColorMode.System
+            mode <- UiTheme::ColorMode.Light if sdl_system_theme == SDL_SYSTEM_THEME_LIGHT
+            mode <- UiTheme::ColorMode.Dark if sdl_system_theme == SDL_SYSTEM_THEME_DARK
+            return UiTheme::Preferences{mode: mode, contrast: UiTheme::Contrast.Normal,
+                text_scale: 1.0, reduced_motion: false}
+
+        # This is the SDL fact-ingress used by the native theme-change event;
+        # public visibility also makes the mapping deterministic to test
+        # without relying on the host desktop's current appearance.
+        def set_system_theme(theme: i32) -> bool:
+            normalized: mutable i32 = theme
+            normalized <- SDL_SYSTEM_THEME_UNKNOWN if normalized != SDL_SYSTEM_THEME_LIGHT and normalized != SDL_SYSTEM_THEME_DARK
+            changed: bool = normalized != sdl_system_theme
+            sdl_system_theme <- normalized
+            return changed
+
+    private:
+        global mutable sdl_system_theme: i32 = SDL_SYSTEM_THEME_UNKNOWN
+
+        def refresh_system_theme() -> bool:
+            return set_system_theme(SDL_GetSystemTheme())

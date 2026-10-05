@@ -21,11 +21,14 @@ module HelloApp:
         global mutable title_label: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
         global mutable subtitle_label: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
         global mutable preview_label: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
+        global mutable preview_canvas: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
         global mutable help_label: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
         global mutable intensity_label: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
         global mutable intensity_slider: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
         global mutable intensity_progress: UiHandles::Handle = UiHandles::Handle{widget_id: UiFlat::NONE.u32(), tree_id: 0}
         global mutable clicks: i32 = 0
+        global mutable preview_zoom_scale: f32 = 1.0
+        global mutable preview_pinch_start_scale: f32 = 1.0
         global mutable accent_index: i32 = 2
         global mutable accent: UiCore::Color = UiCore::Color{r: 64, g: 112, b: 224, a: 255}
         global mutable dark_theme: bool = true
@@ -80,7 +83,7 @@ module HelloApp:
                 UiHandles::set_colors(project_field, color(27, 32, 43), color(27, 32, 43), color(27, 32, 43))
                 UiHandles::set_text(project_field, "Project name", 15.0, color(232, 236, 246))
                 UiHandles::set_text(preview_label, "Canvas preview", 20.0, color(238, 241, 248))
-                UiHandles::set_text(help_label, "Choose a palette above. Keys 1-3 switch colour; T theme; P/R save/restore; L/C/F/Y preview.", 14.0, color(166, 175, 196))
+                UiHandles::set_text(help_label, "Choose a palette above. Keys 1-3 switch colour; T theme; P/R save/restore; L/C/F/Y preview. Pinch to zoom on touch.", 14.0, color(166, 175, 196))
                 UiHandles::set_text(intensity_label, "Preview intensity", 13.0, color(148, 158, 180))
                 UiHandles::set_colors(intensity_slider, color(54, 61, 78), accent, color(238, 242, 252))
                 UiHandles::set_colors(intensity_progress, color(54, 61, 78), accent, accent)
@@ -96,7 +99,7 @@ module HelloApp:
                 UiHandles::set_colors(project_field, color(250, 251, 254), color(250, 251, 254), color(250, 251, 254))
                 UiHandles::set_text(project_field, "Project name", 15.0, color(35, 43, 58))
                 UiHandles::set_text(preview_label, "Canvas preview", 20.0, color(31, 39, 54))
-                UiHandles::set_text(help_label, "Choose a palette above. Keys 1-3 switch colour; T theme; P/R save/restore; L/C/F/Y preview.", 14.0, color(98, 110, 132))
+                UiHandles::set_text(help_label, "Choose a palette above. Keys 1-3 switch colour; T theme; P/R save/restore; L/C/F/Y preview. Pinch to zoom on touch.", 14.0, color(98, 110, 132))
                 UiHandles::set_text(intensity_label, "Preview intensity", 13.0, color(91, 103, 126))
                 UiHandles::set_colors(intensity_slider, color(198, 205, 220), accent, color(255, 255, 255))
                 UiHandles::set_colors(intensity_progress, color(198, 205, 220), accent, accent)
@@ -104,42 +107,45 @@ module HelloApp:
                 UiHandles::set_text(theme_button, "Dark mode", 15.0, color(35, 43, 58))
                 UiHandles::set_selected(theme_button, false)
 
-        # A small vector scene makes the empty content card earn its space and
-        # exercises the custom backend's shapes, alpha blending and line work.
-        # It is derived from typed retained widgets every frame, so resize stays live.
+        # A small vector scene makes the reserved canvas useful and exercises
+        # the custom backend's shapes, alpha blending and line work. Its frame
+        # comes from the retained layout, so resize and pinch zoom stay live.
         def paint_preview() -> void:
-            if UiHandles::widget(content) is card:
-                if UiHandles::widget(intensity_progress) is meter:
-                    if UiHandles::widget(intensity_slider) is slider:
-                        centre_x: f32 = card.x + card.width * 0.5
-                        art_top: f32 = meter.y + meter.height + 18.0
-                        art_bottom: f32 = card.y + card.height - 24.0
-                        art_height: f32 = art_bottom - art_top
-                        centre_y: f32 = art_top + art_height * 0.5
-                        intensity: f32 = slider.value
-                        base_radius: f32 = 76.0 if card.height > 260.0 else 48.0
-                        desired_radius: f32 = base_radius * (0.72 + intensity * 0.42)
-                        available_radius: f32 = art_height * 0.5 - 34.0
-                        radius: mutable f32 = desired_radius if desired_radius < available_radius else available_radius
-                        radius <- 12.0 if radius < 12.0 else radius
+            if UiHandles::widget(preview_canvas) is canvas:
+                if UiHandles::widget(intensity_slider) is slider:
+                    centre_x: f32 = canvas.x + canvas.width * 0.5
+                    art_top: f32 = canvas.y + 16.0
+                    art_bottom: f32 = canvas.y + canvas.height - 16.0
+                    art_height: f32 = art_bottom - art_top
+                    centre_y: f32 = art_top + art_height * 0.5
+                    intensity: f32 = slider.value
+                    base_radius: f32 = 76.0 if canvas.height > 260.0 else 48.0
+                    available_radius: mutable f32 = art_height * 0.5 - 34.0
+                    horizontal_radius: f32 = canvas.width * 0.5 - 34.0
+                    available_radius <- horizontal_radius if horizontal_radius < available_radius
+                    zoom_progress: f32 = (preview_zoom_scale - 0.65) / 1.85
+                    zoom_limit: f32 = available_radius * (0.30 + zoom_progress * 0.60)
+                    desired_radius: f32 = base_radius * (0.72 + intensity * 0.42)
+                    radius: mutable f32 = desired_radius if desired_radius < zoom_limit else zoom_limit
+                    radius <- 12.0 if radius < 12.0 else radius
 
-                        # Quiet guide rails behind the focal mark.
-                        guide: UiCore::Color = UiCore::rgba(255, 255, 255, 24)
-                        UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(card.x + 32.0, centre_y), to_point: UiCore::Vec2(card.x + card.width - 32.0, centre_y)}, guide)
-                        UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(centre_x, art_top), to_point: UiCore::Vec2(centre_x, art_bottom)}, guide)
+                    # Quiet guide rails behind the focal mark.
+                    guide: UiCore::Color = UiCore::rgba(255, 255, 255, 24)
+                    UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(canvas.x + 32.0, centre_y), to_point: UiCore::Vec2(canvas.x + canvas.width - 32.0, centre_y)}, guide)
+                    UiCore::fill(UiCore::Line{from_point: UiCore::Vec2(centre_x, art_top), to_point: UiCore::Vec2(centre_x, art_bottom)}, guide)
 
-                        # Layered translucent geometry: deliberately backend-neutral commands,
-                        # not AppKit drawing hidden in the example.
-                        halo: UiCore::Color = UiCore::Color{r: accent.r, g: accent.g, b: accent.b, a: 42}
-                        soft: UiCore::Color = UiCore::Color{r: accent.r, g: accent.g, b: accent.b, a: 105}
-                        UiCore::fill(UiCore::Circle{center: UiCore::Vec2(centre_x, centre_y), radius: radius + 34.0}, halo)
-                        UiCore::fill(UiCore::Circle{center: UiCore::Vec2(centre_x - radius * 0.42, centre_y + radius * 0.18), radius: radius}, accent)
-                        UiCore::fill(UiCore::Circle{center: UiCore::Vec2(centre_x + radius * 0.55, centre_y - radius * 0.28), radius: radius * 0.72}, soft)
-                        UiCore::fill(UiCore::Triangle{
-                            a: UiCore::Vec2(centre_x + radius * 0.15, centre_y - radius * 0.72),
-                            b: UiCore::Vec2(centre_x + radius * 1.05, centre_y + radius * 0.72),
-                            c: UiCore::Vec2(centre_x - radius * 0.34, centre_y + radius * 0.56),
-                        }, UiCore::rgba(246, 248, 255, 185))
+                    # Layered translucent geometry: deliberately backend-neutral commands,
+                    # not AppKit drawing hidden in the example.
+                    halo: UiCore::Color = UiCore::Color{r: accent.r, g: accent.g, b: accent.b, a: 42}
+                    soft: UiCore::Color = UiCore::Color{r: accent.r, g: accent.g, b: accent.b, a: 105}
+                    UiCore::fill(UiCore::Circle{center: UiCore::Vec2(centre_x, centre_y), radius: radius + 34.0}, halo)
+                    UiCore::fill(UiCore::Circle{center: UiCore::Vec2(centre_x - radius * 0.42, centre_y + radius * 0.18), radius: radius}, accent)
+                    UiCore::fill(UiCore::Circle{center: UiCore::Vec2(centre_x + radius * 0.55, centre_y - radius * 0.28), radius: radius * 0.72}, soft)
+                    UiCore::fill(UiCore::Triangle{
+                        a: UiCore::Vec2(centre_x + radius * 0.15, centre_y - radius * 0.72),
+                        b: UiCore::Vec2(centre_x + radius * 1.05, centre_y + radius * 0.72),
+                        c: UiCore::Vec2(centre_x - radius * 0.34, centre_y + radius * 0.56),
+                    }, UiCore::rgba(246, 248, 255, 185))
 
         def save_state() -> void can Unsafe.PointerCast:
             catalog_index: i32 = HelloCatalog::selected()
@@ -166,8 +172,11 @@ module HelloApp:
         # Advanced custom renderers may anchor their own drawing to a retained
         # layout node without reaching into the widget arena. The handle is
         # generation-checked by UiHandles at the call site.
-        def content_handle() -> UiHandles::Handle:
-            return content
+        def preview_canvas_handle() -> UiHandles::Handle:
+            return preview_canvas
+
+        def preview_zoom() -> f32:
+            return preview_zoom_scale
 
         def init() -> void:
             # A host may restart the application in one component/session.
@@ -177,6 +186,8 @@ module HelloApp:
             HelloState::reset()
             UiHandles::reset()
             clicks <- 0
+            preview_zoom_scale <- 1.0
+            preview_pinch_start_scale <- 1.0
             accent_index <- 2
             accent <- color(64, 112, 224)
             dark_theme <- true
@@ -211,7 +222,11 @@ module HelloApp:
             UiHandles::set_help(content, "Scrollable showcase content")
             content_body: UiHandles::Handle = UiHandles::column(content, 24.0, 9.0, UiCore::Color{r: 0, g: 0, b: 0, a: 0})
             preview_label <- UiHandles::label(content_body, "Canvas preview", 20.0, color(238, 241, 248))
-            help_label <- UiHandles::label(content_body, "Choose a palette above. Keys 1-3 switch colour; T theme; P/R save/restore; L/C/F/Y preview.", 14.0, color(166, 175, 196))
+            help_label <- UiHandles::label(content_body, "Choose a palette above. Keys 1-3 switch colour; T theme; P/R save/restore; L/C/F/Y preview. Pinch to zoom on touch.", 14.0, color(166, 175, 196))
+            preview_canvas <- UiHandles::panel(content_body, UiConst::Axis.Column, 0.0, 0.0, UiCore::Color{r: 0, g: 0, b: 0, a: 0})
+            UiHandles::set_preferred_size(preview_canvas, 480.0, 240.0)
+            UiHandles::set_help(preview_canvas, "Pinch with two fingers to zoom this canvas artwork")
+            _ = UiHandles::set_gesture_target(preview_canvas, true)
             HelloCatalog::init(content_body)
             HelloResourceDemo::init(content_body)
             intensity_label <- UiHandles::label(content_body, "Preview intensity", 13.0, color(148, 158, 180))
@@ -224,6 +239,10 @@ module HelloApp:
             HelloValidation::validate()
 
         def widget_event(widget: usize, event: i32) -> void:
+            if UiHandles::event_is(event, UiConst::WidgetEvent.GesturePinch) and UiHandles::callback_matches(widget, preview_canvas):
+                scale: f32 = preview_pinch_start_scale * UiHandles::gesture_snapshot().scale
+                preview_zoom_scale <- 0.65 if scale < 0.65 else (2.5 if scale > 2.5 else scale)
+                return
             if UiHandles::event_is(event, UiConst::WidgetEvent.Change) and UiHandles::callback_matches(widget, project_field):
                 HelloValidation::validate()
                 return
@@ -245,6 +264,9 @@ module HelloApp:
                 apply_theme()
 
         def event(incoming: UiCore::Event) -> void:
+            if incoming is UiCore::ContactEvent.Update(contact):
+                if contact.phase == UiCore::ContactPhase.Began and UiGestures::active_count() <= 1:
+                    preview_pinch_start_scale <- preview_zoom_scale
             # Printable keys belong to the editor while it owns focus.
             if UiHandles::is_focused(project_field):
                 UiHandles::handle(incoming)
@@ -267,6 +289,12 @@ module HelloApp:
                     pass
             UiHandles::handle(incoming)
 
+        def text_input(text: sview) -> void:
+            UiHandles::insert_text(text)
+
+        def text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+            UiHandles::update_marked_text_utf8_characters(text, selected_start, selected_length)
+
         def frame() -> void:
             UiCore::clear(canvas_color)
             UiHandles::paint()
@@ -284,13 +312,13 @@ def app_event(event: UiCore::Event) -> void:
     HelloApp::event(event)
 
 def app_text_input(text: sview) -> void:
-    UiHandles::insert_text(text)
+    HelloApp::text_input(text)
 
 def app_validate() -> void:
     HelloValidation::validate()
 
 def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
-    UiHandles::update_marked_text_utf8_characters(text, selected_start, selected_length)
+    HelloApp::text_editing(text, selected_start, selected_length)
 
 def app_frame() -> void:
     HelloApp::frame()

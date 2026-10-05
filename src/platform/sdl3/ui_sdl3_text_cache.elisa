@@ -1,0 +1,209 @@
+# Bounded SDL_ttf raster cache. Text textures are renderer-owned and are
+# discarded on font, locale, display-scale, or renderer-generation changes.
+
+module UiSdl3TextCache:
+    private:
+        const MAX_ENTRIES: usize = 32
+        const MAX_TEXT_BYTES: usize = 256
+        const MAX_CACHE_BYTES: usize = 1024 * 1024
+        const MAX_ENTRY_BYTES: usize = 128 * 1024
+        const NO_ENTRY: usize = MAX_ENTRIES
+
+        # Store opaque SDL identities as integers, never as long-lived Elisa
+        # borrows; renderer teardown owns the matching destruction boundary.
+        global mutable textures: uintptr[MAX_ENTRIES] = zeroed
+        global mutable active: bool[MAX_ENTRIES] = zeroed
+        global mutable text_lengths: usize[MAX_ENTRIES] = zeroed
+        global mutable text_cache_key_storage: u8[MAX_ENTRIES * MAX_TEXT_BYTES] = zeroed
+        global mutable sizes: f32[MAX_ENTRIES] = zeroed
+        global mutable red: u8[MAX_ENTRIES] = zeroed
+        global mutable green: u8[MAX_ENTRIES] = zeroed
+        global mutable blue: u8[MAX_ENTRIES] = zeroed
+        global mutable alpha: u8[MAX_ENTRIES] = zeroed
+        global mutable widths: f32[MAX_ENTRIES] = zeroed
+        global mutable heights: f32[MAX_ENTRIES] = zeroed
+        global mutable costs: usize[MAX_ENTRIES] = zeroed
+        global mutable ages: usize[MAX_ENTRIES] = zeroed
+        global mutable total_entries: usize = 0
+        global mutable total_bytes: usize = 0
+        global mutable cache_hits: u64 = 0
+        global mutable cache_misses: u64 = 0
+        global mutable context_valid: bool = false
+        global mutable context_font_generation: u32 = 0
+        global mutable context_locale_revision: u32 = 0
+        global mutable context_display_scale: f32 = 0.0
+
+        struct Surface:
+            handle: void&
+
+        def __drop__(self: Surface) -> void:
+            SDL_DestroySurface(self.handle)
+
+        def clear_entry(index: usize) -> void:
+            return if index >= MAX_ENTRIES or not active[index]
+            if textures[index] != 0.uintptr():
+                can Unsafe.PointerCast:
+                    texture: void& = textures[index].cast[void&]
+                    SDL_DestroyTexture(texture)
+            total_entries <- total_entries - 1 if total_entries > 0
+            if total_bytes >= costs[index]:
+                total_bytes <- total_bytes - costs[index]
+            else:
+                total_bytes <- 0
+            base: usize = index * MAX_TEXT_BYTES
+            for offset in 0..<text_lengths[index]:
+                text_cache_key_storage[base + offset] <- 0
+            textures[index] <- 0.uintptr()
+            active[index] <- false
+            text_lengths[index] <- 0
+            widths[index] <- 0.0
+            heights[index] <- 0.0
+            costs[index] <- 0
+            ages[index] <- 0
+
+        def clear_entries() -> void:
+            for index in 0..<MAX_ENTRIES:
+                clear_entry(index)
+
+        def sync_context(font_generation: u32, locale_revision: u32, display_scale: f32) -> void:
+            if context_valid and (context_font_generation != font_generation or context_locale_revision != locale_revision or context_display_scale != display_scale):
+                clear_entries()
+            context_font_generation <- font_generation
+            context_locale_revision <- locale_revision
+            context_display_scale <- display_scale
+            context_valid <- true
+
+        def text_matches(index: usize, text: sview, size: f32, color: UiCore::Color) -> bool:
+            return false if not active[index] or text_lengths[index] != text.len.usize() or sizes[index] != size
+            return false if red[index] != color.r or green[index] != color.g or blue[index] != color.b or alpha[index] != color.a
+            base: usize = index * MAX_TEXT_BYTES
+            for offset in 0..<text.len.usize():
+                return false if text_cache_key_storage[base + offset] != text.data[offset]
+            return true
+
+        def make_recent(index: usize) -> void:
+            old_age: usize = ages[index]
+            for other in 0..<MAX_ENTRIES:
+                continue if other == index or not active[other]
+                ages[other] <- ages[other] + 1 if ages[other] < old_age
+            ages[index] <- 1
+
+        def lookup(text: sview, size: f32, color: UiCore::Color) -> usize:
+            return NO_ENTRY if text.len > MAX_TEXT_BYTES.i64()
+            for index in 0..<MAX_ENTRIES:
+                if text_matches(index, text, size, color):
+                    cache_hits <- cache_hits + 1
+                    make_recent(index)
+                    return index
+            cache_misses <- cache_misses + 1
+            return NO_ENTRY
+
+        def oldest_entry() -> usize:
+            oldest: mutable usize = NO_ENTRY
+            oldest_age: mutable usize = 0
+            for index in 0..<MAX_ENTRIES:
+                if active[index] and (oldest == NO_ENTRY or ages[index] > oldest_age):
+                    oldest <- index
+                    oldest_age <- ages[index]
+            return oldest
+
+        def free_entry() -> usize:
+            for index in 0..<MAX_ENTRIES:
+                return index if not active[index]
+            return NO_ENTRY
+
+        def texture_cost(texture: void&) -> usize:
+            width: mutable f32 = 0.0
+            height: mutable f32 = 0.0
+            return 0 if not SDL_GetTextureSize(texture, &width, &height)
+            return 0 if width <= 0.0 or height <= 0.0 or width > 8192.0 or height > 8192.0
+            pixel_width: usize = ceilf(width).usize()
+            pixel_height: usize = ceilf(height).usize()
+            return 0 if pixel_width == 0 or pixel_height == 0
+            return 0 if pixel_width > MAX_ENTRY_BYTES / 4 / pixel_height
+            return pixel_width * pixel_height * 4
+
+        def insert(text: sview, size: f32, color: UiCore::Color, texture: uintptr, width: f32, height: f32, cost: usize) -> usize:
+            return NO_ENTRY if text.len > MAX_TEXT_BYTES.i64() or cost == 0 or cost > MAX_ENTRY_BYTES or cost > MAX_CACHE_BYTES
+            while total_bytes > MAX_CACHE_BYTES - cost or total_entries >= MAX_ENTRIES:
+                oldest: usize = oldest_entry()
+                return NO_ENTRY if oldest == NO_ENTRY
+                clear_entry(oldest)
+            slot: usize = free_entry()
+            return NO_ENTRY if slot == NO_ENTRY
+            textures[slot] <- texture
+            active[slot] <- true
+            text_lengths[slot] <- text.len.usize()
+            sizes[slot] <- size
+            red[slot] <- color.r
+            green[slot] <- color.g
+            blue[slot] <- color.b
+            alpha[slot] <- color.a
+            widths[slot] <- width
+            heights[slot] <- height
+            costs[slot] <- cost
+            ages[slot] <- total_entries + 1
+            base: usize = slot * MAX_TEXT_BYTES
+            for offset in 0..<text.len.usize():
+                text_cache_key_storage[base + offset] <- text.data[offset]
+            total_entries <- total_entries + 1
+            total_bytes <- total_bytes + cost
+            make_recent(slot)
+            return slot
+
+        def paint_texture(renderer: void&, texture: void&, run: UiCore::TextRun, width: f32, height: f32) -> void:
+            destination: mutable array[f32, 4] = [run.origin.x, run.origin.y, width, height]
+            destination_pointer: void& = (&destination[0]).cast[void&] can Unsafe.PointerCast
+            _ = SDL_RenderTexture(renderer, texture, null, destination_pointer)
+
+        def paint_entry(renderer: void&, index: usize, run: UiCore::TextRun) -> void:
+            return if index >= MAX_ENTRIES or not active[index]
+            if textures[index] != 0.uintptr():
+                can Unsafe.PointerCast:
+                    texture: void& = textures[index].cast[void&]
+                    paint_texture(renderer, texture, run, widths[index], heights[index])
+
+    public:
+        def draw_text(renderer: void&, window: void&, font: void&, run: UiCore::TextRun, color: UiCore::Color, text: sview) -> void can[Unsafe.PointerCast]:
+            size: f32 = UiCore::bounded_extent(run.size)
+            display_scale: mutable f32 = UiCore::finite_or_zero(SDL_GetWindowDisplayScale(window))
+            display_scale <- 1.0 if display_scale <= 0.0
+            sync_context(UiSdl3Fonts::font_generation(), UiLocalization::revision(), display_scale)
+            cached: usize = lookup(text, size, color)
+            if cached != NO_ENTRY:
+                paint_entry(renderer, cached, run)
+                return
+            return if not UiSdl3Fonts::begin_text_run(font, text)
+            pointer: cstr = text.data.cast[cstr] can Unsafe.PointerCast
+            surface_opt: void&? = TTF_RenderText_Blended(font, pointer, text.len.usize(), SdlColor{r: color.r, g: color.g, b: color.b, a: color.a})
+            UiSdl3Fonts::end_text_run(font, text)
+            if surface_opt is surface_handle:
+                surface: Surface = Surface{handle: surface_handle}
+                texture_opt: void&? = SDL_CreateTextureFromSurface(renderer, surface.handle)
+                if texture_opt is texture:
+                    width: f32 = UiSdl3Fonts::measure_text_width(text, size)
+                    height: f32 = UiSdl3Fonts::text_line_height(size)
+                    texture_identity: uintptr = texture.cast[uintptr] can Unsafe.PointerCast
+                    cost: usize = texture_cost(texture)
+                    inserted: usize = insert(text, size, color, texture_identity, width, height, cost)
+                    if inserted != NO_ENTRY:
+                        paint_entry(renderer, inserted, run)
+                        return
+                    paint_texture(renderer, texture, run, width, height)
+                    SDL_DestroyTexture(texture)
+
+        def clear() -> void:
+            clear_entries()
+            context_valid <- false
+
+        def entry_count() -> usize:
+            return total_entries
+
+        def estimated_bytes() -> usize:
+            return total_bytes
+
+        def hits() -> u64:
+            return cache_hits
+
+        def misses() -> u64:
+            return cache_misses

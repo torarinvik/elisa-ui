@@ -119,6 +119,40 @@ extern "C" {
     fn elisa_ui_widget_tree_reset();
     fn elisa_ui_widget_column(parent: u64, padding: f32, spacing: f32, color_rgba: u32) -> u64;
     fn elisa_ui_widget_row(parent: u64, padding: f32, spacing: f32, color_rgba: u32) -> u64;
+    fn elisa_ui_widget_vertical_scroll(
+        parent: u64,
+        min_width: f32,
+        min_height: f32,
+        color_rgba: u32,
+    ) -> u64;
+    fn elisa_ui_widget_horizontal_scroll(
+        parent: u64,
+        min_width: f32,
+        min_height: f32,
+        color_rgba: u32,
+    ) -> u64;
+    fn elisa_ui_widget_virtual_list(
+        parent: u64,
+        label: *const c_char,
+        label_length: usize,
+        item_count: i32,
+        item_extent: f32,
+        spacing: f32,
+        min_width: f32,
+        min_height: f32,
+        color_rgba: u32,
+    ) -> u64;
+    fn elisa_ui_widget_horizontal_virtual_list(
+        parent: u64,
+        label: *const c_char,
+        label_length: usize,
+        item_count: i32,
+        item_extent: f32,
+        spacing: f32,
+        min_width: f32,
+        min_height: f32,
+        color_rgba: u32,
+    ) -> u64;
     fn elisa_ui_widget_label(
         parent: u64,
         text: *const c_char,
@@ -127,6 +161,16 @@ extern "C" {
         color_rgba: u32,
     ) -> u64;
     fn elisa_ui_widget_text_field(
+        parent: u64,
+        initial: *const c_char,
+        length: usize,
+        min_width: f32,
+        min_height: f32,
+        size: f32,
+        ink_rgba: u32,
+        fill_rgba: u32,
+    ) -> u64;
+    fn elisa_ui_widget_secure_text_field(
         parent: u64,
         initial: *const c_char,
         length: usize,
@@ -190,7 +234,20 @@ extern "C" {
     fn elisa_ui_widget_selected(widget: u64) -> i32;
     fn elisa_ui_widget_set_value(widget: u64, value: f32) -> i32;
     fn elisa_ui_widget_value(widget: u64) -> f32;
+    fn elisa_ui_widget_set_scroll_offset(widget: u64, requested: f32) -> i32;
+    fn elisa_ui_widget_scroll_offset(widget: u64) -> f32;
+    fn elisa_ui_widget_scroll_limit(widget: u64) -> f32;
+    fn elisa_ui_widget_set_virtual_item_count(widget: u64, item_count: i32) -> i32;
+    fn elisa_ui_widget_virtual_item_count(widget: u64) -> i32;
+    fn elisa_ui_widget_virtual_scroll_to(widget: u64, item_index: i32) -> i32;
+    fn elisa_ui_widget_virtual_scroll_by(widget: u64, delta: f32) -> i32;
+    fn elisa_ui_widget_virtual_item_index(widget: u64) -> i32;
+    fn elisa_ui_widget_virtual_item_generation(widget: u64) -> u32;
     fn elisa_ui_widget_request_text_focus(widget: u64) -> i32;
+    fn elisa_ui_widget_set_input_text(widget: u64, text: *const c_char, length: usize) -> i32;
+    fn elisa_ui_widget_set_selection(widget: u64, anchor: usize, caret: usize) -> i32;
+    fn elisa_ui_widget_selection_start(widget: u64) -> i32;
+    fn elisa_ui_widget_selection_end(widget: u64) -> i32;
     fn elisa_ui_widget_text_length(widget: u64) -> i32;
     fn elisa_ui_widget_copy_text(widget: u64, destination: *mut c_char, capacity: usize) -> usize;
     fn elisa_ui_widget_activate(widget: u64) -> i32;
@@ -246,6 +303,98 @@ pub fn widget_row(
     widget_result(token)
 }
 
+/// Create a vertical scrolling viewport beneath a live container.
+pub fn widget_vertical_scroll(
+    parent: WidgetParent,
+    min_width: f32,
+    min_height: f32,
+    color: ColorRgba,
+) -> Option<WidgetHandle> {
+    let parent = widget_parent_token(parent)?;
+    // SAFETY: scalar values and a generation-checked opaque parent token.
+    let token = unsafe {
+        elisa_ui_widget_vertical_scroll(parent, min_width, min_height, color.0)
+    };
+    widget_result(token)
+}
+
+/// Create a horizontal scrolling viewport beneath a live container.
+pub fn widget_horizontal_scroll(
+    parent: WidgetParent,
+    min_width: f32,
+    min_height: f32,
+    color: ColorRgba,
+) -> Option<WidgetHandle> {
+    let parent = widget_parent_token(parent)?;
+    // SAFETY: scalar values and a generation-checked opaque parent token.
+    let token = unsafe {
+        elisa_ui_widget_horizontal_scroll(parent, min_width, min_height, color.0)
+    };
+    widget_result(token)
+}
+
+fn widget_virtual_list_call(
+    parent: WidgetParent,
+    label: &str,
+    item_count: i32,
+    item_extent: f32,
+    spacing: f32,
+    min_width: f32,
+    min_height: f32,
+    color: ColorRgba,
+    horizontal: bool,
+) -> Option<WidgetHandle> {
+    let parent = widget_parent_token(parent)?;
+    let (label_pointer, label_length) = (label.as_ptr() as *const c_char, label.len());
+    // SAFETY: label is valid UTF-8 for the synchronous call; the adapter copies
+    // its bounded prefix into retained Elisa storage.
+    let token = unsafe {
+        if horizontal {
+            elisa_ui_widget_horizontal_virtual_list(
+                parent, label_pointer, label_length, item_count, item_extent, spacing,
+                min_width, min_height, color.0,
+            )
+        } else {
+            elisa_ui_widget_virtual_list(
+                parent, label_pointer, label_length, item_count, item_extent, spacing,
+                min_width, min_height, color.0,
+            )
+        }
+    };
+    widget_result(token)
+}
+
+/// Create a uniform vertical virtual list. Add a bounded pool of direct-child
+/// controls; each realized child reports its current logical item index.
+pub fn widget_virtual_list(
+    parent: WidgetParent,
+    label: &str,
+    item_count: i32,
+    item_extent: f32,
+    spacing: f32,
+    min_width: f32,
+    min_height: f32,
+    color: ColorRgba,
+) -> Option<WidgetHandle> {
+    widget_virtual_list_call(parent, label, item_count, item_extent, spacing,
+        min_width, min_height, color, false)
+}
+
+/// Create a uniform horizontal virtual list with the same bounded row-pool API.
+pub fn widget_horizontal_virtual_list(
+    parent: WidgetParent,
+    label: &str,
+    item_count: i32,
+    item_extent: f32,
+    spacing: f32,
+    min_width: f32,
+    min_height: f32,
+    color: ColorRgba,
+) -> Option<WidgetHandle> {
+    widget_virtual_list_call(parent, label, item_count, item_extent, spacing,
+        min_width, min_height, color, true)
+}
+
 /// Create a retained text label from a counted UTF-8 string.
 pub fn widget_label(
     parent: WidgetParent,
@@ -284,6 +433,35 @@ pub fn widget_text_field(
     // call; Elisa copies its bounded prefix into retained field storage.
     let token = unsafe {
         elisa_ui_widget_text_field(
+            parent,
+            initial.as_ptr() as *const c_char,
+            initial.len(),
+            min_width,
+            min_height,
+            size,
+            ink.0,
+            fill.0,
+        )
+    };
+    widget_result(token)
+}
+
+/// Create an editable secure field. Its value and selection cannot be read
+/// back through the foreign-language API, though replacement remains allowed.
+pub fn widget_secure_text_field(
+    parent: WidgetParent,
+    initial: &str,
+    min_width: f32,
+    min_height: f32,
+    size: f32,
+    ink: ColorRgba,
+    fill: ColorRgba,
+) -> Option<WidgetHandle> {
+    let parent = widget_parent_token(parent)?;
+    // SAFETY: `initial` is valid UTF-8 and borrowed only for this call; Elisa
+    // copies it into secure retained storage and scrubs transient staging.
+    let token = unsafe {
+        elisa_ui_widget_secure_text_field(
             parent,
             initial.as_ptr() as *const c_char,
             initial.len(),
@@ -454,6 +632,83 @@ pub fn widget_value(widget: WidgetHandle) -> f32 {
     unsafe { elisa_ui_widget_value(widget.0) }
 }
 
+/// Update a scroll viewport's logical offset. Returns true only when it changed.
+pub fn widget_set_scroll_offset(widget: WidgetHandle, requested: f32) -> bool {
+    if !widget.is_valid() {
+        return false;
+    }
+    // SAFETY: scalar values only; Elisa validates token, kind, and finiteness.
+    unsafe { elisa_ui_widget_set_scroll_offset(widget.0, requested) == 1 }
+}
+
+/// Read the current logical scroll offset; stale/non-scroll handles return zero.
+pub fn widget_scroll_offset(widget: WidgetHandle) -> f32 {
+    if !widget.is_valid() {
+        return 0.0;
+    }
+    // SAFETY: scalar argument only; the boundary validates the token.
+    unsafe { elisa_ui_widget_scroll_offset(widget.0) }
+}
+
+/// Read the laid-out scroll range; stale/non-scroll handles return zero.
+pub fn widget_scroll_limit(widget: WidgetHandle) -> f32 {
+    if !widget.is_valid() {
+        return 0.0;
+    }
+    // SAFETY: scalar argument only; the boundary validates the token.
+    unsafe { elisa_ui_widget_scroll_limit(widget.0) }
+}
+
+/// Set a virtual list's logical item count; true means the count changed.
+pub fn widget_set_virtual_item_count(widget: WidgetHandle, item_count: i32) -> bool {
+    if !widget.is_valid() {
+        return false;
+    }
+    // SAFETY: scalar values only; the boundary validates token and kind.
+    unsafe { elisa_ui_widget_set_virtual_item_count(widget.0, item_count) == 1 }
+}
+
+/// Return the current item count, or `None` for stale/non-virtual handles.
+pub fn widget_virtual_item_count(widget: WidgetHandle) -> Option<i32> {
+    if !widget_is_live(widget) {
+        return None;
+    }
+    let count = unsafe { elisa_ui_widget_virtual_item_count(widget.0) };
+    (count >= 0).then_some(count)
+}
+
+/// Scroll a virtual list to a logical item; true means its anchor changed.
+pub fn widget_virtual_scroll_to(widget: WidgetHandle, item_index: i32) -> bool {
+    if !widget.is_valid() {
+        return false;
+    }
+    unsafe { elisa_ui_widget_virtual_scroll_to(widget.0, item_index) == 1 }
+}
+
+/// Scroll a virtual list by a logical-axis distance.
+pub fn widget_virtual_scroll_by(widget: WidgetHandle, delta: f32) -> bool {
+    if !widget.is_valid() {
+        return false;
+    }
+    unsafe { elisa_ui_widget_virtual_scroll_by(widget.0, delta) == 1 }
+}
+
+/// Read a recycled row's current logical index; -1 means it is not realized.
+pub fn widget_virtual_item_index(widget: WidgetHandle) -> Option<i32> {
+    if !widget_is_live(widget) {
+        return None;
+    }
+    Some(unsafe { elisa_ui_widget_virtual_item_index(widget.0) })
+}
+
+/// Read a recycled row's generation; it changes whenever that row is rebound.
+pub fn widget_virtual_item_generation(widget: WidgetHandle) -> Option<u32> {
+    if !widget_is_live(widget) {
+        return None;
+    }
+    Some(unsafe { elisa_ui_widget_virtual_item_generation(widget.0) })
+}
+
 /// Request keyboard focus for a live text field.
 pub fn widget_request_text_focus(widget: WidgetHandle) -> bool {
     if !widget.is_valid() {
@@ -463,7 +718,43 @@ pub fn widget_request_text_focus(widget: WidgetHandle) -> bool {
     unsafe { elisa_ui_widget_request_text_focus(widget.0) == 1 }
 }
 
-/// Return the current text-field value in bytes, or `None` for stale/non-text handles.
+/// Replace a live editable field's model value; secure fields are writable but
+/// remain unreadable. This differs from `widget_set_text`, which changes its caption.
+pub fn widget_set_input_text(widget: WidgetHandle, text: &str) -> bool {
+    if !widget.is_valid() {
+        return false;
+    }
+    // SAFETY: `text` is valid UTF-8 and borrowed only for this synchronous call.
+    unsafe {
+        elisa_ui_widget_set_input_text(widget.0, text.as_ptr() as *const c_char, text.len()) == 1
+    }
+}
+
+/// Set UTF-8 byte selection endpoints; Elisa normalizes them to grapheme edges.
+pub fn widget_set_selection(widget: WidgetHandle, anchor: usize, caret: usize) -> bool {
+    if !widget.is_valid() {
+        return false;
+    }
+    // SAFETY: scalar arguments only; the boundary validates token and field kind.
+    unsafe { elisa_ui_widget_set_selection(widget.0, anchor, caret) == 1 }
+}
+
+/// Read UTF-8 byte selection endpoints, or `None` for stale/non-text/secure fields.
+pub fn widget_selection(widget: WidgetHandle) -> Option<(usize, usize)> {
+    if !widget_is_live(widget) {
+        return None;
+    }
+    let start = unsafe { elisa_ui_widget_selection_start(widget.0) };
+    let end = unsafe { elisa_ui_widget_selection_end(widget.0) };
+    if start < 0 || end < 0 {
+        None
+    } else {
+        Some((start as usize, end as usize))
+    }
+}
+
+/// Return the current normal text-field value length, or `None` for stale,
+/// non-text, or secure handles.
 pub fn widget_text_length(widget: WidgetHandle) -> Option<usize> {
     if !widget_is_live(widget) {
         return None;
@@ -473,8 +764,8 @@ pub fn widget_text_length(widget: WidgetHandle) -> Option<usize> {
     (length >= 0).then_some(length as usize)
 }
 
-/// Copy a UTF-8-safe prefix of a text field into caller-owned storage.
-/// Returns `None` for stale/non-text handles, otherwise the bytes copied.
+/// Copy a UTF-8-safe prefix of a normal text field into caller-owned storage.
+/// Returns `None` for stale/non-text/secure handles, otherwise the bytes copied.
 pub fn widget_copy_text(widget: WidgetHandle, destination: &mut [u8]) -> Option<usize> {
     widget_text_length(widget)?;
     // SAFETY: the destination is writable for exactly its length and Elisa
@@ -488,7 +779,7 @@ pub fn widget_copy_text(widget: WidgetHandle, destination: &mut [u8]) -> Option<
     })
 }
 
-/// Read the complete bounded text-field value as a Rust string.
+/// Read the complete bounded normal text-field value as a Rust string.
 pub fn widget_text(widget: WidgetHandle) -> Option<String> {
     let length = widget_text_length(widget)?;
     let mut bytes = vec![0; length];

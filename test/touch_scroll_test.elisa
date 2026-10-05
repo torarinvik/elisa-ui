@@ -1,0 +1,98 @@
+# Framework integration checks for identified-contact scrolling and momentum.
+
+include "./widget_layout_support.elisa"
+
+def send_contact(id: u32, phase: UiCore::ContactPhase, x: f32, y: f32, timestamp: f32) -> void:
+    event: UiCore::Event = UiCore::ContactEvent.Update(UiCore::Contact{
+        id: id, phase: phase, tool: UiCore::ContactTool.Finger,
+        at: UiCore::Vec2(x, y), timestamp: timestamp,
+    })
+    UiFlat::handle(event)
+
+def main() -> i64:
+    UiFlat::reset()
+    view: usize = UiFlat::scroll(UiFlat::NONE, UiConst::Axis.Column, 120.0, 80.0, UiCore::rgb(12, 16, 24))
+    press_target: usize = UiFlat::button(view, 120.0, 40.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
+    for _ in 0..<3:
+        _ = UiFlat::button(view, 120.0, 40.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
+    UiFlat::layout(120.0, 80.0)
+    check("touch fixture has a scrollable viewport", UiFlat::scroll_limit(view) == 80.0)
+    UiCore::set_frame_time(50.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+
+    UiFlat::pointer(UiCore::PointerEvent.Down(UiCore::Vec2(30.0, 20.0), UiCore::PointerButton.Primary.i32()))
+    check("touch-scroll fixture starts with a live control press", UiFlat::active() == press_target and UiFlat::widget(press_target).pressed)
+    send_contact(1, UiCore::ContactPhase.Began, 30.0, 60.0, 50.01)
+    send_contact(1, UiCore::ContactPhase.Moved, 30.0, 55.0, 50.02)
+    check("sub-threshold contact movement does not scroll", UiFlat::scroll_offset(view) == 0.0)
+    send_contact(1, UiCore::ContactPhase.Moved, 30.0, 40.0, 50.04)
+    check("a classified touch drag scrolls the retained viewport", UiFlat::scroll_offset(view) == 20.0)
+    check("scroll recognition cancels compatibility pointer capture", UiFlat::active() == UiFlat::NONE and not UiFlat::widget(press_target).pressed)
+    UiFlat::pointer(UiCore::PointerEvent.Up(UiCore::Vec2(30.0, 40.0), UiCore::PointerButton.Primary.i32()))
+    check("release after a scroll drag cannot activate the pressed control", test_last_click == UiFlat::NONE)
+    send_contact(1, UiCore::ContactPhase.Moved, 30.0, 30.0, 50.05)
+    check("subsequent touch deltas remain incremental", UiFlat::scroll_offset(view) == 30.0)
+    send_contact(1, UiCore::ContactPhase.Ended, 30.0, 30.0, 50.052)
+    check("a quick release requests a momentum frame", UiCore::frame_delay() > 0.0)
+    before_momentum: f32 = UiFlat::scroll_offset(view)
+    UiCore::set_frame_time(50.068)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("release velocity continues scrolling on the frame clock", UiFlat::scroll_offset(view) > before_momentum)
+    check("momentum asks the host for another frame", UiCore::frame_delay() > 0.0)
+    before_interruption: f32 = UiFlat::scroll_offset(view)
+    UiFlat::handle(UiCore::Event.FocusLost)
+    UiCore::set_frame_time(50.084)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    check("focus loss cancels pending touch momentum", UiFlat::scroll_offset(view) == before_interruption)
+
+    # Nested edge handoff keeps the same finger delta and searches outward
+    # until a viewport can consume it.
+    UiFlat::reset()
+    outer: usize = UiFlat::scroll(UiFlat::NONE, UiConst::Axis.Column, 100.0, 60.0, UiCore::rgb(12, 16, 24))
+    inner: usize = UiFlat::scroll(outer, UiConst::Axis.Column, 100.0, 120.0, UiCore::rgb(14, 18, 26))
+    for _ in 0..<4:
+        _ = UiFlat::button(inner, 100.0, 60.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
+    UiFlat::layout(100.0, 60.0)
+    _ = UiFlat::set_scroll_offset(inner, UiFlat::scroll_limit(inner))
+    send_contact(2, UiCore::ContactPhase.Began, 20.0, 30.0, 51.0)
+    send_contact(2, UiCore::ContactPhase.Moved, 20.0, 10.0, 51.03)
+    check("touch drag at an inner edge bubbles into the outer viewport", UiFlat::scroll_offset(inner) == UiFlat::scroll_limit(inner) and UiFlat::scroll_offset(outer) == 20.0)
+    send_contact(2, UiCore::ContactPhase.Cancelled, 20.0, 10.0, 51.04)
+
+    UiFlat::reset()
+    virtual_view: usize = UiFlat::virtual_list(UiFlat::NONE, "Rows", 1000, 20.0, 2.0, 100.0, 60.0, UiCore::rgb(12, 16, 24))
+    UiFlat::layout(100.0, 60.0)
+    send_contact(4, UiCore::ContactPhase.Began, 20.0, 30.0, 51.5)
+    send_contact(4, UiCore::ContactPhase.Moved, 20.0, 5.0, 51.53)
+    check("touch drag updates a virtual list logical position", UiFlat::virtual_scroll_fraction(virtual_view) > 0.0)
+    send_contact(4, UiCore::ContactPhase.Cancelled, 20.0, 5.0, 51.54)
+
+    # Reduced motion suppresses only release momentum; direct finger tracking
+    # remains responsive and the retained offset stays deterministic.
+    UiFlat::reset()
+    reduced_view: usize = UiFlat::scroll(UiFlat::NONE, UiConst::Axis.Row, 80.0, 60.0, UiCore::rgb(12, 16, 24))
+    _ = UiFlat::button(reduced_view, 240.0, 60.0, UiCore::rgb(30, 30, 30), UiCore::rgb(40, 40, 40), UiCore::rgb(50, 50, 50))
+    UiFlat::layout(80.0, 60.0)
+    preferences: UiTheme::Preferences = UiTheme::current_preferences()
+    preferences.reduced_motion <- true
+    _ = UiTheme::set_preferences(preferences)
+    UiCore::set_frame_time(52.0)
+    UiCore::begin_frame()
+    UiFlat::paint()
+    send_contact(3, UiCore::ContactPhase.Began, 20.0, 30.0, 52.01)
+    send_contact(3, UiCore::ContactPhase.Moved, 10.0, 30.0, 52.03)
+    direct_offset: f32 = UiFlat::scroll_offset(reduced_view)
+    send_contact(3, UiCore::ContactPhase.Ended, 10.0, 30.0, 52.04)
+    check("reduced motion keeps direct touch scrolling", direct_offset > 0.0 and UiFlat::scroll_offset(reduced_view) == direct_offset)
+    check("reduced motion does not schedule inertial frames", UiCore::frame_delay() == 0.0)
+
+    _ = UiTheme::reset()
+    UiFlat::handle(UiCore::Event.FocusLost)
+    if test_failures == 0:
+        _ = puts("touch scrolling: all checks passed")
+        return 0
+    _ = puts("touch scrolling: FAILURES above")
+    return 1

@@ -26,11 +26,14 @@ stylus/multitouch acceptance remains open.
 
 ## Retained gesture targets
 
-`UiHandles::set_gesture_target(handle, true)` opts a live control or ancestor
-container into gesture callbacks. Registration is bounded to 32 targets and
-capture to eight contacts. The nearest registered ancestor of the initial hit
-owns that contact until release/cancellation, even when it moves outside the
-initial bounds. Hidden, disabled, deregistered and old-tree targets are rejected.
+`UiHandles::set_gesture_target(handle, true)` opts a live control, canvas, or
+ancestor container into gesture callbacks. Registration is bounded to 32
+targets and capture to eight contacts. The nearest registered ancestor of the
+initial interactive hit owns that contact until release/cancellation, even when
+it moves outside the initial bounds. If there is no interactive hit (for
+example, a blank part of a canvas), routing checks visible registered targets
+in reverse paint order and captures the topmost containing surface. Hidden,
+disabled, deregistered and old-tree targets are rejected.
 Registration and the callback snapshot are retired when the tree epoch changes.
 Deregistering a target immediately retires its contact captures; registering
 the same target again cannot make an old release into a new gesture callback.
@@ -40,7 +43,9 @@ Opted-in targets receive `WidgetEvent.GestureDrag`, `GesturePinch`,
 `UiHandles::gesture_snapshot()` exposes the classified position/delta/scale/time
 for that callback. Pinch requires both contacts to be captured by the same
 target; application code applies the scale to its model rather than the
-framework inventing a zoom transform. Classified gestures cancel compatibility
+framework inventing a zoom transform. Hello demonstrates app-owned pinch zoom
+over a passive canvas; its rendered artwork radius follows the bounded zoom
+model in `hello_zoom_workflow_test`. Classified gestures cancel compatibility
 pointer capture before notification, so a long press does not also click.
 Tap activation remains on the existing pointer path. Unregistered legacy
 widgets never receive the new ordinals. Native delivery's exact recognition
@@ -59,9 +64,18 @@ timestamps use a stream-relative origin subtracted before float narrowing;
 the production clock host test preserves tap/long-press precision at very
 large system uptimes and rejects backward/nonfinite native timestamps.
 These are host checks below the shim, not physical stylus acceptance or a
-native zoom-screen end-to-end test. Nested wheel/scroll routing remains the
-existing innermost-consumer/outer-edge-bubbling policy; generic kinetic touch
-scroll and production zoom workflows still require integration evidence.
+native device pinch test. When a contact has no explicit gesture target, the
+retained router can capture the nearest scroll viewport instead. A drag begins
+scrolling at the shared 8-point threshold, includes pre-threshold movement,
+and bubbles same-axis deltas through nested viewports when an inner viewport
+reaches an edge. A short, bounded release-velocity sample drives decaying
+scroll motion from the retained frame clock; the shared reduced-motion
+preference disables that momentum without changing direct finger tracking.
+Focus loss, a new contact, tree replacement, and a cancelled contact retire
+the motion. `touch_scroll_test` covers thresholding, continuous drag deltas,
+inertia, nested edge handoff, reduced motion, and focus-loss cancellation.
+Physical-device scroll feel, stylus acceptance, and physical-device zoom
+acceptance remain open.
 
 Additional host checks: `contact_event_test`, `mobile_contacts_test`, and
 `uikit_surface_test` pass for wire validation, bounded identity mapping,

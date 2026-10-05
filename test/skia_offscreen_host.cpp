@@ -23,6 +23,7 @@
 #include "../src/platform/skia/skia_shim_common.h"
 
 extern "C" void elisa_skia_set_font_manager(std::size_t manager);
+extern "C" void elisa_skia_set_text_quality(int subpixel, int hinting);
 extern "C" void elisa_skia_set_text_cache_context(std::uint32_t locale_revision,
                                                      std::uint32_t scale_generation);
 extern "C" int elisa_skia_text_covers(std::size_t font, const char *text, std::size_t length);
@@ -130,6 +131,8 @@ std::uint64_t pixel_digest(const SkPixmap& pixels) {
     return hash;
 }
 
+#include "skia_simple_text_cache_fixture.h"
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -210,6 +213,11 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "skia offscreen: failed to resolve the CoreText default typeface\n");
         return 7;
     }
+    elisa_skia_set_font_manager(reinterpret_cast<std::size_t>(font_manager.get()));
+    const auto fallback_test_typeface = font_manager->matchFamilyStyle(
+        "Helvetica", SkFontStyle::Normal());
+    if (!test_simple_text_cache(typeface.get(), bold_typeface.get(),
+                                fallback_test_typeface.get())) return 19;
     if (elisa_skia_text_covers(reinterpret_cast<std::size_t>(typeface.get()), "\xF0\x28\x8C\xBC", 4) != 0 ||
         elisa_skia_text_covers(reinterpret_cast<std::size_t>(typeface.get()), "x", 1025) != 0) {
         std::fprintf(stderr, "skia text boundary: malformed or oversized UTF-8 was accepted\n");
@@ -273,9 +281,14 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "skia shaped-text cache: entry or byte bound was exceeded\n");
         return 17;
     }
+    elisa_skia_shim::ElisaSimpleTextLayout surface_loss_layout;
+    (void)elisa_skia_shim::simple_text_layout_for(
+        elisa_skia_shim::font_for(18.0f, typeface.get()), typeface.get(),
+        "surface", 7, surface_loss_layout);
     elisa_skia_offscreen_surface_lost();
-    if (!elisa_skia_shim::elisa_skia_shaped_text_cache.empty()) {
-        std::fprintf(stderr, "skia shaped-text cache: surface loss did not invalidate entries\n");
+    if (!elisa_skia_shim::elisa_skia_shaped_text_cache.empty() ||
+        !elisa_skia_shim::elisa_skia_simple_text_cache.empty()) {
+        std::fprintf(stderr, "skia text cache: surface loss did not invalidate entries\n");
         return 18;
     }
     const std::int32_t status = elisa_skia_offscreen_render(

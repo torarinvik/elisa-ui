@@ -1,7 +1,7 @@
 # Optional foreign-language bindings
 
 The stable foreign-language boundary is [`include/elisa_ui.h`](../include/elisa_ui.h),
-currently ABI 1.1.0. It carries scalar events, counted borrowed UTF-8 text,
+currently ABI 1.2.0. It carries scalar events, counted borrowed UTF-8 text,
 normalized viewport facts, and opaque generation-scoped widget tokens. Call
 `elisa_ui_abi_version()` before any stateful call and reject a major mismatch.
 The boundary is synchronous and single-threaded; hosts must serialize calls on
@@ -37,13 +37,20 @@ owning/reference-counted resource handle. Zero is invalid; for builder parent
 arguments only, zero means the root insertion point. Nonzero tokens may be
 compared while the retained tree is live, but must not be decoded or kept
 across a tree reset/rebuild. The C ABI currently supports rows, columns,
-counted-UTF-8 labels, buttons, check boxes, radio buttons, sliders, progress
-bars, initial-value text fields, caption/state changes, selection and
-normalized-value access, text-field focus and bounded UTF-8 readback, liveness
-queries, and activation; Rust and Go expose the same operations through typed
-wrapper functions. Text-field copy-out writes no terminator and never splits a
-UTF-8 sequence. Radio grouping policy remains application-owned. Slider and
-progress values are finite and normalized to `[0, 1]`. `elisa_ui_widget_tree_reset`
+vertical/horizontal scroll viewports, uniform vertical/horizontal virtual
+lists with app-owned bounded child pools, counted-UTF-8 labels, buttons, check
+boxes, radio buttons, sliders, progress bars, normal and secure initial-value
+text fields, caption/state changes, selection and normalized-value access,
+text-field focus, bounded UTF-8 readback, UTF-8-byte selection, and input-value
+replacement, liveness queries, and activation; Rust and Go expose the same
+operations through typed wrapper functions. Secure-field edits are accepted,
+but value, length, selection, and text copy-out are denied. Selection readback
+reports ordered start/end offsets, not anchor direction. Realized virtual rows
+report a logical item index and a generation that changes on rebind. Text-field
+copy-out writes no terminator and never splits a UTF-8 sequence. Scroll offsets are clamped by
+the current laid-out range, and setters report whether the offset changed.
+Radio grouping policy remains application-owned. Slider and progress values
+are finite and normalized to `[0, 1]`. `elisa_ui_widget_tree_reset`
 destroys the whole retained tree and invalidates every old token. The ABI does
 not expose individual widget release or separately allocated foreign-owned
 resources.
@@ -78,9 +85,11 @@ reset.
 
 These bindings are optional adapters, not a second widget implementation.
 They can build and use a retained-control subset inside an Elisa-authored app,
-but do not yet mirror the full `UiHandles` widget catalog (including text
-editing/IME operations, scrolling, virtualization, and the broader
-styling/interaction surface). An application
-using another UI framework does not need to link elisa-ui. The UI-12 exit
-remains open until the supported control surface and its teardown/use cases
-meet the full foreign-language acceptance matrix.
+but do not yet mirror the full `UiHandles` widget catalog (including committed
+text insertion/IME composition and the rest of the text-editing operations,
+variable-height/accessibility virtual-list services, and the broader
+styling/interaction surface). Those limits are deliberate; the C/Rust/Go
+acceptance matrix in UI-12 covers the published retained-control subset and
+its lifecycle. An application using another UI framework does not need to link
+elisa-ui. Native ABI tests do not establish WASM component or WIT
+interoperability.

@@ -1,0 +1,208 @@
+# Framework-owned touch scrolling for retained scroll viewports.
+#
+# Contact adapters only identify contacts. This module turns a single-finger
+# drag into bounded nested scrolling and advances release momentum on the same
+# frame clock used by retained control motion.
+include "./ui_gestures.elisa"
+
+extend UiFlat:
+    private:
+        const TOUCH_SCROLL_STOP_SPEED: f32 = 12.0
+        const TOUCH_SCROLL_MAX_SPEED: f32 = 3200.0
+        const TOUCH_SCROLL_FRICTION: f32 = 5.0
+        const TOUCH_SCROLL_FRAME: f32 = 0.016
+        const TOUCH_SCROLL_MAX_FRAME_DELTA: f32 = 0.05
+        const TOUCH_SCROLL_MAX_SAMPLE_DELTA: f32 = 0.12
+
+        global mutable touch_scroll_capture: bool[UiGestures::MAX_TOUCHES] = zeroed
+        global mutable touch_scroll_started: bool[UiGestures::MAX_TOUCHES] = zeroed
+        global mutable touch_scroll_origin: usize[UiGestures::MAX_TOUCHES] = zeroed
+        global mutable touch_scroll_start_position: UiCore::Vec2[UiGestures::MAX_TOUCHES] = zeroed
+        global mutable touch_scroll_sample_position: UiCore::Vec2[UiGestures::MAX_TOUCHES] = zeroed
+        global mutable touch_scroll_sample_time: f32[UiGestures::MAX_TOUCHES] = zeroed
+        global mutable touch_scroll_velocity: f32[UiGestures::MAX_TOUCHES] = zeroed
+        global mutable touch_scroll_inertia_origin: usize = NONE
+        global mutable touch_scroll_inertia_velocity: f32 = 0.0
+        global mutable touch_scroll_inertia_epoch: usize = 0
+
+        def reset_touch_scroll() -> void:
+            stop_touch_scroll_motion()
+            for slot in 0..<UiGestures::MAX_TOUCHES:
+                touch_scroll_capture[slot] <- false
+                touch_scroll_started[slot] <- false
+                touch_scroll_origin[slot] <- NONE
+                touch_scroll_velocity[slot] <- 0.0
+
+        def touch_scroll_is_captured(slot: usize) -> bool:
+            return slot < UiGestures::MAX_TOUCHES and touch_scroll_capture[slot]
+
+        def touch_scroll_begin_capture(slot: usize, contact: UiCore::Contact) -> usize:
+            return NONE if slot >= UiGestures::MAX_TOUCHES
+            touch_scroll_capture[slot] <- false
+            target: usize = touch_scroll_surface_at(contact.at)
+            return NONE if target >= widget_count
+            stop_touch_scroll_motion()
+            touch_scroll_capture[slot] <- true
+            touch_scroll_started[slot] <- false
+            touch_scroll_origin[slot] <- target
+            touch_scroll_start_position[slot] <- UiCore::Vec2(UiCore::bounded_coordinate(contact.at.x), UiCore::bounded_coordinate(contact.at.y))
+            touch_scroll_sample_position[slot] <- touch_scroll_start_position[slot]
+            touch_scroll_sample_time[slot] <- UiCore::finite_or_zero(contact.timestamp)
+            touch_scroll_velocity[slot] <- 0.0
+            return target
+
+        def touch_scroll_cancel_capture(slot: usize) -> void:
+            return if slot >= UiGestures::MAX_TOUCHES
+            origin: usize = touch_scroll_origin[slot]
+            touch_scroll_capture[slot] <- false
+            touch_scroll_started[slot] <- false
+            touch_scroll_origin[slot] <- NONE
+            touch_scroll_velocity[slot] <- 0.0
+            stop_touch_scroll_motion() if origin == touch_scroll_inertia_origin
+
+        def touch_scroll_process(slot: usize, contact: UiCore::Contact, snapshot: UiGestures::Snapshot) -> void:
+            return if slot >= UiGestures::MAX_TOUCHES or not touch_scroll_capture[slot]
+            origin: usize = touch_scroll_origin[slot]
+            if not touch_scroll_target_valid(origin):
+                touch_scroll_cancel_capture(slot)
+                return
+            if contact.phase == UiCore::ContactPhase.Cancelled:
+                touch_scroll_cancel_capture(slot)
+                return
+            if snapshot.kind == UiGestures::Kind.Pinch:
+                stop_touch_scroll_for_origin(origin)
+                touch_scroll_sample_position[slot] <- contact.at
+                touch_scroll_sample_time[slot] <- contact.timestamp
+                touch_scroll_cancel_capture(slot) if contact.phase == UiCore::ContactPhase.Ended
+                return
+
+            if contact.phase == UiCore::ContactPhase.Moved or contact.phase == UiCore::ContactPhase.Ended:
+                now: f32 = UiCore::finite_or_zero(contact.timestamp)
+                previous: UiCore::Vec2 = touch_scroll_sample_position[slot]
+                previous_time: f32 = touch_scroll_sample_time[slot]
+                sample_delta: UiCore::Vec2 = UiCore::Vec2(contact.at.x - previous.x, contact.at.y - previous.y)
+                applied_delta: mutable UiCore::Vec2 = sample_delta
+                if snapshot.kind == UiGestures::Kind.Drag:
+                    if not touch_scroll_started[slot]:
+                        touch_scroll_started[slot] <- true
+                        applied_delta <- UiCore::Vec2(
+                            contact.at.x - touch_scroll_start_position[slot].x,
+                            contact.at.y - touch_scroll_start_position[slot].y,
+                        )
+                        UiFlat::pointer(UiCore::PointerEvent.Cancel) if active_pointer_button >= 0
+                    _ = apply_touch_scroll(origin, applied_delta)
+                    sample_touch_scroll_velocity(slot, origin, sample_delta, now - previous_time)
+
+                touch_scroll_sample_position[slot] <- UiCore::Vec2(UiCore::bounded_coordinate(contact.at.x), UiCore::bounded_coordinate(contact.at.y))
+                touch_scroll_sample_time[slot] <- now if now >= previous_time
+
+                if contact.phase == UiCore::ContactPhase.Ended:
+                    if touch_scroll_started[slot] and snapshot.kind == UiGestures::Kind.Drag:
+                        start_velocity: f32 = touch_scroll_velocity[slot]
+                        touch_scroll_cancel_capture(slot)
+                        start_touch_scroll_motion(origin, start_velocity)
+                    else:
+                        touch_scroll_cancel_capture(slot)
+
+        def stop_touch_scroll_for_origin(origin: usize) -> void:
+            stop_touch_scroll_motion()
+            for slot in 0..<UiGestures::MAX_TOUCHES:
+                if touch_scroll_capture[slot] and touch_scroll_origin[slot] == origin:
+                    touch_scroll_started[slot] <- false
+                    touch_scroll_velocity[slot] <- 0.0
+
+        def sample_touch_scroll_velocity(slot: usize, origin: usize, finger_delta: UiCore::Vec2, elapsed: f32) -> void:
+            return if elapsed <= 0.001 or elapsed > TOUCH_SCROLL_MAX_SAMPLE_DELTA
+            axis: UiConst::Axis = widgets[origin].axis
+            finger_speed: f32 = finger_delta.x / elapsed if axis == UiConst::Axis.Row else finger_delta.y / elapsed
+            scroll_speed: mutable f32 = 0.0 - finger_speed
+            scroll_speed <- TOUCH_SCROLL_MAX_SPEED if scroll_speed > TOUCH_SCROLL_MAX_SPEED
+            scroll_speed <- 0.0 - TOUCH_SCROLL_MAX_SPEED if scroll_speed < 0.0 - TOUCH_SCROLL_MAX_SPEED
+            old: f32 = touch_scroll_velocity[slot]
+            touch_scroll_velocity[slot] <- scroll_speed if old == 0.0
+            touch_scroll_velocity[slot] <- old * 0.55 + scroll_speed * 0.45 if old != 0.0
+
+        def start_touch_scroll_motion(origin: usize, velocity: f32) -> void:
+            stop_touch_scroll_motion()
+            preferences: UiTheme::Preferences = UiTheme::current_preferences()
+            return if preferences.reduced_motion or not UiCore::is_finite(velocity)
+            return if velocity < TOUCH_SCROLL_STOP_SPEED and velocity > 0.0 - TOUCH_SCROLL_STOP_SPEED
+            touch_scroll_inertia_origin <- origin
+            touch_scroll_inertia_velocity <- velocity
+            touch_scroll_inertia_epoch <- widget_epoch
+            UiCore::request_frame_after(TOUCH_SCROLL_FRAME)
+
+        def advance_touch_scroll_motion() -> void:
+            origin: usize = touch_scroll_inertia_origin
+            return if origin >= widget_count
+            if touch_scroll_inertia_epoch != widget_epoch or not touch_scroll_target_valid(origin) or UiTheme::current_preferences().reduced_motion:
+                stop_touch_scroll_motion()
+                return
+            elapsed: mutable f32 = flat_frame_elapsed
+            elapsed <- TOUCH_SCROLL_MAX_FRAME_DELTA if elapsed > TOUCH_SCROLL_MAX_FRAME_DELTA
+            if elapsed <= 0.0:
+                UiCore::request_frame_after(TOUCH_SCROLL_FRAME)
+                return
+            old_velocity: f32 = touch_scroll_inertia_velocity
+            next_velocity: f32 = old_velocity / (1.0 + TOUCH_SCROLL_FRICTION * elapsed)
+            distance: f32 = (old_velocity + next_velocity) * 0.5 * elapsed
+            delta: UiCore::Vec2 = UiCore::Vec2(0.0 - distance, 0.0) if widgets[origin].axis == UiConst::Axis.Row else UiCore::Vec2(0.0, 0.0 - distance)
+            changed: bool = apply_touch_scroll(origin, delta)
+            if not changed:
+                stop_touch_scroll_motion()
+                return
+            touch_scroll_inertia_velocity <- next_velocity
+            if next_velocity < TOUCH_SCROLL_STOP_SPEED and next_velocity > 0.0 - TOUCH_SCROLL_STOP_SPEED:
+                stop_touch_scroll_motion()
+            else:
+                UiCore::request_frame_after(TOUCH_SCROLL_FRAME)
+
+        def stop_touch_scroll_motion() -> void:
+            touch_scroll_inertia_origin <- NONE
+            touch_scroll_inertia_velocity <- 0.0
+            touch_scroll_inertia_epoch <- widget_epoch
+
+        def touch_scroll_target_valid(index: usize) -> bool:
+            return index < widget_count and widgets[index].kind == UiConst::WidgetKind.Scroll and effectively_enabled(index) and effectively_visible(index)
+
+        def touch_scroll_surface_at(at: UiCore::Vec2) -> usize:
+            hit_index: usize = hit(at.x, at.y)
+            cursor: mutable usize = hit_index
+            for _ in 0..<MAX_TRAVERSAL_DEPTH:
+                break if cursor >= widget_count
+                return cursor if widgets[cursor].kind == UiConst::WidgetKind.Scroll and touch_scroll_target_valid(cursor)
+                cursor <- widgets[cursor].parent
+            return NONE if hit_index < widget_count
+            build_paint_order()
+            floor: usize = overlay_paint_start()
+            order_index: mutable usize = paint_order_count
+            for _ in 0..<paint_order_count:
+                order_index <- order_index - 1
+                break if floor < paint_order_count and order_index < floor
+                candidate: usize = paint_order[order_index]
+                if touch_scroll_target_valid(candidate) and inside_clip_ancestors(candidate, at.x, at.y) and contains(candidate, at.x, at.y):
+                    return candidate
+            return NONE
+
+        def touch_scroll_target_for(origin: usize, finger_delta: UiCore::Vec2) -> usize:
+            cursor: mutable usize = origin
+            axis: UiConst::Axis = widgets[origin].axis if origin < widget_count else UiConst::Axis.Column
+            amount: f32 = finger_delta.x if axis == UiConst::Axis.Row else finger_delta.y
+            for _ in 0..<MAX_TRAVERSAL_DEPTH:
+                break if cursor >= widget_count
+                if touch_scroll_target_valid(cursor) and widgets[cursor].axis == axis:
+                    if widgets[cursor].virtual_list:
+                        return cursor if virtual_scroll_can_consume(cursor, 0.0 - amount)
+                    current: f32 = widgets[cursor].scroll_offset
+                    limit: f32 = scroll_limit(cursor)
+                    can_move: bool = limit > 0.0 and ((amount > 0.0 and current > 0.0) or (amount < 0.0 and current < limit))
+                    return cursor if can_move
+                cursor <- widgets[cursor].parent
+            return NONE
+
+        def apply_touch_scroll(origin: usize, finger_delta: UiCore::Vec2) -> bool:
+            target: usize = touch_scroll_target_for(origin, finger_delta)
+            return false if target >= widget_count
+            amount: f32 = finger_delta.x if widgets[origin].axis == UiConst::Axis.Row else finger_delta.y
+            return scroll_virtual_by(target, 0.0 - amount) if widgets[target].virtual_list
+            return set_scroll_offset(target, widgets[target].scroll_offset - amount)

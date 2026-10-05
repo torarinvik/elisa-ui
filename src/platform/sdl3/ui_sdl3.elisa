@@ -19,6 +19,7 @@ include "../../core/ui_paint.elisa"
 include "../../widgets/ui_resources.elisa"
 include "../../widgets/ui_text_metrics.elisa"
 include "./ui_sdl3_text.elisa"
+include "./ui_sdl3_appearance.elisa"
 
 # `impl UiPaint::Painter for T:` is the one shape no compiler takes -- stage0's
 # parser wants a `:` where the `for` is -- so the impl at the foot of this module
@@ -28,6 +29,7 @@ using UiPaint
 extern SDL_Init(flags: u32) -> bool
 extern SDL_CreateWindow(title: cstr, w: i32, h: i32, flags: u64) -> void&?
 extern SDL_GetWindowID(window: void&) -> u32
+extern SDL_GetSystemTheme() -> i32
 extern SDL_CreateRenderer(window: void&, name: void&?) -> void&?
 extern SDL_PollEvent(event: void&) -> bool
 extern SDL_WaitEventTimeout(event: void&?, timeout_ms: i32) -> bool
@@ -44,9 +46,11 @@ extern SDL_RenderClipEnabled(renderer: void&?) -> bool
 extern SDL_RenderPresent(renderer: void&?) -> bool
 extern SDL_DestroyRenderer(renderer: void&?) -> void
 extern SDL_DestroyWindow(window: void&) -> void
+extern SDL_GetWindowDisplayScale(window: void&) -> f32
 extern SDL_Quit() -> void
 extern SDL_GetError() -> cstr
 extern SDL_CreateTextureFromSurface(renderer: void&?, surface: void&) -> void&?
+extern SDL_GetTextureSize(texture: void&, width: mutable f32&, height: mutable f32&) -> bool
 extern SDL_RenderTexture(renderer: void&?, texture: void&, source: void&?, destination: void&) -> bool
 extern SDL_RenderGeometryRaw(renderer: void&?, texture: void&, xy: f32&, xy_stride: i32, color: f32&, color_stride: i32, uv: f32&, uv_stride: i32, num_vertices: i32, indices: void&?, num_indices: i32, size_indices: i32) -> bool
 extern SDL_GetRenderTextureAddressMode(renderer: void&?, u_mode: mutable i32&, v_mode: mutable i32&) -> bool
@@ -68,6 +72,7 @@ include "./ui_sdl3_ttf.elisa"
 include "./ui_sdl3_fonts.elisa"
 # Renderer, font, and painter state live in their own cohesive module.
 include "./ui_sdl3_images.elisa"
+include "./ui_sdl3_text_cache.elisa"
 include "./ui_sdl3_draw.elisa"
 # The platform half of the contract: text metrics from the font SDL_ttf
 # rasterizes with.
@@ -92,6 +97,11 @@ module UiSdl3:
         const EVENT_WINDOW_FOCUS_GAINED: u32 = 0x20e
         const EVENT_WINDOW_FOCUS_LOST: u32 = 0x20f
         const EVENT_WINDOW_CLOSE_REQUESTED: u32 = 0x210
+        # SDL_EVENT_SYSTEM_THEME_CHANGED follows the application events in
+        # SDL_events.h: QUIT=0x100 through DID_ENTER_FOREGROUND=0x106,
+        # LOCALE_CHANGED=0x107, then SYSTEM_THEME_CHANGED=0x108. It is global,
+        # not a window event, and must bypass the window-ID filter.
+        const EVENT_SYSTEM_THEME_CHANGED: u32 = 0x108
         const EVENT_KEY_DOWN: u32 = 0x300
         const EVENT_KEY_UP: u32 = 0x301
         const EVENT_TEXT_EDITING: u32 = 0x302

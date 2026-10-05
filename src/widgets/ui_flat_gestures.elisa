@@ -40,6 +40,7 @@ extend UiFlat:
         def sync_widget_gestures() -> void:
             return if gesture_tree_epoch == widget_epoch
             gesture_tree_epoch <- widget_epoch
+            reset_touch_scroll()
             widget_gesture_snapshot <- zeroed
             for slot in 0..<GESTURE_TARGET_CAPACITY:
                 gesture_targets[slot] <- NONE
@@ -58,18 +59,33 @@ extend UiFlat:
             return UiGestures::MAX_TOUCHES
 
         def gesture_target_at(at: UiCore::Vec2) -> usize:
-            cursor: mutable usize = hit(at.x, at.y)
+            interactive_hit: usize = hit(at.x, at.y)
+            cursor: mutable usize = interactive_hit
             for _ in 0..<widget_count:
-                return NONE if cursor >= widget_count
+                break if cursor >= widget_count
                 return cursor if gesture_target_enabled(cursor)
                 cursor <- widgets[cursor].parent
+            return NONE if interactive_hit < widget_count
+            # `hit` intentionally reports only interactive widgets. A passive
+            # canvas/container can still be an explicit gesture surface, so
+            # fall back to the topmost registered target whose visible bounds
+            # contain the contact. This also lets empty areas of a scroll view
+            # participate without adding fake buttons just for gesture capture.
+            build_paint_order()
+            order_index: mutable usize = paint_order_count
+            for _ in 0..<paint_order_count:
+                order_index <- order_index - 1
+                target: usize = paint_order[order_index]
+                return target if gesture_target_enabled(target) and inside_clip_ancestors(target, at.x, at.y) and contains(target, at.x, at.y)
             return NONE
 
         def cancel_widget_gestures() -> void:
             sync_widget_gestures()
+            stop_touch_scroll_motion()
             epoch: usize = widget_epoch
             for slot in 0..<UiGestures::MAX_TOUCHES:
                 return if widget_epoch != epoch
+                touch_scroll_cancel_capture(slot)
                 target: usize = gesture_capture_targets[slot]
                 gesture_capture_targets[slot] <- NONE
                 if gesture_target_enabled(target):
@@ -88,23 +104,36 @@ extend UiFlat:
             slot: usize = captured_gesture_slot(contact.id)
             if contact.phase == UiCore::ContactPhase.Began:
                 return if slot != UiGestures::MAX_TOUCHES
-                target: usize = gesture_target_at(contact.at)
+                free: mutable usize = UiGestures::MAX_TOUCHES
+                for candidate in 0..<UiGestures::MAX_TOUCHES:
+                    if gesture_capture_targets[candidate] == NONE:
+                        free <- candidate
+                        break
+                return if free == UiGestures::MAX_TOUCHES
+                stop_touch_scroll_motion()
+                target: mutable usize = gesture_target_at(contact.at)
+                if target == NONE:
+                    target <- touch_scroll_begin_capture(free, contact)
                 return if target == NONE
-                for free in 0..<UiGestures::MAX_TOUCHES:
-                    if gesture_capture_targets[free] == NONE:
-                        gesture_capture_targets[free] <- target
-                        gesture_capture_ids[free] <- contact.id
-                        gesture_capture_positions[free] <- UiCore::Vec2(UiCore::bounded_coordinate(contact.at.x), UiCore::bounded_coordinate(contact.at.y))
-                        gesture_capture_start_times[free] <- contact.timestamp
-                        gesture_capture_last_times[free] <- contact.timestamp
-                        return
+                gesture_capture_targets[free] <- target
+                gesture_capture_ids[free] <- contact.id
+                gesture_capture_positions[free] <- UiCore::Vec2(UiCore::bounded_coordinate(contact.at.x), UiCore::bounded_coordinate(contact.at.y))
+                gesture_capture_start_times[free] <- contact.timestamp
+                gesture_capture_last_times[free] <- contact.timestamp
                 return
             return if slot == UiGestures::MAX_TOUCHES
             gesture_capture_positions[slot] <- UiCore::Vec2(UiCore::bounded_coordinate(contact.at.x), UiCore::bounded_coordinate(contact.at.y))
             gesture_capture_last_times[slot] <- contact.timestamp if contact.timestamp > gesture_capture_last_times[slot]
             target: usize = gesture_capture_targets[slot]
             ended: bool = contact.phase == UiCore::ContactPhase.Ended or contact.phase == UiCore::ContactPhase.Cancelled
-            if not gesture_target_enabled(target):
+            scroll_capture: bool = touch_scroll_is_captured(slot)
+            if scroll_capture:
+                touch_scroll_process(slot, contact, UiGestures::snapshot())
+                if not touch_scroll_is_captured(slot) and not ended:
+                    gesture_capture_targets[slot] <- NONE
+                gesture_capture_targets[slot] <- NONE if ended
+                return
+            elif not gesture_target_enabled(target):
                 gesture_capture_targets[slot] <- NONE
                 return
             snapshot: UiGestures::Snapshot = UiGestures::snapshot()

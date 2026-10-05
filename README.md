@@ -12,7 +12,9 @@ loader, or TypeScript declarations, and nothing should.
 New to the framework? Start with [docs/getting-started.md](docs/getting-started.md),
 then read the runnable [examples/hello](examples/hello) and the larger
 [examples/showcase](examples/showcase). Upgrading from the legacy index API or
-the C boundary? See [docs/migrations.md](docs/migrations.md).
+the C boundary? See [docs/migrations.md](docs/migrations.md). Check
+[supported platforms and build requirements](docs/support-matrix.md) before
+choosing a backend or toolchain.
 
 ## Architecture
 

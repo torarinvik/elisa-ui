@@ -1,0 +1,119 @@
+# Application-level pinch workflow: recognized contact scale changes the
+# shared Hello preview model that the renderer consumes.
+
+include "../examples/hello/app.elisa"
+
+extern puts(text: cstr) -> i64
+
+global mutable failures: i32 = 0
+
+def ui_measure_text_width(text: sview, size: f32, weighted: bool) -> f32:
+    _ = weighted
+    return text.len.f32() * size * 0.5
+
+def ui_measure_text_height(text: sview, size: f32) -> f32:
+    _ = text
+    return size
+
+def ui_font_ascent(size: f32) -> f32:
+    return size
+
+def ui_text_line_height(size: f32) -> f32:
+    return size
+
+def ui_clipboard_has_text() -> bool:
+    return false
+
+def ui_clipboard_write(bytes: u8&, length: usize) -> bool:
+    _ = bytes
+    _ = length
+    return false
+
+def ui_clipboard_read(buffer: mutable u8&, capacity: usize) -> usize:
+    _ = buffer
+    _ = capacity
+    return 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def largest_circle_radius() -> f32:
+    largest: mutable f32 = 0.0
+    for index in 0..<UiCore::command_count():
+        match UiCore::command_at(index):
+            UiCore::Command.FillCircle(circle, ink):
+                if ink.r == 64 and ink.g == 112 and ink.b == 224 and ink.a == 255:
+                    largest <- circle.radius if circle.radius > largest
+            _:
+                pass
+    return largest
+
+def app_test_contact(id: u32, phase: UiCore::ContactPhase, x: f32, y: f32, timestamp: f32) -> void:
+    contact: UiCore::Contact = UiCore::Contact{
+        id: id, phase: phase, tool: UiCore::ContactTool.Finger,
+        at: UiCore::Vec2(x, y), timestamp: timestamp,
+    }
+    app_event(UiCore::ContactEvent.Update(contact))
+
+def main() -> i64:
+    UiCore::set_viewport(800.0, 600.0)
+    app_init()
+    target: UiHandles::Handle = HelloApp::preview_canvas_handle()
+    check("Hello initializes a live passive canvas target", UiHandles::is_valid(target))
+    check("preview starts at neutral zoom", HelloApp::preview_zoom() == 1.0)
+    UiCore::begin_frame()
+    app_frame()
+    neutral_preview_radius: f32 = largest_circle_radius()
+    check("Hello frame emits its accent preview circle", neutral_preview_radius > 0.0)
+
+    centre_x: mutable f32 = 400.0
+    centre_y: mutable f32 = 300.0
+    target_width: mutable f32 = 0.0
+    target_height: mutable f32 = 0.0
+    target_contains_centre: mutable bool = false
+    target_is_available: mutable bool = false
+    if UiHandles::widget(target) is target_widget:
+        centre_x <- target_widget.x + target_widget.width * 0.5
+        centre_y <- target_widget.y + target_widget.height * 0.5
+        target_width <- target_widget.width
+        target_height <- target_widget.height
+        target_contains_centre <- UiCore::contains(UiCore::Rect(target_widget.x, target_widget.y, target_widget.width, target_widget.height), UiCore::Vec2(centre_x, centre_y))
+        target_is_available <- target_widget.visible and target_widget.enabled
+    check("passive canvas has a laid-out viewport", target_width > 10.0 and target_height > 10.0)
+    check("contact point is inside the passive canvas", target_contains_centre and target_is_available)
+    check("canvas accepts a gesture target", UiHandles::set_gesture_target(target, true))
+    scroll_surface: UiHandles::Handle = UiHandles::parent(UiHandles::parent(target))
+    check("overlapping parent surface is also registered", UiHandles::set_gesture_target(scroll_surface, true))
+    check("pinch fixture uses passive canvas space", not UiHandles::is_valid(UiHandles::hit(centre_x, centre_y)))
+    app_test_contact(20, UiCore::ContactPhase.Began, centre_x - 24.0, centre_y, 1.0)
+    app_test_contact(21, UiCore::ContactPhase.Began, centre_x + 24.0, centre_y, 1.0)
+    check("both contacts are retained for the preview pinch", UiGestures::active_count() == 2)
+    app_test_contact(21, UiCore::ContactPhase.Moved, centre_x + 48.0, centre_y, 1.1)
+    check("contact recognizer classifies the pinch", UiGestures::snapshot().kind == UiGestures::Kind.Pinch)
+    check("retained target receives the classified pinch", UiHandles::gesture_snapshot().kind == UiGestures::Kind.Pinch)
+    check("pinch scales the application preview", HelloApp::preview_zoom() > 1.49 and HelloApp::preview_zoom() < 1.51)
+
+    app_test_contact(21, UiCore::ContactPhase.Ended, centre_x + 48.0, centre_y, 1.2)
+    app_test_contact(20, UiCore::ContactPhase.Ended, centre_x - 24.0, centre_y, 1.2)
+    check("release preserves the selected zoom", HelloApp::preview_zoom() > 1.49 and HelloApp::preview_zoom() < 1.51)
+
+    app_test_contact(30, UiCore::ContactPhase.Began, centre_x - 24.0, centre_y, 1.5)
+    app_test_contact(31, UiCore::ContactPhase.Began, centre_x + 24.0, centre_y, 1.5)
+    app_test_contact(31, UiCore::ContactPhase.Moved, centre_x, centre_y, 1.6)
+    check("a second pinch scales from the current zoom", HelloApp::preview_zoom() > 0.74 and HelloApp::preview_zoom() < 0.76)
+    app_test_contact(30, UiCore::ContactPhase.Ended, centre_x - 24.0, centre_y, 1.7)
+    app_test_contact(31, UiCore::ContactPhase.Ended, centre_x, centre_y, 1.7)
+
+    app_test_contact(22, UiCore::ContactPhase.Began, centre_x - 24.0, centre_y, 2.0)
+    app_test_contact(23, UiCore::ContactPhase.Began, centre_x + 24.0, centre_y, 2.0)
+    app_test_contact(23, UiCore::ContactPhase.Moved, centre_x + 240.0, centre_y, 2.1)
+    check("application zoom is bounded for an extreme pinch", HelloApp::preview_zoom() == 2.5)
+    UiCore::begin_frame()
+    app_frame()
+    check("bounded zoom changes the rendered artwork size", largest_circle_radius() > neutral_preview_radius + 8.0)
+    app_test_contact(22, UiCore::ContactPhase.Cancelled, centre_x - 24.0, centre_y, 2.2)
+    app_test_contact(23, UiCore::ContactPhase.Cancelled, centre_x + 240.0, centre_y, 2.2)
+
+    return failures.i64()

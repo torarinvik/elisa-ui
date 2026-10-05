@@ -26,6 +26,18 @@ module UiCapiControls:
             handle: UiHandles::Handle = UiHandles::row(parent, padding, spacing, unpack_color(color))
             return token_for_handle(handle)
 
+        def vertical_scroll(parent_token: u64, min_width: f32, min_height: f32, color: u32) -> u64:
+            parent: UiHandles::Handle = parent_handle(parent_token)
+            return UiCapiWidget::INVALID if not UiHandles::parent_is_valid(parent)
+            handle: UiHandles::Handle = UiHandles::scroll(parent, UiConst::Axis.Column, min_width, min_height, unpack_color(color))
+            return token_for_handle(handle)
+
+        def horizontal_scroll(parent_token: u64, min_width: f32, min_height: f32, color: u32) -> u64:
+            parent: UiHandles::Handle = parent_handle(parent_token)
+            return UiCapiWidget::INVALID if not UiHandles::parent_is_valid(parent)
+            handle: UiHandles::Handle = UiHandles::scroll(parent, UiConst::Axis.Row, min_width, min_height, unpack_color(color))
+            return token_for_handle(handle)
+
         def label(parent_token: u64, text: cstr?, length: usize, size: f32, color: u32) -> u64 can Unsafe.PointerCast:
             parent: UiHandles::Handle = parent_handle(parent_token)
             return UiCapiWidget::INVALID if not UiHandles::parent_is_valid(parent) or not UiCore::is_finite(size)
@@ -41,6 +53,15 @@ module UiCapiControls:
             staged: mutable sview = ""
             return UiCapiWidget::INVALID if not begin_text(initial, length, staged)
             handle: UiHandles::Handle = UiHandles::text_field(parent, "", "", staged, min_width, min_height, size, unpack_color(ink), unpack_color(fill))
+            end_text()
+            return token_for_handle(handle)
+
+        def secure_text_field(parent_token: u64, initial: cstr?, length: usize, min_width: f32, min_height: f32, size: f32, ink: u32, fill: u32) -> u64 can Unsafe.PointerCast:
+            parent: UiHandles::Handle = parent_handle(parent_token)
+            return UiCapiWidget::INVALID if not UiHandles::parent_is_valid(parent) or not UiCore::is_finite(size)
+            staged: mutable sview = ""
+            return UiCapiWidget::INVALID if not begin_text(initial, length, staged)
+            handle: UiHandles::Handle = UiHandles::secure_text_field(parent, "", "", staged, min_width, min_height, size, unpack_color(ink), unpack_color(fill))
             end_text()
             return token_for_handle(handle)
 
@@ -117,6 +138,25 @@ module UiCapiControls:
             UiHandles::set_value(handle, value)
             return 1
 
+        def set_scroll_offset(token: u64, requested: f32) -> i32:
+            handle: UiHandles::Handle = handle_for_token(token)
+            return 0 if not UiHandles::is_valid(handle) or not UiCore::is_finite(requested)
+            row: UiFlat::Widget = UiFlat::widget(UiHandles::index(handle))
+            return 0 if row.kind != UiConst::WidgetKind.Scroll
+            return 1 if UiHandles::set_scroll_offset(handle, requested) else 0
+
+        def scroll_offset(token: u64) -> f32:
+            handle: UiHandles::Handle = handle_for_token(token)
+            return 0.0 if not UiHandles::is_valid(handle)
+            row: UiFlat::Widget = UiFlat::widget(UiHandles::index(handle))
+            return UiHandles::scroll_offset(handle) if row.kind == UiConst::WidgetKind.Scroll else 0.0
+
+        def scroll_limit(token: u64) -> f32:
+            handle: UiHandles::Handle = handle_for_token(token)
+            return 0.0 if not UiHandles::is_valid(handle)
+            row: UiFlat::Widget = UiFlat::widget(UiHandles::index(handle))
+            return UiHandles::scroll_limit(handle) if row.kind == UiConst::WidgetKind.Scroll else 0.0
+
         def request_text_focus(token: u64) -> i32:
             handle: UiHandles::Handle = handle_for_token(token)
             return 0 if not UiHandles::is_valid(handle)
@@ -124,18 +164,52 @@ module UiCapiControls:
             return 0 if row.kind != UiConst::WidgetKind.TextField
             return 1 if UiHandles::request_focus(handle) else 0
 
+        def set_input_text(token: u64, text: cstr?, length: usize) -> i32 can Unsafe.PointerCast:
+            handle: UiHandles::Handle = handle_for_token(token)
+            return 0 if not UiHandles::is_valid(handle)
+            index: usize = UiHandles::index(handle)
+            row: UiFlat::Widget = UiFlat::widget(index)
+            return 0 if row.kind != UiConst::WidgetKind.TextField or not UiFlat::text_editable(index)
+            staged: mutable sview = ""
+            return 0 if not begin_text(text, length, staged)
+            UiHandles::replace_text(handle, staged)
+            end_text()
+            return 1
+
+        def set_selection(token: u64, anchor: usize, caret: usize) -> i32:
+            handle: UiHandles::Handle = handle_for_token(token)
+            return 0 if not UiHandles::is_valid(handle)
+            row: UiFlat::Widget = UiFlat::widget(UiHandles::index(handle))
+            return 0 if row.kind != UiConst::WidgetKind.TextField or row.secure
+            UiHandles::set_selection(handle, anchor, caret)
+            return 1
+
+        def selection_start(token: u64) -> i32:
+            handle: UiHandles::Handle = handle_for_token(token)
+            return -1 if not UiHandles::is_valid(handle)
+            row: UiFlat::Widget = UiFlat::widget(UiHandles::index(handle))
+            return -1 if row.kind != UiConst::WidgetKind.TextField or row.secure
+            return UiFlat::selection_start(UiHandles::index(handle)).i32()
+
+        def selection_end(token: u64) -> i32:
+            handle: UiHandles::Handle = handle_for_token(token)
+            return -1 if not UiHandles::is_valid(handle)
+            row: UiFlat::Widget = UiFlat::widget(UiHandles::index(handle))
+            return -1 if row.kind != UiConst::WidgetKind.TextField or row.secure
+            return UiFlat::selection_end(UiHandles::index(handle)).i32()
+
         def text_length(token: u64) -> i32:
             handle: UiHandles::Handle = handle_for_token(token)
             return -1 if not UiHandles::is_valid(handle)
             row: UiFlat::Widget = UiFlat::widget(UiHandles::index(handle))
-            return -1 if row.kind != UiConst::WidgetKind.TextField
+            return -1 if row.kind != UiConst::WidgetKind.TextField or row.secure
             return UiHandles::text_value(handle).len.i32()
 
         def copy_text(token: u64, destination: cstr?, capacity: usize) -> usize can Unsafe.PointerCast:
             handle: UiHandles::Handle = handle_for_token(token)
             return 0 if not UiHandles::is_valid(handle)
             row: UiFlat::Widget = UiFlat::widget(UiHandles::index(handle))
-            return 0 if row.kind != UiConst::WidgetKind.TextField
+            return 0 if row.kind != UiConst::WidgetKind.TextField or row.secure
             text: sview = UiHandles::text_value(handle)
             limit: usize = text.len.usize() if capacity > text.len.usize() else capacity
             copied: usize = UiText::valid_utf8_prefix(text, limit)
@@ -231,11 +305,20 @@ def elisa_ui_widget_column(parent: u64, padding: f32, spacing: f32, color: u32) 
 def elisa_ui_widget_row(parent: u64, padding: f32, spacing: f32, color: u32) -> u64:
     UiCapiControls::row(parent, padding, spacing, color)
 
+def elisa_ui_widget_vertical_scroll(parent: u64, min_width: f32, min_height: f32, color: u32) -> u64:
+    UiCapiControls::vertical_scroll(parent, min_width, min_height, color)
+
+def elisa_ui_widget_horizontal_scroll(parent: u64, min_width: f32, min_height: f32, color: u32) -> u64:
+    UiCapiControls::horizontal_scroll(parent, min_width, min_height, color)
+
 def elisa_ui_widget_label(parent: u64, text: cstr?, length: usize, size: f32, color: u32) -> u64 can Unsafe.PointerCast:
     UiCapiControls::label(parent, text, length, size, color)
 
 def elisa_ui_widget_text_field(parent: u64, initial: cstr?, length: usize, min_width: f32, min_height: f32, size: f32, ink: u32, fill: u32) -> u64 can Unsafe.PointerCast:
     UiCapiControls::text_field(parent, initial, length, min_width, min_height, size, ink, fill)
+
+def elisa_ui_widget_secure_text_field(parent: u64, initial: cstr?, length: usize, min_width: f32, min_height: f32, size: f32, ink: u32, fill: u32) -> u64 can Unsafe.PointerCast:
+    UiCapiControls::secure_text_field(parent, initial, length, min_width, min_height, size, ink, fill)
 
 def elisa_ui_widget_button(parent: u64, min_width: f32, min_height: f32, color: u32, hover: u32, press: u32) -> u64:
     UiCapiControls::button(parent, min_width, min_height, color, hover, press)
@@ -270,8 +353,29 @@ def elisa_ui_widget_selected(widget: u64) -> i32:
 def elisa_ui_widget_set_value(widget: u64, value: f32) -> i32:
     UiCapiControls::set_value(widget, value)
 
+def elisa_ui_widget_set_scroll_offset(widget: u64, requested: f32) -> i32:
+    UiCapiControls::set_scroll_offset(widget, requested)
+
+def elisa_ui_widget_scroll_offset(widget: u64) -> f32:
+    UiCapiControls::scroll_offset(widget)
+
+def elisa_ui_widget_scroll_limit(widget: u64) -> f32:
+    UiCapiControls::scroll_limit(widget)
+
 def elisa_ui_widget_request_text_focus(widget: u64) -> i32:
     UiCapiControls::request_text_focus(widget)
+
+def elisa_ui_widget_set_input_text(widget: u64, text: cstr?, length: usize) -> i32 can Unsafe.PointerCast:
+    UiCapiControls::set_input_text(widget, text, length)
+
+def elisa_ui_widget_set_selection(widget: u64, anchor: usize, caret: usize) -> i32:
+    UiCapiControls::set_selection(widget, anchor, caret)
+
+def elisa_ui_widget_selection_start(widget: u64) -> i32:
+    UiCapiControls::selection_start(widget)
+
+def elisa_ui_widget_selection_end(widget: u64) -> i32:
+    UiCapiControls::selection_end(widget)
 
 def elisa_ui_widget_text_length(widget: u64) -> i32:
     UiCapiControls::text_length(widget)

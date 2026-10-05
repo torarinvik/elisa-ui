@@ -79,6 +79,8 @@ pub extern "C" fn elisa_ui_on_text_editing(
 fn main() {
     let mut failures = 0;
 
+    elisa_ui::set_viewport(360.0, 220.0);
+
     if elisa_ui::abi_version() == 0 {
         eprintln!("Rust host: ABI version was zero");
         failures += 1;
@@ -99,6 +101,61 @@ fn main() {
         ColorRgba::new(32, 32, 40, 255),
     )
     .expect("row should be created under the column");
+    let list = elisa_ui::widget_virtual_list(
+        WidgetParent::Widget(root),
+        "Items",
+        5,
+        20.0,
+        2.0,
+        180.0,
+        64.0,
+        ColorRgba::new(32, 32, 40, 255),
+    )
+    .expect("virtual list should be created under the column");
+    let list_row_a = elisa_ui::widget_button(
+        WidgetParent::Widget(list),
+        120.0,
+        20.0,
+        ColorRgba::new(48, 48, 56, 255),
+        ColorRgba::new(64, 64, 72, 255),
+        ColorRgba::new(80, 80, 88, 255),
+    )
+    .expect("first recycled row should be created");
+    let _list_row_b = elisa_ui::widget_button(
+        WidgetParent::Widget(list),
+        120.0,
+        20.0,
+        ColorRgba::new(48, 48, 56, 255),
+        ColorRgba::new(64, 64, 72, 255),
+        ColorRgba::new(80, 80, 88, 255),
+    )
+    .expect("second recycled row should be created");
+    let carousel = elisa_ui::widget_horizontal_virtual_list(
+        WidgetParent::Widget(root),
+        "Carousel",
+        3,
+        36.0,
+        6.0,
+        180.0,
+        64.0,
+        ColorRgba::new(32, 32, 40, 255),
+    )
+    .expect("horizontal virtual list should be created under the column");
+    elisa_ui::set_viewport(360.0, 220.0);
+    let vertical_scroll = elisa_ui::widget_vertical_scroll(
+        WidgetParent::Widget(row),
+        180.0,
+        100.0,
+        ColorRgba::new(32, 32, 40, 255),
+    )
+    .expect("vertical scroll viewport should be created under the row");
+    let horizontal_scroll = elisa_ui::widget_horizontal_scroll(
+        WidgetParent::Widget(row),
+        180.0,
+        100.0,
+        ColorRgba::new(32, 32, 40, 255),
+    )
+    .expect("horizontal scroll viewport should be created under the row");
     let label = elisa_ui::widget_label(
         WidgetParent::Widget(row),
         "Status",
@@ -162,6 +219,16 @@ fn main() {
         ColorRgba::new(32, 32, 40, 255),
     )
     .expect("text field should be created under a live parent");
+    let secure_field = elisa_ui::widget_secure_text_field(
+        WidgetParent::Widget(row),
+        "secret",
+        180.0,
+        32.0,
+        16.0,
+        ColorRgba::new(255, 255, 255, 255),
+        ColorRgba::new(32, 32, 40, 255),
+    )
+    .expect("secure text field should be created under a live parent");
     let mut text_prefix = [0; 4];
     if !elisa_ui::widget_is_live(label)
         || !elisa_ui::widget_set_text(button, "Run", 16.0, ColorRgba::new(255, 255, 255, 255))
@@ -177,14 +244,33 @@ fn main() {
         || !elisa_ui::widget_set_value(progress, 0.75)
         || elisa_ui::widget_value(progress) != 0.75
         || elisa_ui::widget_set_value(button, 0.5)
+        || elisa_ui::widget_scroll_offset(vertical_scroll) != 0.0
+        || elisa_ui::widget_scroll_offset(horizontal_scroll) != 0.0
+        || elisa_ui::widget_set_scroll_offset(button, 1.0)
+        || elisa_ui::widget_virtual_item_count(list) != Some(5)
+        || elisa_ui::widget_virtual_item_count(carousel) != Some(3)
+        || !elisa_ui::widget_virtual_scroll_to(list, 3)
+        || elisa_ui::widget_virtual_item_index(list_row_a).is_none()
+        || elisa_ui::widget_virtual_item_generation(list_row_a).is_none()
+        || !elisa_ui::widget_set_virtual_item_count(list, 8)
+        || elisa_ui::widget_virtual_item_count(list) != Some(8)
+        || elisa_ui::widget_virtual_scroll_to(button, 1)
         || !elisa_ui::widget_request_text_focus(field)
         || elisa_ui::widget_text_length(field) != Some(5)
         || elisa_ui::widget_copy_text(field, &mut text_prefix) != Some(3)
         || &text_prefix[..3] != b"Hi "
         || elisa_ui::widget_text(field).as_deref() != Some("Hi é")
+        || !elisa_ui::widget_set_selection(field, 3, 5)
+        || elisa_ui::widget_selection(field) != Some((3, 5))
+        || !elisa_ui::widget_set_input_text(field, "Hi é!")
+        || elisa_ui::widget_text(field).as_deref() != Some("Hi é!")
+        || !elisa_ui::widget_request_text_focus(secure_field)
+        || !elisa_ui::widget_set_input_text(secure_field, "changed")
+        || elisa_ui::widget_text_length(secure_field).is_some()
+        || elisa_ui::widget_text(secure_field).is_some()
         || elisa_ui::widget_text_length(button).is_some()
         || !elisa_ui::widget_activate(button)
-        || WIDGET_EVENT_COUNT.load(Ordering::SeqCst) != 1
+        || WIDGET_EVENT_COUNT.load(Ordering::SeqCst) == 0
         || WidgetHandle::from_callback_token(LAST_WIDGET.load(Ordering::SeqCst)) != button
         || LAST_WIDGET_EVENT.load(Ordering::SeqCst) != 0
     {
@@ -196,8 +282,12 @@ fn main() {
         || elisa_ui::widget_set_enabled(button, false)
         || elisa_ui::widget_set_selected(checkbox, false)
         || elisa_ui::widget_set_value(slider, 0.5)
+        || elisa_ui::widget_set_scroll_offset(vertical_scroll, 1.0)
+        || elisa_ui::widget_set_virtual_item_count(list, 9)
+        || elisa_ui::widget_set_virtual_item_count(carousel, 4)
         || elisa_ui::widget_request_text_focus(field)
         || elisa_ui::widget_text_length(field).is_some()
+        || elisa_ui::widget_set_input_text(secure_field, "x")
         || elisa_ui::widget_activate(button)
     {
         eprintln!("Rust host: tree reset did not reject a stale handle");

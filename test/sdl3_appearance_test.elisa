@@ -1,0 +1,55 @@
+# SDL3 exposes only the system light/dark theme. Preserve SDL's unknown state
+# instead of guessing light, and keep all other shared preferences neutral.
+
+include "../src/platform/sdl3/ui_sdl3.elisa"
+
+extern puts(text: cstr) -> i64
+global mutable failures: i32 = 0
+
+def check(name: cstr, ok: bool) -> void:
+    return if ok
+    failures <- failures + 1
+    _ = puts(name)
+
+def app_init() -> void:
+    pass
+
+def app_frame() -> void:
+    pass
+
+def app_event(event: UiCore::Event) -> void:
+    pass
+
+def app_text_input(text: sview) -> void:
+    pass
+
+def app_text_editing(text: sview, start: i32, length: i32) -> void:
+    pass
+
+def main() -> i64:
+    preferences: UiTheme::Preferences = UiSdl3::system_preferences()
+    check("unknown theme remains system-selected", preferences.mode == UiTheme::ColorMode.System)
+    check("unknown theme does not claim dark", not UiSdl3::system_dark())
+    check("SDL does not fabricate other preference facts",
+        preferences.contrast == UiTheme::Contrast.Normal and preferences.text_scale == 1.0 and not preferences.reduced_motion)
+
+    check("light theme is recorded", UiSdl3::set_system_theme(UiSdl3::SDL_SYSTEM_THEME_LIGHT))
+    check("light theme maps to light preferences",
+        UiSdl3::system_preferences().mode == UiTheme::ColorMode.Light and not UiSdl3::system_dark())
+    check("repeated light theme is idempotent", not UiSdl3::set_system_theme(UiSdl3::SDL_SYSTEM_THEME_LIGHT))
+
+    check("dark theme is recorded", UiSdl3::set_system_theme(UiSdl3::SDL_SYSTEM_THEME_DARK))
+    check("dark theme maps to dark preferences",
+        UiSdl3::system_preferences().mode == UiTheme::ColorMode.Dark and UiSdl3::system_dark())
+
+    check("unknown theme clears a previous concrete mode", UiSdl3::set_system_theme(UiSdl3::SDL_SYSTEM_THEME_UNKNOWN))
+    _ = UiSdl3::set_system_theme(UiSdl3::SDL_SYSTEM_THEME_DARK)
+    check("invalid SDL values normalize to unknown", UiSdl3::set_system_theme(99)
+        and UiSdl3::system_preferences().mode == UiTheme::ColorMode.System)
+    check("unknown normalization is idempotent", not UiSdl3::set_system_theme(-1))
+
+    if failures == 0:
+        _ = puts("SDL3 appearance: all checks passed")
+        return 0
+    _ = puts("SDL3 appearance: FAILURES above")
+    return 1

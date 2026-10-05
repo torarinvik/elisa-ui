@@ -98,6 +98,7 @@ inline std::uint64_t elisa_skia_shaped_text_cache_misses = 0;
 inline void clear_shaped_text_cache() {
     elisa_skia_shaped_text_cache.clear();
     elisa_skia_shaped_text_cache_bytes = 0;
+    clear_simple_text_cache();
 }
 
 inline void set_shaped_text_cache_context(std::uint32_t locale_revision,
@@ -108,6 +109,7 @@ inline void set_shaped_text_cache_context(std::uint32_t locale_revision,
         elisa_skia_shaped_text_cache_locale_revision = locale_revision;
         elisa_skia_shaped_text_cache_scale_generation = scale_generation;
     }
+    set_simple_text_cache_context(locale_revision, scale_generation);
 }
 
 inline ElisaShapedText shape_text_uncached(const SkFont &font, const char *text,

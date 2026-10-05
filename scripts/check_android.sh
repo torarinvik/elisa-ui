@@ -17,6 +17,11 @@ set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 EXAMPLE="${1:-storefront}"
+PACKAGE="${ELISA_UI_ANDROID_PACKAGE_ID:-org.elisa_ui.$EXAMPLE}"
+[[ "$PACKAGE" =~ ^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$ ]] || {
+  echo "android: invalid package ID: $PACKAGE" >&2
+  exit 2
+}
 SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
 NDK="${ANDROID_NDK_ROOT:-$(ls -d "$SDK"/ndk/* 2>/dev/null | sort -V | tail -1)}"
 SKIA_ROOT="${SKIA_ROOT:-}"
@@ -118,10 +123,11 @@ grep -Fq 'if (clip_class != nullptr && !failed(env))' "$CLIPBOARD" || {
   exit 1
 }
 IME="$ROOT/src/platform/android/android_ime_jni.c"
-grep -Fq 'if (elisa_ime_failed(env)) return;' "$IME" || {
+if ! grep -Fq '(*env)->ExceptionClear(env);' "$IME" || \
+   ! grep -Fq 'if (elisa_ime_failed(env) || units_length > ELISA_IME_TEXT_MAX) return JNI_FALSE;' "$IME"; then
   echo "android: IME string conversion does not clear JNI failures" >&2
   exit 1
-}
+fi
 grep -Fq 'value == NULL ? "" : value' "$IME" || {
   echo "android: IME diagnostics do not guard a null framework string" >&2
   exit 1
@@ -181,7 +187,6 @@ if [[ ! -x "$ADB" ]] || ! "$ADB" devices | grep -q "	device$"; then
   exit 0
 fi
 
-PACKAGE="org.elisa_ui.$EXAMPLE"
 "$ADB" install -r "$APK" >/dev/null
 ANDROID_TEST_AVD=0
 ROTATION_AUTO=""

@@ -8,6 +8,9 @@
 module UiSdl3Draw:
     private:
         global mutable renderer: void&? = null
+        # SDL object identities are kept as opaque integers so global state
+        # does not extend an Elisa borrow past SDL's owning lifecycle.
+        global mutable active_window: uintptr = 0.uintptr()
         global mutable saved_clip_rect: i32[4] = zeroed
         global mutable saved_clip_enabled: bool = false
         global mutable sdl3_clip_depth: usize = 0
@@ -15,46 +18,16 @@ module UiSdl3Draw:
         def ren() -> void&?:
             return renderer
 
-        # A rendered glyph surface and its texture are released by destructors
-        # rather than by hand. This keeps every early-return path safe.
-        struct Surface:
-            handle: void&
-
-        def __drop__(self: Surface) -> void:
-            SDL_DestroySurface(self.handle)
-
-        struct Texture:
-            handle: void&
-
-        def __drop__(self: Texture) -> void:
-            SDL_DestroyTexture(self.handle)
-
-        def sdl_color(color: UiCore::Color) -> SdlColor:
-            # SDL3_ttf declares SDL_Color as four Uint8 fields. Keep that
-            # aggregate in the FFI signature instead of relying on a target-
-            # specific integer packing convention.
-            return SdlColor{r: color.r, g: color.g, b: color.b, a: color.a}
-
         def blit_text(run: UiCore::TextRun, color: UiCore::Color) -> void:
             return if renderer == null
             return if run.text.len <= 0 or run.text.data == null
             safe_text: sview = UiCore::bounded_text(run.text)
             return if safe_text.len <= 0 or safe_text.data == null
             if UiSdl3Fonts::font_for(run.size) is font:
-                return if not UiSdl3Fonts::begin_text_run(font, safe_text)
-                pointer: cstr = safe_text.data.cast[cstr] can Unsafe.PointerCast
-                surface_opt: void&? = TTF_RenderText_Blended(font, pointer, safe_text.len.usize(), sdl_color(color))
-                UiSdl3Fonts::end_text_run(font, safe_text)
-                if surface_opt is surface_handle:
-                    surface: Surface = Surface{handle: surface_handle}
-                    texture_opt: void&? = SDL_CreateTextureFromSurface(ren(), surface.handle)
-                    if texture_opt is texture_handle:
-                        texture: Texture = Texture{handle: texture_handle}
-                        width: f32 = measure_text_width(safe_text, run.size)
-                        height: f32 = text_line_height(run.size)
-                        destination: mutable array[f32, 4] = [run.origin.x, run.origin.y, width, height]
-                        destination_pointer: void& = (&destination[0]).cast[void&] can Unsafe.PointerCast
-                        _ = SDL_RenderTexture(ren(), texture.handle, null, destination_pointer)
+                if active_window != 0.uintptr():
+                    can Unsafe.PointerCast:
+                        window: void& = active_window.cast[void&]
+                        UiSdl3TextCache::draw_text(ren(), window, font, run, color, safe_text)
 
         def paint_rect(box_rect: UiCore::Rect, color: UiCore::Color) -> void:
             return if renderer == null
@@ -193,6 +166,20 @@ module UiSdl3Draw:
         def image_binding_count() -> usize:
             return UiSdl3Images::image_binding_count()
 
+        # These counters make retained-text reuse and its memory bound
+        # observable to off-screen backend tests and profiling tools.
+        def text_cache_count() -> usize:
+            return UiSdl3TextCache::entry_count()
+
+        def text_cache_bytes() -> usize:
+            return UiSdl3TextCache::estimated_bytes()
+
+        def text_cache_hits() -> u64:
+            return UiSdl3TextCache::hits()
+
+        def text_cache_misses() -> u64:
+            return UiSdl3TextCache::misses()
+
         # Renderer loss invalidates every texture at once. Logical
         # UiResources identities survive and the host can upload them again
         # after the renderer has been recreated.
@@ -204,13 +191,17 @@ module UiSdl3Draw:
             # outlive the renderer that created it.
             destroy_renderer() if renderer != null
             renderer <- SDL_CreateRenderer(window, null)
+            if renderer != null:
+                active_window <- window.cast[uintptr] can Unsafe.PointerCast
             return renderer != null
 
         def destroy_renderer() -> void:
+            UiSdl3TextCache::clear()
             UiSdl3Images::clear_image_bindings()
             if renderer is done_renderer:
                 SDL_DestroyRenderer(done_renderer)
             renderer <- null
+            active_window <- 0.uintptr()
             sdl3_clip_depth <- 0
 
         # GPU device loss discards the renderer but not the window or the
@@ -226,6 +217,7 @@ module UiSdl3Draw:
             _ = SDL_RenderPresent(ren())
 
         def set_font_override(path: cstr) -> void:
+            UiSdl3TextCache::clear()
             UiSdl3Fonts::set_font_override(path)
 
         def font_generation() -> u32:
@@ -235,6 +227,7 @@ module UiSdl3Draw:
             return UiSdl3Fonts::font_count()
 
         def fonts_close() -> void:
+            UiSdl3TextCache::clear()
             UiSdl3Fonts::fonts_close()
 
         def measure_text_width(text: sview, size: f32) -> f32:

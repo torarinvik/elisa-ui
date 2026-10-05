@@ -14,6 +14,12 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 STAGE1="$(bash "$ROOT/scripts/resolve_stage1_root.sh" "$ROOT")"
 EXAMPLE="${1:-storefront}"
 [[ "$EXAMPLE" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "invalid Android example name: $EXAMPLE" >&2; exit 2; }
+# Override for a side-by-side validation install; the default package remains stable.
+PACKAGE_ID="${ELISA_UI_ANDROID_PACKAGE_ID:-org.elisa_ui.$EXAMPLE}"
+[[ "$PACKAGE_ID" =~ ^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$ ]] || {
+  echo "invalid Android package ID: $PACKAGE_ID" >&2
+  exit 2
+}
 ENTRY="$ROOT/examples/$EXAMPLE/android_main.elisa"
 SKIA_ROOT="${SKIA_ROOT:?set SKIA_ROOT to the pinned checkout from third_party/skia.lock}"
 SKIA_OUT="${SKIA_ANDROID_OUT:-$SKIA_ROOT/out/elisa-android-arm64}"
@@ -61,7 +67,8 @@ LIB="lib$EXAMPLE"
 ELISA_STAGE1_PIC=1 "$STAGE1/bin/elisac-stage1" -emit obj -O0 -target-triple "$TRIPLE" \
   -o "$OUT/runtime_core.o" "$STAGE1/elisacore_std/native_runtime_support.elisa"
 bash "$STAGE1/scripts/write_profiler_hook_fallbacks.sh" > "$OUT/profiler_hooks.c"
-"$CLANG" -c -fPIC -o "$OUT/profiler_hooks.o" "$OUT/profiler_hooks.c"
+# The shared fallback defines va_copy/va_end over compiler builtins.
+"$CLANG" -c -fPIC -fno-builtin -o "$OUT/profiler_hooks.o" "$OUT/profiler_hooks.c"
 "$CLANG" -c -fPIC -o "$OUT/android_runtime_support.o" "$ROOT/src/platform/android/android_runtime_support.c"
 "$CLANG" -r -o "$OUT/elisacore_runtime.o" "$OUT/runtime_core.o" "$OUT/profiler_hooks.o" "$OUT/android_runtime_support.o"
 
@@ -130,7 +137,7 @@ cp "$SO" "$STAGE/lib/arm64-v8a/$LIB.so"
 cat > "$OUT/AndroidManifest.xml" <<MANIFEST
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="org.elisa_ui.$EXAMPLE" android:versionCode="1" android:versionName="1.0">
+    package="$PACKAGE_ID" android:versionCode="1" android:versionName="1.0">
   <!-- 34, not 35: from 35 on the window is laid out edge to edge under the
        system bars and the content rect no longer says where they are. At 34
        the window sits between them, which is the safe area this host wants. -->

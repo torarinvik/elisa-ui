@@ -1,0 +1,140 @@
+# Uniform virtual-list controls for the foreign-language boundary.
+#
+# Applications own row data and a bounded set of child widgets. Elisa maps
+# those child handles onto the realized logical window; generation queries let
+# a foreign host detect when a retained row has been rebound.
+
+include "../widgets/ui_handles.elisa"
+include "./ui_capi_widget.elisa"
+
+module UiCapiVirtual:
+    public:
+        def vertical_list(parent_token: u64, label: cstr?, length: usize, count: i32, extent: f32, spacing: f32, min_width: f32, min_height: f32, color: u32) -> u64 can Unsafe.PointerCast:
+            return make_list(parent_token, label, length, count, extent, spacing, min_width, min_height, color, false)
+
+        def horizontal_list(parent_token: u64, label: cstr?, length: usize, count: i32, extent: f32, spacing: f32, min_width: f32, min_height: f32, color: u32) -> u64 can Unsafe.PointerCast:
+            return make_list(parent_token, label, length, count, extent, spacing, min_width, min_height, color, true)
+
+        def set_item_count(token: u64, count: i32) -> i32:
+            handle: UiHandles::Handle = handle_for_token(token)
+            return 0 if not UiHandles::is_valid(handle)
+            row: UiFlat::Widget = UiFlat::widget(UiHandles::index(handle))
+            return 0 if row.kind != UiConst::WidgetKind.Scroll or not row.virtual_list
+            return 1 if UiHandles::set_virtual_item_count(handle, count) else 0
+
+        def item_count(token: u64) -> i32:
+            handle: UiHandles::Handle = handle_for_token(token)
+            return -1 if not UiHandles::is_valid(handle)
+            row: UiFlat::Widget = UiFlat::widget(UiHandles::index(handle))
+            return -1 if row.kind != UiConst::WidgetKind.Scroll or not row.virtual_list
+            return UiHandles::virtual_item_count(handle)
+
+        def scroll_to(token: u64, item_index: i32) -> i32:
+            handle: UiHandles::Handle = handle_for_token(token)
+            return 0 if not UiHandles::is_valid(handle)
+            row: UiFlat::Widget = UiFlat::widget(UiHandles::index(handle))
+            return 0 if row.kind != UiConst::WidgetKind.Scroll or not row.virtual_list
+            return 1 if UiHandles::scroll_virtual_to(handle, item_index) else 0
+
+        def scroll_by(token: u64, delta: f32) -> i32:
+            handle: UiHandles::Handle = handle_for_token(token)
+            return 0 if not UiHandles::is_valid(handle) or not UiCore::is_finite(delta)
+            row: UiFlat::Widget = UiFlat::widget(UiHandles::index(handle))
+            return 0 if row.kind != UiConst::WidgetKind.Scroll or not row.virtual_list
+            return 1 if UiHandles::scroll_virtual_by(handle, delta) else 0
+
+        def item_index(token: u64) -> i32:
+            handle: UiHandles::Handle = handle_for_token(token)
+            return -1 if not UiHandles::is_valid(handle)
+            return UiHandles::virtual_item_index(handle)
+
+        def item_generation(token: u64) -> u32:
+            handle: UiHandles::Handle = handle_for_token(token)
+            return 0 if not UiHandles::is_valid(handle)
+            return UiHandles::virtual_item_generation(handle)
+
+    private:
+        const TEXT_CAPACITY: usize = UiCore::MAX_TEXT_BYTES
+        global mutable label_busy: bool = false
+        global mutable label_buffer: mutable u8[1025] = zeroed
+
+        def make_list(parent_token: u64, label: cstr?, length: usize, count: i32, extent: f32, spacing: f32, min_width: f32, min_height: f32, color: u32, horizontal: bool) -> u64 can Unsafe.PointerCast:
+            parent: UiHandles::Handle = parent_handle(parent_token)
+            return UiCapiWidget::INVALID if not UiHandles::parent_is_valid(parent) or not UiCore::is_finite(extent) or not UiCore::is_finite(spacing)
+            staged: mutable sview = ""
+            return UiCapiWidget::INVALID if not begin_label(label, length, staged)
+            axis: UiConst::Axis = UiConst::Axis.Column if not horizontal else UiConst::Axis.Row
+            handle: UiHandles::Handle = UiHandles::virtual_list_with_axis(parent, staged, count, extent, spacing, min_width, min_height, color_from_packed(color), axis)
+            end_label()
+            return UiCapiWidget::INVALID if not UiHandles::is_valid(handle)
+            return UiCapiWidget::token_for_index(UiHandles::index(handle))
+
+        def parent_handle(token: u64) -> UiHandles::Handle:
+            return UiHandles::root_parent() if token == 0
+            index: usize = UiCapiWidget::index_for_token(token)
+            return UiHandles::invalid() if index == UiFlat::NONE
+            return UiHandles::from_index(index)
+
+        def handle_for_token(token: u64) -> UiHandles::Handle:
+            index: usize = UiCapiWidget::index_for_token(token)
+            return UiHandles::invalid() if index == UiFlat::NONE
+            return UiHandles::from_index(index)
+
+        def color_from_packed(color: u32) -> UiCore::Color:
+            return UiCore::rgba((color >> 24).u8(), (color >> 16).u8(), (color >> 8).u8(), color.u8())
+
+        def begin_label(label: cstr?, length: usize, out_text: mutable sview&) -> bool can Unsafe.PointerCast:
+            return false if label_busy
+            label_busy <- true
+            clear_label_buffer()
+            safe_length: usize = TEXT_CAPACITY if length > TEXT_CAPACITY else length
+            if safe_length > 0:
+                if label is value:
+                    pointer: uintptr = value.cast[uintptr] can Unsafe.PointerCast
+                    if pointer == 0.uintptr():
+                        label_busy <- false
+                        return false
+                    for index in 0..<safe_length:
+                        trusted [Unsafe.PointerCast, Unsafe.PointerArithmetic]:
+                            byte: u8& = (pointer + index.uintptr()).cast[u8&]
+                            label_buffer[index] <- byte
+                else:
+                    label_busy <- false
+                    return false
+            label_buffer[safe_length] <- 0
+            raw: sview = UiText::fixed_bytes_view_range[1025](label_buffer, 0, safe_length.i64())
+            valid_length: usize = UiText::valid_utf8_prefix(raw, safe_length)
+            out_text <- raw[0:valid_length.i64()]
+            return true
+
+        def end_label() -> void:
+            clear_label_buffer()
+            label_busy <- false
+
+        def clear_label_buffer() -> void:
+            for index in 0..<(TEXT_CAPACITY + 1):
+                label_buffer[index] <- 0
+
+def elisa_ui_widget_virtual_list(parent: u64, label: cstr?, length: usize, count: i32, extent: f32, spacing: f32, min_width: f32, min_height: f32, color: u32) -> u64 can Unsafe.PointerCast:
+    UiCapiVirtual::vertical_list(parent, label, length, count, extent, spacing, min_width, min_height, color)
+
+def elisa_ui_widget_horizontal_virtual_list(parent: u64, label: cstr?, length: usize, count: i32, extent: f32, spacing: f32, min_width: f32, min_height: f32, color: u32) -> u64 can Unsafe.PointerCast:
+    UiCapiVirtual::horizontal_list(parent, label, length, count, extent, spacing, min_width, min_height, color)
+
+def elisa_ui_widget_set_virtual_item_count(widget: u64, count: i32) -> i32:
+    UiCapiVirtual::set_item_count(widget, count)
+
+def elisa_ui_widget_virtual_item_count(widget: u64) -> i32:
+    UiCapiVirtual::item_count(widget)
+
+def elisa_ui_widget_virtual_scroll_to(widget: u64, item_index: i32) -> i32:
+    UiCapiVirtual::scroll_to(widget, item_index)
+
+def elisa_ui_widget_virtual_scroll_by(widget: u64, delta: f32) -> i32:
+    UiCapiVirtual::scroll_by(widget, delta)
+
+def elisa_ui_widget_virtual_item_index(widget: u64) -> i32:
+    UiCapiVirtual::item_index(widget)
+
+def elisa_ui_widget_virtual_item_generation(widget: u64) -> u32:
+    UiCapiVirtual::item_generation(widget)

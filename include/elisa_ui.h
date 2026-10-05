@@ -30,7 +30,7 @@ extern "C" {
  * boundary implementation before any host events are sent. A major mismatch
  * is incompatible; minor/patch changes preserve the existing wire records. */
 #define ELISA_UI_ABI_VERSION_MAJOR 1u
-#define ELISA_UI_ABI_VERSION_MINOR 1u
+#define ELISA_UI_ABI_VERSION_MINOR 2u
 #define ELISA_UI_ABI_VERSION_PATCH 0u
 #define ELISA_UI_ABI_VERSION \
     ((ELISA_UI_ABI_VERSION_MAJOR << 16) | \
@@ -167,6 +167,20 @@ elisa_ui_widget_handle elisa_ui_widget_column(elisa_ui_widget_handle parent,
 elisa_ui_widget_handle elisa_ui_widget_row(elisa_ui_widget_handle parent,
                                            float padding, float spacing,
                                            uint32_t color_rgba);
+elisa_ui_widget_handle elisa_ui_widget_vertical_scroll(elisa_ui_widget_handle parent,
+                                                       float min_width, float min_height,
+                                                       uint32_t color_rgba);
+elisa_ui_widget_handle elisa_ui_widget_horizontal_scroll(elisa_ui_widget_handle parent,
+                                                         float min_width, float min_height,
+                                                         uint32_t color_rgba);
+elisa_ui_widget_handle elisa_ui_widget_virtual_list(
+    elisa_ui_widget_handle parent, const char *label, size_t label_length,
+    int32_t item_count, float item_extent, float spacing,
+    float min_width, float min_height, uint32_t color_rgba);
+elisa_ui_widget_handle elisa_ui_widget_horizontal_virtual_list(
+    elisa_ui_widget_handle parent, const char *label, size_t label_length,
+    int32_t item_count, float item_extent, float spacing,
+    float min_width, float min_height, uint32_t color_rgba);
 elisa_ui_widget_handle elisa_ui_widget_label(elisa_ui_widget_handle parent,
                                               const char *text, size_t length,
                                               float size, uint32_t color_rgba);
@@ -177,6 +191,12 @@ elisa_ui_widget_handle elisa_ui_widget_text_field(elisa_ui_widget_handle parent,
                                                   float min_width, float min_height,
                                                   float size, uint32_t ink_rgba,
                                                   uint32_t fill_rgba);
+/* Secure fields use secure input storage and masked rendering. Their retained
+ * value, length, and selection are never copied back through this ABI. */
+elisa_ui_widget_handle elisa_ui_widget_secure_text_field(
+    elisa_ui_widget_handle parent, const char *initial, size_t length,
+    float min_width, float min_height, float size, uint32_t ink_rgba,
+    uint32_t fill_rgba);
 elisa_ui_widget_handle elisa_ui_widget_button(elisa_ui_widget_handle parent,
                                               float min_width, float min_height,
                                               uint32_t color_rgba,
@@ -218,9 +238,39 @@ int32_t elisa_ui_widget_set_selected(elisa_ui_widget_handle widget,
 int32_t elisa_ui_widget_selected(elisa_ui_widget_handle widget);
 int32_t elisa_ui_widget_set_value(elisa_ui_widget_handle widget, float value);
 float elisa_ui_widget_value(elisa_ui_widget_handle widget);
-/* Text-field length is -1 for stale/non-text handles. Copy writes at most
- * capacity bytes without a terminator and never splits a UTF-8 sequence;
- * pass NULL only with zero capacity. Request-focus is text-field-only. */
+/* Scroll offsets/limits are logical distances. Set returns 1 only when the
+ * offset changed; the request is clamped to the current laid-out limit. */
+int32_t elisa_ui_widget_set_scroll_offset(elisa_ui_widget_handle widget,
+                                          float requested);
+float elisa_ui_widget_scroll_offset(elisa_ui_widget_handle widget);
+float elisa_ui_widget_scroll_limit(elisa_ui_widget_handle widget);
+/* Uniform virtual lists realize app-owned direct-child row widgets into the
+ * visible window. Item count/scroll setters return 1 only when state changes.
+ * A row's logical index is -1 when it is not currently realized; its
+ * generation changes whenever that retained row is rebound. */
+int32_t elisa_ui_widget_set_virtual_item_count(elisa_ui_widget_handle widget,
+                                               int32_t item_count);
+int32_t elisa_ui_widget_virtual_item_count(elisa_ui_widget_handle widget);
+int32_t elisa_ui_widget_virtual_scroll_to(elisa_ui_widget_handle widget,
+                                          int32_t item_index);
+int32_t elisa_ui_widget_virtual_scroll_by(elisa_ui_widget_handle widget,
+                                          float delta);
+int32_t elisa_ui_widget_virtual_item_index(elisa_ui_widget_handle row);
+uint32_t elisa_ui_widget_virtual_item_generation(elisa_ui_widget_handle row);
+/* Input text replacement is distinct from the visual caption setter above.
+ * Selection endpoints are UTF-8 byte offsets; Elisa normalizes them to
+ * extended-grapheme boundaries. The getters return ordered start/end offsets
+ * (selection direction is not preserved). Secure fields can be edited but
+ * their selection/value cannot be read back. */
+int32_t elisa_ui_widget_set_input_text(elisa_ui_widget_handle widget,
+                                       const char *text, size_t length);
+int32_t elisa_ui_widget_set_selection(elisa_ui_widget_handle widget,
+                                      size_t anchor, size_t caret);
+int32_t elisa_ui_widget_selection_start(elisa_ui_widget_handle widget);
+int32_t elisa_ui_widget_selection_end(elisa_ui_widget_handle widget);
+/* Text-field length is -1 for stale, non-text, or secure handles. Copy writes
+ * at most capacity bytes without a terminator and never splits a UTF-8
+ * sequence; pass NULL only with zero capacity. Request-focus is text-field-only. */
 int32_t elisa_ui_widget_request_text_focus(elisa_ui_widget_handle widget);
 int32_t elisa_ui_widget_text_length(elisa_ui_widget_handle widget);
 size_t elisa_ui_widget_copy_text(elisa_ui_widget_handle widget,

@@ -145,8 +145,25 @@ func main() {
 	validWidgetCount = 0
 	invalidWidgetCount = 0
 	ui.ResetWidgetTree()
+	ui.SetViewport(360, 220)
 	root, rootOK := ui.NewColumn(ui.RootWidgetParent(), 8, 4, ui.RGBA(32, 32, 40, 255))
 	row, rowOK := ui.NewRow(ui.ParentWidget(root), 0, 8, ui.RGBA(32, 32, 40, 255))
+	list, listOK := ui.NewVirtualList(ui.ParentWidget(root), "Items", 5, 20, 2, 180, 64, ui.RGBA(32, 32, 40, 255))
+	listRowA, listRowAOK := ui.NewButton(ui.ParentWidget(list), 120, 20,
+		ui.RGBA(48, 48, 56, 255), ui.RGBA(64, 64, 72, 255), ui.RGBA(80, 80, 88, 255))
+	_, listRowBOK := ui.NewButton(ui.ParentWidget(list), 120, 20,
+		ui.RGBA(48, 48, 56, 255), ui.RGBA(64, 64, 72, 255), ui.RGBA(80, 80, 88, 255))
+	carousel, carouselOK := ui.NewHorizontalVirtualList(ui.ParentWidget(root), "Carousel", 3, 36, 6, 180, 64, ui.RGBA(32, 32, 40, 255))
+	carouselCount, carouselCountOK := ui.VirtualItemCount(carousel)
+	ui.SetViewport(360, 220)
+	_, initialRowGenerationOK := ui.VirtualItemGeneration(listRowA)
+	virtualScrolled := ui.VirtualScrollTo(list, 3)
+	_, virtualRowIndexOK := ui.VirtualItemIndex(listRowA)
+	_, virtualRowGenerationOK := ui.VirtualItemGeneration(listRowA)
+	virtualCountChanged := ui.SetVirtualItemCount(list, 8)
+	virtualCount, virtualCountOK := ui.VirtualItemCount(list)
+	verticalScroll, verticalScrollOK := ui.NewVerticalScroll(ui.ParentWidget(row), 180, 100, ui.RGBA(32, 32, 40, 255))
+	horizontalScroll, horizontalScrollOK := ui.NewHorizontalScroll(ui.ParentWidget(row), 180, 100, ui.RGBA(32, 32, 40, 255))
 	label, labelOK := ui.NewLabel(ui.ParentWidget(row), "Status", 16, ui.RGBA(255, 255, 255, 255))
 	button, buttonOK := ui.NewButton(ui.ParentWidget(row), 120, 36,
 		ui.RGBA(48, 48, 56, 255), ui.RGBA(64, 64, 72, 255), ui.RGBA(80, 80, 88, 255))
@@ -160,12 +177,23 @@ func main() {
 		ui.RGBA(48, 48, 56, 255), ui.RGBA(64, 64, 72, 255))
 	field, fieldOK := ui.NewTextField(ui.ParentWidget(row), "Hi é", 180, 32, 16,
 		ui.RGBA(255, 255, 255, 255), ui.RGBA(32, 32, 40, 255))
+	secureField, secureFieldOK := ui.NewSecureTextField(ui.ParentWidget(row), "secret", 180, 32, 16,
+		ui.RGBA(255, 255, 255, 255), ui.RGBA(32, 32, 40, 255))
 	fieldPrefix := make([]byte, 4)
 	fieldCopied, fieldCopyOK := ui.CopyWidgetText(field, fieldPrefix)
 	fieldText, fieldTextOK := ui.WidgetText(field)
 	fieldLength, fieldLengthOK := ui.WidgetTextLength(field)
+	selectionSetOK := ui.SetWidgetSelection(field, 3, 5)
+	selectionStart, selectionEnd, selectionOK := ui.WidgetSelection(field)
+	inputReplacementOK := ui.SetWidgetInputText(field, "Hi é!")
+	updatedFieldText, updatedFieldTextOK := ui.WidgetText(field)
+	secureFocusOK := ui.RequestTextFocus(secureField)
+	secureReplacementOK := ui.SetWidgetInputText(secureField, "changed")
+	_, secureLengthOK := ui.WidgetTextLength(secureField)
+	_, secureTextOK := ui.WidgetText(secureField)
 	if !rootOK || !rowOK || !labelOK || !buttonOK || !ui.WidgetIsLive(label) ||
-		!checkboxOK || !radioOK || !sliderOK || !progressOK || !fieldOK ||
+		!listOK || !listRowAOK || !listRowBOK || !carouselOK || !checkboxOK || !radioOK || !sliderOK || !progressOK || !fieldOK || !secureFieldOK ||
+		!verticalScrollOK || !horizontalScrollOK ||
 		!ui.SetWidgetText(button, "Run", 16, ui.RGBA(255, 255, 255, 255)) ||
 		!ui.SetWidgetEnabled(button, false) || ui.ActivateWidget(button) ||
 		!ui.SetWidgetEnabled(button, true) || !ui.SetWidgetVisible(button, true) ||
@@ -175,18 +203,30 @@ func main() {
 		!ui.SetWidgetValue(slider, 1.25) || ui.WidgetValue(slider) != 1 ||
 		!ui.SetWidgetValue(progress, 0.75) || ui.WidgetValue(progress) != 0.75 ||
 		ui.SetWidgetValue(button, 0.5) ||
+		ui.WidgetScrollOffset(verticalScroll) != 0 || ui.WidgetScrollOffset(horizontalScroll) != 0 ||
+		ui.SetWidgetScrollOffset(button, 1) ||
+		!initialRowGenerationOK || !virtualScrolled || !virtualRowIndexOK || !virtualRowGenerationOK ||
+		!virtualCountChanged || !virtualCountOK || virtualCount != 8 || ui.VirtualScrollTo(button, 1) ||
+		!carouselCountOK || carouselCount != 3 ||
 		!ui.RequestTextFocus(field) || !fieldLengthOK || fieldLength != 5 ||
 		!fieldCopyOK || fieldCopied != 3 || string(fieldPrefix[:3]) != "Hi " ||
 		!fieldTextOK || fieldText != "Hi é" ||
+		!selectionSetOK || !selectionOK || selectionStart != 3 || selectionEnd != 5 ||
+		!inputReplacementOK || !updatedFieldTextOK || updatedFieldText != "Hi é!" ||
+		!secureFocusOK || !secureReplacementOK || secureLengthOK || secureTextOK ||
 		ui.RequestTextFocus(button) ||
-		!ui.ActivateWidget(button) || validWidgetCount != 1 || lastWidget != button || lastWidgetEvent != 0 {
+		!ui.ActivateWidget(button) || validWidgetCount == 0 || lastWidget != button || lastWidgetEvent != 0 {
 		fmt.Fprintln(os.Stderr, "Go host: retained-control create/use/callback path failed")
 		failures++
 	}
 	ui.ResetWidgetTree()
 	if ui.WidgetIsLive(button) || ui.SetWidgetEnabled(button, true) ||
 		ui.SetWidgetSelected(checkbox, false) || ui.SetWidgetValue(slider, 0.5) ||
+		ui.SetWidgetScrollOffset(verticalScroll, 1) ||
+		ui.SetVirtualItemCount(list, 9) ||
+		ui.SetVirtualItemCount(carousel, 4) ||
 		ui.RequestTextFocus(field) ||
+		ui.SetWidgetInputText(secureField, "x") ||
 		func() bool { _, ok := ui.WidgetTextLength(field); return ok }() ||
 		ui.ActivateWidget(button) {
 		fmt.Fprintln(os.Stderr, "Go host: tree reset did not reject a stale handle")

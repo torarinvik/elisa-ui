@@ -1,0 +1,139 @@
+# Off-screen SDL text-cache lifecycle and bounded-LRU regression.
+
+include "../src/platform/sdl3/ui_sdl3.elisa"
+
+extern SDL_setenv_unsafe(name: cstr, value: cstr, overwrite: i32) -> i32
+extern puts(text: cstr) -> i64
+
+global mutable failures: i32 = 0
+global mutable oversized_cache_text: u8[257] = zeroed
+
+def app_init() -> void:
+    pass
+
+def app_event(event: mutable UiCore::Event&) -> void:
+    pass
+
+def app_text_input(text: sview) -> void:
+    pass
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    pass
+
+def app_frame() -> void:
+    pass
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    pass
+
+def check(label: cstr, passed: bool) -> void:
+    return if passed
+    failures <- failures + 1
+    _ = puts(label)
+
+def paint_text(text: sview, size: f32, color: UiCore::Color, x: f32) -> void:
+    UiCore::begin_frame()
+    UiCore::draw(UiCore::TextRun(UiCore::Vec2(x, 24.0), size, text), color)
+    UiPaint::replay(UiSdl3Draw::painter())
+
+def paint_unique_entries() -> void:
+    paint_text("cache-entry-00", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-01", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-02", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-03", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-04", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-05", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-06", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-07", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-08", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-09", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-10", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-11", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-12", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-13", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-14", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-15", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-16", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-17", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-18", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-19", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-20", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-21", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-22", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-23", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-24", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-25", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-26", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-27", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-28", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-29", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-30", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-31", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+    paint_text("cache-entry-32", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+
+def main() -> i32:
+    _ = SDL_setenv_unsafe("SDL_VIDEODRIVER", "dummy", 1)
+    if not SDL_Init(0x20):
+        _ = puts("FAIL SDL initialization for text cache")
+        return 1
+    ttf_ready: bool = TTF_Init()
+    window_opt: void&? = SDL_CreateWindow("SDL3 text cache", 360, 80, 0)
+    if window_opt == null:
+        _ = puts("FAIL SDL dummy window for text cache")
+        TTF_Quit() if ttf_ready
+        SDL_Quit()
+        return 1
+    if window_opt is window:
+        if not UiSdl3Draw::create_renderer(window):
+            _ = puts("FAIL SDL renderer for text cache")
+            failures <- failures + 1
+        else:
+            UiCore::set_viewport(360.0, 80.0)
+            UiLocalization::reset()
+            paint_text("same label", 16.0, UiCore::rgb(245, 245, 245), 2.0)
+            first_misses: u64 = UiSdl3Draw::text_cache_misses()
+            check("first SDL text paint creates one retained texture", UiSdl3Draw::text_cache_count() == 1 and first_misses == 1)
+            paint_text("same label", 16.0, UiCore::rgb(245, 245, 245), 20.0)
+            check("same text key reuses its retained texture", UiSdl3Draw::text_cache_hits() == 1 and UiSdl3Draw::text_cache_misses() == first_misses and UiSdl3Draw::text_cache_count() == 1)
+            paint_text("same label", 16.0, UiCore::rgb(220, 120, 80), 2.0)
+            paint_text("same label", 18.0, UiCore::rgb(245, 245, 245), 2.0)
+            check("SDL text key distinguishes color and size", UiSdl3Draw::text_cache_count() == 3 and UiSdl3Draw::text_cache_misses() == first_misses + 2)
+            for index in 0..<257:
+                oversized_cache_text[index] <- 120
+            oversized_view: sview = UiText::fixed_bytes_view_range[257](oversized_cache_text, 0, 257)
+            misses_before_oversized: u64 = UiSdl3Draw::text_cache_misses()
+            paint_text(oversized_view, 16.0, UiCore::rgb(245, 245, 245), 2.0)
+            check("over-capacity text bypasses retained-key storage", UiSdl3Draw::text_cache_count() == 3 and UiSdl3Draw::text_cache_misses() == misses_before_oversized)
+
+            _ = UiLocalization::set_locale("ar")
+            paint_text("same label", 16.0, UiCore::rgb(245, 245, 245), 2.0)
+            check("locale revision invalidates retained SDL text", UiSdl3Draw::text_cache_count() == 1 and UiSdl3Draw::text_cache_misses() == first_misses + 3)
+
+            misses_before_font_change: u64 = UiSdl3Draw::text_cache_misses()
+            UiSdl3Fonts::fonts_close()
+            paint_text("same label", 16.0, UiCore::rgb(245, 245, 245), 2.0)
+            check("font generation change invalidates retained SDL text", UiSdl3Draw::text_cache_count() == 1 and UiSdl3Draw::text_cache_misses() == misses_before_font_change + 1)
+
+            UiSdl3Draw::fonts_close()
+            UiLocalization::reset()
+            paint_unique_entries()
+            check("SDL text cache enforces entry and byte bounds", UiSdl3Draw::text_cache_count() == 32 and UiSdl3Draw::text_cache_bytes() > 0 and UiSdl3Draw::text_cache_bytes() <= 1024 * 1024)
+            before_evicted_repaint: u64 = UiSdl3Draw::text_cache_misses()
+            paint_text("cache-entry-00", 16.0, UiCore::rgb(245, 245, 245), 1.0)
+            check("least-recently-used SDL text is evicted", UiSdl3Draw::text_cache_misses() == before_evicted_repaint + 1 and UiSdl3Draw::text_cache_count() == 32)
+
+            UiSdl3Draw::set_font_override("/elisa-ui/missing-cache-test-font.ttf")
+            check("font replacement immediately releases text textures", UiSdl3Draw::text_cache_count() == 0 and UiSdl3Draw::text_cache_bytes() == 0)
+            paint_text("same label", 16.0, UiCore::rgb(245, 245, 245), 2.0)
+            check("uncacheable text without a usable font leaves no texture", UiSdl3Draw::text_cache_count() == 0)
+            UiSdl3Draw::fonts_close()
+            paint_text("same label", 16.0, UiCore::rgb(245, 245, 245), 2.0)
+            check("SDL text cache warms again after restoring font candidates", UiSdl3Draw::text_cache_count() == 1)
+            UiSdl3Draw::destroy_renderer()
+            check("renderer teardown releases all retained text textures", UiSdl3Draw::text_cache_count() == 0 and UiSdl3Draw::text_cache_bytes() == 0)
+        SDL_DestroyWindow(window)
+    TTF_Quit() if ttf_ready
+    SDL_Quit()
+    if failures == 0:
+        _ = puts("SDL text cache: passed")
+    return failures

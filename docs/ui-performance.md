@@ -60,10 +60,15 @@ limits for CI and catch accidental unbounded work; they are not product-frame
 budgets or cross-machine performance claims.
 
 `test/performance_budgets.json` holds measured reference-device thresholds.
-The current entry is for macOS 26.6.2 build 25G83 on Mac17,4 / Apple M5, using
-Homebrew clang 23.1.1 and Elisa `fd2cb3c`; it records three processes, all 21
+The newest entry (2026-10-05) is macOS 27.0.1 build 26A434 on Mac17,4 / Apple
+M5, using Homebrew clang 23.1.1 and Stage1 revision `8e08cd33` (product SHA-256
+`f7d4dc3c…e19b9d`, runtime SHA-256 `b51e6114…bd11897`). It records all 21
 raw samples per phase, verified median/maximum/RSS, and separate median and
-outlier limits. A budget matches only the exact OS, device, compiler
+outlier limits: 4.208 ms first-frame batches, 2.108 ms layout, 6.382 ms
+paint, 24.084 ms text, 0.621 ms text input, 0.087 ms per 128 virtual-list
+windows, and 4,014,080 bytes peak RSS. The required exact-tuple gate passes on
+a fresh repeat run; see the [dated validation note](implementation-baseline/validation-2026-10-05.md).
+A budget matches only the exact OS, device, compiler
 product/runtime, Clang binary, workload version/counts/flags, and workload
 source hashes. No other device inherits the M5 thresholds. Without an exact
 match the default mode prints `UNBUDGETED` and keeps only the generic safety
@@ -75,28 +80,77 @@ For exploratory data collection on an unbaselined machine, run the script with
 reference entry only after collecting repeated samples on that device and
 recording its complete metadata.
 
-This gate measures CPU-side framework work and retained memory only. It does
-not claim GPU upload latency, display-vsync pacing, battery/energy use, mobile
-thermal behavior, or hosted transport cost. Those require a real Skia GPU
+## SDL3 retained text cache
+
+`bash scripts/bench_sdl3_text_cache.sh` measures the full SDL3 paint path on a
+dummy-video window, including `UiCore::begin_frame`, command recording,
+`UiPaint::replay`, and `SDL_RenderPresent`. Each process records 21 samples of
+256 draws. The cold-miss phase uses the same text and size with varying colors
+to force misses and LRU replacement; the warm-hit phase primes one exact key
+and repeats it. The C harness verifies miss/hit counters and the cache-entry
+bound before accepting timing data. It reports every sample and the median
+nanoseconds per draw; this is a focused cache datapoint, not a reference-device
+acceptance budget.
+
+Three process runs on macOS 27.0.1 build 26A434, Mac17,4 / Apple M5, Stage1
+`8e08cd33` (product SHA-256
+`78a26e2c5142c84fc2fe6769281a445621ed10f13d750545ea26dd8e490e50d5`),
+Homebrew SDL3 3.4.16 and SDL_ttf 3.2.2 measured cold/warm medians of
+32,015/4,648 ns, 24,324/3,535 ns, and 24,078/3,441 ns per draw. The median of
+the three process medians is 24,324 ns versus 3,535 ns (6.88×). The exact
+samples and interpretation are preserved in the [dated validation note](implementation-baseline/validation-2026-10-05.md).
+
+## Skia simple-text fallback cache
+
+`src/platform/skia/skia_simple_text_cache.inc` adds a shared bounded LRU for
+Skia's simple-text fallback: 64 entries, 1 MiB estimated total, and 64 KiB per
+entry. It retains per-fallback-run `SkTextBlob`s and measured advances, keyed
+by exact counted UTF-8, `SkFont`, typeface identity, font-manager identity,
+locale revision, and scale generation. Paint and draw origin remain outside
+the key. Font-manager, text-quality, locale/scale, explicit cache-clear, and
+surface-loss paths invalidate it. Tracked text bypasses the cache so its
+per-scalar tracking behavior is unchanged.
+
+The real Apple CPU-raster gate verifies cache reuse and exact pixel parity
+against the previous split-run `drawSimpleText` path at a fractional origin,
+for a plain run under two paint colors and for a separate fallback-font run.
+It also checks exact
+text/font/typeface key separation, locale/scale, font-manager and text-quality
+invalidation, entry- and byte-cost LRU limits, oversized-text bypass, and
+surface-loss clearing. The
+Android ARM64 NDK compiles the real text shim with warnings-as-errors. This is
+correctness/build evidence only; no Skia-cache speedup is claimed. A full
+Android application build currently stops earlier in generated profiler
+fallback C at the NDK 30 `va_copy`/`va_end` macro boundary, and no Android
+device was attached for runtime acceptance.
+
+This gate measures CPU-side framework work and process peak RSS; it does not
+count allocations. It does not claim GPU upload latency, display-vsync pacing,
+battery/energy use, mobile thermal behavior, or hosted transport cost. Those require a real Skia GPU
 surface, device hosts, or WasmBrowser/remote transport fixtures and remain
 separate validation work.
 
 ## WasmBrowser presentation payload baseline
 
 `scripts/check_wasmbrowser_transfer.sh` runs the production `UiWasmBrowser`
-encoder against C host stubs and inspects the callback arguments. Three
-commands expose a 96-byte span (three 32-byte records). A semantic snapshot is
-137 bytes for one node with 9 text bytes, and 33,800 bytes for 256 nodes using
-the full 3-KiB aggregate text budget. The maximum case verifies the last
-record and last text range as well as the version/count header.
+encoder against C host stubs and inspects the callback arguments. Its focused
+fixture emits all seven current command tags and verifies their payloads,
+including image slot/generation, alpha, corner, and fit; the frame exposes a
+224-byte span (seven 32-byte records). A semantic snapshot is 137 bytes for
+one node with 9 text bytes, and 33,800 bytes for 256 nodes using the full 3-KiB
+aggregate text budget. The maximum case verifies the last record and last text
+range as well as the version/count header.
 
-The guest reuses its command and semantic arrays. Text commands carry borrowed
-guest-memory pointer/length pairs rather than copying their text into the
-32-byte record; semantic strings are copied into the reusable snapshot. The
+The guest reuses its command and semantic arrays; the native fixture verifies
+the callback pointer for each stays identical across its two frames. Text
+commands carry borrowed guest-memory pointer/length pairs rather than copying
+their text into the 32-byte record; semantic strings are copied into the
+reusable snapshot. The
 semantic array is now sized to its reachable maximum, 33,800 bytes, down from
 125,952 bytes (92,152 fewer statically reserved bytes). The fixture measures
 the logical spans presented to imports and validates the bound; it does not
-measure a host-side clone, network/remote transport, or elapsed transfer time.
+exercise the real component host or SDK-owned typed bindings, nor measure a
+host-side clone, network/remote transport, or elapsed transfer time.
 
 ## Required renderer evidence
 

@@ -67,10 +67,15 @@ int main(void) {
     }
 
     elisa_ui_widget_tree_reset();
+    elisa_ui_set_viewport(360.0f, 220.0f);
     elisa_ui_widget_handle root = elisa_ui_widget_column(
         ELISA_UI_WIDGET_ROOT_PARENT, 8.0f, 4.0f, UINT32_C(0x202028ff));
     elisa_ui_widget_handle row = elisa_ui_widget_row(
         root, 0.0f, 8.0f, UINT32_C(0x202028ff));
+    elisa_ui_widget_handle vertical_scroll = elisa_ui_widget_vertical_scroll(
+        row, 180.0f, 100.0f, UINT32_C(0x202028ff));
+    elisa_ui_widget_handle horizontal_scroll = elisa_ui_widget_horizontal_scroll(
+        row, 180.0f, 100.0f, UINT32_C(0x202028ff));
     elisa_ui_widget_handle label = elisa_ui_widget_label(
         row, "Status", strlen("Status"), 16.0f, UINT32_C(0xffffffff));
     elisa_ui_widget_handle button = elisa_ui_widget_button(
@@ -90,14 +95,51 @@ int main(void) {
     elisa_ui_widget_handle field = elisa_ui_widget_text_field(
         row, "Hi é", strlen("Hi é"), 180.0f, 32.0f, 16.0f,
         UINT32_C(0xffffffff), UINT32_C(0x202028ff));
+    elisa_ui_widget_handle secure_field = elisa_ui_widget_secure_text_field(
+        row, "secret", 6, 180.0f, 32.0f, 16.0f,
+        UINT32_C(0xffffffff), UINT32_C(0x202028ff));
+    elisa_ui_widget_handle list = elisa_ui_widget_virtual_list(
+        root, "Items", strlen("Items"), 5, 20.0f, 2.0f, 180.0f, 64.0f,
+        UINT32_C(0x202028ff));
+    elisa_ui_widget_handle list_row_a = elisa_ui_widget_button(
+        list, 120.0f, 20.0f, UINT32_C(0x303038ff),
+        UINT32_C(0x404048ff), UINT32_C(0x505058ff));
+    elisa_ui_widget_handle list_row_b = elisa_ui_widget_button(
+        list, 120.0f, 20.0f, UINT32_C(0x303038ff),
+        UINT32_C(0x404048ff), UINT32_C(0x505058ff));
+    elisa_ui_widget_handle carousel = elisa_ui_widget_horizontal_virtual_list(
+        root, "Carousel", strlen("Carousel"), 3, 36.0f, 6.0f, 180.0f, 64.0f,
+        UINT32_C(0x202028ff));
+    elisa_ui_set_viewport(360.0f, 220.0f);
     if (!elisa_ui_widget_is_valid(root) || !elisa_ui_widget_is_valid(row) ||
+        !elisa_ui_widget_is_valid(vertical_scroll) || !elisa_ui_widget_is_valid(horizontal_scroll) ||
         !elisa_ui_widget_is_valid(label) || !elisa_ui_widget_is_valid(button) ||
         !elisa_ui_widget_is_valid(checkbox) || !elisa_ui_widget_is_valid(radio) ||
         !elisa_ui_widget_is_valid(slider) || !elisa_ui_widget_is_valid(progress) ||
-        !elisa_ui_widget_is_valid(field) ||
+        !elisa_ui_widget_is_valid(field) || !elisa_ui_widget_is_valid(secure_field) ||
+        !elisa_ui_widget_is_valid(list) ||
+        !elisa_ui_widget_is_valid(list_row_a) || !elisa_ui_widget_is_valid(list_row_b) ||
+        !elisa_ui_widget_is_valid(carousel) ||
         elisa_ui_widget_set_text(button, "Run", 3, 16.0f,
                                  UINT32_C(0xffffffff)) != 1) {
         puts("C app could not construct and label retained controls");
+        failures++;
+    }
+    if (elisa_ui_widget_scroll_offset(vertical_scroll) != 0.0f ||
+        elisa_ui_widget_scroll_offset(horizontal_scroll) != 0.0f ||
+        elisa_ui_widget_set_scroll_offset(button, 1.0f) != 0) {
+        puts("C app scroll controls did not expose safe logical offsets");
+        failures++;
+    }
+    int32_t list_count_before = elisa_ui_widget_virtual_item_count(list);
+    int32_t list_scrolled = elisa_ui_widget_virtual_scroll_to(list, 3);
+    int32_t list_count_changed = elisa_ui_widget_set_virtual_item_count(list, 8);
+    int32_t list_count_after = elisa_ui_widget_virtual_item_count(list);
+    int32_t wrong_kind_virtual_scroll = elisa_ui_widget_virtual_scroll_to(button, 1);
+    if (elisa_ui_widget_virtual_item_count(carousel) != 3 ||
+        list_count_before != 5 || list_scrolled != 1 || list_count_changed != 1 ||
+        list_count_after != 8 || wrong_kind_virtual_scroll != 0) {
+        puts("C app virtual-list row-pool lifecycle did not survive rebinding");
         failures++;
     }
     if (elisa_ui_widget_set_selected(checkbox, 1) != 1 ||
@@ -121,27 +163,47 @@ int main(void) {
         elisa_ui_widget_copy_text(field, field_text, sizeof(field_text)) != 5 ||
         memcmp(field_text, "Hi é", 5) != 0 ||
         elisa_ui_widget_text_length(button) != -1 ||
-        elisa_ui_widget_request_text_focus(button) != 0) {
+        elisa_ui_widget_request_text_focus(button) != 0 ||
+        elisa_ui_widget_set_selection(field, 3, 5) != 1 ||
+        elisa_ui_widget_selection_start(field) != 3 ||
+        elisa_ui_widget_selection_end(field) != 5 ||
+        elisa_ui_widget_set_input_text(field, "Hi é!", strlen("Hi é!")) != 1 ||
+        elisa_ui_widget_text_length(field) != 6 ||
+        elisa_ui_widget_copy_text(field, field_text, sizeof(field_text)) != 6 ||
+        memcmp(field_text, "Hi é!", 6) != 0 ||
+        elisa_ui_widget_request_text_focus(secure_field) != 1 ||
+        elisa_ui_widget_set_input_text(secure_field, "changed", 7) != 1 ||
+        elisa_ui_widget_text_length(secure_field) != -1 ||
+        elisa_ui_widget_copy_text(secure_field, field_text, sizeof(field_text)) != 0 ||
+        elisa_ui_widget_selection_start(secure_field) != -1) {
         puts("C app text-field focus/value copy did not preserve bounded UTF-8");
         failures++;
     }
-    if (elisa_ui_widget_activate(button) != 1 || widget_event_count != 1 ||
+    if (elisa_ui_widget_activate(button) != 1 || widget_event_count == 0 ||
         last_widget != button || last_widget_event != 0) {
         puts("C app control activation did not return an opaque callback token");
         failures++;
     }
+    int widget_event_count_after_activation = widget_event_count;
     elisa_ui_widget_tree_reset();
     if (elisa_ui_widget_is_valid(root) || elisa_ui_widget_is_valid(row) ||
+        elisa_ui_widget_is_valid(vertical_scroll) || elisa_ui_widget_is_valid(horizontal_scroll) ||
         elisa_ui_widget_is_valid(label) || elisa_ui_widget_is_valid(button) ||
         elisa_ui_widget_is_valid(checkbox) || elisa_ui_widget_is_valid(radio) ||
         elisa_ui_widget_is_valid(slider) || elisa_ui_widget_is_valid(progress) ||
-        elisa_ui_widget_is_valid(field) ||
+        elisa_ui_widget_is_valid(field) || elisa_ui_widget_is_valid(secure_field) ||
+        elisa_ui_widget_is_valid(list) ||
+        elisa_ui_widget_is_valid(list_row_a) || elisa_ui_widget_is_valid(list_row_b) ||
+        elisa_ui_widget_is_valid(carousel) ||
         elisa_ui_widget_set_enabled(button, 0) != 0 ||
         elisa_ui_widget_set_selected(checkbox, 1) != 0 ||
         elisa_ui_widget_set_value(slider, 0.5f) != 0 ||
+        elisa_ui_widget_set_scroll_offset(vertical_scroll, 1.0f) != 0 ||
+        elisa_ui_widget_set_virtual_item_count(list, 9) != 0 ||
         elisa_ui_widget_text_length(field) != -1 ||
         elisa_ui_widget_request_text_focus(field) != 0 ||
-        elisa_ui_widget_activate(button) != 0 || widget_event_count != 1) {
+        elisa_ui_widget_set_input_text(secure_field, "x", 1) != 0 ||
+        elisa_ui_widget_activate(button) != 0 || widget_event_count != widget_event_count_after_activation) {
         puts("C app tree reset did not invalidate prior handles");
         failures++;
     }

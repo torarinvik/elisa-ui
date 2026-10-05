@@ -36,6 +36,7 @@
 #include "include/core/SkSamplingOptions.h"
 #include "include/core/SkShader.h"
 #include "include/core/SkTypeface.h"
+#include "include/core/SkTextBlob.h"
 #include "include/core/SkFontMgr.h"
 #if defined(__APPLE__)
 #include "modules/skshaper/include/SkShaper.h"
@@ -274,15 +275,20 @@ inline std::vector<TextRun> split_runs(SkTypeface *lent, const char *text, std::
     return runs;
 }
 
+// Shared by every profile; Apple uses this only for the simple fallback and
+// tracked path, while other profiles use it for ordinary untracked text too.
+#include "skia_simple_text_cache.inc"
+
 #if defined(__APPLE__)
 #include "skia_shaped_text_cache.inc"
 #else
-// The shaped-blob cache belongs to Apple's CoreText shaping path. Other
-// platforms currently use Skia's simple-text fallback, but share the Elisa
-// cache-control ABI; keep those calls explicitly inert until they gain a
-// shaped-text cache of their own.
-inline void clear_shaped_text_cache() {}
-inline void set_shaped_text_cache_context(std::uint32_t, std::uint32_t) {}
+// Keep the existing cache-control ABI on profiles that do not build the
+// Apple CoreText shaping cache.
+inline void clear_shaped_text_cache() { clear_simple_text_cache(); }
+inline void set_shaped_text_cache_context(std::uint32_t locale_revision,
+                                          std::uint32_t scale_generation) {
+    set_simple_text_cache_context(locale_revision, scale_generation);
+}
 #endif
 
 // Shape the complete string where the platform shaper is available; otherwise
@@ -300,6 +306,15 @@ inline void draw_runs(SkCanvas *target, const SkFont &base, const SkPaint &paint
         }
     }
 #endif
+    if (tracking <= 0.0f) {
+        ElisaSimpleTextLayout uncached;
+        const ElisaSimpleTextLayout *layout = simple_text_layout_for(
+            base, lent, text, length, uncached);
+        if (layout != nullptr) {
+            draw_simple_text_layout(target, *layout, paint, x, y);
+            return;
+        }
+    }
     for (const TextRun &run : split_runs(lent, text, length)) {
         SkFont font = base;
         if (run.face) font.setTypeface(run.face);
@@ -328,6 +343,12 @@ inline float measure_runs(const SkFont &base, SkTypeface *lent, const char *text
         if (shaped.blob) return shaped.advance;
     }
 #endif
+    if (elisa_skia_text_tracking <= 0.0f) {
+        ElisaSimpleTextLayout uncached;
+        const ElisaSimpleTextLayout *layout = simple_text_layout_for(
+            base, lent, text, length, uncached);
+        if (layout != nullptr) return layout->advance;
+    }
     float total = 0.0f;
     for (const TextRun &run : split_runs(lent, text, length)) {
         SkFont font = base;

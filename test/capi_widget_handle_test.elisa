@@ -85,6 +85,13 @@ def main() -> i64:
     elisa_ui_widget_tree_reset()
     api_root: u64 = elisa_ui_widget_column(0, 4.0, 2.0, 0x202028FF)
     api_row: u64 = elisa_ui_widget_row(api_root, 0.0, 4.0, 0x202028FF)
+    api_vertical_scroll: u64 = elisa_ui_widget_vertical_scroll(api_row, 180.0, 100.0, 0x202028FF)
+    api_horizontal_scroll: u64 = elisa_ui_widget_horizontal_scroll(api_row, 180.0, 100.0, 0x202028FF)
+    scroll_content: u64 = elisa_ui_widget_button(api_vertical_scroll, 48.0, 240.0, 0x303038FF, 0x404048FF, 0x505058FF)
+    api_virtual_list: u64 = elisa_ui_widget_virtual_list(api_root, "Rows", 4, 12, 20.0, 2.0, 180.0, 64.0, 0x202028FF)
+    api_virtual_row_a: u64 = elisa_ui_widget_button(api_virtual_list, 120.0, 20.0, 0x303038FF, 0x404048FF, 0x505058FF)
+    api_virtual_row_b: u64 = elisa_ui_widget_button(api_virtual_list, 120.0, 20.0, 0x303038FF, 0x404048FF, 0x505058FF)
+    api_carousel: u64 = elisa_ui_widget_horizontal_virtual_list(api_root, "Strip", 4, 3, 36.0, 6.0, 180.0, 64.0, 0x202028FF)
     api_label: u64 = elisa_ui_widget_label(api_row, "Caption", 7, 16.0, 0xFFFFFFFF)
     api_button: u64 = elisa_ui_widget_button(api_row, 100.0, 32.0, 0x303038FF, 0x404048FF, 0x505058FF)
     api_checkbox: u64 = elisa_ui_widget_check_box(api_row, 24.0, 24.0, 0x303038FF, 0x404048FF, 0x505058FF)
@@ -98,7 +105,9 @@ def main() -> i64:
     field_initial[3] <- 195
     field_initial[4] <- 169
     field_initial_view: sview = UiText::fixed_bytes_view_range[5](field_initial, 0, 5)
-    api_field: u64 = elisa_ui_widget_text_field(api_row, field_initial_view.data.cast[cstr] can Unsafe.PointerCast, 5, 180.0, 32.0, 16.0, 0xFFFFFFFF, 0x202028FF)
+    field_initial_pointer: cstr = field_initial_view.data.cast[cstr] can Unsafe.PointerCast
+    api_field: u64 = elisa_ui_widget_text_field(api_row, field_initial_pointer, 5, 180.0, 32.0, 16.0, 0xFFFFFFFF, 0x202028FF)
+    api_secure_field: u64 = elisa_ui_widget_secure_text_field(api_row, "secret", 6, 180.0, 32.0, 16.0, 0xFFFFFFFF, 0x202028FF)
     api_index: usize = UiCapiWidget::index_for_token(api_button)
     api_label_index: usize = UiCapiWidget::index_for_token(api_label)
     api_checkbox_index: usize = UiCapiWidget::index_for_token(api_checkbox)
@@ -110,7 +119,17 @@ def main() -> i64:
     embedded_text[2] <- 66
     embedded_view: sview = UiText::fixed_bytes_view_range[3](embedded_text, 0, 3)
     embedded_pointer: cstr = embedded_view.data.cast[cstr] can Unsafe.PointerCast
-    check("C widget API creates layout, text, action, selection, range, and input controls", api_root != 0 and api_row != 0 and api_label != 0 and api_button != 0 and api_checkbox != 0 and api_radio != 0 and api_slider != 0 and api_progress != 0 and api_field != 0 and UiCapiControls::is_valid(api_button) == 1)
+    check("C widget API creates layout, scrolling, text, action, selection, range, normal/secure input, and virtual-list controls", api_root != 0 and api_row != 0 and api_vertical_scroll != 0 and api_horizontal_scroll != 0 and api_label != 0 and api_button != 0 and api_checkbox != 0 and api_radio != 0 and api_slider != 0 and api_progress != 0 and api_field != 0 and api_secure_field != 0 and api_virtual_list != 0 and api_virtual_row_a != 0 and api_virtual_row_b != 0 and api_carousel != 0 and UiCapiControls::is_valid(api_button) == 1)
+    check("C widget API exposes horizontal virtual-list construction", elisa_ui_widget_virtual_item_count(api_carousel) == 3)
+    check("C widget API exposes offsets only for live scroll controls", elisa_ui_widget_scroll_offset(api_vertical_scroll) == 0.0 and elisa_ui_widget_scroll_offset(api_horizontal_scroll) == 0.0 and elisa_ui_widget_set_scroll_offset(api_button, 1.0) == 0)
+    UiFlat::layout(360.0, 180.0)
+    scroll_range: f32 = elisa_ui_widget_scroll_limit(api_vertical_scroll)
+    check("C widget API clamps scroll offsets to the laid-out content range", scroll_content != 0 and scroll_range > 0.0 and elisa_ui_widget_set_scroll_offset(api_vertical_scroll, scroll_range + 100.0) == 1 and elisa_ui_widget_scroll_offset(api_vertical_scroll) == scroll_range and elisa_ui_widget_set_scroll_offset(api_vertical_scroll, -1.0) == 1 and elisa_ui_widget_scroll_offset(api_vertical_scroll) == 0.0)
+    initial_virtual_generation: u32 = elisa_ui_widget_virtual_item_generation(api_virtual_row_a)
+    check("C widget API reads the virtual-list model and realizes the first row", elisa_ui_widget_virtual_item_count(api_virtual_list) == 12 and elisa_ui_widget_virtual_item_index(api_virtual_row_a) == 0 and initial_virtual_generation != 0)
+    virtual_scrolled: i32 = elisa_ui_widget_virtual_scroll_to(api_virtual_list, 3)
+    check("C widget API virtual scroll-to rebinds its row pool", virtual_scrolled == 1 and elisa_ui_widget_virtual_item_index(api_virtual_row_a) == 3 and elisa_ui_widget_virtual_item_generation(api_virtual_row_a) != initial_virtual_generation)
+    check("C widget API updates virtual item count and rejects wrong kinds", elisa_ui_widget_set_virtual_item_count(api_virtual_list, 8) == 1 and elisa_ui_widget_virtual_item_count(api_virtual_list) == 8 and elisa_ui_widget_virtual_scroll_to(api_button, 1) == 0)
     check("C widget API reads and writes check-box and radio selection", elisa_ui_widget_set_selected(api_checkbox, 1) == 1 and elisa_ui_widget_selected(api_checkbox) == 1 and elisa_ui_widget_set_selected(api_radio, 1) == 1 and elisa_ui_widget_selected(api_radio) == 1)
     check("C widget API rejects selection on another widget kind", elisa_ui_widget_set_selected(api_button, 1) == 0 and elisa_ui_widget_selected(api_button) == 0)
     check("C widget API normalizes slider and progress values", elisa_ui_widget_value(api_slider) == 0.25 and elisa_ui_widget_set_value(api_slider, 1.5) == 1 and elisa_ui_widget_value(api_slider) == 1.0 and elisa_ui_widget_set_value(api_progress, 0.75) == 1 and elisa_ui_widget_value(api_progress) == 0.75 and UiFlat::widget(api_slider_index).value == 1.0 and UiFlat::widget(api_progress_index).value == 0.75)
@@ -118,6 +137,12 @@ def main() -> i64:
     field_prefix: mutable u8[4] = zeroed
     field_prefix_pointer: cstr = (&field_prefix[0]).cast[cstr] can Unsafe.PointerCast
     check("C widget API focuses fields and copies only complete UTF-8", elisa_ui_widget_request_text_focus(api_field) == 1 and elisa_ui_widget_text_length(api_field) == 5 and elisa_ui_widget_copy_text(api_field, field_prefix_pointer, 4) == 3 and field_prefix[0] == 72 and field_prefix[1] == 105 and field_prefix[2] == 32 and elisa_ui_widget_text_length(api_button) == -1 and elisa_ui_widget_request_text_focus(api_button) == 0)
+    check("C widget API sets UTF-8 byte selections at grapheme boundaries", elisa_ui_widget_set_selection(api_field, 3, 5) == 1 and elisa_ui_widget_selection_start(api_field) == 3 and elisa_ui_widget_selection_end(api_field) == 5 and elisa_ui_widget_set_selection(api_button, 0, 0) == 0)
+    check("C widget API reports reversed selections as ordered offsets", elisa_ui_widget_set_selection(api_field, 5, 3) == 1 and elisa_ui_widget_selection_start(api_field) == 3 and elisa_ui_widget_selection_end(api_field) == 5)
+    replacement_text: sview = "Hi é!"
+    replacement_pointer: cstr = replacement_text.data.cast[cstr] can Unsafe.PointerCast
+    check("C widget API replaces editable model text independently of its caption", elisa_ui_widget_set_input_text(api_field, replacement_pointer, 6) == 1 and elisa_ui_widget_text_length(api_field) == 6 and elisa_ui_widget_selection_start(api_field) == 6 and elisa_ui_widget_selection_end(api_field) == 6)
+    check("C widget API permits secure-field edits while denying every readback", elisa_ui_widget_request_text_focus(api_secure_field) == 1 and elisa_ui_widget_set_input_text(api_secure_field, embedded_pointer, 3) == 1 and elisa_ui_widget_text_length(api_secure_field) == -1 and elisa_ui_widget_copy_text(api_secure_field, field_prefix_pointer, 4) == 0 and elisa_ui_widget_selection_start(api_secure_field) == -1)
     check("C widget API retains standalone label text", UiFlat::widget(api_label_index).text.len == 7 and UiFlat::widget(api_label_index).text.data[0] == 67)
     nul_text_set: i32 = elisa_ui_widget_set_text(api_button, embedded_pointer, 3, 16.0, 0xFFFFFFFF)
     retained_nul_text: sview = UiFlat::widget(api_index).text
@@ -145,7 +170,7 @@ def main() -> i64:
     null_set: i32 = elisa_ui_widget_set_text(api_button, null, 3, 16.0, 0xFFFFFFFF)
     check("C widget API rejects null counted text without erasing", null_set == 0 and UiFlat::widget(api_index).text.len == prior_text_length)
     elisa_ui_widget_tree_reset()
-    check("C widget API reset invalidates handles and rejects mutation", UiCapiControls::is_valid(api_button) == 0 and elisa_ui_widget_set_enabled(api_button, 1) == 0 and elisa_ui_widget_set_selected(api_checkbox, 1) == 0 and elisa_ui_widget_set_value(api_slider, 0.5) == 0 and elisa_ui_widget_text_length(api_field) == -1 and elisa_ui_widget_request_text_focus(api_field) == 0)
+    check("C widget API reset invalidates handles and rejects mutation", UiCapiControls::is_valid(api_button) == 0 and elisa_ui_widget_set_enabled(api_button, 1) == 0 and elisa_ui_widget_set_selected(api_checkbox, 1) == 0 and elisa_ui_widget_set_value(api_slider, 0.5) == 0 and elisa_ui_widget_set_scroll_offset(api_vertical_scroll, 1.0) == 0 and elisa_ui_widget_set_virtual_item_count(api_virtual_list, 9) == 0 and elisa_ui_widget_virtual_item_count(api_carousel) == -1 and elisa_ui_widget_text_length(api_field) == -1 and elisa_ui_widget_request_text_focus(api_field) == 0 and elisa_ui_widget_set_input_text(api_secure_field, replacement_pointer, 6) == 0)
     elisa_ui_widget_tree_reset()
     check("repeated whole-tree teardown is safe", UiHandles::count() == 0 and UiCapiControls::is_valid(api_button) == 0)
 

@@ -15,6 +15,12 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 STAGE1="$(bash "$ROOT/scripts/resolve_stage1_root.sh" "$ROOT")"
 EXAMPLE="${1:-showcase}"
 [[ "$EXAMPLE" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "invalid Android controls example name: $EXAMPLE" >&2; exit 2; }
+# Override for a side-by-side validation install; the default package remains stable.
+PACKAGE_ID="${ELISA_UI_ANDROID_PACKAGE_ID:-org.elisa_ui.${EXAMPLE}_controls}"
+[[ "$PACKAGE_ID" =~ ^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$ ]] || {
+  echo "invalid Android package ID: $PACKAGE_ID" >&2
+  exit 2
+}
 ENTRY="$ROOT/examples/$EXAMPLE/android_controls_main.elisa"
 SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
 NDK="${ANDROID_NDK_ROOT:-$(ls -d "$SDK"/ndk/* 2>/dev/null | sort -V | tail -1)}"
@@ -55,7 +61,7 @@ LIB="lib$EXAMPLE"
 ELISA_STAGE1_PIC=1 "$STAGE1/bin/elisac-stage1" -emit obj -O0 -target-triple "$TRIPLE" \
   -o "$OUT/runtime_core.o" "$STAGE1/elisacore_std/native_runtime_support.elisa"
 bash "$STAGE1/scripts/write_profiler_hook_fallbacks.sh" > "$OUT/profiler_hooks.c"
-"$CLANG" -c -fPIC -o "$OUT/profiler_hooks.o" "$OUT/profiler_hooks.c"
+"$CLANG" -c -fPIC -fno-builtin -o "$OUT/profiler_hooks.o" "$OUT/profiler_hooks.c"
 "$CLANG" -c -fPIC -o "$OUT/android_runtime_support.o" "$ROOT/src/platform/android/android_runtime_support.c"
 "$CLANG" -c -fPIC -O1 -Wall -Wextra -Werror -o "$OUT/android_controls_jni.o" \
   "$ROOT/src/platform/android/android_controls_jni.c"
@@ -106,7 +112,7 @@ cp "$OUT/classes.dex" "$OUT/apk/classes.dex"
 cat > "$OUT/AndroidManifest.xml" <<MANIFEST
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="org.elisa_ui.${EXAMPLE}_controls" android:versionCode="1" android:versionName="1.0">
+    package="$PACKAGE_ID" android:versionCode="1" android:versionName="1.0">
   <uses-sdk android:minSdkVersion="$API" android:targetSdkVersion="34"/>
   <!-- Both Android backends carry Java now: the controls backend needs its
        widget bridge, while the Skia backend carries the smaller IME bridge. -->

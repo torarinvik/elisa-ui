@@ -5,23 +5,44 @@ runnable reference for each feature. Every snippet here corresponds to code in
 [examples/hello](../examples/hello), which is the same source built for native,
 AppKit, UIKit, Android, and the hosted WasmBrowser profile.
 
-## The application contract
+## Application module and compatibility callbacks
 
-An application implements a small set of top-level functions. Physical keys and
-committed UTF-8 text are deliberately separate, so a layout or IME is never
-reconstructed from key codes:
+Keep application behavior in a named module; the required top-level `app_*`
+functions are a compatibility adapter for the existing native and hosted
+backend contract. Physical keys, committed UTF-8 text, and IME composition
+remain separate typed paths:
 
 ```elisa
-def app_init() -> void                 # once, after the surface exists
-def app_event(event: UiCore::Event)    # one translated input event
-def app_text_input(text: sview)        # committed UTF-8 text
-def app_text_editing(text: sview, selected_start: i32, selected_length: i32)
-def app_frame() -> void                # once per frame; issue draw calls
-def app_widget_event(widget: usize, event: i32)   # optional, when using UiFlat/UiHandles
+# The application module owns behavior; platform entrypoints keep these names.
+def app_init() -> void:
+    HelloApp::init()
+
+def app_widget_event(widget: usize, event: i32) -> void:
+    HelloApp::widget_event(widget, event)
+
+def app_event(event: UiCore::Event) -> void:
+    HelloApp::event(event)
+
+def app_text_input(text: sview) -> void:
+    HelloApp::text_input(text)
+
+def app_text_editing(text: sview, selected_start: i32, selected_length: i32) -> void:
+    HelloApp::text_editing(text, selected_start, selected_length)
+
+def app_frame() -> void:
+    HelloApp::frame()
 ```
 
-See [examples/hello/app.elisa](../examples/hello/app.elisa) for the full
-example. The entrypoint is backend selection, not application code:
+When using `UiHandles`, also implement the optional `app_widget_event(widget:
+usize, event: i32)` adapter and immediately convert event integers through
+`UiHandles::event_is`; the `HelloApp` example shows typed event comparisons and
+generation-checked handles. See [examples/hello/app.elisa](../examples/hello/app.elisa)
+for the complete, runnable version. A reusable framework-level `UiApp`
+registration API is still an open design item; this adapter pattern does not
+claim that migration is complete.
+
+The platform entrypoint remains a small backend selection, not application
+logic:
 
 ```elisa
 include "../../src/platform/sdl3/ui_sdl3_flat.elisa"

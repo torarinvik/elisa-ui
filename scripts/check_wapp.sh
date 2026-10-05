@@ -60,6 +60,42 @@ fi
 for candidate in "$WASMBROWSER/target/debug/wasm-browser" "$WASMBROWSER/target/release/wasm-browser"; do
   [[ -z "$WASM_BROWSER_CLI" && -x "$candidate" ]] && WASM_BROWSER_CLI="$candidate"
 done
+PACKING_PREREQUISITE=""
+if [[ ! -x "$WASM_BROWSER_CLI" ]]; then
+  PACKING_PREREQUISITE="no WasmBrowser CLI"
+elif [[ ! -f "$CLI_COMPONENT" ]]; then
+  PACKING_PREREQUISITE="no Elisa CLI component at $CLI_COMPONENT"
+fi
+
+# The compiler can still build and WIT-validate the guest component when the
+# WasmBrowser pack/inspect CLI is absent. Preserve that independent evidence
+# instead of skipping before the hosted source is compiled; package inspection
+# and runtime execution remain explicitly skipped below this branch.
+if [[ -z "$WASM_BROWSER_CLI" && -z "$GIVEN_PACKAGE" ]]; then
+  if [[ ! -f "$WASM_SDK/sdk/elisa/wasmbrowser/host_bindings.elisa" ]]; then
+    echo "wapp: skipped (no wasm SDK bindings at $WASM_SDK; set ELISA_UI_WASM_SDK)"; exit 0
+  fi
+  if [[ ! -f "${ELISA_UI_WIT:-$WASMBROWSER/wit/wasmbrowser.wit}" ]]; then
+    echo "wapp: skipped (no WasmBrowser WIT world; set ELISA_UI_WIT)"; exit 0
+  fi
+  COMPONENT_WORK="$(mktemp -d "${TMPDIR:-/tmp}/elisa-ui-wapp-component-check.XXXXXX")"
+  trap 'rm -rf "$COMPONENT_WORK"' EXIT INT TERM HUP
+  BUILD_STATUS=0
+  bash "$ROOT/scripts/build_wapp.sh" hello >"$COMPONENT_WORK/build.log" 2>&1 || BUILD_STATUS=$?
+  if [[ "$BUILD_STATUS" -ne 3 ]] || ! rg -Fq "WasmBrowser CLI not found" "$COMPONENT_WORK/build.log"; then
+    cat "$COMPONENT_WORK/build.log" >&2
+    echo "wapp: component build failed" >&2
+    [[ "$BUILD_STATUS" -ne 0 ]] || BUILD_STATUS=1
+    exit "$BUILD_STATUS"
+  fi
+  if [[ ! -s "$ROOT/build/hello.wasm" ]]; then
+    cat "$COMPONENT_WORK/build.log" >&2
+    echo "wapp: component linker returned without a current Hello artifact" >&2
+    exit 1
+  fi
+  echo "wapp: component-WIT build passed; package inspection/runtime smoke skipped ($PACKING_PREREQUISITE)"
+  exit 0
+fi
 [[ -x "$WASM_BROWSER_CLI" ]] || {
   echo "wapp: skipped (no wasm-browser CLI; build it in $WASMBROWSER or set WASM_BROWSER_CLI)"; exit 0; }
 [[ -f "$CLI_COMPONENT" ]] || {

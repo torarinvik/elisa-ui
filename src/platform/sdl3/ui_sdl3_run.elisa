@@ -31,6 +31,15 @@ extend UiSdl3:
         # events are queued and delivered through the shared framework queue.
         # Keeping this in one helper makes polled and waited events identical.
         def dispatch_current_event(event: UiCore::Event, running: mutable bool&) -> void:
+            # Theme notifications are process-wide SDL events with no owning
+            # window. Refresh the fact before app_frame observes it, and do so
+            # before any event path reads the union's window-ID slot.
+            if event_type() == EVENT_SYSTEM_THEME_CHANGED:
+                if refresh_system_theme():
+                    UiCore::invalidate(UiCore::Invalidation.Paint)
+                clear_event_buffer()
+                dispatch_queued_events(running)
+                return
             if handle_render_event(running):
                 return
             # `decode_event` returns Event.None for window events addressed to
@@ -79,6 +88,7 @@ extend UiSdl3:
             if not SDL_Init(INIT_VIDEO):
                 _ = puts(SDL_GetError())
                 return 1
+            _ = refresh_system_theme()
             safe_width: i32 = window_extent(width)
             safe_height: i32 = window_extent(height)
             window_opt: void&? = SDL_CreateWindow(safe_title, safe_width, safe_height, WINDOW_RESIZABLE)

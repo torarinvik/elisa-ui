@@ -6,7 +6,7 @@ cd "$ROOT"
 STAGE1="$(bash scripts/resolve_stage1_root.sh "$ROOT")"
 bash scripts/check_toolchain.sh
 mkdir -p build
-tests=(event_wire_test event_queue_test contact_event_test gestures_test
+tests=(event_wire_test event_queue_test contact_event_test gestures_test touch_scroll_test
   mobile_contacts_test mobile_surface_test android_dispatch_test android_ime_ingress_test android_text_gesture_test
   mobile_focus_reveal_test retained_text_purpose_test text_input_test
   widget_handles_test widget_layout_geometry_test widget_layout_text_test

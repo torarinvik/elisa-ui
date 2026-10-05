@@ -186,6 +186,64 @@ func NewRow(parent WidgetParent, padding, spacing float32, color ColorRgba) (Wid
 	return widgetResult(token)
 }
 
+// NewVerticalScroll creates a vertical scrolling viewport.
+func NewVerticalScroll(parent WidgetParent, minWidth, minHeight float32, color ColorRgba) (WidgetHandle, bool) {
+	if !parent.valid {
+		return InvalidWidgetHandle, false
+	}
+	token := C.elisa_ui_widget_vertical_scroll(
+		C.elisa_ui_widget_handle(parent.token), C.float(minWidth), C.float(minHeight), C.uint32_t(color),
+	)
+	return widgetResult(token)
+}
+
+// NewHorizontalScroll creates a horizontal scrolling viewport.
+func NewHorizontalScroll(parent WidgetParent, minWidth, minHeight float32, color ColorRgba) (WidgetHandle, bool) {
+	if !parent.valid {
+		return InvalidWidgetHandle, false
+	}
+	token := C.elisa_ui_widget_horizontal_scroll(
+		C.elisa_ui_widget_handle(parent.token), C.float(minWidth), C.float(minHeight), C.uint32_t(color),
+	)
+	return widgetResult(token)
+}
+
+func newVirtualList(parent WidgetParent, label string, itemCount int32, itemExtent, spacing, minWidth, minHeight float32, color ColorRgba, horizontal bool) (WidgetHandle, bool) {
+	if !parent.valid {
+		return InvalidWidgetHandle, false
+	}
+	bounded := validTextPrefix(label)
+	var pointer *C.char
+	if len(bounded) != 0 {
+		pointer = (*C.char)(unsafe.Pointer(unsafe.StringData(bounded)))
+	}
+	var token C.elisa_ui_widget_handle
+	if horizontal {
+		token = C.elisa_ui_widget_horizontal_virtual_list(
+			C.elisa_ui_widget_handle(parent.token), pointer, C.size_t(len(bounded)), C.int32_t(itemCount),
+			C.float(itemExtent), C.float(spacing), C.float(minWidth), C.float(minHeight), C.uint32_t(color),
+		)
+	} else {
+		token = C.elisa_ui_widget_virtual_list(
+			C.elisa_ui_widget_handle(parent.token), pointer, C.size_t(len(bounded)), C.int32_t(itemCount),
+			C.float(itemExtent), C.float(spacing), C.float(minWidth), C.float(minHeight), C.uint32_t(color),
+		)
+	}
+	runtime.KeepAlive(bounded)
+	return widgetResult(token)
+}
+
+// NewVirtualList creates a uniform vertical virtual list. Direct child widgets
+// are a bounded row pool that Elisa maps onto the visible logical item window.
+func NewVirtualList(parent WidgetParent, label string, itemCount int32, itemExtent, spacing, minWidth, minHeight float32, color ColorRgba) (WidgetHandle, bool) {
+	return newVirtualList(parent, label, itemCount, itemExtent, spacing, minWidth, minHeight, color, false)
+}
+
+// NewHorizontalVirtualList creates a uniform horizontal virtual list.
+func NewHorizontalVirtualList(parent WidgetParent, label string, itemCount int32, itemExtent, spacing, minWidth, minHeight float32, color ColorRgba) (WidgetHandle, bool) {
+	return newVirtualList(parent, label, itemCount, itemExtent, spacing, minWidth, minHeight, color, true)
+}
+
 // NewLabel copies a bounded valid UTF-8 prefix into retained Elisa storage.
 func NewLabel(parent WidgetParent, text string, size float32, color ColorRgba) (WidgetHandle, bool) {
 	if !parent.valid {
@@ -215,6 +273,25 @@ func NewTextField(parent WidgetParent, initial string, minWidth, minHeight, size
 		pointer = (*C.char)(unsafe.Pointer(unsafe.StringData(bounded)))
 	}
 	token := C.elisa_ui_widget_text_field(
+		C.elisa_ui_widget_handle(parent.token), pointer, C.size_t(len(bounded)),
+		C.float(minWidth), C.float(minHeight), C.float(size), C.uint32_t(ink), C.uint32_t(fill),
+	)
+	runtime.KeepAlive(bounded)
+	return widgetResult(token)
+}
+
+// NewSecureTextField creates a field whose value, length, and selection are
+// intentionally unavailable to readback functions.
+func NewSecureTextField(parent WidgetParent, initial string, minWidth, minHeight, size float32, ink, fill ColorRgba) (WidgetHandle, bool) {
+	if !parent.valid {
+		return InvalidWidgetHandle, false
+	}
+	bounded := validTextPrefix(initial)
+	var pointer *C.char
+	if len(bounded) != 0 {
+		pointer = (*C.char)(unsafe.Pointer(unsafe.StringData(bounded)))
+	}
+	token := C.elisa_ui_widget_secure_text_field(
 		C.elisa_ui_widget_handle(parent.token), pointer, C.size_t(len(bounded)),
 		C.float(minWidth), C.float(minHeight), C.float(size), C.uint32_t(ink), C.uint32_t(fill),
 	)
@@ -357,6 +434,79 @@ func WidgetValue(widget WidgetHandle) float32 {
 	return float32(C.elisa_ui_widget_value(C.elisa_ui_widget_handle(widget)))
 }
 
+// SetWidgetScrollOffset updates a scroll viewport; true means the offset changed.
+func SetWidgetScrollOffset(widget WidgetHandle, requested float32) bool {
+	if !widget.Valid() {
+		return false
+	}
+	return C.elisa_ui_widget_set_scroll_offset(C.elisa_ui_widget_handle(widget), C.float(requested)) == 1
+}
+
+// WidgetScrollOffset returns the current logical offset, or zero for unsupported/stale handles.
+func WidgetScrollOffset(widget WidgetHandle) float32 {
+	if !widget.Valid() {
+		return 0
+	}
+	return float32(C.elisa_ui_widget_scroll_offset(C.elisa_ui_widget_handle(widget)))
+}
+
+// WidgetScrollLimit returns the laid-out scroll range, or zero for unsupported/stale handles.
+func WidgetScrollLimit(widget WidgetHandle) float32 {
+	if !widget.Valid() {
+		return 0
+	}
+	return float32(C.elisa_ui_widget_scroll_limit(C.elisa_ui_widget_handle(widget)))
+}
+
+// SetVirtualItemCount changes a virtual list's logical item count.
+func SetVirtualItemCount(widget WidgetHandle, itemCount int32) bool {
+	if !widget.Valid() {
+		return false
+	}
+	return C.elisa_ui_widget_set_virtual_item_count(C.elisa_ui_widget_handle(widget), C.int32_t(itemCount)) == 1
+}
+
+// VirtualItemCount returns the current count, or false for stale/non-list handles.
+func VirtualItemCount(widget WidgetHandle) (int32, bool) {
+	if !widget.Valid() {
+		return 0, false
+	}
+	count := int32(C.elisa_ui_widget_virtual_item_count(C.elisa_ui_widget_handle(widget)))
+	return count, count >= 0
+}
+
+// VirtualScrollTo moves a virtual list to a logical item; true means changed.
+func VirtualScrollTo(widget WidgetHandle, itemIndex int32) bool {
+	if !widget.Valid() {
+		return false
+	}
+	return C.elisa_ui_widget_virtual_scroll_to(C.elisa_ui_widget_handle(widget), C.int32_t(itemIndex)) == 1
+}
+
+// VirtualScrollBy moves a virtual list along its logical axis.
+func VirtualScrollBy(widget WidgetHandle, delta float32) bool {
+	if !widget.Valid() {
+		return false
+	}
+	return C.elisa_ui_widget_virtual_scroll_by(C.elisa_ui_widget_handle(widget), C.float(delta)) == 1
+}
+
+// VirtualItemIndex reports a row's logical index; -1 means not realized.
+func VirtualItemIndex(widget WidgetHandle) (int32, bool) {
+	if !widget.Valid() || !WidgetIsLive(widget) {
+		return -1, false
+	}
+	return int32(C.elisa_ui_widget_virtual_item_index(C.elisa_ui_widget_handle(widget))), true
+}
+
+// VirtualItemGeneration changes whenever a retained row is recycled.
+func VirtualItemGeneration(widget WidgetHandle) (uint32, bool) {
+	if !widget.Valid() || !WidgetIsLive(widget) {
+		return 0, false
+	}
+	return uint32(C.elisa_ui_widget_virtual_item_generation(C.elisa_ui_widget_handle(widget))), true
+}
+
 // RequestTextFocus requests focus for a live text field.
 func RequestTextFocus(widget WidgetHandle) bool {
 	if !widget.Valid() {
@@ -365,7 +515,48 @@ func RequestTextFocus(widget WidgetHandle) bool {
 	return C.elisa_ui_widget_request_text_focus(C.elisa_ui_widget_handle(widget)) == 1
 }
 
-// WidgetTextLength returns the UTF-8 byte length, or false for stale/non-text handles.
+// SetWidgetInputText replaces the model value of an editable field. Secure
+// fields accept replacement but remain unreadable. This differs from SetWidgetText.
+func SetWidgetInputText(widget WidgetHandle, text string) bool {
+	if !widget.Valid() {
+		return false
+	}
+	bounded := validTextPrefix(text)
+	var pointer *C.char
+	if len(bounded) != 0 {
+		pointer = (*C.char)(unsafe.Pointer(unsafe.StringData(bounded)))
+	}
+	accepted := C.elisa_ui_widget_set_input_text(
+		C.elisa_ui_widget_handle(widget), pointer, C.size_t(len(bounded)),
+	) == 1
+	runtime.KeepAlive(bounded)
+	return accepted
+}
+
+// SetWidgetSelection sets UTF-8 byte endpoints; Elisa normalizes them to grapheme edges.
+func SetWidgetSelection(widget WidgetHandle, anchor, caret int) bool {
+	if !widget.Valid() || anchor < 0 || caret < 0 {
+		return false
+	}
+	return C.elisa_ui_widget_set_selection(
+		C.elisa_ui_widget_handle(widget), C.size_t(anchor), C.size_t(caret),
+	) == 1
+}
+
+// WidgetSelection returns UTF-8 byte endpoints; secure/non-text/stale handles fail.
+func WidgetSelection(widget WidgetHandle) (anchor, caret int, ok bool) {
+	if !widget.Valid() || !WidgetIsLive(widget) {
+		return 0, 0, false
+	}
+	start := int32(C.elisa_ui_widget_selection_start(C.elisa_ui_widget_handle(widget)))
+	end := int32(C.elisa_ui_widget_selection_end(C.elisa_ui_widget_handle(widget)))
+	if start < 0 || end < 0 {
+		return 0, 0, false
+	}
+	return int(start), int(end), true
+}
+
+// WidgetTextLength returns the UTF-8 byte length, or false for stale, non-text, or secure handles.
 func WidgetTextLength(widget WidgetHandle) (int, bool) {
 	if !widget.Valid() {
 		return 0, false
@@ -377,8 +568,8 @@ func WidgetTextLength(widget WidgetHandle) (int, bool) {
 	return int(length), true
 }
 
-// CopyWidgetText copies a UTF-8-safe prefix into caller-owned storage. The C
-// boundary does not retain the byte-slice pointer.
+// CopyWidgetText copies a UTF-8-safe prefix from a normal field into caller-owned
+// storage. Secure fields deny readback. The C boundary does not retain the pointer.
 func CopyWidgetText(widget WidgetHandle, destination []byte) (int, bool) {
 	if !widget.Valid() {
 		return 0, false
@@ -397,7 +588,7 @@ func CopyWidgetText(widget WidgetHandle, destination []byte) (int, bool) {
 	return copied, true
 }
 
-// WidgetText reads the complete bounded field value as a Go string.
+// WidgetText reads the complete bounded normal field value as a Go string.
 func WidgetText(widget WidgetHandle) (string, bool) {
 	length, ok := WidgetTextLength(widget)
 	if !ok {

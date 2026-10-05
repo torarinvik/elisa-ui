@@ -63,6 +63,15 @@ window. `test/widget_theme_adapter_test.elisa` exercises it headlessly,
 including palette mapping, idempotence, custom-token preservation, and the
 typed handle surface.
 
+Platform facts are read separately from applying a palette. AppKit and UIKit
+expose `system_preferences()` with their native appearance/accessibility facts;
+SDL3 exposes `UiSdl3::system_preferences()` for its light/dark system theme and
+reports `ColorMode.System` when SDL cannot determine that theme. SDL3 does not
+report contrast, reduced motion, or text scale, so those fields remain neutral.
+Its process-wide `SDL_EVENT_SYSTEM_THEME_CHANGED` refreshes the cached fact
+before the next app frame; applications still choose whether and how to apply
+the resulting preferences.
+
 ## A mark contrasts with its control, not with the palette
 
 `apply_palette` resolves control marks from the **system** palette; an
